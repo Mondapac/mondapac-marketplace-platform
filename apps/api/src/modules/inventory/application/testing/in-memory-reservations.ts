@@ -1,7 +1,13 @@
-import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { ReleaseCause, Reservation } from '../../domain/reservation';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import { Reservation, type ReleaseCause } from '../../domain/reservation';
 import { heldByItem, type HeldLine } from '../../domain/sellable-calculator';
-import type { ReservationRepository, SellUnitRef } from '../ports/reservation.repository';
+import type {
+  CommitAssignment,
+  CommittedLineRow,
+  ReservationRepository,
+  SellUnitRef,
+} from '../ports/reservation.repository';
 import type { StockItemRow } from '../ports/stock.repository';
 
 /**
@@ -126,5 +132,100 @@ export class InMemoryReservations implements ReservationRepository {
           r.isLiveAt(now) && r.state.lines.some((l) => wanted.has(`${l.offerId}/${l.variantId}`)),
       ),
     );
+  }
+
+  commit(
+    _m: MarketContext,
+    id: Id<'Reservation'>,
+    assignments: readonly CommitAssignment[],
+    now: Temporal.Instant,
+  ) {
+    const found = this.stored.get(id);
+    if (found === undefined) return Promise.resolve(false);
+    const { status, releaseCause } = found.state;
+    if (!(status === 'active' || status === 'expired' || releaseCause === 'superseded')) {
+      return Promise.resolve(false);
+    }
+    const byLine = new Map(assignments.map((a) => [a.lineId as string, a]));
+    this.stored.set(
+      id,
+      Reservation.fromStored({
+        ...found.state,
+        status: 'committed',
+        statusChangedAt: now,
+        version: found.state.version + 1,
+        lines: found.state.lines.map((line) => {
+          const a = byLine.get(line.id);
+          return a === undefined
+            ? line
+            : {
+                ...line,
+                status: 'committed' as const,
+                orderLineId: a.orderLineId,
+                stockItemId: a.stockItemId,
+              };
+        }),
+      }),
+    );
+    return Promise.resolve(true);
+  }
+
+  findLineByOrderLine(_m: MarketContext, orderLineId: string) {
+    for (const r of this.stored.values()) {
+      const line = r.state.lines.find((l) => l.orderLineId === orderLineId);
+      if (line !== undefined) {
+        const row: CommittedLineRow = {
+          lineId: line.id,
+          reservationId: r.state.id,
+          offerId: line.offerId,
+          variantId: line.variantId,
+          stockItemId: line.stockItemId,
+          quantity: line.quantity,
+          status: line.status,
+        };
+        return Promise.resolve(row);
+      }
+    }
+    return Promise.resolve(null);
+  }
+
+  finishLine(_m: MarketContext, lineId: Id<'ReservationLine'>, to: 'cancelled' | 'fulfilled') {
+    for (const r of this.stored.values()) {
+      const line = r.state.lines.find((l) => l.id === lineId);
+      if (line === undefined) continue;
+      if (line.status !== 'committed') return Promise.resolve(false);
+      this.stored.set(
+        r.state.id,
+        Reservation.fromStored({
+          ...r.state,
+          lines: r.state.lines.map((l) => (l.id === lineId ? { ...l, status: to } : l)),
+        }),
+      );
+      return Promise.resolve(true);
+    }
+    return Promise.resolve(false);
+  }
+
+  /** Every `shipUnits` call, in order. */
+  readonly shipped: { id: Id<'StockItem'>; quantity: number }[] = [];
+  shipUnits(_m: MarketContext, id: Id<'StockItem'>, quantity: number) {
+    const at = this.items.findIndex((i) => i.id === id);
+    const item = this.items[at];
+    if (item === undefined || item.onHand < quantity) return Promise.resolve(null);
+    this.items[at] = { ...item, onHand: item.onHand - quantity, version: item.version + 1 };
+    this.shipped.push({ id, quantity });
+    return Promise.resolve(item.onHand - quantity);
+  }
+
+  pruneTerminal(_m: MarketContext, before: Temporal.Instant, limit: number) {
+    const due = [...this.stored.values()]
+      .filter(
+        (r) =>
+          (r.state.status === 'released' || r.state.status === 'expired') &&
+          Temporal.Instant.compare(r.state.statusChangedAt, before) < 0,
+      )
+      .slice(0, limit);
+    for (const r of due) this.stored.delete(r.state.id);
+    return Promise.resolve(due.length);
   }
 }

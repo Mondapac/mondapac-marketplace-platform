@@ -14,7 +14,8 @@ import { TransactionConflictError } from '../../../../platform/unit-of-work/erro
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
   MAX_RESERVE_LINES,
-  type InsufficientReason,
+  type AccessUnavailable,
+  type RequestThrottled,
   type ReserveFailure,
   type ReserveRequest,
   type ReserveResult,
@@ -29,15 +30,18 @@ import { Reservation } from '../../domain/reservation';
 import { SellableCalculator } from '../../domain/sellable-calculator';
 import { availabilityOf, MAX_STOCK_LEVEL } from '../../domain/stock';
 import type { AvailabilitySignalRepository } from '../ports/availability-signal.repository';
+import { RESERVE_LIMITS, rateVerdict } from '../../domain/rate-limits';
 import type { InventoryPolicyProvider } from '../ports/inventory-policy-provider';
+import type { RateCounterKeys } from '../ports/rate-counter-keys';
+import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { ReservationRepository } from '../ports/reservation.repository';
 import type { SellerInventoryRepository } from '../ports/seller-inventory.repository';
-import type { StockItemRow } from '../ports/stock.repository';
 import {
   distinctSellUnits,
+  insufficientOf,
   lockSellUnitsOf,
   recomputeSellUnitSignals,
-  sellUnitKey,
+  sellerPriorities,
 } from '../reservation-support';
 import { validationFailed } from '../source-use-case-support';
 
@@ -48,6 +52,8 @@ export interface ReserveDependencies {
   readonly policies: InventoryPolicyProvider;
   readonly signals: AvailabilitySignalRepository;
   readonly outbox: OutboxWriter;
+  readonly counters: RateCounterRepository;
+  readonly counterKeys: RateCounterKeys;
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }
@@ -56,6 +62,7 @@ export interface ReserveDependencies {
 const LOCK_TIMEOUT_MS = 3000;
 
 const CONFLICT_RETRY = Object.freeze({ code: 'conflict.retry' as const });
+const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
 
 interface CheckedLine {
   readonly offerId: Id<'Offer'>;
@@ -71,6 +78,11 @@ interface CheckedLine {
  * input. The acting-as refusal (Hassan finding 8) cannot be written until SEL-08 gives the actor
  * an acting-as marker; `reserve.acting-as.spec.ts` is the tripwire that fails the build when it
  * does.
+ *
+ * Before the work, the holder's budget is spent in a unit of its own (6 calls per 15 minutes, 30
+ * per 24 hours; design 5.4, M2), so a refused call keeps its count; a replay of the live
+ * reservation is not counted. Over the budget the answer is `request.throttled`; a limiter that
+ * cannot answer fails closed with `access.unavailable` (Hassan finding 6).
  *
  * One READ COMMITTED unit with `lockTimeoutMs: 3000` (a timeout, a deadlock or a same-holder race
  * answers `conflict.retry`). Inside, in order: the holder's ACTIVE reservation (a replay with the
@@ -106,12 +118,14 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
     }
     const checked = this.check(input);
     if (!checked.ok) return checked;
+    const budget = await this.spendBudget(context, actor.accountId, checked.value);
+    if (budget.refused !== null) return err(budget.refused);
 
     let result: Result<Placed, ReserveFailure>;
     try {
       result = await this.deps.unitOfWork.run(
         market,
-        () => this.place(context, market, actor.accountId, checked.value),
+        () => this.place(context, market, actor.accountId, checked.value, budget.uncounted),
         { lockTimeoutMs: LOCK_TIMEOUT_MS },
       );
     } catch (error) {
@@ -151,6 +165,64 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
       expiresAt: result.value.expiresAt,
       lines: result.value.lines,
     });
+  }
+
+  /** Spends one call from the holder's budget; `null` when allowed or when it is a live replay. */
+  private async spendBudget(
+    context: CallContext,
+    holder: Id<'Account'>,
+    input: { checkoutRef: string; lines: CheckedLine[] },
+  ): Promise<{ refused: RequestThrottled | AccessUnavailable | null; uncounted: boolean }> {
+    const { market } = context;
+    const { unitOfWork, reservations, counters, counterKeys, clock } = this.deps;
+    try {
+      const now = clock.now();
+      // A replay (same checkout, same lines, still live) is not counted (design 5.4). If the peek
+      // fails the call is counted, never waved through.
+      const replayed = await unitOfWork
+        .run(
+          market,
+          async () => {
+            const previous = await reservations.findActiveByHolder(market, holder);
+            return ok(
+              previous !== null &&
+                previous.isLiveAt(now) &&
+                previous.matches(input.checkoutRef, input.lines),
+            );
+          },
+          { readOnly: true },
+        )
+        .then((peek) => peek.ok && peek.value)
+        .catch(() => false);
+      if (replayed) return { refused: null, uncounted: true };
+      const keyed = RESERVE_LIMITS.map((limit) => ({
+        limit,
+        keyHash: counterKeys.keyOf(market, limit.kind, holder),
+      }));
+      const reserved = await unitOfWork.run(market, async () =>
+        ok(await counters.reserve(market, keyed, now)),
+      );
+      if (!reserved.ok) return { refused: UNAVAILABLE, uncounted: false };
+      const verdict = rateVerdict(RESERVE_LIMITS, reserved.value, now);
+      if (verdict.allowed) return { refused: null, uncounted: false };
+      this.#logger.warn({
+        msg: 'inventory.reserve.throttled',
+        metric: 'request.throttled',
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return {
+        refused: { code: 'request.throttled', retryAfterSeconds: verdict.retryAfterSeconds },
+        uncounted: false,
+      };
+    } catch {
+      this.#logger.error({
+        msg: 'inventory.reserve.rate-counters-unavailable',
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return { refused: UNAVAILABLE, uncounted: false };
+    }
   }
 
   /** Input shape: a checkout id and 1 to 50 distinct sell units with whole positive quantities. */
@@ -209,6 +281,7 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
     market: MarketContext,
     holder: Id<'Account'>,
     input: { checkoutRef: string; lines: CheckedLine[] },
+    uncounted: boolean,
   ): Promise<Result<Placed, ReserveFailure>> {
     const { reservations, policies, ids, clock } = this.deps;
     const now = clock.now();
@@ -222,6 +295,10 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
     ) {
       return ok(viewOf(previous, true));
     }
+
+    // The budget skipped this call as a live replay, but the reservation expired in between: it
+    // would be a new, uncounted hold. Ask the caller to come again (counted this time).
+    if (uncounted) return err(CONFLICT_RETRY);
 
     // Lock (L1, L2): one statement, ascending ids, before any write.
     const previousLines = previous?.state.lines ?? [];
@@ -248,7 +325,7 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
       market,
       input.lines.map((line) => line.offerId),
     );
-    const priorities = await this.priorities(market, locked);
+    const priorities = await sellerPriorities(this.deps.inventories, market, locked);
     const defaultThreshold = policies.defaultLowStockThreshold(market);
     const failures: LineFailure[] = [];
     const requests: AllocationRequest[] = [];
@@ -278,12 +355,11 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
       );
       // The cap reads only public data: the status and `onlyLeft` (design 5.1), checked before the
       // allocation (Hassan finding 1).
+      const threshold = priorities.thresholdOf(items[0]!.sellerId) ?? defaultThreshold;
       const cap = CustomerCapPolicy.capOf({
         purchaseLimit: limits.get(line.offerId) ?? null,
-        availability: availabilityOf(
-          sellable,
-          priorities.thresholdOf(items[0]!.sellerId) ?? defaultThreshold,
-        ),
+        availability: availabilityOf(sellable, threshold),
+        lowStockThreshold: threshold,
         defaultCap: policies.defaultCustomerCap(market),
         lineCeiling: policies.maxLineQuantity(market),
       });
@@ -307,7 +383,7 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
     // failing lines at once (design 4.2 step 7).
     const allocated = AllocationPolicy.allocate(requests);
     if (!allocated.ok) failures.push(...allocated.failures);
-    if (failures.length > 0 || !allocated.ok) return err(insufficient(input.lines, failures));
+    if (failures.length > 0 || !allocated.ok) return err(insufficientOf(input.lines, failures));
 
     const reservation = Reservation.place({
       id: ids.next<'Reservation'>(),
@@ -330,25 +406,6 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
     await recomputeSellUnitSignals(this.deps, context, market, locked, sellUnits, now);
     return ok(viewOf(reservation, false));
   }
-
-  /** The seller's source order and threshold for every seller among the locked items. */
-  private async priorities(market: MarketContext, locked: readonly StockItemRow[]) {
-    const ranks = new Map<string, number>();
-    const thresholds = new Map<Id<'Seller'>, number | null>();
-    for (const sellerId of new Set(locked.map((item) => item.sellerId))) {
-      const inventory = await this.deps.inventories.findBySeller(market, sellerId);
-      thresholds.set(sellerId, inventory?.state.lowStockThreshold ?? null);
-      for (const source of inventory?.state.sources ?? []) {
-        ranks.set(`${sellerId}/${source.id}`, source.priority);
-      }
-    }
-    return {
-      thresholdOf: (sellerId: Id<'Seller'>): number | null => thresholds.get(sellerId) ?? null,
-      // A source the inventory no longer lists sorts last (fail safe), then by item id.
-      rankOf: (item: StockItemRow): number =>
-        ranks.get(`${item.sellerId}/${item.sourceId}`) ?? Number.MAX_SAFE_INTEGER,
-    };
-  }
 }
 
 type Placed = ReserveResult & { readonly replayed: boolean };
@@ -363,24 +420,5 @@ function viewOf(reservation: Reservation, replayed: boolean): Placed {
       reservationLineId: line.id,
     })),
     replayed,
-  };
-}
-
-/** The failing lines in request order. */
-function insufficient(
-  requested: readonly CheckedLine[],
-  failures: readonly LineFailure[],
-): ReserveFailure {
-  const byKey = new Map(failures.map((failure) => [sellUnitKey(failure), failure.reason] as const));
-  return {
-    code: 'inventory.insufficient',
-    details: {
-      lines: requested.flatMap((line) => {
-        const reason: InsufficientReason | undefined = byKey.get(sellUnitKey(line));
-        return reason === undefined
-          ? []
-          : [{ offerId: line.offerId, variantId: line.variantId, reason }];
-      }),
-    },
   };
 }

@@ -12,6 +12,7 @@ describe.each([
       availability: availabilityOf(sellable, market.threshold),
       defaultCap: market.defaultCap,
       lineCeiling: market.lineCeiling,
+      lowStockThreshold: market.threshold,
     });
 
   it('is D while the status is in-stock, and says nothing about the real count', () => {
@@ -34,6 +35,42 @@ describe.each([
   });
 
   it('never exceeds the Market line ceiling', () => {
-    expect(cap(market.threshold + 5, market.lineCeiling + 40)).toBe(market.lineCeiling);
+    // Low status keeps the Offer limit, so only the ceiling can bring it down.
+    expect(cap(1, market.lineCeiling + 40)).toBe(market.lineCeiling);
+  });
+
+  describe('cap oracle (M1): an in-stock unit shows only "more than the threshold"', () => {
+    const inStock = (threshold: number, sellable: number, limit: number | null, ceiling = 99) =>
+      CustomerCapPolicy.capOf({
+        purchaseLimit: limit,
+        availability: availabilityOf(sellable, threshold),
+        defaultCap: market.defaultCap,
+        lineCeiling: ceiling,
+        lowStockThreshold: threshold,
+      });
+
+    it('limits an Offer limit above threshold + 1 to threshold + 1', () => {
+      expect(inStock(market.threshold, market.threshold + 1, 50)).toBe(market.threshold + 1);
+      expect(inStock(market.threshold, market.threshold + 30, 50)).toBe(market.threshold + 1);
+    });
+
+    it('with threshold 0 an in-stock line can take 1 unit and no more', () => {
+      expect(inStock(0, 1, null)).toBe(1);
+      expect(inStock(0, 40, 50)).toBe(1);
+    });
+
+    it('never asks for more than an in-stock unit has: cap <= sellable whenever in-stock', () => {
+      for (const threshold of [0, 1, market.threshold, 20]) {
+        for (let sellable = threshold + 1; sellable < threshold + 40; sellable += 1) {
+          for (const limit of [null, 1, 5, 50, 99]) {
+            expect(inStock(threshold, sellable, limit)).toBeLessThanOrEqual(sellable);
+          }
+        }
+      }
+    });
+
+    it('a low unit keeps the Offer limit (the count is public there)', () => {
+      expect(inStock(market.threshold, 3, 50)).toBe(50);
+    });
   });
 });

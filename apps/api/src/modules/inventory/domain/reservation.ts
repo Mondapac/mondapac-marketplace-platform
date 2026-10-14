@@ -1,8 +1,8 @@
 import { err, ok, Temporal, type Id, type Result } from '@mondapac/shared-kernel';
 
-// The Reservation aggregate, holding phase only (inventory design 2.1, 3.1). Commit, line
-// cancellation and shipment belong to slice 5 (ordering). No storage, no clock: the use case
-// passes the instants it took from the injected Clock.
+// The Reservation aggregate (inventory design 2.1, 3.1, 3.2): the holding phase, the commit
+// decision and the line states after commit. No storage, no clock: the use case passes the
+// instants it took from the injected Clock.
 
 export type ReservationStatus = 'active' | 'released' | 'expired' | 'committed';
 
@@ -28,6 +28,8 @@ export interface ReservationLineState {
   readonly stockItemId: Id<'StockItem'>;
   readonly quantity: number;
   readonly status: ReservationLineStatus;
+  /** Ordering's order line (design 3.1); set from commit on, null before. */
+  readonly orderLineId: string | null;
 }
 
 export interface ReservationState {
@@ -89,7 +91,7 @@ export class Reservation {
       createdAt: now,
       statusChangedAt: now,
       version: 1,
-      lines: input.lines.map((line) => ({ ...line, status: 'active' as const })),
+      lines: input.lines.map((line) => ({ ...line, status: 'active' as const, orderLineId: null })),
     });
   }
 
@@ -158,4 +160,67 @@ export class Reservation {
       lines: this.state.lines.map((line) => ({ ...line, status: 'expired' as const })),
     });
   }
+
+  /**
+   * What `commitReservation` must do (design 3.1, 10). The `checkoutRef` and the mapping must fit
+   * first: the mapping names every line of the reservation exactly once, with distinct order
+   * lines (committing a subset is forbidden, design 3.2). Then:
+   * - COMMITTED with the same mapping: nothing to do; another mapping is a mismatch;
+   * - ACTIVE and still live: commit the lines where they are;
+   * - ACTIVE past its expiry, EXPIRED, or RELEASED as `superseded`: allocate the same lines again
+   *   under lock (Ali, Q-A2);
+   * - RELEASED with any other cause: final, refused.
+   */
+  decideCommit(
+    checkoutRef: string,
+    mapping: readonly CommitMapping[],
+    now: Temporal.Instant,
+  ): CommitDecision {
+    if (this.state.checkoutRef !== checkoutRef) return 'mismatch';
+    const byLine = new Map(mapping.map((entry) => [entry.reservationLineId as string, entry]));
+    const orderLines = new Set(mapping.map((entry) => entry.orderLineId));
+    if (
+      byLine.size !== mapping.length ||
+      orderLines.size !== mapping.length ||
+      mapping.length !== this.state.lines.length ||
+      !this.state.lines.every((line) => byLine.has(line.id))
+    ) {
+      return 'mismatch';
+    }
+    const { status } = this.state;
+    if (status === 'committed') {
+      const same = this.state.lines.every(
+        (line) => line.orderLineId === byLine.get(line.id)?.orderLineId,
+      );
+      return same ? 'already-committed' : 'mismatch';
+    }
+    if (status === 'released')
+      return this.state.releaseCause === 'superseded' ? 'reallocate' : 'refused';
+    if (status === 'expired') return 'reallocate';
+    return this.isLiveAt(now) ? 'commit-in-place' : 'reallocate';
+  }
+}
+
+/** One line of a commit: the reservation line and the order line that now owns its units. */
+export interface CommitMapping {
+  readonly reservationLineId: Id<'ReservationLine'>;
+  readonly orderLineId: string;
+}
+
+export type CommitDecision =
+  'mismatch' | 'already-committed' | 'refused' | 'commit-in-place' | 'reallocate';
+
+/** What a committed line does on a cancel or a shipment (design 3.2, 10). */
+export type LineTransition = 'apply' | 'unchanged' | 'refused';
+
+/** COMMITTED to CANCELLED; CANCELLED again is fine; a FULFILLED line cannot be cancelled. */
+export function cancelLineDecision(status: ReservationLineStatus): LineTransition {
+  if (status === 'committed') return 'apply';
+  return status === 'cancelled' ? 'unchanged' : 'refused';
+}
+
+/** COMMITTED to FULFILLED; FULFILLED again is fine; a CANCELLED line cannot ship. */
+export function shipLineDecision(status: ReservationLineStatus): LineTransition {
+  if (status === 'committed') return 'apply';
+  return status === 'fulfilled' ? 'unchanged' : 'refused';
 }

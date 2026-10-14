@@ -108,8 +108,12 @@
   },
   { "name": "inventory.availability", "rule": "anonymous" },
   { "name": "inventory.availability-system", "rule": "system" },
+  { "name": "inventory.cancel-committed-line", "rule": "system" },
+  { "name": "inventory.commit-reservation", "rule": "system" },
   { "name": "inventory.ensure-seller-inventory", "rule": "system" },
   { "name": "inventory.expire-reservations", "rule": "system" },
+  { "name": "inventory.prune-reservations", "rule": "system" },
+  { "name": "inventory.record-shipment", "rule": "system" },
   { "name": "inventory.rekey-moved-offer", "rule": "system" },
   {
     "name": "inventory.release-own-reservation",
