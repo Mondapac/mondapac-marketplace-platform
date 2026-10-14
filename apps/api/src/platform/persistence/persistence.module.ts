@@ -1,5 +1,4 @@
 import { Global, Module, type FactoryProvider } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import { MODEL_MAP } from '../../generated/model-map';
 import { AuditActionCatalogue } from '../audit/audit-action-catalogue';
@@ -36,7 +35,6 @@ import { PrismaOutboxRelay } from './outbox/prisma-outbox-relay';
 import { PrismaOutboxWriterFactory } from './outbox/prisma-outbox-writer';
 import { PrismaRoot } from './prisma-root';
 import { parseSql } from './raw-reads/pg-parser';
-import { RAW_READ_BASE, type PrismaRawReadPort } from './raw-reads/prisma-raw-read-port';
 import { createRawReadPort } from './raw-reads/create-raw-read-port';
 import { RAW_READ_PORT, type RawReadPort } from './raw-reads/raw-read-port';
 import { RAW_READ_STATEMENTS } from './raw-reads/statements';
@@ -74,20 +72,6 @@ const modelMap: ModelMap = MODEL_MAP;
       provide: UNIT_OF_WORK,
       inject: [GUARDED_CLIENT],
       useFactory: (client: GuardedClient) => new PrismaUnitOfWork(client, modelMap),
-    },
-    {
-      // The list is re-checked with the same pure parse as `pnpm boundaries` before the port
-      // exists, so the application refuses to start on a statement that breaks ADR-0030
-      // decisions 2 to 5, or when the parser cannot load (decision 4).
-      provide: RAW_READ_BASE,
-      inject: [PrismaRoot],
-      useFactory: async (root: PrismaRoot) => {
-        return createRawReadPort(root, {
-          parse: parseSql,
-          list: RAW_READ_STATEMENTS,
-          map: modelMap,
-        });
-      },
     },
     {
       provide: DatabaseProbe,
@@ -151,9 +135,19 @@ export class PersistenceModule {
     }
     return {
       provide: RAW_READ_PORT,
-      inject: [ModuleRef],
-      useFactory: (refs: ModuleRef) =>
-        refs.get<PrismaRawReadPort>(RAW_READ_BASE, { strict: false }).forModule(module),
+      inject: [PrismaRoot],
+      // The list is re-checked with the same pure parse as `pnpm boundaries` before the port
+      // exists, so the application refuses to start on a statement that breaks ADR-0030
+      // decisions 2 to 5, or when the parser cannot load (decision 4). Built here from the
+      // injected root, like the outbox writer, so there is no shared provider to look up.
+      useFactory: async (root: PrismaRoot) =>
+        (
+          await createRawReadPort(root, {
+            parse: parseSql,
+            list: RAW_READ_STATEMENTS,
+            map: modelMap,
+          })
+        ).forModule(module),
     };
   }
 

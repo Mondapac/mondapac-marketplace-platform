@@ -249,6 +249,37 @@ describe("every module's outbox writer binding names its own folder (P 5.2)", ()
   });
 });
 
+describe('a module binds only its own raw read port (ADR-0030; Hassan R-1)', () => {
+  it('calls rawReadFor only once per module, in its own <m>.module.ts, with its folder name', () => {
+    const SRC = path.join(__dirname, '../../src');
+    const DEFINITION = path.join('platform', 'persistence', 'persistence.module.ts');
+    const offenders: string[] = [];
+
+    for (const entry of readdirSync(SRC, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.ts') || entry.name.endsWith('.spec.ts')) {
+        continue;
+      }
+      const file = path.relative(SRC, path.join(entry.parentPath, entry.name));
+      if (file === DEFINITION) continue;
+      const code = readFileSync(path.join(SRC, file), 'utf8')
+        .replaceAll(/\/\*[\s\S]*?\*\//g, '')
+        .replaceAll(/\/\/.*$/gm, '');
+      const count = code.split('rawReadFor').length - 1;
+      if (count === 0) continue;
+
+      const [top, folder, name] = file.split(path.sep);
+      const allowed =
+        top === 'modules' &&
+        name === `${folder}.module.ts` &&
+        count === 1 &&
+        new RegExp(`(?<![.\\w])PersistenceModule\\.rawReadFor\\('${folder}'\\),`).test(code);
+      if (!allowed) offenders.push(file);
+    }
+
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('a module reaches only its own outbox writer (P 5.2; security review of slice 1b, M1)', () => {
   /** Compiles the application graph plus one module whose provider injects `token`. */
   function compileWith(token: unknown): Promise<unknown> {

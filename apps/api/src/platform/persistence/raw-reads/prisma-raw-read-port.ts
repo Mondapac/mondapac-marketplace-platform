@@ -16,9 +16,6 @@ import {
   type RawReadRow,
 } from './statements';
 
-/** The unbound port inside `PersistenceModule`; no module may inject it (Hassan R-1). */
-export const RAW_READ_BASE = Symbol('RAW_READ_BASE');
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 type Scalar = 'uuid' | 'text';

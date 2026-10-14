@@ -9,8 +9,7 @@ import { UNIT_OF_WORK, type UnitOfWorkOptions } from '../unit-of-work/unit-of-wo
 import { DatabaseProbe } from './database-probe';
 import { GUARDED_CLIENT } from './guarded-client';
 import { PersistenceModule } from './persistence.module';
-import { RAW_READ_BASE } from './raw-reads/prisma-raw-read-port';
-import { RAW_READ_PORT } from './raw-reads/raw-read-port';
+import { RAW_READ_PORT, type RawReadPort } from './raw-reads/raw-read-port';
 import { poolConfigOf, PrismaRoot } from './prisma-root';
 import { PrismaService } from './prisma.service';
 import { checkUnitOfWorkOptions } from './prisma-unit-of-work';
@@ -39,10 +38,16 @@ describe('PersistenceModule (platform persistence design 3.3)', () => {
     expect(PersistenceModule.subjectKeyStore().provide).toBe(SUBJECT_KEY_STORE);
   });
 
-  it('keeps the unbound raw read port inside the module and binds a module port only through its static factory (Hassan R-1)', () => {
-    expect(providerTokens).toContain(RAW_READ_BASE);
+  it('provides no unbound raw read port and binds a module port only through its static factory (Hassan R-1)', async () => {
     expect(providerTokens).not.toContain(RAW_READ_PORT);
-    expect(PersistenceModule.rawReadFor('certification').provide).toBe(RAW_READ_PORT);
+    const provider = PersistenceModule.rawReadFor('certification');
+    expect(provider.provide).toBe(RAW_READ_PORT);
+    // Built from the injected root alone, so it does not depend on another provider's boot order.
+    expect(provider.inject).toEqual([PrismaRoot]);
+    const port = await (provider.useFactory as (root: PrismaRoot) => Promise<RawReadPort>)(
+      {} as PrismaRoot,
+    );
+    expect(typeof port.rawRead).toBe('function');
     expect(() => PersistenceModule.rawReadFor('Bad Name')).toThrow();
   });
 
