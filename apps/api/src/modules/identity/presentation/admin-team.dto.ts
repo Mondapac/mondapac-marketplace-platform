@@ -248,3 +248,32 @@ export class AdminTeamPageView {
   })
   next!: string | null;
 }
+
+/** Customer lookup by exact email (`identity.customer-account.view`). */
+export class AdminCustomerLookupRequest {
+  @ApiProperty({
+    description:
+      'The exact sign-in address, matched as at sign-in (trimmed, lower-cased). In the body so ' +
+      'it never reaches an access log. Never logged, echoed in an error or audited.',
+    maxLength: 254,
+  })
+  email!: string;
+}
+
+/** One customer account, minimal fields only. */
+export class AdminCustomerView {
+  @ApiProperty({ format: 'uuid' })
+  accountId!: string;
+
+  @ApiProperty({ description: 'As the customer typed it at sign-up.' })
+  email!: string;
+
+  @ApiProperty({ enum: ['active', 'disabled'] })
+  status!: 'active' | 'disabled';
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+
+  @ApiProperty({ description: 'Whether the customer has confirmed the address.' })
+  emailVerified!: boolean;
+}
