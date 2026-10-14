@@ -53,6 +53,9 @@ export function viewOf(record: ConnectedAccountRecord | null): PayoutAccountView
   };
 }
 
+/** Stripe keeps an idempotency key 24 h; a create is repeated only well inside that time. */
+const CREATE_KEY_HOURS = 23;
+
 /** The key of the one create call of a seller: stored (the row) before Stripe is called. */
 const creationKey = (marketId: string, sellerId: string): string =>
   `connected-account:${marketId}:${sellerId}`;
@@ -74,7 +77,7 @@ export async function viewPayoutAccount(
 /**
  * `connect-payout-account` (creates the Stripe account when the seller has none) and
  * `open-payout-account-link` (needs the account): both end with a one-time hosted Stripe page, the
- * onboarding page until the account is enabled, the update page afterwards. The row is stored
+ * onboarding page. The row is stored
  * first, then Stripe is called once with the stored key, then the Stripe id is stored: a request
  * that dies half-way is repeated with the same key and finds the same account. The pages Stripe
  * returns the seller to come from Market config, never from the request. No Stripe call runs
@@ -117,6 +120,11 @@ export async function openPayoutAccountLink(
 
   let accountRef = record.accountRef;
   if (accountRef === null) {
+    // Stripe forgets an idempotency key after 24 h: past that, a repeat would create a second
+    // account. Refuse and leave it to an admin instead.
+    if (deps.clock.now().since(record.createdAt).total('hours') >= CREATE_KEY_HOURS) {
+      return err({ code: 'payments.unavailable' });
+    }
     const created = await deps.connect.createAccount({
       idempotencyKey: creationKey(market.marketId, sellerId),
       country,
@@ -140,7 +148,9 @@ export async function openPayoutAccountLink(
 
   const link = await deps.connect.createAccountLink({
     accountRef,
-    kind: record.status === 'enabled' ? 'update' : 'onboarding',
+    // Express accounts have no `account_update` link; the onboarding page also lets an enabled
+    // seller review the details.
+    kind: 'onboarding',
     returnUrl: urls.returnUrl,
     refreshUrl: urls.refreshUrl,
   });

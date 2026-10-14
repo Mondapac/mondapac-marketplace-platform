@@ -246,6 +246,15 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       )
     : { secrets: {}, issues: [] };
   issues.push(...connectSecrets.issues);
+  // The Connect endpoint is told from the platform endpoint by its secret: equal values would
+  // make every Connect event look like a platform event.
+  for (const [market, secret] of Object.entries(connectSecrets.secrets)) {
+    if (webhookSecrets.secrets[market] === secret) {
+      issues.push(
+        `STRIPE_CONNECT_WEBHOOK_SECRET: ${market} must differ from STRIPE_WEBHOOK_SECRET`,
+      );
+    }
+  }
   if (!parsed.success || issues.length > 0) throw new InvalidConfigError(issues);
   return Object.freeze({
     appRole: parsed.data.APP_ROLE,

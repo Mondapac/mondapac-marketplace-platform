@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { err, ok } from '@mondapac/shared-kernel';
+import { err, ok, Temporal as TemporalValue } from '@mondapac/shared-kernel';
 import type { CallContext, MarketContext, Result, Temporal } from '@mondapac/shared-kernel';
 import type {
   EventOutcome,
@@ -204,7 +204,8 @@ export class MemoryAccountStore implements ConnectedAccountStore {
       ) ?? null,
     );
   }
-  insert(market: MarketContext, sellerId: string) {
+  now: Temporal.Instant | null = null;
+  insert(market: MarketContext, sellerId: string, at?: Temporal.Instant) {
     const key = this.key(market, sellerId);
     if (this.rows.has(key)) return Promise.resolve(false);
     this.rows.set(key, {
@@ -218,6 +219,7 @@ export class MemoryAccountStore implements ConnectedAccountStore {
       requirementsDue: 0,
       requirementsPastDue: false,
       lastReadAt: null,
+      createdAt: at ?? this.now ?? TemporalValue.Instant.from('2026-10-14T10:00:00Z'),
     });
     return Promise.resolve(true);
   }

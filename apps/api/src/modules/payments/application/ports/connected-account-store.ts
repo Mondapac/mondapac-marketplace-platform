@@ -13,6 +13,7 @@ export interface ConnectedAccountRecord {
   readonly requirementsDue: number;
   readonly requirementsPastDue: boolean;
   readonly lastReadAt: Temporal.Instant | null;
+  readonly createdAt: Temporal.Instant;
 }
 
 /**

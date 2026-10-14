@@ -7,7 +7,7 @@ import type { AccountSnapshot } from '../domain/connected-account';
 export const STRIPE_CONNECT_TIMEOUT_MS = 10_000;
 const STRIPE_API = 'https://api.stripe.com';
 const ACCOUNT_ID = /^acct_[A-Za-z0-9_]{1,200}$/;
-const LINK_URL = /^https:\/\/[A-Za-z0-9.-]+\/[^\s]*$/;
+const LINK_URL = /^https:\/\/connect\.stripe\.com\/[^\s]*$/;
 
 /** `fetch`, narrowed to what the gateway uses, so tests can pass a fake. */
 export type StripeRequest = (

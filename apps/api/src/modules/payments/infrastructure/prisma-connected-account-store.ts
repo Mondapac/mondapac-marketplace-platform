@@ -21,6 +21,7 @@ interface Row {
   requirementsDue: number;
   requirementsPastDue: boolean;
   lastReadAt: Date | null;
+  createdAt: Date;
 }
 
 const record = (row: Row): ConnectedAccountRecord => ({
@@ -33,6 +34,7 @@ const record = (row: Row): ConnectedAccountRecord => ({
   requirementsDue: row.requirementsDue,
   requirementsPastDue: row.requirementsPastDue,
   lastReadAt: row.lastReadAt === null ? null : toInstant(row.lastReadAt),
+  createdAt: toInstant(row.createdAt),
 });
 
 /** `payments.connected_accounts` through the unit of work's transaction. */

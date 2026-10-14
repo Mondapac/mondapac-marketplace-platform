@@ -106,6 +106,24 @@ describe('loadAppConfig', () => {
     expect(message).not.toContain(live);
   });
 
+  it('takes a Connect signing secret and refuses one equal to the platform secret', () => {
+    const connect = 'whsec_connect12345678';
+    expect(
+      loadAppConfig({
+        HOSTED_MARKETS: 'AU',
+        STRIPE_WEBHOOK_SECRET: 'whsec_abcdefgh12345678',
+        STRIPE_CONNECT_WEBHOOK_SECRET: connect,
+      }).stripeConnectWebhookSecrets,
+    ).toEqual({ AU: connect });
+    expect(() =>
+      loadAppConfig({
+        HOSTED_MARKETS: 'AU',
+        STRIPE_WEBHOOK_SECRET: connect,
+        STRIPE_CONNECT_WEBHOOK_SECRET: connect,
+      }),
+    ).toThrow(/AU must differ/);
+  });
+
   it('takes a Stripe webhook signing secret and refuses anything else without echoing it', () => {
     const secret = 'whsec_abcdefgh12345678';
     expect(

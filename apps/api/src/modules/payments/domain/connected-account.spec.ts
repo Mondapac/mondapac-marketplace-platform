@@ -27,6 +27,16 @@ describe('statusOf', () => {
     expect(statusOf(snapshot({ ...live, transfersActive: false }), 'pending')).toBe('pending');
   });
 
+  it('is never enabled while Stripe gives a disabled reason', () => {
+    const live = { detailsSubmitted: true, transfersActive: true, payoutsEnabled: true };
+    expect(statusOf(snapshot({ ...live, disabledReason: 'under_review' }), 'pending')).toBe(
+      'pending',
+    );
+    expect(statusOf(snapshot({ ...live, disabledReason: 'under_review' }), 'enabled')).toBe(
+      'restricted',
+    );
+  });
+
   it('turns an enabled account that no longer qualifies into restricted, and back', () => {
     const live = { detailsSubmitted: true, transfersActive: true, payoutsEnabled: true };
     expect(statusOf(snapshot({ ...live, requirementsPastDue: true }), 'enabled')).toBe(

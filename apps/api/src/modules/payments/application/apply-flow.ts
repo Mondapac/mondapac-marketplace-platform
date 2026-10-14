@@ -49,6 +49,7 @@ async function applyAccountEvent(
   event: PendingEvent,
 ): Promise<Applied> {
   const market = context.market;
+  const readAt = deps.clock.now();
   const read = await deps.connect.readAccount(event.objectId);
   if (!read.ok) return read.error.code === 'payment.provider-unavailable' ? 'retry' : 'rejected';
   const snapshot = read.value;
@@ -57,7 +58,6 @@ async function applyAccountEvent(
     return 'rejected';
   }
   if (sellerId === null) return 'rejected';
-  const readAt = deps.clock.now();
   const stored = await deps.unitOfWork.run<boolean, never>(market, async () => {
     let row = await deps.accounts.findByRef(market, snapshot.id);
     if (row === null) {

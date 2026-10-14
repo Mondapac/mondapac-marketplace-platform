@@ -26,7 +26,8 @@ export interface AccountSnapshot {
 
 /**
  * The status that follows a read from Stripe. `enabled` needs the transfers capability active,
- * payouts enabled and nothing past due; an account that was `enabled` and no longer qualifies is
+ * payouts enabled, nothing past due and no disabled reason (an account under review is never
+ * ready); an account that was `enabled` and no longer qualifies is
  * `restricted`; Stripe's own rejection is final. Before the seller has submitted the details the
  * account is `not-started`, afterwards `pending` until Stripe is satisfied.
  */
@@ -35,7 +36,12 @@ export function statusOf(snapshot: AccountSnapshot, previous: AccountStatus): Ac
     return 'rejected';
   }
   if (previous === 'rejected') return 'rejected';
-  if (snapshot.transfersActive && snapshot.payoutsEnabled && !snapshot.requirementsPastDue) {
+  if (
+    snapshot.transfersActive &&
+    snapshot.payoutsEnabled &&
+    !snapshot.requirementsPastDue &&
+    snapshot.disabledReason === null
+  ) {
     return 'enabled';
   }
   if (previous === 'enabled' || previous === 'restricted') return 'restricted';

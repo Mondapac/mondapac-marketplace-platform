@@ -163,6 +163,24 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
       ]);
     });
 
+    it('creates once when two requests race, and refuses a repeat after the key may have expired', async () => {
+      const connectCase = new ConnectPayoutAccount(gate, deps);
+      const both = await Promise.all([
+        connectCase.execute(seller(SELLER), {}),
+        connectCase.execute(seller(SELLER), {}),
+      ]);
+      expect(both.every((r) => r.ok)).toBe(true);
+      expect(accounts.rows.get(`${code}/${SELLER}`)?.accountRef).toBe(ACCOUNT);
+
+      // A row that never got its Stripe id and is a day old is not created again.
+      await accounts.insert(market, OTHER_SELLER, T0.subtract({ hours: 24 }));
+      const before = connect.creates.length;
+      expect(await connectCase.execute(seller(OTHER_SELLER), {})).toEqual(
+        err({ code: 'payments.unavailable' }),
+      );
+      expect(connect.creates).toHaveLength(before);
+    });
+
     it('answers unavailable without a country or return pages, and when the page cannot be made', async () => {
       build(new StaticPaymentsPolicy(null));
       expect(await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {})).toEqual(
@@ -181,7 +199,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
       );
     });
 
-    it('opens a page only for an existing account: update once enabled, none when rejected', async () => {
+    it('opens a page only for an existing account, and none when rejected', async () => {
       const open = new OpenPayoutAccountLink(gate, deps);
       expect(await open.execute(seller(SELLER), {})).toEqual(
         err({ code: 'payments.payout-account.not-found' }),
@@ -191,7 +209,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
       await new ConnectPayoutAccount(gate, deps).execute(seller(SELLER), {});
       await accounts.applyRead(market, SELLER, snapshot(), 'enabled', T0);
       expect((await open.execute(seller(SELLER), {})).ok).toBe(true);
-      expect(connect.links.at(-1)?.kind).toBe('update');
+      expect(connect.links.at(-1)?.kind).toBe('onboarding');
 
       await accounts.applyRead(market, SELLER, snapshot(), 'rejected', T0.add({ seconds: 1 }));
       expect(await open.execute(seller(SELLER), {})).toEqual(
