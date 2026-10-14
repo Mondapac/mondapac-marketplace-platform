@@ -4,8 +4,11 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import type {
   ListPage,
   OwnCatalogReader,
+  ProductForm,
+  ProductFormField,
   ProductLabel,
 } from '../application/ports/own-catalog.reader';
+import type { FamilyGroup } from '../domain/attribute-family';
 import type { Offer } from '../domain/offer';
 import type { Product } from '../domain/product';
 import type { WorkingCopy } from '../domain/working-copy';
@@ -110,5 +113,69 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       lastSavedAt: toInstant(row.lastSavedAt),
       lastSavedByAccountId: row.lastSavedByAccountId as Id<'Account'>,
     }));
+  }
+
+  async productForm(market: MarketContext, familyCode: string): Promise<ProductForm> {
+    const tx = this.prisma.tx(market);
+    const family = await tx.catalogAttributeFamily.findFirst({
+      where: { marketId: market.marketId, code: familyCode, status: 'active' },
+      include: { publishedRevision: true },
+    });
+    const groups = (family?.publishedRevision?.groups ?? []) as unknown as FamilyGroup[];
+    const entries = groups.flatMap((group) => group.attributes);
+    const rows =
+      entries.length === 0
+        ? []
+        : await tx.catalogAttributeDefinition.findMany({
+            where: {
+              marketId: market.marketId,
+              status: 'active',
+              code: { in: entries.map((entry) => entry.code) },
+            },
+            include: { publishedRevision: { include: { options: true } } },
+          });
+    const byCode = new Map(rows.map((row) => [row.code, row]));
+    const fields: ProductFormField[] = [];
+    for (const entry of entries) {
+      const row = byCode.get(entry.code);
+      const published = row?.publishedRevision;
+      if (row === undefined || published === null || published === undefined) continue;
+      const bounds = published.bounds as { maxLength?: number; min?: number; max?: number };
+      fields.push({
+        code: row.code,
+        dataType: row.dataType,
+        localizable: row.localizable,
+        required: entry.required,
+        isVariantOption: published.isVariantOption,
+        bounds: {
+          ...(bounds.maxLength === undefined ? {} : { maxLength: bounds.maxLength }),
+          ...(bounds.min === undefined ? {} : { min: bounds.min }),
+          ...(bounds.max === undefined ? {} : { max: bounds.max }),
+        },
+        names: published.names as Record<string, string>,
+        options: published.options
+          .filter((option) => option.active)
+          .sort((a, b) => a.position - b.position)
+          .map((option) => ({
+            code: option.optionCode,
+            labels: option.labels as Record<string, string>,
+          })),
+      });
+    }
+    const categories = await tx.catalogPlatformCategory.findMany({
+      where: { marketId: market.marketId, status: 'active', publishedRevisionId: { not: null } },
+      include: { publishedRevision: { include: { names: true } } },
+      orderBy: { slug: 'asc' },
+    });
+    return {
+      fields,
+      categories: categories.map((row) => ({
+        categoryId: row.id,
+        parentId: row.parentId,
+        names: Object.fromEntries(
+          (row.publishedRevision?.names ?? []).map((entry) => [entry.locale, entry.name]),
+        ),
+      })),
+    };
   }
 }

@@ -57,11 +57,54 @@ export class OwnVariantView {
   @ApiProperty({ description: 'proposed, published or retired.' }) state!: string;
 }
 
+const LOCALE_MAP = { type: 'object', additionalProperties: { type: 'string' } } as const;
+
+export class OwnFormOption {
+  @ApiProperty() code!: string;
+  @ApiProperty(LOCALE_MAP) labels!: Record<string, string>;
+}
+
+export class OwnFormBounds {
+  @ApiProperty({ required: false }) maxLength?: number;
+  @ApiProperty({ required: false }) min?: number;
+  @ApiProperty({ required: false }) max?: number;
+}
+
+export class OwnFormField {
+  @ApiProperty() code!: string;
+  @ApiProperty({
+    description: 'text, long-text, integer, decimal, boolean, select, multi-select or date.',
+  })
+  dataType!: string;
+  @ApiProperty() localizable!: boolean;
+  @ApiProperty() required!: boolean;
+  @ApiProperty() isVariantOption!: boolean;
+  @ApiProperty({ type: OwnFormBounds }) bounds!: OwnFormBounds;
+  @ApiProperty(LOCALE_MAP) names!: Record<string, string>;
+  @ApiProperty({ type: [OwnFormOption] }) options!: OwnFormOption[];
+}
+
+export class OwnFormCategory {
+  @ApiProperty({ format: 'uuid' }) categoryId!: string;
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) parentId!: string | null;
+  @ApiProperty(LOCALE_MAP) names!: Record<string, string>;
+}
+
+export class OwnProductForm {
+  @ApiProperty({ type: [String] }) taxCategoryCodes!: string[];
+  @ApiProperty({ type: [OwnFormField], description: 'The fields of the product family.' })
+  fields!: OwnFormField[];
+  @ApiProperty({ type: [OwnFormCategory], description: 'Active platform categories.' })
+  categories!: OwnFormCategory[];
+}
+
 export class OwnProductView {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty() productCode!: string;
   @ApiProperty() typeCode!: string;
   @ApiProperty() familyCode!: string;
+  @ApiProperty({ description: 'single (one fixed variant) or configurable.' })
+  variantModel!: string;
   @ApiProperty() status!: string;
   @ApiProperty({ type: [OwnVariantView] }) variants!: OwnVariantView[];
   @ApiProperty({ description: "The Market's cap on non-retired variants." }) maxVariants!: number;
@@ -73,6 +116,7 @@ export class OwnProductView {
   @ApiProperty() lastChangedAt!: string;
   @ApiProperty() createdAt!: string;
   @ApiProperty({ nullable: true, type: String }) pendingSubmittedAt!: string | null;
+  @ApiProperty({ type: OwnProductForm }) form!: OwnProductForm;
   @ApiProperty({ nullable: true, type: OwnWorkingCopyView })
   workingCopy!: OwnWorkingCopyView | null;
   @ApiProperty({ nullable: true, type: OwnRevisionViewDto }) published!: OwnRevisionViewDto | null;

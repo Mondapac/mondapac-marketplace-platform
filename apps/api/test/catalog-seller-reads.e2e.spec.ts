@@ -93,6 +93,7 @@ describe('seller read routes over HTTP (integration)', () => {
             },
             findWorkingCopies: () => Promise.resolve([]),
             productLabels: () => Promise.resolve([]),
+            productForm: () => Promise.resolve({ fields: [], categories: [] }),
           }),
     }));
   }
@@ -367,6 +368,7 @@ describe('seller read routes over HTTP (integration)', () => {
       expect(own.body).toMatchObject({
         productId: PRODUCT,
         maxVariants: expect.any(Number) as number,
+        form: { fields: [], categories: [], taxCategoryCodes: expect.any(Array) as string[] },
         workingCopy: null,
         published: null,
         pending: null,

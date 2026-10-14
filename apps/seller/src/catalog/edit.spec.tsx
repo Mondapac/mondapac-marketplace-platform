@@ -19,6 +19,7 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   productCode: 'P00000001',
   typeCode: 'grocery',
   familyCode: 'food',
+  variantModel: 'single',
   status: 'draft',
   variants: [
     { variantId: 'v1', state: 'active' },
@@ -29,6 +30,7 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   lastChangedAt: '2026-10-01T00:00:00Z',
   createdAt: '2026-10-01T00:00:00Z',
   pendingSubmittedAt: null,
+  form: { taxCategoryCodes: [], fields: [], categories: [] },
   workingCopy: {
     content: { texts: { 'en-AU': { name: 'Olive oil' } }, attributes: { size: '1L' } },
     lastSavedAt: '2026-10-01T00:00:00Z',
@@ -41,7 +43,7 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
 const mount = (p: ProductView = product()) =>
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <EditForm product={p} locales={['en-AU', 'ar']} csrfToken="csrf" />
+      <EditForm product={p} locales={['en-AU', 'ar']} defaultLocale="en-AU" csrfToken="csrf" />
     </NextIntlClientProvider>,
   );
 const saved = { ok: true, status: 200, body: { variantIds: ['v1'], refusedFields: [] } } as const;
