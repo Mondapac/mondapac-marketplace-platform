@@ -2,7 +2,10 @@ import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import {
   checkoutEvent,
+  FakeConnectGateway,
   FakeOrderingFacade,
+  MemoryAccountStore,
+  StaticPaymentsPolicy,
   FakeSessionReader,
   MemoryInbox,
   stripeSignatureHeader,
@@ -74,6 +77,9 @@ describe.each([
       signature: new StripeWebhookSignature({ [code]: TEST_WEBHOOK_SECRET }, clock),
       reader,
       ordering,
+      accounts: new MemoryAccountStore(),
+      connect: new FakeConnectGateway(),
+      policy: new StaticPaymentsPolicy(),
       clock,
     };
     receive = new ReceiveStripeEvent(gate, deps);

@@ -8,6 +8,9 @@
   "pricesIncludeTax": false,
   "maxLineQuantity": 50,
   "timezone": "Asia/Tokyo",
+  "payments": {
+    "connectedAccountCountry": "JP"
+  },
   "requestLimits": {
     "anonymousIdentityPerMinute": 10,
     "defaultPerMinute": 200

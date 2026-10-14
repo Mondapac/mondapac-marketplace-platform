@@ -11,7 +11,7 @@ model PaymentsStripeEvent {
   tenantId      String    @map("tenant_id")
   /// checkout.session.completed, checkout.session.expired or checkout.session.async_payment_failed (CHECK).
   type          String
-  /// The Checkout session the event is about (cs_...).
+  /// The Checkout session (cs_...) or the connected account (acct_...) the event is about.
   objectId      String    @map("object_id")
   receivedAt    DateTime  @map("received_at") @db.Timestamptz(6)
   /// How many times the worker tried to apply it.
@@ -20,11 +20,39 @@ model PaymentsStripeEvent {
   nextAttemptAt DateTime  @map("next_attempt_at") @db.Timestamptz(6)
   /// Set once, with the outcome, when the event is applied or given up.
   processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
-  /// confirmed, already-confirmed, voided, cancelled, ignored, rejected or failed (CHECK).
+  /// confirmed, already-confirmed, voided, cancelled, ignored, rejected, failed or account-updated (CHECK).
   outcome       String?
 
   @@id([marketId, eventId])
   @@index([marketId, processedAt, nextAttemptAt])
   @@map("stripe_events")
+  @@schema("payments")
+}
+
+/// One Stripe connected account (Express) per seller and Market (Phase 5 package 3). The row is
+/// stored before Stripe is called, so a repeated request reuses the same Stripe idempotency key.
+/// Holds the state Stripe reported, never a bank number, name or identity document (VER-10).
+model PaymentsConnectedAccount {
+  marketId            String    @map("market_id") @db.VarChar(8)
+  sellerId            String    @map("seller_id") @db.Uuid
+  tenantId            String    @map("tenant_id")
+  /// Stripe's account id (acct_...); null until Stripe has answered the create call.
+  accountRef          String?   @map("account_ref")
+  /// not-started, pending, enabled, restricted or rejected (CHECK).
+  status              String
+  detailsSubmitted    Boolean   @map("details_submitted")
+  transfersActive     Boolean   @map("transfers_active")
+  payoutsEnabled      Boolean   @map("payouts_enabled")
+  /// How many requirements Stripe still lists: a count, never their content.
+  requirementsDue     Int       @map("requirements_due")
+  requirementsPastDue Boolean   @map("requirements_past_due")
+  createdAt           DateTime  @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @map("updated_at") @db.Timestamptz(6)
+  /// When the state was last read from Stripe; an older read never replaces a newer one.
+  lastReadAt          DateTime? @map("last_read_at") @db.Timestamptz(6)
+
+  @@id([marketId, sellerId])
+  @@unique([marketId, accountRef])
+  @@map("connected_accounts")
   @@schema("payments")
 }

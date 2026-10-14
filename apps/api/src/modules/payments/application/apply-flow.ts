@@ -2,6 +2,7 @@ import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { PaymentFailure } from '../../ordering';
+import { statusOf } from '../domain/connected-account';
 import type { PaymentsDependencies } from './payments-dependencies';
 import type { EventOutcome, PendingEvent } from './ports/stripe-event-inbox';
 
@@ -38,6 +39,49 @@ function outcomeOf<T extends EventOutcome>(result: Result<T, PaymentFailure>): A
 }
 
 /**
+ * A connected-account event: the account is read again from Stripe and must carry this Market and
+ * a seller that has this account stored (or, when the create call's answer was lost, a seller whose
+ * row has no Stripe id yet, which then gets this one). Only what Stripe returns now is stored.
+ */
+async function applyAccountEvent(
+  deps: PaymentsDependencies,
+  context: CallContext,
+  event: PendingEvent,
+): Promise<Applied> {
+  const market = context.market;
+  const read = await deps.connect.readAccount(event.objectId);
+  if (!read.ok) return read.error.code === 'payment.provider-unavailable' ? 'retry' : 'rejected';
+  const snapshot = read.value;
+  const sellerId = snapshot.metadataSellerId;
+  if (snapshot.id !== event.objectId || snapshot.metadataMarketId !== market.marketId) {
+    return 'rejected';
+  }
+  if (sellerId === null) return 'rejected';
+  const readAt = deps.clock.now();
+  const stored = await deps.unitOfWork.run<boolean, never>(market, async () => {
+    let row = await deps.accounts.findByRef(market, snapshot.id);
+    if (row === null) {
+      const bySeller = await deps.accounts.find(market, sellerId);
+      if (bySeller === null || bySeller.accountRef !== null) return ok(false);
+      await deps.accounts.linkRef(market, sellerId, snapshot.id, readAt);
+      row = await deps.accounts.findByRef(market, snapshot.id);
+      if (row === null || row.sellerId !== sellerId) return ok(false);
+    }
+    if (row.sellerId !== sellerId) return ok(false);
+    await deps.accounts.applyRead(
+      market,
+      sellerId,
+      snapshot,
+      statusOf(snapshot, row.status),
+      readAt,
+    );
+    return ok(true);
+  });
+  if (!stored.ok) return 'failed';
+  return stored.value ? 'account-updated' : 'rejected';
+}
+
+/**
  * One stored event: the Checkout session is read again from Stripe and must be a test-mode
  * session of this Market whose order reference agrees in both places; only what Stripe returns
  * now is acted on, never the webhook payload.
@@ -47,6 +91,9 @@ async function applyOne(
   context: CallContext,
   event: PendingEvent,
 ): Promise<Applied> {
+  if (event.type === 'account.updated' || event.type === 'capability.updated') {
+    return applyAccountEvent(deps, context, event);
+  }
   const read = await deps.reader.readCheckoutSession(event.objectId);
   if (!read.ok) return read.error.code === 'payment.provider-unavailable' ? 'retry' : 'rejected';
   const session = read.value;

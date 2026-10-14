@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Clock } from '@mondapac/shared-kernel';
-import type { StripeSignature } from '../application/ports/stripe-signature';
+import type { SignatureKind, StripeSignature } from '../application/ports/stripe-signature';
 
 /** How far the signed timestamp may be from now, either way: Stripe's own default. */
 export const SIGNATURE_TOLERANCE_SECONDS = 300;
@@ -17,17 +17,28 @@ export class StripeWebhookSignature implements StripeSignature {
   constructor(
     private readonly secrets: Readonly<Record<string, string>>,
     private readonly clock: Clock,
+    private readonly connectSecrets: Readonly<Record<string, string>> = {},
   ) {}
 
   configuredFor(marketId: string): boolean {
-    return Object.hasOwn(this.secrets, marketId);
+    return Object.hasOwn(this.secrets, marketId) || Object.hasOwn(this.connectSecrets, marketId);
   }
 
-  verify(marketId: string, payload: Uint8Array, header: unknown): boolean {
-    const secret = this.configuredFor(marketId) ? this.secrets[marketId] : undefined;
-    if (secret === undefined || typeof header !== 'string' || header.length > MAX_HEADER_LENGTH) {
-      return false;
+  verify(marketId: string, payload: Uint8Array, header: unknown): SignatureKind | null {
+    const tries: [SignatureKind, Readonly<Record<string, string>>][] = [
+      ['platform', this.secrets],
+      ['connect', this.connectSecrets],
+    ];
+    let matched: SignatureKind | null = null;
+    for (const [kind, secrets] of tries) {
+      const secret = Object.hasOwn(secrets, marketId) ? secrets[marketId] : undefined;
+      if (secret !== undefined && this.matches(secret, payload, header)) matched ??= kind;
     }
+    return matched;
+  }
+
+  private matches(secret: string, payload: Uint8Array, header: unknown): boolean {
+    if (typeof header !== 'string' || header.length > MAX_HEADER_LENGTH) return false;
     let timestamp: string | null = null;
     const signatures: Buffer[] = [];
     for (const part of header.split(',')) {

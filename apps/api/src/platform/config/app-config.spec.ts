@@ -28,6 +28,7 @@ describe('loadAppConfig', () => {
       mailCatcherUrl: null,
       stripeSecretKey: null,
       stripeWebhookSecrets: {},
+      stripeConnectWebhookSecrets: {},
       clientAddressTrust: null,
     });
   });

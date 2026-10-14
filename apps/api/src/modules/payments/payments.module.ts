@@ -1,17 +1,28 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
-import { USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { ORDERING_FACADE, OrderingModule } from '../ordering';
 import type { PaymentsDependencies } from './application/payments-dependencies';
+import { CONNECTED_ACCOUNT_STORE } from './application/ports/connected-account-store';
+import { CONNECT_GATEWAY } from './application/ports/connect-gateway';
+import { PAYMENTS_POLICY } from './application/ports/payments-policy';
 import { STRIPE_EVENT_INBOX } from './application/ports/stripe-event-inbox';
 import { STRIPE_SESSION_READER } from './application/ports/stripe-session-reader';
 import { STRIPE_SIGNATURE } from './application/ports/stripe-signature';
 import { ApplyStripeEvents } from './application/use-cases/apply-stripe-events.use-case';
+import { ConnectPayoutAccount } from './application/use-cases/connect-payout-account.use-case';
+import { OpenPayoutAccountLink } from './application/use-cases/open-payout-account-link.use-case';
+import { PayoutReadinessQuery } from './application/use-cases/payout-readiness.use-case';
+import { ViewPayoutAccount } from './application/use-cases/view-payout-account.use-case';
 import { ReceiveStripeEvent } from './application/use-cases/receive-stripe-event.use-case';
+import { PAYMENTS_FACADE } from './contracts';
+import { PAYMENTS_PERMISSIONS } from './contracts/permissions';
 import { paymentsProviders } from './infrastructure/payments-providers';
 import { applyStripeEventsJob } from './presentation/jobs/apply-stripe-events.job';
+import { PaymentsFacadeImplementation } from './presentation/payments.facade';
+import { SellerPayoutAccountController } from './presentation/seller-payout-account.controller';
 import { StripeWebhookController } from './presentation/stripe-webhook.controller';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: PaymentsDependencies) => U;
@@ -22,6 +33,9 @@ const PORTS: readonly [keyof PaymentsDependencies, InjectionToken][] = [
   ['signature', STRIPE_SIGNATURE],
   ['reader', STRIPE_SESSION_READER],
   ['ordering', ORDERING_FACADE],
+  ['accounts', CONNECTED_ACCOUNT_STORE],
+  ['connect', CONNECT_GATEWAY],
+  ['policy', PAYMENTS_POLICY],
   ['clock', CLOCK],
 ];
 
@@ -41,20 +55,33 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
 }
 
 /**
- * Payments (Phase 5 package 2, speed mode): the Stripe webhook receiver. The endpoint verifies
- * and stores each Checkout event once; the worker job re-reads the session from Stripe and
- * applies it through `ORDERING_FACADE` as the system actor. Test mode only.
+ * Payments (Phase 5, speed mode). Package 2: the Stripe webhook receiver. The endpoint verifies
+ * and stores each event once; the worker job re-reads the session from Stripe and applies it
+ * through `ORDERING_FACADE` as the system actor. Package 3: the seller's Stripe Connect Express
+ * payout account (create, hosted onboarding page, state from account events) and the
+ * `PAYMENTS_FACADE` readiness answer for payouts. Test mode only.
  */
 @Module({
   imports: [OrderingModule],
-  controllers: [StripeWebhookController],
+  controllers: [StripeWebhookController, SellerPayoutAccountController],
   providers: [
+    registerPermissions('payments', PAYMENTS_PERMISSIONS),
     ...paymentsProviders,
     useCaseProvider(ReceiveStripeEvent),
     useCaseProvider(ApplyStripeEvents),
+    useCaseProvider(ConnectPayoutAccount),
+    useCaseProvider(OpenPayoutAccountLink),
+    useCaseProvider(ViewPayoutAccount),
+    useCaseProvider(PayoutReadinessQuery),
+    {
+      provide: PAYMENTS_FACADE,
+      inject: [PayoutReadinessQuery],
+      useFactory: (readiness: PayoutReadinessQuery) => new PaymentsFacadeImplementation(readiness),
+    },
     registerJobsFrom('payments', [ApplyStripeEvents], (apply: ApplyStripeEvents) => [
       applyStripeEventsJob(apply),
     ]),
   ],
+  exports: [PAYMENTS_FACADE],
 })
 export class PaymentsModule {}
