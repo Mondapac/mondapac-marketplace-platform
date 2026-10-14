@@ -59,6 +59,7 @@ it('maps every refusal code of the use case to its exact status', () => {
     'pricing.currency-mismatch': 422,
     'pricing.amount-out-of-range': 422,
     'pricing.series-retired': 409,
+    'pricing.regular-not-above-special': 409,
     'conflict.stale': 409,
   });
 });

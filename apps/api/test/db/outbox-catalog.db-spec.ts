@@ -94,6 +94,13 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX regular_price_records_market_id_submitted_at_id_pending_idx ON pricing.regular_price_records USING btree (market_id, submitted_at, id) WHERE (status = 'pending-review'::text)",
   'pricing.regular_price_records_market_id_series_id_pending_key':
     "CREATE UNIQUE INDEX regular_price_records_market_id_series_id_pending_key ON pricing.regular_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
+  // Special price records (slice 5): the same three kinds of index as for regular records.
+  'pricing.special_price_records_effective_period_excl':
+    "CREATE INDEX special_price_records_effective_period_excl ON pricing.special_price_records USING gist (market_id, series_id, tstzrange(effective_from, GREATEST(effective_from, LEAST(ends_at, COALESCE(withdrawn_at, 'infinity'::timestamp with time zone))), '[)'::text)) WHERE (status = ANY (ARRAY['accepted'::text, 'approved'::text, 'withdrawn'::text]))",
+  'pricing.special_price_records_market_id_submitted_at_id_pending_idx':
+    "CREATE INDEX special_price_records_market_id_submitted_at_id_pending_idx ON pricing.special_price_records USING btree (market_id, submitted_at, id) WHERE (status = 'pending-review'::text)",
+  'pricing.special_price_records_market_id_series_id_pending_key':
+    "CREATE UNIQUE INDEX special_price_records_market_id_series_id_pending_key ON pricing.special_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
   // docs/design/data/sellers.md 3.2 and 9.5 (slice 5, section 22): one pending and one live
   // approved revision per file, and the reviewer queue by kind and age.
   'sellers.business_file_revisions_market_id_seller_id_approved_key':
@@ -208,9 +215,12 @@ describe('outbox tables and partial indexes (database catalog)', () => {
 
     // docs/design/data/sellers.md 3.7 and 9.5: no two periods of one seller overlap.
     // docs/design/data/pricing.md 3.3 (PD1): no two effective regular periods of a series overlap.
+    // The same for the effective periods of special prices (PD2).
     expect(Object.fromEntries(rows.map((row) => [row.name, row.definition]))).toEqual({
       'pricing.regular_price_records_effective_period_excl':
         "EXCLUDE USING gist (market_id WITH =, series_id WITH =, tstzrange(effective_from, effective_to, '[)'::text) WITH &&) WHERE ((status = ANY (ARRAY['accepted'::text, 'approved'::text])))",
+      'pricing.special_price_records_effective_period_excl':
+        "EXCLUDE USING gist (market_id WITH =, series_id WITH =, tstzrange(effective_from, GREATEST(effective_from, LEAST(ends_at, COALESCE(withdrawn_at, 'infinity'::timestamp with time zone))), '[)'::text) WITH &&) WHERE ((status = ANY (ARRAY['accepted'::text, 'approved'::text, 'withdrawn'::text])))",
       'sellers.tax_registration_periods_no_overlap_excl':
         "EXCLUDE USING gist (market_id WITH =, seller_id WITH =, tstzrange(valid_from, valid_to, '[)'::text) WITH &&)",
     });

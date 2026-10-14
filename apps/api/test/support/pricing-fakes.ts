@@ -35,6 +35,7 @@ import { assertSerializableUnit } from '../../src/modules/pricing/application/se
 import { PRICING_AUDIT_ACTIONS } from '../../src/modules/pricing/domain/audit';
 import { PRICING_EVENTS } from '../../src/modules/pricing/domain/events';
 import { PriceSeries } from '../../src/modules/pricing/domain/price-series';
+import type { SpecialPriceRecord } from '../../src/modules/pricing/domain/special-price';
 import type {
   PriceSeriesState,
   RegularPriceRecord,
@@ -108,6 +109,36 @@ export class InMemoryTombstones implements RetirementTombstoneRepository {
   }
 }
 
+function holdViews(state: PriceSeriesState): PendingHoldView[] {
+  return [
+    ...state.regular.flatMap((r) => holdView(state, r)),
+    ...state.specials.flatMap((r) => specialHoldView(state, r)),
+  ];
+}
+
+function specialHoldView(state: PriceSeriesState, record: SpecialPriceRecord): PendingHoldView[] {
+  if (record.status !== 'PENDING_REVIEW') return [];
+  // The reference is the larger of the regular price and the jump anchor, as in the repository.
+  const reference =
+    record.anchor.amount.amount > record.regular.amount.amount ? record.anchor : record.regular;
+  return [
+    {
+      kind: 'special',
+      recordId: record.id,
+      seriesId: state.id,
+      offerId: state.offerId,
+      variantId: state.variantId,
+      sellerId: state.sellerId,
+      amount: record.amount,
+      anchorRecordId: reference.recordId,
+      anchorAmount: reference.amount,
+      direction: 'down',
+      submittedAt: record.submittedAt,
+      window: { startsAt: record.startsAt, endsAt: record.endsAt },
+    },
+  ];
+}
+
 function holdView(state: PriceSeriesState, record: RegularPriceRecord): PendingHoldView[] {
   if (
     record.status !== 'PENDING_REVIEW' ||
@@ -118,6 +149,7 @@ function holdView(state: PriceSeriesState, record: RegularPriceRecord): PendingH
   }
   return [
     {
+      kind: 'regular',
       recordId: record.id,
       seriesId: state.id,
       offerId: state.offerId,
@@ -128,6 +160,7 @@ function holdView(state: PriceSeriesState, record: RegularPriceRecord): PendingH
       anchorAmount: record.anchor.amount,
       direction: record.heldDirection,
       submittedAt: record.submittedAt,
+      window: null,
     },
   ];
 }
@@ -180,9 +213,11 @@ export class InMemoryPriceSeries implements PriceSeriesRepository {
 
   findByRecordId(
     market: MarketContext,
-    recordId: Id<'RegularPriceRecord'>,
+    recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>,
   ): Promise<PriceSeries | null> {
-    const state = this.inMarket(market).find((s) => s.regular.some((r) => r.id === recordId));
+    const state = this.inMarket(market).find(
+      (s) => s.regular.some((r) => r.id === recordId) || s.specials.some((r) => r.id === recordId),
+    );
     return Promise.resolve(state === undefined ? null : PriceSeries.restore(state));
   }
 
@@ -192,7 +227,7 @@ export class InMemoryPriceSeries implements PriceSeriesRepository {
     limit: number,
   ): Promise<readonly PendingHoldView[]> {
     const views = this.inMarket(market)
-      .flatMap((state) => state.regular.flatMap((r) => holdView(state, r)))
+      .flatMap((state) => holdViews(state))
       .sort(
         (a, b) =>
           a.submittedAt.epochMilliseconds - b.submittedAt.epochMilliseconds ||
@@ -210,10 +245,10 @@ export class InMemoryPriceSeries implements PriceSeriesRepository {
 
   findPendingHold(
     market: MarketContext,
-    recordId: Id<'RegularPriceRecord'>,
+    recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>,
   ): Promise<PendingHoldView | null> {
     const view = this.inMarket(market)
-      .flatMap((state) => state.regular.flatMap((r) => holdView(state, r)))
+      .flatMap((state) => holdViews(state))
       .find((v) => v.recordId === recordId);
     return Promise.resolve(view ?? null);
   }

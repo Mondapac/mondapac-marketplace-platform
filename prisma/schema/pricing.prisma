@@ -79,6 +79,7 @@ model PricingPriceSeries {
   version        Int
   createdAt      DateTime                    @map("created_at") @db.Timestamptz(6)
   regularRecords PricingRegularPriceRecord[] @relation("SeriesRegularRecords")
+  specialRecords PricingSpecialPriceRecord[] @relation("SeriesSpecialRecords")
 
   /// One series per (Market, Offer, Variant) (D 2.1); also the Offer-removed handler's index.
   @@unique([marketId, offerId, variantId])
@@ -132,10 +133,67 @@ model PricingRegularPriceRecord {
   series               PricingPriceSeries          @relation("SeriesRegularRecords", fields: [marketId, seriesId, currency], references: [marketId, id, currency], onDelete: Restrict, onUpdate: Restrict, map: "regular_price_records_series_id_fkey")
   anchor               PricingRegularPriceRecord?  @relation("RegularAnchor", fields: [marketId, seriesId, anchorRecordId], references: [marketId, seriesId, id], onDelete: Restrict, onUpdate: Restrict, map: "regular_price_records_anchor_record_id_fkey")
   anchoredRecords      PricingRegularPriceRecord[] @relation("RegularAnchor")
+  specialsMeasured     PricingSpecialPriceRecord[] @relation("SpecialRegular")
+  specialsAnchored     PricingSpecialPriceRecord[] @relation("SpecialAnchor")
 
   /// The target of the in-series references (P3); also "the records of a series in order".
   @@unique([marketId, seriesId, id])
   @@map("regular_price_records")
+  @@schema("pricing")
+}
+
+/// One special price record (pricing design 2.1, 3.2; data design 3.4), ADR-0009 V2. Content never
+/// changes; status, decision, supersede and withdraw columns are written once (column grants and
+/// the write-once trigger). The CHECKs, the no-overlap EXCLUDE, the one-pending partial unique
+/// index, the triggers and the grants are hand-written in the migration. Pricing keeps the
+/// window as UTC instants: the seller's panel converts local times (hybrid scope, 2026-10-14).
+model PricingSpecialPriceRecord {
+  id                   String                     @id @db.Uuid
+  marketId             String                     @map("market_id") @db.VarChar(8)
+  tenantId             String                     @map("tenant_id")
+  seriesId             String                     @map("series_id") @db.Uuid
+  /// Minor units of `currency` (P1): 1 to 2^53 - 1, strictly below `regular_amount_minor`.
+  amountMinor          BigInt                     @map("amount_minor")
+  currency             String                     @db.Char(3)
+  taxInclusive         Boolean                    @map("tax_inclusive")
+  /// accepted | pending-review | approved | rejected | superseded | withdrawn.
+  status               String
+  /// The window the seller asked for (UTC); `ends_at > starts_at`.
+  startsAt             DateTime                   @map("starts_at") @db.Timestamptz(6)
+  endsAt               DateTime                   @map("ends_at") @db.Timestamptz(6)
+  submittedAt          DateTime                   @map("submitted_at") @db.Timestamptz(6)
+  submittedByAccountId String                     @map("submitted_by_account_id") @db.Uuid
+  /// The regular record in effect when the special was written, and its amount (copied).
+  regularRecordId      String                     @map("regular_record_id") @db.Uuid
+  regularAmountMinor   BigInt                     @map("regular_amount_minor")
+  /// The regular jump anchor (D 2.4) at that time, and its amount (copied).
+  anchorRecordId       String                     @map("anchor_record_id") @db.Uuid
+  anchorAmountMinor    BigInt                     @map("anchor_amount_minor")
+  /// `down` for a held record, null for an accepted one.
+  holdDirection        String?                    @map("hold_direction")
+  /// Set when the special becomes effective: max(starts_at, approval); never by input.
+  effectiveFrom        DateTime?                  @map("effective_from") @db.Timestamptz(6)
+  /// Set once when a running or scheduled special is ended (seller, replacement or retirement).
+  withdrawnAt          DateTime?                  @map("withdrawn_at") @db.Timestamptz(6)
+  /// withdrawn | replaced | offer-removed | variant-removed.
+  withdrawCause        String?                    @map("withdraw_cause")
+  decidedAt            DateTime?                  @map("decided_at") @db.Timestamptz(6)
+  decidedByAccountId   String?                    @map("decided_by_account_id") @db.Uuid
+  decisionReasonCode   String?                    @map("decision_reason_code")
+  /// Personal (free text). Never in an audit row, an event or a log (D 8).
+  decisionNote         String?                    @map("decision_note")
+  supersededAt         DateTime?                  @map("superseded_at") @db.Timestamptz(6)
+  /// The special that replaced this one; no foreign key (it is written before its target).
+  supersededByRecordId String?                    @map("superseded_by_record_id") @db.Uuid
+  /// replaced | cancelled | offer-removed | variant-removed.
+  supersedeCause       String?                    @map("supersede_cause")
+  series               PricingPriceSeries         @relation("SeriesSpecialRecords", fields: [marketId, seriesId, currency], references: [marketId, id, currency], onDelete: Restrict, onUpdate: Restrict, map: "special_price_records_series_id_fkey")
+  regularRecord        PricingRegularPriceRecord  @relation("SpecialRegular", fields: [marketId, seriesId, regularRecordId], references: [marketId, seriesId, id], onDelete: Restrict, onUpdate: Restrict, map: "special_price_records_regular_record_id_fkey")
+  anchorRecord         PricingRegularPriceRecord  @relation("SpecialAnchor", fields: [marketId, seriesId, anchorRecordId], references: [marketId, seriesId, id], onDelete: Restrict, onUpdate: Restrict, map: "special_price_records_anchor_record_id_fkey")
+
+  /// "The special records of a series in order".
+  @@unique([marketId, seriesId, id])
+  @@map("special_price_records")
   @@schema("pricing")
 }
 
