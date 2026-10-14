@@ -1,5 +1,7 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { MarketRegistry } from '../../../platform/market-config/market-registry';
+import type { NormalPayoutSchedule } from '../application/ports/connect-gateway';
+import { clampCoolingOffHours } from '../domain/payout-change';
 import type { OnboardingUrls, PaymentsPolicy } from '../application/ports/payments-policy';
 
 /**
@@ -12,6 +14,16 @@ export class ConfigPaymentsPolicy implements PaymentsPolicy {
 
   connectedAccountCountry(market: MarketContext): string | null {
     return this.markets.get(market.marketId).payments?.connectedAccountCountry ?? null;
+  }
+
+  bankChangeCoolingOffHours(market: MarketContext): number {
+    return clampCoolingOffHours(
+      this.markets.get(market.marketId).payments?.bankChangeCoolingOffHours,
+    );
+  }
+
+  normalPayoutSchedule(market: MarketContext): NormalPayoutSchedule | null {
+    return this.markets.get(market.marketId).payments?.payoutSchedule ?? null;
   }
 
   onboardingUrls(market: MarketContext): OnboardingUrls | null {

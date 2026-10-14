@@ -43,11 +43,13 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
 /**
  * The Nest modules that bind their own audit writer and register their actions. A module joins
  * this list only with the audited actions its approved design names (pricing: design 8; shipping: the flat-fee change, Phase 5 package 4; commission-payouts: a seller's commission rate
- * set or removed, Phase 5 package 5).
+ * set or removed, Phase 5 package 5; payments: the payout-account
+ * change and pause rows, Phase 5 package 3 leftovers).
  */
 const AUDITING_MODULES = [
   'CommissionPayoutsModule',
   'IdentityModule',
+  'PaymentsModule',
   'PricingModule',
   'SellersModule',
   'ShippingModule',
@@ -424,6 +426,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
     expect(binders.sort()).toEqual([
       ['CommissionPayoutsModule', 'commission-payouts'],
       ['IdentityModule', 'identity'],
+      ['PaymentsModule', 'payments'],
       ['PricingModule', 'pricing'],
       ['SellersModule', 'sellers'],
       ['ShippingModule', 'shipping'],
@@ -452,6 +455,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['CommissionPayoutsModule', 'writer'],
       ['IdentityModule', 'actions'],
       ['IdentityModule', 'writer'],
+      ['PaymentsModule', 'actions'],
+      ['PaymentsModule', 'writer'],
       ['PricingModule', 'actions'],
       ['PricingModule', 'writer'],
       ['SellersModule', 'actions'],
@@ -541,6 +546,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'commission-payouts', 'commission-payouts.module.ts')}: registerAuditActions('commission-payouts')`,
       `${path.join('modules', 'identity', 'identity.module.ts')}: auditWriterFor('identity')`,
       `${path.join('modules', 'identity', 'identity.module.ts')}: registerAuditActions('identity')`,
+      `${path.join('modules', 'payments', 'payments.module.ts')}: auditWriterFor('payments')`,
+      `${path.join('modules', 'payments', 'payments.module.ts')}: registerAuditActions('payments')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: auditWriterFor('pricing')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: registerAuditActions('pricing')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: auditWriterFor('sellers')`,

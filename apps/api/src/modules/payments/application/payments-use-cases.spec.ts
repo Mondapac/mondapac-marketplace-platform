@@ -1,10 +1,17 @@
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
-import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import {
+  FixedClock,
+  SequenceIdGenerator,
+  testCallContext,
+  testMarketContext,
+} from '@mondapac/shared-kernel/testing';
 import {
   checkoutEvent,
   FakeConnectGateway,
+  FakeIdentityFacade,
   FakeOrderingFacade,
   MemoryAccountStore,
+  RecordingPaymentsAudit,
   StaticPaymentsPolicy,
   FakeSessionReader,
   MemoryInbox,
@@ -80,6 +87,9 @@ describe.each([
       accounts: new MemoryAccountStore(),
       connect: new FakeConnectGateway(),
       policy: new StaticPaymentsPolicy(),
+      identity: new FakeIdentityFacade(),
+      audit: new RecordingPaymentsAudit(),
+      ids: new SequenceIdGenerator(clock),
       clock,
     };
     receive = new ReceiveStripeEvent(gate, deps);

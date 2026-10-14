@@ -113,6 +113,7 @@ import { ResetAdminSecondFactor } from './application/use-cases/reset-admin-seco
 import { CompleteSecondFactorReplacement } from './application/use-cases/complete-second-factor-replacement.use-case';
 import { RegenerateRecoveryCodes } from './application/use-cases/regenerate-recovery-codes.use-case';
 import { RegenerateSellerRecoveryCodes } from './application/use-cases/regenerate-seller-recovery-codes.use-case';
+import { ConfirmSellerSecondFactor } from './application/use-cases/confirm-seller-second-factor.use-case';
 import { RemoveSellerSecondFactor } from './application/use-cases/remove-seller-second-factor.use-case';
 import { StartSellerSecondFactorEnrolment } from './application/use-cases/start-seller-second-factor-enrolment.use-case';
 import { StartSecondFactorReplacement } from './application/use-cases/start-second-factor-replacement.use-case';
@@ -595,6 +596,18 @@ function useCaseProvider<D, U>(
       clock: true,
       ids: true,
       sessions: true,
+      audit: true,
+      policy: true,
+    }),
+    useCaseProvider(ConfirmSellerSecondFactor, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
       audit: true,
       policy: true,
     }),
@@ -1273,12 +1286,19 @@ function useCaseProvider<D, U>(
     }),
     {
       provide: IDENTITY_FACADE,
-      inject: [DescribeActor, MembershipOf, TeamMembershipOf],
+      inject: [DescribeActor, MembershipOf, TeamMembershipOf, ConfirmSellerSecondFactor],
       useFactory: (
         describeActor: DescribeActor,
         membershipOf: MembershipOf,
         teamMembershipOf: TeamMembershipOf,
-      ) => new IdentityFacadeImplementation({ describeActor, membershipOf, teamMembershipOf }),
+        confirmSellerSecondFactor: ConfirmSellerSecondFactor,
+      ) =>
+        new IdentityFacadeImplementation({
+          describeActor,
+          membershipOf,
+          teamMembershipOf,
+          confirmSellerSecondFactor,
+        }),
     },
     {
       // The calls only `sellers` may consume (ADR-0022 decision 6): a token of their own,
