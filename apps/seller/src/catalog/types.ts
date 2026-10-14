@@ -32,11 +32,43 @@ export interface RevisionView {
   readonly content: Readonly<Record<string, unknown>>;
 }
 
+export interface FormOption {
+  readonly code: string;
+  readonly labels: Readonly<Record<string, string>>;
+}
+
+/** One field of the product family (apps/api OwnFormField). */
+export interface FormField {
+  readonly code: string;
+  readonly dataType: string;
+  readonly localizable: boolean;
+  readonly required: boolean;
+  readonly isVariantOption: boolean;
+  readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
+  readonly names: Readonly<Record<string, string>>;
+  readonly options: readonly FormOption[];
+}
+
+export interface FormCategory {
+  readonly categoryId: string;
+  readonly parentId: string | null;
+  readonly names: Readonly<Record<string, string>>;
+}
+
+/** What the product form is drawn from: `GET catalog/seller/products/:id` -> `form`. */
+export interface ProductForm {
+  readonly taxCategoryCodes: readonly string[];
+  readonly fields: readonly FormField[];
+  readonly categories: readonly FormCategory[];
+}
+
 export interface ProductView {
   readonly productId: string;
   readonly productCode: string;
   readonly typeCode: string;
   readonly familyCode: string;
+  /** `single`: one fixed variant; `configurable`: variants defined by option values. */
+  readonly variantModel: string;
   readonly status: string;
   readonly variants: readonly { readonly variantId: string; readonly state: string }[];
   readonly maxVariants: number;
@@ -44,6 +76,7 @@ export interface ProductView {
   readonly lastChangedAt: string;
   readonly createdAt: string;
   readonly pendingSubmittedAt: string | null;
+  readonly form: ProductForm;
   readonly workingCopy: {
     readonly content: Readonly<Record<string, unknown>>;
     readonly lastSavedAt: string;

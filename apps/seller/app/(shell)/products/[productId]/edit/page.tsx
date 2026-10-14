@@ -42,6 +42,7 @@ export default async function EditProductPage({
         <EditForm
           product={page.body}
           locales={options.body.locales.supported}
+          defaultLocale={options.body.locales.default}
           csrfToken={page.session.csrfToken}
         />
       </div>

@@ -53,6 +53,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/products/:id/draft',
     'catalog/seller/offers/:id',
     'inventory/seller/offers/:id/variants/:id/sources/:id/stock',
+    'pricing/seller/offers/:id/variants/:id/regular-price',
   ],
   POST: ['catalog/seller/products/:id/submit'],
 };

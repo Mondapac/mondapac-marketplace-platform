@@ -54,6 +54,7 @@ const detail = (over: Partial<ProductView> = {}): ProductView => ({
   productCode: 'P00000001',
   typeCode: 'grocery',
   familyCode: 'food',
+  variantModel: 'single',
   status: 'published',
   variants: [
     { variantId: 'a', state: 'published' },
@@ -64,6 +65,7 @@ const detail = (over: Partial<ProductView> = {}): ProductView => ({
   lastChangedAt: '2026-10-09T03:30:00.000Z',
   createdAt: '2026-10-01T00:00:00.000Z',
   pendingSubmittedAt: null,
+  form: { taxCategoryCodes: [], fields: [], categories: [] },
   workingCopy: { content: {}, lastSavedAt: '2026-10-09T03:00:00.000Z', baseRevisionId: null },
   published: {
     revisionId: 'r1',

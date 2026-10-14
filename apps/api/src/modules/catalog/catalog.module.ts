@@ -355,6 +355,7 @@ const productTypeProvider: FactoryProvider<string> = {
       products: true,
       workingCopies: true,
       revisions: true,
+      ownReader: true,
       policy: true,
     }),
     useCaseProvider(OwnOffersList, { unitOfWork: true, ownReader: true, policy: true }),

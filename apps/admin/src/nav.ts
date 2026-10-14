@@ -12,6 +12,12 @@ export const adminNav: NavConfig = {
       anyOf: ['sellers.seller.view'],
     },
     {
+      id: 'price-holds',
+      labelKey: 'nav.price-holds',
+      href: '/price-holds',
+      anyOf: ['pricing.price-hold.view'],
+    },
+    {
       id: 'team',
       labelKey: 'nav.team',
       href: '/team',

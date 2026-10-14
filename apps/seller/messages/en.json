@@ -625,7 +625,41 @@
         "invalid": "Check the texts and try again. Each text has a length limit of {max} characters.",
         "csrf": "Your session expired. Reload the page and try again.",
         "unavailable": "Products are unavailable right now. Try again later.",
-        "unknown": "Something went wrong. Try again."
+        "unknown": "Something went wrong. Try again.",
+        "partial": "The new variant was created but its details were not saved. Press \"Save draft\" again; do not reload the page."
+      },
+      "attributes": "Details",
+      "classification": "Categories and tax",
+      "categories": "Categories",
+      "categories-none": "No categories are available yet.",
+      "tax-category": "Tax category",
+      "variants": "Variants",
+      "variant-n": "Variant {n}",
+      "variant-label": "Label ({locale})",
+      "variant-add": "Add a variant",
+      "variant-remove": "Remove this variant",
+      "variant-published": "This variant is published and stays.",
+      "images": "Images",
+      "images-later": "Images can be added here soon. Until then a product is submitted without images.",
+      "sensitive": "These changes are checked by us before they go live: {fields}.",
+      "sensitive-field": {
+        "platform-categories": "categories",
+        "tax-category": "tax category",
+        "name": "name",
+        "primary-image": "main image",
+        "variant-removed": "removed variants",
+        "images": "images"
+      },
+      "attribute": {
+        "unset": "Not set",
+        "yes": "Yes",
+        "no": "No",
+        "problem": {
+          "whole": "Enter a whole number.",
+          "decimal": "Enter a number, like 12.5.",
+          "range": "Enter a value within the allowed range.",
+          "length": "Use at most {length} characters."
+        }
       }
     },
     "offer-edit": {
@@ -711,6 +745,39 @@
         "not-ready": "Stock isn't ready yet. Try again in a moment.",
         "not-found": "This offer or location was not found. Reload the page."
       }
+    }
+  },
+  "price": {
+    "title": "Prices",
+    "back": "Back to offer",
+    "variant": "Variant {number}",
+    "none": "No price set yet.",
+    "in-force": "Current price {amount}, since {since}.",
+    "held": {
+      "up": "A raise to {amount}, sent {since}, is waiting for review. The current price stays until it is approved.",
+      "down": "A drop to {amount}, sent {since}, is waiting for review. The current price stays until it is approved."
+    },
+    "retired": "This variant no longer takes prices.",
+    "field": "Price ({currency}, GST included)",
+    "save": "Save price",
+    "saved": {
+      "accepted": "Saved. The new price is in force.",
+      "pending-review": "Saved. The change is large, so it waits for review.",
+      "unchanged": "This is already the current price."
+    },
+    "no-variants": "This offer has no variants to price yet.",
+    "error": {
+      "invalid": "Enter a price above zero, with at most the decimals the currency allows.",
+      "out-of-range": "This price is outside the allowed range.",
+      "stale": "The price changed somewhere else. We reloaded it; check the number and save again.",
+      "retired": "This variant no longer takes prices.",
+      "not-found": "This offer was not found. Reload the page.",
+      "denied": "You don't have permission to change prices.",
+      "not-eligible": "Your seller account can't change prices right now.",
+      "throttled": "Too many requests. Wait a moment and try again.",
+      "csrf": "Your session expired. Reload the page and try again.",
+      "unavailable": "Prices are unavailable right now. Try again later.",
+      "unknown": "Something went wrong. Try again."
     }
   }
 }
