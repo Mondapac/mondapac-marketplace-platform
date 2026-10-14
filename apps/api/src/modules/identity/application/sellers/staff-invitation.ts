@@ -133,6 +133,7 @@ export async function changeStaffInvitation(
         const budget = await reserveInvitationMail(
           deps,
           market,
+          'seller',
           address.normalized,
           input.origin,
           now,
