@@ -809,7 +809,6 @@
         "all": "All"
       },
       "status": {
-        "not-connected": "Not connected",
         "not-started": "Not started",
         "pending": "Pending",
         "enabled": "Enabled",

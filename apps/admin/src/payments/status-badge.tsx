@@ -4,7 +4,6 @@ import { known } from '../sellers/format.ts';
 import { STATUSES } from './types.ts';
 
 const TONE: Record<string, BadgeTone> = {
-  'not-connected': 'neutral',
   'not-started': 'neutral',
   pending: 'attention',
   enabled: 'success',

@@ -3,14 +3,8 @@
 export const VIEW_PERMISSION = 'payments.connected-account.view';
 export const PAGE_SIZE = 25;
 
-export const STATUSES = [
-  'not-connected',
-  'not-started',
-  'pending',
-  'enabled',
-  'restricted',
-  'rejected',
-] as const;
+/** The statuses of accounts that exist (an admin row is never "not connected"). */
+export const STATUSES = ['not-started', 'pending', 'enabled', 'restricted', 'rejected'] as const;
 export type AccountStatus = (typeof STATUSES)[number];
 /** The filter: one status, or every account. */
 export type StatusFilter = AccountStatus | 'all';

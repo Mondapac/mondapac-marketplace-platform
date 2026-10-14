@@ -11,6 +11,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 import { callApi } from '../api/client.ts';
 import { AccountDetail } from './account-detail.tsx';
 import { AccountsList } from './accounts-list.tsx';
+import { FILTERS } from './types.ts';
 import type { ConnectedAccountDetail, ConnectedAccountPage, ConnectedAccountRow } from './types.ts';
 
 const call = vi.mocked(callApi);
@@ -152,6 +153,27 @@ describe('connected account detail', () => {
     render(wrap(<AccountDetail account={detail({ changes: [], sellerName: null })} />));
     expect(screen.getByText('No changes recorded.')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Unnamed seller' })).toBeTruthy();
+  });
+});
+
+describe('connected accounts filter', () => {
+  it('offers exactly the statuses the admin API accepts', () => {
+    expect(FILTERS).toEqual(['all', 'not-started', 'pending', 'enabled', 'restricted', 'rejected']);
+  });
+
+  it('shows a status tab for each, and none for not connected', async () => {
+    call.mockResolvedValueOnce(page([]));
+    render(wrap(<AccountsList />));
+    const tabs = within(screen.getByRole('navigation')).getAllByRole('button');
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      'All',
+      'Not started',
+      'Pending',
+      'Enabled',
+      'Restricted',
+      'Rejected',
+    ]);
+    await screen.findByText(/No connected accounts yet/);
   });
 });
 
