@@ -7,9 +7,11 @@ import { requireSession } from '../../../../src/server/session.ts';
 import {
   CHECK_PERMISSION,
   DECIDE_PERMISSION,
+  OWNER_RESET_PERMISSION,
   REVIEW_PERMISSION,
   type ReviewRead,
 } from '../../../../src/sellers/review-types.ts';
+import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
 import { ReviewView } from '../../../../src/sellers/review-view.tsx';
 import { FlatFeeCard } from '../../../../src/shipping/flat-fee-card.tsx';
 import {
@@ -97,6 +99,10 @@ export default async function SellerReviewPage({
             csrfToken={csrfToken}
           />
         )}
+        {/* The action shows only to an actor who holds its key; the server checks it again. */}
+        {permissionKeys.includes(OWNER_RESET_PERMISSION) ? (
+          <OwnerSecondFactorCard sellerId={sellerId} csrfToken={csrfToken} />
+        ) : null}
       </div>,
     );
   }

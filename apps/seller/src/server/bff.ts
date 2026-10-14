@@ -38,6 +38,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/second-factor/enrolment/confirm',
     'identity/seller/second-factor/remove',
     'identity/seller/second-factor/recovery-codes',
+    // Anonymous: the one-time token of the owner's reset link is in the body (slice 12, A11).
+    'identity/seller/second-factor/reset/confirm',
     'identity/seller/sign-out',
     'identity/seller/password-reset-email',
     'identity/seller/reset-password',

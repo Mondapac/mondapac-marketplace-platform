@@ -36,6 +36,7 @@ describe('relay second-factor paths', () => {
     'identity/seller/second-factor/enrolment/confirm',
     'identity/seller/second-factor/remove',
     'identity/seller/second-factor/recovery-codes',
+    'identity/seller/second-factor/reset/confirm',
   ])('forwards POST %s', async (path) => {
     const upstream = upstreamOk();
     const response = await relay(config, post(path), path.split('/'), upstream);
