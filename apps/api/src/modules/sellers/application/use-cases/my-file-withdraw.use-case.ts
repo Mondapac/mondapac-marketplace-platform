@@ -19,6 +19,7 @@ import {
 import type { DraftConflict, FileNotFound } from '../draft/draft-view';
 import type { BusinessFileRevisionRepository } from '../ports/business-file-revision.repository';
 import type { SellerAccessReader } from '../ports/seller-access-reader';
+import { identityReadFailure } from '../ports/seller-account-directory';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
@@ -109,13 +110,17 @@ export class MyFileWithdraw extends UseCase<
     try {
       access = await this.deps.accessReader.accessOf(context, owner.sellerId);
     } catch (error) {
-      this.#logger.error({
-        msg: 'sellers.my-file-withdraw.access-unavailable',
-        error: error instanceof Error ? error.name : 'unknown',
-        marketId: market.marketId,
-        correlationId: context.correlationId,
-      });
-      return err({ code: 'sellers.unavailable' });
+      const failure = identityReadFailure(error);
+      // A refusal of the actor is not an outage: only the latter is logged as an error.
+      if (failure.code === 'sellers.unavailable') {
+        this.#logger.error({
+          msg: 'sellers.my-file-withdraw.access-unavailable',
+          error: error instanceof Error ? error.name : 'unknown',
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+        });
+      }
+      return err(failure);
     }
     if (access === null) return err({ code: 'file.not-found' });
     if (access !== 'pending') return err({ code: 'seller-access.wrong-state' });

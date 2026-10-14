@@ -12,6 +12,7 @@ import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import { MarketRegistry } from '../src/platform/market-config/market-registry';
 import { withRoleLimit } from './support/role-limits';
 import { createTestApp, type LogLine } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
@@ -498,5 +499,43 @@ describe('role editor over HTTP (integration, slice 10)', () => {
       503,
       'access.unavailable',
     ]);
+  });
+
+  it('fails closed for a seller role too while the Market configures no limit (Sajad, PR #228)', async () => {
+    await boot({ limit: null });
+    await seeded('AU');
+
+    const refused = await call('post', 'AU', 'seller', 'roles', sessionOf('AU', OWNER, 'seller'), {
+      name: 'N',
+      permissionKeys: [],
+    });
+
+    expect([refused.status, (refused.body as { code: string }).code]).toEqual([
+      503,
+      'access.unavailable',
+    ]);
+  });
+
+  it('refuses the seller role past the real AU limit with role.limit (Sajad, PR #228)', async () => {
+    await boot();
+    await seeded('AU');
+    const owner = sessionOf('AU', OWNER, 'seller');
+    const limit = app.get(MarketRegistry).get(marketOf('AU').marketId).identity.customRoleLimits!
+      .seller;
+    // The seeded seller already holds no custom role of its own: every one below is counted.
+    for (let n = 0; n < limit; n += 1) {
+      const created = await call('post', 'AU', 'seller', 'roles', owner, {
+        name: `Role ${n}`,
+        permissionKeys: [],
+      });
+      expect(created.status).toBe(201);
+    }
+
+    const refused = await call('post', 'AU', 'seller', 'roles', owner, {
+      name: 'One more',
+      permissionKeys: [],
+    });
+
+    expect([refused.status, (refused.body as { code: string }).code]).toEqual([409, 'role.limit']);
   });
 });
