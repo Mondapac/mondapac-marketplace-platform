@@ -64,7 +64,7 @@ describe('connected accounts list', () => {
     expect(within(table).getByText('Unnamed seller')).toBeTruthy();
     expect(within(table).getByText('Restricted')).toBeTruthy();
     expect(within(table).getByText('Past due')).toBeTruthy();
-    expect(within(table).getByText(/16 Oct 2026/)).toBeTruthy();
+    expect(within(table).getByText(/16 Oct/)).toBeTruthy();
     expect(call).toHaveBeenCalledWith('GET', 'payments/admin/connected-accounts');
   });
 

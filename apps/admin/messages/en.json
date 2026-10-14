@@ -821,10 +821,12 @@
         "seller": "Seller",
         "status": "Status",
         "ready": "Ready",
-        "requirements": "Details needed",
+        "requirements": "Details due",
         "cooling-off": "Waiting period until",
         "paused": "Payouts paused",
-        "last-read": "Last checked"
+        "last-read": "Last checked",
+        "cooling-off-utc": "Waiting until (UTC)",
+        "last-read-utc": "Last checked (UTC)"
       },
       "unnamed": "Unnamed seller",
       "yes": "Yes",

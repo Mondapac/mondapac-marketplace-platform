@@ -1,5 +1,4 @@
 import { useTranslations } from 'next-intl';
-import { formatInstant } from '../sellers/format.ts';
 import { AccountStatusBadge, FlagBadge } from './status-badge.tsx';
 import type { ConnectedAccountRow } from './types.ts';
 
@@ -12,6 +11,31 @@ const COLUMNS = [
   'paused',
   'last-read',
 ] as const;
+
+const DAY_TIME = new Intl.DateTimeFormat('en-AU', {
+  day: 'numeric',
+  month: 'short',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
+const DAY_TIME_YEAR = new Intl.DateTimeFormat('en-AU', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
+
+/** A compact UTC instant for a table cell ("14 Oct, 3:30 am"); the year only when not this one. */
+function shortInstant(iso: string | null): string {
+  if (iso === null) return '-';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  const sameYear = date.getUTCFullYear() === new Date().getUTCFullYear();
+  return (sameYear ? DAY_TIME : DAY_TIME_YEAR).format(date);
+}
 
 /** The last 8 characters of the seller id, enough to tell two sellers apart in a list. */
 const shortId = (id: string): string => id.slice(-8).toUpperCase();
@@ -29,9 +53,9 @@ export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccou
               <th
                 key={col}
                 scope="col"
-                className={`whitespace-nowrap px-4 py-3 font-medium ${col === 'requirements' ? 'text-end' : ''}`}
+                className={`whitespace-nowrap px-3 py-3 font-medium ${col === 'requirements' ? 'text-end' : ''}`}
               >
-                {t(`col.${col}`)}
+                {t(col === 'cooling-off' || col === 'last-read' ? `col.${col}-utc` : `col.${col}`)}
               </th>
             ))}
           </tr>
@@ -39,7 +63,7 @@ export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccou
         <tbody className="divide-y divide-line-row">
           {rows.map((row) => (
             <tr key={row.sellerId}>
-              <td className="min-w-48 max-w-72 px-4 py-3">
+              <td className="min-w-40 max-w-56 px-3 py-3">
                 <div className="break-words font-medium text-fg">
                   <a className="text-link underline" href={`/payout-accounts/${row.sellerId}`}>
                     {row.sellerName ?? t('unnamed')}
@@ -49,23 +73,23 @@ export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccou
                   {shortId(row.sellerId)}
                 </div>
               </td>
-              <td className="whitespace-nowrap px-4 py-3">
+              <td className="whitespace-nowrap px-3 py-3">
                 <AccountStatusBadge status={row.status} />
               </td>
-              <td className="whitespace-nowrap px-4 py-3">
+              <td className="whitespace-nowrap px-3 py-3">
                 <FlagBadge on={row.ready} tone="success" />
               </td>
-              <td className="px-4 py-3 text-end tabular-nums">
+              <td className="px-3 py-3 text-end tabular-nums">
                 {row.requirementsDue}
                 {row.requirementsPastDue ? (
                   <div className="text-critical-fg">{t('past-due')}</div>
                 ) : null}
               </td>
-              <td className="whitespace-nowrap px-4 py-3">{formatInstant(row.coolingOffUntil)}</td>
-              <td className="whitespace-nowrap px-4 py-3">
+              <td className="whitespace-nowrap px-3 py-3">{shortInstant(row.coolingOffUntil)}</td>
+              <td className="whitespace-nowrap px-3 py-3">
                 <FlagBadge on={row.payoutsPaused} tone="attention" />
               </td>
-              <td className="whitespace-nowrap px-4 py-3">{formatInstant(row.lastReadAt)}</td>
+              <td className="whitespace-nowrap px-3 py-3">{shortInstant(row.lastReadAt)}</td>
             </tr>
           ))}
         </tbody>
