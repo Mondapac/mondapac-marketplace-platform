@@ -74,6 +74,17 @@ import { OwnProductRead } from './application/use-cases/own-product-read.use-cas
 import { OwnOffersList } from './application/use-cases/own-offers-list.use-case';
 import { OwnOfferRead } from './application/use-cases/own-offer-read.use-case';
 import { OWN_CATALOG_READER } from './application/ports/own-catalog.reader';
+import {
+  PRODUCT_IMAGE_REPOSITORY,
+  type ProductImageRepository,
+} from './application/ports/product-image.repository';
+import { IMAGE_PROCESSOR } from './application/ports/image-processor';
+import { OBJECT_STORE } from '../../platform/storage/object-store';
+import { OwnProductImageUpload } from './application/use-cases/own-product-image-upload.use-case';
+import { OwnProductImageList } from './application/use-cases/own-product-image-list.use-case';
+import { OwnProductImageRead } from './application/use-cases/own-product-image-read.use-case';
+import { OwnProductImageDelete } from './application/use-cases/own-product-image-delete.use-case';
+import { ProductImageController } from './presentation/product-image.controller';
 import { OwnProductController } from './presentation/own-product.controller';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
@@ -116,6 +127,9 @@ const PORT = {
   eligibility: SELLER_ELIGIBILITY_READER,
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
   ownReader: OWN_CATALOG_READER,
+  images: PRODUCT_IMAGE_REPOSITORY,
+  imageProcessor: IMAGE_PROCESSOR,
+  objectStore: OBJECT_STORE,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -181,6 +195,7 @@ const productTypeProvider: FactoryProvider<string> = {
     PlatformProductController,
     OwnOfferController,
     OwnProductController,
+    ProductImageController,
     OfferReviewController,
   ],
   imports: [CertificationModule, SellersModule],
@@ -235,12 +250,18 @@ const productTypeProvider: FactoryProvider<string> = {
     },
     {
       provide: FreezeRevision,
-      inject: [ATTRIBUTE_REPOSITORY, CATALOG_MARKET_POLICY, PRODUCT_TYPE_LOOKUP],
+      inject: [
+        ATTRIBUTE_REPOSITORY,
+        CATALOG_MARKET_POLICY,
+        PRODUCT_TYPE_LOOKUP,
+        PRODUCT_IMAGE_REPOSITORY,
+      ],
       useFactory: (
         attributes: AttributeRepository,
         policy: CatalogMarketPolicy,
         handlerFor: ProductTypeLookup,
-      ): FreezeRevision => new FreezeRevision({ attributes, policy, handlerFor }),
+        images: ProductImageRepository,
+      ): FreezeRevision => new FreezeRevision({ attributes, policy, handlerFor, images }),
     },
     serviceProvider(SubmitProduct, {
       unitOfWork: true,
@@ -357,6 +378,30 @@ const productTypeProvider: FactoryProvider<string> = {
       allowedTypes: true,
     }),
     useCaseProvider(OwnProductOptions, { policy: true, allowedTypes: true }),
+    useCaseProvider(OwnProductImageUpload, {
+      unitOfWork: true,
+      products: true,
+      images: true,
+      imageProcessor: true,
+      objectStore: true,
+      eligibility: true,
+      save: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnProductImageList, { unitOfWork: true, products: true, images: true }),
+    useCaseProvider(OwnProductImageRead, {
+      unitOfWork: true,
+      products: true,
+      images: true,
+      objectStore: true,
+    }),
+    useCaseProvider(OwnProductImageDelete, {
+      unitOfWork: true,
+      products: true,
+      images: true,
+      objectStore: true,
+    }),
     useCaseProvider(OwnProductsList, { unitOfWork: true, ownReader: true, policy: true }),
     useCaseProvider(OwnProductRead, {
       unitOfWork: true,

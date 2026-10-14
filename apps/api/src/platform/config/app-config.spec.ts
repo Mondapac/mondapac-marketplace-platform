@@ -26,6 +26,7 @@ describe('loadAppConfig', () => {
       databaseUrl: DATABASE_URL,
       databasePoolMax: 10,
       mailCatcherUrl: null,
+      objectStoreDir: null,
       stripeSecretKey: null,
       stripeWebhookSecrets: {},
       stripeConnectWebhookSecrets: {},

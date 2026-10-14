@@ -23,6 +23,16 @@
     "whenSellerNotApproved": "allow"
   },
   {
+    "name": "catalog.own-product-image-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-product-image-read",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "catalog.own-product-options",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"

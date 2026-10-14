@@ -21,3 +21,4 @@ coverage/
 # Generated Prisma client (pnpm db:generate)
 apps/api/src/generated/
 .local/
+.object-store/
