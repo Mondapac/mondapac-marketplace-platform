@@ -1,4 +1,8 @@
 import { Module, type FactoryProvider } from '@nestjs/common';
+import { ID_GENERATOR } from '../../platform/ids/ids.module';
+import { MarketRegistry } from '../../platform/market-config/market-registry';
+import { registerJobsFrom } from '../../platform/scheduler/job-registry';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
@@ -25,7 +29,16 @@ import { claimFactsReaderProvider } from './infrastructure/claim-facts-reader.pr
 import { publishedTypesReaderProvider } from './infrastructure/published-types-reader.provider';
 import { SellersZonesSource } from './infrastructure/sellers-zones.source';
 import { CertificationFacadeImplementation } from './presentation/certification.facade';
-import type { Clock } from '@mondapac/shared-kernel';
+import type { Clock, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
+import {
+  CERTIFICATION_TYPE_REPOSITORY,
+  type CertificationTypeRepository,
+} from './application/ports/certification-type.repository';
+import { CERTIFICATION_TYPE_SEED, type CertificationTypeSeed } from './application/ports/type-seed';
+import { SeedCertificationTypes } from './application/use-cases/seed-certification-types.use-case';
+import { certificationTypeRepositoryProvider } from './infrastructure/certification-type-repository.provider';
+import { CheckedInTypeSeed } from './infrastructure/seed/checked-in-type-seed';
+import { seedCertificationTypesJob } from './presentation/jobs/seed-certification-types.job';
 
 /** The use cases that only read the published types: the gate and the reader. */
 const readerUseCases = [
@@ -69,6 +82,44 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
       inject: [APPROVED_SELLER_ZONES],
       useFactory: (reader: ApprovedSellerZonesReader) => new SellersZonesSource(reader),
     },
+    certificationTypeRepositoryProvider,
+    {
+      provide: CERTIFICATION_TYPE_SEED,
+      useFactory: (): CertificationTypeSeed => new CheckedInTypeSeed(),
+    },
+    {
+      provide: SeedCertificationTypes,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        CERTIFICATION_TYPE_REPOSITORY,
+        CERTIFICATION_TYPE_SEED,
+        MarketRegistry,
+        CLOCK,
+        ID_GENERATOR,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        types: CertificationTypeRepository,
+        seed: CertificationTypeSeed,
+        markets: MarketRegistry,
+        clock: Clock,
+        ids: IdGenerator,
+      ) =>
+        new SeedCertificationTypes(gate, {
+          unitOfWork,
+          types,
+          seed,
+          supportedLocales: (market: MarketContext) =>
+            markets.get(market.marketId).supportedLocales,
+          clock,
+          ids,
+        }),
+    },
+    registerJobsFrom('certification', [SeedCertificationTypes], (seed: SeedCertificationTypes) => [
+      seedCertificationTypesJob(seed),
+    ]),
     ...readerUseCases,
     ...evaluateUseCases,
     {

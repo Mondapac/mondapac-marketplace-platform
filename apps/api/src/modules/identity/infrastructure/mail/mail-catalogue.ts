@@ -73,6 +73,10 @@ export const MAIL_KEYS = [
   'identity.mail.second-factor-changed.seller.body.replaced',
   'identity.mail.second-factor-changed.seller.body.reset',
   'identity.mail.second-factor-changed.seller.body.locked',
+  'identity.mail.confirm-second-factor-reset.seller.subject',
+  'identity.mail.confirm-second-factor-reset.seller.heading',
+  'identity.mail.confirm-second-factor-reset.seller.body',
+  'identity.mail.confirm-second-factor-reset.seller.action',
   'identity.mail.invitation.seller.subject',
   'identity.mail.invitation.seller.heading',
   'identity.mail.invitation.seller.body',
@@ -189,6 +193,7 @@ export class CatalogueMailComposer implements IdentityMailComposer {
       mail.template === 'confirm-email' ||
       mail.template === 'reset-password' ||
       mail.template === 'enrol-second-factor' ||
+      mail.template === 'confirm-second-factor-reset' ||
       mail.template === 'invitation'
     ) {
       values['duration'] = formatDuration(locale, mail.lifetimeMinutes);

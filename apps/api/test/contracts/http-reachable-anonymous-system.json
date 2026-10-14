@@ -59,6 +59,11 @@
     "rule": "anonymous",
     "reason": "Seller second-factor enrolment confirmation with the enrolment challenge token and the first code: the challenge binds the account and every session ends."
   },
+  {
+    "name": "identity.confirm-seller-second-factor-reset",
+    "rule": "anonymous",
+    "reason": "The Seller Owner confirms, with the single-use 24-hour link of E15, a second-factor reset an admin started: the link binds the account, the owner may not be signed in (A11)."
+  },
   { "name": "identity.register-customer", "rule": "anonymous", "reason": "Customer sign-up form." },
   { "name": "identity.register-seller", "rule": "anonymous", "reason": "Seller sign-up form." },
   {

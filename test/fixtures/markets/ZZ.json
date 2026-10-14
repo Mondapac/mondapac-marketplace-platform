@@ -86,7 +86,8 @@
       "lifetimeMinutes": {
         "verify-email": 720,
         "reset-password": 60,
-        "enrol-second-factor": 45
+        "enrol-second-factor": 45,
+        "confirm-second-factor-reset": 720
       },
       "targets": {
         "customer": {
@@ -98,7 +99,8 @@
           "verify-email": "https://seller.zz.test/konto/bestaetigen?ref=mail",
           "sign-in": "https://seller.zz.test/konto/anmelden",
           "reset-password": "https://seller.zz.test/konto/passwort?ref=mail",
-          "accept-invitation": "https://seller.zz.test/konto/einladung"
+          "accept-invitation": "https://seller.zz.test/konto/einladung",
+          "confirm-second-factor-reset": "https://seller.zz.test/konto/zweiter-faktor"
         },
         "admin": {
           "seller-review-queue": "https://admin.zz.test/haendler/pruefung?ref=mail",

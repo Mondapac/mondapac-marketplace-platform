@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { MarketContext, Result } from '@mondapac/shared-kernel';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
 import {
+  MAX_LOCK_TIMEOUT_MS,
   MAX_UNIT_TIMEOUT_MS,
   type HandledOnce,
   type UnitOfWork,
@@ -41,6 +42,8 @@ export function runSerializable<T, E>(
 ): Promise<Result<T, E>> {
   return unitOfWork.run(market, () => serializableScope.run(true, work), {
     isolation: 'serializable',
+    // The stock write locks its sell unit's items (data design 4.2 step 2, L7): 3 s at most.
+    lockTimeoutMs: MAX_LOCK_TIMEOUT_MS,
   });
 }
 
@@ -60,6 +63,9 @@ export function runSerializableOnce<T, E>(
     // A Variant of a PLATFORM product is retired across every seller's Offer (data design 4.4):
     // many sell units in one unit, so it gets the longest unit the platform allows.
     timeoutMs: MAX_UNIT_TIMEOUT_MS,
+    // Both handlers lock stock items (inventory.lock-stock-items), bounded the same way; a wait
+    // that runs out ends with 55P03, the unit rolls back and the delivery is retried.
+    lockTimeoutMs: MAX_LOCK_TIMEOUT_MS,
   });
 }
 

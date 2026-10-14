@@ -240,3 +240,86 @@ describe('claim text matcher', () => {
     });
   });
 });
+
+// Arabic-script corpus for «حلال» (mini-review 2026-10-14, C1 to C3). The AU vocabulary above
+// holds the term; every case runs against the real normaliser and both passes.
+describe('claim text matcher: Arabic-script corpus', () => {
+  const halal = (text: string): boolean => run(AU, text).some((m) => m.startsWith('halal:'));
+
+  it('matches dagger alef, with and without other marks (C1)', () => {
+    expect(halal('حَلَٰلًا طَيِّبًا')).toBe(true);
+    expect(halal('حلٰل')).toBe(true);
+  });
+
+  it('folds the variants of C2, one case each', () => {
+    expect(halal('حل١ل')).toBe(true); // Arabic-Indic one between Arabic letters
+    expect(halal('حل۱ل')).toBe(true); // Persian one
+    expect(halal('حڵال')).toBe(true); // U+06B5
+    expect(halal('حڷال')).toBe(true); // U+06B7
+    expect(halal('حڸال')).toBe(true); // U+06B8
+    expect(halal('حلٲل')).toBe(true); // U+0672
+    expect(halal('حلٳل')).toBe(true); // U+0673
+    expect(halal('حلٵل')).toBe(true); // U+0675
+  });
+
+  it('folds a stroke between Arabic letters however it is written or hidden (Hassan M1)', () => {
+    for (const stroke of ['١', '۱', '1', 'l', 'I', '|', '１', '𝟏', 'ǀ', 'ⅼ']) {
+      expect(halal(`حل${stroke}ل`)).toBe(true);
+    }
+    for (const text of ['حلَ١ل', 'حلـ١ل', 'حل\u200d١ل', 'حل\u200c١ل', 'حل\u200f١ل', 'حل\u200f|ل']) {
+      expect(halal(text)).toBe(true);
+    }
+  });
+
+  it('keeps the Latin digit path (C2)', () => {
+    expect(run(AU, 'ha١al')).toEqual(['halal:compact']);
+    expect(run(AU, 'ha۱al')).toEqual(['halal:compact']);
+    expect(run(AU, 'ha1al')).toEqual(['halal:compact']);
+    expect(run(AU, 'h4l4l')).toEqual(['halal:compact']);
+  });
+
+  it('matches decorated and encoded spellings (C3)', () => {
+    for (const text of [
+      'حـــلـــال', // tatweel run
+      'حَلَّالْ', // shadda, sukun
+      'حلالًا', // tanween
+      'ﺣﻼﻝ', // presentation forms with the lam-alef ligature
+      'ﺣﻼل',
+      'ح‍لال', // ZWJ
+      'ح‌لال', // ZWNJ
+      'ح؜لال', // ALM
+      'ح‏لال', // RLM
+      'ح﻿لال', // FEFF
+      '⁧حلال⁩', // isolates
+      'حلالی'.replace('ی', 'ي'), // ي and ی
+      'آحلال',
+      'أحلال',
+      'حلٱل', // wasla
+      'حلآل', // madda
+      'حلأل', // hamza above
+      'حلإل', // hamza below
+      'الحلال', // with the article
+      'وحلال',
+      'بالحلال',
+      'ح،ل،ا،ل', // Arabic comma separators
+    ]) {
+      expect(halal(text)).toBe(true);
+    }
+  });
+
+  it('matches kaf variants in a term that has them (C3)', () => {
+    const v = [{ typeCode: code('t'), terms: ['مبارك'] }];
+    expect(run(v, 'مبارک')).toEqual(['t:token']);
+  });
+
+  it('does not match other words (C3)', () => {
+    for (const text of ['حلول', 'تحلیل', 'محلل', 'جلال', 'خلال', 'هلال', 'بلال', 'حلاوة']) {
+      expect(halal(text)).toBe(false);
+    }
+  });
+
+  it('pins the known false positives of the second pass, which fail closed (C3)', () => {
+    expect(halal('حل المشكلة')).toBe(true);
+    expect(halal('محل اللحوم')).toBe(true);
+  });
+});

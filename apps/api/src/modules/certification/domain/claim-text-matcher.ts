@@ -1,5 +1,6 @@
 import type { CertificationTypeCode } from './claim-types';
 import {
+  ARABIC_PRE_MAP,
   LEET_MAP,
   MAX_TEXTS,
   MAX_TEXT_LENGTH,
@@ -62,13 +63,19 @@ function mapSkeleton(s: string): string {
  */
 export function normaliseClaimText(input: string): string {
   if (input.length > MAX_TEXT_LENGTH) throw new RangeError('claim text too long');
-  let s = input.normalize('NFKC');
+  // Dagger alef is a mark and would be stripped below: fold it first (with the alef and lam
+  // variants), before NFKC. The stroke fold comes after marks and joiners are gone.
+  const folded = mapChars(input, ARABIC_PRE_MAP);
+  let s = folded.normalize('NFKC');
   // NFKC can grow a text a lot (one character to many): check the size again.
   if (s.length > MAX_TEXT_LENGTH) throw new RangeError('claim text too long');
   s = mapChars(s, PRE_FOLD_MAP);
   s = s.toLowerCase().replace(/ß/g, 'ss').replace(/ς/g, 'σ');
   s = s.normalize('NFD').replace(IGNORABLE, '').normalize('NFC');
-  return mapSkeleton(s);
+  // Every vertical stroke (١ ۱ 1 l i I | and their look-alikes) is `l` or `1` after the skeleton;
+  // between Arabic letters it is an alef (mini-review C2, Hassan M1). Latin context is untouched,
+  // so "ha١al" still goes the leet way in the second pass.
+  return mapSkeleton(s).replace(/(?<=\p{Script=Arabic})[l1](?=\p{Script=Arabic})/gu, 'ا');
 }
 
 /** Tokens split on whitespace and punctuation (as SL 3.5). */

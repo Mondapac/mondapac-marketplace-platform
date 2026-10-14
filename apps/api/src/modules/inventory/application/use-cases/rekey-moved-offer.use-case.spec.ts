@@ -16,6 +16,7 @@ import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import {
+  MAX_LOCK_TIMEOUT_MS,
   MAX_UNIT_TIMEOUT_MS,
   type UnitOfWork,
   type UnitOfWorkOptions,
@@ -338,7 +339,13 @@ describe.each(['AU', 'ZZ'])('inventory.rekey-moved-offer in market %s', (code) =
     expect(w.to.map(status)).toEqual(['in-stock', 'in-stock']);
     // The order of the design: read, lock, tombstones, then writes.
     expect(t.stock.calls.slice(0, 3)).toEqual(['read', 'lock', 'tombstones']);
-    expect(t.options).toEqual([{ isolation: 'serializable', timeoutMs: MAX_UNIT_TIMEOUT_MS }]);
+    expect(t.options).toEqual([
+      {
+        isolation: 'serializable',
+        timeoutMs: MAX_UNIT_TIMEOUT_MS,
+        lockTimeoutMs: MAX_LOCK_TIMEOUT_MS,
+      },
+    ]);
   });
 
   it('moves only onHand minus pending and leaves the pending on the retired old item', async () => {
