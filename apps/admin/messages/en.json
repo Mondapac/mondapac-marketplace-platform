@@ -656,7 +656,7 @@
     },
     "owner-reset": {
       "title": "Store owner's two-step sign-in",
-      "intro": "If the store owner has lost their authenticator app and their recovery codes, start a reset. We email the owner a link. Two-step sign-in stays on until the owner opens the link and confirms.",
+      "intro": "If the store owner has lost their authenticator app and their recovery codes, start a reset. We email the owner a link. Two‑step sign-in stays on until the owner opens the link and confirms.",
       "action": "Start two-step reset",
       "action-again": "Send a new link",
       "sent": {

@@ -22,6 +22,7 @@ export function ownerResetProblemOf(failure: { status: number; code: string }): 
   const named = BY_CODE[failure.code];
   if (named !== undefined) return named;
   if (failure.status === 429) return 'throttled';
+  if (failure.status === 403) return 'denied';
   return failure.status === 503 || failure.status === 0 ? 'unavailable' : 'unknown';
 }
 
