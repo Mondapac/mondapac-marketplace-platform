@@ -456,4 +456,31 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(404);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/delete`)).status).toBe(404);
   });
+  it('relays the offer decisions by UUID, POST only', async () => {
+    const id = '0190a000-0000-7000-8000-0000000000c1';
+    const request = (method: string, path: string) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+    for (const action of ['approve', 'request-changes']) {
+      const path = `catalog/admin/offers/${id}/${action}`;
+      expect(
+        (await relay(config, request('POST', path), path.split('/'), upstreamOk())).status,
+      ).toBe(200);
+    }
+    for (const [method, path] of [
+      ['PUT', `catalog/admin/offers/${id}/approve`],
+      ['POST', 'catalog/admin/offers/nope/approve'],
+      ['POST', `catalog/admin/offers/${id}/delete`],
+      ['POST', 'catalog/admin/review-queue'],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), fetchImpl)).status).toBe(
+        404,
+      );
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
 });

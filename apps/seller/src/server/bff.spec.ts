@@ -448,4 +448,28 @@ describe('relay allowlist for stock locations', () => {
     });
     expect((await relay(config, refused, bad, upstream)).status).toBe(404);
   });
+  it('relays an offer submit (POST) and delete (DELETE) by UUID only', async () => {
+    const upstream = upstreamOk();
+    const req = (method: string, path: string[]) =>
+      new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method,
+        headers: sameOrigin,
+        ...(method === 'DELETE' ? {} : { body: '{}' }),
+      });
+    const submit = ['catalog', 'seller', 'offers', ID, 'submit'];
+    const one = ['catalog', 'seller', 'offers', ID];
+    expect((await relay(config, req('POST', submit), submit, upstream)).status).toBe(200);
+    expect((await relay(config, req('DELETE', one), one, upstream)).status).toBe(200);
+    const refused: [string, string[]][] = [
+      ['POST', ['catalog', 'seller', 'offers', 'x', 'submit']],
+      ['DELETE', ['catalog', 'seller', 'offers', 'x']],
+      ['DELETE', ['catalog', 'seller', 'offers']],
+      ['DELETE', submit],
+      ['POST', one],
+      ['DELETE', ['catalog', 'seller', 'products', ID]],
+    ];
+    for (const [method, path] of refused) {
+      expect((await relay(config, req(method, path), path, upstream)).status).toBe(404);
+    }
+  });
 });

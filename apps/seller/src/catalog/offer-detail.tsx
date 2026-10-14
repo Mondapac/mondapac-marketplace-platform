@@ -1,7 +1,8 @@
-import { Badge } from '@mondapac/ui';
+import { Badge, Banner } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { FieldList } from './field-list.tsx';
 import { formatInstant, known, OFFER_STATUSES } from './format.ts';
+import { OfferActions } from './offer-actions.tsx';
 import { OFFER_TONE } from './offers-table.tsx';
 import type { OfferView } from './types.ts';
 
@@ -20,11 +21,13 @@ export async function OfferDetail({
   canEdit = false,
   canViewStock = false,
   canViewPrices = false,
+  csrfToken = '',
 }: {
   readonly offer: OfferView;
   readonly canEdit?: boolean;
   readonly canViewStock?: boolean;
   readonly canViewPrices?: boolean;
+  readonly csrfToken?: string;
 }) {
   const t = await getTranslations();
   const status = known(offer.status, OFFER_STATUSES);
@@ -51,6 +54,15 @@ export async function OfferDetail({
           </a>
         ) : null}
       </div>
+      {status === 'changes-needed' ? (
+        <Banner tone="attention">{t('catalog.offer-actions.changes-needed')}</Banner>
+      ) : null}
+      {status === 'pending-first-publish' ? (
+        <Banner tone="info">{t('catalog.offer-actions.waiting')}</Banner>
+      ) : null}
+      {canEdit ? (
+        <OfferActions offerId={offer.offerId} status={status} csrfToken={csrfToken} />
+      ) : null}
       <FieldList
         rows={[
           { label: t('catalog.offers.col.sku'), value: offer.sellerSku },
