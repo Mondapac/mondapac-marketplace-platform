@@ -48,7 +48,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
  * the template, and the id must be a UUID, so no other path shape reaches the API.
  */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
-  PUT: ['inventory/seller/sources/:id'],
+  PUT: ['inventory/seller/sources/:id', 'catalog/seller/products/:id/draft'],
+  POST: ['catalog/seller/products/:id/submit'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
