@@ -256,6 +256,14 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
     for (const status of ['201', '400', '403', '404', '409', '422', '429', '503']) {
       expect(responses).toHaveProperty(status);
     }
+    const submit = document.paths['/catalog/seller/offers/{offerId}/submit']?.post?.responses;
+    for (const status of ['200', '400', '403', '404', '409', '422', '503']) {
+      expect(submit).toHaveProperty(status);
+    }
+    const remove = document.paths['/catalog/seller/offers/{offerId}']?.delete?.responses;
+    for (const status of ['204', '400', '403', '404', '409', '422', '503']) {
+      expect(remove).toHaveProperty(status);
+    }
     const edit = document.paths['/catalog/seller/offers/{offerId}']?.put?.responses;
     for (const status of ['200', '400', '403', '404', '409', '422', '429', '503']) {
       expect(edit).toHaveProperty(status);
@@ -268,6 +276,10 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       'product.not-found': 404,
       'offer.not-found': 404,
       'offer.not-editable': 409,
+      'offer.not-submittable': 409,
+      'offer.product-not-published': 409,
+      'offer.handling-missing': 422,
+      'offer.delete-via-product': 422,
       'conflict.stale': 409,
       'seller.not-eligible': 403,
       'offer.exists-for-product': 409,
@@ -489,6 +501,208 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       expect(claimChecks).toBe(0);
       const line = logLines.find((l) => l.msg === 'catalog.own-offer-create' && l.outcome);
       expect(JSON.stringify(line)).not.toMatch(/SECRET-SKU|secret text/);
+    });
+  });
+
+  describe.each(TEST_MARKETS)('submit and delete in market %s', (code) => {
+    const OFFER = id<'Offer'>(0x9001);
+    const offerState = (overrides: Partial<OfferState> = {}): OfferState => ({
+      id: OFFER,
+      marketId: code as AccountState['marketId'],
+      sellerId: SELLER,
+      productId: PRODUCT,
+      sellerSku: 'SKU-1',
+      conditionCode: 'new',
+      description: { 'en-AU': 'Fresh dates' },
+      handling: 'SEALED_ORIGINAL',
+      attestationRecordedAt: null,
+      attestationAccountId: null,
+      status: 'draft',
+      offSaleCauses: [],
+      listed: false,
+      submittedAt: null,
+      firstPublishedAt: null,
+      deletedAt: null,
+      version: 2,
+      createdAt: START,
+      ...overrides,
+    });
+    const route = (method: 'post' | 'delete', suffix: string, headers: Record<string, string>) =>
+      http()
+        [method](`/catalog/seller/offers/${OFFER}${suffix}`)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...headers });
+
+    it('submits an own draft Offer: pending or published by the Market, seller actor, logged', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+
+      const response = await route('post', '/submit', sessionOf(code)).send();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ published: expect.any(Boolean) as unknown });
+      expect(savedEdits).toHaveLength(1);
+      const { status, version, submittedAt } = savedEdits[0]!.state;
+      expect(status).toBe(
+        (response.body as { published: boolean }).published ? 'published' : 'pending-first-publish',
+      );
+      expect([version, submittedAt]).toEqual([3, START]);
+      expect(claimChecks).toBe(1);
+      expect(logLines.find((l) => l.msg === 'catalog.own-offer-submit' && l.outcome)).toMatchObject(
+        { outcome: 'ok', marketId: code },
+      );
+    });
+
+    it('answers 422 without handling and 409 for an Offer that is not a draft, storing nothing', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState({ handling: null }));
+      const noHandling = await route('post', '/submit', sessionOf(code)).send();
+      expect(noHandling.status).toBe(422);
+      expect(noHandling.body).toEqual({ statusCode: 422, code: 'offer.handling-missing' });
+
+      offer = Offer.restore(
+        offerState({ status: 'pending-first-publish', submittedAt: START, version: 3 }),
+      );
+      const waiting = await route('post', '/submit', sessionOf(code)).send();
+      expect(waiting.status).toBe(409);
+      expect(waiting.body).toEqual({ statusCode: 409, code: 'offer.not-submittable' });
+      expect(savedEdits).toHaveLength(0);
+    });
+
+    it('answers a repeated submit as offer.not-submittable before any product or claim check', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(
+        offerState({ status: 'pending-first-publish', submittedAt: START, version: 3 }),
+      );
+      product = Product.restore({ ...state(code), status: 'unpublished' });
+
+      const response = await route('post', '/submit', sessionOf(code)).send();
+
+      expect(response.body).toEqual({ statusCode: 409, code: 'offer.not-submittable' });
+      expect(claimChecks).toBe(0);
+    });
+
+    it('answers 409 for an unpublished product, 422 for a type or a claim, 403 for an ineligible seller', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+      const session = () => sessionOf(code);
+
+      product = Product.restore({ ...state(code), status: 'unpublished' });
+      expect((await route('post', '/submit', session()).send()).body).toMatchObject({
+        code: 'offer.product-not-published',
+      });
+      product = Product.restore(state(code));
+      allowed = new Set<string>();
+      expect((await route('post', '/submit', session()).send()).body).toMatchObject({
+        code: 'type.not-allowed',
+      });
+      allowed = 'all';
+      verdicts = [
+        {
+          code: 'claim-text.found',
+          field: 'offer.description',
+          ref: null,
+          locale: 'en-AU',
+          hits: [],
+        },
+      ];
+      expect((await route('post', '/submit', session()).send()).status).toBe(422);
+      verdicts = [];
+      eligible = false;
+      expect((await route('post', '/submit', session()).send()).status).toBe(403);
+      expect(savedEdits).toHaveLength(0);
+    });
+
+    it('answers every Offer that is not the seller’s to submit or delete with the same 404 body', async () => {
+      await boot();
+      await seeded(code);
+      const bodies: unknown[] = [];
+      for (const found of [
+        null,
+        Offer.restore(offerState({ sellerId: id<'Seller'>(0xb999) })),
+        Offer.restore(offerState({ status: 'deleted', deletedAt: START })),
+      ]) {
+        offer = found;
+        const submit = await route('post', '/submit', sessionOf(code)).send();
+        const remove = await route('delete', '', sessionOf(code)).send();
+        expect([submit.status, remove.status]).toEqual([404, 404]);
+        bodies.push(submit.body, remove.body);
+      }
+      expect(new Set(bodies.map((b) => JSON.stringify(b))).size).toBe(1);
+      expect(savedEdits).toHaveLength(0);
+    });
+
+    it('deletes an own Offer on a PLATFORM product: 204, deleted, not listed, event, logged', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(
+        offerState({
+          status: 'published',
+          listed: true,
+          firstPublishedAt: START,
+          submittedAt: START,
+        }),
+      );
+
+      const response = await route('delete', '', sessionOf(code)).send();
+
+      expect(response.status).toBe(204);
+      expect(response.text).toBe('');
+      expect(savedEdits).toHaveLength(1);
+      expect(savedEdits[0]!.state).toMatchObject({
+        status: 'deleted',
+        listed: false,
+        deletedAt: START,
+        version: 3,
+      });
+      expect(savedEdits[0]!.pendingHistory).toMatchObject({ changeKind: 'deleted' });
+      expect(savedEdits[0]!.pendingEvents.map((e) => e.type)).toEqual(['catalog.offer-deleted.v1']);
+      expect(logLines.find((l) => l.msg === 'catalog.own-offer-delete' && l.outcome)).toMatchObject(
+        { outcome: 'ok', marketId: code },
+      );
+    });
+
+    it('refuses to delete an Offer on the seller’s own product, and reads no other eligibility', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+      product = Product.restore({
+        ...state(code),
+        scope: 'SELLER',
+        ownerSellerId: SELLER,
+        createdBySellerId: SELLER,
+      });
+      const own = await route('delete', '', sessionOf(code)).send();
+      expect(own.status).toBe(422);
+      expect(own.body).toEqual({ statusCode: 422, code: 'offer.delete-via-product' });
+      expect(savedEdits).toHaveLength(0);
+
+      product = Product.restore(state(code));
+      eligible = false;
+      expect((await route('delete', '', sessionOf(code)).send()).status).toBe(204);
+    });
+
+    it('refuses both routes without the CSRF token and without a session, and a bad id', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+      const session = sessionOf(code);
+
+      for (const method of ['post', 'delete'] as const) {
+        const suffix = method === 'post' ? '/submit' : '';
+        const noCsrf = await route(method, suffix, { cookie: session.cookie }).send();
+        expect(noCsrf.status).toBe(403);
+        expect(noCsrf.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+        expect((await route(method, suffix, {}).send()).status).toBe(401);
+      }
+      const bad = await http()
+        .delete('/catalog/seller/offers/not-an-id')
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...session });
+      expect(bad.status).toBe(400);
+      expect(savedEdits).toHaveLength(0);
     });
   });
 

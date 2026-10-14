@@ -104,6 +104,11 @@ const PINNED: readonly (readonly [string, string])[] = [
     'bbe634cdc00cf6626128191f261525b8b1de7dd67e8d2d55db677ab444b99d15',
   ],
   ['platform:viewer@3', 'dc859afd259e5bea08579949d3042cef2af7d92cff034772785c81d706267a05'],
+  [
+    'platform:catalogue-moderator@5',
+    '76aaa7bde33944698556acde8a45184a677683dd73e1d4ee5d2b80ef742f6181',
+  ],
+  ['platform:viewer@4', '2350fa2040a847bf491fa7300db06a0b63d52f03df20b278a33b96889a718a33'],
 ];
 
 const ENTRY = /^(platform|seller):([a-z][a-z0-9-]*)@([1-9][0-9]*)$/;

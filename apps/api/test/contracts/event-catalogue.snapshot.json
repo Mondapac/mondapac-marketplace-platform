@@ -1,5 +1,15 @@
 [
   {
+    "type": "catalog.offer-changes-requested.v1",
+    "aggregateType": "offer",
+    "fields": {
+      "offerId": "id",
+      "productId": "id",
+      "sellerId": "id",
+      "reasonCode": "enumOf(content-unclear|description-claim|sku-or-condition|handling-unclear|other)"
+    }
+  },
+  {
     "type": "catalog.offer-created.v1",
     "aggregateType": "offer",
     "fields": {
@@ -26,6 +36,15 @@
       "toProductId": "id",
       "fromVariantIds": "listOf(id)",
       "toVariantIds": "listOf(id)"
+    }
+  },
+  {
+    "type": "catalog.offer-published.v1",
+    "aggregateType": "offer",
+    "fields": {
+      "offerId": "id",
+      "productId": "id",
+      "sellerId": "id"
     }
   },
   {

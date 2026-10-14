@@ -29,7 +29,12 @@ import { ALLOWED_PRODUCT_TYPES_READER } from './application/ports/allowed-produc
 import { OFFER_REPOSITORY } from './application/ports/offer.repository';
 import { SELLER_ELIGIBILITY_READER } from './application/ports/seller-eligibility.reader';
 import { OwnOfferCreateOnPlatformProduct } from './application/use-cases/own-offer-create-on-platform-product.use-case';
+import { OfferApprove } from './application/use-cases/offer-approve.use-case';
+import { OfferRequestChanges } from './application/use-cases/offer-request-changes.use-case';
+import { OwnOfferDelete } from './application/use-cases/own-offer-delete.use-case';
 import { OwnOfferEdit } from './application/use-cases/own-offer-edit.use-case';
+import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
+import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
 import { OFFER_SELL_UNITS_READER } from './application/ports/offer-sell-units.reader';
 import { SellersModule } from '../sellers';
 import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
@@ -61,6 +66,7 @@ import {
 import { configurableProductType } from './domain/product-types/configurable';
 import { simpleProductType } from './domain/product-types/simple';
 import { PlatformProductController } from './presentation/platform-product.controller';
+import { OfferReviewController } from './presentation/offer-review.controller';
 import { OwnOfferController } from './presentation/own-offer.controller';
 import { OwnProductsList } from './application/use-cases/own-products-list.use-case';
 import { OwnProductRead } from './application/use-cases/own-product-read.use-case';
@@ -170,7 +176,12 @@ const productTypeProvider: FactoryProvider<string> = {
  * slices 6 and 7.
  */
 @Module({
-  controllers: [PlatformProductController, OwnOfferController, OwnProductController],
+  controllers: [
+    PlatformProductController,
+    OwnOfferController,
+    OwnProductController,
+    OfferReviewController,
+  ],
   imports: [CertificationModule, SellersModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
@@ -273,6 +284,46 @@ const productTypeProvider: FactoryProvider<string> = {
       save: true,
       policy: true,
       clock: true,
+    }),
+    useCaseProvider(OwnOfferSubmit, {
+      unitOfWork: true,
+      offers: true,
+      products: true,
+      eligibility: true,
+      allowedTypes: true,
+      check: true,
+      policy: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnOfferDelete, {
+      unitOfWork: true,
+      offers: true,
+      products: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(OfferApprove, {
+      unitOfWork: true,
+      offers: true,
+      products: true,
+      eligibility: true,
+      allowedTypes: true,
+      check: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(OfferRequestChanges, {
+      unitOfWork: true,
+      offers: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(ReviewQueueList, {
+      unitOfWork: true,
+      offers: true,
+      ownReader: true,
+      policy: true,
     }),
     useCaseProvider(OwnProductCreate, {
       unitOfWork: true,

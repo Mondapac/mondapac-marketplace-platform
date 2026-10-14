@@ -38,6 +38,35 @@ export const OfferDeleted = defineEvent({
   payload: { offerId: eventField.id(), productId: eventField.id(), sellerId: eventField.id() },
 });
 
+/** An Offer was published, at its submit or by a reviewer (catalog design 4.4). Ids only. */
+export const OfferPublished = defineEvent({
+  type: 'catalog.offer-published.v1',
+  aggregateType: 'offer',
+  payload: { offerId: eventField.id(), productId: eventField.id(), sellerId: eventField.id() },
+});
+
+/** The reasons a reviewer may give when an Offer needs changes (catalog design 4.4). */
+export const OFFER_CHANGE_REASONS = [
+  'content-unclear',
+  'description-claim',
+  'sku-or-condition',
+  'handling-unclear',
+  'other',
+] as const;
+export type OfferChangeReason = (typeof OFFER_CHANGE_REASONS)[number];
+
+/** A reviewer asked the seller to change an Offer; the reason is a code, never text. */
+export const OfferChangesRequested = defineEvent({
+  type: 'catalog.offer-changes-requested.v1',
+  aggregateType: 'offer',
+  payload: {
+    offerId: eventField.id(),
+    productId: eventField.id(),
+    sellerId: eventField.id(),
+    reasonCode: eventField.enumOf(OFFER_CHANGE_REASONS),
+  },
+});
+
 /**
  * An Offer moved to a PLATFORM product on a match (catalog design 9.4; PRC CF4, INV V-1). The
  * variant mapping is two lists of the same length read pairwise: `fromVariantIds[i]` becomes
@@ -106,6 +135,8 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   VariantRemoved,
   OfferCreated,
   OfferDeleted,
+  OfferPublished,
+  OfferChangesRequested,
   OfferMoved,
   PlatformCategoryCreated,
   ProductRevisionSubmitted,

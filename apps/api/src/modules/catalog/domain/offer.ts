@@ -1,6 +1,12 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Result, Temporal } from '@mondapac/shared-kernel';
-import { OfferCreated } from './events';
+import {
+  OfferChangesRequested,
+  OfferCreated,
+  OfferDeleted,
+  OfferPublished,
+  type OfferChangeReason,
+} from './events';
 
 export const OFFER_STATUSES = [
   'draft',
@@ -34,9 +40,17 @@ export type OfferRefusal =
   | { readonly code: 'offer.description-invalid' }
   | { readonly code: 'offer.not-editable' };
 
+/** Why a status transition (submit, approve, request changes, delete) was refused. */
+export type OfferTransitionRefusal =
+  | { readonly code: 'offer.not-submittable' }
+  | { readonly code: 'offer.handling-missing' }
+  | { readonly code: 'offer.not-pending-review' }
+  | { readonly code: 'offer.already-deleted' };
+
 /** The history row a change leaves (data design 3.14); field ids only, never values. */
 export interface OfferPendingHistory {
-  readonly changeKind: 'edited';
+  readonly changeKind:
+    'edited' | 'submitted' | 'published' | 'publication-approved' | 'changes-requested' | 'deleted';
   readonly changedFields: readonly string[];
   readonly occurredAt: Temporal.Instant;
 }
@@ -225,6 +239,141 @@ export class Offer {
     });
     this.#pendingHistory = { changeKind: 'edited', changedFields: changed, occurredAt: input.now };
     return ok(changed);
+  }
+
+  /**
+   * The seller's submit of a `draft` Offer (catalog design 4.4): handling must be present. The
+   * Market's `approvalRequired`, read by the caller in the same unit, decides: on, the Offer waits
+   * for review (`pending-first-publish`); off, it is `published` at once with `catalog.offer-
+   * published.v1`. The claim-text control and the product checks are the use case's.
+   */
+  submit(input: {
+    readonly approvalRequired: boolean;
+    readonly now: Temporal.Instant;
+  }): Result<{ readonly published: boolean }, OfferTransitionRefusal> {
+    const state = this.#state;
+    if (state.status !== 'draft') return err({ code: 'offer.not-submittable' });
+    if (state.handling === null) return err({ code: 'offer.handling-missing' });
+    this.#assertNoChange('submit');
+    if (input.approvalRequired) {
+      this.#state = Object.freeze({
+        ...state,
+        status: 'pending-first-publish',
+        submittedAt: input.now,
+        version: state.version + 1,
+      });
+      this.#pendingHistory = { changeKind: 'submitted', changedFields: [], occurredAt: input.now };
+      return ok({ published: false });
+    }
+    this.#publish(input.now, 'published', { submittedAt: input.now });
+    return ok({ published: true });
+  }
+
+  /** A reviewer's approval of an Offer waiting for its first publication (design 4.4). */
+  approve(input: { readonly now: Temporal.Instant }): Result<void, OfferTransitionRefusal> {
+    if (this.#state.status !== 'pending-first-publish') {
+      return err({ code: 'offer.not-pending-review' });
+    }
+    this.#assertNoChange('approve');
+    this.#publish(input.now, 'publication-approved', {});
+    return ok(undefined);
+  }
+
+  /**
+   * A reviewer asks the seller for changes (design 4.4): `pending-first-publish` to
+   * `changes-needed`, with the reason as a code on the event. The seller's edit returns it to
+   * `draft`.
+   */
+  requestChanges(input: {
+    readonly reasonCode: OfferChangeReason;
+    readonly now: Temporal.Instant;
+  }): Result<void, OfferTransitionRefusal> {
+    const state = this.#state;
+    if (state.status !== 'pending-first-publish') {
+      return err({ code: 'offer.not-pending-review' });
+    }
+    this.#assertNoChange('requestChanges');
+    const version = state.version + 1;
+    this.#state = Object.freeze({ ...state, status: 'changes-needed', version });
+    this.#pendingHistory = {
+      changeKind: 'changes-requested',
+      changedFields: [],
+      occurredAt: input.now,
+    };
+    this.#events.push(
+      OfferChangesRequested.record({
+        aggregateId: state.id,
+        aggregateVersion: version,
+        occurredAt: input.now,
+        payload: {
+          offerId: state.id,
+          productId: state.productId,
+          sellerId: state.sellerId,
+          reasonCode: input.reasonCode,
+        },
+      }),
+    );
+    return ok(undefined);
+  }
+
+  /**
+   * The seller's delete (OFR-06; terminal): any Offer that is not deleted becomes `deleted`, and
+   * a listed one stops being listed. The row stays (Q-K2); the event tells pricing and inventory.
+   */
+  delete(input: { readonly now: Temporal.Instant }): Result<void, OfferTransitionRefusal> {
+    const state = this.#state;
+    if (state.status === 'deleted') return err({ code: 'offer.already-deleted' });
+    this.#assertNoChange('delete');
+    const version = state.version + 1;
+    this.#state = Object.freeze({
+      ...state,
+      status: 'deleted',
+      listed: false,
+      deletedAt: input.now,
+      version,
+    });
+    this.#pendingHistory = { changeKind: 'deleted', changedFields: [], occurredAt: input.now };
+    this.#events.push(
+      OfferDeleted.record({
+        aggregateId: state.id,
+        aggregateVersion: version,
+        occurredAt: input.now,
+        payload: { offerId: state.id, productId: state.productId, sellerId: state.sellerId },
+      }),
+    );
+    return ok(undefined);
+  }
+
+  /** `published` with its first-publication stamp and the event; listed when no cause is stored. */
+  #publish(
+    now: Temporal.Instant,
+    changeKind: 'published' | 'publication-approved',
+    extra: { readonly submittedAt?: Temporal.Instant },
+  ): void {
+    const state = this.#state;
+    const version = state.version + 1;
+    this.#state = Object.freeze({
+      ...state,
+      ...extra,
+      status: 'published',
+      firstPublishedAt: now,
+      listed: isListed({ status: 'published', offSaleCauses: state.offSaleCauses }),
+      version,
+    });
+    this.#pendingHistory = { changeKind, changedFields: [], occurredAt: now };
+    this.#events.push(
+      OfferPublished.record({
+        aggregateId: state.id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { offerId: state.id, productId: state.productId, sellerId: state.sellerId },
+      }),
+    );
+  }
+
+  #assertNoChange(command: string): void {
+    if (this.#pendingHistory !== null)
+      throw new Error(`${command}: the Offer already has a change`);
   }
 
   /** An Offer read back from storage; records no event. */
