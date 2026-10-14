@@ -54,8 +54,10 @@ export class SellerListController {
       'Three tabs read from the seller files: awaiting review (oldest first, with the kind of ' +
       'the submission), incomplete (most recently changed first) and all (newest first), with ' +
       'a store-name or slug prefix search, a kind filter, an outside-service-area filter and the ' +
-      'counts the tabs show. Clear fields only: no business name, phone, address or number, and ' +
-      "none of the owner's personal data. Needs sellers.seller.view.",
+      'counts the tabs show; and three tabs paged through the access state of identity ' +
+      '(changes needed, approved, suspended; newest first, no search). No business name, ' +
+      'phone, address or number. Needs sellers.seller.view; the status, the owner name and ' +
+      'email, the state tabs and their counts also need identity.seller-access.view.',
   })
   @ApiHeader({
     name: CSRF_HEADER,
@@ -72,7 +74,10 @@ export class SellerListController {
     type: SellersErrorBody,
     description: 'session.invalid or access.unauthenticated',
   })
-  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    type: SellersErrorBody,
+    description: 'access.denied (also a state tab without identity.seller-access.view) or request.csrf',
+  })
   @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
   @ApiServiceUnavailableResponse({
     type: SellersErrorBody,

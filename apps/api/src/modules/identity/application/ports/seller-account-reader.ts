@@ -51,6 +51,9 @@ export interface OwnedSellerQuery {
   readonly limit: number;
 }
 
+/** The registered sellers of a Market per access state (sellers design R-6, the counts). */
+export type SellerStateCounts = Readonly<Record<SellerAccessStateCode, number>>;
+
 /**
  * The SQL reads of the admin seller list and `sellerAccountSummaries` (identity design 8.1, 8.6
  * row 8; slice 9b), on `identity`'s own tables only: `seller_access`, `seller_memberships`,
@@ -77,6 +80,23 @@ export interface SellerAccountReader {
     market: MarketContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<SellerAccountRecord[]>;
+
+  /**
+   * Up to `limit` ids of registered sellers in one access state, newest first (UUID v7: by id,
+   * descending), whose id is below `before` (all when null): the identity-state tabs of
+   * `sellers`' admin list (sellers design 7.8, R-6). Ids only; no owner, no personal field.
+   */
+  sellerIdsInState(
+    market: MarketContext,
+    query: {
+      readonly state: SellerAccessStateCode;
+      readonly before: Id<'Seller'> | null;
+      readonly limit: number;
+    },
+  ): Promise<Id<'Seller'>[]>;
+
+  /** The registered sellers of the Market per access state (R-6 counts); a state with none is 0. */
+  stateCounts(market: MarketContext): Promise<SellerStateCounts>;
 
   /**
    * The seller account with this normalised address and the sellers of its active memberships

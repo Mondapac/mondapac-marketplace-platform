@@ -11,6 +11,7 @@ import type { NotifyAccessReviewers } from '../application/use-cases/notify-acce
 import type { SellerAccessOf } from '../application/use-cases/seller-access-of.use-case';
 import type { SellerAccessOfSystem } from '../application/use-cases/seller-access-of-system.use-case';
 import type { SellerAccountSummaries } from '../application/use-cases/seller-account-summaries.use-case';
+import type { SellerIdsByState } from '../application/use-cases/seller-ids-by-state.use-case';
 import type {
   AccessDecisionByBasis,
   AccessDecisionsUnavailable,
@@ -22,8 +23,10 @@ import type {
   SellerAccessDecisionHistory,
   SellerAccessDecisionOutcome,
   SellerAccessDecisionRefusal,
+  SellerAccessState,
   SellerAccessSummary,
   SellerAccountSummary,
+  SellerIdsByStatePage,
   SellerReapplyOutcome,
   SellerReapplyRefusal,
 } from '../contracts/seller-access.contract';
@@ -33,6 +36,7 @@ export interface SellerAccessContractUseCases {
   readonly sellerAccessOf: SellerAccessOf;
   readonly sellerAccessOfSystem: SellerAccessOfSystem;
   readonly sellerAccountSummaries: SellerAccountSummaries;
+  readonly sellerIdsByState: SellerIdsByState;
   readonly listRegisteredSellers: ListRegisteredSellers;
   readonly notifyAccessReviewers: NotifyAccessReviewers;
   readonly approveSellerAccess: ApproveSellerAccess;
@@ -68,6 +72,17 @@ export class SellerAccessContractImplementation implements SellerAccessContract 
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<readonly SellerAccountSummary[], AccessDenied | FacadeValidationFailed>> {
     return this.useCases.sellerAccountSummaries.execute(context, { sellerIds });
+  }
+
+  sellerIdsByState(
+    context: CallContext,
+    query: {
+      readonly state: SellerAccessState | null;
+      readonly before: Id<'Seller'> | null;
+      readonly limit: number;
+    },
+  ): Promise<Result<SellerIdsByStatePage, AccessDenied | FacadeValidationFailed>> {
+    return this.useCases.sellerIdsByState.execute(context, query);
   }
 
   listRegisteredSellers(

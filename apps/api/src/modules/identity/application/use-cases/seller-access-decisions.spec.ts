@@ -170,6 +170,7 @@ function setUp(options: { readonly reapplyLimit?: null } = {}) {
       sellerAccessOf: notUsed(),
       sellerAccessOfSystem: notUsed(),
       sellerAccountSummaries: notUsed(),
+      sellerIdsByState: notUsed(),
       listRegisteredSellers: notUsed(),
       notifyAccessReviewers: notUsed(),
       approveSellerAccess: approve,

@@ -92,6 +92,7 @@ import { ADMIN_ACCOUNT_READER } from './application/ports/admin-account-reader';
 import { adminAccountReaderProvider } from './infrastructure/admin-team/prisma-admin-account-reader';
 import { ListSellerAccounts } from './application/use-cases/list-seller-accounts.use-case';
 import { SellerAccountSummaries } from './application/use-cases/seller-account-summaries.use-case';
+import { SellerIdsByState } from './application/use-cases/seller-ids-by-state.use-case';
 import { SELLER_ACCOUNT_READER } from './application/ports/seller-account-reader';
 import { sellerAccountReaderProvider } from './infrastructure/sellers/prisma-seller-account-reader';
 import { DisableAdminAccount } from './application/use-cases/disable-admin-account.use-case';
@@ -1175,6 +1176,14 @@ function useCaseProvider<D, U>(
       effectiveKeys: true,
       sellerAccounts: true,
     }),
+    // Sellers slice 6b: the admin part of R-6, ids by state and counts (contract below).
+    useCaseProvider(SellerIdsByState, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      sellerAccounts: true,
+    }),
     // Slice 9a: the R-5 reads of the decisions, for `sellers` only (contract below).
     useCaseProvider(ListSellerAccessDecisions, {
       unitOfWork: true,
@@ -1278,6 +1287,7 @@ function useCaseProvider<D, U>(
         SellerAccessOf,
         SellerAccessOfSystem,
         SellerAccountSummaries,
+        SellerIdsByState,
         ListRegisteredSellers,
         NotifyAccessReviewers,
         ApproveSellerAccess,
@@ -1290,6 +1300,7 @@ function useCaseProvider<D, U>(
         sellerAccessOf: SellerAccessOf,
         sellerAccessOfSystem: SellerAccessOfSystem,
         sellerAccountSummaries: SellerAccountSummaries,
+        sellerIdsByState: SellerIdsByState,
         listRegisteredSellers: ListRegisteredSellers,
         notifyAccessReviewers: NotifyAccessReviewers,
         approveSellerAccess: ApproveSellerAccess,
@@ -1302,6 +1313,7 @@ function useCaseProvider<D, U>(
           sellerAccessOf,
           sellerAccessOfSystem,
           sellerAccountSummaries,
+          sellerIdsByState,
           listRegisteredSellers,
           notifyAccessReviewers,
           approveSellerAccess,

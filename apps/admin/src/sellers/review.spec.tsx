@@ -153,6 +153,7 @@ describe('admin seller review page', () => {
       storeName: 'Cedar Lane Halal Meats',
       slug: 'cedar-lane',
       status: 'awaiting-review',
+      owner: null,
       origin: 'self' as const,
       kind: 'onboarding',
       submittedAt: null,
@@ -166,6 +167,7 @@ describe('admin seller review page', () => {
       items: [row],
       next: null,
       counts: { awaitingReview: { onboarding: 1, identityChange: 0 }, incomplete: 0, all: 1 },
+      stateCounts: null,
     };
     for (const canReview of [true, false]) {
       call.mockResolvedValueOnce({ ok: true, status: 200, body });

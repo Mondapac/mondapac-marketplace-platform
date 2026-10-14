@@ -9,7 +9,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { noRunOnce } from '../../../../../test/support/fake-run-once';
-import { FakeAccess } from '../../../../../test/support/sellers-submit-fakes';
+import { FakeAccess, FakeDirectory } from '../../../../../test/support/sellers-submit-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
@@ -203,7 +203,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
     const useCase = new SellerList(createUseCaseGate(markets, strict), {
       unitOfWork,
       list: repository,
-      accessReader: access,
+      directory: new FakeDirectory(access),
       authorisation: strict,
       onboardingAreas: areas,
     });
@@ -342,7 +342,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
       const failing = new SellerList(createUseCaseGate(markets, strict), {
         unitOfWork,
         list: t.repository,
-        accessReader: t.access,
+        directory: new FakeDirectory(t.access),
         authorisation: {
           check: (context, declaration) =>
             declaration.name === 'sellers.list-status'
@@ -469,7 +469,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
     expect(byId.get(unknown.sellerId)?.status).toBeNull();
   });
 
-  it('returns clear fields only: no business data and none of identity personal fields', async () => {
+  it('returns clear fields of the file only, no business data, and the owner from identity', async () => {
     const t = setUp();
     const r = row({ pending: pendingOf(1), storeName: 'Shop' });
     t.repository.add(code, r);
@@ -483,6 +483,7 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
         'kind',
         'lastChangedAt',
         'origin',
+        'owner',
         'serviceAreaCode',
         'sellerId',
         'slug',
@@ -492,6 +493,118 @@ describe.each(TEST_MARKET_IDS)('sellers.list in market %s', (code) => {
         'timezone',
       ].sort(),
     );
+  });
+
+  describe('identity state tabs and the owner (slice 6b, R-6 and 8.1)', () => {
+    const OWNER = { displayName: 'Canary Owner Quokka', email: 'canary-owner-quokka@example.com' };
+
+    function stateSetUp() {
+      const t = setUp();
+      const directory = new FakeDirectory(t.access);
+      const useCase = new SellerList(createUseCaseGate(markets, strict), {
+        unitOfWork,
+        list: t.repository,
+        directory,
+        authorisation: strict,
+        onboardingAreas: areas,
+      });
+      return { ...t, directory, useCase };
+    }
+
+    it('pages approved sellers newest first from identity, decorated from the files, with the owner and the state counts', async () => {
+      const t = stateSetUp();
+      const older = row({ hasApprovedRevision: true, storeName: 'Older' });
+      const newer = row({ hasApprovedRevision: true, storeName: 'Newer' });
+      const rejected = row({ storeName: 'Rejected' });
+      const noFile = ids.next<'Seller'>();
+      for (const r of [older, newer, rejected]) t.repository.add(code, r);
+      t.access.set(older.sellerId, 'approved');
+      t.access.set(newer.sellerId, 'approved');
+      t.access.set(noFile, 'approved');
+      t.access.set(rejected.sellerId, 'rejected');
+      t.directory.owners.set(newer.sellerId, OWNER);
+
+      const first = await t.useCase.execute(admin(), { tab: 'approved', limit: 2 });
+
+      expect(first.ok).toBe(true);
+      const listed = page(first.ok && first.value);
+      // The id identity pages without a file in `sellers` is left out of the page.
+      expect(listed.items.map((item) => [item.storeName, item.status, item.owner])).toEqual([
+        ['Newer', 'approved', OWNER],
+      ]);
+      expect(listed.stateCounts).toEqual({ changesNeeded: 1, approved: 3, suspended: 0 });
+      expect(listed.next).toBe(`approved.${newer.sellerId}`);
+      expect(t.directory.idCalls).toEqual([{ state: 'approved', before: null, limit: 2 }]);
+      expect(t.access.manyCalls).toEqual([[newer.sellerId]]);
+
+      const second = await t.useCase.execute(admin(), {
+        tab: 'approved',
+        limit: 2,
+        after: listed.next,
+      });
+      expect(second.ok && second.value.items.map((item) => item.storeName)).toEqual(['Older']);
+      expect(second.ok && second.value.next).toBeNull();
+      expect(t.directory.idCalls[1]).toEqual({
+        state: 'approved',
+        before: newer.sellerId,
+        limit: 2,
+      });
+
+      const changes = await t.useCase.execute(admin(), { tab: 'changes-needed' });
+      expect(changes.ok && changes.value.items.map((item) => item.status)).toEqual([
+        'changes-needed',
+      ]);
+      expect(logged.join('\n')).not.toMatch(/quokka/i);
+    });
+
+    it('refuses a state tab without identity.seller-access.view, and never calls identity', async () => {
+      const t = stateSetUp();
+      t.repository.add(code, row());
+
+      for (const tab of ['changes-needed', 'approved', 'suspended']) {
+        await expect(t.useCase.execute(admin(true, market, false), { tab })).resolves.toEqual({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+      }
+      const files = await t.useCase.execute(admin(true, market, false), { tab: 'all' });
+      expect(files.ok && files.value.stateCounts).toBeNull();
+      expect(files.ok && files.value.items.map((item) => item.owner)).toEqual([null]);
+      expect(t.directory.idCalls).toHaveLength(0);
+      expect(t.access.manyCalls).toHaveLength(0);
+    });
+
+    it('refuses a search, a kind or a file-tab cursor on a state tab, before any read', async () => {
+      const t = stateSetUp();
+      const r = row();
+      t.repository.add(code, r);
+
+      for (const [body, path, fieldCode] of [
+        [{ tab: 'approved', search: 'shop' }, 'search', 'tab'],
+        [{ tab: 'suspended', kind: 'onboarding' }, 'kind', 'tab'],
+        [{ tab: 'approved', after: `all.${r.sellerId}` }, 'after', 'format'],
+      ] as const) {
+        await expect(t.useCase.execute(admin(), body)).resolves.toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path, code: fieldCode }] },
+        });
+      }
+      expect(t.repository.calls).toBe(0);
+      expect(t.directory.idCalls).toHaveLength(0);
+    });
+
+    it('is sellers.unavailable when identity cannot page or count, never an empty tab', async () => {
+      const t = stateSetUp();
+      t.repository.add(code, row());
+      t.access.failing = true;
+
+      for (const tab of ['approved', 'all']) {
+        await expect(t.useCase.execute(admin(), { tab })).resolves.toEqual({
+          ok: false,
+          error: { code: 'sellers.unavailable' },
+        });
+      }
+    });
   });
 
   it('never lists a seller of another Market', async () => {

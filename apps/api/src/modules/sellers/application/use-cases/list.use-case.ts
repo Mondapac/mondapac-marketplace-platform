@@ -12,7 +12,9 @@ import { SELLER_ACCESS_VIEW } from '../../../identity';
 import { SELLERS_SELLER_VIEW } from '../../contracts/permissions';
 import {
   cursorText,
+  isStateTab,
   listStatusOf,
+  STATE_TABS,
   parseListRequest,
   SEARCH_CAP,
   type ListCursor,
@@ -21,8 +23,12 @@ import {
   type ListRequest,
   type ListTab,
 } from '../../domain/seller-list';
-import type { AccessState, SellerStatus } from '../../domain/seller-status';
-import type { SellerAccessReader } from '../ports/seller-access-reader';
+import type { SellerStatus } from '../../domain/seller-status';
+import type {
+  SellerAccountDirectory,
+  SellerAccountEntry,
+  SellerStateCounts,
+} from '../ports/seller-account-directory';
 import type {
   ListCounts,
   ListedSeller,
@@ -35,9 +41,11 @@ import type { OnboardingAreas } from '../ports/seller-market-formats';
 export type SellerListInput = unknown;
 
 /**
- * One row of the admin list: clear fields only (sellers design 7.8; Hassan M4). No business
- * name, phone, address or number, and none of `identity`'s personal fields (owner name, sign-in
- * email), which wait for `sellerAccountSummaries`.
+ * One row of the admin list (sellers design 7.8; Hassan M4): clear fields of `sellers` only, no
+ * business name, phone, address or number; and, for an actor holding
+ * `identity.seller-access.view`, the Seller Owner's name and sign-in address from `identity`
+ * (slice 6b), which are personal data: the route answers `Cache-Control: no-store` and no log
+ * line holds them.
  */
 export interface SellerListRow {
   readonly sellerId: Id<'Seller'>;
@@ -50,6 +58,8 @@ export interface SellerListRow {
    * `identity` owns, so `sellers.seller.view` alone does not show it).
    */
   readonly status: SellerStatus | 'hidden' | null;
+  /** The Seller Owner; null when hidden (as `status`), unknown to `identity`, or not yet one. */
+  readonly owner: { readonly displayName: string | null; readonly email: string } | null;
   readonly origin: 'self' | 'invitation';
   /** The kind of the pending submission, or null when none is pending. */
   readonly kind: ListKind | null;
@@ -62,16 +72,26 @@ export interface SellerListRow {
   readonly lastChangedAt: string;
 }
 
+/** The counts of the `identity` state tabs (R-6); null when the actor may not see states. */
+export interface StateTabCounts {
+  readonly changesNeeded: number;
+  readonly approved: number;
+  readonly suspended: number;
+}
+
 export interface SellerListPage {
   readonly tab: ListTab;
   readonly items: readonly SellerListRow[];
   /** The `after` of the next page, or null after the last. */
   readonly next: string | null;
   readonly counts: ListCounts;
+  readonly stateCounts: StateTabCounts | null;
 }
 
 export type SellerListFailure =
   | { readonly code: 'validation.failed'; readonly fields: readonly ListFieldProblem[] }
+  /** An `identity` state tab for an actor without `identity.seller-access.view`. */
+  | { readonly code: 'access.denied' }
   /** The search names more sellers than the list reads safely: narrow it. */
   | { readonly code: 'search.too-broad' }
   | { readonly code: 'sellers.unavailable' };
@@ -79,7 +99,7 @@ export type SellerListFailure =
 export interface SellerListDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly list: SellerListRepository;
-  readonly accessReader: SellerAccessReader;
+  readonly directory: SellerAccountDirectory;
   /** Asked once per call whether the actor may see the status column (fails closed to hidden). */
   readonly authorisation: AuthorisationCheck;
   readonly onboardingAreas: OnboardingAreas;
@@ -103,15 +123,19 @@ export const LIST_STATUS_ACCESS: AccessDeclaration = {
  * fields only: nothing is decrypted and no key is used. The Market comes from the context and is
  * named in every statement, so a seller of another Market is never listed (AC 1).
  *
- * The `status` of a row is shown only to an actor that also holds `identity.seller-access.view`;
- * otherwise it is `hidden` and `identity` is not called at all. A page with no row does not call
- * `identity` either.
+ * The `status` and the owner of a row, the counts of the state tabs and the state tabs themselves
+ * are only for an actor that also holds `identity.seller-access.view`; otherwise the status is
+ * `hidden`, the owner and the state counts null, a state tab `access.denied`, and `identity` is
+ * not called at all.
  *
- * One read-only unit on `sellers`' tables (ADR-0025), then **one** `identity` call for the state
- * of the whole page, outside any unit (no N+1; spike 2). If `identity` cannot answer, the list is
- * `sellers.unavailable`: a row is never shown with a guessed status. The tabs that page through
- * `identity`'s state (Changes needed, Not approved, Approved, Suspended) and the owner's name and
- * email wait for `identity`'s admin read (R-6 with counts, `sellerAccountSummaries`).
+ * A tab of `sellers` (slice 6): one read-only unit on `sellers`' tables (ADR-0025), then outside
+ * any unit one `identity` call for the state counts and, when the page has rows, **one**
+ * `sellerAccountSummaries` call for the state and owner of the whole page (no N+1; spike 2). A
+ * state tab (slice 6b: Changes needed, Approved, Suspended; "Not approved" joins with 7b): one
+ * `identity` call for a page of ids in the state, newest first, with the counts, then the unit
+ * reads those sellers' files, then one `sellerAccountSummaries` call. If `identity` cannot answer,
+ * the list is `sellers.unavailable`: a row is never shown with a guessed status. A seller
+ * `identity` pages but `sellers` has no file for is left out of that page.
  *
  * The log line holds the tab, counts and codes: never the search term or a store name.
  */
@@ -152,21 +176,108 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     const parsed = parseListRequest(input);
     if (!parsed.ok) return err(parsed.error);
     const request = parsed.value;
-    const { market } = context;
-    const { unitOfWork, list, accessReader, onboardingAreas } = this.deps;
+    const { directory } = this.deps;
+    const showStatus = await this.mayShowStatus(context);
 
-    let read;
+    if (isStateTab(request.tab)) {
+      if (!showStatus) return err({ code: 'access.denied' });
+      const before = request.after?.tab === request.tab ? request.after.sellerId : null;
+      let idPage;
+      try {
+        idPage = await directory.idsByState(context, {
+          state: STATE_TABS[request.tab],
+          before,
+          limit: request.limit,
+        });
+      } catch (error) {
+        this.fail(context, 'access-failed', error);
+        return err({ code: 'sellers.unavailable' });
+      }
+      const read = await this.readFiles(context, request, idPage.sellerIds);
+      if (!read.ok) return read;
+      const page = read.value.rows ?? [];
+      const decorated = await this.decorate(context, page, true);
+      if (!decorated.ok) return decorated;
+      return ok({
+        tab: request.tab,
+        items: decorated.value,
+        next:
+          idPage.next === null ? null : cursorText({ tab: request.tab, sellerId: idPage.next }),
+        counts: read.value.counts,
+        stateCounts: stateTabCounts(idPage.counts),
+      });
+    }
+
+    const read = await this.readFiles(context, request, null);
+    if (!read.ok) return read;
+    const { counts, rows } = read.value;
+    if (rows === null) return err({ code: 'search.too-broad' });
+
+    const more = rows.length > request.limit;
+    const page = more ? rows.slice(0, request.limit) : rows;
+
+    let stateCounts: StateTabCounts | null = null;
+    if (showStatus) {
+      try {
+        const answer = await directory.idsByState(context, { state: null, before: null, limit: 0 });
+        stateCounts = stateTabCounts(answer.counts);
+      } catch (error) {
+        this.fail(context, 'access-failed', error);
+        return err({ code: 'sellers.unavailable' });
+      }
+    }
+    const decorated = await this.decorate(context, page, showStatus);
+    if (!decorated.ok) return decorated;
+    const last = page[page.length - 1];
+    return ok({
+      tab: request.tab,
+      items: decorated.value,
+      next: more && last !== undefined ? cursorText(cursorOf(request, last)) : null,
+      counts,
+      stateCounts,
+    });
+  }
+
+  /**
+   * The one read-only unit on `sellers`' tables: the counts and either the page of a `sellers`
+   * tab (`rows` null when the search is too broad) or, for a state tab, the files of `stateIds`
+   * in their order (newest first, as `identity` pages them).
+   */
+  private async readFiles(
+    context: CallContext,
+    request: ListRequest,
+    stateIds: readonly Id<'Seller'>[] | null,
+  ): Promise<
+    Result<{ counts: ListCounts; rows: readonly ListedSeller[] | null }, SellerListFailure>
+  > {
+    const { market } = context;
+    const { unitOfWork, list, onboardingAreas } = this.deps;
+    const query = (onlyIds: readonly Id<'Seller'>[] | null, take: number): ListPageQuery => ({
+      kind: request.kind,
+      outsideArea: request.outsideArea,
+      openAreaCodes: onboardingAreas.openCodes(market),
+      onlyIds,
+      after: stateIds === null ? request.after : null,
+      take,
+    });
     try {
-      read = await unitOfWork.run<
-        {
-          counts: ListCounts;
-          rows: readonly ListedSeller[] | null;
-        },
+      const read = await unitOfWork.run<
+        { counts: ListCounts; rows: readonly ListedSeller[] | null },
         never
       >(
         market,
         async () => {
           const counts = await list.counts(market);
+          if (stateIds !== null) {
+            const files =
+              stateIds.length === 0
+                ? []
+                : await list.all(market, query(stateIds, stateIds.length));
+            // In `identity`'s order, whatever the order of the read.
+            const byId = new Map(files.map((file) => [file.sellerId, file]));
+            const rows = stateIds.flatMap((sellerId) => byId.get(sellerId) ?? []);
+            return ok({ counts, rows });
+          }
           let onlyIds: readonly Id<'Seller'>[] | null = null;
           if (request.search !== null) {
             const found = await list.searchCandidates(market, request.search, SEARCH_CAP);
@@ -174,40 +285,35 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
             if (found.ids.length === 0) return ok({ counts, rows: [] as readonly ListedSeller[] });
             onlyIds = found.ids;
           }
-          const query: ListPageQuery = {
-            kind: request.kind,
-            outsideArea: request.outsideArea,
-            openAreaCodes: onboardingAreas.openCodes(market),
-            onlyIds,
-            after: request.after,
-            take: request.limit + 1,
-          };
+          const pageQuery = query(onlyIds, request.limit + 1);
           const rows =
             request.tab === 'awaiting-review'
-              ? await list.awaitingReview(market, query)
+              ? await list.awaitingReview(market, pageQuery)
               : request.tab === 'incomplete'
-                ? await list.incomplete(market, query)
-                : await list.all(market, query);
+                ? await list.incomplete(market, pageQuery)
+                : await list.all(market, pageQuery);
           return ok({ counts, rows });
         },
         { readOnly: true },
       );
       if (!read.ok) throw new Error('the read unit failed');
+      return read;
     } catch (error) {
       this.fail(context, 'read-failed', error);
       return err({ code: 'sellers.unavailable' });
     }
-    const { counts, rows } = read.value;
-    if (rows === null) return err({ code: 'search.too-broad' });
+  }
 
-    const more = rows.length > request.limit;
-    const page = more ? rows.slice(0, request.limit) : rows;
-
-    const showStatus = await this.mayShowStatus(context);
-    let states: ReadonlyMap<Id<'Seller'>, AccessState> = new Map();
+  /** The rows of a page, with state and owner from one `identity` call when the actor may see them. */
+  private async decorate(
+    context: CallContext,
+    page: readonly ListedSeller[],
+    showStatus: boolean,
+  ): Promise<Result<readonly SellerListRow[], SellerListFailure>> {
+    let accounts: ReadonlyMap<Id<'Seller'>, SellerAccountEntry> = new Map();
     if (showStatus && page.length > 0) {
       try {
-        states = await accessReader.accessOfMany(
+        accounts = await this.deps.directory.accountsOf(
           context,
           page.map((row) => row.sellerId),
         );
@@ -216,18 +322,12 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
         return err({ code: 'sellers.unavailable' });
       }
     }
-
-    const openCodes = new Set(onboardingAreas.openCodes(market));
-    const items = page.map((row) =>
-      rowOf(row, showStatus ? (states.get(row.sellerId) ?? null) : 'hidden', openCodes),
+    const openCodes = new Set(this.deps.onboardingAreas.openCodes(context.market));
+    return ok(
+      page.map((row) =>
+        rowOf(row, showStatus ? (accounts.get(row.sellerId) ?? null) : 'hidden', openCodes),
+      ),
     );
-    const last = page[page.length - 1];
-    return ok({
-      tab: request.tab,
-      items,
-      next: more && last !== undefined ? cursorText(cursorOf(request, last)) : null,
-      counts,
-    });
   }
 
   private async mayShowStatus(context: CallContext): Promise<boolean> {
@@ -249,9 +349,17 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
   }
 }
 
+function stateTabCounts(counts: SellerStateCounts): StateTabCounts {
+  return {
+    changesNeeded: counts[STATE_TABS['changes-needed']],
+    approved: counts[STATE_TABS.approved],
+    suspended: counts[STATE_TABS.suspended],
+  };
+}
+
 function rowOf(
   row: ListedSeller,
-  access: Parameters<typeof listStatusOf>[0]['access'] | 'hidden',
+  account: SellerAccountEntry | null | 'hidden',
   openCodes: ReadonlySet<string>,
 ): SellerListRow {
   const outside = row.hasAddress
@@ -262,15 +370,16 @@ function rowOf(
     storeName: row.storeName,
     slug: row.heldSlug ?? row.draftSlug,
     status:
-      access === 'hidden'
+      account === 'hidden'
         ? 'hidden'
         : listStatusOf({
-            access,
+            access: account?.state ?? null,
             hasApprovedRevision: row.hasApprovedRevision,
             pendingKind: row.pending?.kind ?? null,
             draftComplete: row.draftComplete,
             outsideServiceArea: outside,
           }),
+    owner: account === 'hidden' || account === null ? null : account.owner,
     origin: row.origin,
     kind: row.pending?.kind ?? null,
     submittedAt: row.pending?.submittedAt.toString() ?? null,
@@ -285,7 +394,10 @@ function rowOf(
 function cursorOf(request: ListRequest, last: ListedSeller): ListCursor {
   switch (request.tab) {
     case 'all':
-      return { tab: 'all', sellerId: last.sellerId };
+    case 'changes-needed':
+    case 'approved':
+    case 'suspended':
+      return { tab: request.tab, sellerId: last.sellerId };
     case 'incomplete':
       return { tab: 'incomplete', changedAt: last.lastChangedAt, sellerId: last.sellerId };
     case 'awaiting-review':

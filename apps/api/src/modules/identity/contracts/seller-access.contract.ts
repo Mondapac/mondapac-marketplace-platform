@@ -41,6 +41,17 @@ export interface SellerAccountSummary {
   } | null;
 }
 
+/**
+ * One page of the admin part of R-6 (sellers design 7.8; slice 6b): registered seller ids in one
+ * state, newest first, and the Market's registered sellers per state. Ids and counts only.
+ */
+export interface SellerIdsByStatePage {
+  readonly sellerIds: readonly Id<'Seller'>[];
+  /** The `before` of the next page, or null after the last. */
+  readonly next: Id<'Seller'> | null;
+  readonly counts: Readonly<Record<SellerAccessState, number>>;
+}
+
 /** One page of registered seller ids (sellers design R-6, id paging for the backfill). */
 export interface RegisteredSellerPage {
   readonly items: readonly {
@@ -196,6 +207,23 @@ export interface SellerAccessContract {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<readonly SellerAccountSummary[], AccessDenied | FacadeValidationFailed>>;
+
+  /**
+   * The admin part of R-6 (sellers design 7.8; slice 6b): up to `limit` (1 to 100) ids of the
+   * Market's registered sellers in `state`, newest first, below `before`, and the count per state
+   * of its registered sellers; `state` null with `limit` 0 answers the counts only. Rule
+   * `permissions [identity.seller-access.view]`, checked by the gate and again in `identity`'s
+   * read; the system actor, a seller actor and an acting-as session are refused. Ids and counts
+   * only: `sellers` decorates them from its own rows and `sellerAccountSummaries`.
+   */
+  sellerIdsByState(
+    context: CallContext,
+    query: {
+      readonly state: SellerAccessState | null;
+      readonly before: Id<'Seller'> | null;
+      readonly limit: number;
+    },
+  ): Promise<Result<SellerIdsByStatePage, AccessDenied | FacadeValidationFailed>>;
 
   /**
    * Registered sellers by id, with their origin, for the system actor only (sellers design R-6,

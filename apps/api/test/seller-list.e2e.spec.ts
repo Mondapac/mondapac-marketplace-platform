@@ -12,6 +12,11 @@ import {
   type SellerAccessReader,
 } from '../src/modules/sellers/application/ports/seller-access-reader';
 import {
+  SELLER_ACCOUNT_DIRECTORY,
+  type SellerAccountDirectory,
+  type SellerAccountEntry,
+} from '../src/modules/sellers/application/ports/seller-account-directory';
+import {
   SELLER_LIST_REPOSITORY,
   type ListCounts,
   type ListedSeller,
@@ -104,6 +109,35 @@ class StubAccess implements SellerAccessReader {
   }
 }
 
+const OWNER = { displayName: 'Canary Owner Wombat', email: 'canary-owner-wombat@example.com' };
+
+/** `identity`'s admin read over the stub access: state from `access`, one owner for seller 1. */
+class StubDirectory implements SellerAccountDirectory {
+  idCalls: { state: AccessState | null; limit: number }[] = [];
+  constructor(private readonly access: StubAccess) {}
+  async accountsOf(context: CallContext, ids: readonly Id<'Seller'>[]) {
+    const states = await this.access.accessOfMany(context, ids);
+    return new Map(
+      [...states].map(([one, state]): [Id<'Seller'>, SellerAccountEntry] => [
+        one,
+        { state, owner: one === sellerId(1) ? OWNER : null },
+      ]),
+    );
+  }
+  idsByState(
+    _context: CallContext,
+    query: { state: AccessState | null; before: Id<'Seller'> | null; limit: number },
+  ) {
+    this.idCalls.push({ state: query.state, limit: query.limit });
+    if (this.access.failing) return Promise.reject(new Error('identity down'));
+    return Promise.resolve({
+      sellerIds: query.state === this.access.state ? [sellerId(2), sellerId(1)] : [],
+      next: null,
+      counts: { pending: 0, approved: 2, rejected: 0, suspended: 0 },
+    });
+  }
+}
+
 const row = (n: number): ListedSeller => ({
   sellerId: sellerId(n),
   origin: 'self',
@@ -130,6 +164,7 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
   let logLines: LogLine[];
   const list = new StubList();
   const access = new StubAccess();
+  const directory = new StubDirectory(access);
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -144,7 +179,9 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
           .overrideProvider(SELLER_LIST_REPOSITORY)
           .useValue(list)
           .overrideProvider(SELLER_ACCESS_READER)
-          .useValue(access),
+          .useValue(access)
+          .overrideProvider(SELLER_ACCOUNT_DIRECTORY)
+          .useValue(directory),
     }));
   }
 
@@ -286,6 +323,7 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
     list.rows = new Map();
     list.queries = [];
     access.calls = [];
+    directory.idCalls = [];
     access.failing = false;
     access.unknown = false;
     list.overflow = false;
@@ -308,11 +346,20 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
       string,
       { properties?: Record<string, { enum?: string[]; description?: string }> }
     >;
-    // The status column: `hidden` is a documented value, and the unserved tabs are documented as
-    // not yet available (Ali's ruling), not modelled as empty.
+    // The status column: `hidden` is a documented value; the identity state tabs are served
+    // (slice 6b), and "not approved" is documented as joining with 7b.
     expect(schemas.SellerListRowView?.properties?.status?.enum).toContain('hidden');
-    expect(schemas.SellerListRequest?.properties?.tab?.description).toContain('not yet available');
-    for (const schema of ['SellerListRequest', 'SellerListBody', 'SellerListRowView']) {
+    expect(schemas.SellerListRequest?.properties?.tab?.enum).toEqual(
+      expect.arrayContaining(['changes-needed', 'approved', 'suspended']),
+    );
+    expect(schemas.SellerListRequest?.properties?.tab?.description).toContain('7b');
+    for (const schema of [
+      'SellerListRequest',
+      'SellerListBody',
+      'SellerListRowView',
+      'SellerListOwnerView',
+      'SellerListStateCounts',
+    ]) {
       expect(document.components.schemas).toHaveProperty([schema]);
     }
   });
@@ -338,6 +385,7 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
         storeName: 'Shop 1',
         slug: 'shop-1',
         status: 'awaiting-review',
+        owner: OWNER,
         origin: 'self',
         kind: 'onboarding',
         submittedAt: START.toString(),
@@ -348,6 +396,45 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
       });
       expect(list.queries.map((q) => q.marketId)).toEqual([code]);
       expect(access.calls).toEqual([[sellerId(1), sellerId(2)]]);
+      expect((listed.body as { stateCounts: unknown }).stateCounts).toEqual({
+        changesNeeded: 0,
+        approved: 2,
+        suspended: 0,
+      });
+      // The owner's name and address go into the answer only, never into a log line.
+      expect(JSON.stringify(logLines)).not.toMatch(/wombat/i);
+    });
+
+    it('serves an identity state tab newest first to an admin holding identity.seller-access.view, and refuses the list key alone', async () => {
+      await boot();
+      await seeded(code);
+      list.rows.set(code, [row(1), row(2)]);
+      access.state = 'approved';
+
+      const listed = await post(code, sessionHeaders(code, ROOT, 21), { tab: 'approved' });
+      const lister = await post(code, sessionHeaders(code, LISTER, 22), { tab: 'approved' });
+      const search = await post(code, sessionHeaders(code, ROOT, 23), {
+        tab: 'approved',
+        search: 'shop',
+      });
+
+      expect(listed.status).toBe(200);
+      expect(listed.headers['cache-control']).toBe('no-store');
+      const body = listed.body as { items: { sellerId: string; owner: unknown }[] };
+      expect(body.items.map((item) => [item.sellerId, item.owner])).toEqual([
+        [sellerId(2), null],
+        [sellerId(1), OWNER],
+      ]);
+      expect(directory.idCalls).toContainEqual({ state: 'approved', limit: 25 });
+      expect(lister.status).toBe(403);
+      expect(lister.body).toMatchObject({ code: 'access.denied' });
+      expect(lister.headers['cache-control']).toBe('no-store');
+      expect(search.status).toBe(400);
+      expect(search.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'search', code: 'tab' }] },
+      });
+      expect(JSON.stringify(logLines)).not.toMatch(/wombat/i);
     });
 
     it('takes the search from the body, reads candidates, and logs neither the term nor a name', async () => {

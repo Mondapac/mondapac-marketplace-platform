@@ -6,25 +6,43 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { callApi } from '../api/client.ts';
 import { SellersTable } from './sellers-table.tsx';
 import {
+  FILE_TABS,
+  isStateTab,
   KINDS,
   PAGE_SIZE,
   SEARCH_MAX,
   SEARCH_MIN,
-  TABS,
+  STATE_TABS,
   type SellerListCounts,
   type SellerListPage,
+  type SellerListStateCounts,
   type SellerRow,
   type Tab,
 } from './types.ts';
 
 type Failure = 'too-broad' | 'denied' | 'unavailable';
 
-function countOf(counts: SellerListCounts | null, tab: Tab): number | null {
-  if (counts === null) return null;
-  if (tab === 'awaiting-review') {
-    return counts.awaitingReview.onboarding + counts.awaitingReview.identityChange;
+function countOf(
+  counts: SellerListCounts | null,
+  stateCounts: SellerListStateCounts | null,
+  tab: Tab,
+): number | null {
+  switch (tab) {
+    case 'awaiting-review':
+      return counts === null
+        ? null
+        : counts.awaitingReview.onboarding + counts.awaitingReview.identityChange;
+    case 'incomplete':
+      return counts?.incomplete ?? null;
+    case 'all':
+      return counts?.all ?? null;
+    case 'changes-needed':
+      return stateCounts?.changesNeeded ?? null;
+    case 'approved':
+      return stateCounts?.approved ?? null;
+    case 'suspended':
+      return stateCounts?.suspended ?? null;
   }
-  return tab === 'incomplete' ? counts.incomplete : counts.all;
 }
 
 function failureOf(status: number, code: string): Failure {
@@ -32,7 +50,11 @@ function failureOf(status: number, code: string): Failure {
   return status === 401 || status === 403 ? 'denied' : 'unavailable';
 }
 
-/** The admin seller list (SEL-14): three tabs, a name or slug prefix search, paging by cursor. */
+/**
+ * The admin seller list (SEL-14): three tabs from the seller files with a name or slug prefix
+ * search, and, for an admin who may see identity's state, three state tabs (no search); paging
+ * by cursor.
+ */
 export function SellersList({
   csrfToken,
   canReview,
@@ -50,6 +72,7 @@ export function SellersList({
   const [rows, setRows] = useState<readonly SellerRow[]>([]);
   const [next, setNext] = useState<string | null>(null);
   const [counts, setCounts] = useState<SellerListCounts | null>(null);
+  const [stateCounts, setStateCounts] = useState<SellerListStateCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
   const latest = useRef(0);
@@ -67,7 +90,7 @@ export function SellersList({
           limit: PAGE_SIZE,
           ...(tab === 'awaiting-review' && kind !== '' ? { kind } : {}),
           ...(tab === 'incomplete' && outsideArea ? { outsideArea: true } : {}),
-          ...(search === '' ? {} : { search }),
+          ...(search === '' || isStateTab(tab) ? {} : { search }),
           ...(after === null ? {} : { after }),
         },
         csrfToken,
@@ -87,6 +110,7 @@ export function SellersList({
       );
       setNext(result.body.next);
       setCounts(result.body.counts);
+      setStateCounts(result.body.stateCounts);
     },
     [tab, kind, outsideArea, search, csrfToken],
   );
@@ -103,12 +127,16 @@ export function SellersList({
   }
 
   const tooShort = draft.trim().length === 1;
+  const stateTab = isStateTab(tab);
+  const tabs: readonly Tab[] =
+    stateCounts !== null || stateTab ? [...FILE_TABS, ...STATE_TABS] : FILE_TABS;
 
   return (
     <div className="flex flex-col gap-4">
-      <nav aria-label={t('tabs')} className="flex flex-wrap gap-4 border-b border-line">
-        {TABS.map((id) => {
-          const count = countOf(counts, id);
+      {/* One row that scrolls sideways on a phone, rather than tabs wrapping onto two lines. */}
+      <nav aria-label={t('tabs')} className="flex gap-4 overflow-x-auto border-b border-line">
+        {tabs.map((id) => {
+          const count = countOf(counts, stateCounts, id);
           return (
             <button
               key={id}
@@ -117,8 +145,8 @@ export function SellersList({
               onClick={() => setTab(id)}
               className={
                 id === tab
-                  ? 'border-b-2 border-link px-1 pb-2 font-medium text-fg'
-                  : 'px-1 pb-2 text-fg-muted hover:text-fg'
+                  ? 'min-h-12 shrink-0 whitespace-nowrap border-b-2 border-link px-1 font-medium text-fg'
+                  : 'min-h-12 shrink-0 whitespace-nowrap border-b-2 border-transparent px-1 text-fg-muted hover:text-fg'
               }
             >
               {t(`tab.${id}`)}
@@ -127,37 +155,39 @@ export function SellersList({
           );
         })}
       </nav>
-      <div className="flex flex-wrap items-end gap-4">
-        <form onSubmit={submitSearch} className="flex flex-wrap items-end gap-2">
-          <TextField
-            label={t('search.label')}
-            value={draft}
-            maxLength={SEARCH_MAX}
-            onChange={(event) => setDraft(event.target.value)}
-            help={t('search.help')}
-            error={tooShort ? t('search.too-short') : undefined}
-          />
-          <Button type="submit" variant="secondary">
-            {t('search.submit')}
-          </Button>
-        </form>
-        {tab === 'awaiting-review' ? (
-          <Select
-            label={t('filter.kind')}
-            value={kind}
-            onChange={(event) => setKind(event.target.value)}
-            placeholder={t('filter.all-kinds')}
-            options={KINDS.map((value) => ({ value, label: t(`kind.${value}`) }))}
-          />
-        ) : null}
-        {tab === 'incomplete' ? (
-          <CheckboxRow
-            label={t('filter.outside-area')}
-            checked={outsideArea}
-            onChange={(event) => setOutsideArea(event.target.checked)}
-          />
-        ) : null}
-      </div>
+      {stateTab ? null : (
+        <div className="flex flex-wrap items-end gap-4">
+          <form onSubmit={submitSearch} className="flex flex-wrap items-end gap-2">
+            <TextField
+              label={t('search.label')}
+              value={draft}
+              maxLength={SEARCH_MAX}
+              onChange={(event) => setDraft(event.target.value)}
+              help={t('search.help')}
+              error={tooShort ? t('search.too-short') : undefined}
+            />
+            <Button type="submit" variant="secondary">
+              {t('search.submit')}
+            </Button>
+          </form>
+          {tab === 'awaiting-review' ? (
+            <Select
+              label={t('filter.kind')}
+              value={kind}
+              onChange={(event) => setKind(event.target.value)}
+              placeholder={t('filter.all-kinds')}
+              options={KINDS.map((value) => ({ value, label: t(`kind.${value}`) }))}
+            />
+          ) : null}
+          {tab === 'incomplete' ? (
+            <CheckboxRow
+              label={t('filter.outside-area')}
+              checked={outsideArea}
+              onChange={(event) => setOutsideArea(event.target.checked)}
+            />
+          ) : null}
+        </div>
+      )}
       {failure === null ? null : <Banner tone="critical">{t(`error.${failure}`)}</Banner>}
       {failure === 'unavailable' ? (
         <div>
@@ -166,10 +196,14 @@ export function SellersList({
           </Button>
         </div>
       ) : null}
-      {rows.length > 0 ? <SellersTable rows={rows} canReview={canReview} /> : null}
+      {rows.length > 0 ? (
+        <SellersTable rows={rows} canReview={canReview} showOwner={stateCounts !== null} />
+      ) : null}
       {!loading && failure === null && rows.length === 0 ? (
         <div className="rounded-lg border border-line p-6">
-          <p className="font-medium">{t(search === '' ? `empty.${tab}` : 'empty.search')}</p>
+          <p className="font-medium">
+            {t(search === '' || stateTab ? `empty.${tab}` : 'empty.search')}
+          </p>
         </div>
       ) : null}
       {loading ? <p className="text-fg-muted">{t('loading')}</p> : null}

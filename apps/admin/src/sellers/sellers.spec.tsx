@@ -19,6 +19,7 @@ const row = (over: Partial<SellerRow> = {}): SellerRow => ({
   storeName: 'Cedar Lane Halal Meats',
   slug: 'cedar-lane',
   status: 'awaiting-review',
+  owner: { displayName: 'Amira Haddad', email: 'amira@example.com' },
   origin: 'self',
   kind: 'onboarding',
   submittedAt: '2026-10-08T01:00:00.000Z',
@@ -33,6 +34,7 @@ const page = (items: SellerRow[], next: string | null = null): SellerListPage =>
   items,
   next,
   counts: { awaitingReview: { onboarding: 2, identityChange: 1 }, incomplete: 4, all: 9 },
+  stateCounts: { changesNeeded: 3, approved: 7, suspended: 1 },
 });
 const answer = (body: SellerListPage) =>
   call.mockResolvedValueOnce({ ok: true, status: 200, body });
@@ -173,5 +175,33 @@ describe('admin seller list', () => {
     const ids = (keys: string[]) => visibleNavItems(adminNav, new Set(keys)).map((i) => i.id);
     expect(ids([])).not.toContain('sellers');
     expect(ids(['sellers.seller.view'])).toContain('sellers');
+  });
+
+  it('shows the state tabs with their counts and the owner, and drops search on a state tab', async () => {
+    answer(page([row()]));
+    mount();
+    expect(await screen.findByText('amira@example.com')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Owner' })).toBeTruthy();
+    answer({ ...page([row({ status: 'approved' })]), tab: 'approved' });
+    fireEvent.click(screen.getByRole('button', { name: 'Approved (7)' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'POST',
+        'sellers/admin/list',
+        { tab: 'approved', limit: 25 },
+        'csrf-1',
+      ),
+    );
+    expect(screen.queryByLabelText('Store name or shop address')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Changes needed (3)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Suspended (1)' })).toBeTruthy();
+  });
+
+  it('hides the state tabs and the owner column when the admin may not see states', async () => {
+    answer({ ...page([row({ status: 'hidden', owner: null })]), stateCounts: null });
+    mount();
+    expect(await screen.findByText('Cedar Lane Halal Meats')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Approved/ })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'Owner' })).toBeNull();
   });
 });
