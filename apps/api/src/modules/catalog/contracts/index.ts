@@ -3,11 +3,18 @@
 export * from './catalog.facade';
 export {
   OfferCreated,
+  OfferChangesRequested,
   OfferDeleted,
   OfferMoved,
+  OfferPublished,
   VariantAdded,
   VariantRemoved,
 } from '../domain/events';
 export { buildOfferMovedMapping } from '../domain/events/offer-moved-payload';
 export type { OfferMovedPayloadRefused } from '../domain/events/offer-moved-payload';
-export { CATALOG_PERMISSIONS, CATALOG_PLATFORM_PRODUCT_EDIT } from './permissions';
+export {
+  CATALOG_PERMISSIONS,
+  CATALOG_PLATFORM_PRODUCT_EDIT,
+  CATALOG_PRODUCT_APPROVE,
+  CATALOG_PRODUCT_VIEW,
+} from './permissions';

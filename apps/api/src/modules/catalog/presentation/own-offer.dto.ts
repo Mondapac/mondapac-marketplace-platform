@@ -62,6 +62,13 @@ export class OwnOfferEdited {
   changedFields!: string[];
 }
 
+export class OwnOfferSubmitted {
+  @ApiProperty({
+    description: 'True when the Offer is published at once; false when it waits for review.',
+  })
+  published!: boolean;
+}
+
 export class OwnProductCreateRequest {
   @ApiProperty({
     description:

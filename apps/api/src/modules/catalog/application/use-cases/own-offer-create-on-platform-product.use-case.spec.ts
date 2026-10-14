@@ -141,6 +141,7 @@ describe.each(['AU', 'ZZ'] as const)(
             return Promise.resolve(null);
           },
           findById: () => Promise.resolve(null),
+          listPendingReview: () => Promise.resolve([]),
           save: () => Promise.reject(new Error('unused')),
         },
         eligibility: { isEligible: () => Promise.resolve(options.eligible ?? true) },

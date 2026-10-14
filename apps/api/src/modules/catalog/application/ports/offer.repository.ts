@@ -33,6 +33,16 @@ export interface OfferRepository {
    */
   save(market: MarketContext, offer: Offer, actor: OfferActor): Promise<'offer.sku-taken' | null>;
 
+  /**
+   * The Offers waiting for their first publication (`pending-first-publish`), oldest submit first,
+   * at most `limit` after the Offer `afterId` of the previous page (null for the first page).
+   * An `afterId` that is not a waiting Offer of this Market starts from the beginning.
+   */
+  listPendingReview(
+    market: MarketContext,
+    page: { readonly afterId: Id<'Offer'> | null; readonly limit: number },
+  ): Promise<readonly Offer[]>;
+
   /** The Offer in this Market, or null: another Market's id is not found. */
   findById(market: MarketContext, id: Id<'Offer'>): Promise<Offer | null>;
 }

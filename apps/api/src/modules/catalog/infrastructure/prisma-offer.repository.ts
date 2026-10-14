@@ -169,7 +169,10 @@ export class PrismaOfferRepository implements OfferRepository {
           conditionCode: state.conditionCode,
           description: { ...state.description },
           status: state.status,
+          listed: state.listed,
           submittedAt: state.submittedAt === null ? null : toDate(state.submittedAt),
+          firstPublishedAt: state.firstPublishedAt === null ? null : toDate(state.firstPublishedAt),
+          deletedAt: state.deletedAt === null ? null : toDate(state.deletedAt),
           version: state.version,
         },
       });
@@ -205,6 +208,36 @@ export class PrismaOfferRepository implements OfferRepository {
       select: { id: true },
     });
     return null;
+  }
+
+  async listPendingReview(
+    market: MarketContext,
+    page: { readonly afterId: Id<'Offer'> | null; readonly limit: number },
+  ): Promise<readonly Offer[]> {
+    const tx = this.prisma.tx(market);
+    const where = { marketId: market.marketId, status: 'pending-first-publish' } as const;
+    const cursor =
+      page.afterId === null
+        ? null
+        : await tx.catalogOffer.findFirst({
+            where: { ...where, id: page.afterId },
+            select: { id: true, submittedAt: true },
+          });
+    const after =
+      cursor?.submittedAt == null
+        ? {}
+        : {
+            OR: [
+              { submittedAt: { gt: cursor.submittedAt } },
+              { submittedAt: cursor.submittedAt, id: { gt: cursor.id } },
+            ],
+          };
+    const rows = await tx.catalogOffer.findMany({
+      where: { ...where, ...after },
+      orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
+      take: page.limit,
+    });
+    return rows.map(offerFromRow);
   }
 
   async findById(market: MarketContext, id: Id<'Offer'>): Promise<Offer | null> {
