@@ -95,6 +95,24 @@ export class SellerOfferPricesController {
                 submittedAt: variant.held.submittedAt.toString(),
                 direction: variant.held.direction,
               },
+        special:
+          variant.special === null
+            ? null
+            : {
+                amount: variant.special.amount,
+                startsAt: variant.special.startsAt.toString(),
+                endsAt: variant.special.endsAt.toString(),
+                state: variant.special.state,
+              },
+        heldSpecial:
+          variant.heldSpecial === null
+            ? null
+            : {
+                amount: variant.heldSpecial.amount,
+                startsAt: variant.heldSpecial.startsAt.toString(),
+                endsAt: variant.heldSpecial.endsAt.toString(),
+                submittedAt: variant.heldSpecial.submittedAt.toString(),
+              },
         retired: variant.retired,
       })),
     };

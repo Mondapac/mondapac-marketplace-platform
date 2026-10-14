@@ -1,10 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { PRICING_PRICE_VIEW } from '../../contracts/permissions';
 import type { PriceSeries } from '../../domain/price-series';
+import { liveOrScheduledSpecial } from '../../domain/special-price';
 import type { PricingPolicyProvider } from '../ports/pricing-policy-provider';
 import type { OfferSellUnitsSource } from '../ports/offer-sell-units';
 import type { PriceSeriesRepository } from '../ports/price-series.repository';
@@ -26,6 +28,22 @@ export interface HeldPrice {
   readonly direction: 'up' | 'down';
 }
 
+/** A special price that runs now or is scheduled; the regular price stays above it. */
+export interface SpecialView {
+  readonly amount: string;
+  readonly startsAt: Temporal.Instant;
+  readonly endsAt: Temporal.Instant;
+  readonly state: 'running' | 'scheduled';
+}
+
+/** A special price held for review (a deep discount); nothing changes until it is approved. */
+export interface HeldSpecialView {
+  readonly amount: string;
+  readonly startsAt: Temporal.Instant;
+  readonly endsAt: Temporal.Instant;
+  readonly submittedAt: Temporal.Instant;
+}
+
 /** One priceable Variant of the Offer. `seriesVersion` is what the write needs as `expectedVersion`. */
 export interface VariantPriceView {
   readonly variantId: Id<'Variant'>;
@@ -34,6 +52,10 @@ export interface VariantPriceView {
   readonly currency: string | null;
   readonly inForce: InForcePrice | null;
   readonly held: HeldPrice | null;
+  /** The running or scheduled special, if any. */
+  readonly special: SpecialView | null;
+  /** The special waiting for review, if any (its window may still end unreviewed). */
+  readonly heldSpecial: HeldSpecialView | null;
   /** The series stopped taking prices; read only. */
   readonly retired: boolean;
 }
@@ -59,6 +81,7 @@ export interface ViewOfferPricesDependencies {
   readonly series: PriceSeriesRepository;
   readonly offers: OfferSellUnitsSource;
   readonly policies: PricingPolicyProvider;
+  readonly clock: Clock;
 }
 
 const NOT_FOUND = Object.freeze({ code: 'pricing.offer-not-found' as const });
@@ -125,6 +148,7 @@ export class ViewOfferPrices extends UseCase<
     );
     if (!read.ok) throw new Error('pricing.view-offer-prices: a read-only unit failed');
 
+    const now = this.deps.clock.now();
     const variants = [...offer.priceableVariantIds]
       .sort()
       .map((variantId) =>
@@ -134,6 +158,7 @@ export class ViewOfferPrices extends UseCase<
             (series) =>
               series.state.variantId === variantId && series.state.sellerId === offer.sellerId,
           ) ?? null,
+          now,
         ),
       );
     this.#logger.log({
@@ -150,7 +175,11 @@ export class ViewOfferPrices extends UseCase<
   }
 }
 
-function variantView(variantId: Id<'Variant'>, series: PriceSeries | null): VariantPriceView {
+function variantView(
+  variantId: Id<'Variant'>,
+  series: PriceSeries | null,
+  now: Temporal.Instant,
+): VariantPriceView {
   if (series === null) {
     return {
       variantId,
@@ -158,10 +187,12 @@ function variantView(variantId: Id<'Variant'>, series: PriceSeries | null): Vari
       currency: null,
       inForce: null,
       held: null,
+      special: null,
+      heldSpecial: null,
       retired: false,
     };
   }
-  const { regular, currency, retiredAt, version } = series.state;
+  const { regular, specials, currency, retiredAt, version } = series.state;
   const inForce = regular.find(
     (record) =>
       (record.status === 'ACCEPTED' || record.status === 'APPROVED') &&
@@ -169,6 +200,11 @@ function variantView(variantId: Id<'Variant'>, series: PriceSeries | null): Vari
       record.effectiveTo === null,
   );
   const pending = regular.find((record) => record.status === 'PENDING_REVIEW');
+  const live = liveOrScheduledSpecial(specials, now);
+  const waiting = specials.find(
+    (record) =>
+      record.status === 'PENDING_REVIEW' && Temporal.Instant.compare(record.endsAt, now) > 0,
+  );
   return {
     variantId,
     seriesVersion: series.persistedVersion ?? version,
@@ -184,6 +220,24 @@ function variantView(variantId: Id<'Variant'>, series: PriceSeries | null): Vari
             amount: pending.amount.amount.toString(),
             submittedAt: pending.submittedAt,
             direction: pending.heldDirection,
+          },
+    special:
+      live === null
+        ? null
+        : {
+            amount: live.amount.amount.toString(),
+            startsAt: live.startsAt,
+            endsAt: live.endsAt,
+            state: Temporal.Instant.compare(live.startsAt, now) <= 0 ? 'running' : 'scheduled',
+          },
+    heldSpecial:
+      waiting === undefined
+        ? null
+        : {
+            amount: waiting.amount.amount.toString(),
+            startsAt: waiting.startsAt,
+            endsAt: waiting.endsAt,
+            submittedAt: waiting.submittedAt,
           },
     retired: retiredAt !== null,
   };
