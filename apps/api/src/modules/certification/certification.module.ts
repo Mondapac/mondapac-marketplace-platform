@@ -21,7 +21,7 @@ import { EvaluateClaims } from './application/use-cases/evaluate-claims.use-case
 import { MatchClaimTermsSystem } from './application/use-cases/match-claim-terms-system.use-case';
 import { MatchClaimTerms } from './application/use-cases/match-claim-terms.use-case';
 import { CERTIFICATION_FACADE } from './contracts/certification.facade';
-import { FailClosedClaimFactsReader } from './infrastructure/fail-closed-claim-facts.reader';
+import { claimFactsReaderProvider } from './infrastructure/claim-facts-reader.provider';
 import { publishedTypesReaderProvider } from './infrastructure/published-types-reader.provider';
 import { SellersZonesSource } from './infrastructure/sellers-zones.source';
 import { CertificationFacadeImplementation } from './presentation/certification.facade';
@@ -55,14 +55,15 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
  * The certification bounded context (docs/design/domain/certification.md; ADR-0013), filled
  * slice by slice. Today it binds the read side of the facade: the published types reader (each
  * call in a read-only unit of its own) behind `matchClaimTerms` and `certificationTypes`, and
- * `evaluateClaims` over a fail-closed claim-facts reader (ADR-0031) until the raw read
- * statements and the policy tables exist, so it answers `unavailable` for every query.
+ * `evaluateClaims` over the claim-facts reader on the module's own raw read port (ADR-0030):
+ * the seller basis and the type default; policy rows arrive with slice 13.
  */
 @Module({
   imports: [PersistenceModule, SellersModule],
   providers: [
+    PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
-    { provide: CLAIM_FACTS_READER, useFactory: () => new FailClosedClaimFactsReader() },
+    claimFactsReaderProvider,
     {
       provide: SELLER_ZONES_SOURCE,
       inject: [APPROVED_SELLER_ZONES],

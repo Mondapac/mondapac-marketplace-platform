@@ -62,6 +62,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'ADMIN_TEAM');
   await createCopy(name, 'CERTIFICATION');
   await createCopy(name, 'CATALOG_CLAIMS');
+  await createCopy(name, 'CLAIM_FACTS');
 }
 
 /**
@@ -90,7 +91,9 @@ export default async function globalSetup(): Promise<void> {
  * - `admin_team`: admin-roles.db-spec.ts counts every active Platform Administrator of a Market
  *   (HF8), so no other file's admin accounts live there;
  * - `certification`: certification-published-types-reader.db-spec.ts reads every type of a
- *   Market, so no other file's types (drafts without terms or pointer) live there.
+ *   Market, so no other file's types (drafts without terms or pointer) live there;
+ * - `claim_facts`: certification-claim-facts-reader.db-spec.ts seeds types without a published
+ *   revision (a fault for any read that asks for them), so it keeps its own copy.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -108,7 +111,8 @@ async function createCopy(
     | 'AUDIT'
     | 'ADMIN_TEAM'
     | 'CERTIFICATION'
-    | 'CATALOG_CLAIMS',
+    | 'CATALOG_CLAIMS'
+    | 'CLAIM_FACTS',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });
