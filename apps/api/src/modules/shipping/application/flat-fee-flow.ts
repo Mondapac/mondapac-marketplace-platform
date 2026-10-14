@@ -11,7 +11,8 @@ export type FlatFeeFailure =
       readonly fields: readonly { path: string; code: string }[];
     }
   | { readonly code: 'shipping.seller-not-found' }
-  | { readonly code: 'shipping.fee-not-set' }
+  /** `currency` is the Market's, so a screen can parse the amount it is about to set. */
+  | { readonly code: 'shipping.fee-not-set'; readonly currency: string }
   | { readonly code: 'shipping.unavailable' };
 
 /** What the system read of several fees can refuse. */
@@ -118,7 +119,10 @@ function readOne(
     async () => {
       const record = await deps.fees.find(context.market, sellerId);
       return record === null
-        ? err({ code: 'shipping.fee-not-set' } as const)
+        ? err({
+            code: 'shipping.fee-not-set',
+            currency: deps.policy.currency(context.market),
+          } as const)
         : ok({ sellerId, fee: record.fee });
     },
     { readOnly: true },

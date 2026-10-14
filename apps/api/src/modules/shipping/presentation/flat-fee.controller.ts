@@ -54,7 +54,8 @@ export class AdminFlatFeeController {
   @Get()
   @ApiOperation({
     summary: "A seller's flat shipping fee (admin)",
-    description: 'Needs shipping.flat-fee.view. 404 shipping.fee-not-set before a fee exists.',
+    description:
+      'Needs shipping.flat-fee.view. 404 shipping.fee-not-set (details.currency is the Market currency) before a fee exists.',
   })
   @ApiParam({ name: 'sellerId', format: 'uuid' })
   @ApiOkResponse({ type: FlatFeeBody })

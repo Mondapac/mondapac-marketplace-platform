@@ -717,6 +717,26 @@
       }
     }
   },
+  "shipping": {
+    "title": "Delivery fee",
+    "intro": "One flat fee per order from this seller. The customer pays it at checkout, on top of the items. A change applies to orders placed after it.",
+    "not-set": "No fee is set yet. Customers cannot check out with this seller until you set one. Use 0 for free delivery.",
+    "current": "Current fee",
+    "field": "Fee per order ({currency})",
+    "field-help": "Between 0 and {max}.",
+    "invalid": "Enter an amount between 0 and {max}, with no more decimals than the currency uses.",
+    "save": "Save fee",
+    "saved": "Fee saved. It applies to orders placed from now on.",
+    "error": {
+      "not-found": "We could not find this seller.",
+      "invalid": "That amount was refused. Check it and try again.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "Your role cannot set delivery fees.",
+      "unavailable": "Delivery fees are not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
+    }
+  },
   "catalog": {
     "review": {
       "title": "Offer reviews",

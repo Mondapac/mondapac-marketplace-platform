@@ -189,7 +189,7 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
   it('shows an admin any fee, and answers fee-not-set before one exists', async () => {
     const view = new ViewFlatFee(gate, deps);
     expect(await view.execute(admin, { sellerId: SELLER_A })).toEqual(
-      err({ code: 'shipping.fee-not-set' }),
+      err({ code: 'shipping.fee-not-set', currency }),
     );
     await set(SELLER_A, 500);
     expect(await view.execute(admin, { sellerId: SELLER_A })).toEqual(
@@ -214,7 +214,7 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
     );
     known.add(GHOST);
     expect(await view.execute(actor('seller', GHOST), {})).toEqual(
-      err({ code: 'shipping.fee-not-set' }),
+      err({ code: 'shipping.fee-not-set', currency }),
     );
     expect((await view.execute(actor('customer', null), {})).ok).toBe(false);
   });

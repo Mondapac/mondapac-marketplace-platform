@@ -63,7 +63,8 @@ export function refusal(
     });
     return fail(500, 'internal');
   }
-  return error.fields === undefined
-    ? fail(status, error.code)
-    : fail(status, error.code, { fields: error.fields });
+  if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  if (typeof error.currency === 'string')
+    return fail(status, error.code, { currency: error.currency });
+  return fail(status, error.code);
 }

@@ -8,7 +8,8 @@ export type ServerGet<T> =
   | { readonly kind: 'ok'; readonly body: T }
   | { readonly kind: 'signed-out' }
   | { readonly kind: 'forbidden' }
-  | { readonly kind: 'not-found' }
+  /** `details` is the `details` object of the API's refusal, when it sent one. */
+  | { readonly kind: 'not-found'; readonly details?: Readonly<Record<string, unknown>> }
   | { readonly kind: 'conflict' }
   | { readonly kind: 'unavailable' };
 
@@ -40,7 +41,14 @@ export async function serverGet<T>(path: string): Promise<ServerGet<T>> {
     });
     if (response.status === 401) return { kind: 'signed-out' };
     if (response.status === 403) return { kind: 'forbidden' };
-    if (response.status === 404) return { kind: 'not-found' };
+    if (response.status === 404) {
+      const refusal = (await response.json().catch((): unknown => null)) as {
+        details?: Record<string, unknown>;
+      } | null;
+      return refusal?.details === undefined
+        ? { kind: 'not-found' }
+        : { kind: 'not-found', details: refusal.details };
+    }
     if (response.status === 409) return { kind: 'conflict' };
     if (!response.ok) return { kind: 'unavailable' };
     return { kind: 'ok', body: (await response.json()) as T };
