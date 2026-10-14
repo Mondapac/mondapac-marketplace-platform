@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
@@ -13,6 +14,9 @@ export const PURGE_BATCH_SIZE = 200;
 export const MAX_PURGE_BATCHES_PER_RUN = 20;
 /** A counter is kept this many minutes after its window started: the longest window is 60. */
 export const RATE_COUNTER_RETENTION_MINUTES = GUEST_CREATE_ORIGIN.windowMinutes;
+
+export type PurgeFailure =
+  { readonly code: 'access.denied' } | { readonly code: 'cart.purge-failed' };
 
 export interface PurgeInactiveCartsOutput {
   readonly carts: number;
@@ -38,12 +42,14 @@ export interface PurgeInactiveCartsDependencies {
 export class PurgeInactiveCarts extends UseCase<
   Record<string, never>,
   PurgeInactiveCartsOutput,
-  { readonly code: 'access.denied' }
+  PurgeFailure
 > {
   static override readonly access: AccessDeclaration = {
     name: 'cart.purge-inactive-carts',
     rule: { kind: 'system' },
   };
+
+  readonly #logger = new Logger('PurgeInactiveCarts');
 
   constructor(
     gate: UseCaseGate,
@@ -54,7 +60,7 @@ export class PurgeInactiveCarts extends UseCase<
 
   protected async handle(
     context: CallContext,
-  ): Promise<Result<PurgeInactiveCartsOutput, { readonly code: 'access.denied' }>> {
+  ): Promise<Result<PurgeInactiveCartsOutput, PurgeFailure>> {
     if (context.actor.kind !== 'system') return err({ code: 'access.denied' });
     const { market } = context;
     const { unitOfWork, carts, counters, policy, clock } = this.deps;
@@ -62,22 +68,46 @@ export class PurgeInactiveCarts extends UseCase<
     const guestBefore = now.subtract({ milliseconds: policy.guestTtlMs() });
     const accountBefore = now.subtract({ milliseconds: policy.accountRetentionMs() });
     let purged = 0;
-    for (let batch = 0; batch < MAX_PURGE_BATCHES_PER_RUN; batch += 1) {
-      const done = await unitOfWork.run(market, async () =>
-        ok(await carts.purgeInactive(market, guestBefore, accountBefore, PURGE_BATCH_SIZE)),
-      );
-      if (!done.ok) break;
-      purged += done.value;
-      if (done.value < PURGE_BATCH_SIZE) break;
+    let failed = false;
+    try {
+      for (let batch = 0; batch < MAX_PURGE_BATCHES_PER_RUN; batch += 1) {
+        const done = await unitOfWork.run(market, async () =>
+          ok(await carts.purgeInactive(market, guestBefore, accountBefore, PURGE_BATCH_SIZE)),
+        );
+        if (!done.ok) {
+          failed = true;
+          break;
+        }
+        purged += done.value;
+        if (done.value < PURGE_BATCH_SIZE) break;
+      }
+    } catch {
+      failed = true;
     }
-    const pruned = await unitOfWork.run(market, async () =>
-      ok(
-        await counters.purgeStartedBefore(
-          market,
-          now.subtract({ minutes: RATE_COUNTER_RETENTION_MINUTES }),
+    let pruned = 0;
+    try {
+      const counted = await unitOfWork.run(market, async () =>
+        ok(
+          await counters.purgeStartedBefore(
+            market,
+            now.subtract({ minutes: RATE_COUNTER_RETENTION_MINUTES }),
+          ),
         ),
-      ),
-    );
-    return ok({ carts: purged, rateCounters: pruned.ok ? pruned.value : 0 });
+      );
+      if (counted.ok) pruned = counted.value;
+      else failed = true;
+    } catch {
+      failed = true;
+    }
+    // A failed batch or prune is never reported as a success: the job throws, so it is visible.
+    if (failed) {
+      this.#logger.warn({
+        msg: 'cart.purge-inactive.failed',
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'cart.purge-failed' });
+    }
+    return ok({ carts: purged, rateCounters: pruned });
   }
 }

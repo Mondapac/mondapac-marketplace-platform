@@ -303,5 +303,36 @@ describe.each(TEST_MARKETS)(
       expect(saved).toBe('stale');
       expect(await exists(guest)).toBe(true);
     });
+
+    it('counts parallel first hits and parallel hits on an existing key exactly, with no error', async () => {
+      const counter = {
+        limit: GUEST_WRITE_CART,
+        keyHash: keys.keyOf(market, GUEST_WRITE_CART.kind, 'cd'.repeat(32)),
+      };
+      const hit = (at: Temporal.Instant) =>
+        unit(market, () => counters.reserve(market, [counter], at));
+
+      const first = await Promise.all(Array.from({ length: 10 }, () => hit(NOW)));
+      expect(first.map((r) => r[0]!.count).sort((a, b) => a - b)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+      ]);
+      const more = await Promise.all(Array.from({ length: 10 }, () => hit(NOW)));
+      expect(more.map((r) => r[0]!.count).sort((a, b) => a - b)).toEqual([
+        11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+      ]);
+
+      // Ten units meet the same ended window: it restarts once, and every attempt after the
+      // restart is counted (the window start never moves back).
+      const later = NOW.add({ minutes: 20 });
+      const reset = await Promise.all(Array.from({ length: 10 }, () => hit(later)));
+      expect(reset.map((r) => r[0]!.count).sort((a, b) => a - b)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+      ]);
+      const row = await sql.query<{ count: number }>(
+        `SELECT count FROM cart.rate_counters WHERE market_id = $1 AND key_hash = $2 AND kind = $3`,
+        [code, Buffer.from(counter.keyHash), counter.limit.kind],
+      );
+      expect(row.rows).toEqual([{ count: 10 }]);
+    });
   },
 );

@@ -37,6 +37,7 @@ export class InMemoryRateCounters implements RateCounterRepository {
   }
 
   purgeStartedBefore(_market: MarketContext, startedBefore: Temporal.Instant): Promise<number> {
+    if (this.failing) return Promise.reject(new Error('counter store down'));
     let purged = 0;
     for (const [key, row] of this.rows) {
       if (Temporal.Instant.compare(row.windowStartedAt, startedBefore) < 0) {

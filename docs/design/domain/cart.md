@@ -20,7 +20,7 @@ A design, not an implementation. Signatures appear only where the signature is t
 | 2. Grouped view, "Sold by", read-time sellable state, price-change notice (CRT-03) | 6.2, 6.3 |
 | 3. Guest cart and merge (CRT-09, CRT-08), security review | 4, 6.5 |
 | 4. Optional minimum order per seller (CRT-05) | 6.4 |
-| 5. Hand-off to `ordering`, 90/7-day purge, order-placed and account-erased handling (with Phase 5) | 6.6, 6.7, 12 |
+| 5. Hand-off to `ordering`, 90/7-day purge, order-placed and account-erased handling (with Phase 5) | 6.6, 6.7, 12 (the purge: as built, see 18) |
 | 6. P1: CRT-04 | Deferred (13) |
 
 ## 2. Domain model
@@ -283,7 +283,7 @@ Table CHECKs (Mojtaba, change 2; they replace the per-column owner and status no
 - `carts_merged_check`: `(status='MERGED') = (merged_into_cart_id IS NOT NULL) AND (merged_into_cart_id IS NULL) = (merged_at IS NULL)`.
 - `carts_last_changed_at_check`: `last_changed_at >= created_at`.
 
-Indexes: unique `(market_id, account_id)` where `account_id IS NOT NULL`; unique `(market_id, guest_token_hash)` where not null (the per-request guest lookup); `(market_id, owner_kind, last_changed_at)` for the purge, in that order (Mojtaba, M-1: both purge predicates are equality on Market and kind, then a range plus ORDER BY on `last_changed_at`; no split into partial indexes, no `INCLUDE`).
+Indexes: unique `(market_id, account_id)` where `account_id IS NOT NULL`; unique `(market_id, guest_token_hash)` where not null (the per-request guest lookup); `(market_id, owner_kind, last_changed_at)` for the purge, in that order (Mojtaba, M-1: both purge predicates are equality on Market and kind, then a range plus ORDER BY on `last_changed_at`; no split into partial indexes, no `INCLUDE`). (As built: no `owner_kind` column; the index is `(market_id, last_changed_at)`, see 18.)
 
 **`cart.cart_lines`**
 | Column | Notes |
@@ -304,7 +304,7 @@ Unique `(market_id, cart_id, offer_id, variant_id)`. The unique `(market_id, car
 
 **Retention and volume:** guest and `MERGED` carts are deleted 7 days after `last_changed_at` (a `MERGED` cart's merge set it); account carts 90 days after; account carts at erasure. Guest volume is bounded by the creation limit (H-1) times the line limit (Q-H1). Mojtaba's AU launch estimate (M-1): about 2,000 guest carts and about 500 account-cart changes per day, 3 lines on average; steady state under 20,000 guest carts and up to 10^5 account carts; hourly purge runs delete fewer than 100 carts each, within one batch.
 
-**Grants:** API and worker both use `mondapac_app` (platform.md 10); grants are hand-written per 10.2 (Mojtaba, change 4). `mondapac_app` holds `SELECT, INSERT, UPDATE, DELETE` on both tables (line removal), which also covers the purge and the erasure handler in the worker, so Ali's change 8 (worker grants) is satisfied by the shared role; no separate worker grant. **Migrations:** reversible with `down.sql`; Phase 4 shares the one-open-migration-PR rule with `inventory` and `pricing` (pricing-data 8.1), announced on the board.
+**Grants:** API and worker both use `mondapac_app` (platform.md 10); grants are hand-written per 10.2 (Mojtaba, change 4). `mondapac_app` holds `SELECT, INSERT, UPDATE, DELETE` on both tables (line removal), which also covers the purge and the erasure handler in the worker, so Ali's change 8 (worker grants) is satisfied by the shared role; no separate worker grant. **Migrations:** reversible with `down.sql`; Phase 4 shares the one-open-migration-PR rule with `inventory` and `pricing` (pricing-data 8.1), announced on the board. (As built: `UPDATE` on `cart.carts` stays column-level, `DELETE` is added for the purge, and `cart.rate_counters` has `UPDATE (count, window_started_at)` only, see 18.)
 
 ## 12. Jobs
 `cart.purge-inactive`, every hour (worker, `mondapac_app`, per hosted Market, system actor, PE 7). Batches of 200 carts (at most 10,000 lines under Q-H1's 50-line limit): select the ids ordered by `last_changed_at` with `take: 200`, then `deleteMany` with the id list AND the expiry condition repeated in `where`; one unit per batch; deletes carts (lines by cascade) whose `last_changed_at + retention ≤ now` for their kind. `order_clearances` rows are pruned by `(market_id, cleared_at)` after the clearance retention (open, 11). Correctness never depends on it (3.1).

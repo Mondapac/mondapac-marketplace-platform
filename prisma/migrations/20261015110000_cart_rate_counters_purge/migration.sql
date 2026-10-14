@@ -27,6 +27,7 @@ CREATE INDEX "rate_counters_market_id_window_started_at_idx" ON "cart"."rate_cou
 -- The purge job (cart design 12): carts by the age of their last change.
 CREATE INDEX "carts_market_id_last_changed_at_idx" ON "cart"."carts"("market_id", "last_changed_at");
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "cart"."rate_counters" TO "mondapac_app";
+-- UPDATE only on the two columns a count changes: the key and the Market never move.
+GRANT SELECT, INSERT, UPDATE ("count", "window_started_at"), DELETE ON TABLE "cart"."rate_counters" TO "mondapac_app";
 -- DELETE is for the purge job only; the lines go by the cascade, which needs no grant on the child.
 GRANT DELETE ON TABLE "cart"."carts" TO "mondapac_app";

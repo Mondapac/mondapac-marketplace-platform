@@ -295,8 +295,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['added_at', 'price_at_add_amount', 'price_at_add_currency', 'quantity'],
     },
     'cart.rate_counters': {
-      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
-      columnUpdate: [],
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['count', 'window_started_at'],
     },
     // Ordering (Phase 5 package 1): no row is ever deleted. Seller orders and lines are written
     // once; an order's state, payment state, Stripe ids, times and version change.

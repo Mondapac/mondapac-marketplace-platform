@@ -641,6 +641,23 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       expect([...counters.rows.keys()]).toEqual(['AU|guest.write.cart.15min|bb']);
     });
 
+    it('does not report success when the counter prune or a batch fails', async () => {
+      carts.rows.set('c1', { ...cart(1, guest(1), 8), id: 'c1' as Id<'Cart'> });
+      counters.failing = true;
+      expect(await purge().execute(system, {})).toEqual({
+        ok: false,
+        error: { code: 'cart.purge-failed' },
+      });
+      // The carts were still purged; only the prune failed.
+      expect(carts.rows.size).toBe(0);
+      counters.failing = false;
+      carts.purgeInactive = () => Promise.reject(new Error('db down'));
+      expect(await purge().execute(system, {})).toEqual({
+        ok: false,
+        error: { code: 'cart.purge-failed' },
+      });
+    });
+
     it('is for the system actor only', async () => {
       expect(await purge().execute(customerCtx, {})).toMatchObject({ ok: false });
       expect(await purge().execute(guestCtx, {})).toMatchObject({ ok: false });
