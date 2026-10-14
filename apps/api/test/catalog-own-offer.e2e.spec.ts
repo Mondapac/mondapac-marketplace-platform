@@ -264,6 +264,10 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
     for (const status of ['204', '400', '403', '404', '409', '422', '503']) {
       expect(remove).toHaveProperty(status);
     }
+    const handling = document.paths['/catalog/seller/offers/{offerId}/handling']?.put?.responses;
+    for (const status of ['200', '400', '403', '404', '409', '429', '503']) {
+      expect(handling).toHaveProperty(status);
+    }
     const edit = document.paths['/catalog/seller/offers/{offerId}']?.put?.responses;
     for (const status of ['200', '400', '403', '404', '409', '422', '429', '503']) {
       expect(edit).toHaveProperty(status);
@@ -907,6 +911,54 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       expect(
         JSON.stringify(logLines.filter((l) => l.msg === 'catalog.own-offer-edit')),
       ).not.toMatch(/SECRET-SKU|secret text/);
+    });
+
+    it('records the handling of an own draft Offer, answers the changed field and logs it', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+      const session = sessionOf(code);
+
+      const set = await put(`${url}/handling`, { handling: 'SEALED_ORIGINAL' }, session);
+
+      expect(set.status).toBe(200);
+      expect(set.body).toEqual({ changedFields: ['handling'] });
+      expect(savedEdits[0]!.state).toMatchObject({ handling: 'SEALED_ORIGINAL', version: 3 });
+      expect(
+        logLines.find((l) => l.msg === 'catalog.own-offer-set-handling' && l.outcome),
+      ).toMatchObject({ outcome: 'ok', marketId: code });
+    });
+
+    it('refuses handling without CSRF or a session, a bad body, a published Offer and a stranger’s Offer', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+      const session = sessionOf(code);
+      const path = `${url}/handling`;
+
+      expect((await put(path, { handling: 'FRESH' }, { cookie: session.cookie })).status).toBe(403);
+      expect((await put(path, { handling: 'FRESH' }, {})).status).toBe(401);
+      for (const body of [{}, { handling: 'nope' }, { handling: 'FRESH', attestation: true }]) {
+        expect((await put(path, body, session)).status).toBe(400);
+      }
+      offer = Offer.restore(
+        offerState({ status: 'published', listed: true, firstPublishedAt: START }),
+      );
+      expect((await put(path, { handling: 'FRESH' }, session)).body).toEqual({
+        statusCode: 409,
+        code: 'offer.not-editable',
+      });
+      offer = Offer.restore(offerState({ sellerId: id<'Seller'>(0xb999) }));
+      expect((await put(path, { handling: 'FRESH' }, session)).body).toEqual({
+        statusCode: 404,
+        code: 'offer.not-found',
+      });
+      const wrongOrigin = await http()
+        .put(path)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session })
+        .send({ handling: 'FRESH' });
+      expect(wrongOrigin.status).toBe(403);
+      expect(savedEdits).toHaveLength(0);
     });
   });
 });
