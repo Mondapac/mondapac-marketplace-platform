@@ -167,6 +167,7 @@ describe.each([
         unitOfWork,
         sellingFacts: store,
       }),
+      reviewerBusinessDetails: undefined as never,
     });
   });
 

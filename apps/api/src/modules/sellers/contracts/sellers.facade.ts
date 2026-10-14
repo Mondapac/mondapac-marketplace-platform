@@ -14,6 +14,29 @@ export interface SellersValidationFailed {
   readonly fields: readonly { readonly path: string; readonly code: string }[];
 }
 
+/**
+ * What `reviewerBusinessDetails` returns (sellers design 7.1): the approved revision's legal name,
+ * trading name and addresses, in clear. Personal data: the caller shows it to the reviewer and
+ * never logs, stores or forwards it.
+ */
+export interface ReviewerBusinessDetails {
+  readonly sellerId: Id<'Seller'>;
+  readonly revisionId: Id<'BusinessFileRevision'>;
+  /** The business (legal) name. */
+  readonly businessName: string;
+  /** The store (trading) name. */
+  readonly storeName: string;
+  /** The address where the shop operates. */
+  readonly operatingAddress: Readonly<Record<string, string>>;
+  /** The registered address when the seller captured one that differs, else null. */
+  readonly registeredAddress: Readonly<Record<string, string>> | null;
+}
+
+/** The seller is unknown here, or has no approved revision yet. Both answer alike. */
+export interface SellerDetailsNotFound {
+  readonly code: 'seller.details-not-found';
+}
+
 /** The read failed. There is no partial answer and nothing is cached; callers fail closed. */
 export interface SellersUnavailable {
   readonly code: 'sellers.unavailable';
@@ -70,6 +93,25 @@ export interface SellersFacade {
     sellerId: Id<'Seller'>,
   ): Promise<
     Result<AllowedProductTypesOf, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  >;
+
+  /**
+   * `reviewerBusinessDetails` (sellers design 7.1; board 13 item 3): legal name, trading name and
+   * the operating and registered addresses of the seller's **approved** revision, for a
+   * certification reviewer. Rule `permissions [sellers.business-details.view]` (Hassan M4): a
+   * caller without the key gets `access.denied`. Personal data: one `sellers.business-details.viewed`
+   * audit row is written per read in the same unit, and a refused row means nothing is returned.
+   * An unknown id, another Market's seller and a seller with no approved revision are
+   * `seller.details-not-found`, byte-identical. Not exposed over HTTP.
+   */
+  reviewerBusinessDetails(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<
+    Result<
+      ReviewerBusinessDetails,
+      AccessDenied | SellersValidationFailed | SellerDetailsNotFound | SellersUnavailable
+    >
   >;
 }
 
