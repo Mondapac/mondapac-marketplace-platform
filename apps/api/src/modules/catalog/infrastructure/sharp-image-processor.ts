@@ -17,12 +17,42 @@ const SIZES: readonly { readonly size: RenditionSize; readonly longestSide: numb
 ];
 
 const MAX_SIDE = 12000;
-const MAX_PIXELS = 40_000_000;
+const MAX_PIXELS = 24_000_000;
+/** Decodes that may run at once in this process (Hassan M1). */
+const MAX_CONCURRENT = 2;
 const MIN_SIDE = 200;
 const ALLOWED = new Set(['jpeg', 'png', 'webp']);
 const JPEG_QUALITY = 82;
 
 type Refusal = { readonly code: ImageRefusalCode };
+
+sharp.concurrency(1);
+sharp.cache(false);
+
+/** JPEG, PNG or WebP signature: other formats never reach the decoder (Hassan L1). */
+function hasAllowedSignature(bytes: Buffer): boolean {
+  const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const png = bytes
+    .subarray(0, 8)
+    .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const webp =
+    bytes.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    bytes.subarray(8, 12).toString('latin1') === 'WEBP';
+  return jpeg || png || webp;
+}
+
+let running = 0;
+const waiting: (() => void)[] = [];
+async function withSlot<T>(work: () => Promise<T>): Promise<T> {
+  if (running >= MAX_CONCURRENT) await new Promise<void>((resolve) => waiting.push(resolve));
+  running += 1;
+  try {
+    return await work();
+  } finally {
+    running -= 1;
+    waiting.shift()?.();
+  }
+}
 
 /**
  * The only file that imports the image library. The type comes from the decoded content (the
@@ -32,9 +62,14 @@ type Refusal = { readonly code: ImageRefusalCode };
  * and embedded thumbnails of the upload are gone. Transparent pixels are flattened onto white.
  */
 export class SharpImageProcessor implements ImageProcessor {
-  async process(bytes: Buffer): Promise<Result<readonly ProcessedRendition[], Refusal>> {
-    if (bytes.length === 0) return err({ code: 'file.unreadable' });
-    if (bytes.length > MAX_UPLOAD_BYTES) return err({ code: 'file.too-large' });
+  process(bytes: Buffer): Promise<Result<readonly ProcessedRendition[], Refusal>> {
+    if (bytes.length === 0) return Promise.resolve(err({ code: 'file.unreadable' }));
+    if (bytes.length > MAX_UPLOAD_BYTES) return Promise.resolve(err({ code: 'file.too-large' }));
+    if (!hasAllowedSignature(bytes)) return Promise.resolve(err({ code: 'file.unsupported-type' }));
+    return withSlot(() => this.#process(bytes));
+  }
+
+  async #process(bytes: Buffer): Promise<Result<readonly ProcessedRendition[], Refusal>> {
     try {
       const open = () =>
         sharp(bytes, { limitInputPixels: MAX_PIXELS, failOn: 'error', animated: false });
@@ -52,9 +87,11 @@ export class SharpImageProcessor implements ImageProcessor {
       if (Math.max(width, height) < MIN_SIDE) return err({ code: 'file.too-small' });
 
       const renditions: ProcessedRendition[] = [];
-      for (const { size, longestSide } of SIZES) {
-        const { data, info } = await open()
-          .rotate()
+      // The upload is decoded once, for the largest rendition; the smaller ones come from it.
+      let source: Buffer | null = null;
+      for (const { size, longestSide } of [...SIZES].reverse()) {
+        const pipeline: sharp.Sharp = source === null ? open().rotate() : sharp(source);
+        const { data, info } = await pipeline
           .resize({
             width: longestSide,
             height: longestSide,
@@ -64,7 +101,8 @@ export class SharpImageProcessor implements ImageProcessor {
           .flatten({ background: '#ffffff' })
           .jpeg({ quality: JPEG_QUALITY })
           .toBuffer({ resolveWithObject: true });
-        renditions.push({ size, bytes: data, width: info.width, height: info.height });
+        renditions.unshift({ size, bytes: data, width: info.width, height: info.height });
+        source = data;
       }
       return ok(renditions);
     } catch (error) {
