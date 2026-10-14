@@ -140,3 +140,19 @@ describe('payout account pages', () => {
     expect(list).toContain('min-h-12');
   });
 });
+
+describe('admin customer page', () => {
+  it('uses a fluid layout: no fixed pixel widths, a form row and actions that stack on phones', () => {
+    const text = readFileSync(
+      join(__dirname, '../../admin/src/customers/customer-lookup.tsx'),
+      'utf8',
+    );
+    expect(text).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
+    expect(text).toContain('max-w-(--mp-size-form-max)');
+    expect(text).toContain('flex flex-col gap-3 sm:flex-row');
+    expect(text).toContain('flex flex-col gap-2 sm:flex-row');
+    // Long addresses wrap inside the value column instead of widening the page.
+    expect(text).toContain('wrap-anywhere');
+    expect(text).toContain('<Dialog');
+  });
+});

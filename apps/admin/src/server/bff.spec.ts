@@ -146,7 +146,7 @@ describe('relay', () => {
       ['identity', 'admin', 'accounts', 'not-a-uuid', 'disable'],
       ['identity', 'admin', 'accounts', id, 'password'],
       ['identity', 'admin', 'accounts', id, 'disable', 'extra'],
-      ['identity', 'admin', 'customers', id, 'disable'],
+      ['identity', 'admin', 'sessions', id, 'disable'],
       ['identity', 'admin', 'accounts', `${id}%2F..`, 'disable'],
       ['identity', 'admin', 'accounts', '..', 'disable'],
       ['identity', 'admin', 'accounts', id, 'disable', ''],
@@ -154,6 +154,27 @@ describe('relay', () => {
       const fetchImpl = upstreamOk();
       const response = await relay(config, post(path.join('/')), path, fetchImpl);
       expect(response.status).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+
+  it('relays the customer lookup and status commands, and only with a UUID id', async () => {
+    const id = '0190a000-0000-7000-8000-000000000001';
+    for (const path of [
+      ['identity', 'admin', 'customers', 'lookup'],
+      ['identity', 'admin', 'customers', id, 'disable'],
+      ['identity', 'admin', 'customers', id, 'enable'],
+    ]) {
+      const ok = upstreamOk();
+      expect((await relay(config, post(path.join('/')), path, ok)).status).toBe(200);
+    }
+    for (const path of [
+      ['identity', 'admin', 'customers'],
+      ['identity', 'admin', 'customers', 'not-a-uuid', 'disable'],
+      ['identity', 'admin', 'customers', id],
+    ]) {
+      const fetchImpl = upstreamOk();
+      expect((await relay(config, post(path.join('/')), path, fetchImpl)).status).toBe(404);
       expect(fetchImpl).not.toHaveBeenCalled();
     }
   });
