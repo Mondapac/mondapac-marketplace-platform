@@ -252,7 +252,7 @@ export const PRODUCTS = [
 ];
 
 // What each seller lists. `prices` and `stock` follow the product's variants in order (a Simple
-// product has one). `handling` is set in the database until catalog's set-handling package lands.
+// product has one). `handling` is recorded through the seller handling endpoint.
 const o = (product, sku, handling, prices, stock) => ({ product, sku, handling, prices, stock });
 export const OFFERS = {
   alnoor: [

@@ -484,3 +484,35 @@ describe('relay allowlist for seller decisions', () => {
     }
   });
 });
+
+describe('relay of the connected accounts list', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/payments/admin/connected-accounts${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['payments', 'admin', 'connected-accounts'];
+
+  it('forwards only the status and cursor keys of the query', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get('?status=pending&cursor=abc&limit=500&x=1'),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/payments/admin/connected-accounts?status=pending&cursor=abc',
+    );
+  });
+
+  it('forwards no query when none is given, and refuses other paths and methods', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get(''), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/payments/admin/connected-accounts');
+    const other = ['payments', 'admin', 'connected-accounts', 'x'];
+    expect((await relay(config, get(''), other, upstream)).status).toBe(404);
+    expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+  });
+});

@@ -371,14 +371,9 @@ async function ensureOffers(admin, seller, session) {
     }
     offerIds.set(entry.sku, offerId);
     if (offer.status === 'draft' || offer.status === 'changes-needed') {
-      // Catalog's set-handling package is not built yet, so a submit would fail with
-      // offer.handling-missing: the seed records the handling in the database. Remove this
-      // step when the package lands.
-      await db.query(
-        `UPDATE catalog.offers SET handling = $1, version = version + 1
-          WHERE id = $2 AND market_id = $3 AND handling IS NULL`,
-        [entry.handling, offerId, MARKET],
-      );
+      await session.ok('PUT', `/catalog/seller/offers/${offerId}/handling`, {
+        handling: entry.handling,
+      });
       await session.ok('POST', `/catalog/seller/offers/${offerId}/submit`, {});
       offer = { status: 'pending-first-publish' };
     }

@@ -34,8 +34,6 @@ The seed is idempotent: a second run changes nothing. To start over, wipe the da
   name while a Market has no published certification type, and certification has no way to create
   one yet. The script writes halal, kosher, vegan and organic with their terms by SQL (the
   migration role). It goes away when the certification package lands.
-- **Offer handling**: catalog's set-handling package is not built, so the seed records an offer's
-  handling in the database before submitting it. Remove the step with the package.
 - The AU starter categories and attributes are `config/catalog-seed/AU.json` (loaded by the
   catalog seed jobs at worker start), until slice 21.
 
