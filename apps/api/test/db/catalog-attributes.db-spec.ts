@@ -10,6 +10,11 @@ import {
   ZZ_ATTRIBUTE_DEFINITIONS,
   ZZ_ATTRIBUTE_FAMILIES,
 } from '../../src/modules/catalog/infrastructure/seed/zz.attributes.seed';
+import { CATEGORY_SEED } from '../../src/modules/catalog/application/ports/category-seed';
+import { CheckedInCategorySeed } from '../../src/modules/catalog/infrastructure/seed/checked-in-category-seed';
+import { ATTRIBUTE_SEED } from '../../src/modules/catalog/application/ports/attribute-seed';
+import { CheckedInAttributeSeed } from '../../src/modules/catalog/infrastructure/seed/checked-in-attribute-seed';
+import { ZZ_CATEGORY_TREE } from '../../src/modules/catalog/infrastructure/seed/zz.category-tree.seed';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { CLAIM_TEXT_MATCHER } from '../../src/modules/catalog/application/ports/claim-text-matcher';
 import { cleanClaimTextMatcher } from '../support/clean-claim-text-matcher.fake';
@@ -48,7 +53,16 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
           .useValue(new FixedClock(Temporal.Instant.from(T0)))
           // The seeds are checked against a vocabulary; these specs test the SQL, not the words.
           .overrideProvider(CLAIM_TEXT_MATCHER)
-          .useValue(cleanClaimTextMatcher),
+          .useValue(cleanClaimTextMatcher)
+          // Only the fixture Market's seeds: the launch Market's starter file is not this spec's subject.
+          .overrideProvider(CATEGORY_SEED)
+          .useValue(new CheckedInCategorySeed({ ZZ: ZZ_CATEGORY_TREE }))
+          .overrideProvider(ATTRIBUTE_SEED)
+          .useValue(
+            new CheckedInAttributeSeed({
+              ZZ: { definitions: ZZ_ATTRIBUTE_DEFINITIONS, families: ZZ_ATTRIBUTE_FAMILIES },
+            }),
+          ),
     }));
   });
   afterAll(async () => {
