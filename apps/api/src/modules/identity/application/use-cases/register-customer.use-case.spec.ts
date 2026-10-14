@@ -315,6 +315,7 @@ const policy: IdentityMarketPolicy = {
   secondFactorThrottle: () => null,
   sellerReapplyLimit: () => null,
   customRoleLimit: () => null,
+  sellerMemberLimit: () => null,
 };
 
 function setUp() {

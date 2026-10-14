@@ -7,6 +7,7 @@ import {
   InvitationAlreadyPendingError,
   type InvitationRepository,
   type PendingAdminInvitation,
+  type PendingStaffInvitation,
 } from '../../application/ports/invitation.repository';
 import {
   INVITATION_KINDS,
@@ -180,6 +181,51 @@ export class PrismaInvitationRepository implements InvitationRepository {
       expiresAt: toOptionalInstant(row.expiresAt),
       createdAt: toInstant(row.createdAt),
     }));
+  }
+
+  async pendingStaffInvitations(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    after: Id<'Invitation'> | null,
+    limit: number,
+  ): Promise<PendingStaffInvitation[]> {
+    // The predicate of the partial key `invitations_market_id_seller_id_email_pending_key` with
+    // the kind, and the seller index (`market_id`, `seller_id`). A summary: never `token_hash`.
+    const rows = await this.prisma.tx(market).identityInvitation.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        state: 'pending',
+        kind: 'staff',
+        ...(after === null ? {} : { id: { gt: after } }),
+      },
+      select: {
+        id: true,
+        email: true,
+        roleId: true,
+        invitedByAccountId: true,
+        expiresAt: true,
+        createdAt: true,
+      },
+      orderBy: { id: 'asc' },
+      take: limit,
+    });
+    return rows.map((row) => ({
+      id: row.id as Id<'Invitation'>,
+      state: 'pending',
+      // `invitations_email_pending_check`: a pending invitation holds its address.
+      email: row.email ?? '',
+      roleId: row.roleId as Id<'Role'>,
+      invitedByAccountId: row.invitedByAccountId as Id<'Account'> | null,
+      expiresAt: toOptionalInstant(row.expiresAt),
+      createdAt: toInstant(row.createdAt),
+    }));
+  }
+
+  async countPendingStaff(market: MarketContext, sellerId: Id<'Seller'>): Promise<number> {
+    return this.prisma.tx(market).identityInvitation.count({
+      where: { marketId: market.marketId, sellerId, state: 'pending', kind: 'staff' },
+    });
   }
 
   async add(market: MarketContext, invitation: Invitation): Promise<void> {

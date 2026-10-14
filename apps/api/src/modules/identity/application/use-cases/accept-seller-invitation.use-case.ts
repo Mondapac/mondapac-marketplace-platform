@@ -11,13 +11,19 @@ import type {
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import {
+  UseCase,
+  type AccessDeclaration,
+  type SealedPermissionCatalogue,
+  type UseCaseGate,
+} from '../../../../platform/authz';
 import { Account } from '../../domain/account';
 import {
   accountRoleAssigned,
   InvitationAcceptedAudit,
   SellerMemberAdded,
 } from '../../domain/audit';
+import { parseDisplayName } from '../../domain/display-name';
 import type { Invitation } from '../../domain/invitation';
 import {
   checkNewPassword,
@@ -43,13 +49,20 @@ import type {
 } from '../ports/seller-team.repository';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
+import { roleIsInActorsReach } from '../roles/granting';
 import { sellerInviterStillStands } from '../sellers/seller-owner-invitation';
+import { staffInviterMayStillGrant } from '../sellers/seller-team';
 import type { SignInClient } from '../sign-in/sign-in-flow';
 import type { FieldProblem } from './register-customer.use-case';
 
 export interface AcceptSellerInvitationInput {
   readonly token: string;
   readonly password: string;
+  /**
+   * The name a Staff invitee gives (identity design 3.4, HF13: the sign-up rules of 2.1). A Seller
+   * Owner keeps the name the admin gave at issue, so it is ignored for that kind.
+   */
+  readonly displayName?: string;
   readonly client: SignInClient;
 }
 
@@ -76,6 +89,7 @@ export interface AcceptSellerInvitationDependencies {
   readonly sellerAccess: SellerAccessRepository;
   readonly grants: RoleGrantReader;
   readonly effectiveKeys: EffectiveKeyResolver;
+  readonly permissions: Pick<SealedPermissionCatalogue, 'get'>;
   readonly throttles: ThrottleRepository;
   readonly keys: ThrottleKeys;
   readonly invitationTokens: OpaqueTokens;
@@ -91,22 +105,39 @@ export interface AcceptSellerInvitationDependencies {
 const REJECTED = Object.freeze({ code: 'invitation.rejected' as const });
 const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
 
-/** Whether an invitation can be accepted as a seller owner's at `now`. */
-function acceptableOwnerInvitation(
+/**
+ * Whether an invitation can be accepted at `now` on this route: a Seller Owner's (it holds the
+ * name the admin gave) or a Staff member's (the invitee gives the name), both for a seller.
+ */
+function acceptableInvitation(
   invitation: Invitation | null,
   now: Temporal.Instant,
 ): invitation is Invitation {
+  if (
+    invitation === null ||
+    !invitation.usableAt(now) ||
+    invitation.state.email === null ||
+    invitation.state.sellerId === null
+  ) {
+    return false;
+  }
   return (
-    invitation !== null &&
-    invitation.usableAt(now) &&
-    invitation.state.kind === 'seller-owner' &&
-    invitation.state.email !== null &&
-    invitation.state.displayName !== null &&
-    invitation.state.sellerId !== null
+    invitation.state.kind === 'staff' ||
+    (invitation.state.kind === 'seller-owner' && invitation.state.displayName !== null)
   );
 }
 
 /**
+ * Slice 11 extends this use case to the `staff` kind on the same route (the page of the E10 mail
+ * is the seller panel's acceptance page, like E9's): the invitee also gives a display name (HF13;
+ * `validation.failed` on `displayName`), and the closing unit re-checks that the seller is still
+ * `approved`, the role is still one of this seller's, and the inviter is still an active,
+ * verified Seller Owner holding `identity.team-member.invite` who could still grant the role
+ * (`staffInviterMayStillGrant`, Hassan 14.2). The membership is a new one (`SellerMembership.join`)
+ * and the role is a grant by the inviter (`RoleAssignment.grant`), audited as not founding. An
+ * address that already has a seller-side account is refused ("Sign in and join", 6.7, is not
+ * built). Everything below describes the Seller Owner's acceptance.
+ *
  * The invited Seller Owner accepts (identity design 3.4 `pending` → `accepted`; SEL-06, AC 29,
  * AC 31; `ux.md` F8; slice 9). Rule `anonymous`: the invitation's token binds the request. The
  * invitee chooses a password; the name is the one the admin gave (`ux.md` D6) and the address is
@@ -190,8 +221,10 @@ export class AcceptSellerInvitation extends UseCase<
       | {
           readonly kind: 'reserved';
           readonly invitationId: Id<'Invitation'>;
+          readonly invitationKind: 'seller-owner' | 'staff';
           readonly email: string;
-          readonly displayName: string;
+          /** The name the admin gave a Seller Owner; null for Staff, who give theirs. */
+          readonly displayName: string | null;
         };
     let reserved: Reserved;
     try {
@@ -209,15 +242,16 @@ export class AcceptSellerInvitation extends UseCase<
           tokenHash === null
             ? null
             : await this.deps.invitations.findByTokenHash(market, tokenHash);
-        if (!acceptableOwnerInvitation(invitation, now)) {
+        if (!acceptableInvitation(invitation, now)) {
           return ok({ kind: 'refused', refusal: REJECTED });
         }
         await throttles.release(market, [reservation!]);
         return ok({
           kind: 'reserved',
           invitationId: invitation.state.id,
+          invitationKind: invitation.state.kind === 'staff' ? 'staff' : 'seller-owner',
           email: invitation.state.email!.normalized,
-          displayName: invitation.state.displayName!,
+          displayName: invitation.state.displayName,
         });
       });
       if (!run.ok) return err(UNAVAILABLE);
@@ -227,13 +261,28 @@ export class AcceptSellerInvitation extends UseCase<
       return err(UNAVAILABLE);
     }
     if (reserved.kind === 'refused') return err(reserved.refusal);
-    const { invitationId } = reserved;
+    const { invitationId, invitationKind } = reserved;
+
+    // A Staff invitee gives a name under the sign-up rules (HF13); a Seller Owner keeps the one
+    // the admin gave. Checked only for a usable Staff invitation, so it tells nothing of a token.
+    let displayName = reserved.displayName;
+    if (invitationKind === 'staff') {
+      const name = parseDisplayName(input.displayName);
+      if (!name.ok) {
+        return err({
+          code: 'validation.failed',
+          fields: [{ path: 'displayName', code: name.error.rule }],
+        });
+      }
+      displayName = name.value;
+    }
+    if (displayName === null) return err(REJECTED);
 
     // 2. Outside any unit: the password's rules, then its hash.
     const checked = checkNewPassword(
       input.password,
       policy.passwordRules(market),
-      { email: reserved.email, displayName: reserved.displayName },
+      { email: reserved.email, displayName },
       (comparable) => this.deps.commonPasswords.isCommon(comparable),
     );
     if (!checked.ok) return err(checked.error);
@@ -246,22 +295,49 @@ export class AcceptSellerInvitation extends UseCase<
       async (): Promise<Result<Id<'Account'> | null, never>> => {
         const now = this.deps.clock.now();
         const invitation = await this.deps.invitations.findById(market, invitationId);
-        if (!acceptableOwnerInvitation(invitation, now)) return ok(null);
-        const sellerId = invitation.state.sellerId!;
-        const role = await this.deps.roles.findById(market, invitation.state.roleId);
-        if (role === null || role.state.scope !== 'seller' || !role.isSystem) return ok(null);
-        const access = await this.deps.sellerAccess.findById(market, sellerId);
-        if (access === null || (await this.deps.memberships.sellerHasMembers(market, sellerId))) {
+        if (!acceptableInvitation(invitation, now) || invitation.state.kind !== invitationKind) {
           return ok(null);
         }
-        if (
-          !(await sellerInviterStillStands(this.deps, market, invitation.state.invitedByAccountId))
-        ) {
-          this.log('identity.accept-seller-invitation.inviter-refused', context, { invitationId });
+        const sellerId = invitation.state.sellerId!;
+        const inviterId = invitation.state.invitedByAccountId;
+        const staff = invitationKind === 'staff';
+        const role = await this.deps.roles.findById(market, invitation.state.roleId);
+        if (role === null || role.state.scope !== 'seller' || role.isSystem === staff) {
           return ok(null);
+        }
+        const access = await this.deps.sellerAccess.findById(market, sellerId);
+        if (access === null) return ok(null);
+        if (staff) {
+          // 3.4: the seller is still approved, the role is still one of this seller's (R12, R9)
+          // and the inviter is still an active, verified Seller Owner who could still grant it.
+          if (inviterId === null || !access.isApproved) return ok(null);
+          const reach = { accountId: inviterId, population: 'seller' as const, sellerId };
+          if (!roleIsInActorsReach(role, reach)) return ok(null);
+          const standing = await staffInviterMayStillGrant(
+            this.deps,
+            market,
+            sellerId,
+            inviterId,
+            role,
+          );
+          if (!standing.ok) {
+            this.log('identity.accept-seller-invitation.inviter-refused', context, {
+              invitationId,
+              reason: standing.error,
+            });
+            return ok(null);
+          }
+        } else {
+          if (await this.deps.memberships.sellerHasMembers(market, sellerId)) return ok(null);
+          if (!(await sellerInviterStillStands(this.deps, market, inviterId))) {
+            this.log('identity.accept-seller-invitation.inviter-refused', context, {
+              invitationId,
+            });
+            return ok(null);
+          }
         }
         // 6.7: an address that already has a seller-side account is refused here, before the
-        // insert, so the unit never meets the unique key ("sign in and join" is not in slice 9).
+        // insert, so the unit never meets the unique key ("sign in and join" is not built yet).
         const email = invitation.state.email!;
         if ((await this.deps.accounts.findByEmail(market, 'seller', email.normalized)) !== null) {
           return ok(null);
@@ -271,7 +347,7 @@ export class AcceptSellerInvitation extends UseCase<
           marketId: market.marketId,
           population: 'seller',
           email,
-          displayName: invitation.state.displayName!,
+          displayName,
           passwordHash: hashed.value,
           now,
         });
@@ -280,7 +356,7 @@ export class AcceptSellerInvitation extends UseCase<
         const accountId = account.state.id;
         await this.deps.memberships.add(
           market,
-          SellerMembership.found({
+          SellerMembership.join({
             id: this.deps.ids.next<'SellerMembership'>(),
             marketId: market.marketId,
             accountId,
@@ -288,14 +364,28 @@ export class AcceptSellerInvitation extends UseCase<
             now,
           }),
         );
+        const holder = {
+          id: accountId,
+          marketId: market.marketId,
+          population: 'seller' as const,
+          sellerId,
+        };
         await this.deps.assignments.add(
           market,
-          RoleAssignment.found({
-            id: this.deps.ids.next<'RoleAssignment'>(),
-            account: { id: accountId, marketId: market.marketId, population: 'seller', sellerId },
-            role,
-            now,
-          }),
+          staff
+            ? RoleAssignment.grant({
+                id: this.deps.ids.next<'RoleAssignment'>(),
+                account: holder,
+                role,
+                assignedBy: inviterId!,
+                now,
+              })
+            : RoleAssignment.found({
+                id: this.deps.ids.next<'RoleAssignment'>(),
+                account: holder,
+                role,
+                now,
+              }),
         );
         if (!invitation.accept(accountId, now).ok) {
           throw new Error('AcceptSellerInvitation: an acceptable invitation refused acceptance');
@@ -307,13 +397,13 @@ export class AcceptSellerInvitation extends UseCase<
         await this.deps.audit.record(
           context,
           InvitationAcceptedAudit.entry(invitationId, {
-            after: { kind: 'seller-owner', roleId, ...bound },
+            after: { kind: invitationKind, roleId, ...bound },
           }),
         );
         await this.deps.audit.record(
           context,
           SellerMemberAdded.entry(sellerId, {
-            after: { sellerId, roleId, founding: true, ...bound },
+            after: { sellerId, roleId, founding: !staff, ...bound },
           }),
         );
         await this.deps.audit.record(
@@ -323,7 +413,7 @@ export class AcceptSellerInvitation extends UseCase<
             sellerId,
             roleId,
             scope: 'seller',
-            founding: true,
+            founding: !staff,
           }),
         );
         return ok(accountId);

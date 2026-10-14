@@ -150,6 +150,7 @@ function setUp(
       assignments: fakes.assignmentRepository,
       memberships: fakes.membershipRepository,
       sellerAccess: fakes.sellerAccessRepository,
+      permissions: realPermissionRegistry(),
       invitationTokens: tokens,
       hasher: fakes.hasher,
       commonPasswords: { isCommon: () => false },
@@ -456,13 +457,10 @@ describe.each(TEST_MARKETS)(
         expect(s.units.at(-1)).toMatchObject({ isolation: 'serializable' });
       });
 
-      it.each([
-        ['an admin invitation', 'admin' as const],
-        ['a staff invitation', 'staff' as const],
-      ])('refuses the token of %s at the seller route', async (_name, kind) => {
+      it('refuses the token of an admin invitation at the seller route', async () => {
         const s = setUp();
         await seeded(s);
-        const token = seededInvitation(s, kind, code);
+        const token = seededInvitation(s, 'admin', code);
 
         await expect(accept(s, token)).resolves.toEqual(REJECTED);
         expect(ownerAccounts(s)).toEqual([]);

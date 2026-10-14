@@ -28,6 +28,12 @@ export interface SellerMembershipRepository {
 
   add(market: MarketContext, membership: SellerMembership): Promise<void>;
 
+  /**
+   * Stores a membership that left the team (slice 11) if its version is still the one read;
+   * otherwise throws `StaleAggregateError`.
+   */
+  save(market: MarketContext, membership: SellerMembership): Promise<void>;
+
   /** Deletes a membership with the version read (the unverified purge); else stale. */
   remove(market: MarketContext, membership: SellerMembership): Promise<void>;
 }
@@ -143,6 +149,18 @@ export interface RoleAssignmentRepository {
    * go through memberships (data design 3.9).
    */
   activeHoldersOf(market: MarketContext, roleId: Id<'Role'>): Promise<Id<'Account'>[]>;
+
+  /**
+   * The holders of this role in one seller that can sign in: accounts with an active membership
+   * of `sellerId` and an assignment of `roleId`, active and with a verified email (identity design
+   * 5.5, `LastHolderPolicy` for the Seller Owner role; slice 11). Read in the caller's
+   * serializable unit (HF8). A seller has a handful of owners, so it is a small scan.
+   */
+  activeHoldersOfInSeller(
+    market: MarketContext,
+    roleId: Id<'Role'>,
+    sellerId: Id<'Seller'>,
+  ): Promise<Id<'Account'>[]>;
 
   /**
    * Stores a changed assignment (a new role, slice 8a-2) if its version is still the one read;

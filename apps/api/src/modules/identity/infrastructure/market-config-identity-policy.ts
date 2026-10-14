@@ -119,6 +119,11 @@ export class MarketConfigIdentityPolicy implements IdentityMarketPolicy, LinkTar
     return this.markets.get(market.marketId).identity.customRoleLimits?.[scope] ?? null;
   }
 
+  /** Slice 11: `identity.sellerMemberLimit` (25 for AU); null when none, so inviting fails closed. */
+  sellerMemberLimit(market: MarketContext): number | null {
+    return this.markets.get(market.marketId).identity.sellerMemberLimit ?? null;
+  }
+
   /** `LinkTargets` (identity design 9): the page per population and page, or null. */
   target<P extends Population>(
     market: MarketContext,

@@ -120,6 +120,8 @@ export type SessionRevokedReason =
   | 'second-factor-reset'
   /** An admin disabled the account (3.1; slice 8b). */
   | 'account-disabled'
+  /** The member was removed from the seller's team (R4; slice 11). */
+  | 'membership-removed'
   /** Every session of the seller's accounts: the seller was rejected or suspended (3.3; slice 9). */
   | 'seller-rejected'
   | 'seller-suspended';
