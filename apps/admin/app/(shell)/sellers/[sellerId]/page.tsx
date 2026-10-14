@@ -11,6 +11,24 @@ import {
   type ReviewRead,
 } from '../../../../src/sellers/review-types.ts';
 import { ReviewView } from '../../../../src/sellers/review-view.tsx';
+import { FlatFeeCard } from '../../../../src/shipping/flat-fee-card.tsx';
+import {
+  FEE_MANAGE_PERMISSION,
+  FEE_VIEW_PERMISSION,
+  type FlatFee,
+} from '../../../../src/shipping/types.ts';
+
+/** The seller's flat delivery fee, or null when the role cannot see it or it cannot be read. */
+async function loadFee(sellerId: string, canView: boolean): Promise<FlatFee | null> {
+  if (!canView) return null;
+  const read = await serverGet<{ sellerId: string; amount: string; currency: string }>(
+    `shipping/admin/sellers/${sellerId}/flat-fee`,
+  );
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  if (read.kind === 'ok') return read.body;
+  const currency = read.kind === 'not-found' ? read.details?.currency : undefined;
+  return typeof currency === 'string' ? { sellerId, amount: null, currency } : null;
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -68,7 +86,19 @@ export default async function SellerReviewPage({
       canCheck: permissionKeys.includes(CHECK_PERMISSION),
       csrfToken,
     };
-    return shell(<ReviewView review={result.body} decide={decide} />);
+    const fee = await loadFee(sellerId, permissionKeys.includes(FEE_VIEW_PERMISSION));
+    return shell(
+      <div className="flex flex-col gap-6">
+        <ReviewView review={result.body} decide={decide} />
+        {fee === null ? null : (
+          <FlatFeeCard
+            initial={fee}
+            canManage={permissionKeys.includes(FEE_MANAGE_PERMISSION)}
+            csrfToken={csrfToken}
+          />
+        )}
+      </div>,
+    );
   }
   if (result.kind === 'forbidden') return message('no-access');
   if (result.kind === 'not-found') return message('not-found');

@@ -7,7 +7,7 @@ import type {
   ListPageQuery,
   ListedSeller,
 } from '../../src/modules/sellers/application/ports/seller-list.repository';
-import type { ListCursor, ListTab } from '../../src/modules/sellers/domain/seller-list';
+import type { FileTab as ListTab, ListCursor } from '../../src/modules/sellers/domain/seller-list';
 import { SellerFile } from '../../src/modules/sellers/domain/seller-file';
 import { PrismaSellerFileRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-file.repository';
 import { PrismaSellerListRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-list.repository';

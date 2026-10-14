@@ -39,6 +39,39 @@ export interface SellerAccountSummary {
     /** The owner's sign-in address, as typed. */
     readonly email: string;
   } | null;
+  /**
+   * Rejected with no re-application left ("Not approved" rather than "Changes needed"); false in
+   * every other state; null while the Market configures no re-apply limit (never true then).
+   */
+  readonly reapplyLimitReached: boolean | null;
+}
+
+/**
+ * The caller's own access, for `sellers`' status of the seller's own file (sellers design 3.3,
+ * slice 7b): the state and whether a rejected seller has used up its re-applications. Never a
+ * reason, never an instant. Read for the seller actor of the call only.
+ */
+export interface SellerOwnAccess {
+  readonly sellerId: Id<'Seller'>;
+  readonly state: SellerAccessState;
+  /** As {@link SellerAccountSummary.reapplyLimitReached}. */
+  readonly reapplyLimitReached: boolean | null;
+}
+
+/**
+ * One page of the admin part of R-6 (sellers design 7.8; slice 6b): registered seller ids in one
+ * state, newest first, and the Market's registered sellers per state. Ids and counts only.
+ */
+export interface SellerIdsByStatePage {
+  readonly sellerIds: readonly Id<'Seller'>[];
+  /** The `before` of the next page, or null after the last. */
+  readonly next: Id<'Seller'> | null;
+  readonly counts: Readonly<Record<SellerAccessState, number>>;
+  /**
+   * Of the rejected sellers, those with no re-application left (the "Not approved" tab, slice
+   * 7b); 0 while the Market configures no re-apply limit.
+   */
+  readonly rejectedLimitReached: number;
 }
 
 /** One page of registered seller ids (sellers design R-6, id paging for the backfill). */
@@ -196,6 +229,36 @@ export interface SellerAccessContract {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<readonly SellerAccountSummary[], AccessDenied | FacadeValidationFailed>>;
+
+  /**
+   * The admin part of R-6 (sellers design 7.8; slice 6b): up to `limit` (1 to 100) ids of the
+   * Market's registered sellers in `state`, newest first, below `before`, and the count per state
+   * of its registered sellers; `state` null with `limit` 0 answers the counts only. Rule
+   * `permissions [identity.seller-access.view]`, checked by the gate and again in `identity`'s
+   * read; the system actor, a seller actor and an acting-as session are refused. Ids and counts
+   * only: `sellers` decorates them from its own rows and `sellerAccountSummaries`.
+   */
+  sellerIdsByState(
+    context: CallContext,
+    query: {
+      readonly state: SellerAccessState | null;
+      readonly before: Id<'Seller'> | null;
+      readonly limit: number;
+      /**
+       * Only with `state` `rejected` (else `validation.failed`): true pages the sellers with no
+       * re-application left, false the others; absent or null both. While the Market
+       * configures no limit, true answers none and false all.
+       */
+      readonly reapplyLimitReached?: boolean | null;
+    },
+  ): Promise<Result<SellerIdsByStatePage, AccessDenied | FacadeValidationFailed>>;
+
+  /**
+   * The calling seller's own state and re-apply standing (sellers slice 7b): a thin call of
+   * `identity.describe-seller-status` (rule `own-resources`, allowed while not approved) with the
+   * Seller Owner's or Staff member's own context unchanged; only those two fields are passed on.
+   */
+  ownAccessOf(context: CallContext): Promise<Result<SellerOwnAccess, AccessDenied>>;
 
   /**
    * Registered sellers by id, with their origin, for the system actor only (sellers design R-6,

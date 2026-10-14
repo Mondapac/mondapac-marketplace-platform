@@ -1,0 +1,21 @@
+// The shipping module's tables (Phase 5 package 4, SHP-01, simplified for speed mode). Every model
+// is named Shipping<Name> and mapped to its table with @@map. The CHECKs and the grants are
+// hand-written in the migration. Money is minor units (BigInt) plus a currency.
+
+/// The flat shipping fee of a seller: one fee per seller order, set by an admin. A seller with no
+/// row cannot be bought from. Zero is a valid fee (free shipping). Rows are never deleted.
+model ShippingSellerFlatFee {
+  marketId  String   @map("market_id") @db.VarChar(8)
+  sellerId  String   @map("seller_id") @db.Uuid
+  tenantId  String   @map("tenant_id")
+  /// Minor units of `currency`, 0 to 100000 (CHECK).
+  amount    BigInt
+  currency  String   @db.VarChar(3)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  /// The admin account that last set it (a plain id, no foreign key).
+  updatedBy String   @map("updated_by") @db.Uuid
+
+  @@id([marketId, sellerId])
+  @@map("seller_flat_fees")
+  @@schema("shipping")
+}

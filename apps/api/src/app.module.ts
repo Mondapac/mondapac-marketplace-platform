@@ -18,6 +18,7 @@ import { ConflictFilter } from './platform/http/conflict-filter';
 import { IdsModule } from './platform/ids/ids.module';
 import { LoggingModule } from './platform/logging/logging.module';
 import { MailModule } from './platform/mail/mail.module';
+import { StorageModule } from './platform/storage/storage.module';
 import { MarketConfigModule } from './platform/market-config/market-config.module';
 import { MarketContextGuard } from './platform/market-context/market-context.guard';
 import { MarketContextModule } from './platform/market-context/market-context.module';
@@ -74,6 +75,7 @@ export class AppModule {
         AuditModule,
         ExtensionsModule,
         MailModule,
+        StorageModule,
         SchedulerModule,
         WorkerModule,
         HealthModule,

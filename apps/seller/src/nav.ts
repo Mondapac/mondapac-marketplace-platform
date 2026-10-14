@@ -18,11 +18,19 @@ export const sellerNav: NavConfig = {
       anyOf: ['catalog.own-product.view'],
     },
     {
+      id: 's_orders',
+      labelKey: 'nav.orders',
+      href: '/orders',
+      anyOf: ['ordering.seller-order.view'],
+    },
+    {
       id: 's_stock',
       labelKey: 'nav.stock',
       href: '/stock-locations',
       anyOf: ['inventory.stock.view'],
     },
+    // Approved sellers only (SellerShell hides it before).
+    { id: 's_security', labelKey: 'nav.security', href: '/account/security' },
     // Shown only while the seller is not approved (SellerShell hides it after).
     { id: 's_setup', labelKey: 'nav.setup', href: '/account-setup' },
   ],

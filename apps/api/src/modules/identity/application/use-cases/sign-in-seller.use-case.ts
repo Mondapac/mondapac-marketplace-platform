@@ -2,6 +2,11 @@ import { err } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { parseEmailAddress } from '../../domain/email-address';
+import type { OpaqueTokens } from '../ports/second-factor-tokens';
+import type { SecondFactorRepository } from '../ports/second-factor.repository';
+import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
+import { secondFactorStepPolicy } from '../second-factor/admin-policy';
+import { SellerSecondStep, type SellerSecondStepOutcome } from '../sign-in/seller-second-step';
 import {
   SignInFlow,
   type SellerSignInDependencies,
@@ -13,7 +18,7 @@ import {
 import type { FieldProblem } from './register-customer.use-case';
 import { MAX_PASSWORD_BYTES } from './sign-in-customer.use-case';
 
-export type { SignInClient } from '../sign-in/sign-in-flow';
+export type { SignedIn, SignInClient } from '../sign-in/sign-in-flow';
 
 export interface SignInSellerInput {
   readonly email: string;
@@ -23,13 +28,18 @@ export interface SignInSellerInput {
   readonly client: SignInClient;
 }
 
-export type SignInSellerOutput = SignedIn;
+/** A session, or (the account has an active second factor) the ask for a code: no session yet. */
+export type SignInSellerOutput = SignedIn | SellerSecondStepOutcome;
 
 export type SignInSellerFailure =
   | { readonly code: 'validation.failed'; readonly fields: readonly FieldProblem[] }
   | Exclude<SignInRefusal, { readonly code: 'link.rejected' }>;
 
-export type SignInSellerDependencies = SignInDependencies & SellerSignInDependencies;
+export interface SignInSellerDependencies extends SignInDependencies, SellerSignInDependencies {
+  readonly factors: SecondFactorRepository;
+  readonly challenges: SignInChallengeRepository;
+  readonly challengeTokens: OpaqueTokens;
+}
 
 /**
  * Seller-side sign-in (identity design 3.3, 6.1, 6.3; SEL-04, AC 4, AC 7; slice 5). Rule
@@ -40,6 +50,10 @@ export type SignInSellerDependencies = SignInDependencies & SellerSignInDependen
  * not suspended (`seller-access.suspended`). A `pending` or `rejected` seller gets a limited
  * session: every use case outside the allow-list of 5.2 answers `access.seller-not-approved`.
  * The answer carries the access state so the panel lands on the status page (`ux.md` F2 step 8).
+ *
+ * With an active second factor (optional for a seller at launch, owner decision 2026-10-08) a
+ * correct password never opens a session: {@link SellerSecondStep} answers a challenge for the
+ * code step, {@link CompleteSellerSignIn}, and the account's state is told only after it.
  *
  * The reason of a suspension is told to the owner only, and arrives with the decisions of slice
  * 9; this slice answers the code alone.
@@ -56,9 +70,18 @@ export class SignInSeller extends UseCase<
 
   readonly #flow: SignInFlow;
 
-  constructor(gate: UseCaseGate, deps: SignInSellerDependencies) {
+  constructor(
+    gate: UseCaseGate,
+    private readonly deps: SignInSellerDependencies,
+  ) {
     super(gate);
-    this.#flow = new SignInFlow('seller', deps, null, deps);
+    const step = new SellerSecondStep({
+      factors: deps.factors,
+      challenges: deps.challenges,
+      ids: deps.ids,
+      challengeTokens: deps.challengeTokens,
+    });
+    this.#flow = new SignInFlow('seller', deps, null, deps, null, null, step);
   }
 
   protected async handle(
@@ -72,12 +95,17 @@ export class SignInSeller extends UseCase<
     if (Buffer.byteLength(input.password, 'utf8') > MAX_PASSWORD_BYTES) {
       return err({ code: 'validation.failed', fields: [{ path: 'password', code: 'length' }] });
     }
-    const outcome = await this.#flow.run(
+    // Read before any unit; null only matters to an account that has a factor (fail closed).
+    const policy = secondFactorStepPolicy(this.deps.policy, context.market);
+    const outcome = await this.#flow.runSeller(
       context,
-      { kind: 'email', email: email.value },
+      email.value,
       input.password,
       input.client,
       { keepSignedIn: input.keepSignedIn },
+      policy === null
+        ? null
+        : { challenge: policy.challenge, secondFactorThrottle: policy.secondFactorThrottle },
     );
     if (!outcome.ok && outcome.error.code === 'link.rejected') {
       // The email variant never reads a link.

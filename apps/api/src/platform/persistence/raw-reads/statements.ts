@@ -34,8 +34,49 @@ export interface RawReadEntry<Row = unknown> {
   readonly parseRow: (row: unknown) => Row;
 }
 
+/** One row of `certification.seller-basis` (design 7.3 S1, slice-1 form). */
+export interface SellerBasisRow {
+  /** 1-based position of the (seller, type) pair in the call's arrays. */
+  readonly ord: number;
+  readonly typeId: string;
+  readonly certificationId: string;
+  readonly status: string;
+  readonly submissionId: string | null;
+  readonly issuerId: string | null;
+  /** The submission's expiry date as `YYYY-MM-DD`. */
+  readonly expiryDate: string | null;
+  readonly typeRevisionId: string | null;
+  /** The decision row's outcome; null when the approved pointer has no decision row. */
+  readonly decisionOutcome: string | null;
+  readonly approvedZone: string | null;
+  readonly hasExpiryBoundary: boolean;
+  readonly requiresExpiry: boolean | null;
+  readonly issuerState: string | null;
+}
+
+/** One row of `certification.type-and-policy` (design 7.3 S2, slice-1 form). */
+export interface TypeAndPolicyRow {
+  readonly typeId: string;
+  readonly code: string;
+  /** Null when the type has no published revision: the caller treats that as a fault. */
+  readonly typeRevisionId: string | null;
+  readonly defaultBasis: string | null;
+}
+
 /** The statements, by id, with the parameters and the rows each one has. Added per entry. */
-export type RawReadStatements = Record<never, never>;
+export interface RawReadStatements {
+  readonly 'certification.seller-basis': {
+    readonly params: {
+      readonly sellerIds: readonly string[];
+      readonly typeCodes: readonly string[];
+    };
+    readonly row: SellerBasisRow;
+  };
+  readonly 'certification.type-and-policy': {
+    readonly params: { readonly typeCodes: readonly string[] };
+    readonly row: TypeAndPolicyRow;
+  };
+}
 
 export type RawReadName = keyof RawReadStatements;
 export type RawReadParams<K extends RawReadName> = RawReadStatements[K] extends {
@@ -49,5 +90,98 @@ export type RawReadRow<K extends RawReadName> = RawReadStatements[K] extends {
   ? R
   : never;
 
-/** The list. `certification` adds S1 and S2 in its claim-facts slice (data design 7.3). */
-export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [];
+type Record_ = Record<string, unknown>;
+const asRecord = (row: unknown): Record_ => {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) throw new Error('row');
+  return row as Record_;
+};
+const text = (value: unknown): string => {
+  if (typeof value !== 'string') throw new Error('row');
+  return value;
+};
+const textOrNull = (value: unknown): string | null => (value === null ? null : text(value));
+const flag = (value: unknown): boolean => {
+  if (typeof value !== 'boolean') throw new Error('row');
+  return value;
+};
+const flagOrNull = (value: unknown): boolean | null => (value === null ? null : flag(value));
+const position = (value: unknown): number => {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) throw new Error('row');
+  return value;
+};
+
+const SELLER_BASIS_SQL = `SELECT q.ord::int4 AS ord, t.id AS type_id, c.id AS certification_id, c.status,
+       s.id AS submission_id, s.issuer_id, s.expiry_date::text AS expiry_date, s.type_revision_id,
+       d.outcome AS decision_outcome, d.approved_zone, (d.expiry_boundary_at IS NOT NULL) AS has_expiry_boundary,
+       tr.requires_expiry, i.state AS issuer_state
+  FROM unnest($2::uuid[], $3::text[]) WITH ORDINALITY AS q(seller_id, type_code, ord)
+  JOIN "certification"."certification_types" t ON t.market_id = $1 AND t.code = q.type_code
+  JOIN "certification"."seller_certifications" c
+    ON c.market_id = $1 AND c.seller_id = q.seller_id AND c.type_id = t.id
+   AND c.status NOT IN ('declined', 'revoked')
+  LEFT JOIN "certification"."seller_certification_submissions" s
+    ON s.market_id = $1 AND s.id = c.approved_submission_id
+  LEFT JOIN "certification"."seller_submission_decisions" d ON d.market_id = $1 AND d.submission_id = s.id
+  LEFT JOIN "certification"."certification_type_revisions" tr ON tr.market_id = $1 AND tr.id = s.type_revision_id
+  LEFT JOIN "certification"."issuers" i ON i.market_id = $1 AND i.id = s.issuer_id`;
+
+const TYPE_AND_POLICY_SQL = `SELECT t.id AS type_id, t.code, tr.id AS type_revision_id, tr.default_basis
+  FROM "certification"."certification_types" t
+  LEFT JOIN "certification"."certification_type_revisions" tr
+    ON tr.market_id = $1 AND tr.id = t.published_revision_id AND tr.type_id = t.id
+ WHERE t.market_id = $1 AND t.code = ANY ($2::text[])`;
+
+/**
+ * The list. `certification` holds the slice-1 forms of S1 and S2 (data design 7.3); S3 and the
+ * policy part of S2 arrive with their tables (slices 13 and 14).
+ */
+export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
+  {
+    id: 'certification.seller-basis',
+    owner: 'certification',
+    reason:
+      'evaluateClaims decides the seller basis from one statement, one snapshot (design 4.2 rule 2); Prisma include sends one query per relation level',
+    design: 'docs/design/data/certification.md 7.2, 7.3 (S1, slice-1 form)',
+    sql: SELLER_BASIS_SQL,
+    params: [
+      { name: 'sellerIds', type: 'uuid[]', maxLength: 100, group: 'pairs' },
+      { name: 'typeCodes', type: 'text[]', maxLength: 100, group: 'pairs' },
+    ],
+    parseRow: (raw): SellerBasisRow => {
+      const row = asRecord(raw);
+      return {
+        ord: position(row['ord']),
+        typeId: text(row['type_id']),
+        certificationId: text(row['certification_id']),
+        status: text(row['status']),
+        submissionId: textOrNull(row['submission_id']),
+        issuerId: textOrNull(row['issuer_id']),
+        expiryDate: textOrNull(row['expiry_date']),
+        typeRevisionId: textOrNull(row['type_revision_id']),
+        decisionOutcome: textOrNull(row['decision_outcome']),
+        approvedZone: textOrNull(row['approved_zone']),
+        hasExpiryBoundary: flag(row['has_expiry_boundary']),
+        requiresExpiry: flagOrNull(row['requires_expiry']),
+        issuerState: textOrNull(row['issuer_state']),
+      };
+    },
+  },
+  {
+    id: 'certification.type-and-policy',
+    owner: 'certification',
+    reason:
+      'evaluateClaims reads the type and its published revision in one statement, one snapshot (design 4.2 rule 2); the policy rows join in with slice 13',
+    design: 'docs/design/data/certification.md 7.2, 7.3 (S2, slice-1 form)',
+    sql: TYPE_AND_POLICY_SQL,
+    params: [{ name: 'typeCodes', type: 'text[]', maxLength: 100 }],
+    parseRow: (raw): TypeAndPolicyRow => {
+      const row = asRecord(raw);
+      return {
+        typeId: text(row['type_id']),
+        code: text(row['code']),
+        typeRevisionId: textOrNull(row['type_revision_id']),
+        defaultBasis: textOrNull(row['default_basis']),
+      };
+    },
+  },
+];

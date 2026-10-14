@@ -13,7 +13,9 @@
     "setup": "Seller account",
     "products": "Products",
     "offers": "Offers",
-    "stock": "Stock locations"
+    "stock": "Stock locations",
+    "security": "Security",
+    "orders": "Orders"
   },
   "home": {
     "title": "Home",
@@ -97,10 +99,18 @@
         "name": {
           "required": "Enter your name.",
           "characters": "Remove web addresses and special formatting characters from the name."
+        },
+        "code": {
+          "required": "Enter your code."
         }
       },
       "second-factor": {
-        "unsupported": "This account uses two-step verification, which this panel can't ask for yet. Contact us to continue."
+        "code-rejected": "That code didn't work. Enter the newest code from your app.",
+        "challenge-ended": "Too many wrong codes. Sign in again to try once more.",
+        "locked": "Too many wrong codes. Two-step sign-in is paused for 24 hours. Reset your password to try again sooner.",
+        "password-incorrect": "That password is incorrect.",
+        "already-on": "Two-step verification is already on for this account.",
+        "enrolment-expired": "Setup timed out. Enter your password to start again."
       },
       "unknown": "Something went wrong on our side. Try again.",
       "network": "You're offline or the connection dropped. Check it and try again.",
@@ -127,7 +137,8 @@
       "banner": {
         "session-ended": "Your session has ended. Sign in again to continue.",
         "signed-out": "You're signed out.",
-        "password-changed": "Password changed. Sign in with your new password."
+        "password-changed": "Password changed. Sign in with your new password.",
+        "two-step-enabled": "Two-step verification is on. Sign in again; you will be asked for a code from your app."
       }
     },
     "sign-up": {
@@ -197,6 +208,24 @@
       "action": {
         "submit": "Save new password"
       }
+    },
+    "two-step": {
+      "page-title": "Two-step verification – Seller account – MondaPac",
+      "title": "Enter your 6-digit code",
+      "body": "Open your authenticator app and enter the code for MondaPac.",
+      "title-backup": "Enter a backup code",
+      "body-backup": "Each backup code works once.",
+      "label": {
+        "code": "6-digit code",
+        "backup-code": "Backup code"
+      },
+      "action": {
+        "verify": "Verify",
+        "use-backup": "Use a backup code instead",
+        "use-app": "Use your authenticator app instead",
+        "back": "Use a different account"
+      },
+      "help": "No phone and no backup codes? Contact us."
     }
   },
   "sellers": {
@@ -227,7 +256,8 @@
         "ready": "Ready to submit",
         "outside-area": "Not in your area yet",
         "awaiting-review": "Awaiting review",
-        "changes-needed": "Changes needed"
+        "changes-needed": "Changes needed",
+        "not-approved": "Not approved"
       },
       "banner": {
         "details-incomplete": {
@@ -249,6 +279,10 @@
         "changes-needed": {
           "title": "Your application needs changes",
           "body": "Update your details and submit again."
+        },
+        "not-approved": {
+          "title": "Your application was not approved",
+          "body": "You've used all your new applications, so you can't submit again. Contact us if you have questions."
         }
       },
       "steps": "Steps",
@@ -643,8 +677,41 @@
       "variant-add": "Add a variant",
       "variant-remove": "Remove this variant",
       "variant-published": "This variant is published and stays.",
-      "images": "Images",
-      "images-later": "Images can be added here soon. Until then a product is submitted without images.",
+      "photos": {
+        "title": "Photos",
+        "help": "{count} of {max} photos. The first photo is the main photo. Every photo you add is checked by us before it goes live.",
+        "empty": "No photos yet. Add the first one.",
+        "unavailable": "Photos are unavailable right now. Reload the page to try again.",
+        "add": "Add photos",
+        "uploading": "Uploading…",
+        "formats": "JPEG, PNG or WebP.",
+        "alt": "Photo {n} of the product",
+        "main": "Main photo",
+        "position": "Photo {n}",
+        "not-in-product": "Not on the product",
+        "make-main": "Make main",
+        "take-off": "Take off",
+        "add-back": "Add back",
+        "delete": "Delete",
+        "delete-yes": "Yes, delete",
+        "cancel": "Cancel",
+        "error": {
+          "limit": "A product can have at most 8 photos.",
+          "in-use": "This photo is part of a version you submitted, so it can't be deleted. Take it off the product instead.",
+          "not-found": "This photo was not found. Reload the page.",
+          "too-large": "A photo is too large. Choose a smaller one.",
+          "unsupported": "Only JPEG, PNG and WebP photos are accepted.",
+          "too-many-pixels": "A photo has too many pixels. Choose a smaller one.",
+          "too-small": "A photo is too small. Use one at least 200 pixels wide.",
+          "unreadable": "A photo could not be read. Choose another file.",
+          "not-eligible": "Your seller account can't change products right now.",
+          "denied": "You don't have permission to edit products.",
+          "csrf": "Your session expired. Reload the page and try again.",
+          "throttled": "Too many requests. Wait a moment and try again.",
+          "unavailable": "Photos are unavailable right now. Try again later.",
+          "unknown": "Something went wrong. Try again."
+        }
+      },
       "sensitive": "These changes are checked by us before they go live: {fields}.",
       "sensitive-field": {
         "platform-categories": "categories",
@@ -783,6 +850,50 @@
       }
     }
   },
+  "orders": {
+    "title": "Orders",
+    "intro": "Paid orders for your store, newest first. Ship each one, then mark it delivered when it arrives.",
+    "fee": "Delivery fee on every order: {fee}. The platform sets it for your store; the customer pays it with the order.",
+    "empty": "No paid orders yet. They appear here as soon as a customer pays.",
+    "more": "Show more orders",
+    "optional": "optional",
+    "card-title": "Order {id}",
+    "paid": "Paid {when}",
+    "line": "Item {n} × {quantity}",
+    "each": "{price} each",
+    "subtotal": "Items",
+    "delivery": "Delivery",
+    "delivery-free": "Free",
+    "total": "Total",
+    "status": {
+      "to-ship": "To ship",
+      "shipped": "Shipped",
+      "delivered": "Delivered"
+    },
+    "ship": {
+      "title": "Send this order",
+      "carrier": "Carrier",
+      "tracking": "Tracking reference",
+      "submit": "Mark as shipped"
+    },
+    "shipped-at": "Shipped {when}",
+    "delivered-at": "Delivered {when}",
+    "deliver": "Mark as delivered",
+    "validation": {
+      "required": "Enter the carrier.",
+      "invalid": "Check this value. Use letters, numbers and simple punctuation."
+    },
+    "error": {
+      "conflict": "This order has already moved on. Reload the page to see its current state.",
+      "not-found": "We could not find this order.",
+      "invalid": "Check the carrier and tracking reference.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "Your role cannot do this.",
+      "unavailable": "Orders are not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
+    }
+  },
   "price": {
     "title": "Prices",
     "back": "Back to offer",
@@ -846,5 +957,63 @@
   },
   "load": {
     "retry": "Try again"
+  },
+  "security": {
+    "title": "Security",
+    "page-title": "Security – Seller account – MondaPac",
+    "error": {
+      "unavailable": "We couldn't load this page. Try again."
+    },
+    "intro": "Two-step verification asks for a code from your phone each time you sign in. It is optional, and we recommend it.",
+    "status": {
+      "on": "Two-step verification is on.",
+      "off": "Two-step verification is off."
+    },
+    "action": {
+      "turn-on": "Turn on",
+      "turn-off": "Turn off",
+      "new-codes": "Get new backup codes",
+      "verify": "Continue",
+      "confirm": "Verify",
+      "sign-in-again": "Continue to sign in",
+      "cancel": "Cancel",
+      "copy": "Copy",
+      "copied": "Copied",
+      "download": "Download",
+      "print": "Print",
+      "done": "Done"
+    },
+    "password": {
+      "title": "Confirm your password",
+      "body": "Enter your password to start. You will set up an authenticator app next.",
+      "label": "Password"
+    },
+    "secret": {
+      "title": "Set up two-step verification",
+      "scan": "Scan this code with an authenticator app on your phone.",
+      "qr-label": "QR code for your authenticator app",
+      "cannot-scan": "Can't scan it? Enter this key in the app instead.",
+      "key-label": "Setup key",
+      "open-app": "Open authenticator app",
+      "code-label": "6-digit code"
+    },
+    "codes": {
+      "title": "Save your backup codes",
+      "body": "Each code works once if you lose your phone. Keep them somewhere safe.",
+      "saved": "I've saved these codes",
+      "once": "These codes can't be shown again after you leave this page.",
+      "ended-sessions": "Two-step verification is on. For safety you are signed out everywhere, so sign in again."
+    },
+    "remove": {
+      "title": "Turn off two-step verification",
+      "body": "Enter a code from your app or a backup code. Your other devices will be signed out.",
+      "label": "Code",
+      "done": "Two-step verification is off. Your other devices were signed out."
+    },
+    "regenerate": {
+      "title": "Get new backup codes",
+      "body": "Enter a code from your app or a backup code. Your old backup codes stop working.",
+      "label": "Code"
+    }
   }
 }

@@ -141,3 +141,15 @@ export interface Submitted {
   readonly revisionNo: number;
   readonly published: boolean;
 }
+
+/** One photo of the product library (`GET catalog/seller/products/:id/images`). */
+export interface ProductPhoto {
+  readonly imageId: string;
+  readonly width: number;
+  readonly height: number;
+  readonly createdAt: string;
+}
+
+export interface PhotoList {
+  readonly images: readonly ProductPhoto[];
+}

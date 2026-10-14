@@ -51,6 +51,18 @@ export interface OwnedSellerQuery {
   readonly limit: number;
 }
 
+/** The registered sellers of a Market per access state (sellers design R-6, the counts). */
+export type SellerStateCounts = Readonly<Record<SellerAccessStateCode, number>>;
+
+/**
+ * The Market's re-apply limit as a filter on rejected sellers: `reapplyLimitReached` true keeps
+ * those whose count of re-applications is at or above `limit`, false those below it.
+ */
+export interface ReapplyFilter {
+  readonly limit: number;
+  readonly reapplyLimitReached: boolean;
+}
+
 /**
  * The SQL reads of the admin seller list and `sellerAccountSummaries` (identity design 8.1, 8.6
  * row 8; slice 9b), on `identity`'s own tables only: `seller_access`, `seller_memberships`,
@@ -77,6 +89,28 @@ export interface SellerAccountReader {
     market: MarketContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<SellerAccountRecord[]>;
+
+  /**
+   * Up to `limit` ids of registered sellers in one access state, newest first (UUID v7: by id,
+   * descending), whose id is below `before` (all when null): the identity-state tabs of
+   * `sellers`' admin list (sellers design 7.8, R-6). Ids only; no owner, no personal field.
+   */
+  sellerIdsInState(
+    market: MarketContext,
+    query: {
+      readonly state: SellerAccessStateCode;
+      readonly before: Id<'Seller'> | null;
+      readonly limit: number;
+      /** Only with state `rejected`; null for every rejected seller. */
+      readonly reapply: ReapplyFilter | null;
+    },
+  ): Promise<Id<'Seller'>[]>;
+
+  /** The registered sellers of the Market per access state (R-6 counts); a state with none is 0. */
+  stateCounts(market: MarketContext): Promise<SellerStateCounts>;
+
+  /** Registered rejected sellers whose count of re-applications is at or above `limit`. */
+  rejectedAtLimit(market: MarketContext, limit: number): Promise<number>;
 
   /**
    * The seller account with this normalised address and the sellers of its active memberships

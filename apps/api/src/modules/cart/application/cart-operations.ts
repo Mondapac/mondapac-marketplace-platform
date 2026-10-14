@@ -8,6 +8,7 @@ import type {
   Money,
   Result,
 } from '@mondapac/shared-kernel';
+import type { CheckoutLine } from '../contracts';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
   addLine,
@@ -470,5 +471,67 @@ export async function mergeGuestCart(
       return err({ code: 'conflict.stale' });
     }
     return ok({ merged: true, clamped: result.clamped, notAdded: result.notAdded, cookie });
+  });
+}
+
+/**
+ * `checkout-lines`: the signed-in customer's lines with the current verdict of each, for
+ * `ordering`. Fails closed: a failed facade makes a line `check-unavailable`.
+ */
+export async function checkoutLines(
+  deps: CartDependencies,
+  context: CallContext,
+  caller: Extract<CartCaller, { kind: 'account' }>,
+): Promise<Result<readonly CheckoutLine[], CartFailure>> {
+  const loaded = await deps.unitOfWork.run<Loaded, CartFailure>(
+    context.market,
+    async () => ok(await load(deps, context.market, caller)),
+    { readOnly: true },
+  );
+  if (!loaded.ok) return loaded;
+  const cart = loaded.value.cart;
+  if (cart === null || cart.lines.length === 0) return ok([]);
+  const verdicts = await deps.facts.evaluate(context, cart.lines);
+  return ok(
+    cart.lines.map((line) => {
+      const verdict = verdicts.get(verdictKey(line));
+      return {
+        offerId: line.offerId,
+        variantId: line.variantId,
+        quantity: line.quantity,
+        state: verdict?.state ?? 'check-unavailable',
+        sellerId: verdict?.sellerId ?? null,
+        unitPrice: verdict?.unitPrice ?? null,
+        taxInclusive: verdict?.taxInclusive ?? null,
+      };
+    }),
+  );
+}
+
+/** `clear-ordered`: drops the ordered sell units from the account's active cart (system). */
+export async function clearOrdered(
+  deps: CartDependencies,
+  context: CallContext,
+  request: {
+    readonly accountId: Id<'Account'>;
+    readonly units: readonly { readonly offerId: Id<'Offer'>; readonly variantId: Id<'Variant'> }[];
+  },
+): Promise<Result<{ readonly removed: number }, CartFailure>> {
+  const caller: CartCaller = { kind: 'account', accountId: request.accountId };
+  const wanted = new Set(request.units.map((unit) => verdictKey(unit)));
+  return deps.unitOfWork.run<{ removed: number }, CartFailure>(context.market, async () => {
+    const loaded = await load(deps, context.market, caller);
+    const cart = loaded.cart;
+    if (cart === null) return ok({ removed: 0 });
+    const kept = cart.lines.filter((line) => !wanted.has(verdictKey(line)));
+    const removed = cart.lines.length - kept.length;
+    if (removed === 0) return ok({ removed });
+    const saved = await deps.carts.save(context.market, {
+      ...cart,
+      lines: kept,
+      lastChangedAt: deps.clock.now(),
+    });
+    if (saved === 'stale') return err({ code: 'conflict.stale' } as const);
+    return ok({ removed });
   });
 }

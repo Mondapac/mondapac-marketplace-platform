@@ -32,6 +32,87 @@ function fillSignIn(email: string, password: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 }
 
+describe('SignInForm second step', () => {
+  it('asks for the code after the password and signs in with it', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { code: 'second-factor-required', challengeToken: 'chal' },
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { code: 'signed-in' } });
+    render(wrap(<SignInForm notice={null} />));
+    fireEvent.click(screen.getByLabelText('Keep me signed in on this device'));
+    fillSignIn('a@example.com', 'right password');
+    expect(await screen.findByText('Enter your 6-digit code')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '123 456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/'));
+    expect(call).toHaveBeenLastCalledWith('POST', 'identity/seller/sign-in/second-factor', {
+      challengeToken: 'chal',
+      code: '123456',
+      keepSignedIn: true,
+    });
+  });
+
+  it('goes back to the password step when the challenge has ended', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { code: 'second-factor-required', challengeToken: 'chal' },
+      })
+      .mockResolvedValueOnce({ ok: false, failure: { status: 400, code: 'challenge.rejected' } });
+    render(wrap(<SignInForm notice={null} />));
+    fillSignIn('a@example.com', 'right password');
+    await screen.findByText('Enter your 6-digit code');
+    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '000000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Too many wrong codes. Sign in again to try once more.',
+    );
+    expect(screen.getByLabelText('Email')).toBeTruthy();
+  });
+
+  it('keeps the code step on a wrong code and offers a backup code', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { code: 'second-factor-required', challengeToken: 'chal' },
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        failure: { status: 400, code: 'second-factor.invalid' },
+      });
+    render(wrap(<SignInForm notice={null} />));
+    fillSignIn('a@example.com', 'right password');
+    await screen.findByText('Enter your 6-digit code');
+    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '111111' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      "That code didn't work. Enter the newest code from your app.",
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Use a backup code instead' }));
+    expect(screen.getByLabelText('Backup code')).toBeTruthy();
+  });
+});
+
+describe('SignInForm code step exit', () => {
+  it('goes back to the password step with "Use a different account"', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { code: 'second-factor-required', challengeToken: 'chal' },
+    });
+    render(wrap(<SignInForm notice={null} />));
+    fillSignIn('a@example.com', 'right password');
+    await screen.findByText('Enter your 6-digit code');
+    fireEvent.click(screen.getByRole('button', { name: 'Use a different account' }));
+    expect(screen.getByLabelText('Email')).toBeTruthy();
+  });
+});
+
 describe('SignInForm', () => {
   it('keeps the email, clears the password and says so after wrong credentials', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 401, code: 'credentials.invalid' } });

@@ -4,6 +4,7 @@ import { MetadataScanner, ModulesContainer } from '@nestjs/core';
 import { DECORATORS, DocumentBuilder, SwaggerModule, type OpenAPIObject } from '@nestjs/swagger';
 import { CLIENT_ADDRESS_HEADER } from './platform/http/client-address';
 import { isMarketContextExempt } from './platform/market-context/market-context.guard';
+import { takesMarketFromPath } from './platform/http/market-from-path.decorator';
 import { MARKET_ID_HEADER } from './platform/market-context/market-id-header';
 
 type PathItem = OpenAPIObject['paths'][string];
@@ -170,7 +171,7 @@ export function addMarketIdHeader(
       }
       seen.set(id, name);
 
-      if (isMarketContextExempt(controller)) continue;
+      if (isMarketContextExempt(controller) || takesMarketFromPath(controller)) continue;
 
       operation.parameters = [
         ...(operation.parameters ?? []).filter(

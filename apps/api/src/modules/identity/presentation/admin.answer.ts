@@ -15,6 +15,7 @@ import { fail, parseStringFields } from './customer-sign-up.controller';
 export const ADMIN_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'password.rejected': 400,
+  'password.current-incorrect': 400,
   'link.rejected': 400,
   'challenge.rejected': 400,
   'invitation.rejected': 400,

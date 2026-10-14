@@ -132,6 +132,8 @@ function setUp(options: { readonly openGate?: boolean } = {}) {
       sellerAccessOf: notUsed(),
       sellerAccessOfSystem: notUsed(),
       sellerAccountSummaries: notUsed(),
+      sellerIdsByState: notUsed(),
+      describeSellerStatus: notUsed(),
       listRegisteredSellers: notUsed(),
       notifyAccessReviewers: notUsed(),
       approveSellerAccess: notUsed(),

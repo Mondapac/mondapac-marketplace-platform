@@ -124,6 +124,14 @@ function setUp(options: { readonly reapplyLimit?: null } = {}) {
     clock,
     ids,
   };
+  const status = new DescribeSellerStatus(gate, {
+    unitOfWork,
+    accounts: fakes.accountRepository,
+    sellerAccess: fakes.sellerAccessRepository,
+    decisions: fakes.decisionRepository,
+    grants: fakes.grantReader,
+    policy,
+  });
   const approve = new ApproveSellerAccess(gate, decisionDeps);
   const reject = new RejectSellerAccess(gate, decisionDeps);
   const reapply = new ReapplySellerAccess(gate, {
@@ -158,18 +166,13 @@ function setUp(options: { readonly reapplyLimit?: null } = {}) {
       transport: fakes.mailTransport,
       policy,
     }),
-    status: new DescribeSellerStatus(gate, {
-      unitOfWork,
-      accounts: fakes.accountRepository,
-      sellerAccess: fakes.sellerAccessRepository,
-      decisions: fakes.decisionRepository,
-      grants: fakes.grantReader,
-      policy,
-    }),
+    status,
     contract: new SellerAccessContractImplementation({
       sellerAccessOf: notUsed(),
       sellerAccessOfSystem: notUsed(),
       sellerAccountSummaries: notUsed(),
+      sellerIdsByState: notUsed(),
+      describeSellerStatus: status,
       listRegisteredSellers: notUsed(),
       notifyAccessReviewers: notUsed(),
       approveSellerAccess: approve,
@@ -623,6 +626,21 @@ describe.each(TEST_MARKETS)('seller access decisions in market %s (slice 9)', (c
       await expect(s.status.execute(sellerActorOf(OWNER), {})).resolves.toMatchObject({
         ok: true,
         value: { state: 'rejected', reapplyLimitReached: true },
+      });
+      // `sellers` reads the same two fields through the contract, and nothing else (slice 7b).
+      await expect(s.contract.ownAccessOf(sellerActorOf(OWNER))).resolves.toEqual({
+        ok: true,
+        value: { sellerId: SELLER, state: 'rejected', reapplyLimitReached: true },
+      });
+    });
+
+    it('answers the own-access read for the seller side only', async () => {
+      const s = setUp();
+      await seeded(s, 'rejected');
+
+      await expect(s.contract.ownAccessOf(admin)).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
       });
     });
   });

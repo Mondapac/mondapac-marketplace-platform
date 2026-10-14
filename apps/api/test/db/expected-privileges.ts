@@ -33,11 +33,15 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     identity: ['USAGE'],
     inventory: ['USAGE'],
     cart: ['USAGE'],
+    ordering: ['USAGE'],
+    payments: ['USAGE'],
     platform: ['USAGE'],
     catalog: ['USAGE'],
     certification: ['USAGE'],
+    commission_payouts: ['USAGE'],
     pricing: ['USAGE'],
     sellers: ['USAGE'],
+    shipping: ['USAGE'],
   },
   tables: {
     // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
@@ -290,6 +294,73 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['added_at', 'price_at_add_amount', 'price_at_add_currency', 'quantity'],
     },
+    // Ordering (Phase 5 package 1): no row is ever deleted. Seller orders and lines are written
+    // once; an order's state, payment state, Stripe ids, times and version change.
+    'ordering.orders': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'cancel_reason',
+        'cancelled_at',
+        'confirmed_at',
+        'payment_state',
+        'status',
+        'stripe_payment_intent_id',
+        'stripe_session_id',
+        'version',
+      ],
+    },
+    // Phase 5 package 4: a seller order's fulfilment steps (to-ship, shipped, delivered) change
+    // the fulfilment columns only; the amounts never change.
+    'ordering.seller_orders': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'carrier',
+        'delivered_at',
+        'fulfilment',
+        'inventory_recorded_at',
+        'ledger_attempts',
+        'ledger_state',
+        'shipped_at',
+        'tracking_ref',
+      ],
+    },
+    // Commission-payouts (Phase 5 package 5): a seller's own commission rate is set, changed and
+    // removed (back to the Market rate); the ledger is insert-only (a trigger also refuses UPDATE,
+    // DELETE and TRUNCATE for every role).
+    'commission_payouts.seller_commission_rates': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['rate_bps', 'updated_at', 'updated_by'],
+    },
+    'commission_payouts.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
+    // change, the identity never, and no row is deleted.
+    'shipping.seller_flat_fees': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['amount', 'currency', 'updated_at', 'updated_by'],
+    },
+    'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
+    // its attempts and marks it done. No row is deleted.
+    // Payments (Phase 5 package 3): one connected account row per seller and Market; the state
+    // columns change as Stripe reports, the identity columns never. No row is deleted.
+    'payments.connected_accounts': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'account_ref',
+        'details_submitted',
+        'last_read_at',
+        'payouts_enabled',
+        'requirements_due',
+        'requirements_past_due',
+        'status',
+        'transfers_active',
+        'updated_at',
+      ],
+    },
+    'payments.stripe_events': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'processed_at'],
+    },
     // docs/design/data/catalog.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; no DELETE on products or variants, ever (Q-K2: a discard is a
     // status and a retired variant). The identity columns of a product and a variant never change.
@@ -356,6 +427,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.product_revision_categories': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_variants': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Photos (slice 13): a photo is inserted, read and deleted while no revision uses it; its
+    // renditions go with it by the cascade; the revision's photo rows are insert-only.
+    'catalog.product_images': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.product_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.product_revision_images': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.rate_counters': {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],

@@ -82,4 +82,31 @@ describe('tables', () => {
     });
     expect(offenders).toEqual([]);
   });
+
+  it('start their header text where the cells start, in both panels', () => {
+    // Browsers centre <th> by default; the shared stylesheet resets it in the base layer, so a
+    // header's own utility (text-end on Actions) still wins over the reset.
+    const css = readFileSync(join(__dirname, '../../../packages/ui/src/styles.css'), 'utf8');
+    expect(css).toMatch(/@layer base\s*{\s*th\s*{\s*text-align:\s*start;/);
+    const panels = ['seller', 'admin'].flatMap((app) =>
+      ['src', 'app'].map((dir) => join(__dirname, '../..', app, dir)),
+    );
+    const centred = panels
+      .flatMap(sourceFiles)
+      .filter((file) => /<th\b[^>]*\btext-center\b/.test(readFileSync(file, 'utf8')));
+    expect(centred).toEqual([]);
+  });
+});
+
+describe('two-step pages', () => {
+  it('use fluid layouts: no fixed widths beyond the QR plate, and wrapping action rows', () => {
+    const text = readFileSync(join(__dirname, '../src/security/two-step-panel.tsx'), 'utf8');
+    // A fixed pixel width would widen a 375px page; only max-width and the QR plate are set.
+    expect(text).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
+    expect(text).toContain('max-w-xl');
+    expect(text).toContain('flex-wrap');
+    expect(text).toContain('break-all');
+    // The code grid is one column on phones.
+    expect(text).toContain('grid-cols-1');
+  });
 });

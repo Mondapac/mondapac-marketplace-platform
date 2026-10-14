@@ -464,7 +464,9 @@ export class MyFileController {
       'holdable and the business number not definitely refused by the register (a number with no ' +
       'current result is asked of the register first). At most 5 submissions a day per file. ' +
       'The body is empty. Refused for an account that is not waiting for a decision ' +
-      '(seller-access.wrong-state) and for a file that already has an approved revision.',
+      '(seller-access.wrong-state) and for a file that already has an approved revision. A ' +
+      'rejected seller submits again: that is its re-application, which the Market limits ' +
+      '(seller-access.reapply-limit).',
   })
   @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
   @ApiOkResponse({ type: SubmittedBody })
@@ -482,7 +484,7 @@ export class MyFileController {
     type: SellersErrorBody,
     description:
       'file.incomplete (details.fields), address.outside-service-area, identifier.not-matched, ' +
-      'slug.taken, file.already-submitted, seller-access.wrong-state, ' +
+      'slug.taken, file.already-submitted, seller-access.wrong-state, seller-access.reapply-limit, ' +
       'file.change-request-required or conflict.stale (read again and retry)',
   })
   @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })

@@ -1,0 +1,388 @@
+import { err, ok } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, Money, Result } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { CartCheckoutFacade, CheckoutLine } from '../../src/modules/cart';
+import type {
+  CommissionPayoutsFacade,
+  CommissionPayoutsFailure,
+  CommissionRateMap,
+  PaidSellerOrder,
+} from '../../src/modules/commission-payouts';
+import type {
+  CheckoutGateway,
+  GatewayFailure,
+} from '../../src/modules/ordering/application/ports/checkout-gateway';
+import type {
+  OrderPage,
+  OrderRepository,
+  SellerOrderPage,
+  SellerOrderRecord,
+} from '../../src/modules/ordering/application/ports/order.repository';
+import type { Fulfilment, OrderState, SellerOrder } from '../../src/modules/ordering/domain/order';
+import type { FlatFeeMap, ShippingFacade, ShippingFailure } from '../../src/modules/shipping';
+import type {
+  CommitFailure,
+  InventoryOrderingPort,
+  LineCommandFailure,
+  ReserveFailure,
+} from '../../src/modules/inventory/contracts/ordering-port';
+import { parseId } from '@mondapac/shared-kernel';
+
+// In-memory ports of ordering for the use-case spec and the HTTP spec: the order store, the
+// payment gateway, inventory's ordering port and the cart's checkout facade.
+
+const T0 = Temporal.Instant.from('2026-10-14T10:00:00Z');
+const id = <T extends string>(n: number): Id<T> => {
+  const parsed = parseId(`01990000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`);
+  if (!parsed.ok) throw new Error('bad id');
+  return parsed.value as Id<T>;
+};
+
+export class MemoryOrders implements OrderRepository {
+  readonly rows = new Map<string, OrderState>();
+  insert(_m: MarketContext, order: OrderState) {
+    this.rows.set(order.id, order);
+    return Promise.resolve();
+  }
+  findById(_m: MarketContext, orderId: Id<'Order'>) {
+    return Promise.resolve(this.rows.get(orderId) ?? null);
+  }
+  findOwn(_m: MarketContext, orderId: Id<'Order'>, accountId: Id<'Account'>) {
+    const order = this.rows.get(orderId);
+    return Promise.resolve(order?.accountId === accountId ? order : null);
+  }
+  findPending(_m: MarketContext, accountId: Id<'Account'>) {
+    return Promise.resolve(
+      [...this.rows.values()].filter(
+        (o) => o.accountId === accountId && o.status === 'pending-payment',
+      ),
+    );
+  }
+  private newestFirst(rows: OrderState[], page: OrderPage) {
+    return rows
+      .sort(
+        (a, b) =>
+          b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds || b.id.localeCompare(a.id),
+      )
+      .filter(
+        (o) =>
+          page.after === null ||
+          o.createdAt.epochMilliseconds < page.after.createdAt.epochMilliseconds ||
+          (o.createdAt.epochMilliseconds === page.after.createdAt.epochMilliseconds &&
+            o.id < page.after.id),
+      )
+      .slice(0, page.limit);
+  }
+  listOwn(_m: MarketContext, accountId: Id<'Account'>, page: OrderPage) {
+    return Promise.resolve(
+      this.newestFirst(
+        [...this.rows.values()].filter((o) => o.accountId === accountId),
+        page,
+      ),
+    );
+  }
+  listAll(_m: MarketContext, filter: { status: OrderState['status'] | null }, page: OrderPage) {
+    return Promise.resolve(
+      this.newestFirst(
+        [...this.rows.values()].filter((o) => filter.status === null || o.status === filter.status),
+        page,
+      ),
+    );
+  }
+  save(_m: MarketContext, order: OrderState) {
+    const stored = this.rows.get(order.id);
+    if (stored === undefined || stored.version !== order.version)
+      return Promise.resolve('stale' as const);
+    // Like the real store, `save` leaves the fulfilment of the seller orders alone.
+    this.rows.set(order.id, {
+      ...order,
+      sellerOrders: stored.sellerOrders,
+      version: order.version + 1,
+    });
+    return Promise.resolve('saved' as const);
+  }
+
+  private recordOf(order: OrderState, sellerOrder: SellerOrder): SellerOrderRecord {
+    return {
+      sellerOrder,
+      orderId: order.id,
+      currency: order.total.currency,
+      confirmedAt: order.confirmedAt!,
+      lines: order.lines.filter((line) => line.sellerOrderId === sellerOrder.id),
+    };
+  }
+  private paid(sellerId: Id<'Seller'> | null): SellerOrderRecord[] {
+    return [...this.rows.values()]
+      .filter((order) => order.status === 'confirmed')
+      .flatMap((order) =>
+        order.sellerOrders
+          .filter((seller) => sellerId === null || seller.sellerId === sellerId)
+          .map((seller) => this.recordOf(order, seller)),
+      );
+  }
+  listForSeller(_m: MarketContext, sellerId: Id<'Seller'>, page: SellerOrderPage) {
+    const after = page.after;
+    return Promise.resolve(
+      this.paid(sellerId)
+        .sort(
+          (a, b) =>
+            b.confirmedAt.epochMilliseconds - a.confirmedAt.epochMilliseconds ||
+            b.sellerOrder.id.localeCompare(a.sellerOrder.id),
+        )
+        .filter(
+          (r) =>
+            after === null ||
+            r.confirmedAt.epochMilliseconds < after.confirmedAt.epochMilliseconds ||
+            (r.confirmedAt.epochMilliseconds === after.confirmedAt.epochMilliseconds &&
+              r.sellerOrder.id < after.id),
+        )
+        .slice(0, page.limit),
+    );
+  }
+  findForSeller(_m: MarketContext, sellerId: Id<'Seller'>, sellerOrderId: Id<'SellerOrder'>) {
+    return Promise.resolve(
+      this.paid(sellerId).find((record) => record.sellerOrder.id === sellerOrderId) ?? null,
+    );
+  }
+  saveFulfilment(_m: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {
+    for (const [orderId, order] of this.rows) {
+      const index = order.sellerOrders.findIndex((seller) => seller.id === sellerOrder.id);
+      if (index < 0) continue;
+      if (order.sellerOrders[index]!.fulfilment !== from) return Promise.resolve('stale' as const);
+      const sellerOrders = order.sellerOrders.map((seller, i) =>
+        i === index ? { ...sellerOrder, inventoryRecordedAt: seller.inventoryRecordedAt } : seller,
+      );
+      this.rows.set(orderId, { ...order, sellerOrders });
+      return Promise.resolve('saved' as const);
+    }
+    return Promise.resolve('stale' as const);
+  }
+  findUnrecordedShipments(_m: MarketContext, limit: number) {
+    return Promise.resolve(
+      this.paid(null)
+        .filter(
+          (r) =>
+            r.sellerOrder.fulfilment !== 'to-ship' && r.sellerOrder.inventoryRecordedAt === null,
+        )
+        .slice(0, limit),
+    );
+  }
+  findUnrecordedLedger(_m: MarketContext, limit: number) {
+    return Promise.resolve(
+      this.paid(null)
+        .filter((r) => r.sellerOrder.ledgerState === 'pending')
+        .sort(
+          (a, b) =>
+            (this.ledgerFailures.get(a.sellerOrder.id) ?? 0) -
+            (this.ledgerFailures.get(b.sellerOrder.id) ?? 0),
+        )
+        .slice(0, limit),
+    );
+  }
+  ledgerFailures = new Map<string, number>();
+  countLedgerFailure(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    this.ledgerFailures.set(sellerOrderId, (this.ledgerFailures.get(sellerOrderId) ?? 0) + 1);
+    return Promise.resolve();
+  }
+  markLedgerRecorded(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    for (const [orderId, order] of this.rows) {
+      if (!order.sellerOrders.some((seller) => seller.id === sellerOrderId)) continue;
+      const sellerOrders = order.sellerOrders.map((seller) =>
+        seller.id === sellerOrderId && seller.ledgerState === 'pending'
+          ? { ...seller, ledgerState: 'recorded' as const }
+          : seller,
+      );
+      this.rows.set(orderId, { ...order, sellerOrders });
+    }
+    return Promise.resolve();
+  }
+  markInventoryRecorded(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>, at: Temporal.Instant) {
+    for (const [orderId, order] of this.rows) {
+      if (!order.sellerOrders.some((seller) => seller.id === sellerOrderId)) continue;
+      const sellerOrders = order.sellerOrders.map((seller) =>
+        seller.id === sellerOrderId && seller.inventoryRecordedAt === null
+          ? { ...seller, inventoryRecordedAt: at }
+          : seller,
+      );
+      this.rows.set(orderId, { ...order, sellerOrders });
+    }
+    return Promise.resolve();
+  }
+}
+
+/** The flat fees `ordering` reads at checkout; a seller without an entry has no fee. */
+export class FakeShipping implements ShippingFacade {
+  fees = new Map<string, Money>();
+  down = false;
+  flatFees(
+    _c: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<FlatFeeMap, ShippingFailure>> {
+    if (this.down) return Promise.resolve(err({ code: 'shipping.unavailable' }));
+    return Promise.resolve(
+      ok(
+        new Map(
+          sellerIds.flatMap((sellerId) => {
+            const fee = this.fees.get(sellerId);
+            return fee === undefined ? [] : [[sellerId, fee] as const];
+          }),
+        ),
+      ),
+    );
+  }
+}
+
+/**
+ * The commission rates `ordering` freezes at checkout (a seller without an entry is on
+ * `marketRateBps`) and the paid seller orders its worker sends to the ledger.
+ */
+export class FakeCommission implements CommissionPayoutsFacade {
+  rates = new Map<string, number>();
+  marketRateBps = 1500;
+  down = false;
+  recordFails: CommissionPayoutsFailure | null = null;
+  recorded: PaidSellerOrder[] = [];
+  commissionRates(
+    _c: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<CommissionRateMap, CommissionPayoutsFailure>> {
+    if (this.down) return Promise.resolve(err({ code: 'commission-payouts.rate-unavailable' }));
+    return Promise.resolve(
+      ok(
+        new Map(
+          sellerIds.map((sellerId) => {
+            const own = this.rates.get(sellerId);
+            return [
+              sellerId,
+              own === undefined
+                ? { rateBps: this.marketRateBps, source: 'market' as const }
+                : { rateBps: own, source: 'seller' as const },
+            ] as const;
+          }),
+        ),
+      ),
+    );
+  }
+  recordSellerOrderPaid(
+    _c: CallContext,
+    paid: PaidSellerOrder,
+  ): Promise<Result<'recorded' | 'already-recorded', CommissionPayoutsFailure>> {
+    if (this.recordFails !== null) return Promise.resolve(err(this.recordFails));
+    if (this.recorded.some((r) => r.sellerOrderId === paid.sellerOrderId)) {
+      return Promise.resolve(ok('already-recorded' as const));
+    }
+    this.recorded.push(paid);
+    return Promise.resolve(ok('recorded' as const));
+  }
+}
+
+export class FakeGateway implements CheckoutGateway {
+  sessions: Parameters<CheckoutGateway['createSession']>[0][] = [];
+  expired: string[] = [];
+  captured: [string, string][] = [];
+  voided: [string, string][] = [];
+  createFails: GatewayFailure | null = null;
+  captureFails: GatewayFailure | null = null;
+  voidFails: GatewayFailure | null = null;
+  createSession(request: Parameters<CheckoutGateway['createSession']>[0]) {
+    if (this.createFails !== null) return Promise.resolve(err(this.createFails));
+    this.sessions.push(request);
+    const n = this.sessions.length;
+    return Promise.resolve(
+      ok({ sessionId: `cs_test_${n}`, url: `https://checkout.stripe.test/c/cs_test_${n}` }),
+    );
+  }
+  expireSession(sessionId: string) {
+    this.expired.push(sessionId);
+    return Promise.resolve();
+  }
+  capture(paymentIntentId: string, key: string) {
+    if (this.captureFails !== null) return Promise.resolve(err(this.captureFails));
+    this.captured.push([paymentIntentId, key]);
+    return Promise.resolve(ok(true as const));
+  }
+  voidAuthorisation(paymentIntentId: string, key: string) {
+    if (this.voidFails !== null) return Promise.resolve(err(this.voidFails));
+    this.voided.push([paymentIntentId, key]);
+    return Promise.resolve(ok(true as const));
+  }
+}
+
+export class FakeInventory implements InventoryOrderingPort {
+  calls: string[] = [];
+  reserveFails: ReserveFailure | null = null;
+  reserveFailuresLeft = 0;
+  commitFails: CommitFailure | null = null;
+  commitFailuresLeft = 0;
+  releaseCommitted = false;
+  reserved: Parameters<InventoryOrderingPort['reserve']>[1][] = [];
+  committed: unknown[] = [];
+  reserve(_c: CallContext, request: Parameters<InventoryOrderingPort['reserve']>[1]) {
+    this.calls.push('reserve');
+    if (this.reserveFails !== null) {
+      if (this.reserveFails.code !== 'conflict.retry' || this.reserveFailuresLeft-- > 0) {
+        return Promise.resolve(err(this.reserveFails));
+      }
+    }
+    this.reserved.push(request);
+    return Promise.resolve(
+      ok({
+        reservationId: id<'Reservation'>(0x700 + this.reserved.length),
+        expiresAt: T0.add({ minutes: 15 }),
+        lines: request.lines.map((line, index) => ({
+          offerId: line.offerId,
+          variantId: line.variantId,
+          reservationLineId: id<'ReservationLine'>(0x800 + index),
+        })),
+      }),
+    );
+  }
+  releaseReservation(_c: CallContext, request: { reservationId: string; cause: string }) {
+    this.calls.push(`release:${request.cause}`);
+    if (this.releaseCommitted) {
+      return Promise.resolve(err({ code: 'inventory.reservation.committed' } as const));
+    }
+    return Promise.resolve(ok({ reservationId: request.reservationId as Id<'Reservation'> }));
+  }
+  releaseOwnReservation(_c: CallContext, request: { reservationId: string }) {
+    this.calls.push('release-own');
+    return Promise.resolve(ok({ reservationId: request.reservationId as Id<'Reservation'> }));
+  }
+  commitReservation(
+    _c: CallContext,
+    request: Parameters<InventoryOrderingPort['commitReservation']>[1],
+  ) {
+    this.calls.push('commit');
+    if (this.commitFails !== null) {
+      if (this.commitFails.code !== 'conflict.retry' || this.commitFailuresLeft-- > 0) {
+        return Promise.resolve(err(this.commitFails));
+      }
+    }
+    this.committed.push(request);
+    return Promise.resolve(ok({ reservationId: request.reservationId as Id<'Reservation'> }));
+  }
+  cancelCommittedLine(_c: CallContext, request: { orderLineId: string }) {
+    this.calls.push(`cancel-line:${request.orderLineId}`);
+    return Promise.resolve(ok({ orderLineId: request.orderLineId }));
+  }
+  shipped: string[] = [];
+  shipmentFails: LineCommandFailure | null = null;
+  recordShipment(_c: CallContext, request: { orderLineId: string }) {
+    if (this.shipmentFails !== null) return Promise.resolve(err(this.shipmentFails));
+    this.shipped.push(request.orderLineId);
+    return Promise.resolve(ok({ orderLineId: request.orderLineId }));
+  }
+}
+
+export class FakeCart implements CartCheckoutFacade {
+  lines: readonly CheckoutLine[] = [];
+  down = false;
+  cleared: unknown[] = [];
+  checkoutLines(): Promise<Result<readonly CheckoutLine[], { code: 'cart.check-unavailable' }>> {
+    return Promise.resolve(this.down ? err({ code: 'cart.check-unavailable' }) : ok(this.lines));
+  }
+  clearOrdered(_c: CallContext, request: unknown) {
+    this.cleared.push(request);
+    return Promise.resolve(ok({ removed: 1 }));
+  }
+}

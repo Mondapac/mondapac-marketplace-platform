@@ -11,6 +11,7 @@ const base: StatusInput = {
   missing: [],
   outsideServiceArea: false,
   registerNegative: false,
+  reapplyLimitReached: null,
 };
 
 describe('sellerStatusOf (design 3.3)', () => {
@@ -22,6 +23,11 @@ describe('sellerStatusOf (design 3.3)', () => {
     ['awaiting-review', { hasPendingOnboardingRevision: true }],
     ['awaiting-review', { hasPendingOnboardingRevision: true, missing: ['slug'] }],
     ['changes-needed', { access: 'rejected' }],
+    ['changes-needed', { access: 'rejected', reapplyLimitReached: false }],
+    ['not-approved', { access: 'rejected', reapplyLimitReached: true }],
+    ['not-approved', { access: 'rejected', reapplyLimitReached: true, outsideServiceArea: true }],
+    // The flag means nothing outside the rejected state.
+    ['approved', { access: 'approved', hasApprovedRevision: true, reapplyLimitReached: true }],
     ['outside-service-area', { access: 'rejected', outsideServiceArea: true }],
     ['awaiting-review', { access: 'rejected', hasPendingOnboardingRevision: true }],
     ['approved', { access: 'approved', hasApprovedRevision: true }],
@@ -38,6 +44,14 @@ describe('sellerStatusOf (design 3.3)', () => {
 });
 
 describe('onboardingStepsOf (ID 8.5; ux S1)', () => {
+  it('holds the submit step back for a seller with no re-application left', () => {
+    const input = { ...base, access: 'rejected', reapplyLimitReached: true } as const;
+
+    const steps = onboardingStepsOf(input, sellerStatusOf(input));
+
+    expect(steps[steps.length - 1]?.state).toBe('waiting');
+  });
+
   const keys = (steps: ReturnType<typeof onboardingStepsOf>) =>
     steps.map((step) => [step.titleKey, step.state]);
 

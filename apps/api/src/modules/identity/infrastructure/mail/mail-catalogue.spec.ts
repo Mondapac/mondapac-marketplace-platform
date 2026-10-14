@@ -1,3 +1,4 @@
+import { Temporal } from '@mondapac/shared-kernel';
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import {
   TEST_LOCALE_CONFIG_DIRS,
@@ -160,6 +161,21 @@ describe('CatalogueMailComposer (identity design 9; ux.md E1, E12)', () => {
       expect(mail.text).not.toMatch(/\{[a-z]+\}/);
       expect(mail.text).not.toMatch(/<[a-z]/i);
       expect(mail.text.split('\n').filter((line) => line.includes('://'))).toEqual([action]);
+    },
+  );
+
+  it.each(['reset', 'locked', 'replaced'] as const)(
+    'writes the seller two-step notice for a %s change, with no placeholder left',
+    (change) => {
+      const mail = composer.compose(testMarketContext('AU', 'default'), {
+        template: 'second-factor-changed',
+        population: 'seller',
+        change,
+        changedAt: Temporal.Instant.from('2026-10-14T01:02:03Z'),
+      });
+
+      expect(mail.subject).toContain('seller account');
+      expect(mail.text).not.toMatch(/\{[a-z]+\}/);
     },
   );
 

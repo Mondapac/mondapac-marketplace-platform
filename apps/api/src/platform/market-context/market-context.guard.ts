@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import { BadRequestException, HttpStatus, Injectable } from '@nestjs/common';
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { MarketContextFactory, type MarketContextError } from './market-context.factory';
+import { MARKET_PATH_PARAM, takesMarketFromPath } from '../http/market-from-path.decorator';
 import { MARKET_ID_HEADER } from './market-id-header';
 import { attachMarketContext } from './attached-market-context';
 import { MARKET_CONTEXT_EXEMPTION } from './no-market-context.decorator';
@@ -32,7 +33,9 @@ function reject(code: MarketRejection): BadRequestException {
  * Resolves the Market of every HTTP request from `x-market-id` (platform-foundations 5.1)
  * and attaches the minted context for `@Market()`. It is the first global guard, so a
  * request refused here reaches nothing else and reads nothing from the database. Every
- * controller is market-scoped unless its class carries `@NoMarketContext()`.
+ * controller is market-scoped unless its class carries `@NoMarketContext()`. A controller marked
+ * `@MarketFromPath()` names its Market in the `:market` route parameter instead of the header;
+ * the value is checked the same way and refused with the same codes.
  */
 @Injectable()
 export class MarketContextGuard implements CanActivate {
@@ -44,8 +47,12 @@ export class MarketContextGuard implements CanActivate {
     }
     if (isMarketContextExempt(context.getClass())) return true;
 
-    const request = context.switchToHttp().getRequest<IncomingMessage>();
-    const header = request.headers[MARKET_ID_HEADER];
+    const request = context
+      .switchToHttp()
+      .getRequest<IncomingMessage & { params?: Record<string, unknown> }>();
+    const header = takesMarketFromPath(context.getClass())
+      ? request.params?.[MARKET_PATH_PARAM]
+      : request.headers[MARKET_ID_HEADER];
     if (header === undefined) throw reject('market.header-missing');
     // Node joins a repeated header into one string, which fails the Market pattern; an
     // array is refused the same way.

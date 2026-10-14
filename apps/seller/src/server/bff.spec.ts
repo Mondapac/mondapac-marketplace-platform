@@ -29,6 +29,33 @@ function post(path: string, headers: Record<string, string> = sameOrigin, body =
 const upstreamOk = () =>
   vi.fn<typeof fetch>(() => Promise.resolve(new Response('{"code":"signed-in"}', { status: 200 })));
 
+describe('relay second-factor paths', () => {
+  it.each([
+    'identity/seller/sign-in/second-factor',
+    'identity/seller/second-factor/enrolment',
+    'identity/seller/second-factor/enrolment/confirm',
+    'identity/seller/second-factor/remove',
+    'identity/seller/second-factor/recovery-codes',
+  ])('forwards POST %s', async (path) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, post(path), path.split('/'), upstream);
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses other second-factor shapes', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      post('identity/seller/second-factor/other'),
+      ['identity', 'seller', 'second-factor', 'other'],
+      upstream,
+    );
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
 describe('relay logging', () => {
   it('logs the status and the API correlation id for an error answer, and nothing secret', async () => {
     const log = vi.fn();
@@ -471,5 +498,98 @@ describe('relay allowlist for stock locations', () => {
     for (const [method, path] of refused) {
       expect((await relay(config, req(method, path), path, upstream)).status).toBe(404);
     }
+  });
+});
+
+describe('relay product photo paths', () => {
+  const PRODUCT = '01990000-0000-7000-8000-00000000c001';
+  const IMAGE = '01990000-0000-7000-8000-00000000d001';
+  const uploadPath = ['catalog', 'seller', 'products', PRODUCT, 'images'];
+
+  it('takes a photo upload of 1 MiB, where every other body stops at 16 KB', async () => {
+    const upstream = upstreamOk();
+    const photoBody = JSON.stringify({ data: 'A'.repeat(1024 * 1024) });
+    const response = await relay(
+      config,
+      post(uploadPath.join('/'), sameOrigin, photoBody),
+      uploadPath,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(1);
+
+    const other = upstreamOk();
+    const refused = await relay(
+      config,
+      post(`catalog/seller/products/${PRODUCT}/submit`, sameOrigin, photoBody),
+      ['catalog', 'seller', 'products', PRODUCT, 'submit'],
+      other,
+    );
+    expect(refused.status).toBe(413);
+    expect(other).not.toHaveBeenCalled();
+  });
+
+  it('refuses a photo upload over 5.8 MiB', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      post(uploadPath.join('/'), sameOrigin, 'A'.repeat(5800 * 1024 + 1)),
+      uploadPath,
+      upstream,
+    );
+    expect(response.status).toBe(413);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('relays a photo read for the three sizes only, and a delete', async () => {
+    const read = (size: string) =>
+      new Request(
+        `http://seller.localhost:3001/api/catalog/seller/products/${PRODUCT}/images/${IMAGE}/${size}`,
+        { headers: { host: sameOrigin.host } },
+      );
+    for (const size of ['thumb', 'medium', 'large']) {
+      const upstream = upstreamOk();
+      const response = await relay(
+        config,
+        read(size),
+        ['catalog', 'seller', 'products', PRODUCT, 'images', IMAGE, size],
+        upstream,
+      );
+      expect(response.status).toBe(200);
+      expect(upstream).toHaveBeenCalledTimes(1);
+    }
+    const upstream = upstreamOk();
+    const huge = await relay(
+      config,
+      read('huge'),
+      ['catalog', 'seller', 'products', PRODUCT, 'images', IMAGE, 'huge'],
+      upstream,
+    );
+    expect(huge.status).toBe(404);
+
+    const remove = new Request(
+      `http://seller.localhost:3001/api/catalog/seller/products/${PRODUCT}/images/${IMAGE}`,
+      { method: 'DELETE', headers: sameOrigin },
+    );
+    const deleted = await relay(
+      config,
+      remove,
+      ['catalog', 'seller', 'products', PRODUCT, 'images', IMAGE],
+      upstream,
+    );
+    expect(deleted.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a photo path whose product id is not a UUID', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      post('catalog/seller/products/not-a-uuid/images'),
+      ['catalog', 'seller', 'products', 'not-a-uuid', 'images'],
+      upstream,
+    );
+    expect(response.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
   });
 });

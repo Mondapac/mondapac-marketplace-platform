@@ -85,8 +85,11 @@ const LEAD_KEYS = [
   'identity.platform-role.view',
   'identity.seller-access.view',
   'identity.seller-account.reset-second-factor',
+  'ordering.order.view',
   'pricing.price-hold.view',
   'sellers.seller.view',
+  'shipping.flat-fee.view',
+  'commission-payouts.settlement.view',
 ];
 
 describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)', (code) => {

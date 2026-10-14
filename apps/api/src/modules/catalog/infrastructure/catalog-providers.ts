@@ -53,6 +53,13 @@ import { SellersAllowedProductTypesReader } from './sellers-allowed-product-type
 import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.reader';
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
+import {
+  PRODUCT_IMAGE_REPOSITORY,
+  type ProductImageRepository,
+} from '../application/ports/product-image.repository';
+import { IMAGE_PROCESSOR, type ImageProcessor } from '../application/ports/image-processor';
+import { PrismaProductImageRepository } from './prisma-product-image.repository';
+import { SharpImageProcessor } from './sharp-image-processor';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
@@ -155,6 +162,16 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): ProductRevisionRepository =>
       new PrismaProductRevisionRepository(prisma),
+  },
+  {
+    provide: PRODUCT_IMAGE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductImageRepository =>
+      new PrismaProductImageRepository(prisma),
+  },
+  {
+    provide: IMAGE_PROCESSOR,
+    useFactory: (): ImageProcessor => new SharpImageProcessor(),
   },
   {
     provide: RATE_COUNTER_REPOSITORY,

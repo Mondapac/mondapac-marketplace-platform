@@ -1,5 +1,31 @@
 [
   {
+    "action": "commission-payouts.commission-rate.clear",
+    "targetType": "commission-payouts.seller-commission-rate",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "rateBps": "integer"
+    },
+    "after": {
+      "marketRateBps": "integer"
+    }
+  },
+  {
+    "action": "commission-payouts.commission-rate.set",
+    "targetType": "commission-payouts.seller-commission-rate",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "rateBps": "optional(integer)"
+    },
+    "after": {
+      "belowMarketRate": "boolean",
+      "marketRateBps": "integer",
+      "rateBps": "integer"
+    }
+  },
+  {
     "action": "identity.account-role.assigned",
     "targetType": "identity.account",
     "targetId": "id",
@@ -490,7 +516,7 @@
     "before": null,
     "after": {
       "previousRevisionId": "optional(id)",
-      "readKind": "enumOf(review)",
+      "readKind": "enumOf(review|reviewer-details)",
       "revisionId": "id"
     }
   },
@@ -503,6 +529,18 @@
     "after": {
       "observedOutcome": "enumOf(active|not-found|cancelled)",
       "revisionId": "id"
+    }
+  },
+  {
+    "action": "shipping.flat-fee.set",
+    "targetType": "shipping.seller-flat-fee",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "feeMinor": "optional(integer)"
+    },
+    "after": {
+      "feeMinor": "integer"
     }
   }
 ]

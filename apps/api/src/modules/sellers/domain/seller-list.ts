@@ -6,9 +6,30 @@ import { STORE_NAME_KEY_MAX_LENGTH, storeNameKey } from './store-name';
 // The admin seller list (sellers design 7.8; slice 6): the request's shape, the keyset cursor
 // and the one status a row shows. Pure rules; no Market, no I/O.
 
-/** The tabs `sellers` serves from its own rows (design 7.8); the tabs of `identity` wait for R-6. */
-export const LIST_TABS = ['awaiting-review', 'incomplete', 'all'] as const;
-export type ListTab = (typeof LIST_TABS)[number];
+/** The tabs read from `sellers`' own rows (design 7.8); text search works on these only. */
+export const FILE_TABS = ['awaiting-review', 'incomplete', 'all'] as const;
+export type FileTab = (typeof FILE_TABS)[number];
+
+/**
+ * The tabs that page through `identity`'s state (design 7.8, R-6; slices 6b, 7b), and what each
+ * reads: a state, and for the two tabs of rejected sellers whether the re-apply limit is reached
+ * ("Not approved") or not ("Changes needed").
+ */
+export const STATE_TABS = {
+  'changes-needed': { state: 'rejected', reapplyLimitReached: false },
+  'not-approved': { state: 'rejected', reapplyLimitReached: true },
+  approved: { state: 'approved', reapplyLimitReached: null },
+  suspended: { state: 'suspended', reapplyLimitReached: null },
+} as const satisfies Record<
+  string,
+  { readonly state: AccessState; readonly reapplyLimitReached: boolean | null }
+>;
+export type StateTab = keyof typeof STATE_TABS;
+
+export const LIST_TABS = [...FILE_TABS, ...(Object.keys(STATE_TABS) as StateTab[])] as const;
+export type ListTab = FileTab | StateTab;
+
+export const isStateTab = (tab: ListTab): tab is StateTab => Object.hasOwn(STATE_TABS, tab);
 
 /** The kinds of a pending submission (data design 3.2): a new application or a change request. */
 export const LIST_KINDS = ['onboarding', 'identity-change'] as const;
@@ -32,7 +53,7 @@ export interface ListSearch {
 
 /** Where the previous page ended; it names the tab it belongs to. */
 export type ListCursor =
-  | { readonly tab: 'all'; readonly sellerId: Id<'Seller'> }
+  | { readonly tab: 'all' | StateTab; readonly sellerId: Id<'Seller'> }
   | {
       readonly tab: 'incomplete';
       readonly changedAt: Temporal.Instant;
@@ -74,11 +95,18 @@ const SLUG_CHARS = /^[a-z0-9-]+$/;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** The text of a cursor: `all.<id>`, `incomplete.<epoch ms>.<id>`, `awaiting-review.<epoch ms>.<id>`. */
+/**
+ * The text of a cursor: `all.<id>` (and `<state tab>.<id>`), `incomplete.<epoch ms>.<id>`,
+ * `awaiting-review.<epoch ms>.<id>`.
+ */
 export function cursorText(cursor: ListCursor): string {
   switch (cursor.tab) {
     case 'all':
-      return `all.${cursor.sellerId}`;
+    case 'changes-needed':
+    case 'not-approved':
+    case 'approved':
+    case 'suspended':
+      return `${cursor.tab}.${cursor.sellerId}`;
     case 'incomplete':
       return `incomplete.${cursor.changedAt.epochMilliseconds}.${cursor.sellerId}`;
     case 'awaiting-review':
@@ -94,7 +122,7 @@ function parseCursor(text: string, tab: ListTab): ListCursor | null {
     const parsed = value === undefined ? null : parseId<K>(value);
     return parsed !== null && parsed.ok ? parsed.value : null;
   };
-  if (tab === 'all') {
+  if (tab === 'all' || isStateTab(tab)) {
     const sellerId = parts.length === 2 ? idOf<'Seller'>(parts[1]) : null;
     return sellerId === null ? null : { tab, sellerId };
   }
@@ -197,7 +225,12 @@ export function parseListRequest(raw: unknown): Result<ListRequest, ListRequestR
     } else limit = limitValue;
   }
 
-  const search = parseSearch(get('search'), problems);
+  let search = parseSearch(get('search'), problems);
+  // The single rule of 7.8 (Jafar 2): no text search on an `identity` state tab.
+  if (search !== null && isStateTab(tab)) {
+    problems.push({ path: 'search', code: 'tab' });
+    search = null;
+  }
 
   const afterValue = get('after');
   let after: ListCursor | null = null;
@@ -217,6 +250,8 @@ export function parseListRequest(raw: unknown): Result<ListRequest, ListRequestR
 export interface ListStatusInput {
   /** `identity`'s state, or null when `identity` does not know the seller. */
   readonly access: AccessState | null;
+  /** `identity`'s "no re-application left" for a rejected seller; null when unknown. */
+  readonly reapplyLimitReached: boolean | null;
   readonly hasApprovedRevision: boolean;
   /** The kind of the seller's pending submission, or null when none is pending. */
   readonly pendingKind: ListKind | null;
@@ -241,6 +276,7 @@ export function listStatusOf(input: ListStatusInput): SellerStatus | null {
     missing: input.draftComplete ? [] : ['storeName'],
     outsideServiceArea: input.outsideServiceArea,
     registerNegative: false,
+    reapplyLimitReached: input.reapplyLimitReached,
   });
 }
 

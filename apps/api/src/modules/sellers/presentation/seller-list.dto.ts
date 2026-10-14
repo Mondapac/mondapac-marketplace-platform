@@ -19,10 +19,11 @@ export class SellerListRequest {
     enum: LIST_TABS,
     default: 'awaiting-review',
     description:
-      'The tab, read from the sellers module. Only these three tabs are served. The tabs that ' +
-      'follow the access state of identity (changes needed, not approved, approved, ' +
-      'suspended) are not yet available: they are not modelled as empty lists, and a request ' +
-      'for one is validation.failed.',
+      'The tab. awaiting-review, incomplete and all are read from the seller files. ' +
+      'changes-needed, not-approved, approved and suspended page through the access state of ' +
+      'identity, newest first, and need identity.seller-access.view too (else access.denied); ' +
+      'they take no search, kind or outsideArea. A rejected seller is under changes-needed, or ' +
+      'under not-approved once it has no re-application left.',
   })
   tab?: (typeof LIST_TABS)[number];
 
@@ -63,7 +64,19 @@ export class SellerListRequest {
   limit?: number;
 }
 
-/** One row of the admin list: clear fields only, no business data and no personal field. */
+/** The Seller Owner of a row (identity's admin read); personal data, escaped text only. */
+export class SellerListOwnerView {
+  @ApiProperty({ type: String, nullable: true })
+  displayName!: string | null;
+
+  @ApiProperty({ description: 'The sign-in address, as typed.' })
+  email!: string;
+}
+
+/**
+ * One row of the admin list: clear fields of the seller file, no business data; the owner only
+ * for a caller holding identity.seller-access.view.
+ */
 export class SellerListRowView {
   @ApiProperty({ description: 'The seller id (UUID v7).' })
   sellerId!: string;
@@ -88,6 +101,16 @@ export class SellerListRowView {
       'when identity does not know the seller.',
   })
   status!: string | null;
+
+  @ApiProperty({
+    type: SellerListOwnerView,
+    nullable: true,
+    description:
+      'The Seller Owner, personal data: null when the caller does not also hold ' +
+      'identity.seller-access.view, when identity does not know the seller, or before an owner ' +
+      'invitation is accepted.',
+  })
+  owner!: SellerListOwnerView | null;
 
   @ApiProperty({ enum: ['self', 'invitation'] })
   origin!: 'self' | 'invitation';
@@ -139,6 +162,20 @@ export class SellerListCounts {
   all!: number;
 }
 
+export class SellerListStateCounts {
+  @ApiProperty()
+  changesNeeded!: number;
+
+  @ApiProperty()
+  notApproved!: number;
+
+  @ApiProperty()
+  approved!: number;
+
+  @ApiProperty()
+  suspended!: number;
+}
+
 export class SellerListBody {
   @ApiProperty({ enum: LIST_TABS })
   tab!: (typeof LIST_TABS)[number];
@@ -155,4 +192,13 @@ export class SellerListBody {
 
   @ApiProperty({ type: SellerListCounts })
   counts!: SellerListCounts;
+
+  @ApiProperty({
+    type: SellerListStateCounts,
+    nullable: true,
+    description:
+      'The counts of the identity state tabs, with the first page of a tab; null on a later ' +
+      'page of a file tab, and when the caller does not also hold identity.seller-access.view.',
+  })
+  stateCounts!: SellerListStateCounts | null;
 }

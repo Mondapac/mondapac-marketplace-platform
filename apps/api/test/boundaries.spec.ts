@@ -199,7 +199,6 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'market-exemption-is-platform-only: src/platform/market-context/index.ts',
         'module-internals-are-private: src/platform/reaches-into-module.ts',
         'module-public-api-only: src/modules/alpha/application/reaches-into-module.ts',
-        'module-public-api-only: src/modules/alpha/application/reads-inventory-ordering-port.ts',
         'modules-reach-authz-through-its-barrel: src/modules/alpha/application/reaches-use-case-gate.ts',
         'no-circular: src/modules/alpha/domain/circular-a.ts',
         'persistence-internals-are-private: src/modules/alpha/application/reaches-audit-writer.ts',

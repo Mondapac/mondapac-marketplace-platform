@@ -1118,6 +1118,27 @@ const marketSchema = z
     /** Fallback only (ADR-0005): sellers, locations and addresses carry their own zone. */
     timezone: z.string().refine((value) => TIME_ZONES.has(value), 'must be an IANA time zone'),
     requestLimits: requestLimitsSchema,
+    /**
+     * Payments settings (Phase 5 package 3). `connectedAccountCountry`: the ISO 3166 country a
+     * seller's connected account is created in. Without it a Market cannot connect payout accounts
+     * (fail closed).
+     */
+    payments: z
+      .strictObject({ connectedAccountCountry: z.string().regex(/^[A-Z]{2}$/) })
+      .optional(),
+    /**
+     * Commission settings (Phase 5 package 5), owned by commission-payouts. `defaultRateBps`: the
+     * Market's commission rate in basis points (AU 1500 = 15 %), 0 to 3000; an admin may set a
+     * separate rate per seller. `provisionalTaxRateBps`: the tax rate taken out of a tax-inclusive
+     * line before commission (AU GST 1000) until the tax module gives each line's tax. Without
+     * this section the Market has no commission rate and checkout fails closed.
+     */
+    commissionPayouts: z
+      .strictObject({
+        defaultRateBps: z.number().int().min(0).max(3000),
+        provisionalTaxRateBps: z.number().int().min(0).max(5000),
+      })
+      .optional(),
     allowedOrigins: allowedOriginsSchema,
     identity: identitySchema,
     /** Owned by `sellers`; optional until a Market is configured for sellers. */

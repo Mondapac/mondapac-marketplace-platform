@@ -7,6 +7,7 @@ const PLAIN = new Set([
   'membership.none',
   'seller-access.suspended',
   'request.csrf',
+  'second-factor.locked',
 ]);
 
 export type ErrorKey = {
@@ -22,7 +23,10 @@ export function formErrorKey(failure: ApiFailure): ErrorKey {
     return { key: 'request.throttled', values: { minutes: Math.max(1, Math.ceil(seconds / 60)) } };
   }
   if (code === 'account.disabled') return { key: 'account.disabled.seller' };
-  if (code === 'second-factor-required') return { key: 'second-factor.unsupported' };
+  if (code === 'challenge.rejected') return { key: 'second-factor.challenge-ended' };
+  if (code === 'second-factor.invalid') return { key: 'second-factor.code-rejected' };
+  if (code === 'password.current-incorrect') return { key: 'second-factor.password-incorrect' };
+  if (code === 'second-factor.unavailable') return { key: 'second-factor.already-on' };
   if (PLAIN.has(code)) return { key: code };
   if (code === 'network') return { key: 'network' };
   return { key: 'unknown' };
@@ -41,6 +45,7 @@ export function fieldErrorKeys(
       result[name] =
         problem.code === 'required' ? 'validation.email.required' : 'validation.email.format';
     else if (name === 'password') result[name] = 'validation.password.required';
+    else if (name === 'code') result[name] = 'validation.code.required';
     else if (name === 'name')
       result[name] =
         problem.code === 'characters' ? 'validation.name.characters' : 'validation.name.required';

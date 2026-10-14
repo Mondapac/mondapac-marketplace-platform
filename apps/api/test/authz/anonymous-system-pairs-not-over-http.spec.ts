@@ -7,6 +7,7 @@ import { CERTIFICATION_FACADE } from '../../src/modules/certification';
 import { FindAccessDecisionsByBasis } from '../../src/modules/identity/application/use-cases/find-access-decisions-by-basis.use-case';
 import { ListSellerAccessDecisions } from '../../src/modules/identity/application/use-cases/list-seller-access-decisions.use-case';
 import { SellerAccountSummaries } from '../../src/modules/identity/application/use-cases/seller-account-summaries.use-case';
+import { SellerIdsByState } from '../../src/modules/identity/application/use-cases/seller-ids-by-state.use-case';
 import { SELLER_ACCESS_CONTRACT } from '../../src/modules/identity/contracts/seller-access.contract';
 import { SELLERS_FACADE } from '../../src/modules/sellers/contracts/sellers.facade';
 import { ApprovedSellerZonesSystem } from '../../src/modules/sellers/application/use-cases/approved-seller-zones-system.use-case';
@@ -169,6 +170,8 @@ describe('anonymous and system use cases are not reachable over HTTP', () => {
       FindAccessDecisionsByBasis,
       // Slice 9b (Hassan L1): owners' addresses by seller id, for `sellers` only.
       SellerAccountSummaries,
+      // Sellers slice 6b: the admin part of R-6, for `sellers` only.
+      SellerIdsByState,
       SELLER_ACCESS_CONTRACT,
     ]);
 

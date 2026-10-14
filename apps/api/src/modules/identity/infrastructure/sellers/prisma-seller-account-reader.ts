@@ -8,6 +8,8 @@ import {
   type OwnedSellerQuery,
   type SellerAccountReader,
   type SellerAccountRecord,
+  type ReapplyFilter,
+  type SellerStateCounts,
 } from '../../application/ports/seller-account-reader';
 import type { SellerAccessStateCode, SellerOrigin } from '../../domain/seller-access';
 
@@ -174,6 +176,62 @@ export class PrismaSellerAccountReader implements SellerAccountReader {
     return rows.map((row) => {
       const accountId = ownerOf.get(row.sellerId);
       return recordOf(row, accountId === undefined ? undefined : byId.get(accountId));
+    });
+  }
+
+  async sellerIdsInState(
+    market: MarketContext,
+    query: {
+      readonly state: SellerAccessStateCode;
+      readonly before: Id<'Seller'> | null;
+      readonly limit: number;
+      readonly reapply: ReapplyFilter | null;
+    },
+  ): Promise<Id<'Seller'>[]> {
+    // `seller_access_market_id_state_state_changed_at_idx` narrows by Market and state.
+    const rows = await this.prisma.tx(market).identitySellerAccess.findMany({
+      where: {
+        marketId: market.marketId,
+        registeredAt: { not: null },
+        state: query.state,
+        ...(query.reapply === null
+          ? {}
+          : {
+              reapplyCount: query.reapply.reapplyLimitReached
+                ? { gte: query.reapply.limit }
+                : { lt: query.reapply.limit },
+            }),
+        ...(query.before === null ? {} : { sellerId: { lt: query.before } }),
+      },
+      select: { sellerId: true },
+      orderBy: { sellerId: 'desc' },
+      take: query.limit,
+    });
+    return rows.map((row) => row.sellerId as Id<'Seller'>);
+  }
+
+  async stateCounts(market: MarketContext): Promise<SellerStateCounts> {
+    const groups = await this.prisma.tx(market).identitySellerAccess.groupBy({
+      by: ['state'],
+      where: { marketId: market.marketId, registeredAt: { not: null } },
+      _count: { _all: true },
+    });
+    const counts = { pending: 0, approved: 0, rejected: 0, suspended: 0 };
+    for (const group of groups) {
+      // The CHECK of `seller_access` holds the four codes (data design 3.9).
+      counts[group.state as SellerAccessStateCode] = group._count._all;
+    }
+    return counts;
+  }
+
+  async rejectedAtLimit(market: MarketContext, limit: number): Promise<number> {
+    return this.prisma.tx(market).identitySellerAccess.count({
+      where: {
+        marketId: market.marketId,
+        registeredAt: { not: null },
+        state: 'rejected',
+        reapplyCount: { gte: limit },
+      },
     });
   }
 

@@ -230,6 +230,12 @@ Rows, values and SQL are never logged.
 `RAW_READ_PORT` (`raw-reads/raw-read-port.ts`) runs a read that Prisma cannot express. It is
 read-only and Market-bound:
 
+- A module gets its port only through `PersistenceModule.rawReadFor('<module>')` in its Nest
+  module (`providers: [...]`); `PersistenceModule` does not export the unbound port. The bound
+  port refuses a statement owned by another module with `wrong-module`, at run time, on top of
+  the call-site check of `pnpm boundaries`. The boundary check is best effort against
+  `createRequire`, `module.require`, aliased Prisma builders and `@prisma/client/runtime`
+  imports (Hassan R-2); review catches those.
 - It needs an open read-only unit (ADR-0025) of the asked Market; a read-write unit, no unit or
   a Market that differs from the unit's is refused before any database call.
 - One unnamed statement goes out on the pool: no `BEGIN`, no transaction. `$1` is the Market,

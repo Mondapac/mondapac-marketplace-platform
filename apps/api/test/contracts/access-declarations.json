@@ -1,7 +1,9 @@
 [
   { "name": "cart.add-guest-item", "rule": "anonymous" },
   { "name": "cart.add-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "cart.clear-ordered-lines", "rule": "system" },
   { "name": "cart.merge-guest-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "cart.read-checkout-lines", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.remove-guest-item", "rule": "anonymous" },
   { "name": "cart.remove-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.set-guest-line-quantity", "rule": "anonymous" },
@@ -17,6 +19,16 @@
   },
   {
     "name": "catalog.own-offers-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-product-image-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-product-image-read",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
@@ -43,6 +55,17 @@
   { "name": "certification.evaluate-claims-system", "rule": "system" },
   { "name": "certification.match-claim-terms", "rule": "anonymous" },
   { "name": "certification.match-claim-terms-system", "rule": "system" },
+  {
+    "name": "commission-payouts.commission-rates",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
+  {
+    "name": "commission-payouts.view-own-ledger",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
   { "name": "identity.change-password", "rule": "own-resources", "whenSellerNotApproved": "allow" },
@@ -52,9 +75,11 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "identity.complete-seller-sign-in", "rule": "anonymous" },
   { "name": "identity.confirm-customer-email", "rule": "anonymous" },
   { "name": "identity.confirm-second-factor-enrolment", "rule": "anonymous" },
   { "name": "identity.confirm-seller-email", "rule": "anonymous" },
+  { "name": "identity.confirm-seller-second-factor-enrolment", "rule": "anonymous" },
   { "name": "identity.describe-actor", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   {
     "name": "identity.describe-seller-status",
@@ -78,8 +103,18 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  {
+    "name": "identity.regenerate-seller-recovery-codes",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "identity.register-customer", "rule": "anonymous" },
   { "name": "identity.register-seller", "rule": "anonymous" },
+  {
+    "name": "identity.remove-seller-second-factor",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "identity.request-customer-verification", "rule": "anonymous" },
   { "name": "identity.request-password-reset", "rule": "anonymous" },
   { "name": "identity.request-seller-verification", "rule": "anonymous" },
@@ -106,6 +141,11 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  {
+    "name": "identity.start-seller-second-factor-enrolment",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "inventory.availability", "rule": "anonymous" },
   { "name": "inventory.availability-system", "rule": "system" },
   { "name": "inventory.cancel-committed-line", "rule": "system" },
@@ -123,6 +163,21 @@
   { "name": "inventory.release-reservation", "rule": "system" },
   { "name": "inventory.reserve", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "inventory.retire-sell-units", "rule": "system" },
+  { "name": "ordering.cancel-payment", "rule": "system" },
+  { "name": "ordering.confirm-payment", "rule": "system" },
+  { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "ordering.record-ledger", "rule": "system" },
+  { "name": "ordering.record-shipments", "rule": "system" },
+  { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "ordering.view-order", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "payments.apply-stripe-events", "rule": "system" },
+  { "name": "payments.payout-readiness", "rule": "system" },
+  { "name": "payments.receive-stripe-event", "rule": "anonymous" },
+  {
+    "name": "payments.view-payout-account",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "pricing.effective-prices", "rule": "anonymous" },
   { "name": "pricing.effective-prices-system", "rule": "system" },
   { "name": "pricing.purge-write-refusal-throttles", "rule": "system" },
@@ -171,5 +226,11 @@
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },
-  { "name": "sellers.selling-eligibility-system", "rule": "system" }
+  { "name": "sellers.selling-eligibility-system", "rule": "system" },
+  { "name": "shipping.flat-fees", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  {
+    "name": "shipping.view-own-flat-fee",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  }
 ]

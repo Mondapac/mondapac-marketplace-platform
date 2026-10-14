@@ -20,6 +20,7 @@ import { BUSINESS_FILE_REVISION_REPOSITORY } from './application/ports/business-
 import { REVIEWER_NOTIFIER } from './application/ports/reviewer-notifier';
 import { REVISION_CONTENT_SEALER } from './application/ports/revision-content-sealer';
 import { SELLER_ACCESS_READER } from './application/ports/seller-access-reader';
+import { SELLER_ACCOUNT_DIRECTORY } from './application/ports/seller-account-directory';
 import { BUSINESS_IDENTIFIER_SCHEMES } from './application/ports/business-identifier-scheme';
 import { BUSINESS_REGISTER_LOOKUPS } from './application/ports/business-register-lookup';
 import { IDENTIFIER_INDEX } from './application/ports/identifier-index';
@@ -66,6 +67,7 @@ import { MyFileSaveIdentifier } from './application/use-cases/my-file-save-ident
 import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-case';
 import { MyFileValidateIdentifier } from './application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
+import { ReviewerBusinessDetailsRead } from './application/use-cases/reviewer-business-details.use-case';
 import { ReviewRead } from './application/use-cases/review-read.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
@@ -126,6 +128,7 @@ const PORT = {
   revisions: BUSINESS_FILE_REVISION_REPOSITORY,
   sealer: REVISION_CONTENT_SEALER,
   accessReader: SELLER_ACCESS_READER,
+  directory: SELLER_ACCOUNT_DIRECTORY,
   authorisation: AUTHORISATION_CHECK,
   notifier: REVIEWER_NOTIFIER,
   reviewChecks: REVIEW_CHECK_REPOSITORY,
@@ -421,13 +424,13 @@ const REVIEW_DECISION_PORTS = {
       ids: true,
       clock: true,
     }),
-    // Slice 6, the admin seller list (design 6.2, 7.8), over HTTP through SellerListController,
-    // under `sellers.seller.view`: clear fields only, one `identity` call per page, and the row status
-    // only for an actor that also holds `identity.seller-access.view`.
+    // Slices 6 and 6b, the admin seller list (design 6.2, 7.8), over HTTP through
+    // SellerListController, under `sellers.seller.view`; the row status, the owner and the
+    // identity-state tabs only for an actor that also holds `identity.seller-access.view`.
     useCaseProvider(SellerList, {
       unitOfWork: true,
       list: true,
-      accessReader: true,
+      directory: true,
       authorisation: true,
       onboardingAreas: true,
     }),
@@ -438,6 +441,14 @@ const REVIEW_DECISION_PORTS = {
     useCaseProvider(SellingEligibilitySystem, SELLING_ELIGIBILITY_PORTS),
     useCaseProvider(AllowedProductTypes, { unitOfWork: true, sellingFacts: true }),
     useCaseProvider(AllowedProductTypesSystem, { unitOfWork: true, sellingFacts: true }),
+    // The certification reviewer's read of one approved revision's names and addresses
+    // (design 7.1, Hassan M4): audited per read.
+    useCaseProvider(ReviewerBusinessDetailsRead, {
+      unitOfWork: true,
+      revisions: true,
+      sealer: true,
+      audit: true,
+    }),
     {
       provide: SELLERS_FACADE,
       inject: [
@@ -447,6 +458,7 @@ const REVIEW_DECISION_PORTS = {
         SellingEligibilitySystem,
         AllowedProductTypes,
         AllowedProductTypesSystem,
+        ReviewerBusinessDetailsRead,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -455,6 +467,7 @@ const REVIEW_DECISION_PORTS = {
         sellingEligibilitySystem: SellingEligibilitySystem,
         allowedProductTypes: AllowedProductTypes,
         allowedProductTypesSystem: AllowedProductTypesSystem,
+        reviewerBusinessDetails: ReviewerBusinessDetailsRead,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -463,6 +476,7 @@ const REVIEW_DECISION_PORTS = {
           sellingEligibilitySystem,
           allowedProductTypes,
           allowedProductTypesSystem,
+          reviewerBusinessDetails,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by

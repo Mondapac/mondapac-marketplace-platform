@@ -111,6 +111,26 @@ describe('review and submit (S6)', () => {
     expect(screen.queryByRole('button', { name: /Submit/ })).toBeNull();
   });
 
+  it('has no submit button once no re-application is left, and the account page says so', () => {
+    review({ ...file, status: 'not-approved' });
+    expect(screen.queryByRole('button', { name: /Submit/ })).toBeNull();
+    cleanup();
+    render(wrap(<SetupHub file={{ ...file, status: 'not-approved' }} csrfToken="csrf-1" />));
+    expect(screen.getByText('Not approved')).toBeTruthy();
+    expect(screen.getByText('Your application was not approved')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Submit/ })).toBeNull();
+  });
+
+  it('tells a rejected seller at the limit that it cannot apply again', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: { status: 409, code: 'seller-access.reapply-limit' },
+    });
+    review({ ...file, status: 'changes-needed' });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit again' }));
+    expect(await screen.findByText(/reached the limit for new applications/)).toBeTruthy();
+  });
+
   it('shows the reason when the file is incomplete and reloads', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 422, code: 'file.incomplete' } });
     review(file);

@@ -37,6 +37,7 @@ export const MY_FILE_STATUS = {
   'review.no-revision': 409,
   'address.outside-service-area': 409,
   'seller-access.wrong-state': 409,
+  'seller-access.reapply-limit': 409,
   'identifier.not-matched': 409,
   'conflict.stale': 409,
   'request.throttled': 429,

@@ -147,7 +147,7 @@ const contextImportPaths = (entries) => [
       ...entries.map((name) => ({ name, message: MINTED_BY_PLATFORM })),
       {
         name: '@nestjs/core',
-        importNames: ['DiscoveryService', 'DiscoveryModule', 'ModulesContainer'],
+        importNames: ['DiscoveryService', 'DiscoveryModule', 'ModulesContainer', 'ModuleRef'],
         message:
           'contexts-are-minted-by-platform: a module injects what it needs and never ' +
           "discovers providers, the platform's factory included.",

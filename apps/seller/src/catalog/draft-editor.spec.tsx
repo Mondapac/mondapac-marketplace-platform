@@ -73,7 +73,13 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
 const mount = (p: ProductView = product()) =>
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <EditForm product={p} locales={['en-AU']} defaultLocale="en-AU" csrfToken="csrf" />
+      <EditForm
+        product={p}
+        photos={[]}
+        locales={['en-AU']}
+        defaultLocale="en-AU"
+        csrfToken="csrf"
+      />
     </NextIntlClientProvider>,
   );
 const saved = (ids: string[]) =>

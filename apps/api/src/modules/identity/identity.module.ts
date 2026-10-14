@@ -92,6 +92,7 @@ import { ADMIN_ACCOUNT_READER } from './application/ports/admin-account-reader';
 import { adminAccountReaderProvider } from './infrastructure/admin-team/prisma-admin-account-reader';
 import { ListSellerAccounts } from './application/use-cases/list-seller-accounts.use-case';
 import { SellerAccountSummaries } from './application/use-cases/seller-account-summaries.use-case';
+import { SellerIdsByState } from './application/use-cases/seller-ids-by-state.use-case';
 import { SELLER_ACCOUNT_READER } from './application/ports/seller-account-reader';
 import { sellerAccountReaderProvider } from './infrastructure/sellers/prisma-seller-account-reader';
 import { DisableAdminAccount } from './application/use-cases/disable-admin-account.use-case';
@@ -104,11 +105,16 @@ import { ResetOtherAdminSecondFactor } from './application/use-cases/reset-other
 import { RevokeAdminInvitation } from './application/use-cases/revoke-admin-invitation.use-case';
 import { ChangePassword } from './application/use-cases/change-password.use-case';
 import { CompleteAdminSignIn } from './application/use-cases/complete-admin-sign-in.use-case';
+import { CompleteSellerSignIn } from './application/use-cases/complete-seller-sign-in.use-case';
 import { ConfirmSecondFactorEnrolment } from './application/use-cases/confirm-second-factor-enrolment.use-case';
+import { ConfirmSellerSecondFactorEnrolment } from './application/use-cases/confirm-seller-second-factor-enrolment.use-case';
 import { IssueFirstAdminInvitation } from './application/use-cases/issue-first-admin-invitation.use-case';
 import { ResetAdminSecondFactor } from './application/use-cases/reset-admin-second-factor.use-case';
 import { CompleteSecondFactorReplacement } from './application/use-cases/complete-second-factor-replacement.use-case';
 import { RegenerateRecoveryCodes } from './application/use-cases/regenerate-recovery-codes.use-case';
+import { RegenerateSellerRecoveryCodes } from './application/use-cases/regenerate-seller-recovery-codes.use-case';
+import { RemoveSellerSecondFactor } from './application/use-cases/remove-seller-second-factor.use-case';
+import { StartSellerSecondFactorEnrolment } from './application/use-cases/start-seller-second-factor-enrolment.use-case';
 import { StartSecondFactorReplacement } from './application/use-cases/start-second-factor-replacement.use-case';
 import { SendInvitationMail } from './application/use-cases/send-invitation-mail.use-case';
 import { SendSecondFactorMail } from './application/use-cases/send-second-factor-mail.use-case';
@@ -172,6 +178,7 @@ import { purgeUnverifiedAccountsJob } from './presentation/jobs/purge-unverified
 import { seedRolesJob } from './presentation/jobs/seed-roles.job';
 import { SellerPasswordController } from './presentation/seller-password.controller';
 import { SellerRolesController } from './presentation/seller-roles.controller';
+import { SellerSecondFactorController } from './presentation/seller-second-factor.controller';
 import { SellerSessionController } from './presentation/seller-session.controller';
 import { SellerSignUpController } from './presentation/seller-sign-up.controller';
 import { identityMailSubscriptions } from './presentation/subscribers/mail.subscriptions';
@@ -330,6 +337,7 @@ function useCaseProvider<D, U>(
     CustomerEmailVerificationController,
     SellerSignUpController,
     SellerSessionController,
+    SellerSecondFactorController,
     CustomerPasswordController,
     SellerPasswordController,
     SellerRolesController,
@@ -533,6 +541,88 @@ function useCaseProvider<D, U>(
       sellerAccess: true,
       decisions: true,
       grants: true,
+      factors: true,
+      challenges: true,
+      challengeTokens: true,
+    }),
+    useCaseProvider(CompleteSellerSignIn, {
+      unitOfWork: true,
+      accounts: true,
+      challenges: true,
+      factors: true,
+      throttles: true,
+      records: true,
+      keys: true,
+      secrets: true,
+      challengeTokens: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      sessions: true,
+      tokens: true,
+      policy: true,
+      memberships: true,
+      sellerAccess: true,
+      decisions: true,
+      grants: true,
+    }),
+    useCaseProvider(StartSellerSecondFactorEnrolment, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      challenges: true,
+      throttles: true,
+      records: true,
+      keys: true,
+      challengeTokens: true,
+      secrets: true,
+      hasher: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(ConfirmSellerSecondFactorEnrolment, {
+      unitOfWork: true,
+      accounts: true,
+      challenges: true,
+      factors: true,
+      throttles: true,
+      records: true,
+      keys: true,
+      secrets: true,
+      challengeTokens: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      sessions: true,
+      audit: true,
+      policy: true,
+    }),
+    useCaseProvider(RemoveSellerSecondFactor, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
+      audit: true,
+      policy: true,
+      sessions: true,
+      challenges: true,
+    }),
+    useCaseProvider(RegenerateSellerRecoveryCodes, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
+      audit: true,
+      policy: true,
     }),
     useCaseProvider(ConfirmSellerEmail, {
       unitOfWork: true,
@@ -1085,6 +1175,16 @@ function useCaseProvider<D, U>(
       grants: true,
       effectiveKeys: true,
       sellerAccounts: true,
+      policy: true,
+    }),
+    // Sellers slice 6b: the admin part of R-6, ids by state and counts (contract below).
+    useCaseProvider(SellerIdsByState, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      sellerAccounts: true,
+      policy: true,
     }),
     // Slice 9a: the R-5 reads of the decisions, for `sellers` only (contract below).
     useCaseProvider(ListSellerAccessDecisions, {
@@ -1189,11 +1289,13 @@ function useCaseProvider<D, U>(
         SellerAccessOf,
         SellerAccessOfSystem,
         SellerAccountSummaries,
+        SellerIdsByState,
         ListRegisteredSellers,
         NotifyAccessReviewers,
         ApproveSellerAccess,
         RejectSellerAccess,
         ReapplySellerAccess,
+        DescribeSellerStatus,
         ListSellerAccessDecisions,
         FindAccessDecisionsByBasis,
       ],
@@ -1201,11 +1303,13 @@ function useCaseProvider<D, U>(
         sellerAccessOf: SellerAccessOf,
         sellerAccessOfSystem: SellerAccessOfSystem,
         sellerAccountSummaries: SellerAccountSummaries,
+        sellerIdsByState: SellerIdsByState,
         listRegisteredSellers: ListRegisteredSellers,
         notifyAccessReviewers: NotifyAccessReviewers,
         approveSellerAccess: ApproveSellerAccess,
         rejectSellerAccess: RejectSellerAccess,
         reapplySellerAccess: ReapplySellerAccess,
+        describeSellerStatus: DescribeSellerStatus,
         listSellerAccessDecisions: ListSellerAccessDecisions,
         findAccessDecisionsByBasis: FindAccessDecisionsByBasis,
       ) =>
@@ -1213,11 +1317,13 @@ function useCaseProvider<D, U>(
           sellerAccessOf,
           sellerAccessOfSystem,
           sellerAccountSummaries,
+          sellerIdsByState,
           listRegisteredSellers,
           notifyAccessReviewers,
           approveSellerAccess,
           rejectSellerAccess,
           reapplySellerAccess,
+          describeSellerStatus,
           listSellerAccessDecisions,
           findAccessDecisionsByBasis,
         }),
