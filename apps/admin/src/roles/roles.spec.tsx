@@ -67,6 +67,32 @@ describe('admin roles', () => {
     );
   });
 
+  it('gives every group the same fixed columns, one per header', async () => {
+    const roles = [
+      role({}),
+      role({ roleId: '0190a000-0000-7000-8000-0000000000a2', kind: 'default', seedCode: 'viewer' }),
+      role({
+        roleId: '0190a000-0000-7000-8000-0000000000a3',
+        kind: 'custom',
+        seedCode: null,
+        name: 'Night shift',
+      }),
+    ];
+    for (const members of [new Map<string, number>(), null]) {
+      const { container } = render(await RolesTable({ roles, members }));
+      const tables = [...container.querySelectorAll('table')];
+      expect(tables).toHaveLength(3);
+      const layouts = tables.map((table) => {
+        expect(table.className).toContain('table-fixed');
+        const cols = [...table.querySelectorAll('col')].map((col) => col.className);
+        expect(cols).toHaveLength(table.querySelectorAll('th').length);
+        return cols.join(' ');
+      });
+      expect(new Set(layouts).size).toBe(1);
+      cleanup();
+    }
+  });
+
   it('shows a Members column only when counts are given', async () => {
     const r = role({});
     render(await RolesTable({ roles: [r], members: new Map([[r.roleId, 2]]) }));
