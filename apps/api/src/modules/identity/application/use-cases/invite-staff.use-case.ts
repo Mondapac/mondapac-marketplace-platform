@@ -196,6 +196,7 @@ export class InviteStaff extends UseCase<InviteStaffInput, InviteStaffOutput, In
           const verdict = await reserveInvitationMail(
             this.deps,
             market,
+            'seller',
             email.value.normalized,
             input.origin,
             now,
