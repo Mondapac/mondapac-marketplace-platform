@@ -62,6 +62,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing.effective-prices in market %s', (c
         supersededBy: null,
         supersededAt: null,
         supersedeCause: null,
+        decision: null,
         ...record,
       };
       series.rows.set(`${market.marketId}|${offerId}|${variantId}`, {

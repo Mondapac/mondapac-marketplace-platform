@@ -182,7 +182,7 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
       grantable: false,
     });
     expect(entry(await seededRole('viewer'))).toMatchObject({
-      permissionCount: 5,
+      permissionCount: 6,
       grantable: false,
     });
     expect(entry(await seededRole('platform-administrator'))).toMatchObject({
@@ -304,6 +304,6 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
       ]);
     }
     const viewer = read.value.all.find((role) => role.state.seedCode === 'viewer')!;
-    expect(viewer.state.permissionKeys).toHaveLength(5);
+    expect(viewer.state.permissionKeys).toHaveLength(6);
   });
 });

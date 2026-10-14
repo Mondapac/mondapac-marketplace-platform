@@ -1,4 +1,5 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { PriceAmount } from '../../domain/price-amount';
 import type { PriceSeries } from '../../domain/price-series';
 
 /** The priced unit (pricing design 2.1; ADR-0024 decision 1). */
@@ -15,6 +16,30 @@ export interface PriceSeriesKey {
 export type AddPriceSeriesOutcome = 'added' | 'key-retired';
 
 /**
+ * One held regular price as the review queue shows it (pricing design 5.2; PD5). Ids, the held
+ * amount, the anchor it was measured against and the direction: no Cost, no submitter, no seller
+ * data beyond the seller's id.
+ */
+export interface PendingHoldView {
+  readonly recordId: Id<'RegularPriceRecord'>;
+  readonly seriesId: Id<'PriceSeries'>;
+  readonly offerId: Id<'Offer'>;
+  readonly variantId: Id<'Variant'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly amount: PriceAmount;
+  readonly anchorRecordId: Id<'RegularPriceRecord'>;
+  readonly anchorAmount: PriceAmount;
+  readonly direction: 'up' | 'down';
+  readonly submittedAt: Temporal.Instant;
+}
+
+/** The place after which the next page of the queue starts: the last row's `(submittedAt, id)`. */
+export interface PendingHoldCursor {
+  readonly submittedAt: Temporal.Instant;
+  readonly id: Id<'RegularPriceRecord'>;
+}
+
+/**
  * The store of price series and their regular records (pricing-data 3.2, 3.3). Every method runs
  * in the open unit of the use case, through the Market-scoped client. Records are never deleted
  * and their content never changes; a save writes only the status, period-end and supersede
@@ -26,6 +51,31 @@ export interface PriceSeriesRepository {
    * null. Another Market's key is not found.
    */
   findByKey(market: MarketContext, key: PriceSeriesKey): Promise<PriceSeries | null>;
+
+  /**
+   * The series that holds a record, with every regular record, or null. Looked up in this Market
+   * only: another Market's record id is not found, the same answer as an unknown id.
+   */
+  findByRecordId(
+    market: MarketContext,
+    recordId: Id<'RegularPriceRecord'>,
+  ): Promise<PriceSeries | null>;
+
+  /**
+   * The pending regular records of the Market, oldest submission first (then by id), at most
+   * `limit` rows after `after` (keyset; PD5). A retired series has no pending record.
+   */
+  listPendingHolds(
+    market: MarketContext,
+    after: PendingHoldCursor | null,
+    limit: number,
+  ): Promise<readonly PendingHoldView[]>;
+
+  /** One record of the queue by id, or null when absent, foreign or no longer pending. */
+  findPendingHold(
+    market: MarketContext,
+    recordId: Id<'RegularPriceRecord'>,
+  ): Promise<PendingHoldView | null>;
 
   /** Every series of an Offer, retired ones included (the Offer-removed handler, D 6.4). */
   findByOffer(market: MarketContext, offerId: Id<'Offer'>): Promise<readonly PriceSeries[]>;
