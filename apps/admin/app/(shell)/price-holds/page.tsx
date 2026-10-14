@@ -1,3 +1,4 @@
+import { LoadError } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
@@ -25,7 +26,7 @@ export default async function PriceHoldsPage({
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
-    return <p className="p-6 text-fg-muted">{t('identity.error.unknown')}</p>;
+    return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
   const title = t('pricing.holds.title');
   const shell = (body: React.ReactNode) => (
@@ -36,7 +37,15 @@ export default async function PriceHoldsPage({
   );
   const message = (key: string) => (
     <>
-      <p className="text-fg-muted">{t(`pricing.holds.${key}`)}</p>
+      {key === 'unavailable' ? (
+        <LoadError
+          className="flex flex-col items-start gap-3"
+          message={t('pricing.holds.unavailable')}
+          retryLabel={t('load.retry')}
+        />
+      ) : (
+        <p className="text-fg-muted">{t(`pricing.holds.${key}`)}</p>
+      )}
       <p className="mt-4">
         <a className="font-medium text-link underline" href="/">
           {t('pricing.holds.back-home')}

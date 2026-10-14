@@ -41,6 +41,7 @@ export function SellersList({
   readonly canReview: boolean;
 }) {
   const t = useTranslations('sellers.list');
+  const tl = useTranslations('load');
   const [tab, setTab] = useState<Tab>('awaiting-review');
   const [kind, setKind] = useState('');
   const [outsideArea, setOutsideArea] = useState(false);
@@ -158,6 +159,13 @@ export function SellersList({
         ) : null}
       </div>
       {failure === null ? null : <Banner tone="critical">{t(`error.${failure}`)}</Banner>}
+      {failure === 'unavailable' ? (
+        <div>
+          <Button variant="secondary" onClick={() => void load(next)}>
+            {tl('retry')}
+          </Button>
+        </div>
+      ) : null}
       {rows.length > 0 ? <SellersTable rows={rows} canReview={canReview} /> : null}
       {!loading && failure === null && rows.length === 0 ? (
         <div className="rounded-lg border border-line p-6">

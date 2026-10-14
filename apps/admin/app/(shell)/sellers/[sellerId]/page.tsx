@@ -1,3 +1,4 @@
+import { LoadError } from '@mondapac/ui';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
@@ -28,7 +29,7 @@ export default async function SellerReviewPage({
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
-    return <p className="p-6 text-fg-muted">{t('identity.error.unknown')}</p>;
+    return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
   const title = t('sellers.review.title');
   const shell = (body: React.ReactNode) => (
@@ -40,7 +41,15 @@ export default async function SellerReviewPage({
     shell(
       <>
         <h1 className="mb-2 text-2xl font-semibold">{t(`sellers.review.${key}.title`)}</h1>
-        <p className="text-fg-muted">{t(`sellers.review.${key}.body`)}</p>
+        {key === 'unavailable' ? (
+          <LoadError
+            className="mb-2 flex flex-col items-start gap-3"
+            message={t('sellers.review.unavailable.body')}
+            retryLabel={t('load.retry')}
+          />
+        ) : (
+          <p className="text-fg-muted">{t(`sellers.review.${key}.body`)}</p>
+        )}
         <p className="mt-4">
           <a className="font-medium text-link underline" href="/sellers">
             {t('sellers.review.back')}
