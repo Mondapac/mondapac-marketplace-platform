@@ -57,6 +57,15 @@ const envSchema = z.object({
   MAIL_CATCHER_URL: z
     .url({ protocol: /^https?$/, error: 'must be an http(s) URL such as http://localhost:8025' })
     .optional(),
+  // Phase 5: the Stripe secret key for hosted Checkout. Test mode only until the live gates
+  // (pen test, tax agent) are passed: a live key is refused at boot. The value is never echoed.
+  STRIPE_SECRET_KEY: z
+    .string()
+    .regex(
+      /^(sk|rk)_test_[A-Za-z0-9_]{8,200}$/,
+      'must be a Stripe test-mode key (sk_test_ or rk_test_); live keys are refused until the live gates are passed',
+    )
+    .optional(),
   // ADR-0037: the BFF networks and their keys. Both empty or unset: the feature is off. Parsed
   // and checked by parseClientAddressTrust below; a secret is never echoed.
   TRUSTED_BFF_CIDRS: z.string().optional(),
@@ -107,6 +116,12 @@ export interface AppConfig {
    * unless `NODE_ENV` is explicitly `development` or `test` (`platform/mail/`).
    */
   readonly mailCatcherUrl: string | null;
+  /**
+   * The Stripe secret key (`STRIPE_SECRET_KEY`, test mode only), or null: then ordering cannot
+   * open a payment page and a checkout answers "payment unavailable". Holds a secret: never log
+   * this object whole; read by ordering's Stripe adapter alone.
+   */
+  readonly stripeSecretKey: string | null;
   /**
    * Who may prove a client address, and with which keys (ADR-0037 decisions 4 and 5): from
    * `TRUSTED_BFF_CIDRS` and `CLIENT_ADDRESS_KEYS`. `null` when both are empty: the address is the
@@ -171,6 +186,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     databaseUrl: parsed.data.DATABASE_URL,
     databasePoolMax: parsed.data.DATABASE_POOL_MAX,
     mailCatcherUrl: parsed.data.MAIL_CATCHER_URL ?? null,
+    stripeSecretKey: parsed.data.STRIPE_SECRET_KEY ?? null,
     clientAddressTrust: clientAddress.trust,
   });
 }

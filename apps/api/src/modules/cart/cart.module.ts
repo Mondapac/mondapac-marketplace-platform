@@ -21,7 +21,11 @@ import { SetGuestLineQuantity } from './application/use-cases/set-guest-line-qua
 import { SetLineQuantity } from './application/use-cases/set-line-quantity.use-case';
 import { ViewCart } from './application/use-cases/view-cart.use-case';
 import { ViewGuestCart } from './application/use-cases/view-guest-cart.use-case';
+import { ClearOrderedLines } from './application/use-cases/clear-ordered-lines.use-case';
+import { ReadCheckoutLines } from './application/use-cases/read-checkout-lines.use-case';
+import { CART_CHECKOUT_FACADE } from './contracts';
 import { cartProviders } from './infrastructure/cart-providers';
+import { CartCheckoutFacadeImplementation } from './presentation/cart-checkout.facade';
 import { CartController } from './presentation/cart.controller';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: CartDependencies) => U;
@@ -69,10 +73,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RemoveItem,
       MergeGuestCart,
       ViewGuestCart,
+      ReadCheckoutLines,
+      ClearOrderedLines,
       AddGuestItem,
       SetGuestLineQuantity,
       RemoveGuestItem,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    {
+      provide: CART_CHECKOUT_FACADE,
+      inject: [ReadCheckoutLines, ClearOrderedLines],
+      useFactory: (read: ReadCheckoutLines, clear: ClearOrderedLines) =>
+        new CartCheckoutFacadeImplementation(read, clear),
+    },
   ],
+  exports: [CART_CHECKOUT_FACADE],
 })
 export class CartModule {}

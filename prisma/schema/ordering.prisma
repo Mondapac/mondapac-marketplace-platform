@@ -1,0 +1,91 @@
+// The ordering module's tables (docs/design/domain/ordering.md, simplified for speed mode). Every
+// model is named Ordering<Name> and mapped to its table with @@map. The CHECKs, the partial unique
+// indexes and the grants are hand-written in the migration. Money is minor units (BigInt) plus a
+// currency; rows of an order are never deleted by the application.
+
+/// One order: a checkout of one customer's cart, paid in one Stripe Checkout session. The order id
+/// is also the `checkoutRef` of the inventory reservation and the client reference of the session.
+model OrderingOrder {
+  id                    String                @id @db.Uuid
+  marketId              String                @map("market_id") @db.VarChar(8)
+  tenantId              String                @map("tenant_id")
+  /// The customer's account id (a plain id, no foreign key).
+  accountId             String                @map("account_id") @db.Uuid
+  /// pending-payment, confirmed or cancelled (CHECK).
+  status                String
+  /// Set when cancelled: expired, payment-failed, stock-unavailable, superseded, provider-failed (CHECK).
+  cancelReason          String?               @map("cancel_reason")
+  /// none, authorised, captured or voided (CHECK). Moves only forward.
+  paymentState          String                @map("payment_state")
+  currency              String                @db.VarChar(3)
+  /// Sum of the seller orders (GST-inclusive prices as pricing gives them).
+  totalAmount           BigInt                @map("total_amount")
+  /// The inventory reservation holding the stock while the order is pending.
+  reservationId         String                @map("reservation_id") @db.Uuid
+  /// Stored before Stripe is called; never replaced by a new key (hybrid handoff, hard rules).
+  stripeIdempotencyKey  String                @map("stripe_idempotency_key")
+  stripeSessionId       String?               @map("stripe_session_id")
+  stripePaymentIntentId String?               @map("stripe_payment_intent_id")
+  /// When the Checkout session stops accepting payment.
+  paymentExpiresAt      DateTime              @map("payment_expires_at") @db.Timestamptz(6)
+  createdAt             DateTime              @map("created_at") @db.Timestamptz(6)
+  confirmedAt           DateTime?             @map("confirmed_at") @db.Timestamptz(6)
+  cancelledAt           DateTime?             @map("cancelled_at") @db.Timestamptz(6)
+  /// Optimistic version of the aggregate; 1 at insert, +1 per change.
+  version               Int
+  sellerOrders          OrderingSellerOrder[]
+  lines                 OrderingOrderLine[]
+
+  /// The foreign-key target of the children.
+  @@unique([marketId, id])
+  /// One Checkout session per order; the key is stored before Stripe is called.
+  @@unique([marketId, stripeIdempotencyKey])
+  @@index([marketId, accountId, createdAt(sort: Desc)])
+  @@index([marketId, status, createdAt(sort: Desc)])
+  @@map("orders")
+  @@schema("ordering")
+}
+
+/// The part of an order that belongs to one seller (the sub-order). Shipping is 0 until SHP-01.
+model OrderingSellerOrder {
+  id             String              @id @db.Uuid
+  marketId       String              @map("market_id") @db.VarChar(8)
+  tenantId       String              @map("tenant_id")
+  orderId        String              @map("order_id") @db.Uuid
+  sellerId       String              @map("seller_id") @db.Uuid
+  subtotalAmount BigInt              @map("subtotal_amount")
+  shippingAmount BigInt              @map("shipping_amount")
+  totalAmount    BigInt              @map("total_amount")
+  order          OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  lines          OrderingOrderLine[]
+
+  @@unique([marketId, id])
+  @@unique([marketId, orderId, sellerId])
+  @@map("seller_orders")
+  @@schema("ordering")
+}
+
+/// One line of an order: a sell unit, a quantity and the unit price the customer was shown.
+model OrderingOrderLine {
+  id                String              @id @db.Uuid
+  marketId          String              @map("market_id") @db.VarChar(8)
+  tenantId          String              @map("tenant_id")
+  orderId           String              @map("order_id") @db.Uuid
+  sellerOrderId     String              @map("seller_order_id") @db.Uuid
+  offerId           String              @map("offer_id") @db.Uuid
+  variantId         String              @map("variant_id") @db.Uuid
+  quantity          Int
+  unitAmount        BigInt              @map("unit_amount")
+  lineAmount        BigInt              @map("line_amount")
+  /// True when the unit price already includes GST (AU).
+  taxInclusive      Boolean             @map("tax_inclusive")
+  /// The reservation line this order line commits.
+  reservationLineId String              @map("reservation_line_id") @db.Uuid
+  order             OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  sellerOrder       OrderingSellerOrder @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, orderId, offerId, variantId])
+  @@index([marketId, orderId])
+  @@map("order_lines")
+  @@schema("ordering")
+}

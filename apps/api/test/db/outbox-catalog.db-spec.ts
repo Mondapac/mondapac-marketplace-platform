@@ -86,6 +86,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX sources_market_id_seller_id_default_key ON inventory.sources USING btree (market_id, seller_id) WHERE is_default',
   'inventory.stock_items_market_id_variant_id_active_idx':
     'CREATE INDEX stock_items_market_id_variant_id_active_idx ON inventory.stock_items USING btree (market_id, variant_id) WHERE (retired_at IS NULL)',
+  // Phase 5 package 1: a Stripe session or payment intent belongs to one order.
+  'ordering.orders_stripe_payment_intent_id_key':
+    'CREATE UNIQUE INDEX orders_stripe_payment_intent_id_key ON ordering.orders USING btree (stripe_payment_intent_id) WHERE (stripe_payment_intent_id IS NOT NULL)',
+  'ordering.orders_stripe_session_id_key':
+    'CREATE UNIQUE INDEX orders_stripe_session_id_key ON ordering.orders USING btree (stripe_session_id) WHERE (stripe_session_id IS NOT NULL)',
   // docs/design/data/pricing.md 3.1 and 3.3: the relay's claim, one pending regular record per
   // series, and the partial GiST index behind the no-overlap exclusion constraint (below).
   'pricing.outbox_market_id_event_id_unpublished_idx':

@@ -26,6 +26,7 @@ describe('loadAppConfig', () => {
       databaseUrl: DATABASE_URL,
       databasePoolMax: 10,
       mailCatcherUrl: null,
+      stripeSecretKey: null,
       clientAddressTrust: null,
     });
   });
@@ -86,6 +87,22 @@ describe('loadAppConfig', () => {
       );
     },
   );
+
+  it('takes a Stripe test-mode key and refuses a live one without echoing it', () => {
+    const test = 'sk_test_abcdefgh12345678';
+    expect(loadAppConfig({ HOSTED_MARKETS: 'AU', STRIPE_SECRET_KEY: test }).stripeSecretKey).toBe(
+      test,
+    );
+    const live = 'sk_live_abcdefgh12345678';
+    let message = '';
+    try {
+      loadAppConfig({ HOSTED_MARKETS: 'AU', STRIPE_SECRET_KEY: live });
+    } catch (caught) {
+      message = (caught as Error).message;
+    }
+    expect(message).toMatch(/STRIPE_SECRET_KEY: must be a Stripe test-mode key/);
+    expect(message).not.toContain(live);
+  });
 
   it('records whether NODE_ENV was set or defaulted (M2)', () => {
     expect(loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'development' })).toMatchObject({

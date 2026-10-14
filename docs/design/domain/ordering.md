@@ -766,3 +766,13 @@ Correctness of expiry and `CLOSED` never depends on a job: both are evaluated ag
 **Disagreement D-1:** ruled by Ali (2026-10-08) as proposed: no `price_basis` column; `tax_inclusive` stays on `order_lines` and is added to `seller_order_charges`; `tax_price_basis` only if a text form is needed later.
 
 **Data-design changes Mojtaba must make:** collected, with Hassan's and Ali's new items, in Mojtaba change list 2026-10-08 (2026-10-08). I do not edit `docs/design/data/ordering.md`.
+
+## As built, Phase 5 package 1 (speed mode, 2026-10-14)
+
+The hybrid build keeps the full model above as reference only. What exists in code:
+
+- **Tables** (`ordering` schema): `orders`, `seller_orders` (one per seller, shipping 0 until SHP-01), `order_lines`. Money is integer minor units plus the currency, GST-inclusive as pricing gives it (no tax breakdown until package 9). The order id is the inventory `checkoutRef` and the Stripe `client_reference_id`; the Stripe idempotency key is stored with the order before Stripe is called.
+- **Checkout** (`POST /orders/checkout`, customer): cart verdicts through the cart's `CartCheckoutFacade`, then `inventory.reserve` for the whole cart (all lines or none), then the order row, then one Stripe Checkout session (card only, manual capture, one line per seller package). Nothing is charged. Any failure after the reserve releases it and cancels the order. A new checkout cancels the customer's earlier unpaid orders (`superseded`) and expires their pages.
+- **Internal path for the webhook receiver** (`ORDERING_FACADE`, system actor only, both idempotent): `confirmPayment` commits the stock, then captures, then confirms the order and clears the ordered cart lines; a differing amount, a cancelled order, a second payment or missing stock voids the authorisation instead. `cancelPayment` (session expired / payment failed for good) cancels a pending order and releases the hold.
+- **Reads**: customer `GET /orders`, `GET /orders/:orderId` (own orders; foreign and unknown are one answer), admin `GET /ordering/admin/orders[/:orderId]` behind `ordering.order.view`.
+- **Not built yet**: the four emails, the order page UI, a sweep for unpaid orders whose Stripe session expired without a webhook, events/outbox, the refund and cancellation use cases, shipping and tax.
