@@ -155,6 +155,7 @@
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "ordering.record-shipments", "rule": "system" },
   { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.view-order", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "payments.apply-stripe-events", "rule": "system" },
@@ -213,5 +214,11 @@
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },
-  { "name": "sellers.selling-eligibility-system", "rule": "system" }
+  { "name": "sellers.selling-eligibility-system", "rule": "system" },
+  { "name": "shipping.flat-fees", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  {
+    "name": "shipping.view-own-flat-fee",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  }
 ]

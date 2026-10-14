@@ -14,7 +14,8 @@
     "products": "Products",
     "offers": "Offers",
     "stock": "Stock locations",
-    "security": "Security"
+    "security": "Security",
+    "orders": "Orders"
   },
   "home": {
     "title": "Home",
@@ -847,6 +848,50 @@
         "not-ready": "Stock isn't ready yet. Try again in a moment.",
         "not-found": "This offer or location was not found. Reload the page."
       }
+    }
+  },
+  "orders": {
+    "title": "Orders",
+    "intro": "Paid orders for your store, newest first. Ship each one, then mark it delivered when it arrives.",
+    "fee": "Delivery fee on every order: {fee}. The platform sets it for your store; the customer pays it with the order.",
+    "empty": "No paid orders yet. They appear here as soon as a customer pays.",
+    "more": "Show more orders",
+    "optional": "optional",
+    "card-title": "Order {id}",
+    "paid": "Paid {when}",
+    "line": "Item {n} × {quantity}",
+    "each": "{price} each",
+    "subtotal": "Items",
+    "delivery": "Delivery",
+    "delivery-free": "Free",
+    "total": "Total",
+    "status": {
+      "to-ship": "To ship",
+      "shipped": "Shipped",
+      "delivered": "Delivered"
+    },
+    "ship": {
+      "title": "Send this order",
+      "carrier": "Carrier",
+      "tracking": "Tracking reference",
+      "submit": "Mark as shipped"
+    },
+    "shipped-at": "Shipped {when}",
+    "delivered-at": "Delivered {when}",
+    "deliver": "Mark as delivered",
+    "validation": {
+      "required": "Enter the carrier.",
+      "invalid": "Check this value. Use letters, numbers and simple punctuation."
+    },
+    "error": {
+      "conflict": "This order has already moved on. Reload the page to see its current state.",
+      "not-found": "We could not find this order.",
+      "invalid": "Check the carrier and tracking reference.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "Your role cannot do this.",
+      "unavailable": "Orders are not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
     }
   },
   "price": {

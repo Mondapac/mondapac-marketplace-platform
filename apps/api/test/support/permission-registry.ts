@@ -10,6 +10,7 @@ import { ORDERING_PERMISSIONS } from '../../src/modules/ordering/contracts/permi
 import { PAYMENTS_PERMISSIONS } from '../../src/modules/payments/contracts/permissions';
 import { PRICING_PERMISSIONS } from '../../src/modules/pricing/contracts/permissions';
 import { SELLERS_PERMISSIONS } from '../../src/modules/sellers/contracts/permissions';
+import { SHIPPING_PERMISSIONS } from '../../src/modules/shipping/contracts/permissions';
 import { PermissionRegistry } from '../../src/platform/authz/permission-registry';
 
 /**
@@ -27,6 +28,7 @@ export function realPermissionRegistry(): PermissionRegistry {
   registry.register('ordering', ORDERING_PERMISSIONS);
   registry.register('payments', PAYMENTS_PERMISSIONS);
   registry.register('pricing', PRICING_PERMISSIONS);
+  registry.register('shipping', SHIPPING_PERMISSIONS);
   registry.seal();
   return registry;
 }

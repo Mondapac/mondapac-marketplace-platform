@@ -88,6 +88,7 @@ const LEAD_KEYS = [
   'ordering.order.view',
   'pricing.price-hold.view',
   'sellers.seller.view',
+  'shipping.flat-fee.view',
 ];
 
 describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)', (code) => {

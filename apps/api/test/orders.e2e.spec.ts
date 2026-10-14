@@ -12,6 +12,7 @@ import { INVENTORY_ORDERING_PORT } from '../src/modules/inventory/contracts/orde
 import { CHECKOUT_GATEWAY } from '../src/modules/ordering/application/ports/checkout-gateway';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
+import { SHIPPING_FACADE } from '../src/modules/shipping';
 import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
@@ -19,7 +20,13 @@ import { OUTBOX_WRITER } from '../src/platform/events/outbox-writer';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { UNIT_OF_WORK } from '../src/platform/unit-of-work/unit-of-work';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
-import { FakeCart, FakeGateway, FakeInventory, MemoryOrders } from './support/ordering-fakes';
+import {
+  FakeCart,
+  FakeGateway,
+  FakeInventory,
+  FakeShipping,
+  MemoryOrders,
+} from './support/ordering-fakes';
 import { FakeUnitOfWork, RecordingAuditWriter, RecordingOutbox } from './support/pricing-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
@@ -65,6 +72,9 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'conflict.retry': 409,
     'request.throttled': 429,
     'ordering.check-unavailable': 503,
+    'ordering.shipping-unavailable': 503,
+    'ordering.seller-order-not-found': 404,
+    'ordering.fulfilment-conflict': 409,
     'ordering.payment-unavailable': 503,
     'access.unavailable': 503,
   });
@@ -77,6 +87,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let gateway: FakeGateway;
   let inventory: FakeInventory;
   let cart: FakeCart;
+  let shipping: FakeShipping;
   const clock = new FixedClock(START);
   const http = () => request(app.getHttpServer());
   const marketOf = () => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -87,6 +98,9 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     gateway = new FakeGateway();
     inventory = new FakeInventory();
     cart = new FakeCart();
+    shipping = new FakeShipping();
+    // The seller delivers for a flat 5.00.
+    shipping.fees.set(SELLER, money(500n, currency));
     cart.lines = [
       {
         offerId: OFFER,
@@ -118,7 +132,9 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .overrideProvider(INVENTORY_ORDERING_PORT)
           .useValue(inventory)
           .overrideProvider(CART_CHECKOUT_FACADE)
-          .useValue(cart),
+          .useValue(cart)
+          .overrideProvider(SHIPPING_FACADE)
+          .useValue(shipping),
     }));
   });
   afterEach(async () => {
@@ -181,7 +197,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(res.headers['cache-control']).toBe('no-store');
       expect(res.body).toMatchObject({
         checkoutUrl: 'https://checkout.stripe.test/c/cs_test_1',
-        total: { amount: '3000', currency },
+        total: { amount: '3500', currency },
       });
       expect([...orders.rows.values()][0]).toMatchObject({
         accountId: CUSTOMER,
@@ -258,9 +274,15 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       gateway.createFails = { code: 'payment.provider-unavailable' };
       const payment = await checkout(headers);
 
-      expect([empty, unbuyable, down, stock, throttled, payment].map((r) => r.status)).toEqual([
-        422, 422, 503, 409, 429, 503,
-      ]);
+      gateway.createFails = null;
+      shipping.fees.clear();
+      const noFee = await checkout(headers);
+
+      expect(
+        [empty, unbuyable, down, stock, throttled, payment, noFee].map((r) => r.status),
+      ).toEqual([422, 422, 503, 409, 429, 503, 503]);
+      // The customer learns that delivery is unavailable, never which seller lacks a fee.
+      expect(noFee.body).toEqual({ statusCode: 503, code: 'ordering.shipping-unavailable' });
       expect(body(empty).code).toBe('ordering.cart-empty');
       expect(unbuyable.body).toMatchObject({
         code: 'ordering.cart-not-purchasable',
@@ -307,7 +329,14 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         orderId,
         status: 'pending-payment',
         paymentState: 'none',
-        sellerOrders: [{ sellerId: SELLER, total: { amount: '3000', currency } }],
+        sellerOrders: [
+          {
+            sellerId: SELLER,
+            shipping: { amount: '500', currency },
+            total: { amount: '3500', currency },
+            fulfilment: 'to-ship',
+          },
+        ],
       });
       // Nothing of Stripe reaches the customer.
       expect(JSON.stringify(one.body)).not.toMatch(/cs_test|pi_test|idempotency|checkout-/);

@@ -18,6 +18,12 @@ export const sellerNav: NavConfig = {
       anyOf: ['catalog.own-product.view'],
     },
     {
+      id: 's_orders',
+      labelKey: 'nav.orders',
+      href: '/orders',
+      anyOf: ['ordering.seller-order.view'],
+    },
+    {
       id: 's_stock',
       labelKey: 'nav.stock',
       href: '/stock-locations',

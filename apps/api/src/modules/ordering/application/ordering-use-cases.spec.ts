@@ -11,6 +11,7 @@ import {
   FakeCart,
   FakeGateway,
   FakeInventory,
+  FakeShipping,
   MemoryOrders,
 } from '../../../../test/support/ordering-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
@@ -27,6 +28,11 @@ import { CancelPayment } from './use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
 import { StartCheckout } from './use-cases/start-checkout.use-case';
+import { RecordShipments } from './use-cases/record-shipments.use-case';
+import { SellerDeliverOrder } from './use-cases/seller-deliver-order.use-case';
+import { SellerListOrders } from './use-cases/seller-list-orders.use-case';
+import { SellerShipOrder } from './use-cases/seller-ship-order.use-case';
+import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { ViewOrder } from './use-cases/view-order.use-case';
 
 // Checkout, payment confirmation and the order reads in memory on both Market fixtures (AU in
@@ -73,6 +79,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
   let gateway: FakeGateway;
   let inventory: FakeInventory;
   let cart: FakeCart;
+  let shipping: FakeShipping;
   let deps: OrderingDependencies;
 
   const line = (
@@ -97,6 +104,10 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     gateway = new FakeGateway();
     inventory = new FakeInventory();
     cart = new FakeCart();
+    shipping = new FakeShipping();
+    // Seller A charges a flat 5.00 for delivery; seller B delivers free (an explicit zero).
+    shipping.fees.set(SELLER_A, money(500n, currency));
+    shipping.fees.set(SELLER_B, money(0n, currency));
     cart.lines = [
       line(OFFER_1, SELLER_A, 1000n, 2),
       line(OFFER_2, SELLER_B, 250n, 3),
@@ -109,6 +120,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       policy: new ConfigOrderingPolicy(markets),
       cart,
       inventory,
+      shipping,
       ids: new SequenceIdGenerator(clock),
       clock,
     };
@@ -116,6 +128,12 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
 
   const start = (context: CallContext = customer) =>
     new StartCheckout(gate, deps).execute(context, {});
+  /** A pending order from the default cart, read back from the store. */
+  const placed = async () => {
+    const result = await start();
+    if (!result.ok) throw new Error('checkout failed');
+    return orders.rows.get(result.value.orderId)!;
+  };
   const confirm = (orderId: string, amount?: bigint, paymentIntentId = 'pi_test_1') =>
     new ConfirmPayment(gate, deps).execute(system, {
       orderId,
@@ -131,7 +149,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(started.ok).toBe(true);
       if (!started.ok) return;
       expect(started.value.checkoutUrl).toBe('https://checkout.stripe.test/c/cs_test_1');
-      expect(started.value.total).toEqual(money(2000n + 750n + 99n, currency));
+      expect(started.value.total).toEqual(money(2000n + 750n + 99n + 500n, currency));
       expect(started.value.payBy.epochMilliseconds).toBe(T0.add({ minutes: 30 }).epochMilliseconds);
 
       const order = orders.rows.get(started.value.orderId)!;
@@ -142,9 +160,9 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         stripeSessionId: 'cs_test_1',
         stripeIdempotencyKey: `checkout-${order.id}`,
       });
-      // Two sellers, each with its own subtotal; shipping is 0 until SHP-01.
+      // Two sellers, each with its own subtotal and flat delivery fee (B's is an explicit zero).
       expect(order.sellerOrders.map((s) => [s.sellerId, s.subtotal, s.shipping, s.total])).toEqual([
-        [SELLER_A, 2099n, 0n, 2099n],
+        [SELLER_A, 2099n, 500n, 2599n],
         [SELLER_B, 750n, 0n, 750n],
       ]);
       expect(order.lines).toHaveLength(3);
@@ -157,7 +175,13 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(inventory.calls).toEqual(['reserve']);
       // The page: manual capture is the adapter's job; here, one package per seller, return pages.
       const session = gateway.sessions[0]!;
-      expect(session.packages.map((p) => p.amount)).toEqual([2099n, 750n]);
+      // Goods per seller, then A's delivery; B's free delivery is no line (Stripe takes no zero price).
+      expect(session.packages.map((p) => p.amount)).toEqual([2099n, 500n, 750n]);
+      expect(session.packages.map((p) => p.label)).toEqual([
+        'MondaPac order, package 1',
+        'Delivery, package 1',
+        'MondaPac order, package 2',
+      ]);
       expect(session.currency).toBe(currency);
       expect(session.idempotencyKey).toBe(order.stripeIdempotencyKey);
       expect(session.successUrl).toMatch(/^https:\/\/storefront\..+\/checkout\/success\?order=/);
@@ -571,6 +595,257 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(pending.ok && pending.value.orders).toHaveLength(1);
       expect(confirmed.ok && confirmed.value.orders).toEqual([]);
       expect(bad).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    });
+  });
+  describe('flat delivery fee', () => {
+    it('refuses the whole cart when a seller has no fee, naming no seller to the customer', async () => {
+      shipping.fees.delete(SELLER_B);
+      const result = await start();
+
+      expect(result).toEqual(err({ code: 'ordering.shipping-unavailable', sellerIds: [SELLER_B] }));
+      // Nothing is reserved, stored or sent to Stripe.
+      expect(inventory.calls).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+      expect(gateway.sessions).toEqual([]);
+    });
+
+    it('refuses a fee in another currency and a fee that cannot be read', async () => {
+      shipping.fees.set(SELLER_A, money(500n, currency === 'AUD' ? 'JPY' : 'AUD'));
+      expect(await start()).toMatchObject({
+        ok: false,
+        error: { code: 'ordering.shipping-unavailable', sellerIds: [SELLER_A] },
+      });
+
+      shipping.down = true;
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      expect(orders.rows.size).toBe(0);
+    });
+
+    it('freezes the fee in the order: a later change does not touch it', async () => {
+      const first = await start();
+      if (!first.ok) throw new Error('checkout failed');
+      shipping.fees.set(SELLER_A, money(9_900n, currency));
+
+      const stored = orders.rows.get(first.value.orderId)!;
+      expect(stored.sellerOrders[0]).toMatchObject({ shipping: 500n, total: 2599n });
+    });
+
+    it('confirms against the total with delivery, and voids a payment of the goods only', async () => {
+      const order = await placed();
+      expect(order.total.amount).toBe(2000n + 750n + 99n + 500n);
+
+      const short = await confirm(order.id, 2000n + 750n + 99n);
+      expect(short).toEqual(ok('voided'));
+      expect(gateway.captured).toEqual([]);
+    });
+  });
+
+  describe('seller fulfilment', () => {
+    const sellerOf = (sellerId: Id<'Seller'>, n = 0x71) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: id<'Account'>(n),
+          sessionId: id<'Session'>(n + 0x100),
+          sellerId,
+        }),
+        `order-seller-${n}`,
+      );
+    const sellerA = sellerOf(SELLER_A);
+    const sellerB = sellerOf(SELLER_B, 0x72);
+    const list = (context: CallContext, input = {}) =>
+      new SellerListOrders(gate, deps).execute(context, input);
+    const ship = (context: CallContext, sellerOrderId: string, input = {}) =>
+      new SellerShipOrder(gate, deps).execute(context, {
+        sellerOrderId,
+        carrier: 'Australia Post',
+        trackingRef: 'AP123456789',
+        ...input,
+      });
+    const deliver = (context: CallContext, sellerOrderId: string) =>
+      new SellerDeliverOrder(gate, deps).execute(context, { sellerOrderId });
+    const sellerOrderIdOf = (orderId: string, sellerId: Id<'Seller'>) =>
+      orders.rows.get(orderId)!.sellerOrders.find((s) => s.sellerId === sellerId)!.id;
+
+    /** A paid order of both sellers. */
+    const paid = async () => {
+      const order = await placed();
+      const confirmed = await confirm(order.id);
+      expect(confirmed).toEqual(ok('confirmed'));
+      return order;
+    };
+
+    it('shows a seller only its own paid orders, and nothing before payment', async () => {
+      const order = await placed();
+      const before = await list(sellerA);
+      expect(before.ok && before.value.sellerOrders).toEqual([]);
+
+      await confirm(order.id);
+      const a = await list(sellerA);
+      const b = await list(sellerB);
+
+      expect(a.ok && a.value.sellerOrders).toHaveLength(1);
+      expect(a.ok && a.value.sellerOrders[0]).toMatchObject({
+        orderId: order.id,
+        sellerId: SELLER_A,
+        fulfilment: 'to-ship',
+        shipping: money(500n, currency),
+        total: money(2599n, currency),
+      });
+      expect(a.ok && a.value.sellerOrders[0]!.lines).toHaveLength(2);
+      expect(b.ok && b.value.sellerOrders[0]).toMatchObject({
+        sellerId: SELLER_B,
+        shipping: money(0n, currency),
+      });
+    });
+
+    it('pages by payment time with an opaque cursor and refuses a malformed one', async () => {
+      await paid();
+      const page = await list(sellerA, { limit: 1 });
+      expect(page.ok && page.value.nextCursor).toBeNull();
+
+      expect(await list(sellerA, { cursor: 'nope' })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'cursor', code: 'format' }] },
+      });
+      expect(await list(sellerA, { limit: 0 })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+    });
+
+    it('ships once, then delivers once, in that order', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+
+      const early = await deliver(sellerA, sellerOrderId);
+      expect(early).toEqual(err({ code: 'ordering.fulfilment-conflict' }));
+
+      const shipped = await ship(sellerA, sellerOrderId);
+      expect(shipped.ok && shipped.value).toMatchObject({
+        fulfilment: 'shipped',
+        carrier: 'Australia Post',
+        trackingRef: 'AP123456789',
+        shippedAt: T0,
+        deliveredAt: null,
+      });
+      expect(await ship(sellerA, sellerOrderId)).toEqual(
+        err({ code: 'ordering.fulfilment-conflict' }),
+      );
+
+      const delivered = await deliver(sellerA, sellerOrderId);
+      expect(delivered.ok && delivered.value).toMatchObject({
+        fulfilment: 'delivered',
+        deliveredAt: T0,
+      });
+      expect(await deliver(sellerA, sellerOrderId)).toEqual(
+        err({ code: 'ordering.fulfilment-conflict' }),
+      );
+      // The customer sees the same on the order, without any change to the other seller's part.
+      const customerView = await new ViewOrder(gate, deps).execute(customer, {
+        orderId: order.id,
+      });
+      expect(customerView.ok && customerView.value.sellerOrders.map((s) => s.fulfilment)).toEqual([
+        'delivered',
+        'to-ship',
+      ]);
+    });
+
+    it('takes no tracking reference, and refuses markup or an empty carrier', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_B);
+
+      for (const carrier of ['', '<b>Post</b>', 'x'.repeat(61), 42, undefined]) {
+        expect(await ship(sellerB, sellerOrderId, { carrier })).toMatchObject({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'carrier', code: 'format' }] },
+        });
+      }
+      expect(
+        await ship(sellerB, sellerOrderId, { trackingRef: 'https://evil.test/?x=1' }),
+      ).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'trackingRef', code: 'format' }] },
+      });
+
+      const shipped = await ship(sellerB, sellerOrderId, { trackingRef: undefined });
+      expect(shipped.ok && shipped.value).toMatchObject({
+        fulfilment: 'shipped',
+        trackingRef: null,
+      });
+    });
+
+    it("answers another shop's order exactly as an unknown id, and an unpaid one too", async () => {
+      const unpaid = await placed();
+      const unpaidId = sellerOrderIdOf(unpaid.id, SELLER_A);
+      expect(await ship(sellerA, unpaidId)).toEqual(
+        err({ code: 'ordering.seller-order-not-found' }),
+      );
+
+      await confirm(unpaid.id);
+      expect(await ship(sellerB, unpaidId)).toEqual(
+        err({ code: 'ordering.seller-order-not-found' }),
+      );
+      expect(await deliver(sellerB, unpaidId)).toEqual(
+        err({ code: 'ordering.seller-order-not-found' }),
+      );
+      const view = new SellerViewOrder(gate, deps);
+      expect(await view.execute(sellerB, { sellerOrderId: unpaidId })).toEqual(
+        err({ code: 'ordering.seller-order-not-found' }),
+      );
+      expect(await view.execute(sellerB, { sellerOrderId: 'not-an-id' })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      // Nothing changed for the owner.
+      expect(orders.rows.get(unpaid.id)!.sellerOrders[0]!.fulfilment).toBe('to-ship');
+    });
+
+    it('refuses a customer, an anonymous caller and the system on the seller routes', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      for (const context of [customer, anonymous, system]) {
+        expect((await list(context)).ok).toBe(false);
+        expect((await ship(context, sellerOrderId)).ok).toBe(false);
+        expect((await deliver(context, sellerOrderId)).ok).toBe(false);
+      }
+      expect(orders.rows.get(order.id)!.sellerOrders[0]!.fulfilment).toBe('to-ship');
+    });
+
+    it('tells inventory about a shipment through the worker, once, and retries a refusal', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      const record = () => new RecordShipments(gate, deps).execute(system, {});
+
+      // Nothing shipped, nothing to record.
+      expect(await record()).toEqual(ok({ recorded: 0, failed: [] }));
+      expect(inventory.shipped).toEqual([]);
+
+      await ship(sellerA, sellerOrderId);
+      inventory.shipmentFails = { code: 'conflict.retry' };
+      const failed = await record();
+      expect(failed).toEqual(
+        ok({ recorded: 0, failed: [{ sellerOrderId, code: 'conflict.retry' }] }),
+      );
+
+      inventory.shipmentFails = null;
+      const done = await record();
+      expect(done).toEqual(ok({ recorded: 1, failed: [] }));
+      const lineIds = orders.rows
+        .get(order.id)!
+        .lines.filter((l) => l.sellerOrderId === sellerOrderId)
+        .map((l) => l.id);
+      expect(inventory.shipped).toEqual(lineIds);
+
+      // The seller order is marked, so the next run finds nothing.
+      expect(await record()).toEqual(ok({ recorded: 0, failed: [] }));
+      expect(inventory.shipped).toEqual(lineIds);
+      // Only the system actor may run it.
+      expect(await new RecordShipments(gate, deps).execute(customer, {})).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
     });
   });
 });

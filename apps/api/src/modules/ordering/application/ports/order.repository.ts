@@ -1,10 +1,31 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { OrderState, OrderStatus } from '../../domain/order';
+import type {
+  Fulfilment,
+  OrderLine,
+  OrderState,
+  OrderStatus,
+  SellerOrder,
+} from '../../domain/order';
 
 /** Newest first; the cursor is the last row of the previous page. */
 export interface OrderPage {
   readonly limit: number;
   readonly after: { readonly createdAt: Temporal.Instant; readonly id: Id<'Order'> } | null;
+}
+
+/** A seller's page of paid seller orders, newest payment first. */
+export interface SellerOrderPage {
+  readonly limit: number;
+  readonly after: { readonly confirmedAt: Temporal.Instant; readonly id: Id<'SellerOrder'> } | null;
+}
+
+/** One seller order with what the seller needs from its order; only paid orders are read. */
+export interface SellerOrderRecord {
+  readonly sellerOrder: SellerOrder;
+  readonly orderId: Id<'Order'>;
+  readonly currency: string;
+  readonly confirmedAt: Temporal.Instant;
+  readonly lines: readonly OrderLine[];
 }
 
 /**
@@ -44,6 +65,43 @@ export interface OrderRepository {
    * version the order was read at and raises it. `stale` writes nothing.
    */
   save(market: MarketContext, order: OrderState): Promise<'saved' | 'stale'>;
+
+  /** The seller's paid seller orders (the order is `confirmed`), newest payment first. */
+  listForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: SellerOrderPage,
+  ): Promise<readonly SellerOrderRecord[]>;
+
+  /** The seller's own paid seller order, or null: unknown, foreign and unpaid are one answer. */
+  findForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    sellerOrderId: Id<'SellerOrder'>,
+  ): Promise<SellerOrderRecord | null>;
+
+  /**
+   * Writes the fulfilment fields of one seller order only if it still stands at `from`; `stale`
+   * writes nothing (a double click or a second tab).
+   */
+  saveFulfilment(
+    market: MarketContext,
+    sellerOrder: SellerOrder,
+    from: Fulfilment,
+  ): Promise<'saved' | 'stale'>;
+
+  /** Shipped or delivered seller orders whose lines inventory has not recorded yet. */
+  findUnrecordedShipments(
+    market: MarketContext,
+    limit: number,
+  ): Promise<readonly SellerOrderRecord[]>;
+
+  /** Marks the lines as recorded in inventory (once; a second call changes nothing). */
+  markInventoryRecorded(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    at: Temporal.Instant,
+  ): Promise<void>;
 }
 
 export const ORDER_REPOSITORY = Symbol('ORDER_REPOSITORY');
