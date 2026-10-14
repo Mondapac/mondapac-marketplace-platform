@@ -60,6 +60,12 @@ describe('the demo seed production guard', () => {
     // A host that merely starts with "localhost" is not local.
     expect(guard({ ...LOCAL, API: 'http://localhost.evil.example:3000' }).status).not.toBe(0);
     expect(guard({ ...LOCAL, DB: 'not a url' }).status).not.toBe(0);
+    // A host smuggled in through a query parameter or userinfo is not local either.
+    expect(
+      guard({ ...LOCAL, DB: 'postgresql://u@localhost/db?host=prod.example.com' }).status,
+    ).not.toBe(0);
+    expect(guard({ ...LOCAL, API: 'http://localhost@evil.example:3000' }).status).not.toBe(0);
+    expect(guard({ ...LOCAL, API: 'http://127.0.0.1.evil.example:3000' }).status).not.toBe(0);
   });
 });
 

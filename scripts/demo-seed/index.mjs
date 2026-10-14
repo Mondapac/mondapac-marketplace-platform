@@ -126,21 +126,41 @@ function firstAdminInvitation() {
 
 async function ensureAdmin(state) {
   log('[2/8] Platform admin');
-  if (state.admin?.secret) return adminSignIn(ADMIN.email, PASSWORD, state.admin.secret);
-  const since = Date.now() - 2000;
-  const outcome = firstAdminInvitation();
-  if (outcome === 'exists') {
-    throw new Error(
-      'The database already has an admin that this seed did not create, so its authenticator secret is unknown.\n' +
-        'Reset the demo database (see handoffs/demo-env.md) and run the seed again.',
-    );
-  }
-  if (outcome !== 'issued') throw new Error(`first-admin: ${outcome}`);
-  const token = await mailLink(ADMIN.email, /#(mi1_\S+)/, { since });
-  const anonymous = new Session('admin');
-  const enrolment = await anonymous.ok('POST', '/identity/admin/invitation/enrolment', { token });
   const { totp } = await import('./lib.mjs');
-  await anonymous.ok('POST', '/identity/admin/invitation/accept', {
+  if (state.admin?.accepted) {
+    try {
+      return await adminSignIn(ADMIN.email, PASSWORD, state.admin.secret);
+    } catch (error) {
+      throw new Error(
+        `Admin sign-in failed (${error.message}). If the database was wiped, the state file is stale: ` +
+          'delete .local/demo-state.json and run the seed again.',
+        { cause: error },
+      );
+    }
+  }
+  let enrolment = state.admin?.enrolment;
+  let token;
+  if (enrolment === undefined) {
+    const since = Date.now() - 2000;
+    const outcome = firstAdminInvitation();
+    if (outcome === 'exists') {
+      throw new Error(
+        'The database already has an admin that this seed did not create, so its authenticator secret is unknown.\n' +
+          'Reset the demo database (see handoffs/demo-env.md) and run the seed again.',
+      );
+    }
+    if (outcome !== 'issued') throw new Error(`first-admin: ${outcome}`);
+    token = await mailLink(ADMIN.email, /#(mi1_\S+)/, { since });
+    enrolment = await new Session('admin').ok('POST', '/identity/admin/invitation/enrolment', {
+      token,
+    });
+    // Saved before accepting, so a run that dies in between can finish on the next run.
+    state.admin = { email: ADMIN.email, enrolment, accepted: false };
+    writeState(state);
+  } else {
+    token = await mailLink(ADMIN.email, /#(mi1_\S+)/);
+  }
+  await new Session('admin').ok('POST', '/identity/admin/invitation/accept', {
     token,
     displayName: ADMIN.displayName,
     password: PASSWORD,
@@ -149,7 +169,12 @@ async function ensureAdmin(state) {
     expiresAt: enrolment.expiresAt,
     code: totp(enrolment.secret),
   });
-  state.admin = { email: ADMIN.email, secret: enrolment.secret, otpauthUri: enrolment.otpauthUri };
+  state.admin = {
+    email: ADMIN.email,
+    secret: enrolment.secret,
+    otpauthUri: enrolment.otpauthUri,
+    accepted: true,
+  };
   writeState(state);
   return adminSignIn(ADMIN.email, PASSWORD, enrolment.secret);
 }
@@ -261,9 +286,16 @@ async function ensureProduct(admin, product, categoryIds) {
     return false;
   }
   const configurable = product.variants !== undefined;
-  const created = await admin.ok('POST', '/catalog/admin/platform-products', {
-    typeCode: configurable ? 'configurable' : 'simple',
-  });
+  // A draft created by an interrupted run is reused, so a rerun leaves no orphan drafts behind.
+  const drafts = readState();
+  let created = drafts.drafts?.[product.key];
+  if (created === undefined) {
+    created = await admin.ok('POST', '/catalog/admin/platform-products', {
+      typeCode: configurable ? 'configurable' : 'simple',
+    });
+    drafts.drafts = { ...drafts.drafts, [product.key]: created };
+    writeState(drafts);
+  }
   const content = (variantIds) => ({
     texts: {
       [LOCALE]: { name: product.name, shortDescription: product.short, description: product.text },
@@ -353,10 +385,10 @@ async function ensureOffers(admin, seller, session) {
     if (offer.status === 'pending-first-publish') {
       const queue = await admin.ok('GET', '/catalog/admin/review-queue?limit=50');
       const row = queue.items.find((item) => item.offerId === offerId);
-      if (row)
-        await admin.ok('POST', `/catalog/admin/offers/${offerId}/approve`, {
-          version: row.version,
-        });
+      if (!row) throw new Error(`offer ${offerId} is not in the first 50 rows of the review queue`);
+      await admin.ok('POST', `/catalog/admin/offers/${offerId}/approve`, {
+        version: row.version,
+      });
     }
   }
   return offerIds;

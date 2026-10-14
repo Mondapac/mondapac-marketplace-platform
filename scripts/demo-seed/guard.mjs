@@ -30,7 +30,11 @@ export function assertLocalDevelopment({ urls }) {
   for (const [name, value] of Object.entries(urls)) {
     let host;
     try {
-      host = new URL(value).hostname;
+      const url = new URL(value);
+      host = url.hostname;
+      for (const key of ['host', 'hostaddr', 'service']) {
+        if (url.searchParams.has(key)) problems.push(`${name} overrides the host with "${key}"`);
+      }
     } catch {
       problems.push(`${name} is not a URL`);
       continue;

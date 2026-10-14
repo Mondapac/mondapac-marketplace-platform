@@ -94,9 +94,10 @@ export function loadFileCatalogSeeds(
   > = {};
   let names: string[];
   try {
-    names = readdirSync(directory).filter((name) => name.endsWith('.json'));
-  } catch {
-    return { categories, attributes };
+    names = readdirSync(directory).filter((name) => /^[A-Z][A-Z0-9_]{1,7}\.json$/.test(name));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { categories, attributes };
+    throw error;
   }
   for (const name of names.sort()) {
     const code = name.slice(0, -'.json'.length);
