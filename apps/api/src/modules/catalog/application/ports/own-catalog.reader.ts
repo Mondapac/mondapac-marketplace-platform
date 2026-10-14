@@ -16,6 +16,33 @@ export interface ProductLabel {
   readonly name: string | null;
 }
 
+/** One field of a product family as the product form shows it: names and option labels per locale. */
+export interface ProductFormField {
+  readonly code: string;
+  readonly dataType: string;
+  readonly localizable: boolean;
+  readonly required: boolean;
+  readonly isVariantOption: boolean;
+  readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
+  readonly names: Readonly<Record<string, string>>;
+  readonly options: readonly {
+    readonly code: string;
+    readonly labels: Readonly<Record<string, string>>;
+  }[];
+}
+
+/** An active platform category a product may be filed under. */
+export interface ProductFormCategory {
+  readonly categoryId: string;
+  readonly parentId: string | null;
+  readonly names: Readonly<Record<string, string>>;
+}
+
+export interface ProductForm {
+  readonly fields: readonly ProductFormField[];
+  readonly categories: readonly ProductFormCategory[];
+}
+
 /**
  * The seller's own catalogue lists (catalog design 8.2, 9.2a): products and Offers of one seller,
  * newest first by id (UUID v7). The owner is in every statement, so another seller's row is never
@@ -45,6 +72,13 @@ export interface OwnCatalogReader {
     productIds: readonly Id<'Product'>[],
     locale: string,
   ): Promise<readonly ProductLabel[]>;
+
+  /**
+   * What the product form needs to be drawn: the fields of the family (published revisions, active
+   * options only, in family order) and the active platform categories. Fields of a family that is
+   * missing or archived: an empty list.
+   */
+  productForm(market: MarketContext, familyCode: string): Promise<ProductForm>;
 
   /** The working copies of the given products (at most 100 ids), in no order. */
   findWorkingCopies(

@@ -290,6 +290,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       products,
       workingCopies: copies,
       revisions,
+      ownReader: reader,
       policy,
     });
     listOffers = new OwnOffersList(gate, {
@@ -387,6 +388,9 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       texts: { en: { name: 'Readable' } },
     });
     expect(own.value.variants).toHaveLength(1);
+    expect(own.value.form.taxCategoryCodes).toEqual(['t1']);
+    expect(own.value.form.fields).toEqual(expect.any(Array));
+    expect(own.value.form.categories).toEqual(expect.any(Array));
 
     const missing = { ok: false, error: { code: 'product.not-found' } };
     for (const id of [platform.state.id, other.state.id, uuid7() as Id<'Product'>]) {

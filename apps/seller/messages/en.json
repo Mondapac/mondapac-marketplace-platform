@@ -626,6 +626,39 @@
         "csrf": "Your session expired. Reload the page and try again.",
         "unavailable": "Products are unavailable right now. Try again later.",
         "unknown": "Something went wrong. Try again."
+      },
+      "attributes": "Details",
+      "classification": "Categories and tax",
+      "categories": "Categories",
+      "categories-none": "No categories are available yet.",
+      "tax-category": "Tax category",
+      "variants": "Variants",
+      "variant-n": "Variant {n}",
+      "variant-label": "Label ({locale})",
+      "variant-add": "Add a variant",
+      "variant-remove": "Remove this variant",
+      "variant-published": "This variant is published and stays.",
+      "images": "Images",
+      "images-later": "Images can be added here soon. Until then a product is submitted without images.",
+      "sensitive": "These changes are checked by us before they go live: {fields}.",
+      "sensitive-field": {
+        "platform-categories": "categories",
+        "tax-category": "tax category",
+        "name": "name",
+        "primary-image": "main image",
+        "variant-removed": "removed variants",
+        "images": "images"
+      },
+      "attribute": {
+        "unset": "Not set",
+        "yes": "Yes",
+        "no": "No",
+        "problem": {
+          "whole": "Enter a whole number.",
+          "decimal": "Enter a number, like 12.5.",
+          "range": "Enter a value within the allowed range.",
+          "length": "Use at most {length} characters."
+        }
       }
     },
     "offer-edit": {
