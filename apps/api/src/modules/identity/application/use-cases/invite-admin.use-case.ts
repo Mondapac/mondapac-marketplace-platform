@@ -23,6 +23,9 @@ import {
 } from '../ports/invitation.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleRepository } from '../ports/seller-team.repository';
+import type { ThrottleKeys } from '../ports/session-secrets';
+import type { ThrottleRepository } from '../ports/throttle.repository';
+import { reserveInvitationMail } from '../sellers/invitation-mail-budget';
 import {
   readActingGrants,
   roleGrantVerdict,
@@ -37,6 +40,8 @@ export interface InviteAdminInput {
   /** The invitee's address. Personal data: never logged or audited. */
   readonly email: string;
   readonly roleId: Id<'Role'>;
+  /** The admin's client: the `mail.origin` key of the invitation mail (6.8). */
+  readonly origin: string;
 }
 
 export interface InviteAdminOutput {
@@ -54,6 +59,8 @@ export type InviteAdminFailure =
   /** The Market already has an admin account with this address (one per Market, ADR-0018). */
   | { readonly code: 'account.exists' }
   | { readonly code: 'invitation.already-pending' }
+  /** `mail.account` of the invited address or `mail.origin` is used up (6.8). */
+  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   /** The Market configures no admin invitation lifetime: nothing could be dispatched. */
   | { readonly code: 'access.unavailable' }
   | { readonly code: 'access.denied' };
@@ -66,6 +73,8 @@ export interface InviteAdminDependencies {
   readonly effectiveKeys: EffectiveKeyResolver;
   readonly permissions: Pick<SealedPermissionCatalogue, 'get'>;
   readonly invitations: InvitationRepository;
+  readonly throttles: ThrottleRepository;
+  readonly keys: ThrottleKeys;
   readonly outbox: OutboxWriter;
   readonly audit: AuditWriter;
   readonly policy: IdentityMarketPolicy;
@@ -85,7 +94,11 @@ export interface InviteAdminDependencies {
  * `GrantPolicy.canGrant` (R1, R3, R11: `role.not-grantable`); an address that already has an
  * admin account in the Market is refused (`account.exists`), since acceptance could only fail;
  * one pending invitation per address in the platform scope (`invitation.already-pending`), a
- * stale one replaced (M7, item G) and audited as revoked. Then the invitation, without a token:
+ * stale one replaced (M7, item G) and audited as revoked. Before the invitation rows, the mail
+ * is counted on `mail.account` of the address (admin population) and `mail.origin` of the client,
+ * as the seller invitation does (6.8; Hassan, phase 2 follow-ups): used up is `request.throttled`
+ * and nothing commits, so revoking and inviting again never mails past the re-send's counters.
+ * Then the invitation, without a token:
  * `identity.invitation-issued.v1` (the mail handler mints the token and sends it, 6.6) and
  * `identity.invitation.issued` as the actor. The address is never logged or audited.
  *
@@ -148,6 +161,18 @@ export class InviteAdmin extends UseCase<InviteAdminInput, InviteAdminOutput, In
             email.value.normalized,
           );
           if (existing !== null) return err({ code: 'account.exists' });
+          // Throttle rows first, then the invitation rows (data design 3.3), as InviteSeller.
+          const budget = await reserveInvitationMail(
+            this.deps,
+            market,
+            'admin',
+            email.value.normalized,
+            input.origin,
+            now,
+          );
+          if (!budget.allowed) {
+            return err({ code: 'request.throttled', retryAfterSeconds: budget.retryAfterSeconds });
+          }
           const pending = await this.deps.invitations.findPendingFor(
             market,
             null,

@@ -432,7 +432,7 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
 
     const issued = await app
       .get(InviteAdmin)
-      .execute(as(root), { email, roleId: await roleId('viewer') });
+      .execute(as(root), { email, roleId: await roleId('viewer'), origin: '203.0.113.9' });
     if (!issued.ok) throw new Error(issued.error.code);
     const invitationId = issued.value.invitationId;
     const row = async () =>
@@ -456,7 +456,7 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
     });
 
     await expect(
-      app.get(ResendAdminInvitation).execute(as(root), { invitationId }),
+      app.get(ResendAdminInvitation).execute(as(root), { invitationId, origin: '203.0.113.9' }),
     ).resolves.toMatchObject({ ok: true, value: { code: 'invitation.reissued' } });
     await expect(
       app.get(RevokeAdminInvitation).execute(as(root), { invitationId }),

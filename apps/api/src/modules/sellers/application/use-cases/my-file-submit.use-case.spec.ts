@@ -449,6 +449,12 @@ describe.each(['AU', 'ZZ'] as const)('my-file.submit in %s', (code) => {
         ok: false,
         error: { code: 'sellers.unavailable' },
       });
+      t.access.failing = false;
+      t.access.refusing = true;
+      expect(await t.submit.execute(s.context, { origin: ORIGIN })).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
       expect(t.revisions.rows.size).toBe(0);
     });
 
@@ -1025,6 +1031,12 @@ describe.each(['AU', 'ZZ'] as const)('my-file.submit in %s', (code) => {
         error: { code: 'sellers.unavailable' },
       });
       t.access.failing = false;
+      t.access.refusing = true;
+      expect(await t.withdraw.execute(s.context, {})).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      t.access.refusing = false;
 
       // Nothing was written by any refusal, and the pending revision is still there.
       expect(stored(t, code, s.sellerId).version).toBe(version);
@@ -1325,6 +1337,13 @@ describe.each(['AU', 'ZZ'] as const)('my-file.submit in %s', (code) => {
         error: { code: 'sellers.unavailable' },
       });
       t.access.failing = false;
+      // A refusal of the actor by identity is told as one, never as an outage (Hassan low 4).
+      t.access.refusing = true;
+      expect(await t.read.execute(s.context, {})).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      t.access.refusing = false;
       t.access.states.delete(s.sellerId);
       expect(await t.read.execute(s.context, {})).toEqual({
         ok: false,

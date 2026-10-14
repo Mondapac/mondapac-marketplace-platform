@@ -29,6 +29,7 @@ import { CheckedInRoleSeed } from '../../infrastructure/seed/checked-in-role-see
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import { AccountAuthorisationCheck } from '../access/account-authorisation-check';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import type { ThrottleKeys } from '../ports/session-secrets';
 import { AssignAdminRole } from './assign-admin-role.use-case';
 import { DisableAdminAccount } from './disable-admin-account.use-case';
 import { EnableAdminAccount } from './enable-admin-account.use-case';
@@ -51,6 +52,14 @@ import { RevokeAdminInvitation } from './revoke-admin-invitation.use-case';
 
 const START = Temporal.Instant.from('2026-10-08T10:00:00Z');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+/** Throttle keys in the clear: the counters are told apart by Market, population and address. */
+const keys: ThrottleKeys = {
+  account: (market, population, email) => Buffer.from(`${market.marketId}|${population}|${email}`),
+  accountOrigin: (market, population, email, origin) =>
+    Buffer.from(`${market.marketId}|${population}|${email}|${origin}`),
+  origin: (market, origin) => Buffer.from(`${market.marketId}|${origin}`),
+};
+const ORIGIN = '203.0.113.9';
 const TOKEN_HASH = new Uint8Array(32).fill(7);
 
 const id = <T extends string>(text: string): Id<T> => {
@@ -267,7 +276,14 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
           ...status,
           factors: fakes.factorRepository,
         }),
-        resend: new ResendAdminInvitation(gate, { ...common, permissions, invitations, policy }),
+        resend: new ResendAdminInvitation(gate, {
+          ...common,
+          permissions,
+          invitations,
+          throttles: fakes.throttleRepository,
+          keys,
+          policy,
+        }),
         revoke: new RevokeAdminInvitation(gate, { ...common, invitations }),
       },
     };
@@ -792,9 +808,9 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
                     input,
                   );
           } else {
-            result = await commands[action as InvitationAction].execute(as(actor), {
-              invitationId: row.invitationId,
-            });
+            // Revoke reads only the id; the re-send counts its mail on the client's origin too.
+            const input = { invitationId: row.invitationId, origin: ORIGIN };
+            result = await commands[action as InvitationAction].execute(as(actor), input);
           }
           const hint = (row.actions as Record<string, ActionHint>)[action]!;
           const answer = result.ok ? yes : no(result.error.code);

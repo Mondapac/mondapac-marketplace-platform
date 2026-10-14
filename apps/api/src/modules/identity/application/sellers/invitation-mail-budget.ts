@@ -11,22 +11,23 @@ export interface InvitationMailBudgetDependencies {
 }
 
 /**
- * Counts one seller-owner invitation mail on `mail.account` (the invited address, seller
- * population) and `mail.origin` (the admin's client), as identity design 6.8 lists "invitation
- * mail" (Hassan M1 on PR #204). Runs in the caller's open unit, the one that issues or re-issues
- * the invitation: a refused request answers `err`, which commits nothing, so a counter at its
- * limit stays at it and keeps refusing until its window or block ends; a counted request commits
- * with the invitation.
+ * Counts one invitation mail on `mail.account` (the invited address, in the population the
+ * invitation opens an account in) and `mail.origin` (the admin's client), as identity design 6.8
+ * lists "invitation mail" (Hassan M1 on PR #204; the admin re-send too since the phase 2
+ * follow-ups). Runs in the caller's open unit, the one that issues or re-issues the invitation: a
+ * refused request answers `err`, which commits nothing, so a counter at its limit stays at it and
+ * keeps refusing until its window or block ends; a counted request commits with the invitation.
  */
 export async function reserveInvitationMail(
   deps: InvitationMailBudgetDependencies,
   market: MarketContext,
+  population: 'admin' | 'seller',
   emailNormalized: string,
   origin: string,
   now: Temporal.Instant,
 ): Promise<ThrottleVerdict> {
   const rules = deps.policy.mailThrottles(market);
-  const accountKey = deps.keys.account(market, 'seller', emailNormalized);
+  const accountKey = deps.keys.account(market, population, emailNormalized);
   const counters: readonly ThrottleCounter[] = [
     { kind: 'mail.account', keyHash: accountKey, accountKey, rule: rules.account },
     {

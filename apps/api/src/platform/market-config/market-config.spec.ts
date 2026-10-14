@@ -1120,6 +1120,15 @@ describe('loadMarketConfigs', () => {
         seller: 200,
         platform: 500,
       });
+      // Mixed bounds: each scope is checked against its own range (Sajad, PR #228).
+      expect(load(withLimits({ seller: 200, platform: 1 })).customRoleLimits).toEqual({
+        seller: 200,
+        platform: 1,
+      });
+      expect(load(withLimits({ seller: 1, platform: 500 })).customRoleLimits).toEqual({
+        seller: 1,
+        platform: 500,
+      });
     });
 
     it.each([

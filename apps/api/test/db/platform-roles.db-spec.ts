@@ -263,6 +263,7 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
         );
         const invited = await untilNoConflict(() =>
           app.get(InviteAdmin).execute(as(actor), {
+            origin: '203.0.113.9',
             email: `Parity.${randomUUID()}@Roles.example`,
             roleId: entry.roleId,
           }),

@@ -22,7 +22,7 @@ export class IdentitySellerAccess implements SellerAccessReader {
     sellerId: Id<'Seller'>,
   ): Promise<boolean | null> {
     const result = await this.identity.ownAccessOf(context);
-    if (!result.ok) throw new Error(`identity.ownAccessOf refused: ${result.error.code}`);
+    if (!result.ok) throw refusal('ownAccessOf', result.error.code);
     // The status is the actor's own; an id that is not the actor's is unknown, never another's.
     return result.value.sellerId === sellerId ? result.value.reapplyLimitReached : null;
   }
@@ -47,7 +47,7 @@ export class IdentitySellerAccess implements SellerAccessReader {
 
   async accessOf(context: CallContext, sellerId: Id<'Seller'>): Promise<AccessState | null> {
     const result = await this.identity.sellerAccessOf(context, [sellerId]);
-    if (!result.ok) throw new Error(`identity.sellerAccessOf refused: ${result.error.code}`);
+    if (!result.ok) throw refusal('sellerAccessOf', result.error.code);
     const found = result.value.find((summary) => summary.sellerId === sellerId);
     return found === undefined ? null : found.state;
   }
@@ -58,7 +58,7 @@ export class IdentitySellerAccess implements SellerAccessReader {
   ): Promise<ReadonlyMap<Id<'Seller'>, AccessState>> {
     if (sellerIds.length === 0) return new Map();
     const result = await this.identity.sellerAccessOf(context, sellerIds);
-    if (!result.ok) throw new Error(`identity.sellerAccessOf refused: ${result.error.code}`);
+    if (!result.ok) throw refusal('sellerAccessOf', result.error.code);
     return new Map(result.value.map((summary) => [summary.sellerId, summary.state]));
   }
 }
@@ -113,7 +113,7 @@ export class IdentitySellerAccountDirectory implements SellerAccountDirectory {
   }
 }
 
-/** A refusal of the actor is told apart from a failure, so the list answers 403, not 503. */
+/** A refusal of the actor is told apart from a failure, so the caller answers 403, not 503. */
 function refusal(call: string, code: string): Error {
   const message = `identity.${call} refused: ${code}`;
   return code === 'access.denied' ? new SellerAccountAccessRefused(message) : new Error(message);

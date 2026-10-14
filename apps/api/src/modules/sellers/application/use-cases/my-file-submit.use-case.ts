@@ -47,6 +47,7 @@ import type { BusinessFileRevisionRepository } from '../ports/business-file-revi
 import type { BusinessIdentifierSchemes } from '../ports/business-identifier-scheme';
 import type { RevisionContentSealer, SealedRevision } from '../ports/revision-content-sealer';
 import type { SellerAccessReader } from '../ports/seller-access-reader';
+import { identityReadFailure } from '../ports/seller-account-directory';
 import type { SellerFileCipher } from '../ports/seller-file-cipher';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
 import type { AddressFormats, ServiceAreas } from '../ports/seller-market-formats';
@@ -222,6 +223,8 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
     try {
       access = await this.deps.accessReader.accessOf(context, owner.sellerId);
     } catch (error) {
+      if (identityReadFailure(error).code === 'access.denied')
+        return err({ code: 'access.denied' });
       return this.unavailable(context, 'access-unavailable', error);
     }
     if (access === null) return err({ code: 'file.not-found' });

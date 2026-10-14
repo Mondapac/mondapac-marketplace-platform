@@ -11,6 +11,7 @@ import type { RegisterLookupPolicy } from '../ports/register-lookup-policy';
 import type { ReviewCheckRepository } from '../ports/review-check.repository';
 import type { AccessDecisionAnswer, SellerAccessDecider } from '../ports/seller-access-decider';
 import type { SellerAccessReader } from '../ports/seller-access-reader';
+import { identityReadFailure } from '../ports/seller-account-directory';
 import {
   releaseDecision,
   settleDecision,
@@ -142,8 +143,8 @@ export async function decideOnRevision(
   let access;
   try {
     access = await deps.accessReader.accessOf(context, sellerId);
-  } catch {
-    return err({ code: 'sellers.unavailable' });
+  } catch (error) {
+    return err(identityReadFailure(error));
   }
   if (access === null) return err({ code: 'file.not-found' });
   if (access !== 'pending') return err({ code: 'seller-access.wrong-state' });

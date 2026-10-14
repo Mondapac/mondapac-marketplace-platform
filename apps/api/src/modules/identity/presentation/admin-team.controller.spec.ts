@@ -40,6 +40,7 @@ const EXPECTED: Readonly<Record<Code, number>> = {
   'invitation.already-pending': 409,
   'invitation.rejected': 409,
   'second-factor.none': 409,
+  'request.throttled': 429,
   'access.unavailable': 503,
 };
 

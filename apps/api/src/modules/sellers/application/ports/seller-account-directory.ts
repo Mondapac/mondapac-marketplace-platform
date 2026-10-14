@@ -59,4 +59,17 @@ export class SellerAccountAccessRefused extends Error {
   override readonly name = 'SellerAccountAccessRefused';
 }
 
+/**
+ * The answer of a read of `identity` that threw: its refusal of the actor is `access.denied`
+ * (403), anything else `sellers.unavailable` (503), so a refused read is never told as an outage
+ * (Hassan, low 4).
+ */
+export function identityReadFailure(
+  error: unknown,
+): { readonly code: 'access.denied' } | { readonly code: 'sellers.unavailable' } {
+  return error instanceof SellerAccountAccessRefused
+    ? { code: 'access.denied' }
+    : { code: 'sellers.unavailable' };
+}
+
 export const SELLER_ACCOUNT_DIRECTORY = Symbol('SELLER_ACCOUNT_DIRECTORY');

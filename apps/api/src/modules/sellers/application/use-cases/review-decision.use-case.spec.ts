@@ -526,6 +526,17 @@ describe.each(['AU', 'ZZ'] as const)('the reviewer decision in Market %s', (code
       expect(await claims.holderOf(market, index)).toBe(sellerId);
     });
 
+    it('answers access.denied, not an outage, when identity refuses the actor (Hassan low 4)', async () => {
+      access.refusing = true;
+
+      await expect(approve().execute(admin(), { sellerId, revisionId })).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(stateOf(sellerId).decisionIntent).toBeNull();
+      expect(decider.recorded).toEqual([]);
+    });
+
     it('refuses the manual check while the decision is in flight', async () => {
       decider.script.push('throw');
       await approve().execute(admin(), { sellerId, revisionId });

@@ -31,6 +31,7 @@ import { CheckedInRoleSeed } from '../../infrastructure/seed/checked-in-role-see
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import { AccountAuthorisationCheck } from '../access/account-authorisation-check';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import type { ThrottleKeys } from '../ports/session-secrets';
 import { inviterMayStillGrant } from '../roles/granting';
 import { AssignAdminRole } from './assign-admin-role.use-case';
 import { DisableAdminAccount } from './disable-admin-account.use-case';
@@ -49,6 +50,14 @@ import { RevokeAdminInvitation } from './revoke-admin-invitation.use-case';
 
 const START = Temporal.Instant.from('2026-10-08T10:00:00Z');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+/** Throttle keys in the clear: the counters are told apart by Market, population and address. */
+const keys: ThrottleKeys = {
+  account: (market, population, email) => Buffer.from(`${market.marketId}|${population}|${email}`),
+  accountOrigin: (market, population, email, origin) =>
+    Buffer.from(`${market.marketId}|${population}|${email}|${origin}`),
+  origin: (market, origin) => Buffer.from(`${market.marketId}|${origin}`),
+};
+const ORIGIN = '203.0.113.9';
 
 const id = <T extends string>(text: string): Id<T> => {
   const parsed = parseId(text);
@@ -255,12 +264,21 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       }),
       invite: new InviteAdmin(gate, {
         ...common,
+        throttles: fakes.throttleRepository,
+        keys,
         permissions,
         invitations,
         policy,
         ids: new SequenceIdGenerator(clock),
       }),
-      resend: new ResendAdminInvitation(gate, { ...common, permissions, invitations, policy }),
+      resend: new ResendAdminInvitation(gate, {
+        ...common,
+        permissions,
+        invitations,
+        throttles: fakes.throttleRepository,
+        keys,
+        policy,
+      }),
       revoke: new RevokeAdminInvitation(gate, { ...common, invitations }),
       inviter: { ...common, permissions },
     };
@@ -728,6 +746,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       const { invite } = setUp();
 
       const result = await invite.execute(as(ROOT), {
+        origin: ORIGIN,
         email: 'New.Admin@Example.com',
         roleId: roleOf('viewer'),
       });
@@ -760,18 +779,19 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       const { invite } = setUp();
 
       for (const roleId of [LEAD_ROLE, roleOf('platform-administrator')]) {
-        await expect(invite.execute(as(LEAD), { email: 'x@example.com', roleId })).resolves.toEqual(
-          { ok: false, error: { code: 'role.not-grantable' } },
-        );
+        await expect(
+          invite.execute(as(LEAD), { origin: ORIGIN, email: 'x@example.com', roleId }),
+        ).resolves.toEqual({ ok: false, error: { code: 'role.not-grantable' } });
       }
       for (const roleId of [SELLER_CUSTOM_ROLE, UNKNOWN_ROLE]) {
-        await expect(invite.execute(as(ROOT), { email: 'x@example.com', roleId })).resolves.toEqual(
-          { ok: false, error: { code: 'role.unknown' } },
-        );
+        await expect(
+          invite.execute(as(ROOT), { origin: ORIGIN, email: 'x@example.com', roleId }),
+        ).resolves.toEqual({ ok: false, error: { code: 'role.unknown' } });
       }
       // The system role, by a holder of it (R3).
       await expect(
         invite.execute(as(ROOT), {
+          origin: ORIGIN,
           email: 'x@example.com',
           roleId: roleOf('platform-administrator'),
         }),
@@ -783,6 +803,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
 
       await expect(
         invite.execute(as(LEAD), {
+          origin: ORIGIN,
           email: 'moderator@example.com',
           roleId: roleOf('catalogue-moderator'),
         }),
@@ -792,6 +813,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       // A holder of the key (the system role) may invite to it.
       await expect(
         invite.execute(as(ROOT), {
+          origin: ORIGIN,
           email: 'moderator@example.com',
           roleId: roleOf('catalogue-moderator'),
         }),
@@ -802,14 +824,30 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       const { invite } = setUp();
 
       await expect(
-        invite.execute(as(ROOT), { email: 'A4@example.com', roleId: roleOf('viewer') }),
+        invite.execute(as(ROOT), {
+          origin: ORIGIN,
+          email: 'A4@example.com',
+          roleId: roleOf('viewer'),
+        }),
       ).resolves.toEqual({ ok: false, error: { code: 'account.exists' } });
-      await invite.execute(as(ROOT), { email: 'y@example.com', roleId: roleOf('viewer') });
+      await invite.execute(as(ROOT), {
+        origin: ORIGIN,
+        email: 'y@example.com',
+        roleId: roleOf('viewer'),
+      });
       await expect(
-        invite.execute(as(ROOT), { email: 'Y@example.com', roleId: roleOf('viewer') }),
+        invite.execute(as(ROOT), {
+          origin: ORIGIN,
+          email: 'Y@example.com',
+          roleId: roleOf('viewer'),
+        }),
       ).resolves.toEqual({ ok: false, error: { code: 'invitation.already-pending' } });
       await expect(
-        invite.execute(as(ROOT), { email: 'not-an-address', roleId: roleOf('viewer') }),
+        invite.execute(as(ROOT), {
+          origin: ORIGIN,
+          email: 'not-an-address',
+          roleId: roleOf('viewer'),
+        }),
       ).resolves.toEqual({
         ok: false,
         error: { code: 'validation.failed', fields: [{ path: 'email', code: 'format' }] },
@@ -821,6 +859,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       const stale = seedInvitation(1, { expiresAt: START.subtract({ minutes: 1 }) });
 
       const result = await invite.execute(as(ROOT), {
+        origin: ORIGIN,
         email: 'invitee1@example.com',
         roleId: roleOf('viewer'),
       });
@@ -841,7 +880,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       const { resend } = setUp();
       const invitationId = seedInvitation(2);
 
-      await expect(resend.execute(as(ROOT), { invitationId })).resolves.toEqual({
+      await expect(resend.execute(as(ROOT), { invitationId, origin: ORIGIN })).resolves.toEqual({
         ok: true,
         value: { code: 'invitation.reissued', invitationId },
       });
@@ -855,22 +894,53 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       expect(fakes.audits.map((a) => a.action)).toEqual(['identity.invitation.reissued']);
     });
 
+    it('counts each re-send on the address, then answers request.throttled and changes nothing', async () => {
+      const { resend } = setUp();
+      const invitationId = seedInvitation(2);
+      const limit = new MarketConfigIdentityPolicy(markets).mailThrottles(market).account.limit;
+      for (let n = 0; n < limit; n += 1) {
+        await expect(
+          resend.execute(as(ROOT), { invitationId, origin: ORIGIN }),
+        ).resolves.toMatchObject({ ok: true, value: { code: 'invitation.reissued' } });
+      }
+      const before = { ...fakes.invitations.get(invitationId)! };
+      const audits = fakes.audits.length;
+
+      await expect(resend.execute(as(ROOT), { invitationId, origin: ORIGIN })).resolves.toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: expect.any(Number) as number },
+      });
+      expect(fakes.invitations.get(invitationId)).toEqual(before);
+      expect(fakes.audits).toHaveLength(audits);
+      // The address is counted in the admin population, never the seller one.
+      expect([...fakes.throttles.values()].map((row) => row.kind).sort()).toEqual([
+        'mail.account',
+        'mail.origin',
+      ]);
+    });
+
     it('refuses a re-send of a decided, a first-admin or an ungrantable invitation', async () => {
       const { resend } = setUp();
       const revoked = seedInvitation(3, { state: 'revoked', email: null, decidedAt: START });
       const firstAdmin = seedInvitation(4, { invitedByAccountId: null });
       const protectedRole = seedInvitation(5, { roleId: LEAD_ROLE });
 
-      await expect(resend.execute(as(ROOT), { invitationId: revoked })).resolves.toEqual({
+      await expect(
+        resend.execute(as(ROOT), { invitationId: revoked, origin: ORIGIN }),
+      ).resolves.toEqual({
         ok: false,
         error: { code: 'invitation.rejected' },
       });
       // Mohammad Q4: found (revoke finds it), never sent again.
-      await expect(resend.execute(as(ROOT), { invitationId: firstAdmin })).resolves.toEqual({
+      await expect(
+        resend.execute(as(ROOT), { invitationId: firstAdmin, origin: ORIGIN }),
+      ).resolves.toEqual({
         ok: false,
         error: { code: 'invitation.rejected' },
       });
-      await expect(resend.execute(as(LEAD), { invitationId: protectedRole })).resolves.toEqual({
+      await expect(
+        resend.execute(as(LEAD), { invitationId: protectedRole, origin: ORIGIN }),
+      ).resolves.toEqual({
         ok: false,
         error: { code: 'role.not-grantable' },
       });
@@ -904,9 +974,13 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       const invitationId = seedInvitation(7);
 
       await expect(
-        invite.execute(as(SUPPORT), { email: 'z@example.com', roleId: roleOf('viewer') }),
+        invite.execute(as(SUPPORT), {
+          origin: ORIGIN,
+          email: 'z@example.com',
+          roleId: roleOf('viewer'),
+        }),
       ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
-      await expect(resend.execute(as(SUPPORT), { invitationId })).resolves.toEqual({
+      await expect(resend.execute(as(SUPPORT), { invitationId, origin: ORIGIN })).resolves.toEqual({
         ok: false,
         error: { code: 'access.denied' },
       });
@@ -988,9 +1062,17 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
     ],
     [
       'invite',
-      (b) => b.invite.execute(as(ROOT), { email: 'c1@example.com', roleId: roleOf('viewer') }),
+      (b) =>
+        b.invite.execute(as(ROOT), {
+          origin: ORIGIN,
+          email: 'c1@example.com',
+          roleId: roleOf('viewer'),
+        }),
     ],
-    ['resend', (b) => b.resend.execute(as(ROOT), { invitationId: seedInvitation(20) })],
+    [
+      'resend',
+      (b) => b.resend.execute(as(ROOT), { invitationId: seedInvitation(20), origin: ORIGIN }),
+    ],
     ['revoke', (b) => b.revoke.execute(as(ROOT), { invitationId: seedInvitation(21) })],
   ];
 
@@ -1166,11 +1248,15 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       const lifetime = LIFETIME_MINUTES();
 
       clock.set(START.add({ minutes: lifetime - 1 }));
-      await expect(resend.execute(as(ROOT), { invitationId: early })).resolves.toMatchObject({
+      await expect(
+        resend.execute(as(ROOT), { invitationId: early, origin: ORIGIN }),
+      ).resolves.toMatchObject({
         ok: true,
       });
       clock.set(START.add({ minutes: lifetime }));
-      await expect(resend.execute(as(ROOT), { invitationId: late })).resolves.toEqual({
+      await expect(
+        resend.execute(as(ROOT), { invitationId: late, origin: ORIGIN }),
+      ).resolves.toEqual({
         ok: false,
         error: { code: 'invitation.rejected' },
       });
@@ -1187,7 +1273,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       demoted(LEAD, roleOf('viewer'));
 
       for (const invitationId of [byDisabled, byDemoted, byCustomer, byUnknown]) {
-        await expect(resend.execute(as(ROOT), { invitationId })).resolves.toEqual({
+        await expect(resend.execute(as(ROOT), { invitationId, origin: ORIGIN })).resolves.toEqual({
           ok: false,
           error: { code: 'invitation.rejected' },
         });
@@ -1201,7 +1287,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       const sellerRole = seedInvitation(37, { roleId: SELLER_CUSTOM_ROLE });
 
       for (const invitationId of [gone, sellerRole]) {
-        await expect(resend.execute(as(ROOT), { invitationId })).resolves.toEqual({
+        await expect(resend.execute(as(ROOT), { invitationId, origin: ORIGIN })).resolves.toEqual({
           ok: false,
           error: { code: 'invitation.rejected' },
         });
@@ -1213,9 +1299,13 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       const invitationId = seedInvitation(38);
 
       await expect(
-        invite.execute(as(ROOT), { email: 'x@example.com', roleId: roleOf('viewer') }),
+        invite.execute(as(ROOT), {
+          origin: ORIGIN,
+          email: 'x@example.com',
+          roleId: roleOf('viewer'),
+        }),
       ).resolves.toEqual({ ok: false, error: { code: 'access.unavailable' } });
-      await expect(resend.execute(as(ROOT), { invitationId })).resolves.toEqual({
+      await expect(resend.execute(as(ROOT), { invitationId, origin: ORIGIN })).resolves.toEqual({
         ok: false,
         error: { code: 'access.unavailable' },
       });

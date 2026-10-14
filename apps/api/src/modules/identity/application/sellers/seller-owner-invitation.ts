@@ -166,6 +166,7 @@ export async function changeSellerOwnerInvitation(
         const verdict = await reserveInvitationMail(
           deps,
           market,
+          'seller',
           address.normalized,
           input.origin,
           now,
