@@ -43,6 +43,7 @@ import { fail } from './customer-sign-up.controller';
 import { ApiErrorBody } from './customer-sign-up.dto';
 import { answerSellerSignIn, outcomeOf } from './seller-sign-in.answer';
 import {
+  SellerSecondFactorRequired,
   SellerSessionSummary,
   SellerSignedIn,
   SellerSignInRequest,
@@ -93,6 +94,10 @@ export class SellerSessionController {
   @ApiBody({ type: SellerSignInRequest })
   @ApiOkResponse({
     type: SellerSignedIn,
+    description:
+      'signed-in (the session cookie is set), or, for an account with an active second factor, ' +
+      'second-factor-required (SellerSecondFactorRequired: no session yet; the code goes to ' +
+      'sign-in/second-factor).',
     headers: { 'Set-Cookie': { description: 'The seller session cookie' } },
   })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
@@ -110,7 +115,8 @@ export class SellerSessionController {
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiTooManyRequestsResponse({
     type: ApiErrorBody,
-    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+    description:
+      'request.throttled or second-factor.locked (details.retryAfterSeconds, Retry-After)',
   })
   @ApiServiceUnavailableResponse({
     type: ApiErrorBody,
@@ -121,7 +127,7 @@ export class SellerSessionController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
     @Body() body: unknown,
-  ): Promise<SellerSignedIn> {
+  ): Promise<SellerSignedIn | SellerSecondFactorRequired> {
     const outcome = await answerSellerSignIn(context, request, response, body, ['email'], (input) =>
       this.signInSeller.execute(context, {
         email: input.strings['email'],

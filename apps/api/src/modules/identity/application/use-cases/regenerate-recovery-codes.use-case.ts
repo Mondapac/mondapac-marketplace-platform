@@ -47,51 +47,64 @@ export class RegenerateRecoveryCodes extends UseCase<
     private readonly deps: FactorDeviceDependencies,
   ) {
     super(gate);
-    this.#step = new SignedInFactorStep(deps, this.#logger);
+    this.#step = new SignedInFactorStep(deps, this.#logger, 'admin');
   }
 
-  protected async handle(
+  protected handle(
     context: CallContext,
     input: FactorCodeInput,
   ): Promise<Result<RegenerateRecoveryCodesOutput, FactorStepFailure>> {
-    const { market } = context;
-    const presented = codeField(input.code, true);
-    if (!presented.ok) return presented;
-    const throttle = this.deps.policy.secondFactorThrottle(market);
-    if (throttle === null) return err({ code: 'access.unavailable' });
-    let fresh: { codes: readonly RecoveryCode[]; hashes: readonly Uint8Array[] } | null = null;
-    const result = await this.#step.run(context, presented.value, throttle, {
-      secretOf: (factor) => factor.state.secretCiphertext,
-      prepare: async (account) => {
-        fresh = await newRecoveryCodes(this.deps.secrets, market, account.state.id);
-      },
-      spend: (factor, check, now) =>
-        spendCode(this.deps.factors, market, factor.state.id, check, now),
-      succeed: async ({ account, factor, now }) => {
-        const codes = fresh;
-        if (codes === null || !factor.regenerateRecoveryCodes(codes.hashes, now).ok) {
-          return err({ code: 'second-factor.unavailable' });
-        }
-        await this.deps.factors.save(market, factor);
-        await this.deps.outbox.append(context, factor.pendingEvents);
-        await this.deps.audit.record(
-          context,
-          RecoveryCodesRegeneratedAudit.entry(factor.state.id, {
-            after: { accountId: account.state.id },
-          }),
-        );
-        return ok({
-          code: 'recovery-codes-regenerated' as const,
-          recoveryCodes: codes.codes.map(displayRecoveryCode),
-        });
-      },
-    });
-    logOutcome(
-      this.#logger,
-      'identity.recovery-codes.regenerate',
-      context,
-      result.ok ? result.value.code : result.error.code,
-    );
-    return result;
+    return regenerateRecoveryCodes(this.deps, this.#step, this.#logger, context, input);
   }
+}
+
+/**
+ * Regenerates the recovery codes of the actor's own factor through the given step (the admin's
+ * and the seller's use cases share it; each fixes the population its step serves).
+ */
+export async function regenerateRecoveryCodes(
+  deps: FactorDeviceDependencies,
+  step: SignedInFactorStep,
+  logger: Logger,
+  context: CallContext,
+  input: FactorCodeInput,
+): Promise<Result<RegenerateRecoveryCodesOutput, FactorStepFailure>> {
+  const { market } = context;
+  const presented = codeField(input.code, true);
+  if (!presented.ok) return presented;
+  const throttle = deps.policy.secondFactorThrottle(market);
+  if (throttle === null) return err({ code: 'access.unavailable' });
+  let fresh: { codes: readonly RecoveryCode[]; hashes: readonly Uint8Array[] } | null = null;
+  const result = await step.run(context, presented.value, throttle, {
+    secretOf: (factor) => factor.state.secretCiphertext,
+    prepare: async (account) => {
+      fresh = await newRecoveryCodes(deps.secrets, market, account.state.id);
+    },
+    spend: (factor, check, now) => spendCode(deps.factors, market, factor.state.id, check, now),
+    succeed: async ({ account, factor, now }) => {
+      const codes = fresh;
+      if (codes === null || !factor.regenerateRecoveryCodes(codes.hashes, now).ok) {
+        return err({ code: 'second-factor.unavailable' });
+      }
+      await deps.factors.save(market, factor);
+      await deps.outbox.append(context, factor.pendingEvents);
+      await deps.audit.record(
+        context,
+        RecoveryCodesRegeneratedAudit.entry(factor.state.id, {
+          after: { accountId: account.state.id },
+        }),
+      );
+      return ok({
+        code: 'recovery-codes-regenerated' as const,
+        recoveryCodes: codes.codes.map(displayRecoveryCode),
+      });
+    },
+  });
+  logOutcome(
+    logger,
+    'identity.recovery-codes.regenerate',
+    context,
+    result.ok ? result.value.code : result.error.code,
+  );
+  return result;
 }

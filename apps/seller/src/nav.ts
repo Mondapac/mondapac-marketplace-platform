@@ -23,6 +23,8 @@ export const sellerNav: NavConfig = {
       href: '/stock-locations',
       anyOf: ['inventory.stock.view'],
     },
+    // Approved sellers only (SellerShell hides it before).
+    { id: 's_security', labelKey: 'nav.security', href: '/account/security' },
     // Shown only while the seller is not approved (SellerShell hides it after).
     { id: 's_setup', labelKey: 'nav.setup', href: '/account-setup' },
   ],

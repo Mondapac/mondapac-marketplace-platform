@@ -35,6 +35,11 @@
     "reason": "Second step of admin sign-in with the pending sign-in ticket: no session exists until it passes."
   },
   {
+    "name": "identity.complete-seller-sign-in",
+    "rule": "anonymous",
+    "reason": "Second step of seller sign-in with the pending sign-in ticket: no session exists until it passes."
+  },
+  {
     "name": "identity.confirm-customer-email",
     "rule": "anonymous",
     "reason": "Customer email-confirmation link: the visitor is not signed in yet."
@@ -48,6 +53,11 @@
     "name": "identity.confirm-seller-email",
     "rule": "anonymous",
     "reason": "Seller email-confirmation link: the visitor is not signed in yet."
+  },
+  {
+    "name": "identity.confirm-seller-second-factor-enrolment",
+    "rule": "anonymous",
+    "reason": "Seller second-factor enrolment confirmation with the enrolment challenge token and the first code: the challenge binds the account and every session ends."
   },
   { "name": "identity.register-customer", "rule": "anonymous", "reason": "Customer sign-up form." },
   { "name": "identity.register-seller", "rule": "anonymous", "reason": "Seller sign-up form." },

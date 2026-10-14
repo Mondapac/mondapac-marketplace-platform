@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Population, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { SecondFactorActivatedAudit } from '../../domain/audit';
@@ -75,84 +75,93 @@ export class ConfirmSecondFactorEnrolment extends UseCase<
     super(gate);
   }
 
-  protected async handle(
+  protected handle(
     context: CallContext,
     input: ConfirmSecondFactorEnrolmentInput,
   ): Promise<Result<ConfirmSecondFactorEnrolmentOutput, ConfirmSecondFactorEnrolmentFailure>> {
-    const { market } = context;
-    const presented = parsePresentedCode(input.code, false);
-    if (presented === null) {
-      return err({ code: 'validation.failed', fields: [{ path: 'code', code: 'format' }] });
-    }
-    const policy = secondFactorStepPolicy(this.deps.policy, market);
-    if (policy === null) return err({ code: 'access.unavailable' });
-    let fresh: { codes: readonly RecoveryCode[]; hashes: readonly Uint8Array[] } | null = null;
+    return confirmSecondFactorEnrolment(this.deps, this.#logger, 'admin', context, input);
+  }
+}
 
-    const step: ChallengeCodeStep<null> = new ChallengeCodeStep(
-      this.deps,
-      {
-        purpose: 'second-factor-enrolment',
-        population: 'admin',
-        factorState: 'pending',
-        secretOf: (factor) => factor.state.secretCiphertext,
-        prepare: async (account) => {
-          fresh = await newRecoveryCodes(this.deps.secrets, market, account.state.id);
-        },
-        spend: async (factor, check, now) => {
-          if (check.kind !== 'totp' || fresh === null) return false;
-          const activated = factor.activate({
-            acceptedStep: check.step,
-            recoveryCodeHashes: fresh.hashes,
-            now,
-          });
-          if (!activated.ok) return false;
-          await this.deps.factors.save(market, factor);
-          await this.deps.outbox.append(context, factor.pendingEvents);
-          return true;
-        },
-        succeed: async ({ account, factor, now }) => {
-          const accountId = account.state.id;
-          await this.deps.sessions.revokeAllOf(
-            market,
-            accountId,
-            'second-factor-activated',
-            now,
-            null,
-          );
-          await this.deps.challenges.voidAllOf(market, accountId);
-          await this.deps.audit.record(
-            context,
-            SecondFactorActivatedAudit.entry(factor.state.id, {
-              after: { accountId, boundSubjectId: accountId },
-            }),
-          );
-          await step.record(context, input.client, accountId, 'second-factor-activated', now);
-          return { kind: 'done', value: null };
-        },
+export async function confirmSecondFactorEnrolment(
+  deps: ConfirmSecondFactorEnrolmentDependencies,
+  logger: Logger,
+  population: Population,
+  context: CallContext,
+  input: ConfirmSecondFactorEnrolmentInput,
+): Promise<Result<ConfirmSecondFactorEnrolmentOutput, ConfirmSecondFactorEnrolmentFailure>> {
+  const { market } = context;
+  const presented = parsePresentedCode(input.code, false);
+  if (presented === null) {
+    return err({ code: 'validation.failed', fields: [{ path: 'code', code: 'format' }] });
+  }
+  const policy = secondFactorStepPolicy(deps.policy, market);
+  if (policy === null) return err({ code: 'access.unavailable' });
+  let fresh: { codes: readonly RecoveryCode[]; hashes: readonly Uint8Array[] } | null = null;
+
+  const step: ChallengeCodeStep<null> = new ChallengeCodeStep(
+    deps,
+    {
+      purpose: 'second-factor-enrolment',
+      population: population,
+      factorState: 'pending',
+      secretOf: (factor) => factor.state.secretCiphertext,
+      prepare: async (account) => {
+        fresh = await newRecoveryCodes(deps.secrets, market, account.state.id);
       },
-      this.#logger,
-    );
-    const outcome = await step.run(context, input.challengeToken, presented, input.client, policy);
-    const codes = fresh as { codes: readonly RecoveryCode[] } | null;
-    if (!outcome.ok || codes === null) {
-      const code = outcome.ok ? 'access.unavailable' : outcome.error.code;
-      this.log('identity.second-factor-enrolment.refused', context, code);
-      return err((outcome.ok ? { code } : outcome.error) as ConfirmSecondFactorEnrolmentFailure);
-    }
-    this.log('identity.second-factor-enrolment.activated', context, 'second-factor-activated');
-    return ok({
-      code: 'second-factor-activated',
-      recoveryCodes: codes.codes.map(displayRecoveryCode),
-    });
+      spend: async (factor, check, now) => {
+        if (check.kind !== 'totp' || fresh === null) return false;
+        const activated = factor.activate({
+          acceptedStep: check.step,
+          recoveryCodeHashes: fresh.hashes,
+          now,
+        });
+        if (!activated.ok) return false;
+        await deps.factors.save(market, factor);
+        await deps.outbox.append(context, factor.pendingEvents);
+        return true;
+      },
+      succeed: async ({ account, factor, now }) => {
+        const accountId = account.state.id;
+        await deps.sessions.revokeAllOf(market, accountId, 'second-factor-activated', now, null);
+        await deps.challenges.voidAllOf(market, accountId);
+        await deps.audit.record(
+          context,
+          SecondFactorActivatedAudit.entry(factor.state.id, {
+            after: { accountId, boundSubjectId: accountId },
+          }),
+        );
+        await step.record(context, input.client, accountId, 'second-factor-activated', now);
+        return { kind: 'done', value: null };
+      },
+    },
+    logger,
+  );
+  const outcome = await step.run(context, input.challengeToken, presented, input.client, policy);
+  const codes = fresh as { codes: readonly RecoveryCode[] } | null;
+  if (!outcome.ok || codes === null) {
+    const code = outcome.ok ? 'access.unavailable' : outcome.error.code;
+    logOutcome(logger, 'identity.second-factor-enrolment.refused', context, code);
+    return err((outcome.ok ? { code } : outcome.error) as ConfirmSecondFactorEnrolmentFailure);
   }
+  logOutcome(
+    logger,
+    'identity.second-factor-enrolment.activated',
+    context,
+    'second-factor-activated',
+  );
+  return ok({
+    code: 'second-factor-activated',
+    recoveryCodes: codes.codes.map(displayRecoveryCode),
+  });
+}
 
-  /** Codes only: never the token, the code or a recovery code (P 12.3). */
-  private log(msg: string, context: CallContext, outcome: string): void {
-    this.#logger.log({
-      msg,
-      outcome,
-      marketId: context.market.marketId,
-      correlationId: context.correlationId,
-    });
-  }
+/** Codes only: never the token, the code or a recovery code (P 12.3). */
+function logOutcome(logger: Logger, msg: string, context: CallContext, outcome: string): void {
+  logger.log({
+    msg,
+    outcome,
+    marketId: context.market.marketId,
+    correlationId: context.correlationId,
+  });
 }
