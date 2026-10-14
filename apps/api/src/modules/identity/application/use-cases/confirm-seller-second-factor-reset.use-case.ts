@@ -159,7 +159,17 @@ export class ConfirmSellerSecondFactorReset extends UseCase<
           return ok({ kind: 'rejected' });
         }
         const factor = await deps.factors.findByAccount(market, accountId);
-        if (factor === null) return ok({ kind: 'rejected' });
+        // Bound to the factor the admin saw: an active one already active when the reset was
+        // requested, so a factor enrolled after the request is never removed by it (Hassan L1).
+        const activatedAt = factor?.state.activatedAt ?? null;
+        if (
+          factor === null ||
+          factor.state.state !== 'active' ||
+          activatedAt === null ||
+          activatedAt.epochNanoseconds > link.state.requestedAt.epochNanoseconds
+        ) {
+          return ok({ kind: 'rejected' });
+        }
         // Bound to the link read with the token: a link requested again (or used) since has
         // another version, and this use is refused (L1).
         if (!(await deps.links.consume(market, link.state.id, link.state.version, now))) {

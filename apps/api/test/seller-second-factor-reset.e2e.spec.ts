@@ -412,6 +412,31 @@ describe('owner-confirmed reset of a seller second factor over HTTP (integration
       expect(fakes.factors.size).toBe(1);
     });
 
+    it('refuses a link when the factor was enrolled again after the reset started', async () => {
+      await boot();
+      await seededAdmins(code);
+      const owner = await ownerWithFactor(code);
+      await adminPost(
+        code,
+        `sellers/${owner.sellerId}/second-factor/reset`,
+        {},
+        adminSession(code, ADMIN, 1),
+      );
+      const token = await mailedLink(code, 'confirm-second-factor-reset');
+      // The owner set up a new authenticator after the mail went (Hassan L1).
+      clock.advance(STEP);
+      for (const [key, factor] of fakes.factors) {
+        fakes.factors.set(key, { ...factor, activatedAt: clock.now() });
+      }
+
+      const refused = await sellerPost(code, 'second-factor/reset/confirm', { token });
+      expect([refused.status, refused.body]).toEqual([
+        400,
+        { statusCode: 400, code: 'link.rejected' },
+      ]);
+      expect(fakes.factors.size).toBe(1);
+    });
+
     it('answers the same link.rejected for a malformed, unknown or other-purpose token', async () => {
       await boot();
       await seededAdmins(code);
