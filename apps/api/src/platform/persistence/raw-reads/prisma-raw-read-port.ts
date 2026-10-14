@@ -16,6 +16,9 @@ import {
   type RawReadRow,
 } from './statements';
 
+/** The unbound port inside `PersistenceModule`; no module may inject it (Hassan R-1). */
+export const RAW_READ_BASE = Symbol('RAW_READ_BASE');
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 type Scalar = 'uuid' | 'text';
@@ -81,6 +84,23 @@ export class PrismaRawReadPort implements RawReadPort {
     list: readonly RawReadEntry[] = RAW_READ_STATEMENTS,
   ) {
     this.entries = new Map(list.map((entry) => [entry.id, entry]));
+  }
+
+  /**
+   * The port of one module (Hassan R-1): a statement owned by another module is refused with
+   * `wrong-module` before any unit, parameter or database is touched. An unknown id is left to
+   * {@link rawRead}, which refuses it as `unknown-statement`.
+   */
+  forModule(module: string): RawReadPort {
+    return {
+      rawRead: (market, id, params) => {
+        const entry = this.entries.get(String(id));
+        if (entry !== undefined && entry.owner !== module) {
+          return Promise.reject(new RawReadRefusedError(entry.id, 'wrong-module'));
+        }
+        return this.rawRead(market, id, params);
+      },
+    };
   }
 
   async rawRead<K extends RawReadName>(

@@ -17,5 +17,9 @@ export interface RawReadPort {
   ): Promise<RawReadRow<K>[]>;
 }
 
-/** Nest injection token of the {@link RawReadPort}. */
+/**
+ * Nest injection token of a module's own {@link RawReadPort}: bound only by
+ * `PersistenceModule.rawReadFor('<module>')`, which refuses any statement owned by another
+ * module at run time (ADR-0030 decision 2; Hassan R-1). Never exported by `PersistenceModule`.
+ */
 export const RAW_READ_PORT = Symbol('RAW_READ_PORT');

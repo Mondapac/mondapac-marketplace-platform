@@ -1,4 +1,5 @@
 import { Global, Module, type FactoryProvider } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import { MODEL_MAP } from '../../generated/model-map';
 import { AuditActionCatalogue } from '../audit/audit-action-catalogue';
@@ -35,8 +36,9 @@ import { PrismaOutboxRelay } from './outbox/prisma-outbox-relay';
 import { PrismaOutboxWriterFactory } from './outbox/prisma-outbox-writer';
 import { PrismaRoot } from './prisma-root';
 import { parseSql } from './raw-reads/pg-parser';
+import { RAW_READ_BASE, type PrismaRawReadPort } from './raw-reads/prisma-raw-read-port';
 import { createRawReadPort } from './raw-reads/create-raw-read-port';
-import { RAW_READ_PORT } from './raw-reads/raw-read-port';
+import { RAW_READ_PORT, type RawReadPort } from './raw-reads/raw-read-port';
 import { RAW_READ_STATEMENTS } from './raw-reads/statements';
 import { PrismaService } from './prisma.service';
 import { PrismaSubjectKeyStore } from './prisma-subject-key-store';
@@ -77,7 +79,7 @@ const modelMap: ModelMap = MODEL_MAP;
       // The list is re-checked with the same pure parse as `pnpm boundaries` before the port
       // exists, so the application refuses to start on a statement that breaks ADR-0030
       // decisions 2 to 5, or when the parser cannot load (decision 4).
-      provide: RAW_READ_PORT,
+      provide: RAW_READ_BASE,
       inject: [PrismaRoot],
       useFactory: async (root: PrismaRoot) => {
         return createRawReadPort(root, {
@@ -130,7 +132,6 @@ const modelMap: ModelMap = MODEL_MAP;
     PrismaService,
     UNIT_OF_WORK,
     DatabaseProbe,
-    RAW_READ_PORT,
     EVENT_BUS,
     OUTBOX_RELAY,
     EVENT_DISPATCHER,
@@ -138,6 +139,24 @@ const modelMap: ModelMap = MODEL_MAP;
   ],
 })
 export class PersistenceModule {
+  /**
+   * The one line of a module's Nest module that binds its own raw read port (ADR-0030, Hassan
+   * R-1): `providers: [PersistenceModule.rawReadFor('certification')]`. The port answers only
+   * the statements the module owns; any other id is refused as `wrong-module` at run time. The
+   * unbound port is never exported, so a module cannot inject it.
+   */
+  static rawReadFor(module: string): FactoryProvider<RawReadPort> {
+    if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(module)) {
+      throw new Error(`"${module}" is not a module name`);
+    }
+    return {
+      provide: RAW_READ_PORT,
+      inject: [ModuleRef],
+      useFactory: (refs: ModuleRef) =>
+        refs.get<PrismaRawReadPort>(RAW_READ_BASE, { strict: false }).forModule(module),
+    };
+  }
+
   /**
    * The one line of a module's Nest module that binds its own outbox writer (P 5.2):
    * `providers: [PersistenceModule.outboxWriterFor('identity')]`. The name is the module's

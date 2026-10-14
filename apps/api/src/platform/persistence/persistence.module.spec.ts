@@ -9,6 +9,7 @@ import { UNIT_OF_WORK, type UnitOfWorkOptions } from '../unit-of-work/unit-of-wo
 import { DatabaseProbe } from './database-probe';
 import { GUARDED_CLIENT } from './guarded-client';
 import { PersistenceModule } from './persistence.module';
+import { RAW_READ_BASE } from './raw-reads/prisma-raw-read-port';
 import { RAW_READ_PORT } from './raw-reads/raw-read-port';
 import { poolConfigOf, PrismaRoot } from './prisma-root';
 import { PrismaService } from './prisma.service';
@@ -26,7 +27,6 @@ describe('PersistenceModule (platform persistence design 3.3)', () => {
       PrismaService,
       UNIT_OF_WORK,
       DatabaseProbe,
-      RAW_READ_PORT,
       EVENT_BUS,
       OUTBOX_RELAY,
       EVENT_DISPATCHER,
@@ -37,6 +37,13 @@ describe('PersistenceModule (platform persistence design 3.3)', () => {
   it('binds the subject-key store only through its static factory, never as an export (PF 4 row 13)', () => {
     expect(providerTokens).not.toContain(SUBJECT_KEY_STORE);
     expect(PersistenceModule.subjectKeyStore().provide).toBe(SUBJECT_KEY_STORE);
+  });
+
+  it('keeps the unbound raw read port inside the module and binds a module port only through its static factory (Hassan R-1)', () => {
+    expect(providerTokens).toContain(RAW_READ_BASE);
+    expect(providerTokens).not.toContain(RAW_READ_PORT);
+    expect(PersistenceModule.rawReadFor('certification').provide).toBe(RAW_READ_PORT);
+    expect(() => PersistenceModule.rawReadFor('Bad Name')).toThrow();
   });
 
   it('provides the base client and the guarded client without exporting them', () => {

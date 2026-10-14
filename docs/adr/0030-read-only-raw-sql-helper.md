@@ -147,6 +147,12 @@ needs none (data catalog 6.3). Its cycle trigger is migration SQL, ruled outside
 - Schema renames in the owner's module must update the list in the same PR; the two-Market test
   and the boot check catch a missed one.
 
+- Amended 2026-10-14 (Hassan R-1): `RAW_READ_PORT` is bound per module by
+  `PersistenceModule.rawReadFor('<module>')` and refuses a statement owned by another module at
+  run time (`wrong-module`); the unbound port is not exported. The call-site check of decision 6
+  stays. Bypasses through `createRequire`, `module.require`, aliased Prisma builders and
+  `@prisma/client/runtime` imports are caught by review, not by the script (R-2, best effort).
+
 ## Alternatives considered
 - **Prisma with `relationLoadStrategy: 'join'` (option B):** no raw SQL, but one statement is
   not guaranteed, it needs the preview ADR-0025 decision 3 declined, and a version change can
