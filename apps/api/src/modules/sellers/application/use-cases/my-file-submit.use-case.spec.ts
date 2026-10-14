@@ -426,12 +426,12 @@ describe.each(['AU', 'ZZ'] as const)('my-file.submit in %s', (code) => {
       expect(approved).toEqual({ ok: false, error: { code: 'file.change-request-required' } });
     });
 
-    it('is open to a pending seller only, and fails closed when identity cannot answer', async () => {
+    it('is open to a pending or rejected seller only, and fails closed when identity cannot answer', async () => {
       const t = setUp(code);
       const s = seller(t, code);
       await complete(t, code, s);
 
-      for (const state of ['approved', 'rejected', 'suspended'] as const) {
+      for (const state of ['approved', 'suspended'] as const) {
         t.access.set(s.sellerId, state);
         expect(await t.submit.execute(s.context, { origin: ORIGIN })).toEqual({
           ok: false,
@@ -450,6 +450,106 @@ describe.each(['AU', 'ZZ'] as const)('my-file.submit in %s', (code) => {
         error: { code: 'sellers.unavailable' },
       });
       expect(t.revisions.rows.size).toBe(0);
+    });
+
+    describe('a rejected seller applies again (slice 7b)', () => {
+      it('re-applies through identity after every check, then writes the revision', async () => {
+        const t = setUp(code);
+        const s = seller(t, code);
+        await complete(t, code, s);
+        t.access.set(s.sellerId, 'rejected');
+
+        const submitted = await t.submit.execute(s.context, { origin: ORIGIN });
+
+        expect(submitted.ok).toBe(true);
+        expect(t.access.reapplyCalls).toEqual([s.sellerId]);
+        expect(t.access.states.get(s.sellerId)).toBe('pending');
+        expect(t.revisions.rows.size).toBe(1);
+      });
+
+      it('does not re-apply for a draft that is still incomplete', async () => {
+        const t = setUp(code);
+        const s = seller(t, code);
+        await t.saveGeneral.execute(s.context, GENERAL);
+        t.access.set(s.sellerId, 'rejected');
+
+        const refused = await t.submit.execute(s.context, { origin: ORIGIN });
+
+        expect(!refused.ok && refused.error.code).toBe('file.incomplete');
+        expect(t.access.reapplyCalls).toEqual([]);
+        expect(t.access.states.get(s.sellerId)).toBe('rejected');
+      });
+
+      it('refuses at the Market limit and writes nothing', async () => {
+        const t = setUp(code);
+        const s = seller(t, code);
+        await complete(t, code, s);
+        t.access.set(s.sellerId, 'rejected', true);
+        t.access.reapplyAnswer = 'limit';
+
+        expect(await t.submit.execute(s.context, { origin: ORIGIN })).toEqual({
+          ok: false,
+          error: { code: 'seller-access.reapply-limit' },
+        });
+        expect(t.access.states.get(s.sellerId)).toBe('rejected');
+        expect(t.revisions.rows.size).toBe(0);
+      });
+
+      it('answers wrong-state when the seller moved meanwhile, and fails closed when identity is down', async () => {
+        const t = setUp(code);
+        const s = seller(t, code);
+        await complete(t, code, s);
+        t.access.set(s.sellerId, 'rejected');
+        t.access.reapplyAnswer = 'wrong-state';
+
+        expect(await t.submit.execute(s.context, { origin: ORIGIN })).toEqual({
+          ok: false,
+          error: { code: 'seller-access.wrong-state' },
+        });
+
+        t.access.reapplyAnswer = 'throw';
+        expect(await t.submit.execute(s.context, { origin: ORIGIN })).toEqual({
+          ok: false,
+          error: { code: 'sellers.unavailable' },
+        });
+        expect(t.revisions.rows.size).toBe(0);
+      });
+
+      it('refuses a Staff member (identity allows the owner only) as access.denied, not as unavailable', async () => {
+        const t = setUp(code);
+        const s = seller(t, code);
+        await complete(t, code, s);
+        t.access.set(s.sellerId, 'rejected');
+        t.access.reapplyAnswer = 'denied';
+
+        expect(await t.submit.execute(s.context, { origin: ORIGIN })).toEqual({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+        expect(t.revisions.rows.size).toBe(0);
+      });
+
+      it('reads a rejected seller as changes-needed when the Market has no limit', async () => {
+        const t = setUp(code);
+        const s = seller(t, code);
+        await complete(t, code, s);
+        t.access.set(s.sellerId, 'rejected', true);
+        t.access.noLimit.add(s.sellerId);
+
+        const read = await t.read.execute(s.context, {});
+
+        expect(read.ok && read.value.status).toBe('changes-needed');
+      });
+
+      it('does not re-apply for a pending seller', async () => {
+        const t = setUp(code);
+        const s = seller(t, code);
+        await complete(t, code, s);
+
+        await t.submit.execute(s.context, { origin: ORIGIN });
+
+        expect(t.access.reapplyCalls).toEqual([]);
+      });
     });
 
     it('answers file.not-found for a seller with no file in this Market', async () => {
@@ -1202,6 +1302,14 @@ describe.each(['AU', 'ZZ'] as const)('my-file.submit in %s', (code) => {
       t.access.set(s.sellerId, 'rejected');
       const rejected = await t.read.execute(s.context, {});
       expect(rejected.ok && rejected.value.status).toBe('changes-needed');
+      // No re-application left (slice 7b): the same rejection reads "not approved".
+      t.access.set(s.sellerId, 'rejected', true);
+      const notApproved = await t.read.execute(s.context, {});
+      expect(notApproved.ok && notApproved.value.status).toBe('not-approved');
+      expect(
+        notApproved.ok &&
+          notApproved.value.onboardingSteps[notApproved.value.onboardingSteps.length - 1],
+      ).toMatchObject({ state: 'waiting' });
       t.access.set(s.sellerId, 'suspended');
       const suspended = await t.read.execute(s.context, {});
       expect(suspended.ok && suspended.value.status).toBe('suspended');

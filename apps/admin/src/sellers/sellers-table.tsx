@@ -7,6 +7,7 @@ const TONE: Record<string, BadgeTone> = {
   approved: 'success',
   'awaiting-review': 'attention',
   'changes-needed': 'attention',
+  'not-approved': 'critical',
   suspended: 'critical',
   'file-check-needed': 'critical',
   'outside-service-area': 'critical',

@@ -4,9 +4,10 @@ import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel'
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { SELLER_ACCESS_VIEW } from '../../contracts/permissions';
-import type { SellerAccessStateCode } from '../../domain/seller-access';
+import { SellerAccess, type SellerAccessStateCode } from '../../domain/seller-access';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
+import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { SellerAccountReader } from '../ports/seller-account-reader';
 import { readActingGrants, type GrantSubject } from '../roles/granting';
@@ -33,6 +34,8 @@ export interface SellerAccountSummaryView {
     /** The sign-in address, as typed. */
     readonly email: string;
   } | null;
+  /** Rejected with no re-application left; null while the Market configures no limit. */
+  readonly reapplyLimitReached: boolean | null;
 }
 
 export type SellerAccountSummariesFailure =
@@ -48,6 +51,7 @@ export interface SellerAccountSummariesDependencies {
   readonly grants: RoleGrantReader;
   readonly effectiveKeys: EffectiveKeyResolver;
   readonly sellerAccounts: SellerAccountReader;
+  readonly policy: IdentityMarketPolicy;
 }
 
 const USE_CASE = 'identity.seller-account-summaries';
@@ -146,11 +150,16 @@ export class SellerAccountSummaries extends UseCase<
         );
         if (acting === null) return err({ code: 'access.denied' });
         const records = await this.deps.sellerAccounts.summariesOf(market, [...ids]);
+        const limit = this.deps.policy.sellerReapplyLimit(market);
         return ok(
           records.map((record) => ({
             sellerId: record.sellerId,
             state: record.state,
             stateChangedAt: record.stateChangedAt,
+            reapplyLimitReached:
+              limit === null
+                ? null
+                : SellerAccess.reapplyLimitReached(record.state, record.reapplyCount, limit),
             owner:
               record.owner === null
                 ? null

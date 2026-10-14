@@ -99,6 +99,12 @@ class StubAccess implements SellerAccessReader {
   accessOf(): Promise<AccessState | null> {
     return Promise.resolve(this.state);
   }
+  reapplyLimitReachedOf() {
+    return Promise.resolve(false);
+  }
+  reapply(): Promise<never> {
+    return Promise.reject(new Error('not used'));
+  }
   accessOfMany(_context: CallContext, ids: readonly Id<'Seller'>[]) {
     this.calls.push(ids);
     if (this.failing) return Promise.reject(new Error('identity down'));
@@ -120,13 +126,18 @@ class StubDirectory implements SellerAccountDirectory {
     return new Map(
       [...states].map(([one, state]): [Id<'Seller'>, SellerAccountEntry] => [
         one,
-        { state, owner: one === sellerId(1) ? OWNER : null },
+        { state, reapplyLimitReached: false, owner: one === sellerId(1) ? OWNER : null },
       ]),
     );
   }
   idsByState(
     _context: CallContext,
-    query: { state: AccessState | null; before: Id<'Seller'> | null; limit: number },
+    query: {
+      state: AccessState | null;
+      before: Id<'Seller'> | null;
+      limit: number;
+      reapplyLimitReached: boolean | null;
+    },
   ) {
     this.idCalls.push({ state: query.state, limit: query.limit });
     if (this.access.failing) return Promise.reject(new Error('identity down'));
@@ -134,6 +145,7 @@ class StubDirectory implements SellerAccountDirectory {
       sellerIds: query.state === this.access.state ? [sellerId(2), sellerId(1)] : [],
       next: null,
       counts: { pending: 0, approved: 2, rejected: 0, suspended: 0 },
+      rejectedLimitReached: 0,
     });
   }
 }
@@ -347,12 +359,12 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
       { properties?: Record<string, { enum?: string[]; description?: string }> }
     >;
     // The status column: `hidden` is a documented value; the identity state tabs are served
-    // (slice 6b), and "not approved" is documented as joining with 7b.
+    // (slice 6b), and so is not-approved (slice 7b).
     expect(schemas.SellerListRowView?.properties?.status?.enum).toContain('hidden');
     expect(schemas.SellerListRequest?.properties?.tab?.enum).toEqual(
-      expect.arrayContaining(['changes-needed', 'approved', 'suspended']),
+      expect.arrayContaining(['changes-needed', 'not-approved', 'approved', 'suspended']),
     );
-    expect(schemas.SellerListRequest?.properties?.tab?.description).toContain('7b');
+    expect(schemas.SellerListRequest?.properties?.tab?.description).toContain('not-approved');
     for (const schema of [
       'SellerListRequest',
       'SellerListBody',
@@ -398,6 +410,7 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
       expect(access.calls).toEqual([[sellerId(1), sellerId(2)]]);
       expect((listed.body as { stateCounts: unknown }).stateCounts).toEqual({
         changesNeeded: 0,
+        notApproved: 0,
         approved: 2,
         suspended: 0,
       });

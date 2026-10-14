@@ -1175,6 +1175,7 @@ function useCaseProvider<D, U>(
       grants: true,
       effectiveKeys: true,
       sellerAccounts: true,
+      policy: true,
     }),
     // Sellers slice 6b: the admin part of R-6, ids by state and counts (contract below).
     useCaseProvider(SellerIdsByState, {
@@ -1183,6 +1184,7 @@ function useCaseProvider<D, U>(
       grants: true,
       effectiveKeys: true,
       sellerAccounts: true,
+      policy: true,
     }),
     // Slice 9a: the R-5 reads of the decisions, for `sellers` only (contract below).
     useCaseProvider(ListSellerAccessDecisions, {
@@ -1293,6 +1295,7 @@ function useCaseProvider<D, U>(
         ApproveSellerAccess,
         RejectSellerAccess,
         ReapplySellerAccess,
+        DescribeSellerStatus,
         ListSellerAccessDecisions,
         FindAccessDecisionsByBasis,
       ],
@@ -1306,6 +1309,7 @@ function useCaseProvider<D, U>(
         approveSellerAccess: ApproveSellerAccess,
         rejectSellerAccess: RejectSellerAccess,
         reapplySellerAccess: ReapplySellerAccess,
+        describeSellerStatus: DescribeSellerStatus,
         listSellerAccessDecisions: ListSellerAccessDecisions,
         findAccessDecisionsByBasis: FindAccessDecisionsByBasis,
       ) =>
@@ -1319,6 +1323,7 @@ function useCaseProvider<D, U>(
           approveSellerAccess,
           rejectSellerAccess,
           reapplySellerAccess,
+          describeSellerStatus,
           listSellerAccessDecisions,
           findAccessDecisionsByBasis,
         }),

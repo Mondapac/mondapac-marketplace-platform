@@ -17,6 +17,34 @@ import type { AccessState } from '../domain/seller-status';
 export class IdentitySellerAccess implements SellerAccessReader {
   constructor(private readonly identity: SellerAccessContract) {}
 
+  async reapplyLimitReachedOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<boolean | null> {
+    const result = await this.identity.ownAccessOf(context);
+    if (!result.ok) throw new Error(`identity.ownAccessOf refused: ${result.error.code}`);
+    // The status is the actor's own; an id that is not the actor's is unknown, never another's.
+    return result.value.sellerId === sellerId ? result.value.reapplyLimitReached : null;
+  }
+
+  async reapply(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<'reapplied' | 'wrong-state' | 'limit' | 'denied'> {
+    const result = await this.identity.reapplySellerAccess(context, sellerId);
+    if (result.ok) return 'reapplied';
+    switch (result.error.code) {
+      case 'seller-access.wrong-state':
+        return 'wrong-state';
+      case 'seller-access.reapply-limit':
+        return 'limit';
+      case 'access.denied':
+        return 'denied';
+      default:
+        throw new Error(`identity.reapplySellerAccess refused: ${result.error.code}`);
+    }
+  }
+
   async accessOf(context: CallContext, sellerId: Id<'Seller'>): Promise<AccessState | null> {
     const result = await this.identity.sellerAccessOf(context, [sellerId]);
     if (!result.ok) throw new Error(`identity.sellerAccessOf refused: ${result.error.code}`);
@@ -55,6 +83,7 @@ export class IdentitySellerAccountDirectory implements SellerAccountDirectory {
         summary.sellerId,
         {
           state: summary.state,
+          reapplyLimitReached: summary.reapplyLimitReached,
           owner:
             summary.owner === null
               ? null
@@ -70,11 +99,13 @@ export class IdentitySellerAccountDirectory implements SellerAccountDirectory {
       readonly state: AccessState | null;
       readonly before: Id<'Seller'> | null;
       readonly limit: number;
+      readonly reapplyLimitReached: boolean | null;
     },
   ): Promise<{
     readonly sellerIds: readonly Id<'Seller'>[];
     readonly next: Id<'Seller'> | null;
     readonly counts: SellerStateCounts;
+    readonly rejectedLimitReached: number;
   }> {
     const result = await this.identity.sellerIdsByState(context, query);
     if (!result.ok) throw refusal('sellerIdsByState', result.error.code);

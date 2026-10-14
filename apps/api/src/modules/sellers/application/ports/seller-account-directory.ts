@@ -9,6 +9,8 @@ import type { AccessState } from '../../domain/seller-status';
  */
 export interface SellerAccountEntry {
   readonly state: AccessState;
+  /** Rejected with no re-application left; null while the Market configures no limit. */
+  readonly reapplyLimitReached: boolean | null;
   /** Null while the seller has no owner (an owner invitation not accepted yet). */
   readonly owner: { readonly displayName: string | null; readonly email: string } | null;
 }
@@ -40,11 +42,15 @@ export interface SellerAccountDirectory {
       readonly state: AccessState | null;
       readonly before: Id<'Seller'> | null;
       readonly limit: number;
+      /** Only with state `rejected`: the "Not approved" (true) or "Changes needed" (false) tab. */
+      readonly reapplyLimitReached: boolean | null;
     },
   ): Promise<{
     readonly sellerIds: readonly Id<'Seller'>[];
     readonly next: Id<'Seller'> | null;
     readonly counts: SellerStateCounts;
+    /** Of the rejected sellers, those with no re-application left. */
+    readonly rejectedLimitReached: number;
   }>;
 }
 

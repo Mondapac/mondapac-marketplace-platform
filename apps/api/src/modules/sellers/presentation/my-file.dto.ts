@@ -335,8 +335,8 @@ export class MyFileBody {
     type: String,
     enum: SELLER_STATUSES,
     description:
-      'The one status of the file (design 3.3). A rejected seller reads changes-needed until ' +
-      'the re-apply limit arrives with a later slice.',
+      'The one status of the file (design 3.3). A rejected seller reads changes-needed, and ' +
+      'not-approved once it has no re-application left.',
   })
   status!: string;
 

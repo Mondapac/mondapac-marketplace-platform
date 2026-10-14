@@ -74,6 +74,14 @@ class Access implements SellerAccessReader {
     return Promise.reject(new Error('not used'));
   }
 
+  reapplyLimitReachedOf(): Promise<never> {
+    return Promise.reject(new Error('not used'));
+  }
+
+  reapply(): Promise<never> {
+    return Promise.reject(new Error('not used'));
+  }
+
   accessOfMany(
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],

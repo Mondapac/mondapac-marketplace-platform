@@ -9,8 +9,8 @@ import type { DraftPart } from './seller-file';
 export type AccessState = 'pending' | 'approved' | 'rejected' | 'suspended';
 
 /**
- * The status codes of design 3.3 that slice 5b can tell. `not-approved` (the re-apply limit,
- * which only `identity` knows) joins with slice 7b: until then a rejected seller reads
+ * The status codes of design 3.3. `not-approved` is a rejected seller with no re-application
+ * left (only `identity` knows the limit, slice 7b); a rejected seller with some left reads
  * `changes-needed`.
  */
 export const SELLER_STATUSES = [
@@ -19,6 +19,7 @@ export const SELLER_STATUSES = [
   'ready-to-submit',
   'awaiting-review',
   'changes-needed',
+  'not-approved',
   'approved',
   'suspended',
   'file-check-needed',
@@ -36,6 +37,11 @@ export interface StatusInput {
   readonly outsideServiceArea: boolean | null;
   /** A definite negative of the register for the saved identifier (never a value). */
   readonly registerNegative: boolean;
+  /**
+   * `identity`'s answer for a rejected seller: no re-application left. False or null (the Market
+   * configures no limit, or the caller does not know) keeps the seller at `changes-needed`.
+   */
+  readonly reapplyLimitReached: boolean | null;
 }
 
 /**
@@ -44,10 +50,13 @@ export interface StatusInput {
  * `file-check-needed` (design 3.1, Ali change 1). For a seller still to be decided on, a pending
  * submission is `awaiting-review` whatever else; otherwise an address outside the areas is shown
  * first, because completing the other parts does not help; a rejected seller then reads
- * `changes-needed`, and a pending one `details-incomplete` or `ready-to-submit`.
+ * `changes-needed` (`not-approved` once no re-application is left), and a pending one
+ * `details-incomplete` or `ready-to-submit`.
  */
 export function sellerStatusOf(input: StatusInput): SellerStatus {
   if (input.access === 'suspended') return 'suspended';
+  // Nothing the seller can do shows before anything it could fix.
+  if (input.access === 'rejected' && input.reapplyLimitReached === true) return 'not-approved';
   if (input.access === 'approved') {
     return input.hasApprovedRevision ? 'approved' : 'file-check-needed';
   }
@@ -110,7 +119,7 @@ export function onboardingStepsOf(
   const ready = steps.every((candidate) => candidate.state === 'done');
   const submitState: StepState = finished
     ? 'done'
-    : status === 'suspended' || !ready
+    : status === 'suspended' || status === 'not-approved' || !ready
       ? 'waiting'
       : 'to-do';
   // After a submission every step reads done, whatever the draft says now.

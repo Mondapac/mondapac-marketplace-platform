@@ -8,6 +8,7 @@ import {
   type OwnedSellerQuery,
   type SellerAccountReader,
   type SellerAccountRecord,
+  type ReapplyFilter,
   type SellerStateCounts,
 } from '../../application/ports/seller-account-reader';
 import type { SellerAccessStateCode, SellerOrigin } from '../../domain/seller-access';
@@ -184,6 +185,7 @@ export class PrismaSellerAccountReader implements SellerAccountReader {
       readonly state: SellerAccessStateCode;
       readonly before: Id<'Seller'> | null;
       readonly limit: number;
+      readonly reapply: ReapplyFilter | null;
     },
   ): Promise<Id<'Seller'>[]> {
     // `seller_access_market_id_state_state_changed_at_idx` narrows by Market and state.
@@ -192,6 +194,13 @@ export class PrismaSellerAccountReader implements SellerAccountReader {
         marketId: market.marketId,
         registeredAt: { not: null },
         state: query.state,
+        ...(query.reapply === null
+          ? {}
+          : {
+              reapplyCount: query.reapply.reapplyLimitReached
+                ? { gte: query.reapply.limit }
+                : { lt: query.reapply.limit },
+            }),
         ...(query.before === null ? {} : { sellerId: { lt: query.before } }),
       },
       select: { sellerId: true },
@@ -213,6 +222,17 @@ export class PrismaSellerAccountReader implements SellerAccountReader {
       counts[group.state as SellerAccessStateCode] = group._count._all;
     }
     return counts;
+  }
+
+  async rejectedAtLimit(market: MarketContext, limit: number): Promise<number> {
+    return this.prisma.tx(market).identitySellerAccess.count({
+      where: {
+        marketId: market.marketId,
+        registeredAt: { not: null },
+        state: 'rejected',
+        reapplyCount: { gte: limit },
+      },
+    });
   }
 
   async sellersOfAddress(
