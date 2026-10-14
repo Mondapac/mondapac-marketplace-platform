@@ -208,11 +208,15 @@ describe('admin customer lookup over HTTP (integration, slice 8d)', () => {
 
       const unknown = await lookup(code, { email: 'nobody@example.com' }, root);
       const abroad = await lookup(code, { email: 'abroad@example.com' }, root);
+      const staff = await lookup(code, { email: 'admin2@x.test' }, root);
 
       expect(unknown.status).toBe(404);
       expect(unknown.body).toEqual({ statusCode: 404, code: 'customer.not-found' });
+      expect(unknown.headers['cache-control']).toBe('no-store');
       expect(abroad.status).toBe(404);
       expect(abroad.body).toEqual(unknown.body);
+      expect(staff.status).toBe(404);
+      expect(staff.body).toEqual(unknown.body);
       const logged = JSON.stringify(logLines).toLowerCase();
       for (const searched of ['nobody@', 'abroad@']) expect(logged).not.toContain(searched);
     });
