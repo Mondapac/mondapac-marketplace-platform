@@ -13,6 +13,8 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { CartState } from '../domain/cart';
+import { HmacRateCounterKeys } from '../infrastructure/hmac-rate-counter-keys';
+import { InMemoryRateCounters } from './testing/in-memory-rate-counters';
 import { CryptoGuestTokens } from '../infrastructure/crypto-guest-tokens';
 import { ConfigCartPolicy } from '../infrastructure/config-cart-policy';
 import type { CartDependencies } from './cart-operations';
@@ -27,6 +29,8 @@ import { RemoveGuestItem } from './use-cases/remove-guest-item.use-case';
 import { RemoveItem } from './use-cases/remove-item.use-case';
 import { SetLineQuantity } from './use-cases/set-line-quantity.use-case';
 import { ViewCart } from './use-cases/view-cart.use-case';
+import { PurgeInactiveCarts } from './use-cases/purge-inactive-carts.use-case';
+import { SetGuestLineQuantity } from './use-cases/set-guest-line-quantity.use-case';
 import { ViewGuestCart } from './use-cases/view-guest-cart.use-case';
 
 // The cart use cases in memory on both Market fixtures (AU 99 per line, AUD; ZZ 50, another
@@ -46,6 +50,7 @@ const OFFER_B = id<'Offer'>(2);
 const VARIANT = id<'Variant'>(3);
 const SELLER = id<'Seller'>(4);
 const ACCOUNT = id<'Account'>(5);
+const ORIGIN = '203.0.113.7';
 
 class MemoryCarts implements CartRepository {
   readonly rows = new Map<string, CartState>();
@@ -74,6 +79,25 @@ class MemoryCarts implements CartRepository {
     this.rows.set(cart.id, { ...cart, version: cart.version + 1 });
     return Promise.resolve('saved' as const);
   }
+  purgeInactive(
+    _m: MarketContext,
+    guestBefore: Temporal.Instant,
+    accountBefore: Temporal.Instant,
+    limit: number,
+  ) {
+    const expired = [...this.rows.values()]
+      .filter(
+        (c) =>
+          Temporal.Instant.compare(
+            c.lastChangedAt,
+            c.owner.kind === 'guest' ? guestBefore : accountBefore,
+          ) <= 0,
+      )
+      .sort((a, b) => Temporal.Instant.compare(a.lastChangedAt, b.lastChangedAt))
+      .slice(0, limit);
+    for (const cart of expired) this.rows.delete(cart.id);
+    return Promise.resolve(expired.length);
+  }
 }
 
 describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) => {
@@ -84,6 +108,8 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
   let carts: MemoryCarts;
   let verdicts: Map<string, LineVerdict>;
   let factsDown: boolean;
+  let factCalls: number;
+  let counters: InMemoryRateCounters;
   let deps: CartDependencies;
 
   const buyable = (
@@ -99,6 +125,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
   });
   const facts: LineFactsSource = {
     evaluate: (_c, refs) => {
+      factCalls += 1;
       const out = new Map<string, LineVerdict>();
       for (const ref of refs) {
         out.set(
@@ -128,7 +155,10 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
 
   beforeEach(() => {
     carts = new MemoryCarts();
+    clock.set(T0);
     factsDown = false;
+    factCalls = 0;
+    counters = new InMemoryRateCounters();
     verdicts = new Map([
       [verdictKey({ offerId: OFFER, variantId: VARIANT }), buyable(1000n)],
       [verdictKey({ offerId: OFFER_B, variantId: VARIANT }), buyable(250n)],
@@ -141,6 +171,8 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       facts,
       ids: new SequenceIdGenerator(clock),
       clock,
+      counters,
+      counterKeys: new HmacRateCounterKeys(new Uint8Array(32).fill(7)),
     };
   });
 
@@ -172,6 +204,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       ...line,
       quantity: 2,
       token: null,
+      origin: ORIGIN,
     });
 
     expect(added.ok && added.value.cookie?.action).toBe('set');
@@ -311,6 +344,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       ...line,
       quantity: 1,
       token: null,
+      origin: ORIGIN,
     });
     const token = added.ok && added.value.cookie?.action === 'set' ? added.value.cookie.token : '';
     clock.set(T0.add({ hours: 24 * 7 + 1 }));
@@ -325,6 +359,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       ...line,
       quantity: 1,
       token: null,
+      origin: ORIGIN,
     });
     const lineId = mine.ok ? mine.value.lineId! : '';
     const stranger = new CryptoGuestTokens().issue().token;
@@ -332,6 +367,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     const removed = await new RemoveGuestItem(gate, deps).execute(guestCtx, {
       lineId,
       token: stranger,
+      origin: ORIGIN,
     });
 
     expect(!removed.ok && removed.error.code).toBe('cart.line-not-found');
@@ -343,6 +379,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       ...line,
       quantity: 2,
       token: null,
+      origin: ORIGIN,
     });
     const token = added.ok && added.value.cookie?.action === 'set' ? added.value.cookie.token : '';
 
@@ -361,6 +398,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       ...line,
       quantity: 3,
       token: null,
+      origin: ORIGIN,
     });
     const token = added.ok && added.value.cookie?.action === 'set' ? added.value.cookie.token : '';
 
@@ -420,6 +458,192 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     expect([...carts.rows.values()][0]?.lines.map((l) => l.offerId)).toEqual([OFFER_B]);
     expect(await clear.execute(customerCtx, { accountId: ACCOUNT, units: [line] })).toMatchObject({
       ok: false,
+    });
+  });
+  describe('guest write rate limits', () => {
+    const guestAdd = (token: string | null, origin: string | null = ORIGIN, offer = OFFER) =>
+      new AddGuestItem(gate, deps).execute(guestCtx, {
+        offerId: offer,
+        variantId: VARIANT,
+        quantity: 1,
+        token,
+        origin,
+      });
+    const counts = (kind: string): number[] =>
+      [...counters.rows].filter(([key]) => key.split('|')[1] === kind).map(([, row]) => row.count);
+    const tokenOf = (res: Awaited<ReturnType<typeof guestAdd>>): string =>
+      res.ok && res.value.cookie?.action === 'set' ? res.value.cookie.token : '';
+
+    it('counts a creation and a write per origin on the first add, and a cart write after it', async () => {
+      const first = await guestAdd(null);
+      const token = tokenOf(first);
+      await guestAdd(token);
+
+      expect(counts('guest.create.origin.60min')).toEqual([1]);
+      expect(counts('guest.write.origin.15min')).toEqual([2]);
+      expect(counts('guest.write.cart.15min')).toEqual([1]);
+    });
+
+    it('throttles the 31st creation of an origin with the rest of the window, other origins pass', async () => {
+      for (let n = 0; n < 30; n += 1) expect((await guestAdd(null)).ok).toBe(true);
+      clock.advance(Temporal.Duration.from({ minutes: 10 }));
+      const refused = await guestAdd(null);
+
+      expect(refused).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 3000 },
+      });
+      expect(carts.rows.size).toBe(30);
+      expect((await guestAdd(null, '203.0.113.8')).ok).toBe(true);
+    });
+
+    it('keeps the creation count when the add is then refused, and calls no facade before the count', async () => {
+      verdicts.clear();
+      const refused = await guestAdd(null);
+
+      expect(refused).toMatchObject({ ok: false, error: { code: 'cart.offer-not-purchasable' } });
+      expect(counts('guest.create.origin.60min')).toEqual([1]);
+      expect(carts.rows.size).toBe(0);
+
+      for (let n = 0; n < 29; n += 1) await guestAdd(null);
+      factCalls = 0;
+      const throttled = await guestAdd(null);
+      expect(throttled).toMatchObject({ ok: false, error: { code: 'request.throttled' } });
+      expect(factCalls).toBe(0);
+    });
+
+    it('limits writes per origin (120) across carts, and per cart (60) on its own', async () => {
+      const token = tokenOf(await guestAdd(null));
+      for (let n = 0; n < 60; n += 1) expect((await guestAdd(token)).ok).toBe(true);
+      const perCart = await guestAdd(token);
+      expect(perCart).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: 900 },
+      });
+      // Another cart of the same origin is not affected by the first cart's count.
+      const other = tokenOf(await guestAdd(null));
+      expect((await guestAdd(other)).ok).toBe(true);
+      // The origin counter (120 per 15 minutes) is shared by all carts of that origin.
+      const rows = [...counters.rows].filter(([key]) => key.includes('guest.write.origin.15min'));
+      for (const [, row] of rows) row.count = 120;
+      expect((await guestAdd(other)).ok).toBe(false);
+    });
+
+    it('counts set-quantity and remove, and a removed line is still counted', async () => {
+      const token = tokenOf(await guestAdd(null));
+      const lineId = [...carts.rows.values()][0]!.lines[0]!.id;
+      await new SetGuestLineQuantity(gate, deps).execute(guestCtx, {
+        lineId,
+        quantity: 3,
+        token,
+        origin: ORIGIN,
+      });
+      await new RemoveGuestItem(gate, deps).execute(guestCtx, { lineId, token, origin: ORIGIN });
+
+      expect(counts('guest.write.cart.15min')).toEqual([2]);
+      expect(counts('guest.write.origin.15min')).toEqual([3]);
+      expect(counts('guest.create.origin.60min')).toEqual([1]);
+    });
+
+    it('restarts the window when it has ended', async () => {
+      for (let n = 0; n < 31; n += 1) await guestAdd(null);
+      clock.advance(Temporal.Duration.from({ minutes: 61 }));
+
+      expect((await guestAdd(null)).ok).toBe(true);
+    });
+
+    it('fails closed with access.unavailable and writes nothing when the store or the origin is missing', async () => {
+      counters.failing = true;
+      const down = await guestAdd(null);
+      counters.failing = false;
+      const noOrigin = await guestAdd(null, null);
+
+      expect(down).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+      expect(noOrigin).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+      expect(carts.rows.size).toBe(0);
+      expect(counters.rows.size).toBe(0);
+      expect(factCalls).toBe(0);
+    });
+
+    it('never stores the origin or the raw token in a counter key, and leaves reads and merges uncounted', async () => {
+      const token = tokenOf(await guestAdd(null));
+      await new ViewGuestCart(gate, deps).execute(guestCtx, { token });
+      await new MergeGuestCart(gate, deps).execute(customerCtx, { guestToken: token });
+      await new AddItem(gate, deps).execute(customerCtx, { ...line, quantity: 1 });
+
+      const keys = [...counters.rows.keys()].join(' ');
+      expect(keys).not.toContain(ORIGIN);
+      expect(keys).not.toContain(token);
+      expect(counts('guest.write.origin.15min')).toEqual([1]);
+    });
+  });
+
+  describe('purge-inactive', () => {
+    const system = testCallContext(market, 'system', 'cart-0009-abcd');
+    const DAY = 24 * 60 * 60 * 1000;
+    const cart = (
+      n: number,
+      owner: CartState['owner'],
+      ageDays: number,
+      status: CartState['status'] = 'active',
+    ): CartState => ({
+      id: id<'Cart'>(0x500 + n),
+      marketId: market.marketId,
+      owner,
+      status,
+      lastChangedAt: T0.subtract({ milliseconds: Math.round(ageDays * DAY) }),
+      mergedIntoCartId: status === 'merged' ? id<'Cart'>(0x900) : null,
+      mergedAt: status === 'merged' ? T0 : null,
+      version: 1,
+      createdAt: T0.subtract({ milliseconds: 100 * DAY }),
+      lines: [],
+    });
+    const guest = (n: number): CartState['owner'] => ({ kind: 'guest', tokenHash: `h${n}` });
+    const account = (n: number): CartState['owner'] => ({
+      kind: 'account',
+      accountId: id<'Account'>(0x700 + n),
+    });
+    const purge = () => new PurgeInactiveCarts(gate, { ...deps });
+
+    it('deletes guest and merged carts after 7 days and account carts after 90, keeps fresh ones', async () => {
+      for (const c of [
+        cart(1, guest(1), 8),
+        cart(2, guest(2), 6),
+        cart(3, guest(3), 8, 'merged'),
+        cart(4, account(4), 89),
+        cart(5, account(5), 91),
+      ]) {
+        carts.rows.set(c.id, c);
+      }
+
+      const done = await purge().execute(system, {});
+
+      expect(done.ok && done.value.carts).toBe(3);
+      expect([...carts.rows.keys()].sort()).toEqual([id<'Cart'>(0x502), id<'Cart'>(0x504)].sort());
+    });
+
+    it('deletes in batches of 200, oldest first, up to the per-run cap, and prunes ended counters', async () => {
+      for (let n = 0; n < 450; n += 1)
+        carts.rows.set(`c${n}`, { ...cart(n, guest(n), 8 + n / 1000), id: `c${n}` as Id<'Cart'> });
+      counters.rows.set('AU|guest.write.cart.15min|aa', {
+        count: 3,
+        windowStartedAt: T0.subtract({ minutes: 61 }),
+      });
+      counters.rows.set('AU|guest.write.cart.15min|bb', {
+        count: 3,
+        windowStartedAt: T0.subtract({ minutes: 10 }),
+      });
+
+      const done = await purge().execute(system, {});
+
+      expect(done.ok && done.value).toEqual({ carts: 450, rateCounters: 1 });
+      expect(carts.rows.size).toBe(0);
+      expect([...counters.rows.keys()]).toEqual(['AU|guest.write.cart.15min|bb']);
+    });
+
+    it('is for the system actor only', async () => {
+      expect(await purge().execute(customerCtx, {})).toMatchObject({ ok: false });
+      expect(await purge().execute(guestCtx, {})).toMatchObject({ ok: false });
     });
   });
 });

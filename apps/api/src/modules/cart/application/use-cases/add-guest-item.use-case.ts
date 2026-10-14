@@ -11,7 +11,7 @@ import {
 
 /** `add-guest-item` for a guest (rule `anonymous`, the cart token from the cookie). */
 export class AddGuestItem extends UseCase<
-  AddInput & { readonly token: string | null },
+  AddInput & { readonly token: string | null; readonly origin: string | null },
   LineWritten,
   CartFailure
 > {
@@ -29,9 +29,9 @@ export class AddGuestItem extends UseCase<
 
   protected async handle(
     context: CallContext,
-    input: AddInput & { readonly token: string | null },
+    input: AddInput & { readonly token: string | null; readonly origin: string | null },
   ) {
     const caller: CartCaller = { kind: 'guest', token: input.token };
-    return addItem(this.deps, context, caller, input);
+    return addItem(this.deps, context, caller, input, input.origin);
   }
 }

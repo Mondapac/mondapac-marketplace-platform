@@ -23,6 +23,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiServiceUnavailableResponse,
+  ApiTooManyRequestsResponse,
   ApiTags,
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
@@ -31,6 +32,8 @@ import {
 import type { CallContext, Money } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
+import { clientAddressFrom } from '../../../platform/http/client-address';
+import { clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -69,6 +72,7 @@ export const CART_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'cart.offer-not-purchasable': 422,
   'cart.too-many-lines': 422,
   'conflict.stale': 409,
+  'request.throttled': 429,
   'cart.check-unavailable': 503,
 });
 
@@ -167,7 +171,14 @@ export class CartController {
     description: 'cart.offer-not-purchasable (details.reason) or cart.too-many-lines',
   })
   @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
-  @ApiServiceUnavailableResponse({ ...ERROR, description: 'cart.check-unavailable' })
+  @ApiTooManyRequestsResponse({
+    ...ERROR,
+    description: 'request.throttled (guest; details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'cart.check-unavailable or access.unavailable',
+  })
   async add(
     @Call() context: CallContext,
     @Req() request: Request,
@@ -187,6 +198,7 @@ export class CartController {
         : await this.addGuest.execute(context, {
             ...args,
             token: guestTokenOf(request.headers.cookie, context.market.marketId),
+            origin: clientOriginOf(clientAddressFrom(request)),
           });
     return this.answer('cart.add-item', context, response, result, written);
   }
@@ -220,6 +232,7 @@ export class CartController {
         : await this.setGuest.execute(context, {
             ...args,
             token: guestTokenOf(request.headers.cookie, context.market.marketId),
+            origin: clientOriginOf(clientAddressFrom(request)),
           });
     return this.answer('cart.set-line-quantity', context, response, result, written);
   }
@@ -245,6 +258,7 @@ export class CartController {
         : await this.removeGuest.execute(context, {
             lineId,
             token: guestTokenOf(request.headers.cookie, context.market.marketId),
+            origin: clientOriginOf(clientAddressFrom(request)),
           });
     return this.answer('cart.remove-item', context, response, result, (value) => ({
       body: { removed: true as const },
@@ -290,7 +304,9 @@ export class CartController {
     shape: (value: T) => { body: B; cookie: GuestCookie | null },
   ): B {
     response.setHeader('Cache-Control', 'no-store');
-    if (!result.ok) throw this.refused(operation, context, this.refusal(result.error, context));
+    if (!result.ok) {
+      throw this.refused(operation, context, this.refusal(result.error, context, response));
+    }
     const { body, cookie } = shape(result.value);
     if (cookie !== null) {
       response.append(
@@ -322,8 +338,14 @@ export class CartController {
   }
 
   private refusal(
-    error: { readonly code: string; readonly fields?: unknown; readonly reason?: unknown },
+    error: {
+      readonly code: string;
+      readonly fields?: unknown;
+      readonly reason?: unknown;
+      readonly retryAfterSeconds?: number;
+    },
     context: CallContext,
+    response: Response,
   ): HttpException {
     const status =
       CART_STATUS[error.code] ??
@@ -339,6 +361,10 @@ export class CartController {
     }
     if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
     if (error.reason !== undefined) return fail(status, error.code, { reason: error.reason });
+    if (error.retryAfterSeconds !== undefined) {
+      response.setHeader('Retry-After', String(error.retryAfterSeconds));
+      return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
+    }
     return fail(status, error.code);
   }
 }

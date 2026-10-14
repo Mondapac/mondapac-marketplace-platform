@@ -6,6 +6,8 @@ import type { CartLimits } from '../domain/cart';
 /** The most lines one cart holds (cart design 4; AU 50). A constant until a Market needs another. */
 const MAX_LINES = 50;
 const GUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Account carts are purged this long after their last change (cart design 11). */
+const ACCOUNT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** The line ceiling is the Market's `maxLineQuantity`; there is no default. */
 export class ConfigCartPolicy implements CartPolicy {
@@ -20,5 +22,9 @@ export class ConfigCartPolicy implements CartPolicy {
 
   guestTtlMs(): number {
     return GUEST_TTL_MS;
+  }
+
+  accountRetentionMs(): number {
+    return ACCOUNT_RETENTION_MS;
   }
 }

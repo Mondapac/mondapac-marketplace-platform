@@ -1,0 +1,12 @@
+import type { MarketContext } from '@mondapac/shared-kernel';
+import type { RateCounterKind } from '../../domain/rate-limits';
+
+/**
+ * The `key_hash` of a rate counter: HMAC-SHA-256 of the kind, the Market and the subject under the
+ * cart rate-counter key, so no account id is stored in clear and two kinds never share a key.
+ */
+export interface RateCounterKeys {
+  keyOf(market: MarketContext, kind: RateCounterKind, subject: string): Uint8Array;
+}
+
+export const RATE_COUNTER_KEYS = Symbol('CART_RATE_COUNTER_KEYS');
