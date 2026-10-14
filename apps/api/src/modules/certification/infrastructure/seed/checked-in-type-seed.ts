@@ -1,5 +1,6 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { CertificationTypeSeed, SeededType } from '../../application/ports/type-seed';
+import { isCertificationTypeCode } from '../../domain/type-revision';
 import { loadFileTypeSeeds } from './file-type-seed';
 import { ZZ_CERTIFICATION_TYPES } from './zz.types.seed';
 
@@ -15,6 +16,9 @@ const defaultSeeds = (): Readonly<Record<string, readonly SeededType[]>> => ({
 export function assertTypeSeed(types: readonly SeededType[]): void {
   const seen = new Set<string>();
   for (const type of types) {
+    if (!isCertificationTypeCode(type.code)) {
+      throw new CertificationTypeSeedError(`Seed type code "${String(type.code)}" is not a valid code`);
+    }
     if (seen.has(type.code)) {
       throw new CertificationTypeSeedError(`Seed type "${type.code}" is listed twice`);
     }

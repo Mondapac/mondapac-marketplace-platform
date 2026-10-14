@@ -595,7 +595,7 @@ issuers, active, so tests prove the model generic (AC 3).
 
 **As built (2026-10-14).** `SeedCertificationTypes` (`certification.seed-certification-types`, rule
 `system`) runs as the job of the same name at worker start and daily, per hosted Market. Seed files
-are `infrastructure/seed/au.types.seed.ts` and `zz.types.seed.ts`; each revision passes
+are `config/certification-seed/AU.json` (loaded by `infrastructure/seed/file-type-seed.ts`, which refuses relaxed shapes) and `infrastructure/seed/zz.types.seed.ts`; each revision passes
 `validateTypeRevision` before anything is written. It only creates a type whose code is missing and
 never edits an existing one. No issuer and no platform subject is seeded yet (no real issuer is
 known; the subject is needed with the first encrypted issuer reference). Seeded revisions carry the

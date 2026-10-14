@@ -72,6 +72,13 @@ export class SeedCertificationTypes extends UseCase<
     const { market } = context;
     const { unitOfWork, types, seed, clock, ids } = this.deps;
     const seeded = seed.types(market);
+    if (seeded.length === 0) {
+      this.#logger.warn({
+        msg: 'certification.seed-types.no-seed',
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+    }
     const locales = this.deps.supportedLocales(market);
     for (const entry of seeded) {
       const checked = validateTypeRevision(entry.content, locales, null);

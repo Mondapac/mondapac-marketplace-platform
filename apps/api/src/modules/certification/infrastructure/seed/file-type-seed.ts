@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import type { SeededType } from '../../application/ports/type-seed';
 import type { CertificationTypeCode } from '../../domain/claim-types';
@@ -27,8 +28,9 @@ const type = z.strictObject({
   requiresIssuerRegistry: z.boolean(),
   requiresDocument: z.boolean(),
   requiresExpiry: z.boolean(),
-  defaultBasis: z.enum(['SELLER_REQUIRED', 'NOT_APPLICABLE']),
-  autoApproveSelfDeclaration: z.boolean(),
+  defaultBasis: z.literal('SELLER_REQUIRED'),
+  // A relaxed shape never comes from a file: only an admin, with a second admin, relaxes (3.6).
+  autoApproveSelfDeclaration: z.literal(false),
   badgeIconKey: z.string(),
   locales: z.record(z.string(), locale),
 });
@@ -37,6 +39,8 @@ const file = z.strictObject({
   note: z.string().optional(),
   types: z.array(type),
 });
+
+const logger = new Logger('CertificationTypeSeedFiles');
 
 /** A seed file that is unreadable, malformed or named for another Market: the start-up stops. */
 export class TypeSeedFileError extends Error {}
@@ -53,6 +57,7 @@ export function loadFileTypeSeeds(
   try {
     names = readdirSync(directory).filter((name) => name.endsWith('.json'));
   } catch {
+    logger.warn({ msg: 'certification.seed-types.no-seed-directory', directory });
     return seeds;
   }
   for (const name of names) {

@@ -262,8 +262,20 @@ describe('claim text matcher: Arabic-script corpus', () => {
     expect(halal('حلٵل')).toBe(true); // U+0675
   });
 
+  it('folds a stroke between Arabic letters however it is written or hidden (Hassan M1)', () => {
+    for (const stroke of ['١', '۱', '1', 'l', 'I', '|', '１', '𝟏', 'ǀ', 'ⅼ']) {
+      expect(halal(`حل${stroke}ل`)).toBe(true);
+    }
+    for (const text of ['حلَ١ل', 'حلـ١ل', 'حل\u200d١ل', 'حل\u200c١ل', 'حل\u200f١ل', 'حل\u200f|ل']) {
+      expect(halal(text)).toBe(true);
+    }
+  });
+
   it('keeps the Latin digit path (C2)', () => {
     expect(run(AU, 'ha١al')).toEqual(['halal:compact']);
+    expect(run(AU, 'ha۱al')).toEqual(['halal:compact']);
+    expect(run(AU, 'ha1al')).toEqual(['halal:compact']);
+    expect(run(AU, 'h4l4l')).toEqual(['halal:compact']);
   });
 
   it('matches decorated and encoded spellings (C3)', () => {
