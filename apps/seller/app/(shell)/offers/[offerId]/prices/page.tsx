@@ -46,6 +46,7 @@ export default async function OfferPricesPage({
         view={page.view}
         canEdit={page.session.permissionKeys.includes(PRICE_EDIT_PERMISSION)}
         csrfToken={page.session.csrfToken}
+        zone={page.zone ?? undefined}
       />
       <p className="mt-4">
         <a className="font-medium text-link underline" href={`/offers/${offerId}`}>

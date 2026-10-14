@@ -5,9 +5,9 @@ import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
-import { formatInstant } from '../catalog/format.ts';
 import { priceProblemOf } from './errors.ts';
 import { formatMinor, inputOf, minorOf } from './money.ts';
+import { FALLBACK_ZONE, formatInZone } from './zone-time.ts';
 import { SpecialPrice } from './special-price.tsx';
 import type { OfferPricesView, PriceWritten, VariantPrice } from './types.ts';
 
@@ -18,6 +18,7 @@ function VariantRow({
   currency,
   canEdit,
   csrfToken,
+  zone,
 }: {
   readonly offerId: string;
   readonly number: number;
@@ -25,6 +26,7 @@ function VariantRow({
   readonly currency: string;
   readonly canEdit: boolean;
   readonly csrfToken: string;
+  readonly zone: string;
 }) {
   const t = useTranslations();
   const router = useRouter();
@@ -80,7 +82,7 @@ function VariantRow({
           ? t('price.none')
           : t('price.in-force', {
               amount: formatMinor(variant.inForce.amount, currency),
-              since: formatInstant(variant.inForce.effectiveFrom),
+              since: formatInZone(variant.inForce.effectiveFrom, zone),
             })}
       </p>
       {variant.held !== null ? (
@@ -89,7 +91,7 @@ function VariantRow({
             <p>
               {t(`price.held.${variant.held.direction}`, {
                 amount: formatMinor(variant.held.amount, currency),
-                since: formatInstant(variant.held.submittedAt),
+                since: formatInZone(variant.held.submittedAt, zone),
               })}
             </p>
           </Banner>
@@ -131,6 +133,7 @@ function VariantRow({
           currency={currency}
           canEdit={!readOnly}
           csrfToken={csrfToken}
+          zone={zone}
           version={version}
           onVersion={setVersion}
         />
@@ -145,11 +148,14 @@ export function OfferPrices({
   view,
   canEdit,
   csrfToken,
+  zone = FALLBACK_ZONE,
 }: {
   readonly offerId: string;
   readonly view: OfferPricesView;
   readonly canEdit: boolean;
   readonly csrfToken: string;
+  /** The seller's IANA zone; UTC when it could not be read. */
+  readonly zone?: string;
 }) {
   const t = useTranslations();
   if (view.variants.length === 0) {
@@ -166,6 +172,7 @@ export function OfferPrices({
           currency={view.currency}
           canEdit={canEdit}
           csrfToken={csrfToken}
+          zone={zone}
         />
       ))}
     </div>
