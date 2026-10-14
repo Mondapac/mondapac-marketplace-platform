@@ -12,7 +12,10 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import {
+  pricingConstraintsOwnerTestDatabaseUrl,
+  pricingConstraintsTestDatabaseUrl,
+} from './test-database';
 
 // Pricing slice 1, part 2: the constraints, triggers and grants of migration
 // pricing_series_regular (pricing-data 2, 3.1 to 3.3, 3.6, 3.8, 7, 10), as the application role
@@ -34,8 +37,8 @@ describe.each(TEST_MARKETS)('pricing constraints in market %s (database integrat
   let owner: Client;
 
   beforeAll(async () => {
-    app = new Client({ connectionString: testDatabaseUrl() });
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    app = new Client({ connectionString: pricingConstraintsTestDatabaseUrl() });
+    owner = new Client({ connectionString: pricingConstraintsOwnerTestDatabaseUrl() });
     await app.connect();
     await owner.connect();
   });
@@ -558,7 +561,7 @@ describe.each(TEST_MARKETS)('pricing constraints in market %s (database integrat
     let persistence: Persistence;
     let throttles: PrismaWriteRefusalThrottleRepository;
     beforeAll(() => {
-      persistence = createPersistence();
+      persistence = createPersistence({ databaseUrl: pricingConstraintsTestDatabaseUrl() });
       throttles = new PrismaWriteRefusalThrottleRepository(persistence.service);
     });
     afterAll(() => persistence.close());

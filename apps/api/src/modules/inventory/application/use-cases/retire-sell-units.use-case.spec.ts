@@ -17,6 +17,7 @@ import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import {
+  MAX_LOCK_TIMEOUT_MS,
   MAX_UNIT_TIMEOUT_MS,
   type UnitOfWork,
   type UnitOfWorkOptions,
@@ -259,7 +260,13 @@ describe.each(['AU', 'ZZ'])('inventory.retire-sell-units in market %s', (code) =
     ]);
     // The order of the design: read, lock, tombstone, retire.
     expect(t.stock.calls).toEqual(['read', 'lock', 'tombstone', 'retire']);
-    expect(t.options).toEqual([{ isolation: 'serializable', timeoutMs: MAX_UNIT_TIMEOUT_MS }]);
+    expect(t.options).toEqual([
+      {
+        isolation: 'serializable',
+        timeoutMs: MAX_UNIT_TIMEOUT_MS,
+        lockTimeoutMs: MAX_LOCK_TIMEOUT_MS,
+      },
+    ]);
   });
 
   it('retires the Variant across every Offer, of any seller, and leaves other Variants alone', async () => {

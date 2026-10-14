@@ -22,7 +22,10 @@ import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
 import { PrismaAttributeRepository } from '../../src/modules/catalog/infrastructure/prisma-attribute.repository';
 import { createPersistence, marketOf } from './persistence-support';
-import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import {
+  catalogAttributesOwnerTestDatabaseUrl,
+  catalogAttributesTestDatabaseUrl,
+} from './test-database';
 import { sqlState } from './sql-state';
 
 // Catalog slice 3 on PostgreSQL (catalog data design 3.3, 5.1, 7), for both Market fixtures: the
@@ -41,12 +44,12 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
   let owner: Client;
 
   beforeAll(async () => {
-    sql = new Client({ connectionString: testDatabaseUrl() });
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    sql = new Client({ connectionString: catalogAttributesTestDatabaseUrl() });
+    owner = new Client({ connectionString: catalogAttributesOwnerTestDatabaseUrl() });
     await sql.connect();
     await owner.connect();
     ({ app } = await createTestApp({
-      env: { DATABASE_URL: testDatabaseUrl() },
+      env: { DATABASE_URL: catalogAttributesTestDatabaseUrl() },
       override: (builder) =>
         builder
           .overrideProvider(CLOCK)
@@ -328,7 +331,7 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
   it('reads the product form of a family: fields with labels, options in order, and only this Market', async () => {
     await app.get(SeedAttributes).execute(seedContext(), {});
     await app.get(SeedCategoryTree).execute(seedContext(), {});
-    const persistence = createPersistence();
+    const persistence = createPersistence({ databaseUrl: catalogAttributesTestDatabaseUrl() });
     try {
       const reader = new PrismaOwnCatalogReader(persistence.service);
       const load = (familyCode: string) =>
@@ -372,7 +375,7 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
 
   it('builds the schema of a seeded family from the published revisions, and none for an unknown one (4c-5b)', async () => {
     await app.get(SeedAttributes).execute(seedContext(), {});
-    const persistence = createPersistence();
+    const persistence = createPersistence({ databaseUrl: catalogAttributesTestDatabaseUrl() });
     try {
       const attributes = new PrismaAttributeRepository(persistence.service);
       const load = (familyCode: string) =>
