@@ -164,8 +164,16 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
     const lookup = this.deps.registerPolicy.settingsOf(market);
     // The access state is `identity`'s, read live and outside any unit (design 7.2).
     let access;
+    let reapplyLimitReached: boolean | null = null;
     try {
       access = await this.deps.accessReader.accessOf(context, owner.sellerId);
+      // Only a rejected seller has a re-apply standing; the other states ask `identity` no more.
+      if (access === 'rejected') {
+        reapplyLimitReached = await this.deps.accessReader.reapplyLimitReachedOf(
+          context,
+          owner.sellerId,
+        );
+      }
     } catch {
       return err({ code: 'sellers.unavailable' });
     }
@@ -221,6 +229,7 @@ export class MyFileRead extends UseCase<Record<string, never>, MyFileView, MyFil
         missing: base.missing,
         outsideServiceArea: base.outsideServiceArea,
         registerNegative: base.registerResult === 'not-matched',
+        reapplyLimitReached,
       };
       const status = sellerStatusOf(statusInput);
       return ok({

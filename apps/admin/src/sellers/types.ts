@@ -4,7 +4,7 @@ export const LIST_PERMISSION = 'sellers.seller.view';
 /** Tabs read from the seller files: search and filters work here. */
 export const FILE_TABS = ['awaiting-review', 'incomplete', 'all'] as const;
 /** Tabs paged through identity's state (slice 6b): shown only when `stateCounts` comes back. */
-export const STATE_TABS = ['changes-needed', 'approved', 'suspended'] as const;
+export const STATE_TABS = ['changes-needed', 'not-approved', 'approved', 'suspended'] as const;
 export const TABS = [...FILE_TABS, ...STATE_TABS] as const;
 export type Tab = (typeof TABS)[number];
 export type StateTab = (typeof STATE_TABS)[number];
@@ -40,6 +40,7 @@ export interface SellerListCounts {
 
 export interface SellerListStateCounts {
   readonly changesNeeded: number;
+  readonly notApproved: number;
   readonly approved: number;
   readonly suspended: number;
 }
@@ -59,6 +60,7 @@ export const STATUSES = [
   'ready-to-submit',
   'awaiting-review',
   'changes-needed',
+  'not-approved',
   'approved',
   'suspended',
   'file-check-needed',

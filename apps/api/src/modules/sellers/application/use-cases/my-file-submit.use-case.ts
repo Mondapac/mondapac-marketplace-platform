@@ -87,6 +87,8 @@ export type MyFileSubmitFailure =
   | { readonly code: 'file.already-submitted' }
   | { readonly code: 'file.change-request-required' }
   | { readonly code: 'seller-access.wrong-state' }
+  /** A rejected seller has used up the Market's re-applications (slice 7b). */
+  | { readonly code: 'seller-access.reapply-limit' }
   | { readonly code: 'identifier.not-matched' }
   | { readonly code: 'slug.format' | 'slug.reserved' | 'slug.taken' }
   | LookupLimitReached
@@ -120,8 +122,13 @@ export interface MyFileSubmitDependencies extends RegisterLookupDependencies {
  * the owner is `ActorContext.sellerId`. In order:
  *
  * 1. the submissions limit of 6.5 (5 per 24 hours per file) is reserved before any work;
- * 2. `identity`'s access state is read outside any unit: only `pending` may submit (a rejected
- *    seller's re-application waits for slice 7b and `identity`'s re-apply call);
+ * 2. `identity`'s access state is read outside any unit: `pending` submits, and so does
+ *    `rejected`, which is the seller's re-application (slice 7b): after every check below, and
+ *    before anything is written, `identity`'s `reapplySellerAccess` moves it back to `pending`
+ *    and counts one re-application, or refuses at the Market's limit (`seller-access.reapply-limit`,
+ *    the seller stays rejected). The re-application commits in `identity`'s own unit; if the
+ *    write that follows fails, the seller stays `pending` with its draft and submits again
+ *    without using another re-application;
  * 3. one read-only unit loads the file, its pending and latest revisions, the stored register
  *    result of the draft's number and the tax answer; a pending revision is
  *    `file.already-submitted`, a file with an approved revision `file.change-request-required`;
@@ -245,7 +252,9 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
     const { file: current, pending, latest: latestRevision, existing, tax } = loaded.value;
 
     if (current.state.hasApprovedRevision) return err({ code: 'file.change-request-required' });
-    if (access !== 'pending') return err({ code: 'seller-access.wrong-state' });
+    if (access !== 'pending' && access !== 'rejected') {
+      return err({ code: 'seller-access.wrong-state' });
+    }
     if (pending !== null) return err({ code: 'file.already-submitted' });
 
     const missing = current.missing(requirements);
@@ -385,6 +394,17 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
           }
         }
       }
+    }
+
+    if (access === 'rejected') {
+      let outcome;
+      try {
+        outcome = await this.deps.accessReader.reapply(context, owner.sellerId);
+      } catch (error) {
+        return this.unavailable(context, 'reapply-unavailable', error);
+      }
+      if (outcome === 'limit') return err({ code: 'seller-access.reapply-limit' });
+      if (outcome === 'wrong-state') return err({ code: 'seller-access.wrong-state' });
     }
 
     return this.write(context, owner, {

@@ -125,13 +125,18 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s (database, slice
 
   async function seller(
     state: 'pending' | 'approved' | 'rejected' | 'suspended',
-    options: { marketCode?: string; origin?: 'self' | 'invitation'; registered?: boolean } = {},
+    options: {
+      marketCode?: string;
+      origin?: 'self' | 'invitation';
+      registered?: boolean;
+      reapplyCount?: number;
+    } = {},
   ): Promise<Id<'Seller'>> {
     const id = newId<'Seller'>();
     await sql.query(
       `INSERT INTO identity.seller_access (seller_id, market_id, tenant_id, origin, state,
        state_changed_at, reapply_count, registered_at, version, created_at)
-       VALUES ($1, $2, 'default', $3, $4, $5, 0, $6, 1, $5)`,
+       VALUES ($1, $2, 'default', $3, $4, $5, $7, $6, 1, $5)`,
       [
         id,
         options.marketCode ?? code,
@@ -139,6 +144,7 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s (database, slice
         state,
         CREATED,
         options.registered === false ? null : CREATED,
+        options.reapplyCount ?? 0,
       ],
     );
     return id;
@@ -347,6 +353,7 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s (database, slice
       sellerId: approved.sellerId,
       state: 'approved',
       stateChangedAt: expect.anything() as unknown,
+      reapplyLimitReached: false,
       owner: {
         accountId: approved.owner.id,
         displayName: `Name ${approved.owner.id.slice(-6)}`,
@@ -408,6 +415,42 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s (database, slice
     await expect(
       contract.sellerIdsByState(as(keyless.id), { state: 'suspended', before: null, limit: 5 }),
     ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
+  });
+
+  it('splits the rejected sellers by the re-apply limit, in the summaries, the pages and the counts (sellers slice 7b)', async () => {
+    const viewer = await account('admin', { role: await roleId('platform', 'viewer') });
+    const read = async (reapplyLimitReached: boolean | null, limit = 100) => {
+      const answer = await contract.sellerIdsByState(as(viewer.id), {
+        state: 'rejected',
+        before: null,
+        limit,
+        reapplyLimitReached,
+      });
+      if (!answer.ok) throw new Error(answer.error.code);
+      return answer.value;
+    };
+    const base = await read(null, 0);
+    const open = await seller('rejected', { reapplyCount: 0 });
+    const spent = await seller('rejected', { reapplyCount: 99 });
+    await seller('rejected', { reapplyCount: 99, marketCode: otherCode });
+    await seller('approved', { reapplyCount: 99 });
+
+    const all = await read(null);
+    const reached = await read(true);
+    const notReached = await read(false);
+
+    expect(all.sellerIds).toEqual(expect.arrayContaining([open, spent]));
+    expect(reached.sellerIds).toContain(spent);
+    expect(reached.sellerIds).not.toContain(open);
+    expect(notReached.sellerIds).toContain(open);
+    expect(notReached.sellerIds).not.toContain(spent);
+    expect(reached.sellerIds.length + notReached.sellerIds.length).toBe(all.sellerIds.length);
+    expect(reached.rejectedLimitReached).toBe(base.rejectedLimitReached + 1);
+    const summaries = await contract.sellerAccountSummaries(as(viewer.id), [open, spent]);
+    if (!summaries.ok) throw new Error(summaries.error.code);
+    expect(
+      Object.fromEntries(summaries.value.map((each) => [each.sellerId, each.reapplyLimitReached])),
+    ).toEqual({ [open]: false, [spent]: true });
   });
 
   it('lists a pending invitation whose mail expired, as expired, with its re-send hint (Sajad 1)', async () => {

@@ -134,6 +134,7 @@ describe('listStatusOf', () => {
     pendingKind: null,
     draftComplete: true,
     outsideServiceArea: false,
+    reapplyLimitReached: null,
   };
 
   it.each([
@@ -142,6 +143,7 @@ describe('listStatusOf', () => {
     ['outside-service-area', { outsideServiceArea: true }],
     ['awaiting-review', { pendingKind: 'onboarding' }],
     ['changes-needed', { access: 'rejected' }],
+    ['not-approved', { access: 'rejected', reapplyLimitReached: true }],
     ['approved', { access: 'approved', hasApprovedRevision: true }],
     ['file-check-needed', { access: 'approved' }],
     ['suspended', { access: 'suspended', hasApprovedRevision: true }],

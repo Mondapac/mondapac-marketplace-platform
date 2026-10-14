@@ -4,6 +4,7 @@ import type { AccessDenied } from '../../../platform/authz';
 import type { ApproveSellerAccess } from '../application/use-cases/approve-seller-access.use-case';
 import type { FindAccessDecisionsByBasis } from '../application/use-cases/find-access-decisions-by-basis.use-case';
 import type { ListSellerAccessDecisions } from '../application/use-cases/list-seller-access-decisions.use-case';
+import type { DescribeSellerStatus } from '../application/use-cases/describe-seller-status.use-case';
 import type { ReapplySellerAccess } from '../application/use-cases/reapply-seller-access.use-case';
 import type { RejectSellerAccess } from '../application/use-cases/reject-seller-access.use-case';
 import type { ListRegisteredSellers } from '../application/use-cases/list-registered-sellers.use-case';
@@ -27,6 +28,7 @@ import type {
   SellerAccessSummary,
   SellerAccountSummary,
   SellerIdsByStatePage,
+  SellerOwnAccess,
   SellerReapplyOutcome,
   SellerReapplyRefusal,
 } from '../contracts/seller-access.contract';
@@ -42,6 +44,7 @@ export interface SellerAccessContractUseCases {
   readonly approveSellerAccess: ApproveSellerAccess;
   readonly rejectSellerAccess: RejectSellerAccess;
   readonly reapplySellerAccess: ReapplySellerAccess;
+  readonly describeSellerStatus: DescribeSellerStatus;
   readonly listSellerAccessDecisions: ListSellerAccessDecisions;
   readonly findAccessDecisionsByBasis: FindAccessDecisionsByBasis;
 }
@@ -80,9 +83,20 @@ export class SellerAccessContractImplementation implements SellerAccessContract 
       readonly state: SellerAccessState | null;
       readonly before: Id<'Seller'> | null;
       readonly limit: number;
+      readonly reapplyLimitReached?: boolean | null;
     },
   ): Promise<Result<SellerIdsByStatePage, AccessDenied | FacadeValidationFailed>> {
-    return this.useCases.sellerIdsByState.execute(context, query);
+    return this.useCases.sellerIdsByState.execute(context, {
+      ...query,
+      reapplyLimitReached: query.reapplyLimitReached ?? null,
+    });
+  }
+
+  async ownAccessOf(context: CallContext): Promise<Result<SellerOwnAccess, AccessDenied>> {
+    const result = await this.useCases.describeSellerStatus.execute(context, {});
+    if (!result.ok) return result;
+    const { sellerId, state, reapplyLimitReached } = result.value;
+    return ok({ sellerId, state, reapplyLimitReached });
   }
 
   listRegisteredSellers(

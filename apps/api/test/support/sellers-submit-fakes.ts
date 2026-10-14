@@ -535,10 +535,36 @@ export class InMemoryCounters implements RateCounterRepository, Snapshottable {
 /** The access state `identity` reports; an unknown seller answers null. */
 export class FakeAccess implements SellerAccessReader {
   readonly states = new Map<string, AccessState>();
+  /** Rejected sellers with no re-application left. */
+  readonly exhausted = new Set<string>();
   failing = false;
+  /** What a re-application answers; a successful one moves the seller to `pending`. */
+  reapplyAnswer: 'reapplied' | 'wrong-state' | 'limit' | 'throw' = 'reapplied';
+  readonly reapplyCalls: Id<'Seller'>[] = [];
 
-  set(sellerId: Id<'Seller'>, state: AccessState): void {
+  set(sellerId: Id<'Seller'>, state: AccessState, limitReached = false): void {
     this.states.set(sellerId, state);
+    if (limitReached) this.exhausted.add(sellerId);
+    else this.exhausted.delete(sellerId);
+  }
+
+  reapplyLimitReachedOf(_context: CallContext, sellerId: Id<'Seller'>): Promise<boolean | null> {
+    if (this.failing) return Promise.reject(new Error('identity down'));
+    return Promise.resolve(
+      this.states.get(sellerId) === 'rejected' && this.exhausted.has(sellerId),
+    );
+  }
+
+  reapply(
+    _context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<'reapplied' | 'wrong-state' | 'limit'> {
+    this.reapplyCalls.push(sellerId);
+    if (this.failing || this.reapplyAnswer === 'throw') {
+      return Promise.reject(new Error('identity down'));
+    }
+    if (this.reapplyAnswer === 'reapplied') this.states.set(sellerId, 'pending');
+    return Promise.resolve(this.reapplyAnswer);
   }
 
   accessOf(_context: CallContext, sellerId: Id<'Seller'>): Promise<AccessState | null> {
@@ -573,8 +599,12 @@ export class FakeAccess implements SellerAccessReader {
  */
 export class FakeDirectory implements SellerAccountDirectory {
   readonly owners = new Map<string, { displayName: string | null; email: string }>();
-  readonly idCalls: { state: AccessState | null; before: Id<'Seller'> | null; limit: number }[] =
-    [];
+  readonly idCalls: {
+    state: AccessState | null;
+    before: Id<'Seller'> | null;
+    limit: number;
+    reapplyLimitReached: boolean | null;
+  }[] = [];
 
   constructor(readonly access: FakeAccess) {}
 
@@ -582,34 +612,49 @@ export class FakeDirectory implements SellerAccountDirectory {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<ReadonlyMap<Id<'Seller'>, SellerAccountEntry>> {
-    return this.access
-      .accessOfMany(context, sellerIds)
-      .then(
-        (states) =>
-          new Map(
-            [...states].map(([id, state]): [Id<'Seller'>, SellerAccountEntry] => [
-              id,
-              { state, owner: this.owners.get(id) ?? null },
-            ]),
-          ),
-      );
+    return this.access.accessOfMany(context, sellerIds).then(
+      (states) =>
+        new Map(
+          [...states].map(([id, state]): [Id<'Seller'>, SellerAccountEntry] => [
+            id,
+            {
+              state,
+              reapplyLimitReached: state === 'rejected' && this.access.exhausted.has(id),
+              owner: this.owners.get(id) ?? null,
+            },
+          ]),
+        ),
+    );
   }
 
   idsByState(
     _context: CallContext,
-    query: { state: AccessState | null; before: Id<'Seller'> | null; limit: number },
+    query: {
+      state: AccessState | null;
+      before: Id<'Seller'> | null;
+      limit: number;
+      reapplyLimitReached: boolean | null;
+    },
   ): Promise<{
     sellerIds: readonly Id<'Seller'>[];
     next: Id<'Seller'> | null;
     counts: SellerStateCounts;
+    rejectedLimitReached: number;
   }> {
     this.idCalls.push(query);
     if (this.access.failing) return Promise.reject(new Error('identity down'));
     const counts = { pending: 0, approved: 0, rejected: 0, suspended: 0 };
     for (const state of this.access.states.values()) counts[state] += 1;
+    const rejectedLimitReached = [...this.access.states].filter(
+      ([id, state]) => state === 'rejected' && this.access.exhausted.has(id),
+    ).length;
     const ids = [...this.access.states]
       .filter(
-        ([id, state]) => state === query.state && (query.before === null || id < query.before),
+        ([id, state]) =>
+          state === query.state &&
+          (query.reapplyLimitReached === null ||
+            this.access.exhausted.has(id) === query.reapplyLimitReached) &&
+          (query.before === null || id < query.before),
       )
       .map(([id]) => id as Id<'Seller'>)
       .sort((a, b) => (a < b ? 1 : -1));
@@ -619,6 +664,7 @@ export class FakeDirectory implements SellerAccountDirectory {
       sellerIds: page,
       next: more ? page[page.length - 1]! : null,
       counts,
+      rejectedLimitReached,
     });
   }
 }

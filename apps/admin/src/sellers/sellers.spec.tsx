@@ -34,7 +34,7 @@ const page = (items: SellerRow[], next: string | null = null): SellerListPage =>
   items,
   next,
   counts: { awaitingReview: { onboarding: 2, identityChange: 1 }, incomplete: 4, all: 9 },
-  stateCounts: { changesNeeded: 3, approved: 7, suspended: 1 },
+  stateCounts: { changesNeeded: 3, notApproved: 2, approved: 7, suspended: 1 },
 });
 const answer = (body: SellerListPage) =>
   call.mockResolvedValueOnce({ ok: true, status: 200, body });
@@ -195,6 +195,23 @@ describe('admin seller list', () => {
     expect(screen.queryByLabelText('Store name or shop address')).toBeNull();
     expect(screen.getByRole('button', { name: 'Changes needed (3)' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Suspended (1)' })).toBeTruthy();
+  });
+
+  it('pages the rejected sellers with no re-application left under Not approved', async () => {
+    answer(page([row()]));
+    mount();
+    expect(await screen.findByText('amira@example.com')).toBeTruthy();
+    answer({ ...page([row({ status: 'not-approved' })]), tab: 'not-approved' });
+    fireEvent.click(screen.getByRole('button', { name: 'Not approved (2)' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'POST',
+        'sellers/admin/list',
+        { tab: 'not-approved', limit: 25 },
+        'csrf-1',
+      ),
+    );
+    expect(await screen.findByText('Not approved')).toBeTruthy();
   });
 
   it('hides the state tabs and the owner column when the admin may not see states', async () => {

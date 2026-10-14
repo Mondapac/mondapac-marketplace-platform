@@ -20,10 +20,10 @@ export class SellerListRequest {
     default: 'awaiting-review',
     description:
       'The tab. awaiting-review, incomplete and all are read from the seller files. ' +
-      'changes-needed, approved and suspended page through the access state of identity, ' +
-      'newest first, and need identity.seller-access.view too (else access.denied); they take ' +
-      'no search, kind or outsideArea. The not-approved tab joins with slice 7b: until then a ' +
-      'rejected seller is under changes-needed.',
+      'changes-needed, not-approved, approved and suspended page through the access state of ' +
+      'identity, newest first, and need identity.seller-access.view too (else access.denied); ' +
+      'they take no search, kind or outsideArea. A rejected seller is under changes-needed, or ' +
+      'under not-approved once it has no re-application left.',
   })
   tab?: (typeof LIST_TABS)[number];
 
@@ -165,6 +165,9 @@ export class SellerListCounts {
 export class SellerListStateCounts {
   @ApiProperty()
   changesNeeded!: number;
+
+  @ApiProperty()
+  notApproved!: number;
 
   @ApiProperty()
   approved!: number;

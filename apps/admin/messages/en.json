@@ -443,6 +443,7 @@
         "incomplete": "Incomplete",
         "all": "All sellers",
         "changes-needed": "Changes needed",
+        "not-approved": "Not approved",
         "approved": "Approved",
         "suspended": "Suspended"
       },
@@ -480,6 +481,7 @@
         "ready-to-submit": "Ready to submit",
         "awaiting-review": "Awaiting review",
         "changes-needed": "Changes needed",
+        "not-approved": "Not approved",
         "approved": "Approved",
         "suspended": "Suspended",
         "file-check-needed": "File check needed",
@@ -490,6 +492,7 @@
         "incomplete": "No incomplete applications.",
         "all": "No sellers yet.",
         "changes-needed": "No sellers need changes.",
+        "not-approved": "No sellers are out of applications.",
         "approved": "No approved sellers yet.",
         "suspended": "No suspended sellers.",
         "search": "No sellers match that search."

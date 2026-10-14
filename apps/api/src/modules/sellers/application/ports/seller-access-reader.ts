@@ -12,6 +12,27 @@ export interface SellerAccessReader {
   accessOf(context: CallContext, sellerId: Id<'Seller'>): Promise<AccessState | null>;
 
   /**
+   * Whether a rejected seller has used up its re-applications (slice 7b), asked of `identity`
+   * with the Seller Owner's or Staff member's own `CallContext` only for a seller that
+   * {@link accessOf} just reported `rejected`. Null when the Market configures no limit or
+   * `identity` does not know the seller as the caller's own: never read as "reached". Throws as
+   * {@link accessOf}.
+   */
+  reapplyLimitReachedOf(context: CallContext, sellerId: Id<'Seller'>): Promise<boolean | null>;
+
+  /**
+   * A rejected seller applies again (slice 7b), through `identity`'s `reapplySellerAccess` with
+   * the Seller Owner's own context: `rejected` becomes `pending` and one re-application is
+   * counted. `wrong-state` when the seller is not rejected (it was moved meanwhile), `limit` when
+   * the Market's re-apply limit is reached. Throws when `identity` refuses or cannot answer. Runs
+   * in `identity`'s own unit, so it is called outside any unit of `sellers`.
+   */
+  reapply(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<'reapplied' | 'wrong-state' | 'limit'>;
+
+  /**
    * The state of up to 100 sellers in one call (the admin list: one `identity` call per page).
    * A seller `identity` does not know is absent from the map. Throws when `identity` refuses or
    * cannot answer.

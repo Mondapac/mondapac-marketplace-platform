@@ -287,6 +287,7 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
       // The 9b summaries have their own spec.
       sellerAccountSummaries: notUsed(),
       sellerIdsByState: notUsed(),
+      describeSellerStatus: notUsed(),
     });
     return {
       fakes,

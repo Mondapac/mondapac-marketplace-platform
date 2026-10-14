@@ -17,7 +17,12 @@ const PARTS: Readonly<Record<SetupStepKey, readonly MissingPart[]>> = {
 
 type StepState = 'done' | 'todo' | 'needs' | 'waiting';
 type HubState =
-  'details-incomplete' | 'ready' | 'outside-area' | 'awaiting-review' | 'changes-needed';
+  | 'details-incomplete'
+  | 'ready'
+  | 'outside-area'
+  | 'awaiting-review'
+  | 'changes-needed'
+  | 'not-approved';
 
 const STATE_TEXT: Record<StepState, string> = {
   done: 'account.step-done',
@@ -37,6 +42,7 @@ const BADGE_TONE = {
   'outside-area': 'attention',
   'awaiting-review': 'info',
   'changes-needed': 'attention',
+  'not-approved': 'critical',
 } as const;
 const BANNER_TONE = {
   'details-incomplete': 'info',
@@ -44,6 +50,7 @@ const BANNER_TONE = {
   'outside-area': 'attention',
   'awaiting-review': 'info',
   'changes-needed': 'attention',
+  'not-approved': 'attention',
 } as const;
 
 function withdrawnKey(withdrawal: NonNullable<MyFile['latestWithdrawal']>): string {
@@ -60,6 +67,8 @@ function hubStateOf(file: MyFile, derived: HubState): HubState {
       return 'awaiting-review';
     case 'changes-needed':
       return 'changes-needed';
+    case 'not-approved':
+      return 'not-approved';
     case 'outside-service-area':
       return 'outside-area';
     case 'ready-to-submit':
@@ -67,7 +76,7 @@ function hubStateOf(file: MyFile, derived: HubState): HubState {
     case 'details-incomplete':
       return derived;
     default:
-      // A status this panel has no words for yet (not approved, file check): never "ready".
+      // A status this panel has no words for yet (file check): never "ready".
       return 'details-incomplete';
   }
 }
