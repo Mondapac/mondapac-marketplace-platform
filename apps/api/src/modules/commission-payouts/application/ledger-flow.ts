@@ -199,7 +199,6 @@ function checkPaid(paid: PaidSellerOrder, currency: string): readonly string[] {
       lineId === null ||
       seen.has(lineId) ||
       !isAmount(line.lineAmount) ||
-      line.lineAmount === 0n ||
       typeof line.taxInclusive !== 'boolean' ||
       !isRateBps(line.commissionRateBps)
     ) {
@@ -240,6 +239,8 @@ export async function recordSellerOrderPaid(
   };
   const entries: LedgerEntry[] = [];
   for (const line of paid.lines) {
+    // A fully discounted line earns nothing and owes nothing: it writes no rows.
+    if (line.lineAmount === 0n) continue;
     entries.push({
       ...common,
       id: deps.ids.next<'LedgerEntry'>(),

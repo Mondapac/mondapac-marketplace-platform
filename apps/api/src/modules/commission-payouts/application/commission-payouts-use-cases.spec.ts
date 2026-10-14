@@ -363,6 +363,16 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       expect(ledger.rows).toHaveLength(4);
     });
 
+    it('writes no rows for a fully discounted line, and still records the order', async () => {
+      const free = paid({
+        lines: [
+          { orderLineId: LINE_1, lineAmount: 0n, taxInclusive: true, commissionRateBps: 1500 },
+        ],
+      });
+      expect(await record(free)).toEqual(ok('recorded'));
+      expect(ledger.rows.map((r) => r.kind)).toEqual(['shipping']);
+    });
+
     it('refuses malformed facts whole, another currency, and any caller but the system', async () => {
       const refused = async (facts: PaidSellerOrder) =>
         expect(await record(facts)).toMatchObject({
