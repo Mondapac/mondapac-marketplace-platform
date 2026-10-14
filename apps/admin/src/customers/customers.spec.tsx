@@ -127,6 +127,49 @@ describe('CustomerLookup', () => {
     expect(screen.getByRole('button', { name: 'Enable account' })).toBeTruthy();
   });
 
+  it('enables a disabled account after confirmation', async () => {
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: customer('disabled') });
+    mount();
+    search('sara@example.com');
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable account' }));
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { code: 'account.enabled', accountId: ID },
+    });
+    const confirm = screen.getAllByRole('button', { name: 'Enable account' }).at(-1);
+    fireEvent.click(confirm as HTMLElement);
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect(call.mock.calls[1]?.[1]).toBe(`identity/admin/customers/${ID}/enable`);
+    expect(await screen.findByText(/Account enabled/)).toBeTruthy();
+    expect(screen.getByText('Active')).toBeTruthy();
+  });
+
+  it('shows a refused status change on the card and keeps the dialog closed', async () => {
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: customer() });
+    mount();
+    search('sara@example.com');
+    fireEvent.click(await screen.findByRole('button', { name: 'Disable account' }));
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 409, code: 'account.already-disabled' },
+    });
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Disable account' }).at(-1) as HTMLElement,
+    );
+    expect((await screen.findByRole('alert')).textContent).toContain('changed in the meantime');
+    expect(screen.queryByText('Disable this account?')).toBeNull();
+  });
+
+  it('clears the card when the address changes', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: customer() });
+    mount();
+    search('sara@example.com');
+    expect(await screen.findByText('Sara@Example.com')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Customer email'), { target: { value: 'other@x.com' } });
+    expect(screen.queryByText('Sara@Example.com')).toBeNull();
+  });
+
   it('shows no status action without the disable permission', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: customer('disabled') });
     mount(false);

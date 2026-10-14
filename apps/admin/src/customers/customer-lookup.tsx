@@ -151,7 +151,13 @@ export function CustomerLookup({
             help={t('field.lookup-help')}
             value={email}
             error={invalid ? t('error.invalid') : undefined}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              // The card always belongs to the address in the field: a new address clears it.
+              setCustomer(null);
+              setChanged(null);
+              setChangeProblem(null);
+            }}
           />
         </div>
         {/* Lines the button up with the input, under its label (20px line + 6px gap), on wider screens. */}

@@ -172,6 +172,8 @@ describe('relay', () => {
       ['identity', 'admin', 'customers'],
       ['identity', 'admin', 'customers', 'not-a-uuid', 'disable'],
       ['identity', 'admin', 'customers', id],
+      ['identity', 'admin', 'customers', 'lookup', 'extra'],
+      ['identity', 'admin', 'customers', id, 'disable', 'extra'],
     ]) {
       const fetchImpl = upstreamOk();
       expect((await relay(config, post(path.join('/')), path, fetchImpl)).status).toBe(404);
