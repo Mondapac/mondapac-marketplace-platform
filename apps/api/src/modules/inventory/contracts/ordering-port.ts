@@ -52,7 +52,11 @@ export interface InventoryInsufficient {
   };
 }
 
-/** A lock timeout, a deadlock or a same-holder race: nothing was held; try again. */
+/**
+ * A lock timeout, a deadlock or a same-holder race: nothing was held; try again. Every `reserve`
+ * call spends the holder's rate budget (6 per 15 minutes), so ordering retries a few times at
+ * most, never in a loop.
+ */
 export interface ConflictRetry {
   readonly code: 'conflict.retry';
 }

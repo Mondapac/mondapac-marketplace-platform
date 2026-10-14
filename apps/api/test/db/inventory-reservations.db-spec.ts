@@ -1034,7 +1034,7 @@ describe.each(TEST_MARKETS)('inventory reservations in market %s (database)', (c
       expect((await stateOf(r.reservationId))[0]!.status).toBe('active');
     });
 
-    it('serialises a commit with the expiry job: the reservation ends committed or expired, never both', async () => {
+    it('commits an expired-but-unmarked reservation while the expiry job runs: it ends committed, with consistent lines', async () => {
       const s = await seller([[high, high]]);
       const r = await reservedCart(s.units, 1);
       clock.advance(Temporal.Duration.from({ minutes: minutes + 1 }));

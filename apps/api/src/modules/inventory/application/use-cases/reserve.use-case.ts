@@ -118,14 +118,14 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
     }
     const checked = this.check(input);
     if (!checked.ok) return checked;
-    const refused = await this.spendBudget(context, actor.accountId, checked.value);
-    if (refused !== null) return err(refused);
+    const budget = await this.spendBudget(context, actor.accountId, checked.value);
+    if (budget.refused !== null) return err(budget.refused);
 
     let result: Result<Placed, ReserveFailure>;
     try {
       result = await this.deps.unitOfWork.run(
         market,
-        () => this.place(context, market, actor.accountId, checked.value),
+        () => this.place(context, market, actor.accountId, checked.value, budget.uncounted),
         { lockTimeoutMs: LOCK_TIMEOUT_MS },
       );
     } catch (error) {
@@ -172,7 +172,7 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
     context: CallContext,
     holder: Id<'Account'>,
     input: { checkoutRef: string; lines: CheckedLine[] },
-  ): Promise<RequestThrottled | AccessUnavailable | null> {
+  ): Promise<{ refused: RequestThrottled | AccessUnavailable | null; uncounted: boolean }> {
     const { market } = context;
     const { unitOfWork, reservations, counters, counterKeys, clock } = this.deps;
     try {
@@ -194,7 +194,7 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
         )
         .then((peek) => peek.ok && peek.value)
         .catch(() => false);
-      if (replayed) return null;
+      if (replayed) return { refused: null, uncounted: true };
       const keyed = RESERVE_LIMITS.map((limit) => ({
         limit,
         keyHash: counterKeys.keyOf(market, limit.kind, holder),
@@ -202,23 +202,26 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
       const reserved = await unitOfWork.run(market, async () =>
         ok(await counters.reserve(market, keyed, now)),
       );
-      if (!reserved.ok) return UNAVAILABLE;
+      if (!reserved.ok) return { refused: UNAVAILABLE, uncounted: false };
       const verdict = rateVerdict(RESERVE_LIMITS, reserved.value, now);
-      if (verdict.allowed) return null;
+      if (verdict.allowed) return { refused: null, uncounted: false };
       this.#logger.warn({
         msg: 'inventory.reserve.throttled',
         metric: 'request.throttled',
         marketId: market.marketId,
         correlationId: context.correlationId,
       });
-      return { code: 'request.throttled', retryAfterSeconds: verdict.retryAfterSeconds };
+      return {
+        refused: { code: 'request.throttled', retryAfterSeconds: verdict.retryAfterSeconds },
+        uncounted: false,
+      };
     } catch {
       this.#logger.error({
         msg: 'inventory.reserve.rate-counters-unavailable',
         marketId: market.marketId,
         correlationId: context.correlationId,
       });
-      return UNAVAILABLE;
+      return { refused: UNAVAILABLE, uncounted: false };
     }
   }
 
@@ -278,6 +281,7 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
     market: MarketContext,
     holder: Id<'Account'>,
     input: { checkoutRef: string; lines: CheckedLine[] },
+    uncounted: boolean,
   ): Promise<Result<Placed, ReserveFailure>> {
     const { reservations, policies, ids, clock } = this.deps;
     const now = clock.now();
@@ -291,6 +295,10 @@ export class Reserve extends UseCase<ReserveRequest, ReserveResult, ReserveFailu
     ) {
       return ok(viewOf(previous, true));
     }
+
+    // The budget skipped this call as a live replay, but the reservation expired in between: it
+    // would be a new, uncounted hold. Ask the caller to come again (counted this time).
+    if (uncounted) return err(CONFLICT_RETRY);
 
     // Lock (L1, L2): one statement, ascending ids, before any write.
     const previousLines = previous?.state.lines ?? [];

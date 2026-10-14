@@ -381,6 +381,7 @@ Under platform.md 10.2. Grants are hand-written in the `migration.sql` that crea
 | `inventory.stock_movements` | `SELECT, INSERT` | Append-only (measured: `UPDATE` and `DELETE` → `42501`) |
 | `inventory.reservations` | `SELECT, INSERT`, `UPDATE (status, release_cause, status_changed_at, version)`; `DELETE` from migration 4 | `expires_at` is immutable (measured). `DELETE` is only for the prune job |
 | `inventory.reservation_lines` | `SELECT, INSERT`, `UPDATE (stock_item_id, state, order_line_id, state_changed_at)` | `quantity`, `offer_id`, `variant_id` and `expires_at` are immutable (measured). Lines are deleted only by the cascade, which needs no grant on the child (measured) |
+| `inventory.rate_counters` | `SELECT, INSERT, UPDATE, DELETE` | Fixed-window `reserve` counters keyed by HMAC (slice 5, migration `inventory_commit_rate_prune`); CHECKs: kind list, 32-byte key, count >= 0; index `(market_id, window_started_at)` for the purge |
 | `inventory.offer_purchase_limits` | `SELECT, INSERT, UPDATE, DELETE` | An ordinary table; a delete clears the cap |
 | `inventory.availability_signals` | `SELECT, INSERT`, `UPDATE (status, only_left, changed_at, version)` | The key columns are immutable |
 | `inventory.retirements` | `SELECT, INSERT, DELETE` | A tombstone is inserted or cleared, never edited |
@@ -397,7 +398,7 @@ Column-level `UPDATE` meets the four conditions of 10.2: the columns are named h
 | 2 | 2 | `inventory_stock` | `outbox`, `stock_items`, `stock_movements`, `availability_signals`, `retirements`; grants |
 | 2a | 2 (part 4) | `inventory_variant_tombstone_key` | Variant tombstones keyed by the Variant alone (3.10); the partial index of 3.4 on active items by Variant |
 | 3 | 4 | `inventory_reservations` | `reservations`, `reservation_lines` (every CHECK value slice 5 needs), `offer_purchase_limits`; grants without `DELETE` on `reservations` |
-| 4 | With the prune job (9), before the first deployed environment | `inventory_reservation_prune` | The terminal partial index of 3.6; `GRANT DELETE ON "inventory"."reservations"` |
+| 4 | With the prune job (9), before the first deployed environment | `inventory_commit_rate_prune` (built, slice 5) | The terminal partial index of 3.6; `GRANT DELETE ON "inventory"."reservations"`; `rate_counters` |
 | 5 | SEL-08's slice | `inventory_movement_acting_as` | The nullable column of 3.5 and its CHECK |
 
 Slices 3 and 5 need no migration. The platform raw helper (P 4.2) and `inventory.lock-stock-items` land in slice 2, where the stock write first locks, in that slice's PR and with Hassan's review. Slice 4 reuses them.

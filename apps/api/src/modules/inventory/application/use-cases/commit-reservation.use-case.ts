@@ -95,10 +95,9 @@ export class CommitReservation extends UseCase<CommitRequest, ReleaseResult, Com
     input: Checked,
   ): Promise<Result<ReleaseResult, CommitFailure>> {
     const { reservations, clock } = this.deps;
-    const now = clock.now();
     const first = await reservations.findById(market, input.reservationId);
     if (first === null) return err({ code: 'inventory.reservation.not-found' });
-    const early = first.decideCommit(input.checkoutRef, input.mapping, now);
+    const early = first.decideCommit(input.checkoutRef, input.mapping, clock.now());
     if (early === 'mismatch') return err({ code: 'inventory.commit-mismatch' });
     if (early === 'already-committed') return ok({ reservationId: input.reservationId });
     if (early === 'refused') return err(refusedFor(first));
@@ -113,6 +112,9 @@ export class CommitReservation extends UseCase<CommitRequest, ReleaseResult, Com
     );
     const current = await reservations.findById(market, input.reservationId);
     if (current === null) return err({ code: 'inventory.reservation.not-found' });
+    // The lock wait can take seconds: decide on a fresh instant, or a hold that expired meanwhile
+    // (and was reallocated to another buyer) would be committed in place.
+    const now = clock.now();
     const decision = current.decideCommit(input.checkoutRef, input.mapping, now);
     if (decision === 'mismatch') return err({ code: 'inventory.commit-mismatch' });
     if (decision === 'already-committed') return ok({ reservationId: input.reservationId });
