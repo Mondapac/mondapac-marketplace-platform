@@ -35,6 +35,10 @@ import {
   type IdentifierClaimRepository,
 } from '../application/ports/identifier-claim.repository';
 import {
+  SELLING_FACTS_REPOSITORY,
+  type SellingFactsRepository,
+} from '../application/ports/selling-facts.repository';
+import {
   REVIEW_CHECK_REPOSITORY,
   type ReviewCheckRepository,
 } from '../application/ports/review-check.repository';
@@ -99,6 +103,7 @@ import { PrismaRegisterCheckRepository } from './prisma-register-check.repositor
 import { PrismaReviewCheckRepository } from './prisma-review-check.repository';
 import { PrismaIdentifierClaimRepository } from './prisma-identifier-claim.repository';
 import { PrismaAdminFlagRepository } from './prisma-admin-flag.repository';
+import { PrismaSellingFactsRepository } from './prisma-selling-facts.repository';
 import { IdentitySellerAccessDecider } from './identity-seller-access-decider';
 import { FAKE_REGISTER_ADAPTER, FakeRegisterLookup } from './register-lookups/fake';
 import { MarketConfigRegisterLookups, availableRegisterAdapterCodes } from './register-lookups';
@@ -319,6 +324,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminFlagRepository =>
       new PrismaAdminFlagRepository(prisma),
+  },
+  {
+    provide: SELLING_FACTS_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellingFactsRepository =>
+      new PrismaSellingFactsRepository(prisma),
   },
   {
     provide: SELLER_ACCESS_DECIDER,

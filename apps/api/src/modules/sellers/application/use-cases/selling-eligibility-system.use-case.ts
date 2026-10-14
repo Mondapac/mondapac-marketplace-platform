@@ -1,10 +1,9 @@
 import type { CallContext, Result } from '@mondapac/shared-kernel';
-import { ok } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
-import { parseSellerIds } from '../summaries/read-seller-summaries';
 import {
-  answerFor,
+  sellingEligibilityFor,
   type SellingEligibilityAnswer,
+  type SellingEligibilityDependencies,
   type SellingEligibilityFailure,
   type SellingEligibilityInput,
 } from './selling-eligibility.use-case';
@@ -20,15 +19,17 @@ export class SellingEligibilitySystem extends UseCase<
     rule: { kind: 'system' },
   };
 
-  constructor(gate: UseCaseGate) {
+  constructor(
+    gate: UseCaseGate,
+    private readonly deps: SellingEligibilityDependencies,
+  ) {
     super(gate);
   }
 
   protected handle(
-    _context: CallContext,
+    context: CallContext,
     input: SellingEligibilityInput,
   ): Promise<Result<SellingEligibilityAnswer, SellingEligibilityFailure>> {
-    const ids = parseSellerIds(input.sellerIds);
-    return Promise.resolve(ids.ok ? ok(answerFor(ids.value)) : ids);
+    return sellingEligibilityFor(this.deps, context, input.sellerIds);
   }
 }

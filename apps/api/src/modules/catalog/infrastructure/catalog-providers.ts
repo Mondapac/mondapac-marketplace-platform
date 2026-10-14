@@ -49,7 +49,7 @@ import {
   type SellerEligibilityReader,
 } from '../application/ports/seller-eligibility.reader';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
-import { UnavailableAllowedProductTypesReader } from './placeholders/unavailable-allowed-product-types.reader';
+import { SellersAllowedProductTypesReader } from './sellers-allowed-product-types.reader';
 import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.reader';
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
@@ -113,9 +113,10 @@ export const catalogProviders: readonly Provider[] = [
       new SellersSellerEligibilityReader(sellers),
   },
   {
-    // ADR-0031 decision 1: fail-closed until sellers publishes `allowedProductTypesOf`.
     provide: ALLOWED_PRODUCT_TYPES_READER,
-    useFactory: (): AllowedProductTypesReader => new UnavailableAllowedProductTypesReader(),
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): AllowedProductTypesReader =>
+      new SellersAllowedProductTypesReader(sellers),
   },
   {
     provide: OFFER_SELL_UNITS_READER,

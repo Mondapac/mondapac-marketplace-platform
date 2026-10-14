@@ -3,6 +3,10 @@ import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import {
+  ALLOWED_PRODUCT_TYPES_READER,
+  type AllowedProductTypes,
+} from '../src/modules/catalog/application/ports/allowed-product-types.reader';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
 import { OWN_CATALOG_READER } from '../src/modules/catalog/application/ports/own-catalog.reader';
 import { PRODUCT_REVISION_REPOSITORY } from '../src/modules/catalog/application/ports/product-revision.repository';
@@ -49,6 +53,8 @@ describe('seller read routes over HTTP (integration)', () => {
   let offer: Offer | null;
   let listed: { products: Product[]; offers: Offer[] };
   let pageCalls: unknown[];
+  let allowed: AllowedProductTypes | null;
+  let allowedAsked: unknown[];
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -68,6 +74,13 @@ describe('seller read routes over HTTP (integration)', () => {
           .useValue({ find: () => Promise.resolve(null) })
           .overrideProvider(OFFER_REPOSITORY)
           .useValue({ findById: () => Promise.resolve(offer) })
+          .overrideProvider(ALLOWED_PRODUCT_TYPES_READER)
+          .useValue({
+            allowedFor: (_context: unknown, sellerId: unknown) => {
+              allowedAsked.push(sellerId);
+              return Promise.resolve(allowed);
+            },
+          })
           .overrideProvider(OWN_CATALOG_READER)
           .useValue({
             listProducts: (_m: unknown, _s: unknown, page: unknown) => {
@@ -209,6 +222,8 @@ describe('seller read routes over HTTP (integration)', () => {
     offer = null;
     listed = { products: [], offers: [] };
     pageCalls = [];
+    allowed = 'all';
+    allowedAsked = [];
   });
   afterEach(async () => {
     await app.close();
@@ -307,6 +322,31 @@ describe('seller read routes over HTTP (integration)', () => {
         logLines.find((l) => l.msg === 'catalog.own-product-options' && l.outcome),
       ).toMatchObject({ outcome: 'ok', marketId: code });
       expect((await get(code, '/catalog/seller/products/options', {})).status).toBe(401);
+    });
+
+    it('narrows the product types to what the seller may sell (SEL-12), and offers none on a fault', async () => {
+      await boot();
+      await seeded(code);
+      const all = (await get(code, '/catalog/seller/products/options', sessionOf(code))).body as {
+        productTypes: string[];
+      };
+      expect(allowedAsked).toEqual([SELLER]);
+      const [first] = all.productTypes;
+      if (first === undefined) throw new Error('the Market offers no product type');
+
+      allowed = new Set([first, 'not-a-market-type']);
+      const narrowed = await get(code, '/catalog/seller/products/options', sessionOf(code));
+      expect(narrowed.status).toBe(200);
+      expect((narrowed.body as { productTypes: string[] }).productTypes).toEqual([first]);
+
+      allowed = new Set();
+      const none = await get(code, '/catalog/seller/products/options', sessionOf(code));
+      expect((none.body as { productTypes: string[] }).productTypes).toEqual([]);
+
+      allowed = null;
+      const fault = await get(code, '/catalog/seller/products/options', sessionOf(code));
+      expect(fault.status).toBe(200);
+      expect((fault.body as { productTypes: string[] }).productTypes).toEqual([]);
     });
 
     it('needs a session', async () => {
