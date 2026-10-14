@@ -3,11 +3,20 @@ rem Starts MondaPac locally on Windows: Docker services, database, API, worker a
 rem Run from anywhere: double-click this file or run scripts\dev-local.bat.
 rem Needs: Docker Desktop (running), Node.js 24.20+ and pnpm 10 (npm i -g pnpm@10).
 rem Then open http://seller.localhost:3001 (seller) or http://admin.localhost:3002 (admin). Mail arrives in Mailpit at http://localhost:8025 .
+rem Optional argument "seed": also fills the database with the sample Brisbane marketplace (four
+rem sellers, 14 products, prices, stock, a buyer) once the services are up; the sample logins are
+rem written to .local\demo-credentials.txt. Without it nothing is added. Run "scripts\demo-local.bat"
+rem for the same thing by double-click. The buyer site (not built yet) joins the demo at
+rem http://storefront.localhost:3003 (STOREFRONT_ORIGIN below).
 rem The Market is AU, the first Market (HOSTED_MARKETS in .env.example and PANEL_HOSTS in
 rem apps\seller\.env.example name it too; change all three together for another Market).
 setlocal
 cd /d "%~dp0.."
 set "MARKET=AU"
+set "SEED=0"
+if /i "%~1"=="seed" set "SEED=1"
+rem The buyer site's slot in the local demo: its origin is allowed for customer requests.
+set "STOREFRONT_ORIGIN=http://storefront.localhost:3003"
 
 where node >nul 2>nul || (echo Node.js is not installed. Install Node 24.20 or newer from https://nodejs.org & goto :fail)
 where pnpm >nul 2>nul || (echo pnpm is not installed. Run: npm i -g pnpm@10 & goto :fail)
@@ -50,9 +59,12 @@ docker compose up -d --wait || goto :fail
 echo [3/5] Preparing the database and the local Market configuration
 call pnpm db:migrate || goto :fail
 node scripts\dev-panels-market.mjs "%MARKET%" || goto :fail
+rem The catalog refuses every text until the Market has a claim vocabulary; this writes the demo's.
+if "%SEED%"=="1" ( node scripts\demo-seed\claim-vocabulary.mjs || goto :fail )
 
 echo [4/5] Starting the API and the worker in their own windows
 set "MARKET_CONFIG_DIR=%CD%\.local\markets"
+set "SERVICE_AREA_CONFIG_DIR=%CD%\.local\service-areas"
 start "MondaPac API" /d "%CD%" cmd /k "pnpm dev"
 rem The worker builds the API once; wait so it does not race the API watcher that cleans dist.
 start "MondaPac worker" /d "%CD%" cmd /k "timeout /t 60 /nobreak && pnpm dev:worker"
@@ -61,13 +73,19 @@ echo [5/5] Starting the seller and admin panels in their own windows
 start "MondaPac seller panel" /d "%CD%" cmd /k "pnpm dev:seller"
 start "MondaPac admin panel" /d "%CD%" cmd /k "pnpm dev:admin"
 
+if "%SEED%"=="1" (
+  echo Starting the demo data in its own window; it waits for the API and the worker.
+  start "MondaPac demo data" /d "%CD%" cmd /k "node scripts\demo-seed\index.mjs"
+)
+
 echo.
 echo Started. Wait about a minute for the first build, then open:
 echo   Seller panel : http://seller.localhost:3001
-  Admin panel  : http://admin.localhost:3002
+echo   Admin panel  : http://admin.localhost:3002
 echo   Mail (Mailpit): http://localhost:8025
-echo To stop: close the four windows, then run "docker compose down".
-echo (The four windows inherit MARKET_CONFIG_DIR from this one.)
+if "%SEED%"=="1" echo   Sample logins : .local\demo-credentials.txt  (written when the demo data window says Done)
+echo To stop: close the windows, then run "docker compose down" (add -v to wipe the demo data).
+echo (The windows inherit MARKET_CONFIG_DIR and SERVICE_AREA_CONFIG_DIR from this one.)
 pause
 endlocal
 exit /b 0
