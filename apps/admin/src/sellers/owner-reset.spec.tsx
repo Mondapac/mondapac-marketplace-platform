@@ -92,11 +92,38 @@ describe('OwnerSecondFactorCard', () => {
   });
 });
 
+describe('OwnerSecondFactorCard refusals', () => {
+  it('shows a refused start as an alert', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 403, code: 'access.denied' } });
+    mount();
+    await start();
+    expect((await screen.findByRole('alert')).textContent).toContain('permission');
+  });
+
+  it('asks to try again after a concurrent change', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
+    mount();
+    await start();
+    expect((await screen.findByRole('alert')).textContent).toContain('Try again');
+  });
+
+  it('sends a signed-out admin to the session-ended page', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    call.mockResolvedValue({ ok: false, failure: { status: 401, code: 'session.invalid' } });
+    mount();
+    await start();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('ownerResetProblemOf', () => {
   it('maps codes, and falls back by status', () => {
     expect(ownerResetProblemOf({ status: 404, code: 'account.unknown' })).toBe('no-owner');
     expect(ownerResetProblemOf({ status: 409, code: 'conflict.stale' })).toBe('retry');
     expect(ownerResetProblemOf({ status: 429, code: 'x' })).toBe('throttled');
+    expect(ownerResetProblemOf({ status: 403, code: 'x' })).toBe('denied');
     expect(ownerResetProblemOf({ status: 0, code: 'network' })).toBe('unavailable');
     expect(ownerResetProblemOf({ status: 500, code: 'x' })).toBe('unknown');
   });

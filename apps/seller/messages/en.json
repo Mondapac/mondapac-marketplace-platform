@@ -185,7 +185,7 @@
       "action": {
         "submit": "Turn off two-step sign-in"
       },
-      "not-you": "Didn't ask for this? Don't press the button. Nothing changes, and the link stops working after 24 hours.",
+      "not-you": "Didn't ask for this? Don't press the button: nothing changes, and the link stops working after 24 hours. Someone may be trying to reach your account, so tell MondaPac support and change your password.",
       "status": {
         "checking": "Checking your link…"
       },

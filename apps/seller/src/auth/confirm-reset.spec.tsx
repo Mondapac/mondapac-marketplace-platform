@@ -75,6 +75,25 @@ describe('ConfirmResetForm', () => {
     expect(button.disabled).toBe(true);
   });
 
+  it('treats a malformed token as an unusable link', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 400, code: 'validation.failed' } });
+    mount();
+    submit();
+    expect(await screen.findByText("This link can't be used")).toBeTruthy();
+  });
+
+  it('sends one request for a double press, and keeps the form after a server error', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    call.mockReturnValue(new Promise((resolve) => (answer = resolve)) as never);
+    mount();
+    submit();
+    submit();
+    expect(call).toHaveBeenCalledTimes(1);
+    answer({ ok: false, failure: { status: 500, code: 'internal' } });
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Turn off two-step sign-in' })).toBeTruthy();
+  });
+
   it('shows a network failure and keeps the form', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 0, code: 'network' } });
     mount();
