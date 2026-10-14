@@ -308,6 +308,7 @@ const productTypeProvider: FactoryProvider<string> = {
       offers: true,
       products: true,
       eligibility: true,
+      allowedTypes: true,
       check: true,
       outbox: true,
       clock: true,

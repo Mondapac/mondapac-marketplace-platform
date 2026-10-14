@@ -7,6 +7,7 @@ import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_PRODUCT_APPROVE } from '../../contracts/permissions';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
+import type { AllowedProductTypesReader } from '../ports/allowed-product-types.reader';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
@@ -26,6 +27,7 @@ export type OfferApproveFailure =
   | { readonly code: 'offer.not-pending-review' }
   | { readonly code: 'offer.product-not-published' }
   | { readonly code: 'seller.not-eligible' }
+  | { readonly code: 'type.not-allowed' }
   | { readonly code: 'conflict.stale' }
   | { readonly code: 'claim-text.refused'; readonly fields: readonly RefusedField[] }
   | ReviewValidationFailure;
@@ -35,6 +37,7 @@ export interface OfferApproveDependencies {
   readonly offers: OfferRepository;
   readonly products: ProductRepository;
   readonly eligibility: SellerEligibilityReader;
+  readonly allowedTypes: AllowedProductTypesReader;
   readonly check: CheckClaimText;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
@@ -45,7 +48,7 @@ export interface OfferApproveDependencies {
  * publication. Rule: the key `catalog.product.approve` and the admin population. The request names
  * the Offer and the version the reviewer saw. Guards, in order: the Offer exists in the Market
  * and waits for review (`offer.not-found`, `offer.not-pending-review`); its product is published
- * (`offer.product-not-published`); the owner may still sell (`seller.not-eligible`, a single
+ * (`offer.product-not-published`); the owner may still sell (`seller.not-eligible`; `type.not-allowed` when SEL-12 no longer lists the product's type; a single
  * approval is refused, never skipped silently); the description passes the claim-text control again
  * (vocabulary may have grown since the submit). In one unit the Offer is read again and its version
  * must equal both the request's and the one that was checked, else `conflict.stale`. The history
@@ -110,6 +113,7 @@ export class OfferApprove extends UseCase<
           sellerId: offer.state.sellerId,
           description: offer.state.description,
           productPublished: product?.state.status === 'published',
+          typeCode: product?.state.typeCode ?? null,
         });
       },
       { readOnly: true },
@@ -122,6 +126,13 @@ export class OfferApprove extends UseCase<
     if (!seen.productPublished) return err({ code: 'offer.product-not-published' });
     if (!(await deps.eligibility.isEligible(context, seen.sellerId))) {
       return err({ code: 'seller.not-eligible' });
+    }
+
+    // SEL-12 again: the seller's allowed types may have changed since the submit.
+    const allowed = await deps.allowedTypes.allowedFor(context, seen.sellerId);
+    if (allowed === null) return err({ code: 'access.unavailable' });
+    if (allowed !== 'all' && (seen.typeCode === null || !allowed.has(seen.typeCode))) {
+      return err({ code: 'type.not-allowed' });
     }
 
     const texts = Object.entries(seen.description).filter(([, text]) => text !== '');
@@ -155,6 +166,11 @@ export class OfferApprove extends UseCase<
           const offer = await deps.offers.findById(market, offerId);
           if (offer === null) return err({ code: 'offer.not-found' } as const);
           if (offer.state.version !== version) return err({ code: 'conflict.stale' } as const);
+          // Read again in the unit: the product may have left `published` since the first read.
+          const product = await deps.products.findById(market, offer.state.productId);
+          if (product?.state.status !== 'published') {
+            return err({ code: 'offer.product-not-published' } as const);
+          }
           const approved = offer.approve({ now: deps.clock.now() });
           if (!approved.ok) return err({ code: 'offer.not-pending-review' } as const);
           await deps.offers.save(market, offer, { kind: 'admin', accountId: actor.accountId });

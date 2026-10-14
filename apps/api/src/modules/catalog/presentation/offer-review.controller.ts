@@ -61,6 +61,7 @@ export const OFFER_REVIEW_STATUS: Readonly<Record<string, number>> = Object.free
   'offer.not-pending-review': 409,
   'offer.product-not-published': 409,
   'seller.not-eligible': 409,
+  'type.not-allowed': 409,
   'conflict.stale': 409,
   'claim-text.refused': 422,
   'access.unavailable': 503,

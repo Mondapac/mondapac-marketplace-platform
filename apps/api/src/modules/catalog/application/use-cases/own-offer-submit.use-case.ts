@@ -138,6 +138,7 @@ export class OwnOfferSubmit extends UseCase<
         const product = await deps.products.findById(market, offer.state.productId);
         return ok({
           description: offer.state.description,
+          status: offer.state.status,
           version: offer.state.version,
           productStatus: product?.state.status ?? null,
           typeCode: product?.state.typeCode ?? null,
@@ -147,7 +148,8 @@ export class OwnOfferSubmit extends UseCase<
     );
     if (!guard.ok) return err({ code: 'access.unavailable' });
     if (guard.value === null) return err({ code: 'offer.not-found' });
-    const { description, version, productStatus, typeCode } = guard.value;
+    const { description, status, version, productStatus, typeCode } = guard.value;
+    if (status !== 'draft') return err({ code: 'offer.not-submittable' });
     if (productStatus !== 'published' || typeCode === null) {
       return err({ code: 'offer.product-not-published' });
     }
@@ -194,6 +196,10 @@ export class OwnOfferSubmit extends UseCase<
             return err({ code: 'offer.not-found' } as const);
           }
           if (offer.state.version !== version) return err({ code: 'conflict.stale' } as const);
+          const product = await deps.products.findById(market, offer.state.productId);
+          if (product?.state.status !== 'published') {
+            return err({ code: 'offer.product-not-published' } as const);
+          }
           let approvalRequired: boolean;
           try {
             approvalRequired = await deps.policy.approvalRequired(market);

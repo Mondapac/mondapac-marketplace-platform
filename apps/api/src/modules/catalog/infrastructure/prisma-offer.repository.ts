@@ -220,7 +220,8 @@ export class PrismaOfferRepository implements OfferRepository {
       page.afterId === null
         ? null
         : await tx.catalogOffer.findFirst({
-            where: { ...where, id: page.afterId },
+            // Without the status: a decided Offer still anchors the page it ended.
+            where: { marketId: market.marketId, id: page.afterId },
             select: { id: true, submittedAt: true },
           });
     const after =

@@ -226,6 +226,27 @@ describe.each(TEST_MARKETS)(
       await expect(draftOffer(sku)).resolves.toEqual(expect.any(String));
     });
 
+    it('keeps a page anchor that has been decided since: the next page continues after it', async () => {
+      const a = await submitted(T0.add({ minutes: 1 }));
+      const b = await submitted(T0.add({ minutes: 2 }));
+      const c = await submitted(T0.add({ minutes: 3 }));
+      const first = await load(a);
+      first.approve({ now: T1 });
+      await save(first, admin as never);
+      const page = await persistence.unitOfWork.run(
+        market,
+        async () => ({
+          ok: true as const,
+          value: await offers.listPendingReview(market, { afterId: a, limit: 500 }),
+        }),
+        { readOnly: true },
+      );
+      if (!page.ok) throw new Error('list failed');
+      const order = page.value.map((o) => o.state.id).filter((x) => x === b || x === c);
+      expect(order).toEqual([b, c]);
+      expect(page.value.map((o) => o.state.id)).not.toContain(a);
+    });
+
     it('lists the waiting Offers oldest submit first in keyset pages, and nothing else', async () => {
       const later = await submitted(T0.add({ minutes: 30 }));
       const earlier = await submitted(T0.add({ minutes: 10 }));

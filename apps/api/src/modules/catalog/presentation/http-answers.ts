@@ -77,7 +77,8 @@ export function closedBody(
   }
   const record = body as Record<string, unknown>;
   const fields: { path: string; code: string }[] = [];
-  for (const key of Object.keys(record).sort().slice(0, 10)) {
+  for (const key of Object.keys(record).sort()) {
+    if (fields.length >= 10) break;
     if (!keys.includes(key)) {
       fields.push({
         path: Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�'),

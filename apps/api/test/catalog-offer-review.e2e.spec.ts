@@ -4,11 +4,13 @@ import type { CallContext, Id, MarketContext, PendingEvent } from '@mondapac/sha
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { CheckClaimText } from '../src/modules/catalog/application/claim-text/check-claim-text.service';
+import { ALLOWED_PRODUCT_TYPES_READER } from '../src/modules/catalog/application/ports/allowed-product-types.reader';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
 import type { OfferActor } from '../src/modules/catalog/application/ports/offer.repository';
 import { OWN_CATALOG_READER } from '../src/modules/catalog/application/ports/own-catalog.reader';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
 import { SELLER_ELIGIBILITY_READER } from '../src/modules/catalog/application/ports/seller-eligibility.reader';
+import { StaleAggregateError } from '../src/platform/unit-of-work/errors';
 import { Offer, type OfferState } from '../src/modules/catalog/domain/offer';
 import { Product, type ProductState } from '../src/modules/catalog/domain/product';
 import { OFFER_REVIEW_STATUS } from '../src/modules/catalog/presentation/offer-review.controller';
@@ -56,6 +58,7 @@ it('maps every refusal code of the review use cases to its exact status', () => 
     'offer.not-pending-review': 409,
     'offer.product-not-published': 409,
     'seller.not-eligible': 409,
+    'type.not-allowed': 409,
     'conflict.stale': 409,
     'claim-text.refused': 422,
     'access.unavailable': 503,
@@ -71,6 +74,8 @@ describe('admin Offer review over HTTP (integration)', () => {
   let productStatus: ProductState['status'];
   let eligible: boolean;
   let claimVerdict: 'clean' | 'claim-text.found';
+  let saveThrows: Error | null;
+  let allowed: 'all' | Set<string>;
   const http = () => request(app.getHttpServer());
 
   async function boot() {
@@ -98,6 +103,7 @@ describe('admin Offer review over HTTP (integration)', () => {
                 offers.has(offerId) ? Offer.restore(offers.get(offerId)!.state) : null,
               ),
             save: (_m: MarketContext, offer: Offer, actor: OfferActor) => {
+              if (saveThrows !== null) return Promise.reject(saveThrows);
               saved.push({ offer, actor });
               offers.set(offer.state.id, Offer.restore(offer.state));
               return Promise.resolve(null);
@@ -131,6 +137,8 @@ describe('admin Offer review over HTTP (integration)', () => {
                 { productId: PRODUCT, productCode: 'P00000001', typeCode: 'simple', name: 'Dates' },
               ]),
           })
+          .overrideProvider(ALLOWED_PRODUCT_TYPES_READER)
+          .useValue({ allowedFor: () => Promise.resolve(allowed) })
           .overrideProvider(SELLER_ELIGIBILITY_READER)
           .useValue({ isEligible: () => Promise.resolve(eligible) })
           .overrideProvider(CheckClaimText)
@@ -298,6 +306,8 @@ describe('admin Offer review over HTTP (integration)', () => {
     productStatus = 'published';
     eligible = true;
     claimVerdict = 'clean';
+    saveThrows = null;
+    allowed = 'all';
   });
   afterEach(async () => {
     await app.close();
@@ -453,10 +463,40 @@ describe('admin Offer review over HTTP (integration)', () => {
       eligible = false;
       expect((await approve(offer.state.id)).body).toMatchObject({ code: 'seller.not-eligible' });
       eligible = true;
+      allowed = new Set<string>();
+      expect((await approve(offer.state.id)).body).toMatchObject({ code: 'type.not-allowed' });
+      allowed = 'all';
       claimVerdict = 'claim-text.found';
       const refused = await approve(offer.state.id);
       expect(refused.status).toBe(422);
       expect(refused.body).toMatchObject({ code: 'claim-text.refused' });
+      expect(saved).toHaveLength(0);
+      expect(events).toHaveLength(0);
+    });
+
+    it('answers a lost race on the save as 409 conflict.stale, storing and announcing nothing', async () => {
+      await boot();
+      await seeded(code);
+      const offer = waiting(code, 1);
+      saveThrows = new StaleAggregateError('offer', offer.state.id);
+
+      const approve = await post(
+        code,
+        `/offers/${offer.state.id}/approve`,
+        sessionOf(code, MODERATOR, 1),
+        { version: 4 },
+      );
+      const changes = await post(
+        code,
+        `/offers/${offer.state.id}/request-changes`,
+        sessionOf(code, MODERATOR, 2),
+        { version: 4, reasonCode: 'other' },
+      );
+
+      for (const response of [approve, changes]) {
+        expect(response.status).toBe(409);
+        expect(response.body).toEqual({ statusCode: 409, code: 'conflict.stale' });
+      }
       expect(saved).toHaveLength(0);
       expect(events).toHaveLength(0);
     });

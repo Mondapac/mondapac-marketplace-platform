@@ -570,6 +570,20 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       expect(savedEdits).toHaveLength(0);
     });
 
+    it('answers a repeated submit as offer.not-submittable before any product or claim check', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(
+        offerState({ status: 'pending-first-publish', submittedAt: START, version: 3 }),
+      );
+      product = Product.restore({ ...state(code), status: 'unpublished' });
+
+      const response = await route('post', '/submit', sessionOf(code)).send();
+
+      expect(response.body).toEqual({ statusCode: 409, code: 'offer.not-submittable' });
+      expect(claimChecks).toBe(0);
+    });
+
     it('answers 409 for an unpublished product, 422 for a type or a claim, 403 for an ineligible seller', async () => {
       await boot();
       await seeded(code);

@@ -36,7 +36,7 @@ export interface OfferRepository {
   /**
    * The Offers waiting for their first publication (`pending-first-publish`), oldest submit first,
    * at most `limit` after the Offer `afterId` of the previous page (null for the first page).
-   * An `afterId` that is not a waiting Offer of this Market starts from the beginning.
+   * An `afterId` of an Offer of this Market that has been decided since still anchors the page; an unknown one, or one with no submit stamp (edited back to draft), starts from the beginning.
    */
   listPendingReview(
     market: MarketContext,
