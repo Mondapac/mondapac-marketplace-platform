@@ -3,7 +3,10 @@ import { uuidV7 } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { TEST_MARKETS } from '../support/test-config';
 import { marketOf, otherMarketOf } from './persistence-support';
-import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import {
+  catalogRevisionsOwnerTestDatabaseUrl,
+  catalogRevisionsTestDatabaseUrl,
+} from './test-database';
 import { sqlState } from './sql-state';
 
 // Catalog slice 4 on PostgreSQL (catalog data design 3.6 to 3.10, 3.12, 3.26, 5.1, 7), for both
@@ -23,8 +26,8 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
   let owner: Client;
 
   beforeAll(async () => {
-    sql = new Client({ connectionString: testDatabaseUrl() });
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    sql = new Client({ connectionString: catalogRevisionsTestDatabaseUrl() });
+    owner = new Client({ connectionString: catalogRevisionsOwnerTestDatabaseUrl() });
     await sql.connect();
     await owner.connect();
   });

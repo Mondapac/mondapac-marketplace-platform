@@ -63,6 +63,9 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'CERTIFICATION');
   await createCopy(name, 'CATALOG_CLAIMS');
   await createCopy(name, 'CLAIM_FACTS');
+  await createCopy(name, 'CATALOG_REVISIONS');
+  await createCopy(name, 'CATALOG_ATTRIBUTES');
+  await createCopy(name, 'PRICING_CONSTRAINTS');
 }
 
 /**
@@ -93,7 +96,13 @@ export default async function globalSetup(): Promise<void> {
  * - `certification`: certification-published-types-reader.db-spec.ts reads every type of a
  *   Market, so no other file's types (drafts without terms or pointer) live there;
  * - `claim_facts`: certification-claim-facts-reader.db-spec.ts seeds types without a published
- *   revision (a fault for any read that asks for them), so it keeps its own copy.
+ *   revision (a fault for any read that asks for them), so it keeps its own copy;
+ * - `catalog_revisions`, `catalog_attributes`, `pricing_constraints`: the spec of that name
+ *   probes the owner's TRUNCATE ... CASCADE, which takes ACCESS EXCLUSIVE on every table that
+ *   references the probed one, transitively (for catalog.product_revisions and
+ *   catalog.attribute_family_revisions: products, variants, offers, working copies and more), one
+ *   by one before the refusing trigger runs; holding some while waiting for the next deadlocked
+ *   (40P01) the writers of other files, so each of these files keeps its own copy.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -112,7 +121,10 @@ async function createCopy(
     | 'ADMIN_TEAM'
     | 'CERTIFICATION'
     | 'CATALOG_CLAIMS'
-    | 'CLAIM_FACTS',
+    | 'CLAIM_FACTS'
+    | 'CATALOG_REVISIONS'
+    | 'CATALOG_ATTRIBUTES'
+    | 'PRICING_CONSTRAINTS',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });
