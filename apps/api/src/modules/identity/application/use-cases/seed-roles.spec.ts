@@ -176,12 +176,13 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
   });
 
-  it('upgrades viewer from version 1 to 7: adds catalog.product.view, sellers.seller.view, pricing.price-hold.view, ordering.order.view, shipping.flat-fee.view and commission-payouts.settlement.view, one seed-applied row, other roles untouched', async () => {
+  it('upgrades viewer from version 1 to 8: adds catalog.product.view, sellers.seller.view, pricing.price-hold.view, ordering.order.view, shipping.flat-fee.view, commission-payouts.settlement.view and payments.connected-account.view, one seed-applied row, other roles untouched', async () => {
     const VIEW = 'sellers.seller.view';
     const HOLDS = 'pricing.price-hold.view';
     const ORDERS = 'ordering.order.view';
     const SHIPPING = 'shipping.flat-fee.view';
     const SETTLEMENT = 'commission-payouts.settlement.view';
+    const PAYMENTS = 'payments.connected-account.view';
     const CATALOG = 'catalog.product.view';
     // The previous build's definition: version 1 without the sellers, pricing and catalog keys.
     const v1 = seedWith((role) =>
@@ -196,7 +197,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
                 k !== CATALOG &&
                 k !== ORDERS &&
                 k !== SHIPPING &&
-                k !== SETTLEMENT,
+                k !== SETTLEMENT &&
+                k !== PAYMENTS,
             ),
           }
         : role,
@@ -214,7 +216,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('platform', 'viewer')).toMatchObject({
       id: before.id,
-      seedVersion: 7,
+      seedVersion: 8,
       permissionKeys: [
         ...before.permissionKeys,
         CATALOG,
@@ -223,6 +225,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ORDERS,
         SHIPPING,
         SETTLEMENT,
+        PAYMENTS,
       ].sort(),
     });
     expect(roleOf('platform', 'onboarding-compliance')).toEqual(complianceBefore);
@@ -231,8 +234,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ...RoleSeedApplied.entry(before.id, {
           before: { seedVersion: 1 },
           after: {
-            seedVersion: 7,
-            addedKeys: [CATALOG, ORDERS, SHIPPING, SETTLEMENT, HOLDS, VIEW].sort(),
+            seedVersion: 8,
+            addedKeys: [CATALOG, ORDERS, SHIPPING, SETTLEMENT, PAYMENTS, HOLDS, VIEW].sort(),
             removedKeys: [],
           },
         }),
@@ -394,7 +397,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
   it('never downgrades a role stored at a newer version (an older build running), and warns', async () => {
     await seedRoles(
-      seedWith((role) => (role.seedCode === 'viewer' ? { ...role, seedVersion: 8 } : role)),
+      seedWith((role) => (role.seedCode === 'viewer' ? { ...role, seedVersion: 9 } : role)),
     ).execute(system, {});
     fakes.audits.length = 0;
 
@@ -403,12 +406,12 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
       value: { created: 0, upgraded: 0 },
     });
 
-    expect(roleOf('platform', 'viewer').seedVersion).toBe(8);
+    expect(roleOf('platform', 'viewer').seedVersion).toBe(9);
     expect(fakes.audits).toEqual([]);
     expect(logged('identity.seed-roles.stored-newer')?.[0]).toMatchObject({
       seedCode: 'viewer',
-      storedSeedVersion: 8,
-      seedVersion: 7,
+      storedSeedVersion: 9,
+      seedVersion: 8,
     });
   });
 

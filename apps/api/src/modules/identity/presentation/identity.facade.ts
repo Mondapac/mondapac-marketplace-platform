@@ -1,11 +1,13 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { ConfirmSellerSecondFactor } from '../application/use-cases/confirm-seller-second-factor.use-case';
 import type { DescribeActor } from '../application/use-cases/describe-actor.use-case';
 import type { MembershipOf } from '../application/use-cases/membership-of.use-case';
 import type { TeamMembershipOf } from '../application/use-cases/team-membership-of.use-case';
 import type {
   ActorDescription,
+  ConfirmSecondFactorFailure,
   IdentityFacade,
   SellerMembershipSummary,
 } from '../contracts/identity.facade';
@@ -15,6 +17,7 @@ export interface IdentityFacadeUseCases {
   readonly describeActor: DescribeActor;
   readonly membershipOf: MembershipOf;
   readonly teamMembershipOf: TeamMembershipOf;
+  readonly confirmSellerSecondFactor: ConfirmSellerSecondFactor;
 }
 
 /**
@@ -54,5 +57,13 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     return own
       ? this.useCases.membershipOf.execute(context, { accountId })
       : this.useCases.teamMembershipOf.execute(context, { accountId });
+  }
+
+  async confirmSecondFactor(
+    context: CallContext,
+    code: string,
+  ): Promise<Result<void, ConfirmSecondFactorFailure>> {
+    const result = await this.useCases.confirmSellerSecondFactor.execute(context, { code });
+    return result.ok ? ok(undefined) : err(result.error);
   }
 }

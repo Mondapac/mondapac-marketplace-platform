@@ -1,8 +1,14 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
-import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import {
+  FixedClock,
+  testAuthenticatedActor,
+  testCallContext,
+  testMarketContext,
+} from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import { IDENTITY_FACADE, type IdentityFacade } from '../src/modules/identity';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { SignInSeller } from '../src/modules/identity/application/use-cases/sign-in-seller.use-case';
 import { SendLinkMail } from '../src/modules/identity/application/use-cases/send-link-mail.use-case';
@@ -364,6 +370,77 @@ describe('seller second factor over HTTP (integration)', () => {
           },
         );
       expect(signedIn).toMatchObject({ ok: true, value: { code: 'signed-in' } });
+    });
+
+    it('confirms a code through the facade: counted, spent once, no other effect, refused without a factor', async () => {
+      await boot();
+      const facade = app.get<IdentityFacade>(IDENTITY_FACADE);
+      const first = await signedUpSeller(code);
+      const sessionOf = async (headers: { cookie: string }) =>
+        (
+          await http()
+            .get('/identity/seller/session')
+            .set({ 'x-market-id': code, cookie: headers.cookie })
+        ).body as { accountId: string; sellerId: string };
+      const me = await sessionOf(first);
+      const market = testMarketContext(code, PLATFORM_TENANT_ID);
+      const context = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: me.accountId as Id<'Account'>,
+          sessionId: [...fakes.sessions.keys()].at(-1)! as Id<'Session'>,
+          sellerId: me.sellerId as Id<'Seller'>,
+        }),
+        'seller-2fa-confirm',
+      );
+
+      expect((await facade.describeActor(context)).ok).toBe(true);
+      expect(await facade.describeActor(context)).toMatchObject({
+        value: { secondFactorActive: false },
+      });
+      expect(await facade.confirmSecondFactor(context, '123456')).toEqual({
+        ok: false,
+        error: { code: 'second-factor.unavailable' },
+      });
+
+      const { secret, recoveryCodes } = await enrolled(code, first);
+      expect(await facade.describeActor(context)).toMatchObject({
+        value: { secondFactorActive: true },
+      });
+      const factors = [...fakes.factors.values()].length;
+      clock.advance(STEP);
+      expect(await facade.confirmSecondFactor(context, '000000')).toEqual({
+        ok: false,
+        error: { code: 'second-factor.invalid' },
+      });
+      expect(await facade.confirmSecondFactor(context, 'not a code')).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      const right = codeFor(secret);
+      expect(await facade.confirmSecondFactor(context, right)).toEqual({
+        ok: true,
+        value: undefined,
+      });
+      // A time step is accepted once.
+      expect(await facade.confirmSecondFactor(context, right)).toEqual({
+        ok: false,
+        error: { code: 'second-factor.invalid' },
+      });
+      // A recovery code works once; the factor itself is untouched.
+      expect(await facade.confirmSecondFactor(context, recoveryCodes[0]!)).toEqual({
+        ok: true,
+        value: undefined,
+      });
+      expect(await facade.confirmSecondFactor(context, recoveryCodes[0]!)).toMatchObject({
+        ok: false,
+        error: { code: 'second-factor.invalid' },
+      });
+      expect([...fakes.factors.values()].length).toBe(factors);
+      expect(await facade.describeActor(context)).toMatchObject({
+        value: { secondFactorActive: true },
+      });
     });
 
     it('tells the account state only after the code: a suspended seller reads 400 until the code is right', async () => {

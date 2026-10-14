@@ -9,7 +9,9 @@
   "maxLineQuantity": 50,
   "timezone": "Asia/Tokyo",
   "payments": {
-    "connectedAccountCountry": "JP"
+    "connectedAccountCountry": "JP",
+    "bankChangeCoolingOffHours": 24,
+    "payoutSchedule": "daily"
   },
   "commissionPayouts": {
     "defaultRateBps": 1200,
