@@ -78,6 +78,7 @@ import { RevokeSellerInvitation } from './application/use-cases/revoke-seller-in
 import { SendSellerAccessMail } from './application/use-cases/send-seller-access-mail.use-case';
 import { SuspendSellerAccess } from './application/use-cases/suspend-seller-access.use-case';
 import { AssignAdminRole } from './application/use-cases/assign-admin-role.use-case';
+import { FindCustomerAccount } from './application/use-cases/find-customer-account.use-case';
 import { ListAdminTeam } from './application/use-cases/list-admin-team.use-case';
 import { ListPlatformRoles } from './application/use-cases/list-platform-roles.use-case';
 import type { RoleEditorDependencies } from './application/roles/role-editor';
@@ -915,6 +916,12 @@ function useCaseProvider<D, U>(
       outbox: true,
       audit: true,
       clock: true,
+    }),
+    useCaseProvider(FindCustomerAccount, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
     }),
     useCaseProvider(ListAdminTeam, {
       unitOfWork: true,
