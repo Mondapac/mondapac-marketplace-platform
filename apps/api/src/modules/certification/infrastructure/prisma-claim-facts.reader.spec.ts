@@ -106,6 +106,7 @@ describe.each(['AU', 'ZZ'] as const)('PrismaClaimFactsReader, Market %s', (marke
     ['a NULL published revision', typeRow({ typeRevisionId: null, defaultBasis: null })],
     ['a revision without a basis', typeRow({ defaultBasis: null })],
     ['an invalid default basis', typeRow({ defaultBasis: 'SELLER_OR_MANUFACTURER' })],
+    ['a revision id that is not an id', typeRow({ typeRevisionId: 'not-an-id' })],
     ['a type nobody asked for', typeRow({ code: 'other' })],
   ])('rejects on %s', async (_name, row) => {
     await expect(reader([row]).typesAndPolicies(market, [policy('halal')])).rejects.toThrow();

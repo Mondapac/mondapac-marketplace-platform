@@ -72,8 +72,10 @@ export class PrismaClaimFactsReader implements ClaimFactsReader {
       if (!BASES.includes(row.defaultBasis)) {
         throw new Error('certification type has an invalid default basis');
       }
+      const revision = parseId(row.typeRevisionId);
+      if (!revision.ok) throw new Error('published revision id is not an id');
       byCode.set(row.code, {
-        publishedRevisionId: row.typeRevisionId as Id,
+        publishedRevisionId: revision.value,
         defaultBasis: row.defaultBasis as 'SELLER_REQUIRED' | 'NOT_APPLICABLE',
       });
     }
