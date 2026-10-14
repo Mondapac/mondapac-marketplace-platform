@@ -2,7 +2,7 @@
 // The responsive standard of the panels (docs: frontend-next handoff): the phone drawer and
 // bottom bar of the shell, and a source check that no table can widen the page.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { AppShell } from '@mondapac/ui';
+import { AppShell, Menu } from '@mondapac/ui';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -178,9 +178,24 @@ describe('two-step reset pages', () => {
 });
 
 describe('team pages', () => {
+  it('give each row action a full control height, 48 px on phones', () => {
+    render(
+      <Menu
+        label="Actions for Ada"
+        items={[{ id: 'a', label: 'Change role', onSelect: () => undefined }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Ada' }));
+    expect(screen.getByRole('menuitem', { name: 'Change role' }).className).toContain(
+      'min-h-(--mp-size-control)',
+    );
+  });
+
+  // Source checks: the screenshots at 375/768/1280 are the layout evidence; these keep the
+  // classes that produce it from being dropped.
   const read = (file: string) => readFileSync(join(__dirname, file), 'utf8');
 
-  it('keep the table in its own scroll box with fixed columns and no pixel widths', () => {
+  it('source: keep the table in its own scroll box with fixed columns and no pixel widths', () => {
     const table = read('../src/team/team-table.tsx');
     expect(table).toContain('overflow-x-auto');
     expect(table).toContain('table-fixed');
@@ -189,7 +204,7 @@ describe('team pages', () => {
     expect(table).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
   });
 
-  it('use fluid layouts, touch-sized controls, dialogs of the shared kind and stacked actions', () => {
+  it('source: use fluid layouts, touch-sized controls, shared dialogs and stacked actions', () => {
     for (const file of [
       '../src/team/team-table.tsx',
       '../src/team/role-dialog.tsx',

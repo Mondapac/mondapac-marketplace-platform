@@ -92,9 +92,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 };
 
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
-const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
-  'ordering/seller/orders': ['limit', 'cursor'],
-  'identity/seller/team': ['after'],
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Per GET target, the query keys passed on and, where set, the shape each value must have. */
+const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
+  'ordering/seller/orders': { limit: null, cursor: null },
+  'identity/seller/team': { after: UUID },
 };
 const QUERY_VALUE_MAX = 512;
 
@@ -104,15 +106,14 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
   const kept = new URLSearchParams();
-  for (const key of keys) {
+  for (const [key, shape] of Object.entries(keys)) {
     const value = source.get(key);
-    if (value !== null && value.length <= QUERY_VALUE_MAX) kept.set(key, value);
+    if (value === null || value.length > QUERY_VALUE_MAX) continue;
+    if (shape === null || shape.test(value)) kept.set(key, value);
   }
   const text = kept.toString();
   return text === '' ? '' : `?${text}`;
 }
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The photo sizes the panel may ask for; the API names the same three. */
 const PHOTO_SIZES: ReadonlySet<string> = new Set(['thumb', 'medium', 'large']);

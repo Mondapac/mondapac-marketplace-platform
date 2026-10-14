@@ -1,18 +1,11 @@
 import { Badge, type BadgeTone } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { formatInstant } from '../catalog/format.ts';
 import { roleLabel } from './role-label.ts';
 import { RowActions, type RowTarget } from './row-actions.tsx';
 import type { InvitationRow, MemberRow, SellerRole, TeamPage, TeamRow } from './types.ts';
 
 type Translate = Awaited<ReturnType<typeof getTranslations>>;
-
-const WHEN = new Intl.DateTimeFormat('en-AU', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-  timeZone: 'UTC',
-});
-/** An instant in UTC, so the server and the browser print the same text. */
-const when = (instant: string): string => `${WHEN.format(new Date(instant))} UTC`;
 
 function statusOf(t: Translate, row: TeamRow): { tone: BadgeTone; label: string } {
   if (row.type === 'invitation') {
@@ -140,7 +133,7 @@ export async function TeamTable({
                         row.status === 'expired'
                           ? 'identity.team.expired-on'
                           : 'identity.team.expires-on',
-                        { when: when(row.expiresAt) },
+                        { when: formatInstant(row.expiresAt) },
                       )}
                     </div>
                   ) : null}

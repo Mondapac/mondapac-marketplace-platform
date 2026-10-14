@@ -659,11 +659,13 @@ describe('relay of the seller team routes', () => {
       (await relay(config, get(`${team.join('/')}?after=${ID}&limit=1`), team, upstream)).status,
     ).toBe(200);
     expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/identity/seller/team?after=${ID}`);
+    await relay(config, get(`${team.join('/')}?after=not-a-uuid`), team, upstream);
+    expect(upstream.mock.calls.at(-1)?.[0]).toBe('http://api.test/identity/seller/team');
     const roles = ['identity', 'seller', 'roles'];
     expect((await relay(config, get('identity/seller/roles?x=1'), roles, upstream)).status).toBe(
       200,
     );
-    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/identity/seller/roles');
+    expect(upstream.mock.calls.at(-1)?.[0]).toBe('http://api.test/identity/seller/roles');
     expect((await relay(config, post('identity/seller/roles'), roles, upstream)).status).toBe(404);
   });
 
