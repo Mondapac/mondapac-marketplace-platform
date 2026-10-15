@@ -16,6 +16,7 @@
     "stock": "Stock locations",
     "security": "Security",
     "orders": "Orders",
+    "earnings": "Earnings",
     "payout": "Payout account",
     "team": "Team"
   },
@@ -1060,6 +1061,32 @@
       "unavailable": "Orders are not available right now. Try again shortly.",
       "unknown": "Something went wrong. Try again."
     }
+  },
+  "earnings": {
+    "title": "Earnings",
+    "intro": "What your store has sold on paid orders, the delivery fees, the platform commission and your balance. Newest rows first.",
+    "ledger": "Ledger",
+    "totals": {
+      "sales": "Sales",
+      "shipping": "Shipping",
+      "commission": "Commission",
+      "balance": "Balance"
+    },
+    "col": {
+      "when": "Date",
+      "order": "Order",
+      "kind": "Kind",
+      "amount": "Amount"
+    },
+    "kind": {
+      "sale": "Sale",
+      "shipping": "Shipping",
+      "commission": "Commission"
+    },
+    "empty": "No earnings yet. Rows appear here as soon as a customer pays for an order.",
+    "more": "Load more",
+    "more-failed": "More rows could not be loaded. Try again.",
+    "unavailable": "Your earnings are not available right now. Try again shortly."
   },
   "price": {
     "title": "Prices",

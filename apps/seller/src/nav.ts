@@ -24,6 +24,12 @@ export const sellerNav: NavConfig = {
       anyOf: ['ordering.seller-order.view'],
     },
     {
+      id: 's_earnings',
+      labelKey: 'nav.earnings',
+      href: '/earnings',
+      anyOf: ['commission-payouts.earnings.view'],
+    },
+    {
       id: 's_stock',
       labelKey: 'nav.stock',
       href: '/stock-locations',
