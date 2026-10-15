@@ -77,3 +77,28 @@ export function sellerNewOrderMail(input: {
     ].join('\n'),
   };
 }
+
+/** The customer's "Shipped": the carrier, the tracking number when there is one, and the order link. */
+export function orderShippedMail(input: {
+  readonly orderId: string;
+  readonly carrier: string;
+  readonly trackingRef: string | null;
+  readonly orderUrl: string;
+}): ComposedMail {
+  return {
+    subject: 'Shipped',
+    text: [
+      'Shipped',
+      '',
+      'Good news: a seller has shipped part of your order.',
+      '',
+      `Order reference: ${input.orderId}`,
+      `Carrier: ${plainLine(input.carrier)}`,
+      ...(input.trackingRef === null ? [] : [`Tracking number: ${plainLine(input.trackingRef)}`]),
+      '',
+      'View your order (you will be asked to sign in):',
+      input.orderUrl,
+      '',
+    ].join('\n'),
+  };
+}

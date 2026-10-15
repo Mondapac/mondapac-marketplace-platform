@@ -15,6 +15,7 @@ import type { NotificationsDependencies } from './application/notifications-depe
 import { NOTIFICATIONS_POLICY } from './application/ports/notifications-policy';
 import { SUPPORT_CONTACT_REPOSITORY } from './application/ports/support-contact.repository';
 import { SendOrderConfirmationMail } from './application/use-cases/send-order-confirmation-mail.use-case';
+import { SendOrderShippedMail } from './application/use-cases/send-order-shipped-mail.use-case';
 import { SendSellerNewOrderMail } from './application/use-cases/send-seller-new-order-mail.use-case';
 import { SetSupportContact } from './application/use-cases/set-support-contact.use-case';
 import { ViewPublicSupportContact } from './application/use-cases/view-public-support-contact.use-case';
@@ -96,11 +97,15 @@ function orderMailProvider<U>(
     ),
     orderMailProvider(SendOrderConfirmationMail),
     orderMailProvider(SendSellerNewOrderMail),
+    orderMailProvider(SendOrderShippedMail),
     registerSubscriptionsFrom(
       'notifications',
-      [SendOrderConfirmationMail, SendSellerNewOrderMail],
-      (confirmation: SendOrderConfirmationMail, sellerNewOrder: SendSellerNewOrderMail) =>
-        orderMailSubscriptions(confirmation, sellerNewOrder),
+      [SendOrderConfirmationMail, SendSellerNewOrderMail, SendOrderShippedMail],
+      (
+        confirmation: SendOrderConfirmationMail,
+        sellerNewOrder: SendSellerNewOrderMail,
+        shipped: SendOrderShippedMail,
+      ) => orderMailSubscriptions(confirmation, sellerNewOrder, shipped),
     ),
   ],
 })

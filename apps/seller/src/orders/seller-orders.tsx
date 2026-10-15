@@ -238,6 +238,7 @@ function OrderCard({
                 }
                 onChange={(event) => setTracking(event.target.value)}
               />
+              <p className="text-sm text-fg-muted">{t('orders.ship.hint')}</p>
               <div>
                 <Button type="submit" loading={pending}>
                   {t('orders.ship.submit')}

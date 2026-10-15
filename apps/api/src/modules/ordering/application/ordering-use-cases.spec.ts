@@ -773,6 +773,41 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       });
     });
 
+    it('writes one order-shipped event with ids only, and none for a refused shipment', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      written.length = 0;
+
+      expect(await ship(sellerB, sellerOrderId)).toEqual(
+        err({ code: 'ordering.seller-order-not-found' }),
+      );
+      expect(await ship(sellerA, sellerOrderId, { carrier: '' })).toMatchObject({ ok: false });
+      expect(written).toEqual([]);
+
+      await ship(sellerA, sellerOrderId);
+      await ship(sellerA, sellerOrderId);
+      expect(written).toHaveLength(1);
+      expect(written[0]).toMatchObject({ type: 'ordering.order-shipped.v1' });
+      expect(written[0]!.payload).toEqual({
+        orderId: order.id,
+        sellerOrderId,
+        sellerId: SELLER_A,
+      });
+      expect(JSON.stringify(written[0]!.payload)).not.toMatch(/AP123456789|Australia Post|@/);
+    });
+
+    it('rolls the shipment back as a conflict when the outbox refuses the event', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      deps = {
+        ...deps,
+        outbox: { append: () => Promise.reject(new OutboxWriteRefusedError('payload-invalid')) },
+      };
+      expect(await ship(sellerA, sellerOrderId)).toEqual(
+        err({ code: 'ordering.fulfilment-conflict' }),
+      );
+    });
+
     it('ships once, then delivers once, in that order', async () => {
       const order = await paid();
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
