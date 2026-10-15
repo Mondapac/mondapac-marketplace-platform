@@ -17,6 +17,7 @@ import {
 } from '../../../../test/support/ordering-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
+import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -357,6 +358,16 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       });
       // Ids only: nothing like an address, a name or an amount.
       expect(JSON.stringify(event.payload)).not.toMatch(/@|email|amount/i);
+    });
+
+    it('asks for a retry, not a throw, when the outbox refuses the event', async () => {
+      const order = await started();
+      deps = {
+        ...deps,
+        outbox: { append: () => Promise.reject(new OutboxWriteRefusedError('payload-invalid')) },
+      };
+
+      expect(await confirm(order.id)).toEqual(err({ code: 'ordering.try-again' }));
     });
 
     it('writes no event for a repeat, a voided payment or a retry', async () => {

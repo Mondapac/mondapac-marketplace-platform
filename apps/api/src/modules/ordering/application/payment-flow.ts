@@ -2,6 +2,7 @@ import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, PendingEvent, Result } from '@mondapac/shared-kernel';
 import { cancelOrder, confirmOrder, type OrderState, type PaymentState } from '../domain/order';
 import type { AuthorisedPayment, PaymentFailure } from '../contracts';
+import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
 import { OrderPaid } from '../domain/events';
 import type { OrderingDependencies } from './checkout-flow';
 
@@ -42,7 +43,15 @@ async function update(
     const saved = await deps.orders.save(context.market, next);
     if (saved !== 'saved') return RETRY;
     const written = { ...next, version: next.version + 1 };
-    if (events !== undefined) await deps.outbox.append(context, events(written));
+    if (events !== undefined) {
+      try {
+        await deps.outbox.append(context, events(written));
+      } catch (error) {
+        // A refused event rolls the confirmation back; the caller counts a retry, not a throw.
+        if (error instanceof OutboxWriteRefusedError) return RETRY;
+        throw error;
+      }
+    }
     return ok(written);
   });
 }

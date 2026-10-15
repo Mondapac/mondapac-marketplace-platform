@@ -1,4 +1,4 @@
-import { money, ok, Temporal } from '@mondapac/shared-kernel';
+import { err, money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
@@ -10,7 +10,11 @@ import { ConfigOrderingPolicy } from '../../src/modules/ordering/infrastructure/
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { EventCatalogue } from '../../src/platform/events/event-catalogue';
-import { NO_PERMISSION_KEYS, type OutboxWriter } from '../../src/platform/events/outbox-writer';
+import {
+  NO_PERMISSION_KEYS,
+  OutboxWriteRefusedError,
+  type OutboxWriter,
+} from '../../src/platform/events/outbox-writer';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
@@ -195,9 +199,13 @@ describe.each(TEST_MARKETS)(
 
     it('does not confirm the order when the outbox refuses the event', async () => {
       const order = await placeOrder();
-      const refusing: OutboxWriter = { append: () => Promise.reject(new Error('outbox down')) };
+      const refusing: OutboxWriter = {
+        append: () => Promise.reject(new OutboxWriteRefusedError('payload-invalid')),
+      };
 
-      await expect(confirm({ ...deps, outbox: refusing }, order)).rejects.toThrow('outbox down');
+      expect(await confirm({ ...deps, outbox: refusing }, order)).toEqual(
+        err({ code: 'ordering.try-again' }),
+      );
 
       expect(await statusOf(order.id)).not.toBe('confirmed');
       expect(await eventsOf(order.id)).toEqual([]);
