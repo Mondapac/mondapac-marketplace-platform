@@ -8,6 +8,7 @@ import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { SetSupportContact } from '../src/modules/notifications/application/use-cases/set-support-contact.use-case';
+import { ViewPublicSupportContact } from '../src/modules/notifications/application/use-cases/view-public-support-contact.use-case';
 import { ViewSupportContact } from '../src/modules/notifications/application/use-cases/view-support-contact.use-case';
 import { NOTIFICATIONS_STATUS } from '../src/modules/notifications/presentation/http-answers';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -65,7 +66,9 @@ describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => 
           .overrideProvider(ViewSupportContact)
           .useValue(stub('view'))
           .overrideProvider(SetSupportContact)
-          .useValue(stub('set')),
+          .useValue(stub('set'))
+          .overrideProvider(ViewPublicSupportContact)
+          .useValue(stub('public')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'notif-seed-0001'), {});
     for (const [accountId, population, label] of [
@@ -153,6 +156,21 @@ describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => 
       { name: 'set', input: { email: 'care@example.com', expectedVersion: 2 } },
     ]);
   });
+
+  it.each(['admin', 'seller'] as const)(
+    'answers the public read with no session, from the %s panel',
+    async (population) => {
+      await boot();
+      next = ok({ email: 'help@example.com' });
+      const read = await http()
+        .get('/notifications/support-contact')
+        .set({ 'x-market-id': code, ...panelHeaders(code, population) });
+      expect(read.status).toBe(200);
+      expect(read.headers['cache-control']).toBe('no-store');
+      expect(read.body).toEqual({ email: 'help@example.com' });
+      expect(calls).toEqual([{ name: 'public', input: {} }]);
+    },
+  );
 
   it('refuses a set without CSRF, with a stray field and not as JSON', async () => {
     await boot();

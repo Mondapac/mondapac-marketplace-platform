@@ -9,11 +9,13 @@ import type { NotificationsDependencies } from './application/notifications-depe
 import { NOTIFICATIONS_POLICY } from './application/ports/notifications-policy';
 import { SUPPORT_CONTACT_REPOSITORY } from './application/ports/support-contact.repository';
 import { SetSupportContact } from './application/use-cases/set-support-contact.use-case';
+import { ViewPublicSupportContact } from './application/use-cases/view-public-support-contact.use-case';
 import { ViewSupportContact } from './application/use-cases/view-support-contact.use-case';
 import { NOTIFICATIONS_PERMISSIONS } from './contracts';
 import { NOTIFICATIONS_AUDIT_ACTIONS } from './domain/audit';
 import { notificationsProviders } from './infrastructure/notifications-providers';
 import { AdminSupportContactController } from './presentation/support-contact.controller';
+import { PublicSupportContactController } from './presentation/public-support-contact.controller';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: NotificationsDependencies) => U;
 
@@ -46,13 +48,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * from here later.
  */
 @Module({
-  controllers: [AdminSupportContactController],
+  controllers: [AdminSupportContactController, PublicSupportContactController],
   providers: [
     PersistenceModule.auditWriterFor('notifications'),
     registerAuditActions('notifications', NOTIFICATIONS_AUDIT_ACTIONS),
     registerPermissions('notifications', NOTIFICATIONS_PERMISSIONS),
     ...notificationsProviders,
-    ...[SetSupportContact, ViewSupportContact].map((type) =>
+    ...[SetSupportContact, ViewSupportContact, ViewPublicSupportContact].map((type) =>
       useCaseProvider(type as UseCaseClass<unknown>),
     ),
   ],

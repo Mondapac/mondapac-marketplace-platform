@@ -171,6 +171,7 @@
   { "name": "inventory.release-reservation", "rule": "system" },
   { "name": "inventory.reserve", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "inventory.retire-sell-units", "rule": "system" },
+  { "name": "notifications.view-public-support-contact", "rule": "anonymous" },
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },

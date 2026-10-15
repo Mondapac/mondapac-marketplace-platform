@@ -15,6 +15,15 @@ export class SupportContactBody {
   version!: number;
 }
 
+export class PublicSupportContactBody {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The support email address in force; null when none is set.',
+  })
+  email!: string | null;
+}
+
 export class SetSupportContactRequest {
   @ApiProperty({ example: 'support@example.com', maxLength: 254 })
   email!: string;
