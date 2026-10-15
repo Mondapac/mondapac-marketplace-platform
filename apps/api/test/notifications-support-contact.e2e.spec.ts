@@ -45,12 +45,14 @@ describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => 
   let clock: FixedClock;
   let next: unknown;
   let calls: { name: string; input: unknown }[];
+  let actorKinds: string[];
   const http = () => request(app!.getHttpServer());
   const marketId = code as AccountState['marketId'];
   const marketOf = () => testMarketContext(code, PLATFORM_TENANT_ID);
   const stub = (name: string) => ({
-    execute: (_c: unknown, input: unknown) => {
+    execute: (context: { actor: { kind: string } }, input: unknown) => {
       calls.push({ name, input });
+      actorKinds.push(context.actor.kind);
       return Promise.resolve(next);
     },
   });
@@ -130,6 +132,7 @@ describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => 
     fakes.reset();
     clock = new FixedClock(START);
     calls = [];
+    actorKinds = [];
     next = ok({ email: 'help@example.com', version: 2 });
   });
   afterEach(async () => {
@@ -171,6 +174,28 @@ describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => 
       expect(calls).toEqual([{ name: 'public', input: {} }]);
     },
   );
+
+  it('reads no session on the public route: a valid admin session cookie changes nothing', async () => {
+    await boot();
+    next = ok({ email: 'help@example.com' });
+    const read = await http()
+      .get('/notifications/support-contact')
+      .set({
+        'x-market-id': code,
+        ...panelHeaders(code, 'admin'),
+        cookie: sessionOf('admin', 3).cookie,
+      });
+    expect(read.status).toBe(200);
+    expect(read.headers['set-cookie']).toBeUndefined();
+    expect(actorKinds).toEqual(['anonymous']);
+  });
+
+  it('refuses the public route without a Market header', async () => {
+    await boot();
+    const read = await http().get('/notifications/support-contact');
+    expect(read.status).toBe(400);
+    expect(calls).toEqual([]);
+  });
 
   it('refuses a set without CSRF, with a stray field and not as JSON', async () => {
     await boot();
