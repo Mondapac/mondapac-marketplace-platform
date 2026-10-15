@@ -278,5 +278,23 @@
       "sellers.seller.view",
       "shipping.flat-fee.view"
     ]
+  },
+  {
+    "entry": "platform:viewer@9",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.product.view",
+      "commission-payouts.settlement.view",
+      "identity.admin-account.view",
+      "identity.customer-account.view",
+      "identity.platform-role.view",
+      "identity.seller-access.view",
+      "notifications.support-contact.view",
+      "ordering.order.view",
+      "payments.connected-account.view",
+      "pricing.price-hold.view",
+      "sellers.seller.view",
+      "shipping.flat-fee.view"
+    ]
   }
 ]

@@ -18,7 +18,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/sellers',
     'payments/admin/connected-accounts',
   ]),
-  PUT: new Set([]),
+  // The Market's support email (notifications): a body of one field, set by an admin.
+  PUT: new Set(['notifications/admin/support-contact']),
   DELETE: new Set([]),
   POST: new Set([
     'identity/admin/sign-in',

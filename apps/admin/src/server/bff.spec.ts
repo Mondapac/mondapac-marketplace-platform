@@ -464,6 +464,14 @@ describe('relay allowlist for seller decisions', () => {
       vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
     );
 
+  it('relays the support email write on its exact path and method only', async () => {
+    const path = 'notifications/admin/support-contact';
+    expect((await call('PUT', path)).status).toBe(200);
+    expect((await call('POST', path)).status).toBe(404);
+    expect((await call('DELETE', path)).status).toBe(404);
+    expect((await call('PUT', `${path}/extra`)).status).toBe(404);
+  });
+
   it('relays the flat delivery fee write for a seller UUID on PUT only', async () => {
     expect((await call('PUT', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(200);
     expect((await call('PUT', 'shipping/admin/sellers/nope/flat-fee')).status).toBe(404);

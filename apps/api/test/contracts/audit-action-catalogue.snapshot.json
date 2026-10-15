@@ -375,6 +375,18 @@
     }
   },
   {
+    "action": "notifications.support-contact.changed",
+    "targetType": "notifications.support-contact",
+    "targetId": "enumOf(support-email)",
+    "actors": ["authenticated"],
+    "before": {
+      "version": "integer"
+    },
+    "after": {
+      "version": "integer"
+    }
+  },
+  {
     "action": "payments.payout-change.recorded",
     "targetType": "payments.connected-account",
     "targetId": "id",

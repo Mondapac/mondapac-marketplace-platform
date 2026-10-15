@@ -15,7 +15,8 @@
     "sellers": "Sellers",
     "price-holds": "Held prices",
     "offer-reviews": "Offer reviews",
-    "payout-accounts": "Connected accounts"
+    "payout-accounts": "Connected accounts",
+    "settings": "Settings"
   },
   "home": {
     "title": "Home",
@@ -831,6 +832,32 @@
         "invalid": "Check the values and try again.",
         "unavailable": "The decision could not be sent. Try again later.",
         "csrf": "Your session could not be checked. Reload the page and try again.",
+        "unknown": "Something went wrong. Try again."
+      }
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "no-access": "You don't have access to settings.",
+    "back-home": "Back to home",
+    "unavailable": "Settings could not be loaded. Try again later.",
+    "support": {
+      "title": "Support email",
+      "intro": "The address customers and sellers are told to write to when they need help. A change applies from now on.",
+      "not-set": "No support email is set yet.",
+      "current": "Current address",
+      "field": "Support email address",
+      "field-help": "One address, for example help@example.com.",
+      "invalid": "Enter one valid email address.",
+      "save": "Save address",
+      "saved": "Address saved.",
+      "error": {
+        "invalid": "That address was refused. Check it and try again.",
+        "conflict": "Someone else changed the address first. Reload the page and try again.",
+        "throttled": "Too many attempts. Wait a moment and try again.",
+        "csrf": "Your session needs a refresh. Reload the page and try again.",
+        "denied": "Your role cannot change the support email.",
+        "unavailable": "The support email is not available right now. Try again shortly.",
         "unknown": "Something went wrong. Try again."
       }
     }

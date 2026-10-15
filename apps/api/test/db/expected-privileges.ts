@@ -42,6 +42,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     pricing: ['USAGE'],
     sellers: ['USAGE'],
     shipping: ['USAGE'],
+    notifications: ['USAGE'],
   },
   tables: {
     // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
@@ -342,6 +343,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['amount', 'currency', 'updated_at', 'updated_by'],
     },
+    // Notifications (support contact): a change is a new version row; none is updated or deleted.
+    'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.

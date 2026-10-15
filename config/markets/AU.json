@@ -17,6 +17,9 @@
     "defaultRateBps": 1500,
     "provisionalTaxRateBps": 1000
   },
+  "notifications": {
+    "supportEmail": "jnamazi@gmail.com"
+  },
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,
     "defaultPerMinute": 300
