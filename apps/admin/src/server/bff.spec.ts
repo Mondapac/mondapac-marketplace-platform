@@ -479,6 +479,47 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('DELETE', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(404);
   });
 
+  it('relays the commission rate for a seller UUID (GET, PUT, DELETE) and the ledger (GET)', async () => {
+    const send = (method: string, path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, {
+          method,
+          headers: method === 'GET' ? { host: 'admin.localhost:3002' } : sameOrigin,
+          ...(method === 'PUT' ? { body: '{}' } : {}),
+        }),
+        path.split('/'),
+        vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
+      );
+    const rate = `commission-payouts/admin/sellers/${ID}/commission-rate`;
+    for (const method of ['GET', 'PUT', 'DELETE']) {
+      expect((await send(method, rate)).status).toBe(200);
+    }
+    expect((await send('POST', rate)).status).toBe(404);
+    expect(
+      (await send('GET', 'commission-payouts/admin/sellers/nope/commission-rate')).status,
+    ).toBe(404);
+    const ledger = `commission-payouts/admin/sellers/${ID}/ledger`;
+    expect((await send('GET', ledger)).status).toBe(200);
+    expect((await send('PUT', ledger)).status).toBe(404);
+    expect((await send('DELETE', ledger)).status).toBe(404);
+  });
+
+  it('forwards only limit and cursor of the ledger query', async () => {
+    const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    const path = `commission-payouts/admin/sellers/${ID}/ledger`;
+    await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}?limit=20&cursor=c1&x=1`, {
+        method: 'GET',
+        headers: { host: 'admin.localhost:3002' },
+      }),
+      path.split('/'),
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}?limit=20&cursor=c1`);
+  });
+
   it('relays approve, reject and the manual check for a seller UUID only', async () => {
     expect((await call('POST', `sellers/admin/${ID}/review/approve`)).status).toBe(200);
     expect((await call('POST', `sellers/admin/${ID}/review/reject`)).status).toBe(200);

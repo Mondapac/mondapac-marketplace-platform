@@ -11,6 +11,30 @@ export function formatInstant(iso: string | null): string {
   return Number.isNaN(date.getTime()) ? '-' : `${INSTANT.format(date)} UTC`;
 }
 
+const DAY_TIME = new Intl.DateTimeFormat('en-AU', {
+  day: 'numeric',
+  month: 'short',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
+const DAY_TIME_YEAR = new Intl.DateTimeFormat('en-AU', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
+
+/** A compact UTC instant for a table cell ("14 Oct, 3:30 am"); the year only when not this one. */
+export function shortInstant(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  const sameYear = date.getUTCFullYear() === new Date().getUTCFullYear();
+  return (sameYear ? DAY_TIME : DAY_TIME_YEAR).format(date);
+}
+
 /** A status or code from the API as a translation key suffix; unknown values map to `unknown`. */
 export function known(value: string, allowed: readonly string[]): string {
   return allowed.includes(value) ? value : 'unknown';

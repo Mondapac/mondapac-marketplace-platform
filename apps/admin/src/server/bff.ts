@@ -66,8 +66,15 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/review/manual-register-check',
     // The seller's flat delivery fee (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/flat-fee',
+    // The seller's own commission rate (commission-payouts), set from the seller review page.
+    'commission-payouts/admin/sellers/:id/commission-rate',
   ],
-  DELETE: ['identity/admin/roles/:id'],
+  DELETE: ['identity/admin/roles/:id', 'commission-payouts/admin/sellers/:id/commission-rate'],
+  // The seller's commission rate and ledger, read from the seller review page.
+  GET: [
+    'commission-payouts/admin/sellers/:id/commission-rate',
+    'commission-payouts/admin/sellers/:id/ledger',
+  ],
 };
 
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
@@ -75,11 +82,22 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'identity/admin/sellers': ['state', 'limit', 'after'],
   'payments/admin/connected-accounts': ['status', 'cursor'],
 };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** GET templates with a resource id whose query crosses, and the keys that may cross. */
+const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
+  'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
+};
 const QUERY_VALUE_MAX = 512;
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
 function upstreamQuery(method: string, target: string, requestUrl: string): string {
-  const keys = method === 'GET' ? QUERY_KEYS[target] : undefined;
+  // The relay allows an id segment only when it is a UUID, so the template is the path with
+  // each UUID segment named `:id`.
+  const template = target
+    .split('/')
+    .map((part) => (UUID.test(part) ? ':id' : part))
+    .join('/');
+  const keys = method === 'GET' ? (QUERY_KEYS[target] ?? QUERY_KEYS_WITH_ID[template]) : undefined;
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
   const kept = new URLSearchParams();
@@ -90,8 +108,6 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
   const text = kept.toString();
   return text === '' ? '' : `?${text}`;
 }
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isAllowed(method: string, path: readonly string[]): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
