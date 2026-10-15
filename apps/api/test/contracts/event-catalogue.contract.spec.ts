@@ -99,6 +99,10 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'inventory.retire-on-variant-removed',
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
+      'search.index-deleted-offer',
+      'search.index-moved-offer',
+      'search.index-published-offer',
+      'search.index-published-revision',
       'sellers.after-submission',
       'sellers.close-decision-approved',
       'sellers.close-decision-rejected',
@@ -123,6 +127,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('catalog.offer-deleted.v1')).toEqual([
       'inventory.retire-on-offer-deleted',
       'pricing.retire-series-for-removed-offer',
+      'search.index-deleted-offer',
     ]);
     expect(subscriptions.subscribersOf('catalog.variant-removed.v1')).toEqual([
       'inventory.retire-on-variant-removed',
@@ -131,6 +136,14 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     // ... and re-keys the stock of an Offer that moved to a PLATFORM product (design 3.6).
     expect(subscriptions.subscribersOf('catalog.offer-moved.v1')).toEqual([
       'inventory.rekey-on-offer-moved',
+      'search.index-moved-offer',
+    ]);
+    // ... and search follows publication and revisions to keep its read model fresh.
+    expect(subscriptions.subscribersOf('catalog.offer-published.v1')).toEqual([
+      'search.index-published-offer',
+    ]);
+    expect(subscriptions.subscribersOf('catalog.product-revision-published.v1')).toEqual([
+      'search.index-published-revision',
     ]);
     expect(subscriptions.subscribersOf('identity.invitation-issued.v1')).toEqual([
       'identity.invitation-mail',

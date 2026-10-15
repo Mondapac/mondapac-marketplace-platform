@@ -39,6 +39,13 @@ const entry: RawReadEntry<{ id: string; code: string }> = {
   },
 };
 
+// Sample values for text parameters that PostgreSQL parses (a configuration name, a number).
+const SAMPLE_TEXT: Readonly<Record<string, string>> = {
+  textSearchConfig: 'simple',
+  limit: '1',
+  offset: '0',
+};
+
 const uuid7 = (): string => uuidV7(Date.now(), crypto.getRandomValues(new Uint8Array(10)));
 const CODE = `rawread-${randomUUID().slice(0, 8)}`;
 
@@ -157,7 +164,7 @@ describe('BEGIN READ ONLY as the application role (Hassan C1)', () => {
               ? ['x']
               : p.type === 'uuid'
                 ? randomUUID()
-                : 'x',
+                : (SAMPLE_TEXT[p.name] ?? 'x'),
         );
         await expect(
           runReadOnly(app, statement.sql, [marketOf(code).marketId, ...values]),

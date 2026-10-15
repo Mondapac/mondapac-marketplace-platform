@@ -231,3 +231,11 @@ most 254 characters). It is only the default: a platform admin can change the ad
 the admin panel's Settings page (`notifications.support-contact.manage`), and the stored value then
 wins. Every change is a new row in `notifications.support_contacts` (who, when, the address before)
 and an audit row. A Market without the section shows no address until an admin sets one.
+
+## `search` section (optional)
+
+Owned by `search`. One key: `textSearchConfig`, the built-in PostgreSQL text search configuration
+that the product index is built and queried with (`english`, `french`, `simple`, ...; a closed
+list in the schema). AU uses `english`. Without the section a Market uses `simple`, which folds
+case and splits words for any language. After changing it, run the `search.rebuild-index` job
+(it runs at worker start) so existing documents are rebuilt with the new configuration.

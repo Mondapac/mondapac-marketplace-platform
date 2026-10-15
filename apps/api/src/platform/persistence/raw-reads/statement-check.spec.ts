@@ -390,3 +390,54 @@ describe('raw read statement check', () => {
     });
   });
 });
+
+describe('raw read statement check: full-text search (ADR-0030 amendment, search module)', () => {
+  const searchOwner: StatementOwner = {
+    schema: 'search',
+    tables: new Set(['offer_documents']),
+  };
+  const checkSearch = (sql: string, params: readonly unknown[]): Promise<string[]> =>
+    checkStatement(parseSql, { id: 'search.test', sql, params }, searchOwner);
+
+  const SEARCH = `SELECT d.offer_id, ts_rank(d.search_vector, websearch_to_tsquery($2::text::regconfig, $3::text)) AS rank
+    FROM "search"."offer_documents" d
+   WHERE d.market_id = $1
+     AND d.search_vector @@ websearch_to_tsquery($2::text::regconfig, $3::text)
+     AND d.category_ids @> $4::uuid[]
+   ORDER BY rank DESC, d.offer_id ASC
+   LIMIT $5::text::int4 OFFSET $6::text::int4`;
+
+  it('passes the ranked text query and the array containment', async () => {
+    expect(await checkSearch(SEARCH, [{}, {}, {}, {}, {}])).toEqual([]);
+  });
+
+  it('refuses a text-search function over a literal, an unlisted function and other operators', async () => {
+    const base = (where: string): string =>
+      `SELECT d.offer_id FROM "search"."offer_documents" d WHERE d.market_id = $1 AND ${where}`;
+    expect(
+      await checkSearch(base(`d.search_vector @@ websearch_to_tsquery('english', 'tea')`), []),
+    ).toEqual(['text-search-argument-not-column-or-param']);
+    expect(
+      await checkSearch(base(`d.search_vector @@ to_tsquery($2::text::regconfig, $3::text)`), [
+        {},
+        {},
+      ]),
+    ).toEqual(['function-not-allowed:to_tsquery']);
+    expect(await checkSearch(base(`d.name || $2::text = $3::text`), [{}, {}])).toEqual([
+      'operator-not-allowed:||',
+    ]);
+    expect(await checkSearch(base(`$2::regclass IS NOT NULL`), [{}])).toEqual([
+      'cast-not-allowed:regclass',
+    ]);
+  });
+
+  it('keeps the Market rule: a text query without market_id = $1 is refused', async () => {
+    expect(
+      await checkSearch(
+        `SELECT d.offer_id FROM "search"."offer_documents" d
+          WHERE d.search_vector @@ websearch_to_tsquery($2::text::regconfig, $3::text)`,
+        [{}, {}],
+      ),
+    ).toEqual(['market-parameter-missing', 'market-rule:d']);
+  });
+});

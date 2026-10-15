@@ -29,7 +29,16 @@ export interface StatementOwner {
 type Node = Record<string, unknown>;
 
 /** The only functions a statement may call (ADR-0030 decision 3). */
-const ALLOWED_FUNCTIONS: readonly (readonly string[])[] = [['unnest'], ['pg_catalog', 'unnest']];
+const ALLOWED_FUNCTIONS: readonly (readonly string[])[] = [
+  ['unnest'],
+  ['pg_catalog', 'unnest'],
+  // Full-text search (ADR-0030 amendment, `search` module): pure, read-only and deterministic.
+  ['websearch_to_tsquery'],
+  ['ts_rank'],
+];
+
+/** The text-search functions: their arguments may be columns, bound parameters or casts of them. */
+const TEXT_SEARCH_FUNCTIONS: ReadonlySet<string> = new Set(['websearch_to_tsquery', 'ts_rank']);
 
 /** The comparison operators a statement may use; a qualified or other operator is refused. */
 const ALLOWED_OPERATORS: ReadonlySet<string> = new Set([
@@ -44,6 +53,9 @@ const ALLOWED_OPERATORS: ReadonlySet<string> = new Set([
   '~~*',
   '!~~',
   '!~~*',
+  // Text search match and array containment (ADR-0030 amendment, `search` module).
+  '@@',
+  '@>',
 ]);
 
 /** The types a cast may name (`pg_catalog` or unqualified); anything else is refused. */
@@ -57,6 +69,8 @@ const ALLOWED_CAST_TYPES: ReadonlySet<string> = new Set([
   'date',
   'varchar',
   'numeric',
+  // A text search configuration named by a bound parameter (`search` module).
+  'regconfig',
 ]);
 
 /** Node kinds that are refused wherever they appear (decision 4 and the function rule). */
@@ -217,14 +231,33 @@ function checkFunction(call: Node, walk: Walk): void {
     walk.violations.add(`function-not-allowed:${name === null ? '?' : name.join('.')}`);
     return;
   }
-  // `unnest` only over bound parameters (optionally cast).
   const args = Array.isArray(call.args) ? call.args : [];
-  for (const arg of args) {
-    let inner: unknown = arg;
-    const cast = only(inner);
-    if (cast !== null && cast[0] === 'TypeCast' && isNode(cast[1])) inner = cast[1].arg;
-    const param = only(inner);
-    if (param === null || param[0] !== 'ParamRef') walk.violations.add('unnest-argument-not-param');
+  if (name !== null && TEXT_SEARCH_FUNCTIONS.has(name[name.length - 1]!)) {
+    // Text search: a column, a bound parameter, a cast of either, or another allowed call
+    // (checked on its own by the walk). Never a literal.
+    for (const arg of args) {
+      let inner: unknown = arg;
+      for (;;) {
+        const cast = only(inner);
+        if (cast === null || cast[0] !== 'TypeCast' || !isNode(cast[1])) break;
+        inner = cast[1].arg;
+      }
+      const kind = only(inner)?.[0];
+      if (kind !== 'ParamRef' && kind !== 'ColumnRef' && kind !== 'FuncCall') {
+        walk.violations.add('text-search-argument-not-column-or-param');
+      }
+    }
+  } else {
+    // `unnest` only over bound parameters (optionally cast).
+    for (const arg of args) {
+      let inner: unknown = arg;
+      const cast = only(inner);
+      if (cast !== null && cast[0] === 'TypeCast' && isNode(cast[1])) inner = cast[1].arg;
+      const param = only(inner);
+      if (param === null || param[0] !== 'ParamRef') {
+        walk.violations.add('unnest-argument-not-param');
+      }
+    }
   }
   if (
     call.agg_star === true ||

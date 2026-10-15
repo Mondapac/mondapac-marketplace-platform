@@ -63,6 +63,18 @@ export interface TypeAndPolicyRow {
   readonly defaultBasis: string | null;
 }
 
+/** One row of `search.offer-search` and `search.offer-browse` (a storefront result). */
+export interface OfferSearchRow {
+  readonly offerId: string;
+  readonly productId: string;
+  readonly sellerId: string;
+  readonly name: string;
+  readonly shortText: string | null;
+  readonly categoryIds: readonly string[];
+  /** `ts_rank` of a text query; 0 for a browse. */
+  readonly rank: number;
+}
+
 /** The statements, by id, with the parameters and the rows each one has. Added per entry. */
 export interface RawReadStatements {
   readonly 'certification.seller-basis': {
@@ -75,6 +87,24 @@ export interface RawReadStatements {
   readonly 'certification.type-and-policy': {
     readonly params: { readonly typeCodes: readonly string[] };
     readonly row: TypeAndPolicyRow;
+  };
+  readonly 'search.offer-search': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly categoryIds: readonly string[];
+      readonly limit: string;
+      readonly offset: string;
+    };
+    readonly row: OfferSearchRow;
+  };
+  readonly 'search.offer-browse': {
+    readonly params: {
+      readonly categoryIds: readonly string[];
+      readonly limit: string;
+      readonly offset: string;
+    };
+    readonly row: OfferSearchRow;
   };
 }
 
@@ -110,6 +140,27 @@ const position = (value: unknown): number => {
   return value;
 };
 
+const number = (value: unknown): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('row');
+  return value;
+};
+const textList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) throw new Error('row');
+  return value.map(text);
+};
+const parseOfferSearchRow = (raw: unknown): OfferSearchRow => {
+  const row = asRecord(raw);
+  return {
+    offerId: text(row['offer_id']),
+    productId: text(row['product_id']),
+    sellerId: text(row['seller_id']),
+    name: text(row['name']),
+    shortText: textOrNull(row['short_text']),
+    categoryIds: textList(row['category_ids']),
+    rank: number(row['rank']),
+  };
+};
+
 const SELLER_BASIS_SQL = `SELECT q.ord::int4 AS ord, t.id AS type_id, c.id AS certification_id, c.status,
        s.id AS submission_id, s.issuer_id, s.expiry_date::text AS expiry_date, s.type_revision_id,
        d.outcome AS decision_outcome, d.approved_zone, (d.expiry_boundary_at IS NOT NULL) AS has_expiry_boundary,
@@ -130,6 +181,27 @@ const TYPE_AND_POLICY_SQL = `SELECT t.id AS type_id, t.code, tr.id AS type_revis
   LEFT JOIN "certification"."certification_type_revisions" tr
     ON tr.market_id = $1 AND tr.id = t.published_revision_id AND tr.type_id = t.id
  WHERE t.market_id = $1 AND t.code = ANY ($2::text[])`;
+
+// `$2` is a Market `textSearchConfig` (a closed list in the Market schema), `$3` the visitor's
+// text (bound, never part of the SQL), `$4` zero or one category, `$5` and `$6` the page. Limit and
+// offset travel as text because the parameter types are uuid and text (cast to int4 here).
+const OFFER_SEARCH_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, d.short_text,
+       d.category_ids::text[] AS category_ids,
+       ts_rank(d.search_vector, websearch_to_tsquery($2::text::regconfig, $3::text)) AS rank
+  FROM "search"."offer_documents" d
+ WHERE d.market_id = $1
+   AND d.search_vector @@ websearch_to_tsquery($2::text::regconfig, $3::text)
+   AND d.category_ids @> $4::uuid[]
+ ORDER BY rank DESC, d.offer_id ASC
+ LIMIT $5::text::int4 OFFSET $6::text::int4`;
+
+const OFFER_BROWSE_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, d.short_text,
+       d.category_ids::text[] AS category_ids, 0::int4 AS rank
+  FROM "search"."offer_documents" d
+ WHERE d.market_id = $1
+   AND d.category_ids @> $2::uuid[]
+ ORDER BY d.name ASC, d.offer_id ASC
+ LIMIT $3::text::int4 OFFSET $4::text::int4`;
 
 /**
  * The list. `certification` holds the slice-1 forms of S1 and S2 (data design 7.3); S3 and the
@@ -183,5 +255,34 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
         defaultBasis: textOrNull(row['default_basis']),
       };
     },
+  },
+  {
+    id: 'search.offer-search',
+    owner: 'search',
+    reason:
+      'full-text search with websearch_to_tsquery, @@ and ts_rank on the offer_documents GIN index; Prisma has no ranked text search',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_SEARCH_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'categoryIds', type: 'uuid[]', maxLength: 1 },
+      { name: 'limit', type: 'text' },
+      { name: 'offset', type: 'text' },
+    ],
+    parseRow: parseOfferSearchRow,
+  },
+  {
+    id: 'search.offer-browse',
+    owner: 'search',
+    reason: 'browse by category over the category GIN index (@>); Prisma has no array containment',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_BROWSE_SQL,
+    params: [
+      { name: 'categoryIds', type: 'uuid[]', maxLength: 1 },
+      { name: 'limit', type: 'text' },
+      { name: 'offset', type: 'text' },
+    ],
+    parseRow: parseOfferSearchRow,
   },
 ];

@@ -26,6 +26,32 @@ const marketCode = z.string().transform((value, context) => {
   return z.NEVER;
 });
 
+/** The built-in PostgreSQL text search configurations a Market may choose (`search` section). */
+export const TEXT_SEARCH_CONFIGS = [
+  'simple',
+  'arabic',
+  'danish',
+  'dutch',
+  'english',
+  'finnish',
+  'french',
+  'german',
+  'hungarian',
+  'indonesian',
+  'irish',
+  'italian',
+  'lithuanian',
+  'nepali',
+  'norwegian',
+  'portuguese',
+  'romanian',
+  'russian',
+  'spanish',
+  'swedish',
+  'tamil',
+  'turkish',
+] as const;
+
 /** A per-minute limit of the generic per-origin rate limiter (identity design 6.8). */
 const perMinute = z.number().int().min(1).max(100_000);
 
@@ -1173,6 +1199,13 @@ const marketSchema = z
      * this is only the default shown until the first change. Without it nothing is shown.
      */
     notifications: z.strictObject({ supportEmail: z.email().max(254) }).optional(),
+    /**
+     * Search settings, owned by `search`. `textSearchConfig`: the PostgreSQL text search
+     * configuration the product index is built and queried with (a built-in one, so the value
+     * is a closed list, never free text). `simple` splits words and folds case for any language.
+     * Without this section the Market uses `simple`.
+     */
+    search: z.strictObject({ textSearchConfig: z.enum(TEXT_SEARCH_CONFIGS) }).optional(),
     allowedOrigins: allowedOriginsSchema,
     identity: identitySchema,
     /** Owned by `sellers`; optional until a Market is configured for sellers. */

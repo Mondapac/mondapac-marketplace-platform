@@ -20,6 +20,9 @@
   "notifications": {
     "supportEmail": "jnamazi@gmail.com"
   },
+  "search": {
+    "textSearchConfig": "english"
+  },
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,
     "defaultPerMinute": 300
