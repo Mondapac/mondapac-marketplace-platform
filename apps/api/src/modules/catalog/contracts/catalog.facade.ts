@@ -67,6 +67,22 @@ export interface CatalogFacade {
   ): Promise<
     Result<OfferSellUnitsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
   >;
+
+  /**
+   * The published product name of each requested Offer's product, in `locale` (any locale the
+   * product has when that one is missing), at most 200 ids. Rule `system`: for the order emails.
+   * An absent key has no published name. The name is seller-entered text: escape it.
+   */
+  offerNames(
+    context: CallContext,
+    offerIds: readonly Id<'Offer'>[],
+    locale: string,
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Offer'>, string>,
+      AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
+    >
+  >;
 }
 
 /** Nest token of the {@link CatalogFacade}, provided and exported by `CatalogModule`. */

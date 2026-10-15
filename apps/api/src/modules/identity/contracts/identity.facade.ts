@@ -37,6 +37,11 @@ export type SellerMembershipSummary = {
   readonly roleId: Id<'Role'> | null;
 } | null;
 
+/** Whose address {@link IdentityFacade.contactEmailOf} reads. */
+export type ContactEmailTarget =
+  | { readonly kind: 'customer'; readonly accountId: Id<'Account'> }
+  | { readonly kind: 'seller-owner'; readonly sellerId: Id<'Seller'> };
+
 /**
  * The public facade of `identity` (identity design 8.1). Every method takes the caller's
  * `CallContext` first, unchanged, and is a thin call of one use case, so the gate runs (PF 6.4
@@ -68,6 +73,17 @@ export interface IdentityFacade {
     context: CallContext,
     code: string,
   ): Promise<Result<void, ConfirmSecondFactorFailure>>;
+
+  /**
+   * The address to mail a notice to, for the `system` caller only (the order emails): a customer
+   * account's own, or a seller Owner's. `null` when there is none to use: unknown, of another
+   * Market or population, disabled or not verified, all alike. Personal data: the caller uses it
+   * for one send and never logs, stores or puts it in an event.
+   */
+  contactEmailOf(
+    context: CallContext,
+    target: ContactEmailTarget,
+  ): Promise<Result<string | null, AccessDenied>>;
 }
 
 /** Nest token of the {@link IdentityFacade}, provided and exported by `IdentityModule`. */

@@ -1172,7 +1172,17 @@ const marketSchema = z
      * address as first seeded; an admin may change it at run time (the stored value wins), so
      * this is only the default shown until the first change. Without it nothing is shown.
      */
-    notifications: z.strictObject({ supportEmail: z.email().max(254) }).optional(),
+    notifications: z
+      .strictObject({
+        supportEmail: z.email().max(254).optional(),
+        /**
+         * The storefront page the order confirmation mail links to: the order id is appended as
+         * one path segment (`<page>/<order id>`). The page needs sign-in; no personal data is in
+         * the URL. Without it the Market sends no customer order mail.
+         */
+        customerOrderPage: pageUrl.optional(),
+      })
+      .optional(),
     allowedOrigins: allowedOriginsSchema,
     identity: identitySchema,
     /** Owned by `sellers`; optional until a Market is configured for sellers. */

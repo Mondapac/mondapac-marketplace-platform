@@ -110,3 +110,34 @@ model OrderingOrderLine {
   @@map("order_lines")
   @@schema("ordering")
 }
+
+/// Events of the ordering module (ADR-0006 decisions 1 and 2). Written only by the platform
+/// OutboxWriter in the unit of the state change, read and marked only by the relay. Every outbox of
+/// every module has exactly these fields. Payloads hold ids only: no email, name, address or amount.
+model OrderingOutbox {
+  /// UUIDv7 stamped by the outbox writer.
+  eventId          String    @id @map("event_id") @db.Uuid
+  /// "ordering.<subject>-<verb>.v<N>"; the CHECK refuses another module's type.
+  type             String
+  /// The instant the use case took from Clock (UTC).
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  /// Market of the unit that wrote the event (ADR-0003); stamped by the writer.
+  marketId         String    @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); stamped by the writer, no database default.
+  tenantId         String    @map("tenant_id")
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  /// The aggregate's version after the change; unique per aggregate (P 10).
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  /// The consumed event that caused this one, or null.
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// Set by the relay when the event was handed to the bus; the only column that changes.
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6)
+
+  /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
+  @@unique([marketId, aggregateId, aggregateVersion])
+  @@map("outbox")
+  @@schema("ordering")
+}

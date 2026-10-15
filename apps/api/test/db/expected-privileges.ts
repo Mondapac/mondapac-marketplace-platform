@@ -343,6 +343,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['amount', 'currency', 'updated_at', 'updated_by'],
     },
+    // Phase 6 package 1: the order emails. Ordering writes `ordering.order-paid.v1` (the relay marks
+    // it published); notifications records each event it handled, once per handler.
+    'notifications.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'ordering.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Notifications (support contact): a change is a new version row; none is updated or deleted.
     'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },

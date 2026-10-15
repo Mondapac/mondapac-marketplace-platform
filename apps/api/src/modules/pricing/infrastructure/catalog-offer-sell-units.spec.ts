@@ -28,6 +28,7 @@ describe.each(['AU', 'ZZ'])('CatalogOfferSellUnits in market %s', (code) => {
         calls.push({ context: ctx, ids: offerIds });
         return Promise.resolve(answer);
       },
+      offerNames: () => Promise.resolve(ok(new Map())),
     };
     return { calls, source: new CatalogOfferSellUnits(catalog) };
   }

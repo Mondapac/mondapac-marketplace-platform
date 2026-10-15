@@ -36,6 +36,8 @@ import { OwnOfferEdit } from './application/use-cases/own-offer-edit.use-case';
 import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handling.use-case';
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
+import { OFFER_NAMES_READER } from './application/ports/offer-names.reader';
+import { OfferNamesSystemQuery } from './application/use-cases/offer-names-system.use-case';
 import { OFFER_SELL_UNITS_READER } from './application/ports/offer-sell-units.reader';
 import { SellersModule } from '../sellers';
 import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
@@ -123,6 +125,7 @@ const PORT = {
   freeze: FreezeRevision,
   submit: SubmitProduct,
   reader: OFFER_SELL_UNITS_READER,
+  namesReader: OFFER_NAMES_READER,
   offers: OFFER_REPOSITORY,
   eligibility: SELLER_ELIGIBILITY_READER,
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
@@ -449,13 +452,16 @@ const productTypeProvider: FactoryProvider<string> = {
     ),
     useCaseProvider(OfferSellUnitsQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferSellUnitsSystemQuery, { unitOfWork: true, reader: true }),
+    useCaseProvider(OfferNamesSystemQuery, { unitOfWork: true, namesReader: true }),
     {
       provide: CATALOG_FACADE,
-      inject: [OfferSellUnitsQuery, OfferSellUnitsSystemQuery],
+      inject: [OfferSellUnitsQuery, OfferSellUnitsSystemQuery, OfferNamesSystemQuery],
       useFactory: (
         offerSellUnits: OfferSellUnitsQuery,
         offerSellUnitsSystem: OfferSellUnitsSystemQuery,
-      ) => new CatalogFacadeImplementation({ offerSellUnits, offerSellUnitsSystem }),
+        offerNamesSystem: OfferNamesSystemQuery,
+      ) =>
+        new CatalogFacadeImplementation({ offerSellUnits, offerSellUnitsSystem, offerNamesSystem }),
     },
   ],
   exports: [CATALOG_FACADE],

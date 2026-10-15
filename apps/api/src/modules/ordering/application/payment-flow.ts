@@ -1,7 +1,9 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, PendingEvent, Result } from '@mondapac/shared-kernel';
 import { cancelOrder, confirmOrder, type OrderState, type PaymentState } from '../domain/order';
 import type { AuthorisedPayment, PaymentFailure } from '../contracts';
+import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
+import { OrderPaid } from '../domain/events';
 import type { OrderingDependencies } from './checkout-flow';
 
 // The internal path package 2 (the Stripe webhook receiver) calls, as the system actor, after it
@@ -30,6 +32,8 @@ async function update(
   context: CallContext,
   orderId: Id<'Order'>,
   change: (order: OrderState) => OrderState | null,
+  /** Events to write to the outbox, in the same unit, once the change is saved. */
+  events?: (saved: OrderState) => readonly PendingEvent[],
 ): Promise<Result<OrderState | null, PaymentFailure>> {
   return deps.unitOfWork.run<OrderState | null, PaymentFailure>(context.market, async () => {
     const order = await deps.orders.findById(context.market, orderId);
@@ -37,7 +41,18 @@ async function update(
     const next = change(order);
     if (next === null) return ok(null);
     const saved = await deps.orders.save(context.market, next);
-    return saved === 'saved' ? ok({ ...next, version: next.version + 1 }) : RETRY;
+    if (saved !== 'saved') return RETRY;
+    const written = { ...next, version: next.version + 1 };
+    if (events !== undefined) {
+      try {
+        await deps.outbox.append(context, events(written));
+      } catch (error) {
+        // A refused event rolls the confirmation back; the caller counts a retry, not a throw.
+        if (error instanceof OutboxWriteRefusedError) return RETRY;
+        throw error;
+      }
+    }
+    return ok(written);
   });
 }
 
@@ -164,7 +179,26 @@ export async function confirmPayment(
     return settled.ok ? ok('voided') : settled;
   }
 
-  const confirmed = await update(deps, context, orderId, (o) => confirmOrder(o, deps.clock.now()));
+  const confirmed = await update(
+    deps,
+    context,
+    orderId,
+    (o) => confirmOrder(o, deps.clock.now()),
+    // Written with the confirmation, so a paid order always has its event (and only once: a
+    // repeat finds the order confirmed and changes nothing).
+    (paid) => [
+      OrderPaid.record({
+        aggregateId: paid.id,
+        aggregateVersion: paid.version,
+        occurredAt: deps.clock.now(),
+        payload: {
+          orderId: paid.id,
+          sellerOrderIds: paid.sellerOrders.map((sellerOrder) => sellerOrder.id),
+          sellerIds: paid.sellerOrders.map((sellerOrder) => sellerOrder.sellerId),
+        },
+      }),
+    ],
+  );
   if (!confirmed.ok) {
     // The money is taken and the stock is ordered; the retry finds the order pending and
     // repeats the (idempotent) commit and capture before it confirms.

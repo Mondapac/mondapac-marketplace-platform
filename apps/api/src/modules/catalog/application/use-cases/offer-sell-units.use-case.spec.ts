@@ -53,6 +53,7 @@ describe.each(TEST_MARKETS)('offerSellUnits in market %s', (code) => {
   const facade = new CatalogFacadeImplementation({
     offerSellUnits: new OfferSellUnitsQuery(gate, { unitOfWork, reader }),
     offerSellUnitsSystem: new OfferSellUnitsSystemQuery(gate, { unitOfWork, reader }),
+    offerNamesSystem: undefined as never,
   });
   beforeEach(() => {
     units.length = 0;
