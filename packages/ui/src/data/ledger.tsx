@@ -65,20 +65,23 @@ export function LedgerTable({
 }) {
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line">
-      <table className="w-full min-w-120 text-start text-sm">
+      <table className="w-full text-start sm:min-w-120 text-sm">
         <caption className="sr-only">{labels.caption}</caption>
         <thead className="bg-muted text-fg-muted">
           <tr>
-            <th scope="col" className="whitespace-nowrap px-3 py-3 font-medium">
+            <th scope="col" className="whitespace-nowrap px-2 py-3 sm:px-3 font-medium">
               {labels.when}
             </th>
-            <th scope="col" className="whitespace-nowrap px-3 py-3 font-medium">
+            <th
+              scope="col"
+              className="hidden whitespace-nowrap px-2 py-3 sm:px-3 font-medium sm:table-cell"
+            >
               {labels.order}
             </th>
-            <th scope="col" className="whitespace-nowrap px-3 py-3 font-medium">
+            <th scope="col" className="whitespace-nowrap px-2 py-3 sm:px-3 font-medium">
               {labels.kind}
             </th>
-            <th scope="col" className="whitespace-nowrap px-3 py-3 text-end font-medium">
+            <th scope="col" className="whitespace-nowrap px-2 py-3 sm:px-3 text-end font-medium">
               {labels.amount}
             </th>
           </tr>
@@ -86,19 +89,25 @@ export function LedgerTable({
         <tbody className="divide-y divide-line-row">
           {rows.map((row) => (
             <tr key={row.id}>
-              <td className="whitespace-nowrap px-3 py-3">
+              <td className="px-2 py-3 sm:whitespace-nowrap sm:px-3">
                 <time dateTime={row.dateTime}>{row.when}</time>
+                {/* The Order column is hidden on phones; its reference moves under the date. */}
+                <span className="block text-xs text-fg-muted sm:hidden" title={row.orderTitle}>
+                  {row.order}
+                </span>
               </td>
               <td
-                className="whitespace-nowrap px-3 py-3 font-medium text-fg"
+                className="hidden whitespace-nowrap px-2 py-3 sm:px-3 font-medium text-fg sm:table-cell"
                 title={row.orderTitle}
               >
                 {row.order}
               </td>
-              <td className="whitespace-nowrap px-3 py-3">
+              <td className="whitespace-nowrap px-2 py-3 sm:px-3">
                 <Badge tone={row.kindTone}>{row.kind}</Badge>
               </td>
-              <td className="whitespace-nowrap px-3 py-3 text-end tabular-nums">{row.amount}</td>
+              <td className="whitespace-nowrap px-2 py-3 sm:px-3 text-end tabular-nums">
+                {row.amount}
+              </td>
             </tr>
           ))}
         </tbody>

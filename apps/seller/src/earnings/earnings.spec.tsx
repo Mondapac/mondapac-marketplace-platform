@@ -75,6 +75,18 @@ describe('Earnings', () => {
     expect(table.parentElement?.className).toContain('overflow-x-auto');
   });
 
+  it('hides the Order column on phones and repeats the reference under the date', () => {
+    mount(ledger([entry(1)]));
+    const header = screen.getByRole('columnheader', { name: 'Order' });
+    expect(header.className).toContain('hidden');
+    expect(header.className).toContain('sm:table-cell');
+    const cell = screen.getAllByText('0000B001').find((node) => node.tagName === 'TD');
+    expect(cell?.className).toContain('hidden');
+    expect(cell?.className).toContain('sm:table-cell');
+    const small = screen.getAllByText('0000B001').find((node) => node.tagName === 'SPAN');
+    expect(small?.className).toContain('sm:hidden');
+  });
+
   it('shows an empty state and no table without rows', () => {
     mount(ledger([]));
     expect(screen.getByText(/No earnings yet/)).toBeTruthy();
