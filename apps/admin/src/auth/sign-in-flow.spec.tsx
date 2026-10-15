@@ -187,7 +187,10 @@ describe('admin sign-in', () => {
       });
       render(wrap(<SignInFlow notice={null} />));
       signIn();
-      await screen.findByText('Enter your 6-digit code');
+      const heading = await screen.findByText('Enter your 6-digit code');
+      // The new step's heading takes focus in an effect; wait for it so a later focus move is
+      // not overtaken by that effect.
+      await waitFor(() => expect(document.activeElement).toBe(heading));
     }
     const box = (position: number) =>
       screen.getByLabelText<HTMLInputElement>(`Digit ${position} of 6`);
