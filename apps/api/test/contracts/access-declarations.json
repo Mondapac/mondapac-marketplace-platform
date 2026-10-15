@@ -12,6 +12,7 @@
   { "name": "cart.view-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "catalog.offer-names-system", "rule": "system" },
+  { "name": "catalog.offer-search-facts", "rule": "system" },
   { "name": "catalog.offer-sell-units", "rule": "anonymous" },
   { "name": "catalog.offer-sell-units-system", "rule": "system" },
   {
@@ -49,6 +50,7 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "catalog.published-offer-ids", "rule": "system" },
   { "name": "catalog.seed-attributes", "rule": "system" },
   { "name": "catalog.seed-category-tree", "rule": "system" },
   { "name": "certification.certification-types", "rule": "anonymous" },
@@ -199,6 +201,9 @@
   { "name": "pricing.purge-write-refusal-throttles", "rule": "system" },
   { "name": "pricing.retire-series-for-removed-offer", "rule": "system" },
   { "name": "pricing.retire-series-for-removed-variant", "rule": "system" },
+  { "name": "search.rebuild-offer-index", "rule": "system" },
+  { "name": "search.search-products", "rule": "anonymous" },
+  { "name": "search.sync-offer-documents", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
   { "name": "sellers.allowed-product-types", "rule": "anonymous" },
   { "name": "sellers.allowed-product-types-system", "rule": "system" },

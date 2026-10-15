@@ -1,12 +1,14 @@
 // Public contracts of the catalog module (ADR-0008): event types and the facade interface.
 // Other modules may import only what this file exports, through ../index.ts.
 export * from './catalog.facade';
+export * from './catalog-index.facade';
 export {
   OfferCreated,
   OfferChangesRequested,
   OfferDeleted,
   OfferMoved,
   OfferPublished,
+  ProductRevisionPublished,
   VariantAdded,
   VariantRemoved,
 } from '../domain/events';
