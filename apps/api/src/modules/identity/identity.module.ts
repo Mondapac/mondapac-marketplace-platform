@@ -137,6 +137,7 @@ import { ConfirmSellerEmail } from './application/use-cases/confirm-seller-email
 import { DescribeActor } from './application/use-cases/describe-actor.use-case';
 import { DescribeSellerStatus } from './application/use-cases/describe-seller-status.use-case';
 import { ListRegisteredSellers } from './application/use-cases/list-registered-sellers.use-case';
+import { ContactEmailOf } from './application/use-cases/contact-email-of.use-case';
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
 import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
@@ -744,6 +745,12 @@ function useCaseProvider<D, U>(
       decisions: true,
       grants: true,
       policy: true,
+    }),
+    useCaseProvider(ContactEmailOf, {
+      unitOfWork: true,
+      accounts: true,
+      memberships: true,
+      grants: true,
     }),
     useCaseProvider(MembershipOf, { unitOfWork: true, memberships: true, assignments: true }),
     useCaseProvider(TeamMembershipOf, { unitOfWork: true, memberships: true, assignments: true }),
@@ -1430,18 +1437,26 @@ function useCaseProvider<D, U>(
     }),
     {
       provide: IDENTITY_FACADE,
-      inject: [DescribeActor, MembershipOf, TeamMembershipOf, ConfirmSellerSecondFactor],
+      inject: [
+        DescribeActor,
+        MembershipOf,
+        TeamMembershipOf,
+        ConfirmSellerSecondFactor,
+        ContactEmailOf,
+      ],
       useFactory: (
         describeActor: DescribeActor,
         membershipOf: MembershipOf,
         teamMembershipOf: TeamMembershipOf,
         confirmSellerSecondFactor: ConfirmSellerSecondFactor,
+        contactEmailOf: ContactEmailOf,
       ) =>
         new IdentityFacadeImplementation({
           describeActor,
           membershipOf,
           teamMembershipOf,
           confirmSellerSecondFactor,
+          contactEmailOf,
         }),
     },
     {

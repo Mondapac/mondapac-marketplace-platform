@@ -153,6 +153,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         membershipOf: undefined as never,
         teamMembershipOf: undefined as never,
         confirmSellerSecondFactor: undefined as never,
+        contactEmailOf: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {

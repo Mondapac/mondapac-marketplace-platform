@@ -77,7 +77,7 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   required when present; 20 and 50 for AU: the custom roles a seller, and the Market's platform
   scope, may hold; a Market without it answers `access.unavailable` to creating a role). Slice 12 adds two optional keys for the Seller Owner's confirmation of a second-factor reset an admin started: `links.lifetimeMinutes.confirm-second-factor-reset` (1 to 1440; 1440 for AU, identity design 3.7, HF15) and the `confirm-second-factor-reset` page in `links.targets.seller`; a Market without either answers `access.unavailable` to starting such a reset. Slice 11 adds the optional `sellerMemberLimit` (integer 2 to 500; 25 for AU: the active members and pending Staff invitations of one seller together; a Market without it answers `access.unavailable` to inviting Staff). Later identity slices add their values here.
 - `allowedOrigins`: one list per route population, `{ "admin": [...], "seller": [...],
-  "customer": [...] }`, all three keys required (identity design 6.4, HF14; ADR-0034 decision
+"customer": [...] }`, all three keys required (identity design 6.4, HF14; ADR-0034 decision
   3). Each list holds at most 20 exact browser origins (`scheme://host[:port]`, no path, none
   twice) that may send a request with an unsafe method to that population's routes; an admin
   route checks only `admin`, a seller route only `seller`, a customer route only `customer`. A
@@ -132,7 +132,7 @@ but cannot take seller addresses. It starts with what slices 1 and 2 need; later
   32 characters, and `sellers` refuses a scheme without an adapter at start-up. `required` says
   whether a seller must give an identifier before submitting (true for AU, SEL/Q3); `labelKey` is
   the translation key of the label ("ABN" for AU). A value valid in one scheme is not accepted for
-  another (enforced by `sellers`, not by this schema). 
+  another (enforced by `sellers`, not by this schema).
 - `registerLookup` (required; sellers slice 4a): the business register the Market checks a seller
   against. `adapter` is the lower-case code of a file in `sellers/infrastructure/register-lookups/`
   (`none` for a Market with no register, which is the launch state of AU until the vendor review
@@ -226,7 +226,10 @@ policy is the Market's `defaultCurrency`.
 
 ## `notifications` section (optional)
 
-Owned by `notifications`. One key: `supportEmail`, the Market's support address (an email address, at
+Owned by `notifications`. Two optional keys. `customerOrderPage`: the storefront page the order
+confirmation mail links to (an absolute https URL without a fragment; http only for a loopback host);
+the order id is appended as one path segment, and a Market without it sends no customer order mail.
+`supportEmail`, the Market's support address (an email address, at
 most 254 characters). It is only the default: a platform admin can change the address at run time on
 the admin panel's Settings page (`notifications.support-contact.manage`), and the stored value then
 wins. Every change is a new row in `notifications.support_contacts` (who, when, the address before)

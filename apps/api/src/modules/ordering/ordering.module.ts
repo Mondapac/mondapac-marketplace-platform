@@ -1,4 +1,7 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { registerEvents } from '../../platform/events/event-catalogue';
+import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
+import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { CLOCK } from '../../platform/clock/clock.module';
@@ -17,6 +20,7 @@ import { AdminListOrders } from './application/use-cases/admin-list-orders.use-c
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case';
+import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
 import { RecordShipments } from './application/use-cases/record-shipments.use-case';
@@ -27,6 +31,7 @@ import { SellerViewOrder } from './application/use-cases/seller-view-order.use-c
 import { StartCheckout } from './application/use-cases/start-checkout.use-case';
 import { ViewOrder } from './application/use-cases/view-order.use-case';
 import { ORDERING_FACADE, ORDERING_PERMISSIONS } from './contracts';
+import { ORDERING_EVENTS } from './domain/events';
 import { orderingProviders } from './infrastructure/ordering-providers';
 import { AdminOrdersController } from './presentation/admin-orders.controller';
 import { recordLedgerJob } from './presentation/jobs/record-ledger.job';
@@ -46,6 +51,7 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['inventory', INVENTORY_ORDERING_PORT],
   ['shipping', SHIPPING_FACADE],
   ['commission', COMMISSION_PAYOUTS_FACADE],
+  ['outbox', OUTBOX_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
@@ -79,6 +85,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   imports: [CartModule, InventoryModule, ShippingModule, CommissionPayoutsModule],
   controllers: [OrdersController, AdminOrdersController, SellerOrdersController],
   providers: [
+    PersistenceModule.outboxWriterFor('ordering'),
+    registerEvents('ordering', ORDERING_EVENTS),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
     ...orderingProviders,
     ...[
@@ -95,12 +103,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerDeliverOrder,
       RecordShipments,
       RecordLedger,
+      OrderNoticeQuery,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: ORDERING_FACADE,
-      inject: [ConfirmPayment, CancelPayment],
-      useFactory: (confirm: ConfirmPayment, cancel: CancelPayment) =>
-        new OrderingFacadeImplementation(confirm, cancel),
+      inject: [ConfirmPayment, CancelPayment, OrderNoticeQuery],
+      useFactory: (confirm: ConfirmPayment, cancel: CancelPayment, notice: OrderNoticeQuery) =>
+        new OrderingFacadeImplementation(confirm, cancel, notice),
     },
     registerJobsFrom(
       'ordering',

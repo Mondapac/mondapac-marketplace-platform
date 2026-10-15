@@ -21,6 +21,9 @@
     "anonymousIdentityPerMinute": 10,
     "defaultPerMinute": 200
   },
+  "notifications": {
+    "customerOrderPage": "https://storefront.zz.test/account/orders"
+  },
   "allowedOrigins": {
     "admin": ["https://admin.zz.test"],
     "seller": ["https://seller.zz.test"],
