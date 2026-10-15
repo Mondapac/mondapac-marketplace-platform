@@ -80,13 +80,14 @@ if "%SEED%"=="1" (
 
 rem The panels start in seconds but the API needs a minute to build; a sign-in before then fails
 rem with "upstream-unreachable". Wait here (up to 5 minutes) so the message below is true.
+where curl >nul 2>nul || (echo curl was not found, so this script cannot wait for the API. Check the "MondaPac API" window yourself. & goto :afterwait)
 echo Waiting for the API on http://localhost:3000 ...
 set /a TRIES=0
 :waitapi
-curl -s -f -o nul http://localhost:3000/health && goto :apiready
+curl -s -f -m 3 -o nul http://localhost:3000/health && goto :apiready
 set /a TRIES+=1
 if %TRIES% geq 60 goto :apislow
-timeout /t 5 /nobreak >nul
+ping -n 6 127.0.0.1 >nul
 goto :waitapi
 :apislow
 echo.
@@ -97,7 +98,7 @@ goto :afterwait
 echo The API is ready.
 :afterwait
 echo.
-echo Started. Wait about a minute for the first build, then open:
+echo Started. Open:
 echo   Seller panel : http://seller.localhost:3001
 echo   Admin panel  : http://admin.localhost:3002
 echo   Mail (Mailpit): http://localhost:8025
