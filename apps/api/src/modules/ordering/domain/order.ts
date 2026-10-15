@@ -303,7 +303,7 @@ export function parseShipment(input: {
   let trackingRef: string | null = null;
   if (input?.trackingRef !== undefined && input.trackingRef !== null && input.trackingRef !== '') {
     const text = typeof input.trackingRef === 'string' ? input.trackingRef.trim() : '';
-    if (TRACKING.test(text)) trackingRef = text;
+    if (TRACKING.test(text) && !LINK_LIKE.test(text)) trackingRef = text;
     else fields.push({ path: 'trackingRef', code: 'format' });
   }
   return fields.length > 0

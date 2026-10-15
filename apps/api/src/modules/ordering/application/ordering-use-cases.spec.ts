@@ -938,7 +938,12 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           error: { fields: [{ path: 'carrier', code: 'format' }] },
         });
       }
-      for (const trackingRef of ['track.evil-example.com/login', 'AP1/2']) {
+      for (const trackingRef of [
+        'track.evil-example.com/login',
+        'AP1/2',
+        'evil.com',
+        'track.evil-example.com',
+      ]) {
         expect(await ship(sellerB, sellerOrderId, { trackingRef })).toMatchObject({
           ok: false,
           error: { fields: [{ path: 'trackingRef', code: 'format' }] },
