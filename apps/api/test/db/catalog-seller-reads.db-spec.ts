@@ -43,8 +43,10 @@ const T0 = Temporal.Instant.from('2026-10-08T00:00:00Z');
 const clock = new FixedClock(T0);
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 let sequence = 0;
-const SELLER = '01990000-0000-7000-8000-00000000b001' as Id<'Seller'>;
-const OTHER = '01990000-0000-7000-8000-00000000b002' as Id<'Seller'>;
+// Own ids: catalog-own-product-submit.db-spec.ts submits products for the b001 seller in a parallel worker
+// of the same database, and this file lists every product of its seller.
+const SELLER = '01990000-0000-7000-8000-00000000c5a1' as Id<'Seller'>;
+const OTHER = '01990000-0000-7000-8000-00000000c5a2' as Id<'Seller'>;
 const uuid7 = (): string =>
   uuidV7(Date.now() + sequence++, crypto.getRandomValues(new Uint8Array(10)));
 
