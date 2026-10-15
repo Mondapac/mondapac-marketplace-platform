@@ -112,6 +112,11 @@
     "reason": "Admin second-factor enrolment start with the mailed enrolment link's token and the password: the admin has no session yet."
   },
   {
+    "name": "notifications.view-public-support-contact",
+    "rule": "anonymous",
+    "reason": "The sign-in pages of both panels show the Market's support email to a visitor who has no session; the answer is the address only."
+  },
+  {
     "name": "payments.receive-stripe-event",
     "rule": "anonymous",
     "reason": "Stripe calls the webhook without a session: the Stripe-Signature over the raw body, checked first in the use case, authenticates the event; it only stores the event for the worker."

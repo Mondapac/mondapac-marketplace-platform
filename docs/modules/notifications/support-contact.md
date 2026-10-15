@@ -20,6 +20,10 @@ One setting so far: the Market's support email address.
 - **UI:** admin Settings page, one card built from the shared `Card`, `TextField`, `Banner` and
   `Button`; screenshots at 375, 768 and 1280 px in both themes are in the project files
   (`frontend/support-email/`). Components exist already in the design system; nothing new to back-port.
-- **Not yet:** the sign-in pages read the address from `PANEL_SUPPORT_EMAIL` (follow-up PR); a notice
+- **Sign-in pages:** both panels read the address from the public route `GET /notifications/support-contact`
+  (use case `notifications.view-public-support-contact`, rule `anonymous`, default rate-limit class, `no-store`,
+  answer `{ email }` only, no version). If the API is unreachable or holds no address, the pages fall back to
+  `PANEL_SUPPORT_EMAIL`, so that variable stays required.
+- **Not yet:** a notice
   to the other Platform Administrators on each change; a recent-second-factor rule for the manage
   key (matches the other protected keys today).

@@ -20,6 +20,11 @@ export interface SupportContactView {
   readonly version: number;
 }
 
+/** What a visitor without a session may read: the address only. */
+export interface PublicSupportContact {
+  readonly email: string | null;
+}
+
 const isAdmin = (context: CallContext): boolean =>
   context.actor.kind === 'authenticated' && context.actor.population === 'admin';
 
@@ -38,6 +43,23 @@ export async function viewSupportContact(
           ? { email: deps.policy.defaultSupportEmail(context.market), version: 0 }
           : { email: latest.email, version: latest.version },
       );
+    },
+    { readOnly: true },
+  );
+}
+
+/** The address in force, for the sign-in pages: no session, no version. */
+export async function viewPublicSupportContact(
+  deps: NotificationsDependencies,
+  context: CallContext,
+): Promise<Result<PublicSupportContact, never>> {
+  return deps.unitOfWork.run<PublicSupportContact, never>(
+    context.market,
+    async () => {
+      const latest = await deps.contacts.latest(context.market);
+      return ok({
+        email: latest === null ? deps.policy.defaultSupportEmail(context.market) : latest.email,
+      });
     },
     { readOnly: true },
   );

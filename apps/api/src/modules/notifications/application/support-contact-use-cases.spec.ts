@@ -14,6 +14,7 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { SupportContactChanged } from '../domain/audit';
 import { parseSupportEmail } from '../domain/support-email';
+import { ViewPublicSupportContact } from './use-cases/view-public-support-contact.use-case';
 import { ConfigNotificationsPolicy } from '../infrastructure/config-notifications-policy';
 import type { NotificationsDependencies } from './notifications-dependencies';
 import type {
@@ -219,5 +220,13 @@ describe.each([
       expect((await view(context)).ok).toBe(false);
     }
     expect(contacts.rows).toEqual([]);
+  });
+
+  it('shows a visitor with no session the address only, the default and then the admin change', async () => {
+    const anonymous = testCallContext(market, 'anonymous', 'notif-anon-public');
+    const publicView = () => new ViewPublicSupportContact(gate, deps).execute(anonymous, {});
+    expect(await publicView()).toEqual(ok({ email: configured }));
+    await set('Help@Example.com');
+    expect(await publicView()).toEqual(ok({ email: 'help@example.com' }));
   });
 });
