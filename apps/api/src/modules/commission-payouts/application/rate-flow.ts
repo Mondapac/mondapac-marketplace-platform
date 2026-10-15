@@ -100,7 +100,7 @@ export async function setCommissionRate(
 
   const now = deps.clock.now();
   return deps.unitOfWork.run<RateView, RateFailure>(context.market, async () => {
-    const before = await deps.rates.find(context.market, sellerId);
+    const before = await deps.rates.findForUpdate(context.market, sellerId);
     await deps.rates.save(context.market, {
       sellerId,
       rateBps: rate.value,
@@ -139,7 +139,7 @@ export async function clearCommissionRate(
   const settings = deps.policy.settings(context.market);
   if (settings === null) return err({ code: 'commission-payouts.rate-unavailable' });
   return deps.unitOfWork.run<RateView, RateFailure>(context.market, async () => {
-    const before = await deps.rates.find(context.market, sellerId);
+    const before = await deps.rates.findForUpdate(context.market, sellerId);
     if (before === null || !(await deps.rates.remove(context.market, sellerId))) {
       return err({ code: 'commission-payouts.rate-not-set' } as const);
     }
@@ -165,6 +165,11 @@ export async function readCommissionRates(
   context: CallContext,
   input: { readonly sellerIds: unknown },
 ): Promise<Result<CommissionRateMap, RatesFailure>> {
+  // Only checkout calls this, as the signed-in customer; every other actor is refused.
+  const caller = context.actor;
+  if (caller.kind !== 'authenticated' || caller.population !== 'customer') {
+    return err({ code: 'access.denied' });
+  }
   const raw = input?.sellerIds;
   if (!Array.isArray(raw) || raw.length > MAX_IDS) {
     return err({ code: 'validation.failed', fields: [{ path: 'sellerIds', code: 'range' }] });

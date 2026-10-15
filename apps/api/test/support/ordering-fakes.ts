@@ -181,8 +181,9 @@ export class MemoryOrders implements OrderRepository {
   }
   ledgerFailures = new Map<string, number>();
   countLedgerFailure(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
-    this.ledgerFailures.set(sellerOrderId, (this.ledgerFailures.get(sellerOrderId) ?? 0) + 1);
-    return Promise.resolve();
+    const attempts = (this.ledgerFailures.get(sellerOrderId) ?? 0) + 1;
+    this.ledgerFailures.set(sellerOrderId, attempts);
+    return Promise.resolve(attempts);
   }
   markLedgerRecorded(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     for (const [orderId, order] of this.rows) {
