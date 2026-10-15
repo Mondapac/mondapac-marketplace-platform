@@ -472,6 +472,13 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${path}/extra`)).status).toBe(404);
   });
 
+  it('relays the flat delivery fee write for a seller UUID on PUT only', async () => {
+    expect((await call('PUT', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(200);
+    expect((await call('PUT', 'shipping/admin/sellers/nope/flat-fee')).status).toBe(404);
+    expect((await call('POST', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(404);
+    expect((await call('DELETE', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(404);
+  });
+
   it('relays approve, reject and the manual check for a seller UUID only', async () => {
     expect((await call('POST', `sellers/admin/${ID}/review/approve`)).status).toBe(200);
     expect((await call('POST', `sellers/admin/${ID}/review/reject`)).status).toBe(200);

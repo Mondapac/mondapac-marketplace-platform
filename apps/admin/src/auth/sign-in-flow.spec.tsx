@@ -28,6 +28,12 @@ function signIn() {
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 }
 
+function typeCode(digits: string) {
+  digits.split('').forEach((digit, index) => {
+    fireEvent.keyDown(screen.getByLabelText(`Digit ${index + 1} of 6`), { key: digit });
+  });
+}
+
 describe('admin sign-in', () => {
   it('keeps the email, clears the password and says so after wrong credentials', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 401, code: 'credentials.invalid' } });
@@ -58,7 +64,7 @@ describe('admin sign-in', () => {
     expect(await screen.findByText('Enter your 6-digit code')).toBeTruthy();
     expect(screen.queryByLabelText('Password')).toBeNull();
     call.mockResolvedValueOnce({ ok: true, status: 200, body: { code: 'signed-in' } });
-    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '123456' } });
+    typeCode('123456');
     fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/'));
     expect(call).toHaveBeenLastCalledWith('POST', 'identity/admin/second-factor', {
@@ -80,7 +86,7 @@ describe('admin sign-in', () => {
       ok: false,
       failure: { status: 400, code: 'second-factor.invalid' },
     });
-    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '000000' } });
+    typeCode('000000');
     fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
     expect(await screen.findByText(/That code didn't work/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Use a backup code instead' }));
@@ -152,7 +158,7 @@ describe('admin sign-in', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Sign in' }).disabled).toBe(true);
   });
 
-  it('removes spaces and hyphens from the code before sending it', async () => {
+  it('removes spaces and hyphens from a backup code before sending it', async () => {
     call.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -161,13 +167,82 @@ describe('admin sign-in', () => {
     render(wrap(<SignInFlow notice={null} />));
     signIn();
     await screen.findByText('Enter your 6-digit code');
+    fireEvent.click(screen.getByRole('button', { name: 'Use a backup code instead' }));
     call.mockResolvedValueOnce({ ok: true, status: 200, body: { code: 'signed-in' } });
-    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '123 456' } });
+    fireEvent.change(screen.getByLabelText('Backup code'), { target: { value: 'ab12-cd 34' } });
     fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
     await waitFor(() => expect(router.replace).toHaveBeenCalled());
     expect(call).toHaveBeenLastCalledWith('POST', 'identity/admin/second-factor', {
       challengeToken: 'tok',
-      code: '123456',
+      code: 'ab12cd34',
+    });
+  });
+
+  describe('six-box code', () => {
+    async function toCodeStep() {
+      call.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { code: 'second-factor-required', challengeToken: 'tok' },
+      });
+      render(wrap(<SignInFlow notice={null} />));
+      signIn();
+      await screen.findByText('Enter your 6-digit code');
+    }
+    const box = (position: number) =>
+      screen.getByLabelText<HTMLInputElement>(`Digit ${position} of 6`);
+    const secondFactorCalls = () =>
+      call.mock.calls.filter(([, path]) => path === 'identity/admin/second-factor');
+
+    it('labels the group and every box', async () => {
+      await toCodeStep();
+      expect(screen.getByRole('group', { name: '6-digit code' })).toBeTruthy();
+      expect(screen.getAllByLabelText(/^Digit \d of 6$/)).toHaveLength(6);
+    });
+
+    it('moves focus on typing, Backspace and the arrow keys', async () => {
+      await toCodeStep();
+      fireEvent.keyDown(box(1), { key: '4' });
+      expect(box(1).value).toBe('4');
+      expect(document.activeElement).toBe(box(2));
+      fireEvent.keyDown(box(2), { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(box(3));
+      fireEvent.keyDown(box(3), { key: 'ArrowLeft' });
+      expect(document.activeElement).toBe(box(2));
+      fireEvent.keyDown(box(2), { key: 'Backspace' });
+      expect(document.activeElement).toBe(box(1));
+      expect(box(1).value).toBe('');
+      expect(secondFactorCalls()).toHaveLength(0);
+    });
+
+    it('fills every box from a pasted code and submits once', async () => {
+      await toCodeStep();
+      call.mockResolvedValueOnce({ ok: true, status: 200, body: { code: 'signed-in' } });
+      fireEvent.paste(box(3), { clipboardData: { getData: () => '123 456' } });
+      await waitFor(() => expect(router.replace).toHaveBeenCalled());
+      expect([1, 2, 3, 4, 5, 6].map((n) => box(n).value).join('')).toBe('123456');
+      expect(secondFactorCalls()).toEqual([
+        ['POST', 'identity/admin/second-factor', { challengeToken: 'tok', code: '123456' }],
+      ]);
+    });
+
+    it('does not submit before the last digit', async () => {
+      await toCodeStep();
+      typeCode('12345');
+      expect(secondFactorCalls()).toHaveLength(0);
+    });
+
+    it('clears the boxes and refocuses the first after a wrong code', async () => {
+      await toCodeStep();
+      call.mockResolvedValueOnce({
+        ok: false,
+        failure: { status: 400, code: 'second-factor.invalid' },
+      });
+      typeCode('000000');
+      expect(await screen.findByText(/That code didn't work/)).toBeTruthy();
+      await waitFor(() => expect(box(1).value).toBe(''));
+      expect([2, 3, 4, 5, 6].every((n) => box(n).value === '')).toBe(true);
+      expect(document.activeElement).toBe(box(1));
     });
   });
 

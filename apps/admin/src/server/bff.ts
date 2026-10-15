@@ -61,7 +61,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
   ],
-  PUT: ['identity/admin/roles/:id', 'sellers/admin/:id/review/manual-register-check'],
+  PUT: [
+    'identity/admin/roles/:id',
+    'sellers/admin/:id/review/manual-register-check',
+    // The seller's flat delivery fee (shipping), set from the seller review page.
+    'shipping/admin/sellers/:id/flat-fee',
+  ],
   DELETE: ['identity/admin/roles/:id'],
 };
 

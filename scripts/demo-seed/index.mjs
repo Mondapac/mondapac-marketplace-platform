@@ -492,22 +492,43 @@ const STORE_TERMS = {
   spice: { fee: 1000, minimum: 2000 },
 };
 
+/** Every row of the approved tab, following `next` page by page. */
+async function approvedSellers(admin) {
+  const rows = [];
+  let after;
+  do {
+    const page = await admin.ok('POST', '/sellers/admin/list', { tab: 'approved', after });
+    rows.push(...page.items);
+    after = page.next ?? undefined;
+  } while (after !== undefined);
+  return rows;
+}
+
 async function ensureStoreTerms(admin, sessions) {
-  const approved = await admin.ok('POST', '/sellers/admin/list', { tab: 'approved' });
+  const approved = await approvedSellers(admin);
   for (const seller of SELLERS.filter((item) => !item.leaveInReview)) {
     const terms = STORE_TERMS[seller.key];
-    const row = approved.items.find((item) => item.slug === seller.slug);
-    if (!terms || !row) continue;
-    await admin.ok('PUT', `/shipping/admin/sellers/${row.sellerId}/flat-fee`, {
-      amount: terms.fee,
-    });
-    if (terms.minimum === null) continue;
-    const session = sessions.get(seller.key);
-    const settings = await session.ok('GET', '/sellers/store-settings');
-    await session.ok('PUT', '/sellers/store-settings/minimum-order', {
-      expectedVersion: settings.version,
-      minimumOrder: { amount: terms.minimum, currency: settings.currency },
-    });
+    const row = approved.find((item) => item.slug === seller.slug);
+    if (!terms) continue;
+    if (!row) {
+      log(`  ${seller.key}: not in the approved list, shipping fee and minimum not set`);
+      continue;
+    }
+    // One seller's failure must not skip the others; the demo is complete without these terms.
+    try {
+      await admin.ok('PUT', `/shipping/admin/sellers/${row.sellerId}/flat-fee`, {
+        amount: terms.fee,
+      });
+      if (terms.minimum === null) continue;
+      const session = sessions.get(seller.key);
+      const settings = await session.ok('GET', '/sellers/store-settings');
+      await session.ok('PUT', '/sellers/store-settings/minimum-order', {
+        expectedVersion: settings.version,
+        minimumOrder: { amount: terms.minimum, currency: settings.currency },
+      });
+    } catch (error) {
+      log(`  ${seller.key}: shipping fee or minimum not set (${error.message})`);
+    }
   }
 }
 

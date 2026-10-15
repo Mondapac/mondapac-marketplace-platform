@@ -49,7 +49,7 @@ export function SetupQr({
           aria-label={label}
           viewBox={`0 0 ${size} ${size}`}
           shapeRendering="crispEdges"
-          className="size-48"
+          className="aspect-square w-64 max-w-full"
           data-testid="setup-qr"
         >
           <path d={path} style={{ fill: 'var(--mp-color-bg-auth-showcase-seller)' }} />
