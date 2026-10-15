@@ -38,8 +38,9 @@ come with their own packages.
 - **Customer, "Shipped"** (`notifications.order-shipped-mail`): order reference, carrier, tracking
   number (line omitted when the seller gave none) and the same order link as the confirmation. No
   `customerOrderPage` in the Market config means no mail. Carrier and tracking number are
-  validated on entry (carrier 2 to 60 characters, tracking 1 to 80 characters of letters, digits
-  and simple marks) and flattened to one line in the mail.
+  validated on entry (carrier 1 to 60 characters; a `/` or a dot followed by two letters, which
+  reads as a link, is refused; tracking 1 to 80 characters of letters, digits and `space . _ # -`,
+  no `/`) and flattened to one line in the mail.
 - **Reading at send time:** `ordering.shipmentNotice` (system rule, ids plus carrier and tracking
   number), then `identity.contactEmailOf`. No schema change: the outbox and inbox tables already
   exist.

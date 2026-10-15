@@ -1,6 +1,7 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import { expectSystemOnly } from '../../../../test/support/system-only-denial';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
@@ -351,7 +352,7 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
     });
 
     it('is for the system actor only', async () => {
-      expect(await shipped(1, anonymous)).toEqual(err({ code: 'access.denied' }));
+      await expectSystemOnly(code, (context) => shipped(1, context));
       expect(sent).toEqual([]);
     });
   });
