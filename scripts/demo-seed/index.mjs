@@ -575,6 +575,10 @@ try {
   const state = readState();
   await prepare();
   const admin = await ensureAdmin(state);
+  // Written as soon as the admin exists, so the logins are on disk even if a later step fails;
+  // the final step rewrites the same file.
+  writeCredentials(state);
+  log(`  Logins so far: ${CREDENTIALS_FILE}`);
 
   log('[3/8] Sellers');
   const sessions = new Map();
