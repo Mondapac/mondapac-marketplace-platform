@@ -41,6 +41,7 @@ import {
   ONE_TIME_LINK_REPOSITORY,
   type OneTimeLinkRepository,
 } from '../../src/modules/identity/application/ports/one-time-link.repository';
+import { TransactionConflictError } from '../../src/platform/unit-of-work/errors';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
@@ -60,6 +61,24 @@ const ID_PREFIX = '01990000-0000-7000-8000-';
 const newId = <T extends string>(): Id<T> =>
   `${ID_PREFIX}${randomBytes(6).toString('hex')}` as Id<T>;
 const CLIENT = { origin: '203.0.113.7', address: '203.0.113.7' };
+
+/**
+ * Seeding only: under parallel jest workers a SERIALIZABLE unit can lose all of its own retries
+ * (TransactionConflictError, 40001) to unrelated suites' load. The unit rolled back, so running the
+ * same seeding step again is safe. Bounded, and any other error or the last conflict is rethrown;
+ * the assertions of the specs are untouched.
+ */
+const SEED_ATTEMPTS = 5;
+async function retryingSeed<T>(seed: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await seed();
+    } catch (error) {
+      if (!(error instanceof TransactionConflictError) || attempt >= SEED_ATTEMPTS) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+    }
+  }
+}
 
 describe.each(TEST_MARKETS)(
   'owner-confirmed second-factor reset in market %s (database, slice 12)',
@@ -182,13 +201,13 @@ describe.each(TEST_MARKETS)(
         if (!stored.dispatch(issued.tokenHash, now, 60).ok) throw new Error('dispatch');
         await invitations.save(market, stored);
       });
-      const accepted = await app
-        .get(AcceptSellerInvitation)
-        .execute(testCallContext(market, 'anonymous'), {
+      const accepted = await retryingSeed(() =>
+        app.get(AcceptSellerInvitation).execute(testCallContext(market, 'anonymous'), {
           token: issued.token,
           password: PASSWORD,
           client: CLIENT,
-        });
+        }),
+      );
       if (!accepted.ok) throw new Error(`acceptance failed: ${accepted.error.code}`);
       const accountId = (
         await sql.query<{ id: Id<'Account'> }>(
