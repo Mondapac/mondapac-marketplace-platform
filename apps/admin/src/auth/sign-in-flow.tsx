@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, TextField } from '@mondapac/ui';
+import { Banner, Button, OtpField, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -184,25 +184,33 @@ function CodeStep({
   const formRef = useRef<HTMLFormElement>(null);
   const [backup, setBackup] = useState(false);
   const [code, setCode] = useState('');
+  // A new key clears the six boxes and puts focus back in the first one.
+  const [boxes, setBoxes] = useState(0);
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<ErrorKey>(null);
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({});
   const throttle = useThrottle();
+  // A wrong code in the six boxes keeps focus in the first box (the banner is still announced).
   const focusKeys = useMemo(
-    () => ({ ...fieldErrors, ...(formError ? { '#form': formError.key } : {}) }),
-    [fieldErrors, formError],
+    () => ({ ...fieldErrors, ...(formError && backup ? { '#form': formError.key } : {}) }),
+    [fieldErrors, formError, backup],
   );
   useFocusFirstInvalid(formRef, focusKeys);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    await verify(code);
+  }
+
+  async function verify(entered: string) {
+    if (pending || throttle.blocked) return;
     setPending(true);
     setFormError(null);
     setFieldErrors({});
     const result = await callApi<{ code: 'signed-in' }>('POST', 'identity/admin/second-factor', {
       challengeToken,
       // A code pasted from the app may carry spaces; a backup code may carry spaces or hyphens.
-      code: code.replace(/[\s-]/g, ''),
+      code: entered.replace(/[\s-]/g, ''),
     });
     if (result.ok) {
       router.replace('/');
@@ -216,6 +224,7 @@ function CodeStep({
       return;
     }
     setCode('');
+    setBoxes((count) => count + 1);
     if (failure.code === 'challenge.rejected' || failure.code === 'second-factor.locked') {
       // The challenge is over: back to the password step, which says why (ux F7 step 1).
       onEnded(failure);
@@ -239,17 +248,30 @@ function CodeStep({
       </FocusHeading>
       <p className="text-fg-secondary">{t(backup ? 'two-step.body-backup' : 'two-step.body')}</p>
       {formError ? <ProblemBanner message={t(`error.${formError.key}`, formError.values)} /> : null}
-      <TextField
-        key={backup ? 'backup' : 'app'}
-        label={t(backup ? 'two-step.label.backup-code' : 'two-step.label.code')}
-        name="code"
-        autoComplete="one-time-code"
-        inputMode={backup ? 'text' : 'numeric'}
-        value={code}
-        onChange={(event) => setCode(event.target.value)}
-        error={fieldErrors['code'] ? t(`error.${fieldErrors['code']}`) : undefined}
-        dir="ltr"
-      />
+      {backup ? (
+        <TextField
+          label={t('two-step.label.backup-code')}
+          name="code"
+          autoComplete="one-time-code"
+          value={code}
+          onChange={(event) => setCode(event.target.value)}
+          error={fieldErrors['code'] ? t(`error.${fieldErrors['code']}`) : undefined}
+          dir="ltr"
+        />
+      ) : (
+        <OtpField
+          key={boxes}
+          label={t('two-step.label.code')}
+          digitLabel={(position, total) => t('two-step.label.digit', { position, total })}
+          name="code"
+          // On arrival the heading keeps focus (it announces the step); after a wrong code the first box does.
+          autoFocus={boxes > 0}
+          readOnly={pending}
+          error={fieldErrors['code'] ? t(`error.${fieldErrors['code']}`) : undefined}
+          onChange={setCode}
+          onComplete={(complete) => void verify(complete)}
+        />
+      )}
       <Button type="submit" block loading={pending} disabled={throttle.blocked}>
         {t('two-step.action.verify')}
       </Button>
