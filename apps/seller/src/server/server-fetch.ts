@@ -15,14 +15,18 @@ export type ServerGet<T> =
  * (ADR-0034 decision 4): the browser's cookie, the Market of the host and the signed client
  * address. It never sets a cookie: a rejected session is cleared through `/session-ended`.
  */
-export async function serverGet<T>(path: string): Promise<ServerGet<T>> {
+export async function serverGet<T>(
+  path: string,
+  options: { readonly anonymous?: boolean } = {},
+): Promise<ServerGet<T>> {
   const config = panelConfig();
   const incoming = await headers();
   const host = panelHostFor(config, incoming.get('host'));
   if (host === undefined) return { kind: 'unavailable' };
   const request = new Request(`${host.origin}/`, {
     headers: {
-      cookie: incoming.get('cookie') ?? '',
+      // An anonymous read (a public route) never carries the visitor's session cookie.
+      cookie: options.anonymous === true ? '' : (incoming.get('cookie') ?? ''),
       accept: 'application/json',
       // Set by server.mjs on every request; the signer reads only this name (ADR-0037).
       ...(incoming.has(INTERNAL_ADDRESS_HEADER)
