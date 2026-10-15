@@ -1,6 +1,20 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from 'react';
+import { createPortal } from 'react-dom';
+
+/** Gap between the menu and its trigger, and the least space kept to the viewport edge. */
+const GAP = 4;
+const EDGE = 8;
 
 export interface MenuItem {
   readonly id: string;
@@ -24,6 +38,42 @@ export function Menu({ label, items }: MenuProps) {
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const menuId = useId();
+  const [place, setPlace] = useState<CSSProperties | null>(null);
+
+  // The list is drawn in a portal with fixed coordinates, so a table box with overflow never
+  // clips it. It lines up with the trigger's end edge and opens upwards when there is no room.
+  const position = useCallback(() => {
+    const button = trigger.current;
+    const node = list.current;
+    if (button === null || node === null) return;
+    const anchor = button.getBoundingClientRect();
+    const width = Math.min(node.offsetWidth, window.innerWidth - 2 * EDGE);
+    const left = getComputedStyle(button).direction === 'rtl' ? anchor.left : anchor.right - width;
+    const below = window.innerHeight - anchor.bottom - GAP - EDGE;
+    const above = anchor.top - GAP - EDGE;
+    const openUp = node.scrollHeight > below && above > below;
+    setPlace({
+      left: Math.min(Math.max(left, EDGE), window.innerWidth - width - EDGE),
+      maxHeight: Math.max(openUp ? above : below, 0),
+      ...(openUp
+        ? { bottom: window.innerHeight - anchor.top + GAP }
+        : { top: anchor.bottom + GAP }),
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlace(null);
+      return undefined;
+    }
+    position();
+    window.addEventListener('resize', position);
+    window.addEventListener('scroll', position, true);
+    return () => {
+      window.removeEventListener('resize', position);
+      window.removeEventListener('scroll', position, true);
+    };
+  }, [open, position]);
 
   const focusItem = (index: number) => {
     const nodes = list.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
@@ -63,7 +113,7 @@ export function Menu({ label, items }: MenuProps) {
   };
 
   return (
-    <div className="relative inline-block">
+    <div className="inline-block">
       <button
         ref={trigger}
         type="button"
@@ -82,46 +132,54 @@ export function Menu({ label, items }: MenuProps) {
       >
         <span aria-hidden="true">⋯</span>
       </button>
-      {open ? (
-        <div
-          ref={list}
-          id={menuId}
-          role="menu"
-          aria-label={label}
-          onKeyDown={onKeyDown}
-          className="absolute end-0 z-10 mt-1 w-64 rounded-md border border-line bg-surface py-1 shadow-lg"
-        >
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="menuitem"
-              aria-disabled={item.disabled === true ? true : undefined}
-              tabIndex={-1}
-              onClick={() => {
-                if (item.disabled === true) return;
-                setOpen(false);
-                item.onSelect();
-                trigger.current?.focus();
+      {open
+        ? createPortal(
+            <div
+              ref={list}
+              id={menuId}
+              role="menu"
+              aria-label={label}
+              onKeyDown={onKeyDown}
+              style={{
+                position: 'fixed',
+                ...place,
+                visibility: place === null ? 'hidden' : 'visible',
               }}
-              className={[
-                // At least one control high: 48 px touch targets on phones (panels IA 4).
-                'flex min-h-(--mp-size-control) w-full flex-col justify-center px-4 py-2 text-start text-sm',
-                item.disabled === true
-                  ? 'cursor-not-allowed text-fg-muted'
-                  : item.tone === 'critical'
-                    ? 'text-critical-fg hover:bg-muted'
-                    : 'text-fg hover:bg-muted',
-              ].join(' ')}
+              className="z-50 w-64 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-md border border-line bg-surface py-1 shadow-lg"
             >
-              {item.label}
-              {item.disabled === true && item.reason !== undefined ? (
-                <span className="mt-0.5 block text-xs font-normal">{item.reason}</span>
-              ) : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
+              {items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="menuitem"
+                  aria-disabled={item.disabled === true ? true : undefined}
+                  tabIndex={-1}
+                  onClick={() => {
+                    if (item.disabled === true) return;
+                    setOpen(false);
+                    item.onSelect();
+                    trigger.current?.focus();
+                  }}
+                  className={[
+                    // At least one control high: 48 px touch targets on phones (panels IA 4).
+                    'flex min-h-(--mp-size-control) w-full flex-col justify-center px-4 py-2 text-start text-sm',
+                    item.disabled === true
+                      ? 'cursor-not-allowed text-fg-muted'
+                      : item.tone === 'critical'
+                        ? 'text-critical-fg hover:bg-muted'
+                        : 'text-fg hover:bg-muted',
+                  ].join(' ')}
+                >
+                  {item.label}
+                  {item.disabled === true && item.reason !== undefined ? (
+                    <span className="mt-0.5 block text-xs font-normal">{item.reason}</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
