@@ -21,8 +21,9 @@ export class ProductSearchPageBody {
   @ApiProperty() pageSize!: number;
   @ApiProperty({
     description:
-      'True when the index holds more matches after this page. A page can hold fewer than ' +
-      'pageSize items when some hits are no longer sellable.',
+      'True when the result after this page is visible; hidden matches never change it, so it ' +
+      'can be false while a later page still has items. A page can hold fewer than pageSize ' +
+      'items when some hits are no longer sellable.',
   })
   hasMore!: boolean;
 }

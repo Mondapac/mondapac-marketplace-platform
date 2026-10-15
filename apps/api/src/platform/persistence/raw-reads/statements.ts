@@ -92,6 +92,15 @@ export interface RawReadStatements {
     readonly params: {
       readonly textSearchConfig: string;
       readonly query: string;
+      readonly limit: string;
+      readonly offset: string;
+    };
+    readonly row: OfferSearchRow;
+  };
+  readonly 'search.offer-search-in-category': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
       readonly categoryIds: readonly string[];
       readonly limit: string;
       readonly offset: string;
@@ -183,14 +192,23 @@ const TYPE_AND_POLICY_SQL = `SELECT t.id AS type_id, t.code, tr.id AS type_revis
  WHERE t.market_id = $1 AND t.code = ANY ($2::text[])`;
 
 // `$2` is a Market `textSearchConfig` (a closed list in the Market schema), `$3` the visitor's
-// text (bound, never part of the SQL), `$4` zero or one category, `$5` and `$6` the page. Limit and
-// offset travel as text because the parameter types are uuid and text (cast to int4 here).
+// text (bound, never part of the SQL), then, where there is one, exactly one category, and the page.
+// Limit and offset travel as text because the parameter types are uuid and text (cast to int4).
 const OFFER_SEARCH_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, d.short_text,
        d.category_ids::text[] AS category_ids,
-       ts_rank(d.search_vector, websearch_to_tsquery($2::text::regconfig, $3::text)) AS rank
+       ts_rank(d.search_vector, websearch_to_tsquery($2::regconfig, $3::text)) AS rank
   FROM "search"."offer_documents" d
  WHERE d.market_id = $1
-   AND d.search_vector @@ websearch_to_tsquery($2::text::regconfig, $3::text)
+   AND d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text)
+ ORDER BY rank DESC, d.offer_id ASC
+ LIMIT $4::text::int4 OFFSET $5::text::int4`;
+
+const OFFER_SEARCH_IN_CATEGORY_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, d.short_text,
+       d.category_ids::text[] AS category_ids,
+       ts_rank(d.search_vector, websearch_to_tsquery($2::regconfig, $3::text)) AS rank
+  FROM "search"."offer_documents" d
+ WHERE d.market_id = $1
+   AND d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text)
    AND d.category_ids @> $4::uuid[]
  ORDER BY rank DESC, d.offer_id ASC
  LIMIT $5::text::int4 OFFSET $6::text::int4`;
@@ -263,6 +281,21 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
       'full-text search with websearch_to_tsquery, @@ and ts_rank on the offer_documents GIN index; Prisma has no ranked text search',
     design: 'docs/modules/search/search.md',
     sql: OFFER_SEARCH_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'limit', type: 'text' },
+      { name: 'offset', type: 'text' },
+    ],
+    parseRow: parseOfferSearchRow,
+  },
+  {
+    id: 'search.offer-search-in-category',
+    owner: 'search',
+    reason:
+      'full-text search in one category with websearch_to_tsquery, @@ and ts_rank on the offer_documents GIN index; Prisma has no ranked text search',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_SEARCH_IN_CATEGORY_SQL,
     params: [
       { name: 'textSearchConfig', type: 'text' },
       { name: 'query', type: 'text' },

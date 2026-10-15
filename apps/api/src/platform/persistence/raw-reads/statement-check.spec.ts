@@ -398,44 +398,76 @@ describe('raw read statement check: full-text search (ADR-0030 amendment, search
   };
   const checkSearch = (sql: string, params: readonly unknown[]): Promise<string[]> =>
     checkStatement(parseSql, { id: 'search.test', sql, params }, searchOwner);
+  const base = (where: string): string =>
+    `SELECT d.offer_id FROM "search"."offer_documents" d WHERE d.market_id = $1 AND ${where}`;
+  const TSQ = 'websearch_to_tsquery($2::regconfig, $3::text)';
 
-  const SEARCH = `SELECT d.offer_id, ts_rank(d.search_vector, websearch_to_tsquery($2::text::regconfig, $3::text)) AS rank
-    FROM "search"."offer_documents" d
-   WHERE d.market_id = $1
-     AND d.search_vector @@ websearch_to_tsquery($2::text::regconfig, $3::text)
-     AND d.category_ids @> $4::uuid[]
-   ORDER BY rank DESC, d.offer_id ASC
-   LIMIT $5::text::int4 OFFSET $6::text::int4`;
-
-  it('passes the ranked text query and the array containment', async () => {
-    expect(await checkSearch(SEARCH, [{}, {}, {}, {}, {}])).toEqual([]);
+  it('passes the ranked text query, with and without the array containment', async () => {
+    const sql = `SELECT d.offer_id, ts_rank(d.search_vector, ${TSQ}) AS rank
+      FROM "search"."offer_documents" d
+     WHERE d.market_id = $1 AND d.search_vector @@ ${TSQ} AND d.category_ids @> $4::uuid[]
+     ORDER BY rank DESC LIMIT $5::text::int4`;
+    expect(await checkSearch(sql, [{}, {}, {}, {}])).toEqual([]);
+    expect(await checkSearch(base(`d.search_vector @@ ${TSQ}`), [{}, {}])).toEqual([]);
   });
 
-  it('refuses a text-search function over a literal, an unlisted function and other operators', async () => {
-    const base = (where: string): string =>
-      `SELECT d.offer_id FROM "search"."offer_documents" d WHERE d.market_id = $1 AND ${where}`;
-    expect(
-      await checkSearch(base(`d.search_vector @@ websearch_to_tsquery('english', 'tea')`), []),
-    ).toEqual(['text-search-argument-not-column-or-param']);
-    expect(
-      await checkSearch(base(`d.search_vector @@ to_tsquery($2::text::regconfig, $3::text)`), [
-        {},
-        {},
-      ]),
-    ).toEqual(['function-not-allowed:to_tsquery']);
-    expect(await checkSearch(base(`d.name || $2::text = $3::text`), [{}, {}])).toEqual([
-      'operator-not-allowed:||',
-    ]);
-    expect(await checkSearch(base(`$2::regclass IS NOT NULL`), [{}])).toEqual([
-      'cast-not-allowed:regclass',
-    ]);
+  // Hassan's probes (PR review M-1) and the shapes around them: each construct only as used.
+  it.each([
+    ['@@ against a bare parameter', 'd.search_vector @@ $2', [{}], ['operator-shape:@@']],
+    [
+      '@@ against a cast tsquery',
+      'd.search_vector @@ $2::text::tsquery',
+      [{}],
+      ['cast-not-allowed:tsquery', 'operator-shape:@@'],
+    ],
+    ['@@ on a non-vector shape', 'd.name @@ $2', [{}], ['operator-shape:@@']],
+    [
+      'regconfig on a cast parameter',
+      '$2::text::regconfig IS NOT NULL',
+      [{}],
+      ['cast-not-allowed:regconfig'],
+    ],
+    ['@> against a bare parameter', 'd.category_ids @> $2', [{}], ['operator-shape:@>']],
+    [
+      'a column as the query text',
+      'ts_rank(d.search_vector, websearch_to_tsquery($2::regconfig, d.name)) > 0',
+      [{}],
+      ['text-search-shape:websearch_to_tsquery'],
+    ],
+    [
+      'ts_rank over a parameter',
+      'ts_rank($2::text::tsvector, websearch_to_tsquery($3::regconfig, $4::text)) > 0',
+      [{}, {}, {}],
+      ['cast-not-allowed:tsvector', 'text-search-shape:ts_rank'],
+    ],
+    [
+      'a literal configuration',
+      "d.search_vector @@ websearch_to_tsquery('english', $2::text)",
+      [{}],
+      ['text-search-shape:websearch_to_tsquery'],
+    ],
+    [
+      'a column cast to regconfig',
+      'd.search_vector @@ websearch_to_tsquery(d.name::regconfig, $2::text)',
+      [{}],
+      ['cast-not-allowed:regconfig', 'text-search-shape:websearch_to_tsquery'],
+    ],
+    [
+      'to_tsquery',
+      'd.search_vector @@ to_tsquery($2::regconfig, $3::text)',
+      [{}, {}],
+      ['function-not-allowed:to_tsquery', 'operator-shape:@@'],
+    ],
+    ['another operator', 'd.name || $2::text = $3::text', [{}, {}], ['operator-not-allowed:||']],
+    ['regclass', '$2::regclass IS NOT NULL', [{}], ['cast-not-allowed:regclass']],
+  ])('refuses %s', async (_name, where, params, expected) => {
+    expect(await checkSearch(base(where), params)).toEqual(expected);
   });
 
   it('keeps the Market rule: a text query without market_id = $1 is refused', async () => {
     expect(
       await checkSearch(
-        `SELECT d.offer_id FROM "search"."offer_documents" d
-          WHERE d.search_vector @@ websearch_to_tsquery($2::text::regconfig, $3::text)`,
+        `SELECT d.offer_id FROM "search"."offer_documents" d WHERE d.search_vector @@ ${TSQ}`,
         [{}, {}],
       ),
     ).toEqual(['market-parameter-missing', 'market-rule:d']);

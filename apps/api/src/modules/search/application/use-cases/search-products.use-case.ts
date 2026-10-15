@@ -22,7 +22,7 @@ export interface ProductSearchPage {
   readonly items: readonly ProductSearchItem[];
   readonly page: number;
   readonly pageSize: number;
-  /** Whether the index holds more matches after this page (before the visibility re-check). */
+  /** Whether the next result is visible; hidden matches never change it. */
   readonly hasMore: boolean;
 }
 
@@ -81,11 +81,14 @@ export class SearchProducts extends UseCase<
       { readOnly: true },
     );
     if (!hits.ok) return err({ code: 'search.unavailable' });
-    const hasMore = hits.value.length > pageSize;
-    const shown = hits.value.slice(0, pageSize);
-
-    const visible = await this.deps.visibility.visible(context, shown);
+    // The extra row is checked with the page, and `hasMore` says only whether it is visible: a
+    // hidden match never shows through the flag (it may be false while later pages still hold
+    // visible rows; the client then asks for the next page and finds them or an empty one).
+    const visible = await this.deps.visibility.visible(context, hits.value);
     if (visible === null) return err({ code: 'search.unavailable' });
+    const shown = hits.value.slice(0, pageSize);
+    const extra = hits.value[pageSize];
+    const hasMore = extra !== undefined && visible.has(extra.offerId);
     const items = shown
       .filter((hit) => visible.has(hit.offerId))
       .map(({ offerId, productId, sellerId, name, shortText, categoryIds }) => ({

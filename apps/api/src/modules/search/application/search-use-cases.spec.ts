@@ -396,6 +396,17 @@ describe.each([
       ]);
     });
 
+    it('does not let hasMore reveal a hidden match: only a visible extra row sets it', async () => {
+      reader.hits = [hit(1), hit(2), hit(3)];
+      visibility.hidden = new Set([offer(3)]);
+      const hiddenExtra = await search({ q: 'product', pageSize: 2 });
+      visibility.hidden = new Set();
+      const visibleExtra = await search({ q: 'product', pageSize: 2 });
+
+      expect(hiddenExtra.ok && hiddenExtra.value.hasMore).toBe(false);
+      expect(visibleExtra.ok && visibleExtra.value.hasMore).toBe(true);
+    });
+
     it('fails closed when the visibility check cannot be made', async () => {
       reader.hits = [hit(1)];
       visibility.failing = true;

@@ -21,14 +21,17 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   like other storefront routes, default rate-limit class per origin, `no-store`). `q` 2 to 100
   characters in web-search syntax (`websearch_to_tsquery`, ranked by `ts_rank`, ties by Offer id, so
   pages are stable); no `q` with `category` browses by name; `pageSize` 1 to 48 (24), `page` 1 to 100;
-  unknown parameters are 400. Answer: `{ items, page, pageSize, hasMore }`.
+  unknown parameters are 400. Answer: `{ items, page, pageSize, hasMore }`; `hasMore` is true only when the next result is visible, so hidden matches never show through it.
 - **Visibility:** each page is re-checked against catalog (`offerSellUnits`: published and listed) and
   sellers (`sellingEligibility`, the may-sell contract). A failed check is 503 `search.unavailable`,
-  never an unchecked list. A page can hold fewer than `pageSize` items while `hasMore` is true.
+  never an unchecked list. A page can hold fewer than `pageSize` items, and `hasMore` can be false while a later page still has items.
 - **SQL:** the two statements are on the ADR-0030 list (`search.offer-search`, `search.offer-browse`),
-  all values bound; ADR-0030 was amended for `websearch_to_tsquery`, `ts_rank`, `@@`, `@>`, `regconfig`.
+  (text, text in one category, browse), all values bound; ADR-0030 was amended for
+  `websearch_to_tsquery`, `ts_rank`, `@@`, `@>`, `regconfig`, each in one exact shape.
 - **Known gaps:** sellers has no separate "show publicly" read, so may-sell is the test. An off-sale
   cause that raises no event (for example a suspended tag) is hidden at query time and repaired by the
   next rebuild. A write racing a delete can briefly resurrect a document; the query-time check hides it.
   A deep, mostly hidden result set can return short pages. Variants, price, stock, ratings and
   certification badges are not part of this package.
+- **Follow-ups (Hassan L-3):** a dedicated rate-limit class for this anonymous route (it uses `default`
+  now), and a cap on the number of OR terms in `q`.

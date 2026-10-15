@@ -86,7 +86,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
             markets.get((options.on ?? market).marketId).search?.textSearchConfig ?? 'simple',
           text,
           categoryId: options.categoryId ?? null,
-          limit: options.limit ?? 50,
+          limit: options.limit ?? 49,
           offset: options.offset ?? 0,
         }),
       true,
@@ -229,6 +229,23 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
 
     expect(hits).toEqual([]);
     expect(still.rows[0]).toEqual({ n: 1 });
+  });
+
+  it('refuses limits and offsets outside the page bounds before any statement', async () => {
+    const ask = (limit: number, offset: number) =>
+      reader.search(market, {
+        textSearchConfig: settings.textSearchConfig,
+        text: 'x',
+        categoryId: null,
+        limit,
+        offset,
+      });
+
+    await expect(ask(0, 0)).rejects.toThrow(RangeError);
+    await expect(ask(50, 0)).rejects.toThrow(RangeError);
+    await expect(ask(10, -1)).rejects.toThrow(RangeError);
+    await expect(ask(10, 1.5)).rejects.toThrow(RangeError);
+    await expect(ask(10, 4801)).rejects.toThrow(RangeError);
   });
 
   it('updates the vector on upsert, and removes documents', async () => {
