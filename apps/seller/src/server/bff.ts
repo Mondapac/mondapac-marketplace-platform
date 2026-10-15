@@ -24,6 +24,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/form-descriptors',
     'payments/seller/payout-account',
     'ordering/seller/orders',
+    'commission-payouts/seller/ledger',
   ]),
   PUT: new Set([
     'sellers/my-file/general',
@@ -97,6 +98,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Per GET target, the query keys passed on and, where set, the shape each value must have. */
 const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
   'ordering/seller/orders': { limit: null, cursor: null },
+  'commission-payouts/seller/ledger': { limit: null, cursor: null },
   'identity/seller/team': { after: UUID },
 };
 const QUERY_VALUE_MAX = 512;

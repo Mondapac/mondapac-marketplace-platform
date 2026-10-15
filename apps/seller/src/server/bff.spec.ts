@@ -644,6 +644,30 @@ describe('relay of the seller order routes', () => {
   });
 });
 
+describe('relay of the seller ledger route', () => {
+  const path = ['commission-payouts', 'seller', 'ledger'];
+  const request = (method: string, query = '') =>
+    new Request(`http://seller.localhost:3001/api/${path.join('/')}${query}`, {
+      method,
+      headers: { host: 'seller.localhost:3001' },
+    });
+
+  it('reads the ledger forwarding only limit and cursor', async () => {
+    const upstream = upstreamOk();
+    const answer = await relay(config, request('GET', '?limit=20&cursor=c1&x=1'), path, upstream);
+    expect(answer.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/seller/ledger?limit=20&cursor=c1',
+    );
+  });
+
+  it('refuses every other method and path under it', async () => {
+    expect((await relay(config, request('POST'), path, upstreamOk())).status).toBe(404);
+    const other = [...path, 'x'];
+    expect((await relay(config, request('GET'), other, upstreamOk())).status).toBe(404);
+  });
+});
+
 describe('relay of the seller team routes', () => {
   const ID = '0190a000-0000-7000-8000-0000000000a1';
   const team = ['identity', 'seller', 'team'];
