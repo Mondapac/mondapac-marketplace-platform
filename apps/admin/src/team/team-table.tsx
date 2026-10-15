@@ -88,8 +88,15 @@ export async function TeamTable({
   }
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line">
-      <table className="w-full min-w-160 text-start text-sm">
+      {/* Fixed layout, like the Roles tab: Person takes what is left, the others have set widths. */}
+      <table className="w-full min-w-180 table-fixed text-start text-sm">
         <caption className="sr-only">{t('identity.members.table-caption')}</caption>
+        <colgroup>
+          <col />
+          <col className="w-56" />
+          <col className="w-36" />
+          <col className="w-28" />
+        </colgroup>
         <thead className="bg-muted text-fg-muted">
           <tr>
             <th scope="col" className="px-4 py-3 font-medium">
@@ -112,10 +119,10 @@ export async function TeamTable({
             const id = row.type === 'account' ? row.accountId : row.invitationId;
             return (
               <tr key={`${row.type}-${id}`}>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 align-middle">
                   <Person t={t} row={row} />
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 align-middle">
                   {row.role?.kind === 'system' ? (
                     <span className="me-1" aria-hidden="true">
                       🔒
@@ -126,7 +133,7 @@ export async function TeamTable({
                     <span className="sr-only"> {t('identity.members.role.system')}</span>
                   ) : null}
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 align-middle">
                   <Badge tone={status.tone}>
                     {status.sent === true ? (
                       <span className="me-1" aria-hidden="true">
@@ -136,7 +143,7 @@ export async function TeamTable({
                     {status.label}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 text-end">
+                <td className="px-4 py-3 text-end align-middle">
                   <RowActions target={targetOf(row)} csrfToken={csrfToken} roles={roles} />
                 </td>
               </tr>

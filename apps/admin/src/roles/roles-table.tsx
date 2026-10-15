@@ -74,8 +74,10 @@ export async function RolesTable({
                       const name = roleName(t, role);
                       return (
                         <tr key={role.roleId}>
-                          <td className="break-words px-4 py-3 font-medium text-fg">{name}</td>
-                          <td className="px-4 py-3">
+                          <td className="break-words px-4 py-3 align-middle font-medium text-fg">
+                            {name}
+                          </td>
+                          <td className="px-4 py-3 align-middle">
                             <Badge tone={TONE[role.kind]}>
                               {role.kind === 'system' ? (
                                 <span className="me-1" aria-hidden="true">
@@ -85,7 +87,7 @@ export async function RolesTable({
                               {t(`identity.roles.type.${role.kind}`)}
                             </Badge>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3 align-middle">
                             {role.kind === 'system'
                               ? t('identity.roles.permissions-all')
                               : role.permissionCount === 0
@@ -95,13 +97,13 @@ export async function RolesTable({
                                   })}
                           </td>
                           {members === null ? null : (
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3 align-middle">
                               {t('identity.roles.members-count', {
                                 count: members.get(role.roleId) ?? 0,
                               })}
                             </td>
                           )}
-                          <td className="px-4 py-3 text-end">
+                          <td className="px-4 py-3 text-end align-middle">
                             <a
                               className="font-medium text-link underline"
                               href={`/roles/${role.roleId}`}
