@@ -199,8 +199,11 @@ describe('team pages', () => {
     const table = read('../src/team/team-table.tsx');
     expect(table).toContain('overflow-x-auto');
     expect(table).toContain('table-fixed');
-    expect(table).toContain('<colgroup>');
+    expect(table).toContain('<colgroup');
     expect(table).toContain('break-words');
+    // Below the 760 px breakpoint each row is a card, so no column is hidden behind a sideways scroll.
+    expect(table).toContain('max-md:grid');
+    expect(table).toContain('data-label=');
     expect(table).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
   });
 

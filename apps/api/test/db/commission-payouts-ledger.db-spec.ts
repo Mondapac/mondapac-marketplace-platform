@@ -110,6 +110,9 @@ describe.each(TEST_MARKETS)('commission-payouts stores in market %s (database)',
       1,
     );
     expect(await value(other, () => rates.find(other, sellerId))).toBeNull();
+    // The locking read answers the stored row, and null for a seller without one.
+    expect(await value(market, () => rates.findForUpdate(market, sellerId))).toEqual(read);
+    expect(await value(other, () => rates.findForUpdate(other, sellerId))).toBeNull();
     expect(await value(other, () => rates.remove(other, sellerId))).toBe(false);
 
     expect(await value(market, () => rates.remove(market, sellerId))).toBe(true);

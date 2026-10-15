@@ -102,8 +102,11 @@ export interface OrderRepository {
    */
   findUnrecordedLedger(market: MarketContext, limit: number): Promise<readonly SellerOrderRecord[]>;
 
-  /** Counts one more refused attempt to write the seller order into the ledger. */
-  countLedgerFailure(market: MarketContext, sellerOrderId: Id<'SellerOrder'>): Promise<void>;
+  /**
+   * Counts one more refused attempt to write the seller order into the ledger and answers the
+   * count now (0 when the seller order is no longer pending).
+   */
+  countLedgerFailure(market: MarketContext, sellerOrderId: Id<'SellerOrder'>): Promise<number>;
 
   /** Marks the seller order as written into the ledger (once; a second call changes nothing). */
   markLedgerRecorded(market: MarketContext, sellerOrderId: Id<'SellerOrder'>): Promise<void>;

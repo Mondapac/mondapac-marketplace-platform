@@ -81,15 +81,15 @@ export async function TeamTable({
   }
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line">
-      <table className="w-full min-w-160 table-fixed text-start text-sm">
+      <table className="w-full table-fixed text-start text-sm md:min-w-160 max-md:block">
         <caption className="sr-only">{t('identity.team.table-caption')}</caption>
-        <colgroup>
+        <colgroup className="max-md:hidden">
           <col />
           <col className="w-44" />
           <col className="w-44" />
           <col className="w-24" />
         </colgroup>
-        <thead className="bg-muted text-fg-muted">
+        <thead className="bg-muted text-fg-muted max-md:sr-only">
           <tr>
             <th scope="col" className="px-4 py-3 font-medium">
               {t('identity.team.label.person')}
@@ -105,16 +105,22 @@ export async function TeamTable({
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-line-row">
+        <tbody className="divide-y divide-line-row max-md:block">
           {page.items.map((row) => {
             const status = statusOf(t, row);
             const id = row.type === 'account' ? row.accountId : row.invitationId;
             return (
-              <tr key={`${row.type}-${id}`}>
-                <td className="px-4 py-3">
+              <tr
+                key={`${row.type}-${id}`}
+                className="max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:items-center max-md:gap-x-3 max-md:gap-y-2 max-md:p-4"
+              >
+                <td className="px-4 py-3 align-middle max-md:p-0">
                   <Person t={t} row={row} />
                 </td>
-                <td className="break-words px-4 py-3">
+                <td
+                  className="break-words px-4 py-3 align-middle max-md:col-span-2 max-md:p-0 max-md:before:me-2 max-md:before:inline-block max-md:before:w-20 max-md:before:align-top max-md:before:text-fg-muted max-md:before:content-[attr(data-label)]"
+                  data-label={t('identity.team.label.role')}
+                >
                   {row.role?.kind === 'system' ? (
                     <span className="me-1" aria-hidden="true">
                       🔒
@@ -125,7 +131,10 @@ export async function TeamTable({
                     <span className="sr-only"> {t('identity.team.role.system')}</span>
                   ) : null}
                 </td>
-                <td className="px-4 py-3">
+                <td
+                  className="px-4 py-3 align-middle max-md:col-span-2 max-md:p-0 max-md:before:me-2 max-md:before:inline-block max-md:before:w-20 max-md:before:align-top max-md:before:text-fg-muted max-md:before:content-[attr(data-label)]"
+                  data-label={t('identity.team.label.status')}
+                >
                   <Badge tone={status.tone}>{status.label}</Badge>
                   {row.type === 'invitation' && row.expiresAt !== null ? (
                     <div className="mt-1 text-xs text-fg-muted">
@@ -138,7 +147,7 @@ export async function TeamTable({
                     </div>
                   ) : null}
                 </td>
-                <td className="px-4 py-3 text-end">
+                <td className="px-4 py-3 text-end align-middle max-md:col-start-2 max-md:row-start-1 max-md:p-0">
                   <RowActions target={targetOf(row)} csrfToken={csrfToken} roles={roles} />
                 </td>
               </tr>

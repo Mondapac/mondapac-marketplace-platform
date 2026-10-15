@@ -32,6 +32,18 @@ export class PrismaSellerRateRepository implements SellerRateRepository {
     return row === null ? null : toRecord(row);
   }
 
+  async findForUpdate(market: MarketContext, sellerId: Id<'Seller'>) {
+    // A no-change update takes the row lock until the unit ends (as identity's lockCredential);
+    // the read after it sees what was committed before the lock was granted.
+    const tx = this.prisma.tx(market);
+    const locked = await tx.commissionPayoutsSellerCommissionRate.updateMany({
+      where: { marketId: market.marketId, sellerId },
+      data: { rateBps: { increment: 0 } },
+    });
+    if (locked.count === 0) return null;
+    return this.find(market, sellerId);
+  }
+
   async findMany(market: MarketContext, sellerIds: readonly Id<'Seller'>[]) {
     const rows = await this.prisma.tx(market).commissionPayoutsSellerCommissionRate.findMany({
       where: { marketId: market.marketId, sellerId: { in: [...sellerIds] } },
