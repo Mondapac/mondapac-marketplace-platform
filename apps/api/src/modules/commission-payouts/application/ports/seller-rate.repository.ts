@@ -15,6 +15,13 @@ export interface SellerRateRecord {
 export interface SellerRateRepository {
   find(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerRateRecord | null>;
 
+  /**
+   * Like `find`, and takes the row's write lock for the rest of the unit when it exists, so two
+   * admin edits serialise and each audits the value it really replaced. (The guarded client sends
+   * no raw SQL, so the lock is a no-change update.)
+   */
+  findForUpdate(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerRateRecord | null>;
+
   findMany(
     market: MarketContext,
     sellerIds: readonly Id<'Seller'>[],

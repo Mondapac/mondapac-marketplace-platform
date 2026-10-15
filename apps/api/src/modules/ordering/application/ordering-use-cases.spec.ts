@@ -1125,13 +1125,13 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const order = await placed();
 
       // Not paid yet: nothing goes to the ledger.
-      expect(await record()).toEqual(ok({ recorded: 0, failed: [] }));
+      expect(await record()).toEqual(ok({ recorded: 0, failed: [], stuck: [] }));
       expect(await confirm(order.id)).toEqual(ok('confirmed'));
 
       commission.recordFails = { code: 'commission-payouts.rate-unavailable' };
       expect(await record()).toMatchObject({ ok: true, value: { recorded: 0 } });
       commission.recordFails = null;
-      expect(await record()).toEqual(ok({ recorded: 2, failed: [] }));
+      expect(await record()).toEqual(ok({ recorded: 2, failed: [], stuck: [] }));
 
       const stored = orders.rows.get(order.id)!;
       expect(stored.sellerOrders.map((s) => s.ledgerState)).toEqual(['recorded', 'recorded']);
@@ -1151,7 +1151,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       );
 
       // Marked, so the next run finds nothing; only the system actor may run it.
-      expect(await record()).toEqual(ok({ recorded: 0, failed: [] }));
+      expect(await record()).toEqual(ok({ recorded: 0, failed: [], stuck: [] }));
       expect(commission.recorded).toHaveLength(2);
       expect(await new RecordLedger(gate, deps).execute(customer, {})).toMatchObject({
         ok: false,
@@ -1176,6 +1176,25 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(commission.recorded).toEqual([]);
       // Each refusal is counted, so the queue takes other seller orders first.
       expect([...orders.ledgerFailures.values()]).toEqual([1, 1]);
+    });
+
+    it('reports a seller order as stuck once, when its refusals reach 5', async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      commission.recordFails = { code: 'commission-payouts.rate-unavailable' };
+      const run = () => new RecordLedger(gate, deps).execute(system, {});
+      const stuckPerRun: number[] = [];
+      for (let i = 0; i < 6; i += 1) {
+        const result = await run();
+        stuckPerRun.push(result.ok ? result.value.stuck.length : -1);
+        if (i === 4 && result.ok) {
+          expect(result.value.stuck.map((entry) => [entry.attempts, entry.code])).toEqual([
+            [5, 'commission-payouts.rate-unavailable'],
+            [5, 'commission-payouts.rate-unavailable'],
+          ]);
+        }
+      }
+      expect(stuckPerRun).toEqual([0, 0, 0, 0, 2, 0]);
     });
   });
 });

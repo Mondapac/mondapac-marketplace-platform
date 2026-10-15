@@ -23,6 +23,9 @@ export function recordLedgerJob(record: RecordLedger): JobDefinition {
       for (const problem of result.value.failed) {
         logger.error({ msg: `${RECORD_LEDGER_JOB}.failed`, ...fields, ...problem });
       }
+      for (const problem of result.value.stuck) {
+        logger.error({ msg: 'ordering.ledger.stuck', ...fields, ...problem });
+      }
       if (result.value.recorded > 0) {
         logger.log({ msg: RECORD_LEDGER_JOB, ...fields, recorded: result.value.recorded });
       }

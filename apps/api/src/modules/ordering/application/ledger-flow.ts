@@ -10,10 +10,18 @@ import type { SellerOrderRecord } from './ports/order.repository';
 // seller order the ledger keeps refusing never holds up the others (Hassan, package 5 review).
 
 const LEDGER_BATCH = 20;
+/** The refusals after which a seller order is reported as stuck (once, at exactly this count). */
+export const LEDGER_STUCK_ATTEMPTS = 5;
 
 export interface LedgerRecording {
   readonly recorded: number;
   readonly failed: readonly { readonly sellerOrderId: string; readonly code: string }[];
+  /** Seller orders whose refusals just reached the threshold: ids, count and code only. */
+  readonly stuck: readonly {
+    readonly sellerOrderId: string;
+    readonly attempts: number;
+    readonly code: string;
+  }[];
 }
 
 /** A line placed before the rate was frozen cannot be assessed: such a seller order is refused. */
@@ -48,12 +56,15 @@ export async function recordLedger(
   if (!pending.ok) return pending;
   let recorded = 0;
   const failed: { sellerOrderId: string; code: string }[] = [];
+  const stuck: { sellerOrderId: string; attempts: number; code: string }[] = [];
   const refuse = async (sellerOrderId: Id<'SellerOrder'>, code: string) => {
     failed.push({ sellerOrderId, code });
-    await deps.unitOfWork.run<true, never>(context.market, async () => {
-      await deps.orders.countLedgerFailure(context.market, sellerOrderId);
-      return ok(true as const);
-    });
+    const counted = await deps.unitOfWork.run<number, never>(context.market, async () =>
+      ok(await deps.orders.countLedgerFailure(context.market, sellerOrderId)),
+    );
+    if (counted.ok && counted.value === LEDGER_STUCK_ATTEMPTS) {
+      stuck.push({ sellerOrderId, attempts: counted.value, code });
+    }
   };
   for (const record of pending.value) {
     const facts = paidFacts(record);
@@ -72,5 +83,5 @@ export async function recordLedger(
     });
     recorded += 1;
   }
-  return ok({ recorded, failed });
+  return ok({ recorded, failed, stuck });
 }
