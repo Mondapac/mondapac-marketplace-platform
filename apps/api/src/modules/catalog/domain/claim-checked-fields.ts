@@ -175,6 +175,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   LocalizedText: { noCustomerText: 'carrier type; every use sits inside a classified type' },
   OfferMovedPayloadRefused: { noCustomerText: 'refusal code with fixed paths' },
   PlatformCategory: { noCustomerText: 'aggregate class around PlatformCategoryState' },
+  PublishedOfferIdsInput: { noCustomerText: 'ids and a page size' },
   Product: { noCustomerText: 'aggregate class around ProductState' },
   RateVerdict: { noCustomerText: 'numbers' },
   VariantValidationResult: { noCustomerText: 'issue codes with fixed paths' },
@@ -184,6 +185,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   AttributeOption: { table: 'ATTRIBUTE_OPTION_FIELDS' },
   CatalogBatchTooLarge: { noCustomerText: 'refusal code' },
   CatalogFacade: { noCustomerText: 'interface of methods' },
+  CatalogIndexFacade: { noCustomerText: 'interface of methods' },
   CatalogValidationFailed: { noCustomerText: 'refusal code with fixed paths' },
   Classification: { noCustomerText: 'sensitive-change verdict: codes and flags' },
   CategoryName: { table: 'CATEGORY_NAME_FIELDS' },
@@ -196,6 +198,13 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   Offer: { noCustomerText: 'aggregate class around OfferState' },
   OfferState: { table: 'OFFER_FIELDS' },
   OfferPendingHistory: { noCustomerText: 'history kind, field ids and an instant' },
+  OfferSearchFacts: {
+    noCustomerText: 'read model feed: ids, a flag and OfferSearchText, nothing entered here',
+  },
+  OfferSearchText: {
+    noCustomerText:
+      'read copy of the published revision text, already claim-checked when the revision was frozen',
+  },
   OfferSellUnits: { noCustomerText: 'sell units, numbers and ids' },
   PlatformCategoryState: { table: 'PLATFORM_CATEGORY_FIELDS' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },

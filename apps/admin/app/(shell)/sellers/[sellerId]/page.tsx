@@ -13,6 +13,14 @@ import {
 } from '../../../../src/sellers/review-types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
 import { ReviewView } from '../../../../src/sellers/review-view.tsx';
+import { CommissionRateCard } from '../../../../src/commission/rate-card.tsx';
+import { LedgerCard } from '../../../../src/commission/ledger-card.tsx';
+import {
+  RATE_EDIT_PERMISSION,
+  SETTLEMENT_VIEW_PERMISSION,
+  type CommissionRate,
+  type Ledger,
+} from '../../../../src/commission/types.ts';
 import { FlatFeeCard } from '../../../../src/shipping/flat-fee-card.tsx';
 import {
   FEE_MANAGE_PERMISSION,
@@ -30,6 +38,25 @@ async function loadFee(sellerId: string, canView: boolean): Promise<FlatFee | nu
   if (read.kind === 'ok') return read.body;
   const currency = read.kind === 'not-found' ? read.details?.currency : undefined;
   return typeof currency === 'string' ? { sellerId, amount: null, currency } : null;
+}
+
+type CommissionRead =
+  | { readonly kind: 'hidden' }
+  | { readonly kind: 'unavailable' }
+  | { readonly kind: 'ok'; readonly rate: CommissionRate; readonly ledger: Ledger };
+
+/** The seller's commission rate and first ledger page; hidden for a role without the view key. */
+async function loadCommission(sellerId: string, canView: boolean): Promise<CommissionRead> {
+  if (!canView) return { kind: 'hidden' };
+  const base = `commission-payouts/admin/sellers/${sellerId}`;
+  const [rate, ledger] = await Promise.all([
+    serverGet<CommissionRate>(`${base}/commission-rate`),
+    serverGet<Ledger>(`${base}/ledger?limit=20`),
+  ]);
+  if (rate.kind === 'signed-out' || ledger.kind === 'signed-out') redirect('/session-ended');
+  if (rate.kind === 'forbidden' || ledger.kind === 'forbidden') return { kind: 'hidden' };
+  if (rate.kind !== 'ok' || ledger.kind !== 'ok') return { kind: 'unavailable' };
+  return { kind: 'ok', rate: rate.body, ledger: ledger.body };
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -88,17 +115,39 @@ export default async function SellerReviewPage({
       canCheck: permissionKeys.includes(CHECK_PERMISSION),
       csrfToken,
     };
-    const fee = await loadFee(sellerId, permissionKeys.includes(FEE_VIEW_PERMISSION));
+    const [fee, commission] = await Promise.all([
+      loadFee(sellerId, permissionKeys.includes(FEE_VIEW_PERMISSION)),
+      loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
+    ]);
     return shell(
       <div className="flex flex-col gap-6">
         <ReviewView review={result.body} decide={decide} />
-        {fee === null ? null : (
-          <FlatFeeCard
-            initial={fee}
-            canManage={permissionKeys.includes(FEE_MANAGE_PERMISSION)}
-            csrfToken={csrfToken}
-          />
+        {fee === null && commission.kind === 'hidden' ? null : (
+          <div className="grid items-start gap-6 lg:grid-cols-2">
+            {fee === null ? null : (
+              <FlatFeeCard
+                initial={fee}
+                canManage={permissionKeys.includes(FEE_MANAGE_PERMISSION)}
+                csrfToken={csrfToken}
+              />
+            )}
+            {commission.kind === 'ok' ? (
+              <CommissionRateCard
+                initial={commission.rate}
+                canEdit={permissionKeys.includes(RATE_EDIT_PERMISSION)}
+                csrfToken={csrfToken}
+              />
+            ) : null}
+          </div>
         )}
+        {commission.kind === 'ok' ? <LedgerCard initial={commission.ledger} /> : null}
+        {commission.kind === 'unavailable' ? (
+          <LoadError
+            className="flex flex-col items-start gap-3 rounded-lg border border-line p-5"
+            message={t('commission.ledger.unavailable')}
+            retryLabel={t('load.retry')}
+          />
+        ) : null}
         {/* The action shows only to an actor who holds its key; the server checks it again. */}
         {permissionKeys.includes(OWNER_RESET_PERMISSION) ? (
           <OwnerSecondFactorCard sellerId={sellerId} csrfToken={csrfToken} />

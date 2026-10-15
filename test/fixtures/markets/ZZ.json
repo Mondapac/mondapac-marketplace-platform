@@ -17,9 +17,15 @@
     "defaultRateBps": 1200,
     "provisionalTaxRateBps": 1500
   },
+  "search": {
+    "textSearchConfig": "simple"
+  },
   "requestLimits": {
     "anonymousIdentityPerMinute": 10,
     "defaultPerMinute": 200
+  },
+  "notifications": {
+    "customerOrderPage": "https://storefront.zz.test/account/orders"
   },
   "allowedOrigins": {
     "admin": ["https://admin.zz.test"],

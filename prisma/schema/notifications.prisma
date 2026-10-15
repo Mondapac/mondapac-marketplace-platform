@@ -21,3 +21,19 @@ model NotificationsSupportContact {
   @@map("support_contacts")
   @@schema("notifications")
 }
+
+/// Events notifications' subscribers have handled (ADR-0006 decision 5): `runOnce` inserts
+/// (event_id, handler) in the handler's own unit and skips the work when the row exists. Written
+/// only by platform/persistence/outbox/. The CHECKs and the grants are hand-written in the migration.
+model NotificationsInbox {
+  eventId     String   @map("event_id") @db.Uuid
+  /// The subscriber's name, "notifications.<handler>".
+  handler     String
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  processedAt DateTime @map("processed_at") @db.Timestamptz(6)
+
+  @@id([eventId, handler])
+  @@map("inbox")
+  @@schema("notifications")
+}

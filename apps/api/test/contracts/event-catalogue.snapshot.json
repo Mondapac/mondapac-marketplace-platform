@@ -305,6 +305,15 @@
     }
   },
   {
+    "type": "ordering.order-paid.v1",
+    "aggregateType": "order",
+    "fields": {
+      "orderId": "id",
+      "sellerOrderIds": "listOf(id)",
+      "sellerIds": "listOf(id)"
+    }
+  },
+  {
     "type": "pricing.effective-price-changed.v1",
     "aggregateType": "price-series",
     "fields": {

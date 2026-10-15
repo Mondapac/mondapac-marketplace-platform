@@ -882,6 +882,62 @@
       "unknown": "Something went wrong. Try again."
     }
   },
+  "commission": {
+    "title": "Commission",
+    "intro": "The share of each sale the platform keeps. A change applies to orders placed after it; earlier orders keep the rate they were placed at.",
+    "current": "Current rate",
+    "source": {
+      "seller": "This seller's own rate",
+      "market": "Market default"
+    },
+    "market-rate": "The Market rate is {rate}%.",
+    "field": "Commission rate (%)",
+    "field-help": "Between 0 and {max}, with up to 2 decimals.",
+    "invalid": "Enter a percentage between 0 and {max}, with up to 2 decimals.",
+    "save": "Save rate",
+    "saved-done": "Rate saved. It applies to orders placed from now on.",
+    "reset-done": "This seller is back on the Market rate.",
+    "reset": "Reset to Market rate",
+    "reset-title": "Reset to the Market rate?",
+    "reset-body": "This seller's own rate is removed. Orders placed from now on use the Market rate of {rate}%.",
+    "reset-yes": "Yes, reset",
+    "cancel": "Cancel",
+    "error": {
+      "not-found": "We could not find this seller.",
+      "not-set": "This seller has no rate of its own. It is already on the Market rate.",
+      "invalid": "That rate was refused. Check it and try again.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "Your role cannot change commission rates.",
+      "unavailable": "Commission is not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
+    },
+    "ledger": {
+      "title": "Ledger",
+      "totals": {
+        "sales": "Sales",
+        "shipping": "Shipping",
+        "commission": "Commission",
+        "balance": "Balance"
+      },
+      "col": {
+        "when": "Date",
+        "order": "Order",
+        "kind": "Kind",
+        "amount": "Amount"
+      },
+      "kind": {
+        "sale": "Sale",
+        "shipping": "Shipping",
+        "commission": "Commission"
+      },
+      "empty": "No ledger rows yet. They appear when this seller's orders are paid.",
+      "more": "Load more",
+      "more-failed": "More rows could not be loaded. Try again.",
+      "unavailable": "The commission details could not be loaded.",
+      "retry": "Try again"
+    }
+  },
   "catalog": {
     "review": {
       "title": "Offer reviews",

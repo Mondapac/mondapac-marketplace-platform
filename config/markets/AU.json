@@ -18,7 +18,11 @@
     "provisionalTaxRateBps": 1000
   },
   "notifications": {
-    "supportEmail": "jnamazi@gmail.com"
+    "supportEmail": "jnamazi@gmail.com",
+    "customerOrderPage": "https://storefront.au.mondapac.test/account/orders"
+  },
+  "search": {
+    "textSearchConfig": "english"
   },
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,

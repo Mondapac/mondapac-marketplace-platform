@@ -29,7 +29,16 @@ export interface StatementOwner {
 type Node = Record<string, unknown>;
 
 /** The only functions a statement may call (ADR-0030 decision 3). */
-const ALLOWED_FUNCTIONS: readonly (readonly string[])[] = [['unnest'], ['pg_catalog', 'unnest']];
+const ALLOWED_FUNCTIONS: readonly (readonly string[])[] = [
+  ['unnest'],
+  ['pg_catalog', 'unnest'],
+  // Full-text search (ADR-0030 amendment, `search` module): pure, read-only and deterministic.
+  ['websearch_to_tsquery'],
+  ['ts_rank'],
+];
+
+/** The text-search functions; each is allowed in one exact shape only (see `checkFunction`). */
+const TEXT_SEARCH_FUNCTIONS: ReadonlySet<string> = new Set(['websearch_to_tsquery', 'ts_rank']);
 
 /** The comparison operators a statement may use; a qualified or other operator is refused. */
 const ALLOWED_OPERATORS: ReadonlySet<string> = new Set([
@@ -44,6 +53,9 @@ const ALLOWED_OPERATORS: ReadonlySet<string> = new Set([
   '~~*',
   '!~~',
   '!~~*',
+  // Text search match and array containment (ADR-0030 amendment, `search` module).
+  '@@',
+  '@>',
 ]);
 
 /** The types a cast may name (`pg_catalog` or unqualified); anything else is refused. */
@@ -57,6 +69,8 @@ const ALLOWED_CAST_TYPES: ReadonlySet<string> = new Set([
   'date',
   'varchar',
   'numeric',
+  // A text search configuration named by a bound parameter (`search` module).
+  'regconfig',
 ]);
 
 /** Node kinds that are refused wherever they appear (decision 4 and the function rule). */
@@ -196,6 +210,45 @@ function checkFrom(item: unknown, quals: unknown, walk: Walk): void {
   }
 }
 
+/** A column reference such as `d.search_vector`. */
+function isColumn(node: unknown): boolean {
+  const entry = only(node);
+  return (
+    entry !== null &&
+    entry[0] === 'ColumnRef' &&
+    isNode(entry[1]) &&
+    strings(entry[1].fields) !== null
+  );
+}
+
+/** `$n::<type>`: a cast whose operand is a bound parameter directly (`$1`, the Market, excluded). */
+function isParamCast(node: unknown, type: string): boolean {
+  const entry = only(node);
+  if (entry === null || entry[0] !== 'TypeCast' || !isNode(entry[1])) return false;
+  const target = isNode(entry[1].typeName) ? strings(entry[1].typeName.names) : null;
+  const param = only(entry[1].arg);
+  return (
+    target !== null &&
+    target[target.length - 1] === type &&
+    param !== null &&
+    param[0] === 'ParamRef' &&
+    isNode(param[1]) &&
+    typeof param[1].number === 'number' &&
+    param[1].number >= 2
+  );
+}
+
+/** `websearch_to_tsquery(...)` as an operand; its own arguments are checked when it is visited. */
+function isTsQueryCall(node: unknown): boolean {
+  const entry = only(node);
+  return (
+    entry !== null &&
+    entry[0] === 'FuncCall' &&
+    isNode(entry[1]) &&
+    strings(entry[1].funcname)?.join('.') === 'websearch_to_tsquery'
+  );
+}
+
 function checkCast(cast: Node, walk: Walk): void {
   const target = isNode(cast.typeName) ? strings(cast.typeName.names) : null;
   const name = target?.[target.length - 1];
@@ -205,7 +258,11 @@ function checkCast(cast: Node, walk: Walk): void {
     name !== undefined &&
     (target.length === 1 || qualified) &&
     ALLOWED_CAST_TYPES.has(name);
-  if (!ok) walk.violations.add(`cast-not-allowed:${target === null ? '?' : target.join('.')}`);
+  // `regconfig` only on a bound parameter cast directly (never a column or an expression).
+  const direct = name !== 'regconfig' || only(cast.arg)?.[0] === 'ParamRef';
+  if (!ok || !direct) {
+    walk.violations.add(`cast-not-allowed:${target === null ? '?' : target.join('.')}`);
+  }
 }
 
 function checkFunction(call: Node, walk: Walk): void {
@@ -217,14 +274,29 @@ function checkFunction(call: Node, walk: Walk): void {
     walk.violations.add(`function-not-allowed:${name === null ? '?' : name.join('.')}`);
     return;
   }
-  // `unnest` only over bound parameters (optionally cast).
   const args = Array.isArray(call.args) ? call.args : [];
-  for (const arg of args) {
-    let inner: unknown = arg;
-    const cast = only(inner);
-    if (cast !== null && cast[0] === 'TypeCast' && isNode(cast[1])) inner = cast[1].arg;
-    const param = only(inner);
-    if (param === null || param[0] !== 'ParamRef') walk.violations.add('unnest-argument-not-param');
+  if (name !== null && TEXT_SEARCH_FUNCTIONS.has(name[name.length - 1]!)) {
+    // Exact shapes only (ADR-0030 amendment): ts_rank(<column>, websearch_to_tsquery(...)) and
+    // websearch_to_tsquery($n::regconfig, $m::text), both arguments casts of bound parameters.
+    const last = name[name.length - 1]!;
+    const shaped =
+      name.length === 1 &&
+      args.length === 2 &&
+      (last === 'ts_rank'
+        ? isColumn(args[0]) && isTsQueryCall(args[1])
+        : isParamCast(args[0], 'regconfig') && isParamCast(args[1], 'text'));
+    if (!shaped) walk.violations.add(`text-search-shape:${last}`);
+  } else {
+    // `unnest` only over bound parameters (optionally cast).
+    for (const arg of args) {
+      let inner: unknown = arg;
+      const cast = only(inner);
+      if (cast !== null && cast[0] === 'TypeCast' && isNode(cast[1])) inner = cast[1].arg;
+      const param = only(inner);
+      if (param === null || param[0] !== 'ParamRef') {
+        walk.violations.add('unnest-argument-not-param');
+      }
+    }
   }
   if (
     call.agg_star === true ||
@@ -343,6 +415,13 @@ function visit(value: unknown, walk: Walk): void {
             `operator-not-allowed:${operator === null ? '?' : operator.join('.')}`,
           );
         }
+        const shaped =
+          operator?.[0] === '@@'
+            ? isColumn(child.lexpr) && isTsQueryCall(child.rexpr)
+            : operator?.[0] === '@>'
+              ? isColumn(child.lexpr) && isParamCast(child.rexpr, 'uuid')
+              : true;
+        if (!shaped) walk.violations.add(`operator-shape:${operator?.[0] ?? '?'}`);
         for (const operand of [child.lexpr, child.rexpr]) {
           const column = only(operand);
           if (column !== null && column[0] === 'ColumnRef' && isNode(column[1])) {

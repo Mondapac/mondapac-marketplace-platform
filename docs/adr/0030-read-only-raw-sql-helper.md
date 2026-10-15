@@ -152,6 +152,15 @@ needs none (data catalog 6.3). Its cycle trigger is migration SQL, ruled outside
   run time (`wrong-module`); the unbound port is not exported. The call-site check of decision 6
   stays. Bypasses through `createRequire`, `module.require`, aliased Prisma builders and
   `@prisma/client/runtime` imports are caught by review, not by the script (R-2, best effort).
+- Amended 2026-10-15 (search, Phase 6 package 2; Ali accept, Mojtaba DB sign-off, Hassan approve,
+  2026-10-15, PR #322 comments, with M-1 fixed in this PR): the parse check gains the full-text
+  search the `search` module needs, each construct in one exact shape and nothing else.
+  `websearch_to_tsquery($n::regconfig, $m::text)` (both arguments casts of bound parameters, never
+  columns or literals); `ts_rank(<column>, websearch_to_tsquery(...))`; `<column> @@
+  websearch_to_tsquery(...)`; `<column> @> $n::uuid[]`; `::regconfig` only on a bound parameter cast
+  directly. The statements are `search.offer-search`, `search.offer-search-in-category` and
+  `search.offer-browse`; a visitor's text is always a bound value. `to_tsvector` is not allowed: the
+  vector is built by a trigger on `search.offer_documents` (decision 10, out of scope).
 
 ## Alternatives considered
 - **Prisma with `relationLoadStrategy: 'join'` (option B):** no raw SQL, but one statement is

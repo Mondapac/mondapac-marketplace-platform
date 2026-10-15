@@ -43,6 +43,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     sellers: ['USAGE'],
     shipping: ['USAGE'],
     notifications: ['USAGE'],
+    search: ['USAGE'],
   },
   tables: {
     // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
@@ -343,8 +344,28 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['amount', 'currency', 'updated_at', 'updated_by'],
     },
+    // Phase 6 package 1: the order emails. Ordering writes `ordering.order-paid.v1` (the relay marks
+    // it published); notifications records each event it handled, once per handler.
+    'notifications.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'ordering.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Notifications (support contact): a change is a new version row; none is updated or deleted.
     'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Search (Phase 6 package 2): a projection of catalog, upserted by events and the rebuild job
+    // and deleted when an Offer is no longer sellable. The vector is set by a trigger, so it is
+    // not an updatable column for the application.
+    'search.offer_documents': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'category_ids',
+        'indexed_at',
+        'locale',
+        'name',
+        'product_id',
+        'seller_id',
+        'short_text',
+        'text_search_config',
+      ],
+    },
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.

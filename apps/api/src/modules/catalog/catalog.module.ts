@@ -36,6 +36,9 @@ import { OwnOfferEdit } from './application/use-cases/own-offer-edit.use-case';
 import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handling.use-case';
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
+import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
+import { OFFER_NAMES_READER } from './application/ports/offer-names.reader';
+import { OfferNamesSystemQuery } from './application/use-cases/offer-names-system.use-case';
 import { OFFER_SELL_UNITS_READER } from './application/ports/offer-sell-units.reader';
 import { SellersModule } from '../sellers';
 import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
@@ -54,10 +57,13 @@ import { CATALOG_PERMISSIONS } from './contracts/permissions';
 import { CATEGORY_SEED } from './application/ports/category-seed';
 import { PLATFORM_CATEGORY_REPOSITORY } from './application/ports/platform-category.repository';
 import { SeedAttributes } from './application/use-cases/seed-attributes.use-case';
+import { OfferSearchFactsQuery } from './application/use-cases/offer-search-facts.use-case';
+import { PublishedOfferIdsQuery } from './application/use-cases/published-offer-ids.use-case';
 import { OfferSellUnitsSystemQuery } from './application/use-cases/offer-sell-units-system.use-case';
 import { OfferSellUnitsQuery } from './application/use-cases/offer-sell-units.use-case';
 import { SeedCategoryTree } from './application/use-cases/seed-category-tree.use-case';
 import { CATALOG_FACADE } from './contracts/catalog.facade';
+import { CATALOG_INDEX_FACADE } from './contracts/catalog-index.facade';
 import { CATALOG_EVENTS } from './domain/events';
 import {
   PRODUCT_TYPE_POINT,
@@ -94,6 +100,7 @@ import { catalogProviders } from './infrastructure/catalog-providers';
 import { assertCatalogConfigured } from './infrastructure/market-config-boot-check';
 import { seedAttributesJob } from './presentation/jobs/seed-attributes.job';
 import { CatalogFacadeImplementation } from './presentation/catalog.facade';
+import { CatalogIndexFacadeImplementation } from './presentation/catalog-index.facade';
 import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job';
 
 /**
@@ -123,6 +130,8 @@ const PORT = {
   freeze: FreezeRevision,
   submit: SubmitProduct,
   reader: OFFER_SELL_UNITS_READER,
+  searchReader: OFFER_SEARCH_FACTS_READER,
+  namesReader: OFFER_NAMES_READER,
   offers: OFFER_REPOSITORY,
   eligibility: SELLER_ELIGIBILITY_READER,
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
@@ -449,15 +458,26 @@ const productTypeProvider: FactoryProvider<string> = {
     ),
     useCaseProvider(OfferSellUnitsQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferSellUnitsSystemQuery, { unitOfWork: true, reader: true }),
+    useCaseProvider(OfferNamesSystemQuery, { unitOfWork: true, namesReader: true }),
     {
       provide: CATALOG_FACADE,
-      inject: [OfferSellUnitsQuery, OfferSellUnitsSystemQuery],
+      inject: [OfferSellUnitsQuery, OfferSellUnitsSystemQuery, OfferNamesSystemQuery],
       useFactory: (
         offerSellUnits: OfferSellUnitsQuery,
         offerSellUnitsSystem: OfferSellUnitsSystemQuery,
-      ) => new CatalogFacadeImplementation({ offerSellUnits, offerSellUnitsSystem }),
+        offerNamesSystem: OfferNamesSystemQuery,
+      ) =>
+        new CatalogFacadeImplementation({ offerSellUnits, offerSellUnitsSystem, offerNamesSystem }),
+    },
+    useCaseProvider(OfferSearchFactsQuery, { unitOfWork: true, searchReader: true }),
+    useCaseProvider(PublishedOfferIdsQuery, { unitOfWork: true, searchReader: true }),
+    {
+      provide: CATALOG_INDEX_FACADE,
+      inject: [OfferSearchFactsQuery, PublishedOfferIdsQuery],
+      useFactory: (facts: OfferSearchFactsQuery, published: PublishedOfferIdsQuery) =>
+        new CatalogIndexFacadeImplementation(facts, published),
     },
   ],
-  exports: [CATALOG_FACADE],
+  exports: [CATALOG_FACADE, CATALOG_INDEX_FACADE],
 })
 export class CatalogModule {}
