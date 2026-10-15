@@ -89,7 +89,7 @@ export async function TeamTable({
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line">
       {/* Fixed layout, like the Roles tab: Person takes what is left, the others have set widths. */}
-      <table className="w-full min-w-180 table-fixed text-start text-sm">
+      <table className="w-full min-w-160 table-fixed text-start text-sm">
         <caption className="sr-only">{t('identity.members.table-caption')}</caption>
         <colgroup>
           <col />
