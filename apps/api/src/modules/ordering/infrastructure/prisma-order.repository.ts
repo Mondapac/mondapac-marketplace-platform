@@ -349,10 +349,18 @@ export class PrismaOrderRepository implements OrderRepository {
   }
 
   async countLedgerFailure(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
-    await this.prisma.tx(market).orderingSellerOrder.updateMany({
+    const tx = this.prisma.tx(market);
+    const updated = await tx.orderingSellerOrder.updateMany({
       where: { marketId: market.marketId, id: sellerOrderId, ledgerState: 'pending' },
       data: { ledgerAttempts: { increment: 1 } },
     });
+    if (updated.count === 0) return 0;
+    // The increment holds the row's lock until the unit ends, so this reads our own count.
+    const row = await tx.orderingSellerOrder.findFirst({
+      where: { marketId: market.marketId, id: sellerOrderId },
+      select: { ledgerAttempts: true },
+    });
+    return row?.ledgerAttempts ?? 0;
   }
 
   async markLedgerRecorded(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {

@@ -66,6 +66,11 @@ class MemoryRates implements SellerRateRepository {
   find(_m: MarketContext, sellerId: Id<'Seller'>) {
     return Promise.resolve(this.rows.get(sellerId) ?? null);
   }
+  findForUpdate(m: MarketContext, sellerId: Id<'Seller'>) {
+    this.locked.push(sellerId);
+    return this.find(m, sellerId);
+  }
+  readonly locked: Id<'Seller'>[] = [];
   findMany(_m: MarketContext, sellerIds: readonly Id<'Seller'>[]) {
     return Promise.resolve(sellerIds.flatMap((sellerId) => this.rows.get(sellerId) ?? []));
   }
@@ -250,6 +255,8 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         updatedBy: ADMIN,
       });
       await setRate(SELLER_A, 2000);
+      // The "before" of the audit row is read under the row lock.
+      expect(rates.locked).toEqual([SELLER_A, SELLER_A]);
       expect(await readRates([SELLER_A, SELLER_B])).toEqual(
         ok(
           new Map([
@@ -324,6 +331,18 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         error: { code: 'validation.failed' },
       });
       expect(await readRates([])).toEqual(ok(new Map()));
+      // Only the signed-in customer (checkout) may read the rates.
+      const anonymous = testCallContext(market, 'anonymous', 'cp-anon-abcd');
+      for (const other of [admin, sellerA, system]) {
+        expect(await readRates([SELLER_A], other)).toMatchObject({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+      }
+      expect(await readRates([SELLER_A], anonymous)).toMatchObject({
+        ok: false,
+        error: { code: 'access.unauthenticated' },
+      });
     });
   });
 
