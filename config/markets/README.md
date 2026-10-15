@@ -226,7 +226,10 @@ policy is the Market's `defaultCurrency`.
 
 ## `notifications` section (optional)
 
-Owned by `notifications`. One key: `supportEmail`, the Market's support address (an email address, at
+Owned by `notifications`. Two optional keys. `customerOrderPage`: the storefront page the order
+confirmation mail links to (an absolute https URL without a fragment; http only for a loopback host);
+the order id is appended as one path segment, and a Market without it sends no customer order mail.
+`supportEmail`, the Market's support address (an email address, at
 most 254 characters). It is only the default: a platform admin can change the address at run time on
 the admin panel's Settings page (`notifications.support-contact.manage`), and the stored value then
 wins. Every change is a new row in `notifications.support_contacts` (who, when, the address before)

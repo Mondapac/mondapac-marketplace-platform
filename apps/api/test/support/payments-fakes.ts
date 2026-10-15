@@ -174,6 +174,9 @@ export class FakeOrderingFacade implements OrderingFacade {
     this.cancels.push({ ...request });
     return Promise.resolve(this.cancelAnswer);
   }
+  orderNotice(): ReturnType<OrderingFacade['orderNotice']> {
+    return Promise.resolve(err({ code: 'ordering.order-not-found' }));
+  }
 }
 
 /** A connected-account event body, as the Connect endpoint receives it. */

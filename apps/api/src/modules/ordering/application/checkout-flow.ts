@@ -16,6 +16,7 @@ import type {
   ReserveFailure,
   ReserveResult,
 } from '../../inventory/contracts/ordering-port';
+import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
   addShipping,
@@ -37,6 +38,7 @@ export interface OrderingDependencies {
   readonly inventory: InventoryOrderingPort;
   readonly shipping: ShippingFacade;
   readonly commission: CommissionPayoutsFacade;
+  readonly outbox: OutboxWriter;
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }

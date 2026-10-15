@@ -10,6 +10,7 @@ export {
   IDENTITY_FACADE,
   type ActorDescription,
   type ConfirmSecondFactorFailure,
+  type ContactEmailTarget,
   type IdentityFacade,
   type SellerMembershipSummary,
 } from './identity.facade';

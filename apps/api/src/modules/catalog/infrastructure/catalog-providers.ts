@@ -36,6 +36,7 @@ import {
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
 import { OFFER_REPOSITORY, type OfferRepository } from '../application/ports/offer.repository';
+import { OFFER_NAMES_READER, type OfferNamesReader } from '../application/ports/offer-names.reader';
 import {
   OFFER_SEARCH_FACTS_READER,
   type OfferSearchFactsReader,
@@ -66,6 +67,7 @@ import { PrismaProductImageRepository } from './prisma-product-image.repository'
 import { SharpImageProcessor } from './sharp-image-processor';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
+import { PrismaOfferNamesReader } from './prisma-offer-names.reader';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
 import type { IdGenerator } from '@mondapac/shared-kernel';
@@ -129,6 +131,11 @@ export const catalogProviders: readonly Provider[] = [
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): AllowedProductTypesReader =>
       new SellersAllowedProductTypesReader(sellers),
+  },
+  {
+    provide: OFFER_NAMES_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferNamesReader => new PrismaOfferNamesReader(prisma),
   },
   {
     provide: OFFER_SELL_UNITS_READER,

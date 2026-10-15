@@ -1,5 +1,5 @@
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Id } from '@mondapac/shared-kernel';
+import type { CallContext, Id, PendingEvent } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   SequenceIdGenerator,
@@ -17,6 +17,7 @@ import {
 } from '../../../../test/support/ordering-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
+import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -84,6 +85,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
   let shipping: FakeShipping;
   let commission: FakeCommission;
   let deps: OrderingDependencies;
+  let written: PendingEvent[];
 
   const line = (
     offerId: Id<'Offer'>,
@@ -109,6 +111,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     cart = new FakeCart();
     shipping = new FakeShipping();
     commission = new FakeCommission();
+    written = [];
     // Seller A charges a flat 5.00 for delivery; seller B delivers free (an explicit zero).
     shipping.fees.set(SELLER_A, money(500n, currency));
     shipping.fees.set(SELLER_B, money(0n, currency));
@@ -126,6 +129,12 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       inventory,
       shipping,
       commission,
+      outbox: {
+        append: (_context, events) => {
+          written.push(...events);
+          return Promise.resolve();
+        },
+      },
       ids: new SequenceIdGenerator(clock),
       clock,
     };
@@ -329,6 +338,44 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           units: order.lines.map((l) => ({ offerId: l.offerId, variantId: l.variantId })),
         },
       ]);
+    });
+
+    it('writes one ordering.order-paid.v1 event with ids only, in the confirming unit', async () => {
+      const order = await started();
+      await confirm(order.id);
+
+      expect(written).toHaveLength(1);
+      const event = written[0]!;
+      expect(event).toMatchObject({
+        type: 'ordering.order-paid.v1',
+        aggregateType: 'order',
+        aggregateId: order.id,
+      });
+      expect(event.payload).toEqual({
+        orderId: order.id,
+        sellerOrderIds: order.sellerOrders.map((so) => so.id),
+        sellerIds: order.sellerOrders.map((so) => so.sellerId),
+      });
+      // Ids only: nothing like an address, a name or an amount.
+      expect(JSON.stringify(event.payload)).not.toMatch(/@|email|amount/i);
+    });
+
+    it('asks for a retry, not a throw, when the outbox refuses the event', async () => {
+      const order = await started();
+      deps = {
+        ...deps,
+        outbox: { append: () => Promise.reject(new OutboxWriteRefusedError('payload-invalid')) },
+      };
+
+      expect(await confirm(order.id)).toEqual(err({ code: 'ordering.try-again' }));
+    });
+
+    it('writes no event for a repeat, a voided payment or a retry', async () => {
+      const order = await started();
+      await confirm(order.id);
+      await confirm(order.id);
+      await confirm(order.id, undefined, 'pi_test_2');
+      expect(written).toHaveLength(1);
     });
 
     it('captures only after the commit succeeded', async () => {

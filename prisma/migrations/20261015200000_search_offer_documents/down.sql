@@ -1,4 +1,4 @@
--- Reverses 20261015180000_search_offer_documents: the grants first, then the trigger and its
+-- Reverses 20261015200000_search_offer_documents: the grants first, then the trigger and its
 -- function, then the table. Indexes and CHECKs go with the table. The empty schema "search"
 -- stays, without its USAGE grant, as the leftover check of docs/design/data/platform.md 10.5
 -- (guard 2) expects.

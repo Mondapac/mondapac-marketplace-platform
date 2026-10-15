@@ -97,6 +97,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'inventory.rekey-on-offer-moved',
       'inventory.retire-on-offer-deleted',
       'inventory.retire-on-variant-removed',
+      'notifications.order-confirmation-mail',
+      'notifications.seller-new-order-mail',
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
       'search.index-deleted-offer',
@@ -107,6 +109,10 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'sellers.close-decision-approved',
       'sellers.close-decision-rejected',
       'sellers.create-file',
+    ]);
+    expect(subscriptions.subscribersOf('ordering.order-paid.v1')).toEqual([
+      'notifications.order-confirmation-mail',
+      'notifications.seller-new-order-mail',
     ]);
     expect(subscriptions.subscribersOf('identity.one-time-link-requested.v1')).toEqual([
       'identity.link-mail',
