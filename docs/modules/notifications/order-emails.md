@@ -27,3 +27,20 @@ come with their own packages.
 - **Sender:** the Market's `identity.mail` sender. Language: English for now.
 - **Data:** new tables `ordering.outbox` and `notifications.inbox` (migration
   `20261015190000_ordering_order_paid_outbox`).
+
+## "Shipped" email (Phase 6 package 3)
+
+- **Trigger:** `ordering.order-shipped.v1`, written to the ordering outbox in the same unit in
+  which the seller records the shipment (`POST /ordering/seller/orders/:id/ship`, permission
+  `ordering.seller-order.ship`, own seller orders only). One event per seller order. Payload: ids
+  only (`orderId`, `sellerOrderId`, `sellerId`); no carrier, tracking number or address. A refused
+  outbox write rolls the shipment back (the seller sees 409 and tries again).
+- **Customer, "Shipped"** (`notifications.order-shipped-mail`): order reference, carrier, tracking
+  number (line omitted when the seller gave none) and the same order link as the confirmation. No
+  `customerOrderPage` in the Market config means no mail. Carrier and tracking number are
+  validated on entry (carrier 1 to 60 characters; a `/` or a dot followed by two letters, which
+  reads as a link, is refused; tracking 1 to 80 characters of letters, digits and `space . _ # -`,
+  no `/`) and flattened to one line in the mail.
+- **Reading at send time:** `ordering.shipmentNotice` (system rule, ids plus carrier and tracking
+  number), then `identity.contactEmailOf`. No schema change: the outbox and inbox tables already
+  exist.

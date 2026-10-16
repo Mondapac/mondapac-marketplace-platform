@@ -17,5 +17,20 @@ export const OrderPaid = defineEvent({
   },
 });
 
+/**
+ * A seller recorded the shipment of its part of a paid order (Phase 6 package 3), once per
+ * seller order, in the unit that records it. Ids only: no carrier, tracking number, email or
+ * address reaches the event; `notifications` reads them at send time to mail the customer.
+ */
+export const OrderShipped = defineEvent({
+  type: 'ordering.order-shipped.v1',
+  aggregateType: 'seller-order',
+  payload: {
+    orderId: eventField.id(),
+    sellerOrderId: eventField.id(),
+    sellerId: eventField.id(),
+  },
+});
+
 /** Every event type ordering publishes, registered with the event catalogue at boot. */
-export const ORDERING_EVENTS: readonly EventDefinition[] = [OrderPaid];
+export const ORDERING_EVENTS: readonly EventDefinition[] = [OrderPaid, OrderShipped];
