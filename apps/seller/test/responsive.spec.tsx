@@ -134,7 +134,8 @@ describe('payout account pages', () => {
   it('keep the admin table in its own scroll box, with the tabs in one scrolling row', () => {
     const table = readFileSync(join(__dirname, files[1] as string), 'utf8');
     expect(table).toContain('overflow-x-auto');
-    expect(table).toContain('min-w-200');
+    // Below 1024 px each account is a card (the shared CARD_TABLE classes), no hidden columns.
+    expect(table).toContain('CARD_TABLE.row');
     // The tabs are the shared Tabs row: one line that scrolls sideways, 48 px touch targets.
     const list = readFileSync(join(__dirname, files[2] as string), 'utf8');
     expect(list).toContain('<Tabs');
