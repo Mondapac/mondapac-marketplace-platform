@@ -75,6 +75,15 @@ body {
   th {
     text-align: start;
   }
+  /* A focused or linked element never lands under the sticky top bar. */
+  html {
+    scroll-padding-top: var(--mp-size-topbar-phone);
+  }
+  @media (width >= 48rem) {
+    html {
+      scroll-padding-top: var(--mp-size-topbar);
+    }
+  }
 }
 
 /* Native controls (checkboxes, selects, date pickers) follow the panel theme, not the browser's. */

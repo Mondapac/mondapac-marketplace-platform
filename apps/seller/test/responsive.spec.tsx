@@ -74,6 +74,18 @@ describe('AppShell on phones', () => {
 });
 
 describe('AppShell sidebar from 760 px', () => {
+  it('keeps the top bar and the sidebar in view while the page scrolls', () => {
+    const { container } = render(
+      <AppShell sidebar={<nav>Side</nav>} topbar={<header>Top</header>} labels={labels}>
+        Body
+      </AppShell>,
+    );
+    const bar = screen.getByText('Top').closest('header')?.parentElement?.parentElement;
+    expect(bar?.className).toMatch(/(^| )sticky( |$)/);
+    expect(bar?.className).toMatch(/(^| )top-0( |$)/);
+    expect(container.querySelector('aside')?.className).toMatch(/md:sticky/);
+  });
+
   it('narrows to an icon rail, saves the choice and widens again', () => {
     document.cookie = 'mp-sidebar=; max-age=0; path=/';
     const { container } = render(
