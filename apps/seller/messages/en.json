@@ -1355,5 +1355,15 @@
       "unknown": "Something went wrong on our side. Try again."
     },
     "checked": "Checked just now"
+  },
+  "route": {
+    "loading": "Loading the page",
+    "error": {
+      "title": "This page could not be shown",
+      "message": "Something went wrong on our side. Try again, or go back to the home page. Nothing you saved was lost.",
+      "retry": "Try again",
+      "home": "Go to the home page",
+      "reference": "Reference for support:"
+    }
   }
 }
