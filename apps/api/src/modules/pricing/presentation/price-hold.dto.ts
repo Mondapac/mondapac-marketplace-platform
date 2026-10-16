@@ -99,7 +99,7 @@ export class PriceHoldPageBody {
   })
   next!: string | null;
 
-  @ApiProperty({ description: "Every pending record of the Market, whatever the page." })
+  @ApiProperty({ description: 'Every pending record of the Market, whatever the page.' })
   total!: number;
 }
 
