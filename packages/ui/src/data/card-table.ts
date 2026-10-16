@@ -13,5 +13,5 @@ export const CARD_TABLE = {
   cell: 'px-4 py-3 align-top max-lg:p-0 max-lg:pb-1',
   corner: 'px-4 py-3 align-top max-lg:col-start-2 max-lg:row-start-1 max-lg:p-0 max-lg:text-end',
   labelled:
-    'px-4 py-3 align-top max-lg:col-span-2 max-lg:grid max-lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)] max-lg:items-baseline max-lg:gap-x-2 max-lg:p-0 max-lg:before:text-fg-muted max-lg:before:content-[attr(data-label)] sm:max-lg:grid-cols-[var(--mp-size-data-label)_minmax(0,1fr)]',
+    'px-4 py-3 align-top max-lg:col-span-2 max-lg:grid max-lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)] max-lg:items-baseline max-lg:justify-items-start max-lg:gap-x-2 max-lg:[&>*]:col-start-2 max-lg:p-0 max-lg:before:text-fg-muted max-lg:before:content-[attr(data-label)] sm:max-lg:grid-cols-[var(--mp-size-data-label)_minmax(0,1fr)]',
 } as const;

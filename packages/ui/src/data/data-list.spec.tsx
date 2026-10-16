@@ -67,6 +67,7 @@ describe('LoadError', () => {
 describe('CARD_TABLE labelled cell', () => {
   it('puts label and value on one row on phones', () => {
     expect(CARD_TABLE.labelled).toContain('max-lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)]');
-    expect(CARD_TABLE.labelled).not.toContain('justify-items-start');
+    expect(CARD_TABLE.labelled).toContain('max-lg:justify-items-start');
+    expect(CARD_TABLE.labelled).toContain('max-lg:[&>*]:col-start-2');
   });
 });
