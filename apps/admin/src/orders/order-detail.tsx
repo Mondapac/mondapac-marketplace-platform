@@ -1,9 +1,10 @@
-import { BackLink, Banner, Card, DataList, type DataListRow } from '@mondapac/ui';
+import { BackLink, Banner, Card, DataList, EmailText, type DataListRow } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatMoney } from '../pricing/format.ts';
 import { known } from '../sellers/format.ts';
 import { formatInstant } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
+import { FallbackId, FullId } from './fallback-id.tsx';
 import { FulfilmentBadge, OrderStatusBadge } from './status-badge.tsx';
 import {
   CANCEL_REASONS,
@@ -42,7 +43,19 @@ export function OrderDetail({ order }: { readonly order: AdminOrder }) {
     ...(order.payBy === null
       ? []
       : [{ label: t('field.pay-by'), value: formatInstant(order.payBy, locale) }]),
-    { label: t('field.customer'), value: <span className="break-all">{order.accountId}</span> },
+    ...(order.customer === null
+      ? []
+      : [
+          {
+            label: t('field.customer-name'),
+            value: order.customer.displayName?.trim() || null,
+          },
+          {
+            label: t('field.customer-email'),
+            value: <EmailText address={order.customer.email} />,
+          },
+        ]),
+    { label: t('field.customer'), value: <FullId id={order.accountId} /> },
     {
       label: t('field.payment-intent'),
       value: order.paymentIntentId && <span className="break-all">{order.paymentIntentId}</span>,
@@ -77,6 +90,7 @@ function SellerPartCard({ part }: { readonly part: SellerPart }) {
   const t = useTranslations('orders');
   const locale = useLocale();
   const rows: readonly DataListRow[] = [
+    { label: t('field.seller-account'), value: <FullId id={part.sellerId} /> },
     { label: t('field.fulfilment'), value: <FulfilmentBadge fulfilment={part.fulfilment} /> },
     { label: t('field.carrier'), value: part.carrier },
     { label: t('field.tracking'), value: part.trackingRef },
@@ -87,7 +101,7 @@ function SellerPartCard({ part }: { readonly part: SellerPart }) {
     },
   ];
   return (
-    <Card title={t('detail.seller', { id: shortId(part.sellerId) })}>
+    <Card title={part.storeName?.trim() || t('detail.seller', { id: shortId(part.sellerId) })}>
       <DataList rows={rows} missing={t('none')} />
       <ul className="flex flex-col divide-y divide-line-row border-t border-line">
         {part.lines.map((line) => (
@@ -113,9 +127,12 @@ function LineRow({ line }: { readonly line: OrderLine }) {
     <li className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3 first:pt-3">
       <div className="min-w-0">
         <div className="font-medium break-words" title={line.variantId}>
-          {t('line.variant', { id: shortId(line.variantId) })}
+          {line.productName?.trim() || <FallbackId id={line.offerId} />}
+          {line.variantLabel?.trim() ? ` · ${line.variantLabel}` : ''}
         </div>
         <div className="text-sm text-fg-muted">
+          {t('line.variant', { id: shortId(line.variantId) })}
+          {' · '}
           {t('line.offer', { id: shortId(line.offerId) })}
           {' · '}
           {t('line.quantity', {
