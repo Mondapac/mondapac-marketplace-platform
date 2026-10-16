@@ -11,4 +11,7 @@ module.exports = {
   testRegex: 'test/db/.*\\.db-spec\\.ts$',
   globalSetup: '<rootDir>/test/db/global-setup.ts',
   globalTeardown: '<rootDir>/test/db/global-teardown.ts',
+  // Several specs build a whole Nest application per test; with every spec running in parallel
+  // that can take longer than Jest's 5 s default, which then fails a hook rather than a check.
+  testTimeout: 30_000,
 };
