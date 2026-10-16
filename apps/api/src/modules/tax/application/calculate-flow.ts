@@ -9,7 +9,7 @@ import type { TaxDependencies } from './tax-dependencies';
 // answer on the order, so a later strategy change never touches a placed order.
 
 const MAX_LINES = 200;
-/** Keeps every product below 2^63 and every amount a plain money value. */
+/** Keeps every amount a plain money value (and gross, at most 1.5 times it, inside a BIGINT). */
 const MAX_AMOUNT = 2n ** 53n - 1n;
 
 export async function calculateTax(
@@ -52,7 +52,13 @@ export async function calculateTax(
   return deps.unitOfWork.run<TaxAnswer, TaxFailure>(
     context.market,
     async () => {
-      const active = await deps.strategies.findActive(context.market);
+      let active;
+      try {
+        active = await deps.strategies.findActive(context.market);
+      } catch {
+        // A damaged stored strategy: tax must not be guessed, so the caller fails closed.
+        return err({ code: 'tax.unavailable' } as const);
+      }
       const params: TaxStrategyParams = active?.params ?? {
         kind: 'flat-rate',
         rateBps: settings.defaultRateBps,

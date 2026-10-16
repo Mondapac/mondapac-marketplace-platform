@@ -221,12 +221,10 @@ export async function activateStrategy(
     if (current?.id !== id) {
       if (current !== null) {
         await deps.strategies.deactivateAll(context.market, stamp);
-        if (id === null) {
-          await deps.audit.record(
-            context,
-            TaxStrategyDeactivated.entry(current.id, { before: summary(current.params) }),
-          );
-        }
+        await deps.audit.record(
+          context,
+          TaxStrategyDeactivated.entry(current.id, { before: summary(current.params) }),
+        );
       }
       if (id !== null) {
         await deps.strategies.activate(context.market, id, stamp);

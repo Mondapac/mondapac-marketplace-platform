@@ -219,10 +219,10 @@ describe.each([['AU'], ['ZZ']] as const)('tax strategies in market %s', (code) =
     const switched = await activate(b.value.id);
     expect(switched.ok && switched.value.activeStrategyId).toBe(b.value.id);
     expect([...strategies.rows.values()].filter((row) => row.active)).toHaveLength(1);
-    expect(audit.entries.at(-1)).toMatchObject({
-      action: 'tax.strategy.activate',
-      before: { replacedActive: true },
-    });
+    expect(audit.entries.slice(-2)).toMatchObject([
+      { action: 'tax.strategy.deactivate', targetId: a.value.id },
+      { action: 'tax.strategy.activate', targetId: b.value.id, before: { replacedActive: true } },
+    ]);
   });
 
   it('changes a strategy under its row lock and audits the old and new values', async () => {
@@ -284,6 +284,11 @@ describe.each([['AU'], ['ZZ']] as const)('tax strategies in market %s', (code) =
     const tax = answer.ok ? answer.value.lines.map((l) => l.tax) : [];
     // Inclusive prices (AU): 91 and 92 cents inside; exclusive prices (ZZ): 101 (100.5) and 101.
     expect(tax).toEqual(inclusive ? [91n, 92n] : [101n, 101n]);
+  });
+
+  it('fails closed with tax.unavailable when the stored strategy is damaged', async () => {
+    strategies.findActive = () => Promise.reject(new Error('tax.stored-strategy-invalid'));
+    expect(await calculate([line(1n)])).toEqual(err({ code: 'tax.unavailable' }));
   });
 
   it('refuses callers without the right actor and bad lines', async () => {
