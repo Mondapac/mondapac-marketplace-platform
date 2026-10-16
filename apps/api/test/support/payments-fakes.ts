@@ -177,6 +177,9 @@ export class FakeOrderingFacade implements OrderingFacade {
   orderNotice(): ReturnType<OrderingFacade['orderNotice']> {
     return Promise.resolve(err({ code: 'ordering.order-not-found' }));
   }
+  shipmentNotice(): ReturnType<OrderingFacade['shipmentNotice']> {
+    return Promise.resolve(err({ code: 'ordering.order-not-found' }));
+  }
 }
 
 /** A connected-account event body, as the Connect endpoint receives it. */
