@@ -24,6 +24,8 @@
   --color-fg-secondary: var(--mp-color-text-secondary);
   --color-fg-muted: var(--mp-color-text-muted);
   --color-link: var(--mp-color-text-link);
+  --color-icon: var(--mp-color-icon-default);
+  --color-icon-muted: var(--mp-color-icon-muted);
   --color-on-accent: var(--mp-color-text-on-accent);
   --color-accent: var(--mp-color-action-primary);
   --color-accent-hover: var(--mp-color-action-primary-hover);

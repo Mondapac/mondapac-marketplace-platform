@@ -1,3 +1,4 @@
+import { Icon } from '../icon/icon.tsx';
 import type { NavItem } from './nav.ts';
 
 export interface SidebarProps {
@@ -24,11 +25,12 @@ export function Sidebar({ panelName, items, activeId, label }: SidebarProps) {
               aria-current={active ? 'page' : undefined}
               className={
                 active
-                  ? 'rounded-md bg-selected px-3 py-3 font-medium text-accent md:py-2'
-                  : 'rounded-md px-3 py-3 text-fg-secondary hover:bg-muted md:py-2'
+                  ? 'flex items-center gap-2.5 rounded-md bg-selected px-3 py-3 font-medium text-accent md:py-2'
+                  : 'flex items-center gap-2.5 rounded-md px-3 py-3 text-fg-secondary hover:bg-muted hover:text-fg md:py-2'
               }
             >
-              {label(item.labelKey)}
+              <Icon name={item.icon} className={active ? undefined : 'text-icon'} />
+              <span className="min-w-0 break-words">{label(item.labelKey)}</span>
             </a>
           );
         })}

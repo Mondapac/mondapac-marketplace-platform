@@ -4,39 +4,45 @@ import type { NavConfig } from '@mondapac/ui';
 // disabled; each item is added with its screen.
 export const sellerNav: NavConfig = {
   items: [
-    { id: 's_home', labelKey: 'nav.home', href: '/' },
+    { id: 's_home', icon: 'home', labelKey: 'nav.home', href: '/' },
     {
       id: 's_products',
+      icon: 'package',
       labelKey: 'nav.products',
       href: '/products',
       anyOf: ['catalog.own-product.view'],
     },
     {
       id: 's_offers',
+      icon: 'tag',
       labelKey: 'nav.offers',
       href: '/offers',
       anyOf: ['catalog.own-product.view'],
     },
     {
       id: 's_orders',
+      icon: 'clipboard',
       labelKey: 'nav.orders',
       href: '/orders',
       anyOf: ['ordering.seller-order.view'],
     },
     {
       id: 's_earnings',
+      icon: 'receipt',
       labelKey: 'nav.earnings',
       href: '/earnings',
       anyOf: ['commission-payouts.earnings.view'],
     },
     {
       id: 's_stock',
+      icon: 'map-pin',
       labelKey: 'nav.stock',
       href: '/stock-locations',
       anyOf: ['inventory.stock.view'],
     },
     {
       id: 's_payout',
+      icon: 'wallet',
       labelKey: 'nav.payout',
       href: '/payout-account',
       anyOf: ['payments.payout-account.view'],
@@ -44,12 +50,13 @@ export const sellerNav: NavConfig = {
     // Approved sellers only (SellerShell hides it before).
     {
       id: 's_team',
+      icon: 'users',
       labelKey: 'nav.team',
       href: '/team',
       anyOf: ['identity.team-member.view'],
     },
-    { id: 's_security', labelKey: 'nav.security', href: '/account/security' },
+    { id: 's_security', icon: 'lock', labelKey: 'nav.security', href: '/account/security' },
     // Shown only while the seller is not approved (SellerShell hides it after).
-    { id: 's_setup', labelKey: 'nav.setup', href: '/account-setup' },
+    { id: 's_setup', icon: 'briefcase', labelKey: 'nav.setup', href: '/account-setup' },
   ],
 };

@@ -9,8 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const labels = { menu: 'Open menu', close: 'Close menu', more: 'More', main: 'Main' };
 const tabs = [
-  { id: 'a', href: '/', label: 'Home', active: true },
-  { id: 'b', href: '/products', label: 'Products', active: false },
+  { id: 'a', href: '/', label: 'Home', icon: 'home' as const, active: true },
+  { id: 'b', href: '/products', label: 'Products', icon: 'package' as const, active: false },
 ];
 
 beforeEach(() => {

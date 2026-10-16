@@ -33,6 +33,7 @@ export async function SellerShell({
         id: item.id,
         href: item.href,
         label: t(item.labelKey),
+        icon: item.icon,
         active: item.id === activeId,
       }))
     : undefined;

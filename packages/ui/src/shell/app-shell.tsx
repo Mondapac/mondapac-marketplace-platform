@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Icon, type IconName } from '../icon/icon.tsx';
 
 export interface BottomTab {
   readonly id: string;
   readonly href: string;
   readonly label: string;
+  readonly icon: IconName;
   readonly active: boolean;
 }
 
@@ -25,22 +27,6 @@ export interface AppShellProps {
   readonly bottomTabs?: readonly BottomTab[];
   /** True when none of the tabs is active, so "More" shows as the active one. */
   readonly moreActive?: boolean;
-}
-
-function MenuIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      className="size-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-    >
-      <path d="M4 7h16M4 12h16M4 17h16" />
-    </svg>
-  );
 }
 
 /**
@@ -89,7 +75,7 @@ export function AppShell({
             onClick={() => setOpen(true)}
             className="flex min-h-12 min-w-12 items-center justify-center text-fg md:hidden"
           >
-            <MenuIcon />
+            <Icon name="menu" />
           </button>
           <div className="min-w-0 flex-1">{topbar}</div>
         </div>
@@ -118,9 +104,7 @@ export function AppShell({
             onClick={() => setOpen(false)}
             className="absolute end-1 top-1 flex min-h-12 min-w-12 items-center justify-center text-fg-secondary"
           >
-            <span aria-hidden="true" className="text-xl leading-none">
-              ×
-            </span>
+            <Icon name="x" />
           </button>
           {open ? sidebar : null}
         </div>
@@ -135,9 +119,10 @@ export function AppShell({
               key={tab.id}
               href={tab.href}
               aria-current={tab.active ? 'page' : undefined}
-              className={`flex min-h-16 flex-1 items-center justify-center px-2 text-sm font-medium ${tab.active ? 'text-accent' : 'text-fg-secondary'}`}
+              className={`flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-2 text-xs font-medium ${tab.active ? 'text-accent' : 'text-fg-secondary'}`}
             >
-              {tab.label}
+              <Icon name={tab.icon} />
+              <span className="max-w-full text-center leading-tight">{tab.label}</span>
             </a>
           ))}
           <button
@@ -145,9 +130,10 @@ export function AppShell({
             aria-expanded={open}
             aria-current={moreActive === true || open ? 'page' : undefined}
             onClick={() => setOpen(true)}
-            className={`flex min-h-16 flex-1 items-center justify-center px-2 text-sm font-medium ${moreActive === true || open ? 'text-accent' : 'text-fg-secondary'}`}
+            className={`flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-2 text-xs font-medium ${moreActive === true || open ? 'text-accent' : 'text-fg-secondary'}`}
           >
-            {labels.more}
+            <Icon name="menu" />
+            <span className="max-w-full text-center leading-tight">{labels.more}</span>
           </button>
         </nav>
       ) : null}
