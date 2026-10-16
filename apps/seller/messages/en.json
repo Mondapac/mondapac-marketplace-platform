@@ -4,6 +4,12 @@
     "market": "MondaPac {marketName}",
     "support": "Need help? Email {supportEmail}."
   },
+  "theme": {
+    "menu": "Theme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
   "nav": {
     "menu": "Open navigation menu",
     "close": "Close navigation menu",
