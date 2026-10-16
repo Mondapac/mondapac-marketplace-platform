@@ -42,7 +42,7 @@ import {
   testMarketId,
 } from '../support/test-config';
 import { createPersistence, marketOf, modelMap, type Persistence } from './persistence-support';
-import { testDatabaseUrl } from './test-database';
+import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // Inventory slice 4 on PostgreSQL (inventory design 3.1, 4.2, 4.3, 5.1; data design 3.6 to 3.8,
 // 4.3, 4.4), for both Market fixtures, as the application role: the real repositories, the real
@@ -1187,6 +1187,18 @@ describe.each(TEST_MARKETS)('inventory reservations in market %s (database)', (c
     });
 
     it('uses the held index for the held sum and the terminal index for the prune (EXPLAIN)', async () => {
+      // Fresh statistics first. Statistics taken earlier in the run (by autovacuum, before
+      // this Market's rows existed) estimate about one row for the Market, so every index
+      // led by market_id costs the same and the planner may pick the order_line_id key. With
+      // real counts the held index is clearly the cheaper path, which is what this checks.
+      // ANALYZE needs the table owner; the application login would skip it with a warning.
+      const owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+      await owner.connect();
+      try {
+        await owner.query('ANALYZE inventory.reservation_lines, inventory.reservations');
+      } finally {
+        await owner.end();
+      }
       const plan = async (text: string, params: unknown[]) => {
         await sql.query('BEGIN');
         try {

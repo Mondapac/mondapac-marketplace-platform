@@ -36,7 +36,7 @@ export function Sidebar({ panelName, items, activeId, label }: SidebarProps) {
               key={item.id}
               href={item.href}
               aria-current={active ? 'page' : undefined}
-              className={`flex items-center gap-(--mp-space-2-5) rounded-md px-3 py-3 md:py-2 group-data-[rail=true]/rail:justify-center ${
+              className={`flex items-center gap-(--mp-space-2-5) min-h-(--mp-size-control) rounded-md px-3 py-1 group-data-[rail=true]/rail:justify-center ${
                 active
                   ? 'bg-selected font-medium text-link'
                   : 'text-fg-secondary hover:bg-muted hover:text-fg'

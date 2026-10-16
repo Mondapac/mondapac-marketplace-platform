@@ -21,6 +21,9 @@ const row = (over: Partial<PriceHoldRow> = {}): PriceHoldRow => ({
   offerId: '0190a000-0000-7000-8000-0000000000d1',
   variantId: '0190a000-0000-7000-8000-0000000000e1',
   sellerId: '0190a000-0000-7000-8000-0000000000f1',
+  productName: 'Halal beef mince 500 g',
+  variantLabel: 'Family pack',
+  storeName: 'Logan Road Grocer',
   kind: 'regular',
   amount: { amount: '1999', currency: 'AUD' },
   anchorAmount: { amount: '1000', currency: 'AUD' },
@@ -55,6 +58,30 @@ describe('admin held prices', () => {
     cleanup();
     mount(true, []);
     expect(screen.getByText('No held prices are waiting for a decision.')).toBeTruthy();
+  });
+
+  it('names the product, its variant and the store, with the ids as tooltips', () => {
+    mount();
+    expect(screen.getByText('Halal beef mince 500 g').getAttribute('title')).toBe(
+      '0190a000-0000-7000-8000-0000000000d1',
+    );
+    expect(screen.getByText('Family pack')).toBeTruthy();
+    const store = screen.getByRole('link', { name: 'Logan Road Grocer' });
+    expect(store.getAttribute('href')).toBe('/sellers/0190a000-0000-7000-8000-0000000000f1');
+  });
+
+  it('keeps the row when a name could not be read and shows a short id instead', () => {
+    mount(true, [row({ productName: null, variantLabel: null, storeName: null })]);
+    expect(screen.getByText('Name unavailable (000000D1)')).toBeTruthy();
+    expect(screen.queryByText('Family pack')).toBeNull();
+    const seller = screen.getByRole('link', { name: 'Seller 000000F1' });
+    expect(seller.getAttribute('href')).toBe('/sellers/0190a000-0000-7000-8000-0000000000f1');
+    expect(screen.getByText('$19.99')).toBeTruthy();
+  });
+
+  it('shows seller-entered names as plain text', () => {
+    mount(true, [row({ productName: '<b>Bold</b>' })]);
+    expect(screen.getByText('<b>Bold</b>')).toBeTruthy();
   });
 
   it('approves after a confirmation and removes the row', async () => {

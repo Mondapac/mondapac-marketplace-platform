@@ -257,6 +257,10 @@ describe('admin price holds over HTTP (integration, pricing slice 4)', () => {
         sellerId: SELLER,
         amount: { amount: (fixture.base * 4n).toString(), currency: fixture.policy.currency },
         anchorAmount: { amount: fixture.base.toString(), currency: fixture.policy.currency },
+        // No published product or approved store here: the names are null and the row stays.
+        productName: null,
+        variantLabel: null,
+        storeName: null,
       });
       expect(Object.keys(body.items[0]!)).not.toContain('submittedBy');
       expect(JSON.stringify(body)).not.toContain(SELLER_ACCOUNT);
