@@ -1,6 +1,15 @@
 'use client';
 
-import { Banner, Button, CheckboxRow, Select, Tabs, TextField } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  CheckboxRow,
+  EmptyState,
+  Select,
+  SkeletonRows,
+  Tabs,
+  TextField,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -191,17 +200,22 @@ export function SellersList({
           </Button>
         </div>
       ) : null}
-      {rows.length > 0 ? (
-        <SellersTable rows={rows} canReview={canReview} showOwner={stateCounts !== null} />
+      {loading && rows.length === 0 ? <SkeletonRows label={t('loading')} /> : null}
+      {rows.length > 0 || (!loading && failure === null) ? (
+        <SellersTable
+          rows={rows}
+          canReview={canReview}
+          showOwner={stateCounts !== null}
+          empty={
+            <EmptyState
+              size="compact"
+              icon={search === '' || stateTab ? 'store' : 'search'}
+              title={t(search === '' || stateTab ? `empty.${tab}` : 'empty.search')}
+            />
+          }
+        />
       ) : null}
-      {!loading && failure === null && rows.length === 0 ? (
-        <div className="rounded-lg border border-line p-6">
-          <p className="font-medium">
-            {t(search === '' || stateTab ? `empty.${tab}` : 'empty.search')}
-          </p>
-        </div>
-      ) : null}
-      {loading ? <p className="text-fg-muted">{t('loading')}</p> : null}
+      {loading && rows.length > 0 ? <SkeletonRows label={t('loading')} rows={1} /> : null}
       {next !== null && !loading ? (
         <div>
           <Button variant="secondary" onClick={() => void load(next)}>

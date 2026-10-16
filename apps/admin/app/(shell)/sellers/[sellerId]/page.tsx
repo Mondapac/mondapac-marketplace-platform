@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { EmptyState, LoadError } from '@mondapac/ui';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
@@ -12,7 +12,7 @@ import {
   type ReviewRead,
 } from '../../../../src/sellers/review-types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
-import { ReviewView } from '../../../../src/sellers/review-view.tsx';
+import { BackToSellers, ReviewView } from '../../../../src/sellers/review-view.tsx';
 import { CommissionRateCard } from '../../../../src/commission/rate-card.tsx';
 import { LedgerCard } from '../../../../src/commission/ledger-card.tsx';
 import {
@@ -84,25 +84,31 @@ export default async function SellerReviewPage({
       {body}
     </AdminShell>
   );
-  const message = (key: string) =>
+  // A page with nothing to show is a page-size empty state: its title is the h1 and the way
+  // back to the list is its action. A load failure keeps the retry of LoadError.
+  const message = (key: 'no-access' | 'not-found' | 'no-revision' | 'unavailable') =>
     shell(
-      <>
-        <h1 className="mb-2 text-2xl font-semibold">{t(`sellers.review.${key}.title`)}</h1>
-        {key === 'unavailable' ? (
+      key === 'unavailable' ? (
+        <div className="flex flex-col gap-4">
+          <div>
+            <BackToSellers label={t('sellers.review.back')} />
+          </div>
+          <h1 className="text-2xl font-semibold">{t('sellers.review.unavailable.title')}</h1>
           <LoadError
-            className="mb-2 flex flex-col items-start gap-3"
+            className="flex flex-col items-start gap-3"
             message={t('sellers.review.unavailable.body')}
             retryLabel={t('load.retry')}
           />
-        ) : (
-          <p className="text-fg-muted">{t(`sellers.review.${key}.body`)}</p>
-        )}
-        <p className="mt-4">
-          <a className="font-medium text-link underline" href="/sellers">
-            {t('sellers.review.back')}
-          </a>
-        </p>
-      </>,
+        </div>
+      ) : (
+        <EmptyState
+          size="page"
+          icon={key === 'no-access' ? 'lock' : 'store'}
+          title={t(`sellers.review.${key}.title`)}
+          body={t(`sellers.review.${key}.body`)}
+          action={<BackToSellers label={t('sellers.review.back')} />}
+        />
+      ),
     );
   // The API audits every read of business details, so a page without the permission makes no call.
   if (!gate.session.permissionKeys.includes(REVIEW_PERMISSION)) return message('no-access');

@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Select, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
@@ -98,8 +98,7 @@ export function DecisionPanel({
 
   const check = register.manualCheck;
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-line p-4">
-      <h2 className="text-lg font-semibold">{t('sellers.decision.title')}</h2>
+    <Card title={t('sellers.decision.title')}>
       {decisionInProgress ? <Banner tone="info">{t('sellers.decision.in-progress')}</Banner> : null}
       {notice === null ? null : (
         <Banner tone={notice === 'settling' ? 'info' : 'success'}>
@@ -121,7 +120,11 @@ export function DecisionPanel({
       )}
 
       {canCheck ? (
-        <form className="flex flex-col gap-3" onSubmit={recordCheck} noValidate>
+        <form
+          className="flex max-w-(--mp-size-form-max) flex-col gap-3"
+          onSubmit={recordCheck}
+          noValidate
+        >
           <h3 className="font-medium">{t('sellers.decision.check.title')}</h3>
           <p className="text-sm text-fg-muted">
             {check === null
@@ -183,7 +186,11 @@ export function DecisionPanel({
             </div>
           ) : null}
           {step === 'reject' ? (
-            <form className="flex flex-col gap-3" onSubmit={reject} noValidate>
+            <form
+              className="flex max-w-(--mp-size-form-max) flex-col gap-3"
+              onSubmit={reject}
+              noValidate
+            >
               <TextField
                 name="reason"
                 label={t('sellers.decision.reason')}
@@ -237,6 +244,6 @@ export function DecisionPanel({
           ) : null}
         </div>
       ) : null}
-    </section>
+    </Card>
   );
 }

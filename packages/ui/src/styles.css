@@ -77,6 +77,12 @@ body {
   }
 }
 
+/* Sizes made in code first (speed mode), to be back-ported to the Figma tokens: the label
+ * column of Figma DataRow, shared by detail cards and the labelled lines of phone table cards. */
+:root {
+  --mp-size-data-label: 168px;
+}
+
 /* Phones use the touch density of the tokens (panels IA 4: targets of 48 px below 760 px). */
 @media (max-width: 47.49rem) {
   :root {
