@@ -16,11 +16,17 @@ export function LedgerTotals({ items }: { readonly items: readonly LedgerTotalIt
       {items.map((item) => (
         <div
           key={item.id}
-          className={`min-w-0 rounded-lg border p-3 ${
-            item.emphasis === true ? 'border-line-control bg-subtle' : 'border-line bg-surface'
+          // Every tile has the same fill; the closing figure is set apart by a stronger border
+          // and a label in the body colour.
+          className={`min-w-0 rounded-lg border bg-surface p-3 ${
+            item.emphasis === true ? 'border-line-control' : 'border-line'
           }`}
         >
-          <dt className="text-sm text-fg-muted">{item.label}</dt>
+          <dt
+            className={`text-sm ${item.emphasis === true ? 'font-medium text-fg' : 'text-fg-muted'}`}
+          >
+            {item.label}
+          </dt>
           <dd className="mt-1 break-words text-lg font-semibold tabular-nums text-fg">
             {item.value}
           </dd>
@@ -64,7 +70,7 @@ export function LedgerTable({
   readonly labels: LedgerTableLabels;
 }) {
   return (
-    <div className="relative overflow-x-auto rounded-lg border border-line">
+    <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
       <table className="w-full text-start sm:min-w-120 text-sm">
         <caption className="sr-only">{labels.caption}</caption>
         <thead className="bg-muted text-fg-muted">
