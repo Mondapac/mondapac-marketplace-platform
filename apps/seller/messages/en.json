@@ -1026,7 +1026,6 @@
     "title": "Orders",
     "intro": "Paid orders for your store, newest first. Ship each one, then mark it delivered when it arrives.",
     "fee": "Delivery fee on every order: {fee}. The platform sets it for your store; the customer pays it with the order.",
-    "empty": "No paid orders yet. They appear here as soon as a customer pays.",
     "more": "Show more orders",
     "optional": "optional",
     "card-title": "Order {id}",
@@ -1064,6 +1063,10 @@
       "denied": "Your role cannot do this.",
       "unavailable": "Orders are not available right now. Try again shortly.",
       "unknown": "Something went wrong. Try again."
+    },
+    "empty-state": {
+      "title": "No paid orders yet",
+      "body": "They appear here as soon as a customer pays."
     }
   },
   "earnings": {
@@ -1087,10 +1090,13 @@
       "shipping": "Shipping",
       "commission": "Commission"
     },
-    "empty": "No earnings yet. Rows appear here as soon as a customer pays for an order.",
     "more": "Load more",
     "more-failed": "More rows could not be loaded. Try again.",
-    "unavailable": "Your earnings are not available right now. Try again shortly."
+    "unavailable": "Your earnings are not available right now. Try again shortly.",
+    "empty-state": {
+      "title": "No earnings yet",
+      "body": "Rows appear here as soon as a customer pays for an order."
+    }
   },
   "price": {
     "title": "Prices",

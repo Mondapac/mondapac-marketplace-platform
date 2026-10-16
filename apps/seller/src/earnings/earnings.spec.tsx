@@ -89,7 +89,7 @@ describe('Earnings', () => {
 
   it('shows an empty state and no table without rows', () => {
     mount(ledger([]));
-    expect(screen.getByText(/No earnings yet/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'No earnings yet' })).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
   });

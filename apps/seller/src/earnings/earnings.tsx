@@ -3,6 +3,7 @@
 import {
   Banner,
   Button,
+  EmptyState,
   LedgerTable,
   LedgerTotals,
   type BadgeTone,
@@ -81,7 +82,7 @@ export function Earnings({ initial }: { readonly initial: Ledger }) {
       />
       <h2 className="text-lg font-semibold">{t('ledger')}</h2>
       {rows.length === 0 ? (
-        <p className="text-fg-muted">{t('empty')}</p>
+        <EmptyState icon="receipt" title={t('empty-state.title')} body={t('empty-state.body')} />
       ) : (
         <LedgerTable
           rows={rows}

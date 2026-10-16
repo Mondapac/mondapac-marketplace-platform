@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, Card, TextField, type BadgeTone } from '@mondapac/ui';
+import { Badge, Banner, Button, Card, EmptyState, TextField, type BadgeTone } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -75,7 +75,13 @@ export function SellerOrders({
           {t('orders.fee', { fee: formatMinor(fee.amount, fee.currency) })}
         </Banner>
       )}
-      {orders.length === 0 ? <p className="text-fg-muted">{t('orders.empty')}</p> : null}
+      {orders.length === 0 ? (
+        <EmptyState
+          icon="clipboard"
+          title={t('orders.empty-state.title')}
+          body={t('orders.empty-state.body')}
+        />
+      ) : null}
       <ul className="flex flex-col gap-3">
         {orders.map((order) => (
           <OrderCard

@@ -81,7 +81,7 @@ describe('SellerOrders', () => {
 
   it('says so when there is no order', () => {
     mount(page([]));
-    expect(screen.getByText(/No paid orders yet/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'No paid orders yet' })).toBeTruthy();
   });
 
   it('ships with a carrier and an optional tracking reference, then shows the new state', async () => {
