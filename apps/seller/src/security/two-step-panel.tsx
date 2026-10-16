@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, CheckboxRow, TextField } from '@mondapac/ui';
+import { Badge, Banner, Button, Card, CheckboxRow, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -304,7 +304,13 @@ export function TwoStepPanel({
     body = (
       <div className="flex flex-col gap-4">
         {view.kind === 'removed' ? <Banner tone="info">{t('remove.done')}</Banner> : null}
-        <p role="status" className="font-medium">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">{t('heading')}</h2>
+          <Badge tone={active ? 'success' : 'neutral'}>
+            {t(active ? 'badge.on' : 'badge.off')}
+          </Badge>
+        </div>
+        <p role="status" className="sr-only">
           {t(active ? 'status.on' : 'status.off')}
         </p>
         <p className="text-fg-secondary">{t('intro')}</p>
@@ -318,7 +324,7 @@ export function TwoStepPanel({
             </Button>
           </div>
         ) : (
-          <Button type="button" onClick={() => go({ kind: 'password' })}>
+          <Button type="button" className="sm:self-start" onClick={() => go({ kind: 'password' })}>
             {t('action.turn-on')}
           </Button>
         )}
@@ -327,8 +333,8 @@ export function TwoStepPanel({
   }
 
   return (
-    <Card>
-      <div className="max-w-xl">{body}</div>
-    </Card>
+    <div className="max-w-(--mp-size-form-max)">
+      <Card>{body}</Card>
+    </div>
   );
 }

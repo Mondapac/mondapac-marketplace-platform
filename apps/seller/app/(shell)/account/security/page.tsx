@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { TwoStepPanel } from '../../../../src/security/two-step-panel.tsx';
 import { SellerShell } from '../../../../src/server/seller-shell.tsx';
+import { SettingsHeader } from '../../../../src/settings/settings-header.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
 import { SETUP_ROOT } from '../../../../src/setup/steps.ts';
 
@@ -21,8 +22,8 @@ export default async function SecurityPage() {
   // Two-step verification is for an approved seller; the others finish their file first.
   if (session.sellerAccessState !== 'approved') redirect(SETUP_ROOT);
   return (
-    <SellerShell session={session} activeId="s_security" title={t('security.title')}>
-      <h1 className="mb-4 text-2xl font-semibold">{t('security.title')}</h1>
+    <SellerShell session={session} activeId="s_settings" title={t('settings.title')}>
+      <SettingsHeader active="security" permissionKeys={session.permissionKeys} t={t} />
       <TwoStepPanel active={session.secondFactorActive} csrfToken={session.csrfToken} />
     </SellerShell>
   );

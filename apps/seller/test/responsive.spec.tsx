@@ -103,7 +103,7 @@ describe('two-step pages', () => {
     const text = readFileSync(join(__dirname, '../src/security/two-step-panel.tsx'), 'utf8');
     // A fixed pixel width would widen a 375px page; only max-width and the QR plate are set.
     expect(text).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
-    expect(text).toContain('max-w-xl');
+    expect(text).toContain('max-w-(--mp-size-form-max)');
     expect(text).toContain('flex-wrap');
     expect(text).toContain('break-all');
     // The code grid is one column on phones.
@@ -135,9 +135,12 @@ describe('payout account pages', () => {
     const table = readFileSync(join(__dirname, files[1] as string), 'utf8');
     expect(table).toContain('overflow-x-auto');
     expect(table).toContain('min-w-200');
+    // The tabs are the shared Tabs row: one line that scrolls sideways, 48 px touch targets.
     const list = readFileSync(join(__dirname, files[2] as string), 'utf8');
-    expect(list).toContain('overflow-x-auto');
-    expect(list).toContain('min-h-12');
+    expect(list).toContain('<Tabs');
+    const tabs = readFileSync(join(__dirname, '../../../packages/ui/src/shell/tabs.tsx'), 'utf8');
+    expect(tabs).toContain('overflow-x-auto');
+    expect(tabs).toContain('min-h-12');
   });
 });
 

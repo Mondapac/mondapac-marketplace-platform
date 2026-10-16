@@ -34,27 +34,14 @@ export const sellerNav: NavConfig = {
       anyOf: ['commission-payouts.earnings.view'],
     },
     {
-      id: 's_stock',
-      icon: 'map-pin',
-      labelKey: 'nav.stock',
-      href: '/stock-locations',
-      anyOf: ['inventory.stock.view'],
-    },
-    {
-      id: 's_payout',
-      icon: 'wallet',
-      labelKey: 'nav.payout',
-      href: '/payout-account',
-      anyOf: ['payments.payout-account.view'],
-    },
-    {
       id: 's_team',
       icon: 'users',
       labelKey: 'nav.team',
       href: '/team',
       anyOf: ['identity.team-member.view'],
     },
-    { id: 's_security', icon: 'lock', labelKey: 'nav.security', href: '/account/security' },
+    // Settings holds Security, Payout account and Stock locations as tabs (settings-header.tsx).
+    { id: 's_settings', icon: 'sliders', labelKey: 'nav.settings', href: '/account/security' },
     // The only item before approval (sellerNavItems).
     { id: 's_setup', icon: 'briefcase', labelKey: 'nav.setup', href: '/account-setup' },
   ],
