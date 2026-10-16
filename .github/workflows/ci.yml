@@ -35,10 +35,11 @@ jobs:
             version-file: .nvmrc
 
     services:
-      # Same image and major version as docker-compose.yml. Pulled from the AWS public mirror of
-      # the official image: Docker Hub rate-limits anonymous pulls from CI runners.
+      # Same image and major version as docker-compose.yml. Pulled from Google's mirror of the
+      # official image: Docker Hub rate-limits anonymous pulls from CI runners, and the AWS public
+      # mirror refuses them once its anonymous data limit is spent ("Data limit exceeded").
       postgres:
-        image: public.ecr.aws/docker/library/postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
