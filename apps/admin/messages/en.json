@@ -89,7 +89,8 @@
     },
     "accounts": {
       "title": "Restricted payout accounts",
-      "empty": "No payout account is restricted."
+      "empty": "No payout account is restricted.",
+      "col": { "checked": "Last checked" }
     },
     "orders": {
       "title": "Recent orders",

@@ -18,7 +18,7 @@ import { AccountStatusBadge } from '../payments/status-badge.tsx';
 import type { ConnectedAccountRow } from '../payments/types.ts';
 import { formatMoney, percentChange } from '../pricing/format.ts';
 import type { PriceHoldRow } from '../pricing/types.ts';
-import { known } from '../sellers/format.ts';
+import { areaName, known } from '../sellers/format.ts';
 import type { SellerRow } from '../sellers/types.ts';
 import { shortInstant } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
@@ -180,8 +180,15 @@ function Applications({ data }: { readonly data: AdminDashboardData }) {
       id: 'kind',
       header: ts('col.kind'),
       kind: 'labelled',
-      size: 'text',
+      size: 'status',
       cell: (row) => ts(`kind.${known(row.kind, KINDS)}`),
+    },
+    {
+      id: 'area',
+      header: ts('col.area'),
+      kind: 'labelled',
+      size: 'figure',
+      cell: (row) => areaName(row.serviceAreaCode) ?? ts('not-given'),
     },
     {
       id: 'submitted',
@@ -394,7 +401,7 @@ function Accounts({ data }: { readonly data: AdminDashboardData }) {
     },
     {
       id: 'checked',
-      header: tp('col.last-read-utc'),
+      header: t('accounts.col.checked'),
       kind: 'labelled',
       size: 'date',
       cell: (row) => <Time iso={row.lastReadAt} />,
