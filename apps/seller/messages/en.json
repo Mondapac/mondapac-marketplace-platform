@@ -56,7 +56,8 @@
       "orders-latest": "Among your latest {count} paid orders",
       "offers-all": "All your offers",
       "offers-latest": "Among your latest {count} offers",
-      "offers-open": "Waiting offers among your latest {count}"
+      "offers-open": "Waiting offers among your latest {count}",
+      "changed-latest": "Most recently changed first"
     },
     "notice": {
       "payout-unreadable": "We could not check your payout account just now.",
@@ -108,6 +109,21 @@
       "empty": "No offers are waiting for review or changes.",
       "col": {
         "status": "Status"
+      }
+    },
+    "low-stock": {
+      "title": "Low stock",
+      "empty": "All items are above their low-stock level.",
+      "col": {
+        "item": "Item",
+        "status": "Stock",
+        "left": "Units left",
+        "changed": "Changed"
+      },
+      "status": {
+        "low": "Low",
+        "out": "Out of stock",
+        "unknown": "Unknown"
       }
     },
     "earnings": {

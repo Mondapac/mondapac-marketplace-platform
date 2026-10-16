@@ -7,7 +7,13 @@ import { PAYOUT_VIEW_PERMISSION, type PayoutAccount } from '../payout/types.ts';
 import { serverGet, type ServerGet } from '../server/server-fetch.ts';
 import type { SellerSession } from '../server/session.ts';
 import { STOCK_VIEW_PERMISSION, type SourcesView } from '../stock/types.ts';
-import { COUNT_LIMIT, RECENT, type SellerDashboardData, type Widget } from './types.ts';
+import {
+  COUNT_LIMIT,
+  RECENT,
+  type LowStockPage,
+  type SellerDashboardData,
+  type Widget,
+} from './types.ts';
 
 /**
  * One widget: not asked for without its key, hidden when the API still says forbidden, an
@@ -32,7 +38,7 @@ async function widget<T>(
  */
 export async function loadSellerDashboard(session: SellerSession): Promise<SellerDashboardData> {
   const keys = new Set(session.permissionKeys);
-  const [orders, offers, ledger, payout, sources] = await Promise.all([
+  const [orders, offers, ledger, payout, sources, lowStock] = await Promise.all([
     widget<SellerOrderPage>(keys.has(ORDER_VIEW_PERMISSION), () =>
       serverGet<SellerOrderPage>(`ordering/seller/orders?limit=${COUNT_LIMIT}`),
     ),
@@ -48,8 +54,12 @@ export async function loadSellerDashboard(session: SellerSession): Promise<Selle
     widget<SourcesView>(keys.has(STOCK_VIEW_PERMISSION), () =>
       serverGet<SourcesView>('inventory/seller/sources'),
     ),
+    // A full page of signals, so the few shown are the latest ones.
+    widget<LowStockPage>(keys.has(STOCK_VIEW_PERMISSION), () =>
+      serverGet<LowStockPage>(`inventory/seller/low-stock?limit=${COUNT_LIMIT}`),
+    ),
   ]);
-  if ([orders, offers, ledger, payout, sources].some((item) => item.signedOut)) {
+  if ([orders, offers, ledger, payout, sources, lowStock].some((item) => item.signedOut)) {
     redirect('/session-ended');
   }
   return {
@@ -58,5 +68,6 @@ export async function loadSellerDashboard(session: SellerSession): Promise<Selle
     ledger: ledger.widget,
     payout: payout.widget,
     sources: sources.widget,
+    lowStock: lowStock.widget,
   };
 }

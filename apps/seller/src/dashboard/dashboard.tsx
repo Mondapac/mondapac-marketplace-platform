@@ -19,7 +19,13 @@ import type { OfferView } from '../catalog/types.ts';
 import type { LedgerEntry } from '../earnings/types.ts';
 import type { SellerOrderView } from '../orders/types.ts';
 import { formatMinor } from '../price/money.ts';
-import { COUNT_LIMIT, RECENT, type SellerDashboardData, type Widget } from './types.ts';
+import {
+  COUNT_LIMIT,
+  RECENT,
+  type LowStockItem,
+  type SellerDashboardData,
+  type Widget,
+} from './types.ts';
 
 const FULFILMENTS = ['to-ship', 'shipped', 'delivered'] as const;
 const LEDGER_KINDS = ['sale', 'shipping', 'commission'] as const;
@@ -28,6 +34,8 @@ const FULFILMENT_TONE: Record<string, BadgeTone> = {
   shipped: 'info',
   delivered: 'success',
 };
+const STOCK_STATUSES = ['low', 'out'] as const;
+const STOCK_TONE: Record<string, BadgeTone> = { low: 'attention', out: 'critical' };
 const OFFER_TONE: Record<string, BadgeTone> = {
   draft: 'neutral',
   'pending-first-publish': 'info',
@@ -312,6 +320,83 @@ function Offers({ data }: { readonly data: SellerDashboardData }) {
   );
 }
 
+/** Sell units that are low or out of stock, latest change first; each opens that offer's stock page. */
+function LowStock({ data }: { readonly data: SellerDashboardData }) {
+  const t = useTranslations('dashboard');
+  const locale = useLocale();
+  if (data.lowStock === null) return null;
+  const page = ok(data.lowStock);
+  const rows = page?.items.slice(0, RECENT) ?? [];
+  const columns: ActivityColumn<LowStockItem>[] = [
+    {
+      id: 'item',
+      header: t('low-stock.col.item'),
+      kind: 'title',
+      cell: (row) => (
+        <a
+          className="font-medium text-link underline"
+          href={`/offers/${encodeURIComponent(row.offerId)}/stock`}
+        >
+          {[row.productName ?? t('unnamed-product'), row.variantLabel]
+            .filter((part) => part !== null && part !== '')
+            .join(' · ')}
+        </a>
+      ),
+    },
+    {
+      id: 'status',
+      header: t('low-stock.col.status'),
+      kind: 'corner',
+      size: 'status',
+      cell: (row) => {
+        const status = known(row.status, STOCK_STATUSES);
+        return (
+          <Badge tone={STOCK_TONE[status] ?? 'neutral'}>{t(`low-stock.status.${status}`)}</Badge>
+        );
+      },
+    },
+    {
+      id: 'left',
+      header: t('low-stock.col.left'),
+      kind: 'labelled',
+      size: 'figure',
+      align: 'end',
+      cell: (row) => (
+        <span className="tabular-nums">
+          {row.onlyLeft === null ? '-' : formatCount(row.onlyLeft, false, locale)}
+        </span>
+      ),
+    },
+    {
+      id: 'changed',
+      header: t('low-stock.col.changed'),
+      kind: 'labelled',
+      size: 'date',
+      cell: (row) => <Time iso={row.changedAt} />,
+    },
+  ];
+  return (
+    <DashboardCard
+      id="dash-low-stock"
+      title={t('low-stock.title')}
+      scope={t('scope.changed-latest')}
+      flush={rows.length > 0}
+      {...(page === null ? { error: t('error.card') } : {})}
+    >
+      {rows.length === 0 ? (
+        <EmptyState size="compact" icon="check" title={t('low-stock.empty')} />
+      ) : (
+        <ActivityTable
+          caption={t('low-stock.title')}
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => `${row.offerId}:${row.variantId}`}
+        />
+      )}
+    </DashboardCard>
+  );
+}
+
 function Earnings({ data }: { readonly data: SellerDashboardData }) {
   const t = useTranslations('dashboard');
   const locale = useLocale();
@@ -457,6 +542,7 @@ export function SellerDashboard({
       <Notices data={data} />
       <Attention data={data} />
       <Orders data={data} />
+      <LowStock data={data} />
       <Offers data={data} />
       <Earnings data={data} />
       <div className="grid items-start gap-4 lg:grid-cols-2">
