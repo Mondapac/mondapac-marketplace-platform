@@ -203,7 +203,8 @@ describe('order detail', () => {
     );
     expect(screen.getByText('Captured')).toBeTruthy();
     expect(screen.getByText('pi_123')).toBeTruthy();
-    expect(screen.getByText('Offer 000000C1')).toBeTruthy();
+    expect(screen.getByText('000000C1').getAttribute('title')).toContain('0000000000c1');
+    expect(screen.getByText(/Offer 000000C1/)).toBeTruthy();
     expect(screen.getByText(/Variant 000000D1/)).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Seller 000000A1' })).toBeTruthy();
     expect(screen.queryByText('Customer email')).toBeNull();
