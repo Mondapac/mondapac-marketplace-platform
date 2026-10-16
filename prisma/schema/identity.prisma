@@ -131,7 +131,10 @@ model IdentitySession {
   account            IdentityAccount       @relation(fields: [marketId, accountId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
   /// Slice 5 (data design 3.4, 8.1): a seller session names a seller of its own Market.
   sellerAccess       IdentitySellerAccess? @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  stepUpProofs       IdentityStepUpProof[]
 
+  /// The composite key the fresh-code proofs refer to (the id alone is already unique).
+  @@unique([marketId, id])
   /// The per-request read of the Authenticator.
   @@unique([marketId, tokenHash])
   /// Revocation of every session of an account.
@@ -271,6 +274,7 @@ model IdentitySellerAccess {
   version        Int
   createdAt      DateTime                   @map("created_at") @db.Timestamptz(6)
   memberships    IdentitySellerMembership[]
+  stepUpPolicies IdentitySellerStepUpPolicy[]
   roles          IdentityRole[]
   sessions       IdentitySession[]
   invitations    IdentityInvitation[]
@@ -556,5 +560,43 @@ model IdentityAccessDecision {
   /// reconciliation, `= ANY`; Mojtaba on PR #204).
   @@index([marketId, basisId])
   @@map("access_decisions")
+  @@schema("identity")
+}
+
+/// A seller's own rule for one sensitive action: whether it asks for a fresh two-step code (seller
+/// OTP policy; docs: handoffs/seller-otp-policy-proposal). A missing row means the action's
+/// default. Only the Seller Owner writes it (identity.step-up-policy.manage), with a fresh code,
+/// and every change is audited with the old and new value. Locked actions have no meaningful row.
+model IdentitySellerStepUpPolicy {
+  marketId           String               @map("market_id") @db.VarChar(8)
+  tenantId           String               @map("tenant_id")
+  sellerId           String               @map("seller_id") @db.Uuid
+  /// A registered step-up action key (`<module>.<noun>.<verb>`).
+  actionKey          String               @map("action_key")
+  required           Boolean
+  updatedByAccountId String               @map("updated_by_account_id") @db.Uuid
+  updatedAt          DateTime             @map("updated_at") @db.Timestamptz(6)
+  /// Optimistic version; 1 at insert.
+  version            Int
+  sellerAccess       IdentitySellerAccess @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, sellerId, actionKey])
+  @@map("seller_step_up_policies")
+  @@schema("identity")
+}
+
+/// A fresh two-step code a session presented for one action: valid for a few minutes, for that
+/// action only. Written in the unit that spent the code. Rows go with their session.
+model IdentityStepUpProof {
+  marketId   String          @map("market_id") @db.VarChar(8)
+  tenantId   String          @map("tenant_id")
+  sessionId  String          @map("session_id") @db.Uuid
+  actionKey  String          @map("action_key")
+  verifiedAt DateTime        @map("verified_at") @db.Timestamptz(6)
+  session    IdentitySession @relation(fields: [marketId, sessionId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, sessionId, actionKey])
+  @@index([sessionId])
+  @@map("step_up_proofs")
   @@schema("identity")
 }
