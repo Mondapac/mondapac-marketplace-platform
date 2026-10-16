@@ -145,6 +145,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         grants: fakes.grantReader,
         effectiveKeys: realEffectiveKeys(),
         factors: fakes.factorRepository,
+        records: fakes.recordRepository,
       });
     // Only describeActor is called here; the other methods have their own suites.
     const facadeOf = (describe: DescribeActor) =>
@@ -172,6 +173,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           permissionKeys: [],
           sellerAccessState: null,
           secondFactorActive: false,
+          lastSignInAt: null,
           email: 'Me@Example.com',
           displayName: null,
           session: {
@@ -194,6 +196,34 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         },
       });
       expect(JSON.stringify(facade)).not.toContain('Example.com');
+    });
+
+    it('answers the previous successful sign-in, not the one that opened this session', async () => {
+      const record = (sessionId: Id<'Session'> | null, outcome: string, at: Temporal.Instant) =>
+        fakes.recordRepository.add(market, {
+          id: id<'SignInRecord'>(
+            `01990000-0000-7000-8000-0000000b${String(fakes.records.length).padStart(4, '0')}`,
+          ),
+          population: 'customer',
+          accountId: ACCOUNT_ID,
+          outcome,
+          occurredAt: at,
+          address: '203.0.113.9',
+          sessionId,
+          correlationId: 'correlation-1',
+        });
+      const OLDER = id<'Session'>('01990000-0000-7000-8000-00000000a002');
+      await record(OLDER, 'signed-in', START.subtract({ hours: 30 }));
+      await record(null, 'credentials.invalid', START.subtract({ hours: 2 }));
+      await record(SESSION_ID, 'signed-in', START);
+
+      const summary = await describeActor().execute(context, {});
+
+      expect(summary).toMatchObject({
+        ok: true,
+        value: { lastSignInAt: START.subtract({ hours: 30 }).toString() },
+      });
+      expect(JSON.stringify(summary)).not.toContain('203.0.113.9');
     });
 
     describe('the effective keys of an admin fixture account (slice 8a-1; Sajad G1)', () => {

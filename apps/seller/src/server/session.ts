@@ -10,6 +10,8 @@ export interface SellerSession {
   readonly sellerAccessState: 'pending' | 'approved' | 'rejected';
   readonly email: string;
   readonly secondFactorActive: boolean;
+  /** The previous successful sign-in (ISO 8601, UTC), or null when none is on record. */
+  readonly lastSignInAt: string | null;
   readonly displayName: string;
   readonly csrfToken: string;
 }

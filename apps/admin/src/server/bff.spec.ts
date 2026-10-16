@@ -473,6 +473,16 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${path}/extra`)).status).toBe(404);
   });
 
+  it('relays the own display name (PUT) and password change (POST) on their exact paths only', async () => {
+    const name = 'identity/admin/profile/display-name';
+    expect((await call('PUT', name)).status).toBe(200);
+    expect((await call('POST', name)).status).toBe(404);
+    expect((await call('PUT', `${name}/extra`)).status).toBe(404);
+    const password = 'identity/admin/change-password';
+    expect((await call('POST', password)).status).toBe(200);
+    expect((await call('PUT', password)).status).toBe(404);
+  });
+
   it('relays the flat delivery fee write for a seller UUID on PUT only', async () => {
     expect((await call('PUT', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(200);
     expect((await call('PUT', 'shipping/admin/sellers/nope/flat-fee')).status).toBe(404);

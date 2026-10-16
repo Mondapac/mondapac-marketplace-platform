@@ -1338,6 +1338,24 @@ export class IdentityFakes {
       this.records.push({ ...record, marketId: market.marketId });
       return Promise.resolve();
     },
+    latestSuccessBefore: (market, accountId, exceptSession) => {
+      const latest = this.records
+        .filter(
+          (record) =>
+            record.marketId === market.marketId &&
+            record.accountId === accountId &&
+            record.outcome === 'signed-in' &&
+            record.sessionId !== exceptSession,
+        )
+        .reduce<Temporal.Instant | null>(
+          (best, record) =>
+            best === null || Temporal.Instant.compare(record.occurredAt, best) > 0
+              ? record.occurredAt
+              : best,
+          null,
+        );
+      return Promise.resolve(latest);
+    },
     oldest: () => Promise.resolve(null),
     deleteBetween: () => Promise.resolve(0),
   };

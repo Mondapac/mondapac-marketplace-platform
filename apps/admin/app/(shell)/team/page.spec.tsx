@@ -35,6 +35,7 @@ const session = (permissionKeys: string[]): AdminSession => ({
   roleId: 'r',
   permissionKeys,
   secondFactorActive: true,
+  lastSignInAt: null,
   email: 'ada@example.test',
   displayName: 'Ada',
   csrfToken: 'c',

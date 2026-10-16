@@ -167,6 +167,31 @@ describe('relay allowlist for the seller file', () => {
   });
 });
 
+describe('relay allowlist for the own profile', () => {
+  const send = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    relay(
+      config,
+      new Request(`http://seller.localhost:3001/api/${path}`, { method, headers, body: '{}' }),
+      path.split('/'),
+      upstreamOk(),
+    );
+
+  it('relays the display name write on its exact path and method, same-origin only', async () => {
+    const path = 'identity/seller/profile/display-name';
+    expect((await send('PUT', path)).status).toBe(200);
+    expect((await send('POST', path)).status).toBe(404);
+    expect((await send('PUT', `${path}/extra`)).status).toBe(404);
+    const crossSite = { ...sameOrigin, 'sec-fetch-site': 'cross-site' };
+    expect((await send('PUT', path, crossSite)).status).toBe(403);
+  });
+
+  it('relays the password change by POST only', async () => {
+    const path = 'identity/seller/change-password';
+    expect((await send('POST', path)).status).toBe(200);
+    expect((await send('PUT', path)).status).toBe(404);
+  });
+});
+
 describe('relay', () => {
   it('answers 404 for a host that is not listed', async () => {
     const fetchImpl = upstreamOk();

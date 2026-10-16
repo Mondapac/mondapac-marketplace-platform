@@ -1,5 +1,5 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import type { MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../../platform/persistence/prisma.service';
 import type {
   SignInRecord,
@@ -32,6 +32,24 @@ export class PrismaSignInRecordRepository implements SignInRecordRepository {
       },
       select: { id: true },
     });
+  }
+
+  async latestSuccessBefore(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    exceptSession: Id<'Session'>,
+  ): Promise<Temporal.Instant | null> {
+    const row = await this.prisma.tx(market).identitySignInRecord.findFirst({
+      where: {
+        marketId: market.marketId,
+        accountId,
+        outcome: 'signed-in',
+        sessionId: { not: exceptSession },
+      },
+      orderBy: { occurredAt: 'desc' },
+      select: { occurredAt: true },
+    });
+    return row === null ? null : Temporal.Instant.fromEpochMilliseconds(row.occurredAt.getTime());
   }
 
   async oldest(market: MarketContext): Promise<Temporal.Instant | null> {

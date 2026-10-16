@@ -25,10 +25,12 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import type { AccountState } from '../../domain/account';
 import type { SecondFactorState } from '../../domain/second-factor';
+import { timeStepAt } from '../../domain/totp';
 import { openSession } from '../../domain/session';
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import { RandomLinkTokens } from '../../infrastructure/links/random-link-tokens';
 import { CatalogueMailComposer, formatDuration } from '../../infrastructure/mail/mail-catalogue';
+import { hotp } from '../../infrastructure/second-factor/totp';
 import { RandomSessionTokens } from '../../infrastructure/sessions/random-session-tokens';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import { ChangePassword } from './change-password.use-case';
@@ -474,6 +476,20 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
       version: 1,
     };
     fakes.factors.set(accountId, factor);
+  }
+  /**
+   * Gives the stored factor of the account a secret the test knows (the real sealing over the
+   * fake subject keys) and answers a function for the code the app would show now.
+   */
+  async function knownSecretOf(accountId: Id<'Account'>): Promise<() => string> {
+    await fakes.subjectKeyService.createKey(market, accountId);
+    const secret = fakes.secrets.newSecret();
+    const ciphertext = await fakes.secrets.seal(market, accountId, secret);
+    fakes.factors.set(accountId, {
+      ...fakes.factors.get(accountId)!,
+      secretCiphertext: ciphertext,
+    });
+    return () => hotp(secret, timeStepAt(clock.now()));
   }
   const otherAccount = (population: 'customer' | 'seller') =>
     population === 'customer' ? SELLER_ACCOUNT_ID : CUSTOMER_ID;
@@ -930,11 +946,15 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         const u = useCases();
         const current = sessionOf(population, 1);
         openChallengesAndFactor(accountIdOf(population), otherAccount(population));
+        // A seller-side member with an active factor presents a code (profile package).
+        const codeNow =
+          population === 'seller' ? await knownSecretOf(accountIdOf(population)) : () => undefined;
 
         await expect(
           u.change.execute(testCallContext(market, actorOf(population, current.session.id)), {
             currentPassword: OLD_PASSWORD,
             newPassword: NEW_PASSWORD,
+            ...(population === 'seller' ? { code: codeNow() } : {}),
             client: CLIENT,
           }),
         ).resolves.toMatchObject({ ok: true });
@@ -943,6 +963,83 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         expect(fakes.factors.get(accountIdOf(population))?.state).toBe('active');
       },
     );
+
+    describe('a seller-side member with an active two-step sign-in (profile package)', () => {
+      const change = (u: UseCases, sessionId: Id<'Session'>, extra: { code?: string } = {}) =>
+        u.change.execute(testCallContext(market, actorOf('seller', sessionId)), {
+          currentPassword: OLD_PASSWORD,
+          newPassword: NEW_PASSWORD,
+          ...extra,
+          client: CLIENT,
+        });
+      const stillOld = () =>
+        expect(fakes.accounts.get(SELLER_ACCOUNT_ID)!.credential.passwordHash).toBe(
+          fakeHashOf(OLD_PASSWORD),
+        );
+
+      it('needs a code: without one nothing changes and the sign-in counters are given back', async () => {
+        seed('seller');
+        const u = useCases();
+        const current = sessionOf('seller', 1);
+        openChallengesAndFactor(SELLER_ACCOUNT_ID, CUSTOMER_ID);
+
+        await expect(change(u, current.session.id)).resolves.toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'code', code: 'required' }] },
+        });
+        await expect(change(u, current.session.id, { code: 'not a code' })).resolves.toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'code', code: 'required' }] },
+        });
+
+        stillOld();
+        expect(eventsOf('identity.account-password-changed.v1')).toEqual([]);
+        expect(fakes.records).toEqual([]);
+      });
+
+      it('refuses a wrong code, counts it and changes nothing', async () => {
+        seed('seller');
+        const u = useCases();
+        const current = sessionOf('seller', 1);
+        openChallengesAndFactor(SELLER_ACCOUNT_ID, CUSTOMER_ID);
+        const codeNow = await knownSecretOf(SELLER_ACCOUNT_ID);
+        const wrong = codeNow() === '000000' ? '000001' : '000000';
+
+        await expect(change(u, current.session.id, { code: wrong })).resolves.toEqual({
+          ok: false,
+          error: { code: 'second-factor.invalid' },
+        });
+
+        stillOld();
+        expect(fakes.records.map((r) => r.outcome)).toEqual(['second-factor.invalid']);
+      });
+
+      it('accepts the right code once and refuses the same code again', async () => {
+        seed('seller');
+        const u = useCases();
+        const current = sessionOf('seller', 1);
+        openChallengesAndFactor(SELLER_ACCOUNT_ID, CUSTOMER_ID);
+        const codeNow = await knownSecretOf(SELLER_ACCOUNT_ID);
+        const code = codeNow();
+
+        await expect(change(u, current.session.id, { code })).resolves.toMatchObject({ ok: true });
+        expect(fakes.accounts.get(SELLER_ACCOUNT_ID)!.credential.passwordHash).toBe(
+          fakeHashOf(NEW_PASSWORD),
+        );
+        // The same step was spent: a replayed code is refused, whatever the password.
+        await expect(change(u, current.session.id, { code })).resolves.toMatchObject({ ok: false });
+      });
+
+      it('asks for no code when the member has no active factor, and ignores one sent anyway', async () => {
+        seed('seller');
+        const u = useCases();
+        const current = sessionOf('seller', 1);
+
+        await expect(change(u, current.session.id, { code: 'whatever' })).resolves.toMatchObject({
+          ok: true,
+        });
+      });
+    });
 
     it('records a wrong current password and the change, with session, address and correlation id (Hassan L3)', async () => {
       seed('customer');
