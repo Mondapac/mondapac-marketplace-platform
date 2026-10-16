@@ -20,22 +20,27 @@ function secure(): string {
   return window.location.protocol === 'https:' ? '; secure' : '';
 }
 
+/** Applies a theme choice at once and keeps it for later visits (the cookie the server reads). */
+export function applyThemeChoice(next: ThemeChoice) {
+  const root = document.documentElement;
+  root.setAttribute('data-theme-choice', next);
+  if (next === 'system') {
+    document.cookie = `${THEME_COOKIE}=; path=/; max-age=0; samesite=lax${secure()}`;
+    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.setAttribute('data-theme', dark ? 'dark' : 'light');
+  } else {
+    document.cookie = `${THEME_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax${secure()}`;
+    root.setAttribute('data-theme', next);
+  }
+}
+
 /** The topbar's theme control: System, Light or Dark, applied at once and kept for later visits. */
 export function ThemeMenu({ choice: saved, labels }: ThemeMenuProps) {
   const [choice, setChoice] = useState(saved);
 
   function choose(next: ThemeChoice) {
     setChoice(next);
-    const root = document.documentElement;
-    root.setAttribute('data-theme-choice', next);
-    if (next === 'system') {
-      document.cookie = `${THEME_COOKIE}=; path=/; max-age=0; samesite=lax${secure()}`;
-      const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      root.setAttribute('data-theme', dark ? 'dark' : 'light');
-    } else {
-      document.cookie = `${THEME_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax${secure()}`;
-      root.setAttribute('data-theme', next);
-    }
+    applyThemeChoice(next);
   }
 
   return (

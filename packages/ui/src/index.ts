@@ -1,6 +1,12 @@
 export { AppShell, type AppShellProps, type BottomTab } from './shell/app-shell.tsx';
 export { Sidebar, type SidebarProps } from './shell/sidebar.tsx';
 export { Topbar, type Crumb, type TopbarProps } from './shell/topbar.tsx';
+export {
+  AccountMenu,
+  initials,
+  type AccountMenuLink,
+  type AccountMenuProps,
+} from './shell/account-menu.tsx';
 export { Icon, type IconName, type IconProps } from './icon/icon.tsx';
 export { Tabs, type TabItem, type TabsProps } from './shell/tabs.tsx';
 export { BackLink } from './shell/back-link.tsx';
@@ -51,4 +57,4 @@ export {
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
 export { THEME_COOKIE, THEME_SCRIPT, themeChoice, type ThemeChoice } from './theme/theme.ts';
-export { ThemeMenu, type ThemeMenuProps } from './theme/theme-menu.tsx';
+export { ThemeMenu, applyThemeChoice, type ThemeMenuProps } from './theme/theme-menu.tsx';

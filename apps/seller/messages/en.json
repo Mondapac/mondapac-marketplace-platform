@@ -10,6 +10,13 @@
     "light": "Light",
     "dark": "Dark"
   },
+  "account-menu": {
+    "trigger": "Account menu for {name}",
+    "profile": "My profile",
+    "security": "Security",
+    "sign-out": "Sign out",
+    "sign-out-failed": "We couldn't sign you out. Check your connection and try again."
+  },
   "nav": {
     "menu": "Open navigation menu",
     "close": "Close navigation menu",
@@ -29,10 +36,6 @@
   },
   "home": {
     "title": "Home",
-    "signed-in-as": "Signed in as {name}",
-    "sign-out": "Sign out",
-    "sign-out-failed": "We couldn't sign you out. Check your connection and try again.",
-    "user-menu": "Account",
     "welcome": "Welcome, {name}",
     "intro": "Where would you like to start?",
     "shortcuts": "Sections",
@@ -1365,5 +1368,17 @@
       "home": "Go to the home page",
       "reference": "Reference for support:"
     }
+  },
+  "profile": {
+    "title": "My profile",
+    "details": "Details",
+    "name": "Name",
+    "email": "Sign-in email",
+    "two-step": "Two-step verification",
+    "two-step-on": "On",
+    "two-step-off": "Off",
+    "missing": "Not given",
+    "unavailable": "We couldn't load your profile. Try again.",
+    "manage-security": "Manage"
   }
 }
