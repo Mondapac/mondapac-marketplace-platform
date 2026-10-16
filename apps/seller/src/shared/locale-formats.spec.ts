@@ -69,4 +69,52 @@ describe('Intl format cache', () => {
     expect(numberFormat('en-AU', money)).toBe(numberFormat('en-AU', money));
     expect(numberFormat('en-AU', money)).not.toBe(numberFormat('de-DE', money));
   });
+
+  describe('in the seller zone', () => {
+    const at = '2026-10-09T23:30:00.000Z';
+
+    it('shows an instant in a non-UTC zone with its short name, under each Market', () => {
+      expect(formatInstant(at, AU.locale, 'Australia/Brisbane')).toMatch(
+        /^10 Oct 2026, 9:30\s?am (AEST|GMT\+10)$/i,
+      );
+      // Synthetic second Market: another locale and zone.
+      expect(formatInstant(at, DE.locale, 'Pacific/Auckland')).toMatch(
+        /^10\.10\.2026, 12:30 (NZDT|GMT\+13)$/,
+      );
+      expect(shortInstant(at, AU.locale, 'Australia/Brisbane')).toMatch(/^10 Oct.*9:30\s?am$/i);
+    });
+
+    it('follows the zone across the date line and a DST change', () => {
+      // Same instant is on three different days around the date line.
+      expect(formatInstant('2026-12-31T11:30:00Z', AU.locale, 'Pacific/Kiritimati')).toMatch(
+        /^1 Jan 2027, 1:30\s?am/i,
+      );
+      expect(formatInstant('2026-12-31T11:30:00Z', AU.locale, 'Pacific/Pago_Pago')).toMatch(
+        /^31 Dec 2026, 12:30\s?am/i,
+      );
+      // Sydney clocks go forward on 2026-10-04 at 2 am: 15:59Z is 1:59 am, 16:00Z is 3:00 am.
+      expect(formatInstant('2026-10-03T15:59:00Z', AU.locale, 'Australia/Sydney')).toMatch(
+        /^4 Oct 2026, 1:59\s?am/i,
+      );
+      expect(formatInstant('2026-10-03T16:00:00Z', AU.locale, 'Australia/Sydney')).toMatch(
+        /^4 Oct 2026, 3:00\s?am/i,
+      );
+    });
+
+    it('decides "this year" in the seller zone, not in UTC', () => {
+      const year = new Date().getUTCFullYear();
+      // 23:30Z on 31 Dec is already next year in Auckland.
+      expect(shortInstant(`${year}-12-31T23:30:00Z`, AU.locale, 'Pacific/Auckland')).toContain(
+        String(year + 1),
+      );
+      expect(shortInstant(`${year}-12-31T23:30:00Z`, AU.locale, 'UTC')).not.toMatch(/\d{4}/);
+    });
+
+    it('falls back to UTC, labelled UTC, when the zone is missing or unknown', () => {
+      for (const zone of [undefined, null, '', 'Not/AZone']) {
+        expect(formatInstant(at, AU.locale, zone)).toMatch(/^9 Oct 2026, 11:30\s?pm UTC$/i);
+        expect(shortInstant(at, AU.locale, zone)).toMatch(/^9 Oct.*11:30\s?pm$/i);
+      }
+    });
+  });
 });

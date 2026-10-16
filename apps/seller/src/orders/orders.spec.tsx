@@ -103,6 +103,15 @@ describe('SellerOrders list', () => {
     expect(screen.queryByRole('button', { name: 'Mark as shipped' })).toBeNull();
   });
 
+  it('shows the paid time in the seller zone', () => {
+    render(
+      <NextIntlClientProvider locale="en-AU" timeZone="Australia/Brisbane" messages={messages}>
+        <SellerOrders initial={page([order()])} fee={fee} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText(/14 Oct.*8:00 pm/)).toBeTruthy();
+  });
+
   it('says so when there is no order, with no filter', () => {
     mountList(page([]));
     expect(screen.getByRole('heading', { name: 'No paid orders yet' })).toBeTruthy();
@@ -168,6 +177,21 @@ describe('OrderDetail', () => {
     expect(screen.getAllByText('$30.00').length).toBeGreaterThan(0);
     expect(screen.getByText('$35.00')).toBeTruthy();
     expect(screen.getByText('Paid 14 Oct 2026, 10:00 am UTC · 2 items')).toBeTruthy();
+  });
+
+  it('shows times in the seller zone the provider carries', () => {
+    render(
+      <NextIntlClientProvider locale="en-AU" timeZone="Australia/Brisbane" messages={messages}>
+        <OrderDetail
+          initial={order()}
+          labels={labels}
+          csrfToken="csrf"
+          canShip={true}
+          canDeliver={true}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText(/^Paid 14 Oct 2026, 8:00 pm (AEST|GMT\+10) · 2 items$/)).toBeTruthy();
   });
 
   it('falls back to a short id for a line whose name could not be read', () => {

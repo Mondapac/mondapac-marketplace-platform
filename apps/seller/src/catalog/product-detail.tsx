@@ -1,5 +1,5 @@
 import { Badge } from '@mondapac/ui';
-import { getLocale, getTranslations } from 'next-intl/server';
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server';
 import { FieldList } from './field-list.tsx';
 import { formatInstant, known, PRODUCT_STATUSES } from './format.ts';
 import type { ProductView, RevisionView } from './types.ts';
@@ -8,12 +8,14 @@ type Translate = Awaited<ReturnType<typeof getTranslations>>;
 
 function Revision({
   locale,
+  zone,
   t,
   heading,
   revision,
 }: {
   readonly t: Translate;
   readonly locale: string;
+  readonly zone: string;
   readonly heading: string;
   readonly revision: RevisionView;
 }) {
@@ -25,7 +27,7 @@ function Revision({
           { label: t('catalog.revision.number'), value: String(revision.revisionNo) },
           {
             label: t('catalog.revision.submitted'),
-            value: formatInstant(revision.submittedAt, locale),
+            value: formatInstant(revision.submittedAt, locale, zone),
           },
           {
             label: t('catalog.revision.author'),
@@ -52,6 +54,7 @@ export async function ProductDetail({
 }) {
   const t = await getTranslations();
   const locale = await getLocale();
+  const zone = await getTimeZone();
   const status = known(product.status, PRODUCT_STATUSES);
   const active = product.variants.filter((variant) => variant.state !== 'retired').length;
   return (
@@ -79,15 +82,21 @@ export async function ProductDetail({
             label: t('catalog.product.variants'),
             value: t('catalog.product.variants-count', { count: active, max: product.maxVariants }),
           },
-          { label: t('catalog.col.changed'), value: formatInstant(product.lastChangedAt, locale) },
-          { label: t('catalog.product.created'), value: formatInstant(product.createdAt, locale) },
+          {
+            label: t('catalog.col.changed'),
+            value: formatInstant(product.lastChangedAt, locale, zone),
+          },
+          {
+            label: t('catalog.product.created'),
+            value: formatInstant(product.createdAt, locale, zone),
+          },
           {
             label: t('catalog.product.working-copy'),
             value:
               product.workingCopy === null
                 ? null
                 : t('catalog.product.saved-at', {
-                    when: formatInstant(product.workingCopy.lastSavedAt, locale),
+                    when: formatInstant(product.workingCopy.lastSavedAt, locale, zone),
                   }),
           },
         ]}
@@ -96,6 +105,7 @@ export async function ProductDetail({
         <Revision
           t={t}
           locale={locale}
+          zone={zone}
           heading={t('catalog.product.pending-revision')}
           revision={product.pending}
         />
@@ -104,6 +114,7 @@ export async function ProductDetail({
         <Revision
           t={t}
           locale={locale}
+          zone={zone}
           heading={t('catalog.product.published-revision')}
           revision={product.published}
         />

@@ -1,30 +1,43 @@
 import { dateFormat } from '../shared/intl.ts';
+import { resolveZone } from '../price/zone-time.ts';
 
-/** An instant from the API, shown in UTC and labelled so (the seller's zone is not in the session). */
-export function formatInstant(iso: string | null, locale: string): string {
+/** The zone's short name at that instant in the Market locale ("AEST", "GMT+13"), "UTC" for UTC. */
+function zoneLabel(date: Date, locale: string, timeZone: string): string {
+  const parts = dateFormat(locale, { timeZoneName: 'short', timeZone }).formatToParts(date);
+  return parts.find((part) => part.type === 'timeZoneName')?.value ?? timeZone;
+}
+
+/**
+ * An instant from the API shown in the seller's zone and labelled with the zone's short name
+ * ("9 Oct 2026, 11:30 pm AEST"). With no zone, or one this runtime does not know, it is UTC and
+ * labelled so.
+ */
+export function formatInstant(iso: string | null, locale: string, zone?: string | null): string {
   if (iso === null) return '-';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '-';
-  const text = dateFormat(locale, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'UTC',
-  }).format(date);
-  return `${text} UTC`;
+  const timeZone = resolveZone(zone);
+  const text = dateFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(
+    date,
+  );
+  return `${text} ${zoneLabel(date, locale, timeZone)}`;
 }
 
-/** A compact UTC instant for a table cell ("14 Oct, 3:30 am"); the year only when not this one. */
-export function shortInstant(iso: string, locale: string): string {
+/** A compact instant in the seller's zone for a table cell ("14 Oct, 3:30 am"); the year only when not this one. */
+export function shortInstant(iso: string, locale: string, zone?: string | null): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '-';
-  const sameYear = date.getUTCFullYear() === new Date().getUTCFullYear();
+  const timeZone = resolveZone(zone);
+  const yearIn = (instant: Date) =>
+    dateFormat('en', { year: 'numeric', numberingSystem: 'latn', timeZone }).format(instant);
+  const sameYear = yearIn(date) === yearIn(new Date());
   return dateFormat(locale, {
     day: 'numeric',
     month: 'short',
     ...(sameYear ? {} : { year: 'numeric' }),
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: 'UTC',
+    timeZone,
   }).format(date);
 }
 

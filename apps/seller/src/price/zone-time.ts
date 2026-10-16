@@ -52,6 +52,11 @@ export function isKnownZone(zone: string): boolean {
   }
 }
 
+/** The seller's zone when it is one this runtime knows, otherwise UTC. */
+export function resolveZone(zone: string | null | undefined): string {
+  return zone !== null && zone !== undefined && isKnownZone(zone) ? zone : FALLBACK_ZONE;
+}
+
 /**
  * A `datetime-local` value ("2026-10-20T01:00") read as a wall-clock time in an IANA zone and
  * answered as a UTC instant ("2026-10-19T14:00:00Z"), or null when it is not a time or the zone
