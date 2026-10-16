@@ -1,7 +1,12 @@
 import { err, money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
-import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
+import {
+  FixedClock,
+  testAuthenticatedActor,
+  testCallContext,
+} from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import { SellerShipOrder } from '../../src/modules/ordering/application/use-cases/seller-ship-order.use-case';
 import { ConfirmPayment } from '../../src/modules/ordering/application/use-cases/confirm-payment.use-case';
 import type { OrderingDependencies } from '../../src/modules/ordering/application/checkout-flow';
 import { ORDERING_EVENTS } from '../../src/modules/ordering/domain/events';
@@ -209,6 +214,69 @@ describe.each(TEST_MARKETS)(
 
       expect(await statusOf(order.id)).not.toBe('confirmed');
       expect(await eventsOf(order.id)).toEqual([]);
+    });
+
+    describe('recording a shipment', () => {
+      const shipAs = (use: OrderingDependencies, order: OrderState) => {
+        const sellerOrder = order.sellerOrders[0]!;
+        const seller = testCallContext(
+          market,
+          testAuthenticatedActor(market, {
+            population: 'seller',
+            accountId: ids.next<'Account'>(),
+            sessionId: ids.next<'Session'>(),
+            sellerId: sellerOrder.sellerId,
+          }),
+          `ship-${ids.next()}`,
+        );
+        return {
+          sellerOrder,
+          result: new SellerShipOrder(gate, use).execute(seller, {
+            sellerOrderId: sellerOrder.id,
+            carrier: 'Australia Post',
+            trackingRef: 'AP123456789',
+          }),
+        };
+      };
+      const fulfilmentOf = async (sellerOrderId: string) =>
+        (
+          await sql.query<{ fulfilment: string }>(
+            'SELECT fulfilment FROM ordering.seller_orders WHERE market_id = $1 AND id = $2',
+            [market.marketId, sellerOrderId],
+          )
+        ).rows[0]?.fulfilment;
+
+      it('writes one order-shipped event with ids only in the unit that records it', async () => {
+        const order = await placeOrder();
+        expect(await confirm(deps, order)).toEqual(ok('confirmed'));
+
+        const { sellerOrder, result } = shipAs(deps, order);
+        expect((await result).ok).toBe(true);
+
+        expect(await fulfilmentOf(sellerOrder.id)).toBe('shipped');
+        const events = await eventsOf(sellerOrder.id as unknown as Id<'Order'>);
+        expect(events).toHaveLength(1);
+        expect(events[0]!.type).toBe('ordering.order-shipped.v1');
+        expect(events[0]!.payload).toEqual({
+          orderId: order.id,
+          sellerOrderId: sellerOrder.id,
+          sellerId: sellerOrder.sellerId,
+        });
+      });
+
+      it('leaves the seller order to-ship and writes no event when the outbox refuses', async () => {
+        const order = await placeOrder();
+        expect(await confirm(deps, order)).toEqual(ok('confirmed'));
+        const refusing: OutboxWriter = {
+          append: () => Promise.reject(new OutboxWriteRefusedError('payload-invalid')),
+        };
+
+        const { sellerOrder, result } = shipAs({ ...deps, outbox: refusing }, order);
+        expect(await result).toEqual(err({ code: 'ordering.fulfilment-conflict' }));
+
+        expect(await fulfilmentOf(sellerOrder.id)).toBe('to-ship');
+        expect(await eventsOf(sellerOrder.id as unknown as Id<'Order'>)).toEqual([]);
+      });
     });
   },
 );

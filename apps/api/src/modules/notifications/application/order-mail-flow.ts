@@ -7,7 +7,12 @@ import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { CatalogFacade } from '../../catalog';
 import type { IdentityFacade } from '../../identity';
 import type { OrderingFacade, OrderNotice } from '../../ordering';
-import { orderConfirmationMail, sellerNewOrderMail, type MailLine } from '../domain/order-mail';
+import {
+  orderConfirmationMail,
+  orderShippedMail,
+  sellerNewOrderMail,
+  type MailLine,
+} from '../domain/order-mail';
 import type { NotificationsPolicy } from './ports/notifications-policy';
 
 export interface OrderMailDependencies {
@@ -23,6 +28,11 @@ export interface OrderMailDependencies {
 export interface OrderMailInput {
   readonly delivery: EventDelivery;
   readonly orderId: string;
+}
+
+/** One delivery of `ordering.order-shipped.v1`: ids only; carrier and tracking are read now. */
+export interface ShippedMailInput extends OrderMailInput {
+  readonly sellerOrderId: string;
 }
 
 export type OrderMailSkipped = 'order.gone' | 'recipient.none' | 'link.unconfigured';
@@ -198,4 +208,45 @@ export async function sendSellerNewOrders(
   }
   if (failed) throw new Error('notifications.seller-new-order-mail: a send failed');
   return finish(deps, context, input, name, sent === 0 ? { skipped: 'recipient.none' } : { sent });
+}
+
+/** The customer's "Shipped" mail, once a seller records the shipment of its part of the order. */
+export async function sendOrderShipped(
+  deps: OrderMailDependencies,
+  context: CallContext,
+  input: ShippedMailInput,
+): Promise<Result<OrderMailOutput, OrderMailFailure>> {
+  const name = 'notifications.order-shipped-mail';
+  const notice = await deps.ordering.shipmentNotice(context, {
+    orderId: input.orderId,
+    sellerOrderId: input.sellerOrderId,
+  });
+  if (!notice.ok) {
+    if (notice.error.code === 'access.denied') return err({ code: 'access.denied' });
+    if (notice.error.code === 'ordering.order-not-found') {
+      return finish(deps, context, input, name, { skipped: 'order.gone' });
+    }
+    throw new Error(`${name}: the shipment could not be read: ${notice.error.code}`);
+  }
+  const url = deps.policy.customerOrderUrl(context.market, notice.value.orderId);
+  if (url === null) return finish(deps, context, input, name, { skipped: 'link.unconfigured' });
+  const to = await recipientOf(deps, context, {
+    kind: 'customer',
+    accountId: notice.value.accountId,
+  });
+  if (to === null) return finish(deps, context, input, name, { skipped: 'recipient.none' });
+  const composed = orderShippedMail({
+    orderId: notice.value.orderId,
+    carrier: notice.value.carrier,
+    trackingRef: notice.value.trackingRef,
+    orderUrl: url,
+  });
+  // A send failure throws: the outbox retries the delivery; the shipment is already recorded.
+  await deps.transport.send({
+    to,
+    from: deps.policy.mailSender(context.market),
+    subject: composed.subject,
+    text: composed.text,
+  });
+  return finish(deps, context, input, name, { sent: 1 });
 }
