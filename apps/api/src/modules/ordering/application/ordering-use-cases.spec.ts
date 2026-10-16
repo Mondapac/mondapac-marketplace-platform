@@ -12,6 +12,7 @@ import {
   FakeGateway,
   FakeInventory,
   FakeCommission,
+  FakeLabels,
   FakeShipping,
   MemoryOrders,
 } from '../../../../test/support/ordering-fakes';
@@ -85,6 +86,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
   let cart: FakeCart;
   let shipping: FakeShipping;
   let commission: FakeCommission;
+  let labels: FakeLabels;
   let deps: OrderingDependencies;
   let written: PendingEvent[];
 
@@ -112,6 +114,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     cart = new FakeCart();
     shipping = new FakeShipping();
     commission = new FakeCommission();
+    labels = new FakeLabels();
     written = [];
     // Seller A charges a flat 5.00 for delivery; seller B delivers free (an explicit zero).
     shipping.fees.set(SELLER_A, money(500n, currency));
@@ -138,6 +141,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       },
       ids: new SequenceIdGenerator(clock),
       clock,
+      labels,
     };
   });
 
@@ -654,6 +658,79 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(pending.ok && pending.value.orders).toHaveLength(1);
       expect(confirmed.ok && confirmed.value.orders).toEqual([]);
       expect(bad).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    });
+
+    const adminContext = () =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xad),
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'order-0005-abcd',
+      );
+
+    it('names the products, stores and customer, with one batched call per lookup', async () => {
+      const result = await start();
+      if (!result.ok) throw new Error('checkout failed');
+      labels.label({ offerId: OFFER_1, variantId: VARIANT }, 'Lamb mince', '500 g');
+      labels.stores.set(SELLER_A, 'Corner Butcher');
+      labels.customers.set(ACCOUNT, { displayName: null, email: 'jane@example.com' });
+
+      const list = await new AdminListOrders(gate, deps).execute(adminContext(), {});
+      const view = await new AdminViewOrder(gate, deps).execute(adminContext(), {
+        orderId: result.value.orderId,
+      });
+
+      if (!list.ok || !view.ok) throw new Error('read failed');
+      expect(list.value.orders[0]).toEqual(view.value);
+      expect(view.value.customer).toEqual({ displayName: null, email: 'jane@example.com' });
+      const a = view.value.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
+      const b = view.value.sellerOrders.find((s) => s.sellerId === SELLER_B)!;
+      expect(a.storeName).toBe('Corner Butcher');
+      expect(b.storeName).toBeNull();
+      expect(a.lines.find((l) => l.offerId === OFFER_1)).toMatchObject({
+        productName: 'Lamb mince',
+        variantLabel: '500 g',
+      });
+      expect(a.lines.find((l) => l.offerId === OFFER_3)).toMatchObject({
+        productName: null,
+        variantLabel: null,
+      });
+      // Distinct keys: three units, two sellers, one customer; per read, never per order.
+      expect(labels.calls.slice(0, 3)).toEqual([
+        { lookup: 'units', count: 3 },
+        { lookup: 'stores', count: 2 },
+        { lookup: 'customers', count: 1 },
+      ]);
+    });
+
+    it('still answers, with null names, when every lookup fails', async () => {
+      const result = await start();
+      if (!result.ok) throw new Error('checkout failed');
+      labels.fail.add('units').add('stores').add('customers');
+
+      const view = await new AdminViewOrder(gate, deps).execute(adminContext(), {
+        orderId: result.value.orderId,
+      });
+
+      if (!view.ok) throw new Error('read failed');
+      expect(view.value.customer).toBeNull();
+      for (const seller of view.value.sellerOrders) {
+        expect(seller.storeName).toBeNull();
+        for (const line of seller.lines) {
+          expect(line).toMatchObject({ productName: null, variantLabel: null });
+        }
+      }
+    });
+
+    it('looks nothing up for an empty page', async () => {
+      const list = await new AdminListOrders(gate, deps).execute(adminContext(), {});
+
+      expect(list).toEqual({ ok: true, value: { orders: [], nextCursor: null } });
+      expect(labels.calls).toEqual([]);
     });
   });
   describe('flat delivery fee', () => {

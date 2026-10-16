@@ -29,6 +29,7 @@ import {
   FakeCommission,
   FakeGateway,
   FakeInventory,
+  FakeLabels,
   FakeShipping,
 } from '../support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
@@ -83,6 +84,7 @@ describe.each(TEST_MARKETS)(
         ).forModule('ordering'),
         ids,
         clock,
+        labels: new FakeLabels(),
       };
       system = testCallContext(market, 'system', `order-paid-${ids.next()}`);
     });

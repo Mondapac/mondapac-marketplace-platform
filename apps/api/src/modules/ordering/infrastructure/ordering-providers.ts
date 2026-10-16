@@ -1,12 +1,17 @@
 import type { FactoryProvider } from '@nestjs/common';
+import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
+import { IDENTITY_FACADE, type IdentityFacade } from '../../identity';
+import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { CHECKOUT_GATEWAY, type CheckoutGateway } from '../application/ports/checkout-gateway';
+import { ORDER_LABELS, type OrderLabels } from '../application/ports/order-labels';
 import { ORDER_REPOSITORY, type OrderRepository } from '../application/ports/order.repository';
 import { ORDERING_POLICY, type OrderingPolicy } from '../application/ports/ordering-policy';
 import { ConfigOrderingPolicy } from './config-ordering-policy';
+import { FacadeOrderLabels } from './facade-order-labels';
 import { PrismaOrderRepository } from './prisma-order.repository';
 import { StripeCheckoutGateway } from './stripe-checkout-gateway';
 
@@ -27,5 +32,15 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: ORDERING_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): OrderingPolicy => new ConfigOrderingPolicy(markets),
+  },
+  {
+    provide: ORDER_LABELS,
+    inject: [CATALOG_FACADE, SELLERS_FACADE, IDENTITY_FACADE, MarketRegistry],
+    useFactory: (
+      catalog: CatalogFacade,
+      sellers: SellersFacade,
+      identity: IdentityFacade,
+      markets: MarketRegistry,
+    ): OrderLabels => new FacadeOrderLabels(catalog, sellers, identity, markets),
   },
 ];

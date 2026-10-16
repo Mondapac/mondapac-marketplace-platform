@@ -26,6 +26,7 @@ import {
   type OrderState,
 } from '../domain/order';
 import type { CheckoutGateway } from './ports/checkout-gateway';
+import type { OrderLabels } from './ports/order-labels';
 import type { OrderingPolicy } from './ports/ordering-policy';
 import type { OrderRepository } from './ports/order.repository';
 
@@ -41,6 +42,8 @@ export interface OrderingDependencies {
   readonly outbox: OutboxWriter;
   readonly ids: IdGenerator;
   readonly clock: Clock;
+  /** Display names for the panel order pages (advisory; never inside a unit). */
+  readonly labels: OrderLabels;
 }
 
 export type StartCheckoutFailure =
