@@ -54,11 +54,8 @@ export function OrdersTable({ orders }: { readonly orders: readonly SellerOrderV
                 <td className={CARD_TABLE.corner}>
                   <Badge tone={TONE[order.fulfilment]}>{t(`status.${order.fulfilment}`)}</Badge>
                 </td>
-                <td
-                  className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
-                  data-label={label('paid')}
-                >
-                  {shortInstant(order.paidAt, locale, zone)}
+                <td className={CARD_TABLE.labelled} data-label={label('paid')}>
+                  <time dateTime={order.paidAt}>{shortInstant(order.paidAt, locale, zone)}</time>
                 </td>
                 <td
                   className={`${CARD_TABLE.labelled} tabular-nums lg:text-end`}

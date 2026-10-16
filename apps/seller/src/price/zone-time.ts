@@ -87,11 +87,26 @@ export function instantOfZoned(text: string, zone: string): string | null {
   return first === undefined ? null : new Date(first).toISOString().replace('.000Z', 'Z');
 }
 
-/** An instant from the API shown in a zone and labelled with the zone's id. */
+/**
+ * The zone's short name at that instant in the Market locale ("AEST"). Where Intl has no
+ * abbreviation and answers an offset ("GMT+10", "UTC+4"), the IANA id is used instead, so the
+ * label is never an offset that could be misread; "UTC" stays "UTC".
+ */
+export function zoneName(date: Date, locale: string, zone: string): string {
+  const parts = dateFormat(locale, { timeZoneName: 'short', timeZone: zone }).formatToParts(date);
+  const name = parts.find((part) => part.type === 'timeZoneName')?.value ?? zone;
+  return zone !== FALLBACK_ZONE && /^(GMT|UTC)/.test(name) ? zone : name;
+}
+
+/** An instant from the API shown in a zone and labelled with the zone's short name. */
 export function formatInZone(iso: string | null, zone: string, locale: string): string {
   if (iso === null) return '-';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime()) || !isKnownZone(zone)) return '-';
-  const formatter = dateFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: zone });
-  return `${formatter.format(date)} ${zone}`;
+  const text = dateFormat(locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: zone,
+  }).format(date);
+  return `${text} ${zoneName(date, locale, zone)}`;
 }

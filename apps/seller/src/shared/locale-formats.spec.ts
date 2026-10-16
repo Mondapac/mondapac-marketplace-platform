@@ -29,7 +29,7 @@ describe('formats follow the Market locale', () => {
   it('writes a short instant with the year only when it is not this one', () => {
     const lastYear = `${new Date().getUTCFullYear() - 1}-10-09T23:30:00.000Z`;
     expect(shortInstant(lastYear, AU.locale)).toContain(String(new Date().getUTCFullYear() - 1));
-    expect(shortInstant(lastYear, DE.locale)).toMatch(/^9\. Okt\.? \d{4}, 23:30$/);
+    expect(shortInstant(lastYear, DE.locale)).toMatch(/^9\. Okt\.? \d{4}, 23:30 UTC$/);
     const thisYear = `${new Date().getUTCFullYear()}-10-09T23:30:00.000Z`;
     expect(shortInstant(thisYear, AU.locale)).not.toMatch(/\d{4}/);
   });
@@ -44,12 +44,12 @@ describe('formats follow the Market locale', () => {
     expect(exponentOf('JPY')).toBe(0);
   });
 
-  it('shows an instant in a zone under each locale, with the zone id', () => {
+  it('shows an instant in a zone under each locale, with its short name', () => {
     expect(formatInZone('2026-10-31T23:30:00Z', 'Australia/Sydney', AU.locale)).toMatch(
-      /^1 Nov 2026, 10:30\s?am Australia\/Sydney$/i,
+      /^1 Nov 2026, 10:30\s?am AEDT$/i,
     );
     expect(formatInZone('2026-10-31T23:30:00Z', 'Europe/Berlin', DE.locale)).toBe(
-      '01.11.2026, 00:30 Europe/Berlin',
+      '01.11.2026, 00:30 MEZ',
     );
     expect(formatInZone(null, 'UTC', DE.locale)).toBe('-');
   });
@@ -75,13 +75,15 @@ describe('Intl format cache', () => {
 
     it('shows an instant in a non-UTC zone with its short name, under each Market', () => {
       expect(formatInstant(at, AU.locale, 'Australia/Brisbane')).toMatch(
-        /^10 Oct 2026, 9:30\s?am (AEST|GMT\+10)$/i,
+        /^10 Oct 2026, 9:30\s?am AEST$/i,
       );
       // Synthetic second Market: another locale and zone.
       expect(formatInstant(at, DE.locale, 'Pacific/Auckland')).toMatch(
-        /^10\.10\.2026, 12:30 (NZDT|GMT\+13)$/,
+        /^10\.10\.2026, 12:30 (NZDT|Pacific\/Auckland)$/,
       );
-      expect(shortInstant(at, AU.locale, 'Australia/Brisbane')).toMatch(/^10 Oct.*9:30\s?am$/i);
+      expect(shortInstant(at, AU.locale, 'Australia/Brisbane')).toMatch(
+        /^10 Oct.*9:30\s?am AEST$/i,
+      );
     });
 
     it('follows the zone across the date line and a DST change', () => {
@@ -110,10 +112,19 @@ describe('Intl format cache', () => {
       expect(shortInstant(`${year}-12-31T23:30:00Z`, AU.locale, 'UTC')).not.toMatch(/\d{4}/);
     });
 
+    it('labels with the IANA id where Intl only has an offset, never GMT+n', () => {
+      expect(formatInstant(at, AU.locale, 'America/Sao_Paulo')).toMatch(
+        /8:30\s?pm America\/Sao_Paulo$/i,
+      );
+      expect(formatInstant(at, AU.locale, 'Asia/Dubai')).toMatch(/3:30\s?am Asia\/Dubai$/i);
+      expect(shortInstant(at, AU.locale, 'Asia/Dubai')).toMatch(/Asia\/Dubai$/);
+      expect(formatInZone(at, 'Asia/Dubai', AU.locale)).toMatch(/Asia\/Dubai$/);
+    });
+
     it('falls back to UTC, labelled UTC, when the zone is missing or unknown', () => {
       for (const zone of [undefined, null, '', 'Not/AZone']) {
         expect(formatInstant(at, AU.locale, zone)).toMatch(/^9 Oct 2026, 11:30\s?pm UTC$/i);
-        expect(shortInstant(at, AU.locale, zone)).toMatch(/^9 Oct.*11:30\s?pm$/i);
+        expect(shortInstant(at, AU.locale, zone)).toMatch(/^9 Oct.*11:30\s?pm UTC$/i);
       }
     });
   });

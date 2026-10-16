@@ -1,11 +1,5 @@
 import { dateFormat } from '../shared/intl.ts';
-import { resolveZone } from '../price/zone-time.ts';
-
-/** The zone's short name at that instant in the Market locale ("AEST", "GMT+13"), "UTC" for UTC. */
-function zoneLabel(date: Date, locale: string, timeZone: string): string {
-  const parts = dateFormat(locale, { timeZoneName: 'short', timeZone }).formatToParts(date);
-  return parts.find((part) => part.type === 'timeZoneName')?.value ?? timeZone;
-}
+import { formatInZone, resolveZone, zoneName } from '../price/zone-time.ts';
 
 /**
  * An instant from the API shown in the seller's zone and labelled with the zone's short name
@@ -13,17 +7,10 @@ function zoneLabel(date: Date, locale: string, timeZone: string): string {
  * labelled so.
  */
 export function formatInstant(iso: string | null, locale: string, zone?: string | null): string {
-  if (iso === null) return '-';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '-';
-  const timeZone = resolveZone(zone);
-  const text = dateFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(
-    date,
-  );
-  return `${text} ${zoneLabel(date, locale, timeZone)}`;
+  return formatInZone(iso, resolveZone(zone), locale);
 }
 
-/** A compact instant in the seller's zone for a table cell ("14 Oct, 3:30 am"); the year only when not this one. */
+/** A compact instant in the seller's zone for a table cell ("14 Oct, 3:30 am AEST"); the year only when not this one. */
 export function shortInstant(iso: string, locale: string, zone?: string | null): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '-';
@@ -31,7 +18,7 @@ export function shortInstant(iso: string, locale: string, zone?: string | null):
   const yearIn = (instant: Date) =>
     dateFormat('en', { year: 'numeric', numberingSystem: 'latn', timeZone }).format(instant);
   const sameYear = yearIn(date) === yearIn(new Date());
-  return dateFormat(locale, {
+  const text = dateFormat(locale, {
     day: 'numeric',
     month: 'short',
     ...(sameYear ? {} : { year: 'numeric' }),
@@ -39,6 +26,7 @@ export function shortInstant(iso: string, locale: string, zone?: string | null):
     minute: '2-digit',
     timeZone,
   }).format(date);
+  return `${text} ${zoneName(date, locale, timeZone)}`;
 }
 
 /** A status or code from the API as a translation key suffix; unknown values map to `unknown`. */

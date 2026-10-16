@@ -109,7 +109,7 @@ describe('SellerOrders list', () => {
         <SellerOrders initial={page([order()])} fee={fee} />
       </NextIntlClientProvider>,
     );
-    expect(screen.getByText(/14 Oct.*8:00 pm/)).toBeTruthy();
+    expect(screen.getByText(/14 Oct.*8:00 pm AEST/)).toBeTruthy();
   });
 
   it('says so when there is no order, with no filter', () => {
@@ -191,7 +191,7 @@ describe('OrderDetail', () => {
         />
       </NextIntlClientProvider>,
     );
-    expect(screen.getByText(/^Paid 14 Oct 2026, 8:00 pm (AEST|GMT\+10) · 2 items$/)).toBeTruthy();
+    expect(screen.getByText(/^Paid 14 Oct 2026, 8:00 pm AEST · 2 items$/)).toBeTruthy();
   });
 
   it('falls back to a short id for a line whose name could not be read', () => {

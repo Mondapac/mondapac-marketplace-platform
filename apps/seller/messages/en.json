@@ -1145,7 +1145,7 @@
     "col": {
       "order": "Order",
       "status": "Status",
-      "paid": "Paid (UTC)",
+      "paid": "Paid",
       "items": "Items",
       "total": "Total"
     },
@@ -1174,8 +1174,8 @@
     "totals": "Totals",
     "fulfilment": "Fulfilment",
     "not-shipped": "This order has not been shipped yet.",
-    "shipped-on": "Shipped (UTC)",
-    "delivered-on": "Delivered (UTC)",
+    "shipped-on": "Shipped",
+    "delivered-on": "Delivered",
     "subtotal": "Items",
     "delivery": "Delivery",
     "delivery-free": "Free",
