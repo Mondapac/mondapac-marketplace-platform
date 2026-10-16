@@ -57,7 +57,11 @@ import { FixedRegisterLookupPolicy, validIdentifiers } from '../support/sellers-
 import { PrismaService } from '../../src/platform/persistence/prisma.service';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { ok } from '@mondapac/shared-kernel';
-import { AUTHORISATION_CHECK, type AuthorisationCheck } from '../../src/platform/authz';
+import {
+  AUTHORISATION_CHECK,
+  STEP_UP_SOURCE,
+  type AuthorisationCheck,
+} from '../../src/platform/authz';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { OUTBOX_RELAY, type OutboxRelay } from '../../src/platform/events/event-bus';
 import { EVENT_DISPATCHER, type EventDispatcher } from '../../src/platform/events/event-delivery';
@@ -167,6 +171,9 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           .useValue(transport)
           .overrideProvider(AUTHORISATION_CHECK)
           .useValue(sellerOwnerCheck)
+          // The two-step rule is covered by test/seller-step-up.e2e.spec.ts; here the point is the files.
+          .overrideProvider(STEP_UP_SOURCE)
+          .useValue({ check: () => Promise.resolve(ok(undefined)) })
           .overrideProvider(REGISTER_LOOKUP_POLICY)
           .useValue(registerPolicy)
           .overrideProvider(BUSINESS_REGISTER_LOOKUPS)

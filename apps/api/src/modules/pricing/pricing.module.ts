@@ -1,7 +1,12 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
@@ -32,6 +37,7 @@ import { SetSpecialPrice } from './application/use-cases/set-special-price.use-c
 import { WithdrawSpecialPrice } from './application/use-cases/withdraw-special-price.use-case';
 import { ViewOfferPrices } from './application/use-cases/view-offer-prices.use-case';
 import { PRICING_PERMISSIONS } from './contracts/permissions';
+import { PRICING_STEP_UP_ACTIONS } from './contracts/step-up';
 import { PRICING_FACADE } from './contracts/pricing.facade';
 import { PRICING_AUDIT_ACTIONS } from './domain/audit';
 import { PRICING_EVENTS } from './domain/events';
@@ -110,6 +116,7 @@ function useCaseProvider<D, U>(
     registerAuditActions('pricing', PRICING_AUDIT_ACTIONS),
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
     registerPermissions('pricing', PRICING_PERMISSIONS),
+    registerStepUpActions('pricing', PRICING_STEP_UP_ACTIONS),
     ...pricingProviders,
     useCaseProvider(SetRegularPrice, {
       unitOfWork: true,

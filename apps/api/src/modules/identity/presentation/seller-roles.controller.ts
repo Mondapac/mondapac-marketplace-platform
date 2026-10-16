@@ -1,3 +1,4 @@
+import { RequiresStepUp } from '../../../platform/authz';
 import {
   Body,
   Controller,
@@ -110,6 +111,7 @@ export class SellerRolesController {
   }
 
   @Post('roles')
+  @RequiresStepUp('identity.team.change-role')
   @HttpCode(201)
   @ReadsSession()
   @ApiOperation({
@@ -154,6 +156,7 @@ export class SellerRolesController {
   }
 
   @Put('roles/:roleId')
+  @RequiresStepUp('identity.team.change-role')
   @ReadsSession()
   @ApiOperation({
     summary: 'Edit a custom role of your shop',
@@ -201,6 +204,7 @@ export class SellerRolesController {
   }
 
   @Delete('roles/:roleId')
+  @RequiresStepUp('identity.team.change-role')
   @ReadsSession()
   @ApiOperation({
     summary: 'Delete a custom role of your shop',
