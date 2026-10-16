@@ -85,10 +85,30 @@ export interface LabelledSellerOrderDetailView extends Omit<SellerOrderDetailVie
   readonly lines: readonly LabelledLineView[];
 }
 
+/** The seller's paid seller orders per fulfilment step, whatever the page or filter. */
+export interface SellerOrderCounts {
+  readonly toShip: number;
+  readonly shipped: number;
+  readonly delivered: number;
+}
+
+/** The Market's orders per status, whatever the page or filter. */
+export interface OrderStatusCounts {
+  readonly pendingPayment: number;
+  readonly confirmed: number;
+  readonly cancelled: number;
+}
+
 export interface LabelledSellerOrderPageView {
   readonly sellerOrders: readonly LabelledSellerOrderDetailView[];
+  readonly counts: SellerOrderCounts;
   /** Pass back as `cursor` for the next page; null on the last page. */
   readonly nextCursor: string | null;
+}
+
+/** The admin list: a page of labelled orders and the Market's counts per status. */
+export interface AdminOrderPageView extends OrderPageView<LabelledAdminOrderView> {
+  readonly counts: OrderStatusCounts;
 }
 
 export interface OrderPageView<V> {

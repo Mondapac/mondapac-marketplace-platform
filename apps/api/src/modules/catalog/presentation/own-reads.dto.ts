@@ -152,6 +152,13 @@ export class OwnOfferViewDto {
   @ApiProperty() version!: number;
 }
 
+export class OwnOfferStatusCounts {
+  @ApiProperty() draft!: number;
+  @ApiProperty() pendingFirstPublish!: number;
+  @ApiProperty() changesNeeded!: number;
+  @ApiProperty() published!: number;
+}
+
 export class OwnOfferList {
   @ApiProperty({ type: [OwnOfferViewDto] }) items!: OwnOfferViewDto[];
   @ApiProperty({
@@ -160,6 +167,11 @@ export class OwnOfferList {
     description: 'Send as `afterId` for the next page; null on the last page.',
   })
   nextAfterId!: string | null;
+  @ApiProperty({
+    type: OwnOfferStatusCounts,
+    description: "All the seller's Offers per status (deleted left out), whatever the page.",
+  })
+  counts!: OwnOfferStatusCounts;
 }
 
 export class OwnProductOptionsLocales {

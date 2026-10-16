@@ -453,6 +453,7 @@ describe.each(TEST_MARKETS)(
         findByOffer: (m, offerId) => inner.findByOffer(m, offerId),
         findByRecordId: (m, recordId) => inner.findByRecordId(m, recordId),
         listPendingHolds: (m, after, limit) => inner.listPendingHolds(m, after, limit),
+        countPendingHolds: (m) => inner.countPendingHolds(m),
         findPendingHold: (m, recordId) => inner.findPendingHold(m, recordId),
         findByProductVariant: (m, productId, variantId) =>
           inner.findByProductVariant(m, productId, variantId),

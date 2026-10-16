@@ -455,6 +455,8 @@ describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market
       expect(second).toMatchObject({ ok: true, value: { next: null } });
       if (!second.ok) return;
       expect(second.value.items.map((i) => i.recordId)).toEqual([c.recordId]);
+      // The total is the whole queue on every page.
+      expect([first.value.total, second.value.total]).toEqual([3, 3]);
       const row = first.value.items[0]!;
       expect(Object.keys(row).sort()).toEqual([
         'amount',

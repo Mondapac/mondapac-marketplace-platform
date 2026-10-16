@@ -67,6 +67,28 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     return rows.map(offerFromRow);
   }
 
+  async offerStatusCounts(market: MarketContext, sellerId: Id<'Seller'>) {
+    const groups = await this.prisma.tx(market).catalogOffer.groupBy({
+      by: ['status'],
+      where: { marketId: market.marketId, sellerId, status: { not: 'deleted' } },
+      _count: { _all: true },
+    });
+    const count = (status: string) =>
+      groups.find((group) => group.status === status)?._count._all ?? 0;
+    return {
+      draft: count('draft'),
+      pendingFirstPublish: count('pending-first-publish'),
+      changesNeeded: count('changes-needed'),
+      published: count('published'),
+    };
+  }
+
+  async pendingReviewCount(market: MarketContext): Promise<number> {
+    return this.prisma.tx(market).catalogOffer.count({
+      where: { marketId: market.marketId, status: 'pending-first-publish' },
+    });
+  }
+
   async productLabels(
     market: MarketContext,
     productIds: readonly Id<'Product'>[],

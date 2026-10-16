@@ -742,6 +742,11 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       ]);
       expect(bySellerOrder.ok && bySellerOrder.value.orders).toHaveLength(1);
       expect(none.ok && none.value.orders).toEqual([]);
+      expect(none.ok && none.value.counts).toEqual({
+        pendingPayment: 1,
+        confirmed: 0,
+        cancelled: 0,
+      });
       expect(bad).toEqual({
         ok: false,
         error: { code: 'validation.failed', fields: [{ path: 'q', code: 'format' }] },
@@ -755,7 +760,14 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     it('looks nothing up for an empty page', async () => {
       const list = await new AdminListOrders(gate, deps).execute(adminContext(), {});
 
-      expect(list).toEqual({ ok: true, value: { orders: [], nextCursor: null } });
+      expect(list).toEqual({
+        ok: true,
+        value: {
+          orders: [],
+          nextCursor: null,
+          counts: { pendingPayment: 0, confirmed: 0, cancelled: 0 },
+        },
+      });
       expect(labels.calls).toEqual([]);
     });
   });
@@ -850,6 +862,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         'shipped',
       ]);
       expect(toShip.ok && toShip.value.sellerOrders).toEqual([]);
+      // The counts are the shop's whole set, whatever the filter.
+      expect(toShip.ok && toShip.value.counts).toEqual({ toShip: 0, shipped: 1, delivered: 0 });
       expect(bad).toEqual({
         ok: false,
         error: { code: 'validation.failed', fields: [{ path: 'status', code: 'value' }] },

@@ -93,6 +93,9 @@ describe('seller read routes over HTTP (integration)', () => {
             },
             findWorkingCopies: () => Promise.resolve([]),
             productLabels: () => Promise.resolve([]),
+            offerStatusCounts: () =>
+              Promise.resolve({ draft: 0, pendingFirstPublish: 0, changesNeeded: 0, published: 0 }),
+            pendingReviewCount: () => Promise.resolve(0),
             productForm: () => Promise.resolve({ fields: [], categories: [] }),
           }),
     }));
@@ -397,6 +400,7 @@ describe('seller read routes over HTTP (integration)', () => {
       expect(list.body).toMatchObject({
         items: [{ offerId: offer.state.id, sellerSku: 'SKU-1', status: 'draft', listed: false }],
         nextAfterId: null,
+        counts: { draft: 0, pendingFirstPublish: 0, changesNeeded: 0, published: 0 },
       });
       const one = await get(code, `/catalog/seller/offers/${offer.state.id}`, session);
       expect(one.status).toBe(200);

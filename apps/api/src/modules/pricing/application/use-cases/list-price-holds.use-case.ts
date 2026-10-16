@@ -24,6 +24,8 @@ export interface PriceHoldPage {
   readonly items: readonly LabelledHold[];
   /** The `after` of the next page, or null after the last. */
   readonly next: string | null;
+  /** Every pending record of the Market, whatever the page. */
+  readonly total: number;
 }
 
 export type ListPriceHoldsFailure = {
@@ -86,13 +88,20 @@ export class ListPriceHolds extends UseCase<
     const limit = asked as number;
 
     const { market } = context;
-    const read = await this.deps.unitOfWork.run<readonly PendingHoldView[], never>(
+    const read = await this.deps.unitOfWork.run<
+      { readonly rows: readonly PendingHoldView[]; readonly total: number },
+      never
+    >(
       market,
-      async () => ok(await this.deps.series.listPendingHolds(market, cursor, limit + 1)),
+      async () =>
+        ok({
+          rows: await this.deps.series.listPendingHolds(market, cursor, limit + 1),
+          total: await this.deps.series.countPendingHolds(market),
+        }),
       { readOnly: true },
     );
     if (!read.ok) throw new Error('pricing.list-price-holds: the read failed');
-    const rows = read.value;
+    const { rows, total } = read.value;
     const items = rows.slice(0, limit);
     const last = items[items.length - 1];
     const labelled = await withHoldLabels(this.deps, context, items);
@@ -102,6 +111,7 @@ export class ListPriceHolds extends UseCase<
         rows.length > limit && last !== undefined
           ? encodeHoldCursor({ submittedAt: last.submittedAt, id: last.recordId })
           : null,
+      total,
     };
     this.#logger.log({
       msg: 'pricing.list-price-holds',

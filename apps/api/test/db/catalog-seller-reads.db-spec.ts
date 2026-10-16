@@ -457,5 +457,11 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     expect(listed.value.items.map((item) => item.offerId)).toContain(mine.state.id);
     expect(listed.value.items.map((item) => item.offerId)).not.toContain(theirs.state.id);
     expect(listed.value.items[0]!.product.name).toBe('Labelled');
+    // The counts are the seller's own Offers only: every draft listed, none of the other seller's.
+    const drafts = listed.value.items.filter((item) => item.status === 'draft').length;
+    expect(listed.value.counts.draft).toBe(drafts);
+    expect(listed.value.counts.published).toBe(0);
+    const pending = await inUnit(() => reader.pendingReviewCount(market));
+    expect(typeof pending).toBe('number');
   });
 });

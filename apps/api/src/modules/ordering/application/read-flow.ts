@@ -4,8 +4,10 @@ import type { OrderStatus } from '../domain/order';
 import {
   adminOrderView,
   orderView,
+  type AdminOrderPageView,
   type AdminOrderView,
   type LabelledAdminOrderView,
+  type OrderStatusCounts,
   type OrderPageView,
   type OrderView,
 } from '../domain/order-views';
@@ -173,18 +175,24 @@ export async function listAllOrders(
   deps: OrderingDependencies,
   context: CallContext,
   input: ListInput,
-): Promise<Result<OrderPageView<LabelledAdminOrderView>, ReadFailure>> {
+): Promise<Result<AdminOrderPageView, ReadFailure>> {
   const parsed = pageOf(input ?? {}, true);
   if (!parsed.ok) return parsed;
   const { page, filter } = parsed.value;
-  const read = await deps.unitOfWork.run<OrderPageView<AdminOrderView>, ReadFailure>(
+  const read = await deps.unitOfWork.run<
+    OrderPageView<AdminOrderView> & { readonly counts: OrderStatusCounts },
+    ReadFailure
+  >(
     context.market,
     async () => {
       const rows = await deps.orders.listAll(context.market, filter, {
         ...page,
         limit: page.limit + 1,
       });
-      return ok(cut(rows.map(adminOrderView), page.limit));
+      return ok({
+        ...cut(rows.map(adminOrderView), page.limit),
+        counts: await deps.orders.countAll(context.market),
+      });
     },
     { readOnly: true },
   );
@@ -192,5 +200,6 @@ export async function listAllOrders(
   return ok({
     orders: await labelAdminOrders(deps.labels, context, read.value.orders),
     nextCursor: read.value.nextCursor,
+    counts: read.value.counts,
   });
 }

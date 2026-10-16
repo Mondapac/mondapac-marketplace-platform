@@ -177,6 +177,12 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       repository.listAll(other, { status: null, reference: order.id }, { limit: 100, after: null }),
     );
     expect(byReference).toEqual([]);
+    const before = await value(market, () => repository.countAll(market));
+    await value(market, () => repository.insert(market, newOrder()));
+    const after = await value(market, () => repository.countAll(market));
+    const otherCounts = await value(other, () => repository.countAll(other));
+    expect(after.pendingPayment).toBe(before.pendingPayment + 1);
+    expect(await value(other, () => repository.countAll(other))).toEqual(otherCounts);
   });
 
   it('finds an order by its own id or by one of its seller order ids', async () => {
@@ -401,6 +407,14 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(own.map((r) => r.sellerOrder.id)).toEqual([seller.id]);
     expect(toShip.map((r) => r.sellerOrder.id)).toEqual([seller.id]);
     expect(shipped).toEqual([]);
+    expect(await value(market, () => repository.countForSeller(market, seller.sellerId))).toEqual({
+      toShip: 1,
+      shipped: 0,
+      delivered: 0,
+    });
+    expect(
+      await value(market, () => repository.countForSeller(market, unpaidSeller.sellerId)),
+    ).toEqual({ toShip: 0, shipped: 0, delivered: 0 });
     expect(foreign).toBeNull();
     expect(notPaid).toBeNull();
     expect(elsewhere).toBeNull();

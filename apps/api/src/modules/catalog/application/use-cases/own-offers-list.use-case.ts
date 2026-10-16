@@ -4,7 +4,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_VIEW } from '../../contracts/permissions';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
-import type { OwnCatalogReader } from '../ports/own-catalog.reader';
+import type { OfferStatusCounts, OwnCatalogReader } from '../ports/own-catalog.reader';
 import { offerViewOf, type OwnOfferView } from '../own-reads/own-offer-view';
 import { parsePage, sellerOf, type ValidationFailure } from '../own-reads/own-reads.shared';
 
@@ -17,6 +17,8 @@ export interface OwnOffersListOutput {
   readonly items: readonly OwnOfferView[];
   /** The `afterId` of the next page; null on the last page. */
   readonly nextAfterId: string | null;
+  /** All the seller's Offers per status, whatever the page. */
+  readonly counts: OfferStatusCounts;
 }
 
 export type OwnOffersListFailure =
@@ -80,16 +82,18 @@ export class OwnOffersList extends UseCase<
           [...new Set(shown.map((offer) => offer.state.productId))],
           locale,
         );
-        return ok({ rows, shown, labels });
+        const counts = await this.deps.ownReader.offerStatusCounts(market, sellerId);
+        return ok({ rows, shown, labels, counts });
       },
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
-    const { rows, shown, labels } = read.value;
+    const { rows, shown, labels, counts } = read.value;
     const labelOf = new Map(labels.map((label) => [label.productId, label]));
     return ok({
       items: shown.map((offer) => offerViewOf(offer, labelOf.get(offer.state.productId))),
       nextAfterId: rows.length > shown.length ? (shown[shown.length - 1]?.state.id ?? null) : null,
+      counts,
     });
   }
 }

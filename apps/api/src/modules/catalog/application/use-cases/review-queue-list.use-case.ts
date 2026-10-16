@@ -39,6 +39,8 @@ export interface ReviewQueueListOutput {
   readonly items: readonly ReviewQueueRow[];
   /** The `afterId` of the next page; null on the last page. */
   readonly nextAfterId: string | null;
+  /** Every Offer of the Market in the queue, whatever the page. */
+  readonly total: number;
 }
 
 export type ReviewQueueListFailure =
@@ -103,12 +105,13 @@ export class ReviewQueueList extends UseCase<
           [...new Set(shown.map((offer) => offer.state.productId))],
           locale,
         );
-        return ok({ rows, shown, labels });
+        const total = await this.deps.ownReader.pendingReviewCount(market);
+        return ok({ rows, shown, labels, total });
       },
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
-    const { rows, shown, labels } = read.value;
+    const { rows, shown, labels, total } = read.value;
     const labelOf = new Map(labels.map((label) => [label.productId, label]));
     return ok({
       items: shown.map((offer) => {
@@ -133,6 +136,7 @@ export class ReviewQueueList extends UseCase<
         };
       }),
       nextAfterId: rows.length > shown.length ? (shown[shown.length - 1]?.state.id ?? null) : null,
+      total,
     });
   }
 }

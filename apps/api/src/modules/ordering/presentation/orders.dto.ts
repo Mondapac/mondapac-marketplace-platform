@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type {
+  AdminOrderPageView,
   LabelledAdminOrderView,
   OrderPageView,
   OrderView,
@@ -119,9 +120,20 @@ export class OrderPageBody {
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
 }
 
+export class OrderStatusCountsBody {
+  @ApiProperty() pendingPayment!: number;
+  @ApiProperty() confirmed!: number;
+  @ApiProperty() cancelled!: number;
+}
+
 export class AdminOrderPageBody {
   @ApiProperty({ type: [AdminOrderBody] }) orders!: AdminOrderBody[];
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
+  @ApiProperty({
+    type: OrderStatusCountsBody,
+    description: "The Market's orders per status, whatever the page or filter.",
+  })
+  counts!: OrderStatusCountsBody;
 }
 
 type SellerOrderLike = OrderView['sellerOrders'][number];
@@ -164,9 +176,20 @@ export class SellerOrderDetailBody extends SellerOrderBody {
   @ApiProperty({ format: 'date-time', description: 'When the customer paid.' }) paidAt!: string;
 }
 
+export class SellerOrderCountsBody {
+  @ApiProperty() toShip!: number;
+  @ApiProperty() shipped!: number;
+  @ApiProperty() delivered!: number;
+}
+
 export class SellerOrderPageBody {
   @ApiProperty({ type: [SellerOrderDetailBody] }) sellerOrders!: SellerOrderDetailBody[];
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
+  @ApiProperty({
+    type: SellerOrderCountsBody,
+    description: "The shop's paid orders per fulfilment step, whatever the page or filter.",
+  })
+  counts!: SellerOrderCountsBody;
 }
 
 export class ShipSellerOrderRequest {
@@ -189,11 +212,10 @@ export const sellerOrderDetailBody = (
   paidAt: order.paidAt.toString(),
 });
 
-export const sellerOrderPageBody = (
-  page: LabelledSellerOrderPageView,
-): { sellerOrders: SellerOrderDetailBody[]; nextCursor: string | null } => ({
+export const sellerOrderPageBody = (page: LabelledSellerOrderPageView): SellerOrderPageBody => ({
   sellerOrders: page.sellerOrders.map(sellerOrderDetailBody),
   nextCursor: page.nextCursor,
+  counts: { ...page.counts },
 });
 
 export const orderBody = (order: OrderView): OrderBody => ({
@@ -222,6 +244,11 @@ export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody =>
     storeName: seller.storeName,
     lines: seller.lines.map(labelledLineBody),
   })),
+});
+
+export const adminOrderPageBody = (page: AdminOrderPageView): AdminOrderPageBody => ({
+  ...pageBody(page, adminOrderBody),
+  counts: { ...page.counts },
 });
 
 export const pageBody = <V, B>(

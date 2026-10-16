@@ -98,6 +98,9 @@ export class PriceHoldPageBody {
     description: 'Send as the `after` query parameter for the next page; null after the last.',
   })
   next!: string | null;
+
+  @ApiProperty({ description: 'Every pending record of the Market, whatever the page.' })
+  total!: number;
 }
 
 export class RejectPriceHoldRequest {
