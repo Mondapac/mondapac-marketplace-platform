@@ -60,17 +60,18 @@ describe('theme script route', () => {
 describe('ThemeMenu', () => {
   it('applies and saves a choice, and System clears it', () => {
     render(<ThemeMenu choice="system" labels={labels} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Theme' }));
-    expect(screen.getByRole('menuitemradio', { name: 'System' }).getAttribute('aria-checked')).toBe(
-      'true',
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Theme: System' }));
+    const system = screen.getByRole('menuitemradio', { name: 'System' });
+    expect(system.getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(system);
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'Dark' }));
     const root = document.documentElement;
     expect(root.getAttribute('data-theme')).toBe('dark');
     expect(root.getAttribute('data-theme-choice')).toBe('dark');
     expect(document.cookie).toContain('mp-theme=dark');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Theme' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Theme: Dark' }));
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'Dark' }));
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'System' }));
     expect(root.getAttribute('data-theme')).toBe('light');
     expect(root.getAttribute('data-theme-choice')).toBe('system');

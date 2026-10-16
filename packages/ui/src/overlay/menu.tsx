@@ -36,10 +36,14 @@ export interface MenuProps {
   readonly items: readonly MenuItem[];
   /** The trigger's icon; without one the trigger shows an ellipsis. */
   readonly icon?: IconName;
+  /** Pointer hint on the trigger, such as the current choice. */
+  readonly title?: string;
+  /** `narrow` suits a few short labels, such as a choose-one menu. */
+  readonly width?: 'default' | 'narrow';
 }
 
 /** A button that opens a menu of actions (WAI-ARIA menu button: arrows, Home, End, Escape). */
-export function Menu({ label, items, icon }: MenuProps) {
+export function Menu({ label, items, icon, title, width = 'default' }: MenuProps) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -90,7 +94,14 @@ export function Menu({ label, items, icon }: MenuProps) {
   };
 
   useEffect(() => {
-    if (open) focusItem(0);
+    // A choose-one menu opens on the chosen item (WAI-ARIA menu with radio items).
+    if (open)
+      focusItem(
+        Math.max(
+          0,
+          items.findIndex((item) => item.checked === true),
+        ),
+      );
   }, [open]);
 
   useEffect(() => {
@@ -130,6 +141,7 @@ export function Menu({ label, items, icon }: MenuProps) {
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-label={label}
+        title={title}
         onClick={() => setOpen((value) => !value)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' && !open) {
@@ -154,7 +166,7 @@ export function Menu({ label, items, icon }: MenuProps) {
                 ...place,
                 visibility: place === null ? 'hidden' : 'visible',
               }}
-              className="z-50 w-64 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-md border border-line bg-surface py-1 shadow-lg"
+              className={`z-50 ${width === 'narrow' ? 'w-44' : 'w-64'} max-w-[calc(100vw-1rem)] overflow-y-auto rounded-md border border-line bg-surface py-1 shadow-lg`}
             >
               {items.map((item) => (
                 <button
@@ -187,7 +199,11 @@ export function Menu({ label, items, icon }: MenuProps) {
                       {item.icon === undefined ? null : (
                         <Icon name={item.icon} className="text-icon" />
                       )}
-                      <span className="min-w-0 flex-1">{item.label}</span>
+                      <span
+                        className={`min-w-0 flex-1 ${item.checked === true ? 'font-medium' : ''}`}
+                      >
+                        {item.label}
+                      </span>
                       {item.checked === true ? <Icon name="check" className="text-link" /> : null}
                     </span>
                   )}

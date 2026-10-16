@@ -15,6 +15,11 @@ export interface ThemeMenuProps {
   readonly labels: { readonly menu: string } & Record<ThemeChoice, string>;
 }
 
+// A display preference, not a security value; Secure only keeps it off plain-http requests.
+function secure(): string {
+  return window.location.protocol === 'https:' ? '; secure' : '';
+}
+
 /** The topbar's theme control: System, Light or Dark, applied at once and kept for later visits. */
 export function ThemeMenu({ choice: saved, labels }: ThemeMenuProps) {
   const [choice, setChoice] = useState(saved);
@@ -24,19 +29,22 @@ export function ThemeMenu({ choice: saved, labels }: ThemeMenuProps) {
     const root = document.documentElement;
     root.setAttribute('data-theme-choice', next);
     if (next === 'system') {
-      document.cookie = `${THEME_COOKIE}=; path=/; max-age=0; samesite=lax`;
+      document.cookie = `${THEME_COOKIE}=; path=/; max-age=0; samesite=lax${secure()}`;
       const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       root.setAttribute('data-theme', dark ? 'dark' : 'light');
     } else {
-      document.cookie = `${THEME_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
+      document.cookie = `${THEME_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax${secure()}`;
       root.setAttribute('data-theme', next);
     }
   }
 
   return (
     <Menu
-      label={labels.menu}
+      // The name carries the current choice, so a screen reader hears it on the trigger.
+      label={`${labels.menu}: ${labels[choice]}`}
+      title={`${labels.menu}: ${labels[choice]}`}
       icon={ICONS[choice]}
+      width="narrow"
       items={ORDER.map((item) => ({
         id: item,
         label: labels[item],
