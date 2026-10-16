@@ -18,6 +18,24 @@ export type Widget<T> =
   /** The read failed: the widget says so in place and the rest of the page shows. */
   | { readonly kind: 'error' };
 
+/** One sell unit running low or out (GET inventory/seller/low-stock). The API sends no threshold. */
+export interface LowStockItem {
+  readonly offerId: string;
+  readonly variantId: string;
+  readonly status: string;
+  /** Set for `low` only. */
+  readonly onlyLeft: number | null;
+  readonly changedAt: string;
+  /** Null when unpublished or the name lookup failed. */
+  readonly productName: string | null;
+  readonly variantLabel: string | null;
+}
+
+export interface LowStockPage {
+  readonly items: readonly LowStockItem[];
+  readonly nextCursor: string | null;
+}
+
 export interface SellerDashboardData {
   /** A widget is null when the session does not hold the permission its read needs. */
   readonly orders: Widget<SellerOrderPage> | null;
@@ -25,4 +43,6 @@ export interface SellerDashboardData {
   readonly ledger: Widget<Ledger> | null;
   readonly payout: Widget<PayoutAccount> | null;
   readonly sources: Widget<SourcesView> | null;
+  /** Needs the same key as `sources` (inventory.stock.view). */
+  readonly lowStock: Widget<LowStockPage> | null;
 }

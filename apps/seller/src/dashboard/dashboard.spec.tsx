@@ -127,6 +127,29 @@ const full: SellerDashboardData = {
       },
     ],
   }),
+  lowStock: ok({
+    items: [
+      {
+        offerId: ID(20),
+        variantId: ID(21),
+        status: 'low',
+        onlyLeft: 1200,
+        changedAt: '2026-10-14T01:00:00.000Z',
+        productName: 'Lamb mince',
+        variantLabel: '500 g',
+      },
+      {
+        offerId: ID(22),
+        variantId: ID(23),
+        status: 'out',
+        onlyLeft: null,
+        changedAt: '2026-10-13T01:00:00.000Z',
+        productName: null,
+        variantLabel: null,
+      },
+    ],
+    nextCursor: null,
+  }),
 };
 const none: SellerDashboardData = {
   orders: null,
@@ -134,6 +157,7 @@ const none: SellerDashboardData = {
   ledger: null,
   payout: null,
   sources: null,
+  lowStock: null,
 };
 const KEYS = [
   'ordering.seller-order.view',
@@ -259,6 +283,51 @@ describe('seller dashboard', () => {
     expect(screen.queryAllByRole('table')).toHaveLength(0);
   });
 
+  it('lists low and out-of-stock items, each linking to its stock page', () => {
+    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
+    const card = within(screen.getByRole('region', { name: 'Low stock' }));
+    const lamb = card.getByRole('link', { name: 'Lamb mince · 500 g' });
+    expect(lamb.getAttribute('href')).toBe(`/offers/${ID(20)}/stock`);
+    const row = lamb.closest('tr') ?? lamb.closest('li') ?? lamb.parentElement;
+    expect(row?.textContent).toContain('Low');
+    expect(row?.textContent).toContain('1,200');
+    // A missing name falls back; an out-of-stock unit shows no count.
+    const unnamed = card.getByRole('link', { name: 'Unnamed product' });
+    expect(unnamed.getAttribute('href')).toBe(`/offers/${ID(22)}/stock`);
+    expect(unnamed.closest('tr')?.textContent).toContain('None left');
+    expect(screen.queryByRole('link', { name: /Low stock/ })).toBeNull();
+  });
+
+  it('formats units in the Market locale', () => {
+    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />, 'de-DE'));
+    const card = within(screen.getByRole('region', { name: 'Low stock' }));
+    expect(card.getByRole('link', { name: /Lamb mince/ }).closest('tr')?.textContent).toContain(
+      '1.200',
+    );
+  });
+
+  it('says nothing is low or out of stock when the list is empty', () => {
+    const data: SellerDashboardData = { ...none, lowStock: ok({ items: [], nextCursor: null }) };
+    render(wrap(<SellerDashboard data={data} permissionKeys={[]} />));
+    expect(screen.getByText('Nothing is low or out of stock.')).toBeTruthy();
+  });
+
+  it('fails the low-stock card in place while the others render', () => {
+    render(
+      wrap(
+        <SellerDashboard data={{ ...full, lowStock: { kind: 'error' } }} permissionKeys={KEYS} />,
+      ),
+    );
+    const card = within(screen.getByRole('region', { name: 'Low stock' }));
+    expect(card.getByText(/This could not be loaded/)).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Recent orders' })).toBeTruthy();
+  });
+
+  it('hides the low-stock card when the session lacks the key or the API refuses', () => {
+    render(wrap(<SellerDashboard data={{ ...full, lowStock: null }} permissionKeys={KEYS} />));
+    expect(screen.queryByRole('region', { name: 'Low stock' })).toBeNull();
+  });
+
   it('shows a staff member only the widgets and actions their keys allow', () => {
     const staff: SellerDashboardData = { ...none, orders: full.orders };
     render(
@@ -315,6 +384,7 @@ describe('loadSellerDashboard', () => {
     expect(mocks.get.mock.calls.map((call) => call[0] as string).sort()).toEqual([
       'catalog/seller/offers?limit=50',
       'commission-payouts/seller/ledger?limit=5',
+      'inventory/seller/low-stock?limit=50',
       'inventory/seller/sources',
       'ordering/seller/orders?limit=50',
       'payments/seller/payout-account',

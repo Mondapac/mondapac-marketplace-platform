@@ -13,14 +13,21 @@ export interface ActivityColumn<Row> {
   /**
    * The width of the column from 1024 px, from one shared set so the tables of sibling cards
    * line up: `status` (a badge), `text` (a short label), `figure` (a number or amount, set with
-   * `align: 'end'`) and `date`. The title column has none and takes what is left.
+   * `align: 'end'`), `date` and `zoned-date` (a date and time with the zone name, which needs
+   * more room). The title column has none and takes what is left.
    */
-  readonly size?: 'status' | 'text' | 'figure' | 'date';
+  readonly size?: 'status' | 'text' | 'figure' | 'date' | 'zoned-date';
   readonly align?: 'start' | 'end';
   readonly cell: (row: Row) => ReactNode;
 }
 
-const SIZE = { status: 'w-44', text: 'w-44', figure: 'w-40', date: 'w-40' } as const;
+const SIZE = {
+  status: 'w-44',
+  text: 'w-44',
+  figure: 'w-40',
+  date: 'w-40',
+  'zoned-date': 'w-48',
+} as const;
 
 /**
  * The latest rows of something, in a dashboard card: a table from 1024 px, a stack of labelled
