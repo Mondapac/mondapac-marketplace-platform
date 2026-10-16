@@ -393,3 +393,52 @@ describe('claim text matcher: Arabic-script corpus', () => {
     expect(halal('محل اللحوم')).toBe(true);
   });
 });
+
+describe('claim text matcher: Latin context across separators (Hassan S5)', () => {
+  it('reads an Arabic look-alike between Latin letters across punctuation and spaces', () => {
+    for (const text of ['ha.ا.al', 'h-a-ا-a-l', 'ha ا al', 'ha.l.al']) {
+      expect([text, run(AU, text)]).toEqual([text, ['halal:compact']]);
+    }
+  });
+
+  it('does not latinise an Arabic word that has no Latin letter around it', () => {
+    expect(normaliseClaimText('ا')).toBe('ا');
+    expect(normaliseClaimText('، ا ،')).not.toMatch(/[a-z]/);
+    expect(normaliseClaimText('كتاب ا قلم')).not.toMatch(/[a-z]/);
+    expect(normaliseClaimText('123 ا 456')).not.toMatch(/[a-z]/);
+  });
+
+  it('does not reach across a letter of another script', () => {
+    expect(normaliseClaimText('a ب ا ب a')).not.toContain('l');
+  });
+});
+
+describe('claim text matcher: spans (Hassan N1)', () => {
+  const kosher = prepareVocabulary([AU[1]!]);
+
+  it('reports the span of the kosher token in the number reading of the text', () => {
+    // The first reading has the tokens ٠ and k٥sher; only the visual reading finds kosher.
+    const [m] = matchClaimTerms(['٠ k٥sher'], kosher)[0]!;
+    expect(m).toEqual({ typeCode: 'kosher', pass: 'token', span: { fromToken: 1, toToken: 1 } });
+  });
+
+  it('is unchanged when both readings split the same way', () => {
+    const [m] = matchClaimTerms(['fresh k٥sher meat'], kosher)[0]!;
+    expect(m!.span).toEqual({ fromToken: 1, toToken: 1 });
+  });
+});
+
+describe('claim text matcher: speed (Hassan S4)', () => {
+  // The bound is generous on purpose (about twice a warm local run of 60 to 80 ms) so a busy CI does not flake.
+  it.each(['長', '♪'])('normalises 20,000 x %s quickly on both readings', (ch) => {
+    const text = ch.repeat(20_000);
+    normaliseClaimText(text);
+    normaliseClaimText(text, true);
+    for (const visual of [false, true]) {
+      const start = performance.now();
+      normaliseClaimText(text, visual);
+      const ms = performance.now() - start;
+      expect(ms).toBeLessThan(150);
+    }
+  });
+});

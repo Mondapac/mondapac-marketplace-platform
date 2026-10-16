@@ -27,7 +27,7 @@ export interface ClaimTermMatch {
   readonly typeCode: CertificationTypeCode;
   /** `token`: whole-token phrase match. `compact`: found with separators removed (M8). */
   readonly pass: 'token' | 'compact';
-  /** Token indexes in the normalised text; `null` for a compact match (no token span). */
+  /** Token indexes in the number reading of the text; `null` for a compact match (no token span). */
   readonly span: { readonly fromToken: number; readonly toToken: number } | null;
 }
 
@@ -60,10 +60,33 @@ const LATIN_LETTER = /(?=\p{L})\p{Script=Latin}/u;
 const isCurated = (ch: string): boolean =>
   Object.hasOwn(SKELETON_MAP, ch) || Object.hasOwn(SKELETON_MAP, ch.toLowerCase());
 
+/**
+ * Per-character results are a pure function of the character (and the reading), so each is
+ * computed once per process (Hassan S4). A hostile text can name at most 1.1 million distinct
+ * characters; the cache is emptied past this size so it never grows without bound.
+ */
+const MEMO_LIMIT = 150_000;
+const utsMemo = [new Map<string, string>(), new Map<string, string>()];
+const curatedMemo = new Map<string, string>();
+
+function memoised(memo: Map<string, string>, ch: string, compute: () => string): string {
+  const known = memo.get(ch);
+  if (known !== undefined) return known;
+  const value = compute();
+  if (memo.size >= MEMO_LIMIT) memo.clear();
+  memo.set(ch, value);
+  return value;
+}
+
 /** The UTS #39 prototype of one case-preserved character, or the character itself. */
 function utsOf(ch: string, visualDigits: boolean): string {
+  if (ch.charCodeAt(0) < 0x80) return ch;
+  return memoised(utsMemo[visualDigits ? 1 : 0]!, ch, () => computeUtsOf(ch, visualDigits));
+}
+
+function computeUtsOf(ch: string, visualDigits: boolean): string {
   const cp = ch.codePointAt(0)!;
-  if (cp < 0x80 || isCurated(ch)) return ch;
+  if (isCurated(ch)) return ch;
   if (numericOrIndicatorToAscii(cp) !== null) {
     // A digit is read as its number (the second pass maps numbers to letters), or in the visual
     // reading as the letter it looks like (٥ ۵ as o, ٧ as V; Hassan S2).
@@ -96,6 +119,11 @@ function caseInsensitiveRow(ch: string): string | undefined {
 
 /** The curated table, then digits of every script and regional indicators as ASCII. */
 function curatedOf(ch: string): string {
+  if (ch.charCodeAt(0) < 0x80 && !Object.hasOwn(SKELETON_MAP, ch)) return ch;
+  return memoised(curatedMemo, ch, () => computeCuratedOf(ch));
+}
+
+function computeCuratedOf(ch: string): string {
   if (Object.hasOwn(SKELETON_MAP, ch)) return SKELETON_MAP[ch]!;
   return numericOrIndicatorToAscii(ch.codePointAt(0)!) ?? ch;
 }
@@ -121,20 +149,36 @@ function skeletonRound(s: string, visualDigits: boolean): string {
   return curated;
 }
 
+/** Not a letter or number (or a modifier letter): punctuation, spaces and symbols between letters. */
+const SEPARATOR_CHAR = /^(?:[^\p{L}\p{N}]|\p{Lm})$/u;
+
 /**
  * An Arabic-script letter with an ASCII-letter look-alike that has no Arabic letter on either
- * side, inside Latin text, is read as that letter: «haاal» is halal (Hassan S1). Inside Arabic
- * words the mini-review's folds stand.
+ * side, inside Latin text, is read as that letter: «haاal» is halal (Hassan S1). Punctuation,
+ * spaces and other separators between the letters do not hide the context («ha.ا.al», «ha ا al»;
+ * Hassan S5), but a letter of another script does. Inside Arabic words the folds stand.
  */
 function latinContextFold(s: string): string {
+  if (!ARABIC_SCRIPT.test(s)) return s;
   const chars = [...s];
+  // The nearest non-separator character on each side, found in one pass each way.
+  const before: string[] = new Array<string>(chars.length);
+  const after: string[] = new Array<string>(chars.length);
+  let last = '';
+  for (let i = 0; i < chars.length; i++) {
+    before[i] = last;
+    if (!SEPARATOR_CHAR.test(chars[i]!)) last = chars[i]!;
+  }
+  last = '';
+  for (let i = chars.length - 1; i >= 0; i--) {
+    after[i] = last;
+    if (!SEPARATOR_CHAR.test(chars[i]!)) last = chars[i]!;
+  }
   return chars
     .map((ch, i) => {
       if (!ARABIC_SCRIPT.test(ch)) return ch;
-      const before = chars[i - 1] ?? '';
-      const after = chars[i + 1] ?? '';
-      if (ARABIC_LETTER.test(before) || ARABIC_LETTER.test(after)) return ch;
-      if (!LATIN_LETTER.test(before) && !LATIN_LETTER.test(after)) return ch;
+      if (ARABIC_LETTER.test(before[i]!) || ARABIC_LETTER.test(after[i]!)) return ch;
+      if (!LATIN_LETTER.test(before[i]!) && !LATIN_LETTER.test(after[i]!)) return ch;
       const prototype = UTS39_CONFUSABLES.get(ch)?.toLowerCase();
       return prototype !== undefined && /^[a-z]+$/.test(prototype) ? prototype : ch;
     })
@@ -210,6 +254,53 @@ function findPhrase(tokens: readonly string[], phrase: readonly string[]): numbe
   return -1;
 }
 
+type Span = { readonly fromToken: number; readonly toToken: number };
+
+/** Raw pieces of a text between separators: a digit stays in its piece, whatever the reading. */
+const RAW_PIECE = /[^\p{L}\p{N}]+/u;
+
+/**
+ * The span of a match found in the visual reading, as token indexes of the number reading (the
+ * one the spans are about). The readings split a text differently only around non-ASCII digits
+ * (٠ ۰ are `.` in the visual reading; Tamil and Malayalam digits expand), so each raw piece of
+ * the text is counted in both readings and the match is widened to whole pieces. When the counts
+ * do not add up to the tokens of the whole text, the span covers every token: it over-reports,
+ * never points at the wrong token.
+ */
+function toNumberReading(
+  text: string,
+  visualSpan: Span,
+  numberTokens: number,
+  visualTokens: number,
+): Span {
+  const whole: Span = { fromToken: 0, toToken: Math.max(0, numberTokens - 1) };
+  const pieces = text.split(RAW_PIECE).filter((p) => p.length > 0);
+  const counts = pieces.map((piece) => ({
+    number: tokenise(normaliseClaimText(piece)).length,
+    visual: tokenise(normaliseClaimText(piece, true)).length,
+  }));
+  if (
+    counts.reduce((n, c) => n + c.number, 0) !== numberTokens ||
+    counts.reduce((n, c) => n + c.visual, 0) !== visualTokens
+  ) {
+    return whole;
+  }
+  let numberAt = 0;
+  let visualAt = 0;
+  let from = -1;
+  let to = -1;
+  for (const c of counts) {
+    const visualEnd = visualAt + c.visual - 1;
+    if (c.visual > 0 && visualEnd >= visualSpan.fromToken && visualAt <= visualSpan.toToken) {
+      if (from < 0) from = numberAt;
+      to = numberAt + c.number - 1;
+    }
+    numberAt += c.number;
+    visualAt += c.visual;
+  }
+  return from >= 0 && to >= from ? { fromToken: from, toToken: to } : whole;
+}
+
 /** One answer per input text, in order; a text with no claim word answers `[]`. */
 export function matchClaimTerms(
   texts: readonly string[],
@@ -218,7 +309,8 @@ export function matchClaimTerms(
   if (texts.length > MAX_TEXTS) throw new RangeError('too many claim texts');
   return texts.map((text) => {
     // Two readings: non-ASCII digits as numbers and as the letters they look like (Hassan S2).
-    // They split into the same tokens, so a span of either holds for both.
+    // They can split into different tokens, so a span found in the second reading is translated
+    // to the tokens of the first (`toNumberReading`): a span always indexes the number reading.
     const readings = [normaliseClaimText(text), normaliseClaimText(text, true)].map((n) => ({
       tokens: tokenise(n),
       compact: compactForm(n),
@@ -226,15 +318,17 @@ export function matchClaimTerms(
     const matches: ClaimTermMatch[] = [];
     for (const entry of vocabulary.entries) {
       let found: ClaimTermMatch | null = null;
-      for (const { tokens } of readings) {
+      for (const [r, { tokens }] of readings.entries()) {
         for (const phrase of entry.phrases) {
           const at = findPhrase(tokens, phrase);
           if (at >= 0) {
-            found = {
-              typeCode: entry.typeCode,
-              pass: 'token',
-              span: { fromToken: at, toToken: at + phrase.length - 1 },
-            };
+            const own = { fromToken: at, toToken: at + phrase.length - 1 };
+            const first = readings[0]!.tokens;
+            const span =
+              r === 0 || (first.length === tokens.length && first.every((t, i) => t === tokens[i]))
+                ? own
+                : toNumberReading(text, own, first.length, tokens.length);
+            found = { typeCode: entry.typeCode, pass: 'token', span };
             break;
           }
         }
