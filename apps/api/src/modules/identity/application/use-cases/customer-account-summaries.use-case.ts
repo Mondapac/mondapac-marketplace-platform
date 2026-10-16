@@ -53,10 +53,13 @@ const USE_CASE = 'identity.customer-account-summaries';
  * read **before** any customer row. Refused with `access.denied`: the system actor (by the gate),
  * a seller or customer actor, an acting-as session and an admin without the key. Never over HTTP.
  *
- * 1 to 100 ids (0 answers an empty list without a read), duplicates answered once; a malformed
- * id is `validation.failed` and never echoed. Only customer accounts of the context's Market are
- * answered: an unknown id, another Market's and another population's account are absent. One
- * read-only unit, no audit row. The log line carries the counts, never an address or a name.
+ * Up to 100 ids (0 answers an empty list without a read), duplicates answered once. One bad
+ * entry never fails the batch: a malformed id is skipped (counted in the log, never echoed) and
+ * answered absent like an unknown one. Only customer accounts of the context's Market are
+ * answered: an unknown id, another Market's and another population's account are absent; an
+ * account without a password credential is still answered (the summary reads none). One
+ * read-only unit with one account query, no audit row. The log line carries the counts, never
+ * an address or a name.
  */
 export class CustomerAccountSummaries extends UseCase<
   CustomerAccountSummariesInput,
@@ -82,11 +85,13 @@ export class CustomerAccountSummaries extends UseCase<
     input: CustomerAccountSummariesInput,
   ): Promise<Result<readonly CustomerAccountSummaryView[], CustomerAccountSummariesFailure>> {
     const { actor, market } = context;
-    const result = await this.read(context, input);
+    let skipped = 0;
+    const result = await this.read(context, input, () => (skipped += 1));
     this.#logger.log({
       msg: USE_CASE,
       outcome: result.ok ? 'customer-account-summaries.read' : result.error.code,
       ...(result.ok ? { rows: result.value.length } : {}),
+      ...(skipped > 0 ? { malformedIds: skipped } : {}),
       ...(actor.kind === 'authenticated' ? { accountId: actor.accountId } : {}),
       marketId: market.marketId,
       correlationId: context.correlationId,
@@ -97,6 +102,7 @@ export class CustomerAccountSummaries extends UseCase<
   private async read(
     context: CallContext,
     input: CustomerAccountSummariesInput,
+    skip: () => void,
   ): Promise<Result<readonly CustomerAccountSummaryView[], CustomerAccountSummariesFailure>> {
     const { market, actor } = context;
     if (
@@ -114,10 +120,8 @@ export class CustomerAccountSummaries extends UseCase<
     const ids = new Set<Id<'Account'>>();
     for (const value of raw as readonly unknown[]) {
       const parsed = typeof value === 'string' ? parseId<'Account'>(value) : null;
-      if (parsed === null || !parsed.ok) {
-        return err({ code: 'validation.failed', fields: [{ path: 'accountIds', code: 'format' }] });
-      }
-      ids.add(parsed.value);
+      if (parsed === null || !parsed.ok) skip();
+      else ids.add(parsed.value);
     }
     if (ids.size === 0) return ok([]);
     const self: GrantSubject = { accountId: actor.accountId, population: 'admin', sellerId: null };
@@ -135,17 +139,14 @@ export class CustomerAccountSummaries extends UseCase<
           [CUSTOMER_ACCOUNT_VIEW.key],
         );
         if (acting === null) return err({ code: 'access.denied' });
-        const found: CustomerAccountSummaryView[] = [];
-        for (const id of ids) {
-          const account = await this.deps.accounts.findById(market, id);
-          if (account === null || account.state.population !== 'customer') continue;
-          found.push({
-            accountId: account.state.id,
-            displayName: account.state.displayName,
-            email: account.state.email.typed,
-          });
-        }
-        return ok(found);
+        const rows = await this.deps.accounts.customerSummaries(market, [...ids]);
+        return ok(
+          rows.map((row) => ({
+            accountId: row.id,
+            displayName: row.displayName,
+            email: row.email,
+          })),
+        );
       },
       { readOnly: true },
     );

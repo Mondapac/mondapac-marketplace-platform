@@ -58,6 +58,7 @@ const fakeAccounts: AccountRepository = {
   unverifiedSignedUpBefore: () => Promise.reject(new Error('sign-up lists no account')),
   remove: () => Promise.reject(new Error('sign-up removes no account')),
   existsInPopulation: () => Promise.reject(new Error('sign-up asks no population question')),
+  customerSummaries: () => Promise.reject(new Error('sign-up reads no customer summary')),
 };
 const fakeOutbox: OutboxWriter = {
   append: (_context, events) => {

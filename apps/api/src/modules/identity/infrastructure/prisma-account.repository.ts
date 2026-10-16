@@ -3,7 +3,11 @@ import type { Id, MarketContext, Population, Result } from '@mondapac/shared-ker
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { SubjectKeyService } from '../../../platform/subject-keys/subject-key-service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
-import type { AccountAddRefused, AccountRepository } from '../application/ports/account.repository';
+import type {
+  AccountAddRefused,
+  AccountRepository,
+  CustomerSummaryRow,
+} from '../application/ports/account.repository';
 import { Account, type AccountState } from '../domain/account';
 
 /** Constraint names this repository turns into domain errors (data design 3.3, N1). */
@@ -108,6 +112,22 @@ export class PrismaAccountRepository implements AccountRepository {
       select: { id: true },
     });
     return row !== null;
+  }
+
+  async customerSummaries(
+    market: MarketContext,
+    ids: readonly Id<'Account'>[],
+  ): Promise<readonly CustomerSummaryRow[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.tx(market).identityAccount.findMany({
+      where: { marketId: market.marketId, population: 'customer', id: { in: [...ids] } },
+      select: { id: true, displayName: true, email: true },
+    });
+    return rows.map((row) => ({
+      id: row.id as Id<'Account'>,
+      displayName: row.displayName,
+      email: row.email,
+    }));
   }
 
   private restore(row: SelectedRow): Account {
