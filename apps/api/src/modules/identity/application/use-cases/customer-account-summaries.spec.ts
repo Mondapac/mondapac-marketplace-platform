@@ -269,7 +269,7 @@ describe.each(TEST_MARKETS)('CustomerAccountSummaries in market %s', (code) => {
     const actingAs = {
       ...root,
       actor: { ...root.actor, actingAs: { accountId: SELLER, sellerId: null } },
-    } as typeof root;
+    } as unknown as typeof root;
 
     for (const context of [asAdmin(FINANCE), seller, actingAs]) {
       expect(await open.execute(context, { accountIds: [CUSTOMER] })).toEqual({
