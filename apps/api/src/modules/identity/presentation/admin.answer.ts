@@ -4,6 +4,7 @@ import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientAddressOf, clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import type { SignInClient } from '../application/use-cases/sign-in-customer.use-case';
+import { deviceOf } from '../domain/device';
 import { fail, parseStringFields } from './customer-sign-up.controller';
 
 /**
@@ -77,12 +78,13 @@ export function adminBody<const F extends string>(
 
 /**
  * The client's origin and address from the resolved client address (ADR-0037 decision 8), never
- * a forwarded header (Hassan I4).
+ * a forwarded header (Hassan I4), and the coarse device of its User-Agent for a session it
+ * opens (profile package 4).
  */
 export function adminClient(request: Request): SignInClient | HttpException {
   const resolved = clientAddressFrom(request);
   const origin = clientOriginOf(resolved);
   const address = clientAddressOf(resolved);
   if (origin === null || address === null) return fail(503, 'access.unavailable');
-  return { origin, address };
+  return { origin, address, device: deviceOf(request.get('user-agent')) };
 }

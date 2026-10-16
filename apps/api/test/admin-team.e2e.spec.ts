@@ -55,6 +55,8 @@ const tokens = new RandomSessionTokens();
 let clock: FixedClock;
 let deliveries = 0;
 
+/** The answer of `GET profile/sessions` (profile package 4). */
+type OwnSessionsBody = { items: { current: boolean; device: string | null }[] };
 describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => {
   let app: NestExpressApplication;
   let logLines: LogLine[];
@@ -331,6 +333,44 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
         .get('/identity/admin/session')
         .set({ 'x-market-id': code, cookie: viewer.cookie });
       expect(session.body).toMatchObject({ displayName: 'Viewer Vee', lastSignInAt: null });
+    });
+
+    it('lists only its own devices and signs out of the others, keeping this one', async () => {
+      await boot();
+      await seeded(code);
+      const here = sessionOf(code, VIEWER, 3);
+      const elsewhere = sessionOf(code, VIEWER, 4);
+      const root = sessionOf(code, ROOT, 1);
+      const list = (headers: Record<string, string>) =>
+        http()
+          .get('/identity/admin/profile/sessions')
+          .set({ 'x-market-id': code, cookie: headers.cookie ?? '' });
+
+      const listed = await list(here);
+      expect(listed.status).toBe(200);
+      expect(listed.headers['cache-control']).toBe('no-store');
+      expect((listed.body as OwnSessionsBody).items).toHaveLength(2);
+      expect((listed.body as OwnSessionsBody).items[0]).toMatchObject({
+        current: true,
+        device: null,
+      });
+      expect(JSON.stringify(listed.body)).not.toMatch(/01990000-0000-7000-8000-/);
+
+      const signOut = (headers: Record<string, string>) =>
+        http()
+          .post('/identity/admin/profile/sessions/sign-out-others')
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...headers })
+          .send({});
+      const noCsrf = await signOut({ cookie: here.cookie });
+      expect(noCsrf.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+      const done = await signOut(here);
+      expect(done.status).toBe(200);
+      expect(done.body).toEqual({ code: 'other-sessions-signed-out', revokedSessions: 1 });
+
+      expect(((await list(here)).body as OwnSessionsBody).items).toHaveLength(1);
+      expect((await list(elsewhere)).status).toBe(401);
+      // Another admin's session is untouched.
+      expect((await list(root)).status).toBe(200);
     });
 
     it('disables an admin: its session stops working at once; enables it again', async () => {

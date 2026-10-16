@@ -14,6 +14,7 @@ import type {
   SignInClient,
 } from '../application/use-cases/sign-in-seller.use-case';
 import type { SignedIn } from '../application/use-cases/sign-in-seller.use-case';
+import { deviceOf } from '../domain/device';
 import { fail, parseStringFields } from './customer-sign-up.controller';
 import { adminFailure } from './admin.answer';
 import type { SellerSecondFactorRequired, SellerSignedIn } from './seller.dto';
@@ -103,7 +104,11 @@ export async function answerSellerSignIn<const F extends string>(
   const address = clientAddressOf(clientAddressFrom(request));
   if (origin === null || address === null) return fail(503, 'access.unavailable');
 
-  const result = await run({ ...(input as SellerSignInBody<F>), client: { origin, address } });
+  const device = deviceOf(request.get('user-agent'));
+  const result = await run({
+    ...(input as SellerSignInBody<F>),
+    client: { origin, address, device },
+  });
   if (result.ok) {
     const value = result.value;
     if (value.code === 'second-factor-required') {

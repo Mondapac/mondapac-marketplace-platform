@@ -5,6 +5,7 @@ import type {
   SessionForAuthentication,
   SessionRepository,
 } from '../../application/ports/session.repository';
+import { parseDeviceCode } from '../../domain/device';
 import { SELLER_ACCESS_STATES } from '../../domain/events';
 import type { SellerAccessStateCode } from '../../domain/seller-access';
 import type { Session, SessionRevokedReason } from '../../domain/session';
@@ -20,6 +21,7 @@ const SELECTED = {
   population: true,
   sellerId: true,
   transport: true,
+  device: true,
   createdAt: true,
   lastSeenAt: true,
   idleTimeoutSeconds: true,
@@ -35,6 +37,7 @@ interface SessionRow {
   readonly population: string;
   readonly sellerId: string | null;
   readonly transport: string;
+  readonly device: string | null;
   readonly createdAt: Date;
   readonly lastSeenAt: Date;
   readonly idleTimeoutSeconds: number;
@@ -59,6 +62,7 @@ function restore(row: SessionRow): Session {
     population: row.population as Population,
     sellerId: row.sellerId as Id<'Seller'> | null,
     transport: row.transport,
+    device: parseDeviceCode(row.device),
     createdAt: toInstant(row.createdAt),
     lastSeenAt: toInstant(row.lastSeenAt),
     idleTimeoutSeconds: row.idleTimeoutSeconds,
@@ -88,6 +92,7 @@ export class PrismaSessionRepository implements SessionRepository {
         sellerId: session.sellerId,
         tokenHash: Uint8Array.from(tokenHash),
         transport: session.transport,
+        device: session.device,
         createdAt: toDate(session.createdAt),
         lastSeenAt: toDate(session.lastSeenAt),
         idleTimeoutSeconds: session.idleTimeoutSeconds,
@@ -146,6 +151,28 @@ export class PrismaSessionRepository implements SessionRepository {
       select: SELECTED,
     });
     return row === null ? null : restore(row);
+  }
+
+  async listUnrevokedOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    now: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly Session[]> {
+    // On the index (market_id, account_id) (data design 3.4); the idle timeout is decided by
+    // the caller from the Clock, like every other expiry.
+    const rows = await this.prisma.tx(market).identitySession.findMany({
+      where: {
+        marketId: market.marketId,
+        accountId,
+        revokedAt: null,
+        absoluteExpiresAt: { gt: toDate(now) },
+      },
+      select: SELECTED,
+      orderBy: [{ lastSeenAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+    return rows.map(restore);
   }
 
   async touch(

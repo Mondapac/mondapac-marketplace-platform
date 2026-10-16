@@ -446,6 +446,21 @@ export const AdminSessionOpenedAudit = defineAuditAction({
 });
 
 /**
+ * The holder signed out every other session of the own account (profile package 4, active
+ * sessions). Target: the account; the actor is its holder, on the session that was kept. The
+ * count only: never a device or an address (R5).
+ */
+export const OtherSessionsSignedOutAudit = defineAuditAction({
+  action: 'identity.account.other-sessions-signed-out',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: {
+    keptSessionId: auditField.id(),
+    revokedSessions: auditField.integer(),
+  },
+});
+
+/**
  * The decisions on a seller's access (identity design 3.3, 10.1; PA 5 row 9; slice 9). Target: the
  * seller access record. The actor is the admin who decided (AC 11, AC 27). `before` and `after`
  * are state codes; `after.decisionId` names the `AccessDecision`, which holds the reason
@@ -547,6 +562,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   SellerSecondFactorResetRequestedAudit,
   SellerSecondFactorResetConfirmedAudit,
   AdminSessionOpenedAudit,
+  OtherSessionsSignedOutAudit,
   SellerAccessApprovedAudit,
   SellerAccessRejectedAudit,
   SellerAccessSuspendedAudit,

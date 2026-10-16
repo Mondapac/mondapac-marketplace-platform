@@ -113,6 +113,7 @@ export class CompleteAdminSignIn extends UseCase<
             population: 'admin',
             sellerId: null,
             transport: 'cookie',
+            device: input.client.device ?? null,
             lifetime,
             now,
           });

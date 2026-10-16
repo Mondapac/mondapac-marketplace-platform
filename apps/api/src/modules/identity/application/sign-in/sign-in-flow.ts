@@ -38,6 +38,7 @@ import type {
   AdminSecondStepOutcome,
   AdminSecondStepPolicy,
 } from './admin-second-step';
+import type { DeviceCode } from '../../domain/device';
 import { type SellerSignInDependencies, resolveSellerGate } from './seller-gate';
 import type {
   SellerSecondStep,
@@ -51,6 +52,11 @@ export interface SignInClient {
   readonly origin: string;
   /** The full address, stored in the sign-in record (10.2). */
   readonly address: string;
+  /**
+   * The coarse device of the request (profile package 4), kept on a session it opens; absent
+   * or null when unknown. Never the raw User-Agent.
+   */
+  readonly device?: DeviceCode | null;
 }
 
 /**
@@ -623,6 +629,7 @@ export class SignInFlow {
           population,
           sellerId: seller?.state.sellerId ?? null,
           transport: 'cookie',
+          device: client.device ?? null,
           lifetime,
           now,
         });

@@ -42,3 +42,43 @@ export class PanelPreferencesChanged {
   @ApiProperty({ description: 'False when the values already were the ones given.' })
   changed!: boolean;
 }
+
+/** One signed-in device of the holder (profile package 4). No id, token or address. */
+export class OwnSession {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'chrome.windows',
+    description:
+      'The coarse device, `<browser>.<system>`. Browser: edge, opera, samsung, firefox, chrome, ' +
+      'safari or other; system: windows, macos, ios, android, chromeos, linux or other. Null ' +
+      'for a session opened before devices were kept.',
+  })
+  device!: string | null;
+
+  @ApiProperty({ description: 'When the session was opened (ISO 8601, UTC).' })
+  signedInAt!: string;
+
+  @ApiProperty({ description: 'Its last request, to the minute (ISO 8601, UTC).' })
+  lastActiveAt!: string;
+
+  @ApiProperty({ description: 'True for the session this request was made with.' })
+  current!: boolean;
+}
+
+export class OwnSessions {
+  @ApiProperty({
+    type: [OwnSession],
+    description:
+      'The live sessions, the current one first, then the most recently used (50 at most).',
+  })
+  items!: OwnSession[];
+}
+
+export class OtherSessionsSignedOut {
+  @ApiProperty({ enum: ['other-sessions-signed-out'] })
+  code!: 'other-sessions-signed-out';
+
+  @ApiProperty({ description: 'How many sessions were ended; 0 when this was the only one.' })
+  revokedSessions!: number;
+}

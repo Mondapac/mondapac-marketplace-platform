@@ -28,6 +28,7 @@ import { ConfirmSellerSecondFactorEnrolment } from '../application/use-cases/con
 import { RegenerateSellerRecoveryCodes } from '../application/use-cases/regenerate-seller-recovery-codes.use-case';
 import { RemoveSellerSecondFactor } from '../application/use-cases/remove-seller-second-factor.use-case';
 import { StartSellerSecondFactorEnrolment } from '../application/use-cases/start-seller-second-factor-enrolment.use-case';
+import { deviceOf } from '../domain/device';
 import { adminBody, adminClient, adminFailure } from './admin.answer';
 import {
   AdminCodeRequest,
@@ -372,7 +373,7 @@ export class SellerSecondFactorController {
     const typed = input as Exclude<typeof input, readonly unknown[]>;
     const result = await this.completeSignIn.execute(context, {
       ...typed,
-      client: { origin, address },
+      client: { origin, address, device: deviceOf(request.get('user-agent')) },
     });
     return result.ok
       ? signedInAnswer(context, response, result.value)
