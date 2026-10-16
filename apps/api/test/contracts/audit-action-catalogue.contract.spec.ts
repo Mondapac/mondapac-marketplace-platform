@@ -269,6 +269,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.seller-member.removed',
       'identity.seller-second-factor-reset.confirmed',
       'identity.seller-second-factor-reset.requested',
+      'identity.seller-step-up-policy.changed',
     ]);
   });
 

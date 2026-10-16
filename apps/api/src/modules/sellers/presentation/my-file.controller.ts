@@ -16,6 +16,7 @@ import {
 } from '@nestjs/swagger';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import { RequiresStepUp } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import { clientAddressFrom } from '../../../platform/http/client-address';
@@ -143,6 +144,7 @@ export class MyFileController {
   }
 
   @Put('general')
+  @RequiresStepUp('sellers.store-terms.change')
   @HttpCode(200)
   @ApiOperation({
     summary: 'Save the General group of the draft',
@@ -196,6 +198,7 @@ export class MyFileController {
   }
 
   @Put('address')
+  @RequiresStepUp('sellers.store-terms.change')
   @HttpCode(200)
   @ApiOperation({
     summary: 'Save the address group of the draft',
@@ -249,6 +252,7 @@ export class MyFileController {
   }
 
   @Put('slug')
+  @RequiresStepUp('sellers.store-terms.change')
   @HttpCode(200)
   @ApiOperation({
     summary: 'Save the shop slug of the draft',
@@ -342,6 +346,7 @@ export class MyFileController {
   }
 
   @Put('identifier')
+  @RequiresStepUp('sellers.store-terms.change')
   @HttpCode(200)
   @ApiOperation({
     summary: 'Save the business identifier of the draft',
