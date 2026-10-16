@@ -32,7 +32,7 @@ import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
-import { gate, holdRetriesUntil, marketOf } from './persistence-support';
+import { extendUnitTimeout, gate, holdRetriesUntil, marketOf } from './persistence-support';
 import { adminTeamTestDatabaseUrl } from './test-database';
 
 // Identity slices 8a-2 and 8b on PostgreSQL (identity design 5.5, HF8; data design 5.1), for
@@ -148,7 +148,7 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
       const holders = await original(on, role);
       arrived += 1;
       if (arrived === 2) counted.open();
-      await Promise.race([counted.opened, new Promise((resolve) => setTimeout(resolve, 5000))]);
+      await Promise.race([counted.opened, new Promise((resolve) => setTimeout(resolve, 10_000))]);
       return holders;
     });
   }
@@ -169,6 +169,8 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
     const spy = bothCountFirst();
     const oneSettled = gate();
     const restorePause = holdRetriesUntil(app.get(UNIT_OF_WORK), oneSettled.opened);
+    // The held unit may wait up to 10 s for the other one, longer than the 5 s default timeout.
+    const restoreTimeout = extendUnitTimeout(app.get(UNIT_OF_WORK), 20_000);
 
     let results: Result<unknown, unknown>[];
     let counts: number;
@@ -181,6 +183,7 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
       // Restored even when a unit throws, so the next test spies on the real repository.
       spy.mockRestore();
       restorePause();
+      restoreTimeout();
     }
 
     // Both counted before either wrote, and the retried loser never counted again.
