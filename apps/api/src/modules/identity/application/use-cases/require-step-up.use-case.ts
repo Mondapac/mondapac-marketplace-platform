@@ -91,7 +91,8 @@ export class RequireStepUp extends UseCase<
         if (
           verifiedAt === null ||
           // A proof given before the current factor was activated does not count: removing or
-          // replacing the factor ends every proof made with the old one.
+          // re-enrolling the factor ends every proof made with the old one. (Replacing the device
+          // keeps `activatedAt`, so a proof lives out its five minutes; follow-up package.)
           (factor.state.activatedAt !== null &&
             Temporal.Instant.compare(verifiedAt, factor.state.activatedAt) < 0) ||
           !proofIsFresh(verifiedAt, this.deps.clock.now(), STEP_UP_PROOF_MINUTES)
