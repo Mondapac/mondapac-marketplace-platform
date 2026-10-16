@@ -48,6 +48,17 @@ export {
   type LedgerTableLabels,
   type LedgerTotalItem,
 } from './data/ledger.tsx';
+export { ActivityTable, formatCount, type ActivityColumn } from './dashboard/activity-table.tsx';
+export {
+  DashboardCard,
+  DistributionBar,
+  StatCard,
+  StatGrid,
+  type DashboardCardProps,
+  type DistributionPart,
+  type StatCardProps,
+  type StatTone,
+} from './dashboard/dashboard.tsx';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
 export { THEME_COOKIE, THEME_SCRIPT, themeChoice, type ThemeChoice } from './theme/theme.ts';

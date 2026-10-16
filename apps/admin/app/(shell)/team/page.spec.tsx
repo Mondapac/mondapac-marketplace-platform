@@ -56,7 +56,7 @@ describe('admin team page', () => {
     mocks.session.mockResolvedValue({ kind: 'ok', session: session([]) });
     await show();
     expect(screen.getByText("You don't have access to this page")).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Go to Home' }).getAttribute('href')).toBe('/');
+    expect(screen.getByRole('link', { name: 'Go to Dashboard' }).getAttribute('href')).toBe('/');
     expect(mocks.get).not.toHaveBeenCalled();
   });
 
