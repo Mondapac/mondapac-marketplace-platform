@@ -1,6 +1,7 @@
 // Answers of GET ordering/admin/orders and GET ordering/admin/orders/:orderId (read-only;
-// apps/api admin-orders.controller.ts). The API sends ids only for customers, sellers and
-// variants, so the panel shows them as short ids.
+// apps/api admin-orders.controller.ts). The API adds names (product, variant label, shop, and the
+// customer for admins holding identity.customer-account.view); any of them can be null, and the
+// panel then falls back to the short id.
 
 export const VIEW_PERMISSION = 'ordering.order.view';
 
@@ -33,10 +34,16 @@ export interface OrderLine {
   readonly unitPrice: Money;
   readonly lineAmount: Money;
   readonly taxInclusive: boolean;
+  /** Seller text; null when unknown. */
+  readonly productName: string | null;
+  /** Null when the Variant has no label or it is unknown. */
+  readonly variantLabel: string | null;
 }
 
 export interface SellerPart {
   readonly sellerId: string;
+  /** The seller's public store name; null when unknown. */
+  readonly storeName: string | null;
   readonly subtotal: Money;
   readonly shipping: Money;
   readonly total: Money;
@@ -46,6 +53,13 @@ export interface SellerPart {
   readonly shippedAt: string | null;
   readonly deliveredAt: string | null;
   readonly lines: readonly OrderLine[];
+}
+
+/** Personal data. The whole object is null when unknown or without the customer-view key. */
+export interface OrderCustomer {
+  /** Null when the customer gave no name. */
+  readonly displayName: string | null;
+  readonly email: string;
 }
 
 export interface AdminOrder {
@@ -60,6 +74,7 @@ export interface AdminOrder {
   readonly payBy: string | null;
   readonly sellerOrders: readonly SellerPart[];
   readonly accountId: string;
+  readonly customer: OrderCustomer | null;
   readonly paymentIntentId: string | null;
 }
 
