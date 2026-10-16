@@ -104,7 +104,7 @@ export class MemoryOrders implements OrderRepository {
       ),
     );
   }
-  countAll(_m: MarketContext) {
+  countAll() {
     const all = [...this.rows.values()];
     const count = (status: OrderState['status']) => all.filter((o) => o.status === status).length;
     return Promise.resolve({
