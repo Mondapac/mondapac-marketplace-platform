@@ -97,3 +97,15 @@ flag only hides it. The same question recurs across `certification`, `sellers`, 
 
 ## Reviews
 Ruling: Ali (cto), 2026-10-08, in the catalog thread. Hassan (security-tester): conditional approval, 2026-10-08; blockers B1 to B3 and the should-fix items are applied in this text. Second round 2026-10-08: Ali required R1 to R4, Hassan required M1 and M2 (both applied above); both confirmed the revised text on 2026-10-08.
+
+## Implementation note (2026-10-16)
+Decision 4's registry lives in `apps/api/src/platform/placeholders/`: the two markers
+(`@FailClosedPlaceholder`, `@PermissiveInterim`, kept in a module-private `WeakMap`, no reflection
+metadata), the derivation from the composition root (`boundPlaceholders`, reading every provider's
+class and instance constructor, so `useClass`, `useValue` and `useFactory` bindings all count), and
+the start-up self-check (`placeholdersAccepted`) that `start-api.ts` and `start-worker.ts` run before
+the database checks. The set is logged on every start; a non-empty set refuses any start that is not
+`NODE_ENV` explicitly `development` or `test`. The unit rule `placeholder-files.spec.ts` fails on a
+class under `infrastructure/placeholders/` without `@FailClosedPlaceholder`, and `app.e2e.spec.ts`
+pins the real composition root's set (empty on 2026-10-16: every placeholder of catalog slices 5 to 7
+was replaced by its binding PR).

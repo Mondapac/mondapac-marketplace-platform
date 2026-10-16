@@ -1,4 +1,5 @@
 import { Writable } from 'node:stream';
+import { ModulesContainer } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { Logger } from 'nestjs-pino';
@@ -7,6 +8,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { APP_OPTIONS, configureApp } from '../src/configure-app';
 import { buildOpenApiDocument } from '../src/openapi';
+import { boundPlaceholders } from '../src/platform/placeholders/bound-placeholders';
 import {
   MarketNotHostedError,
   MarketRegistry,
@@ -62,6 +64,11 @@ describe('API skeleton (integration)', () => {
 
   beforeEach(() => {
     logLines.length = 0;
+  });
+
+  it('binds no placeholder in the real composition root (ADR-0031 decision 4)', () => {
+    // A placeholder bound here would refuse every production start; the release gate reads it.
+    expect(boundPlaceholders(app.get(ModulesContainer))).toEqual([]);
   });
 
   it('GET /health reports liveness', async () => {

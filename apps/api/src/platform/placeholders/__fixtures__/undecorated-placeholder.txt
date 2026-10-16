@@ -1,0 +1,8 @@
+import { Injectable } from '@nestjs/common';
+
+@FailClosedPlaceholder('sellers.allowedProductTypesOf')
+@Injectable()
+export class DecoratedReader {}
+
+@Injectable()
+export class UndecoratedReader {}
