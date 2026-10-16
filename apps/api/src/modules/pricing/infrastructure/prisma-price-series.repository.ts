@@ -428,6 +428,16 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
     return row === null ? null : seriesFromRow(row);
   }
 
+  async countPendingHolds(market: MarketContext): Promise<number> {
+    const tx = this.prisma.tx(market);
+    const where = { marketId: market.marketId, status: 'pending-review' };
+    const [regular, special] = [
+      await tx.pricingRegularPriceRecord.count({ where }),
+      await tx.pricingSpecialPriceRecord.count({ where }),
+    ];
+    return regular + special;
+  }
+
   async listPendingHolds(
     market: MarketContext,
     after: PendingHoldCursor | null,

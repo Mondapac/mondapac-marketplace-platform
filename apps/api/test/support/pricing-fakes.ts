@@ -250,6 +250,10 @@ export class InMemoryPriceSeries implements PriceSeriesRepository {
     return Promise.resolve(views.slice(0, limit));
   }
 
+  countPendingHolds(market: MarketContext): Promise<number> {
+    return Promise.resolve(this.inMarket(market).flatMap((state) => holdViews(state)).length);
+  }
+
   findPendingHold(
     market: MarketContext,
     recordId: Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>,
