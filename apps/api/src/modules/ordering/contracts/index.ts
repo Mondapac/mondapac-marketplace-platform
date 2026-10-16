@@ -7,11 +7,13 @@ export {
   ORDERING_SELLER_ORDER_SHIP,
   ORDERING_SELLER_ORDER_VIEW,
 } from './permissions';
-export { ORDERING_EVENTS, OrderPaid } from '../domain/events';
+export { ORDERING_EVENTS, OrderPaid, OrderShipped } from '../domain/events';
 export {
   ORDERING_FACADE,
   type OrderNotice,
   type OrderNoticeFailure,
+  type ShipmentNotice,
+  type ShipmentNoticeFailure,
   type AuthorisedPayment,
   type OrderingFacade,
   type PaymentFailure,
