@@ -11,10 +11,9 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { orderProblemOf } from './errors.ts';
-import { variantLabelOf } from './labels.ts';
 import { OrderDetail } from './order-detail.tsx';
 import { SellerOrders } from './seller-orders.tsx';
-import type { LineLabels, OwnFee, SellerOrderPage, SellerOrderView } from './types.ts';
+import type { OrderLineView, OwnFee, SellerOrderPage, SellerOrderView } from './types.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -24,6 +23,18 @@ const wrap = (node: ReactNode) => (
 );
 
 const aud = (amount: string) => ({ amount, currency: 'AUD' });
+const line = (over: Partial<OrderLineView> = {}): OrderLineView => ({
+  lineId: '0190a000-0000-7000-8000-0000000000c1',
+  offerId: '0190a000-0000-7000-8000-0000000000d1',
+  variantId: '0190a000-0000-7000-8000-0000000000e1',
+  productName: 'Aged Basmati Rice',
+  variantLabel: '5 kg',
+  quantity: 2,
+  unitPrice: aud('1500'),
+  lineAmount: aud('3000'),
+  taxInclusive: true,
+  ...over,
+});
 const order = (over: Partial<SellerOrderView> = {}): SellerOrderView => ({
   sellerOrderId: '0190a000-0000-7000-8000-0000000000a1',
   orderId: '0190a000-0000-7000-8000-0000000000b1',
@@ -36,17 +47,7 @@ const order = (over: Partial<SellerOrderView> = {}): SellerOrderView => ({
   trackingRef: null,
   shippedAt: null,
   deliveredAt: null,
-  lines: [
-    {
-      lineId: '0190a000-0000-7000-8000-0000000000c1',
-      offerId: '0190a000-0000-7000-8000-0000000000d1',
-      variantId: '0190a000-0000-7000-8000-0000000000e1',
-      quantity: 2,
-      unitPrice: aud('1500'),
-      lineAmount: aud('3000'),
-      taxInclusive: true,
-    },
-  ],
+  lines: [line()],
   ...over,
 });
 const page = (orders: SellerOrderView[], nextCursor: string | null = null): SellerOrderPage => ({
@@ -55,26 +56,13 @@ const page = (orders: SellerOrderView[], nextCursor: string | null = null): Sell
 });
 const fee: OwnFee = { sellerId: 's', amount: '500', currency: 'AUD' };
 
-const labels: LineLabels = {
-  '0190a000-0000-7000-8000-0000000000c1': { name: 'Aged Basmati Rice', variant: '5 kg' },
-};
-
 const mountList = (initial = page([order()]), flatFee: OwnFee | null = fee) =>
   render(wrap(<SellerOrders initial={initial} fee={flatFee} />));
 
-const mountDetail = (
-  initial = order(),
-  { canShip = true, canDeliver = true, names = labels } = {},
-) =>
+const mountDetail = (initial = order(), { canShip = true, canDeliver = true } = {}) =>
   render(
     wrap(
-      <OrderDetail
-        initial={initial}
-        labels={names}
-        csrfToken="csrf"
-        canShip={canShip}
-        canDeliver={canDeliver}
-      />,
+      <OrderDetail initial={initial} csrfToken="csrf" canShip={canShip} canDeliver={canDeliver} />,
     ),
   );
 
@@ -171,8 +159,7 @@ describe('OrderDetail', () => {
     expect(screen.getByRole('link', { name: 'Back to orders' }).getAttribute('href')).toBe(
       '/orders',
     );
-    expect(screen.getByText('Aged Basmati Rice')).toBeTruthy();
-    expect(screen.getByText('5 kg')).toBeTruthy();
+    expect(screen.getByText('Aged Basmati Rice · 5 kg')).toBeTruthy();
     expect(screen.getByText('$15.00')).toBeTruthy();
     expect(screen.getAllByText('$30.00').length).toBeGreaterThan(0);
     expect(screen.getByText('$35.00')).toBeTruthy();
@@ -182,21 +169,66 @@ describe('OrderDetail', () => {
   it('shows times in the seller zone the provider carries', () => {
     render(
       <NextIntlClientProvider locale="en-AU" timeZone="Australia/Brisbane" messages={messages}>
+        <OrderDetail initial={order()} csrfToken="csrf" canShip={true} canDeliver={true} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText(/^Paid 14 Oct 2026, 8:00 pm AEST · 2 items$/)).toBeTruthy();
+  });
+
+  it('shows the product name alone for a line with no variant label', () => {
+    mountDetail(order({ lines: [line({ variantLabel: null })] }));
+    expect(screen.getByText('Aged Basmati Rice')).toBeTruthy();
+    expect(screen.queryByText(/·/, { selector: 'div' })).toBeNull();
+  });
+
+  it('treats a blank variant label as none', () => {
+    mountDetail(order({ lines: [line({ variantLabel: '  ' })] }));
+    expect(screen.getByText('Aged Basmati Rice')).toBeTruthy();
+  });
+
+  it('falls back to a short id for a line the API could not name', () => {
+    mountDetail(order({ lines: [line({ productName: null, variantLabel: null })] }));
+    expect(screen.getByText('Item 000000D1')).toBeTruthy();
+  });
+
+  it('shows each line of an order with its own name and variant', () => {
+    mountDetail(
+      order({
+        lines: [
+          line(),
+          line({
+            lineId: '0190a000-0000-7000-8000-0000000000c2',
+            offerId: '0190a000-0000-7000-8000-0000000000d2',
+            productName: 'Red Split Lentils',
+            variantLabel: null,
+          }),
+        ],
+      }),
+    );
+    expect(screen.getByText('Aged Basmati Rice · 5 kg')).toBeTruthy();
+    expect(screen.getByText('Red Split Lentils')).toBeTruthy();
+  });
+
+  it('shows money and dates in a second Market (NZD, en-NZ, Pacific/Auckland)', () => {
+    const nzd = (amount: string) => ({ amount, currency: 'NZD' });
+    render(
+      <NextIntlClientProvider locale="en-NZ" timeZone="Pacific/Auckland" messages={messages}>
         <OrderDetail
-          initial={order()}
-          labels={labels}
+          initial={order({
+            subtotal: nzd('3000'),
+            shipping: nzd('500'),
+            total: nzd('3500'),
+            lines: [line({ unitPrice: nzd('1500'), lineAmount: nzd('3000') })],
+          })}
           csrfToken="csrf"
           canShip={true}
           canDeliver={true}
         />
       </NextIntlClientProvider>,
     );
-    expect(screen.getByText(/^Paid 14 Oct 2026, 8:00 pm AEST · 2 items$/)).toBeTruthy();
-  });
-
-  it('falls back to a short id for a line whose name could not be read', () => {
-    mountDetail(order(), { names: {} });
-    expect(screen.getByText('Item 000000D1')).toBeTruthy();
+    expect(screen.getByText('Aged Basmati Rice · 5 kg')).toBeTruthy();
+    expect(screen.getByText('$35.00')).toBeTruthy();
+    expect(screen.getByText(/^Paid 14 Oct 2026, 11:00 pm NZDT · 2 items$/)).toBeTruthy();
   });
 
   it('ships with a carrier and an optional tracking reference, then shows the shipment', async () => {
@@ -276,42 +308,6 @@ describe('OrderDetail', () => {
     unmount();
     mountDetail(shippedOrder(), { canShip: false, canDeliver: false });
     expect(screen.queryByRole('button')).toBeNull();
-  });
-});
-
-describe('variantLabelOf', () => {
-  const form = {
-    taxCategoryCodes: [],
-    categories: [],
-    fields: [
-      {
-        code: 'colour',
-        dataType: 'select',
-        localizable: false,
-        required: true,
-        isVariantOption: true,
-        bounds: {},
-        names: { 'en-AU': 'Colour' },
-        options: [{ code: 'red', labels: { 'en-AU': 'Red' } }],
-      },
-    ],
-  };
-  const withVariants = (variants: unknown) =>
-    ({
-      published: { content: { variants } },
-      workingCopy: null,
-      form,
-    }) as unknown as Parameters<typeof variantLabelOf>[0];
-
-  it('uses the label the seller gave the variant', () => {
-    const product = withVariants([{ variantId: 'v1', labels: { 'en-AU': '1 kg' } }]);
-    expect(variantLabelOf(product, 'v1', 'en-AU')).toBe('1 kg');
-  });
-
-  it('else joins the labels of its option values, and is null when unknown', () => {
-    const product = withVariants([{ variantId: 'v1', optionValues: { colour: 'red' } }]);
-    expect(variantLabelOf(product, 'v1', 'en-AU')).toBe('Red');
-    expect(variantLabelOf(product, 'other', 'en-AU')).toBeNull();
   });
 });
 
