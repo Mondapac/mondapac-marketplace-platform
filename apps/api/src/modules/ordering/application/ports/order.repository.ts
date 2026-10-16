@@ -13,6 +13,18 @@ export interface OrderPage {
   readonly after: { readonly createdAt: Temporal.Instant; readonly id: Id<'Order'> } | null;
 }
 
+/** The admin list's filters; null keeps every order. */
+export interface OrderFilter {
+  readonly status: OrderStatus | null;
+  /** An order id or a seller order id, matched exactly. */
+  readonly reference: string | null;
+}
+
+/** The seller list's filter; null keeps every paid seller order. */
+export interface SellerOrderFilter {
+  readonly fulfilment: Fulfilment | null;
+}
+
 /** A seller's page of paid seller orders, newest payment first. */
 export interface SellerOrderPage {
   readonly limit: number;
@@ -54,9 +66,14 @@ export interface OrderRepository {
     page: OrderPage,
   ): Promise<readonly OrderState[]>;
 
+  /**
+   * The Market's orders, newest first. `status` keeps one status; `reference` keeps the order
+   * whose id, or one of whose seller orders' ids, is exactly that id (the reference in the
+   * order emails).
+   */
   listAll(
     market: MarketContext,
-    filter: { readonly status: OrderStatus | null },
+    filter: OrderFilter,
     page: OrderPage,
   ): Promise<readonly OrderState[]>;
 
@@ -70,6 +87,7 @@ export interface OrderRepository {
   listForSeller(
     market: MarketContext,
     sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
     page: SellerOrderPage,
   ): Promise<readonly SellerOrderRecord[]>;
 

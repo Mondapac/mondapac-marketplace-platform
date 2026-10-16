@@ -2,8 +2,10 @@ import { money, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
+  OrderFilter,
   OrderPage,
   OrderRepository,
+  SellerOrderFilter,
   SellerOrderPage,
   SellerOrderRecord,
 } from '../application/ports/order.repository';
@@ -243,15 +245,16 @@ export class PrismaOrderRepository implements OrderRepository {
     return rows.map(toOrder);
   }
 
-  async listAll(
-    market: MarketContext,
-    filter: { readonly status: OrderStatus | null },
-    page: OrderPage,
-  ) {
+  async listAll(market: MarketContext, filter: OrderFilter, page: OrderPage) {
     const rows = await this.prisma.tx(market).orderingOrder.findMany({
       where: {
         marketId: market.marketId,
         ...(filter.status === null ? {} : { status: filter.status }),
+        ...(filter.reference === null
+          ? {}
+          : {
+              OR: [{ id: filter.reference }, { sellerOrders: { some: { id: filter.reference } } }],
+            }),
         ...afterCursor(page),
       },
       include: INCLUDE,
@@ -278,11 +281,17 @@ export class PrismaOrderRepository implements OrderRepository {
     return updated.count === 0 ? 'stale' : 'saved';
   }
 
-  async listForSeller(market: MarketContext, sellerId: Id<'Seller'>, page: SellerOrderPage) {
+  async listForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+    page: SellerOrderPage,
+  ) {
     const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
       where: {
         marketId: market.marketId,
         sellerId,
+        ...(filter.fulfilment === null ? {} : { fulfilment: filter.fulfilment }),
         order: { status: 'confirmed' },
         ...sellerCursor(page),
       },

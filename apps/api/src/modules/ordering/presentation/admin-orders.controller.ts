@@ -61,6 +61,11 @@ export class AdminOrdersController {
     enum: ['pending-payment', 'confirmed', 'cancelled'],
   })
   @ApiQuery({
+    name: 'q',
+    required: false,
+    description: 'An order id or a seller order id (the reference in the order emails), exact.',
+  })
+  @ApiQuery({
     name: 'cursor',
     required: false,
     description: 'The `nextCursor` of the previous page.',
@@ -74,12 +79,18 @@ export class AdminOrdersController {
   async orders(
     @Call() context: CallContext,
     @Query('status') status: unknown,
+    @Query('q') q: unknown,
     @Query('cursor') cursor: unknown,
     @Query('limit') limit: unknown,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.list.execute(context, { status, cursor, limit: parseLimit(limit) });
+    const result = await this.list.execute(context, {
+      status,
+      q,
+      cursor,
+      limit: parseLimit(limit),
+    });
     this.log('ordering.admin-list-orders-route', context, result.ok ? 'listed' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return pageBody(result.value, adminOrderBody);

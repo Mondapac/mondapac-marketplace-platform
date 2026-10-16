@@ -726,6 +726,32 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       }
     });
 
+    it('finds an order by its id or a seller order id, and refuses a malformed reference', async () => {
+      const result = await start();
+      if (!result.ok) throw new Error('checkout failed');
+      const sellerOrderId = orders.rows.get(result.value.orderId)!.sellerOrders[0]!.id;
+      const find = (q: unknown) => new AdminListOrders(gate, deps).execute(adminContext(), { q });
+
+      const byOrder = await find(result.value.orderId.toUpperCase());
+      const bySellerOrder = await find(` ${sellerOrderId} `);
+      const none = await find(id<'Order'>(0x999));
+      const bad = await find('654165CC');
+
+      expect(byOrder.ok && byOrder.value.orders.map((o) => o.orderId)).toEqual([
+        result.value.orderId,
+      ]);
+      expect(bySellerOrder.ok && bySellerOrder.value.orders).toHaveLength(1);
+      expect(none.ok && none.value.orders).toEqual([]);
+      expect(bad).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'q', code: 'format' }] },
+      });
+      // A customer's own list takes no filter.
+      expect(
+        await new ListOrders(gate, deps).execute(customer, { q: result.value.orderId }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    });
+
     it('looks nothing up for an empty page', async () => {
       const list = await new AdminListOrders(gate, deps).execute(adminContext(), {});
 
@@ -811,6 +837,24 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(confirmed).toEqual(ok('confirmed'));
       return order;
     };
+
+    it('filters by fulfilment step and refuses an unknown one', async () => {
+      const order = await paid();
+      await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+
+      const shipped = await list(sellerA, { status: 'shipped' });
+      const toShip = await list(sellerA, { status: 'to-ship' });
+      const bad = await list(sellerA, { status: 'cancelled' });
+
+      expect(shipped.ok && shipped.value.sellerOrders.map((s) => s.fulfilment)).toEqual([
+        'shipped',
+      ]);
+      expect(toShip.ok && toShip.value.sellerOrders).toEqual([]);
+      expect(bad).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'status', code: 'value' }] },
+      });
+    });
 
     it('names the lines of the list, the detail and each step, with one call per page', async () => {
       const order = await paid();
