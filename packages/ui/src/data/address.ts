@@ -1,5 +1,7 @@
-// Street lines first, then locality, region and postcode on one line; the Market decides which
-// keys exist, so a key outside these lists is kept, after them, as its own line.
+// Street lines first, then locality, region and postcode on one line. This is the Australian and
+// UK order; Markets that write the place differently (US, Japan) need the order from Market
+// configuration (ADR-0002) before they launch. The Market decides which keys exist, so a key
+// outside these lists is kept, after them, as its own line.
 const STREET_KEYS = ['line1', 'line2', 'line3', 'street', 'address_line1', 'address_line2'];
 const PLACE_KEYS = [
   'suburb',

@@ -52,11 +52,15 @@ export function navTrail(
   pageTitle: string,
   label: (key: string) => string,
 ): readonly { label: string; href: string }[] {
+  const active = items.find((candidate) => candidate.id === activeId);
   const trail: { label: string; href: string }[] = [];
-  for (const item of [items[0], items.find((candidate) => candidate.id === activeId)]) {
+  for (const item of [items[0], active]) {
     if (item === undefined || trail.some((crumb) => crumb.href === item.href)) continue;
     const text = label(item.labelKey);
-    if (text !== pageTitle) trail.push({ label: text, href: item.href });
+    // The active item is the page itself when the page carries its name (a menu page, not a tab
+    // under it); the home item is the page itself when it is active.
+    const isPage = item === active && (item === items[0] || text === pageTitle);
+    if (!isPage) trail.push({ label: text, href: item.href });
   }
   return trail;
 }
