@@ -113,7 +113,8 @@
     },
     "low-stock": {
       "title": "Low stock",
-      "empty": "All items are above their low-stock level.",
+      "empty": "Nothing is low or out of stock.",
+      "none-left": "None left",
       "col": {
         "item": "Item",
         "status": "Stock",

@@ -226,7 +226,7 @@ function Orders({ data }: { readonly data: SellerDashboardData }) {
       id: 'paid',
       header: t('orders.col.paid'),
       kind: 'labelled',
-      size: 'date',
+      size: 'zoned-date',
       cell: (row) => <Time iso={row.paidAt} />,
     },
   ];
@@ -293,7 +293,7 @@ function Offers({ data }: { readonly data: SellerDashboardData }) {
       id: 'submitted',
       header: tc('col.submitted'),
       kind: 'labelled',
-      size: 'date',
+      size: 'zoned-date',
       cell: (row) => (row.submittedAt === null ? '-' : <Time iso={row.submittedAt} />),
     },
   ];
@@ -363,7 +363,14 @@ function LowStock({ data }: { readonly data: SellerDashboardData }) {
       align: 'end',
       cell: (row) => (
         <span className="tabular-nums">
-          {row.onlyLeft === null ? '-' : formatCount(row.onlyLeft, false, locale)}
+          {row.onlyLeft === null ? (
+            <>
+              <span aria-hidden="true">-</span>
+              <span className="sr-only">{t('low-stock.none-left')}</span>
+            </>
+          ) : (
+            formatCount(row.onlyLeft, false, locale)
+          )}
         </span>
       ),
     },
@@ -371,7 +378,7 @@ function LowStock({ data }: { readonly data: SellerDashboardData }) {
       id: 'changed',
       header: t('low-stock.col.changed'),
       kind: 'labelled',
-      size: 'date',
+      size: 'zoned-date',
       cell: (row) => <Time iso={row.changedAt} />,
     },
   ];
@@ -429,7 +436,7 @@ function Earnings({ data }: { readonly data: SellerDashboardData }) {
       id: 'when',
       header: t('earnings.col.when'),
       kind: 'labelled',
-      size: 'date',
+      size: 'zoned-date',
       cell: (row) => <Time iso={row.occurredAt} />,
     },
   ];

@@ -290,6 +290,7 @@ describe('seller dashboard', () => {
     // A missing name falls back; an out-of-stock unit shows no count.
     const unnamed = card.getByRole('link', { name: 'Unnamed product' });
     expect(unnamed.getAttribute('href')).toBe(`/offers/${ID(22)}/stock`);
+    expect(unnamed.closest('tr')?.textContent).toContain('None left');
     expect(screen.queryByRole('link', { name: /Low stock/ })).toBeNull();
   });
 
@@ -301,10 +302,10 @@ describe('seller dashboard', () => {
     );
   });
 
-  it('says all items are above their level when nothing is low', () => {
+  it('says nothing is low or out of stock when the list is empty', () => {
     const data: SellerDashboardData = { ...none, lowStock: ok({ items: [], nextCursor: null }) };
     render(wrap(<SellerDashboard data={data} permissionKeys={[]} />));
-    expect(screen.getByText('All items are above their low-stock level.')).toBeTruthy();
+    expect(screen.getByText('Nothing is low or out of stock.')).toBeTruthy();
   });
 
   it('fails the low-stock card in place while the others render', () => {
