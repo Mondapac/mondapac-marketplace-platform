@@ -8,10 +8,11 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
@@ -23,6 +24,7 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { CreateSource } from '../application/use-cases/create-source.use-case';
 import { EditSource } from '../application/use-cases/edit-source.use-case';
+import { ListLowStock } from '../application/use-cases/list-low-stock.use-case';
 import { ListSources } from '../application/use-cases/list-sources.use-case';
 import { ReorderSources } from '../application/use-cases/reorder-sources.use-case';
 import { ViewOfferStock } from '../application/use-cases/view-offer-stock.use-case';
@@ -90,6 +92,7 @@ export class SellerInventoryController {
     private readonly reorderSources: ReorderSources,
     private readonly setStockLevel: SetStockLevel,
     private readonly viewOfferStock: ViewOfferStock,
+    private readonly listLowStock: ListLowStock,
   ) {}
 
   @Get('sources')
@@ -214,6 +217,46 @@ export class SellerInventoryController {
             retired: cell.retired,
           })),
         })),
+      }),
+    );
+  }
+
+  @Get('low-stock')
+  @ApiOperation({
+    summary: 'List the seller’s sell units that are low or out of stock, latest change first',
+    description: 'Needs inventory.stock.view. Sell units whose stock is all retired are left out.',
+  })
+  @ApiQuery({ name: 'status', required: false, enum: ['low', 'out'] })
+  @ApiQuery({ name: 'cursor', required: false, description: 'The `nextCursor` of the last page.' })
+  @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 25.' })
+  async lowStock(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query('status') status: unknown,
+    @Query('cursor') cursor: unknown,
+    @Query('limit') limit: unknown,
+  ): Promise<unknown> {
+    return this.answer(
+      'list-low-stock',
+      context,
+      response,
+      await this.listLowStock.execute(context, {
+        status,
+        cursor,
+        // A query value is text; anything but digits stays text and is refused as a range.
+        limit: typeof limit === 'string' && /^[0-9]{1,4}$/.test(limit) ? Number(limit) : limit,
+      }),
+      (page) => ({
+        items: page.items.map((item) => ({
+          offerId: item.offerId,
+          variantId: item.variantId,
+          status: item.status,
+          onlyLeft: item.onlyLeft,
+          changedAt: item.changedAt.toString(),
+          productName: item.productName,
+          variantLabel: item.variantLabel,
+        })),
+        nextCursor: page.nextCursor,
       }),
     );
   }
