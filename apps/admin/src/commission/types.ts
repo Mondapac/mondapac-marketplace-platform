@@ -1,3 +1,5 @@
+import { numberFormat } from '../shared/intl.ts';
+
 // Answers of the admin commission routes (apps/api commission-payouts.controller.ts).
 
 export const SETTLEMENT_VIEW_PERMISSION = 'commission-payouts.settlement.view';
@@ -39,9 +41,14 @@ export interface Ledger {
   readonly nextCursor: string | null;
 }
 
-/** 1500 as "15", 1250 as "12.5": the percent text of a rate. */
-export function percentOf(bps: number): string {
-  return new Intl.NumberFormat('en-AU', { maximumFractionDigits: 2 }).format(bps / 100);
+/** 1500 as "15", 1250 as "12.5" in the Market's locale: the percent text of a rate. */
+export function percentOf(bps: number, locale: string): string {
+  return numberFormat(locale, { maximumFractionDigits: 2 }).format(bps / 100);
+}
+
+/** 1500 as "15", 1250 as "12.5": the text of the rate field, always with a dot (see bpsOf). */
+export function percentInput(bps: number): string {
+  return String(bps / 100);
 }
 
 /** The percent text of an input ("12.5") as basis points, or null when it is not 0 to 30 %. */

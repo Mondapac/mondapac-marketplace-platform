@@ -10,7 +10,7 @@ import {
   TextField,
   type BadgeTone,
 } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { useThrottle } from '../auth/use-throttle.ts';
@@ -55,6 +55,7 @@ export function PayoutAccountView({
   readonly back: StripeReturn;
 }) {
   const t = useTranslations('payout');
+  const locale = useLocale();
   const [account, setAccount] = useState(initial);
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState('');
@@ -183,7 +184,7 @@ export function PayoutAccountView({
         {account.requirementsPastDue ? <Banner tone="critical">{t('past-due')}</Banner> : null}
         {coolingOff && account.coolingOffUntil !== null ? (
           <Banner tone="attention" title={t('cooling-off.title')}>
-            {t('cooling-off.body', { until: formatInstant(account.coolingOffUntil) })}
+            {t('cooling-off.body', { until: formatInstant(account.coolingOffUntil, locale) })}
             {account.payoutsPaused ? ` ${t('cooling-off.paused')}` : ''}
           </Banner>
         ) : null}
@@ -236,7 +237,7 @@ export function PayoutAccountView({
                 key={`${change.detectedAt}-${change.kind}`}
                 className="flex flex-col gap-1 py-2 first:pt-0 last:pb-0 sm:grid sm:grid-cols-[minmax(0,var(--mp-size-data-label))_minmax(0,1fr)] sm:gap-x-6"
               >
-                <span className="text-fg-muted">{formatInstant(change.detectedAt)}</span>
+                <span className="text-fg-muted">{formatInstant(change.detectedAt, locale)}</span>
                 <span className="font-medium">
                   {t(`changes.kind.${known(change.kind, CHANGE_KINDS)}`)}
                 </span>

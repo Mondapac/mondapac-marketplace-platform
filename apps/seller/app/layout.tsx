@@ -1,6 +1,6 @@
 import { THEME_COOKIE, themeChoice } from '@mondapac/ui';
 import { NextIntlClientProvider } from 'next-intl';
-import { getMessages } from 'next-intl/server';
+import { getLocale, getMessages } from 'next-intl/server';
 import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import './globals.css';
@@ -12,12 +12,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // own scripts (ADR-0034 decision 6).
   const nonce = (await headers()).get('x-nonce') ?? undefined;
   const messages = await getMessages();
+  const locale = await getLocale();
   // A saved theme is set here; "system" is resolved by the head script before the first paint,
   // which changes the attribute React rendered, hence suppressHydrationWarning.
   const choice = themeChoice((await cookies()).get(THEME_COOKIE)?.value);
   return (
     <html
-      lang="en-AU"
+      lang={locale}
       dir="ltr"
       data-theme-choice={choice}
       data-theme={choice === 'system' ? undefined : choice}

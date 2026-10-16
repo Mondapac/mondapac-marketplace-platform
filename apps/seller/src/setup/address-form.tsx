@@ -1,10 +1,11 @@
 'use client';
 
 import { Banner, Button, Card, CheckboxRow, FormActionBar, Select, TextField } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
+import { dateFormat } from '../shared/intl.ts';
 import { nextHref, SETUP_ROOT } from './steps.ts';
 import type { AddressSaved, FormDescriptors, MyFile, ZoneState } from './types.ts';
 import { ButtonLink } from './button-link.tsx';
@@ -39,9 +40,9 @@ function browserZone(): string | null {
   }
 }
 
-function zoneName(zoneId: string): string {
+function zoneName(zoneId: string, locale: string): string {
   try {
-    const parts = new Intl.DateTimeFormat('en-AU', {
+    const parts = dateFormat(locale, {
       timeZone: zoneId,
       timeZoneName: 'long',
     }).formatToParts(new Date());
@@ -51,9 +52,9 @@ function zoneName(zoneId: string): string {
   }
 }
 
-function localTime(zoneId: string): string {
+function localTime(zoneId: string, locale: string): string {
   try {
-    return new Intl.DateTimeFormat('en-AU', {
+    return dateFormat(locale, {
       timeZone: zoneId,
       hour: 'numeric',
       minute: '2-digit',
@@ -74,6 +75,7 @@ export function AddressForm({
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
+  const locale = useLocale();
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const { fields, regionField, regions } = descriptors.address;
@@ -207,7 +209,7 @@ export function AddressForm({
             value={zone !== null && zoneChoices.includes(zone) ? zone : ''}
             options={zoneChoices.map((value) => ({
               value,
-              label: `${zoneName(value)} (${value})`,
+              label: `${zoneName(value, locale)} (${value})`,
             }))}
             onChange={(event) => {
               setZone(event.target.value);
@@ -239,11 +241,11 @@ export function AddressForm({
       {result && !result.outside && result.timezone ? (
         <Banner tone="success">
           {t('sellers.address.result.zone', {
-            zoneName: zoneName(result.timezone.operatingTimezone),
+            zoneName: zoneName(result.timezone.operatingTimezone, locale),
             zoneId: result.timezone.operatingTimezone,
           })}{' '}
           {t('sellers.address.result.local-time', {
-            time: localTime(result.timezone.operatingTimezone),
+            time: localTime(result.timezone.operatingTimezone, locale),
           })}
           <br />
           {t('sellers.address.help.zone')}

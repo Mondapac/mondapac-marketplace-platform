@@ -1,12 +1,12 @@
 'use client';
 
 import { ActionRow, Banner, Button, Card, Select, TextField } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { decisionProblemOf, type DecisionProblem } from './decision-errors.ts';
-import { formatInstant } from './format.ts';
+import { formatInstant } from '../shared/format.ts';
 import type { ReviewRegister } from './review-types.ts';
 
 const OUTCOMES = ['active', 'not-found', 'cancelled'] as const;
@@ -38,6 +38,7 @@ export function DecisionPanel({
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
+  const locale = useLocale();
   const router = useRouter();
   const [step, setStep] = useState<Step>('idle');
   const [reason, setReason] = useState('');
@@ -131,7 +132,7 @@ export function DecisionPanel({
               ? t('sellers.decision.check.none')
               : t('sellers.decision.check.recorded', {
                   outcome: t(`sellers.decision.check.outcome.${check.observedOutcome}`),
-                  when: formatInstant(check.recordedAt),
+                  when: formatInstant(check.recordedAt, locale),
                 })}
           </p>
           <p className="text-sm text-fg-muted">{t('sellers.decision.check.help')}</p>

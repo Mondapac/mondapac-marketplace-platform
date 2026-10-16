@@ -9,7 +9,7 @@ import {
   type BadgeTone,
   type LedgerRow,
 } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { shortInstant } from '../catalog/format.ts';
@@ -27,12 +27,13 @@ const shortId = (id: string): string => id.slice(-8).toUpperCase();
 /** The seller's earnings: totals (sales, shipping, commission, balance) and the ledger. */
 export function Earnings({ initial }: { readonly initial: Ledger }) {
   const t = useTranslations('earnings');
+  const locale = useLocale();
   const [entries, setEntries] = useState<readonly LedgerEntry[]>(initial.entries);
   const [cursor, setCursor] = useState(initial.nextCursor);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const { currency, totals } = initial;
-  const money = (amount: string) => formatMinor(amount, currency);
+  const money = (amount: string) => formatMinor(amount, currency, locale);
 
   async function more() {
     if (cursor === null || loading) return;
@@ -56,7 +57,7 @@ export function Earnings({ initial }: { readonly initial: Ledger }) {
   const rows: LedgerRow[] = entries.map((entry) => ({
     id: entry.entryId,
     dateTime: entry.occurredAt,
-    when: shortInstant(entry.occurredAt),
+    when: shortInstant(entry.occurredAt, locale),
     order: shortId(entry.orderId),
     orderTitle: entry.orderId,
     kind: t(`kind.${entry.kind}`),

@@ -7,7 +7,7 @@ import {
   type BadgeTone,
   MemberColumns,
 } from '@mondapac/ui';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { formatInstant } from '../catalog/format.ts';
 import { roleLabel } from './role-label.ts';
 import { RowActions, type RowTarget } from './row-actions.tsx';
@@ -80,6 +80,7 @@ export async function TeamTable({
   readonly roleList?: readonly SellerRole[];
 }) {
   const t = await getTranslations();
+  const locale = await getLocale();
   if (page.items.length === 0 && after === null) {
     return (
       <EmptyState
@@ -144,7 +145,7 @@ export async function TeamTable({
                         row.status === 'expired'
                           ? 'identity.team.expired-on'
                           : 'identity.team.expires-on',
-                        { when: formatInstant(row.expiresAt) },
+                        { when: formatInstant(row.expiresAt, locale) },
                       )}
                     </div>
                   ) : null}
