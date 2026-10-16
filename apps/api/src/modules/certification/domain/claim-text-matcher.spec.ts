@@ -99,6 +99,35 @@ describe('claim text matcher', () => {
       expect(run(organic, 'orgаnіc')).toEqual(['organic:token']); // Cyrillic а and і
     });
 
+    it('sees through the look-alikes the interim table missed (issue #133, Hassan PR 132)', () => {
+      for (const text of ['haɩal', 'haɨal', 'HAƗAL', 'haƚal', 'haɫal', 'haɭal']) {
+        expect([text, run(AU, text)]).toEqual([text, ['halal:token']]);
+      }
+      expect(run(AU, 'haᎥal')).toEqual(['halal:token']); // Cherokee i
+      expect(run(AU, 'HAᏞAL')).toEqual(['halal:token']); // Cherokee L
+      expect(run(AU, 'Ꮋalal')).toEqual(['halal:token']); // Cherokee H
+      expect(run(AU, 'ꮋalal')).toEqual(['halal:token']); // Cherokee small h
+      expect(run(AU, 'ha¡al')).toEqual(['halal:compact']); // inverted exclamation, leet map
+    });
+
+    it('applies the full UTS #39 table: mathematical, circled and other rarer letters', () => {
+      expect(run(AU, '𝐡𝐚𝐥𝐚𝐥')).toEqual(['halal:token']);
+      expect(run(AU, '𝖍𝖆𝖑𝖆𝖑')).toEqual(['halal:token']);
+      expect(run(AU, 'ⓗⓐⓛⓐⓛ')).toEqual(['halal:token']);
+      expect(run(AU, 'hɑlɑl')).toEqual(['halal:token']);
+      expect(run(AU, 'ħalal')).toEqual(['halal:token']);
+      expect(run(AU, 'ᴋosher')).toEqual(['kosher:token']);
+      expect(run(ZZ, 'ƶedpure')).toEqual(['zed-pure:token']);
+    });
+
+    it('leaves ASCII and the Arabic script to the curated tables', () => {
+      // UTS maps `0` to O, `%` to letters and `m` to `rn`; the token pass keeps them as written.
+      expect(normaliseClaimText('100% ham')).toBe('100% ham');
+      // UTS maps alef to `l` and heh to `o`: Arabic stays Arabic, so no Latin term meets it.
+      expect(normaliseClaimText('حلال الله')).toBe('حلال الله');
+      expect(run(AU, 'Grass-fed beef, made in Melbourne')).toEqual([]);
+    });
+
     it('maps squared letters', () => {
       expect(run(AU, '🅷🅰🅻🅰🅻')).toEqual(['halal:token']);
     });

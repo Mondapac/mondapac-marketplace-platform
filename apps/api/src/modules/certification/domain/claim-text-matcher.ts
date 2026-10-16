@@ -8,6 +8,7 @@ import {
   SKELETON_MAP,
   numericOrIndicatorToAscii,
 } from './claim-text-data';
+import { UTS39_CONFUSABLES } from './generated/uts39-confusables';
 
 /**
  * The one claim-text matcher (design 4.6, CERT-01, ADR-0019 R1): pure, no I/O, no model. The
@@ -49,10 +50,35 @@ function mapChars(s: string, map: Readonly<Record<string, string>>): string {
   return out;
 }
 
+// Left to the curated tables, not the UTS #39 table (issue #133): ASCII (UTS maps `!`, `%` and
+// digits to letters, which would bypass the second pass and the separators; `m` to `rn`) and the
+// Arabic script (UTS maps alef to `l` and heh to `o`; the Arabic folds are the mini-review's of
+// 2026-10-14).
+const ARABIC_SCRIPT = /\p{Script=Arabic}/u;
+const uts39Skipped = (ch: string): boolean => ch.codePointAt(0)! < 0x80 || ARABIC_SCRIPT.test(ch);
+
+/**
+ * One character's skeleton: the curated table first, then digits of every script and regional
+ * indicators as ASCII (the second pass reads them), then the full UTS #39 table.
+ */
+function skeletonOf(ch: string): string {
+  if (Object.hasOwn(SKELETON_MAP, ch)) return SKELETON_MAP[ch]!;
+  const ascii = numericOrIndicatorToAscii(ch.codePointAt(0)!);
+  if (ascii !== null) return ascii;
+  const prototype = uts39Skipped(ch) ? undefined : UTS39_CONFUSABLES.get(ch);
+  if (prototype === undefined) return ch;
+  // A prototype can be upper case or carry marks: fold it like the text, then let the curated
+  // table have the last word (UTS maps Cyrillic і to i, and the curated table puts i on l).
+  const folded = prototype.toLowerCase().normalize('NFD').replace(IGNORABLE, '').normalize('NFC');
+  return mapChars(folded, SKELETON_MAP);
+}
+
 function mapSkeleton(s: string): string {
   let out = '';
-  for (const ch of mapChars(s, SKELETON_MAP)) {
-    out += numericOrIndicatorToAscii(ch.codePointAt(0)!) ?? ch;
+  for (const ch of s) {
+    for (const mapped of skeletonOf(ch)) {
+      out += numericOrIndicatorToAscii(mapped.codePointAt(0)!) ?? mapped;
+    }
   }
   return out;
 }

@@ -43,12 +43,12 @@ export const PRE_FOLD_MAP: Readonly<Record<string, string>> = Object.freeze({
 });
 
 /**
- * INTERIM confusable skeleton, applied after case folding and mark stripping. This is a curated
- * subset (Cyrillic and Greek look-alikes of Latin letters, Arabic and Persian letter variants,
- * Arabic-Indic digits). It is NOT the full UTS #39 `confusables.txt` table: that file could not
- * be fetched in the build environment, so the generated full table replaces this one as a
- * follow-up (tracked in the slice 2 PR). Until then the second pass and the catalog refusal are
- * the controls; the claim guard stays deterministic defence in depth (ADR-0019 R1).
+ * Curated confusable skeleton, applied after case folding and mark stripping and BEFORE the full
+ * UTS #39 table (`generated/uts39-confusables.ts`, issue #133), which covers every other
+ * character outside ASCII and the Arabic script. The curated rows win where they differ from UTS:
+ * `i` and `l` share one letter, and the Arabic and Persian variants follow the mini-review of
+ * 2026-10-14. The second pass and the catalog refusal stay the controls; the claim guard stays
+ * deterministic defence in depth (ADR-0019 R1).
  */
 export const SKELETON_MAP: Readonly<Record<string, string>> = Object.freeze({
   // `i` and `l` share one skeleton letter (the capital I rule in PRE_FOLD_MAP puts capital I on l),
@@ -200,6 +200,7 @@ export const LEET_MAP: Readonly<Record<string, string>> = Object.freeze({
   '8': 'b',
   '2': 'z',
   '!': 'l',
+  '¡': 'l',
   '#': 'h',
 });
 
