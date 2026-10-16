@@ -186,7 +186,7 @@ export function RoleEditor({
         {t('selected', { selected: selected.size, total: catalogue.keys.length })}
       </p>
       {groups.map(([resource, keys]) => (
-        <fieldset key={resource} className="rounded-lg border border-line p-4">
+        <fieldset key={resource} className="rounded-lg border border-line bg-surface p-5">
           <legend className="px-1 font-semibold">
             {root.has(`permission.resource.${resource}`)
               ? root(`permission.resource.${resource}`)

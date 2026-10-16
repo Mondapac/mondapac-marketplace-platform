@@ -81,7 +81,7 @@ export async function RolesTable({
                           <td className={CARD_TABLE.corner}>
                             <Badge tone={TONE[role.kind]}>
                               {role.kind === 'system' ? (
-                                <Icon name="lock" className="me-1 size-[1em]" />
+                                <Icon name="lock" className="size-[1em]" />
                               ) : null}
                               {t(`identity.roles.type.${role.kind}`)}
                             </Badge>

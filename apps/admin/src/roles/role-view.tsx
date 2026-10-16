@@ -27,7 +27,7 @@ export async function RoleView({
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <h1 className="min-w-0 break-words text-2xl font-semibold">{roleName(t, role)}</h1>
             <Badge tone="neutral">
-              {role.kind === 'system' ? <Icon name="lock" className="me-1 size-[1em]" /> : null}
+              {role.kind === 'system' ? <Icon name="lock" className="size-[1em]" /> : null}
               {t(`identity.roles.type.${role.kind}`)}
             </Badge>
           </div>

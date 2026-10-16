@@ -20,7 +20,7 @@ export function CheckboxRow({ label, help, ...rest }: CheckboxRowProps) {
         id={id}
         type="checkbox"
         aria-describedby={help ? helpId : undefined}
-        className="mt-1 size-4"
+        className="mt-1 size-4 accent-accent"
         {...rest}
       />
       <div className="flex flex-col">
