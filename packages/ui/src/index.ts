@@ -4,6 +4,7 @@ export { Topbar, type TopbarProps } from './shell/topbar.tsx';
 export { Icon, type IconName, type IconProps } from './icon/icon.tsx';
 export { Tabs, type TabItem, type TabsProps } from './shell/tabs.tsx';
 export { BackLink } from './shell/back-link.tsx';
+export { ShortcutGrid, type Shortcut } from './shell/shortcut-grid.tsx';
 export { visibleNavItems, type NavConfig, type NavItem } from './shell/nav.ts';
 export { AuthLayout, type AuthLayoutProps, type AuthShowcaseCard } from './auth/auth-layout.tsx';
 export { Banner, type BannerProps, type BannerTone } from './form/banner.tsx';

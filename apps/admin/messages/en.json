@@ -20,11 +20,22 @@
   },
   "home": {
     "title": "Home",
-    "empty": "Your admin workspace is being set up.",
     "signed-in-as": "Signed in as {name}",
     "sign-out": "Sign out",
     "sign-out-failed": "We couldn't sign you out. Check your connection and try again.",
-    "user-menu": "Account"
+    "user-menu": "Account",
+    "welcome": "Welcome, {name}",
+    "intro": "Where would you like to start?",
+    "shortcuts": "Sections",
+    "shortcut": {
+      "customers": "Find a customer account by email and help with sign-in.",
+      "sellers": "Review applications and manage seller access.",
+      "price-holds": "Approve or reject prices that changed sharply.",
+      "offer-reviews": "Check offers waiting for their first publish.",
+      "payout-accounts": "See the Stripe payout accounts of sellers.",
+      "settings": "Platform settings, such as the support contact.",
+      "team": "Invite admins and manage roles and permissions."
+    }
   },
   "showcase": {
     "title": "The whole marketplace, at a glance.",
