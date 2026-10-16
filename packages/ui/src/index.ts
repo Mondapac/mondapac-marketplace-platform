@@ -27,6 +27,7 @@ export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/em
 export { DataList, type DataListRow } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
 export { CARD_TABLE } from './data/card-table.ts';
+export { EmailText } from './data/email-text.tsx';
 export {
   LedgerTable,
   LedgerTotals,

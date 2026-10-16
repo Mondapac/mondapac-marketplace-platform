@@ -1,6 +1,14 @@
 'use client';
 
-import { Banner, Button, CheckboxRow, Dialog, FormActionBar, TextField } from '@mondapac/ui';
+import {
+  BackLink,
+  Banner,
+  Button,
+  CheckboxRow,
+  Dialog,
+  FormActionBar,
+  TextField,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
@@ -156,12 +164,12 @@ export function RoleEditor({
 
   return (
     <form onSubmit={(event) => void submit(event)} noValidate className="flex flex-col gap-5">
-      <a className="text-sm font-medium text-link underline" href="/roles">
-        {t('back')}
-      </a>
-      <h1 className="break-words text-2xl font-semibold">
-        {editing ? t('editor.title-edit') : t('editor.title-create')}
-      </h1>
+      <div className="flex flex-col items-start gap-2">
+        <BackLink href="/roles" label={t('back')} />
+        <h1 className="break-words text-2xl font-semibold">
+          {editing ? t('editor.title-edit') : t('editor.title-create')}
+        </h1>
+      </div>
       {problem === null ? null : <Banner tone="critical">{problem}</Banner>}
       <TextField
         label={t('editor.name')}
@@ -178,7 +186,7 @@ export function RoleEditor({
         {t('selected', { selected: selected.size, total: catalogue.keys.length })}
       </p>
       {groups.map(([resource, keys]) => (
-        <fieldset key={resource} className="rounded-lg border border-line p-4">
+        <fieldset key={resource} className="rounded-lg border border-line bg-surface p-5">
           <legend className="px-1 font-semibold">
             {root.has(`permission.resource.${resource}`)
               ? root(`permission.resource.${resource}`)

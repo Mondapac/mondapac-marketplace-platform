@@ -1,4 +1,4 @@
-import { Badge, type BadgeTone } from '@mondapac/ui';
+import { Badge, CARD_TABLE, EmailText, EmptyState, Icon, type BadgeTone } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { formatInstant } from '../catalog/format.ts';
 import { roleLabel } from './role-label.ts';
@@ -21,14 +21,18 @@ function Person({ t, row }: { readonly t: Translate; readonly row: MemberRow | I
   return (
     <div className="min-w-0">
       <div className="break-words font-medium text-fg">
-        {name ?? row.email}
+        {name ?? <EmailText address={row.email} />}
         {row.type === 'account' && row.self ? (
           <span className="ms-2 text-xs font-normal text-fg-muted">
             {t('identity.team.label.you')}
           </span>
         ) : null}
       </div>
-      {name === null ? null : <div className="break-words text-sm text-fg-muted">{row.email}</div>}
+      {name === null ? null : (
+        <div className="break-words text-sm text-fg-muted">
+          <EmailText address={row.email} />
+        </div>
+      )}
     </div>
   );
 }
@@ -70,26 +74,27 @@ export async function TeamTable({
   const t = await getTranslations();
   if (page.items.length === 0 && after === null) {
     return (
-      <div className="rounded-lg border border-line p-6">
-        <h2 className="text-lg font-semibold">{t('identity.team.empty.title')}</h2>
-        <p className="mt-1 text-fg-muted">{t('identity.team.empty.body')}</p>
-      </div>
+      <EmptyState
+        icon="users"
+        title={t('identity.team.empty.title')}
+        body={t('identity.team.empty.body')}
+      />
     );
   }
   if (page.items.length === 0) {
     return <p className="text-fg-muted">{t('identity.team.empty.page')}</p>;
   }
   return (
-    <div className="relative overflow-x-auto rounded-lg border border-line">
-      <table className="w-full table-fixed text-start text-sm md:min-w-160 max-md:block">
+    <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
+      <table className={`${CARD_TABLE.table} lg:min-w-160 lg:table-fixed`}>
         <caption className="sr-only">{t('identity.team.table-caption')}</caption>
-        <colgroup className="max-md:hidden">
+        <colgroup className="max-lg:hidden">
           <col />
           <col className="w-44" />
           <col className="w-44" />
           <col className="w-24" />
         </colgroup>
-        <thead className="bg-muted text-fg-muted max-md:sr-only">
+        <thead className={CARD_TABLE.head}>
           <tr>
             <th scope="col" className="px-4 py-3 font-medium">
               {t('identity.team.label.person')}
@@ -105,36 +110,30 @@ export async function TeamTable({
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-line-row max-md:block">
+        <tbody className={CARD_TABLE.body}>
           {page.items.map((row) => {
             const status = statusOf(t, row);
             const id = row.type === 'account' ? row.accountId : row.invitationId;
             return (
-              <tr
-                key={`${row.type}-${id}`}
-                className="max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:items-center max-md:gap-x-3 max-md:gap-y-2 max-md:p-4"
-              >
-                <td className="px-4 py-3 align-middle max-md:p-0">
+              <tr key={`${row.type}-${id}`} className={CARD_TABLE.row}>
+                <td className={CARD_TABLE.cell}>
                   <Person t={t} row={row} />
                 </td>
                 <td
-                  className="break-words px-4 py-3 align-middle max-md:col-span-2 max-md:p-0 max-md:before:me-2 max-md:before:inline-block max-md:before:w-20 max-md:before:align-top max-md:before:text-fg-muted max-md:before:content-[attr(data-label)]"
+                  className={`${CARD_TABLE.labelled} break-words`}
                   data-label={t('identity.team.label.role')}
                 >
-                  {row.role?.kind === 'system' ? (
-                    <span className="me-1" aria-hidden="true">
-                      🔒
-                    </span>
-                  ) : null}
-                  {roleLabel(t, row.role, roleList)}
-                  {row.role?.kind === 'system' ? (
-                    <span className="sr-only"> {t('identity.team.role.system')}</span>
-                  ) : null}
+                  <span className="inline-flex min-w-0 items-center gap-(--mp-space-1-5)">
+                    {row.role?.kind === 'system' ? (
+                      <Icon name="lock" className="text-icon-muted" />
+                    ) : null}
+                    {roleLabel(t, row.role, roleList)}
+                    {row.role?.kind === 'system' ? (
+                      <span className="sr-only"> {t('identity.team.role.system')}</span>
+                    ) : null}
+                  </span>
                 </td>
-                <td
-                  className="px-4 py-3 align-middle max-md:col-span-2 max-md:p-0 max-md:before:me-2 max-md:before:inline-block max-md:before:w-20 max-md:before:align-top max-md:before:text-fg-muted max-md:before:content-[attr(data-label)]"
-                  data-label={t('identity.team.label.status')}
-                >
+                <td className={CARD_TABLE.labelled} data-label={t('identity.team.label.status')}>
                   <Badge tone={status.tone}>{status.label}</Badge>
                   {row.type === 'invitation' && row.expiresAt !== null ? (
                     <div className="mt-1 text-xs text-fg-muted">
@@ -147,7 +146,7 @@ export async function TeamTable({
                     </div>
                   ) : null}
                 </td>
-                <td className="px-4 py-3 text-end align-middle max-md:col-start-2 max-md:row-start-1 max-md:p-0">
+                <td className={`${CARD_TABLE.corner} text-end`}>
                   <RowActions target={targetOf(row)} csrfToken={csrfToken} roles={roles} />
                 </td>
               </tr>

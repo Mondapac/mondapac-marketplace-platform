@@ -77,6 +77,14 @@ body {
   }
 }
 
+/* Native controls (checkboxes, selects, date pickers) follow the panel theme, not the browser's. */
+:root {
+  color-scheme: light;
+}
+[data-theme='dark'] {
+  color-scheme: dark;
+}
+
 /* Sizes made in code first (speed mode), to be back-ported to the Figma tokens: the label
  * column of Figma DataRow, shared by detail cards and the labelled lines of phone table cards. */
 :root {

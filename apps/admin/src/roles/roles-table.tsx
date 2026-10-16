@@ -1,4 +1,4 @@
-import { Badge, type BadgeTone } from '@mondapac/ui';
+import { Badge, CARD_TABLE, EmptyState, Icon, type BadgeTone } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { roleName } from './role-name.ts';
 import type { RoleRecord } from './types.ts';
@@ -31,24 +31,25 @@ export async function RolesTable({
               {t(`identity.roles.group.${kind}`)}
             </h2>
             {rows.length === 0 ? (
-              <div className="rounded-lg border border-line p-6">
-                <p className="font-medium">{t('identity.roles.empty-custom.title')}</p>
-                <p className="mt-1 text-fg-muted">{t('identity.roles.empty-custom.body')}</p>
-              </div>
+              <EmptyState
+                icon="key"
+                title={t('identity.roles.empty-custom.title')}
+                body={t('identity.roles.empty-custom.body')}
+              />
             ) : (
-              <div className="relative overflow-x-auto rounded-lg border border-line">
+              <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
                 {/* Fixed layout with shared widths, so the System, Default and Custom tables
                     line their columns up with each other; Role takes what is left. */}
-                <table className="w-full min-w-180 table-fixed text-start text-sm">
+                <table className={`${CARD_TABLE.table} lg:min-w-180 lg:table-fixed`}>
                   <caption className="sr-only">{t(`identity.roles.group.${kind}`)}</caption>
-                  <colgroup>
+                  <colgroup className="max-lg:hidden">
                     <col />
                     <col className="w-36" />
                     <col className="w-36" />
                     {members === null ? null : <col className="w-32" />}
                     <col className="w-28" />
                   </colgroup>
-                  <thead className="bg-muted text-fg-muted">
+                  <thead className={CARD_TABLE.head}>
                     <tr>
                       <th scope="col" className="px-4 py-3 font-medium">
                         {t('identity.roles.label.role')}
@@ -69,25 +70,26 @@ export async function RolesTable({
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-line-row">
+                  <tbody className={CARD_TABLE.body}>
                     {rows.map((role) => {
                       const name = roleName(t, role);
                       return (
-                        <tr key={role.roleId}>
-                          <td className="break-words px-4 py-3 align-middle font-medium text-fg">
+                        <tr key={role.roleId} className={CARD_TABLE.row}>
+                          <td className={`${CARD_TABLE.cell} break-words font-medium text-fg`}>
                             {name}
                           </td>
-                          <td className="px-4 py-3 align-middle">
+                          <td className={CARD_TABLE.corner}>
                             <Badge tone={TONE[role.kind]}>
                               {role.kind === 'system' ? (
-                                <span className="me-1" aria-hidden="true">
-                                  🔒
-                                </span>
+                                <Icon name="lock" className="size-[1em]" />
                               ) : null}
                               {t(`identity.roles.type.${role.kind}`)}
                             </Badge>
                           </td>
-                          <td className="px-4 py-3 align-middle">
+                          <td
+                            className={CARD_TABLE.labelled}
+                            data-label={t('identity.roles.label.permissions')}
+                          >
                             {role.kind === 'system'
                               ? t('identity.roles.permissions-all')
                               : role.permissionCount === 0
@@ -97,13 +99,18 @@ export async function RolesTable({
                                   })}
                           </td>
                           {members === null ? null : (
-                            <td className="px-4 py-3 align-middle">
+                            <td
+                              className={CARD_TABLE.labelled}
+                              data-label={t('identity.roles.label.members')}
+                            >
                               {t('identity.roles.members-count', {
                                 count: members.get(role.roleId) ?? 0,
                               })}
                             </td>
                           )}
-                          <td className="px-4 py-3 text-end align-middle">
+                          <td
+                            className={`${CARD_TABLE.cell} text-end max-lg:col-span-2 max-lg:text-start`}
+                          >
                             <a
                               className="font-medium text-link underline"
                               href={`/roles/${role.roleId}`}

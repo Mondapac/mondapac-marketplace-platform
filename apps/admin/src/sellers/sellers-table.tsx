@@ -1,5 +1,5 @@
-import { Badge, CARD_TABLE, type BadgeTone } from '@mondapac/ui';
-import { Fragment, type ReactNode } from 'react';
+import { Badge, CARD_TABLE, EmailText, type BadgeTone } from '@mondapac/ui';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { areaName, formatInstant, known } from './format.ts';
 import { KINDS, STATUSES, type SellerRow } from './types.ts';
@@ -94,7 +94,7 @@ export function SellersTable({
                           {row.owner.displayName ?? t('owner-unnamed')}
                         </span>
                         <span className="block break-words text-fg-muted">
-                          <Email address={row.owner.email} />
+                          <EmailText address={row.owner.email} />
                         </span>
                       </span>
                     )}
@@ -145,27 +145,5 @@ function When({ iso, missing }: { readonly iso: string | null; readonly missing:
       <span className="block whitespace-nowrap">{text.slice(0, split)}</span>
       <span className="block whitespace-nowrap text-xs text-fg-muted">{text.slice(split + 2)}</span>
     </span>
-  );
-}
-
-/**
- * An email address that wraps before the @ or before a dot of the domain, never inside a word;
- * the cell's break-words only breaks a single part longer than the column.
- */
-function Email({ address }: { readonly address: string }) {
-  const at = address.lastIndexOf('@');
-  if (at <= 0) return <>{address}</>;
-  const [first, ...rest] = address.slice(at).split('.');
-  return (
-    <>
-      {address.slice(0, at)}
-      <wbr />
-      {first}
-      {rest.map((part, index) => (
-        <Fragment key={index}>
-          <wbr />.{part}
-        </Fragment>
-      ))}
-    </>
   );
 }
