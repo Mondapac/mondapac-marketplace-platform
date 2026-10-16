@@ -4,7 +4,6 @@ import {
   SIDEBAR_COOKIE,
   Sidebar,
   THEME_COOKIE,
-  ThemeMenu,
   navTrail,
   Topbar,
   sidebarCollapsed,
@@ -59,18 +58,12 @@ export async function AdminShell({
           trail={navTrail(items, activeId, title, (key) => t(key))}
           trailLabel={t('nav.breadcrumb')}
           actions={
-            <>
-              <ThemeMenu
-                choice={themeChoice(jar.get(THEME_COOKIE)?.value)}
-                labels={{
-                  menu: t('theme.menu'),
-                  system: t('theme.system'),
-                  light: t('theme.light'),
-                  dark: t('theme.dark'),
-                }}
-              />
-              <UserMenu name={session.displayName} csrfToken={session.csrfToken} />
-            </>
+            <UserMenu
+              name={session.displayName}
+              email={session.email}
+              theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
+              csrfToken={session.csrfToken}
+            />
           }
         />
       }

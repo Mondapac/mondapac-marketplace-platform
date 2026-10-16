@@ -10,6 +10,14 @@
     "light": "Light",
     "dark": "Dark"
   },
+  "account-menu": {
+    "trigger": "Account menu for {name}",
+    "pages": "Your account",
+    "profile": "My profile",
+    "sign-out": "Sign out",
+    "signing-out": "Signing out…",
+    "sign-out-failed": "We couldn't sign you out. Check your connection and try again."
+  },
   "nav": {
     "menu": "Open navigation menu",
     "close": "Close navigation menu",
@@ -30,10 +38,6 @@
   },
   "home": {
     "title": "Dashboard",
-    "signed-in-as": "Signed in as {name}",
-    "sign-out": "Sign out",
-    "sign-out-failed": "We couldn't sign you out. Check your connection and try again.",
-    "user-menu": "Account",
     "intro": "Welcome, {name}. Here is what needs attention and the latest activity you can see."
   },
   "dashboard": {
@@ -90,7 +94,9 @@
     "accounts": {
       "title": "Restricted payout accounts",
       "empty": "No payout account is restricted.",
-      "col": { "checked": "Last checked" }
+      "col": {
+        "checked": "Last checked"
+      }
     },
     "orders": {
       "title": "Recent orders",
@@ -1168,9 +1174,12 @@
       "paid": "Paid",
       "cancelled": "Cancelled",
       "pay-by": "Pay by",
+      "customer-name": "Customer name",
+      "customer-email": "Customer email",
       "customer": "Customer account",
       "payment-intent": "Payment reference",
       "total": "Order total",
+      "seller-account": "Seller account",
       "fulfilment": "Fulfilment",
       "carrier": "Carrier",
       "tracking": "Tracking reference",
@@ -1329,5 +1338,16 @@
       "home": "Go to the dashboard",
       "reference": "Reference for support:"
     }
+  },
+  "profile": {
+    "title": "My profile",
+    "details": "Details",
+    "name": "Name",
+    "email": "Sign-in email",
+    "two-step": "Two-step verification",
+    "two-step-on": "On",
+    "two-step-off": "Off",
+    "missing": "Not given",
+    "unavailable": "We couldn't load your profile. Try again."
   }
 }

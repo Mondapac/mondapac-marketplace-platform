@@ -10,6 +10,15 @@
     "light": "Light",
     "dark": "Dark"
   },
+  "account-menu": {
+    "trigger": "Account menu for {name}",
+    "pages": "Your account",
+    "profile": "My profile",
+    "security": "Security",
+    "sign-out": "Sign out",
+    "signing-out": "Signing out…",
+    "sign-out-failed": "We couldn't sign you out. Check your connection and try again."
+  },
   "nav": {
     "menu": "Open navigation menu",
     "close": "Close navigation menu",
@@ -29,10 +38,6 @@
   },
   "home": {
     "title": "Dashboard",
-    "signed-in-as": "Signed in as {name}",
-    "sign-out": "Sign out",
-    "sign-out-failed": "We couldn't sign you out. Check your connection and try again.",
-    "user-menu": "Account",
     "intro": "Welcome, {name}. Here is what needs attention in your shop and your latest activity."
   },
   "dashboard": {
@@ -1145,7 +1150,7 @@
     "col": {
       "order": "Order",
       "status": "Status",
-      "paid": "Paid (UTC)",
+      "paid": "Paid",
       "items": "Items",
       "total": "Total"
     },
@@ -1174,8 +1179,8 @@
     "totals": "Totals",
     "fulfilment": "Fulfilment",
     "not-shipped": "This order has not been shipped yet.",
-    "shipped-on": "Shipped (UTC)",
-    "delivered-on": "Delivered (UTC)",
+    "shipped-on": "Shipped",
+    "delivered-on": "Delivered",
     "subtotal": "Items",
     "delivery": "Delivery",
     "delivery-free": "Free",
@@ -1487,5 +1492,17 @@
       "home": "Go to the dashboard",
       "reference": "Reference for support:"
     }
+  },
+  "profile": {
+    "title": "My profile",
+    "details": "Details",
+    "name": "Name",
+    "email": "Sign-in email",
+    "two-step": "Two-step verification",
+    "two-step-on": "On",
+    "two-step-off": "Off",
+    "missing": "Not given",
+    "unavailable": "We couldn't load your profile. Try again.",
+    "manage-security": "Manage"
   }
 }

@@ -225,9 +225,9 @@ describe('OfferPrices', () => {
     expect(instantOfZoned('2027-04-04T02:30', 'Australia/Sydney')).toBe('2027-04-03T15:30:00Z');
   });
 
-  it('shows instants in the zone with its id', () => {
+  it('shows instants in the zone with its short name', () => {
     expect(formatInZone('2026-10-31T23:30:00Z', 'Australia/Sydney', 'en-AU')).toMatch(
-      /1 Nov 2026.*10:30.*Australia\/Sydney$/,
+      /1 Nov 2026.*10:30.*AEDT$/,
     );
     expect(formatInZone(null, 'UTC', 'en-AU')).toBe('-');
   });

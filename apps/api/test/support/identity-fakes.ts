@@ -293,6 +293,17 @@ export class IdentityFakes {
           (a) => a.marketId === market.marketId && a.population === population,
         ),
       ),
+    customerSummaries: (market: MarketContext, ids: readonly Id<'Account'>[]) =>
+      Promise.resolve(
+        ids.flatMap((id) => {
+          const state = this.accounts.get(id);
+          return state === undefined ||
+            state.marketId !== market.marketId ||
+            state.population !== 'customer'
+            ? []
+            : [{ id, displayName: state.displayName, email: state.email.typed }];
+        }),
+      ),
     lockCredential: (market: MarketContext, id: Id<'Account'>) => {
       const state = this.accounts.get(id);
       this.credentialLocks.push(id);

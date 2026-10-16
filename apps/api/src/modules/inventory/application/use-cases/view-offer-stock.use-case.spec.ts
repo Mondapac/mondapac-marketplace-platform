@@ -54,6 +54,12 @@ class FakeReader implements OfferStockReader {
     this.calls += 1;
     return Promise.resolve(this.snapshot);
   }
+  listLowStock() {
+    return Promise.reject(new Error('not used'));
+  }
+  liveSellUnits() {
+    return Promise.reject(new Error('not used'));
+  }
 }
 
 class FakeOffers implements OfferSellUnitsSource {
