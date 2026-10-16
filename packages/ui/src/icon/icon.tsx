@@ -115,6 +115,18 @@ const ICONS = {
       <path d="M12 17.5v-11" />
     </>
   ),
+  'arrow-left': (
+    <>
+      <path d="M19 12H5" />
+      <path d="m12 19-7-7 7-7" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </>
+  ),
   menu: (
     <>
       <path d="M4 6h16" />

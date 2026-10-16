@@ -12,7 +12,7 @@ import {
   type ReviewRead,
 } from '../../../../src/sellers/review-types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
-import { ReviewView } from '../../../../src/sellers/review-view.tsx';
+import { BackToSellers, ReviewView } from '../../../../src/sellers/review-view.tsx';
 import { CommissionRateCard } from '../../../../src/commission/rate-card.tsx';
 import { LedgerCard } from '../../../../src/commission/ledger-card.tsx';
 import {
@@ -87,6 +87,9 @@ export default async function SellerReviewPage({
   const message = (key: string) =>
     shell(
       <>
+        <div className="mb-4">
+          <BackToSellers label={t('sellers.review.back')} />
+        </div>
         <h1 className="mb-2 text-2xl font-semibold">{t(`sellers.review.${key}.title`)}</h1>
         {key === 'unavailable' ? (
           <LoadError
@@ -97,11 +100,6 @@ export default async function SellerReviewPage({
         ) : (
           <p className="text-fg-muted">{t(`sellers.review.${key}.body`)}</p>
         )}
-        <p className="mt-4">
-          <a className="font-medium text-link underline" href="/sellers">
-            {t('sellers.review.back')}
-          </a>
-        </p>
       </>,
     );
   // The API audits every read of business details, so a page without the permission makes no call.

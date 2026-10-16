@@ -68,7 +68,8 @@ describe('admin seller review page', () => {
     expect(screen.getByText('Awaiting approval')).toBeTruthy();
     expect(screen.getByText('Cedar Lane Pty Ltd')).toBeTruthy();
     expect(screen.getByText('ABN 51 824 753 556')).toBeTruthy();
-    expect(screen.getByText(/Postal code: 4000/)).toBeTruthy();
+    // The address shows as postal lines, not as field names.
+    expect(screen.getByText(/1 Cedar Lane\s+4000/)).toBeTruthy();
     expect(screen.getByText(/Each view is recorded in the audit log/)).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
   });

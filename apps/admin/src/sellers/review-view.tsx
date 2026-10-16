@@ -1,6 +1,6 @@
-import { Badge, type BadgeTone } from '@mondapac/ui';
+import { Badge, Card, DataList, Icon, type BadgeTone } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
-import { formatInstant, known } from './format.ts';
+import { addressLines, areaName, formatInstant, known } from './format.ts';
 import { DecisionPanel } from './decision-panel.tsx';
 import type { ReviewContent, ReviewRead, ReviewRevision } from './review-types.ts';
 
@@ -20,24 +20,6 @@ const ACCESS_TONE: Record<string, BadgeTone> = {
   suspended: 'critical',
 };
 
-/** An address field key (`line1`, `postal_code`) as words; the Market decides which keys exist. */
-function fieldLabel(key: string): string {
-  const words = key
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[-_]+/g, ' ')
-    .trim()
-    .toLowerCase();
-  return words === '' ? key : words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-function addressText(address: Readonly<Record<string, string>> | null): string | null {
-  if (address === null) return null;
-  const lines = Object.entries(address)
-    .filter(([, value]) => value.trim() !== '')
-    .map(([key, value]) => `${fieldLabel(key)}: ${value}`);
-  return lines.length === 0 ? null : lines.join('\n');
-}
-
 interface Row {
   readonly label: string;
   readonly value: string | null;
@@ -53,14 +35,15 @@ function contentRows(t: Translate, content: ReviewContent): Row[] {
       value:
         content.identifier === null
           ? null
-          : `${content.identifier.scheme} ${content.identifier.display}`,
+          : // Schemes are acronyms (ABN, NZBN, VAT): shown in capitals.
+            `${content.identifier.scheme.toUpperCase()} ${content.identifier.display}`,
     },
     { label: t('sellers.review.field.phone'), value: content.phone },
     { label: t('sellers.review.field.contact-email'), value: content.contactEmail },
-    { label: t('sellers.review.field.address'), value: addressText(content.address) },
+    { label: t('sellers.review.field.address'), value: addressLines(content.address) },
     {
       label: t('sellers.review.field.registered-address'),
-      value: addressText(content.registeredAddress),
+      value: addressLines(content.registeredAddress),
     },
     {
       label: t('sellers.review.field.indirect-tax'),
@@ -87,45 +70,43 @@ function Revision({
   const rows = contentRows(t, revision.content);
   const before = against === null ? null : contentRows(t, against.content);
   return (
-    <section className="rounded-lg border border-line p-4">
-      <h2 className="mb-1 text-lg font-semibold">{heading}</h2>
-      <p className="mb-3 text-sm text-fg-muted">
+    <Card title={heading}>
+      <p className="flex flex-wrap items-center gap-2 text-sm text-fg-muted">
         {t('sellers.review.revision-line', {
           kind: t(`sellers.review.kind.${known(revision.kind, KINDS)}`),
           no: revision.revisionNo,
           when: formatInstant(revision.createdAt),
-        })}{' '}
+        })}
         <Badge tone="neutral">
           {t(`sellers.review.revision-status.${known(revision.status, REVISION_STATUSES)}`)}
         </Badge>
       </p>
-      <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-[max-content_1fr]">
-        {rows.map((row, index) => {
-          const changed = before !== null && before[index]?.value !== row.value;
-          return (
-            <div key={row.label} className="contents">
-              <dt className="text-fg-muted">{row.label}</dt>
-              <dd className="whitespace-pre-line break-words font-medium">
-                {row.value ?? '-'}
-                {changed ? (
-                  <span className="ms-2">
-                    <Badge tone="info">{t('sellers.review.changed')}</Badge>
-                  </span>
-                ) : null}
-              </dd>
-            </div>
-          );
-        })}
-        <div className="contents">
-          <dt className="text-fg-muted">{t('sellers.review.field.service-area')}</dt>
-          <dd className="font-medium">{revision.serviceAreaCode}</dd>
-        </div>
-        <div className="contents">
-          <dt className="text-fg-muted">{t('sellers.review.field.timezone')}</dt>
-          <dd className="font-medium">{revision.operatingTimezone}</dd>
-        </div>
-      </dl>
-    </section>
+      <DataList
+        rows={[
+          ...rows.map((row, index) => {
+            const changed = before !== null && before[index]?.value !== row.value;
+            return {
+              label: row.label,
+              value: (
+                <>
+                  {row.value ?? '-'}
+                  {changed ? (
+                    <span className="ms-2">
+                      <Badge tone="info">{t('sellers.review.changed')}</Badge>
+                    </span>
+                  ) : null}
+                </>
+              ),
+            };
+          }),
+          {
+            label: t('sellers.review.field.service-area'),
+            value: areaName(revision.serviceAreaCode),
+          },
+          { label: t('sellers.review.field.timezone'), value: revision.operatingTimezone },
+        ]}
+      />
+    </Card>
   );
 }
 
@@ -133,48 +114,44 @@ function RegisterPanel({ t, review }: { readonly t: Translate; readonly review: 
   const { register, current } = review;
   const snapshot = current.registerAtSubmission;
   return (
-    <section className="rounded-lg border border-line p-4">
-      <h2 className="mb-3 text-lg font-semibold">{t('sellers.review.register.title')}</h2>
+    <Card title={t('sellers.review.register.title')}>
       {register.lookup === 'none' ? (
-        <p className="mb-3 text-fg-muted">{t('sellers.review.register.none')}</p>
+        <p className="text-fg-muted">{t('sellers.review.register.none')}</p>
       ) : null}
-      <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-[max-content_1fr]">
-        <div className="contents">
-          <dt className="text-fg-muted">{t('sellers.review.register.state')}</dt>
-          <dd className="font-medium">
-            {t(`sellers.review.register.state-value.${known(register.state, REGISTER_STATES)}`)}
-          </dd>
-        </div>
-        <div className="contents">
-          <dt className="text-fg-muted">{t('sellers.review.register.checked')}</dt>
-          <dd className="font-medium">{formatInstant(register.checkedAt)}</dd>
-        </div>
-        {register.mismatches.length > 0 ? (
-          <div className="contents">
-            <dt className="text-fg-muted">{t('sellers.review.register.mismatches')}</dt>
-            <dd className="font-medium">
-              {register.mismatches
-                .map((flag) => t(`sellers.review.register.mismatch.${known(flag, MISMATCHES)}`))
-                .join(', ')}
-            </dd>
-          </div>
-        ) : null}
-        <div className="contents">
-          <dt className="text-fg-muted">{t('sellers.review.register.at-submission')}</dt>
-          <dd className="font-medium">
-            {t(`sellers.review.register.outcome.${known(snapshot.outcome, SNAPSHOT_OUTCOMES)}`)}
-          </dd>
-        </div>
-        <div className="contents">
-          <dt className="text-fg-muted">{t('sellers.review.register.approval')}</dt>
-          <dd className="font-medium">
-            {register.blocksApproval
+      <DataList
+        rows={[
+          {
+            label: t('sellers.review.register.state'),
+            value: t(
+              `sellers.review.register.state-value.${known(register.state, REGISTER_STATES)}`,
+            ),
+          },
+          { label: t('sellers.review.register.checked'), value: formatInstant(register.checkedAt) },
+          ...(register.mismatches.length > 0
+            ? [
+                {
+                  label: t('sellers.review.register.mismatches'),
+                  value: register.mismatches
+                    .map((flag) => t(`sellers.review.register.mismatch.${known(flag, MISMATCHES)}`))
+                    .join(', '),
+                },
+              ]
+            : []),
+          {
+            label: t('sellers.review.register.at-submission'),
+            value: t(
+              `sellers.review.register.outcome.${known(snapshot.outcome, SNAPSHOT_OUTCOMES)}`,
+            ),
+          },
+          {
+            label: t('sellers.review.register.approval'),
+            value: register.blocksApproval
               ? t('sellers.review.register.blocks')
-              : t('sellers.review.register.clear')}
-          </dd>
-        </div>
-      </dl>
-    </section>
+              : t('sellers.review.register.clear'),
+          },
+        ]}
+      />
+    </Card>
   );
 }
 
@@ -195,7 +172,8 @@ export async function ReviewView({
   const access = known(review.access, ACCESS);
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center gap-3">
+      <BackToSellers label={t('sellers.review.back')} />
+      <div className="-mt-2 flex flex-wrap items-center gap-3">
         <h1 className="break-words text-2xl font-semibold">{review.current.content.storeName}</h1>
         <Badge tone={ACCESS_TONE[access] ?? 'neutral'}>
           {t(`sellers.review.access.${access}`)}
@@ -232,11 +210,19 @@ export async function ReviewView({
           csrfToken={decide.csrfToken}
         />
       ) : null}
-      <p>
-        <a className="font-medium text-link underline" href="/sellers">
-          {t('sellers.review.back')}
-        </a>
-      </p>
     </div>
+  );
+}
+
+/** The way back to the list, above the page heading. */
+export function BackToSellers({ label }: { readonly label: string }) {
+  return (
+    <a
+      href="/sellers"
+      className="inline-flex min-h-12 items-center gap-2 self-start text-sm font-medium text-link hover:underline md:min-h-0"
+    >
+      <Icon name="arrow-left" />
+      {label}
+    </a>
   );
 }
