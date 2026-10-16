@@ -5,9 +5,17 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { AppShell, Menu } from '@mondapac/ui';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const labels = { menu: 'Open menu', close: 'Close menu', more: 'More', main: 'Main' };
+const labels = {
+  menu: 'Open menu',
+  close: 'Close menu',
+  more: 'More',
+  main: 'Main',
+  collapse: 'Collapse sidebar',
+  expand: 'Expand sidebar',
+};
 const tabs = [
   { id: 'a', href: '/', label: 'Home', icon: 'home' as const, active: true },
   { id: 'b', href: '/products', label: 'Products', icon: 'package' as const, active: false },
@@ -62,6 +70,78 @@ describe('AppShell on phones', () => {
     expect(screen.getByRole('link', { name: 'Home' }).getAttribute('aria-current')).toBe('page');
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     expect((container.querySelector('dialog') as HTMLDialogElement).open).toBe(true);
+  });
+});
+
+describe('AppShell sidebar from 760 px', () => {
+  it('narrows to an icon rail, saves the choice and widens again', () => {
+    document.cookie = 'mp-sidebar=; max-age=0; path=/';
+    const { container } = render(
+      <AppShell sidebar={<nav>Side</nav>} topbar={<header>Top</header>} labels={labels}>
+        Body
+      </AppShell>,
+    );
+    const panel = container.querySelector('[data-rail]') as HTMLElement;
+    expect(panel.dataset.rail).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(panel.dataset.rail).toBe('true');
+    expect(document.cookie).toContain('mp-sidebar=collapsed');
+    const toggle = screen.getByRole('button', { name: 'Expand sidebar' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(panel.dataset.rail).toBe('false');
+    expect(document.cookie).toContain('mp-sidebar=expanded');
+  });
+
+  it('starts as a rail from the saved choice and opens over the page while the pointer rests on it', () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(
+        <AppShell sidebar={<nav>Side</nav>} topbar={<header>Top</header>} labels={labels} collapsed>
+          Body
+        </AppShell>,
+      );
+      const panel = container.querySelector('[data-rail]') as HTMLElement;
+      expect(panel.dataset.rail).toBe('true');
+      fireEvent.mouseEnter(panel);
+      // A pointer only passing over does not open it.
+      expect(panel.dataset.rail).toBe('true');
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(panel.dataset.rail).toBe('false');
+      fireEvent.mouseLeave(panel);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(panel.dataset.rail).toBe('true');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('opens on focus and Escape closes it until focus leaves and comes back', () => {
+    const { container } = render(
+      <AppShell
+        sidebar={<a href="/x">Item</a>}
+        topbar={<header>Top</header>}
+        labels={labels}
+        collapsed
+      >
+        Body
+      </AppShell>,
+    );
+    const panel = container.querySelector('[data-rail]') as HTMLElement;
+    const link = screen.getByRole('link', { name: 'Item' });
+    fireEvent.focus(link);
+    expect(panel.dataset.rail).toBe('false');
+    fireEvent.keyDown(link, { key: 'Escape' });
+    expect(panel.dataset.rail).toBe('true');
+    fireEvent.focus(link);
+    expect(panel.dataset.rail).toBe('true');
+    fireEvent.blur(link);
+    fireEvent.focus(link);
+    expect(panel.dataset.rail).toBe('false');
   });
 });
 

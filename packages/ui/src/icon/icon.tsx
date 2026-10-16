@@ -122,6 +122,12 @@ const ICONS = {
       <path d="m12 19-7-7 7-7" />
     </>
   ),
+  'chevrons-left': (
+    <>
+      <path d="m11 17-5-5 5-5" />
+      <path d="m18 17-5-5 5-5" />
+    </>
+  ),
   search: (
     <>
       <circle cx="11" cy="11" r="8" />
