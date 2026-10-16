@@ -8,6 +8,8 @@ describe('message templates', () => {
     // A Market locale with no text of its own (ZZ is ja-JP) falls back to English.
     expect(templateFor('order-shipped', 'ja-JP')).toBe(templateFor('order-shipped', 'en'));
     expect(templateFor('order-shipped', '')).toBe(templateFor('order-shipped', 'en'));
+    expect(templateFor('order-shipped', 'constructor')).toBe(templateFor('order-shipped', 'en'));
+    expect(templateFor('order-shipped', '__proto__')).toBe(templateFor('order-shipped', 'en'));
   });
 
   it('fills a slot once: a value that holds a slot is not expanded again', () => {
@@ -23,6 +25,16 @@ describe('message templates', () => {
     ];
     for (const mail of mails) expect(`${mail.subject}\n${mail.text}`).not.toMatch(/\{\w+\}/);
     expect(renderTemplate('order-shipped-sms', 'en', { orderId: 'o1' }).subject).toBe('');
+    const sms = orderShippedSms({ orderId: 'o1', carrier: 'AP', trackingRef: 'T1', orderUrl: 'u' });
+    expect(sms).not.toMatch(/\{\w+\}/);
+    // Seller text that looks like a slot or a replacement pattern stays inert.
+    const odd = orderShippedMail({
+      orderId: 'o1',
+      carrier: '{orderId} $&',
+      trackingRef: null,
+      orderUrl: 'u',
+    });
+    expect(odd.text).toContain('Carrier: {orderId} $&');
   });
 
   it('keeps the shipped mail layout with and without a tracking number', () => {
@@ -72,6 +84,7 @@ describe('shipped text message', () => {
       trackingRef: 'A'.repeat(500),
     });
     expect(text).not.toMatch(/[\r\n]/);
+    expect(text).toContain('Tracking number AAAA');
     expect(text.length).toBeLessThanOrEqual(SMS_MAX_LENGTH);
   });
 });

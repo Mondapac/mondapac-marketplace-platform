@@ -89,7 +89,9 @@ export interface RenderedMessage {
 /** The text for a locale: exact tag, then its language part (`en-AU` -> `en`), then English. */
 export function templateFor(id: TemplateId, locale: string): TemplateText {
   const set = TEMPLATES[id];
-  return set[locale] ?? set[locale.split('-')[0] ?? ''] ?? set.en;
+  const own = (tag: string): TemplateText | undefined =>
+    Object.hasOwn(set, tag) ? set[tag] : undefined;
+  return own(locale) ?? own(locale.split('-')[0] ?? '') ?? set.en;
 }
 
 /** Fills `{name}` slots in one pass; an unknown slot stays visible so a test catches it. */

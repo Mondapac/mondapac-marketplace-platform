@@ -1,4 +1,4 @@
-// The texts of the two order emails (Phase 6 package 1, owner decision Q10). Plain text only: the
+// The texts of the order emails (Phase 6 package 1, owner decision Q10). Plain text only: the
 // mail transport sends no HTML, so user-entered text (product names) cannot become markup. A
 // name is still flattened to one line without control or format characters, so it cannot break
 // the layout of the message. The texts live in `message-templates.ts`. The label of the customer

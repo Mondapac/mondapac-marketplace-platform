@@ -5,8 +5,16 @@
 import { plainLine } from './order-mail';
 import { renderTemplate } from './message-templates';
 
-/** A very long message is split and billed in parts; carrier and tracking are already cut short. */
+/** Carrier and tracking number are cut to this length in a text message (a mail keeps 120). */
+const SMS_FIELD_MAX = 40;
+
+/** Two segments of text; the order link is the Market page plus an id, so it is not capped. */
 export const SMS_MAX_LENGTH = 320;
+
+const smsField = (value: string): string => {
+  const flat = plainLine(value);
+  return flat.length > SMS_FIELD_MAX ? `${flat.slice(0, SMS_FIELD_MAX - 3)}...` : flat;
+};
 
 export function orderShippedSms(input: {
   readonly orderId: string;
@@ -17,8 +25,8 @@ export function orderShippedSms(input: {
 }): string {
   return renderTemplate('order-shipped-sms', input.locale ?? 'en', {
     orderId: input.orderId,
-    carrier: plainLine(input.carrier),
-    tracking: input.trackingRef === null ? '' : ` Tracking number ${plainLine(input.trackingRef)}.`,
+    carrier: smsField(input.carrier),
+    tracking: input.trackingRef === null ? '' : ` Tracking number ${smsField(input.trackingRef)}.`,
     orderUrl: input.orderUrl,
   }).text;
 }
