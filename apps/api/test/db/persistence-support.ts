@@ -148,6 +148,35 @@ export function holdRetriesUntil(unitOfWork: unknown, released: Promise<unknown>
   };
 }
 
+/**
+ * Gives every unit `unitOfWork` runs a transaction timeout of `timeoutMs`. A race test holds each
+ * unit open while it waits for the other to arrive; with Prisma's 5 s default a slow arrival
+ * on a busy machine expires the held transaction and the next statement throws P2028, which is
+ * no conflict and is not retried. Returns the restore.
+ */
+export function extendUnitTimeout(unitOfWork: unknown, timeoutMs: number): () => void {
+  const unit = unitOfWork as {
+    run: (
+      market: MarketContext,
+      work: unknown,
+      options?: { readOnly?: boolean; timeoutMs?: number },
+    ) => Promise<unknown>;
+  };
+  const original = unit.run;
+  unit.run = function (market, work, options = {}) {
+    // A read-only unit takes no timeout option (P 3.1 row 8).
+    return original.call(
+      this,
+      market,
+      work,
+      options.readOnly ? options : { timeoutMs, ...options },
+    );
+  };
+  return () => {
+    unit.run = original;
+  };
+}
+
 /** Milliseconds a promise took to settle, with its outcome. */
 export async function timed<T>(
   promise: Promise<T>,
