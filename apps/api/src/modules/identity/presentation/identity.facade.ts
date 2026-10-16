@@ -4,6 +4,7 @@ import type { AccessDenied } from '../../../platform/authz';
 import type { ConfirmSellerSecondFactor } from '../application/use-cases/confirm-seller-second-factor.use-case';
 import type { ContactEmailOf } from '../application/use-cases/contact-email-of.use-case';
 import type { DescribeActor } from '../application/use-cases/describe-actor.use-case';
+import type { RequireStepUp } from '../application/use-cases/require-step-up.use-case';
 import type { MembershipOf } from '../application/use-cases/membership-of.use-case';
 import type { TeamMembershipOf } from '../application/use-cases/team-membership-of.use-case';
 import type {
@@ -13,6 +14,7 @@ import type {
   IdentityFacade,
   SellerMembershipSummary,
 } from '../contracts/identity.facade';
+import type { StepUpFailure } from '../contracts/step-up';
 
 /** The use cases behind the facade, one per method. */
 export interface IdentityFacadeUseCases {
@@ -21,6 +23,7 @@ export interface IdentityFacadeUseCases {
   readonly teamMembershipOf: TeamMembershipOf;
   readonly confirmSellerSecondFactor: ConfirmSellerSecondFactor;
   readonly contactEmailOf: ContactEmailOf;
+  readonly requireStepUp: RequireStepUp;
 }
 
 /**
@@ -75,5 +78,13 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     target: ContactEmailTarget,
   ): Promise<Result<string | null, AccessDenied>> {
     return this.useCases.contactEmailOf.execute(context, target);
+  }
+
+  async requireStepUp(
+    context: CallContext,
+    actionKey: string,
+  ): Promise<Result<void, StepUpFailure>> {
+    const result = await this.useCases.requireStepUp.execute(context, { actionKey });
+    return result.ok ? ok(undefined) : err(result.error);
   }
 }

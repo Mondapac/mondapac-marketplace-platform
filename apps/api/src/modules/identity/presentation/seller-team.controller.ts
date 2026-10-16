@@ -33,7 +33,7 @@ import {
 import { err, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
-import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
+import { RequiresStepUp, ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -238,6 +238,7 @@ export class SellerTeamController {
   }
 
   @Post('invitations')
+  @RequiresStepUp('identity.team.invite-remove')
   @HttpCode(201)
   @ReadsSession()
   @ApiOperation({
@@ -297,6 +298,7 @@ export class SellerTeamController {
   }
 
   @Post('invitations/:invitationId/resend')
+  @RequiresStepUp('identity.team.invite-remove')
   @HttpCode(200)
   @ReadsSession()
   @ApiOperation({
@@ -343,6 +345,7 @@ export class SellerTeamController {
   }
 
   @Post('invitations/:invitationId/revoke')
+  @RequiresStepUp('identity.team.invite-remove')
   @HttpCode(200)
   @ReadsSession()
   @ApiOperation({
@@ -381,6 +384,7 @@ export class SellerTeamController {
   }
 
   @Post('accounts/:accountId/role')
+  @RequiresStepUp('identity.team.change-role')
   @HttpCode(200)
   @ReadsSession()
   @ApiOperation({
@@ -430,6 +434,7 @@ export class SellerTeamController {
   }
 
   @Post('accounts/:accountId/remove')
+  @RequiresStepUp('identity.team.invite-remove')
   @HttpCode(200)
   @ReadsSession()
   @ApiOperation({

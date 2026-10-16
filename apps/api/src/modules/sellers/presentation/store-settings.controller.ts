@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Logger, Put, Req, Res } from '@nestjs/common';
+import { RequiresStepUp } from '../../../platform/authz';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -125,6 +126,7 @@ export class StoreSettingsController {
   }
 
   @Put('minimum-order')
+  @RequiresStepUp('sellers.store-terms.change')
   @HttpCode(200)
   @ApiOperation({
     summary: 'Set or clear the minimum order',
