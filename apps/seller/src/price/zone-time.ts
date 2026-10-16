@@ -1,3 +1,5 @@
+import { dateFormat } from '../shared/intl.ts';
+
 /** The zone times fall back to when the seller's own zone could not be read. */
 export const FALLBACK_ZONE = 'UTC';
 
@@ -8,7 +10,10 @@ const formatters = new Map<string, Intl.DateTimeFormat>();
 function partsFormatter(zone: string): Intl.DateTimeFormat {
   let formatter = formatters.get(zone);
   if (formatter === undefined) {
-    formatter = new Intl.DateTimeFormat('en-AU', {
+    // Machine reading of the parts, not display: the root locale with Latin digits, so no
+    // Market language or numbering system can change what is parsed.
+    formatter = new Intl.DateTimeFormat('und', {
+      numberingSystem: 'latn',
       timeZone: zone,
       hourCycle: 'h23',
       year: 'numeric',
@@ -77,21 +82,11 @@ export function instantOfZoned(text: string, zone: string): string | null {
   return first === undefined ? null : new Date(first).toISOString().replace('.000Z', 'Z');
 }
 
-const display = new Map<string, Intl.DateTimeFormat>();
-
 /** An instant from the API shown in a zone and labelled with the zone's id. */
-export function formatInZone(iso: string | null, zone: string): string {
+export function formatInZone(iso: string | null, zone: string, locale: string): string {
   if (iso === null) return '-';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime()) || !isKnownZone(zone)) return '-';
-  let formatter = display.get(zone);
-  if (formatter === undefined) {
-    formatter = new Intl.DateTimeFormat('en-AU', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-      timeZone: zone,
-    });
-    display.set(zone, formatter);
-  }
+  const formatter = dateFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: zone });
   return `${formatter.format(date)} ${zone}`;
 }

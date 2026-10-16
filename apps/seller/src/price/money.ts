@@ -1,14 +1,18 @@
-/** Digits after the decimal point in a currency (2 for AUD, 0 for JPY). */
+import { numberFormat } from '../shared/intl.ts';
+
+/**
+ * Digits after the decimal point in a currency (2 for AUD, 0 for JPY). They belong to the
+ * currency (ISO 4217), not to a locale, so the root locale is used.
+ */
 export function exponentOf(currency: string): number {
-  return new Intl.NumberFormat('en-AU', { style: 'currency', currency }).resolvedOptions()
+  return numberFormat('und', { style: 'currency', currency }).resolvedOptions()
     .maximumFractionDigits as number;
 }
 
-/** Minor units as a currency amount, e.g. "1999" and AUD as "$19.99". */
-export function formatMinor(amount: string, currency: string): string {
-  const exponent = exponentOf(currency);
-  const value = Number(amount) / 10 ** exponent;
-  return new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(value);
+/** Minor units as a currency amount in the Market's locale, e.g. "1999" and AUD as "$19.99". */
+export function formatMinor(amount: string, currency: string, locale: string): string {
+  const value = Number(amount) / 10 ** exponentOf(currency);
+  return numberFormat(locale, { style: 'currency', currency }).format(value);
 }
 
 /** The input text of an amount in major units, e.g. "1999" and AUD as "19.99". */

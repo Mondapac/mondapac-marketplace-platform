@@ -70,7 +70,7 @@ describe('money', () => {
     expect(inputOf('1999', 'AUD')).toBe('19.99');
     expect(inputOf('5', 'AUD')).toBe('0.05');
     expect(inputOf('1000', 'JPY')).toBe('1000');
-    expect(formatMinor('1999', 'AUD')).toBe('$19.99');
+    expect(formatMinor('1999', 'AUD', 'en-AU')).toBe('$19.99');
   });
   it('refuses zero, too many decimals, signs and text', () => {
     for (const text of ['', '0', '0.00', '1.999', '-5', '1e3', 'abc', '12.']) {
@@ -226,10 +226,10 @@ describe('OfferPrices', () => {
   });
 
   it('shows instants in the zone with its id', () => {
-    expect(formatInZone('2026-10-31T23:30:00Z', 'Australia/Sydney')).toMatch(
+    expect(formatInZone('2026-10-31T23:30:00Z', 'Australia/Sydney', 'en-AU')).toMatch(
       /1 Nov 2026.*10:30.*Australia\/Sydney$/,
     );
-    expect(formatInZone(null, 'UTC')).toBe('-');
+    expect(formatInZone(null, 'UTC', 'en-AU')).toBe('-');
   });
 
   it('falls back to UTC labels when the zone could not be read', () => {

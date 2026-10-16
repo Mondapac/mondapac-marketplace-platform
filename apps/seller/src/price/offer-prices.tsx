@@ -1,7 +1,7 @@
 'use client';
 
 import { Banner, Button, Card, FieldAction, TextField } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -29,6 +29,7 @@ function VariantRow({
   readonly zone: string;
 }) {
   const t = useTranslations();
+  const locale = useLocale();
   const router = useRouter();
   const [version, setVersion] = useState(variant.seriesVersion);
   const [text, setText] = useState(
@@ -81,8 +82,8 @@ function VariantRow({
           {variant.inForce === null
             ? t('price.none')
             : t('price.in-force', {
-                amount: formatMinor(variant.inForce.amount, currency),
-                since: formatInZone(variant.inForce.effectiveFrom, zone),
+                amount: formatMinor(variant.inForce.amount, currency, locale),
+                since: formatInZone(variant.inForce.effectiveFrom, zone, locale),
               })}
         </p>
         {variant.held !== null ? (
@@ -90,8 +91,8 @@ function VariantRow({
             <Banner tone="attention">
               <p>
                 {t(`price.held.${variant.held.direction}`, {
-                  amount: formatMinor(variant.held.amount, currency),
-                  since: formatInZone(variant.held.submittedAt, zone),
+                  amount: formatMinor(variant.held.amount, currency, locale),
+                  since: formatInZone(variant.held.submittedAt, zone, locale),
                 })}
               </p>
             </Banner>

@@ -18,6 +18,8 @@ export interface PanelConfig {
   readonly passwordMaxLength: number;
   /** Shown beside the brand, for example "Australia" (a Market display name). */
   readonly marketName: string;
+  /** The Market's language and formats as a canonical BCP 47 tag, for example "en-AU". */
+  readonly locale: string;
   readonly supportEmail: string;
   /** This panel's key for the signed client address (ADR-0037); null when it is not set. */
   readonly clientAddressKey: ClientAddressKey | null;
@@ -86,6 +88,24 @@ function required(env: Readonly<Record<string, string | undefined>>, name: strin
   return value;
 }
 
+/** The Market locale as a canonical BCP 47 tag ("en-AU"). Throws on anything else, so start-up fails. */
+export function parseLocale(raw: string | undefined): string {
+  const value = raw?.trim() ?? '';
+  if (value === '') {
+    throw new Error('PANEL_LOCALE is required, for example en-AU (the Market locale)');
+  }
+  let canonical: string | undefined;
+  try {
+    canonical = Intl.getCanonicalLocales(value)[0];
+  } catch {
+    canonical = undefined;
+  }
+  if (canonical !== value) {
+    throw new Error(`PANEL_LOCALE: '${value}' is not a canonical BCP 47 tag (for example en-AU)`);
+  }
+  return canonical;
+}
+
 export function parsePanelConfig(env: Readonly<Record<string, string | undefined>>): PanelConfig {
   const [passwordMinLength, passwordMaxLength] = parsePasswordRules(env['PANEL_PASSWORD_LENGTH']);
   return {
@@ -94,6 +114,7 @@ export function parsePanelConfig(env: Readonly<Record<string, string | undefined
     passwordMinLength,
     passwordMaxLength,
     marketName: required(env, 'PANEL_MARKET_NAME'),
+    locale: parseLocale(env['PANEL_LOCALE']),
     supportEmail: required(env, 'PANEL_SUPPORT_EMAIL'),
     clientAddressKey: parseClientAddressKey(env),
   };
