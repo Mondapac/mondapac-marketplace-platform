@@ -68,7 +68,7 @@ export function Earnings({ initial }: { readonly initial: Ledger }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="max-w-(--mp-size-form-max) text-fg-muted">{t('intro')}</p>
+      <p className="text-fg-muted">{t('intro')}</p>
       <LedgerTotals
         items={[
           { id: 'sales', label: t('totals.sales'), value: money(totals.sales) },

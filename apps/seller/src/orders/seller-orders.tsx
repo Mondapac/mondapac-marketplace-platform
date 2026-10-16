@@ -55,7 +55,7 @@ export function SellerOrders({
   const shown = filter === 'all' ? orders : orders.filter((order) => order.fulfilment === filter);
   return (
     <div className="flex flex-col gap-4">
-      <p className="max-w-(--mp-size-form-max) text-fg-muted">{t('intro')}</p>
+      <p className="text-fg-muted">{t('intro')}</p>
       {fee === null ? null : (
         <Banner tone="info">
           {t('fee', { fee: formatMinor(fee.amount, fee.currency, locale) })}

@@ -82,9 +82,7 @@ export function StockLocations({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <p className="max-w-(--mp-size-form-max) text-fg-muted">
-          {t('stock.intro', { max: view.max })}
-        </p>
+        <p className="min-w-0 flex-1 text-fg-muted">{t('stock.intro', { max: view.max })}</p>
         {canEdit && mode === null ? (
           <div className="flex shrink-0 flex-col gap-2 sm:items-end">
             <Button onClick={() => open({ kind: 'add' })} disabled={full}>
