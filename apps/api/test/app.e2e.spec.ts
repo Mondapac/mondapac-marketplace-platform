@@ -66,9 +66,16 @@ describe('API skeleton (integration)', () => {
     logLines.length = 0;
   });
 
-  it('binds no placeholder in the real composition root (ADR-0031 decision 4)', () => {
-    // A placeholder bound here would refuse every production start; the release gate reads it.
-    expect(boundPlaceholders(app.get(ModulesContainer))).toEqual([]);
+  it('pins the bound placeholder set of the real composition root (ADR-0031 decision 4)', () => {
+    // Every entry refuses a production start; the release gate reads this list. The one entry
+    // today is the SEL-12 interim (sellers answers `all` until its slice 14, catalog design 15.1).
+    expect(boundPlaceholders(app.get(ModulesContainer))).toEqual([
+      {
+        kind: 'permissive-interim',
+        port: 'sellers.allowedProductTypesOf',
+        className: 'SellersAllowedProductTypesReader',
+      },
+    ]);
   });
 
   it('GET /health reports liveness', async () => {

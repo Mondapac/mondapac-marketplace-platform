@@ -1,8 +1,10 @@
-import { Injectable, type LoggerService } from '@nestjs/common';
+import { Injectable, Scope, type LoggerService } from '@nestjs/common';
 import { ModulesContainer } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
+import { loadAppConfig } from '../config/app-config';
 import {
   boundPlaceholders,
+  containerPlaceholders,
   isNonProductionStart,
   placeholdersAccepted,
 } from './bound-placeholders';
@@ -74,7 +76,7 @@ describe('ADR-0031 decision 4: the bound placeholder set', () => {
       RealReader,
     ]);
 
-    expect(boundPlaceholders(container)).toEqual([
+    expect(containerPlaceholders(container)).toEqual([
       {
         kind: 'fail-closed-placeholder',
         port: 'sellers.allowedProductTypesOf',
@@ -90,7 +92,7 @@ describe('ADR-0031 decision 4: the bound placeholder set', () => {
 
   it('finds nothing in a graph with real bindings only', async () => {
     const container = await containerWith([{ provide: READER, useClass: RealReader }]);
-    expect(boundPlaceholders(container)).toEqual([]);
+    expect(containerPlaceholders(container)).toEqual([]);
   });
 
   it('counts a start as non-production only with NODE_ENV explicitly development or test', () => {
@@ -104,7 +106,7 @@ describe('ADR-0031 decision 4: the bound placeholder set', () => {
     const container = await containerWith([{ provide: READER, useClass: UnavailableReader }]);
     const { lines, logger } = recordingLogger();
 
-    expect(placeholdersAccepted(container, UNSET, logger)).toBe(false);
+    expect(placeholdersAccepted(containerPlaceholders(container), UNSET, logger)).toBe(false);
     expect(lines).toEqual([
       {
         level: 'error',
@@ -115,18 +117,50 @@ describe('ADR-0031 decision 4: the bound placeholder set', () => {
     ]);
   });
 
+  it('refuses the configuration loaded from an environment without NODE_ENV (decision 4)', async () => {
+    const container = await containerWith([{ provide: READER, useClass: UnavailableReader }]);
+    const config = loadAppConfig({
+      HOSTED_MARKETS: 'AU',
+      APP_ROLE: 'api',
+      DATABASE_URL: 'postgresql://user:secret@localhost:5432/db',
+    });
+    expect(config.nodeEnvExplicit).toBe(false);
+    expect(
+      placeholdersAccepted(containerPlaceholders(container), config, recordingLogger().logger),
+    ).toBe(false);
+  });
+
+  it('counts a subclass of a marked class, and a class built inside a scoped factory', async () => {
+    class Narrower extends UnavailableReader {}
+    @FailClosedPlaceholder('pricing.offerCost')
+    class BuiltInFactory {}
+    const container = await containerWith([
+      { provide: READER, useClass: Narrower },
+      { provide: OTHER, useFactory: () => new BuiltInFactory(), scope: Scope.TRANSIENT },
+    ]);
+    expect(boundPlaceholders(container).map((b) => b.className)).toEqual(
+      expect.arrayContaining(['Narrower', 'BuiltInFactory']),
+    );
+  });
+
   it('refuses a production start with one permissive interim bound', async () => {
     const container = await containerWith([{ provide: INTERIM, useClass: AllEligibleInterim }]);
-    expect(placeholdersAccepted(container, EXPLICIT_PRODUCTION, recordingLogger().logger)).toBe(
-      false,
-    );
+    expect(
+      placeholdersAccepted(
+        containerPlaceholders(container),
+        EXPLICIT_PRODUCTION,
+        recordingLogger().logger,
+      ),
+    ).toBe(false);
   });
 
   it('lets an explicit development or test start go on with a warning', async () => {
     const container = await containerWith([{ provide: READER, useClass: UnavailableReader }]);
     for (const environment of [EXPLICIT_TEST, EXPLICIT_DEVELOPMENT]) {
       const { lines, logger } = recordingLogger();
-      expect(placeholdersAccepted(container, environment, logger)).toBe(true);
+      expect(placeholdersAccepted(containerPlaceholders(container), environment, logger)).toBe(
+        true,
+      );
       expect(lines.map((l) => l.level)).toEqual(['warn']);
     }
   });
@@ -134,7 +168,7 @@ describe('ADR-0031 decision 4: the bound placeholder set', () => {
   it('lets any start go on when nothing is bound, and says so', async () => {
     const container = await containerWith([RealReader]);
     const { lines, logger } = recordingLogger();
-    expect(placeholdersAccepted(container, UNSET, logger)).toBe(true);
+    expect(placeholdersAccepted(containerPlaceholders(container), UNSET, logger)).toBe(true);
     expect(lines).toEqual([
       { level: 'log', message: expect.stringContaining('No placeholder') as string },
     ]);

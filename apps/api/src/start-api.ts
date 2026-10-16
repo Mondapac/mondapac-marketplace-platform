@@ -7,7 +7,10 @@ import { databaseAccepted } from './check-database-role';
 import { APP_OPTIONS, configureApp } from './configure-app';
 import type { AppConfig } from './platform/config/app-config';
 import { DatabaseProbe } from './platform/persistence/database-probe';
-import { placeholdersAccepted } from './platform/placeholders/bound-placeholders';
+import {
+  boundPlaceholders,
+  placeholdersAccepted,
+} from './platform/placeholders/bound-placeholders';
 
 /** Where a start function writes its log lines; stdout unless a test passes a stream. */
 export interface StartOptions {
@@ -35,7 +38,7 @@ export async function startApi(
   // database whose default isolation is not READ COMMITTED never runs a unit (ADR-0025).
   // ADR-0031 decision 4: a production start with a placeholder binding bound is refused.
   if (
-    !placeholdersAccepted(app.get(ModulesContainer), config, logger) ||
+    !placeholdersAccepted(boundPlaceholders(app.get(ModulesContainer)), config, logger) ||
     !(await databaseAccepted(app.get(DatabaseProbe), logger))
   ) {
     await app.close();

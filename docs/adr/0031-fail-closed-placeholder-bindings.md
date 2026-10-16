@@ -101,11 +101,16 @@ Ruling: Ali (cto), 2026-10-08, in the catalog thread. Hassan (security-tester): 
 ## Implementation note (2026-10-16)
 Decision 4's registry lives in `apps/api/src/platform/placeholders/`: the two markers
 (`@FailClosedPlaceholder`, `@PermissiveInterim`, kept in a module-private `WeakMap`, no reflection
-metadata), the derivation from the composition root (`boundPlaceholders`, reading every provider's
-class and instance constructor, so `useClass`, `useValue` and `useFactory` bindings all count), and
-the start-up self-check (`placeholdersAccepted`) that `start-api.ts` and `start-worker.ts` run before
-the database checks. The set is logged on every start; a non-empty set refuses any start that is not
-`NODE_ENV` explicitly `development` or `test`. The unit rule `placeholder-files.spec.ts` fails on a
-class under `infrastructure/placeholders/` without `@FailClosedPlaceholder`, and `app.e2e.spec.ts`
-pins the real composition root's set (empty on 2026-10-16: every placeholder of catalog slices 5 to 7
-was replaced by its binding PR).
+metadata; a subclass of a marked class counts), and the bound set derived at start-up
+(`boundPlaceholders`): every provider of the composition root (its class, and the prototype of its
+instance for `useValue` and `useFactory`) plus every marked class the process has loaded, which
+covers classes built inside a factory and request- or transient-scoped providers. `start-api.ts` and
+`start-worker.ts` run `placeholdersAccepted` before the database checks: the set is logged on every
+start, and a non-empty set refuses any start that is not `NODE_ENV` explicitly `development` or
+`test`. The control for "an undecorated class in a placeholders path" is the unit rule
+`test/placeholder-files.spec.ts` (a syntax-tree check: every class in such a file carries
+`@FailClosedPlaceholder`, and the file exports nothing else), not a runtime derivation step; for
+Ali's and Hassan's confirmation on PR #376. `test/app.e2e.spec.ts` pins the real set: on
+2026-10-16 it holds one entry, the decision 4a interim `sellers.allowedProductTypesOf`
+(`SellersAllowedProductTypesReader`, until sellers slice 14), so a production start is refused
+until that slice lands.

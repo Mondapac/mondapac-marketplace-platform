@@ -5,7 +5,10 @@ import { AppModule } from './app.module';
 import { databaseAccepted } from './check-database-role';
 import type { AppConfig } from './platform/config/app-config';
 import { DatabaseProbe } from './platform/persistence/database-probe';
-import { placeholdersAccepted } from './platform/placeholders/bound-placeholders';
+import {
+  boundPlaceholders,
+  placeholdersAccepted,
+} from './platform/placeholders/bound-placeholders';
 import { WorkerRuntime } from './platform/worker/worker-runtime';
 import type { StartOptions } from './start-api';
 
@@ -39,7 +42,7 @@ export async function startWorker(
 
   // ADR-0031 decision 4: a production start with a placeholder binding bound is refused.
   if (
-    !placeholdersAccepted(context.get(ModulesContainer), config, logger) ||
+    !placeholdersAccepted(boundPlaceholders(context.get(ModulesContainer)), config, logger) ||
     !(await databaseAccepted(context.get(DatabaseProbe), logger))
   ) {
     await context.close();

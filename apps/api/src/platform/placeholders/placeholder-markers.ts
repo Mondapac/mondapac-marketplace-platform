@@ -26,6 +26,8 @@ export type AnyClass = abstract new (...args: never[]) => unknown;
 export type PlaceholderDecorator = (target: AnyClass) => void;
 
 const marks = new WeakMap<AnyClass, PlaceholderMark>();
+/** Every marked class this process has loaded, in load order (see {@link loadedPlaceholders}). */
+const loaded: { readonly target: AnyClass; readonly mark: PlaceholderMark }[] = [];
 
 const PORT_NAME = /^[a-z][a-z0-9-]*\.[A-Za-z][A-Za-z0-9-]*$/;
 
@@ -35,7 +37,9 @@ function marker(kind: PlaceholderKind, port: string): PlaceholderDecorator {
   }
   return (target) => {
     if (marks.has(target)) throw new Error(`${target.name} carries two placeholder marks`);
-    marks.set(target, { kind, port });
+    const mark = { kind, port };
+    marks.set(target, mark);
+    loaded.push({ target, mark });
   };
 }
 
@@ -49,7 +53,29 @@ export function PermissiveInterim(port: string): PlaceholderDecorator {
   return marker('permissive-interim', port);
 }
 
-/** The mark of a class, or `undefined` for an ordinary binding. */
+/**
+ * The mark of a class or of any class it extends, or `undefined` for an ordinary binding: a
+ * subclass of a placeholder is a placeholder (Hassan S2).
+ */
 export function placeholderMarkOf(target: unknown): PlaceholderMark | undefined {
-  return typeof target === 'function' ? marks.get(target as AnyClass) : undefined;
+  let current: unknown = target;
+  while (typeof current === 'function') {
+    const mark = marks.get(current as AnyClass);
+    if (mark !== undefined) return mark;
+    current = Object.getPrototypeOf(current);
+  }
+  return undefined;
+}
+
+/**
+ * Every marked class loaded into this process, whether or not the container shows it bound: a
+ * class built inside a factory, or a request- or transient-scoped provider, has no instance the
+ * container can show at start-up (Hassan S1). A placeholder's binding PR deletes the class
+ * (decision 3), so a loaded marked class is treated as bound.
+ */
+export function loadedPlaceholders(): readonly {
+  readonly className: string;
+  readonly mark: PlaceholderMark;
+}[] {
+  return loaded.map(({ target, mark }) => ({ className: target.name, mark }));
 }
