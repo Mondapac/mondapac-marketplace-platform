@@ -20,6 +20,13 @@ export const adminNav: NavConfig = {
       anyOf: ['sellers.seller.view'],
     },
     {
+      id: 'orders',
+      icon: 'receipt',
+      labelKey: 'nav.orders',
+      href: '/orders',
+      anyOf: ['ordering.order.view'],
+    },
+    {
       id: 'price-holds',
       icon: 'clock',
       labelKey: 'nav.price-holds',

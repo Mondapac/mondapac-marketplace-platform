@@ -72,7 +72,7 @@ export function Tabs({ label, items, activeId, onSelect }: TabsProps) {
       ref={row}
       aria-label={label}
       style={mask === undefined ? undefined : { maskImage: mask, WebkitMaskImage: mask }}
-      className="flex gap-6 overflow-x-auto border-b border-line [scrollbar-width:none]"
+      className="flex gap-4 overflow-x-auto sm:gap-6 border-b border-line [scrollbar-width:none]"
     >
       {items.map((item) => {
         const active = item.id === activeId;

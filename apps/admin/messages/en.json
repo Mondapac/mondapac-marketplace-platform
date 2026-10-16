@@ -22,6 +22,7 @@
     "team": "Roles & permissions",
     "customers": "Customers",
     "sellers": "Sellers",
+    "orders": "Orders",
     "price-holds": "Held prices",
     "offer-reviews": "Offer reviews",
     "payout-accounts": "Connected accounts",
@@ -39,6 +40,7 @@
     "shortcut": {
       "customers": "Find a customer account by email and help with sign-in.",
       "sellers": "Review applications and manage seller access.",
+      "orders": "Look up orders, payment state and delivery progress.",
       "price-holds": "Approve or reject prices that changed sharply.",
       "offer-reviews": "Check offers waiting for their first publish.",
       "payout-accounts": "See the Stripe payout accounts of sellers.",
@@ -1009,6 +1011,115 @@
         "csrf": "Your session could not be checked. Reload the page and try again.",
         "unknown": "Something went wrong. Try again."
       }
+    }
+  },
+  "orders": {
+    "title": "Orders",
+    "page-title": "Orders",
+    "intro": "The Market's orders, newest first. Read-only.",
+    "no-access": "You don't have access to orders.",
+    "no-access-title": "You don't have access to this page",
+    "not-found": "We couldn't find this order.",
+    "not-found-title": "Order not found",
+    "back-home": "Back to home",
+    "tabs": "Order statuses",
+    "tab": {
+      "all": "All"
+    },
+    "status": {
+      "pending-payment": "Awaiting payment",
+      "confirmed": "Paid",
+      "cancelled": "Cancelled",
+      "unknown": "Unknown"
+    },
+    "fulfilment": {
+      "to-ship": "To ship",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "unknown": "Unknown"
+    },
+    "payment": {
+      "none": "No payment yet",
+      "authorised": "Authorised",
+      "captured": "Captured",
+      "voided": "Voided",
+      "unknown": "Unknown"
+    },
+    "cancel-reason": {
+      "expired": "Payment time ran out",
+      "payment-failed": "Payment failed",
+      "stock-unavailable": "Stock ran out",
+      "superseded": "Replaced by a newer checkout",
+      "provider-failed": "Payment provider failed",
+      "unknown": "Other"
+    },
+    "col": {
+      "order": "Order",
+      "status": "Status",
+      "placed": "Placed (UTC)",
+      "paid": "Paid (UTC)",
+      "customer": "Customer",
+      "sellers": "Sellers",
+      "total": "Total"
+    },
+    "reference": "Order {id}",
+    "none": "Not set",
+    "loading": "Loading orders...",
+    "more": "Show more",
+    "empty": {
+      "all": {
+        "title": "No orders yet",
+        "body": "Orders appear here when a customer starts checkout."
+      },
+      "pending-payment": {
+        "title": "No orders awaiting payment",
+        "body": "Orders that are waiting for the customer to pay appear here."
+      },
+      "confirmed": {
+        "title": "No paid orders",
+        "body": "Orders appear here once the customer's payment is confirmed."
+      },
+      "cancelled": {
+        "title": "No cancelled orders",
+        "body": "Orders that expired or failed to be paid appear here."
+      }
+    },
+    "error": {
+      "unavailable": "We couldn't load the orders. Try again."
+    },
+    "field": {
+      "status": "Status",
+      "cancel-reason": "Why it was cancelled",
+      "payment": "Payment",
+      "placed": "Placed",
+      "paid": "Paid",
+      "cancelled": "Cancelled",
+      "pay-by": "Pay by",
+      "customer": "Customer account",
+      "payment-intent": "Payment reference",
+      "total": "Order total",
+      "fulfilment": "Fulfilment",
+      "carrier": "Carrier",
+      "tracking": "Tracking reference",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "subtotal": "Goods",
+      "shipping": "Delivery",
+      "part-total": "Seller total"
+    },
+    "line": {
+      "variant": "Variant {id}",
+      "offer": "Offer {id}",
+      "quantity": "{quantity} x {price}",
+      "tax-included": "Tax included"
+    },
+    "detail": {
+      "page-title": "Order",
+      "back": "Back to orders",
+      "summary": "Summary",
+      "parts": "{count, plural, one {# seller} other {# sellers}}",
+      "seller": "Seller {id}",
+      "no-parts": "This order has no seller parts."
     }
   },
   "load": {
