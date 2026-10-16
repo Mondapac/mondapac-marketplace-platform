@@ -132,6 +132,7 @@ describe('admin Offer review over HTTP (integration)', () => {
           })
           .overrideProvider(OWN_CATALOG_READER)
           .useValue({
+            pendingReviewCount: () => Promise.resolve(1),
             productLabels: () =>
               Promise.resolve([
                 { productId: PRODUCT, productCode: 'P00000001', typeCode: 'simple', name: 'Dates' },
@@ -352,6 +353,7 @@ describe('admin Offer review over HTTP (integration)', () => {
       const body = response.body as { items: Record<string, unknown>[]; nextAfterId: unknown };
       expect(body.items.map((i) => i.offerId)).toEqual([earlier.state.id, later.state.id]);
       expect(body.nextAfterId).toBeNull();
+      expect((response.body as { total: unknown }).total).toBe(1);
       expect(body.items[0]).toMatchObject({
         kind: 'offer-first-publication',
         version: 4,

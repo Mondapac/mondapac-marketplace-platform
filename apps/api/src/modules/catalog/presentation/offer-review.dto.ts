@@ -79,6 +79,9 @@ export class ReviewQueueList {
     description: 'Send as `afterId` for the next page.',
   })
   nextAfterId!: string | null;
+
+  @ApiProperty({ description: 'Every Offer of the Market in the queue, whatever the page.' })
+  total!: number;
 }
 
 export class OfferDecided {}
