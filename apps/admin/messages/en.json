@@ -10,6 +10,14 @@
     "light": "Light",
     "dark": "Dark"
   },
+  "account-menu": {
+    "trigger": "Account menu for {name}",
+    "pages": "Your account",
+    "profile": "My profile",
+    "sign-out": "Sign out",
+    "signing-out": "Signing out…",
+    "sign-out-failed": "We couldn't sign you out. Check your connection and try again."
+  },
   "nav": {
     "menu": "Open navigation menu",
     "close": "Close navigation menu",
@@ -30,10 +38,6 @@
   },
   "home": {
     "title": "Dashboard",
-    "signed-in-as": "Signed in as {name}",
-    "sign-out": "Sign out",
-    "sign-out-failed": "We couldn't sign you out. Check your connection and try again.",
-    "user-menu": "Account",
     "intro": "Welcome, {name}. Here is what needs attention and the latest activity you can see."
   },
   "dashboard": {
@@ -90,7 +94,9 @@
     "accounts": {
       "title": "Restricted payout accounts",
       "empty": "No payout account is restricted.",
-      "col": { "checked": "Last checked" }
+      "col": {
+        "checked": "Last checked"
+      }
     },
     "orders": {
       "title": "Recent orders",
@@ -1168,9 +1174,12 @@
       "paid": "Paid",
       "cancelled": "Cancelled",
       "pay-by": "Pay by",
+      "customer-name": "Customer name",
+      "customer-email": "Customer email",
       "customer": "Customer account",
       "payment-intent": "Payment reference",
       "total": "Order total",
+      "seller-account": "Seller account",
       "fulfilment": "Fulfilment",
       "carrier": "Carrier",
       "tracking": "Tracking reference",
@@ -1328,6 +1337,57 @@
       "retry": "Try again",
       "home": "Go to the dashboard",
       "reference": "Reference for support:"
+    }
+  },
+  "profile": {
+    "title": "My profile",
+    "details": "Details",
+    "name": "Name",
+    "email": "Sign-in email",
+    "two-step": "Two-step verification",
+    "two-step-on": "On",
+    "two-step-off": "Off",
+    "missing": "Not given",
+    "unavailable": "We couldn't load your profile. Try again.",
+    "last-sign-in": "Last sign-in",
+    "last-sign-in-none": "No earlier sign-in on record",
+    "name-title": "Your name",
+    "name-label": "Display name",
+    "name-help": "Other people on your team see this name. Use 1 to 100 characters.",
+    "name-save": "Save name",
+    "name-saved": "Your name was updated.",
+    "name-same": "That is already your name.",
+    "password-title": "Change password",
+    "password-intro": "Changing your password signs you out on your other devices. You stay signed in here.",
+    "current-password": "Current password",
+    "new-password": "New password",
+    "new-password-help": "Use {min} to {max} characters. A short sentence works well.",
+    "show-password": "Show password",
+    "hide-password": "Hide password",
+    "code-label": "6-digit code",
+    "code-digit": "Digit {position} of {total}",
+    "backup-label": "Backup code",
+    "use-backup": "Use a backup code instead",
+    "use-app": "Use your authenticator app instead",
+    "password-save": "Change password",
+    "password-saved": "Your password was changed. Your other devices were signed out.",
+    "error": {
+      "name-length": "Enter a name of 1 to 100 characters.",
+      "name-characters": "Remove web addresses and special formatting characters from the name.",
+      "current-required": "Enter your current password.",
+      "current-incorrect": "That password is incorrect.",
+      "new-length": "Use {min} to {max} characters.",
+      "new-common": "That password is too easy to guess. Choose a different one.",
+      "new-contains-identity": "Don't use your email or name in your password.",
+      "code-required": "Enter the code.",
+      "code-rejected": "That code didn't work. Enter the newest code from your app.",
+      "code-locked": "Too many wrong codes. Code checks are paused for now. Try again later.",
+      "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+      "csrf": "Refresh the page and try again.",
+      "denied": "You don't have permission to do that.",
+      "unavailable": "We can't do that right now. Try again in a moment.",
+      "network": "You're offline or the connection dropped. Check it and try again.",
+      "unknown": "Something went wrong on our side. Try again."
     }
   }
 }

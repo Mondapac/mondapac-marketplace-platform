@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import {
@@ -171,9 +172,9 @@ describe.each(TEST_MARKETS)('CustomerAccountSummaries in market %s', (code) => {
       unitOfWork: fakes.unitOfWork,
       accounts: {
         ...fakes.accountRepository,
-        findById: (m, idOf) => {
-          accountReads.push(idOf);
-          return fakes.accountRepository.findById(m, idOf);
+        customerSummaries: (m, ids) => {
+          accountReads.push(...ids);
+          return fakes.accountRepository.customerSummaries(m, ids);
         },
       },
       grants: fakes.grantReader,
@@ -221,11 +222,23 @@ describe.each(TEST_MARKETS)('CustomerAccountSummaries in market %s', (code) => {
     expect(units).toEqual([]);
   });
 
-  it('refuses a malformed id or too many ids, echoing no value', async () => {
-    expect(await read.execute(asAdmin(ROOT), { accountIds: ['nope'] })).toEqual({
-      ok: false,
-      error: { code: 'validation.failed', fields: [{ path: 'accountIds', code: 'format' }] },
+  it('skips malformed ids without failing the batch, and logs only their count', async () => {
+    const log = jest.spyOn(Logger.prototype, 'log');
+    // Not an id, a version 4 UUID and a number, next to a real customer.
+    const answer = await read.execute(asAdmin(ROOT), {
+      accountIds: ['nope', '1b4e28ba-2fa1-41d2-883f-0016d3cca427', 7 as never, CUSTOMER],
     });
+
+    expect(answer).toEqual({
+      ok: true,
+      value: [{ accountId: CUSTOMER, displayName: null, email: 'Jane.Doe@Example.com' }],
+    });
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({ rows: 1, malformedIds: 3 }));
+    expect(JSON.stringify(log.mock.calls)).not.toContain('nope');
+    log.mockRestore();
+  });
+
+  it('refuses too many ids, echoing no value', async () => {
     const many = Array.from({ length: 101 }, (_, n) => accountId(100 + n));
     expect(await read.execute(asAdmin(ROOT), { accountIds: many })).toEqual({
       ok: false,

@@ -116,6 +116,7 @@ import { InviteAdmin } from './application/use-cases/invite-admin.use-case';
 import { ResendAdminInvitation } from './application/use-cases/resend-admin-invitation.use-case';
 import { ResetOtherAdminSecondFactor } from './application/use-cases/reset-other-admin-second-factor.use-case';
 import { RevokeAdminInvitation } from './application/use-cases/revoke-admin-invitation.use-case';
+import { ChangeDisplayName } from './application/use-cases/change-display-name.use-case';
 import { ChangePassword } from './application/use-cases/change-password.use-case';
 import { CompleteAdminSignIn } from './application/use-cases/complete-admin-sign-in.use-case';
 import { CompleteSellerSignIn } from './application/use-cases/complete-seller-sign-in.use-case';
@@ -188,6 +189,7 @@ import { SellerStepUpController } from './presentation/seller-step-up.controller
 import { sellerProviders } from './infrastructure/sellers/seller-providers';
 import { sessionProviders } from './infrastructure/sessions/session-providers';
 import { AdminPasswordController } from './presentation/admin-password.controller';
+import { AdminProfileController, SellerProfileController } from './presentation/profile.controller';
 import { AdminSecondFactorController } from './presentation/admin-second-factor.controller';
 import { AdminSessionController } from './presentation/admin-session.controller';
 import { AdminSellersController } from './presentation/admin-sellers.controller';
@@ -388,12 +390,14 @@ function useCaseProvider<D, U>(
     SellerSecondFactorController,
     CustomerPasswordController,
     SellerPasswordController,
+    SellerProfileController,
     SellerRolesController,
     SellerTeamController,
     SellerStepUpController,
     AdminSessionController,
     AdminSecondFactorController,
     AdminPasswordController,
+    AdminProfileController,
     AdminTeamController,
     AdminSellersController,
   ],
@@ -492,6 +496,7 @@ function useCaseProvider<D, U>(
       grants: true,
       effectiveKeys: true,
       factors: true,
+      records: true,
     }),
     useCaseProvider(PurgeExpired, {
       unitOfWork: true,
@@ -852,6 +857,12 @@ function useCaseProvider<D, U>(
       hasher: true,
       commonPasswords: true,
       policy: true,
+      clock: true,
+    }),
+    useCaseProvider(ChangeDisplayName, {
+      unitOfWork: true,
+      accounts: true,
+      outbox: true,
       clock: true,
     }),
     useCaseProvider(SendPasswordChangedMail, {

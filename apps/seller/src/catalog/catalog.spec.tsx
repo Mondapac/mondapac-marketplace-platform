@@ -16,6 +16,7 @@ import { visibleNavItems } from '@mondapac/ui';
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
   getLocale: () => Promise.resolve('en-AU'),
+  getTimeZone: () => Promise.resolve('UTC'),
 }));
 
 const ID = '0190a000-0000-7000-8000-0000000000a1';

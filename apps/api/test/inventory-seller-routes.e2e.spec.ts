@@ -9,6 +9,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { CreateSource } from '../src/modules/inventory/application/use-cases/create-source.use-case';
 import { EditSource } from '../src/modules/inventory/application/use-cases/edit-source.use-case';
+import { ListLowStock } from '../src/modules/inventory/application/use-cases/list-low-stock.use-case';
 import { ListSources } from '../src/modules/inventory/application/use-cases/list-sources.use-case';
 import { ReorderSources } from '../src/modules/inventory/application/use-cases/reorder-sources.use-case';
 import { ViewOfferStock } from '../src/modules/inventory/application/use-cases/view-offer-stock.use-case';
@@ -88,7 +89,9 @@ describe('seller inventory routes over HTTP', () => {
           .overrideProvider(SetStockLevel)
           .useValue(stub('stock'))
           .overrideProvider(ViewOfferStock)
-          .useValue(stub('view-stock')),
+          .useValue(stub('view-stock'))
+          .overrideProvider(ListLowStock)
+          .useValue(stub('low-stock')),
     }));
   }
   const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -299,6 +302,51 @@ describe('seller inventory routes over HTTP', () => {
         variants: [{ variantId: VARIANT, sources: [cell] }],
       });
       expect(calls).toEqual([{ name: 'view-stock', input: { offerId: OFFER } }]);
+    });
+
+    it('lists low stock with its query, serialises the instant, and maps refusals', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      const row = {
+        offerId: OFFER,
+        variantId: VARIANT,
+        status: 'low',
+        onlyLeft: 2,
+        productName: 'Dates',
+        variantLabel: null,
+      };
+      next = ok({ items: [{ ...row, changedAt: START, extra: 1 }], nextCursor: 'c' });
+
+      const read = await call(
+        'get',
+        code,
+        '/inventory/seller/low-stock?status=low&limit=10',
+        session,
+      );
+
+      expect(read.status).toBe(200);
+      expect(read.headers['cache-control']).toBe('no-store');
+      expect(read.body).toEqual({
+        items: [{ ...row, changedAt: START.toString() }],
+        nextCursor: 'c',
+      });
+      expect(calls).toEqual([
+        { name: 'low-stock', input: { status: 'low', cursor: undefined, limit: 10 } },
+      ]);
+
+      next = err({ code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] });
+      expect((await call('get', code, '/inventory/seller/low-stock?limit=x', session)).status).toBe(
+        400,
+      );
+      expect(calls[1]).toEqual({
+        name: 'low-stock',
+        input: { status: undefined, cursor: undefined, limit: 'x' },
+      });
+      next = err({ code: 'access.denied' });
+      expect((await call('get', code, '/inventory/seller/low-stock', session)).status).toBe(403);
+      next = err({ code: 'access.unauthenticated' });
+      expect((await call('get', code, '/inventory/seller/low-stock', {})).status).toBe(401);
     });
 
     it('refuses the stock read without a session, and maps not found, not ready, denied and invalid', async () => {

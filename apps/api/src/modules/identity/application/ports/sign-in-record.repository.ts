@@ -23,6 +23,17 @@ export interface SignInRecord {
 export interface SignInRecordRepository {
   add(market: MarketContext, record: SignInRecord): Promise<void>;
 
+  /**
+   * The instant of the account's latest successful sign-in other than the one that opened
+   * `exceptSession` (the caller's own), or null when the records hold none (they are kept for
+   * the Market's retention only). Read-only.
+   */
+  latestSuccessBefore(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    exceptSession: Id<'Session'>,
+  ): Promise<Temporal.Instant | null>;
+
   /** The instant of the oldest record, or null when there is none. */
   oldest(market: MarketContext): Promise<Temporal.Instant | null>;
 

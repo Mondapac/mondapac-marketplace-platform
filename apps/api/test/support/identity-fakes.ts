@@ -293,6 +293,17 @@ export class IdentityFakes {
           (a) => a.marketId === market.marketId && a.population === population,
         ),
       ),
+    customerSummaries: (market: MarketContext, ids: readonly Id<'Account'>[]) =>
+      Promise.resolve(
+        ids.flatMap((id) => {
+          const state = this.accounts.get(id);
+          return state === undefined ||
+            state.marketId !== market.marketId ||
+            state.population !== 'customer'
+            ? []
+            : [{ id, displayName: state.displayName, email: state.email.typed }];
+        }),
+      ),
     lockCredential: (market: MarketContext, id: Id<'Account'>) => {
       const state = this.accounts.get(id);
       this.credentialLocks.push(id);
@@ -1337,6 +1348,24 @@ export class IdentityFakes {
     add: (market, record) => {
       this.records.push({ ...record, marketId: market.marketId });
       return Promise.resolve();
+    },
+    latestSuccessBefore: (market, accountId, exceptSession) => {
+      const latest = this.records
+        .filter(
+          (record) =>
+            record.marketId === market.marketId &&
+            record.accountId === accountId &&
+            record.outcome === 'signed-in' &&
+            record.sessionId !== exceptSession,
+        )
+        .reduce<Temporal.Instant | null>(
+          (best, record) =>
+            best === null || Temporal.Instant.compare(record.occurredAt, best) > 0
+              ? record.occurredAt
+              : best,
+          null,
+        );
+      return Promise.resolve(latest);
     },
     oldest: () => Promise.resolve(null),
     deleteBetween: () => Promise.resolve(0),

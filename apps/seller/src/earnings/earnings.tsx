@@ -9,7 +9,7 @@ import {
   type BadgeTone,
   type LedgerRow,
 } from '@mondapac/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { shortInstant } from '../catalog/format.ts';
@@ -28,6 +28,7 @@ const shortId = (id: string): string => id.slice(-8).toUpperCase();
 export function Earnings({ initial }: { readonly initial: Ledger }) {
   const t = useTranslations('earnings');
   const locale = useLocale();
+  const zone = useTimeZone();
   const [entries, setEntries] = useState<readonly LedgerEntry[]>(initial.entries);
   const [cursor, setCursor] = useState(initial.nextCursor);
   const [loading, setLoading] = useState(false);
@@ -57,7 +58,7 @@ export function Earnings({ initial }: { readonly initial: Ledger }) {
   const rows: LedgerRow[] = entries.map((entry) => ({
     id: entry.entryId,
     dateTime: entry.occurredAt,
-    when: shortInstant(entry.occurredAt, locale),
+    when: shortInstant(entry.occurredAt, locale, zone),
     order: shortId(entry.orderId),
     orderTitle: entry.orderId,
     kind: t(`kind.${entry.kind}`),

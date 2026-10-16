@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import type { OfferView } from '../catalog/types.ts';
 import { PRICE_VIEW_PERMISSION, type OfferPricesView } from '../price/types.ts';
 import { SETUP_ROOT } from '../setup/steps.ts';
+import { readSellerZone } from './seller-zone.ts';
 import { serverGet } from './server-fetch.ts';
 import { requireSession, type SellerSession } from './session.ts';
 
@@ -31,7 +32,7 @@ export async function loadPricesPage(offerId: string): Promise<PricesPage> {
   const [offer, view, zone] = await Promise.all([
     serverGet<OfferView>(`catalog/seller/offers/${offerId}`),
     serverGet<OfferPricesView>(`pricing/seller/offers/${offerId}/prices`),
-    serverGet<{ readonly zone: string }>('sellers/own-zone'),
+    readSellerZone(),
   ]);
   if (offer.kind === 'signed-out' || view.kind === 'signed-out') redirect('/session-ended');
   if (offer.kind === 'not-found' || view.kind === 'not-found')
@@ -42,6 +43,6 @@ export async function loadPricesPage(offerId: string): Promise<PricesPage> {
     session,
     offer: offer.body,
     view: view.body,
-    zone: zone.kind === 'ok' ? zone.body.zone : null,
+    zone,
   };
 }

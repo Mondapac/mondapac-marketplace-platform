@@ -18,6 +18,7 @@ const call = vi.mocked(callApi);
 const money = (amount: string) => ({ amount, currency: 'AUD' });
 const part = (over: Partial<SellerPart> = {}): SellerPart => ({
   sellerId: '0190a000-0000-7000-8000-0000000000a1',
+  storeName: null,
   subtotal: money('2000'),
   shipping: money('500'),
   total: money('2500'),
@@ -35,6 +36,8 @@ const part = (over: Partial<SellerPart> = {}): SellerPart => ({
       unitPrice: money('1000'),
       lineAmount: money('2000'),
       taxInclusive: true,
+      productName: null,
+      variantLabel: null,
     },
   ],
   ...over,
@@ -51,6 +54,7 @@ const order = (over: Partial<AdminOrder> = {}): AdminOrder => ({
   payBy: null,
   sellerOrders: [part()],
   accountId: '0190a000-0000-7000-8000-0000000000e1',
+  customer: null,
   paymentIntentId: 'pi_123',
   ...over,
 });
@@ -91,7 +95,43 @@ describe('orders list', () => {
     expect(within(table).getByText('$25.00')).toBeTruthy();
     expect(within(table).getByText('$50.00')).toBeTruthy();
     expect(within(table).getAllByText('000000E1')).toHaveLength(2);
+    expect(within(table).getAllByText('000000A1')).toHaveLength(2);
     expect(call).toHaveBeenCalledWith('GET', 'ordering/admin/orders');
+  });
+
+  it('shows customer name with email, and shop names, when the API sends them', async () => {
+    const named = part({ storeName: 'Al Noor Butchery' });
+    call.mockResolvedValueOnce(
+      page([
+        order({
+          customer: { displayName: 'Amira Haddad', email: 'amira@example.com' },
+          sellerOrders: [
+            named,
+            part({ sellerId: '0190a000-0000-7000-8000-0000000000a2', storeName: null }),
+          ],
+        }),
+        order({
+          orderId: '0190a000-0000-7000-8000-000000000002',
+          customer: { displayName: null, email: 'noname@example.com' },
+        }),
+      ]),
+    );
+    render(wrap(<OrdersList />));
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('Amira Haddad')).toBeTruthy();
+    expect(within(table).getByText('amira@example.com')).toBeTruthy();
+    expect(within(table).getByText('noname@example.com')).toBeTruthy();
+    expect(within(table).getByText('Al Noor Butchery')).toBeTruthy();
+    expect(within(table).getByText('000000A2')).toBeTruthy();
+    expect(within(table).queryByText('000000E1')).toBeNull();
+  });
+
+  it('falls back to the short id without the customer fields', async () => {
+    call.mockResolvedValueOnce(page([order()]));
+    render(wrap(<OrdersList />));
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('000000E1')).toBeTruthy();
+    expect(within(table).getByText('000000A1')).toBeTruthy();
   });
 
   it('filters by status and asks again', async () => {
@@ -163,11 +203,64 @@ describe('order detail', () => {
     );
     expect(screen.getByText('Captured')).toBeTruthy();
     expect(screen.getByText('pi_123')).toBeTruthy();
-    expect(screen.getByText('Variant 000000D1')).toBeTruthy();
+    expect(screen.getByText('000000C1').getAttribute('title')).toContain('0000000000c1');
+    expect(screen.getByText(/Offer 000000C1/)).toBeTruthy();
+    expect(screen.getByText(/Variant 000000D1/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Seller 000000A1' })).toBeTruthy();
+    expect(screen.queryByText('Customer email')).toBeNull();
     expect(screen.getByText(/2 x \$10\.00/)).toBeTruthy();
     expect(screen.getByText(/Tax included/)).toBeTruthy();
     expect(screen.getByText('To ship')).toBeTruthy();
     expect(screen.getByText('$5.00')).toBeTruthy();
+  });
+
+  it('shows names for the customer, the shop and each line when present', () => {
+    render(
+      wrap(
+        <OrderDetail
+          order={order({
+            customer: { displayName: 'Amira Haddad', email: 'amira@example.com' },
+            sellerOrders: [
+              part({
+                storeName: 'Al Noor Butchery',
+                lines: [
+                  {
+                    ...part().lines[0]!,
+                    productName: 'Lamb shoulder',
+                    variantLabel: '1 kg',
+                  },
+                ],
+              }),
+            ],
+          })}
+        />,
+      ),
+    );
+    expect(screen.getByText('Amira Haddad')).toBeTruthy();
+    expect(screen.getByText('amira@example.com')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Al Noor Butchery' })).toBeTruthy();
+    expect(screen.getByText('Lamb shoulder · 1 kg')).toBeTruthy();
+    expect(screen.getByText('0190a000-0000-7000-8000-0000000000a1')).toBeTruthy();
+    expect(screen.getByText('0190a000-0000-7000-8000-0000000000e1')).toBeTruthy();
+  });
+
+  it('shows a null customer name as not set, and a null variant label as the product only', () => {
+    render(
+      wrap(
+        <OrderDetail
+          order={order({
+            customer: { displayName: null, email: 'a@example.com' },
+            sellerOrders: [
+              part({
+                lines: [{ ...part().lines[0]!, productName: 'Dates', variantLabel: null }],
+              }),
+            ],
+          })}
+        />,
+      ),
+    );
+    expect(screen.getByText('Dates')).toBeTruthy();
+    expect(screen.getByText('Customer name').nextElementSibling?.textContent).toBe('Not set');
   });
 
   it('shows carrier, tracking and times once shipped, and the cancel reason when cancelled', () => {

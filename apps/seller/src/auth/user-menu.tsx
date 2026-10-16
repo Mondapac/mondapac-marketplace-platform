@@ -1,51 +1,72 @@
 'use client';
 
-import { Banner, Button } from '@mondapac/ui';
+import { AccountMenu, type AccountMenuLink, type ThemeChoice } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 
+/** The topbar's account menu: who is signed in, their own pages, the theme and sign-out. */
 export function UserMenu({
   name,
+  email,
+  theme,
+  approved,
   csrfToken,
 }: {
   readonly name: string;
+  readonly email: string;
+  readonly theme: ThemeChoice;
+  /** Security (two-step verification) is for an approved seller, as on its page. */
+  readonly approved: boolean;
   readonly csrfToken: string;
 }) {
-  const t = useTranslations('home');
+  const t = useTranslations('account-menu');
+  const themeT = useTranslations('theme');
   const router = useRouter();
-  const [pending, setPending] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const links: readonly AccountMenuLink[] = [
+    { id: 'profile', label: t('profile'), href: '/account/profile', icon: 'user' },
+    ...(approved
+      ? [
+          {
+            id: 'security',
+            label: t('security'),
+            href: '/account/security',
+            icon: 'shield-check',
+          } as const,
+        ]
+      : []),
+  ];
 
-  async function signOut() {
-    setPending(true);
-    setFailed(false);
+  async function signOut(): Promise<boolean> {
     const result = await callApi('POST', 'identity/seller/sign-out', {}, csrfToken);
     // Signed out, or the session was already gone: both end on the sign-in page. Anything else
-    // means the session may still be live, so the page says so and stays.
+    // means the session may still be live, so the menu says so and stays.
     if (result.ok || result.failure.status === 401) {
       router.replace('/sign-in?notice=signed-out');
       router.refresh();
-      return;
+      return true;
     }
-    setPending(false);
-    setFailed(true);
+    return false;
   }
 
   return (
-    <div
-      className="flex flex-wrap items-center justify-end gap-3"
-      role="group"
-      aria-label={t('user-menu')}
-    >
-      {failed ? <Banner tone="critical">{t('sign-out-failed')}</Banner> : null}
-      <span className="hidden text-sm text-fg-secondary lg:inline">
-        {t('signed-in-as', { name })}
-      </span>
-      <Button variant="secondary" onClick={() => void signOut()} loading={pending}>
-        {t('sign-out')}
-      </Button>
-    </div>
+    <AccountMenu
+      name={name}
+      email={email}
+      links={links}
+      theme={theme}
+      labels={{
+        trigger: t('trigger', { name }),
+        pages: t('pages'),
+        theme: themeT('menu'),
+        system: themeT('system'),
+        light: themeT('light'),
+        dark: themeT('dark'),
+        signOut: t('sign-out'),
+        signingOut: t('signing-out'),
+      }}
+      onSignOut={signOut}
+      signOutError={t('sign-out-failed')}
+    />
   );
 }

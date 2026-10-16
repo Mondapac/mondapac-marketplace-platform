@@ -12,7 +12,7 @@ import {
   type ActivityColumn,
   type BadgeTone,
 } from '@mondapac/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { known, OFFER_STATUSES, shortInstant } from '../catalog/format.ts';
 import type { OfferView } from '../catalog/types.ts';
@@ -55,7 +55,8 @@ function ok<T>(widget: Widget<T> | null): T | null {
 
 function Time({ iso }: { readonly iso: string }) {
   const locale = useLocale();
-  return <span className="whitespace-nowrap">{shortInstant(iso, locale)}</span>;
+  const zone = useTimeZone();
+  return <span className="whitespace-nowrap">{shortInstant(iso, locale, zone)}</span>;
 }
 
 /** Things to fix before selling or being paid; shown above the figures. */
