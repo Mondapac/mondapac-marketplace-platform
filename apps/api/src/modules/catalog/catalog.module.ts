@@ -1,6 +1,11 @@
 import { CertificationModule } from '../certification';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -54,6 +59,7 @@ import { PlatformProductCreate } from './application/use-cases/platform-product-
 import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from './application/use-cases/platform-product-submit.use-case';
 import { CATALOG_PERMISSIONS } from './contracts/permissions';
+import { CATALOG_STEP_UP_ACTIONS } from './contracts/step-up';
 import { CATEGORY_SEED } from './application/ports/category-seed';
 import { PLATFORM_CATEGORY_REPOSITORY } from './application/ports/platform-category.repository';
 import { SeedAttributes } from './application/use-cases/seed-attributes.use-case';
@@ -222,6 +228,7 @@ const productTypeProvider: FactoryProvider<string> = {
     },
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
     registerPermissions('catalog', CATALOG_PERMISSIONS),
+    registerStepUpActions('catalog', CATALOG_STEP_UP_ACTIONS),
     ...catalogProviders,
     serviceProvider(CheckClaimText, {
       unitOfWork: true,
