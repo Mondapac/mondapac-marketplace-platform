@@ -204,8 +204,9 @@ describe('team pages', () => {
     expect(table).toContain('table-fixed');
     expect(table).toContain('<colgroup');
     expect(table).toContain('break-words');
-    // Below the 760 px breakpoint each row is a card, so no column is hidden behind a sideways scroll.
-    expect(table).toContain('max-md:grid');
+    // Below 1024 px each row is a card (the shared CARD_TABLE classes), so no column is hidden
+    // behind a sideways scroll while the sidebar takes part of a tablet's width.
+    expect(table).toContain('CARD_TABLE.row');
     expect(table).toContain('data-label=');
     expect(table).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
   });

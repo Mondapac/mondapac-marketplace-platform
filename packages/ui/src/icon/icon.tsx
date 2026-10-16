@@ -65,6 +65,7 @@ const ICONS = {
       <circle cx="18" cy="18" r="2" />
     </>
   ),
+  check: <path d="M20 6 9 17l-5-5" />,
   'shield-check': (
     <>
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
@@ -138,6 +139,12 @@ const ICONS = {
     <>
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
+    </>
+  ),
+  mail: (
+    <>
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
     </>
   ),
   'more-horizontal': (
