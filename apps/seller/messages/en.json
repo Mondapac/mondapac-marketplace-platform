@@ -20,11 +20,22 @@
   },
   "home": {
     "title": "Home",
-    "empty": "Your seller workspace is being set up.",
     "signed-in-as": "Signed in as {name}",
     "sign-out": "Sign out",
     "sign-out-failed": "We couldn't sign you out. Check your connection and try again.",
-    "user-menu": "Account"
+    "user-menu": "Account",
+    "welcome": "Welcome, {name}",
+    "intro": "Where would you like to start?",
+    "shortcuts": "Sections",
+    "shortcut": {
+      "products": "Add products and follow their review.",
+      "offers": "Your offers, with their prices and stock.",
+      "orders": "Ship paid orders and mark them delivered.",
+      "earnings": "Sales, delivery fees, commission and your balance.",
+      "team": "Invite the people who help run your shop.",
+      "settings": "Security, payout account and stock locations.",
+      "setup": "Finish setting up your store."
+    }
   },
   "showcase": {
     "title": "Sell to neighbours who care where their food comes from.",
