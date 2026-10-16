@@ -21,7 +21,12 @@ import {
 import { AdminListOrders } from '../application/use-cases/admin-list-orders.use-case';
 import { AdminViewOrder } from '../application/use-cases/admin-view-order.use-case';
 import { refusal } from './http-answers';
-import { AdminOrderBody, AdminOrderPageBody, adminOrderBody, pageBody } from './orders.dto';
+import {
+  AdminOrderBody,
+  AdminOrderPageBody,
+  adminOrderBody,
+  adminOrderPageBody,
+} from './orders.dto';
 
 const ERROR = { type: Object };
 
@@ -93,7 +98,7 @@ export class AdminOrdersController {
     });
     this.log('ordering.admin-list-orders-route', context, result.ok ? 'listed' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return pageBody(result.value, adminOrderBody);
+    return adminOrderPageBody(result.value);
   }
 
   @Get(':orderId')

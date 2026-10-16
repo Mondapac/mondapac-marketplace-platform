@@ -7,6 +7,7 @@ import {
   sellerOrderDetailView,
   type LabelledSellerOrderDetailView,
   type LabelledSellerOrderPageView,
+  type SellerOrderCounts,
   type SellerOrderDetailView,
   type SellerOrderPageView,
 } from '../domain/order-views';
@@ -97,7 +98,10 @@ export async function listSellerOrders(
     else fields.push({ path: 'status', code: 'value' });
   }
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
-  const read = await deps.unitOfWork.run<SellerOrderPageView, FulfilmentFailure>(
+  const read = await deps.unitOfWork.run<
+    SellerOrderPageView & { readonly counts: SellerOrderCounts },
+    FulfilmentFailure
+  >(
     context.market,
     async () => {
       const rows = await deps.orders.listForSeller(
@@ -110,6 +114,7 @@ export async function listSellerOrders(
       const last = page[page.length - 1];
       return ok({
         sellerOrders: page.map(sellerOrderDetailView),
+        counts: await deps.orders.countForSeller(context.market, sellerId),
         nextCursor:
           rows.length > limit && last !== undefined
             ? encodeSellerCursor(last.confirmedAt, last.sellerOrder.id)
@@ -122,6 +127,7 @@ export async function listSellerOrders(
   return ok({
     sellerOrders: await labelSellerOrders(deps.labels, context, read.value.sellerOrders),
     nextCursor: read.value.nextCursor,
+    counts: read.value.counts,
   });
 }
 

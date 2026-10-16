@@ -6,6 +6,7 @@ import type {
   OrderStatus,
   SellerOrder,
 } from '../../domain/order';
+import type { OrderStatusCounts, SellerOrderCounts } from '../../domain/order-views';
 
 /** Newest first; the cursor is the last row of the previous page. */
 export interface OrderPage {
@@ -77,6 +78,9 @@ export interface OrderRepository {
     page: OrderPage,
   ): Promise<readonly OrderState[]>;
 
+  /** The Market's orders per status (one grouped count). */
+  countAll(market: MarketContext): Promise<OrderStatusCounts>;
+
   /**
    * Writes the mutable columns (status, reason, payment state, Stripe ids, times) under the
    * version the order was read at and raises it. `stale` writes nothing.
@@ -90,6 +94,9 @@ export interface OrderRepository {
     filter: SellerOrderFilter,
     page: SellerOrderPage,
   ): Promise<readonly SellerOrderRecord[]>;
+
+  /** The seller's paid seller orders per fulfilment step (one grouped count). */
+  countForSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerOrderCounts>;
 
   /** The seller's own paid seller order, or null: unknown, foreign and unpaid are one answer. */
   findForSeller(

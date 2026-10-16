@@ -104,6 +104,15 @@ export class MemoryOrders implements OrderRepository {
       ),
     );
   }
+  countAll(_m: MarketContext) {
+    const all = [...this.rows.values()];
+    const count = (status: OrderState['status']) => all.filter((o) => o.status === status).length;
+    return Promise.resolve({
+      pendingPayment: count('pending-payment'),
+      confirmed: count('confirmed'),
+      cancelled: count('cancelled'),
+    });
+  }
   save(_m: MarketContext, order: OrderState) {
     const stored = this.rows.get(order.id);
     if (stored === undefined || stored.version !== order.version)
@@ -159,6 +168,16 @@ export class MemoryOrders implements OrderRepository {
         )
         .slice(0, page.limit),
     );
+  }
+  countForSeller(_m: MarketContext, sellerId: Id<'Seller'>) {
+    const paid = this.paid(sellerId);
+    const count = (step: Fulfilment) =>
+      paid.filter((r) => r.sellerOrder.fulfilment === step).length;
+    return Promise.resolve({
+      toShip: count('to-ship'),
+      shipped: count('shipped'),
+      delivered: count('delivered'),
+    });
   }
   findForSeller(_m: MarketContext, sellerId: Id<'Seller'>, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(
