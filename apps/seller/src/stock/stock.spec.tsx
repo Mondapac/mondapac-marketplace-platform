@@ -70,7 +70,8 @@ describe('StockLocations', () => {
   it('lists the locations in order with the Default badge, address and zone', () => {
     mount();
     expect(screen.getByText('Default', { selector: 'span' })).toBeTruthy();
-    expect(screen.getByText('1 Test St, Sunnybank')).toBeTruthy();
+    // Street first, then the place, each on its own line.
+    expect(screen.getByText('1 Test St Sunnybank').textContent).toBe('1 Test St\nSunnybank');
     expect(screen.getByText('Australia/Brisbane')).toBeTruthy();
     expect(screen.getByText('No address')).toBeTruthy();
   });
@@ -124,14 +125,12 @@ describe('StockLocations', () => {
     );
   });
 
-  it('disables the first up and the last down button', () => {
+  it('shows only the moves that do something: no up on the first, no down on the last', () => {
     mount();
-    expect(screen.getByRole('button', { name: 'Move Default up' }).hasAttribute('disabled')).toBe(
-      true,
-    );
-    expect(screen.getByRole('button', { name: 'Move Garage down' }).hasAttribute('disabled')).toBe(
-      true,
-    );
+    expect(screen.queryByRole('button', { name: 'Move Default up' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Move Default down' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Move Garage up' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Move Garage down' })).toBeNull();
   });
 
   it('turns off Add at the limit', () => {

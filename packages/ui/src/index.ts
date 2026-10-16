@@ -1,6 +1,6 @@
 export { AppShell, type AppShellProps, type BottomTab } from './shell/app-shell.tsx';
 export { Sidebar, type SidebarProps } from './shell/sidebar.tsx';
-export { Topbar, type TopbarProps } from './shell/topbar.tsx';
+export { Topbar, type Crumb, type TopbarProps } from './shell/topbar.tsx';
 export { Icon, type IconName, type IconProps } from './icon/icon.tsx';
 export { Tabs, type TabItem, type TabsProps } from './shell/tabs.tsx';
 export { BackLink } from './shell/back-link.tsx';
@@ -8,6 +8,7 @@ export { ShortcutGrid, type Shortcut } from './shell/shortcut-grid.tsx';
 export {
   SIDEBAR_COOKIE,
   sidebarCollapsed,
+  navTrail,
   visibleNavItems,
   type NavConfig,
   type NavItem,
@@ -37,6 +38,7 @@ export { DataList, type DataListRow } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
 export { CARD_TABLE } from './data/card-table.ts';
 export { MemberColumns } from './data/member-columns.tsx';
+export { addressLines } from './data/address.ts';
 export { EmailText } from './data/email-text.tsx';
 export {
   LedgerTable,

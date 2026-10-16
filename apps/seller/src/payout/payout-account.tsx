@@ -141,8 +141,8 @@ export function PayoutAccountView({
   }
 
   return (
-    <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
-      <p className="text-fg-muted">{t('intro')}</p>
+    <div className="flex flex-col gap-4">
+      <p className="max-w-(--mp-size-form-max) text-fg-muted">{t('intro')}</p>
       {back === 'return' ? (
         <Banner tone="info" title={t('back.return.title')}>
           {t('back.return.body')}
@@ -235,13 +235,11 @@ export function PayoutAccountView({
             {account.changes.map((change) => (
               <li
                 key={`${change.detectedAt}-${change.kind}`}
-                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2 first:pt-0 last:pb-0"
+                className="flex flex-col gap-1 py-2 first:pt-0 last:pb-0 sm:grid sm:grid-cols-[minmax(0,var(--mp-size-data-label))_minmax(0,1fr)] sm:gap-x-6"
               >
+                <span className="text-fg-muted">{formatInstant(change.detectedAt, locale)}</span>
                 <span className="font-medium">
                   {t(`changes.kind.${known(change.kind, CHANGE_KINDS)}`)}
-                </span>
-                <span className="text-sm text-fg-muted">
-                  {formatInstant(change.detectedAt, locale)}
                 </span>
               </li>
             ))}
@@ -263,7 +261,11 @@ export function PayoutAccountView({
           </>
         }
       >
-        <form onSubmit={(event) => void submit(event)} noValidate className="flex flex-col gap-4">
+        <form
+          onSubmit={(event) => void submit(event)}
+          noValidate
+          className="flex max-w-(--mp-size-form-max) flex-col gap-4"
+        >
           <p>{t('dialog.body')}</p>
           {problem ? (
             <Banner tone="critical">

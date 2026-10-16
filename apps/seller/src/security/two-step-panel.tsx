@@ -149,7 +149,11 @@ export function TwoStepPanel({
     <Banner tone="critical">{e(`error.${error.key}`, error.values)}</Banner>
   ) : null;
   const form = (onSubmit: (event: FormEvent) => Promise<void>, children: ReactNode) => (
-    <form onSubmit={(event) => void onSubmit(event)} noValidate className="flex flex-col gap-4">
+    <form
+      onSubmit={(event) => void onSubmit(event)}
+      noValidate
+      className="flex max-w-(--mp-size-form-max) flex-col gap-4"
+    >
       {problem}
       {children}
     </form>
@@ -304,7 +308,7 @@ export function TwoStepPanel({
     body = (
       <div className="flex flex-col gap-4">
         {view.kind === 'removed' ? <Banner tone="info">{t('remove.done')}</Banner> : null}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg font-semibold">{t('heading')}</h2>
           <Badge tone={active ? 'success' : 'neutral'}>
             {t(active ? 'badge.on' : 'badge.off')}
@@ -332,9 +336,5 @@ export function TwoStepPanel({
     );
   }
 
-  return (
-    <div className="max-w-(--mp-size-form-max)">
-      <Card>{body}</Card>
-    </div>
-  );
+  return <Card>{body}</Card>;
 }
