@@ -25,6 +25,7 @@ export { TextField, type TextFieldProps } from './form/text-field.tsx';
 export { OtpField, type OtpFieldProps } from './form/otp-field.tsx';
 export { Card, type CardProps } from './form/card.tsx';
 export { CheckboxRow, type CheckboxRowProps } from './form/checkbox-row.tsx';
+export { FieldAction, type FieldActionProps } from './form/field-action.tsx';
 export { FieldStatus, type FieldStatusProps, type FieldStatusTone } from './form/field-status.tsx';
 export { FormActionBar, type FormActionBarProps } from './form/form-action-bar.tsx';
 export { Select, type SelectOption, type SelectProps } from './form/select.tsx';
