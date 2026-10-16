@@ -146,6 +146,7 @@ export function SellersList({
 
   // A tab starts unfiltered: a search or filter set under one tab never narrows the next one.
   function selectTab(id: Tab) {
+    if (id === tab) return;
     setTab(id);
     setDraft('');
     setSearch('');
@@ -174,7 +175,7 @@ export function SellersList({
           <form
             onSubmit={submitSearch}
             role="search"
-            className="flex flex-col gap-2 sm:flex-row sm:items-start"
+            className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-2"
           >
             <TextField
               label={t('search.label')}
