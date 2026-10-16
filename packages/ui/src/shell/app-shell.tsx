@@ -119,7 +119,7 @@ export function AppShell({
               key={tab.id}
               href={tab.href}
               aria-current={tab.active ? 'page' : undefined}
-              className={`flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-2 text-xs font-medium ${tab.active ? 'text-accent' : 'text-fg-secondary'}`}
+              className={`flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-2 text-xs font-medium ${tab.active ? 'text-link' : 'text-fg-secondary'}`}
             >
               <Icon name={tab.icon} />
               <span className="max-w-full text-center leading-tight">{tab.label}</span>
@@ -130,7 +130,7 @@ export function AppShell({
             aria-expanded={open}
             aria-current={moreActive === true || open ? 'page' : undefined}
             onClick={() => setOpen(true)}
-            className={`flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-2 text-xs font-medium ${moreActive === true || open ? 'text-accent' : 'text-fg-secondary'}`}
+            className={`flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-2 text-xs font-medium ${moreActive === true || open ? 'text-link' : 'text-fg-secondary'}`}
           >
             <Icon name="menu" />
             <span className="max-w-full text-center leading-tight">{labels.more}</span>
