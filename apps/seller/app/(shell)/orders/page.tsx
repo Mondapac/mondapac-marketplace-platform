@@ -14,7 +14,13 @@ export default async function OrdersPage() {
   const title = t('orders.title');
   const page = await loadOrdersPage();
   if (page.kind === 'unavailable') {
-    return <LoadError message={t('orders.error.unavailable')} retryLabel={t('load.retry')} />;
+    return (
+      <LoadError
+        title={title}
+        message={t('orders.error.unavailable')}
+        retryLabel={t('load.retry')}
+      />
+    );
   }
   if (page.kind === 'no-access') {
     return (

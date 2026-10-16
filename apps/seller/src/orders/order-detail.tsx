@@ -13,7 +13,7 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
-import { formatInstant } from '../catalog/format.ts';
+import { formatInstant, shortInstant } from '../catalog/format.ts';
 import { formatMinor } from '../price/money.ts';
 import { orderProblemOf } from './errors.ts';
 import { shortId, TONE } from './status.ts';
@@ -101,20 +101,16 @@ export function OrderDetail({
           </h1>
           <Badge tone={TONE[order.fulfilment]}>{t(`status.${order.fulfilment}`)}</Badge>
         </div>
+        <p className="text-sm text-fg-muted">
+          {t('paid-line', { when: formatInstant(order.paidAt, locale) })}
+          {' · '}
+          {t('items-count', { count })}
+        </p>
       </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-6">
-          <Card title={t('summary')}>
-            <DataList
-              missing={t('not-given')}
-              rows={[
-                { label: t('paid-on'), value: formatInstant(order.paidAt, locale) },
-                { label: t('col.items'), value: String(count) },
-              ]}
-            />
-          </Card>
-          <Card title={t('lines')}>
-            <div className="relative -mx-5 -mb-5 overflow-x-auto border-t border-line">
+          <Card title={t('lines')} flush>
+            <div className="relative overflow-x-auto">
               <table className={`${CARD_TABLE.table} lg:table-fixed`}>
                 <caption className="sr-only">{t('lines')}</caption>
                 <colgroup className="max-lg:hidden">
@@ -144,7 +140,7 @@ export function OrderDetail({
                     const label = labels[line.lineId];
                     return (
                       <tr key={line.lineId} className={CARD_TABLE.row}>
-                        <td className={`${CARD_TABLE.cell} break-words lg:px-5 max-lg:col-span-2`}>
+                        <td className={`${CARD_TABLE.cell} break-words lg:px-5`}>
                           <div className="font-medium text-fg">
                             {label?.name ?? t('line.fallback', { id: shortId(line.offerId) })}
                           </div>
@@ -152,23 +148,23 @@ export function OrderDetail({
                             <div className="text-fg-muted">{label.variant}</div>
                           )}
                         </td>
-                        <td
-                          className={`${CARD_TABLE.labelled} tabular-nums lg:text-end`}
-                          data-label={lineHead('quantity')}
-                        >
+                        <td className={`${CARD_TABLE.cell} tabular-nums max-lg:hidden lg:text-end`}>
                           {line.quantity}
                         </td>
-                        <td
-                          className={`${CARD_TABLE.labelled} tabular-nums lg:text-end`}
-                          data-label={lineHead('unit')}
-                        >
+                        <td className={`${CARD_TABLE.cell} tabular-nums max-lg:hidden lg:text-end`}>
                           {money(line.unitPrice)}
                         </td>
                         <td
-                          className={`${CARD_TABLE.labelled} font-medium tabular-nums lg:px-5 lg:text-end`}
-                          data-label={lineHead('amount')}
+                          className={`${CARD_TABLE.corner} font-medium tabular-nums lg:px-5 lg:text-end`}
                         >
                           {money(line.lineAmount)}
+                        </td>
+                        {/* Phones: quantity and unit price on one line under the name. */}
+                        <td className="text-fg-muted max-lg:col-span-2 lg:hidden">
+                          {t('line.qty-price', {
+                            quantity: line.quantity,
+                            price: money(line.unitPrice),
+                          })}
                         </td>
                       </tr>
                     );
@@ -180,24 +176,23 @@ export function OrderDetail({
         </div>
         <div className="flex min-w-0 flex-col gap-6">
           <Card title={t('totals')}>
-            <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 text-sm">
-              <dt className="text-fg-muted">{t('subtotal')}</dt>
-              <dd className="text-end tabular-nums">{money(order.subtotal)}</dd>
-              <dt className="text-fg-muted">{t('delivery')}</dt>
-              <dd className="text-end tabular-nums">
-                {order.shipping.amount === '0' ? t('delivery-free') : money(order.shipping)}
-              </dd>
-            </dl>
-            <p className="-mt-1 flex justify-between gap-3 border-t border-line pt-3 font-semibold">
-              <span>{t('total')}</span>
-              <span className="tabular-nums">{money(order.total)}</span>
-            </p>
+            <DataList
+              variant="totals"
+              missing={t('not-given')}
+              rows={[
+                { label: t('subtotal'), value: money(order.subtotal) },
+                {
+                  label: t('delivery'),
+                  value: order.shipping.amount === '0' ? t('delivery-free') : money(order.shipping),
+                },
+                { label: t('total'), value: money(order.total), emphasis: true },
+              ]}
+            />
           </Card>
           <Card title={t('fulfilment')}>
             {order.fulfilment === 'to-ship' ? (
               canShip ? (
                 <form className="flex flex-col gap-4" onSubmit={ship} noValidate>
-                  <h3 className="text-sm font-semibold">{t('ship.title')}</h3>
                   {problem === null ? null : (
                     <Banner tone="critical">{t(`error.${problem}`)}</Banner>
                   )}
@@ -239,21 +234,28 @@ export function OrderDetail({
             ) : (
               <>
                 <DataList
+                  variant="stacked"
                   missing={t('not-given')}
                   rows={[
                     { label: t('ship.carrier'), value: order.carrier },
-                    { label: t('ship.tracking'), value: order.trackingRef },
+                    {
+                      label: t('ship.tracking'),
+                      value:
+                        order.trackingRef === null ? null : (
+                          <span className="break-all">{order.trackingRef}</span>
+                        ),
+                    },
                     {
                       label: t('shipped-on'),
                       value:
-                        order.shippedAt === null ? null : formatInstant(order.shippedAt, locale),
+                        order.shippedAt === null ? null : shortInstant(order.shippedAt, locale),
                     },
                     ...(order.deliveredAt === null
                       ? []
                       : [
                           {
                             label: t('delivered-on'),
-                            value: formatInstant(order.deliveredAt, locale),
+                            value: shortInstant(order.deliveredAt, locale),
                           },
                         ]),
                   ]}

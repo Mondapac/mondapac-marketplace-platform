@@ -98,7 +98,7 @@ describe('SellerOrders list', () => {
     expect(screen.getAllByText('To ship').length).toBeGreaterThan(0);
     expect(screen.getByText('$35.00')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
-    expect(screen.getByText('14 Oct, 10:00 am')).toBeTruthy();
+    expect(screen.getByText(/14 Oct.*10:00 am/)).toBeTruthy();
     expect(screen.getByText(/Delivery fee on every order: \$5\.00/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Mark as shipped' })).toBeNull();
   });
@@ -167,7 +167,7 @@ describe('OrderDetail', () => {
     expect(screen.getByText('$15.00')).toBeTruthy();
     expect(screen.getAllByText('$30.00').length).toBeGreaterThan(0);
     expect(screen.getByText('$35.00')).toBeTruthy();
-    expect(screen.getByText('14 Oct 2026, 10:00 am UTC')).toBeTruthy();
+    expect(screen.getByText('Paid 14 Oct 2026, 10:00 am UTC · 2 items')).toBeTruthy();
   });
 
   it('falls back to a short id for a line whose name could not be read', () => {
@@ -220,8 +220,8 @@ describe('OrderDetail', () => {
     mountDetail(shippedOrder({ trackingRef: 'AP9' }));
     expect(screen.getByText('Post')).toBeTruthy();
     expect(screen.getByText('AP9')).toBeTruthy();
-    expect(screen.getByText('14 Oct 2026, 12:00 pm UTC')).toBeTruthy();
-    expect(screen.queryByText('15 Oct 2026, 1:00 am UTC')).toBeNull();
+    expect(screen.getByText(/14 Oct.*12:00 pm/)).toBeTruthy();
+    expect(screen.queryByText(/15 Oct.*1:00 am/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Mark as delivered' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call.mock.calls[0]?.slice(0, 3)).toEqual([
@@ -229,7 +229,7 @@ describe('OrderDetail', () => {
       'ordering/seller/orders/0190a000-0000-7000-8000-0000000000a1/deliver',
       {},
     ]);
-    expect(await screen.findByText('15 Oct 2026, 1:00 am UTC')).toBeTruthy();
+    expect(await screen.findByText(/15 Oct.*1:00 am/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Mark as delivered' })).toBeNull();
   });
 

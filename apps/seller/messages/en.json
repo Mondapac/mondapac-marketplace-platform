@@ -1071,11 +1071,12 @@
         "body-more": "None of the orders loaded so far are in this state. Show more orders to look further back."
       }
     },
-    "summary": "Summary",
-    "paid-on": "Paid",
+    "paid-line": "Paid {when}",
+    "items-count": "{count, plural, one {# item} other {# items}}",
     "lines": "Items in this order",
     "line": {
       "fallback": "Item {id}",
+      "qty-price": "{quantity} × {price}",
       "col": {
         "item": "Item",
         "quantity": "Qty",
@@ -1086,8 +1087,8 @@
     "totals": "Totals",
     "fulfilment": "Fulfilment",
     "not-shipped": "This order has not been shipped yet.",
-    "shipped-on": "Shipped",
-    "delivered-on": "Delivered",
+    "shipped-on": "Shipped (UTC)",
+    "delivered-on": "Delivered (UTC)",
     "subtotal": "Items",
     "delivery": "Delivery",
     "delivery-free": "Free",
@@ -1098,7 +1099,6 @@
       "delivered": "Delivered"
     },
     "ship": {
-      "title": "Send this order",
       "carrier": "Carrier",
       "tracking": "Tracking reference",
       "hint": "The customer gets an email with the carrier and tracking reference.",
