@@ -795,9 +795,6 @@
         "up": "Increase",
         "down": "Decrease"
       },
-      "ids": {
-        "seller": "Seller"
-      },
       "approve": "Approve",
       "reject": "Reject",
       "cancel": "Cancel",
@@ -834,7 +831,8 @@
         "csrf": "Your session could not be checked. Reload the page and try again.",
         "unknown": "Something went wrong. Try again."
       },
-      "name-unavailable": "Name unavailable"
+      "name-unavailable": "Name unavailable ({id})",
+      "seller-fallback": "Seller {id}"
     }
   },
   "settings": {

@@ -132,7 +132,7 @@ function HoldLine({
        * plain text; the ids stay as tooltips, and stand in when a name could not be read. */}
       <td className={`${CARD_TABLE.cell} min-w-0`}>
         <p className="font-semibold wrap-anywhere text-fg" title={row.offerId}>
-          {row.productName ?? `${t('name-unavailable')} (${shortId(row.offerId)})`}
+          {row.productName ?? t('name-unavailable', { id: shortId(row.offerId) })}
         </p>
         {row.variantLabel === null ? null : (
           <p className="text-sm wrap-anywhere text-fg-muted" title={row.variantId}>
@@ -144,7 +144,7 @@ function HoldLine({
           href={`/sellers/${row.sellerId}`}
           title={row.sellerId}
         >
-          {row.storeName ?? `${t('ids.seller')} ${shortId(row.sellerId)}`}
+          {row.storeName ?? t('seller-fallback', { id: shortId(row.sellerId) })}
         </a>
       </td>
       <td className={CARD_TABLE.labelled} data-label={t('col.price')}>

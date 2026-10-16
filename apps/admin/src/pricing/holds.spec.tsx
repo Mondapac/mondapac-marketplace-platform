@@ -72,8 +72,10 @@ describe('admin held prices', () => {
 
   it('keeps the row when a name could not be read and shows a short id instead', () => {
     mount(true, [row({ productName: null, variantLabel: null, storeName: null })]);
-    expect(screen.getByText(/^Name unavailable \(/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: /^Seller / })).toBeTruthy();
+    expect(screen.getByText('Name unavailable (000000D1)')).toBeTruthy();
+    expect(screen.queryByText('Family pack')).toBeNull();
+    const seller = screen.getByRole('link', { name: 'Seller 000000F1' });
+    expect(seller.getAttribute('href')).toBe('/sellers/0190a000-0000-7000-8000-0000000000f1');
     expect(screen.getByText('$19.99')).toBeTruthy();
   });
 
