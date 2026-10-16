@@ -9,7 +9,7 @@ import { adminNav } from '../nav.ts';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
-import { formatInstant } from './format.ts';
+import { formatInstant } from '../shared/format.ts';
 import { SellersList } from './sellers-list.tsx';
 import type { SellerListPage, SellerRow } from './types.ts';
 
@@ -208,9 +208,9 @@ describe('admin seller list', () => {
   });
 
   it('formats instants in UTC and survives bad input', () => {
-    expect(formatInstant('2026-10-09T23:30:00.000Z')).toContain('UTC');
-    expect(formatInstant(null)).toBe('-');
-    expect(formatInstant('nope')).toBe('-');
+    expect(formatInstant('2026-10-09T23:30:00.000Z', 'en-AU')).toContain('UTC');
+    expect(formatInstant(null, 'en-AU')).toBe('-');
+    expect(formatInstant('nope', 'en-AU')).toBe('-');
   });
 
   it('shows the Sellers nav item only with sellers.seller.view', () => {

@@ -6,6 +6,7 @@ import messages from '../../messages/en.json';
 
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
+  getLocale: () => Promise.resolve('en-AU'),
 }));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 

@@ -27,6 +27,7 @@ describe('parsePanelConfig', () => {
     PANEL_HOSTS: 'http://seller.localhost:3001=AU',
     PANEL_PASSWORD_LENGTH: '15-128',
     PANEL_MARKET_NAME: 'Australia',
+    PANEL_LOCALE: 'en-AU',
     PANEL_SUPPORT_EMAIL: 'support@example.com',
   };
 
@@ -35,14 +36,40 @@ describe('parsePanelConfig', () => {
     expect(config.passwordMinLength).toBe(15);
     expect(config.passwordMaxLength).toBe(128);
     expect(config.marketName).toBe('Australia');
+    expect(config.locale).toBe('en-AU');
   });
 
-  it.each(['API_BASE_URL', 'PANEL_HOSTS', 'PANEL_PASSWORD_LENGTH', 'PANEL_MARKET_NAME'])(
-    'fails start-up without %s',
-    (name) => {
-      expect(() => parsePanelConfig({ ...env, [name]: undefined })).toThrow();
-    },
-  );
+  it.each([
+    'API_BASE_URL',
+    'PANEL_HOSTS',
+    'PANEL_PASSWORD_LENGTH',
+    'PANEL_MARKET_NAME',
+    'PANEL_LOCALE',
+  ])('fails start-up without %s', (name) => {
+    expect(() => parsePanelConfig({ ...env, [name]: undefined })).toThrow();
+  });
+});
+
+describe('PANEL_LOCALE', () => {
+  const env = {
+    API_BASE_URL: 'http://localhost:3000',
+    PANEL_HOSTS: 'http://seller.localhost:3001=MY',
+    PANEL_PASSWORD_LENGTH: '15-128',
+    PANEL_MARKET_NAME: 'Malaysia',
+    PANEL_SUPPORT_EMAIL: 'support@example.com',
+  };
+
+  it.each(['en-AU', 'ms-MY', 'en-NZ', 'zh-Hant-TW'])('accepts the canonical tag %s', (tag) => {
+    expect(parsePanelConfig({ ...env, PANEL_LOCALE: tag }).locale).toBe(tag);
+  });
+
+  it.each([undefined, '', '   '])('requires a value, not %j', (value) => {
+    expect(() => parsePanelConfig({ ...env, PANEL_LOCALE: value })).toThrow('PANEL_LOCALE');
+  });
+
+  it.each(['en_AU', 'en-au', 'en-AU-', 'x'])('rejects %j', (value) => {
+    expect(() => parsePanelConfig({ ...env, PANEL_LOCALE: value })).toThrow('PANEL_LOCALE');
+  });
 });
 
 describe('assertClientAddressForwarding', () => {
@@ -50,6 +77,7 @@ describe('assertClientAddressForwarding', () => {
     API_BASE_URL: 'http://localhost:3000',
     PANEL_PASSWORD_LENGTH: '15-128',
     PANEL_MARKET_NAME: 'Australia',
+    PANEL_LOCALE: 'en-AU',
     PANEL_SUPPORT_EMAIL: 'support@example.com',
   };
   const configFor = (hosts: string) => parsePanelConfig({ ...base, PANEL_HOSTS: hosts });

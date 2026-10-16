@@ -44,8 +44,8 @@ describe('admin held prices', () => {
   afterEach(cleanup);
 
   it('formats minor units in the currency', () => {
-    expect(formatMoney({ amount: '1999', currency: 'AUD' })).toContain('19.99');
-    expect(formatMoney({ amount: 'x', currency: 'AUD' })).toBe('-');
+    expect(formatMoney({ amount: '1999', currency: 'AUD' }, 'en-AU')).toContain('19.99');
+    expect(formatMoney({ amount: 'x', currency: 'AUD' }, 'en-AU')).toBe('-');
   });
 
   it('shows a record with its price and anchor, and an empty state', () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { Badge, Banner, Button, CARD_TABLE, EmptyState, Select, TextField } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { shortId } from '../shared/short-id.ts';
@@ -89,6 +89,7 @@ function HoldLine({
 }) {
   const t = useTranslations('pricing.holds');
   const tr = useTranslations();
+  const locale = useLocale();
   const [step, setStep] = useState<Step>('idle');
   const [reasonCode, setReasonCode] = useState('');
   const [note, setNote] = useState('');
@@ -96,7 +97,7 @@ function HoldLine({
   const [problem, setProblem] = useState<HoldProblem | null>(null);
   const busy = useRef(false);
   const base = `pricing/admin/price-holds/${row.recordId}`;
-  const change = percentChange(row.amount.amount, row.anchorAmount.amount);
+  const change = percentChange(row.amount.amount, row.anchorAmount.amount, locale);
 
   async function send(action: 'approve' | 'reject', body?: unknown): Promise<void> {
     if (busy.current) return;
@@ -129,10 +130,10 @@ function HoldLine({
   return (
     <tr className={CARD_TABLE.row}>
       <td className={`${CARD_TABLE.cell} text-base font-semibold tabular-nums text-fg`}>
-        {formatMoney(row.amount)}
+        {formatMoney(row.amount, locale)}
       </td>
       <td className={`${CARD_TABLE.labelled} tabular-nums`} data-label={t('col.anchor')}>
-        {formatMoney(row.anchorAmount)}
+        {formatMoney(row.anchorAmount, locale)}
       </td>
       {/* On a card the change sits beside the held price, where the eye starts. */}
       <td className={CARD_TABLE.corner}>
@@ -172,7 +173,7 @@ function HoldLine({
             <span className="text-fg-muted">{t('view-only')}</span>
           ) : step === 'confirm-approve' ? (
             <div className="flex flex-col gap-2">
-              <p>{t('approve-confirm', { price: formatMoney(row.amount) })}</p>
+              <p>{t('approve-confirm', { price: formatMoney(row.amount, locale) })}</p>
               <div className="flex flex-wrap gap-3">
                 <Button loading={pending} disabled={pending} onClick={() => void send('approve')}>
                   {t('approve-yes')}
