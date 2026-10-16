@@ -3,8 +3,11 @@ import {
   AppShell,
   SIDEBAR_COOKIE,
   Sidebar,
+  THEME_COOKIE,
+  ThemeMenu,
   Topbar,
   sidebarCollapsed,
+  themeChoice,
   visibleNavItems,
 } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
@@ -27,7 +30,8 @@ export async function AdminShell({
   readonly children: ReactNode;
 }) {
   const t = await getTranslations();
-  const collapsed = sidebarCollapsed((await cookies()).get(SIDEBAR_COOKIE)?.value);
+  const jar = await cookies();
+  const collapsed = sidebarCollapsed(jar.get(SIDEBAR_COOKIE)?.value);
   const items = visibleNavItems(adminNav, new Set(session.permissionKeys));
   return (
     <AppShell
@@ -51,7 +55,20 @@ export async function AdminShell({
       topbar={
         <Topbar
           pageTitle={title}
-          actions={<UserMenu name={session.displayName} csrfToken={session.csrfToken} />}
+          actions={
+            <>
+              <ThemeMenu
+                choice={themeChoice(jar.get(THEME_COOKIE)?.value)}
+                labels={{
+                  menu: t('theme.menu'),
+                  system: t('theme.system'),
+                  light: t('theme.light'),
+                  dark: t('theme.dark'),
+                }}
+              />
+              <UserMenu name={session.displayName} csrfToken={session.csrfToken} />
+            </>
+          }
         />
       }
     >

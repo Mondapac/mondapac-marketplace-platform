@@ -44,3 +44,5 @@ export {
 } from './data/ledger.tsx';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
+export { THEME_COOKIE, THEME_SCRIPT, themeChoice, type ThemeChoice } from './theme/theme.ts';
+export { ThemeMenu, type ThemeMenuProps } from './theme/theme-menu.tsx';
