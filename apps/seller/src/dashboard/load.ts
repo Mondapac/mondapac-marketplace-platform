@@ -10,7 +10,8 @@ import { STOCK_VIEW_PERMISSION, type SourcesView } from '../stock/types.ts';
 import { COUNT_LIMIT, RECENT, type SellerDashboardData, type Widget } from './types.ts';
 
 /**
- * One widget: not asked for without its key, an in-place error for any failure. A rejected
+ * One widget: not asked for without its key, hidden when the API still says forbidden, an
+ * in-place error for any other failure. A rejected
  * session sends the whole page to sign-in.
  */
 async function widget<T>(
@@ -20,6 +21,8 @@ async function widget<T>(
   if (!allowed) return { widget: null, signedOut: false };
   const answer = await read();
   if (answer.kind === 'ok') return { widget: { kind: 'ok', value: answer.body }, signedOut: false };
+  // A refusal means the session may not see this widget after all: hide it, no error card.
+  if (answer.kind === 'forbidden') return { widget: null, signedOut: false };
   return { widget: { kind: 'error' }, signedOut: answer.kind === 'signed-out' };
 }
 

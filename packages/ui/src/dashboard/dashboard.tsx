@@ -9,7 +9,11 @@ const TONE: Record<StatTone, string> = {
   critical: 'text-critical-fg',
 };
 
-/** The list the stat cards sit in: as many columns as fit, 13rem wide at least, and they share the row. */
+/**
+ * The list the stat cards sit in: two columns on phones so the figures stay on the first screen,
+ * then as many columns of 13rem or more as fit. Empty tracks stay empty, so a lone card keeps
+ * the size of a card instead of stretching across the row.
+ */
 export function StatGrid({
   label,
   children,
@@ -20,7 +24,7 @@ export function StatGrid({
   return (
     <ul
       aria-label={label}
-      className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13rem),1fr))] gap-3"
+      className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(13rem,1fr))]"
     >
       {children}
     </ul>
@@ -65,7 +69,7 @@ export function StatCard({
         <span className="min-w-0 break-words sm:min-h-10">{label}</span>
       </span>
       {error === undefined ? (
-        <span className={`text-3xl font-semibold ${TONE[tone]}`}>{value}</span>
+        <span className={`text-2xl font-semibold sm:text-3xl ${TONE[tone]}`}>{value}</span>
       ) : (
         <span role="alert" className="text-sm text-critical-fg">
           {error}
@@ -74,7 +78,8 @@ export function StatCard({
       <span className="text-xs text-fg-muted">{scope}</span>
     </>
   );
-  const frame = 'flex w-full flex-col gap-2 rounded-lg border border-line bg-surface p-4';
+  const frame =
+    'flex w-full min-w-0 flex-col gap-1 rounded-lg border border-line bg-surface p-3 sm:gap-2 sm:p-4';
   return (
     <li className="flex">
       {error === undefined ? (
@@ -114,7 +119,7 @@ export function DashboardCard({
 }: DashboardCardProps) {
   return (
     <section aria-labelledby={id} className="min-w-0 rounded-lg border border-line bg-surface">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 pt-4">
+      <div className="flex items-baseline justify-between gap-x-4 px-4 pt-4">
         <div className="flex min-w-0 flex-col gap-0.5">
           <h2 id={id} className="break-words text-lg font-semibold text-fg">
             {title}
@@ -122,7 +127,10 @@ export function DashboardCard({
           {scope === undefined ? null : <p className="text-xs text-fg-muted">{scope}</p>}
         </div>
         {action === undefined || error !== undefined ? null : (
-          <a className="text-sm font-medium text-link underline" href={action.href}>
+          <a
+            className="shrink-0 whitespace-nowrap text-sm font-medium text-link underline"
+            href={action.href}
+          >
             {action.label}
           </a>
         )}

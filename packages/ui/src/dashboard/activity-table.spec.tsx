@@ -11,12 +11,12 @@ interface Row {
 
 const columns: ActivityColumn<Row>[] = [
   { id: 'name', header: 'Name', kind: 'title', cell: (r) => r.name },
-  { id: 'status', header: 'Status', kind: 'corner', width: 'w-32', cell: (r) => r.status },
+  { id: 'status', header: 'Status', kind: 'corner', size: 'status', cell: (r) => r.status },
   {
     id: 'total',
     header: 'Total',
     kind: 'labelled',
-    width: 'w-32',
+    size: 'figure',
     align: 'end',
     cell: (r) => r.total,
   },
@@ -32,7 +32,8 @@ describe('ActivityTable', () => {
     expect(html).toContain('data-label="Total"');
     expect(html).not.toContain('data-label="Name"');
     expect(html).toContain('lg:table-fixed');
-    expect(html).toContain('<col class="w-32"/>');
+    expect(html).toContain('<col class="w-44"/>');
+    expect(html).toContain('<col class="w-40"/>');
     expect(html).toContain('Order one');
   });
 

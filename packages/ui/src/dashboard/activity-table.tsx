@@ -10,11 +10,17 @@ export interface ActivityColumn<Row> {
    * column name on a phone.
    */
   readonly kind: 'title' | 'corner' | 'labelled';
-  /** A width class for the column from 1024 px (`w-40`); the title column has none. */
-  readonly width?: string;
+  /**
+   * The width of the column from 1024 px, from one shared set so the tables of sibling cards
+   * line up: `status` (a badge), `text` (a short label), `figure` (a number or amount, set with
+   * `align: 'end'`) and `date`. The title column has none and takes what is left.
+   */
+  readonly size?: 'status' | 'text' | 'figure' | 'date';
   readonly align?: 'start' | 'end';
   readonly cell: (row: Row) => ReactNode;
 }
+
+const SIZE = { status: 'w-44', text: 'w-44', figure: 'w-40', date: 'w-40' } as const;
 
 /**
  * The latest rows of something, in a dashboard card: a table from 1024 px, a stack of labelled
@@ -37,7 +43,10 @@ export function ActivityTable<Row>({
       <caption className="sr-only">{caption}</caption>
       <colgroup className="max-lg:hidden">
         {columns.map((column) => (
-          <col key={column.id} className={column.width} />
+          <col
+            key={column.id}
+            className={column.size === undefined ? undefined : SIZE[column.size]}
+          />
         ))}
       </colgroup>
       <thead className={CARD_TABLE.head}>

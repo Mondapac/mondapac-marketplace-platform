@@ -169,21 +169,25 @@ function Applications({ data }: { readonly data: AdminDashboardData }) {
       header: ts('col.store'),
       kind: 'title',
       cell: (row) => (
-        <Name name={row.storeName} fallback={ts('unnamed')} href={`/sellers/${row.sellerId}`} />
+        <Name
+          name={row.storeName}
+          fallback={ts('unnamed')}
+          href={`/sellers/${encodeURIComponent(row.sellerId)}`}
+        />
       ),
     },
     {
       id: 'kind',
       header: ts('col.kind'),
       kind: 'labelled',
-      width: 'w-44',
+      size: 'text',
       cell: (row) => ts(`kind.${known(row.kind, KINDS)}`),
     },
     {
       id: 'submitted',
       header: ts('col.submitted'),
       kind: 'labelled',
-      width: 'w-44',
+      size: 'date',
       cell: (row) => <Time iso={row.submittedAt} />,
     },
   ];
@@ -238,7 +242,7 @@ function Holds({ data }: { readonly data: AdminDashboardData }) {
       id: 'price',
       header: tp('col.price'),
       kind: 'labelled',
-      width: 'w-40',
+      size: 'figure',
       align: 'end',
       cell: (row) => {
         const change = percentChange(row.amount.amount, row.anchorAmount.amount, locale);
@@ -258,7 +262,7 @@ function Holds({ data }: { readonly data: AdminDashboardData }) {
       id: 'submitted',
       header: tp('col.submitted'),
       kind: 'labelled',
-      width: 'w-36',
+      size: 'date',
       cell: (row) => <Time iso={row.submittedAt} />,
     },
   ];
@@ -308,14 +312,14 @@ function Offers({ data }: { readonly data: AdminDashboardData }) {
       id: 'seller',
       header: t('offers.col.seller'),
       kind: 'labelled',
-      width: 'w-40',
+      size: 'text',
       cell: (row) => <span title={row.sellerId}>{shortId(row.sellerId)}</span>,
     },
     {
       id: 'submitted',
       header: t('offers.col.submitted'),
       kind: 'labelled',
-      width: 'w-36',
+      size: 'date',
       cell: (row) => <Time iso={row.submittedAt} />,
     },
   ];
@@ -358,7 +362,7 @@ function Accounts({ data }: { readonly data: AdminDashboardData }) {
           <Name
             name={row.sellerName}
             fallback={tp('unnamed')}
-            href={`/payout-accounts/${row.sellerId}`}
+            href={`/payout-accounts/${encodeURIComponent(row.sellerId)}`}
           />
           <div className="text-fg-muted" title={row.sellerId}>
             {shortId(row.sellerId)}
@@ -370,14 +374,14 @@ function Accounts({ data }: { readonly data: AdminDashboardData }) {
       id: 'status',
       header: tp('col.status'),
       kind: 'corner',
-      width: 'w-36',
+      size: 'status',
       cell: (row) => <AccountStatusBadge status={row.status} />,
     },
     {
       id: 'requirements',
       header: tp('col.requirements'),
       kind: 'labelled',
-      width: 'w-40',
+      size: 'figure',
       align: 'end',
       cell: (row) => (
         <span className="tabular-nums">
@@ -387,6 +391,13 @@ function Accounts({ data }: { readonly data: AdminDashboardData }) {
           ) : null}
         </span>
       ),
+    },
+    {
+      id: 'checked',
+      header: tp('col.last-read-utc'),
+      kind: 'labelled',
+      size: 'date',
+      cell: (row) => <Time iso={row.lastReadAt} />,
     },
   ];
   return (
@@ -426,7 +437,7 @@ function Orders({ data }: { readonly data: AdminDashboardData }) {
       cell: (row) => (
         <a
           className="font-medium text-link underline"
-          href={`/orders/${row.orderId}`}
+          href={`/orders/${encodeURIComponent(row.orderId)}`}
           title={row.orderId}
         >
           {shortId(row.orderId)}
@@ -437,7 +448,7 @@ function Orders({ data }: { readonly data: AdminDashboardData }) {
       id: 'status',
       header: t('orders.col.status'),
       kind: 'corner',
-      width: 'w-44',
+      size: 'status',
       cell: (row) => {
         const status = known(row.status, ORDER_STATUSES);
         return <Badge tone={ORDER_TONE[status] ?? 'neutral'}>{t(`orders.status.${status}`)}</Badge>;
@@ -447,7 +458,7 @@ function Orders({ data }: { readonly data: AdminDashboardData }) {
       id: 'total',
       header: t('orders.col.total'),
       kind: 'labelled',
-      width: 'w-36',
+      size: 'figure',
       align: 'end',
       cell: (row) => <span className="tabular-nums">{formatMoney(row.total, locale)}</span>,
     },
@@ -455,7 +466,7 @@ function Orders({ data }: { readonly data: AdminDashboardData }) {
       id: 'placed',
       header: t('orders.col.placed'),
       kind: 'labelled',
-      width: 'w-36',
+      size: 'date',
       cell: (row) => <Time iso={row.createdAt} />,
     },
   ];

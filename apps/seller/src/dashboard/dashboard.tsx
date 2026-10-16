@@ -182,7 +182,7 @@ function Orders({ data }: { readonly data: SellerDashboardData }) {
       cell: (row) => (
         <a
           className="font-medium text-link underline"
-          href={`/orders/${row.sellerOrderId}`}
+          href={`/orders/${encodeURIComponent(row.sellerOrderId)}`}
           title={row.sellerOrderId}
         >
           {row.sellerOrderId.slice(-8).toUpperCase()}
@@ -193,7 +193,7 @@ function Orders({ data }: { readonly data: SellerDashboardData }) {
       id: 'status',
       header: t('orders.col.status'),
       kind: 'corner',
-      width: 'w-36',
+      size: 'status',
       cell: (row) => {
         const status = known(row.fulfilment, FULFILMENTS);
         return (
@@ -205,7 +205,7 @@ function Orders({ data }: { readonly data: SellerDashboardData }) {
       id: 'total',
       header: t('orders.col.total'),
       kind: 'labelled',
-      width: 'w-36',
+      size: 'figure',
       align: 'end',
       cell: (row) => (
         <span className="tabular-nums">
@@ -217,7 +217,7 @@ function Orders({ data }: { readonly data: SellerDashboardData }) {
       id: 'paid',
       header: t('orders.col.paid'),
       kind: 'labelled',
-      width: 'w-36',
+      size: 'date',
       cell: (row) => <Time iso={row.paidAt} />,
     },
   ];
@@ -260,7 +260,10 @@ function Offers({ data }: { readonly data: SellerDashboardData }) {
       kind: 'title',
       cell: (row) => (
         <>
-          <a className="font-medium text-link underline" href={`/offers/${row.offerId}`}>
+          <a
+            className="font-medium text-link underline"
+            href={`/offers/${encodeURIComponent(row.offerId)}`}
+          >
             {row.product.name ?? t('unnamed-product')}
           </a>
           <div className="text-fg-muted">{row.sellerSku}</div>
@@ -271,7 +274,7 @@ function Offers({ data }: { readonly data: SellerDashboardData }) {
       id: 'status',
       header: t('offers.col.status'),
       kind: 'corner',
-      width: 'w-44',
+      size: 'status',
       cell: (row) => {
         const status = known(row.status, OFFER_STATUSES);
         return <Badge tone={OFFER_TONE[status] ?? 'neutral'}>{tc(`status.${status}`)}</Badge>;
@@ -281,7 +284,7 @@ function Offers({ data }: { readonly data: SellerDashboardData }) {
       id: 'submitted',
       header: tc('col.submitted'),
       kind: 'labelled',
-      width: 'w-36',
+      size: 'date',
       cell: (row) => (row.submittedAt === null ? '-' : <Time iso={row.submittedAt} />),
     },
   ];
@@ -325,7 +328,7 @@ function Earnings({ data }: { readonly data: SellerDashboardData }) {
       id: 'amount',
       header: t('earnings.col.amount'),
       kind: 'labelled',
-      width: 'w-40',
+      size: 'figure',
       align: 'end',
       cell: (row) => (
         <span
@@ -340,7 +343,7 @@ function Earnings({ data }: { readonly data: SellerDashboardData }) {
       id: 'when',
       header: t('earnings.col.when'),
       kind: 'labelled',
-      width: 'w-36',
+      size: 'date',
       cell: (row) => <Time iso={row.occurredAt} />,
     },
   ];

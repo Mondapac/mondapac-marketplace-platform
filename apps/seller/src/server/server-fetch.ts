@@ -7,6 +7,7 @@ import { panelHostFor, upstreamHeaders } from './bff.ts';
 export type ServerGet<T> =
   | { readonly kind: 'ok'; readonly body: T }
   | { readonly kind: 'signed-out' }
+  | { readonly kind: 'forbidden' }
   | { readonly kind: 'not-found' }
   | { readonly kind: 'unavailable' };
 
@@ -41,6 +42,7 @@ export async function serverGet<T>(
       redirect: 'manual',
     });
     if (response.status === 401) return { kind: 'signed-out' };
+    if (response.status === 403) return { kind: 'forbidden' };
     if (response.status === 404) return { kind: 'not-found' };
     if (!response.ok) return { kind: 'unavailable' };
     return { kind: 'ok', body: (await response.json()) as T };

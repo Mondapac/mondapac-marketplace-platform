@@ -323,6 +323,17 @@ describe('loadSellerDashboard', () => {
     expect(data.offers?.kind).toBe('ok');
   });
 
+  it('hides a widget the API refuses instead of showing an error', async () => {
+    mocks.get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.startsWith('commission-payouts') ? { kind: 'forbidden' } : { kind: 'ok', body: {} },
+      ),
+    );
+    const data = await loadSellerDashboard(session(KEYS));
+    expect(data.ledger).toBeNull();
+    expect(data.orders?.kind).toBe('ok');
+  });
+
   it('sends a rejected session to the session-ended page', async () => {
     mocks.get.mockResolvedValue({ kind: 'signed-out' });
     await expect(loadSellerDashboard(session(KEYS))).rejects.toThrow('redirect:/session-ended');
