@@ -29,7 +29,7 @@ import { openSession } from '../../src/modules/identity/domain/session';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
-import { gate, marketOf } from './persistence-support';
+import { gate, holdRetriesUntil, marketOf } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
 // Identity slice 11 on PostgreSQL (identity design 5.3, 5.5, HF8; data design 5.1), for both
@@ -206,10 +206,23 @@ describe.each(TEST_MARKETS)('the seller team in market %s (database, slice 11)',
     const one = await member(sellerId, 'seller-owner');
     const two = await member(sellerId, 'seller-owner');
     const spy = bothCountFirst();
+    const oneSettled = gate();
+    const restorePause = holdRetriesUntil(app.get(UNIT_OF_WORK), oneSettled.opened);
 
-    const results = await Promise.all([first(sellerId, one, two), second(sellerId, one, two)]);
-    const counts = spy.mock.calls.length;
-    spy.mockRestore();
+    let results: Result<unknown, unknown>[];
+    let counts: number;
+    try {
+      results = await Promise.all(
+        [first(sellerId, one, two), second(sellerId, one, two)].map((run) =>
+          run.finally(() => oneSettled.open()),
+        ),
+      );
+      counts = spy.mock.calls.length;
+    } finally {
+      // Restored even when a unit throws, so the next test spies on the real repository.
+      spy.mockRestore();
+      restorePause();
+    }
 
     expect(counts).toBe(2);
     expect(results.filter((r) => r.ok)).toHaveLength(1);
