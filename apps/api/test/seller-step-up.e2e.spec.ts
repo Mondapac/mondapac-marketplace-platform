@@ -188,6 +188,29 @@ describe.each(TEST_MARKETS)('seller two-step rules per action in market %s', (co
     expect(noToken.body).toEqual({ statusCode: 403, code: 'request.csrf' });
   });
 
+  it('guards the team invitation by default: refused without a code, open for five minutes after one', async () => {
+    const { headers, secret } = await ownerWithFactor();
+    const invite = () =>
+      http()
+        .post('/identity/seller/team/invitations')
+        .set({ ...base(), ...headers })
+        .send({ email: 'new.member@example.com', roleId: '0199dddd-0000-7000-8000-000000000001' });
+    const refused = await invite();
+    expect(refused.status).toBe(403);
+    expect(refused.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'identity.team.invite-remove' },
+    });
+    clock.advance(STEP);
+    await post(
+      'step-up/verify',
+      { actionKey: 'identity.team.invite-remove', code: codeFor(secret) },
+      headers,
+    ).expect(200);
+    expect((await invite()).status).not.toBe(403);
+  });
+
   it('lets an unguarded action through, then guards it once the Owner turns the rule on', async () => {
     const { headers, secret } = await ownerWithFactor();
     expect((await guarded(headers)).status).toBe(200);
@@ -213,6 +236,11 @@ describe.each(TEST_MARKETS)('seller two-step rules per action in market %s', (co
     });
     expect(rowOf((await policy(headers)).body, ACTION)).toMatchObject({ required: true });
     expect(fakes.audits.map((a) => a.action)).toContain('identity.seller-step-up-policy.changed');
+    expect(fakes.audits.at(-1)).toMatchObject({
+      action: 'identity.seller-step-up-policy.changed',
+      before: { actionKey: ACTION, required: false },
+      after: { actionKey: ACTION, required: true },
+    });
 
     const refused = await guarded(headers);
     expect(refused.status).toBe(403);

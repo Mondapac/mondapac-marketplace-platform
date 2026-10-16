@@ -298,6 +298,7 @@ export class SellerTeamController {
   }
 
   @Post('invitations/:invitationId/resend')
+  @RequiresStepUp('identity.team.invite-remove')
   @HttpCode(200)
   @ReadsSession()
   @ApiOperation({
@@ -344,6 +345,7 @@ export class SellerTeamController {
   }
 
   @Post('invitations/:invitationId/revoke')
+  @RequiresStepUp('identity.team.invite-remove')
   @HttpCode(200)
   @ReadsSession()
   @ApiOperation({

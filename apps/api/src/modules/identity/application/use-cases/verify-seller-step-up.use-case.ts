@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
+import { isActingAsSession } from '../sellers/access-decision-reads';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import {
   UseCase,
@@ -73,7 +74,9 @@ export class VerifySellerStepUp extends UseCase<
     input: VerifySellerStepUpInput,
   ): Promise<Result<VerifySellerStepUpOutput, VerifySellerStepUpFailure>> {
     const { market, actor } = context;
-    if (actor.kind !== 'authenticated') return err({ code: 'access.denied' });
+    if (actor.kind !== 'authenticated' || isActingAsSession(actor)) {
+      return err({ code: 'access.denied' });
+    }
     const action =
       typeof input?.actionKey === 'string'
         ? this.deps.stepUpActions.get(input.actionKey)

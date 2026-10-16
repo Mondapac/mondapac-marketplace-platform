@@ -596,7 +596,6 @@ model IdentityStepUpProof {
   session    IdentitySession @relation(fields: [marketId, sessionId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
 
   @@id([marketId, sessionId, actionKey])
-  @@index([sessionId])
   @@map("step_up_proofs")
   @@schema("identity")
 }

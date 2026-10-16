@@ -27,8 +27,15 @@ export class StepUpRegistryError extends Error {
 @Injectable()
 export class StepUpActionRegistry {
   readonly #actions = new Map<string, StepUpActionDeclaration>();
+  #sealed = false;
+
+  /** Nest calls this once every module has registered: later registration is a programmer error. */
+  onApplicationBootstrap(): void {
+    this.#sealed = true;
+  }
 
   register(module: string, actions: readonly StepUpActionDeclaration[]): void {
+    if (this.#sealed) throw new StepUpRegistryError('The step-up registry is sealed');
     if (!MODULE_NAME.test(module)) throw new StepUpRegistryError(`Malformed module "${module}"`);
     for (const action of actions) {
       if (!ACTION_KEY.test(action.key)) {

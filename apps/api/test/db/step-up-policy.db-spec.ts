@@ -2,7 +2,6 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
-import { testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import {
   SESSION_REPOSITORY,

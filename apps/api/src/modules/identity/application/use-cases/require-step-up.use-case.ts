@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
-import { err, ok } from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import { isActingAsSession } from '../sellers/access-decision-reads';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
@@ -73,9 +74,9 @@ export class RequireStepUp extends UseCase<
       });
       return err({ code: 'access.unavailable' });
     }
-    if (actor.population !== 'seller' || actor.sellerId === null) {
-      return ok({ code: 'step-up.satisfied' });
-    }
+    if (isActingAsSession(actor)) return err({ code: 'access.denied' });
+    if (actor.population !== 'seller') return ok({ code: 'step-up.satisfied' });
+    if (actor.sellerId === null) return err({ code: 'access.denied' });
     const { sellerId, accountId, sessionId } = actor;
     return this.deps.unitOfWork.run<{ readonly code: 'step-up.satisfied' }, StepUpFailure>(
       market,
@@ -89,6 +90,10 @@ export class RequireStepUp extends UseCase<
         const verifiedAt = await this.deps.stepUp.proofOf(market, sessionId, action.key);
         if (
           verifiedAt === null ||
+          // A proof given before the current factor was activated does not count: removing or
+          // replacing the factor ends every proof made with the old one.
+          (factor.state.activatedAt !== null &&
+            Temporal.Instant.compare(verifiedAt, factor.state.activatedAt) < 0) ||
           !proofIsFresh(verifiedAt, this.deps.clock.now(), STEP_UP_PROOF_MINUTES)
         ) {
           return err({ code: 'second-factor.required', actionKey: action.key });

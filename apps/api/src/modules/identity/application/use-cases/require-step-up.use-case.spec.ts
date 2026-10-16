@@ -35,6 +35,7 @@ describe.each(['AU', 'ZZ'] as const)('RequireStepUp in market %s', (code) => {
   let rules: Map<string, boolean>;
   let proofs: Map<string, Temporal.Instant>;
   let factorActive: boolean | null;
+  let factorActivatedAt: Temporal.Instant | null;
 
   const stepUp: StepUpRepository = {
     policiesOf: () => Promise.resolve([]),
@@ -44,7 +45,12 @@ describe.each(['AU', 'ZZ'] as const)('RequireStepUp in market %s', (code) => {
     recordProof: () => Promise.resolve(),
   };
   const factors = {
-    findByAccount: () => Promise.resolve(factorActive === null ? null : { isActive: factorActive }),
+    findByAccount: () =>
+      Promise.resolve(
+        factorActive === null
+          ? null
+          : { isActive: factorActive, state: { activatedAt: factorActivatedAt } },
+      ),
   } as unknown as SecondFactorRepository;
   const useCase = new RequireStepUp(openGate(), {
     unitOfWork: { run: (_m: unknown, work: () => Promise<unknown>) => work() } as never,
@@ -70,6 +76,18 @@ describe.each(['AU', 'ZZ'] as const)('RequireStepUp in market %s', (code) => {
     rules = new Map();
     proofs = new Map();
     factorActive = true;
+    factorActivatedAt = NOW.subtract({ hours: 1 });
+  });
+
+  it('does not accept a proof made before the current factor was activated', async () => {
+    rules.set('pricing.price.change', true);
+    proofs.set('pricing.price.change', NOW.subtract({ minutes: 2 }));
+    factorActivatedAt = NOW.subtract({ minutes: 1 });
+
+    expect(await run(seller(), 'pricing.price.change')).toEqual({
+      ok: false,
+      error: { code: 'second-factor.required', actionKey: 'pricing.price.change' },
+    });
   });
 
   it('lets an action through that the shop does not guard', async () => {

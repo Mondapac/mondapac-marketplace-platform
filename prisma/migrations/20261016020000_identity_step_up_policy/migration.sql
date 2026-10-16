@@ -2,7 +2,7 @@
 SET lock_timeout = '5s';
 
 -- Seller OTP policy (per-action two-step code): the seller's own rules, and the fresh-code proofs
--- of a session. New tables only; nothing existing changes.
+-- of a session. New tables, plus one unique index on identity.sessions(market_id, id) that the proofs' composite foreign key needs (it blocks session writes while it builds, guarded by lock_timeout; sessions is small).
 
 -- CreateTable
 CREATE TABLE "identity"."seller_step_up_policies" (
@@ -33,7 +33,6 @@ CREATE TABLE "identity"."step_up_proofs" (
 CREATE UNIQUE INDEX "sessions_market_id_id_key" ON "identity"."sessions"("market_id", "id");
 
 -- CreateIndex
-CREATE INDEX "step_up_proofs_session_id_idx" ON "identity"."step_up_proofs"("session_id");
 
 -- AddForeignKey
 ALTER TABLE "identity"."seller_step_up_policies" ADD CONSTRAINT "seller_step_up_policies_market_id_seller_id_fkey" FOREIGN KEY ("market_id", "seller_id") REFERENCES "identity"."seller_access"("market_id", "seller_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
