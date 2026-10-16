@@ -20,7 +20,14 @@ export type ServerGet<T> =
  */
 export async function serverGet<T>(
   path: string,
-  options: { readonly anonymous?: boolean } = {},
+  options: {
+    readonly anonymous?: boolean;
+    /**
+     * A read the API takes as a POST (the search term is a body field): the JSON body and the
+     * session's CSRF token, which an unsafe method needs although nothing changes.
+     */
+    readonly post?: { readonly body: unknown; readonly csrfToken: string };
+  } = {},
 ): Promise<ServerGet<T>> {
   const config = panelConfig();
   const incoming = await headers();
@@ -31,6 +38,16 @@ export async function serverGet<T>(
       // An anonymous read (a public route) never carries the visitor's session cookie.
       cookie: options.anonymous === true ? '' : (incoming.get('cookie') ?? ''),
       accept: 'application/json',
+      ...(options.post === undefined
+        ? {}
+        : {
+            'content-type': 'application/json',
+            'x-csrf-token': options.post.csrfToken,
+            // The API refuses an unsafe method of a panel route without both headers a browser
+            // of the panel's own host would send.
+            origin: host.origin,
+            'sec-fetch-site': 'same-origin',
+          }),
       // Set by server.mjs on every request; the signer reads only this name (ADR-0037).
       ...(incoming.has(INTERNAL_ADDRESS_HEADER)
         ? { [INTERNAL_ADDRESS_HEADER]: incoming.get(INTERNAL_ADDRESS_HEADER) ?? '' }
@@ -39,7 +56,9 @@ export async function serverGet<T>(
   });
   try {
     const response = await fetch(`${config.apiBaseUrl}/${path}`, {
+      method: options.post === undefined ? 'GET' : 'POST',
       headers: upstreamHeaders(request, host, config),
+      ...(options.post === undefined ? {} : { body: JSON.stringify(options.post.body) }),
       cache: 'no-store',
       redirect: 'manual',
     });

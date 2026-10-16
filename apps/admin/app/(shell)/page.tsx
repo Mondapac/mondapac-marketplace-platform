@@ -1,8 +1,14 @@
-import { LoadError, ShortcutGrid, visibleNavItems } from '@mondapac/ui';
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
-import { adminNav } from '../../src/nav.ts';
+import { AdminDashboard } from '../../src/dashboard/dashboard.tsx';
+import { loadAdminDashboard } from '../../src/dashboard/load.ts';
 import { AdminShell } from '../../src/server/admin-shell.tsx';
 import { requireSession } from '../../src/server/session.ts';
+
+export async function generateMetadata() {
+  const t = await getTranslations();
+  return { title: t('home.title') };
+}
 
 export default async function HomePage() {
   const gate = await requireSession();
@@ -10,31 +16,15 @@ export default async function HomePage() {
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
+  const data = await loadAdminDashboard(gate.session);
   return (
     <AdminShell session={gate.session} activeId="home" title={t('home.title')}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-1">
-          <h1 className="break-words text-2xl font-semibold">
-            {t('home.welcome', { name: gate.session.displayName })}
-          </h1>
-          <p className="text-fg-muted">{t('home.intro')}</p>
+          <h1 className="break-words text-2xl font-semibold">{t('home.title')}</h1>
+          <p className="text-fg-muted">{t('home.intro', { name: gate.session.displayName })}</p>
         </div>
-        {/* The sections this person may open, as in the menu. */}
-        <ShortcutGrid
-          label={t('home.shortcuts')}
-          items={visibleNavItems(adminNav, new Set(gate.session.permissionKeys))
-            .filter((item) => item.id !== 'home')
-            .map((item) => {
-              const key = item.labelKey.replace(/^nav\./, '');
-              return {
-                id: item.id,
-                href: item.href,
-                icon: item.icon,
-                title: t(item.labelKey),
-                body: t(`home.shortcut.${key}`),
-              };
-            })}
-        />
+        <AdminDashboard data={data} permissionKeys={gate.session.permissionKeys} />
       </div>
     </AdminShell>
   );
