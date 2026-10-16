@@ -2,7 +2,7 @@
 // The responsive standard of the panels (docs: frontend-next handoff): the phone drawer and
 // bottom bar of the shell, and a source check that no table can widen the page.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { ActionRow, AppShell, MemberColumns, Menu } from '@mondapac/ui';
+import { ActionRow, AppShell, MemberColumns, Menu, Topbar } from '@mondapac/ui';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { act } from 'react';
@@ -271,7 +271,7 @@ describe('admin customer page', () => {
     );
     expect(text).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
     expect(text).toContain('max-w-(--mp-size-form-max)');
-    expect(text).toContain('flex flex-col gap-3 sm:flex-row');
+    expect(text).toMatch(/flex[^"]*flex-col gap-3 sm:flex-row/);
     expect(text).toContain('<ActionRow>');
     // Long addresses wrap inside the value column instead of widening the page.
     expect(text).toContain('wrap-anywhere');
@@ -348,5 +348,31 @@ describe('team pages', () => {
     expect(read('../src/team/row-actions.tsx')).toContain('<Dialog');
     expect(read('../src/team/invite-member-button.tsx')).toContain('w-full sm:w-auto');
     expect(read('../src/auth/accept-invitation-form.tsx')).toContain('min-h-12');
+  });
+});
+
+describe('topbar', () => {
+  it('names the page on phones and shows the path to it from tablets up, without a second h1', () => {
+    render(
+      <Topbar
+        pageTitle="Stock locations"
+        trail={[
+          { label: 'Home', href: '/' },
+          { label: 'Settings', href: '/account/security' },
+        ]}
+        trailLabel="Breadcrumb"
+      />,
+    );
+    expect(screen.queryByRole('heading')).toBeNull();
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(nav.className).toContain('hidden');
+    expect(nav.className).toContain('md:block');
+    expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe(
+      '/account/security',
+    );
+    const current = nav.querySelector('[aria-current="page"]');
+    expect(current?.textContent).toBe('Stock locations');
+    const phoneTitle = screen.getAllByText('Stock locations').find((node) => node.tagName === 'P');
+    expect(phoneTitle?.className).toContain('md:hidden');
   });
 });

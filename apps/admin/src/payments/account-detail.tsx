@@ -17,7 +17,7 @@ export function AccountDetail({ account }: { readonly account: ConnectedAccountD
     { label: t('field.created'), value: formatInstant(account.createdAt) },
   ];
   return (
-    <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <a
         className="inline-flex min-h-12 items-center self-start font-medium text-link underline"
         href="/payout-accounts"

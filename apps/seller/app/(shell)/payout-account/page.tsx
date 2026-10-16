@@ -23,7 +23,7 @@ export default async function PayoutAccountPage({
   }
   if (page.kind === 'no-access') {
     return (
-      <SellerShell session={page.session} activeId="s_settings" title={t('settings.title')}>
+      <SellerShell session={page.session} activeId="s_settings" title={t('settings.tab.payout')}>
         <SettingsHeader active="payout" permissionKeys={page.session.permissionKeys} t={t} />
         <h2 className="mb-2 text-lg font-semibold">{t('payout.no-access.title')}</h2>
         <p className="text-fg-muted">{t('payout.no-access.body')}</p>
@@ -32,7 +32,7 @@ export default async function PayoutAccountPage({
   }
   const { stripe } = await searchParams;
   return (
-    <SellerShell session={page.session} activeId="s_settings" title={t('settings.title')}>
+    <SellerShell session={page.session} activeId="s_settings" title={t('settings.tab.payout')}>
       <SettingsHeader active="payout" permissionKeys={page.session.permissionKeys} t={t} />
       <PayoutAccountView
         initial={page.account}

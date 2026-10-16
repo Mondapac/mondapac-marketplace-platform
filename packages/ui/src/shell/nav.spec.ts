@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sidebarCollapsed, visibleNavItems, type NavConfig } from './nav.ts';
+import { navTrail, sidebarCollapsed, visibleNavItems, type NavConfig } from './nav.ts';
 
 const config: NavConfig = {
   items: [
@@ -51,5 +51,28 @@ describe('sidebarCollapsed', () => {
     expect(sidebarCollapsed('expanded')).toBe(false);
     expect(sidebarCollapsed(undefined)).toBe(false);
     expect(sidebarCollapsed('anything')).toBe(false);
+  });
+});
+
+describe('navTrail', () => {
+  const items = [
+    { id: 'home', labelKey: 'nav.home', icon: 'home', href: '/' },
+    { id: 'settings', labelKey: 'nav.settings', icon: 'home', href: '/settings' },
+  ] as const;
+  const label = (key: string) => ({ 'nav.home': 'Home', 'nav.settings': 'Settings' })[key] ?? key;
+
+  it('leads from home through the active item to a tab page', () => {
+    expect(navTrail(items, 'settings', 'Security', label)).toEqual([
+      { label: 'Home', href: '/' },
+      { label: 'Settings', href: '/settings' },
+    ]);
+  });
+
+  it('drops the active item when it is the page itself', () => {
+    expect(navTrail(items, 'settings', 'Settings', label)).toEqual([{ label: 'Home', href: '/' }]);
+  });
+
+  it('is empty on the home page', () => {
+    expect(navTrail(items, 'home', 'Home', label)).toEqual([]);
   });
 });

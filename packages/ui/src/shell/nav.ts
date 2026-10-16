@@ -41,3 +41,22 @@ export const SIDEBAR_COLLAPSED = 'collapsed';
 export function sidebarCollapsed(value: string | undefined): boolean {
   return value === SIDEBAR_COLLAPSED;
 }
+
+/**
+ * The breadcrumb above a page: the panel's first item (its home) and the active item, each only
+ * when it is not the page itself. `label` resolves a label key through the app's messages.
+ */
+export function navTrail(
+  items: readonly NavItem[],
+  activeId: string,
+  pageTitle: string,
+  label: (key: string) => string,
+): readonly { label: string; href: string }[] {
+  const trail: { label: string; href: string }[] = [];
+  for (const item of [items[0], items.find((candidate) => candidate.id === activeId)]) {
+    if (item === undefined || trail.some((crumb) => crumb.href === item.href)) continue;
+    const text = label(item.labelKey);
+    if (text !== pageTitle) trail.push({ label: text, href: item.href });
+  }
+  return trail;
+}

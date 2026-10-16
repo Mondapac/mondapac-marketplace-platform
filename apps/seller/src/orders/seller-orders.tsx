@@ -68,8 +68,8 @@ export function SellerOrders({
   }
 
   return (
-    <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
-      <p className="text-fg-muted">{t('orders.intro')}</p>
+    <div className="flex flex-col gap-4">
+      <p className="max-w-(--mp-size-form-max) text-fg-muted">{t('orders.intro')}</p>
       {fee === null ? null : (
         <Banner tone="info">
           {t('orders.fee', { fee: formatMinor(fee.amount, fee.currency) })}
@@ -212,7 +212,7 @@ function OrderCard({
           </dl>
           {order.fulfilment === 'to-ship' && canShip ? (
             <form
-              className="flex flex-col gap-3 border-t border-line pt-3"
+              className="flex flex-col gap-3 border-t border-line pt-3 *:max-w-(--mp-size-form-max)"
               onSubmit={ship}
               noValidate
             >

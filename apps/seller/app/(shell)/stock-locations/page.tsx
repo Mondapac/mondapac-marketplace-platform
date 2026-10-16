@@ -19,7 +19,7 @@ export default async function StockLocationsPage() {
   }
   if (page.kind === 'no-access') {
     return (
-      <SellerShell session={page.session} activeId="s_settings" title={t('settings.title')}>
+      <SellerShell session={page.session} activeId="s_settings" title={t('settings.tab.locations')}>
         <SettingsHeader active="locations" permissionKeys={page.session.permissionKeys} t={t} />
         <h2 className="mb-2 text-lg font-semibold">{t('catalog.no-access.title')}</h2>
         <p className="text-fg-muted">{t('catalog.no-access.body')}</p>
@@ -27,7 +27,7 @@ export default async function StockLocationsPage() {
     );
   }
   return (
-    <SellerShell session={page.session} activeId="s_settings" title={t('settings.title')}>
+    <SellerShell session={page.session} activeId="s_settings" title={t('settings.tab.locations')}>
       <SettingsHeader active="locations" permissionKeys={page.session.permissionKeys} t={t} />
       <StockLocations
         initial={page.view}

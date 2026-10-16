@@ -149,7 +149,11 @@ export function TwoStepPanel({
     <Banner tone="critical">{e(`error.${error.key}`, error.values)}</Banner>
   ) : null;
   const form = (onSubmit: (event: FormEvent) => Promise<void>, children: ReactNode) => (
-    <form onSubmit={(event) => void onSubmit(event)} noValidate className="flex flex-col gap-4">
+    <form
+      onSubmit={(event) => void onSubmit(event)}
+      noValidate
+      className="flex max-w-(--mp-size-form-max) flex-col gap-4"
+    >
       {problem}
       {children}
     </form>
@@ -332,9 +336,5 @@ export function TwoStepPanel({
     );
   }
 
-  return (
-    <div className="max-w-(--mp-size-form-max)">
-      <Card>{body}</Card>
-    </div>
-  );
+  return <Card>{body}</Card>;
 }

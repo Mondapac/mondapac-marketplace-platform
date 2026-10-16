@@ -140,8 +140,8 @@ export function PayoutAccountView({
   }
 
   return (
-    <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
-      <p className="text-fg-muted">{t('intro')}</p>
+    <div className="flex flex-col gap-4">
+      <p className="max-w-(--mp-size-form-max) text-fg-muted">{t('intro')}</p>
       {back === 'return' ? (
         <Banner tone="info" title={t('back.return.title')}>
           {t('back.return.body')}
@@ -260,7 +260,11 @@ export function PayoutAccountView({
           </>
         }
       >
-        <form onSubmit={(event) => void submit(event)} noValidate className="flex flex-col gap-4">
+        <form
+          onSubmit={(event) => void submit(event)}
+          noValidate
+          className="flex max-w-(--mp-size-form-max) flex-col gap-4"
+        >
           <p>{t('dialog.body')}</p>
           {problem ? (
             <Banner tone="critical">

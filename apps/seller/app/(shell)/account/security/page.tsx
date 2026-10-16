@@ -22,7 +22,7 @@ export default async function SecurityPage() {
   // Two-step verification is for an approved seller; the others finish their file first.
   if (session.sellerAccessState !== 'approved') redirect(SETUP_ROOT);
   return (
-    <SellerShell session={session} activeId="s_settings" title={t('settings.title')}>
+    <SellerShell session={session} activeId="s_settings" title={t('settings.tab.security')}>
       <SettingsHeader active="security" permissionKeys={session.permissionKeys} t={t} />
       <TwoStepPanel active={session.secondFactorActive} csrfToken={session.csrfToken} />
     </SellerShell>

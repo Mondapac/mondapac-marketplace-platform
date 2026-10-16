@@ -5,6 +5,7 @@ import {
   Sidebar,
   THEME_COOKIE,
   ThemeMenu,
+  navTrail,
   Topbar,
   sidebarCollapsed,
   themeChoice,
@@ -55,6 +56,8 @@ export async function AdminShell({
       topbar={
         <Topbar
           pageTitle={title}
+          trail={navTrail(items, activeId, title, (key) => t(key))}
+          trailLabel={t('nav.breadcrumb')}
           actions={
             <>
               <ThemeMenu
