@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { Button } from '../form/button.tsx';
 
 /**
@@ -25,8 +26,10 @@ export function RouteLoading({
           aria-hidden="true"
           className="h-(--mp-size-topbar-phone) border-b border-line bg-surface md:h-(--mp-size-topbar)"
         />
-        <main role="status" className="flex min-w-0 flex-1 flex-col gap-4 p-4 sm:p-6">
-          <span className="sr-only">{label}</span>
+        <main aria-busy="true" className="flex min-w-0 flex-1 flex-col gap-4 p-4 sm:p-6">
+          <span role="status" className="sr-only">
+            {label}
+          </span>
           <div aria-hidden="true" className="flex flex-col gap-4 motion-safe:animate-pulse">
             <span className="h-7 w-1/3 rounded-sm bg-muted" />
             <span className="h-4 w-2/3 max-w-(--mp-size-form-max) rounded-sm bg-muted" />
@@ -69,13 +72,19 @@ export function RouteError({
   reference,
   referenceLabel,
 }: RouteErrorProps) {
+  // Focus lands on the message, so keyboard and screen-reader users start there, Try again a Tab
+  // away.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), []);
   return (
     <main className="flex min-h-screen items-center justify-center bg-page p-4">
       <div
         role="alert"
         className="flex w-full max-w-(--mp-size-form-max) flex-col gap-4 rounded-lg border border-line bg-surface p-6"
       >
-        <h1 className="text-xl font-semibold text-fg">{title}</h1>
+        <h1 ref={heading} tabIndex={-1} className="text-xl font-semibold text-fg outline-none">
+          {title}
+        </h1>
         <p className="text-fg-muted">{message}</p>
         {reference !== undefined && referenceLabel !== undefined && (
           <p className="text-sm text-fg-muted">

@@ -388,7 +388,8 @@ describe('topbar', () => {
 describe('route states', () => {
   it('keeps the shell frame while a page loads and names the wait for screen readers', () => {
     const { container } = render(<RouteLoading label="Loading the page" collapsed />);
-    expect(screen.getByRole('status').textContent).toContain('Loading the page');
+    expect(screen.getByRole('status').textContent).toBe('Loading the page');
+    expect(screen.getByRole('main').getAttribute('aria-busy')).toBe('true');
     expect((container.firstChild as HTMLElement).className).toContain(
       'md:grid-cols-[var(--mp-size-sidebar-collapsed)_minmax(0,1fr)]',
     );
@@ -408,9 +409,9 @@ describe('route states', () => {
         referenceLabel="Reference for support:"
       />,
     );
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
-      'This page could not be shown',
-    );
+    const heading = screen.getByRole('heading', { level: 1 });
+    expect(heading.textContent).toBe('This page could not be shown');
+    expect(document.activeElement).toBe(heading);
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(retry).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('link', { name: 'Go to the home page' }).getAttribute('href')).toBe(
