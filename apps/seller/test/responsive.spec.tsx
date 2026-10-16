@@ -2,7 +2,15 @@
 // The responsive standard of the panels (docs: frontend-next handoff): the phone drawer and
 // bottom bar of the shell, and a source check that no table can widen the page.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { ActionRow, AppShell, MemberColumns, Menu, Topbar } from '@mondapac/ui';
+import {
+  ActionRow,
+  AppShell,
+  MemberColumns,
+  Menu,
+  RouteError,
+  RouteLoading,
+  Topbar,
+} from '@mondapac/ui';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { act } from 'react';
@@ -374,5 +382,50 @@ describe('topbar', () => {
     expect(current?.textContent).toBe('Stock locations');
     const phoneTitle = screen.getAllByText('Stock locations').find((node) => node.tagName === 'P');
     expect(phoneTitle?.className).toContain('md:hidden');
+  });
+});
+
+describe('route states', () => {
+  it('keeps the shell frame while a page loads and names the wait for screen readers', () => {
+    const { container } = render(<RouteLoading label="Loading the page" collapsed />);
+    expect(screen.getByRole('status').textContent).toContain('Loading the page');
+    expect((container.firstChild as HTMLElement).className).toContain(
+      'md:grid-cols-[var(--mp-size-sidebar-collapsed)_minmax(0,1fr)]',
+    );
+  });
+
+  it('shows a failed page with a retry, a way home and the support reference, not the error', () => {
+    const retry = vi.fn();
+    render(
+      <RouteError
+        title="This page could not be shown"
+        message="Something went wrong on our side."
+        retryLabel="Try again"
+        onRetry={retry}
+        homeLabel="Go to the home page"
+        homeHref="/"
+        reference="abc123"
+        referenceLabel="Reference for support:"
+      />,
+    );
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'This page could not be shown',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('link', { name: 'Go to the home page' }).getAttribute('href')).toBe(
+      '/',
+    );
+    expect(screen.getByText('abc123')).toBeTruthy();
+  });
+
+  it('gives both panels a loading frame for shell pages and an error page for every route', () => {
+    for (const app of ['admin', 'seller']) {
+      const loading = readFileSync(join(__dirname, `../../${app}/app/(shell)/loading.tsx`), 'utf8');
+      expect(loading, app).toContain('<RouteLoading');
+      const error = readFileSync(join(__dirname, `../../${app}/app/error.tsx`), 'utf8');
+      expect(error, app).toContain('<RouteError');
+      expect(error, app).toContain('onRetry={reset}');
+    }
   });
 });
