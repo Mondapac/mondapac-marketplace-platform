@@ -17,7 +17,7 @@ import { formatInstant, shortInstant } from '../catalog/format.ts';
 import { formatMinor } from '../price/money.ts';
 import { orderProblemOf } from './errors.ts';
 import { shortId, TONE } from './status.ts';
-import type { LineLabels, SellerOrderView } from './types.ts';
+import type { SellerOrderView } from './types.ts';
 
 /**
  * One paid order on its own page: summary, its lines with product names, the totals and the
@@ -25,13 +25,11 @@ import type { LineLabels, SellerOrderView } from './types.ts';
  */
 export function OrderDetail({
   initial,
-  labels,
   csrfToken,
   canShip,
   canDeliver,
 }: {
   readonly initial: SellerOrderView;
-  readonly labels: LineLabels;
   readonly csrfToken: string;
   readonly canShip: boolean;
   readonly canDeliver: boolean;
@@ -138,16 +136,15 @@ export function OrderDetail({
                 </thead>
                 <tbody className={CARD_TABLE.body}>
                   {order.lines.map((line) => {
-                    const label = labels[line.lineId];
+                    const name = line.productName?.trim() ?? '';
+                    const variant = line.variantLabel?.trim() ?? '';
                     return (
                       <tr key={line.lineId} className={CARD_TABLE.row}>
                         <td className={`${CARD_TABLE.cell} break-words lg:px-5`}>
                           <div className="font-medium text-fg">
-                            {label?.name ?? t('line.fallback', { id: shortId(line.offerId) })}
+                            {name === '' ? t('line.fallback', { id: shortId(line.offerId) }) : name}
+                            {variant !== '' ? ` · ${variant}` : ''}
                           </div>
-                          {label?.variant == null ? null : (
-                            <div className="text-fg-muted">{label.variant}</div>
-                          )}
                         </td>
                         <td className={`${CARD_TABLE.cell} tabular-nums max-lg:hidden lg:text-end`}>
                           {line.quantity}
