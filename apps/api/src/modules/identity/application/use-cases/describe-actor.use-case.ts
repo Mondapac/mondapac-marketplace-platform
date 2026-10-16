@@ -9,6 +9,7 @@ import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import type { SellerAccessRepository } from '../ports/seller-access.repository';
 import type { SessionRepository } from '../ports/session.repository';
+import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
 
 /**
  * The actor's own summary (identity design 8.1 `describeActor`, 8.6 rows 2 and 9). The ids and
@@ -28,6 +29,12 @@ export interface ActorSummary {
   /** The seller's access state for a seller-side actor (3.3); null otherwise. */
   readonly sellerAccessState: SellerAccessStateCode | null;
   readonly secondFactorActive: boolean;
+  /**
+   * The previous successful sign-in of the account, before the one that opened this session
+   * (ISO 8601, UTC); null when there is none or the records no longer hold it (they are purged
+   * after the Market's retention). The time only: never an address (profile package).
+   */
+  readonly lastSignInAt: string | null;
   readonly email: string;
   /** Null for a customer (identity design 2.1). */
   readonly displayName: string | null;
@@ -51,6 +58,8 @@ export interface DescribeActorDependencies {
   readonly effectiveKeys: EffectiveKeyResolver;
   /** Slice 7b: whether the account's factor is active (8.1, 8.6). */
   readonly factors: SecondFactorRepository;
+  /** The profile page's last sign-in. */
+  readonly records: SignInRecordRepository;
 }
 
 /**
@@ -99,11 +108,16 @@ export class DescribeActor extends UseCase<
           factorActive: (await this.deps.factors.activeAmong(market, [actor.accountId])).has(
             actor.accountId,
           ),
+          lastSignIn: await this.deps.records.latestSuccessBefore(
+            market,
+            actor.accountId,
+            actor.sessionId,
+          ),
         }),
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.denied' });
-    const { account, session, seller, grant, factorActive } = read.value;
+    const { account, session, seller, grant, factorActive, lastSignIn } = read.value;
     if (account === null || session === null || session.accountId !== actor.accountId) {
       return err({ code: 'access.denied' });
     }
@@ -122,6 +136,7 @@ export class DescribeActor extends UseCase<
       ].sort(),
       sellerAccessState: seller?.state.state ?? null,
       secondFactorActive: factorActive,
+      lastSignInAt: lastSignIn === null ? null : lastSignIn.toString(),
       email: account.state.email.typed,
       displayName: account.state.displayName,
       session: {

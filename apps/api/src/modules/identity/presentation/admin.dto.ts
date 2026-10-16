@@ -242,6 +242,16 @@ export class AdminSessionSummary {
   @ApiProperty()
   secondFactorActive!: boolean;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    format: 'date-time',
+    description:
+      'The previous successful sign-in before this session (ISO 8601 UTC), or null when the ' +
+      'records no longer hold one. The time only, never an address.',
+  })
+  lastSignInAt!: string | null;
+
   @ApiProperty({ description: 'The sign-in email (personal data: shown to its owner only).' })
   email!: string;
 

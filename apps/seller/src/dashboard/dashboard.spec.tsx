@@ -105,6 +105,7 @@ const full: SellerDashboardData = {
     requirementsDue: 0,
     requirementsPastDue: false,
     secondFactorActive: true,
+    lastSignInAt: null,
     coolingOffUntil: null,
     payoutsPaused: false,
     changes: [],
@@ -208,6 +209,7 @@ describe('seller dashboard', () => {
         requirementsDue: 1,
         requirementsPastDue: false,
         secondFactorActive: true,
+        lastSignInAt: null,
         coolingOffUntil: null,
         payoutsPaused: false,
         changes: [],
@@ -284,6 +286,7 @@ const session = (permissionKeys: string[]): SellerSession => ({
   sellerAccessState: 'approved',
   email: 'sam@example.test',
   secondFactorActive: true,
+  lastSignInAt: null,
   displayName: 'Sam',
   csrfToken: 'c',
 });

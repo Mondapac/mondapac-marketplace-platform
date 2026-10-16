@@ -27,6 +27,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'commission-payouts/seller/ledger',
   ]),
   PUT: new Set([
+    // The signed-in member's own display name (profile).
+    'identity/seller/profile/display-name',
     'sellers/my-file/general',
     'sellers/my-file/address',
     'sellers/my-file/slug',

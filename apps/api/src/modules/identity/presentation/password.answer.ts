@@ -146,11 +146,18 @@ export async function answerChangePassword(
 ): Promise<PasswordChangedInSession | HttpException> {
   const refused = notJson(request);
   if (refused !== null) return refused;
-  // An admin also sends a code (Hassan I2 (b)); the other populations send none.
-  const names =
-    population === 'admin'
-      ? (['currentPassword', 'newPassword', 'code'] as const)
-      : (['currentPassword', 'newPassword'] as const);
+  // An admin always sends a code (Hassan I2 (b)); a seller-side member sends one when the own
+  // two-step sign-in is active; a customer sends none.
+  const sendsCode =
+    population === 'admin' ||
+    (population === 'seller' &&
+      typeof body === 'object' &&
+      body !== null &&
+      !Array.isArray(body) &&
+      Object.hasOwn(body, 'code'));
+  const names = sendsCode
+    ? (['currentPassword', 'newPassword', 'code'] as const)
+    : (['currentPassword', 'newPassword'] as const);
   const input = parseStringFields<'currentPassword' | 'newPassword' | 'code'>(body, names);
   if (Array.isArray(input)) return fail(400, 'validation.failed', { fields: input });
   const origin = clientOriginOf(clientAddressFrom(request));

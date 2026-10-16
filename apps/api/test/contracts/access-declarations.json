@@ -74,6 +74,11 @@
   },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
+  {
+    "name": "identity.change-display-name",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "identity.change-password", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.complete-admin-sign-in", "rule": "anonymous" },
   {

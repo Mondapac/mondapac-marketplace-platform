@@ -136,7 +136,8 @@ export class SellerPasswordController {
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiTooManyRequestsResponse({
     type: ApiErrorBody,
-    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+    description:
+      'request.throttled or second-factor.locked (details.retryAfterSeconds, Retry-After)',
   })
   @ApiServiceUnavailableResponse({
     type: ApiErrorBody,
@@ -167,7 +168,9 @@ export class SellerPasswordController {
   @ApiOperation({
     summary: 'Change the password of the signed-in seller-side account',
     description:
-      'The current password and the new one. Wrong current passwords are counted as failed ' +
+      "The current password and the new one, plus a code when the account's two-step sign-in " +
+      'is active (second-factor.invalid or second-factor.locked on a wrong one). Wrong current ' +
+      'passwords are counted as failed ' +
       'sign-ins. On success every other session of the account ends, the current session gets ' +
       'a new token (the cookie is replaced, and the answer carries the new CSRF token) and a ' +
       'notice is mailed.',
@@ -182,7 +185,7 @@ export class SellerPasswordController {
     type: ApiErrorBody,
     description:
       'validation.failed (details.fields), password.rejected (details.rule) or ' +
-      'password.current-incorrect',
+      'password.current-incorrect or second-factor.invalid',
   })
   @ApiUnauthorizedResponse({
     type: ApiErrorBody,

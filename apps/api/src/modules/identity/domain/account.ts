@@ -6,6 +6,7 @@ import {
   AccountDisabled,
   AccountEmailVerified,
   AccountEnabled,
+  AccountDisplayNameChanged,
   AccountPasswordChanged,
   CustomerAccountRegistered,
   SignUpRepeated,
@@ -370,6 +371,40 @@ export class Account {
       }),
     );
     return ok(undefined);
+  }
+
+  /**
+   * The holder replaces the own display name (profile package). Only a seller-side or admin
+   * account has one, and only an active, verified account may change it. The name was parsed by
+   * the caller (`parseDisplayName`, HF13). The same name changes nothing and records nothing; the
+   * answer says whether this call changed it. Records `identity.account-display-name-changed.v1`.
+   */
+  rename(input: {
+    readonly displayName: string;
+    readonly now: Temporal.Instant;
+  }): Result<boolean, AccountNotEligible> {
+    const { displayName, now } = input;
+    const state = this.#state;
+    if (
+      state.population === 'customer' ||
+      state.status !== 'active' ||
+      state.emailVerifiedAt === null
+    ) {
+      return err({ code: 'account.not-eligible' });
+    }
+    if (displayName.trim() === '') throw new AccountInvariantError('display-name-required');
+    if (state.displayName === displayName) return ok(false);
+    const version = state.version + 1;
+    this.#state = Object.freeze({ ...state, displayName, version });
+    this.#events.push(
+      AccountDisplayNameChanged.record({
+        aggregateId: state.id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { accountId: state.id, population: state.population },
+      }),
+    );
+    return ok(true);
   }
 
   /**

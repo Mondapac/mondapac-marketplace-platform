@@ -93,6 +93,8 @@ describe('customer sign-in (database integration)', () => {
   let db: Persistence;
   let sql: Client;
   let hasher: CountingHasher;
+  let records: PrismaSignInRecordRepository;
+  let uow: Persistence['unitOfWork'];
   let register: RegisterCustomer;
   let signIn: SignInCustomer;
   let signOut: SignOut;
@@ -113,9 +115,10 @@ describe('customer sign-in (database integration)', () => {
         clock,
       ),
     );
+    uow = db.unitOfWork;
     const sessions = new PrismaSessionRepository(db.service);
     const throttles = new PrismaThrottleRepository(db.service);
-    const records = new PrismaSignInRecordRepository(db.service);
+    records = new PrismaSignInRecordRepository(db.service);
     const links = new PrismaOneTimeLinkRepository(db.service);
     hasher = new CountingHasher();
     const gate = createUseCaseGate(markets, allow);
@@ -204,6 +207,53 @@ describe('customer sign-in (database integration)', () => {
       );
       return { email, accountId: rows[0]!.id };
     }
+
+    it("answers the account's previous successful sign-in, never the session's own", async () => {
+      const { email, accountId } = await verifiedAccount();
+      const startedAt = clock.now();
+      clock.set(startedAt.add({ minutes: 1 }));
+      const first = await signIn.execute(context(), {
+        email,
+        password: PASSWORD,
+        client: freshClient(),
+      });
+      const firstAt = clock.now();
+      clock.set(firstAt.add({ hours: 2 }));
+      const second = await signIn.execute(context(), {
+        email,
+        password: PASSWORD,
+        client: freshClient(),
+      });
+      expect([first.ok, second.ok]).toEqual([true, true]);
+      const sessionIds = (
+        await sql.query<{ id: string }>(
+          'SELECT id FROM identity.sessions WHERE market_id = $1 AND account_id = $2 ORDER BY created_at',
+          [code, accountId],
+        )
+      ).rows.map((r) => r.id as never);
+
+      const latest = (except: never) =>
+        uow.run(
+          market,
+          async () => ok(await records.latestSuccessBefore(market, accountId as never, except)),
+          {
+            readOnly: true,
+          },
+        );
+
+      // Seen from the second session: the first. Seen from the first: the second (the newest other).
+      await expect(latest(sessionIds[1]!)).resolves.toEqual(ok(firstAt));
+      await expect(latest(sessionIds[0]!)).resolves.toEqual(ok(firstAt.add({ hours: 2 })));
+      await expect(
+        uow.run(
+          market,
+          async () =>
+            ok(await records.latestSuccessBefore(market, randomUUID() as never, sessionIds[0]!)),
+          { readOnly: true },
+        ),
+      ).resolves.toEqual(ok(null));
+      clock.set(startedAt);
+    });
 
     it('opens a session: only the token hash is stored, and the attempt is recorded with its address', async () => {
       const { email, accountId } = await verifiedAccount();
