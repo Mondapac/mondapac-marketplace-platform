@@ -1207,6 +1207,16 @@ const marketSchema = z
          * the URL. Without it the Market sends no customer order mail.
          */
         customerOrderPage: pageUrl.optional(),
+        /**
+         * Text messages (Phase 6 package 4). `senderId`: the name the recipient sees as the sender,
+         * alphanumeric, 3 to 11 characters, starting with a letter (the limit of the carriers'
+         * alphanumeric sender id). Without it the Market sends no text messages.
+         */
+        sms: z
+          .strictObject({
+            senderId: z.string().regex(/^[A-Za-z][A-Za-z0-9]{2,10}$/),
+          })
+          .optional(),
       })
       .optional(),
     /**

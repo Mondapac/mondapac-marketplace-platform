@@ -25,7 +25,8 @@
     "defaultPerMinute": 200
   },
   "notifications": {
-    "customerOrderPage": "https://storefront.zz.test/account/orders"
+    "customerOrderPage": "https://storefront.zz.test/account/orders",
+    "sms": { "senderId": "MondaZZ" }
   },
   "allowedOrigins": {
     "admin": ["https://admin.zz.test"],

@@ -44,3 +44,22 @@ come with their own packages.
 - **Reading at send time:** `ordering.shipmentNotice` (system rule, ids plus carrier and tracking
   number), then `identity.contactEmailOf`. No schema change: the outbox and inbox tables already
   exist.
+
+## Templates and text messages (Phase 6 package 4)
+
+- **Templates:** the texts of all messages are data in `domain/message-templates.ts` (`{name}`
+  slots, filled in one pass, so a value holding `{x}` is never expanded). The Market's
+  `defaultLocale` picks the text: exact tag, then the language part, then English. A new language
+  is a new entry per template; no flow changes. Today only English exists, and the three mails read
+  exactly as before.
+- **Text message port:** `platform/sms/sms-transport.ts` (`SmsTransport`, `SmsSendError` with fixed
+  codes, token `SMS_TRANSPORT`). No provider is chosen: the only adapter is
+  `UnconfiguredSmsTransport`, which refuses every send. A provider is one more class and a line
+  in `sms.module.ts`.
+- **Per-Market setting:** `notifications.sms.senderId` (3 to 11 letters and digits, first a
+  letter); read through `NotificationsPolicy.smsSenderId`. No setting, no text messages.
+- **Text:** `domain/order-sms.ts` composes the "Shipped" message (order reference, carrier,
+  tracking number if any, order link), one line, seller-entered text flattened.
+- **Not wired yet:** no customer or seller phone number is stored anywhere (identity holds an
+  email only), so no event sends a text message. Wiring needs (1) a phone number on the account
+  with verification and consent, owned by identity, and (2) the provider choice.
