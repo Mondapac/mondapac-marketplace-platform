@@ -26,4 +26,4 @@ export interface OrphanPage {
 }
 
 /** The seller id as the list shows it: enough to tell two sellers apart. */
-export const shortSellerId = (id: string): string => id.slice(-8).toUpperCase();
+export { shortId as shortSellerId } from '../shared/short-id.ts';

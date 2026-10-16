@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, Select } from '@mondapac/ui';
+import { Badge, Banner, Button, EmptyState, Select } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -34,9 +34,7 @@ export function ReviewQueue({
     <div className="flex flex-col gap-4">
       {notice === null ? null : <Banner tone="success">{t(`notice.${notice}`)}</Banner>}
       {visible.length === 0 ? (
-        <div className="rounded-lg border border-line p-6">
-          <p className="font-medium">{t('empty')}</p>
-        </div>
+        <EmptyState icon="inbox" title={t('empty')} />
       ) : (
         <ul className="flex flex-col gap-3">
           {visible.map((row) => (
@@ -115,7 +113,7 @@ function ReviewCard({
   };
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-line p-4">
+    <li className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-5">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="break-words text-lg font-semibold">{name}</h2>
         <Badge tone="neutral">{row.sellerSku}</Badge>

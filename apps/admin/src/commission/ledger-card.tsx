@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  EmptyState,
   Banner,
   Button,
   Card,
@@ -10,6 +11,7 @@ import {
   type LedgerRow,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { shortId } from '../shared/short-id.ts';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { formatMinor } from '../shipping/money.ts';
@@ -22,7 +24,6 @@ const TONE: Record<LedgerKind, BadgeTone> = {
   shipping: 'info',
   commission: 'attention',
 };
-const shortId = (id: string): string => id.slice(-8).toUpperCase();
 
 /** A seller's ledger for admins: totals, the rows newest first and "Load more". */
 export function LedgerCard({ initial }: { readonly initial: Ledger }) {
@@ -80,7 +81,7 @@ export function LedgerCard({ initial }: { readonly initial: Ledger }) {
         ]}
       />
       {rows.length === 0 ? (
-        <p className="text-fg-muted">{t('empty')}</p>
+        <EmptyState size="compact" icon="receipt" title={t('empty')} />
       ) : (
         <LedgerTable
           rows={rows}

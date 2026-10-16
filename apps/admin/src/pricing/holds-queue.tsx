@@ -1,11 +1,12 @@
 'use client';
 
-import { Badge, Banner, Button, Select, TextField } from '@mondapac/ui';
+import { Badge, Banner, Button, CARD_TABLE, EmptyState, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
-import { formatInstant } from '../sellers/format.ts';
-import { formatMoney } from './format.ts';
+import { shortId } from '../shared/short-id.ts';
+import { When } from '../shared/when.tsx';
+import { formatMoney, percentChange } from './format.ts';
 import { holdProblemOf, type HoldProblem } from './hold-errors.ts';
 import { NOTE_MAX, REJECTION_REASONS, type PriceHoldRow } from './types.ts';
 
@@ -37,23 +38,21 @@ export function HoldsQueue({
     <div className="flex flex-col gap-4">
       {notice === null ? null : <Banner tone="success">{t(`notice.${notice.kind}`)}</Banner>}
       {visible.length === 0 ? (
-        <div className="rounded-lg border border-line p-6">
-          <p className="font-medium">{t('empty')}</p>
-        </div>
+        <EmptyState icon="clock" title={t('empty')} />
       ) : (
-        <div className="relative overflow-x-auto rounded-lg border border-line">
-          <table className="w-full min-w-160 text-start text-sm">
+        <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
+          <table className={CARD_TABLE.table}>
             <caption className="sr-only">{t('title')}</caption>
-            <thead className="bg-muted text-fg-muted">
+            <thead className={CARD_TABLE.head}>
               <tr>
                 {['price', 'anchor', 'direction', 'submitted', 'ids', 'actions'].map((col) => (
-                  <th key={col} scope="col" className="px-4 py-3 font-medium">
+                  <th key={col} scope="col" className="whitespace-nowrap px-4 py-3 font-medium">
                     {t(`col.${col}`)}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-line-row">
+            <tbody className={CARD_TABLE.body}>
               {visible.map((row) => (
                 <HoldLine
                   key={row.recordId}
@@ -97,6 +96,7 @@ function HoldLine({
   const [problem, setProblem] = useState<HoldProblem | null>(null);
   const busy = useRef(false);
   const base = `pricing/admin/price-holds/${row.recordId}`;
+  const change = percentChange(row.amount.amount, row.anchorAmount.amount);
 
   async function send(action: 'approve' | 'reject', body?: unknown): Promise<void> {
     if (busy.current) return;
@@ -127,28 +127,46 @@ function HoldLine({
   }
 
   return (
-    <tr>
-      <td className="px-4 py-3 align-top font-medium text-fg">{formatMoney(row.amount)}</td>
-      <td className="px-4 py-3 align-top">{formatMoney(row.anchorAmount)}</td>
-      <td className="px-4 py-3 align-top">
+    <tr className={CARD_TABLE.row}>
+      <td className={`${CARD_TABLE.cell} text-base font-semibold tabular-nums text-fg`}>
+        {formatMoney(row.amount)}
+      </td>
+      <td className={`${CARD_TABLE.labelled} tabular-nums`} data-label={t('col.anchor')}>
+        {formatMoney(row.anchorAmount)}
+      </td>
+      {/* On a card the change sits beside the held price, where the eye starts. */}
+      <td className={CARD_TABLE.corner}>
         <Badge tone={row.direction === 'up' ? 'attention' : 'neutral'}>
           {t(`direction.${row.direction}`)}
         </Badge>
+        {change === null ? null : (
+          <span className="mt-1 block text-xs tabular-nums text-fg-muted">{change}</span>
+        )}
       </td>
-      <td className="px-4 py-3 align-top">{formatInstant(row.submittedAt)}</td>
-      <td className="min-w-72 break-all px-4 py-3 align-top text-xs text-fg-muted">
-        <div>
-          {t('ids.seller')}: {row.sellerId}
-        </div>
-        <div>
-          {t('ids.offer')}: {row.offerId}
-        </div>
-        <div>
-          {t('ids.variant')}: {row.variantId}
-        </div>
+      <td className={CARD_TABLE.labelled} data-label={t('col.submitted')}>
+        <When iso={row.submittedAt} missing="-" />
       </td>
-      <td className="px-4 py-3 align-top">
-        <div className="flex min-w-56 flex-col gap-3">
+      <td className={`${CARD_TABLE.labelled} text-sm`} data-label={t('col.ids')}>
+        {/* Short references with the full id as their tooltip; the seller opens its page. */}
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2">
+          <dt className="text-fg-muted">{t('ids.seller')}</dt>
+          <dd>
+            <a
+              className="text-link underline"
+              href={`/sellers/${row.sellerId}`}
+              title={row.sellerId}
+            >
+              {shortId(row.sellerId)}
+            </a>
+          </dd>
+          <dt className="text-fg-muted">{t('ids.offer')}</dt>
+          <dd title={row.offerId}>{shortId(row.offerId)}</dd>
+          <dt className="text-fg-muted">{t('ids.variant')}</dt>
+          <dd title={row.variantId}>{shortId(row.variantId)}</dd>
+        </dl>
+      </td>
+      <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-2`}>
+        <div className="flex flex-col gap-3 lg:min-w-56">
           {problem === null ? null : <Banner tone="critical">{tr(problem.key)}</Banner>}
           {!canDecide ? (
             <span className="text-fg-muted">{t('view-only')}</span>

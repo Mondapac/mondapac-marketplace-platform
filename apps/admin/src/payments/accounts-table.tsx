@@ -1,4 +1,6 @@
+import { CARD_TABLE } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { shortId } from '../shared/short-id.ts';
 import { AccountStatusBadge, FlagBadge } from './status-badge.tsx';
 import type { ConnectedAccountRow } from './types.ts';
 
@@ -37,33 +39,32 @@ function shortInstant(iso: string | null): string {
   return (sameYear ? DAY_TIME : DAY_TIME_YEAR).format(date);
 }
 
-/** The last 8 characters of the seller id, enough to tell two sellers apart in a list. */
-const shortId = (id: string): string => id.slice(-8).toUpperCase();
-
 /** The connected accounts of one page: seller, status, readiness, requirements and the wait. */
 export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccountRow[] }) {
   const t = useTranslations('payments.accounts');
+  const label = (col: (typeof COLUMNS)[number]) =>
+    t(col === 'cooling-off' || col === 'last-read' ? `col.${col}-utc` : `col.${col}`);
   return (
-    <div className="relative overflow-x-auto rounded-lg border border-line">
-      <table className="w-full min-w-200 text-start text-sm">
+    <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
+      <table className={CARD_TABLE.table}>
         <caption className="sr-only">{t('title')}</caption>
-        <thead className="bg-muted text-fg-muted">
+        <thead className={CARD_TABLE.head}>
           <tr>
             {COLUMNS.map((col) => (
               <th
                 key={col}
                 scope="col"
-                className={`whitespace-nowrap px-3 py-3 font-medium ${col === 'requirements' ? 'text-end' : ''}`}
+                className={`whitespace-nowrap px-4 py-3 font-medium ${col === 'requirements' ? 'text-end' : ''}`}
               >
-                {t(col === 'cooling-off' || col === 'last-read' ? `col.${col}-utc` : `col.${col}`)}
+                {label(col)}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-line-row">
+        <tbody className={CARD_TABLE.body}>
           {rows.map((row) => (
-            <tr key={row.sellerId}>
-              <td className="min-w-40 max-w-56 px-3 py-3">
+            <tr key={row.sellerId} className={CARD_TABLE.row}>
+              <td className={`${CARD_TABLE.cell} lg:min-w-40 lg:max-w-56`}>
                 <div className="break-words font-medium text-fg">
                   <a className="text-link underline" href={`/payout-accounts/${row.sellerId}`}>
                     {row.sellerName ?? t('unnamed')}
@@ -73,23 +74,38 @@ export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccou
                   {shortId(row.sellerId)}
                 </div>
               </td>
-              <td className="whitespace-nowrap px-3 py-3">
+              <td className={CARD_TABLE.corner}>
                 <AccountStatusBadge status={row.status} />
               </td>
-              <td className="whitespace-nowrap px-3 py-3">
+              <td className={CARD_TABLE.labelled} data-label={label('ready')}>
                 <FlagBadge on={row.ready} tone="success" />
               </td>
-              <td className="px-3 py-3 text-end tabular-nums">
-                {row.requirementsDue}
-                {row.requirementsPastDue ? (
-                  <div className="text-critical-fg">{t('past-due')}</div>
-                ) : null}
+              <td
+                className={`${CARD_TABLE.labelled} tabular-nums lg:text-end`}
+                data-label={label('requirements')}
+              >
+                <div>
+                  {row.requirementsDue}
+                  {row.requirementsPastDue ? (
+                    <div className="text-critical-fg">{t('past-due')}</div>
+                  ) : null}
+                </div>
               </td>
-              <td className="whitespace-nowrap px-3 py-3">{shortInstant(row.coolingOffUntil)}</td>
-              <td className="whitespace-nowrap px-3 py-3">
+              <td
+                className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
+                data-label={label('cooling-off')}
+              >
+                {shortInstant(row.coolingOffUntil)}
+              </td>
+              <td className={CARD_TABLE.labelled} data-label={label('paused')}>
                 <FlagBadge on={row.payoutsPaused} tone="attention" />
               </td>
-              <td className="whitespace-nowrap px-3 py-3">{shortInstant(row.lastReadAt)}</td>
+              <td
+                className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
+                data-label={label('last-read')}
+              >
+                {shortInstant(row.lastReadAt)}
+              </td>
             </tr>
           ))}
         </tbody>
