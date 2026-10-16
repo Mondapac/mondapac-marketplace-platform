@@ -64,7 +64,7 @@ function ok<T>(widget: Widget<T> | null): T | null {
 function Time({ iso }: { readonly iso: string }) {
   const locale = useLocale();
   const zone = useTimeZone();
-  return <span className="whitespace-nowrap">{shortInstant(iso, locale, zone)}</span>;
+  return <span>{shortInstant(iso, locale, zone)}</span>;
 }
 
 /** Things to fix before selling or being paid; shown above the figures. */

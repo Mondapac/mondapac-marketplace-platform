@@ -20,7 +20,7 @@ export interface ActivityColumn<Row> {
   readonly cell: (row: Row) => ReactNode;
 }
 
-const SIZE = { status: 'w-44', text: 'w-44', figure: 'w-40', date: 'w-40' } as const;
+const SIZE = { status: 'w-44', text: 'w-44', figure: 'w-40', date: 'w-48' } as const;
 
 /**
  * The latest rows of something, in a dashboard card: a table from 1024 px, a stack of labelled
