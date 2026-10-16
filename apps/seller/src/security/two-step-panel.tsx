@@ -308,7 +308,7 @@ export function TwoStepPanel({
     body = (
       <div className="flex flex-col gap-4">
         {view.kind === 'removed' ? <Banner tone="info">{t('remove.done')}</Banner> : null}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg font-semibold">{t('heading')}</h2>
           <Badge tone={active ? 'success' : 'neutral'}>
             {t(active ? 'badge.on' : 'badge.off')}

@@ -54,12 +54,12 @@ export function AccountDetail({ account }: { readonly account: ConnectedAccountD
             {account.changes.map((change) => (
               <li
                 key={`${change.detectedAt}-${change.kind}`}
-                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2 first:pt-0 last:pb-0"
+                className="flex flex-col gap-1 py-2 first:pt-0 last:pb-0 sm:grid sm:grid-cols-[minmax(0,var(--mp-size-data-label))_minmax(0,1fr)] sm:gap-x-6"
               >
+                <span className="text-fg-muted">{formatInstant(change.detectedAt)}</span>
                 <span className="font-medium">
                   {t(`change.${known(change.kind, CHANGE_KINDS)}`)}
                 </span>
-                <span className="text-sm text-fg-muted">{formatInstant(change.detectedAt)}</span>
               </li>
             ))}
           </ul>
