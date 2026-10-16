@@ -1,6 +1,7 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import { expectSystemOnly } from '../../../../test/support/system-only-denial';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
@@ -10,10 +11,11 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { CatalogFacade } from '../../catalog';
 import type { ContactEmailTarget, IdentityFacade } from '../../identity';
-import type { OrderingFacade, OrderNotice } from '../../ordering';
+import type { OrderingFacade, OrderNotice, ShipmentNotice } from '../../ordering';
 import { ConfigNotificationsPolicy } from '../infrastructure/config-notifications-policy';
 import type { OrderMailDependencies } from './order-mail-flow';
 import { SendOrderConfirmationMail } from './use-cases/send-order-confirmation-mail.use-case';
+import { SendOrderShippedMail } from './use-cases/send-order-shipped-mail.use-case';
 import { SendSellerNewOrderMail } from './use-cases/send-seller-new-order-mail.use-case';
 
 // The two order emails in memory on both Market fixtures (AU in AUD, ZZ in JPY): who gets what,
@@ -54,6 +56,14 @@ const NOTICE: OrderNotice = {
   ],
 };
 
+const SHIPMENT: ShipmentNotice = {
+  orderId: ORDER,
+  accountId: ACCOUNT,
+  sellerOrderId: id<'SellerOrder'>(0x21),
+  carrier: 'Australia Post',
+  trackingRef: 'AP123456789',
+};
+
 describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => {
   const market = testMarketContext(code, 'default');
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
@@ -63,6 +73,7 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
   let sent: MailMessage[];
   let sendError: Error | null;
   let notice: ReturnType<OrderingFacade['orderNotice']>;
+  let shipment: ReturnType<OrderingFacade['shipmentNotice']>;
   let addresses: Map<string, string | null>;
   let names: Map<Id<'Offer'>, string>;
   let unitOfWork: FakeUnitOfWork;
@@ -82,6 +93,7 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
     sendError = null;
     nextEvent = 1;
     notice = Promise.resolve(ok(NOTICE));
+    shipment = Promise.resolve(ok(SHIPMENT));
     addresses = new Map<string, string | null>([
       [ACCOUNT, CUSTOMER_EMAIL],
       [SELLER_A, OWNER_A],
@@ -92,7 +104,10 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
       [OFFER_2, 'Tea & "Biscuits"'],
     ]);
     unitOfWork = new FakeUnitOfWork();
-    const ordering = { orderNotice: () => notice } as unknown as OrderingFacade;
+    const ordering = {
+      orderNotice: () => notice,
+      shipmentNotice: () => shipment,
+    } as unknown as OrderingFacade;
     const catalog = {
       offerNames: () => Promise.resolve(ok(names)),
     } as unknown as CatalogFacade;
@@ -281,6 +296,64 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
         orderId: ORDER,
       });
       expect(denied).toEqual(err({ code: 'access.denied' }));
+    });
+  });
+
+  describe('shipped (customer)', () => {
+    const shipped = (eventNo = nextEvent++, context = system) =>
+      new SendOrderShippedMail(gate, deps).execute(context, {
+        delivery: delivery('notifications.order-shipped-mail', eventNo),
+        orderId: ORDER,
+        sellerOrderId: SHIPMENT.sellerOrderId,
+      });
+
+    it('mails the customer the carrier, the tracking number and the order link', async () => {
+      expect(await shipped()).toEqual(ok({ code: 'order-mail.sent', sent: 1 }));
+      const mail = sent[0]!;
+      const page = markets.get(market.marketId).notifications?.customerOrderPage;
+      expect(mail.to).toBe(CUSTOMER_EMAIL);
+      expect(mail.subject).toBe('Shipped');
+      expect(mail.text).toContain('Carrier: Australia Post');
+      expect(mail.text).toContain('Tracking number: AP123456789');
+      expect(mail.text).toContain(`${page}/${ORDER}`);
+    });
+
+    it('leaves out the tracking line when the seller gave none, and flattens text to one line', async () => {
+      shipment = Promise.resolve(
+        ok({ ...SHIPMENT, carrier: 'Post\r\nBcc: a@evil.example', trackingRef: null }),
+      );
+      await shipped();
+      const text = sent[0]!.text;
+      expect(text).not.toContain('Tracking number');
+      expect(text.split('\n').filter((l) => l.startsWith('Bcc:'))).toEqual([]);
+    });
+
+    it('sends nothing when the shipment is gone, there is no order page or no address', async () => {
+      shipment = Promise.resolve(err({ code: 'ordering.order-not-found' as const }));
+      expect(await shipped()).toEqual(ok({ code: 'order-mail.skipped', reason: 'order.gone' }));
+      shipment = Promise.resolve(ok(SHIPMENT));
+      addresses.set(ACCOUNT, null);
+      expect(await shipped()).toEqual(ok({ code: 'order-mail.skipped', reason: 'recipient.none' }));
+      addresses.set(ACCOUNT, CUSTOMER_EMAIL);
+      deps = { ...deps, policy: { ...deps.policy, customerOrderUrl: () => null } };
+      expect(await shipped()).toEqual(
+        ok({ code: 'order-mail.skipped', reason: 'link.unconfigured' }),
+      );
+      expect(sent).toEqual([]);
+    });
+
+    it('throws a send failure back to the delivery and marks a repeat once', async () => {
+      sendError = new MailSendError('mail.transport-unreachable');
+      await expect(shipped(1)).rejects.toThrow(MailSendError);
+      expect(unitOfWork.handled.size).toBe(0);
+      sendError = null;
+      await shipped(1);
+      expect(await shipped(1)).toEqual(ok({ code: 'order-mail.already-handled' }));
+    });
+
+    it('is for the system actor only', async () => {
+      await expectSystemOnly(code, (context) => shipped(1, context));
+      expect(sent).toEqual([]);
     });
   });
 });
