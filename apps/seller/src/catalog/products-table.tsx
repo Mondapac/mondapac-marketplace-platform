@@ -1,5 +1,5 @@
 import { Badge, CARD_TABLE, EmptyState, type BadgeTone } from '@mondapac/ui';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import { formatInstant, known, PRODUCT_STATUSES } from './format.ts';
 import type { ProductListItem } from './types.ts';
@@ -26,6 +26,7 @@ export async function ProductsTable({
   readonly emptyAction?: ReactNode;
 }) {
   const t = await getTranslations();
+  const locale = await getLocale();
   const cols = ['product', 'code', 'status', 'changed'] as const;
   const head = (col: (typeof cols)[number]) =>
     t(col === 'status' || col === 'changed' ? `catalog.col.${col}` : `catalog.products.col.${col}`);
@@ -79,7 +80,7 @@ export async function ProductsTable({
                   </div>
                 </td>
                 <td className={CARD_TABLE.labelled} data-label={head('changed')}>
-                  {formatInstant(item.lastChangedAt)}
+                  {formatInstant(item.lastChangedAt, locale)}
                 </td>
               </tr>
             );

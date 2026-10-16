@@ -1,5 +1,6 @@
 import { CARD_TABLE } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
+import { shortInstant } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { AccountStatusBadge, FlagBadge } from './status-badge.tsx';
 import type { ConnectedAccountRow } from './types.ts';
@@ -14,34 +15,10 @@ const COLUMNS = [
   'last-read',
 ] as const;
 
-const DAY_TIME = new Intl.DateTimeFormat('en-AU', {
-  day: 'numeric',
-  month: 'short',
-  hour: 'numeric',
-  minute: '2-digit',
-  timeZone: 'UTC',
-});
-const DAY_TIME_YEAR = new Intl.DateTimeFormat('en-AU', {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-  timeZone: 'UTC',
-});
-
-/** A compact UTC instant for a table cell ("14 Oct, 3:30 am"); the year only when not this one. */
-function shortInstant(iso: string | null): string {
-  if (iso === null) return '-';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '-';
-  const sameYear = date.getUTCFullYear() === new Date().getUTCFullYear();
-  return (sameYear ? DAY_TIME : DAY_TIME_YEAR).format(date);
-}
-
 /** The connected accounts of one page: seller, status, readiness, requirements and the wait. */
 export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccountRow[] }) {
   const t = useTranslations('payments.accounts');
+  const locale = useLocale();
   const label = (col: (typeof COLUMNS)[number]) =>
     t(col === 'cooling-off' || col === 'last-read' ? `col.${col}-utc` : `col.${col}`);
   return (
@@ -95,7 +72,7 @@ export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccou
                 className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
                 data-label={label('cooling-off')}
               >
-                {shortInstant(row.coolingOffUntil)}
+                {shortInstant(row.coolingOffUntil, locale)}
               </td>
               <td className={CARD_TABLE.labelled} data-label={label('paused')}>
                 <FlagBadge on={row.payoutsPaused} tone="attention" />
@@ -104,7 +81,7 @@ export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccou
                 className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
                 data-label={label('last-read')}
               >
-                {shortInstant(row.lastReadAt)}
+                {shortInstant(row.lastReadAt, locale)}
               </td>
             </tr>
           ))}

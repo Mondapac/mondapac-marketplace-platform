@@ -10,12 +10,12 @@ import {
   type BadgeTone,
   type LedgerRow,
 } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { shortId } from '../shared/short-id.ts';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { formatMinor } from '../shipping/money.ts';
-import { shortInstant } from '../sellers/format.ts';
+import { shortInstant } from '../shared/format.ts';
 import type { Ledger, LedgerEntry, LedgerKind } from './types.ts';
 
 const PAGE = 20;
@@ -28,12 +28,13 @@ const TONE: Record<LedgerKind, BadgeTone> = {
 /** A seller's ledger for admins: totals, the rows newest first and "Load more". */
 export function LedgerCard({ initial }: { readonly initial: Ledger }) {
   const t = useTranslations('commission.ledger');
+  const locale = useLocale();
   const [entries, setEntries] = useState<readonly LedgerEntry[]>(initial.entries);
   const [cursor, setCursor] = useState(initial.nextCursor);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const { currency, totals } = initial;
-  const money = (amount: string) => formatMinor(amount, currency);
+  const money = (amount: string) => formatMinor(amount, currency, locale);
 
   async function more() {
     if (cursor === null || loading) return;
@@ -57,7 +58,7 @@ export function LedgerCard({ initial }: { readonly initial: Ledger }) {
   const rows: LedgerRow[] = entries.map((entry) => ({
     id: entry.entryId,
     dateTime: entry.occurredAt,
-    when: shortInstant(entry.occurredAt),
+    when: shortInstant(entry.occurredAt, locale),
     order: shortId(entry.orderId),
     orderTitle: entry.orderId,
     kind: t(`kind.${entry.kind}`),

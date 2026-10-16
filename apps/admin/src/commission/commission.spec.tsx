@@ -192,8 +192,8 @@ describe('helpers', () => {
     expect(bpsOf('30.01')).toBeNull();
     expect(bpsOf('1.234')).toBeNull();
     expect(bpsOf('')).toBeNull();
-    expect(percentOf(1500)).toBe('15');
-    expect(percentOf(1275)).toBe('12.75');
+    expect(percentOf(1500, 'en-AU')).toBe('15');
+    expect(percentOf(1275, 'en-AU')).toBe('12.75');
   });
 
   it('name a failed call', () => {

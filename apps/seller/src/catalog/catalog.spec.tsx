@@ -15,6 +15,7 @@ import { visibleNavItems } from '@mondapac/ui';
 
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
+  getLocale: () => Promise.resolve('en-AU'),
 }));
 
 const ID = '0190a000-0000-7000-8000-0000000000a1';
@@ -187,9 +188,9 @@ describe('seller catalog pages', () => {
   });
 
   it('formats instants in UTC and survives bad input', () => {
-    expect(formatInstant('2026-10-09T23:30:00.000Z')).toContain('UTC');
-    expect(formatInstant(null)).toBe('-');
-    expect(formatInstant('nope')).toBe('-');
+    expect(formatInstant('2026-10-09T23:30:00.000Z', 'en-AU')).toContain('UTC');
+    expect(formatInstant(null, 'en-AU')).toBe('-');
+    expect(formatInstant('nope', 'en-AU')).toBe('-');
     expect(known('draft', PRODUCT_STATUSES)).toBe('draft');
     expect(known('x', PRODUCT_STATUSES)).toBe('unknown');
   });

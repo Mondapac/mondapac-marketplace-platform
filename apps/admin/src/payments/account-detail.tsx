@@ -1,20 +1,22 @@
 import { Banner, Card } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
-import { formatInstant, known } from '../sellers/format.ts';
+import { useLocale, useTranslations } from 'next-intl';
+import { formatInstant } from '../shared/format.ts';
+import { known } from '../sellers/format.ts';
 import { AccountStatusBadge } from './status-badge.tsx';
 import { CHANGE_KINDS, type ConnectedAccountDetail } from './types.ts';
 
 /** One connected account with its change history. Read-only. */
 export function AccountDetail({ account }: { readonly account: ConnectedAccountDetail }) {
   const t = useTranslations('payments.accounts');
+  const locale = useLocale();
   const rows: readonly { readonly label: string; readonly value: string }[] = [
     { label: t('col.ready'), value: t(account.ready ? 'yes' : 'no') },
     { label: t('col.requirements'), value: String(account.requirementsDue) },
     { label: t('field.past-due'), value: t(account.requirementsPastDue ? 'yes' : 'no') },
-    { label: t('col.cooling-off'), value: formatInstant(account.coolingOffUntil) },
+    { label: t('col.cooling-off'), value: formatInstant(account.coolingOffUntil, locale) },
     { label: t('col.paused'), value: t(account.payoutsPaused ? 'yes' : 'no') },
-    { label: t('col.last-read'), value: formatInstant(account.lastReadAt) },
-    { label: t('field.created'), value: formatInstant(account.createdAt) },
+    { label: t('col.last-read'), value: formatInstant(account.lastReadAt, locale) },
+    { label: t('field.created'), value: formatInstant(account.createdAt, locale) },
   ];
   return (
     <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
@@ -59,7 +61,9 @@ export function AccountDetail({ account }: { readonly account: ConnectedAccountD
                 <span className="font-medium">
                   {t(`change.${known(change.kind, CHANGE_KINDS)}`)}
                 </span>
-                <span className="text-sm text-fg-muted">{formatInstant(change.detectedAt)}</span>
+                <span className="text-sm text-fg-muted">
+                  {formatInstant(change.detectedAt, locale)}
+                </span>
               </li>
             ))}
           </ul>
