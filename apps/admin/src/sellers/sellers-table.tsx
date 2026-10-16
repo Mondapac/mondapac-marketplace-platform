@@ -1,4 +1,5 @@
 import { Badge, type BadgeTone } from '@mondapac/ui';
+import { Fragment, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { areaName, formatInstant, known } from './format.ts';
 import { KINDS, STATUSES, type SellerRow } from './types.ts';
@@ -18,8 +19,11 @@ export function SellersTable({
   rows,
   canReview,
   showOwner,
+  empty,
 }: {
   readonly rows: readonly SellerRow[];
+  /** Shown in place of the rows when there are none, under the column headers. */
+  readonly empty?: ReactNode;
   /** Only for an admin who may see identity's state; the column is left out otherwise. */
   readonly showOwner: boolean;
   /** Rows link to the review page only for an actor who may open it. */
@@ -48,6 +52,13 @@ export function SellersTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-line-row max-lg:block">
+          {rows.length === 0 && empty !== undefined ? (
+            <tr className="max-lg:block">
+              <td colSpan={cols.length} className="max-lg:block">
+                {empty}
+              </td>
+            </tr>
+          ) : null}
           {rows.map((row) => {
             const status = known(row.status, STATUSES);
             return (
@@ -55,7 +66,7 @@ export function SellersTable({
                 key={row.sellerId}
                 className="max-lg:grid max-lg:grid-cols-[minmax(0,1fr)_auto] max-lg:items-start max-lg:gap-x-3 max-lg:gap-y-2 max-lg:p-4"
               >
-                <td className={`${cell} min-w-48`}>
+                <td className={`${cell} lg:min-w-(--mp-size-data-label)`}>
                   <div className="min-w-0">
                     <div className="break-words font-medium text-fg">
                       {canReview ? (
@@ -76,10 +87,13 @@ export function SellersTable({
                   </div>
                 </td>
                 {showOwner ? (
-                  <td className={`${labelled} lg:min-w-64`} data-label={t('col.owner')}>
+                  <td
+                    className={`${labelled} lg:min-w-(--mp-size-data-label)`}
+                    data-label={t('col.owner')}
+                  >
                     {/* The owner's name and address: escaped text only (personal data). */}
                     {row.owner === null ? (
-                      <span className="text-fg-muted">-</span>
+                      <span className="text-fg-muted">{t('not-given')}</span>
                     ) : (
                       <span className="block min-w-0">
                         <span className="block break-words text-fg">
@@ -107,13 +121,15 @@ export function SellersTable({
                   )}
                 </td>
                 <td className={`${labelled} lg:whitespace-nowrap`} data-label={t('col.area')}>
-                  {areaName(row.serviceAreaCode)}
+                  {areaName(row.serviceAreaCode) ?? (
+                    <span className="text-fg-muted">{t('not-given')}</span>
+                  )}
                 </td>
                 <td className={labelled} data-label={t('col.submitted')}>
-                  <When iso={row.submittedAt} />
+                  <When iso={row.submittedAt} missing={t('not-given')} />
                 </td>
                 <td className={labelled} data-label={t('col.changed')}>
-                  <When iso={row.lastChangedAt} />
+                  <When iso={row.lastChangedAt} missing={t('not-given')} />
                 </td>
               </tr>
             );
@@ -124,12 +140,14 @@ export function SellersTable({
   );
 }
 
-// A phone card line: the column name before the value, as in the Team table.
+// A card line: the column name before the value, in the DataRow label column shared with the
+// seller page; on a phone the name sits above the value.
 const LABELLED =
-  'max-lg:grid max-lg:grid-cols-[7rem_minmax(0,1fr)] max-lg:gap-x-2 max-lg:before:text-fg-muted max-lg:before:content-[attr(data-label)]';
+  'max-lg:grid sm:max-lg:grid-cols-[var(--mp-size-data-label)_minmax(0,1fr)] max-lg:gap-x-2 max-lg:before:text-fg-muted max-lg:before:content-[attr(data-label)]';
 
 /** A date over its time, so a narrow column never breaks inside either. */
-function When({ iso }: { readonly iso: string | null }) {
+function When({ iso, missing }: { readonly iso: string | null; readonly missing: string }) {
+  if (iso === null) return <span className="text-fg-muted">{missing}</span>;
   const text = formatInstant(iso);
   const split = text.lastIndexOf(', ');
   if (split < 0) return <span className="whitespace-nowrap">{text}</span>;
@@ -141,15 +159,24 @@ function When({ iso }: { readonly iso: string | null }) {
   );
 }
 
-/** An email address that wraps before the @ rather than inside a word. */
+/**
+ * An email address that wraps before the @ or before a dot of the domain, never inside a word;
+ * the cell's break-words only breaks a single part longer than the column.
+ */
 function Email({ address }: { readonly address: string }) {
   const at = address.lastIndexOf('@');
   if (at <= 0) return <>{address}</>;
+  const [first, ...rest] = address.slice(at).split('.');
   return (
     <>
       {address.slice(0, at)}
       <wbr />
-      {address.slice(at)}
+      {first}
+      {rest.map((part, index) => (
+        <Fragment key={index}>
+          <wbr />.{part}
+        </Fragment>
+      ))}
     </>
   );
 }

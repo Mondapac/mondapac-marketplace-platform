@@ -87,16 +87,21 @@ function Revision({
             const changed = before !== null && before[index]?.value !== row.value;
             return {
               label: row.label,
-              value: (
-                <>
-                  {row.value ?? '-'}
-                  {changed ? (
-                    <span className="ms-2">
-                      <Badge tone="info">{t('sellers.review.changed')}</Badge>
-                    </span>
-                  ) : null}
-                </>
-              ),
+              value:
+                row.value === null && !changed ? null : (
+                  <>
+                    {row.value ?? (
+                      <span className="font-normal text-fg-muted">
+                        {t('sellers.review.not-given')}
+                      </span>
+                    )}
+                    {changed ? (
+                      <span className="ms-2">
+                        <Badge tone="info">{t('sellers.review.changed')}</Badge>
+                      </span>
+                    ) : null}
+                  </>
+                ),
             };
           }),
           {
@@ -105,6 +110,7 @@ function Revision({
           },
           { label: t('sellers.review.field.timezone'), value: revision.operatingTimezone },
         ]}
+        missing={t('sellers.review.not-given')}
       />
     </Card>
   );
@@ -126,7 +132,10 @@ function RegisterPanel({ t, review }: { readonly t: Translate; readonly review: 
               `sellers.review.register.state-value.${known(register.state, REGISTER_STATES)}`,
             ),
           },
-          { label: t('sellers.review.register.checked'), value: formatInstant(register.checkedAt) },
+          {
+            label: t('sellers.review.register.checked'),
+            value: register.checkedAt === null ? null : formatInstant(register.checkedAt),
+          },
           ...(register.mismatches.length > 0
             ? [
                 {
@@ -150,6 +159,7 @@ function RegisterPanel({ t, review }: { readonly t: Translate; readonly review: 
               : t('sellers.review.register.clear'),
           },
         ]}
+        missing={t('sellers.review.not-given')}
       />
     </Card>
   );
@@ -172,12 +182,14 @@ export async function ReviewView({
   const access = known(review.access, ACCESS);
   return (
     <div className="flex flex-col gap-6">
-      <BackToSellers label={t('sellers.review.back')} />
-      <div className="-mt-2 flex flex-wrap items-center gap-3">
-        <h1 className="break-words text-2xl font-semibold">{review.current.content.storeName}</h1>
-        <Badge tone={ACCESS_TONE[access] ?? 'neutral'}>
-          {t(`sellers.review.access.${access}`)}
-        </Badge>
+      <div className="flex flex-col items-start gap-2">
+        <BackToSellers label={t('sellers.review.back')} />
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="break-words text-2xl font-semibold">{review.current.content.storeName}</h1>
+          <Badge tone={ACCESS_TONE[access] ?? 'neutral'}>
+            {t(`sellers.review.access.${access}`)}
+          </Badge>
+        </div>
       </div>
       <p className="text-sm text-fg-muted">{t('sellers.review.read-only')}</p>
       <Revision
@@ -219,7 +231,7 @@ export function BackToSellers({ label }: { readonly label: string }) {
   return (
     <a
       href="/sellers"
-      className="inline-flex min-h-12 items-center gap-2 self-start text-sm font-medium text-link hover:underline md:min-h-0"
+      className="inline-flex min-h-12 items-center gap-2 text-sm font-medium text-link hover:underline md:min-h-0"
     >
       <Icon name="arrow-left" />
       {label}

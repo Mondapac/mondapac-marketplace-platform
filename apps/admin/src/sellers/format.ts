@@ -41,8 +41,8 @@ export function shortInstant(iso: string): string {
 }
 
 /** A service area code ("greater-brisbane") as a name ("Greater Brisbane"). */
-export function areaName(code: string | null): string {
-  if (code === null || code.trim() === '') return '-';
+export function areaName(code: string | null): string | null {
+  if (code === null || code.trim() === '') return null;
   return code
     .split(/[-_]+/)
     .filter((word) => word !== '')

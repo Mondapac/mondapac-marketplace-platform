@@ -507,7 +507,8 @@
         "too-broad": "That search matches too many sellers. Add more letters.",
         "denied": "You don't have access to the seller list.",
         "unavailable": "We couldn't load the sellers. Try again in a moment."
-      }
+      },
+      "not-given": "Not given"
     },
     "review": {
       "title": "Seller application",
@@ -602,7 +603,8 @@
       "unavailable": {
         "title": "We couldn't load this application",
         "body": "Try again in a moment."
-      }
+      },
+      "not-given": "Not given"
     },
     "decision": {
       "title": "Decision",
