@@ -44,4 +44,10 @@ export interface SellerSummary {
    * (logged). A consumer reads absent as "cannot tell" and fails closed, never as "no minimum".
    */
   readonly minimumOrder?: Money | null;
+  /**
+   * The public store name of the APPROVED revision, to every caller alike (store names are
+   * public once approved). `null` for a seller without an approved revision, an unknown id and
+   * an id of another Market. Never the legal name, a draft name or an address.
+   */
+  readonly storeName: string | null;
 }

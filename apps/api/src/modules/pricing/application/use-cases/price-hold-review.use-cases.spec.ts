@@ -1,6 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, MarketContext } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
+import {
+  heldUnitKey,
+  type HeldUnitKey,
+  type HeldUnitLabel,
+  type HeldUnitLabels,
+  type SellerStoreNames,
+} from '../ports/held-labels';
 import {
   FixedClock,
   SequenceIdGenerator,
@@ -53,6 +60,31 @@ const FIXTURES = {
   ZZ: { currency: 'JPY', base: 1_000n, held: 1_251n, max: 2_000_000n },
 } as const;
 
+class FakeHeldLabels {
+  readonly unitAnswers = new Map<string, HeldUnitLabel>();
+  readonly storeAnswers = new Map<Id<'Seller'>, string>();
+  readonly unitCalls: { context: CallContext; keys: readonly HeldUnitKey[] }[] = [];
+  readonly storeCalls: { context: CallContext; ids: readonly Id<'Seller'>[] }[] = [];
+  failUnits = false;
+  failStores = false;
+  readonly units: HeldUnitLabels = {
+    labelsOf: (context, keys) => {
+      this.unitCalls.push({ context, keys });
+      return this.failUnits
+        ? Promise.reject(new Error('catalog down'))
+        : Promise.resolve(this.unitAnswers);
+    },
+  };
+  readonly stores: SellerStoreNames = {
+    namesOf: (context, ids) => {
+      this.storeCalls.push({ context, ids });
+      return this.failStores
+        ? Promise.reject(new Error('sellers down'))
+        : Promise.resolve(this.storeAnswers);
+    },
+  };
+}
+
 describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market %s', (code) => {
   const fixture = FIXTURES[code];
   const market: MarketContext = testMarketContext(code, 'default');
@@ -89,8 +121,10 @@ describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market
     const approve = new ApprovePriceHold(gate, { ...common, policies });
     const reject = new RejectPriceHold(gate, common);
     const effective = new EffectivePricesQuery(gate, { unitOfWork, series, clock });
-    const list = new ListPriceHolds(gate, { unitOfWork, series });
-    const view = new ViewPriceHold(gate, { unitOfWork, series });
+    const labels = new FakeHeldLabels();
+    const labelDeps = { unitLabels: labels.units, storeNames: labels.stores };
+    const list = new ListPriceHolds(gate, { unitOfWork, series, ...labelDeps });
+    const view = new ViewPriceHold(gate, { unitOfWork, series, ...labelDeps });
     const retireOffer = new RetireSeriesForRemovedOffer(gate, { ...common, tombstones });
     const retireVariant = new RetireSeriesForRemovedVariant(gate, { ...common, tombstones });
 
@@ -173,6 +207,7 @@ describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market
       effective,
       list,
       view,
+      labels,
       retireOffer,
       retireVariant,
       admin,
@@ -428,13 +463,84 @@ describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market
         'direction',
         'kind',
         'offerId',
+        'productName',
         'recordId',
         'sellerId',
         'seriesId',
+        'storeName',
         'submittedAt',
         'variantId',
+        'variantLabel',
         'window',
       ]);
+    });
+
+    it('shows the product name, Variant label and store name, one batched call per facade', async () => {
+      const t = setup();
+      const a = await t.held();
+      const b = await t.held();
+      t.labels.unitAnswers.set(heldUnitKey(a), { productName: 'Dates', variantLabel: '500 g' });
+      t.labels.unitAnswers.set(heldUnitKey(b), { productName: 'Rice', variantLabel: null });
+      t.labels.storeAnswers.set(a.sellerId, 'Al Noor');
+      const context = t.admin();
+      const page = await t.list.execute(context, { after: null, limit: null });
+      expect(
+        page.ok && page.value.items.map((i) => [i.productName, i.variantLabel, i.storeName]),
+      ).toEqual([
+        ['Dates', '500 g', 'Al Noor'],
+        ['Rice', null, null],
+      ]);
+      expect(t.labels.unitCalls).toHaveLength(1);
+      expect(t.labels.storeCalls).toHaveLength(1);
+      expect(t.labels.unitCalls[0]!.context).toBe(context);
+      expect(t.labels.storeCalls[0]!.context).toBe(context);
+      expect(t.labels.storeCalls[0]!.ids).toEqual([a.sellerId, b.sellerId]);
+      const one = await t.view.execute(t.admin(), { recordId: a.recordId });
+      expect(one).toMatchObject({
+        ok: true,
+        value: { productName: 'Dates', variantLabel: '500 g', storeName: 'Al Noor' },
+      });
+    });
+
+    it('still returns the rows, with null names, when a lookup fails or is absent', async () => {
+      const t = setup();
+      const a = await t.held();
+      t.labels.failUnits = true;
+      t.labels.failStores = true;
+      const page = await t.list.execute(t.admin(), { after: null, limit: null });
+      expect(page).toMatchObject({
+        ok: true,
+        value: {
+          items: [{ recordId: a.recordId, productName: null, variantLabel: null, storeName: null }],
+        },
+      });
+      const one = await t.view.execute(t.admin(), { recordId: a.recordId });
+      expect(one).toMatchObject({
+        ok: true,
+        value: { recordId: a.recordId, productName: null, variantLabel: null, storeName: null },
+      });
+      expect(JSON.stringify(logged)).not.toContain('Al Noor');
+    });
+
+    it('looks nothing up for a caller the gate refuses, and asks nothing for an empty queue', async () => {
+      const t = setup();
+      await t.held();
+      const denied = createUseCaseGate(markets, {
+        check: () =>
+          Promise.resolve({ allowed: false, denial: { code: 'access.denied' } } as const),
+      });
+      const labelDeps = { unitLabels: t.labels.units, storeNames: t.labels.stores };
+      const list = new ListPriceHolds(denied, {
+        unitOfWork: t.unitOfWork,
+        series: t.series,
+        ...labelDeps,
+      });
+      const refused = await list.execute(t.admin(), { after: null, limit: null });
+      expect(refused.ok).toBe(false);
+      expect(t.labels.unitCalls).toEqual([]);
+      expect(t.labels.storeCalls).toEqual([]);
+      await t.list.execute(t.admin(foreign), { after: null, limit: null });
+      expect(t.labels.unitCalls).toEqual([]);
     });
 
     it('refuses a bad cursor and a bad page size', async () => {

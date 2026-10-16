@@ -161,10 +161,23 @@ describe.each(TEST_MARKETS)('pricing holds and retirement in market %s (database
       outbox: outbox(),
       clock,
     });
+  // The names come from other modules' facades (their own db specs cover them): none here.
+  const noLabels = {
+    unitLabels: { labelsOf: () => Promise.resolve(new Map()) },
+    storeNames: { namesOf: () => Promise.resolve(new Map()) },
+  };
   const list = () =>
-    new ListPriceHolds(gate, { unitOfWork: persistence.unitOfWork, series: repository() });
+    new ListPriceHolds(gate, {
+      unitOfWork: persistence.unitOfWork,
+      series: repository(),
+      ...noLabels,
+    });
   const view = () =>
-    new ViewPriceHold(gate, { unitOfWork: persistence.unitOfWork, series: repository() });
+    new ViewPriceHold(gate, {
+      unitOfWork: persistence.unitOfWork,
+      series: repository(),
+      ...noLabels,
+    });
   const retireDeps = () => ({
     unitOfWork: handledOnce(),
     series: repository(),
