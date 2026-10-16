@@ -2,7 +2,7 @@
 // The responsive standard of the panels (docs: frontend-next handoff): the phone drawer and
 // bottom bar of the shell, and a source check that no table can widen the page.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { AppShell, Menu } from '@mondapac/ui';
+import { AppShell, Menu, Sidebar } from '@mondapac/ui';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { act } from 'react';
@@ -84,6 +84,20 @@ describe('AppShell sidebar from 760 px', () => {
     expect(bar?.className).toMatch(/(^| )sticky( |$)/);
     expect(bar?.className).toMatch(/(^| )top-0( |$)/);
     expect(container.querySelector('aside')?.className).toMatch(/md:sticky/);
+  });
+
+  it('gives each menu row the control height: 36 px from tablets up, 48 px on phones', () => {
+    render(
+      <Sidebar
+        panelName="Seller"
+        items={[{ id: 'home', icon: 'home', labelKey: 'nav.home', href: '/' }]}
+        activeId="home"
+        label={(key) => key}
+      />,
+    );
+    const row = screen.getByRole('link', { name: 'nav.home' });
+    expect(row.className).toMatch(/(^| )min-h-\(--mp-size-control\)( |$)/);
+    expect(row.className).not.toMatch(/(^| )(md:)?py-[23]( |$)/);
   });
 
   it('narrows to an icon rail, saves the choice and widens again', () => {
