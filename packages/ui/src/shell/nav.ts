@@ -2,11 +2,15 @@
 // drawer and the bottom bar all render the one filtered config; filtering is presentation
 // only, the server authorises every route and call (ADR-0018).
 
+import type { IconName } from '../icon/icon.tsx';
+
 export interface NavItem {
   readonly id: string;
   /** Message key of the label (text lives in the app's catalogue, ADR-0033 decision 10). */
   readonly labelKey: string;
   readonly href: string;
+  /** Every item has an icon from the shared set (Figma NavItem). */
+  readonly icon: IconName;
   readonly group?: string;
   /** Permission keys; the item shows with any one of them. Absent means always shown. */
   readonly anyOf?: readonly string[];

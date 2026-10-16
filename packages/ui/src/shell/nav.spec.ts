@@ -3,8 +3,8 @@ import { visibleNavItems, type NavConfig } from './nav.ts';
 
 const config: NavConfig = {
   items: [
-    { id: 'home', labelKey: 'nav.home', href: '/' },
-    { id: 'team', labelKey: 'nav.team', href: '/team', anyOf: ['a.view', 'b.view'] },
+    { id: 'home', labelKey: 'nav.home', icon: 'home', href: '/' },
+    { id: 'team', labelKey: 'nav.team', icon: 'home', href: '/team', anyOf: ['a.view', 'b.view'] },
   ],
 };
 
@@ -29,7 +29,7 @@ describe('visibleNavItems edge cases', () => {
 
   it('hides an item whose anyOf list is empty (no key can show it)', () => {
     const empty: NavConfig = {
-      items: [{ id: 'x', labelKey: 'nav.x', href: '/x', anyOf: [] }],
+      items: [{ id: 'x', labelKey: 'nav.x', icon: 'home', href: '/x', anyOf: [] }],
     };
     expect(visibleNavItems(empty, new Set(['a.view']))).toEqual([]);
   });
@@ -37,8 +37,8 @@ describe('visibleNavItems edge cases', () => {
   it('keeps config order', () => {
     const ordered: NavConfig = {
       items: [
-        { id: 'b', labelKey: 'nav.b', href: '/b' },
-        { id: 'a', labelKey: 'nav.a', href: '/a' },
+        { id: 'b', labelKey: 'nav.b', icon: 'home', href: '/b' },
+        { id: 'a', labelKey: 'nav.a', icon: 'home', href: '/a' },
       ],
     };
     expect(visibleNavItems(ordered, new Set()).map((i) => i.id)).toEqual(['b', 'a']);
