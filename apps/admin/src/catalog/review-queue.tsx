@@ -1,10 +1,10 @@
 'use client';
 
 import { Badge, Banner, Button, EmptyState, Select } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
-import { formatInstant } from '../sellers/format.ts';
+import { formatInstant } from '../shared/format.ts';
 import { reviewProblemOf, type ReviewProblem } from './review-errors.ts';
 import { CHANGE_REASONS, type ReviewRow } from './types.ts';
 
@@ -71,6 +71,7 @@ function ReviewCard({
 }) {
   const t = useTranslations('catalog.review');
   const tr = useTranslations();
+  const locale = useLocale();
   const [step, setStep] = useState<Step>('closed');
   const [reasonCode, setReasonCode] = useState('');
   const [pending, setPending] = useState(false);
@@ -123,7 +124,7 @@ function ReviewCard({
         <Field label={t('field.handling')} value={row.handling ?? t('field.handling-missing')} />
         <Field
           label={t('field.submitted')}
-          value={row.submittedAt === null ? '-' : formatInstant(row.submittedAt)}
+          value={row.submittedAt === null ? '-' : formatInstant(row.submittedAt, locale)}
         />
         <Field label={t('field.seller')} value={row.sellerId} mono />
       </dl>

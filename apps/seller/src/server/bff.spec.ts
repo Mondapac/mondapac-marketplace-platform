@@ -10,6 +10,7 @@ const config: PanelConfig = {
   passwordMinLength: 15,
   passwordMaxLength: 128,
   marketName: 'Australia',
+  locale: 'en-AU',
   supportEmail: 'support@example.com',
   storefrontAddress: null,
   clientAddressKey: null,

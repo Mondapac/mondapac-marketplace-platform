@@ -1,5 +1,5 @@
 import { Badge, CARD_TABLE, EmptyState, type BadgeTone } from '@mondapac/ui';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { formatInstant, known, OFFER_STATUSES } from './format.ts';
 import type { OfferView } from './types.ts';
 
@@ -17,6 +17,7 @@ export const OFFER_TONE: Record<string, BadgeTone> = {
  */
 export async function OffersTable({ items }: { readonly items: readonly OfferView[] }) {
   const t = await getTranslations();
+  const locale = await getLocale();
   const cols = ['product', 'sku', 'status', 'listed', 'submitted'] as const;
   const head = (col: (typeof cols)[number]) =>
     t(col === 'status' ? 'catalog.col.status' : `catalog.offers.col.${col}`);
@@ -72,7 +73,7 @@ export async function OffersTable({ items }: { readonly items: readonly OfferVie
                   {offer.submittedAt === null ? (
                     <span className="text-fg-muted">{t('catalog.not-given')}</span>
                   ) : (
-                    formatInstant(offer.submittedAt)
+                    formatInstant(offer.submittedAt, locale)
                   )}
                 </td>
               </tr>

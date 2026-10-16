@@ -1,9 +1,10 @@
 'use client';
 
 import { Badge, Banner, Button, Card, EmptyState, TextField, type BadgeTone } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
+import { dateFormat } from '../shared/intl.ts';
 import { formatMinor } from '../price/money.ts';
 import { orderProblemOf } from './errors.ts';
 import type { Fulfilment, OwnFee, SellerOrderPage, SellerOrderView } from './types.ts';
@@ -14,13 +15,9 @@ const TONE: Record<Fulfilment, BadgeTone> = {
   delivered: 'success',
 };
 
-const WHEN = new Intl.DateTimeFormat('en-AU', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-  timeZone: 'UTC',
-});
 /** An instant in UTC, so the server and the browser print the same text. */
-const when = (instant: string): string => `${WHEN.format(new Date(instant))} UTC`;
+const when = (instant: string, locale: string): string =>
+  `${dateFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(instant))} UTC`;
 const shortId = (id: string): string => id.slice(-8).toUpperCase();
 
 export function SellerOrders({
@@ -37,6 +34,7 @@ export function SellerOrders({
   readonly canDeliver: boolean;
 }) {
   const t = useTranslations();
+  const locale = useLocale();
   const [orders, setOrders] = useState(initial.sellerOrders);
   const [cursor, setCursor] = useState(initial.nextCursor);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -72,7 +70,7 @@ export function SellerOrders({
       <p className="text-fg-muted">{t('orders.intro')}</p>
       {fee === null ? null : (
         <Banner tone="info">
-          {t('orders.fee', { fee: formatMinor(fee.amount, fee.currency) })}
+          {t('orders.fee', { fee: formatMinor(fee.amount, fee.currency, locale) })}
         </Banner>
       )}
       {orders.length === 0 ? (
@@ -121,6 +119,7 @@ function OrderCard({
   readonly onChange: (next: SellerOrderView) => void;
 }) {
   const t = useTranslations();
+  const locale = useLocale();
   const [carrier, setCarrier] = useState('');
   const [tracking, setTracking] = useState('');
   const [pending, setPending] = useState(false);
@@ -175,7 +174,7 @@ function OrderCard({
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2 text-sm text-fg-muted">
             <Badge tone={TONE[order.fulfilment]}>{status}</Badge>
-            <span>{t('orders.paid', { when: when(order.paidAt) })}</span>
+            <span>{t('orders.paid', { when: when(order.paidAt, locale) })}</span>
           </div>
           <ul className="flex flex-col gap-1 text-sm">
             {order.lines.map((line, index) => (
@@ -186,28 +185,28 @@ function OrderCard({
                     {' '}
                     ·{' '}
                     {t('orders.each', {
-                      price: formatMinor(line.unitPrice.amount, line.unitPrice.currency),
+                      price: formatMinor(line.unitPrice.amount, line.unitPrice.currency, locale),
                     })}
                   </span>
                 </span>
-                <span>{formatMinor(line.lineAmount.amount, line.lineAmount.currency)}</span>
+                <span>{formatMinor(line.lineAmount.amount, line.lineAmount.currency, locale)}</span>
               </li>
             ))}
           </ul>
           <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-line pt-2 text-sm">
             <dt className="text-fg-muted">{t('orders.subtotal')}</dt>
             <dd className="text-end">
-              {formatMinor(order.subtotal.amount, order.subtotal.currency)}
+              {formatMinor(order.subtotal.amount, order.subtotal.currency, locale)}
             </dd>
             <dt className="text-fg-muted">{t('orders.delivery')}</dt>
             <dd className="text-end">
               {order.shipping.amount === '0'
                 ? t('orders.delivery-free')
-                : formatMinor(order.shipping.amount, order.shipping.currency)}
+                : formatMinor(order.shipping.amount, order.shipping.currency, locale)}
             </dd>
             <dt className="font-semibold">{t('orders.total')}</dt>
             <dd className="text-end font-semibold">
-              {formatMinor(order.total.amount, order.total.currency)}
+              {formatMinor(order.total.amount, order.total.currency, locale)}
             </dd>
           </dl>
           {order.fulfilment === 'to-ship' && canShip ? (
@@ -267,12 +266,12 @@ function OrderCard({
               </p>
               {order.shippedAt === null ? null : (
                 <p className="text-fg-muted">
-                  {t('orders.shipped-at', { when: when(order.shippedAt) })}
+                  {t('orders.shipped-at', { when: when(order.shippedAt, locale) })}
                 </p>
               )}
               {order.deliveredAt === null ? null : (
                 <p className="text-fg-muted">
-                  {t('orders.delivered-at', { when: when(order.deliveredAt) })}
+                  {t('orders.delivered-at', { when: when(order.deliveredAt, locale) })}
                 </p>
               )}
               {order.fulfilment === 'shipped' && canDeliver ? (

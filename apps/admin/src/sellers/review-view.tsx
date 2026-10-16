@@ -1,6 +1,7 @@
 import { BackLink, Badge, Card, DataList, type BadgeTone } from '@mondapac/ui';
-import { getTranslations } from 'next-intl/server';
-import { addressLines, areaName, formatInstant, known } from './format.ts';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { formatInstant } from '../shared/format.ts';
+import { addressLines, areaName, known } from './format.ts';
 import { DecisionPanel } from './decision-panel.tsx';
 import type { ReviewContent, ReviewRead, ReviewRevision } from './review-types.ts';
 
@@ -56,12 +57,14 @@ function contentRows(t: Translate, content: ReviewContent): Row[] {
 }
 
 function Revision({
+  locale,
   t,
   heading,
   revision,
   against,
 }: {
   readonly t: Translate;
+  readonly locale: string;
   readonly heading: string;
   readonly revision: ReviewRevision;
   /** The approved revision to mark changed fields against, when shown beside a change. */
@@ -75,7 +78,7 @@ function Revision({
         {t('sellers.review.revision-line', {
           kind: t(`sellers.review.kind.${known(revision.kind, KINDS)}`),
           no: revision.revisionNo,
-          when: formatInstant(revision.createdAt),
+          when: formatInstant(revision.createdAt, locale),
         })}
         <Badge tone="neutral">
           {t(`sellers.review.revision-status.${known(revision.status, REVISION_STATUSES)}`)}
@@ -116,7 +119,15 @@ function Revision({
   );
 }
 
-function RegisterPanel({ t, review }: { readonly t: Translate; readonly review: ReviewRead }) {
+function RegisterPanel({
+  t,
+  locale,
+  review,
+}: {
+  readonly t: Translate;
+  readonly locale: string;
+  readonly review: ReviewRead;
+}) {
   const { register, current } = review;
   const snapshot = current.registerAtSubmission;
   return (
@@ -134,7 +145,7 @@ function RegisterPanel({ t, review }: { readonly t: Translate; readonly review: 
           },
           {
             label: t('sellers.review.register.checked'),
-            value: register.checkedAt === null ? null : formatInstant(register.checkedAt),
+            value: register.checkedAt === null ? null : formatInstant(register.checkedAt, locale),
           },
           ...(register.mismatches.length > 0
             ? [
@@ -179,6 +190,7 @@ export async function ReviewView({
   };
 }) {
   const t = await getTranslations();
+  const locale = await getLocale();
   const access = known(review.access, ACCESS);
   return (
     <div className="flex flex-col gap-6">
@@ -194,6 +206,7 @@ export async function ReviewView({
       <p className="text-sm text-fg-muted">{t('sellers.review.read-only')}</p>
       <Revision
         t={t}
+        locale={locale}
         heading={t(
           review.previous === null ? 'sellers.review.under-review' : 'sellers.review.proposed',
         )}
@@ -203,12 +216,13 @@ export async function ReviewView({
       {review.previous === null ? null : (
         <Revision
           t={t}
+          locale={locale}
           heading={t('sellers.review.approved-revision')}
           revision={review.previous}
           against={null}
         />
       )}
-      <RegisterPanel t={t} review={review} />
+      <RegisterPanel t={t} locale={locale} review={review} />
       {decide !== undefined &&
       review.access === 'pending' &&
       (decide.canDecide || decide.canCheck) ? (

@@ -1,6 +1,7 @@
 import { Badge, Button, type BadgeTone } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
-import { known, shortInstant } from './format.ts';
+import { useLocale, useTranslations } from 'next-intl';
+import { shortInstant } from '../shared/format.ts';
+import { known } from './format.ts';
 import { ORPHAN_STATES, shortSellerId, type OrphanRow } from './orphaned-types.ts';
 
 const TONE: Record<string, BadgeTone> = {
@@ -27,6 +28,7 @@ export function OrphanedTable({
   readonly onInvite: (row: OrphanRow) => void;
 }) {
   const t = useTranslations('sellers.orphaned');
+  const locale = useLocale();
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line">
       <table className="w-full min-w-120 text-start text-sm">
@@ -64,7 +66,7 @@ export function OrphanedTable({
                   <Badge tone={TONE[state] ?? 'neutral'}>{t(`state.${state}`)}</Badge>
                 </td>
                 <td className="px-3 py-3">
-                  <time dateTime={row.createdAt}>{shortInstant(row.createdAt)}</time>
+                  <time dateTime={row.createdAt}>{shortInstant(row.createdAt, locale)}</time>
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex flex-col items-start gap-1">

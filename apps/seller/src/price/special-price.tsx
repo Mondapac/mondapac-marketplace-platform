@@ -1,7 +1,7 @@
 'use client';
 
 import { Banner, Button, TextField } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -33,6 +33,7 @@ export function SpecialPrice({
   readonly onVersion: (version: number) => void;
 }) {
   const t = useTranslations();
+  const locale = useLocale();
   const router = useRouter();
   const [amountText, setAmountText] = useState('');
   const [startText, setStartText] = useState('');
@@ -109,9 +110,9 @@ export function SpecialPrice({
       {special === null ? null : (
         <p className="mb-2 text-fg-muted">
           {t(`price.special.${special.state}`, {
-            amount: formatMinor(special.amount, currency),
-            from: formatInZone(special.startsAt, zone),
-            until: formatInZone(special.endsAt, zone),
+            amount: formatMinor(special.amount, currency, locale),
+            from: formatInZone(special.startsAt, zone, locale),
+            until: formatInZone(special.endsAt, zone, locale),
           })}
         </p>
       )}
@@ -120,10 +121,10 @@ export function SpecialPrice({
           <Banner tone="attention">
             <p>
               {t('price.special.held', {
-                amount: formatMinor(heldSpecial.amount, currency),
-                from: formatInZone(heldSpecial.startsAt, zone),
-                until: formatInZone(heldSpecial.endsAt, zone),
-                since: formatInZone(heldSpecial.submittedAt, zone),
+                amount: formatMinor(heldSpecial.amount, currency, locale),
+                from: formatInZone(heldSpecial.startsAt, zone, locale),
+                until: formatInZone(heldSpecial.endsAt, zone, locale),
+                since: formatInZone(heldSpecial.submittedAt, zone, locale),
               })}
             </p>
           </Banner>

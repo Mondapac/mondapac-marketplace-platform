@@ -11,6 +11,7 @@ import type { RoleCatalogue, RoleRecord } from './types.ts';
 
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
+  getLocale: () => Promise.resolve('en-AU'),
 }));
 
 const allowed = { allowed: true, code: null };

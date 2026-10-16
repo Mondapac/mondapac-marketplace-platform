@@ -1,5 +1,5 @@
 import { Banner, Card } from '@mondapac/ui';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { FieldList } from './field-list.tsx';
 import { formatInstant, known, OFFER_STATUSES, readable } from './format.ts';
 import { OfferActions } from './offer-actions.tsx';
@@ -30,6 +30,7 @@ export async function OfferDetail({
   readonly csrfToken?: string;
 }) {
   const t = await getTranslations();
+  const marketLocale = await getLocale();
   const status = known(offer.status, OFFER_STATUSES);
   const descriptions = Object.entries(offer.description);
   return (
@@ -75,13 +76,20 @@ export async function OfferDetail({
             },
             {
               label: t('catalog.offers.col.submitted'),
-              value: offer.submittedAt === null ? null : formatInstant(offer.submittedAt),
+              value:
+                offer.submittedAt === null ? null : formatInstant(offer.submittedAt, marketLocale),
             },
             {
               label: t('catalog.offer.first-published'),
-              value: offer.firstPublishedAt === null ? null : formatInstant(offer.firstPublishedAt),
+              value:
+                offer.firstPublishedAt === null
+                  ? null
+                  : formatInstant(offer.firstPublishedAt, marketLocale),
             },
-            { label: t('catalog.product.created'), value: formatInstant(offer.createdAt) },
+            {
+              label: t('catalog.product.created'),
+              value: formatInstant(offer.createdAt, marketLocale),
+            },
           ]}
         />
       </Card>

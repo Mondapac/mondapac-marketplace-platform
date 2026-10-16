@@ -1,7 +1,7 @@
 'use client';
 
 import { ActionRow, Banner, Button, Card, TextField } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { feeProblemOf } from './errors.ts';
@@ -21,6 +21,7 @@ export function FlatFeeCard({
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
+  const locale = useLocale();
   const [fee, setFee] = useState(initial);
   const [text, setText] = useState(
     initial.amount === null ? '' : inputOf(initial.amount, initial.currency),
@@ -62,7 +63,7 @@ export function FlatFeeCard({
     else setProblem(feeProblemOf(result.failure));
   }
 
-  const max = formatMinor(String(MAX_MINOR), fee.currency);
+  const max = formatMinor(String(MAX_MINOR), fee.currency, locale);
   return (
     <Card title={t('shipping.title')}>
       <div className="flex flex-col gap-4">
@@ -72,7 +73,7 @@ export function FlatFeeCard({
         ) : (
           <p>
             <span className="text-fg-muted">{t('shipping.current')}: </span>
-            <strong>{formatMinor(fee.amount, fee.currency)}</strong>
+            <strong>{formatMinor(fee.amount, fee.currency, locale)}</strong>
           </p>
         )}
         {saved ? <Banner tone="success">{t('shipping.saved')}</Banner> : null}

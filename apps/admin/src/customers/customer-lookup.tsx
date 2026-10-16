@@ -10,11 +10,11 @@ import {
   FieldAction,
   TextField,
 } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { useCountdown } from '../api/use-countdown.ts';
-import { formatInstant } from '../sellers/format.ts';
+import { formatInstant } from '../shared/format.ts';
 import { customerProblemOf } from './errors.ts';
 import { EMAIL_MAX, type CustomerAccount } from './types.ts';
 
@@ -46,6 +46,7 @@ export function CustomerLookup({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('customers');
+  const locale = useLocale();
   const [email, setEmail] = useState('');
   const [invalid, setInvalid] = useState(false);
   const [pending, setPending] = useState(false);
@@ -127,7 +128,7 @@ export function CustomerLookup({
             label: t('field.email-verified'),
             value: t(customer.emailVerified ? 'yes' : 'no'),
           },
-          { label: t('field.created'), value: formatInstant(customer.createdAt) },
+          { label: t('field.created'), value: formatInstant(customer.createdAt, locale) },
         ];
 
   return (
