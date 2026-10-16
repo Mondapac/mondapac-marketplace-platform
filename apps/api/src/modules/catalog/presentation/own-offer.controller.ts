@@ -14,6 +14,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
+import { RequiresStepUp } from '../../../platform/authz';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -467,6 +468,7 @@ export class OwnOfferController {
   }
 
   @Delete(':offerId')
+  @RequiresStepUp('catalog.offer.delete')
   @HttpCode(204)
   @ReadsSession()
   @ApiOperation({

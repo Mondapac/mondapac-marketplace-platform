@@ -375,6 +375,20 @@
     }
   },
   {
+    "action": "identity.seller-step-up-policy.changed",
+    "targetType": "identity.seller-access",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change)",
+      "required": "boolean"
+    },
+    "after": {
+      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change)",
+      "required": "boolean"
+    }
+  },
+  {
     "action": "notifications.support-contact.changed",
     "targetType": "notifications.support-contact",
     "targetId": "enumOf(support-email)",
