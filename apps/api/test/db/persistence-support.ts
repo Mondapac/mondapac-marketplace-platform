@@ -126,6 +126,28 @@ export function gate(): { readonly opened: Promise<void>; open(): void } {
   return { opened, open };
 }
 
+/**
+ * Makes `unitOfWork` retry a refused attempt (`40001`) only once `released` has settled, or
+ * after 5 s. A race test releases it when the other unit has settled: on a busy machine the
+ * winner can take longer to commit than the short default pause, and a loser that retried
+ * while the winner was still open would conflict again and use up its attempts. Returns the
+ * restore.
+ */
+export function holdRetriesUntil(unitOfWork: unknown, released: Promise<unknown>): () => void {
+  const unit = unitOfWork as { pause: RetryPause };
+  const original = unit.pause;
+  const settled = released.then(
+    () => undefined,
+    () => undefined,
+  );
+  unit.pause = async () => {
+    await Promise.race([settled, new Promise((resolve) => setTimeout(resolve, 5000))]);
+  };
+  return () => {
+    unit.pause = original;
+  };
+}
+
 /** Milliseconds a promise took to settle, with its outcome. */
 export async function timed<T>(
   promise: Promise<T>,
