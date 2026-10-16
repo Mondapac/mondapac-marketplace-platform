@@ -40,6 +40,30 @@ export class PrismaStoreProfileRepository implements StoreProfileRepository {
     return new Map(rows.map((row) => [row.sellerId as Id<'Seller'>, minimumOf(row)] as const));
   }
 
+  async approvedStoreNames(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, string>> {
+    if (sellerIds.length === 0) return new Map();
+    if (sellerIds.length > MAX_IDS) throw new RangeError('approvedStoreNames: at most 100 ids');
+    // `public_store_name` is set exactly while the approved pointer is set (CHECK).
+    const rows = await this.prisma.tx(market).sellersSellerFile.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: { in: [...sellerIds] },
+        approvedRevisionId: { not: null },
+        publicStoreName: { not: null },
+      },
+      select: { sellerId: true, publicStoreName: true },
+    });
+    const names = new Map<Id<'Seller'>, string>();
+    for (const row of rows) {
+      if (row.publicStoreName !== null)
+        names.set(row.sellerId as Id<'Seller'>, row.publicStoreName);
+    }
+    return names;
+  }
+
   async find(market: MarketContext, sellerId: Id<'Seller'>): Promise<StoreSettings | null> {
     const row = await this.prisma.tx(market).sellersStoreProfile.findFirst({
       where: { marketId: market.marketId, sellerId },

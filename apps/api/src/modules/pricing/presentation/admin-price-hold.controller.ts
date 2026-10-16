@@ -275,6 +275,9 @@ function rowOf(view: PriceHoldPage['items'][number]): PriceHoldRow {
     offerId: view.offerId,
     variantId: view.variantId,
     sellerId: view.sellerId,
+    productName: view.productName,
+    variantLabel: view.variantLabel,
+    storeName: view.storeName,
     kind: view.kind,
     ...(view.window === null
       ? {}
