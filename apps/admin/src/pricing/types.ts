@@ -23,6 +23,11 @@ export interface PriceHoldRow {
   readonly offerId: string;
   readonly variantId: string;
   readonly sellerId: string;
+  /** Published product name; null when it could not be read. Seller-entered text. */
+  readonly productName: string | null;
+  readonly variantLabel: string | null;
+  /** The seller's public store name; null before approval or when it could not be read. */
+  readonly storeName: string | null;
   readonly kind: 'regular';
   readonly amount: HoldMoney;
   readonly anchorAmount: HoldMoney;

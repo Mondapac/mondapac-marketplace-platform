@@ -54,6 +54,7 @@ describe.each(TEST_MARKETS)('offerSellUnits in market %s', (code) => {
     offerSellUnits: new OfferSellUnitsQuery(gate, { unitOfWork, reader }),
     offerSellUnitsSystem: new OfferSellUnitsSystemQuery(gate, { unitOfWork, reader }),
     offerNamesSystem: undefined as never,
+    sellUnitLabels: undefined as never,
   });
   beforeEach(() => {
     units.length = 0;

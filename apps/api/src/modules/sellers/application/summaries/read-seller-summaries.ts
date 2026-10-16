@@ -93,20 +93,22 @@ export async function readSellerSummaries(
         // The minimum order of the sellers with an approved revision, in the same unit (design
         // 18 decision 6; data design A1): one statement per batch.
         const minimums = await deps.storeProfiles.approvedMinimumOrders(market, [...existing]);
-        return ok({ existing, zones, minimums });
+        const storeNames = await deps.storeProfiles.approvedStoreNames(market, [...existing]);
+        return ok({ existing, zones, minimums, storeNames });
       },
       { readOnly: true },
     );
     if (!read.ok) throw new Error('the read unit failed');
-    const { existing, zones, minimums } = read.value;
+    const { existing, zones, minimums, storeNames } = read.value;
     const rule = deps.minimumOrderPolicy.rule(market);
     return ok(
       [...ids].map((sellerId): SellerSummary => {
         const zone = existing.has(sellerId) ? zones.get(sellerId) : undefined;
+        const storeName = storeNames.get(sellerId) ?? null;
         const base: SellerSummary =
           zone === undefined
-            ? { sellerId, exists: existing.has(sellerId) }
-            : { sellerId, exists: true, operatingTimezone: { zone, provisional: true } };
+            ? { sellerId, exists: existing.has(sellerId), storeName }
+            : { sellerId, exists: true, operatingTimezone: { zone, provisional: true }, storeName };
         const minimum = minimums.get(sellerId);
         // Absent (no key) for a seller without an approved revision, and when the stored
         // currency is not the Market's: a consumer fails closed on absent, never reads it as none.

@@ -400,9 +400,9 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     expect(asAnonymous).toEqual({
       ok: true,
       value: [
-        { sellerId: never, exists: false },
-        { sellerId, exists: true },
-        { sellerId: elsewhere, exists: false },
+        { sellerId: never, exists: false, storeName: null },
+        { sellerId, exists: true, storeName: null },
+        { sellerId: elsewhere, exists: false, storeName: null },
       ],
     });
     expect(JSON.stringify(asSystem)).toBe(JSON.stringify(asAnonymous));
@@ -1117,7 +1117,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     it('gives sellerSummaries the draft zone to the system caller only, never across Markets', async () => {
       const { sellerId, context } = await draftSeller();
       const none = await facade().sellerSummaries(systemContext(code), [sellerId]);
-      expect(none).toEqual({ ok: true, value: [{ sellerId, exists: true }] });
+      expect(none).toEqual({ ok: true, value: [{ sellerId, exists: true, storeName: null }] });
 
       await app.get(MyFileSaveGeneral).execute(context, GENERAL);
       await app.get(MyFileSaveAddress).execute(context, { address: FIXTURE.address });
@@ -1131,12 +1131,16 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           {
             sellerId,
             exists: true,
+            storeName: null,
             operatingTimezone: { zone: FIXTURE.zones[0], provisional: true },
           },
         ],
       });
-      expect(asRequest).toEqual({ ok: true, value: [{ sellerId, exists: true }] });
-      expect(elsewhere).toEqual({ ok: true, value: [{ sellerId, exists: false }] });
+      expect(asRequest).toEqual({ ok: true, value: [{ sellerId, exists: true, storeName: null }] });
+      expect(elsewhere).toEqual({
+        ok: true,
+        value: [{ sellerId, exists: false, storeName: null }],
+      });
     });
 
     it('saves the draft encrypted at rest under the seller`s key and reads it back', async () => {
