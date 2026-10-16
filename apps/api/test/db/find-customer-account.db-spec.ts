@@ -4,6 +4,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { Id } from '@mondapac/shared-kernel';
 import { testAuthenticatedActor, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import { CustomerAccountSummaries } from '../../src/modules/identity/application/use-cases/customer-account-summaries.use-case';
 import { FindCustomerAccount } from '../../src/modules/identity/application/use-cases/find-customer-account.use-case';
 import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { createTestApp } from '../support/test-app';
@@ -59,7 +60,12 @@ describe.each(TEST_MARKETS)('customer lookup in market %s (database, slice 8d)',
   async function account(
     population: 'admin' | 'customer',
     email: string,
-    options: { marketCode?: string; status?: 'active' | 'disabled'; verified?: boolean } = {},
+    options: {
+      marketCode?: string;
+      status?: 'active' | 'disabled';
+      verified?: boolean;
+      credential?: boolean;
+    } = {},
   ): Promise<Id<'Account'>> {
     const id = newId<'Account'>();
     const marketCode = options.marketCode ?? code;
@@ -79,6 +85,7 @@ describe.each(TEST_MARKETS)('customer lookup in market %s (database, slice 8d)',
         CREATED,
       ],
     );
+    if (options.credential === false) return id;
     await sql.query(
       `INSERT INTO identity.password_credentials
          (market_id, tenant_id, account_id, password_hash, changed_at)
@@ -141,6 +148,28 @@ describe.each(TEST_MARKETS)('customer lookup in market %s (database, slice 8d)',
       ok: true,
       value: { accountId: disabled, status: 'disabled', emailVerified: false },
     });
+  });
+
+  it('answers the order-page summaries in one batch, past a malformed id and a customer without a credential', async () => {
+    const root = await admin('platform-administrator');
+    const tag = randomUUID();
+    const plain = await account('customer', `Plain.${tag}@Lookup.Example`);
+    const bare = await account('customer', `Bare.${tag}@Lookup.Example`, { credential: false });
+    const abroad = await account('customer', `Away.${tag}@Lookup.Example`, {
+      marketCode: otherMarketOf(code),
+    });
+    const staff = await account('admin', `Staff.${tag}@Lookup.Example`);
+
+    const answer = await app.get(CustomerAccountSummaries).execute(as(root), {
+      // A version 4 UUID is not an id here: skipped, never a failure of the batch.
+      accountIds: [plain, randomUUID(), bare, abroad, staff],
+    });
+
+    expect(answer.ok).toBe(true);
+    expect(answer.ok && [...answer.value].sort((x, y) => x.email.localeCompare(y.email))).toEqual([
+      { accountId: bare, displayName: null, email: `Bare.${tag}@Lookup.Example` },
+      { accountId: plain, displayName: null, email: `Plain.${tag}@Lookup.Example` },
+    ]);
   });
 
   it('answers the same customer.not-found for unknown, other-Market, admin and partial emails', async () => {

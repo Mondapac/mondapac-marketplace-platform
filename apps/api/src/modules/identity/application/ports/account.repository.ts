@@ -10,6 +10,14 @@ import type { Account } from '../../domain/account';
 export type AccountAddRefused =
   { readonly code: 'account.email-taken' } | { readonly code: 'validation.failed' };
 
+/** One customer account of {@link AccountRepository.customerSummaries}. */
+export interface CustomerSummaryRow {
+  readonly id: Id<'Account'>;
+  readonly displayName: string | null;
+  /** The sign-in address, as typed. */
+  readonly email: string;
+}
+
 /**
  * The accounts of `identity` (identity design 2.1; data design 3.3). Every method runs in the
  * caller's open read-write unit of work and takes the `MarketContext` only (foundations 5.2
@@ -48,6 +56,16 @@ export interface AccountRepository {
    * `(market_id, population, email_normalized)` key.
    */
   existsInPopulation(market: MarketContext, population: Population): Promise<boolean>;
+
+  /**
+   * The name and sign-in address of the Market's customer accounts with these ids, in one read.
+   * Unknown ids and other populations are absent. Reads no credential, so an account without one
+   * is still answered. PERSONAL DATA: never logged.
+   */
+  customerSummaries(
+    market: MarketContext,
+    ids: readonly Id<'Account'>[],
+  ): Promise<readonly CustomerSummaryRow[]>;
 
   /**
    * Stores a new account, its credential and its data key (identity design 11.3: the key is
