@@ -25,9 +25,14 @@ import {
   SELLER_TEAM_READER,
   type SellerTeamReader,
 } from '../../application/ports/seller-team-reader';
+import {
+  STEP_UP_REPOSITORY,
+  type StepUpRepository,
+} from '../../application/ports/step-up.repository';
 import { CheckedInRoleSeed } from '../seed/checked-in-role-seed';
 import { PrismaAccessDecisionRepository } from './prisma-access-decision.repository';
 import { PrismaSellerAccessRepository } from './prisma-seller-access.repository';
+import { PrismaStepUpRepository } from './prisma-step-up.repository';
 import { PrismaSellerTeamReader } from './prisma-seller-team.reader';
 import {
   PrismaRoleAssignmentRepository,
@@ -42,6 +47,11 @@ import {
  * (dependency-cruiser `persistence-internals-are-private`, `subject-keys-only-in-infrastructure`).
  */
 export const sellerProviders: readonly FactoryProvider[] = [
+  {
+    provide: STEP_UP_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): StepUpRepository => new PrismaStepUpRepository(prisma),
+  },
   {
     provide: SELLER_ACCESS_REPOSITORY,
     inject: [PrismaService, SUBJECT_KEY_SERVICE],

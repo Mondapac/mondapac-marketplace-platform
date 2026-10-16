@@ -8,13 +8,12 @@ import {
   Topbar,
   sidebarCollapsed,
   themeChoice,
-  visibleNavItems,
 } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
-import { sellerNav } from '../nav.ts';
+import { sellerNavItems } from '../nav.ts';
 import type { SellerSession } from './session.ts';
 
 /** The panel shell around a signed-in page: sidebar, topbar with the account menu. */
@@ -32,12 +31,7 @@ export async function SellerShell({
   const t = await getTranslations();
   const jar = await cookies();
   const collapsed = sidebarCollapsed(jar.get(SIDEBAR_COOKIE)?.value);
-  const approved = session.sellerAccessState === 'approved';
-  // Settings and Team are for approved sellers; Seller account (setup) is for the others.
-  const approvedOnly = new Set(['s_settings', 's_team']);
-  const items = visibleNavItems(sellerNav, new Set(session.permissionKeys)).filter((item) =>
-    approved ? item.id !== 's_setup' : !approvedOnly.has(item.id),
-  );
+  const items = sellerNavItems(session.sellerAccessState, session.permissionKeys);
   // Phone bottom bar (IA 4): Home and Catalogue, only when the caller may see both.
   const tabIds = ['s_home', 's_products'];
   const tabs = tabIds.map((id) => items.find((item) => item.id === id));
