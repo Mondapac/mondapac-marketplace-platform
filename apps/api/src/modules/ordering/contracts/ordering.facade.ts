@@ -43,6 +43,21 @@ export type OrderNoticeFailure =
   | { readonly code: 'ordering.order-not-found' };
 
 /**
+ * What the "Shipped" email needs from a shipped seller order: the customer's account id (for the
+ * address lookup in `identity` only), the carrier and the tracking number the seller typed in.
+ */
+export interface ShipmentNotice {
+  readonly orderId: string;
+  readonly accountId: Id<'Account'>;
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly carrier: string;
+  readonly trackingRef: string | null;
+}
+
+/** An unknown, foreign-Market, unpaid or not yet shipped seller order is `ordering.order-not-found`. */
+export type ShipmentNoticeFailure = OrderNoticeFailure;
+
+/**
  * What `payments` (the Stripe webhook receiver) calls. Both methods take the system actor's
  * `CallContext` unchanged and are idempotent: a repeated event changes nothing.
  */
@@ -75,6 +90,15 @@ export interface OrderingFacade {
     context: CallContext,
     orderId: string,
   ): Promise<Result<OrderNotice, OrderNoticeFailure>>;
+
+  /**
+   * The shipment behind an `ordering.order-shipped.v1` event, for the "Shipped" email. Rule
+   * `system`.
+   */
+  shipmentNotice(
+    context: CallContext,
+    request: { readonly orderId: string; readonly sellerOrderId: string },
+  ): Promise<Result<ShipmentNotice, ShipmentNoticeFailure>>;
 }
 
 /** Nest token of the {@link OrderingFacade}, provided and exported by `OrderingModule`. */

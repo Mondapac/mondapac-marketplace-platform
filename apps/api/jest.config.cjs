@@ -18,4 +18,7 @@ module.exports = {
   },
   collectCoverageFrom: ['src/**/*.ts'],
   coverageDirectory: './coverage',
+  // In CI, also report each failed test as a GitHub annotation, so the failing test can be read
+  // from the check run without downloading the whole job log.
+  reporters: process.env.GITHUB_ACTIONS ? ['default', 'github-actions'] : ['default'],
 };
