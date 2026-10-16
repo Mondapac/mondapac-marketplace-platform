@@ -2,7 +2,7 @@ import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
 import { OrderShipped } from '../domain/events';
-import { markDelivered, markShipped, parseShipment } from '../domain/order';
+import { markDelivered, markShipped, parseShipment, type Fulfilment } from '../domain/order';
 import {
   sellerOrderDetailView,
   type LabelledSellerOrderDetailView,
@@ -59,7 +59,11 @@ function decodeSellerCursor(value: string): SellerOrderPage['after'] | undefined
 export interface SellerListInput {
   readonly limit?: unknown;
   readonly cursor?: unknown;
+  /** One fulfilment step: `to-ship`, `shipped` or `delivered`. */
+  readonly status?: unknown;
 }
+
+const FULFILMENTS: readonly Fulfilment[] = ['to-ship', 'shipped', 'delivered'];
 
 /** The seller's paid seller orders, newest payment first. */
 export async function listSellerOrders(
@@ -87,14 +91,21 @@ export async function listSellerOrders(
     if (decoded === undefined) fields.push({ path: 'cursor', code: 'format' });
     else after = decoded;
   }
+  let fulfilment: Fulfilment | null = null;
+  if (input?.status !== undefined) {
+    if (FULFILMENTS.includes(input.status as Fulfilment)) fulfilment = input.status as Fulfilment;
+    else fields.push({ path: 'status', code: 'value' });
+  }
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
   const read = await deps.unitOfWork.run<SellerOrderPageView, FulfilmentFailure>(
     context.market,
     async () => {
-      const rows = await deps.orders.listForSeller(context.market, sellerId, {
-        limit: limit + 1,
-        after,
-      });
+      const rows = await deps.orders.listForSeller(
+        context.market,
+        sellerId,
+        { fulfilment },
+        { limit: limit + 1, after },
+      );
       const page = rows.slice(0, limit);
       const last = page[page.length - 1];
       return ok({
