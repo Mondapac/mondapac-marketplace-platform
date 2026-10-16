@@ -2,7 +2,7 @@ import { Badge, CARD_TABLE, EmailText, type BadgeTone } from '@mondapac/ui';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { areaName, known } from './format.ts';
-import { When } from './when.tsx';
+import { When } from '../shared/when.tsx';
 import { KINDS, STATUSES, type SellerRow } from './types.ts';
 
 const TONE: Record<string, BadgeTone> = {

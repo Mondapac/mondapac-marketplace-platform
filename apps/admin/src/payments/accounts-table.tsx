@@ -1,5 +1,6 @@
 import { CARD_TABLE } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { shortId } from '../shared/short-id.ts';
 import { AccountStatusBadge, FlagBadge } from './status-badge.tsx';
 import type { ConnectedAccountRow } from './types.ts';
 
@@ -38,9 +39,6 @@ function shortInstant(iso: string | null): string {
   return (sameYear ? DAY_TIME : DAY_TIME_YEAR).format(date);
 }
 
-/** The last 8 characters of the seller id, enough to tell two sellers apart in a list. */
-const shortId = (id: string): string => id.slice(-8).toUpperCase();
-
 /** The connected accounts of one page: seller, status, readiness, requirements and the wait. */
 export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccountRow[] }) {
   const t = useTranslations('payments.accounts');
@@ -48,7 +46,7 @@ export function AccountsTable({ rows }: { readonly rows: readonly ConnectedAccou
     t(col === 'cooling-off' || col === 'last-read' ? `col.${col}-utc` : `col.${col}`);
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
-      <table className={`${CARD_TABLE.table} lg:min-w-200`}>
+      <table className={CARD_TABLE.table}>
         <caption className="sr-only">{t('title')}</caption>
         <thead className={CARD_TABLE.head}>
           <tr>

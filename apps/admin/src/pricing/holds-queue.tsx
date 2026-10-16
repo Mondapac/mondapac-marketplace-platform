@@ -4,8 +4,9 @@ import { Badge, Banner, Button, CARD_TABLE, EmptyState, Select, TextField } from
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
-import { When } from '../sellers/when.tsx';
-import { formatMoney, percentChange, shortId } from './format.ts';
+import { shortId } from '../shared/short-id.ts';
+import { When } from '../shared/when.tsx';
+import { formatMoney, percentChange } from './format.ts';
 import { holdProblemOf, type HoldProblem } from './hold-errors.ts';
 import { NOTE_MAX, REJECTION_REASONS, type PriceHoldRow } from './types.ts';
 
@@ -40,7 +41,7 @@ export function HoldsQueue({
         <EmptyState icon="clock" title={t('empty')} />
       ) : (
         <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
-          <table className={`${CARD_TABLE.table} lg:min-w-200`}>
+          <table className={CARD_TABLE.table}>
             <caption className="sr-only">{t('title')}</caption>
             <thead className={CARD_TABLE.head}>
               <tr>

@@ -1,4 +1,4 @@
-import { formatInstant } from './format.ts';
+import { formatInstant } from '../sellers/format.ts';
 
 /** A date over its time, so a narrow column never breaks inside either. */
 export function When({ iso, missing }: { readonly iso: string | null; readonly missing: string }) {
