@@ -1,5 +1,7 @@
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
+import { OrderShipped } from '../domain/events';
 import { markDelivered, markShipped, parseShipment } from '../domain/order';
 import {
   sellerOrderDetailView,
@@ -155,9 +157,29 @@ export async function shipSellerOrder(
       shipped,
       record.sellerOrder.fulfilment,
     );
-    return saved === 'saved'
-      ? ok(sellerOrderDetailView({ ...record, sellerOrder: shipped }))
-      : err({ code: 'ordering.fulfilment-conflict' } as const);
+    if (saved !== 'saved') return err({ code: 'ordering.fulfilment-conflict' } as const);
+    // Written with the shipment, once per seller order (a repeat finds it shipped and conflicts).
+    // A refused event rolls the shipment back: the seller sees a conflict and tries again.
+    try {
+      await deps.outbox.append(context, [
+        OrderShipped.record({
+          aggregateId: shipped.id,
+          aggregateVersion: 1,
+          occurredAt: now,
+          payload: {
+            orderId: record.orderId,
+            sellerOrderId: shipped.id,
+            sellerId: shipped.sellerId,
+          },
+        }),
+      ]);
+    } catch (error) {
+      if (error instanceof OutboxWriteRefusedError) {
+        return err({ code: 'ordering.fulfilment-conflict' } as const);
+      }
+      throw error;
+    }
+    return ok(sellerOrderDetailView({ ...record, sellerOrder: shipped }));
   });
 }
 
