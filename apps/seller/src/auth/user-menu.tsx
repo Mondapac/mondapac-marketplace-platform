@@ -57,11 +57,13 @@ export function UserMenu({
       theme={theme}
       labels={{
         trigger: t('trigger', { name }),
+        pages: t('pages'),
         theme: themeT('menu'),
         system: themeT('system'),
         light: themeT('light'),
         dark: themeT('dark'),
         signOut: t('sign-out'),
+        signingOut: t('signing-out'),
       }}
       onSignOut={signOut}
       signOutError={t('sign-out-failed')}

@@ -12,9 +12,11 @@
   },
   "account-menu": {
     "trigger": "Account menu for {name}",
+    "pages": "Your account",
     "profile": "My profile",
     "security": "Security",
     "sign-out": "Sign out",
+    "signing-out": "Signing out…",
     "sign-out-failed": "We couldn't sign you out. Check your connection and try again."
   },
   "nav": {

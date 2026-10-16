@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Badge } from '../form/badge.tsx';
 import { Icon, type IconName } from '../icon/icon.tsx';
 import { applyThemeChoice } from '../theme/theme-menu.tsx';
@@ -33,8 +33,12 @@ export interface AccountMenuProps {
   readonly labels: {
     /** Accessible name of the trigger, e.g. "Account menu for Ada". */
     readonly trigger: string;
+    /** Name of the list of the account's own pages, e.g. "Your account". */
+    readonly pages: string;
     readonly theme: string;
     readonly signOut: string;
+    /** Shown on the sign-out button while it is signing out. */
+    readonly signingOut: string;
   } & Record<ThemeChoice, string>;
   /** Signs out; true when the page is leaving, false to stay with an error. */
   readonly onSignOut: () => Promise<boolean>;
@@ -110,6 +114,23 @@ export function AccountMenu({
     applyThemeChoice(next);
   }
 
+  // WAI-ARIA radio group: arrows choose the next or previous theme and move focus to it; the
+  // horizontal arrows follow the reading direction.
+  function onThemeKey(event: KeyboardEvent<HTMLDivElement>) {
+    const rtl = getComputedStyle(event.currentTarget).direction === 'rtl';
+    const forward = ['ArrowDown', rtl ? 'ArrowLeft' : 'ArrowRight'];
+    const back = ['ArrowUp', rtl ? 'ArrowRight' : 'ArrowLeft'];
+    const step = forward.includes(event.key) ? 1 : back.includes(event.key) ? -1 : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    const at = THEME_ORDER.indexOf(theme);
+    const next = THEME_ORDER[(at + step + THEME_ORDER.length) % THEME_ORDER.length] ?? theme;
+    chooseTheme(next);
+    event.currentTarget
+      .querySelectorAll<HTMLElement>('[role="radio"]')
+      [THEME_ORDER.indexOf(next)]?.focus();
+  }
+
   async function signOut() {
     setPending(true);
     setFailed(false);
@@ -147,7 +168,9 @@ export function AccountMenu({
         <div
           ref={panel}
           id={panelId}
-          className="absolute end-0 top-full z-50 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface shadow-lg"
+          // Focusable, so a click on the panel's own padding or text keeps focus inside it.
+          tabIndex={-1}
+          className="absolute end-0 top-full z-50 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface shadow-lg outline-none"
         >
           <div className="flex items-center gap-3 border-b border-line p-4">
             <Avatar name={name} large />
@@ -158,7 +181,7 @@ export function AccountMenu({
             {badge === undefined ? null : <Badge tone="info">{badge}</Badge>}
           </div>
           {links.length > 0 ? (
-            <nav aria-label={labels.trigger} className="border-b border-line p-2">
+            <nav aria-label={labels.pages} className="border-b border-line p-2">
               <ul>
                 {links.map((link) => (
                   <li key={link.id}>
@@ -173,14 +196,18 @@ export function AccountMenu({
           ) : null}
           <div className="flex flex-col gap-3 p-4">
             <div className="flex items-center justify-between gap-3">
-              <span id={themeId} className="flex items-center gap-(--mp-space-2-5) text-sm text-fg">
+              <span
+                id={themeId}
+                className="flex min-w-0 items-center gap-(--mp-space-2-5) text-sm text-fg"
+              >
                 <Icon name={THEME_ICONS[theme]} className="text-icon" />
                 {labels.theme}
               </span>
               <div
                 role="radiogroup"
                 aria-labelledby={themeId}
-                className="inline-flex rounded-md border border-line-control p-0.5"
+                onKeyDown={onThemeKey}
+                className="inline-flex shrink-0 rounded-md border border-line-control p-0.5"
               >
                 {THEME_ORDER.map((item) => (
                   <button
@@ -188,11 +215,13 @@ export function AccountMenu({
                     type="button"
                     role="radio"
                     aria-checked={item === theme}
+                    // One tab stop for the group; arrows move between the choices.
+                    tabIndex={item === theme ? 0 : -1}
                     aria-label={labels[item]}
                     title={labels[item]}
                     onClick={() => chooseTheme(item)}
                     className={[
-                      'inline-flex size-9 items-center justify-center rounded focus-visible:outline-2 focus-visible:outline-focus',
+                      'inline-flex size-(--mp-size-control) items-center justify-center rounded focus-visible:outline-2 focus-visible:outline-focus',
                       item === theme ? 'bg-selected text-fg' : 'text-fg-muted hover:text-fg',
                     ].join(' ')}
                   >
@@ -214,7 +243,7 @@ export function AccountMenu({
               className="inline-flex h-(--mp-size-control) w-full items-center justify-center gap-2 rounded-md border border-line-control bg-surface px-4 text-sm font-medium text-fg hover:bg-muted focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-wait disabled:text-fg-muted"
             >
               <Icon name="log-out" />
-              {labels.signOut}
+              <span aria-live="polite">{pending ? labels.signingOut : labels.signOut}</span>
             </button>
           </div>
         </div>

@@ -225,6 +225,26 @@ describe('UserMenu', () => {
     );
   });
 
+  it('moves through the themes with the arrow keys, one tab stop for the group', () => {
+    render(wrap(menu()));
+    open();
+    const system = screen.getByRole('radio', { name: 'System' });
+    expect(system.getAttribute('tabindex')).toBe('0');
+    expect(screen.getByRole('radio', { name: 'Dark' }).getAttribute('tabindex')).toBe('-1');
+    fireEvent.keyDown(system, { key: 'ArrowRight' });
+    const light = screen.getByRole('radio', { name: 'Light' });
+    expect(light.getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(light);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
+
+  it('stays open after a click inside the panel', () => {
+    render(wrap(menu()));
+    open();
+    fireEvent.click(screen.getByText('sam@example.test'));
+    expect(screen.getByRole('link', { name: 'My profile' })).toBeTruthy();
+  });
+
   it('signs out with the CSRF token and goes to sign-in', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: {} });
     render(wrap(menu()));
