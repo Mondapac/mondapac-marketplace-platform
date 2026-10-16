@@ -280,8 +280,10 @@ export function markDelivered(sellerOrder: SellerOrder, now: Temporal.Instant): 
   return { ...sellerOrder, fulfilment: 'delivered', deliveredAt: now };
 }
 
-const CARRIER = /^[\p{L}\p{N}][\p{L}\p{N} .,&'()/+-]{0,58}[\p{L}\p{N}.)]$|^[\p{L}\p{N}]$/u;
-const TRACKING = /^[A-Za-z0-9][A-Za-z0-9 ._/#-]{0,78}[A-Za-z0-9]$|^[A-Za-z0-9]$/;
+const CARRIER = /^[\p{L}\p{N}][\p{L}\p{N} .,&'()+-]{0,58}[\p{L}\p{N}.)]$|^[\p{L}\p{N}]$/u;
+/** A dot followed by two letters reads as a domain name, which a mail client may turn into a link. */
+const LINK_LIKE = /\.\p{L}{2}/u;
+const TRACKING = /^[A-Za-z0-9][A-Za-z0-9 ._#-]{0,78}[A-Za-z0-9]$|^[A-Za-z0-9]$/;
 
 /**
  * The seller's own words for a shipment, checked: a carrier name of 1 to 60 characters (letters,
@@ -296,11 +298,12 @@ export function parseShipment(input: {
   | { readonly ok: false; readonly fields: readonly { path: string; code: string }[] } {
   const fields: { path: string; code: string }[] = [];
   const carrier = typeof input?.carrier === 'string' ? input.carrier.normalize('NFC').trim() : '';
-  if (!CARRIER.test(carrier)) fields.push({ path: 'carrier', code: 'format' });
+  if (!CARRIER.test(carrier) || LINK_LIKE.test(carrier))
+    fields.push({ path: 'carrier', code: 'format' });
   let trackingRef: string | null = null;
   if (input?.trackingRef !== undefined && input.trackingRef !== null && input.trackingRef !== '') {
     const text = typeof input.trackingRef === 'string' ? input.trackingRef.trim() : '';
-    if (TRACKING.test(text)) trackingRef = text;
+    if (TRACKING.test(text) && !LINK_LIKE.test(text)) trackingRef = text;
     else fields.push({ path: 'trackingRef', code: 'format' });
   }
   return fields.length > 0
