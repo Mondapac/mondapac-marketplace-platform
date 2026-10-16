@@ -658,5 +658,67 @@
     "after": {
       "feeMinor": "integer"
     }
+  },
+  {
+    "action": "tax.strategy.activate",
+    "targetType": "tax.strategy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "replacedActive": "boolean"
+    },
+    "after": null
+  },
+  {
+    "action": "tax.strategy.create",
+    "targetType": "tax.strategy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "categoryCount": "integer",
+      "kind": "enumOf(flat-rate|by-category)",
+      "rateBps": "integer"
+    }
+  },
+  {
+    "action": "tax.strategy.deactivate",
+    "targetType": "tax.strategy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "categoryCount": "integer",
+      "kind": "enumOf(flat-rate|by-category)",
+      "rateBps": "integer"
+    },
+    "after": null
+  },
+  {
+    "action": "tax.strategy.delete",
+    "targetType": "tax.strategy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "categoryCount": "integer",
+      "kind": "enumOf(flat-rate|by-category)",
+      "rateBps": "integer"
+    },
+    "after": null
+  },
+  {
+    "action": "tax.strategy.update",
+    "targetType": "tax.strategy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "categoryCount": "integer",
+      "kind": "enumOf(flat-rate|by-category)",
+      "rateBps": "integer"
+    },
+    "after": {
+      "categoryCount": "integer",
+      "kind": "enumOf(flat-rate|by-category)",
+      "rateBps": "integer"
+    }
   }
 ]
