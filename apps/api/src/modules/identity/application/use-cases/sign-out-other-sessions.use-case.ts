@@ -4,6 +4,7 @@ import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { OtherSessionsSignedOutAudit } from '../../domain/audit';
+import { sessionIsLive } from '../../domain/session';
 import type { AccountRepository } from '../ports/account.repository';
 import type { SessionRepository } from '../ports/session.repository';
 
@@ -32,7 +33,7 @@ export interface SignOutOtherSessionsDependencies {
  *
  * One read-write unit. It takes the account's credential lock first, as a password change does
  * (`revokeAllOf`), so a sign-in racing it is either committed and revoked here, or opens after
- * and is a new sign-in. The current session must still be live in the unit; revoked meanwhile,
+ * and is a new sign-in. The current session must still be live in the unit; revoked or expired meanwhile,
  * it answers `session.invalid` and nothing changes. Records
  * `identity.account.other-sessions-signed-out` (the kept session's id and the count) even when
  * nothing else was live, so the holder's action is on record.
@@ -74,7 +75,7 @@ export class SignOutOtherSessions extends UseCase<
         if (
           current === null ||
           current.accountId !== actor.accountId ||
-          current.revokedAt !== null
+          !sessionIsLive(current, now)
         ) {
           return err({ code: 'session.invalid' });
         }
