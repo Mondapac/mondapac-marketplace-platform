@@ -211,6 +211,20 @@ export class SellerSessionSummary {
   @ApiProperty({ description: "The person's display name (personal data)." })
   displayName!: string;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The holder's own IANA time zone, or null.",
+  })
+  timezone!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The holder's panel language, or null.",
+  })
+  locale!: string | null;
+
   @ApiProperty({ type: SellerSessionTimes })
   session!: SellerSessionTimes;
 

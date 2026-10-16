@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { percentOf } from '../commission/types.ts';
 import { formatMoney, percentChange } from '../pricing/format.ts';
 import { exponentOf, formatMinor } from '../shipping/money.ts';
-import { formatInstant, shortInstant } from './format.ts';
+import { formatInstant, formatInstantInZone, shortInstant } from './format.ts';
 import { dateFormat, numberFormat } from './intl.ts';
 
 // Two Market fixtures (CLAUDE.md): AU, and a synthetic Market with another locale and currency.
@@ -66,5 +66,14 @@ describe('Intl format cache', () => {
     const money = { style: 'currency', currency: 'AUD' } as const;
     expect(numberFormat('en-AU', money)).toBe(numberFormat('en-AU', money));
     expect(numberFormat('en-AU', money)).not.toBe(numberFormat('de-DE', money));
+  });
+});
+
+describe('formatInstantInZone', () => {
+  it('shows the holder zone with its short name, and falls back to UTC for an unknown zone', () => {
+    const iso = '2026-10-09T13:30:00Z';
+    expect(formatInstantInZone(iso, AU.locale, 'Australia/Brisbane')).toMatch(/11:30\s?pm AEST/i);
+    expect(formatInstantInZone(iso, AU.locale, 'Mars/Olympus')).toBe(formatInstant(iso, AU.locale));
+    expect(formatInstantInZone(null, AU.locale, 'UTC')).toBe('-');
   });
 });

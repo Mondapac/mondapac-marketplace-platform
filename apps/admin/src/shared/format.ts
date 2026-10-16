@@ -28,3 +28,26 @@ export function shortInstant(iso: string | null, locale: string): string {
     timeZone: 'UTC',
   }).format(date);
 }
+
+/**
+ * An instant in the holder's own IANA zone, labelled with the zone's short name ("9 Oct 2026,
+ * 11:30 pm AEST"). A zone this runtime does not know falls back to the UTC rule of the panel.
+ */
+export function formatInstantInZone(iso: string | null, locale: string, zone: string): string {
+  if (iso === null) return '-';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  try {
+    return dateFormat(locale, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+      timeZone: zone,
+    }).format(date);
+  } catch {
+    return formatInstant(iso, locale);
+  }
+}

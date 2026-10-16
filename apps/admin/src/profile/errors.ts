@@ -3,7 +3,7 @@ import type { ApiFailure } from '../api/client.ts';
 /** A message key under `profile.error`, and the form field it belongs to (null: the whole form). */
 export interface Problem {
   readonly key: string;
-  readonly field: 'name' | 'current' | 'new' | 'code' | null;
+  readonly field: 'name' | 'timezone' | 'current' | 'new' | 'code' | null;
   readonly values?: Readonly<Record<string, number>>;
 }
 
@@ -35,6 +35,12 @@ export function nameProblemOf(failure: ApiFailure): Problem {
     const code = failure.details?.fields?.find((f) => f.path === 'displayName')?.code;
     return { key: code === 'characters' ? 'name-characters' : 'name-length', field: 'name' };
   }
+  return formProblem(failure);
+}
+
+/** The problem of a refused time zone and language change. */
+export function preferencesProblemOf(failure: ApiFailure): Problem {
+  if (failure.code === 'validation.failed') return { key: 'prefs-invalid', field: 'timezone' };
   return formProblem(failure);
 }
 

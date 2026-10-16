@@ -59,6 +59,10 @@ export interface AccountState {
   readonly email: EmailAddress;
   /** Null only for a customer (2.1; data design N1). */
   readonly displayName: string | null;
+  /** The holder's own IANA time zone for showing times; null/absent = the panel's own rule. */
+  readonly timezone?: string | null;
+  /** The holder's panel language; null/absent = the Market's language. */
+  readonly locale?: string | null;
   readonly status: 'active' | 'disabled';
   readonly emailVerifiedAt: Temporal.Instant | null;
   readonly existingAccountNoticeAt: Temporal.Instant | null;
@@ -404,6 +408,35 @@ export class Account {
         payload: { accountId: state.id, population: state.population },
       }),
     );
+    return ok(true);
+  }
+
+  /**
+   * The holder sets the own display preferences (time zone, language), both already parsed by
+   * the caller. Same values change nothing; the answer says whether this call changed them.
+   * Records no event: nothing consumes them. Admin and seller-side accounts only.
+   */
+  setPreferences(input: {
+    readonly timezone: string | null;
+    readonly locale: string | null;
+  }): Result<boolean, AccountNotEligible> {
+    const state = this.#state;
+    if (
+      state.population === 'customer' ||
+      state.status !== 'active' ||
+      state.emailVerifiedAt === null
+    ) {
+      return err({ code: 'account.not-eligible' });
+    }
+    if ((state.timezone ?? null) === input.timezone && (state.locale ?? null) === input.locale) {
+      return ok(false);
+    }
+    this.#state = Object.freeze({
+      ...state,
+      timezone: input.timezone,
+      locale: input.locale,
+      version: state.version + 1,
+    });
     return ok(true);
   }
 

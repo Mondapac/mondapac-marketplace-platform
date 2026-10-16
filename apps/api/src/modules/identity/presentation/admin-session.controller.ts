@@ -256,6 +256,8 @@ export class AdminSessionController {
           lastSignInAt: summary.lastSignInAt,
           email: summary.email,
           displayName: summary.displayName,
+          timezone: summary.timezone,
+          locale: summary.locale,
           session: summary.session,
           csrfToken,
         };

@@ -79,6 +79,11 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  {
+    "name": "identity.change-panel-preferences",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "identity.change-password", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.complete-admin-sign-in", "rule": "anonymous" },
   {

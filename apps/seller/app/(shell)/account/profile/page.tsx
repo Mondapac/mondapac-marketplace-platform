@@ -3,10 +3,15 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { formatInstant } from '../../../../src/catalog/format.ts';
 import { DisplayNameCard } from '../../../../src/profile/display-name-card.tsx';
 import { PasswordCard } from '../../../../src/profile/password-card.tsx';
+import { PANEL_LANGUAGES } from '../../../../src/profile/languages.ts';
+import { PreferencesCard } from '../../../../src/profile/preferences-card.tsx';
 import { SellerShell } from '../../../../src/server/seller-shell.tsx';
 import { panelConfig } from '../../../../src/server/config.ts';
 import { readSellerZone } from '../../../../src/server/seller-zone.ts';
 import { requireSession } from '../../../../src/server/session.ts';
+
+/** The IANA zone ids of this runtime, UTC first; read once on the server. */
+const ZONES = ['UTC', ...Intl.supportedValuesOf('timeZone').filter((id) => id !== 'UTC')];
 
 export async function generateMetadata() {
   const t = await getTranslations('profile');
@@ -54,13 +59,25 @@ export default async function ProfilePage() {
                 ),
             },
             {
+              label: t('profile.timezone'),
+              value: session.timezone ?? t('profile.timezone-default-seller'),
+            },
+            {
+              label: t('profile.language'),
+              value:
+                session.locale !== null &&
+                (PANEL_LANGUAGES as readonly string[]).includes(session.locale)
+                  ? t(`profile.language-${session.locale}`)
+                  : t('profile.language-default'),
+            },
+            {
               label: t('profile.last-sign-in'),
               value:
                 session.lastSignInAt === null ? (
                   <span className="text-fg-muted">{t('profile.last-sign-in-none')}</span>
                 ) : (
                   <time dateTime={session.lastSignInAt}>
-                    {formatInstant(session.lastSignInAt, locale, zone)}
+                    {formatInstant(session.lastSignInAt, locale, session.timezone ?? zone)}
                   </time>
                 ),
             },
@@ -69,6 +86,12 @@ export default async function ProfilePage() {
       </Card>
       <div className="mt-6 flex flex-col gap-6">
         <DisplayNameCard initial={session.displayName} csrfToken={session.csrfToken} />
+        <PreferencesCard
+          timezone={session.timezone}
+          locale={session.locale}
+          zones={ZONES}
+          csrfToken={session.csrfToken}
+        />
         <PasswordCard
           codeRequired={session.secondFactorActive}
           csrfToken={session.csrfToken}

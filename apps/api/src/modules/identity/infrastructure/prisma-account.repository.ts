@@ -34,6 +34,8 @@ const SELECTED = {
   email: true,
   emailNormalized: true,
   displayName: true,
+  timezone: true,
+  locale: true,
   status: true,
   emailVerifiedAt: true,
   existingAccountNoticeAt: true,
@@ -51,6 +53,8 @@ interface SelectedRow {
   readonly email: string;
   readonly emailNormalized: string;
   readonly displayName: string | null;
+  readonly timezone: string | null;
+  readonly locale: string | null;
   readonly status: string;
   readonly emailVerifiedAt: Date | null;
   readonly existingAccountNoticeAt: Date | null;
@@ -148,6 +152,8 @@ export class PrismaAccountRepository implements AccountRepository {
       population: row.population as Population,
       email: { typed: row.email, normalized: row.emailNormalized },
       displayName: row.displayName,
+      timezone: row.timezone,
+      locale: row.locale,
       status: row.status,
       emailVerifiedAt: toOptionalInstant(row.emailVerifiedAt),
       existingAccountNoticeAt: toOptionalInstant(row.existingAccountNoticeAt),
@@ -217,6 +223,8 @@ export class PrismaAccountRepository implements AccountRepository {
       where: { marketId: market.marketId, id: state.id, version: expected },
       data: {
         displayName: state.displayName,
+        timezone: state.timezone ?? null,
+        locale: state.locale ?? null,
         // Slice 8b: disable and enable. Written under the version guard, in the caller's
         // serializable unit (HF8: every writer of accounts.status).
         status: state.status,
