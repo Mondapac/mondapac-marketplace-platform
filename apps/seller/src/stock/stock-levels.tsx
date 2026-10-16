@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -141,33 +141,32 @@ export function StockLevels({
   return (
     <div className="flex flex-col gap-4">
       {view.variants.map((variant, index) => (
-        <section key={variant.variantId} className="rounded-lg border border-line p-4">
-          <h2 className="mb-3 text-lg font-semibold">
-            {t('stock.levels.variant', { number: index + 1 })}
-          </h2>
-          <ul className="flex flex-col gap-4">
-            {sources.map((source) => {
-              const cell = variant.sources.find((item) => item.sourceId === source.id);
-              return (
-                <li key={source.id} className="flex flex-wrap items-end gap-x-6 gap-y-2">
-                  <span className="min-w-40 font-medium">{source.name}</span>
-                  <Cell
-                    key={cell?.version ?? 'new'}
-                    offerId={offerId}
-                    variantId={variant.variantId}
-                    source={source}
-                    cell={cell}
-                    canEdit={canEdit}
-                    csrfToken={csrfToken}
-                  />
-                  <span className="text-sm text-fg-muted">
-                    {t('stock.levels.held', { count: cell?.held ?? 0 })}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+        <Card key={variant.variantId} title={t('stock.levels.variant', { number: index + 1 })}>
+          <div className="max-w-(--mp-size-form-max)">
+            <ul className="flex flex-col gap-4">
+              {sources.map((source) => {
+                const cell = variant.sources.find((item) => item.sourceId === source.id);
+                return (
+                  <li key={source.id} className="flex flex-wrap items-end gap-x-6 gap-y-2">
+                    <span className="min-w-40 font-medium">{source.name}</span>
+                    <Cell
+                      key={cell?.version ?? 'new'}
+                      offerId={offerId}
+                      variantId={variant.variantId}
+                      source={source}
+                      cell={cell}
+                      canEdit={canEdit}
+                      csrfToken={csrfToken}
+                    />
+                    <span className="text-sm text-fg-muted">
+                      {t('stock.levels.held', { count: cell?.held ?? 0 })}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </Card>
       ))}
     </div>
   );

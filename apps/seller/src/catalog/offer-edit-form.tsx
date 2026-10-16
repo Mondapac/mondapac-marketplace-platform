@@ -4,7 +4,8 @@ import { Banner, Button, Card, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
-import { descriptionOf, readable } from './create-form.tsx';
+import { descriptionOf } from './create-form.tsx';
+import { readable } from './format.ts';
 import { offerEditProblemOf } from './offer-edit-errors.ts';
 import type { OfferView, ProductOptions } from './types.ts';
 

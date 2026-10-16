@@ -761,7 +761,11 @@
         "tag-suspended": "A certification tag is suspended",
         "description-claim-text": "The description makes a claim that needs a matching certificate",
         "unknown": "Unknown reason"
-      }
+      },
+      "tab": {
+        "details": "Details"
+      },
+      "tabs": "Offer sections"
     },
     "create": {
       "title": "New product",
@@ -943,7 +947,8 @@
         "unavailable": "The request could not be sent. Try again later.",
         "unknown": "Something went wrong. Try again."
       }
-    }
+    },
+    "not-given": "Not given"
   },
   "stock": {
     "title": "Stock locations",

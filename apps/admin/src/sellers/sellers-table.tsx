@@ -1,4 +1,4 @@
-import { Badge, type BadgeTone } from '@mondapac/ui';
+import { Badge, CARD_TABLE, type BadgeTone } from '@mondapac/ui';
 import { Fragment, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { areaName, formatInstant, known } from './format.ts';
@@ -34,15 +34,12 @@ export function SellersTable({
     ? ['store', 'owner', 'status', 'area', 'submitted', 'changed']
     : ['store', 'status', 'area', 'submitted', 'changed'];
   // From 1024 px a table; below it (phones and tablets, where seven columns do not fit) each row is a card with labelled lines (like the Team table).
-  const cell = 'px-4 py-3 align-top max-lg:p-0';
-  const labelled = `${cell} max-lg:col-span-2 ${LABELLED}`;
+  const { cell, labelled } = CARD_TABLE;
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
-      <table
-        className={`w-full text-start text-sm max-lg:block ${showOwner ? 'lg:min-w-200' : 'lg:min-w-160'}`}
-      >
+      <table className={`${CARD_TABLE.table} ${showOwner ? 'lg:min-w-200' : 'lg:min-w-160'}`}>
         <caption className="sr-only">{t('title')}</caption>
-        <thead className="bg-muted text-fg-muted max-lg:sr-only">
+        <thead className={CARD_TABLE.head}>
           <tr>
             {cols.map((col) => (
               <th key={col} scope="col" className="whitespace-nowrap px-4 py-3 font-medium">
@@ -51,7 +48,7 @@ export function SellersTable({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-line-row max-lg:block">
+        <tbody className={CARD_TABLE.body}>
           {rows.length === 0 && empty !== undefined ? (
             <tr className="max-lg:block">
               <td colSpan={cols.length} className="max-lg:block">
@@ -62,10 +59,7 @@ export function SellersTable({
           {rows.map((row) => {
             const status = known(row.status, STATUSES);
             return (
-              <tr
-                key={row.sellerId}
-                className="max-lg:grid max-lg:grid-cols-[minmax(0,1fr)_auto] max-lg:items-start max-lg:gap-x-3 max-lg:gap-y-2 max-lg:p-4"
-              >
+              <tr key={row.sellerId} className={CARD_TABLE.row}>
                 <td className={`${cell} lg:min-w-(--mp-size-data-label)`}>
                   <div className="min-w-0">
                     <div className="break-words font-medium text-fg">
@@ -108,7 +102,7 @@ export function SellersTable({
                 ) : null}
                 {/* On a phone the status sits beside the name, where the eye starts. */}
                 {/* The kind of submission sits under the status it explains. */}
-                <td className={`${cell} max-lg:col-start-2 max-lg:row-start-1 max-lg:text-end`}>
+                <td className={CARD_TABLE.corner}>
                   {status === 'hidden' ? (
                     <span className="text-fg-muted">-</span>
                   ) : (
@@ -139,11 +133,6 @@ export function SellersTable({
     </div>
   );
 }
-
-// A card line: the column name before the value, in the DataRow label column shared with the
-// seller page; on a phone the name sits above the value.
-const LABELLED =
-  'max-lg:grid sm:max-lg:grid-cols-[var(--mp-size-data-label)_minmax(0,1fr)] max-lg:gap-x-2 max-lg:before:text-fg-muted max-lg:before:content-[attr(data-label)]';
 
 /** A date over its time, so a narrow column never breaks inside either. */
 function When({ iso, missing }: { readonly iso: string | null; readonly missing: string }) {

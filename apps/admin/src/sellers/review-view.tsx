@@ -1,4 +1,4 @@
-import { Badge, Card, DataList, Icon, type BadgeTone } from '@mondapac/ui';
+import { BackLink, Badge, Card, DataList, type BadgeTone } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { addressLines, areaName, formatInstant, known } from './format.ts';
 import { DecisionPanel } from './decision-panel.tsx';
@@ -228,13 +228,5 @@ export async function ReviewView({
 
 /** The way back to the list, above the page heading. */
 export function BackToSellers({ label }: { readonly label: string }) {
-  return (
-    <a
-      href="/sellers"
-      className="inline-flex min-h-12 items-center gap-2 text-sm font-medium text-link hover:underline md:min-h-0"
-    >
-      <Icon name="arrow-left" />
-      {label}
-    </a>
-  );
+  return <BackLink href="/sellers" label={label} />;
 }
