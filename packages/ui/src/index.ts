@@ -41,7 +41,7 @@ export { Select, type SelectOption, type SelectProps } from './form/select.tsx';
 export { LoadError, type LoadErrorProps } from './form/load-error.tsx';
 export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
 export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/empty-state.tsx';
-export { DataList, type DataListRow } from './data/data-list.tsx';
+export { DataList, type DataListRow, type DataListVariant } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
 export { CARD_TABLE } from './data/card-table.ts';
 export { MemberColumns } from './data/member-columns.tsx';
@@ -54,6 +54,17 @@ export {
   type LedgerTableLabels,
   type LedgerTotalItem,
 } from './data/ledger.tsx';
+export { ActivityTable, formatCount, type ActivityColumn } from './dashboard/activity-table.tsx';
+export {
+  DashboardCard,
+  DistributionBar,
+  StatCard,
+  StatGrid,
+  type DashboardCardProps,
+  type DistributionPart,
+  type StatCardProps,
+  type StatTone,
+} from './dashboard/dashboard.tsx';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
 export { THEME_COOKIE, THEME_SCRIPT, themeChoice, type ThemeChoice } from './theme/theme.ts';

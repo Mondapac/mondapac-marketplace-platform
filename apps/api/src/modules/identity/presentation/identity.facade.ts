@@ -3,6 +3,7 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { ConfirmSellerSecondFactor } from '../application/use-cases/confirm-seller-second-factor.use-case';
 import type { ContactEmailOf } from '../application/use-cases/contact-email-of.use-case';
+import type { CustomerAccountSummaries } from '../application/use-cases/customer-account-summaries.use-case';
 import type { DescribeActor } from '../application/use-cases/describe-actor.use-case';
 import type { RequireStepUp } from '../application/use-cases/require-step-up.use-case';
 import type { MembershipOf } from '../application/use-cases/membership-of.use-case';
@@ -11,7 +12,9 @@ import type {
   ActorDescription,
   ConfirmSecondFactorFailure,
   ContactEmailTarget,
+  CustomerAccountSummary,
   IdentityFacade,
+  IdentityValidationFailed,
   SellerMembershipSummary,
 } from '../contracts/identity.facade';
 import type { StepUpFailure } from '../contracts/step-up';
@@ -24,6 +27,7 @@ export interface IdentityFacadeUseCases {
   readonly confirmSellerSecondFactor: ConfirmSellerSecondFactor;
   readonly contactEmailOf: ContactEmailOf;
   readonly requireStepUp: RequireStepUp;
+  readonly customerAccountSummaries: CustomerAccountSummaries;
 }
 
 /**
@@ -86,5 +90,12 @@ export class IdentityFacadeImplementation implements IdentityFacade {
   ): Promise<Result<void, StepUpFailure>> {
     const result = await this.useCases.requireStepUp.execute(context, { actionKey });
     return result.ok ? ok(undefined) : err(result.error);
+  }
+
+  customerAccountSummaries(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<Result<readonly CustomerAccountSummary[], AccessDenied | IdentityValidationFailed>> {
+    return this.useCases.customerAccountSummaries.execute(context, { accountIds });
   }
 }

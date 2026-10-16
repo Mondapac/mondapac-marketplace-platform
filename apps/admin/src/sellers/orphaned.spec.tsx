@@ -113,7 +113,7 @@ describe('sellers without an owner', () => {
     call.mockResolvedValueOnce(fail(403, 'access.denied'));
     mount();
     expect(await screen.findByText("You don't have access to this page")).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Go to Home' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Go to Dashboard' })).toBeTruthy();
   });
 
   it('pages with Show more, each seller once; a failed page keeps the rows and the button', async () => {

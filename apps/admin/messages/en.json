@@ -26,7 +26,7 @@
     "breadcrumb": "Breadcrumb",
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar",
-    "home": "Home",
+    "home": "Dashboard",
     "team": "Roles & permissions",
     "customers": "Customers",
     "sellers": "Sellers",
@@ -37,19 +37,94 @@
     "settings": "Settings"
   },
   "home": {
-    "title": "Home",
-    "welcome": "Welcome, {name}",
-    "intro": "Where would you like to start?",
-    "shortcuts": "Sections",
-    "shortcut": {
-      "customers": "Find a customer account by email and help with sign-in.",
-      "sellers": "Review applications and manage seller access.",
-      "orders": "Look up orders, payment state and delivery progress.",
-      "price-holds": "Approve or reject prices that changed sharply.",
-      "offer-reviews": "Check offers waiting for their first publish.",
-      "payout-accounts": "See the Stripe payout accounts of sellers.",
-      "settings": "Platform settings, such as the support contact.",
-      "team": "Invite admins and manage roles and permissions."
+    "title": "Dashboard",
+    "intro": "Welcome, {name}. Here is what needs attention and the latest activity you can see."
+  },
+  "dashboard": {
+    "view-all": "View all",
+    "unnamed-product": "Unnamed product",
+    "error": {
+      "card": "This could not be loaded. Reload the page to try again."
+    },
+    "none": {
+      "title": "Nothing to show here yet",
+      "body": "Your role has no dashboard widgets. Use the menu to open the sections you can use."
+    },
+    "scope": {
+      "oldest": "Oldest {count} waiting",
+      "newest": "Newest {count}",
+      "latest": "Latest {count}",
+      "whole-queue": "The whole queue",
+      "first-page": "First {count} only; more are waiting",
+      "all-restricted": "All restricted accounts"
+    },
+    "attention": {
+      "title": "Needs attention",
+      "sellers": {
+        "label": "Sellers awaiting review",
+        "scope": "New applications and change requests, all of them"
+      },
+      "holds": {
+        "label": "Held prices to decide"
+      },
+      "offers": {
+        "label": "Offers to review"
+      },
+      "accounts": {
+        "label": "Payout accounts needing action"
+      }
+    },
+    "applications": {
+      "title": "Seller applications",
+      "empty": "No sellers are waiting for review."
+    },
+    "holds": {
+      "title": "Held prices",
+      "empty": "No held prices are waiting for a decision."
+    },
+    "offers": {
+      "title": "Offers waiting for review",
+      "empty": "No offers are waiting for their first publication.",
+      "col": {
+        "offer": "Offer",
+        "seller": "Seller ref",
+        "submitted": "Submitted"
+      }
+    },
+    "accounts": {
+      "title": "Restricted payout accounts",
+      "empty": "No payout account is restricted.",
+      "col": {
+        "checked": "Last checked"
+      }
+    },
+    "orders": {
+      "title": "Recent orders",
+      "empty": "No orders yet.",
+      "col": {
+        "order": "Order",
+        "status": "Status",
+        "total": "Total",
+        "placed": "Placed"
+      },
+      "status": {
+        "pending-payment": "Awaiting payment",
+        "confirmed": "Confirmed",
+        "cancelled": "Cancelled",
+        "unknown": "Unknown"
+      }
+    },
+    "states": {
+      "title": "Sellers by access state",
+      "scope": "Seller accounts, all of them",
+      "empty": "No seller accounts yet."
+    },
+    "actions": {
+      "title": "Quick actions",
+      "invite-admin": "Invite an admin",
+      "create-role": "Create a role",
+      "without-owner": "Sellers without an owner",
+      "find-customer": "Find a customer"
     }
   },
   "showcase": {
@@ -221,7 +296,7 @@
       "no-access": {
         "title": "You don't have access to this page",
         "body": "Your role doesn't include it. Ask an admin who manages roles.",
-        "action": "Go to Home"
+        "action": "Go to Dashboard"
       },
       "actions": "Actions",
       "actions-for": "Actions for {name}",
@@ -466,7 +541,7 @@
     "list": {
       "title": "Sellers",
       "no-access": "You don't have access to the seller list.",
-      "back-home": "Back to home",
+      "back-home": "Back to dashboard",
       "tabs": "Seller lists",
       "tab": {
         "awaiting-review": "Awaiting review",
@@ -701,7 +776,7 @@
       "no-access": {
         "title": "You don't have access to this page",
         "body": "Your role doesn't include seller access. Ask an admin who manages roles.",
-        "action": "Go to Home"
+        "action": "Go to Dashboard"
       },
       "state": {
         "pending": "Pending",
@@ -804,7 +879,7 @@
     "holds": {
       "title": "Held prices",
       "no-access": "You don't have access to held prices.",
-      "back-home": "Back to home",
+      "back-home": "Back to dashboard",
       "unavailable": "Held prices could not be loaded. Try again later.",
       "more": "Next page",
       "empty": "No held prices are waiting for a decision.",
@@ -864,7 +939,7 @@
   "settings": {
     "title": "Settings",
     "no-access": "You don't have access to settings.",
-    "back-home": "Back to home",
+    "back-home": "Back to dashboard",
     "unavailable": "Settings could not be loaded. Try again later.",
     "support": {
       "title": "Support email",
@@ -967,7 +1042,7 @@
     "review": {
       "title": "Offer reviews",
       "no-access": "You don't have access to offer reviews.",
-      "back-home": "Back to home",
+      "back-home": "Back to dashboard",
       "unavailable": "Offer reviews could not be loaded. Try again later.",
       "more": "Next page",
       "empty": "No offers are waiting for review.",
@@ -1099,9 +1174,12 @@
       "paid": "Paid",
       "cancelled": "Cancelled",
       "pay-by": "Pay by",
+      "customer-name": "Customer name",
+      "customer-email": "Customer email",
       "customer": "Customer account",
       "payment-intent": "Payment reference",
       "total": "Order total",
+      "seller-account": "Seller account",
       "fulfilment": "Fulfilment",
       "carrier": "Carrier",
       "tracking": "Tracking reference",
@@ -1137,7 +1215,7 @@
       "no-access-title": "You don't have access to this page",
       "not-found": "We couldn't find a connected account for this seller.",
       "not-found-title": "Account not found",
-      "back-home": "Back to home",
+      "back-home": "Back to dashboard",
       "tabs": "Connected account statuses",
       "tab": {
         "all": "All"
@@ -1200,7 +1278,7 @@
     "title": "Customers",
     "intro": "Find a customer account by the exact address they sign in with. Partial addresses and names do not match.",
     "no-access": "You do not have access to customer accounts. Ask an admin who manages roles to grant it.",
-    "back-home": "Back to home",
+    "back-home": "Back to dashboard",
     "find": "Find customer",
     "field": {
       "lookup": "Customer email",
@@ -1255,9 +1333,9 @@
     "loading": "Loading the page",
     "error": {
       "title": "This page could not be shown",
-      "message": "Something went wrong on our side. Try again, or go back to the home page. Nothing you saved was lost.",
+      "message": "Something went wrong on our side. Try again, or go back to the dashboard. Nothing you saved was lost.",
       "retry": "Try again",
-      "home": "Go to the home page",
+      "home": "Go to the dashboard",
       "reference": "Reference for support:"
     }
   },

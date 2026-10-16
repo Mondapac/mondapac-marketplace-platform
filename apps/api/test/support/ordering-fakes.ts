@@ -12,6 +12,13 @@ import type {
   CheckoutGateway,
   GatewayFailure,
 } from '../../src/modules/ordering/application/ports/checkout-gateway';
+import {
+  orderUnitKey,
+  type OrderCustomer,
+  type OrderLabels,
+  type OrderUnitKey,
+  type OrderUnitLabel,
+} from '../../src/modules/ordering/application/ports/order-labels';
 import type {
   OrderPage,
   OrderRepository,
@@ -387,5 +394,46 @@ export class FakeCart implements CartCheckoutFacade {
   clearOrdered(_c: CallContext, request: unknown) {
     this.cleared.push(request);
     return Promise.resolve(ok({ removed: 1 }));
+  }
+}
+
+/** Names by key; `fail` makes a lookup throw, as an adapter does on a refusal. */
+export class FakeLabels implements OrderLabels {
+  readonly units = new Map<string, OrderUnitLabel>();
+  readonly stores = new Map<Id<'Seller'>, string>();
+  readonly customers = new Map<Id<'Account'>, OrderCustomer>();
+  readonly fail = new Set<'units' | 'stores' | 'customers'>();
+  readonly calls: { readonly lookup: string; readonly count: number }[] = [];
+
+  unitLabelsOf(
+    _context: CallContext,
+    keys: readonly OrderUnitKey[],
+  ): Promise<ReadonlyMap<string, OrderUnitLabel>> {
+    this.calls.push({ lookup: 'units', count: keys.length });
+    if (this.fail.has('units')) return Promise.reject(new Error('units'));
+    return Promise.resolve(this.units);
+  }
+
+  storeNamesOf(
+    _context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, string>> {
+    this.calls.push({ lookup: 'stores', count: sellerIds.length });
+    if (this.fail.has('stores')) return Promise.reject(new Error('stores'));
+    return Promise.resolve(this.stores);
+  }
+
+  customersOf(
+    _context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, OrderCustomer>> {
+    this.calls.push({ lookup: 'customers', count: accountIds.length });
+    if (this.fail.has('customers')) return Promise.reject(new Error('customers'));
+    return Promise.resolve(this.customers);
+  }
+
+  /** Sets the label of one (Offer, Variant). */
+  label(key: OrderUnitKey, productName: string, variantLabel: string | null): void {
+    this.units.set(orderUnitKey(key), { productName, variantLabel });
   }
 }

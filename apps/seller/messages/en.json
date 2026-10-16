@@ -27,7 +27,7 @@
     "breadcrumb": "Breadcrumb",
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar",
-    "home": "Home",
+    "home": "Dashboard",
     "setup": "Seller account",
     "products": "Products",
     "offers": "Offers",
@@ -37,17 +37,104 @@
     "settings": "Settings"
   },
   "home": {
-    "title": "Home",
-    "welcome": "Welcome, {name}",
-    "intro": "Where would you like to start?",
-    "shortcuts": "Sections",
-    "shortcut": {
-      "products": "Add products and follow their review.",
-      "offers": "Your offers, with their prices and stock.",
-      "orders": "Ship paid orders and mark them delivered.",
-      "earnings": "Sales, delivery fees, commission and your balance.",
-      "team": "Invite the people who help run your shop.",
-      "settings": "Security, payout account and stock locations."
+    "title": "Dashboard",
+    "intro": "Welcome, {name}. Here is what needs attention in your shop and your latest activity."
+  },
+  "dashboard": {
+    "view-all": "View all",
+    "unnamed-product": "Unnamed product",
+    "error": {
+      "card": "This could not be loaded. Reload the page to try again."
+    },
+    "none": {
+      "title": "Nothing to show here yet",
+      "body": "Your role has no dashboard widgets. Use the menu to open the sections you can use."
+    },
+    "scope": {
+      "latest": "Latest {count}",
+      "orders-all": "All your paid orders",
+      "orders-latest": "Among your latest {count} paid orders",
+      "offers-all": "All your offers",
+      "offers-latest": "Among your latest {count} offers",
+      "offers-open": "Waiting offers among your latest {count}"
+    },
+    "notice": {
+      "payout-unreadable": "We could not check your payout account just now.",
+      "payout": {
+        "title": "Your payout account is not ready",
+        "body": "You are paid through it, so orders cannot be paid out until it is set up.",
+        "action": "Set up payouts"
+      },
+      "sources": {
+        "title": "Add a stock location",
+        "body": "Stock is held at a location. Add one before you set stock for your offers.",
+        "action": "Add a location"
+      }
+    },
+    "attention": {
+      "title": "Needs attention",
+      "to-ship": {
+        "label": "Orders to ship"
+      },
+      "in-review": {
+        "label": "Offers waiting for review"
+      },
+      "changes": {
+        "label": "Offers needing changes"
+      },
+      "balance": {
+        "label": "Your balance",
+        "scope": "All time, as in your earnings"
+      }
+    },
+    "orders": {
+      "title": "Recent orders",
+      "empty": "No paid orders yet.",
+      "col": {
+        "order": "Order",
+        "status": "Status",
+        "total": "Total",
+        "paid": "Paid"
+      },
+      "status": {
+        "to-ship": "To ship",
+        "shipped": "Shipped",
+        "delivered": "Delivered",
+        "unknown": "Unknown"
+      }
+    },
+    "offers": {
+      "title": "Offers waiting on you or on review",
+      "empty": "No offers are waiting for review or changes.",
+      "col": {
+        "status": "Status"
+      }
+    },
+    "earnings": {
+      "title": "Latest earnings entries",
+      "empty": "No ledger entries yet.",
+      "col": {
+        "entry": "Entry",
+        "amount": "Amount",
+        "when": "When"
+      },
+      "kind": {
+        "sale": "Sale",
+        "shipping": "Delivery fee",
+        "commission": "Commission",
+        "unknown": "Other"
+      }
+    },
+    "states": {
+      "title": "Offers by status",
+      "empty": "No offers yet."
+    },
+    "actions": {
+      "title": "Quick actions",
+      "add-product": "Add a product",
+      "stock-locations": "Stock locations",
+      "payout-account": "Payout account",
+      "invite-team": "Invite a team member"
     }
   },
   "showcase": {
@@ -336,7 +423,7 @@
       "no-access": {
         "title": "You don't have access to this page",
         "body": "Your role doesn't include the team. Ask the shop owner.",
-        "action": "Go to Home"
+        "action": "Go to Dashboard"
       },
       "actions": "Actions",
       "actions-for": "Actions for {name}",
@@ -686,7 +773,7 @@
       "title": "We couldn't find that",
       "body": "It may have been removed, or it isn't part of your shop."
     },
-    "back-home": "Back to home",
+    "back-home": "Back to dashboard",
     "next-page": "Next page",
     "col": {
       "status": "Status",
@@ -1048,14 +1135,52 @@
   },
   "orders": {
     "title": "Orders",
-    "intro": "Paid orders for your store, newest first. Ship each one, then mark it delivered when it arrives.",
+    "intro": "Paid orders for your store, newest first. Open an order to ship it, then mark it delivered when it arrives.",
+    "not-found": {
+      "title": "Order not found",
+      "body": "This order does not exist, or it belongs to another store."
+    },
     "fee": "Delivery fee on every order: {fee}. The platform sets it for your store; the customer pays it with the order.",
     "more": "Show more orders",
     "optional": "optional",
-    "card-title": "Order {id}",
-    "paid": "Paid {when}",
-    "line": "Item {n} × {quantity}",
-    "each": "{price} each",
+    "ref": "#{id}",
+    "detail-title": "Order #{id}",
+    "back": "Back to orders",
+    "not-given": "Not given",
+    "col": {
+      "order": "Order",
+      "status": "Status",
+      "paid": "Paid",
+      "items": "Items",
+      "total": "Total"
+    },
+    "filter": {
+      "label": "Filter orders by fulfilment",
+      "all": "All",
+      "empty": {
+        "title": "No orders in this state",
+        "body": "Orders appear here as they move on.",
+        "body-more": "None of the orders loaded so far are in this state. Show more orders to look further back."
+      }
+    },
+    "paid-line": "Paid {when}",
+    "items-count": "{count, plural, one {# item} other {# items}}",
+    "lines": "Items in this order",
+    "line": {
+      "fallback": "Item {id}",
+      "qty-price": "{quantity} × {price}",
+      "col": {
+        "item": "Item",
+        "quantity": "Qty",
+        "unit": "Unit price",
+        "amount": "Amount"
+      }
+    },
+    "totals": "Totals",
+    "fulfilment": "Fulfilment",
+    "not-shipped": "This order has not been shipped yet.",
+    "shipped-on": "Shipped",
+    "delivered-on": "Delivered",
     "subtotal": "Items",
     "delivery": "Delivery",
     "delivery-free": "Free",
@@ -1066,14 +1191,11 @@
       "delivered": "Delivered"
     },
     "ship": {
-      "title": "Send this order",
       "carrier": "Carrier",
       "tracking": "Tracking reference",
       "hint": "The customer gets an email with the carrier and tracking reference.",
       "submit": "Mark as shipped"
     },
-    "shipped-at": "Shipped {when}",
-    "delivered-at": "Delivered {when}",
     "deliver": "Mark as delivered",
     "validation": {
       "required": "Enter the carrier.",
@@ -1365,9 +1487,9 @@
     "loading": "Loading the page",
     "error": {
       "title": "This page could not be shown",
-      "message": "Something went wrong on our side. Try again, or go back to the home page. Nothing you saved was lost.",
+      "message": "Something went wrong on our side. Try again, or go back to the dashboard. Nothing you saved was lost.",
       "retry": "Try again",
-      "home": "Go to the home page",
+      "home": "Go to the dashboard",
       "reference": "Reference for support:"
     }
   },

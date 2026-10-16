@@ -43,6 +43,18 @@ export interface SellerOrderPage {
   readonly nextCursor: string | null;
 }
 
+/** What the seller sees for one order line: the product name and the variant (such as a size). */
+export interface LineLabel {
+  readonly name: string | null;
+  readonly variant: string | null;
+}
+
+/** Line labels by order line id; a line with no entry shows a short id. */
+export type LineLabels = Readonly<Record<string, LineLabel>>;
+
+export const FULFILMENT_FILTERS = ['all', 'to-ship', 'shipped', 'delivered'] as const;
+export type FulfilmentFilter = (typeof FULFILMENT_FILTERS)[number];
+
 /** The seller's own flat delivery fee, set by the platform. */
 export interface OwnFee extends Money {
   readonly sellerId: string;

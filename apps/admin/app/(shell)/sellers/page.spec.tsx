@@ -60,6 +60,6 @@ describe('the sellers pages and identity.seller-access.view', () => {
     render(await SellersWithoutOwnerPage());
     expect(screen.queryByText('orphaned list')).toBeNull();
     expect(screen.getByText("You don't have access to this page")).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Go to Home' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Go to Dashboard' })).toBeTruthy();
   });
 });
