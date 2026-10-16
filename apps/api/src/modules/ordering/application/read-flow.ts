@@ -5,10 +5,12 @@ import {
   adminOrderView,
   orderView,
   type AdminOrderView,
+  type LabelledAdminOrderView,
   type OrderPageView,
   type OrderView,
 } from '../domain/order-views';
 import type { OrderingDependencies } from './checkout-flow';
+import { labelAdminOrders } from './order-labels';
 import type { OrderPage } from './ports/order.repository';
 
 export type ReadFailure =
@@ -140,10 +142,10 @@ export async function viewAnyOrder(
   deps: OrderingDependencies,
   context: CallContext,
   input: { readonly orderId: unknown },
-): Promise<Result<AdminOrderView, ReadFailure>> {
+): Promise<Result<LabelledAdminOrderView, ReadFailure>> {
   const orderId = parseOrderId(input?.orderId);
   if (!orderId.ok) return orderId;
-  return deps.unitOfWork.run<AdminOrderView, ReadFailure>(
+  const read = await deps.unitOfWork.run<AdminOrderView, ReadFailure>(
     context.market,
     async () => {
       const order = await deps.orders.findById(context.market, orderId.value);
@@ -153,17 +155,20 @@ export async function viewAnyOrder(
     },
     { readOnly: true },
   );
+  if (!read.ok) return read;
+  const [labelled] = await labelAdminOrders(deps.labels, context, [read.value]);
+  return ok(labelled!);
 }
 
 export async function listAllOrders(
   deps: OrderingDependencies,
   context: CallContext,
   input: ListInput,
-): Promise<Result<OrderPageView<AdminOrderView>, ReadFailure>> {
+): Promise<Result<OrderPageView<LabelledAdminOrderView>, ReadFailure>> {
   const parsed = pageOf(input ?? {}, true);
   if (!parsed.ok) return parsed;
   const { page, status } = parsed.value;
-  return deps.unitOfWork.run<OrderPageView<AdminOrderView>, ReadFailure>(
+  const read = await deps.unitOfWork.run<OrderPageView<AdminOrderView>, ReadFailure>(
     context.market,
     async () => {
       const rows = await deps.orders.listAll(
@@ -175,4 +180,9 @@ export async function listAllOrders(
     },
     { readOnly: true },
   );
+  if (!read.ok) return read;
+  return ok({
+    orders: await labelAdminOrders(deps.labels, context, read.value.orders),
+    nextCursor: read.value.nextCursor,
+  });
 }

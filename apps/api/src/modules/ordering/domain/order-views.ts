@@ -55,6 +55,31 @@ export interface AdminOrderView extends OrderView {
   readonly paymentIntentId: string | null;
 }
 
+/** Who placed an order, for an admin entitled to see it. PERSONAL DATA: never logged. */
+export interface OrderCustomerView {
+  readonly displayName: string | null;
+  readonly email: string;
+}
+
+/** An order line with its published names (seller text); both are null when unknown. */
+export interface LabelledLineView extends OrderLineView {
+  readonly productName: string | null;
+  readonly variantLabel: string | null;
+}
+
+/** A seller's part of an order with the public store name (null when unknown). */
+export interface LabelledSellerOrderView extends Omit<SellerOrderView, 'lines'> {
+  readonly storeName: string | null;
+  readonly lines: readonly LabelledLineView[];
+}
+
+/** An admin order with the names the admin pages show. */
+export interface LabelledAdminOrderView extends Omit<AdminOrderView, 'sellerOrders'> {
+  /** Null when unknown or when the admin may not see customers. */
+  readonly customer: OrderCustomerView | null;
+  readonly sellerOrders: readonly LabelledSellerOrderView[];
+}
+
 export interface OrderPageView<V> {
   readonly orders: readonly V[];
   /** Pass back as `cursor` for the next page; null on the last page. */

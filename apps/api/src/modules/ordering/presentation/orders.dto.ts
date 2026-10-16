@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type {
-  AdminOrderView,
+  LabelledAdminOrderView,
   OrderPageView,
   OrderView,
   SellerOrderDetailView,
@@ -71,9 +71,47 @@ export class OrderBody {
   @ApiProperty({ type: [SellerOrderBody] }) sellerOrders!: SellerOrderBody[];
 }
 
+export class AdminOrderLineBody extends OrderLineBody {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The published product name; null when unknown. Seller text: escape it.',
+  })
+  productName!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The published Variant label; null when none or unknown.',
+  })
+  variantLabel!: string | null;
+}
+
+export class AdminSellerOrderBody extends SellerOrderBody {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The seller's public store name; null when unknown.",
+  })
+  storeName!: string | null;
+  @ApiProperty({ type: [AdminOrderLineBody] }) declare lines: AdminOrderLineBody[];
+}
+
+export class OrderCustomerBody {
+  @ApiProperty({ type: String, nullable: true, description: 'Null when the customer gave none.' })
+  displayName!: string | null;
+  @ApiProperty({ description: 'The sign-in address. Personal data.' }) email!: string;
+}
+
 export class AdminOrderBody extends OrderBody {
   @ApiProperty({ format: 'uuid' }) accountId!: string;
+  @ApiProperty({
+    type: OrderCustomerBody,
+    nullable: true,
+    description: 'Null when unknown or without identity.customer-account.view.',
+  })
+  customer!: OrderCustomerBody | null;
   @ApiProperty({ type: String, nullable: true }) paymentIntentId!: string | null;
+  @ApiProperty({ type: [AdminSellerOrderBody] }) declare sellerOrders: AdminSellerOrderBody[];
 }
 
 export class OrderPageBody {
@@ -88,6 +126,16 @@ export class AdminOrderPageBody {
 
 type SellerOrderLike = OrderView['sellerOrders'][number];
 
+const lineBody = (line: SellerOrderLike['lines'][number]): OrderLineBody => ({
+  lineId: line.lineId,
+  offerId: line.offerId,
+  variantId: line.variantId,
+  quantity: line.quantity,
+  unitPrice: moneyBody(line.unitPrice),
+  lineAmount: moneyBody(line.lineAmount),
+  taxInclusive: line.taxInclusive,
+});
+
 const sellerOrderBody = (seller: SellerOrderLike): SellerOrderBody => ({
   sellerId: seller.sellerId,
   subtotal: moneyBody(seller.subtotal),
@@ -98,15 +146,7 @@ const sellerOrderBody = (seller: SellerOrderLike): SellerOrderBody => ({
   trackingRef: seller.trackingRef,
   shippedAt: seller.shippedAt?.toString() ?? null,
   deliveredAt: seller.deliveredAt?.toString() ?? null,
-  lines: seller.lines.map((line) => ({
-    lineId: line.lineId,
-    offerId: line.offerId,
-    variantId: line.variantId,
-    quantity: line.quantity,
-    unitPrice: moneyBody(line.unitPrice),
-    lineAmount: moneyBody(line.lineAmount),
-    taxInclusive: line.taxInclusive,
-  })),
+  lines: seller.lines.map(lineBody),
 });
 
 export class SellerOrderDetailBody extends SellerOrderBody {
@@ -157,10 +197,23 @@ export const orderBody = (order: OrderView): OrderBody => ({
   sellerOrders: order.sellerOrders.map(sellerOrderBody),
 });
 
-export const adminOrderBody = (order: AdminOrderView): AdminOrderBody => ({
+export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody => ({
   ...orderBody(order),
   accountId: order.accountId,
+  customer:
+    order.customer === null
+      ? null
+      : { displayName: order.customer.displayName, email: order.customer.email },
   paymentIntentId: order.paymentIntentId,
+  sellerOrders: order.sellerOrders.map((seller) => ({
+    ...sellerOrderBody(seller),
+    storeName: seller.storeName,
+    lines: seller.lines.map((line) => ({
+      ...lineBody(line),
+      productName: line.productName,
+      variantLabel: line.variantLabel,
+    })),
+  })),
 });
 
 export const pageBody = <V, B>(

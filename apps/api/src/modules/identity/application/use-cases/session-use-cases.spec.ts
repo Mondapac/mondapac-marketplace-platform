@@ -155,6 +155,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         confirmSellerSecondFactor: undefined as never,
         contactEmailOf: undefined as never,
         requireStepUp: undefined as never,
+        customerAccountSummaries: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {

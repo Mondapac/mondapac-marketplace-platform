@@ -12,6 +12,8 @@ export {
   type ActorDescription,
   type ConfirmSecondFactorFailure,
   type ContactEmailTarget,
+  type CustomerAccountSummary,
   type IdentityFacade,
+  type IdentityValidationFailed,
   type SellerMembershipSummary,
 } from './identity.facade';

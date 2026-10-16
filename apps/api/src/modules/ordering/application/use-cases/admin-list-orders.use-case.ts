@@ -2,13 +2,13 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { ORDERING_ORDER_VIEW } from '../../contracts/permissions';
 import type { OrderingDependencies } from '../checkout-flow';
-import type { AdminOrderView, OrderPageView } from '../../domain/order-views';
+import type { LabelledAdminOrderView, OrderPageView } from '../../domain/order-views';
 import { listAllOrders, type ListInput, type ReadFailure } from '../read-flow';
 
 /** The Market's orders, newest first, optionally by status (rule `permissions [ordering.order.view]`). */
 export class AdminListOrders extends UseCase<
   ListInput,
-  OrderPageView<AdminOrderView>,
+  OrderPageView<LabelledAdminOrderView>,
   ReadFailure
 > {
   static override readonly access: AccessDeclaration = {
