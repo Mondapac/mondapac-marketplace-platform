@@ -1,6 +1,15 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
+import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
+import {
+  HELD_UNIT_LABELS,
+  SELLER_STORE_NAMES,
+  type HeldUnitLabels,
+  type SellerStoreNames,
+} from '../application/ports/held-labels';
+import { CatalogHeldUnitLabels } from './catalog-held-unit-labels';
+import { SellersStoreNames } from './sellers-store-names';
 import {
   OFFER_SELL_UNITS_SOURCE,
   type OfferSellUnitsSource,
@@ -69,6 +78,17 @@ export const pricingProviders: readonly FactoryProvider[] = [
     inject: [CATALOG_FACADE],
     useFactory: (catalog: CatalogFacade): OfferSellUnitsSource =>
       new CatalogOfferSellUnits(catalog),
+  },
+  {
+    provide: HELD_UNIT_LABELS,
+    inject: [CATALOG_FACADE, MarketRegistry],
+    useFactory: (catalog: CatalogFacade, markets: MarketRegistry): HeldUnitLabels =>
+      new CatalogHeldUnitLabels(catalog, markets),
+  },
+  {
+    provide: SELLER_STORE_NAMES,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerStoreNames => new SellersStoreNames(sellers),
   },
   {
     provide: PRICING_POLICY_PROVIDER,

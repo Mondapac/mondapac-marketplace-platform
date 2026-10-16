@@ -443,9 +443,9 @@ describe.each(MARKETS)('sellers.seller-summaries (%s; design 7.1)', (code) => {
     const systemAnswer = await t.summariesSystem.execute(system(code), { sellerIds: request });
 
     const expected = [
-      { sellerId: b, exists: true },
-      { sellerId: unknown, exists: false },
-      { sellerId: a, exists: true },
+      { sellerId: b, exists: true, storeName: null },
+      { sellerId: unknown, exists: false, storeName: null },
+      { sellerId: a, exists: true, storeName: null },
     ];
     expect(anonymousAnswer).toEqual({ ok: true, value: expected });
     expect(JSON.stringify(systemAnswer)).toBe(JSON.stringify(anonymousAnswer));
@@ -467,18 +467,19 @@ describe.each(MARKETS)('sellers.seller-summaries (%s; design 7.1)', (code) => {
         {
           sellerId: a,
           exists: true,
+          storeName: null,
           operatingTimezone: { zone: 'Pacific/Auckland', provisional: true },
         },
-        { sellerId: b, exists: true },
-        { sellerId: unknown, exists: false },
+        { sellerId: b, exists: true, storeName: null },
+        { sellerId: unknown, exists: false, storeName: null },
       ],
     });
     expect(asRequest).toEqual({
       ok: true,
       value: [
-        { sellerId: a, exists: true },
-        { sellerId: b, exists: true },
-        { sellerId: unknown, exists: false },
+        { sellerId: a, exists: true, storeName: null },
+        { sellerId: b, exists: true, storeName: null },
+        { sellerId: unknown, exists: false, storeName: null },
       ],
     });
   });
@@ -492,7 +493,7 @@ describe.each(MARKETS)('sellers.seller-summaries (%s; design 7.1)', (code) => {
 
     const result = await t.summariesSystem.execute(system(code), { sellerIds: [sellerId] });
 
-    expect(result).toEqual({ ok: true, value: [{ sellerId, exists: false }] });
+    expect(result).toEqual({ ok: true, value: [{ sellerId, exists: false, storeName: null }] });
   });
 
   it('answers an id of the other Market exactly as an unknown id, and reads read-only', async () => {
@@ -507,8 +508,8 @@ describe.each(MARKETS)('sellers.seller-summaries (%s; design 7.1)', (code) => {
     expect(result).toEqual({
       ok: true,
       value: [
-        { sellerId, exists: false },
-        { sellerId: never, exists: false },
+        { sellerId, exists: false, storeName: null },
+        { sellerId: never, exists: false, storeName: null },
       ],
     });
     expect(t.units.at(-1)).toEqual({ readOnly: true });
@@ -568,6 +569,48 @@ describe.each(MARKETS)('sellers.seller-summaries (%s; design 7.1)', (code) => {
     expect(result).toEqual({ ok: false, error: { code: 'sellers.unavailable' } });
   });
 
+  describe('storeName (pricing held-price names, mini-review 2026-10-16)', () => {
+    const marketContext = market(code);
+
+    it('is the approved revision public store name for every caller, null otherwise', async () => {
+      const t = setUp();
+      const [approved, pending] = await withFiles(t, 2);
+      const unknown = t.ids.next<'Seller'>();
+      t.storeProfiles.put(marketContext, approved!, { publicStoreName: 'Al Noor' });
+      t.storeProfiles.put(marketContext, pending!, {
+        approved: false,
+        publicStoreName: 'Draft Name',
+      });
+      const ids = [approved!, pending!, unknown];
+
+      const asRequest = await t.summaries.execute(anonymous(code), { sellerIds: ids });
+      const asSystem = await t.summariesSystem.execute(system(code), { sellerIds: ids });
+
+      expect(asRequest.ok && asRequest.value.map((e) => e.storeName)).toEqual([
+        'Al Noor',
+        null,
+        null,
+      ]);
+      expect(asSystem.ok && asSystem.value.map((e) => e.storeName)).toEqual([
+        'Al Noor',
+        null,
+        null,
+      ]);
+      expect(JSON.stringify(asRequest)).not.toContain('Draft Name');
+    });
+
+    it('does not see a store name stored for the same id in another Market', async () => {
+      const t = setUp();
+      const [seller] = await withFiles(t, 1);
+      const foreignCode = code === 'AU' ? 'ZZ' : 'AU';
+      t.storeProfiles.put(market(foreignCode), seller!, { publicStoreName: 'CANARY' });
+
+      const result = await t.summaries.execute(anonymous(code), { sellerIds: [seller!] });
+
+      expect(result.ok && result.value[0]!.storeName).toBeNull();
+    });
+  });
+
   describe('minimumOrder (design 18 decision 6; cart 6.4)', () => {
     const currency = code === 'AU' ? 'AUD' : 'JPY';
     const marketContext = market(code);
@@ -584,8 +627,8 @@ describe.each(MARKETS)('sellers.seller-summaries (%s; design 7.1)', (code) => {
       expect(asRequest).toEqual({
         ok: true,
         value: [
-          { sellerId: none, exists: true, minimumOrder: null },
-          { sellerId: set, exists: true, minimumOrder: money(2500n, currency) },
+          { sellerId: none, exists: true, storeName: null, minimumOrder: null },
+          { sellerId: set, exists: true, storeName: null, minimumOrder: money(2500n, currency) },
         ],
       });
       // The system pair adds only the provisional zone; the minimum is the same.
@@ -605,7 +648,10 @@ describe.each(MARKETS)('sellers.seller-summaries (%s; design 7.1)', (code) => {
 
       const result = await t.summaries.execute(anonymous(code), { sellerIds: [pending!] });
 
-      expect(result).toEqual({ ok: true, value: [{ sellerId: pending, exists: true }] });
+      expect(result).toEqual({
+        ok: true,
+        value: [{ sellerId: pending, exists: true, storeName: null }],
+      });
       expect(result.ok && 'minimumOrder' in result.value[0]!).toBe(false);
     });
 
@@ -617,7 +663,10 @@ describe.each(MARKETS)('sellers.seller-summaries (%s; design 7.1)', (code) => {
 
       const result = await t.summaries.execute(anonymous(code), { sellerIds: [seller!] });
 
-      expect(result).toEqual({ ok: true, value: [{ sellerId: seller, exists: true }] });
+      expect(result).toEqual({
+        ok: true,
+        value: [{ sellerId: seller, exists: true, storeName: null }],
+      });
       expect(logged).toHaveBeenCalledWith(
         expect.objectContaining({
           msg: 'sellers.seller-summaries.minimum-order-currency-mismatch',
