@@ -2,7 +2,7 @@
 // The responsive standard of the panels (docs: frontend-next handoff): the phone drawer and
 // bottom bar of the shell, and a source check that no table can widen the page.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { AppShell, Menu } from '@mondapac/ui';
+import { ActionRow, AppShell, MemberColumns, Menu } from '@mondapac/ui';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { act } from 'react';
@@ -84,6 +84,32 @@ describe('AppShell sidebar from 760 px', () => {
     expect(bar?.className).toMatch(/(^| )sticky( |$)/);
     expect(bar?.className).toMatch(/(^| )top-0( |$)/);
     expect(container.querySelector('aside')?.className).toMatch(/md:sticky/);
+  });
+
+  it('stacks row actions at full width on phones and lines them up from sm', () => {
+    render(
+      <ActionRow>
+        <button type="button">Save</button>
+      </ActionRow>,
+    );
+    const row = screen.getByRole('button', { name: 'Save' }).parentElement;
+    expect(row?.className).toMatch(/(^| )flex-col( |$)/);
+    expect(row?.className).toMatch(/(^| )sm:flex-row( |$)/);
+  });
+
+  it('gives the team tables of both panels the same column widths', () => {
+    const { container } = render(
+      <table>
+        <MemberColumns />
+      </table>,
+    );
+    const widths = [...container.querySelectorAll('col')].map((col) => col.className);
+    expect(widths).toEqual(['', 'w-56', 'w-36', 'w-28']);
+    for (const file of ['../../admin/src/team/team-table.tsx', '../src/team/team-table.tsx']) {
+      const source = readFileSync(join(__dirname, file), 'utf8');
+      expect(source).toContain('<MemberColumns />');
+      expect(source).not.toContain('<colgroup');
+    }
   });
 
   it('narrows to an icon rail, saves the choice and widens again', () => {
@@ -218,7 +244,7 @@ describe('payout account pages', () => {
     }
     const seller = readFileSync(join(__dirname, files[0] as string), 'utf8');
     // The actions stack on phones; the dialog is the shared one (fits 375px by its own width rule).
-    expect(seller).toContain('flex-col gap-2 sm:flex-row');
+    expect(seller).toContain('<ActionRow>');
     expect(seller).toContain('<Dialog');
     expect(seller).toContain('max-w-(--mp-size-form-max)');
   });
@@ -246,7 +272,7 @@ describe('admin customer page', () => {
     expect(text).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
     expect(text).toContain('max-w-(--mp-size-form-max)');
     expect(text).toContain('flex flex-col gap-3 sm:flex-row');
-    expect(text).toContain('flex flex-col gap-2 sm:flex-row');
+    expect(text).toContain('<ActionRow>');
     // Long addresses wrap inside the value column instead of widening the page.
     expect(text).toContain('wrap-anywhere');
     expect(text).toContain('<Dialog');
@@ -264,7 +290,7 @@ describe('two-step reset pages', () => {
       expect(text, file).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
     }
     const card = readFileSync(join(__dirname, files[0] as string), 'utf8');
-    expect(card).toContain('flex flex-col gap-2 sm:flex-row');
+    expect(card).toContain('<ActionRow>');
     expect(card).toContain('<Dialog');
     const confirm = readFileSync(join(__dirname, files[1] as string), 'utf8');
     // The sign-in link is a 48px touch target; the button fills the auth column.
@@ -295,7 +321,7 @@ describe('team pages', () => {
     const table = read('../src/team/team-table.tsx');
     expect(table).toContain('overflow-x-auto');
     expect(table).toContain('table-fixed');
-    expect(table).toContain('<colgroup');
+    expect(table).toContain('<MemberColumns />');
     expect(table).toContain('break-words');
     // Below 1024 px each row is a card (the shared CARD_TABLE classes), so no column is hidden
     // behind a sideways scroll while the sidebar takes part of a tablet's width.

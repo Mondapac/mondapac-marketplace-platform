@@ -1,6 +1,15 @@
 'use client';
 
-import { Badge, Banner, Button, Card, Dialog, FieldAction, TextField } from '@mondapac/ui';
+import {
+  ActionRow,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Dialog,
+  FieldAction,
+  TextField,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
@@ -187,7 +196,7 @@ export function CustomerLookup({
             ))}
           </dl>
           {canChangeStatus ? (
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <ActionRow>
               <Button
                 variant={active ? 'destructive' : 'secondary'}
                 onClick={() => {
@@ -198,7 +207,7 @@ export function CustomerLookup({
               >
                 {t(active ? 'disable.action' : 'enable.action')}
               </Button>
-            </div>
+            </ActionRow>
           ) : null}
         </Card>
       )}

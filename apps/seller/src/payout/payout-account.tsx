@@ -1,6 +1,15 @@
 'use client';
 
-import { Badge, Banner, Button, Card, Dialog, TextField, type BadgeTone } from '@mondapac/ui';
+import {
+  ActionRow,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Dialog,
+  TextField,
+  type BadgeTone,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -183,7 +192,7 @@ export function PayoutAccountView({
         ) : null}
         {canManage ? (
           account.secondFactorActive ? (
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <ActionRow>
               <Button type="button" onClick={() => setOpen(true)}>
                 {t(`action.${actionKey}`)}
               </Button>
@@ -197,7 +206,7 @@ export function PayoutAccountView({
                   {t('action.check')}
                 </Button>
               ) : null}
-            </div>
+            </ActionRow>
           ) : (
             <Banner tone="info" title={t('second-factor.title')}>
               <p>{t('second-factor.body')}</p>

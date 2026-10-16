@@ -25,6 +25,7 @@ export { TextField, type TextFieldProps } from './form/text-field.tsx';
 export { OtpField, type OtpFieldProps } from './form/otp-field.tsx';
 export { Card, type CardProps } from './form/card.tsx';
 export { CheckboxRow, type CheckboxRowProps } from './form/checkbox-row.tsx';
+export { ActionRow, type ActionRowProps } from './form/action-row.tsx';
 export { FieldAction, type FieldActionProps } from './form/field-action.tsx';
 export { FieldStatus, type FieldStatusProps, type FieldStatusTone } from './form/field-status.tsx';
 export { FormActionBar, type FormActionBarProps } from './form/form-action-bar.tsx';
@@ -35,6 +36,7 @@ export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/em
 export { DataList, type DataListRow } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
 export { CARD_TABLE } from './data/card-table.ts';
+export { MemberColumns } from './data/member-columns.tsx';
 export { EmailText } from './data/email-text.tsx';
 export {
   LedgerTable,

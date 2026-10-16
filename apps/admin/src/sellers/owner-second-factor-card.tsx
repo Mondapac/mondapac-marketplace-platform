@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, Dialog } from '@mondapac/ui';
+import { ActionRow, Banner, Button, Card, Dialog } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -94,7 +94,7 @@ export function OwnerSecondFactorCard({
       ) : (
         <Banner tone="critical">{t(`error.${problem}`)}</Banner>
       )}
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <ActionRow>
         <Button
           variant="secondary"
           disabled={wait > 0}
@@ -105,7 +105,7 @@ export function OwnerSecondFactorCard({
         >
           {t(sent ? 'action-again' : 'action')}
         </Button>
-      </div>
+      </ActionRow>
       <Dialog
         open={confirming}
         title={t('confirm.title')}

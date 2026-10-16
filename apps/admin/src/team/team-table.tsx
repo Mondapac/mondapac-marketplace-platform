@@ -1,4 +1,12 @@
-import { Badge, CARD_TABLE, EmailText, EmptyState, Icon, type BadgeTone } from '@mondapac/ui';
+import {
+  Badge,
+  CARD_TABLE,
+  EmailText,
+  EmptyState,
+  Icon,
+  type BadgeTone,
+  MemberColumns,
+} from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { roleLabel } from './role-label.ts';
 import { RowActions, type RowTarget } from './row-actions.tsx';
@@ -96,12 +104,7 @@ export async function TeamTable({
       {/* Fixed layout, like the Roles tab: Person takes what is left, the others have set widths. */}
       <table className={`${CARD_TABLE.table} lg:min-w-160 lg:table-fixed`}>
         <caption className="sr-only">{t('identity.members.table-caption')}</caption>
-        <colgroup className="max-lg:hidden">
-          <col />
-          <col className="w-56" />
-          <col className="w-36" />
-          <col className="w-28" />
-        </colgroup>
+        <MemberColumns />
         <thead className={CARD_TABLE.head}>
           <tr>
             <th scope="col" className="px-4 py-3 font-medium">

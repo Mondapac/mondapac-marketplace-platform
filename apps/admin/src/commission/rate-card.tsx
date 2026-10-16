@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, Card, Dialog, TextField } from '@mondapac/ui';
+import { ActionRow, Badge, Banner, Button, Card, Dialog, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -112,7 +112,7 @@ export function CommissionRateCard({
               error={invalid ? t('invalid', { max: MAX_RATE_BPS / 100 }) : undefined}
               onChange={(event) => setText(event.target.value)}
             />
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <ActionRow>
               <Button type="submit" loading={pending === 'save'} disabled={pending === 'reset'}>
                 {t('save')}
               </Button>
@@ -125,7 +125,7 @@ export function CommissionRateCard({
                   {t('reset')}
                 </Button>
               ) : null}
-            </div>
+            </ActionRow>
           </form>
         ) : null}
       </div>
