@@ -24,6 +24,13 @@ export function DisplayNameCard({
   const [problem, setProblem] = useState<Problem | null>(null);
   const [saved, setSaved] = useState<'changed' | 'same' | null>(null);
   const busy = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function focusInvalid() {
+    queueMicrotask(() =>
+      formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(),
+    );
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -33,6 +40,7 @@ export function DisplayNameCard({
     const name = text.trim();
     if (name === '' || [...name].length > MAX_LENGTH) {
       setProblem({ key: 'name-length', field: 'name' });
+      focusInvalid();
       return;
     }
     busy.current = true;
@@ -53,13 +61,17 @@ export function DisplayNameCard({
       return;
     }
     if (result.failure.status === 401) window.location.assign('/session-ended');
-    else setProblem(nameProblemOf(result.failure));
+    else {
+      setProblem(nameProblemOf(result.failure));
+      focusInvalid();
+    }
   }
 
   const fieldError = problem?.field === 'name' ? t(`error.${problem.key}`) : undefined;
   return (
     <Card title={t('name-title')}>
       <form
+        ref={formRef}
         className="flex flex-col gap-4 sm:max-w-md"
         onSubmit={(event) => void submit(event)}
         noValidate
@@ -75,10 +87,14 @@ export function DisplayNameCard({
           label={t('name-label')}
           help={t('name-help')}
           autoComplete="name"
+          // Twice the limit: the limit counts characters, the browser counts UTF-16 units.
           maxLength={MAX_LENGTH * 2}
           value={text}
           error={fieldError}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value);
+            setSaved(null);
+          }}
         />
         <div>
           <Button type="submit" loading={pending}>

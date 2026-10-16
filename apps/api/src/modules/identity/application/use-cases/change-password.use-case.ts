@@ -108,6 +108,7 @@ type Closed =
   | {
       readonly kind: 'refused';
       readonly code:
+        | 'access.unavailable'
         | 'password.current-incorrect'
         | 'session.invalid'
         | 'second-factor.invalid'
@@ -384,6 +385,15 @@ export class ChangePassword extends UseCase<
           await throttles.release(market, reservations);
           await this.record(context, input.client, 'password.current-incorrect', now);
           return ok({ kind: 'refused', code: 'password.current-incorrect' });
+        }
+        // A seller-side member who had no active factor when the call began: if one was switched
+        // on meanwhile, this change would skip a code it now needs, so it is repeated (Hassan L1).
+        if (factorAttempt === null && population === 'seller') {
+          const late = await this.deps.factors.findByAccount(market, actor.accountId);
+          if (late !== null && late.isActive) {
+            await throttles.release(market, reservations);
+            return ok({ kind: 'refused', code: 'access.unavailable' });
+          }
         }
         // An admin's code is spent here, after the credential lock (I-1): a replayed or
         // concurrent code stays counted and changes nothing else (HF2).

@@ -997,6 +997,23 @@ describe.each(TEST_MARKETS)('password reset and change in market %s (identity sl
         expect(fakes.records).toEqual([]);
       });
 
+      it('is repeated when a factor became active after the call began (no skipped code)', async () => {
+        seed('seller');
+        const u = useCases();
+        const current = sessionOf('seller', 1);
+        openChallengesAndFactor(SELLER_ACCOUNT_ID, CUSTOMER_ID);
+        // The first read (when the call is admitted) sees no factor; the closing unit sees it.
+        jest.spyOn(fakes.factorRepository, 'findByAccount').mockResolvedValueOnce(null);
+
+        await expect(change(u, current.session.id)).resolves.toEqual({
+          ok: false,
+          error: { code: 'access.unavailable' },
+        });
+
+        stillOld();
+        expect(eventsOf('identity.account-password-changed.v1')).toEqual([]);
+      });
+
       it('refuses a wrong code, counts it and changes nothing', async () => {
         seed('seller');
         const u = useCases();

@@ -155,7 +155,8 @@ export function PasswordCard({
           <div>
             <button
               type="button"
-              className="text-sm font-medium text-link underline"
+              disabled={pending}
+              className="min-h-11 text-sm font-medium text-link underline disabled:opacity-60"
               onClick={() => {
                 setBackup((value) => !value);
                 setCode('');
