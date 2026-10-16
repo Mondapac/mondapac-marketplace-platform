@@ -56,6 +56,10 @@ model IdentityAccount {
   emailNormalized         String                      @map("email_normalized")
   /// Personal. NULL only for a customer (accounts_display_name_required_check; data design 11.5).
   displayName             String?                     @map("display_name")
+  /// The holder's IANA time zone for showing times; NULL = the panel's own rule (ADR-0005).
+  timezone                String?                     @db.VarChar(64)
+  /// The holder's panel language, a language code; NULL = the Market's language.
+  locale                  String?                     @db.VarChar(16)
   /// active | disabled.
   status                  String
   /// NULL while the email is unverified.

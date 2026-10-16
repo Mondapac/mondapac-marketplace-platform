@@ -25,6 +25,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'notifications/admin/support-contact',
     // The signed-in admin's own display name (profile).
     'identity/admin/profile/display-name',
+    // The signed-in admin's own time zone and language (profile).
+    'identity/admin/profile/preferences',
   ]),
   DELETE: new Set([]),
   POST: new Set([

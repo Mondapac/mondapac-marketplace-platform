@@ -38,6 +38,10 @@ export interface ActorSummary {
   readonly email: string;
   /** Null for a customer (identity design 2.1). */
   readonly displayName: string | null;
+  /** The holder's own IANA time zone, or null when none was chosen. */
+  readonly timezone: string | null;
+  /** The holder's panel language, or null when none was chosen. */
+  readonly locale: string | null;
   /** The panel counts idle time from its own last request (8.6 row 9). */
   readonly session: {
     readonly idleTimeoutSeconds: number;
@@ -139,6 +143,8 @@ export class DescribeActor extends UseCase<
       lastSignInAt: lastSignIn === null ? null : lastSignIn.toString(),
       email: account.state.email.typed,
       displayName: account.state.displayName,
+      timezone: account.state.timezone ?? null,
+      locale: account.state.locale ?? null,
       session: {
         idleTimeoutSeconds: session.idleTimeoutSeconds,
         absoluteExpiresAt: session.absoluteExpiresAt.toString(),

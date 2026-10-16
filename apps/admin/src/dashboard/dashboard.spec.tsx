@@ -256,6 +256,8 @@ const session = (permissionKeys: string[]): AdminSession => ({
   permissionKeys,
   secondFactorActive: true,
   lastSignInAt: null,
+  timezone: null,
+  locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',
   csrfToken: 'csrf-1',

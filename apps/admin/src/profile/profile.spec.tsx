@@ -11,8 +11,9 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { DisplayNameCard } from './display-name-card.tsx';
-import { nameProblemOf, passwordProblemOf } from './errors.ts';
+import { nameProblemOf, passwordProblemOf, preferencesProblemOf } from './errors.ts';
 import { PasswordCard } from './password-card.tsx';
+import { PreferencesCard } from './preferences-card.tsx';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -230,5 +231,87 @@ describe('problems of failed calls', () => {
         LIMITS,
       ),
     ).toEqual({ key: 'code-required', field: 'code' });
+  });
+});
+
+describe('PreferencesCard', () => {
+  const ZONES = ['UTC', 'Australia/Brisbane', 'Asia/Kuala_Lumpur'];
+  const mount = (timezone: string | null = null, locale: string | null = null) =>
+    render(
+      wrap(<PreferencesCard timezone={timezone} locale={locale} zones={ZONES} csrfToken="csrf" />),
+    );
+  const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+  const zone = () => screen.getByLabelText<HTMLSelectElement>('Time zone');
+  const language = () => screen.getByLabelText<HTMLSelectElement>('Language');
+
+  it('starts on the saved choice, or on the default when none was made', () => {
+    mount('Australia/Brisbane', 'en');
+    expect(zone().value).toBe('Australia/Brisbane');
+    expect(language().value).toBe('en');
+    cleanup();
+    mount();
+    expect(zone().value).toBe('');
+    expect(zone().selectedOptions[0]?.textContent).toBe('Default (UTC)');
+    expect(language().value).toBe('');
+  });
+
+  it('lists the zones with spaces for underscores', () => {
+    mount();
+    expect(screen.getByRole('option', { name: 'Asia/Kuala Lumpur' })).toBeTruthy();
+  });
+
+  it('saves the choice, then refreshes the page', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: { changed: true } });
+    mount();
+    fireEvent.change(zone(), { target: { value: 'Australia/Brisbane' } });
+    fireEvent.change(language(), { target: { value: 'en' } });
+    save();
+
+    expect(await screen.findByText('Your settings were saved.')).toBeTruthy();
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      'identity/admin/profile/preferences',
+      { timezone: 'Australia/Brisbane', locale: 'en' },
+      'csrf',
+    );
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends null for the default choices', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: { changed: false } });
+    mount('UTC', 'en');
+    fireEvent.change(zone(), { target: { value: '' } });
+    fireEvent.change(language(), { target: { value: '' } });
+    save();
+
+    expect(await screen.findByText('Those settings are already saved.')).toBeTruthy();
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      'identity/admin/profile/preferences',
+      { timezone: null, locale: null },
+      'csrf',
+    );
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it('shows a refusal and keeps the form', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: {
+        status: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'timezone', code: 'invalid' }] },
+      },
+    });
+    mount();
+    save();
+    expect(
+      await screen.findByText(
+        'That time zone or language is not available. Choose one from the list.',
+      ),
+    ).toBeTruthy();
+    expect(preferencesProblemOf({ status: 503, code: 'access.unavailable' }).key).toBe(
+      'unavailable',
+    );
   });
 });

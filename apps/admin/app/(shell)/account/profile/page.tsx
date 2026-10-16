@@ -2,10 +2,15 @@ import { Badge, Card, DataList, EmailText, LoadError } from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { DisplayNameCard } from '../../../../src/profile/display-name-card.tsx';
 import { PasswordCard } from '../../../../src/profile/password-card.tsx';
+import { PANEL_LANGUAGES } from '../../../../src/profile/languages.ts';
+import { PreferencesCard } from '../../../../src/profile/preferences-card.tsx';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { panelConfig } from '../../../../src/server/config.ts';
 import { requireSession } from '../../../../src/server/session.ts';
-import { formatInstant } from '../../../../src/shared/format.ts';
+import { formatInstant, formatInstantInZone } from '../../../../src/shared/format.ts';
+
+/** The IANA zone ids of this runtime, UTC first; read once on the server. */
+const ZONES = ['UTC', ...Intl.supportedValuesOf('timeZone').filter((id) => id !== 'UTC')];
 
 export async function generateMetadata() {
   const t = await getTranslations('profile');
@@ -42,13 +47,27 @@ export default async function ProfilePage() {
               value: status,
             },
             {
+              label: t('profile.timezone'),
+              value: session.timezone ?? t('profile.timezone-default-admin'),
+            },
+            {
+              label: t('profile.language'),
+              value:
+                session.locale !== null &&
+                (PANEL_LANGUAGES as readonly string[]).includes(session.locale)
+                  ? t(`profile.language-${session.locale}`)
+                  : t('profile.language-default'),
+            },
+            {
               label: t('profile.last-sign-in'),
               value:
                 session.lastSignInAt === null ? (
                   <span className="text-fg-muted">{t('profile.last-sign-in-none')}</span>
                 ) : (
                   <time dateTime={session.lastSignInAt}>
-                    {formatInstant(session.lastSignInAt, locale)}
+                    {session.timezone === null
+                      ? formatInstant(session.lastSignInAt, locale)
+                      : formatInstantInZone(session.lastSignInAt, locale, session.timezone)}
                   </time>
                 ),
             },
@@ -57,6 +76,12 @@ export default async function ProfilePage() {
       </Card>
       <div className="mt-6 flex flex-col gap-6">
         <DisplayNameCard initial={session.displayName} csrfToken={session.csrfToken} />
+        <PreferencesCard
+          timezone={session.timezone}
+          locale={session.locale}
+          zones={ZONES}
+          csrfToken={session.csrfToken}
+        />
         <PasswordCard
           csrfToken={session.csrfToken}
           passwordMin={config.passwordMinLength}

@@ -117,6 +117,7 @@ import { ResendAdminInvitation } from './application/use-cases/resend-admin-invi
 import { ResetOtherAdminSecondFactor } from './application/use-cases/reset-other-admin-second-factor.use-case';
 import { RevokeAdminInvitation } from './application/use-cases/revoke-admin-invitation.use-case';
 import { ChangeDisplayName } from './application/use-cases/change-display-name.use-case';
+import { ChangePanelPreferences } from './application/use-cases/change-panel-preferences.use-case';
 import { ChangePassword } from './application/use-cases/change-password.use-case';
 import { CompleteAdminSignIn } from './application/use-cases/complete-admin-sign-in.use-case';
 import { CompleteSellerSignIn } from './application/use-cases/complete-seller-sign-in.use-case';
@@ -864,6 +865,10 @@ function useCaseProvider<D, U>(
       accounts: true,
       outbox: true,
       clock: true,
+    }),
+    useCaseProvider(ChangePanelPreferences, {
+      unitOfWork: true,
+      accounts: true,
     }),
     useCaseProvider(SendPasswordChangedMail, {
       unitOfWork: true,

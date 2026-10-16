@@ -29,6 +29,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   PUT: new Set([
     // The signed-in member's own display name (profile).
     'identity/seller/profile/display-name',
+    // The signed-in member's own time zone and language (profile).
+    'identity/seller/profile/preferences',
     'sellers/my-file/general',
     'sellers/my-file/address',
     'sellers/my-file/slug',

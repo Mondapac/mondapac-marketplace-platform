@@ -12,6 +12,10 @@ export interface AdminSession {
   readonly lastSignInAt: string | null;
   readonly email: string;
   readonly displayName: string;
+  /** The holder's own IANA time zone, or null when none was chosen. */
+  readonly timezone: string | null;
+  /** The holder's panel language code, or null when none was chosen. */
+  readonly locale: string | null;
   readonly csrfToken: string;
 }
 
