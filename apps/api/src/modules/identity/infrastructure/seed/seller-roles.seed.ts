@@ -24,12 +24,15 @@ export const SELLER_ROLES_SEED: readonly SeededRole[] = [
     scope: 'seller',
     kind: 'default',
     seedCode: 'store-manager',
-    seedVersion: 2,
+    // Version 3 adds `catalog.own-product.edit` (catalog design 8.1: Store Manager and Catalogue
+    // and Stock create, edit and submit the seller's own products and Offers; unprotected).
+    seedVersion: 3,
     nameKey: 'identity.role.store-manager',
     permissionKeys: [
       'identity.team-member.view',
       'identity.seller-role.view',
       'catalog.own-product.view',
+      'catalog.own-product.edit',
     ],
   },
   {
@@ -46,9 +49,10 @@ export const SELLER_ROLES_SEED: readonly SeededRole[] = [
     scope: 'seller',
     kind: 'default',
     seedCode: 'catalogue-stock',
-    seedVersion: 2,
+    // Version 3 adds `catalog.own-product.edit` (catalog design 8.1).
+    seedVersion: 3,
     nameKey: 'identity.role.catalogue-stock',
-    permissionKeys: ['catalog.own-product.view'],
+    permissionKeys: ['catalog.own-product.view', 'catalog.own-product.edit'],
   },
   {
     // Answers customers, handles returns.
