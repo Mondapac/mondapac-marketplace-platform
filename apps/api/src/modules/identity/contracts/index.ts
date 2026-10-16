@@ -6,6 +6,7 @@
 export { IDENTITY_EVENTS, SellerAccessApproved, SellerRegistered } from '../domain/events';
 export { IDENTITY_AUDIT_ACTIONS } from '../domain/audit';
 export * from './permissions';
+export { IDENTITY_STEP_UP_ACTIONS, STEP_UP_PROOF_MINUTES, type StepUpFailure } from './step-up';
 export {
   IDENTITY_FACADE,
   type ActorDescription,

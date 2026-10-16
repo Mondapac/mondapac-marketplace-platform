@@ -77,6 +77,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
+    'identity.seller_step_up_policies': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    'identity.step_up_proofs': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'identity.seller_memberships': {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],

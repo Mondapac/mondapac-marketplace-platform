@@ -101,6 +101,11 @@
   { "name": "identity.find-access-decisions-by-basis", "rule": "system" },
   { "name": "identity.issue-first-admin-invitation", "rule": "system" },
   { "name": "identity.list-registered-sellers", "rule": "system" },
+  {
+    "name": "identity.list-seller-step-up-policy",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "identity.membership-of", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.notify-access-reviewers", "rule": "system" },
   { "name": "identity.purge-expired", "rule": "system" },
@@ -130,6 +135,11 @@
   { "name": "identity.request-customer-verification", "rule": "anonymous" },
   { "name": "identity.request-password-reset", "rule": "anonymous" },
   { "name": "identity.request-seller-verification", "rule": "anonymous" },
+  {
+    "name": "identity.require-step-up",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "identity.reset-admin-second-factor", "rule": "system" },
   { "name": "identity.reset-password", "rule": "anonymous" },
   { "name": "identity.seed-roles", "rule": "system" },
@@ -155,6 +165,11 @@
   },
   {
     "name": "identity.start-seller-second-factor-enrolment",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "identity.verify-seller-step-up",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
