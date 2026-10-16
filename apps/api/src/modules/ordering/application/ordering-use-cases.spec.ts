@@ -29,6 +29,7 @@ import { AdminViewOrder } from './use-cases/admin-view-order.use-case';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
+import { ShipmentNoticeQuery } from './use-cases/shipment-notice.use-case';
 import { StartCheckout } from './use-cases/start-checkout.use-case';
 import { RecordLedger } from './use-cases/record-ledger.use-case';
 import { RecordShipments } from './use-cases/record-shipments.use-case';
@@ -770,6 +771,186 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(await list(sellerA, { limit: 0 })).toMatchObject({
         ok: false,
         error: { code: 'validation.failed' },
+      });
+    });
+
+    it('writes one order-shipped event with ids only, and none for a refused shipment', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      written.length = 0;
+
+      expect(await ship(sellerB, sellerOrderId)).toEqual(
+        err({ code: 'ordering.seller-order-not-found' }),
+      );
+      expect(await ship(sellerA, sellerOrderId, { carrier: '' })).toMatchObject({ ok: false });
+      expect(written).toEqual([]);
+
+      await ship(sellerA, sellerOrderId);
+      await ship(sellerA, sellerOrderId);
+      expect(written).toHaveLength(1);
+      expect(written[0]).toMatchObject({ type: 'ordering.order-shipped.v1' });
+      expect(written[0]!.payload).toEqual({
+        orderId: order.id,
+        sellerOrderId,
+        sellerId: SELLER_A,
+      });
+      expect(JSON.stringify(written[0]!.payload)).not.toMatch(/AP123456789|Australia Post|@/);
+    });
+
+    it('rolls the shipment back as a conflict when the outbox refuses the event', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      deps = {
+        ...deps,
+        outbox: { append: () => Promise.reject(new OutboxWriteRefusedError('payload-invalid')) },
+      };
+      // The unit rolls back with the refusal (the real unit commits nothing on err).
+      const before = new Map(orders.rows);
+      deps = {
+        ...deps,
+        unitOfWork: {
+          run: async (market, work, options) => {
+            const result = await new FakeUnitOfWork().run(market, work, options);
+            if (!result.ok) {
+              orders.rows.clear();
+              for (const [key, row] of before) orders.rows.set(key, row);
+            }
+            return result;
+          },
+        } as OrderingDependencies['unitOfWork'],
+      };
+      expect(await ship(sellerA, sellerOrderId)).toEqual(
+        err({ code: 'ordering.fulfilment-conflict' }),
+      );
+      const stored = orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === sellerOrderId)!;
+      expect(stored.fulfilment).toBe('to-ship');
+      expect(stored.carrier).toBeNull();
+    });
+
+    describe('shipment-notice', () => {
+      const notice = (context: CallContext, input: unknown) =>
+        new ShipmentNoticeQuery(gate, deps).execute(context, input as never);
+      const other = code === 'AU' ? 'ZZ' : 'AU';
+
+      it('is for the system actor only and reads nothing for anyone else', async () => {
+        const order = await paid();
+        const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, sellerOrderId);
+        let reads = 0;
+        const findById = orders.findById.bind(orders);
+        orders.findById = (...args) => {
+          reads += 1;
+          return findById(...args);
+        };
+        for (const context of [sellerA, customer, anonymous]) {
+          expect(await notice(context, { orderId: order.id, sellerOrderId })).toEqual(
+            err({ code: 'access.denied' }),
+          );
+        }
+        expect(reads).toBe(0);
+      });
+
+      it('answers the carrier and tracking number, and exactly that', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        const b = sellerOrderIdOf(order.id, SELLER_B);
+        await ship(sellerA, a);
+        await ship(sellerB, b, { trackingRef: undefined });
+
+        expect(await notice(system, { orderId: order.id, sellerOrderId: a })).toEqual(
+          ok({
+            orderId: order.id,
+            accountId: order.accountId,
+            sellerOrderId: a,
+            carrier: 'Australia Post',
+            trackingRef: 'AP123456789',
+          }),
+        );
+        expect(await notice(system, { orderId: order.id, sellerOrderId: b })).toEqual(
+          ok({
+            orderId: order.id,
+            accountId: order.accountId,
+            sellerOrderId: b,
+            carrier: 'Australia Post',
+            trackingRef: null,
+          }),
+        );
+      });
+
+      it('answers not-found for an unknown, foreign, unshipped or unpaid seller order', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        const notFound = err({ code: 'ordering.order-not-found' });
+
+        // Still to-ship.
+        expect(await notice(system, { orderId: order.id, sellerOrderId: a })).toEqual(notFound);
+        await ship(sellerA, a);
+        // Unknown seller order id.
+        expect(
+          await notice(system, { orderId: order.id, sellerOrderId: id<'SellerOrder'>(0xdead) }),
+        ).toEqual(notFound);
+        // A seller order of another order.
+        const second = await placed();
+        expect(await notice(system, { orderId: second.id, sellerOrderId: a })).toEqual(notFound);
+        // An order that is not confirmed.
+        expect(
+          await notice(system, {
+            orderId: second.id,
+            sellerOrderId: sellerOrderIdOf(second.id, SELLER_A),
+          }),
+        ).toEqual(notFound);
+      });
+
+      it('answers not-found for an order of the other Market', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, a);
+        const otherSystem = testCallContext(
+          testMarketContext(other, 'default'),
+          'system',
+          'order-0009-abcd',
+        );
+        // The store is keyed by Market: an order of this Market is invisible from the other.
+        const own = orders.findById.bind(orders);
+        orders.findById = (m, orderId) =>
+          m.marketId === market.marketId ? own(m, orderId) : Promise.resolve(null);
+
+        expect(await notice(otherSystem, { orderId: order.id, sellerOrderId: a })).toEqual(
+          err({ code: 'ordering.order-not-found' }),
+        );
+      });
+
+      it('refuses an invalid order id', async () => {
+        for (const orderId of ['nope', 42, undefined]) {
+          expect(await notice(system, { orderId, sellerOrderId: id<'SellerOrder'>(1) })).toEqual(
+            err({ code: 'validation.failed' }),
+          );
+        }
+      });
+    });
+
+    it('refuses a carrier or tracking reference that reads as a link', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_B);
+      for (const carrier of ['track.evil-example.com/login', 'evil.com', 'a/b']) {
+        expect(await ship(sellerB, sellerOrderId, { carrier })).toMatchObject({
+          ok: false,
+          error: { fields: [{ path: 'carrier', code: 'format' }] },
+        });
+      }
+      for (const trackingRef of [
+        'track.evil-example.com/login',
+        'AP1/2',
+        'evil.com',
+        'track.evil-example.com',
+      ]) {
+        expect(await ship(sellerB, sellerOrderId, { trackingRef })).toMatchObject({
+          ok: false,
+          error: { fields: [{ path: 'trackingRef', code: 'format' }] },
+        });
+      }
+      expect(await ship(sellerB, sellerOrderId, { carrier: 'Aus. Post' })).toMatchObject({
+        ok: true,
       });
     });
 

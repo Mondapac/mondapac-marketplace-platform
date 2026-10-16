@@ -1040,6 +1040,7 @@
       "title": "Send this order",
       "carrier": "Carrier",
       "tracking": "Tracking reference",
+      "hint": "The customer gets an email with the carrier and tracking reference.",
       "submit": "Mark as shipped"
     },
     "shipped-at": "Shipped {when}",

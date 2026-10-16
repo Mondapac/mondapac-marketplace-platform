@@ -32,7 +32,7 @@ import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
-import { gate, marketOf } from './persistence-support';
+import { gate, holdRetriesUntil, marketOf } from './persistence-support';
 import { adminTeamTestDatabaseUrl } from './test-database';
 
 // Identity slices 8a-2 and 8b on PostgreSQL (identity design 5.5, HF8; data design 5.1), for
@@ -167,10 +167,21 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
     const one = await admin('platform-administrator');
     const two = await admin('platform-administrator');
     const spy = bothCountFirst();
+    const oneSettled = gate();
+    const restorePause = holdRetriesUntil(app.get(UNIT_OF_WORK), oneSettled.opened);
 
-    const results = await Promise.all([first(one, two), second(one, two)]);
-    const counts = spy.mock.calls.length;
-    spy.mockRestore();
+    let results: Result<unknown, unknown>[];
+    let counts: number;
+    try {
+      results = await Promise.all(
+        [first(one, two), second(one, two)].map((run) => run.finally(() => oneSettled.open())),
+      );
+      counts = spy.mock.calls.length;
+    } finally {
+      // Restored even when a unit throws, so the next test spies on the real repository.
+      spy.mockRestore();
+      restorePause();
+    }
 
     // Both counted before either wrote, and the retried loser never counted again.
     expect(counts).toBe(2);
