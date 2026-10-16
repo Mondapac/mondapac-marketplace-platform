@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  EmptyState,
   Banner,
   Button,
   Card,
@@ -80,7 +81,7 @@ export function LedgerCard({ initial }: { readonly initial: Ledger }) {
         ]}
       />
       {rows.length === 0 ? (
-        <p className="text-fg-muted">{t('empty')}</p>
+        <EmptyState size="compact" icon="receipt" title={t('empty')} />
       ) : (
         <LedgerTable
           rows={rows}
