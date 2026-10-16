@@ -17,6 +17,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/session',
     'identity/admin/sellers',
     'payments/admin/connected-accounts',
+    // The Market's orders (ordering), read-only: the list; one order is read by the page server.
+    'ordering/admin/orders',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set(['notifications/admin/support-contact']),
@@ -81,6 +83,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'identity/admin/sellers': ['state', 'limit', 'after'],
   'payments/admin/connected-accounts': ['status', 'cursor'],
+  'ordering/admin/orders': ['status', 'cursor'],
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** GET templates with a resource id whose query crosses, and the keys that may cross. */

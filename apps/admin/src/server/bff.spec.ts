@@ -600,6 +600,37 @@ describe('relay of the connected accounts list', () => {
   });
 });
 
+describe('relay of the orders list', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/orders${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['ordering', 'admin', 'orders'];
+
+  it('forwards only the status and cursor keys of the query', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get('?status=confirmed&cursor=abc&limit=500&x=1'),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/ordering/admin/orders?status=confirmed&cursor=abc',
+    );
+  });
+
+  it('refuses other paths and methods', async () => {
+    const upstream = upstreamOk();
+    const other = ['ordering', 'admin', 'orders', '0190a000-0000-7000-8000-000000000001'];
+    expect((await relay(config, get(''), other, upstream)).status).toBe(404);
+    expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
 describe('relay of the sellers without an owner', () => {
   const id = '0190a000-0000-7000-8000-000000000001';
   const get = (query: string) =>
