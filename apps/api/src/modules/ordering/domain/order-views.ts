@@ -80,6 +80,17 @@ export interface LabelledAdminOrderView extends Omit<AdminOrderView, 'sellerOrde
   readonly sellerOrders: readonly LabelledSellerOrderView[];
 }
 
+/** A seller order as the seller panel shows it, with the published names of its lines. */
+export interface LabelledSellerOrderDetailView extends Omit<SellerOrderDetailView, 'lines'> {
+  readonly lines: readonly LabelledLineView[];
+}
+
+export interface LabelledSellerOrderPageView {
+  readonly sellerOrders: readonly LabelledSellerOrderDetailView[];
+  /** Pass back as `cursor` for the next page; null on the last page. */
+  readonly nextCursor: string | null;
+}
+
 export interface OrderPageView<V> {
   readonly orders: readonly V[];
   /** Pass back as `cursor` for the next page; null on the last page. */

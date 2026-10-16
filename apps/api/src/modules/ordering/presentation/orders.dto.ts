@@ -3,8 +3,8 @@ import type {
   LabelledAdminOrderView,
   OrderPageView,
   OrderView,
-  SellerOrderDetailView,
-  SellerOrderPageView,
+  LabelledSellerOrderDetailView,
+  LabelledSellerOrderPageView,
 } from '../domain/order-views';
 import { moneyBody } from './http-answers';
 
@@ -71,7 +71,7 @@ export class OrderBody {
   @ApiProperty({ type: [SellerOrderBody] }) sellerOrders!: SellerOrderBody[];
 }
 
-export class AdminOrderLineBody extends OrderLineBody {
+export class LabelledOrderLineBody extends OrderLineBody {
   @ApiProperty({
     type: String,
     nullable: true,
@@ -93,7 +93,7 @@ export class AdminSellerOrderBody extends SellerOrderBody {
     description: "The seller's public store name; null when unknown.",
   })
   storeName!: string | null;
-  @ApiProperty({ type: [AdminOrderLineBody] }) declare lines: AdminOrderLineBody[];
+  @ApiProperty({ type: [LabelledOrderLineBody] }) declare lines: LabelledOrderLineBody[];
 }
 
 export class OrderCustomerBody {
@@ -136,6 +136,14 @@ const lineBody = (line: SellerOrderLike['lines'][number]): OrderLineBody => ({
   taxInclusive: line.taxInclusive,
 });
 
+const labelledLineBody = (
+  line: LabelledSellerOrderDetailView['lines'][number],
+): LabelledOrderLineBody => ({
+  ...lineBody(line),
+  productName: line.productName,
+  variantLabel: line.variantLabel,
+});
+
 const sellerOrderBody = (seller: SellerOrderLike): SellerOrderBody => ({
   sellerId: seller.sellerId,
   subtotal: moneyBody(seller.subtotal),
@@ -150,6 +158,7 @@ const sellerOrderBody = (seller: SellerOrderLike): SellerOrderBody => ({
 });
 
 export class SellerOrderDetailBody extends SellerOrderBody {
+  @ApiProperty({ type: [LabelledOrderLineBody] }) declare lines: LabelledOrderLineBody[];
   @ApiProperty({ format: 'uuid' }) sellerOrderId!: string;
   @ApiProperty({ format: 'uuid' }) orderId!: string;
   @ApiProperty({ format: 'date-time', description: 'When the customer paid.' }) paidAt!: string;
@@ -170,15 +179,18 @@ export class ShipSellerOrderRequest {
   trackingRef?: string;
 }
 
-export const sellerOrderDetailBody = (order: SellerOrderDetailView): SellerOrderDetailBody => ({
+export const sellerOrderDetailBody = (
+  order: LabelledSellerOrderDetailView,
+): SellerOrderDetailBody => ({
   ...sellerOrderBody(order),
+  lines: order.lines.map(labelledLineBody),
   sellerOrderId: order.sellerOrderId,
   orderId: order.orderId,
   paidAt: order.paidAt.toString(),
 });
 
 export const sellerOrderPageBody = (
-  page: SellerOrderPageView,
+  page: LabelledSellerOrderPageView,
 ): { sellerOrders: SellerOrderDetailBody[]; nextCursor: string | null } => ({
   sellerOrders: page.sellerOrders.map(sellerOrderDetailBody),
   nextCursor: page.nextCursor,
@@ -208,11 +220,7 @@ export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody =>
   sellerOrders: order.sellerOrders.map((seller) => ({
     ...sellerOrderBody(seller),
     storeName: seller.storeName,
-    lines: seller.lines.map((line) => ({
-      ...lineBody(line),
-      productName: line.productName,
-      variantLabel: line.variantLabel,
-    })),
+    lines: seller.lines.map(labelledLineBody),
   })),
 });
 

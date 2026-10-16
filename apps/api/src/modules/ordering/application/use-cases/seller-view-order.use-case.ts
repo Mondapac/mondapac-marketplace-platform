@@ -3,12 +3,12 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { ORDERING_SELLER_ORDER_VIEW } from '../../contracts/permissions';
 import type { OrderingDependencies } from '../checkout-flow';
 import { viewSellerOrder, type FulfilmentFailure } from '../fulfilment-flow';
-import type { SellerOrderDetailView } from '../../domain/order-views';
+import type { LabelledSellerOrderDetailView } from '../../domain/order-views';
 
 /** One of the seller's own paid seller orders. */
 export class SellerViewOrder extends UseCase<
   { readonly sellerOrderId: unknown },
-  SellerOrderDetailView,
+  LabelledSellerOrderDetailView,
   FulfilmentFailure
 > {
   static override readonly access: AccessDeclaration = {
