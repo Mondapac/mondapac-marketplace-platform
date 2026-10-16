@@ -163,6 +163,9 @@ export const ARABIC_PRE_MAP: Readonly<Record<string, string>> = Object.freeze({
   '\u06b5': 'ل',
   '\u06b7': 'ل',
   '\u06b8': 'ل',
+  // Greek lunate sigmas: NFKC turns them into σ, which the skeleton puts on o (Hassan S3).
+  '\u03f9': 'c',
+  '\u03f2': 'c',
 });
 
 /** Start code points of the non-ASCII decimal digit blocks (Unicode 15.1, \p{Nd}); ten each. */
