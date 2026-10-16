@@ -727,8 +727,8 @@
         "submitted": "Submitted"
       },
       "listed": {
-        "yes": "On sale",
-        "no": "Not on sale"
+        "yes": "Yes",
+        "no": "No"
       },
       "status": {
         "draft": "Draft",
@@ -1018,7 +1018,8 @@
         "below-held": "You can't set the stock below the units held in checkouts.",
         "not-ready": "Stock isn't ready yet. Try again in a moment.",
         "not-found": "This offer or location was not found. Reload the page."
-      }
+      },
+      "on-hand": "Units in stock"
     }
   },
   "orders": {

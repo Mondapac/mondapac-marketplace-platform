@@ -101,17 +101,19 @@ function VariantRow({
         {readOnly ? null : (
           <form className="flex flex-col gap-1" onSubmit={(event) => void submit(event)} noValidate>
             <div className="flex flex-wrap items-end gap-2">
-              <TextField
-                name={`price-${variant.variantId}`}
-                label={t('price.field', { currency })}
-                inputMode="decimal"
-                value={text}
-                error={error ?? undefined}
-                onChange={(event) => {
-                  setText(event.target.value);
-                  setDone(null);
-                }}
-              />
+              <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
+                <TextField
+                  name={`price-${variant.variantId}`}
+                  label={t('price.field', { currency })}
+                  inputMode="decimal"
+                  value={text}
+                  error={error ?? undefined}
+                  onChange={(event) => {
+                    setText(event.target.value);
+                    setDone(null);
+                  }}
+                />
+              </div>
               <Button
                 type="submit"
                 variant="secondary"

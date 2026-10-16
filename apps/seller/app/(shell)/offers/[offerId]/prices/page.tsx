@@ -23,7 +23,8 @@ export default async function OfferPricesPage({
   const { offerId } = await params;
   if (!isUuid(offerId)) notFound();
   const t = await getTranslations();
-  const title = t('price.title');
+  // The top bar names the section, as on the offer's other tabs; the tab names this page.
+  const title = t('catalog.offers.title');
   const page = await loadPricesPage(offerId);
   if (page.kind === 'unavailable') {
     return <LoadError message={t('price.error.unavailable')} retryLabel={t('load.retry')} />;

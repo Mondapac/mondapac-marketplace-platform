@@ -117,9 +117,9 @@ describe('seller catalog pages', () => {
       }),
     );
     const rows = screen.getAllByRole('row');
-    expect(within(rows[1]!).getByText('On sale')).toBeTruthy();
+    expect(within(rows[1]!).getByText('Yes')).toBeTruthy();
     expect(within(rows[2]!).getByText('Changes needed')).toBeTruthy();
-    expect(within(rows[2]!).getByText('Not on sale')).toBeTruthy();
+    expect(within(rows[2]!).getByText('No')).toBeTruthy();
   });
 
   it('shows an empty state with no offers', async () => {

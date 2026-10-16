@@ -24,7 +24,8 @@ export default async function OfferStockPage({
   const { offerId } = await params;
   if (!isUuid(offerId)) notFound();
   const t = await getTranslations();
-  const title = t('stock.levels.title');
+  // The top bar names the section, as on the offer's other tabs; the tab names this page.
+  const title = t('catalog.offers.title');
   const page = await loadStockLevelsPage(offerId);
   if (page.kind === 'unavailable') {
     return <LoadError message={t('stock.error.unavailable')} retryLabel={t('load.retry')} />;
