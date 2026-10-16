@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { visibleNavItems, type NavConfig } from './nav.ts';
+import { sidebarCollapsed, visibleNavItems, type NavConfig } from './nav.ts';
 
 const config: NavConfig = {
   items: [
@@ -42,5 +42,14 @@ describe('visibleNavItems edge cases', () => {
       ],
     };
     expect(visibleNavItems(ordered, new Set()).map((i) => i.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('sidebarCollapsed', () => {
+  it('is true only for the saved collapsed value', () => {
+    expect(sidebarCollapsed('collapsed')).toBe(true);
+    expect(sidebarCollapsed('expanded')).toBe(false);
+    expect(sidebarCollapsed(undefined)).toBe(false);
+    expect(sidebarCollapsed('anything')).toBe(false);
   });
 });

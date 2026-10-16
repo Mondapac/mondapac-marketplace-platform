@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, FieldAction, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -100,7 +100,7 @@ function VariantRow({
         {variant.retired ? <p className="text-fg-muted">{t('price.retired')}</p> : null}
         {readOnly ? null : (
           <form className="flex flex-col gap-1" onSubmit={(event) => void submit(event)} noValidate>
-            <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-wrap items-start gap-2">
               <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
                 <TextField
                   name={`price-${variant.variantId}`}
@@ -114,14 +114,16 @@ function VariantRow({
                   }}
                 />
               </div>
-              <Button
-                type="submit"
-                variant="secondary"
-                loading={pending}
-                disabled={pending || text.trim() === ''}
-              >
-                {t('price.save')}
-              </Button>
+              <FieldAction>
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  loading={pending}
+                  disabled={pending || text.trim() === ''}
+                >
+                  {t('price.save')}
+                </Button>
+              </FieldAction>
             </div>
             {done === null ? null : (
               <span className="text-sm text-fg-muted">{t(`price.saved.${done}`)}</span>

@@ -31,3 +31,13 @@ export function visibleNavItems(
     (item) => item.anyOf === undefined || item.anyOf.some((key) => permissionKeys.has(key)),
   );
 }
+
+// Here, not in the client shell, so a server component reads the same names as values.
+/** Cookie that keeps the sidebar narrowed to icons across pages and visits. */
+export const SIDEBAR_COOKIE = 'mp-sidebar';
+export const SIDEBAR_COLLAPSED = 'collapsed';
+
+/** The saved sidebar choice from the cookie's value; anything else is the full sidebar. */
+export function sidebarCollapsed(value: string | undefined): boolean {
+  return value === SIDEBAR_COLLAPSED;
+}

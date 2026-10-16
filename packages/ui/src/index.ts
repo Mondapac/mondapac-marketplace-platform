@@ -4,7 +4,14 @@ export { Topbar, type TopbarProps } from './shell/topbar.tsx';
 export { Icon, type IconName, type IconProps } from './icon/icon.tsx';
 export { Tabs, type TabItem, type TabsProps } from './shell/tabs.tsx';
 export { BackLink } from './shell/back-link.tsx';
-export { visibleNavItems, type NavConfig, type NavItem } from './shell/nav.ts';
+export { ShortcutGrid, type Shortcut } from './shell/shortcut-grid.tsx';
+export {
+  SIDEBAR_COOKIE,
+  sidebarCollapsed,
+  visibleNavItems,
+  type NavConfig,
+  type NavItem,
+} from './shell/nav.ts';
 export { AuthLayout, type AuthLayoutProps, type AuthShowcaseCard } from './auth/auth-layout.tsx';
 export { Banner, type BannerProps, type BannerTone } from './form/banner.tsx';
 export {
@@ -18,6 +25,7 @@ export { TextField, type TextFieldProps } from './form/text-field.tsx';
 export { OtpField, type OtpFieldProps } from './form/otp-field.tsx';
 export { Card, type CardProps } from './form/card.tsx';
 export { CheckboxRow, type CheckboxRowProps } from './form/checkbox-row.tsx';
+export { FieldAction, type FieldActionProps } from './form/field-action.tsx';
 export { FieldStatus, type FieldStatusProps, type FieldStatusTone } from './form/field-status.tsx';
 export { FormActionBar, type FormActionBarProps } from './form/form-action-bar.tsx';
 export { Select, type SelectOption, type SelectProps } from './form/select.tsx';
@@ -37,3 +45,5 @@ export {
 } from './data/ledger.tsx';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
+export { THEME_COOKIE, THEME_SCRIPT, themeChoice, type ThemeChoice } from './theme/theme.ts';
+export { ThemeMenu, type ThemeMenuProps } from './theme/theme-menu.tsx';

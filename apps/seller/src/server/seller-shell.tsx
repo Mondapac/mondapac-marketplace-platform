@@ -1,6 +1,16 @@
 import 'server-only';
-import { AppShell, Sidebar, Topbar } from '@mondapac/ui';
+import {
+  AppShell,
+  SIDEBAR_COOKIE,
+  Sidebar,
+  THEME_COOKIE,
+  ThemeMenu,
+  Topbar,
+  sidebarCollapsed,
+  themeChoice,
+} from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
 import { sellerNavItems } from '../nav.ts';
@@ -19,6 +29,8 @@ export async function SellerShell({
   readonly children: ReactNode;
 }) {
   const t = await getTranslations();
+  const jar = await cookies();
+  const collapsed = sidebarCollapsed(jar.get(SIDEBAR_COOKIE)?.value);
   const items = sellerNavItems(session.sellerAccessState, session.permissionKeys);
   // Phone bottom bar (IA 4): Home and Catalogue, only when the caller may see both.
   const tabIds = ['s_home', 's_products'];
@@ -41,7 +53,10 @@ export async function SellerShell({
         close: t('nav.close'),
         more: t('nav.more'),
         main: t('nav.main'),
+        collapse: t('nav.collapse'),
+        expand: t('nav.expand'),
       }}
+      collapsed={collapsed}
       sidebar={
         <Sidebar
           panelName={t('panel.name')}
@@ -53,7 +68,20 @@ export async function SellerShell({
       topbar={
         <Topbar
           pageTitle={title}
-          actions={<UserMenu name={session.displayName} csrfToken={session.csrfToken} />}
+          actions={
+            <>
+              <ThemeMenu
+                choice={themeChoice(jar.get(THEME_COOKIE)?.value)}
+                labels={{
+                  menu: t('theme.menu'),
+                  system: t('theme.system'),
+                  light: t('theme.light'),
+                  dark: t('theme.dark'),
+                }}
+              />
+              <UserMenu name={session.displayName} csrfToken={session.csrfToken} />
+            </>
+          }
         />
       }
     >
