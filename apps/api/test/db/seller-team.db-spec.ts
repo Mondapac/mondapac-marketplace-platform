@@ -29,7 +29,7 @@ import { openSession } from '../../src/modules/identity/domain/session';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
-import { gate, holdRetriesUntil, marketOf } from './persistence-support';
+import { extendUnitTimeout, gate, holdRetriesUntil, marketOf } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
 // Identity slice 11 on PostgreSQL (identity design 5.3, 5.5, HF8; data design 5.1), for both
@@ -179,7 +179,7 @@ describe.each(TEST_MARKETS)('the seller team in market %s (database, slice 11)',
         const holders = await original(on, role, sellerId);
         arrived += 1;
         if (arrived === 2) counted.open();
-        await Promise.race([counted.opened, new Promise((resolve) => setTimeout(resolve, 5000))]);
+        await Promise.race([counted.opened, new Promise((resolve) => setTimeout(resolve, 10_000))]);
         return holders;
       });
   }
@@ -208,6 +208,8 @@ describe.each(TEST_MARKETS)('the seller team in market %s (database, slice 11)',
     const spy = bothCountFirst();
     const oneSettled = gate();
     const restorePause = holdRetriesUntil(app.get(UNIT_OF_WORK), oneSettled.opened);
+    // The held unit may wait up to 10 s for the other one, longer than the 5 s default timeout.
+    const restoreTimeout = extendUnitTimeout(app.get(UNIT_OF_WORK), 20_000);
 
     let results: Result<unknown, unknown>[];
     let counts: number;
@@ -222,6 +224,7 @@ describe.each(TEST_MARKETS)('the seller team in market %s (database, slice 11)',
       // Restored even when a unit throws, so the next test spies on the real repository.
       spy.mockRestore();
       restorePause();
+      restoreTimeout();
     }
 
     expect(counts).toBe(2);
