@@ -41,3 +41,17 @@ export {
 export { UseCase, UseCaseDefinitionError } from './use-case';
 export type { UseCaseGate } from './use-case-gate';
 export { USE_CASE_GATE } from './use-case-gate.token';
+export {
+  registerStepUpActions,
+  StepUpActionRegistry,
+  StepUpRegistryError,
+  type StepUpActionDeclaration,
+} from './step-up-registry';
+export {
+  RequiresStepUp,
+  STEP_UP_CHECK,
+  STEP_UP_SOURCE,
+  StepUpGuard,
+  type StepUpCheck,
+  type StepUpRefusal,
+} from './step-up.guard';
