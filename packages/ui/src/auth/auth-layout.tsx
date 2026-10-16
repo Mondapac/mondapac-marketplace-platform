@@ -56,7 +56,10 @@ export function AuthLayout({
         <p className="max-w-md text-3xl font-semibold">{showcaseTitle}</p>
         <ul className="flex max-w-md flex-col gap-3">
           {showcaseCards.map((card) => (
-            <li key={card.name} className="rounded-lg bg-surface px-4 py-3 text-fg">
+            <li
+              key={card.name}
+              className="rounded-lg border border-line-control bg-showcase-card px-4 py-3 text-fg"
+            >
               <div className="font-medium">{card.name}</div>
               <div className="text-sm text-fg-muted">{card.detail}</div>
             </li>

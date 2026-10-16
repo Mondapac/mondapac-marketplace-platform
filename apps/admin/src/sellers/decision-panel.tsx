@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, Select, TextField } from '@mondapac/ui';
+import { ActionRow, Banner, Button, Card, Select, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
@@ -147,7 +147,7 @@ export function DecisionPanel({
             }))}
             onChange={(event) => setOutcome(event.target.value)}
           />
-          <div>
+          <ActionRow>
             <Button
               type="submit"
               variant="secondary"
@@ -156,7 +156,7 @@ export function DecisionPanel({
             >
               {t('sellers.decision.check.save')}
             </Button>
-          </div>
+          </ActionRow>
         </form>
       ) : null}
 
@@ -168,7 +168,7 @@ export function DecisionPanel({
           {step === 'confirm-approve' ? (
             <div className="flex flex-col gap-3">
               <p>{t('sellers.decision.approve-confirm')}</p>
-              <div className="flex gap-3">
+              <ActionRow>
                 <Button
                   loading={pending}
                   disabled={locked}
@@ -183,7 +183,7 @@ export function DecisionPanel({
                 <Button variant="secondary" disabled={pending} onClick={() => setStep('idle')}>
                   {t('sellers.decision.cancel')}
                 </Button>
-              </div>
+              </ActionRow>
             </div>
           ) : null}
           {step === 'reject' ? (
@@ -203,7 +203,7 @@ export function DecisionPanel({
                 }
                 onChange={(event) => setReason(event.target.value)}
               />
-              <div className="flex gap-3">
+              <ActionRow>
                 <Button
                   type="submit"
                   variant="destructive"
@@ -215,11 +215,11 @@ export function DecisionPanel({
                 <Button variant="secondary" disabled={pending} onClick={() => setStep('idle')}>
                   {t('sellers.decision.cancel')}
                 </Button>
-              </div>
+              </ActionRow>
             </form>
           ) : null}
           {step === 'idle' ? (
-            <div className="flex gap-3">
+            <ActionRow>
               <Button
                 disabled={locked || register.blocksApproval}
                 onClick={() => {
@@ -241,7 +241,7 @@ export function DecisionPanel({
               >
                 {t('sellers.decision.reject')}
               </Button>
-            </div>
+            </ActionRow>
           ) : null}
         </div>
       ) : null}

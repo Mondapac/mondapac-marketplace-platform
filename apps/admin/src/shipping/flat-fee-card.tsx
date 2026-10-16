@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, TextField } from '@mondapac/ui';
+import { ActionRow, Banner, Button, Card, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -91,11 +91,11 @@ export function FlatFeeCard({
               error={invalid ? t('shipping.invalid', { max }) : undefined}
               onChange={(event) => setText(event.target.value)}
             />
-            <div>
+            <ActionRow>
               <Button type="submit" loading={pending}>
                 {t('shipping.save')}
               </Button>
-            </div>
+            </ActionRow>
           </form>
         ) : null}
       </div>

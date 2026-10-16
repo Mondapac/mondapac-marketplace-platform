@@ -1,4 +1,12 @@
-import { Badge, CARD_TABLE, EmailText, EmptyState, Icon, type BadgeTone } from '@mondapac/ui';
+import {
+  Badge,
+  CARD_TABLE,
+  EmailText,
+  EmptyState,
+  Icon,
+  type BadgeTone,
+  MemberColumns,
+} from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { formatInstant } from '../catalog/format.ts';
 import { roleLabel } from './role-label.ts';
@@ -89,12 +97,7 @@ export async function TeamTable({
     <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
       <table className={`${CARD_TABLE.table} lg:min-w-160 lg:table-fixed`}>
         <caption className="sr-only">{t('identity.team.table-caption')}</caption>
-        <colgroup className="max-lg:hidden">
-          <col />
-          <col className="w-44" />
-          <col className="w-44" />
-          <col className="w-24" />
-        </colgroup>
+        <MemberColumns />
         <thead className={CARD_TABLE.head}>
           <tr>
             <th scope="col" className="px-4 py-3 font-medium">

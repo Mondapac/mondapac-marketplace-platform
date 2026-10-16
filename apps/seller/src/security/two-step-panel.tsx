@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, Card, CheckboxRow, TextField } from '@mondapac/ui';
+import { ActionRow, Badge, Banner, Button, Card, CheckboxRow, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -315,14 +315,14 @@ export function TwoStepPanel({
         </p>
         <p className="text-fg-secondary">{t('intro')}</p>
         {active ? (
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <ActionRow>
             <Button type="button" variant="secondary" onClick={() => go({ kind: 'regenerate' })}>
               {t('action.new-codes')}
             </Button>
             <Button type="button" variant="secondary" onClick={() => go({ kind: 'remove' })}>
               {t('action.turn-off')}
             </Button>
-          </div>
+          </ActionRow>
         ) : (
           <Button type="button" className="sm:self-start" onClick={() => go({ kind: 'password' })}>
             {t('action.turn-on')}

@@ -46,6 +46,7 @@
   --color-showcase-admin: var(--mp-color-bg-auth-showcase-admin);
   --color-on-showcase: var(--mp-color-text-on-showcase);
   --color-on-showcase-muted: var(--mp-color-text-on-showcase-muted);
+  --color-showcase-card: var(--mp-color-bg-auth-showcase-card);
   --color-critical-solid: var(--mp-color-status-critical-solid);
   --color-critical-border: var(--mp-color-status-critical-border);
   --color-info-border: var(--mp-color-border-info);
@@ -92,6 +93,16 @@ body {
 }
 [data-theme='dark'] {
   color-scheme: dark;
+}
+
+/* Colours made in code first (speed mode), to be back-ported to the Figma tokens: the cards on
+ * the sign-in showcase. In dark the surface colour sits too close to the showcase blue, so the
+ * cards take the muted background there and a control-coloured edge in both themes. */
+:root {
+  --mp-color-bg-auth-showcase-card: var(--mp-color-bg-surface);
+}
+[data-theme='dark'] {
+  --mp-color-bg-auth-showcase-card: var(--mp-color-bg-muted);
 }
 
 /* Sizes made in code first (speed mode), to be back-ported to the Figma tokens: the label

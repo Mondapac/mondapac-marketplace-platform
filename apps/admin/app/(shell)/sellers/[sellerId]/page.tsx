@@ -129,7 +129,7 @@ export default async function SellerReviewPage({
       <div className="flex flex-col gap-6">
         <ReviewView review={result.body} decide={decide} />
         {fee === null && commission.kind === 'hidden' ? null : (
-          <div className="grid items-start gap-6 lg:grid-cols-2">
+          <div className="grid gap-6 lg:grid-cols-2">
             {fee === null ? null : (
               <FlatFeeCard
                 initial={fee}
