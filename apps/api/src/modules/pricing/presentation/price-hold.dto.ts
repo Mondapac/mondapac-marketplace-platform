@@ -2,7 +2,8 @@ import { ApiProperty } from '@nestjs/swagger';
 import { HOLD_REJECTION_REASONS } from '../domain/price-series';
 
 // Bodies and answers of the admin price-hold review routes. Ids, codes, minor-unit strings and
-// instants only: no Cost, no submitter, no seller data beyond the seller id.
+// instants, plus three display names (product name, Variant label, public store name): no Cost,
+// no submitter, no legal name or address.
 
 export class HoldMoney {
   @ApiProperty({
@@ -35,6 +36,29 @@ export class PriceHoldRow {
 
   @ApiProperty({ format: 'uuid' })
   sellerId!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The published product name (seller text; escape it). Null when unknown or the lookup failed.',
+  })
+  productName!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The published Variant label. Null when there is none or the lookup failed.',
+  })
+  variantLabel!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The seller's public store name (approved revision only). Null when unknown or the lookup failed.",
+  })
+  storeName!: string | null;
 
   @ApiProperty({ enum: ['regular', 'special'] })
   kind!: 'regular' | 'special';

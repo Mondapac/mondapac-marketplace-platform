@@ -6,6 +6,8 @@ export interface StoredProfile {
   version: number;
   approved: boolean;
   minimumOrder: Money | null;
+  /** The approved revision's public store name; null when the test sets none. */
+  publicStoreName?: string | null;
 }
 
 /** An in-memory {@link StoreProfileRepository} keyed by `<market>|<seller>`. */
@@ -36,6 +38,21 @@ export class InMemoryStoreProfiles implements StoreProfileRepository {
     for (const sellerId of sellerIds) {
       const profile = this.at(market, sellerId);
       if (profile?.approved === true) found.set(sellerId, profile.minimumOrder);
+    }
+    return Promise.resolve(found);
+  }
+
+  approvedStoreNames(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, string>> {
+    if (this.failReads) return Promise.reject(new Error('store profiles down'));
+    const found = new Map<Id<'Seller'>, string>();
+    for (const sellerId of sellerIds) {
+      const profile = this.at(market, sellerId);
+      if (profile?.approved === true && typeof profile.publicStoreName === 'string') {
+        found.set(sellerId, profile.publicStoreName);
+      }
     }
     return Promise.resolve(found);
   }

@@ -1,6 +1,7 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { OfferNamesSystemQuery } from '../application/use-cases/offer-names-system.use-case';
+import type { SellUnitLabelsQuery } from '../application/use-cases/sell-unit-labels.use-case';
 import type { OfferSellUnitsSystemQuery } from '../application/use-cases/offer-sell-units-system.use-case';
 import type { OfferSellUnitsQuery } from '../application/use-cases/offer-sell-units.use-case';
 import type {
@@ -8,6 +9,8 @@ import type {
   CatalogFacade,
   CatalogValidationFailed,
   OfferSellUnitsMap,
+  SellUnitKey,
+  SellUnitLabelsMap,
 } from '../contracts/catalog.facade';
 
 /** The use cases behind the facade, one per method (two for `offerSellUnits`). */
@@ -15,6 +18,7 @@ export interface CatalogFacadeUseCases {
   readonly offerSellUnits: OfferSellUnitsQuery;
   readonly offerSellUnitsSystem: OfferSellUnitsSystemQuery;
   readonly offerNamesSystem: OfferNamesSystemQuery;
+  readonly sellUnitLabels: SellUnitLabelsQuery;
 }
 
 /**
@@ -49,5 +53,15 @@ export class CatalogFacadeImplementation implements CatalogFacade {
     >
   > {
     return this.useCases.offerNamesSystem.execute(context, { offerIds, locale });
+  }
+
+  sellUnitLabels(
+    context: CallContext,
+    keys: readonly SellUnitKey[],
+    locale: string,
+  ): Promise<
+    Result<SellUnitLabelsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
+  > {
+    return this.useCases.sellUnitLabels.execute(context, { keys, locale });
   }
 }

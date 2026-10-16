@@ -265,6 +265,27 @@ describe.each(TEST_MARKETS)('the seller minimum order in market %s', (code) => {
     expect(found.size).toBe(2);
   });
 
+  it('reads the public store name of the approved revision only, this Market only', async () => {
+    const approved = await newSeller(market, true);
+    const pending = await newSeller();
+    const foreign = await newSeller(other, true);
+    await owner.query(
+      "UPDATE sellers.seller_files SET store_name = 'Draft Name', store_name_key = 'draft name' WHERE market_id = $1 AND seller_id = $2",
+      [market.marketId, pending],
+    );
+
+    const found = await inUnit(() =>
+      profiles.approvedStoreNames(market, [
+        approved,
+        pending,
+        foreign,
+        randomUUID() as Id<'Seller'>,
+      ]),
+    );
+
+    expect([...found]).toEqual([[approved, 'Shop']]);
+  });
+
   it('sellerSummaries carries minimumOrder: null, Money, or no key; a stored currency of another Market has no key', async () => {
     const none = await newSeller(market, true);
     const set = await newSeller(market, true);
@@ -294,10 +315,10 @@ describe.each(TEST_MARKETS)('the seller minimum order in market %s', (code) => {
     expect(result).toEqual({
       ok: true,
       value: [
-        { sellerId: none, exists: true, minimumOrder: null },
-        { sellerId: set, exists: true, minimumOrder: money(2500n, currency) },
-        { sellerId: pending, exists: true },
-        { sellerId: wrong, exists: true },
+        { sellerId: none, exists: true, minimumOrder: null, storeName: 'Shop' },
+        { sellerId: set, exists: true, minimumOrder: money(2500n, currency), storeName: 'Shop' },
+        { sellerId: pending, exists: true, storeName: null },
+        { sellerId: wrong, exists: true, storeName: 'Shop' },
       ],
     });
   });

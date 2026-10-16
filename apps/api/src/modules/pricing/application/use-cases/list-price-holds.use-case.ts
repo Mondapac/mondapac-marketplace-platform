@@ -10,6 +10,7 @@ import {
   encodeHoldCursor,
   MAX_HOLD_PAGE,
 } from '../hold-review';
+import { withHoldLabels, type HoldLabelDependencies, type LabelledHold } from '../hold-labels';
 import type { PendingHoldView, PriceSeriesRepository } from '../ports/price-series.repository';
 
 export interface ListPriceHoldsInput {
@@ -20,7 +21,7 @@ export interface ListPriceHoldsInput {
 }
 
 export interface PriceHoldPage {
-  readonly items: readonly PendingHoldView[];
+  readonly items: readonly LabelledHold[];
   /** The `after` of the next page, or null after the last. */
   readonly next: string | null;
 }
@@ -30,7 +31,7 @@ export type ListPriceHoldsFailure = {
   readonly fields: readonly { readonly path: string; readonly code: string }[];
 };
 
-export interface ListPriceHoldsDependencies {
+export interface ListPriceHoldsDependencies extends HoldLabelDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly series: PriceSeriesRepository;
 }
@@ -38,9 +39,13 @@ export interface ListPriceHoldsDependencies {
 /**
  * `pricing.list-price-holds` (pricing design 5.2, PD5): the review queue of held regular prices
  * of the context's Market, oldest submission first, paged by keyset. Rule
- * `permissions [pricing.price-hold.view]` (platform scope). One read-only unit (ADR-0025). A row
- * holds ids, the held amount, the anchor amount and the direction: no Cost, no submitter and no
- * seller data beyond the seller's id (brief s5).
+ * `permissions [pricing.price-hold.view]` (platform scope; checked first, the labels are read only
+ * after it passes). One read-only unit (ADR-0025). A row holds ids, the held amount, the anchor
+ * amount and the direction, plus three display names read after the unit closes: the published
+ * product name, the published Variant label (catalog `sellUnitLabels`) and the seller's public
+ * store name (sellers `sellerSummaries`), one batched call each; a failed or absent lookup leaves
+ * its field null and never fails the queue. No Cost (brief s5 is about Cost only), no submitter,
+ * no legal name or address.
  */
 export class ListPriceHolds extends UseCase<
   ListPriceHoldsInput,
@@ -90,8 +95,9 @@ export class ListPriceHolds extends UseCase<
     const rows = read.value;
     const items = rows.slice(0, limit);
     const last = items[items.length - 1];
+    const labelled = await withHoldLabels(this.deps, context, items);
     const page: PriceHoldPage = {
-      items,
+      items: labelled,
       next:
         rows.length > limit && last !== undefined
           ? encodeHoldCursor({ submittedAt: last.submittedAt, id: last.recordId })

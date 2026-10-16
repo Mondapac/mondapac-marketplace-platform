@@ -42,6 +42,8 @@ import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handl
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
 import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
+import { SELL_UNIT_LABELS_READER } from './application/ports/sell-unit-labels.reader';
+import { SellUnitLabelsQuery } from './application/use-cases/sell-unit-labels.use-case';
 import { OFFER_NAMES_READER } from './application/ports/offer-names.reader';
 import { OfferNamesSystemQuery } from './application/use-cases/offer-names-system.use-case';
 import { OFFER_SELL_UNITS_READER } from './application/ports/offer-sell-units.reader';
@@ -138,6 +140,7 @@ const PORT = {
   reader: OFFER_SELL_UNITS_READER,
   searchReader: OFFER_SEARCH_FACTS_READER,
   namesReader: OFFER_NAMES_READER,
+  labelsReader: SELL_UNIT_LABELS_READER,
   offers: OFFER_REPOSITORY,
   eligibility: SELLER_ELIGIBILITY_READER,
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
@@ -466,15 +469,27 @@ const productTypeProvider: FactoryProvider<string> = {
     useCaseProvider(OfferSellUnitsQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferSellUnitsSystemQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferNamesSystemQuery, { unitOfWork: true, namesReader: true }),
+    useCaseProvider(SellUnitLabelsQuery, { unitOfWork: true, labelsReader: true }),
     {
       provide: CATALOG_FACADE,
-      inject: [OfferSellUnitsQuery, OfferSellUnitsSystemQuery, OfferNamesSystemQuery],
+      inject: [
+        OfferSellUnitsQuery,
+        OfferSellUnitsSystemQuery,
+        OfferNamesSystemQuery,
+        SellUnitLabelsQuery,
+      ],
       useFactory: (
         offerSellUnits: OfferSellUnitsQuery,
         offerSellUnitsSystem: OfferSellUnitsSystemQuery,
         offerNamesSystem: OfferNamesSystemQuery,
+        sellUnitLabels: SellUnitLabelsQuery,
       ) =>
-        new CatalogFacadeImplementation({ offerSellUnits, offerSellUnitsSystem, offerNamesSystem }),
+        new CatalogFacadeImplementation({
+          offerSellUnits,
+          offerSellUnitsSystem,
+          offerNamesSystem,
+          sellUnitLabels,
+        }),
     },
     useCaseProvider(OfferSearchFactsQuery, { unitOfWork: true, searchReader: true }),
     useCaseProvider(PublishedOfferIdsQuery, { unitOfWork: true, searchReader: true }),

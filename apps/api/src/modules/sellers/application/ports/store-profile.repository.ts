@@ -26,6 +26,17 @@ export interface StoreProfileRepository {
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<ReadonlyMap<Id<'Seller'>, Money | null>>;
 
+  /**
+   * The public store name of the APPROVED revision (`public_store_name`, copied in the unit that
+   * moves the approved pointer) for each of the ids that has an approved revision in the Market.
+   * A seller without one, an unknown id and an id of another Market are not in the answer. The
+   * caller bounds the list (at most 100). Never the legal name, never a draft.
+   */
+  approvedStoreNames(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, string>>;
+
   /** The settings of the seller in the Market, or null (no profile, another Market's seller). */
   find(market: MarketContext, sellerId: Id<'Seller'>): Promise<StoreSettings | null>;
 
