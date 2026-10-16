@@ -20,8 +20,8 @@ export async function SellerShell({
 }) {
   const t = await getTranslations();
   const approved = session.sellerAccessState === 'approved';
-  // Security and Team are for approved sellers; Seller account (setup) is for the others.
-  const approvedOnly = new Set(['s_security', 's_team']);
+  // Settings and Team are for approved sellers; Seller account (setup) is for the others.
+  const approvedOnly = new Set(['s_settings', 's_team']);
   const items = visibleNavItems(sellerNav, new Set(session.permissionKeys)).filter((item) =>
     approved ? item.id !== 's_setup' : !approvedOnly.has(item.id),
   );

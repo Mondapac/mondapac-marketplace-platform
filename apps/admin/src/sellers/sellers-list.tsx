@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, CheckboxRow, Select, TextField } from '@mondapac/ui';
+import { Banner, Button, CheckboxRow, Select, Tabs, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -141,28 +141,15 @@ export function SellersList({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* One row that scrolls sideways on a phone, rather than tabs wrapping onto two lines. */}
-      <nav aria-label={t('tabs')} className="flex gap-4 overflow-x-auto border-b border-line">
-        {tabs.map((id) => {
+      <Tabs
+        label={t('tabs')}
+        activeId={tab}
+        onSelect={(id) => setTab(id as typeof tab)}
+        items={tabs.map((id) => {
           const count = countOf(counts, stateCounts, id);
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-current={id === tab ? 'page' : undefined}
-              onClick={() => setTab(id)}
-              className={
-                id === tab
-                  ? 'min-h-12 shrink-0 whitespace-nowrap border-b-2 border-link px-1 font-medium text-fg'
-                  : 'min-h-12 shrink-0 whitespace-nowrap border-b-2 border-transparent px-1 text-fg-muted hover:text-fg'
-              }
-            >
-              {t(`tab.${id}`)}
-              {count === null ? '' : ` (${count})`}
-            </button>
-          );
+          return { id, label: `${t(`tab.${id}`)}${count === null ? '' : ` (${count})`}` };
         })}
-      </nav>
+      />
       {stateTab ? null : (
         <div className="flex flex-wrap items-end gap-4">
           <form onSubmit={submitSearch} className="flex flex-wrap items-end gap-2">

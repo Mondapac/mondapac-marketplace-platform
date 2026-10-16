@@ -13,12 +13,10 @@
     "setup": "Seller account",
     "products": "Products",
     "offers": "Offers",
-    "stock": "Stock locations",
-    "security": "Security",
     "orders": "Orders",
     "earnings": "Earnings",
-    "payout": "Payout account",
-    "team": "Team"
+    "team": "Team",
+    "settings": "Settings"
   },
   "home": {
     "title": "Home",
@@ -1152,11 +1150,25 @@
   "load": {
     "retry": "Try again"
   },
+  "settings": {
+    "title": "Settings",
+    "tabs": "Settings sections",
+    "tab": {
+      "security": "Security",
+      "payout": "Payout account",
+      "locations": "Stock locations"
+    }
+  },
   "security": {
     "title": "Security",
     "page-title": "Security – Seller account – MondaPac",
     "error": {
       "unavailable": "We couldn't load this page. Try again."
+    },
+    "heading": "Two-step verification",
+    "badge": {
+      "on": "On",
+      "off": "Off"
     },
     "intro": "Two-step verification asks for a code from your phone each time you sign in. It is optional, and we recommend it.",
     "status": {

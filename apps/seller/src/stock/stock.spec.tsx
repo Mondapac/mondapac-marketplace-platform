@@ -4,8 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { sellerNav } from '../nav.ts';
-import { visibleNavItems } from '@mondapac/ui';
+import { settingsTabs } from '../settings/settings-header.tsx';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
@@ -184,9 +183,9 @@ describe('helpers', () => {
     ).toEqual({ form: { key: 'stock.error.limit', values: { max: 5 } }, fields: {} });
   });
 
-  it('shows the stock page in the nav only with the view permission', () => {
-    const ids = (keys: string[]) => visibleNavItems(sellerNav, new Set(keys)).map((i) => i.id);
-    expect(ids([])).not.toContain('s_stock');
-    expect(ids(['inventory.stock.view'])).toContain('s_stock');
+  it('shows the stock locations settings tab only with the view permission', () => {
+    const ids = (keys: string[]) => settingsTabs(keys, (key) => key).map((tab) => tab.id);
+    expect(ids([])).not.toContain('locations');
+    expect(ids(['inventory.stock.view'])).toContain('locations');
   });
 });

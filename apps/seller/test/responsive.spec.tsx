@@ -135,9 +135,12 @@ describe('payout account pages', () => {
     const table = readFileSync(join(__dirname, files[1] as string), 'utf8');
     expect(table).toContain('overflow-x-auto');
     expect(table).toContain('min-w-200');
+    // The tabs are the shared Tabs row: one line that scrolls sideways, 48 px touch targets.
     const list = readFileSync(join(__dirname, files[2] as string), 'utf8');
-    expect(list).toContain('overflow-x-auto');
-    expect(list).toContain('min-h-12');
+    expect(list).toContain('<Tabs');
+    const tabs = readFileSync(join(__dirname, '../../../packages/ui/src/shell/tabs.tsx'), 'utf8');
+    expect(tabs).toContain('overflow-x-auto');
+    expect(tabs).toContain('min-h-12');
   });
 });
 

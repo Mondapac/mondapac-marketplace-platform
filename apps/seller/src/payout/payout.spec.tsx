@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { visibleNavItems } from '@mondapac/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { sellerNav } from '../nav.ts';
+import { settingsTabs } from '../settings/settings-header.tsx';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
@@ -272,11 +271,10 @@ describe('payoutProblemOf', () => {
   });
 });
 
-describe('payout nav', () => {
-  it('shows the entry only with the view key', () => {
-    const ids = (keys: string[]) =>
-      visibleNavItems(sellerNav, new Set(keys)).map((item) => item.id);
-    expect(ids([])).not.toContain('s_payout');
-    expect(ids(['payments.payout-account.view'])).toContain('s_payout');
+describe('payout settings tab', () => {
+  it('shows the tab only with the view key', () => {
+    const ids = (keys: string[]) => settingsTabs(keys, (key) => key).map((tab) => tab.id);
+    expect(ids([])).not.toContain('payout');
+    expect(ids(['payments.payout-account.view'])).toContain('payout');
   });
 });
