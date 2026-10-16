@@ -5,6 +5,7 @@ import {
   Button,
   CheckboxRow,
   EmptyState,
+  FieldAction,
   Select,
   SkeletonRows,
   Tabs,
@@ -143,6 +144,15 @@ export function SellersList({
     else if (term.length >= SEARCH_MIN && term.length <= SEARCH_MAX) setSearch(term);
   }
 
+  // A tab starts unfiltered: a search or filter set under one tab never narrows the next one.
+  function selectTab(id: Tab) {
+    setTab(id);
+    setDraft('');
+    setSearch('');
+    setKind('');
+    setOutsideArea(false);
+  }
+
   const tooShort = draft.trim().length === 1;
   const stateTab = isStateTab(tab);
   const tabs: readonly Tab[] =
@@ -153,15 +163,19 @@ export function SellersList({
       <Tabs
         label={t('tabs')}
         activeId={tab}
-        onSelect={(id) => setTab(id as typeof tab)}
+        onSelect={(id) => selectTab(id as typeof tab)}
         items={tabs.map((id) => {
           const count = countOf(counts, stateCounts, id);
           return { id, label: `${t(`tab.${id}`)}${count === null ? '' : ` (${count})`}` };
         })}
       />
       {stateTab ? null : (
-        <div className="flex flex-wrap items-end gap-4">
-          <form onSubmit={submitSearch} className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start">
+          <form
+            onSubmit={submitSearch}
+            role="search"
+            className="flex flex-col gap-2 sm:flex-row sm:items-start"
+          >
             <TextField
               label={t('search.label')}
               value={draft}
@@ -170,9 +184,11 @@ export function SellersList({
               help={t('search.help')}
               error={tooShort ? t('search.too-short') : undefined}
             />
-            <Button type="submit" variant="secondary">
-              {t('search.submit')}
-            </Button>
+            <FieldAction>
+              <Button type="submit" variant="secondary">
+                {t('search.submit')}
+              </Button>
+            </FieldAction>
           </form>
           {tab === 'awaiting-review' ? (
             <Select
@@ -184,11 +200,13 @@ export function SellersList({
             />
           ) : null}
           {tab === 'incomplete' ? (
-            <CheckboxRow
-              label={t('filter.outside-area')}
-              checked={outsideArea}
-              onChange={(event) => setOutsideArea(event.target.checked)}
-            />
+            <FieldAction from="lg">
+              <CheckboxRow
+                label={t('filter.outside-area')}
+                checked={outsideArea}
+                onChange={(event) => setOutsideArea(event.target.checked)}
+              />
+            </FieldAction>
           ) : null}
         </div>
       )}

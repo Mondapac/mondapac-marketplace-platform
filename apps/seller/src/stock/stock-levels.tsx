@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, FieldAction, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -93,7 +93,7 @@ function Cell({
   }
   return (
     <form className="flex flex-col gap-1" onSubmit={(event) => void submit(event)} noValidate>
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
           <TextField
             name={`onHand-${variantId}-${source.id}`}
@@ -109,14 +109,16 @@ function Cell({
             }}
           />
         </div>
-        <Button
-          type="submit"
-          variant="secondary"
-          loading={pending}
-          disabled={pending || text.trim() === String(saved.onHand ?? '')}
-        >
-          {t('stock.levels.save')}
-        </Button>
+        <FieldAction>
+          <Button
+            type="submit"
+            variant="secondary"
+            loading={pending}
+            disabled={pending || text.trim() === String(saved.onHand ?? '')}
+          >
+            {t('stock.levels.save')}
+          </Button>
+        </FieldAction>
       </div>
       {/* Under the whole row, so the field and Save keep one baseline. */}
       <span className="text-sm text-fg-muted">{help}</span>

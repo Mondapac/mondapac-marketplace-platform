@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, Card, Dialog, TextField } from '@mondapac/ui';
+import { Badge, Banner, Button, Card, Dialog, FieldAction, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
@@ -150,10 +150,11 @@ export function CustomerLookup({
             }}
           />
         </div>
-        {/* Lines the button up with the input, under its label (20px line + 6px gap), on wider screens. */}
-        <Button type="submit" loading={pending} disabled={wait > 0} className="sm:mt-6.5">
-          {t('find')}
-        </Button>
+        <FieldAction>
+          <Button type="submit" loading={pending} disabled={wait > 0}>
+            {t('find')}
+          </Button>
+        </FieldAction>
       </form>
       {problem === null ? null : problem.key === 'not-found' ? (
         <Banner tone="info" title={t('not-found.title')}>
