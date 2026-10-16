@@ -21,7 +21,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'ordering/admin/orders',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
-  PUT: new Set(['notifications/admin/support-contact']),
+  PUT: new Set([
+    'notifications/admin/support-contact',
+    // The signed-in admin's own display name (profile).
+    'identity/admin/profile/display-name',
+  ]),
   DELETE: new Set([]),
   POST: new Set([
     'identity/admin/sign-in',
@@ -30,6 +34,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/invitations',
     'identity/admin/password-reset-email',
     'identity/admin/reset-password',
+    // The signed-in admin's own password; the body carries a code from the app.
+    'identity/admin/change-password',
     'identity/admin/invitation/enrolment',
     'identity/admin/invitation/accept',
     'identity/admin/roles',

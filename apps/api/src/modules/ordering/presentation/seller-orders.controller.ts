@@ -80,6 +80,7 @@ export class SellerOrdersController {
     summary: "The shop's paid orders, newest payment first",
     description: 'Needs ordering.seller-order.view. Only orders the customer has paid appear.',
   })
+  @ApiQuery({ name: 'status', required: false, enum: ['to-ship', 'shipped', 'delivered'] })
   @ApiQuery({ name: 'cursor', required: false, description: 'The `nextCursor` of the last page.' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 25.' })
   @ApiOkResponse({ type: SellerOrderPageBody })
@@ -88,12 +89,17 @@ export class SellerOrdersController {
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
   async orders(
     @Call() context: CallContext,
+    @Query('status') status: unknown,
     @Query('cursor') cursor: unknown,
     @Query('limit') limit: unknown,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.list.execute(context, { cursor, limit: parseLimit(limit) });
+    const result = await this.list.execute(context, {
+      status,
+      cursor,
+      limit: parseLimit(limit),
+    });
     this.log(
       'ordering.seller-list-orders-route',
       context,

@@ -257,6 +257,64 @@ describe('seller accounts over HTTP (integration)', () => {
       expect(after.body).toEqual({ statusCode: 401, code: 'session.invalid' });
     });
 
+    it('changes the own display name, shows the previous sign-in, and changes the password without a code', async () => {
+      await boot();
+      const confirmed = await signUpAndConfirm(code);
+      let cookie = cookieOf(confirmed.headers['set-cookie']);
+      let csrfToken = (confirmed.body as { csrfToken: string }).csrfToken;
+      const put = (path: string, body: unknown, headers: Record<string, string>) =>
+        http()
+          .put(`/identity/seller/${path}`)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...headers })
+          .send(body as object);
+
+      const first = await http()
+        .get('/identity/seller/session')
+        .set({ 'x-market-id': code, cookie });
+      // The sign-up confirmation opened this session; no earlier successful sign-in exists.
+      expect(first.body).toMatchObject({ lastSignInAt: null });
+
+      const noToken = await put('profile/display-name', { displayName: 'Amina R.' }, { cookie });
+      expect(noToken.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+      const invalid = await put(
+        'profile/display-name',
+        { displayName: 'www.example.com' },
+        { cookie, 'x-csrf-token': csrfToken },
+      );
+      expect(invalid.status).toBe(400);
+      expect(invalid.body).toMatchObject({ code: 'validation.failed' });
+      const renamed = await put(
+        'profile/display-name',
+        { displayName: ' Amina R. ' },
+        { cookie, 'x-csrf-token': csrfToken },
+      );
+      expect(renamed.status).toBe(200);
+      expect(renamed.body).toEqual({ code: 'display-name-changed', changed: true });
+      const after = await http()
+        .get('/identity/seller/session')
+        .set({ 'x-market-id': code, cookie });
+      expect(after.body).toMatchObject({ displayName: 'Amina R.' });
+
+      const second = await post('sign-in', code, { email: EMAIL, password: PASSWORD });
+      cookie = cookieOf(second.headers['set-cookie']);
+      csrfToken = (second.body as { csrfToken: string }).csrfToken;
+      const later = await http()
+        .get('/identity/seller/session')
+        .set({ 'x-market-id': code, cookie });
+      expect(later.body).toMatchObject({
+        lastSignInAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) as unknown,
+      });
+
+      const changed = await post(
+        'change-password',
+        code,
+        { currentPassword: PASSWORD, newPassword: 'another long passphrase 42' },
+        { cookie, 'x-csrf-token': csrfToken },
+      );
+      expect(changed.status).toBe(200);
+      expect(JSON.stringify(logLines)).not.toContain('Amina R.');
+    });
+
     it('"keep me signed in" sets Max-Age to the kept absolute lifetime; a non-boolean is refused', async () => {
       await boot();
       await signUpAndConfirm(code);

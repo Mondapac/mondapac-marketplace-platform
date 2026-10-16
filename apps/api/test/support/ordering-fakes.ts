@@ -20,8 +20,10 @@ import {
   type OrderUnitLabel,
 } from '../../src/modules/ordering/application/ports/order-labels';
 import type {
+  OrderFilter,
   OrderPage,
   OrderRepository,
+  SellerOrderFilter,
   SellerOrderPage,
   SellerOrderRecord,
 } from '../../src/modules/ordering/application/ports/order.repository';
@@ -88,10 +90,16 @@ export class MemoryOrders implements OrderRepository {
       ),
     );
   }
-  listAll(_m: MarketContext, filter: { status: OrderState['status'] | null }, page: OrderPage) {
+  listAll(_m: MarketContext, filter: OrderFilter, page: OrderPage) {
     return Promise.resolve(
       this.newestFirst(
-        [...this.rows.values()].filter((o) => filter.status === null || o.status === filter.status),
+        [...this.rows.values()].filter(
+          (o) =>
+            (filter.status === null || o.status === filter.status) &&
+            (filter.reference === null ||
+              o.id === filter.reference ||
+              o.sellerOrders.some((s) => s.id === filter.reference)),
+        ),
         page,
       ),
     );
@@ -127,10 +135,16 @@ export class MemoryOrders implements OrderRepository {
           .map((seller) => this.recordOf(order, seller)),
       );
   }
-  listForSeller(_m: MarketContext, sellerId: Id<'Seller'>, page: SellerOrderPage) {
+  listForSeller(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+    page: SellerOrderPage,
+  ) {
     const after = page.after;
     return Promise.resolve(
       this.paid(sellerId)
+        .filter((r) => filter.fulfilment === null || r.sellerOrder.fulfilment === filter.fulfilment)
         .sort(
           (a, b) =>
             b.confirmedAt.epochMilliseconds - a.confirmedAt.epochMilliseconds ||

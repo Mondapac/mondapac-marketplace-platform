@@ -113,6 +113,19 @@ export const AccountPasswordChanged = defineEvent({
   },
 });
 
+/**
+ * The holder changed the own display name (profile package). Ids and codes only: the name is
+ * personal data and never goes into an event.
+ */
+export const AccountDisplayNameChanged = defineEvent({
+  type: 'identity.account-display-name-changed.v1',
+  aggregateType: 'account',
+  payload: {
+    accountId: eventField.id(),
+    population: eventField.enumOf(POPULATIONS),
+  },
+});
+
 /** The kinds of an invitation (identity design 3.4): admin (slice 7), seller-owner (9), staff (11). */
 export const INVITATION_KINDS = ['seller-owner', 'staff', 'admin'] as const;
 
@@ -359,6 +372,7 @@ export const IDENTITY_EVENTS: readonly EventDefinition[] = [
   AccountEmailVerified,
   SellerRegistered,
   AccountPasswordChanged,
+  AccountDisplayNameChanged,
   InvitationIssued,
   InvitationAccepted,
   SecondFactorChanged,

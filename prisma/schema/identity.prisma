@@ -195,6 +195,8 @@ model IdentitySignInRecord {
 
   /// The retention purge, one day of occurred_at per statement.
   @@index([marketId, occurredAt])
+  /// The account's latest successful sign-in (the profile page's "last sign-in").
+  @@index([marketId, accountId, occurredAt])
   @@map("sign_in_records")
   @@schema("identity")
 }

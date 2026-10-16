@@ -47,6 +47,14 @@ export class ChangePasswordRequest {
 
   @ApiProperty({ description: NEW_PASSWORD, format: 'password' })
   newPassword!: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'A code from the app, or a recovery code. Required for a seller-side account whose ' +
+      'two-step sign-in is active (field error code: required). Not accepted for a customer.',
+  })
+  code?: string;
 }
 
 /**

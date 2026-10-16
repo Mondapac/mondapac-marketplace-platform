@@ -8,6 +8,8 @@ export interface AdminSession {
   readonly roleId: string;
   readonly permissionKeys: readonly string[];
   readonly secondFactorActive: boolean;
+  /** The previous successful sign-in (ISO 8601, UTC), or null when none is on record. */
+  readonly lastSignInAt: string | null;
   readonly email: string;
   readonly displayName: string;
   readonly csrfToken: string;

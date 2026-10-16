@@ -253,6 +253,7 @@ export class AdminSessionController {
           roleId: summary.roleId,
           permissionKeys: [...summary.permissionKeys],
           secondFactorActive: summary.secondFactorActive,
+          lastSignInAt: summary.lastSignInAt,
           email: summary.email,
           displayName: summary.displayName,
           session: summary.session,
