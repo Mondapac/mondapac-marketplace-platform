@@ -812,6 +812,45 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       return order;
     };
 
+    it('names the lines of the list, the detail and each step, with one call per page', async () => {
+      const order = await paid();
+      labels.label({ offerId: OFFER_1, variantId: VARIANT }, 'Lamb mince', '500 g');
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+
+      const page = await list(sellerA);
+      const view = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+      const shipped = await ship(sellerA, sellerOrderId);
+      const delivered = await deliver(sellerA, sellerOrderId);
+
+      for (const answer of [
+        page.ok ? page.value.sellerOrders[0] : undefined,
+        view.ok ? view.value : undefined,
+        shipped.ok ? shipped.value : undefined,
+        delivered.ok ? delivered.value : undefined,
+      ]) {
+        expect(answer?.lines.find((l) => l.offerId === OFFER_1)).toMatchObject({
+          productName: 'Lamb mince',
+          variantLabel: '500 g',
+        });
+        expect(answer?.lines.find((l) => l.offerId === OFFER_3)).toMatchObject({
+          productName: null,
+          variantLabel: null,
+        });
+      }
+      // Two distinct units of seller A, asked once per answer; never a store or a customer.
+      expect(labels.calls).toEqual(Array(4).fill({ lookup: 'units', count: 2 }));
+    });
+
+    it('still ships, with null names, when the name lookup fails', async () => {
+      const order = await paid();
+      labels.fail.add('units');
+
+      const shipped = await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+
+      expect(shipped.ok && shipped.value.fulfilment).toBe('shipped');
+      expect(shipped.ok && shipped.value.lines.every((l) => l.productName === null)).toBe(true);
+    });
+
     it('shows a seller only its own paid orders, and nothing before payment', async () => {
       const order = await placed();
       const before = await list(sellerA);
