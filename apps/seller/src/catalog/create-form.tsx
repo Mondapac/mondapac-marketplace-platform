@@ -5,13 +5,8 @@ import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { createProblemOf, type CreateProblem } from './create-errors.ts';
+import { readable } from './format.ts';
 import type { ProductCreated, ProductOptions } from './types.ts';
-
-/** A code from the API as readable text when no translation names it (`dry-goods` to `Dry goods`). */
-export function readable(code: string): string {
-  const text = code.replace(/[-_]+/g, ' ').trim();
-  return text === '' ? code : text.charAt(0).toUpperCase() + text.slice(1);
-}
 
 /** Empty locales are left out: the API takes only the texts the seller wrote. */
 export function descriptionOf(values: Readonly<Record<string, string>>): Record<string, string> {

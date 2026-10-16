@@ -1,8 +1,11 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
+import { catalogStateFor } from '../../../../../src/catalog/catalog-states.tsx';
+import { OfferHeader } from '../../../../../src/catalog/offer-header.tsx';
 import { OfferPrices } from '../../../../../src/price/offer-prices.tsx';
-import { PRICE_EDIT_PERMISSION } from '../../../../../src/price/types.ts';
+import { PRICE_EDIT_PERMISSION, PRICE_VIEW_PERMISSION } from '../../../../../src/price/types.ts';
+import { STOCK_VIEW_PERMISSION } from '../../../../../src/stock/types.ts';
 import { isUuid } from '../../../../../src/server/catalog-page.ts';
 import { loadPricesPage } from '../../../../../src/server/prices-page.ts';
 import { SellerShell } from '../../../../../src/server/seller-shell.tsx';
@@ -20,39 +23,35 @@ export default async function OfferPricesPage({
   const { offerId } = await params;
   if (!isUuid(offerId)) notFound();
   const t = await getTranslations();
-  const title = t('price.title');
+  // The top bar names the section, as on the offer's other tabs; the tab names this page.
+  const title = t('catalog.offers.title');
   const page = await loadPricesPage(offerId);
   if (page.kind === 'unavailable') {
     return <LoadError message={t('price.error.unavailable')} retryLabel={t('load.retry')} />;
   }
   if (page.kind !== 'ok') {
-    const key = page.kind === 'no-access' ? 'no-access' : 'not-found';
-    return (
-      <SellerShell session={page.session} activeId="s_offers" title={title}>
-        <h1 className="mb-2 text-2xl font-semibold">{t(`catalog.${key}.title`)}</h1>
-        <p className="text-fg-muted">{t(`catalog.${key}.body`)}</p>
-      </SellerShell>
-    );
+    return catalogStateFor(page, 's_offers', title);
   }
   const { offer } = page;
+  const { permissionKeys } = page.session;
   return (
     <SellerShell session={page.session} activeId="s_offers" title={title}>
-      <h1 className="mb-1 text-2xl font-semibold">{title}</h1>
-      <p className="mb-4 break-words text-fg-muted">
-        {offer.product.name ?? offer.product.productCode ?? offer.sellerSku}
-      </p>
-      <OfferPrices
-        offerId={offerId}
-        view={page.view}
-        canEdit={page.session.permissionKeys.includes(PRICE_EDIT_PERMISSION)}
-        csrfToken={page.session.csrfToken}
-        zone={page.zone ?? undefined}
-      />
-      <p className="mt-4">
-        <a className="font-medium text-link underline" href={`/offers/${offerId}`}>
-          {t('price.back')}
-        </a>
-      </p>
+      <div className="flex flex-col gap-6">
+        <OfferHeader
+          offer={offer}
+          active="prices"
+          canViewPrices={permissionKeys.includes(PRICE_VIEW_PERMISSION)}
+          canViewStock={permissionKeys.includes(STOCK_VIEW_PERMISSION)}
+          t={t}
+        />
+        <OfferPrices
+          offerId={offerId}
+          view={page.view}
+          canEdit={page.session.permissionKeys.includes(PRICE_EDIT_PERMISSION)}
+          csrfToken={page.session.csrfToken}
+          zone={page.zone ?? undefined}
+        />
+      </div>
     </SellerShell>
   );
 }

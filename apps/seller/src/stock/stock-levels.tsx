@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, TextField } from '@mondapac/ui';
+import { Banner, Button, Card, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -44,7 +44,8 @@ function Cell({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const readOnly = !canEdit || cell?.retired === true;
-  const label = t('stock.levels.on-hand-for', { location: source.name });
+  const label = t('stock.levels.on-hand');
+  const help = t('stock.levels.held', { count: cell?.held ?? 0 });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -80,22 +81,34 @@ function Cell({
   }
 
   if (readOnly) {
-    return <span>{cell === undefined ? '-' : cell.onHand}</span>;
+    return (
+      <p className="flex flex-col gap-1">
+        <span>
+          <span className="text-fg-muted">{label}: </span>
+          <span className="font-medium">{cell === undefined ? '-' : cell.onHand}</span>
+        </span>
+        <span className="text-sm text-fg-muted">{help}</span>
+      </p>
+    );
   }
   return (
     <form className="flex flex-col gap-1" onSubmit={(event) => void submit(event)} noValidate>
       <div className="flex flex-wrap items-end gap-2">
-        <TextField
-          name={`onHand-${variantId}-${source.id}`}
-          label={label}
-          inputMode="numeric"
-          value={text}
-          error={error ?? undefined}
-          onChange={(event) => {
-            setText(event.target.value);
-            setDone(false);
-          }}
-        />
+        <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
+          <TextField
+            name={`onHand-${variantId}-${source.id}`}
+            label={label}
+            // The visible label sits under the location's heading; the name read out carries it.
+            aria-label={t('stock.levels.on-hand-for', { location: source.name })}
+            inputMode="numeric"
+            value={text}
+            error={error ?? undefined}
+            onChange={(event) => {
+              setText(event.target.value);
+              setDone(false);
+            }}
+          />
+        </div>
         <Button
           type="submit"
           variant="secondary"
@@ -105,6 +118,8 @@ function Cell({
           {t('stock.levels.save')}
         </Button>
       </div>
+      {/* Under the whole row, so the field and Save keep one baseline. */}
+      <span className="text-sm text-fg-muted">{help}</span>
       {done ? <span className="text-sm text-fg-muted">{t('stock.levels.saved')}</span> : null}
     </form>
   );
@@ -141,33 +156,29 @@ export function StockLevels({
   return (
     <div className="flex flex-col gap-4">
       {view.variants.map((variant, index) => (
-        <section key={variant.variantId} className="rounded-lg border border-line p-4">
-          <h2 className="mb-3 text-lg font-semibold">
-            {t('stock.levels.variant', { number: index + 1 })}
-          </h2>
-          <ul className="flex flex-col gap-4">
-            {sources.map((source) => {
-              const cell = variant.sources.find((item) => item.sourceId === source.id);
-              return (
-                <li key={source.id} className="flex flex-wrap items-end gap-x-6 gap-y-2">
-                  <span className="min-w-40 font-medium">{source.name}</span>
-                  <Cell
-                    key={cell?.version ?? 'new'}
-                    offerId={offerId}
-                    variantId={variant.variantId}
-                    source={source}
-                    cell={cell}
-                    canEdit={canEdit}
-                    csrfToken={csrfToken}
-                  />
-                  <span className="text-sm text-fg-muted">
-                    {t('stock.levels.held', { count: cell?.held ?? 0 })}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+        <Card key={variant.variantId} title={t('stock.levels.variant', { number: index + 1 })}>
+          <div className="max-w-(--mp-size-form-max)">
+            <ul className="flex flex-col gap-4">
+              {sources.map((source) => {
+                const cell = variant.sources.find((item) => item.sourceId === source.id);
+                return (
+                  <li key={source.id} className="flex flex-col gap-2">
+                    <h3 className="break-words font-medium text-fg">{source.name}</h3>
+                    <Cell
+                      key={cell?.version ?? 'new'}
+                      offerId={offerId}
+                      variantId={variant.variantId}
+                      source={source}
+                      cell={cell}
+                      canEdit={canEdit}
+                      csrfToken={csrfToken}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </Card>
       ))}
     </div>
   );

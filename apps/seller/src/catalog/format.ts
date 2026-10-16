@@ -53,3 +53,9 @@ export const OFFER_STATUSES = [
   'changes-needed',
   'published',
 ] as const;
+
+/** A code from the API as readable text when no translation names it (`dry-goods` to `Dry goods`). */
+export function readable(code: string): string {
+  const text = code.replace(/[-_]+/g, ' ').trim();
+  return text === '' ? code : text.charAt(0).toUpperCase() + text.slice(1);
+}

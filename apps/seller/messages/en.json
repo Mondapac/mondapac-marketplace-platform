@@ -727,8 +727,8 @@
         "submitted": "Submitted"
       },
       "listed": {
-        "yes": "On sale",
-        "no": "Not on sale"
+        "yes": "Yes",
+        "no": "No"
       },
       "status": {
         "draft": "Draft",
@@ -761,7 +761,11 @@
         "tag-suspended": "A certification tag is suspended",
         "description-claim-text": "The description makes a claim that needs a matching certificate",
         "unknown": "Unknown reason"
-      }
+      },
+      "tab": {
+        "details": "Details"
+      },
+      "tabs": "Offer sections"
     },
     "create": {
       "title": "New product",
@@ -943,7 +947,8 @@
         "unavailable": "The request could not be sent. Try again later.",
         "unknown": "Something went wrong. Try again."
       }
-    }
+    },
+    "not-given": "Not given"
   },
   "stock": {
     "title": "Stock locations",
@@ -1013,7 +1018,8 @@
         "below-held": "You can't set the stock below the units held in checkouts.",
         "not-ready": "Stock isn't ready yet. Try again in a moment.",
         "not-found": "This offer or location was not found. Reload the page."
-      }
+      },
+      "on-hand": "Units in stock"
     }
   },
   "orders": {

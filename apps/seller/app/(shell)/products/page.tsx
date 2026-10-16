@@ -1,3 +1,4 @@
+import { LinkButton } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { catalogStateFor } from '../../../src/catalog/catalog-states.tsx';
 import { Pager } from '../../../src/catalog/pager.tsx';
@@ -24,17 +25,22 @@ export default async function ProductsPage({
   );
   const state = await catalogStateFor(page, 's_products', title);
   if (state !== null || page.kind !== 'ok') return state;
+  const canAdd = page.session.permissionKeys.includes(EDIT_PERMISSION);
   return (
     <SellerShell session={page.session} activeId="s_products" title={title}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">{title}</h1>
-        {page.session.permissionKeys.includes(EDIT_PERMISSION) ? (
-          <a className="font-medium text-link underline" href="/products/new">
-            {t('catalog.products.new')}
-          </a>
+        {/* An empty list carries the action in its empty state, so it is shown once. */}
+        {canAdd && page.body.items.length > 0 ? (
+          <LinkButton href="/products/new">{t('catalog.products.new')}</LinkButton>
         ) : null}
       </div>
-      <ProductsTable items={page.body.items} />
+      <ProductsTable
+        items={page.body.items}
+        emptyAction={
+          canAdd ? <LinkButton href="/products/new">{t('catalog.products.new')}</LinkButton> : null
+        }
+      />
       <Pager basePath="/products" nextAfterId={page.body.nextAfterId} />
     </SellerShell>
   );
