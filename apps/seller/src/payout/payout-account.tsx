@@ -143,7 +143,7 @@ export function PayoutAccountView({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="max-w-(--mp-size-form-max) text-fg-muted">{t('intro')}</p>
+      <p className="text-fg-muted">{t('intro')}</p>
       {back === 'return' ? (
         <Banner tone="info" title={t('back.return.title')}>
           {t('back.return.body')}

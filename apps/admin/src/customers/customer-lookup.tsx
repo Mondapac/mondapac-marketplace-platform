@@ -133,7 +133,7 @@ export function CustomerLookup({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="max-w-(--mp-size-form-max) text-fg-muted">{t('intro')}</p>
+      <p className="text-fg-muted">{t('intro')}</p>
       <form
         className="flex max-w-(--mp-size-form-max) flex-col gap-3 sm:flex-row sm:items-start"
         onSubmit={(event) => void find(event)}
