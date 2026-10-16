@@ -43,7 +43,9 @@ export function Sidebar({ panelName, items, activeId, label }: SidebarProps) {
               }`}
             >
               <Icon name={item.icon} className={active ? undefined : 'text-icon'} />
-              <span className={`min-w-0 break-words ${RAIL_HIDDEN}`}>{label(item.labelKey)}</span>
+              <span className={`min-w-0 break-words md:truncate ${RAIL_HIDDEN}`}>
+                {label(item.labelKey)}
+              </span>
             </a>
           );
         })}

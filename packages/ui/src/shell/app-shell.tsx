@@ -38,10 +38,15 @@ export interface AppShellProps {
 /**
  * The one shell of both panels (kickoff 2, panels IA 4). From 760 px the sidebar is a column
  * that the toggle on its edge narrows to an icon rail; a pointer resting on the rail, or focus
- * inside it, opens it over the page until it leaves. Below 760 px the same sidebar opens as a
+ * inside it, opens it over the page until it leaves (Escape closes it). Below 760 px the same sidebar opens as a
  * drawer from the menu button (and, for the seller, from "More" in the bottom bar). There is no
  * icon rail on phones (D16, IA 4.1).
  */
+// Peek pauses: long enough that a pointer crossing the rail does not open it, short enough to
+// feel immediate when it rests there.
+const OPEN_DELAY = 150;
+const CLOSE_DELAY = 100;
+
 export function AppShell({
   sidebar,
   topbar,
@@ -55,6 +60,9 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(savedCollapsed);
   const [peek, setPeek] = useState(false);
   const rail = collapsed && !peek;
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // After Escape the rail stays closed until focus leaves it and comes back.
+  const dismissed = useRef(false);
   const drawer = useRef<HTMLDialogElement>(null);
   const hasBar = bottomTabs !== undefined && bottomTabs.length > 0;
 
@@ -75,8 +83,17 @@ export function AppShell({
     return () => query.removeEventListener('change', close);
   }, []);
 
+  useEffect(() => () => clearTimeout(peekTimer.current), []);
+
+  /** Opens or closes the peek after a short pause, so a pointer passing over does not flash it. */
+  function peekLater(value: boolean, delay: number) {
+    clearTimeout(peekTimer.current);
+    peekTimer.current = setTimeout(() => setPeek(value), delay);
+  }
+
   function toggle() {
     const next = !collapsed;
+    clearTimeout(peekTimer.current);
     setCollapsed(next);
     setPeek(false);
     document.cookie = `${SIDEBAR_COOKIE}=${next ? SIDEBAR_COLLAPSED : 'expanded'}; path=/; max-age=31536000; samesite=lax`;
@@ -84,7 +101,7 @@ export function AppShell({
 
   return (
     <div
-      className={`grid min-h-screen grid-cols-1 bg-page ${collapsed ? 'md:grid-cols-[var(--mp-size-sidebar-collapsed)_minmax(0,1fr)]' : 'md:grid-cols-[var(--mp-size-sidebar)_minmax(0,1fr)]'}`}
+      className={`grid min-h-screen grid-cols-1 bg-page transition-[grid-template-columns] duration-200 motion-reduce:transition-none ${collapsed ? 'md:grid-cols-[var(--mp-size-sidebar-collapsed)_minmax(0,1fr)]' : 'md:grid-cols-[var(--mp-size-sidebar)_minmax(0,1fr)]'}`}
     >
       {/* The column keeps its width; the panel inside widens over the page while peeking. */}
       <aside
@@ -92,13 +109,19 @@ export function AppShell({
         className="relative z-20 hidden md:sticky md:top-0 md:block md:h-screen"
       >
         {/* First in tab order, and outside the panel so pointing at it never opens the panel;
-            while the panel is open over the page it would cover the name, so it hides then. */}
+            while the panel is open it sits on the open edge and keeps it open. */}
         <button
           type="button"
           aria-label={collapsed ? labels.expand : labels.collapse}
           aria-expanded={!collapsed}
           onClick={toggle}
-          className={`absolute top-[calc(var(--mp-size-topbar)/2)] z-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-line-control bg-surface text-fg-secondary hover:text-fg ${collapsed ? 'start-[calc(var(--mp-size-sidebar-collapsed)-0.875rem)]' : 'start-[calc(var(--mp-size-sidebar)-0.875rem)]'} ${collapsed && peek ? 'invisible' : ''}`}
+          onMouseEnter={() => {
+            if (peek) clearTimeout(peekTimer.current);
+          }}
+          onMouseLeave={() => {
+            if (peek) peekLater(false, CLOSE_DELAY);
+          }}
+          className={`absolute top-[calc(var(--mp-size-topbar)/2)] z-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-line-control bg-surface text-fg-secondary transition-[inset-inline-start] duration-200 hover:bg-muted hover:text-fg motion-reduce:transition-none ${rail ? 'start-[calc(var(--mp-size-sidebar-collapsed)-0.875rem)]' : 'start-[calc(var(--mp-size-sidebar)-0.875rem)]'}`}
         >
           <Icon
             name="chevrons-left"
@@ -107,13 +130,28 @@ export function AppShell({
         </button>
         <div
           data-rail={rail}
-          onMouseEnter={() => setPeek(collapsed)}
-          onMouseLeave={() => setPeek(false)}
-          onFocus={() => setPeek(collapsed)}
-          onBlur={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setPeek(false);
+          onMouseEnter={() => {
+            if (collapsed) peekLater(true, OPEN_DELAY);
           }}
-          className={`group/rail flex h-full flex-col overflow-x-hidden border-e border-line bg-surface ${collapsed ? 'absolute inset-y-0 start-0' : ''} ${rail ? 'w-(--mp-size-sidebar-collapsed)' : 'w-(--mp-size-sidebar)'} ${collapsed && peek ? 'shadow-(--mp-shadow-elevation-floating)' : ''}`}
+          onMouseLeave={() => peekLater(false, CLOSE_DELAY)}
+          onFocus={() => {
+            if (collapsed && !dismissed.current) {
+              clearTimeout(peekTimer.current);
+              setPeek(true);
+            }
+          }}
+          onBlur={(event) => {
+            if (event.currentTarget.contains(event.relatedTarget)) return;
+            dismissed.current = false;
+            peekLater(false, 0);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || !peek) return;
+            dismissed.current = true;
+            clearTimeout(peekTimer.current);
+            setPeek(false);
+          }}
+          className={`group/rail flex h-full flex-col overflow-x-hidden border-e border-line bg-surface transition-[width] duration-200 motion-reduce:transition-none ${collapsed ? 'absolute inset-y-0 start-0' : ''} ${rail ? 'w-(--mp-size-sidebar-collapsed)' : 'w-(--mp-size-sidebar)'} ${collapsed && peek ? 'shadow-(--mp-shadow-elevation-floating)' : ''}`}
         >
           {sidebar}
         </div>

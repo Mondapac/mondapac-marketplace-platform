@@ -5,7 +5,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { AppShell, Menu } from '@mondapac/ui';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const labels = {
   menu: 'Open menu',
@@ -93,17 +94,54 @@ describe('AppShell sidebar from 760 px', () => {
   });
 
   it('starts as a rail from the saved choice and opens over the page while the pointer rests on it', () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(
+        <AppShell sidebar={<nav>Side</nav>} topbar={<header>Top</header>} labels={labels} collapsed>
+          Body
+        </AppShell>,
+      );
+      const panel = container.querySelector('[data-rail]') as HTMLElement;
+      expect(panel.dataset.rail).toBe('true');
+      fireEvent.mouseEnter(panel);
+      // A pointer only passing over does not open it.
+      expect(panel.dataset.rail).toBe('true');
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(panel.dataset.rail).toBe('false');
+      fireEvent.mouseLeave(panel);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(panel.dataset.rail).toBe('true');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('opens on focus and Escape closes it until focus leaves and comes back', () => {
     const { container } = render(
-      <AppShell sidebar={<nav>Side</nav>} topbar={<header>Top</header>} labels={labels} collapsed>
+      <AppShell
+        sidebar={<a href="/x">Item</a>}
+        topbar={<header>Top</header>}
+        labels={labels}
+        collapsed
+      >
         Body
       </AppShell>,
     );
     const panel = container.querySelector('[data-rail]') as HTMLElement;
-    expect(panel.dataset.rail).toBe('true');
-    fireEvent.mouseEnter(panel);
+    const link = screen.getByRole('link', { name: 'Item' });
+    fireEvent.focus(link);
     expect(panel.dataset.rail).toBe('false');
-    fireEvent.mouseLeave(panel);
+    fireEvent.keyDown(link, { key: 'Escape' });
     expect(panel.dataset.rail).toBe('true');
+    fireEvent.focus(link);
+    expect(panel.dataset.rail).toBe('true');
+    fireEvent.blur(link);
+    fireEvent.focus(link);
+    expect(panel.dataset.rail).toBe('false');
   });
 });
 
