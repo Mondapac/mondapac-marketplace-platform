@@ -20,6 +20,7 @@ import { AdminListOrders } from './application/use-cases/admin-list-orders.use-c
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case';
+import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
@@ -104,12 +105,17 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RecordShipments,
       RecordLedger,
       OrderNoticeQuery,
+      ShipmentNoticeQuery,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: ORDERING_FACADE,
-      inject: [ConfirmPayment, CancelPayment, OrderNoticeQuery],
-      useFactory: (confirm: ConfirmPayment, cancel: CancelPayment, notice: OrderNoticeQuery) =>
-        new OrderingFacadeImplementation(confirm, cancel, notice),
+      inject: [ConfirmPayment, CancelPayment, OrderNoticeQuery, ShipmentNoticeQuery],
+      useFactory: (
+        confirm: ConfirmPayment,
+        cancel: CancelPayment,
+        notice: OrderNoticeQuery,
+        shipment: ShipmentNoticeQuery,
+      ) => new OrderingFacadeImplementation(confirm, cancel, notice, shipment),
     },
     registerJobsFrom(
       'ordering',
