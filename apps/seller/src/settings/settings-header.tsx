@@ -16,9 +16,12 @@ const TABS: readonly { id: SettingsTab; href: string; permission?: string }[] = 
 export function settingsTabs(
   permissionKeys: readonly string[],
   t: (key: string) => string,
+  /** The page being shown keeps its tab even without the permission (its no-access state). */
+  current?: SettingsTab,
 ): readonly TabItem[] {
   return TABS.filter(
-    (tab) => tab.permission === undefined || permissionKeys.includes(tab.permission),
+    (tab) =>
+      tab.id === current || tab.permission === undefined || permissionKeys.includes(tab.permission),
   ).map((tab) => ({ id: tab.id, href: tab.href, label: t(`settings.tab.${tab.id}`) }));
 }
 
@@ -33,9 +36,13 @@ export function SettingsHeader({
   readonly t: (key: string) => string;
 }) {
   return (
-    <div className="mb-6 flex flex-col gap-2">
+    <div className="mb-6 flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">{t('settings.title')}</h1>
-      <Tabs label={t('settings.tabs')} items={settingsTabs(permissionKeys, t)} activeId={active} />
+      <Tabs
+        label={t('settings.tabs')}
+        items={settingsTabs(permissionKeys, t, active)}
+        activeId={active}
+      />
     </div>
   );
 }

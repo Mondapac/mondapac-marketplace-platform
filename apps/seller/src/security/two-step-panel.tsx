@@ -333,8 +333,8 @@ export function TwoStepPanel({
   }
 
   return (
-    <Card>
-      <div className="max-w-xl">{body}</div>
-    </Card>
+    <div className="max-w-(--mp-size-form-max)">
+      <Card>{body}</Card>
+    </div>
   );
 }

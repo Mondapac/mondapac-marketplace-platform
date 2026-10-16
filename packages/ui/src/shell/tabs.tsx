@@ -26,10 +26,11 @@ const IDLE = `${BASE} border-transparent text-fg-muted hover:text-fg`;
 /**
  * The one tab row of both panels. It stays one line and scrolls sideways when the tabs do not
  * fit; a fade on the cut edge shows there is more, and the current tab is scrolled into view.
+ * A link tab marks the current page with aria-current; a button tab is a toggle (aria-pressed).
  */
 export function Tabs({ label, items, activeId, onSelect }: TabsProps) {
   const row = useRef<HTMLElement>(null);
-  const [fade, setFade] = useState({ start: false, end: false });
+  const [fade, setFade] = useState({ start: false, end: false, rtl: false });
 
   useEffect(() => {
     const element = row.current;
@@ -38,10 +39,16 @@ export function Tabs({ label, items, activeId, onSelect }: TabsProps) {
       // scrollLeft is negative in a right-to-left page, so compare magnitudes.
       const left = Math.abs(element.scrollLeft);
       const rest = element.scrollWidth - element.clientWidth - left;
-      setFade({ start: left > 1, end: rest > 1 });
+      setFade({
+        start: left > 1,
+        end: rest > 1,
+        rtl: getComputedStyle(element).direction === 'rtl',
+      });
     };
     // Older engines (and jsdom) lack these; the row still scrolls without them.
-    const current = element.querySelector<HTMLElement>('[aria-current="page"]');
+    const current = element.querySelector<HTMLElement>(
+      '[aria-current="page"], [aria-pressed="true"]',
+    );
     if (typeof current?.scrollIntoView === 'function') {
       current.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
@@ -57,7 +64,7 @@ export function Tabs({ label, items, activeId, onSelect }: TabsProps) {
 
   const mask =
     fade.start || fade.end
-      ? `linear-gradient(to right, ${fade.start ? 'transparent, black 2.5rem' : 'black'}, ${fade.end ? 'black calc(100% - 2.5rem), transparent' : 'black'})`
+      ? `linear-gradient(to ${fade.rtl ? 'left' : 'right'}, ${fade.start ? 'transparent, black 2.5rem' : 'black'}, ${fade.end ? 'black calc(100% - 2.5rem), transparent' : 'black'})`
       : undefined;
 
   return (
@@ -74,7 +81,7 @@ export function Tabs({ label, items, activeId, onSelect }: TabsProps) {
           <button
             key={item.id}
             type="button"
-            aria-current={active ? 'page' : undefined}
+            aria-pressed={active}
             onClick={() => onSelect?.(item.id)}
             className={className}
           >
