@@ -1,5 +1,6 @@
 import type { CallContext, Id, Population, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { StepUpFailure } from './step-up';
 
 /**
  * Who the calling actor is (identity design 8.1 `describeActor`): ids and codes only, never a
@@ -73,6 +74,18 @@ export interface IdentityFacade {
     context: CallContext,
     code: string,
   ): Promise<Result<void, ConfirmSecondFactorFailure>>;
+
+  /**
+   * Whether the sensitive seller action `actionKey` (a registered step-up action) may go ahead
+   * now (seller OTP policy). Call it first in the use case that does the action, with the
+   * caller's `CallContext` unchanged, and pass its refusal on: `second-factor.required`
+   * (`actionKey` in the details) tells the panel to verify a code for that action and repeat the
+   * request; `second-factor.enrolment-required` that the member must set up two-step first. A
+   * caller that is not a seller session passes. An unregistered key answers
+   * `access.unavailable`. Rule `own-resources`, allowed while the seller is not approved (the guarded
+   * action refuses it itself).
+   */
+  requireStepUp(context: CallContext, actionKey: string): Promise<Result<void, StepUpFailure>>;
 
   /**
    * The address to mail a notice to, for the `system` caller only (the order emails): a customer

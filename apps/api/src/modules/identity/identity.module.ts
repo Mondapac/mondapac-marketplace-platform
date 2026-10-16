@@ -1,10 +1,15 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { err, ok } from '@mondapac/shared-kernel';
 import type { Clock } from '@mondapac/shared-kernel';
 import {
   AUTHENTICATOR,
   AUTHORISATION_CHECK,
   PermissionRegistry,
   registerPermissions,
+  registerStepUpActions,
+  STEP_UP_SOURCE,
+  StepUpActionRegistry,
+  type StepUpCheck,
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
@@ -172,6 +177,13 @@ import { CheckedInCommonPasswords } from './infrastructure/passwords/checked-in-
 import { reviewerProviders } from './infrastructure/reviewers/reviewer-providers';
 import { roleProviders } from './infrastructure/roles/role-providers';
 import { secondFactorProviders } from './infrastructure/second-factor/second-factor-providers';
+import { STEP_UP_REPOSITORY } from './application/ports/step-up.repository';
+import { IDENTITY_STEP_UP_ACTIONS } from './contracts/step-up';
+import { ListSellerStepUpPolicy } from './application/use-cases/list-seller-step-up-policy.use-case';
+import { RequireStepUp } from './application/use-cases/require-step-up.use-case';
+import { SetSellerStepUpPolicy } from './application/use-cases/set-seller-step-up-policy.use-case';
+import { VerifySellerStepUp } from './application/use-cases/verify-seller-step-up.use-case';
+import { SellerStepUpController } from './presentation/seller-step-up.controller';
 import { sellerProviders } from './infrastructure/sellers/seller-providers';
 import { sessionProviders } from './infrastructure/sessions/session-providers';
 import { AdminPasswordController } from './presentation/admin-password.controller';
@@ -241,6 +253,8 @@ const PORT = {
   challengeTokens: CHALLENGE_TOKENS,
   invitationTokens: INVITATION_TOKENS,
   enrolmentTags: ENROLMENT_SECRET_TAGS,
+  stepUp: STEP_UP_REPOSITORY,
+  stepUpActions: StepUpActionRegistry,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -375,6 +389,7 @@ function useCaseProvider<D, U>(
     SellerPasswordController,
     SellerRolesController,
     SellerTeamController,
+    SellerStepUpController,
     AdminSessionController,
     AdminSecondFactorController,
     AdminPasswordController,
@@ -387,6 +402,7 @@ function useCaseProvider<D, U>(
     PersistenceModule.auditWriterFor('identity'),
     registerAuditActions('identity', IDENTITY_AUDIT_ACTIONS),
     registerPermissions('identity', IDENTITY_PERMISSIONS),
+    registerStepUpActions('identity', IDENTITY_STEP_UP_ACTIONS),
     { provide: PASSWORD_HASHER, useFactory: () => new Argon2idPasswordHasher() },
     { provide: COMMON_PASSWORD_LIST, useFactory: () => new CheckedInCommonPasswords() },
     {
@@ -1435,6 +1451,58 @@ function useCaseProvider<D, U>(
       clock: true,
       ids: true,
     }),
+    useCaseProvider(RequireStepUp, {
+      unitOfWork: true,
+      stepUp: true,
+      stepUpActions: true,
+      factors: true,
+      clock: true,
+    }),
+    useCaseProvider(ListSellerStepUpPolicy, {
+      unitOfWork: true,
+      stepUp: true,
+      stepUpActions: true,
+    }),
+    useCaseProvider(VerifySellerStepUp, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
+      audit: true,
+      policy: true,
+      stepUp: true,
+      stepUpActions: true,
+    }),
+    useCaseProvider(SetSellerStepUpPolicy, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
+      audit: true,
+      policy: true,
+      stepUp: true,
+      stepUpActions: true,
+    }),
+    {
+      // What `platform/authz` binds to the route guard `@RequiresStepUp(...)`: the same use case as
+      // the facade's `requireStepUp`, through the gate.
+      provide: STEP_UP_SOURCE,
+      inject: [RequireStepUp],
+      useFactory: (requireStepUp: RequireStepUp): StepUpCheck => ({
+        async check(context, actionKey) {
+          const result = await requireStepUp.execute(context, { actionKey });
+          return result.ok ? ok(undefined) : err(result.error);
+        },
+      }),
+    },
     {
       provide: IDENTITY_FACADE,
       inject: [
@@ -1443,6 +1511,7 @@ function useCaseProvider<D, U>(
         TeamMembershipOf,
         ConfirmSellerSecondFactor,
         ContactEmailOf,
+        RequireStepUp,
       ],
       useFactory: (
         describeActor: DescribeActor,
@@ -1450,6 +1519,7 @@ function useCaseProvider<D, U>(
         teamMembershipOf: TeamMembershipOf,
         confirmSellerSecondFactor: ConfirmSellerSecondFactor,
         contactEmailOf: ContactEmailOf,
+        requireStepUp: RequireStepUp,
       ) =>
         new IdentityFacadeImplementation({
           describeActor,
@@ -1457,6 +1527,7 @@ function useCaseProvider<D, U>(
           teamMembershipOf,
           confirmSellerSecondFactor,
           contactEmailOf,
+          requireStepUp,
         }),
     },
     {
@@ -1547,6 +1618,12 @@ function useCaseProvider<D, U>(
         ),
     ),
   ],
-  exports: [AUTHENTICATOR, AUTHORISATION_CHECK, IDENTITY_FACADE, SELLER_ACCESS_CONTRACT],
+  exports: [
+    AUTHENTICATOR,
+    AUTHORISATION_CHECK,
+    IDENTITY_FACADE,
+    SELLER_ACCESS_CONTRACT,
+    STEP_UP_SOURCE,
+  ],
 })
 export class IdentityModule {}

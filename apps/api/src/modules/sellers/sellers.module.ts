@@ -2,6 +2,7 @@ import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/commo
 import {
   AUTHORISATION_CHECK,
   registerPermissions,
+  registerStepUpActions,
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
@@ -81,6 +82,7 @@ import { AllowedProductTypes } from './application/use-cases/allowed-product-typ
 import { SellingEligibilitySystem } from './application/use-cases/selling-eligibility-system.use-case';
 import { SellingEligibility } from './application/use-cases/selling-eligibility.use-case';
 import { SELLERS_PERMISSIONS } from './contracts/permissions';
+import { SELLERS_STEP_UP_ACTIONS } from './contracts/step-up';
 import { APPROVED_SELLER_ZONES } from './contracts/approved-seller-zones.contract';
 import { SELLERS_FACADE } from './contracts/sellers.facade';
 import { SELLERS_AUDIT_ACTIONS } from './domain/audit';
@@ -224,6 +226,7 @@ const REVIEW_DECISION_PORTS = {
     registerAuditActions('sellers', SELLERS_AUDIT_ACTIONS),
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
     registerPermissions('sellers', SELLERS_PERMISSIONS),
+    registerStepUpActions('sellers', SELLERS_STEP_UP_ACTIONS),
     ...sellerProviders,
     useCaseProvider(CreateSellerFile, {
       unitOfWork: true,

@@ -67,6 +67,12 @@ export const SELLER_ROLE_CREATE = seller('identity.seller-role.create', true);
 export const SELLER_ROLE_EDIT = seller('identity.seller-role.edit', true);
 export const SELLER_ROLE_DELETE = seller('identity.seller-role.delete', true);
 
+/**
+ * Change the seller's own two-step rules per action (seller OTP policy). Protected: the Seller
+ * Owner's alone, never put in a role.
+ */
+export const STEP_UP_POLICY_MANAGE = seller('identity.step-up-policy.manage', true);
+
 /** Every permission identity declares, for its module's registration. */
 export const IDENTITY_PERMISSIONS = declarePermissions('identity', [
   SELLER_ACCESS_VIEW,
@@ -94,4 +100,5 @@ export const IDENTITY_PERMISSIONS = declarePermissions('identity', [
   SELLER_ROLE_CREATE,
   SELLER_ROLE_EDIT,
   SELLER_ROLE_DELETE,
+  STEP_UP_POLICY_MANAGE,
 ]);
