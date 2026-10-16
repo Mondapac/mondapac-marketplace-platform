@@ -1,6 +1,14 @@
 import 'server-only';
-import { AppShell, Sidebar, Topbar, visibleNavItems } from '@mondapac/ui';
+import {
+  AppShell,
+  SIDEBAR_COOKIE,
+  Sidebar,
+  Topbar,
+  sidebarCollapsed,
+  visibleNavItems,
+} from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
 import { adminNav } from '../nav.ts';
@@ -19,6 +27,7 @@ export async function AdminShell({
   readonly children: ReactNode;
 }) {
   const t = await getTranslations();
+  const collapsed = sidebarCollapsed((await cookies()).get(SIDEBAR_COOKIE)?.value);
   const items = visibleNavItems(adminNav, new Set(session.permissionKeys));
   return (
     <AppShell
@@ -27,7 +36,10 @@ export async function AdminShell({
         close: t('nav.close'),
         more: t('nav.more'),
         main: t('nav.main'),
+        collapse: t('nav.collapse'),
+        expand: t('nav.expand'),
       }}
+      collapsed={collapsed}
       sidebar={
         <Sidebar
           panelName={t('panel.name')}

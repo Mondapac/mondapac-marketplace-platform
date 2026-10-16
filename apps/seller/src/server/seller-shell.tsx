@@ -1,6 +1,14 @@
 import 'server-only';
-import { AppShell, Sidebar, Topbar, visibleNavItems } from '@mondapac/ui';
+import {
+  AppShell,
+  SIDEBAR_COOKIE,
+  Sidebar,
+  Topbar,
+  sidebarCollapsed,
+  visibleNavItems,
+} from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
 import { sellerNav } from '../nav.ts';
@@ -19,6 +27,7 @@ export async function SellerShell({
   readonly children: ReactNode;
 }) {
   const t = await getTranslations();
+  const collapsed = sidebarCollapsed((await cookies()).get(SIDEBAR_COOKIE)?.value);
   const approved = session.sellerAccessState === 'approved';
   // Settings and Team are for approved sellers; Seller account (setup) is for the others.
   const approvedOnly = new Set(['s_settings', 's_team']);
@@ -46,7 +55,10 @@ export async function SellerShell({
         close: t('nav.close'),
         more: t('nav.more'),
         main: t('nav.main'),
+        collapse: t('nav.collapse'),
+        expand: t('nav.expand'),
       }}
+      collapsed={collapsed}
       sidebar={
         <Sidebar
           panelName={t('panel.name')}
