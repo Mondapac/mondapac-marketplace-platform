@@ -61,13 +61,19 @@ async function prepare() {
     },
   );
   if (run.status !== 0) throw new Error('the claim vocabulary step failed');
-  await waitFor('the API (is `pnpm dev` running?)', async () => {
-    try {
-      return (await fetch(`${API}/health`)).ok;
-    } catch {
-      return false;
-    }
-  });
+  // Five minutes, like dev-local.bat: on Windows the first build after a pull, beside the
+  // worker's own build, can take longer than two.
+  await waitFor(
+    'the API (is `pnpm dev` running? look at the "MondaPac API" window)',
+    async () => {
+      try {
+        return (await fetch(`${API}/health`)).ok;
+      } catch {
+        return false;
+      }
+    },
+    300,
+  );
   await waitFor('the mail catcher (Mailpit, docker compose up -d)', async () => {
     try {
       return (await fetch(`${MAILPIT}/api/v1/info`)).ok;
