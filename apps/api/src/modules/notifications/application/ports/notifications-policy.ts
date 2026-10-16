@@ -17,9 +17,6 @@ export interface NotificationsPolicy {
   /** The Market's default locale: the language of product names asked for in an order mail. */
   defaultLocale(market: MarketContext): string;
 
-  /** The sender id of the Market's text messages; null when the Market sends none. */
-  smsSenderId(market: MarketContext): string | null;
-
   /**
    * The storefront URL of one order for the customer's confirmation mail: the configured page
    * plus the order id as one path segment. Null when the Market configures no such page. No

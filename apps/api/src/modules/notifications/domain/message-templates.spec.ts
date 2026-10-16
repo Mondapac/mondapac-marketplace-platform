@@ -1,6 +1,5 @@
-import { fill, renderTemplate, templateFor } from './message-templates';
+import { fill, templateFor } from './message-templates';
 import { orderConfirmationMail, orderShippedMail, sellerNewOrderMail } from './order-mail';
-import { orderShippedSms, SMS_MAX_LENGTH } from './order-sms';
 
 describe('message templates', () => {
   it('picks the exact locale, then its language, then English', () => {
@@ -24,9 +23,6 @@ describe('message templates', () => {
       orderShippedMail({ orderId: 'o1', carrier: 'AP', trackingRef: null, orderUrl: 'u' }),
     ];
     for (const mail of mails) expect(`${mail.subject}\n${mail.text}`).not.toMatch(/\{\w+\}/);
-    expect(renderTemplate('order-shipped-sms', 'en', { orderId: 'o1' }).subject).toBe('');
-    const sms = orderShippedSms({ orderId: 'o1', carrier: 'AP', trackingRef: 'T1', orderUrl: 'u' });
-    expect(sms).not.toMatch(/\{\w+\}/);
     // Seller text that looks like a slot or a replacement pattern stays inert.
     const odd = orderShippedMail({
       orderId: 'o1',
@@ -57,34 +53,5 @@ describe('message templates', () => {
     expect(orderShippedMail({ ...base, trackingRef: null }).text).toContain(
       'Carrier: Australia Post\n\nView your order',
     );
-  });
-});
-
-describe('shipped text message', () => {
-  const base = { orderId: 'o1', carrier: 'Australia Post', orderUrl: 'https://s.test/account/o1' };
-
-  it('is one line with carrier, tracking and the link', () => {
-    const text = orderShippedSms({ ...base, trackingRef: 'AP123' });
-    expect(text).toBe(
-      'MondaPac: part of your order o1 has shipped with Australia Post. Tracking number AP123. https://s.test/account/o1',
-    );
-    expect(text).not.toContain('\n');
-  });
-
-  it('omits the tracking sentence when there is none', () => {
-    expect(orderShippedSms({ ...base, trackingRef: null })).toBe(
-      'MondaPac: part of your order o1 has shipped with Australia Post. https://s.test/account/o1',
-    );
-  });
-
-  it('flattens seller-entered text and stays short', () => {
-    const text = orderShippedSms({
-      ...base,
-      carrier: 'Post\r\nSecond line',
-      trackingRef: 'A'.repeat(500),
-    });
-    expect(text).not.toMatch(/[\r\n]/);
-    expect(text).toContain('Tracking number AAAA');
-    expect(text.length).toBeLessThanOrEqual(SMS_MAX_LENGTH);
   });
 });

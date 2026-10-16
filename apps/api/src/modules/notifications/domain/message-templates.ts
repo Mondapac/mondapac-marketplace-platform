@@ -4,11 +4,10 @@
 // picks the language (exact locale, then its language part, then English), so a new language is
 // a new entry here and no change to the flows. Plain text only: no template carries markup.
 
-export type TemplateId =
-  'order-confirmation' | 'seller-new-order' | 'order-shipped' | 'order-shipped-sms';
+export type TemplateId = 'order-confirmation' | 'seller-new-order' | 'order-shipped';
 
 export interface TemplateText {
-  /** Absent for a channel without a subject (SMS). */
+  /** Absent for a channel without a subject. */
   readonly subject?: string;
   readonly body: string;
 }
@@ -71,12 +70,6 @@ const TEMPLATES: Readonly<Record<TemplateId, TemplateSet>> = {
         '{orderUrl}',
         '',
       ),
-    },
-  },
-  // One short text message: carrier, tracking number and the sign-in link. No subject.
-  'order-shipped-sms': {
-    en: {
-      body: 'MondaPac: part of your order {orderId} has shipped with {carrier}.{tracking} {orderUrl}',
     },
   },
 };

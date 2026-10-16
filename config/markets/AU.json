@@ -19,8 +19,7 @@
   },
   "notifications": {
     "supportEmail": "jnamazi@gmail.com",
-    "customerOrderPage": "https://storefront.au.mondapac.test/account/orders",
-    "sms": { "senderId": "MondaPac" }
+    "customerOrderPage": "https://storefront.au.mondapac.test/account/orders"
   },
   "search": {
     "textSearchConfig": "english"

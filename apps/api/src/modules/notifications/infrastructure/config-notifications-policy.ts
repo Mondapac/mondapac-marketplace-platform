@@ -19,10 +19,6 @@ export class ConfigNotificationsPolicy implements NotificationsPolicy {
     return this.markets.get(market.marketId).defaultLocale;
   }
 
-  smsSenderId(market: MarketContext): string | null {
-    return this.markets.get(market.marketId).notifications?.sms?.senderId ?? null;
-  }
-
   customerOrderUrl(market: MarketContext, orderId: string): string | null {
     const page = this.markets.get(market.marketId).notifications?.customerOrderPage;
     return page === undefined ? null : `${page.replace(/\/+$/, '')}/${encodeURIComponent(orderId)}`;
