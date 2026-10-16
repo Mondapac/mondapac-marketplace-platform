@@ -12,6 +12,7 @@ import {
   TEST_MARKET_CONFIG_DIRS,
   TEST_MARKET_IDS,
 } from '../../../../../test/support/test-config';
+import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
@@ -49,6 +50,10 @@ describe.each(TEST_MARKETS)('CustomerAccountSummaries in market %s', (code) => {
   let fakes: IdentityFakes;
   let read: CustomerAccountSummaries;
   let units: unknown[];
+  /** The use case behind a gate that admits everyone, so only its own check stands. */
+  let open: CustomerAccountSummaries;
+  /** Every account id read through the repository. */
+  let accountReads: Id<'Account'>[];
 
   const asAdmin = (account: Id<'Account'>) =>
     testCallContext(
@@ -160,6 +165,20 @@ describe.each(TEST_MARKETS)('CustomerAccountSummaries in market %s', (code) => {
         effectiveKeys,
       }),
     );
+    accountReads = [];
+    const admitsAll: AuthorisationCheck = { check: () => Promise.resolve({ allowed: true }) };
+    open = new CustomerAccountSummaries(createUseCaseGate(markets, admitsAll), {
+      unitOfWork: fakes.unitOfWork,
+      accounts: {
+        ...fakes.accountRepository,
+        findById: (m, idOf) => {
+          accountReads.push(idOf);
+          return fakes.accountRepository.findById(m, idOf);
+        },
+      },
+      grants: fakes.grantReader,
+      effectiveKeys,
+    });
     read = new CustomerAccountSummaries(gate, {
       unitOfWork: {
         ...fakes.unitOfWork,
@@ -233,5 +252,38 @@ describe.each(TEST_MARKETS)('CustomerAccountSummaries in market %s', (code) => {
     const system = testCallContext(market, 'system', 'customer-summaries-0003');
     expect(await read.execute(system, { accountIds: [CUSTOMER] })).toMatchObject({ ok: false });
     expect(units).toEqual([]);
+  });
+
+  it('refuses them again in the read when the gate admits, before any customer row', async () => {
+    const seller = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'seller',
+        accountId: SELLER,
+        sessionId: SESSION_ID,
+        sellerId: id<'Seller'>('01990000-0000-7000-8000-00000000b001'),
+      }),
+      'customer-summaries-0004',
+    );
+    const root = asAdmin(ROOT);
+    const actingAs = {
+      ...root,
+      actor: { ...root.actor, actingAs: { accountId: SELLER, sellerId: null } },
+    } as typeof root;
+
+    for (const context of [asAdmin(FINANCE), seller, actingAs]) {
+      expect(await open.execute(context, { accountIds: [CUSTOMER] })).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+    }
+    // The admin disabled after the gate admitted the call: refused in the read's own unit.
+    const rootState = fakes.accounts.get(ROOT)!;
+    fakes.seedAccount({ ...rootState, status: 'disabled' });
+    expect(await open.execute(asAdmin(ROOT), { accountIds: [CUSTOMER] })).toEqual({
+      ok: false,
+      error: { code: 'access.denied' },
+    });
+    expect(accountReads).not.toContain(CUSTOMER);
   });
 });
