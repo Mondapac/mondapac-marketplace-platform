@@ -1,5 +1,5 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { parseId, Temporal } from '@mondapac/shared-kernel';
+import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
@@ -14,6 +14,7 @@ import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { MarketRegistry } from '../src/platform/market-config/market-registry';
 import { withRoleLimit } from './support/role-limits';
+import { STEP_UP_SOURCE } from '../src/platform/authz';
 import { createTestApp, type LogLine } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -55,7 +56,12 @@ describe('role editor over HTTP (integration, slice 10)', () => {
       env: { LOG_LEVEL: 'info', ...options.env },
       panelOrigins: true,
       override: (builder) => {
-        const built = fakes.override(builder).overrideProvider(CLOCK).useValue(clock);
+        const built = fakes
+          .override(builder)
+          .overrideProvider(CLOCK)
+          .useValue(clock)
+          .overrideProvider(STEP_UP_SOURCE)
+          .useValue({ check: () => Promise.resolve(ok(undefined)) });
         return options.limit === undefined ? built : withRoleLimit(built, options.limit);
       },
     }));
