@@ -81,19 +81,20 @@ export function SellerOrders({
           title={t('orders.empty-state.title')}
           body={t('orders.empty-state.body')}
         />
-      ) : null}
-      <ul className="flex flex-col gap-3">
-        {orders.map((order) => (
-          <OrderCard
-            key={order.sellerOrderId}
-            order={order}
-            csrfToken={csrfToken}
-            canShip={canShip}
-            canDeliver={canDeliver}
-            onChange={replace}
-          />
-        ))}
-      </ul>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {orders.map((order) => (
+            <OrderCard
+              key={order.sellerOrderId}
+              order={order}
+              csrfToken={csrfToken}
+              canShip={canShip}
+              canDeliver={canDeliver}
+              onChange={replace}
+            />
+          ))}
+        </ul>
+      )}
       {moreFailed ? <Banner tone="critical">{t('orders.error.unavailable')}</Banner> : null}
       {cursor === null ? null : (
         <div>

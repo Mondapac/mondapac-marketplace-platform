@@ -80,7 +80,8 @@ export function Earnings({ initial }: { readonly initial: Ledger }) {
           },
         ]}
       />
-      <h2 className="text-lg font-semibold">{t('ledger')}</h2>
+      {/* An empty ledger is its own region: the empty state's heading stands for it. */}
+      {rows.length === 0 ? null : <h2 className="text-lg font-semibold">{t('ledger')}</h2>}
       {rows.length === 0 ? (
         <EmptyState icon="receipt" title={t('empty-state.title')} body={t('empty-state.body')} />
       ) : (
