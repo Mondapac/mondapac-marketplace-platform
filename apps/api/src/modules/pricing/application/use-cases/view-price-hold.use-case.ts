@@ -5,7 +5,9 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { PRICING_PRICE_HOLD_VIEW } from '../../contracts/permissions';
 import { parseRecordId } from '../hold-review';
-import type { PendingHoldView, PriceSeriesRepository } from '../ports/price-series.repository';
+import { withHoldLabels, type HoldLabelDependencies, type LabelledHold } from '../hold-labels';
+import type { PriceSeriesRepository } from '../ports/price-series.repository';
+import type { PendingHoldView } from '../ports/price-series.repository';
 
 export interface ViewPriceHoldInput {
   readonly recordId: string;
@@ -19,21 +21,20 @@ export type ViewPriceHoldFailure =
   /** Unknown, another Market's, or no longer pending: one answer (design 5.2). */
   | { readonly code: 'pricing.hold.not-found' };
 
-export interface ViewPriceHoldDependencies {
+export interface ViewPriceHoldDependencies extends HoldLabelDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly series: PriceSeriesRepository;
 }
 
 /**
  * `pricing.view-price-hold` (pricing design 5.2): one held record with its anchor. Rule
- * `permissions [pricing.price-hold.view]`. The id is looked up in the context's Market only, so
- * another Market's record answers exactly as an unknown id.
+ * `permissions [pricing.price-hold.view]` (checked first). The id is looked up in the context's
+ * Market only, so another Market's record answers exactly as an unknown id. Carries the same
+ * three display names as the queue (product name, Variant label, public store name), read after
+ * the unit closes; a failed or absent lookup leaves null. No Cost (brief s5 is about Cost
+ * only), no submitter.
  */
-export class ViewPriceHold extends UseCase<
-  ViewPriceHoldInput,
-  PendingHoldView,
-  ViewPriceHoldFailure
-> {
+export class ViewPriceHold extends UseCase<ViewPriceHoldInput, LabelledHold, ViewPriceHoldFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'pricing.view-price-hold',
     rule: { kind: 'permissions', allOf: [PRICING_PRICE_HOLD_VIEW.key] },
@@ -51,7 +52,7 @@ export class ViewPriceHold extends UseCase<
   protected async handle(
     context: CallContext,
     input: ViewPriceHoldInput,
-  ): Promise<Result<PendingHoldView, ViewPriceHoldFailure>> {
+  ): Promise<Result<LabelledHold, ViewPriceHoldFailure>> {
     const recordId = parseRecordId(input?.recordId);
     if (recordId === null) {
       return err({ code: 'validation.failed', fields: [{ path: 'recordId', code: 'format' }] });
@@ -69,6 +70,8 @@ export class ViewPriceHold extends UseCase<
       marketId: market.marketId,
       correlationId: context.correlationId,
     });
-    return read.value === null ? err({ code: 'pricing.hold.not-found' }) : ok(read.value);
+    if (read.value === null) return err({ code: 'pricing.hold.not-found' });
+    const [labelled] = await withHoldLabels(this.deps, context, [read.value]);
+    return ok(labelled!);
   }
 }

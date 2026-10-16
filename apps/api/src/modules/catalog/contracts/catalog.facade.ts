@@ -35,6 +35,30 @@ export interface OfferSellUnits {
  */
 export type OfferSellUnitsMap = ReadonlyMap<Id<'Offer'>, OfferSellUnits>;
 
+/** One (Offer, Variant) a caller wants a display label for. */
+export interface SellUnitKey {
+  readonly offerId: Id<'Offer'>;
+  readonly variantId: Id<'Variant'>;
+}
+
+/**
+ * What `sellUnitLabels` gives per key: the PUBLISHED product name and the PUBLISHED label of the
+ * Variant, both seller-entered text (escape it). `variantLabel` is null when the published
+ * revision has no label for that Variant (a draft label is never used).
+ */
+export interface SellUnitLabel {
+  readonly productName: string;
+  readonly variantLabel: string | null;
+}
+
+/** The answer of `sellUnitLabels`, keyed by {@link sellUnitKey}. */
+export type SellUnitLabelsMap = ReadonlyMap<string, SellUnitLabel>;
+
+/** The map key of one (Offer, Variant). */
+export function sellUnitKey(key: SellUnitKey): string {
+  return `${key.offerId}:${key.variantId}`;
+}
+
 /** A request refused before any read: a code and the fields, never their values. */
 export interface CatalogValidationFailed {
   readonly code: 'validation.failed';
@@ -82,6 +106,22 @@ export interface CatalogFacade {
       ReadonlyMap<Id<'Offer'>, string>,
       AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
     >
+  >;
+
+  /**
+   * The published product name and published Variant label of each requested (Offer, Variant),
+   * in `locale` (any locale present when that one is missing), at most 200 keys. Rule
+   * `anonymous` (names are public content once published); callers pass their `CallContext`
+   * unchanged. Only PUBLISHED content: a draft or pending name or label is never returned. A key
+   * whose Offer is unknown, of another Market or without a published name is absent. Not exposed
+   * over HTTP.
+   */
+  sellUnitLabels(
+    context: CallContext,
+    keys: readonly SellUnitKey[],
+    locale: string,
+  ): Promise<
+    Result<SellUnitLabelsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
   >;
 }
 

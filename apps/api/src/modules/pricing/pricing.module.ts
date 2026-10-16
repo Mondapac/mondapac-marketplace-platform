@@ -16,6 +16,8 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CatalogModule } from '../catalog';
+import { SellersModule } from '../sellers';
+import { HELD_UNIT_LABELS, SELLER_STORE_NAMES } from './application/ports/held-labels';
 import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
 import { PRICE_SERIES_REPOSITORY } from './application/ports/price-series.repository';
 import { PRICING_POLICY_PROVIDER } from './application/ports/pricing-policy-provider';
@@ -63,6 +65,8 @@ const PORT = {
   tombstones: RETIREMENT_TOMBSTONE_REPOSITORY,
   offers: OFFER_SELL_UNITS_SOURCE,
   policies: PRICING_POLICY_PROVIDER,
+  unitLabels: HELD_UNIT_LABELS,
+  storeNames: SELLER_STORE_NAMES,
   audit: AUDIT_WRITER,
   outbox: OUTBOX_WRITER,
   clock: CLOCK,
@@ -102,7 +106,7 @@ function useCaseProvider<D, U>(
  * write answers `pricing.offer-not-found`.
  */
 @Module({
-  imports: [CatalogModule],
+  imports: [CatalogModule, SellersModule],
   controllers: [
     SellerRegularPriceController,
     SellerSpecialPriceController,
@@ -169,8 +173,18 @@ function useCaseProvider<D, U>(
         effectivePricesSystem: EffectivePricesSystemQuery,
       ) => new PricingFacadeImplementation({ effectivePrices, effectivePricesSystem }),
     },
-    useCaseProvider(ListPriceHolds, { unitOfWork: true, series: true }),
-    useCaseProvider(ViewPriceHold, { unitOfWork: true, series: true }),
+    useCaseProvider(ListPriceHolds, {
+      unitOfWork: true,
+      series: true,
+      unitLabels: true,
+      storeNames: true,
+    }),
+    useCaseProvider(ViewPriceHold, {
+      unitOfWork: true,
+      series: true,
+      unitLabels: true,
+      storeNames: true,
+    }),
     useCaseProvider(ApprovePriceHold, {
       unitOfWork: true,
       series: true,
