@@ -29,7 +29,7 @@ import {
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { setRetryAfter } from './retry-after';
-import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
+import { RequiresStepUp, ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -86,6 +86,7 @@ export class SellerSpecialPriceController {
   ) {}
 
   @Put()
+  @RequiresStepUp('pricing.price.change')
   @HttpCode(200)
   @ReadsSession()
   @ApiOperation({
@@ -165,6 +166,7 @@ export class SellerSpecialPriceController {
   }
 
   @Post('withdraw')
+  @RequiresStepUp('pricing.price.change')
   @HttpCode(200)
   @ReadsSession()
   @ApiOperation({

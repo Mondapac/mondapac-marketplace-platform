@@ -1,7 +1,12 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
@@ -27,6 +32,7 @@ import { ViewPayoutAccount } from './application/use-cases/view-payout-account.u
 import { ReceiveStripeEvent } from './application/use-cases/receive-stripe-event.use-case';
 import { PAYMENTS_FACADE } from './contracts';
 import { PAYMENTS_PERMISSIONS } from './contracts/permissions';
+import { PAYMENTS_STEP_UP_ACTIONS } from './contracts/step-up';
 import { PAYMENTS_AUDIT_ACTIONS } from './domain/audit';
 import { paymentsProviders } from './infrastructure/payments-providers';
 import { syncPayoutSchedulesJob } from './presentation/jobs/sync-payout-schedules.job';
@@ -89,6 +95,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.auditWriterFor('payments'),
     registerAuditActions('payments', PAYMENTS_AUDIT_ACTIONS),
     registerPermissions('payments', PAYMENTS_PERMISSIONS),
+    registerStepUpActions('payments', PAYMENTS_STEP_UP_ACTIONS),
     ...paymentsProviders,
     useCaseProvider(ReceiveStripeEvent),
     useCaseProvider(ApplyStripeEvents),
