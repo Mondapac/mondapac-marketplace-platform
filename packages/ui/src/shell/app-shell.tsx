@@ -157,7 +157,8 @@ export function AppShell({
         </div>
       </aside>
       <div className="flex min-w-0 flex-col">
-        <div className="flex items-stretch border-b border-line bg-surface">
+        {/* The top bar stays in view while the page scrolls, as the sidebar does. */}
+        <div className="sticky top-0 z-10 flex items-stretch border-b border-line bg-surface">
           <button
             type="button"
             aria-label={labels.menu}
