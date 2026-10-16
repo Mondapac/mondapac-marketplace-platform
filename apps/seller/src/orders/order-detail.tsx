@@ -10,7 +10,7 @@ import {
   DataList,
   TextField,
 } from '@mondapac/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { formatInstant, shortInstant } from '../catalog/format.ts';
@@ -38,6 +38,7 @@ export function OrderDetail({
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
+  const zone = useTimeZone();
   const [order, setOrder] = useState(initial);
   const [carrier, setCarrier] = useState('');
   const [tracking, setTracking] = useState('');
@@ -102,7 +103,7 @@ export function OrderDetail({
           <Badge tone={TONE[order.fulfilment]}>{t(`status.${order.fulfilment}`)}</Badge>
         </div>
         <p className="text-sm text-fg-muted">
-          {t('paid-line', { when: formatInstant(order.paidAt, locale) })}
+          {t('paid-line', { when: formatInstant(order.paidAt, locale, zone) })}
           {' · '}
           {t('items-count', { count })}
         </p>
@@ -248,14 +249,16 @@ export function OrderDetail({
                     {
                       label: t('shipped-on'),
                       value:
-                        order.shippedAt === null ? null : shortInstant(order.shippedAt, locale),
+                        order.shippedAt === null
+                          ? null
+                          : shortInstant(order.shippedAt, locale, zone),
                     },
                     ...(order.deliveredAt === null
                       ? []
                       : [
                           {
                             label: t('delivered-on'),
-                            value: shortInstant(order.deliveredAt, locale),
+                            value: shortInstant(order.deliveredAt, locale, zone),
                           },
                         ]),
                   ]}

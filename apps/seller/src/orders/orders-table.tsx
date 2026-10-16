@@ -1,5 +1,5 @@
 import { Badge, CARD_TABLE } from '@mondapac/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { shortInstant } from '../catalog/format.ts';
 import { formatMinor } from '../price/money.ts';
 import { shortId, TONE } from './status.ts';
@@ -15,6 +15,7 @@ const NUMERIC = new Set<(typeof COLUMNS)[number]>(['items', 'total']);
 export function OrdersTable({ orders }: { readonly orders: readonly SellerOrderView[] }) {
   const t = useTranslations('orders');
   const locale = useLocale();
+  const zone = useTimeZone();
   const label = (col: (typeof COLUMNS)[number]) => t(`col.${col}`);
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
@@ -53,11 +54,8 @@ export function OrdersTable({ orders }: { readonly orders: readonly SellerOrderV
                 <td className={CARD_TABLE.corner}>
                   <Badge tone={TONE[order.fulfilment]}>{t(`status.${order.fulfilment}`)}</Badge>
                 </td>
-                <td
-                  className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
-                  data-label={label('paid')}
-                >
-                  {shortInstant(order.paidAt, locale)}
+                <td className={CARD_TABLE.labelled} data-label={label('paid')}>
+                  <time dateTime={order.paidAt}>{shortInstant(order.paidAt, locale, zone)}</time>
                 </td>
                 <td
                   className={`${CARD_TABLE.labelled} tabular-nums lg:text-end`}
