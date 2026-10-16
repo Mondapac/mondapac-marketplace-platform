@@ -3,7 +3,6 @@ import { getTranslations } from 'next-intl/server';
 import { SellerShell } from '../../../src/server/seller-shell.tsx';
 import { loadOrdersPage } from '../../../src/server/orders-page.ts';
 import { SellerOrders } from '../../../src/orders/seller-orders.tsx';
-import { ORDER_DELIVER_PERMISSION, ORDER_SHIP_PERMISSION } from '../../../src/orders/types.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -25,17 +24,10 @@ export default async function OrdersPage() {
       </SellerShell>
     );
   }
-  const { permissionKeys, csrfToken } = page.session;
   return (
     <SellerShell session={page.session} activeId="s_orders" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-      <SellerOrders
-        initial={page.page}
-        fee={page.fee}
-        csrfToken={csrfToken}
-        canShip={permissionKeys.includes(ORDER_SHIP_PERMISSION)}
-        canDeliver={permissionKeys.includes(ORDER_DELIVER_PERMISSION)}
-      />
+      <SellerOrders initial={page.page} fee={page.fee} />
     </SellerShell>
   );
 }

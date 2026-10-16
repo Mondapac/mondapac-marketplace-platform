@@ -1043,14 +1043,51 @@
   },
   "orders": {
     "title": "Orders",
-    "intro": "Paid orders for your store, newest first. Ship each one, then mark it delivered when it arrives.",
+    "intro": "Paid orders for your store, newest first. Open an order to ship it, then mark it delivered when it arrives.",
+    "not-found": {
+      "title": "Order not found",
+      "body": "This order does not exist, or it belongs to another store."
+    },
     "fee": "Delivery fee on every order: {fee}. The platform sets it for your store; the customer pays it with the order.",
     "more": "Show more orders",
     "optional": "optional",
-    "card-title": "Order {id}",
-    "paid": "Paid {when}",
-    "line": "Item {n} × {quantity}",
-    "each": "{price} each",
+    "ref": "#{id}",
+    "detail-title": "Order #{id}",
+    "back": "Back to orders",
+    "not-given": "Not given",
+    "col": {
+      "order": "Order",
+      "status": "Status",
+      "paid": "Paid (UTC)",
+      "items": "Items",
+      "total": "Total"
+    },
+    "filter": {
+      "label": "Filter orders by fulfilment",
+      "all": "All",
+      "empty": {
+        "title": "No orders in this state",
+        "body": "Orders appear here as they move on.",
+        "body-more": "None of the orders loaded so far are in this state. Show more orders to look further back."
+      }
+    },
+    "summary": "Summary",
+    "paid-on": "Paid",
+    "lines": "Items in this order",
+    "line": {
+      "fallback": "Item {id}",
+      "col": {
+        "item": "Item",
+        "quantity": "Qty",
+        "unit": "Unit price",
+        "amount": "Amount"
+      }
+    },
+    "totals": "Totals",
+    "fulfilment": "Fulfilment",
+    "not-shipped": "This order has not been shipped yet.",
+    "shipped-on": "Shipped",
+    "delivered-on": "Delivered",
     "subtotal": "Items",
     "delivery": "Delivery",
     "delivery-free": "Free",
@@ -1067,8 +1104,6 @@
       "hint": "The customer gets an email with the carrier and tracking reference.",
       "submit": "Mark as shipped"
     },
-    "shipped-at": "Shipped {when}",
-    "delivered-at": "Delivered {when}",
     "deliver": "Mark as delivered",
     "validation": {
       "required": "Enter the carrier.",
