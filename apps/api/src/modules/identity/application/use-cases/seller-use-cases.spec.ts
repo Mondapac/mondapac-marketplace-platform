@@ -283,9 +283,9 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       ['platform', 'default', 'finance', 2],
       ['platform', 'default', 'viewer', 12],
       ['seller', 'system', 'seller-owner', 0],
-      ['seller', 'default', 'store-manager', 3],
+      ['seller', 'default', 'store-manager', 4],
       ['seller', 'default', 'order-fulfilment', 0],
-      ['seller', 'default', 'catalogue-stock', 1],
+      ['seller', 'default', 'catalogue-stock', 2],
       ['seller', 'default', 'customer-service', 1],
       ['seller', 'default', 'bookkeeper', 0],
     ]);
@@ -337,11 +337,15 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     ]);
     expect(keysOf('finance')).toEqual(['identity.seller-access.view', 'sellers.seller.view']);
     expect(keysOf('store-manager')).toEqual([
+      'catalog.own-product.edit',
       'catalog.own-product.view',
       'identity.seller-role.view',
       'identity.team-member.view',
     ]);
-    expect(keysOf('catalogue-stock')).toEqual(['catalog.own-product.view']);
+    expect(keysOf('catalogue-stock')).toEqual([
+      'catalog.own-product.edit',
+      'catalog.own-product.view',
+    ]);
     expect(keysOf('customer-service')).toEqual(['catalog.own-product.view']);
     for (const seedCode of ['order-fulfilment', 'bookkeeper']) {
       expect([seedCode, keysOf(seedCode)]).toEqual([seedCode, []]);

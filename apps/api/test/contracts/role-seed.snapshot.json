@@ -296,5 +296,20 @@
       "sellers.seller.view",
       "shipping.flat-fee.view"
     ]
+  },
+  {
+    "entry": "seller:store-manager@3",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.own-product.edit",
+      "catalog.own-product.view",
+      "identity.seller-role.view",
+      "identity.team-member.view"
+    ]
+  },
+  {
+    "entry": "seller:catalogue-stock@3",
+    "kind": "default",
+    "permissionKeys": ["catalog.own-product.edit", "catalog.own-product.view"]
   }
 ]
