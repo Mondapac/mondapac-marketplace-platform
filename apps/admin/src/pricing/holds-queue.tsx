@@ -45,7 +45,7 @@ export function HoldsQueue({
             <caption className="sr-only">{t('title')}</caption>
             <thead className={CARD_TABLE.head}>
               <tr>
-                {['price', 'anchor', 'direction', 'submitted', 'ids', 'actions'].map((col) => (
+                {['product', 'price', 'anchor', 'direction', 'submitted', 'actions'].map((col) => (
                   <th key={col} scope="col" className="whitespace-nowrap px-4 py-3 font-medium">
                     {t(`col.${col}`)}
                   </th>
@@ -128,8 +128,29 @@ function HoldLine({
 
   return (
     <tr className={CARD_TABLE.row}>
-      <td className={`${CARD_TABLE.cell} text-base font-semibold tabular-nums text-fg`}>
-        {formatMoney(row.amount)}
+      {/* What is priced and by whom: the card's title. Names are seller-entered text, rendered as
+       * plain text; the ids stay as tooltips, and stand in when a name could not be read. */}
+      <td className={`${CARD_TABLE.cell} min-w-0`}>
+        <p className="font-semibold wrap-anywhere text-fg" title={row.offerId}>
+          {row.productName ?? `${t('name-unavailable')} (${shortId(row.offerId)})`}
+        </p>
+        {row.variantLabel === null ? null : (
+          <p className="text-sm wrap-anywhere text-fg-muted" title={row.variantId}>
+            {row.variantLabel}
+          </p>
+        )}
+        <a
+          className="text-sm wrap-anywhere text-link underline"
+          href={`/sellers/${row.sellerId}`}
+          title={row.sellerId}
+        >
+          {row.storeName ?? `${t('ids.seller')} ${shortId(row.sellerId)}`}
+        </a>
+      </td>
+      <td className={CARD_TABLE.labelled} data-label={t('col.price')}>
+        <span className="text-base font-semibold tabular-nums text-fg">
+          {formatMoney(row.amount)}
+        </span>
       </td>
       <td className={`${CARD_TABLE.labelled} tabular-nums`} data-label={t('col.anchor')}>
         {formatMoney(row.anchorAmount)}
@@ -145,25 +166,6 @@ function HoldLine({
       </td>
       <td className={CARD_TABLE.labelled} data-label={t('col.submitted')}>
         <When iso={row.submittedAt} missing="-" />
-      </td>
-      <td className={`${CARD_TABLE.labelled} text-sm`} data-label={t('col.ids')}>
-        {/* Short references with the full id as their tooltip; the seller opens its page. */}
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2">
-          <dt className="text-fg-muted">{t('ids.seller')}</dt>
-          <dd>
-            <a
-              className="text-link underline"
-              href={`/sellers/${row.sellerId}`}
-              title={row.sellerId}
-            >
-              {shortId(row.sellerId)}
-            </a>
-          </dd>
-          <dt className="text-fg-muted">{t('ids.offer')}</dt>
-          <dd title={row.offerId}>{shortId(row.offerId)}</dd>
-          <dt className="text-fg-muted">{t('ids.variant')}</dt>
-          <dd title={row.variantId}>{shortId(row.variantId)}</dd>
-        </dl>
       </td>
       <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-2`}>
         <div className="flex flex-col gap-3 lg:min-w-56">

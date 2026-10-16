@@ -784,11 +784,11 @@
       "empty": "No held prices are waiting for a decision.",
       "view-only": "You can view this queue but not decide.",
       "col": {
+        "product": "Product",
         "price": "Held price",
         "anchor": "Compared with",
         "direction": "Change",
         "submitted": "Submitted",
-        "ids": "Record",
         "actions": "Decision"
       },
       "direction": {
@@ -796,9 +796,7 @@
         "down": "Decrease"
       },
       "ids": {
-        "seller": "Seller",
-        "offer": "Offer",
-        "variant": "Variant"
+        "seller": "Seller"
       },
       "approve": "Approve",
       "reject": "Reject",
@@ -835,7 +833,8 @@
         "unavailable": "The decision could not be sent. Try again later.",
         "csrf": "Your session could not be checked. Reload the page and try again.",
         "unknown": "Something went wrong. Try again."
-      }
+      },
+      "name-unavailable": "Name unavailable"
     }
   },
   "settings": {
