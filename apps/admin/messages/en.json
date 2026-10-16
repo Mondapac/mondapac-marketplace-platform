@@ -1067,8 +1067,22 @@
     "loading": "Loading orders...",
     "more": "Show more",
     "empty": {
-      "all": "No orders yet. They appear here when a customer starts checkout.",
-      "status": "No orders with this status."
+      "all": {
+        "title": "No orders yet",
+        "body": "Orders appear here when a customer starts checkout."
+      },
+      "pending-payment": {
+        "title": "No orders awaiting payment",
+        "body": "Orders that are waiting for the customer to pay appear here."
+      },
+      "confirmed": {
+        "title": "No paid orders",
+        "body": "Orders appear here once the customer's payment is confirmed."
+      },
+      "cancelled": {
+        "title": "No cancelled orders",
+        "body": "Orders that expired or failed to be paid appear here."
+      }
     },
     "error": {
       "unavailable": "We couldn't load the orders. Try again."

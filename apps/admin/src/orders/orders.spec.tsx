@@ -121,6 +121,15 @@ describe('orders list', () => {
     expect(await screen.findByText(/No orders yet/)).toBeTruthy();
   });
 
+  it('says which status is empty on a filtered tab', async () => {
+    call.mockResolvedValue(page([]));
+    render(wrap(<OrdersList />));
+    expect(await screen.findByText('No orders yet')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
+    expect(await screen.findByText('No cancelled orders')).toBeTruthy();
+    expect(screen.getByText(/expired or failed/)).toBeTruthy();
+  });
+
   it('shows the error with a retry that loads again', async () => {
     call.mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
     render(wrap(<OrdersList />));

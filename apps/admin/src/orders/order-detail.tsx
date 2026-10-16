@@ -42,12 +42,10 @@ export function OrderDetail({ order }: { readonly order: AdminOrder }) {
     ...(order.payBy === null
       ? []
       : [{ label: t('field.pay-by'), value: formatInstant(order.payBy, locale) }]),
-    { label: t('field.customer'), value: <span className="wrap-anywhere">{order.accountId}</span> },
+    { label: t('field.customer'), value: <span className="break-all">{order.accountId}</span> },
     {
       label: t('field.payment-intent'),
-      value: order.paymentIntentId && (
-        <span className="wrap-anywhere">{order.paymentIntentId}</span>
-      ),
+      value: order.paymentIntentId && <span className="break-all">{order.paymentIntentId}</span>,
     },
     { label: t('field.total'), value: formatMoney(order.total, locale) },
   ];
@@ -58,7 +56,7 @@ export function OrderDetail({ order }: { readonly order: AdminOrder }) {
         <h1 className="text-2xl font-semibold break-words">
           {t('reference', { id: shortId(order.orderId) })}
         </h1>
-        <p className="mt-1 text-sm text-fg-muted wrap-anywhere">{order.orderId}</p>
+        <p className="mt-1 text-sm text-fg-muted break-all">{order.orderId}</p>
       </div>
       <Card title={t('detail.summary')}>
         <DataList rows={rows} missing={t('none')} />

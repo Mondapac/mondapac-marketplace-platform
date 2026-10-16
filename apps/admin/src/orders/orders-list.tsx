@@ -86,7 +86,11 @@ export function OrdersList() {
       ) : null}
       {rows.length > 0 ? <OrdersTable rows={rows} /> : null}
       {!loading && failed === null && rows.length === 0 ? (
-        <EmptyState icon="receipt" title={t(filter === 'all' ? 'empty.all' : 'empty.status')} />
+        <EmptyState
+          icon="receipt"
+          title={t(`empty.${filter}.title`)}
+          body={t(`empty.${filter}.body`)}
+        />
       ) : null}
       {loading ? <SkeletonRows label={t('loading')} rows={rows.length > 0 ? 1 : 3} /> : null}
       {failed === 'more' ? <Banner tone="critical">{t('error.unavailable')}</Banner> : null}

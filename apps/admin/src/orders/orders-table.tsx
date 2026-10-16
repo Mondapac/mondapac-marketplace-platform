@@ -45,7 +45,7 @@ export function OrdersTable({ rows }: { readonly rows: readonly AdminOrder[] }) 
               <td className={CARD_TABLE.cell}>
                 <a
                   className="break-words font-medium text-link underline"
-                  href={`/orders/${order.orderId}`}
+                  href={`/orders/${encodeURIComponent(order.orderId)}`}
                   title={order.orderId}
                 >
                   {t('reference', { id: shortId(order.orderId) })}
