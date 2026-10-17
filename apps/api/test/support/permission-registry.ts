@@ -13,6 +13,7 @@ import { PAYMENTS_PERMISSIONS } from '../../src/modules/payments/contracts/permi
 import { PRICING_PERMISSIONS } from '../../src/modules/pricing/contracts/permissions';
 import { SELLERS_PERMISSIONS } from '../../src/modules/sellers/contracts/permissions';
 import { SHIPPING_PERMISSIONS } from '../../src/modules/shipping/contracts/permissions';
+import { TAX_PERMISSIONS } from '../../src/modules/tax/contracts/permissions';
 import { PermissionRegistry } from '../../src/platform/authz/permission-registry';
 
 /**
@@ -33,6 +34,7 @@ export function realPermissionRegistry(): PermissionRegistry {
   registry.register('shipping', SHIPPING_PERMISSIONS);
   registry.register('commission-payouts', COMMISSION_PAYOUTS_PERMISSIONS);
   registry.register('notifications', NOTIFICATIONS_PERMISSIONS);
+  registry.register('tax', TAX_PERMISSIONS);
   registry.seal();
   return registry;
 }

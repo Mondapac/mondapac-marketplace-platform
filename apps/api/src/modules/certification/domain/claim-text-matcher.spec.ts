@@ -99,6 +99,75 @@ describe('claim text matcher', () => {
       expect(run(organic, 'orgаnіc')).toEqual(['organic:token']); // Cyrillic а and і
     });
 
+    it('sees through the look-alikes the interim table missed (issue #133, Hassan PR 132)', () => {
+      for (const text of ['haɩal', 'haɨal', 'HAƗAL', 'haƚal', 'haɫal', 'haɭal']) {
+        expect([text, run(AU, text)]).toEqual([text, ['halal:token']]);
+      }
+      expect(run(AU, 'haᎥal')).toEqual(['halal:token']); // Cherokee i
+      expect(run(AU, 'HAᏞAL')).toEqual(['halal:token']); // Cherokee L
+      expect(run(AU, 'Ꮋalal')).toEqual(['halal:token']); // Cherokee H
+      expect(run(AU, 'ꮋalal')).toEqual(['halal:token']); // Cherokee small h
+      expect(run(AU, 'ha¡al')).toEqual(['halal:compact']); // inverted exclamation, leet map
+    });
+
+    it('applies the full UTS #39 table: mathematical, circled and other rarer letters', () => {
+      expect(run(AU, '𝐡𝐚𝐥𝐚𝐥')).toEqual(['halal:token']);
+      expect(run(AU, '𝖍𝖆𝖑𝖆𝖑')).toEqual(['halal:token']);
+      expect(run(AU, 'ⓗⓐⓛⓐⓛ')).toEqual(['halal:token']);
+      expect(run(AU, 'hɑlɑl')).toEqual(['halal:token']);
+      expect(run(AU, 'ħalal')).toEqual(['halal:token']);
+      expect(run(AU, 'ᴋosher')).toEqual(['kosher:token']);
+      expect(run(ZZ, 'ƶedpure')).toEqual(['zed-pure:token']);
+    });
+
+    it('reads capital look-alikes before lower-casing (Hassan B1 on PR 378)', () => {
+      for (const text of ['ᏦOSHER', 'ⲔOSHER', 'ᏦᎾᏚᎻᎬᏒ']) {
+        expect([text, run(AU, text)]).toEqual([text, ['kosher:token']]);
+      }
+      const msc = [
+        { typeCode: code('msc'), terms: ['msc'] },
+        { typeCode: code('gmo-free'), terms: ['gmo free'] },
+        { typeCode: code('organic'), terms: ['organic'] },
+      ];
+      expect(run(msc, 'ᎷSC')).toEqual(['msc:token']);
+      expect(run(msc, 'ⲘSC')).toEqual(['msc:token']);
+      expect(run(msc, 'GᎷO FREE')).toEqual(['gmo-free:token']);
+      expect(run(msc, 'orga∩ic')).toEqual(['organic:token']);
+      expect(run(AU, 'vega∩')).toEqual(['vegan:token']);
+    });
+
+    it('gives a letter and its other case one skeleton (a case edit changes nothing)', () => {
+      expect(normaliseClaimText('ЗЕД ЧИСТО')).toBe(normaliseClaimText('зед чисто'));
+      expect(normaliseClaimText('ᏦOSHER')).toBe(normaliseClaimText('ꮶosher'));
+    });
+
+    it('reads an Arabic letter between Latin letters as its Latin look-alike (Hassan S1)', () => {
+      expect(run(AU, 'haاal')).toEqual(['halal:token']);
+      expect(run(AU, 'HAﺍAL')).toEqual(['halal:token']);
+      expect(run(AU, 'kهsher')).toEqual(['kosher:token']);
+      expect(run(AU, 'حلال')).toEqual(['halal:token']); // Arabic words keep their own folds
+    });
+
+    it('reads non-ASCII digits as the letters they look like too (Hassan S2)', () => {
+      expect(run(AU, 'k٥sher')).toEqual(['kosher:token']);
+      expect(run(AU, 'k۵sher')).toEqual(['kosher:token']);
+      expect(run(AU, '٧egan')).toEqual(['vegan:token']);
+    });
+
+    it('folds the Greek lunate sigmas to c before NFKC (Hassan S3)', () => {
+      const organic = [{ typeCode: code('organic'), terms: ['organic certified'] }];
+      expect(run(organic, 'ORGANIϹ ϹERTIFIED')).toEqual(['organic:token']);
+      expect(run(organic, 'organiϲ certified')).toEqual(['organic:token']);
+    });
+
+    it('leaves ASCII and the Arabic script to the curated tables', () => {
+      // UTS maps `0` to O, `%` to letters and `m` to `rn`; the token pass keeps them as written.
+      expect(normaliseClaimText('100% ham')).toBe('100% ham');
+      // UTS maps alef to `l` and heh to `o`: Arabic stays Arabic, so no Latin term meets it.
+      expect(normaliseClaimText('حلال الله')).toBe('حلال الله');
+      expect(run(AU, 'Grass-fed beef, made in Melbourne')).toEqual([]);
+    });
+
     it('maps squared letters', () => {
       expect(run(AU, '🅷🅰🅻🅰🅻')).toEqual(['halal:token']);
     });
@@ -134,7 +203,8 @@ describe('claim text matcher', () => {
     });
 
     it('catches Arabic-Indic digits in a mixed text', () => {
-      expect(run(AU, 'ha١al')).toEqual(['halal:compact']);
+      // The visual reading of the digit (١ looks like l) matches in the token pass (Hassan S2).
+      expect(run(AU, 'ha١al')).toEqual(['halal:token']);
     });
 
     it('catches symbol, emoji, enclosing-mark and modifier separators (Hassan)', () => {
@@ -272,8 +342,8 @@ describe('claim text matcher: Arabic-script corpus', () => {
   });
 
   it('keeps the Latin digit path (C2)', () => {
-    expect(run(AU, 'ha١al')).toEqual(['halal:compact']);
-    expect(run(AU, 'ha۱al')).toEqual(['halal:compact']);
+    expect(run(AU, 'ha١al')).toEqual(['halal:token']); // visual reading (Hassan S2)
+    expect(run(AU, 'ha۱al')).toEqual(['halal:token']);
     expect(run(AU, 'ha1al')).toEqual(['halal:compact']);
     expect(run(AU, 'h4l4l')).toEqual(['halal:compact']);
   });

@@ -1,0 +1,25 @@
+// The tax module's tables. Every model is named Tax<Name> and mapped to its table with @@map. The
+// CHECKs, the one-active-strategy index and the grants are hand-written in the migration. A rate
+// is a whole number of basis points (1000 = 10 %).
+
+/// A tax strategy an admin defined for a Market: how the tax of an order line is worked out.
+/// `kind` is `flat-rate` or `by-category`; `config` holds that kind's parameters (checked by the
+/// application before it is stored). At most one strategy per Market is active; with none active
+/// the Market's built-in flat strategy (Market config) applies.
+model TaxStrategy {
+  id        String   @id @db.Uuid
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  name      String
+  kind      String
+  config    Json
+  active    Boolean  @default(false)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  /// The admin account that last changed it (a plain id, no foreign key).
+  updatedBy String   @map("updated_by") @db.Uuid
+
+  @@index([marketId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("tax_strategies")
+  @@schema("tax")
+}

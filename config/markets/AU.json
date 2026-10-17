@@ -17,6 +17,9 @@
     "defaultRateBps": 1500,
     "provisionalTaxRateBps": 1000
   },
+  "tax": {
+    "defaultRateBps": 1000
+  },
   "notifications": {
     "supportEmail": "jnamazi@gmail.com",
     "customerOrderPage": "https://storefront.au.mondapac.test/account/orders"

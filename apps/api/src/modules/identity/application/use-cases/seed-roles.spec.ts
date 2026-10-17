@@ -105,6 +105,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
       ],
     });
     expect(roleOf('seller', 'store-manager').permissionKeys).toEqual([
+      'catalog.own-product.edit',
       'catalog.own-product.view',
       'identity.seller-role.view',
       'identity.team-member.view',
@@ -332,7 +333,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
       role.seedCode === 'store-manager'
         ? {
             ...role,
-            seedVersion: 3,
+            seedVersion: 4,
             permissionKeys: ['identity.team-member.view', 'identity.seller-access.view'].slice(
               0,
               1,
@@ -348,18 +349,22 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('seller', 'store-manager')).toMatchObject({
       id: before.id,
-      seedVersion: 3,
+      seedVersion: 4,
       version: before.version + 1,
       permissionKeys: ['identity.team-member.view'],
     });
     expect(fakes.audits).toEqual([
       {
         ...RoleSeedApplied.entry(before.id, {
-          before: { seedVersion: 2 },
+          before: { seedVersion: 3 },
           after: {
-            seedVersion: 3,
+            seedVersion: 4,
             addedKeys: [],
-            removedKeys: ['catalog.own-product.view', 'identity.seller-role.view'],
+            removedKeys: [
+              'catalog.own-product.edit',
+              'catalog.own-product.view',
+              'identity.seller-role.view',
+            ],
           },
         }),
         actor: 'system',
@@ -368,8 +373,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
     expect(logged('identity.seed-roles.upgraded')?.[0]).toMatchObject({
       roleId: before.id,
-      fromSeedVersion: 2,
-      seedVersion: 3,
+      fromSeedVersion: 3,
+      seedVersion: 4,
     });
 
     // Applied once: the next run finds the role current and writes nothing.
