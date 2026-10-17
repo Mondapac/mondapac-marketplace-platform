@@ -15,6 +15,7 @@ import { InventoryModule } from '../inventory';
 import { INVENTORY_ORDERING_PORT } from '../inventory/contracts/ordering-port';
 import { SellersModule } from '../sellers';
 import { SHIPPING_FACADE, ShippingModule } from '../shipping';
+import { TAX_FACADE, TaxModule } from '../tax';
 import type { OrderingDependencies } from './application/checkout-flow';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { ORDER_LABELS } from './application/ports/order-labels';
@@ -56,6 +57,7 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['inventory', INVENTORY_ORDERING_PORT],
   ['shipping', SHIPPING_FACADE],
   ['commission', COMMISSION_PAYOUTS_FACADE],
+  ['tax', TAX_FACADE],
   ['outbox', OUTBOX_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -85,7 +87,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * seller's flat delivery fee (from `shipping`) is part of the total, and the seller records the
  * shipment and the delivery of a paid order; a worker job tells inventory about each shipment.
  * Package 5: the commission rate (from `commission-payouts`) is frozen on each order line at
- * checkout, and a worker job writes each paid seller order into the seller ledger.
+ * checkout, and a worker job writes each paid seller order into the seller ledger. Tax: the tax
+ * of each line (from `tax`, ADR-0039) is frozen on it at checkout, added to the charge when the
+ * price excludes it, and shown on the admin order page.
  */
 @Module({
   imports: [
@@ -96,6 +100,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     SellersModule,
     ShippingModule,
     CommissionPayoutsModule,
+    TaxModule,
   ],
   controllers: [OrdersController, AdminOrdersController, SellerOrdersController],
   providers: [

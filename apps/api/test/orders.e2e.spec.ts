@@ -14,6 +14,7 @@ import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/orde
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
 import { COMMISSION_PAYOUTS_FACADE } from '../src/modules/commission-payouts';
 import { SHIPPING_FACADE } from '../src/modules/shipping';
+import { TAX_FACADE } from '../src/modules/tax';
 import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
@@ -26,6 +27,7 @@ import {
   FakeGateway,
   FakeInventory,
   FakeCommission,
+  FakeTax,
   FakeShipping,
   MemoryOrders,
 } from './support/ordering-fakes';
@@ -138,6 +140,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(cart)
           .overrideProvider(SHIPPING_FACADE)
           .useValue(shipping)
+          .overrideProvider(TAX_FACADE)
+          .useValue(new FakeTax())
           .overrideProvider(COMMISSION_PAYOUTS_FACADE)
           .useValue(new FakeCommission()),
     }));
@@ -449,6 +453,12 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(list.headers['cache-control']).toBe('no-store');
       expect(body(list).orders).toHaveLength(1);
       expect(one.body).toMatchObject({ orderId, accountId: CUSTOMER, paymentIntentId: null });
+      // The tax frozen at checkout, as minor-unit strings, and the strategy (the built-in one).
+      expect(one.body).toMatchObject({
+        tax: { amount: '273', currency },
+        taxStrategyId: null,
+        sellerOrders: [{ tax: { amount: '273', currency }, lines: [{ taxRateBps: 1000 }] }],
+      });
       expect(noKey.status).toBe(403);
       expect(customerTries.status).toBeGreaterThanOrEqual(401);
       expect(customerTries.status).toBeLessThanOrEqual(403);

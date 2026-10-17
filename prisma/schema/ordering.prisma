@@ -18,7 +18,7 @@ model OrderingOrder {
   /// none, authorised, captured or voided (CHECK). Moves only forward.
   paymentState          String                @map("payment_state")
   currency              String                @db.VarChar(3)
-  /// Sum of the seller orders (GST-inclusive prices as pricing gives them).
+  /// Sum of the seller orders (prices as pricing gives them, plus any tax a price excludes).
   totalAmount           BigInt                @map("total_amount")
   /// The inventory reservation holding the stock while the order is pending.
   reservationId         String                @map("reservation_id") @db.Uuid
@@ -33,6 +33,9 @@ model OrderingOrder {
   cancelledAt           DateTime?             @map("cancelled_at") @db.Timestamptz(6)
   /// Optimistic version of the aggregate; 1 at insert, +1 per change.
   version               Int
+  /// The tax strategy the order's tax was worked out under (a plain id, no foreign key); null for
+  /// the Market's built-in strategy and on orders placed before tax was recorded (ADR-0039).
+  taxStrategyId         String?               @map("tax_strategy_id") @db.Uuid
   sellerOrders          OrderingSellerOrder[]
   lines                 OrderingOrderLine[]
 
@@ -102,6 +105,10 @@ model OrderingOrderLine {
   /// The commission rate in basis points, frozen when the order was placed (COM-04); null only
   /// on lines placed before the rate was frozen.
   commissionRateBps Int?                @map("commission_rate_bps")
+  /// The tax rate in basis points and the tax of the line in minor units, frozen when the order
+  /// was placed (ADR-0039); both null only on lines placed before tax was recorded (CHECK).
+  taxRateBps        Int?                @map("tax_rate_bps")
+  taxAmount         BigInt?             @map("tax_amount")
   order             OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   sellerOrder       OrderingSellerOrder @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 

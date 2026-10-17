@@ -37,6 +37,18 @@ export class OrderLineBody {
   @ApiProperty({ type: MoneyView }) lineAmount!: MoneyView;
   @ApiProperty({ description: 'True when the unit price already includes GST.' })
   taxInclusive!: boolean;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'The tax rate in basis points frozen at placement; null on older orders.',
+  })
+  taxRateBps!: number | null;
+  @ApiProperty({
+    type: MoneyView,
+    nullable: true,
+    description: 'The tax of the line, inside lineAmount when taxInclusive; null on older orders.',
+  })
+  tax!: MoneyView | null;
 }
 
 export class SellerOrderBody {
@@ -44,7 +56,18 @@ export class SellerOrderBody {
   @ApiProperty({ type: MoneyView }) subtotal!: MoneyView;
   @ApiProperty({ type: MoneyView, description: "The seller's flat delivery fee at placement." })
   shipping!: MoneyView;
-  @ApiProperty({ type: MoneyView, description: 'Goods plus delivery.' }) total!: MoneyView;
+  @ApiProperty({
+    type: MoneyView,
+    nullable: true,
+    description:
+      "The tax of the seller's lines; null when any line is from before tax was recorded.",
+  })
+  tax!: MoneyView | null;
+  @ApiProperty({
+    type: MoneyView,
+    description: 'Goods plus delivery, plus any tax a price excludes.',
+  })
+  total!: MoneyView;
   @ApiProperty({ enum: ['to-ship', 'shipped', 'delivered'] }) fulfilment!: string;
   @ApiProperty({ type: String, nullable: true, description: 'Set once shipped.' })
   carrier!: string | null;
@@ -64,6 +87,12 @@ export class OrderBody {
   cancelReason!: string | null;
   @ApiProperty({ enum: ['none', 'authorised', 'captured', 'voided'] }) paymentState!: string;
   @ApiProperty({ type: MoneyView }) total!: MoneyView;
+  @ApiProperty({
+    type: MoneyView,
+    nullable: true,
+    description: 'The tax of the order; null when any line is from before tax was recorded.',
+  })
+  tax!: MoneyView | null;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ format: 'date-time', nullable: true }) confirmedAt!: string | null;
   @ApiProperty({ format: 'date-time', nullable: true }) cancelledAt!: string | null;
@@ -112,6 +141,13 @@ export class AdminOrderBody extends OrderBody {
   })
   customer!: OrderCustomerBody | null;
   @ApiProperty({ type: String, nullable: true }) paymentIntentId!: string | null;
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: "The tax strategy in force at placement; null for the Market's built-in one.",
+  })
+  taxStrategyId!: string | null;
   @ApiProperty({ type: [AdminSellerOrderBody] }) declare sellerOrders: AdminSellerOrderBody[];
 }
 
@@ -146,6 +182,8 @@ const lineBody = (line: SellerOrderLike['lines'][number]): OrderLineBody => ({
   unitPrice: moneyBody(line.unitPrice),
   lineAmount: moneyBody(line.lineAmount),
   taxInclusive: line.taxInclusive,
+  taxRateBps: line.taxRateBps,
+  tax: line.tax === null ? null : moneyBody(line.tax),
 });
 
 const labelledLineBody = (
@@ -160,6 +198,7 @@ const sellerOrderBody = (seller: SellerOrderLike): SellerOrderBody => ({
   sellerId: seller.sellerId,
   subtotal: moneyBody(seller.subtotal),
   shipping: moneyBody(seller.shipping),
+  tax: seller.tax === null ? null : moneyBody(seller.tax),
   total: moneyBody(seller.total),
   fulfilment: seller.fulfilment,
   carrier: seller.carrier,
@@ -224,6 +263,7 @@ export const orderBody = (order: OrderView): OrderBody => ({
   cancelReason: order.cancelReason,
   paymentState: order.paymentState,
   total: moneyBody(order.total),
+  tax: order.tax === null ? null : moneyBody(order.tax),
   createdAt: order.createdAt.toString(),
   confirmedAt: order.confirmedAt?.toString() ?? null,
   cancelledAt: order.cancelledAt?.toString() ?? null,
@@ -239,6 +279,7 @@ export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody =>
       ? null
       : { displayName: order.customer.displayName, email: order.customer.email },
   paymentIntentId: order.paymentIntentId,
+  taxStrategyId: order.taxStrategyId,
   sellerOrders: order.sellerOrders.map((seller) => ({
     ...sellerOrderBody(seller),
     storeName: seller.storeName,

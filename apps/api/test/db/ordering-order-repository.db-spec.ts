@@ -70,6 +70,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       confirmedAt: null,
       cancelledAt: null,
       version: 1,
+      taxStrategyId: ids.next<'TaxStrategy'>(),
       sellerOrders: [
         {
           id: sellerOrderId,
@@ -98,6 +99,8 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           taxInclusive: true,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
+          taxRateBps: 1000,
+          taxAmount: 227n,
         },
       ],
     };

@@ -10,6 +10,7 @@ import type {
 import type { CartCheckoutFacade } from '../../cart';
 import type { CommissionPayoutsFacade } from '../../commission-payouts';
 import type { ShippingFacade } from '../../shipping';
+import type { TaxFacade } from '../../tax';
 import type {
   InsufficientReason,
   InventoryOrderingPort,
@@ -39,6 +40,7 @@ export interface OrderingDependencies {
   readonly inventory: InventoryOrderingPort;
   readonly shipping: ShippingFacade;
   readonly commission: CommissionPayoutsFacade;
+  readonly tax: TaxFacade;
   readonly outbox: OutboxWriter;
   readonly ids: IdGenerator;
   readonly clock: Clock;
@@ -158,6 +160,45 @@ export async function startCheckout(
     );
   }
 
+  // The tax of each line is frozen on it now (ADR-0039 decision 4); no tax answer, no order.
+  const planLines = plan.sellers.flatMap((seller) => seller.lines);
+  const taxed = await deps.tax.calculateTax(
+    context,
+    planLines.map((line) => ({
+      amount: line.unitPrice.amount * BigInt(line.quantity),
+      taxInclusive: line.taxInclusive,
+      // The tax category of a line is not known to checkout yet: the strategy's default applies.
+      categoryCode: null,
+    })),
+  );
+  if (!taxed.ok || taxed.value.lines.length !== planLines.length) {
+    return err(
+      !taxed.ok && taxed.error.code === 'access.denied'
+        ? { code: 'access.denied' }
+        : { code: 'ordering.check-unavailable' },
+    );
+  }
+  const lineTax = new Map(
+    planLines.map((line, index) => [
+      `${line.offerId}/${line.variantId}`,
+      taxed.value.lines[index]!,
+    ]),
+  );
+  // Tax on a price that excludes it is charged on top of the goods, per seller.
+  const addedTax = new Map(
+    plan.sellers.map((seller) => [
+      seller.sellerId,
+      seller.lines.reduce(
+        (sum, line) =>
+          line.taxInclusive ? sum : sum + lineTax.get(`${line.offerId}/${line.variantId}`)!.tax,
+        0n,
+      ),
+    ]),
+  );
+  const sellerTotal = (seller: (typeof plan.sellers)[number]): bigint =>
+    seller.subtotal + seller.shipping + addedTax.get(seller.sellerId)!;
+  const total = plan.sellers.reduce((sum, seller) => sum + sellerTotal(seller), 0n);
+
   const orderId = deps.ids.next<'Order'>();
   const urls = deps.policy.returnUrls(context.market, orderId);
   if (urls === null) return err({ code: 'ordering.payment-unavailable' });
@@ -204,6 +245,7 @@ export async function startCheckout(
     const rate = rates.value.get(seller.sellerId);
     for (const line of seller.lines) {
       const reservationLineId = reservationLine.get(`${line.offerId}/${line.variantId}`);
+      const tax = lineTax.get(`${line.offerId}/${line.variantId}`)!;
       if (reservationLineId === undefined || rate === undefined) {
         await deps.inventory.releaseOwnReservation(context, {
           reservationId: reservation.reservationId,
@@ -221,6 +263,8 @@ export async function startCheckout(
         taxInclusive: line.taxInclusive,
         reservationLineId,
         commissionRateBps: rate.rateBps,
+        taxRateBps: tax.rateBps,
+        taxAmount: tax.tax,
       });
     }
   }
@@ -231,7 +275,7 @@ export async function startCheckout(
     status: 'pending-payment',
     cancelReason: null,
     paymentState: 'none',
-    total: money(plan.total, plan.currency),
+    total: money(total, plan.currency),
     reservationId: reservation.reservationId,
     stripeIdempotencyKey: `checkout-${orderId}`,
     stripeSessionId: null,
@@ -241,12 +285,13 @@ export async function startCheckout(
     confirmedAt: null,
     cancelledAt: null,
     version: 1,
+    taxStrategyId: taxed.value.strategyId,
     sellerOrders: sellerOrders.map(({ id, seller }) => ({
       id,
       sellerId: seller.sellerId,
       subtotal: seller.subtotal,
       shipping: seller.shipping,
-      total: seller.subtotal + seller.shipping,
+      total: sellerTotal(seller),
       fulfilment: 'to-ship' as const,
       carrier: null,
       trackingRef: null,
@@ -279,6 +324,9 @@ export async function startCheckout(
       // A free delivery (an explicit zero fee) is no line: Stripe takes no zero-priced item.
       ...(seller.shipping > 0n
         ? [{ label: `Delivery, package ${index + 1}`, amount: seller.shipping }]
+        : []),
+      ...(addedTax.get(seller.sellerId)! > 0n
+        ? [{ label: `Tax, package ${index + 1}`, amount: addedTax.get(seller.sellerId)! }]
         : []),
     ]),
     successUrl: urls.success,
