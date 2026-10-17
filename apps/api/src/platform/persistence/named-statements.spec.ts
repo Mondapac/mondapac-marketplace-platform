@@ -204,3 +204,30 @@ describe('lockTimeoutStatement', () => {
     },
   );
 });
+
+describe('certification.share-pending-submission', () => {
+  const market = testMarketContext('AU', 'default');
+  const other = testMarketContext('ZZ', 'default');
+
+  it('shares the root of a pending submission in the unit Market only', async () => {
+    const { runner, seen } = runnerAnswering([{ id: ID(9) }]);
+    const rows = await runNamedStatement(runner, market, 'certification.share-pending-submission', {
+      submissionId: ID(1),
+    });
+    expect(rows).toEqual([{ certificateId: ID(9) }]);
+    expect(seen[0]!.sql).toContain('FOR SHARE OF c');
+    expect(seen[0]!.values).toEqual([market.marketId, market.tenantId, ID(1)]);
+    const request = { operation: '$queryRaw', args: seen[0] };
+    expect(isApprovedStatement(request, market)).toBe(true);
+    expect(isApprovedStatement(request, other)).toBe(false);
+  });
+
+  it('refuses a malformed submission id', async () => {
+    const { runner } = runnerAnswering([]);
+    await expect(
+      runNamedStatement(runner, market, 'certification.share-pending-submission', {
+        submissionId: 'x; DROP TABLE',
+      }),
+    ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+  });
+});

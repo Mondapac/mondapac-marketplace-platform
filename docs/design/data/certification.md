@@ -697,6 +697,9 @@ rounded up to a power of two. The plaintext limit itself is checked in the domai
 | `issuers.expert_reference_ciphertext` | 500 | 2,707 | 4096 | 1 |
 | `change_reason_ciphertext` (type revisions, policy revisions, reactivation proposals; CE8) | 500 | 2,707 | 4096 | 2, 7 |
 | `relaxation_proposals.proposed_expert_reference_ciphertext` | 500 | 2,707 | 4096 | 2 |
+| `submission_scope_readings.location_ciphertext` | 200 | 1,107 | 2048 | 4 |
+| `submission_scope_readings.scope_ciphertext` | 1,000 | 5,374 | 8192 | 4 |
+| `seller_issuer_confirmations.reference_ciphertext` | 500 | 2,707 | 4096 | 4 |
 
 Draft ciphertext rows (PR 382): `seller_certifications.draft_certificate_number_ciphertext` (64
 characters, bound 512) and `draft_self_declaration_note_ciphertext` (1,000, bound 8192) carry the

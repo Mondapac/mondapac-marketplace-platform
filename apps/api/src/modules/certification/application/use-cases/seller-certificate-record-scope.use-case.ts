@@ -118,7 +118,7 @@ export class SellerCertificateRecordScope extends UseCase<
           if (!snapshot.pending || snapshot.submission.id !== submissionId) {
             return err({ code: 'review.not-current-submission' } as const);
           }
-          await deps.reviews.recordScope(market, {
+          const written = await deps.reviews.recordScope(market, {
             id,
             submissionId,
             locationCiphertext,
@@ -126,6 +126,7 @@ export class SellerCertificateRecordScope extends UseCase<
             accountId: reviewer.accountId,
             now,
           });
+          if (!written) return err({ code: 'review.not-current-submission' } as const);
           await deps.audit.record(
             context,
             ReviewScopeRecorded.entry(certificateId, { after: { submissionId } }),

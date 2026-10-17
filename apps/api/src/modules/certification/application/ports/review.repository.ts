@@ -154,7 +154,6 @@ export interface ConfirmationWrite {
 /** Everything a decision writes in its one unit (design 3.2 rows 3 to 5; data design 3.6, 3.13). */
 export interface DecisionWrite {
   readonly certificateId: Id<'SellerCertification'>;
-  readonly expectedVersion: number;
   readonly submissionId: Id<'Submission'>;
   readonly outcome: DecisionOutcome;
   readonly accountId: Id<'Account'>;
@@ -200,13 +199,30 @@ export interface CertificateReviewRepository {
     submissionId: Id<'Submission'>,
     sellerId: Id<'Seller'>,
   ): Promise<readonly DuplicateHint[]>;
-  recordCheck(market: MarketContext, write: CheckWrite): Promise<void>;
-  recordScope(market: MarketContext, write: ScopeWrite): Promise<void>;
+  /**
+   * Both take `FOR SHARE` on the root while it still points at the submission as pending, so they
+   * serialise against a decision. They answer `false` (nothing written) when it no longer does.
+   */
+  recordCheck(market: MarketContext, write: CheckWrite): Promise<boolean>;
+  recordScope(market: MarketContext, write: ScopeWrite): Promise<boolean>;
   /** Moves the root's version (the confirmation is a state change with an event). */
   recordConfirmation(
     market: MarketContext,
     write: ConfirmationWrite,
   ): Promise<'recorded' | 'exists'>;
+  /**
+   * The first statement of a decision unit: moves the root's version under the version the
+   * reviewer saw (a moved version throws `StaleAggregateError`) and so takes the row lock. Every
+   * later read of the unit then sees every committed check, scope and confirmation, and a
+   * concurrent `recordCheck`/`recordScope` (which share-lock the root) waits or has finished.
+   */
+  lockForDecision(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+    expectedVersion: number,
+    now: Temporal.Instant,
+  ): Promise<void>;
+  /** Writes the decision rows; call `lockForDecision` first in the same unit. */
   decide(market: MarketContext, write: DecisionWrite): Promise<void>;
   /** Per requested seller (at most 100), the types with a valid and with a waiting certificate. */
   overview(

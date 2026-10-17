@@ -33,8 +33,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // `identity.seller-access.approve` holds it too, because the gate has no "any of" (sellers
     // design 6.2, Hassan M4); the seed contract test checks the pairing. Version 5 adds
     // `certification.seller-certificate.view` and `.review` (certification slice 7: the review
-    // queue, checks, request changes and decline). The protected `.approve` is not listed: a
-    // default role never lists a protected key (R11), the Platform Administrator grants it.
+    // queue, the review page, checks, scope and issuer confirmation). All three decisions (approve,
+    // request changes, decline) need the protected `.approve`, which is not listed: a default role
+    // never lists a protected key (R11), the Platform Administrator grants it.
     seedVersion: 5,
     nameKey: 'identity.role.onboarding-compliance',
     permissionKeys: [
@@ -135,9 +136,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
   },
   {
     // Reviews seller certificates (certification slice 7). Reads the seller's store name and
-    // business details for the holder-name check; decides "request changes" and "decline".
-    // Approval is the protected `certification.seller-certificate.approve`, granted by the
-    // Platform Administrator in a custom role.
+    // business details for the holder-name check and records checks, scope and confirmation. It
+    // cannot decide: approve, request changes and decline all need the protected
+    // `certification.seller-certificate.approve`, which the Platform Administrator grants in a
+    // custom role (do not add it here).
     scope: 'platform',
     kind: 'default',
     seedCode: 'certification-reviewer',

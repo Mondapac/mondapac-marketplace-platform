@@ -66,6 +66,7 @@ export type DecisionFailure =
     }
   | { readonly code: 'review.scope-missing' }
   | { readonly code: 'certificate.incomplete' }
+  | { readonly code: 'certificate.revoked' }
   | { readonly code: 'issuer.not-active' }
   | { readonly code: 'certificate.expired' }
   | { readonly code: 'seller.zone-missing' }
@@ -192,8 +193,11 @@ export async function decide(
   const historyId = deps.ids.next<'CertificationHistory'>();
   return deps.unitOfWork
     .run<DecisionOutput, DecisionFailure>(market, async () => {
+      // Lock first, then read: the version guard takes the row lock, so every check, scope and
+      // confirmation committed before it is seen below and a concurrent one waits (review R3).
+      await deps.reviews.lockForDecision(market, certificateId, version, now);
       const snapshot = await deps.reviews.snapshot(market, certificateId);
-      const again = currentOrRefusal(snapshot, submissionId, version);
+      const again = currentOrRefusal(snapshot, submissionId, version + 1);
       if (again !== null) return err(again);
       const { certificate, submission } = snapshot!;
       const current = submission!;
@@ -201,6 +205,8 @@ export async function decide(
       let approvedZone: string | null = null;
       let expiryBoundaryAt = null;
       if (outcome === 'approved') {
+        // Fail closed: a revoked record is never approved back (design 3.2 row 3).
+        if (certificate.status === 'revoked') return err({ code: 'certificate.revoked' } as const);
         const boundary = approvalBoundary(current.expiryDate, zones!);
         const blocked = approvalRefusal({
           mode: current.verificationMode,
@@ -233,6 +239,9 @@ export async function decide(
         if (current.requiresDocument && current.documents.length < 1) {
           return err({ code: 'certificate.incomplete' } as const);
         }
+        if (current.requiresExpiry && current.expiryDate === null) {
+          return err({ code: 'certificate.incomplete' } as const);
+        }
         approvedZone = boundary.zone;
         expiryBoundaryAt = boundary.at;
       }
@@ -244,7 +253,6 @@ export async function decide(
       );
       await deps.reviews.decide(market, {
         certificateId,
-        expectedVersion: version,
         submissionId,
         outcome,
         accountId: reviewer.accountId,

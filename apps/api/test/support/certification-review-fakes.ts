@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { AuditEntry, CallContext, Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type {
   CertificateReviewRepository,
@@ -19,6 +20,8 @@ import type {
 import type { StoredCertificate } from '../../src/modules/certification/application/ports/seller-certificate.repository';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
+
+const lockContext = new AsyncLocalStorage<number>();
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
@@ -71,7 +74,10 @@ export class MemoryReviews implements CertificateReviewRepository {
     const pending = this.certificate.pendingSubmissionId === this.submission.id;
     const approved = this.certificate.approvedSubmissionId === this.submission.id;
     return Promise.resolve({
-      certificate: { ...this.certificate },
+      certificate: {
+        ...this.certificate,
+        version: this.certificate.version + (lockContext.getStore() === undefined ? 0 : 1),
+      },
       submission: pending || approved ? { ...this.submission } : null,
       pending,
       history: [...this.history],
@@ -82,7 +88,8 @@ export class MemoryReviews implements CertificateReviewRepository {
     return Promise.resolve(this.own(market) ? this.hints : []);
   }
 
-  recordCheck(_market: MarketContext, write: CheckWrite): Promise<void> {
+  recordCheck(_market: MarketContext, write: CheckWrite): Promise<boolean> {
+    if (this.certificate.pendingSubmissionId !== write.submissionId) return Promise.resolve(false);
     const rows = this.submission.checks.filter((c) => c.code !== write.code);
     this.submission.checks = [
       ...rows,
@@ -94,16 +101,17 @@ export class MemoryReviews implements CertificateReviewRepository {
         recordedByAccountId: write.accountId,
       },
     ];
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
 
-  recordScope(_market: MarketContext, write: ScopeWrite): Promise<void> {
+  recordScope(_market: MarketContext, write: ScopeWrite): Promise<boolean> {
+    if (this.certificate.pendingSubmissionId !== write.submissionId) return Promise.resolve(false);
     this.submission.scope = {
       locationCiphertext: write.locationCiphertext,
       scopeCiphertext: write.scopeCiphertext,
       recordedAt: write.now,
     };
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
 
   recordConfirmation(
@@ -122,8 +130,26 @@ export class MemoryReviews implements CertificateReviewRepository {
     return Promise.resolve('recorded');
   }
 
+  /**
+   * The lock answers a lost race like the database; the version itself moves in `decide`, so a
+   * refusal after the lock (which rolls the unit back in the database) leaves nothing behind.
+   */
+  lockForDecision(
+    _market: MarketContext,
+    _id: Id<'SellerCertification'>,
+    expectedVersion: number,
+  ): Promise<void> {
+    if (expectedVersion !== this.certificate.version) {
+      throw new StaleAggregateError('seller-certification', this.certificate.id);
+    }
+    // The lock belongs to the async chain of the unit that took it; a refusal drops it with the
+    // chain, as a rollback drops the database's version move.
+    lockContext.enterWith(expectedVersion);
+    return Promise.resolve();
+  }
+
   decide(_market: MarketContext, write: DecisionWrite): Promise<void> {
-    this.bump(write.expectedVersion);
+    this.bump(lockContext.getStore() ?? this.certificate.version);
     this.submission.decision = {
       outcome: write.outcome,
       reasonCode: write.reasonCode,

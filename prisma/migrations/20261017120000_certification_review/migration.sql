@@ -161,7 +161,7 @@ ALTER TABLE "certification"."document_index"
 
 -- Hand-written partial index (invisible to Prisma; data design 7.1 A5): the reviewer queue holds
 -- only the certificates that have a pending submission.
-CREATE INDEX "seller_certifications_pending_queue_idx"
+CREATE INDEX "seller_certifications_market_id_pending_idx"
   ON "certification"."seller_certifications" ("market_id", "status_changed_at", "id")
   WHERE "pending_submission_id" IS NOT NULL;
 

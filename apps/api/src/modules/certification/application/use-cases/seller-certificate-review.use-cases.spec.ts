@@ -204,6 +204,7 @@ describe.each(['AU', 'ZZ'] as const)('admin review of a seller certificate, Mark
     const reasons = policies.policyFor(market).reasons;
     return {
       ...useCases,
+      deps,
       actor,
       reviews,
       outbox,
@@ -325,7 +326,50 @@ describe.each(['AU', 'ZZ'] as const)('admin review of a seller certificate, Mark
     });
   });
 
+  describe('guards that fail closed', () => {
+    it('never approves a revoked record', async () => {
+      const r = rig();
+      const context = r.actor();
+      await r.recordAll(context);
+      await r.recordScope(context);
+      r.reviews.certificate.status = 'revoked';
+      const result = await r.approve.execute(context, {
+        certificateId: r.certificateId,
+        submissionId: r.submissionId,
+        version: 3,
+      });
+      expect(result).toEqual({ ok: false, error: { code: 'certificate.revoked' } });
+      expect(r.outbox.events).toEqual([]);
+    });
+
+    it('refuses an approval of a type that needs an expiry when the submission has none', async () => {
+      const r = rig();
+      const context = r.actor();
+      await r.recordAll(context);
+      await r.recordScope(context);
+      r.reviews.submission.expiryDate = null;
+      const result = await r.approve.execute(context, {
+        certificateId: r.certificateId,
+        submissionId: r.submissionId,
+        version: 3,
+      });
+      expect(result).toEqual({ ok: false, error: { code: 'certificate.incomplete' } });
+    });
+  });
+
   describe('files', () => {
+    it('answers document.not-found for the file of another certificate', async () => {
+      const r = rig({ downloads: true });
+      // An id that is well formed and exists elsewhere, but is not a file of this submission.
+      const stranger = { documentId: r.ids.next<'UploadedDocument'>() };
+      expect(
+        await r.document.execute(r.actor(), {
+          certificateId: r.certificateId,
+          documentId: stranger.documentId,
+        }),
+      ).toEqual({ ok: false, error: { code: 'document.not-found' } });
+    });
+
     it('is off by default and audited when on', async () => {
       const off = rig();
       expect(

@@ -315,7 +315,8 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
     return hints;
   }
 
-  async recordCheck(market: MarketContext, write: CheckWrite): Promise<void> {
+  async recordCheck(market: MarketContext, write: CheckWrite): Promise<boolean> {
+    if (!(await this.#sharePending(market, write.submissionId))) return false;
     await this.prisma.tx(market).certificationReviewCheck.create({
       data: {
         id: write.id,
@@ -329,9 +330,11 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
       },
       select: { id: true },
     });
+    return true;
   }
 
-  async recordScope(market: MarketContext, write: ScopeWrite): Promise<void> {
+  async recordScope(market: MarketContext, write: ScopeWrite): Promise<boolean> {
+    if (!(await this.#sharePending(market, write.submissionId))) return false;
     await this.prisma.tx(market).certificationScopeReading.create({
       data: {
         id: write.id,
@@ -345,6 +348,7 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
       },
       select: { id: true },
     });
+    return true;
   }
 
   async recordConfirmation(
@@ -374,10 +378,18 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
     return count === 1 ? 'recorded' : 'exists';
   }
 
+  async lockForDecision(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+    expectedVersion: number,
+    now: Temporal.Instant,
+  ): Promise<void> {
+    await this.#moveVersion(market, certificateId, expectedVersion, now);
+  }
+
   async decide(market: MarketContext, write: DecisionWrite): Promise<void> {
     const tx = this.prisma.tx(market);
     const base = { marketId: market.marketId, tenantId: market.tenantId };
-    await this.#moveVersion(market, write.certificateId, write.expectedVersion, write.decidedAt);
     await tx.certificationSellerSubmissionDecision.create({
       data: {
         ...base,
@@ -506,6 +518,17 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
   }
 
   /** Moves the root's version by one when it is still `expected`; the row lock follows. */
+  /**
+   * `FOR SHARE` on the root while it still points at the submission as pending: the platform's
+   * named statement `certification.share-pending-submission` (no raw SQL in the module).
+   */
+  async #sharePending(market: MarketContext, submissionId: Id<'Submission'>): Promise<boolean> {
+    const rows = await this.prisma.namedQuery(market, 'certification.share-pending-submission', {
+      submissionId,
+    });
+    return rows.length > 0;
+  }
+
   async #moveVersion(
     market: MarketContext,
     id: Id<'SellerCertification'>,

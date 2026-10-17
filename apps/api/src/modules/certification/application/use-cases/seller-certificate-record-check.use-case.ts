@@ -100,7 +100,7 @@ export class SellerCertificateRecordCheck extends UseCase<
           if (!known.some((check) => check.code === checkCode)) {
             return invalid('checkCode', 'unknown');
           }
-          await deps.reviews.recordCheck(market, {
+          const written = await deps.reviews.recordCheck(market, {
             id: checkId,
             submissionId,
             code: checkCode,
@@ -108,6 +108,7 @@ export class SellerCertificateRecordCheck extends UseCase<
             accountId: reviewer.accountId,
             now,
           });
+          if (!written) return err({ code: 'review.not-current-submission' } as const);
           await deps.audit.record(
             context,
             ReviewCheckRecorded.entry(certificateId, {

@@ -238,6 +238,23 @@ describe.each(TEST_MARKETS)('certification admin review in market %s (database)'
   }
 
   const account = () => uuid7() as Id<'Account'>;
+  /** The decision as the use case runs it: lock under the version first, then write. */
+  const decideAt = async (
+    write: Parameters<PrismaCertificateReviewRepository['decide']>[1] & { expectedVersion: number },
+  ) => {
+    const { expectedVersion, ...rest } = write;
+    await reviews.lockForDecision(market, write.certificateId, expectedVersion, write.decidedAt);
+    await reviews.decide(market, rest);
+  };
+  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const checkWrite = (submissionId: Id<'Submission'>, result: 'done' | 'problem') => ({
+    id: uuid7() as Id<'ReviewCheck'>,
+    submissionId,
+    code: 'holder-name',
+    result,
+    accountId: account(),
+    now: T1,
+  });
 
   describe('the repository over the real tables', () => {
     it('lists the waiting submission and reads the snapshot with its issuer and files', async () => {
@@ -346,8 +363,8 @@ describe.each(TEST_MARKETS)('certification admin review in market %s (database)'
     it('approves: decision, history, root pointers and version in one unit; then it is not pending', async () => {
       const f = await fixture();
       const decision = (expectedVersion: number) => ({
-        certificateId: f.id,
         expectedVersion,
+        certificateId: f.id,
         submissionId: f.submissionId,
         outcome: 'approved' as const,
         accountId: account(),
@@ -360,10 +377,8 @@ describe.each(TEST_MARKETS)('certification admin review in market %s (database)'
         toStatus: 'approved' as const,
         historyId: uuid7() as Id<'CertificationHistory'>,
       });
-      await expect(inUnit(() => reviews.decide(market, decision(2)))).rejects.toBeInstanceOf(
-        StaleAggregateError,
-      );
-      await inUnit(() => reviews.decide(market, decision(3)));
+      await expect(inUnit(() => decideAt(decision(2)))).rejects.toBeInstanceOf(StaleAggregateError);
+      await inUnit(() => decideAt(decision(3)));
 
       const snapshot = await inUnit(() => reviews.snapshot(market, f.id));
       expect(snapshot).toMatchObject({
@@ -389,13 +404,13 @@ describe.each(TEST_MARKETS)('certification admin review in market %s (database)'
       const notice = await inUnit(() => reviews.decisionNotice(market, f.submissionId));
       expect(notice).toMatchObject({ outcome: 'approved', sellerId: f.seller, reasonCode: null });
       // The same decision cannot be written twice.
-      await expect(inUnit(() => reviews.decide(market, decision(4)))).rejects.toThrow();
+      await expect(inUnit(() => decideAt(decision(4)))).rejects.toThrow();
     });
 
     it('records a refusal with its reason and moves the record to changes-needed', async () => {
       const f = await fixture();
       await inUnit(() =>
-        reviews.decide(market, {
+        decideAt({
           certificateId: f.id,
           expectedVersion: 3,
           submissionId: f.submissionId,
@@ -421,6 +436,105 @@ describe.each(TEST_MARKETS)('certification admin review in market %s (database)'
         outcome: 'changes-requested',
         reasonCode: 'unreadable',
       });
+    });
+
+    it('R3 order 1: a check holding its share lock first makes the decision wait and then see it', async () => {
+      const f = await fixture();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const checkUnit = inUnit(async () => {
+        await expect(
+          reviews.recordCheck(market, checkWrite(f.submissionId, 'problem')),
+        ).resolves.toBe(true);
+        await gate;
+      });
+      await delay(300);
+      let seen: string[] | null = null;
+      const decisionUnit = inUnit(async () => {
+        await reviews.lockForDecision(market, f.id, 3, T2);
+        const snapshot = await reviews.snapshot(market, f.id);
+        seen = snapshot!.submission!.checks.map((c) => c.result);
+      });
+      await delay(300);
+      expect(seen).toBeNull(); // still waiting on the share lock
+      release();
+      await Promise.all([checkUnit, decisionUnit]);
+      expect(seen).toEqual(['problem']);
+    });
+
+    it('R3 order 2: a decision holding the lock first makes a check wait and then find nothing pending', async () => {
+      const f = await fixture();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const decisionUnit = inUnit(async () => {
+        await decideAt({
+          expectedVersion: 3,
+          certificateId: f.id,
+          submissionId: f.submissionId,
+          outcome: 'changes-requested',
+          accountId: account(),
+          decidedAt: T2,
+          approvedZone: null,
+          expiryBoundaryAt: null,
+          reasonCode: 'unreadable',
+          reasonTextCiphertext: null,
+          fromStatus: 'in-review',
+          toStatus: 'changes-needed',
+          historyId: uuid7() as Id<'CertificationHistory'>,
+        });
+        await gate;
+      });
+      await delay(300);
+      let written: boolean | null = null;
+      const checkUnit = inUnit(async () => {
+        written = await reviews.recordCheck(market, checkWrite(f.submissionId, 'done'));
+      });
+      await delay(300);
+      expect(written).toBeNull(); // blocked behind the decision
+      release();
+      await Promise.all([decisionUnit, checkUnit]);
+      expect(written).toBe(false);
+      expect(
+        (
+          await sql.query(
+            `SELECT count(*)::int AS n FROM certification.submission_review_checks WHERE submission_id = $1`,
+            [f.submissionId],
+          )
+        ).rows[0],
+      ).toEqual({ n: 0 });
+    });
+
+    it('does not record a scope on a submission that is not pending', async () => {
+      const f = await fixture();
+      await inUnit(() =>
+        decideAt({
+          expectedVersion: 3,
+          certificateId: f.id,
+          submissionId: f.submissionId,
+          outcome: 'declined',
+          accountId: account(),
+          decidedAt: T2,
+          approvedZone: null,
+          expiryBoundaryAt: null,
+          reasonCode: 'forged',
+          reasonTextCiphertext: null,
+          fromStatus: 'in-review',
+          toStatus: 'declined',
+          historyId: uuid7() as Id<'CertificationHistory'>,
+        }),
+      );
+      await expect(
+        inUnit(() =>
+          reviews.recordScope(market, {
+            id: uuid7() as Id<'ScopeReading'>,
+            submissionId: f.submissionId,
+            locationCiphertext: ENVELOPE,
+            scopeCiphertext: ENVELOPE,
+            accountId: account(),
+            now: T2,
+          }),
+        ),
+      ).resolves.toBe(false);
     });
 
     it('hints at other sellers with the same number or file, never at the seller itself', async () => {

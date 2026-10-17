@@ -510,10 +510,13 @@ describe('admin certificate review over HTTP (integration)', () => {
         .set(h)
         .buffer(true)
         .expect(200);
-      expect(file.headers['content-type']).toContain('application/pdf');
+      // Design 9.4: never under its own type, and a server-made file name.
+      expect(file.headers['content-type']).toContain('application/octet-stream');
+      expect(file.headers['content-disposition']).toBe(
+        `attachment; filename="certificate-${DOCUMENT}.pdf"`,
+      );
       expect(file.headers['x-content-type-options']).toBe('nosniff');
       expect(file.headers['content-security-policy']).toBe('sandbox');
-      expect(file.headers['content-disposition']).toContain('attachment');
       expect(file.headers['cache-control']).toContain('no-store');
       await http()
         .get(`${base}/${CERTIFICATE}/documents/${id<'UploadedDocument'>(0xe5ff)}`)
@@ -521,6 +524,26 @@ describe('admin certificate review over HTTP (integration)', () => {
         .expect(404);
     });
   });
+
+  it.each(TEST_MARKETS)(
+    'shows nothing of a certificate of another Market (reviewer of %s)',
+    async (code) => {
+      const owning = TEST_MARKETS.find((m) => m !== code)!;
+      reviews = makeReviews(owning);
+      await boot({ CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true' });
+      await seeded(code);
+      const h = headers(code, sessionOf(code, APPROVER, 9));
+      await http().get(`${base}/${CERTIFICATE}`).set(h).expect(404);
+      await http().get(`${base}/${CERTIFICATE}/documents/${DOCUMENT}`).set(h).expect(404);
+      const queue = await http().get(base).set(h).expect(200);
+      expect((queue.body as { total: number }).total).toBe(0);
+      await http()
+        .post(`${base}/${CERTIFICATE}/checks`)
+        .set(h)
+        .send({ submissionId: SUBMISSION, checkCode: 'x', result: 'done' })
+        .expect(404);
+    },
+  );
 
   it('documents the routes and their error codes in OpenAPI', async () => {
     reviews = makeReviews('AU');

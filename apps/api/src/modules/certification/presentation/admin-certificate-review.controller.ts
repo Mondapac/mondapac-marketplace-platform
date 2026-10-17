@@ -75,6 +75,7 @@ export const ADMIN_REVIEW_STATUS: Readonly<Record<string, number>> = Object.free
   'document.not-found': 404,
   'document.download-disabled': 403,
   'review.not-current-submission': 409,
+  'certificate.revoked': 409,
   'confirmation.exists': 409,
   'confirmation.no-issuer': 409,
   'conflict.stale': 409,
@@ -95,6 +96,8 @@ function refusal(error: Refusal, response: Response, context?: CallContext): Htt
     'certification.admin-review-unmapped-refusal',
   );
 }
+
+const EXTENSION = { 'image/jpeg': 'jpg', 'image/png': 'png', 'application/pdf': 'pdf' } as const;
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
@@ -130,7 +133,7 @@ export class AdminCertificateReviewController {
   @ApiOperation({
     summary: 'The review queue',
     description:
-      'Needs certification.seller-certificate.review. Submissions waiting for a decision, oldest ' +
+      'Needs certification.seller-certificate.view. Submissions waiting for a decision, oldest ' +
       'first; `afterId` and `limit`.',
   })
   @ApiOkResponse({ type: ReviewQueueView })
@@ -191,15 +194,14 @@ export class AdminCertificateReviewController {
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
   @Header('Content-Security-Policy', 'sandbox')
-  @Header('Content-Disposition', 'attachment')
   @ApiOperation({
     summary: 'Read a file of a submission',
     description:
       'Needs certification.seller-certificate.review. Off unless ' +
       'CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED is true (403 document.download-disabled); the ' +
-      'review page lists the files either way. An attachment, audited.',
+      'review page lists the files either way. Served as an octet-stream attachment with a server-made file name, audited.',
   })
-  @ApiOkResponse({ description: 'image/jpeg, image/png or application/pdf bytes' })
+  @ApiOkResponse({ description: 'The file bytes as application/octet-stream (attachment)' })
   @ApiBadRequestResponse({ type: CertificationErrorBody, description: 'validation.failed' })
   @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -219,7 +221,11 @@ export class AdminCertificateReviewController {
   ): Promise<StreamableFile> {
     const result = await this.documentRead.execute(context, { certificateId, documentId });
     const outcome = result.ok
-      ? new StreamableFile(result.value.bytes, { type: result.value.contentType })
+      ? new StreamableFile(result.value.bytes, {
+          // Design 9.4: an original is never served under its own type, and the name is ours.
+          type: 'application/octet-stream',
+          disposition: `attachment; filename="certificate-${documentId}.${EXTENSION[result.value.contentType]}"`,
+        })
       : refusal(result.error, response, context);
     return this.settle('certification.review-document-read', context, outcome);
   }
