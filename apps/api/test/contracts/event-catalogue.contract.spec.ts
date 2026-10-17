@@ -89,6 +89,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.existing-account-mail',
       'identity.invitation-mail',
       'identity.link-mail',
+      'identity.other-sessions-signed-out-mail',
       'identity.password-changed-mail',
       'identity.second-factor-mail',
       'identity.seller-approved-mail',
@@ -130,6 +131,9 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('identity.account-password-changed.v1')).toEqual([
       'identity.password-changed-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.account-other-sessions-signed-out.v1')).toEqual([
+      'identity.other-sessions-signed-out-mail',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-registered.v1')).toEqual([
       'identity.welcome-mail',

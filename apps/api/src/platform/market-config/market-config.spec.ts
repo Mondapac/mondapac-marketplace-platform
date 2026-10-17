@@ -803,6 +803,27 @@ describe('loadMarketConfigs', () => {
       expect(without.secondFactorThrottles).toBeUndefined();
     });
 
+    it('carries the sign-out-others counter (5 in 60 minutes for AU), refuses one out of range', () => {
+      const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+      const au = markets.get(testMarketId('AU'))!.identity;
+      const zz = markets.get(testMarketId('ZZ'))!.identity;
+      expect(au.signOutOthersThrottle).toEqual({ limit: 5, windowMinutes: 60, blockMinutes: 0 });
+      expect(zz.signOutOthersThrottle!.limit).not.toBe(au.signOutOthersThrottle!.limit);
+      expect(load(IDENTITY).signOutOthersThrottle).toBeUndefined();
+      expect(() =>
+        load({
+          ...IDENTITY,
+          signOutOthersThrottle: { limit: 21, windowMinutes: 60, blockMinutes: 0 },
+        }),
+      ).toThrow(/identity\.signOutOthersThrottle\.limit/);
+      expect(() =>
+        load({
+          ...IDENTITY,
+          signOutOthersThrottle: { limit: 5, windowMinutes: 9, blockMinutes: 0 },
+        }),
+      ).toThrow(/identity\.signOutOthersThrottle\.windowMinutes/);
+    });
+
     it.each<[string, (copy: Node) => void, RegExp]>([
       [
         'an admin session idle for more than 30 minutes',

@@ -12,6 +12,7 @@ export const THROTTLE_KINDS = [
   'sign-in.account',
   'sign-in.account-origin',
   'sign-in.origin',
+  'sign-out-others.account',
 ] as const;
 export type ThrottleKind = (typeof THROTTLE_KINDS)[number];
 

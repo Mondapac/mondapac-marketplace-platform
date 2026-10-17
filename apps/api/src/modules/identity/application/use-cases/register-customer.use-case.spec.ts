@@ -317,6 +317,7 @@ const policy: IdentityMarketPolicy = {
   invitationLifetimeMinutes: () => null,
   challengePolicy: () => null,
   secondFactorThrottle: () => null,
+  signOutOthersThrottle: () => null,
   sellerReapplyLimit: () => null,
   customRoleLimit: () => null,
   sellerMemberLimit: () => null,

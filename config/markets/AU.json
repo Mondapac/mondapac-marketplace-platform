@@ -139,6 +139,7 @@
         "blockMinutes": 1440
       }
     },
+    "signOutOthersThrottle": { "limit": 5, "windowMinutes": 60, "blockMinutes": 0 },
     "sellerReapplyLimit": 3,
     "customRoleLimits": { "seller": 20, "platform": 50 },
     "sellerMemberLimit": 25,

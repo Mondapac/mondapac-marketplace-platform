@@ -55,6 +55,12 @@ export const MAIL_KEYS = [
   'identity.mail.password-changed.admin.subject',
   'identity.mail.password-changed.admin.heading',
   'identity.mail.password-changed.admin.body',
+  'identity.mail.other-sessions-signed-out.admin.subject',
+  'identity.mail.other-sessions-signed-out.admin.heading',
+  'identity.mail.other-sessions-signed-out.admin.body',
+  'identity.mail.other-sessions-signed-out.seller.subject',
+  'identity.mail.other-sessions-signed-out.seller.heading',
+  'identity.mail.other-sessions-signed-out.seller.body',
   'identity.mail.enrol-second-factor.admin.subject',
   'identity.mail.enrol-second-factor.admin.heading',
   'identity.mail.enrol-second-factor.admin.body',
@@ -204,7 +210,9 @@ export class CatalogueMailComposer implements IdentityMailComposer {
       values['duration'] = formatDuration(locale, mail.lifetimeMinutes);
     }
     const notice =
-      mail.template === 'password-changed' || mail.template === 'second-factor-changed';
+      mail.template === 'password-changed' ||
+      mail.template === 'second-factor-changed' ||
+      mail.template === 'other-sessions-signed-out';
     // E5 and E6 quote the admin's reason (`ux.md` 3.4): text the domain checked (no control or
     // bidi character), filled into a plain-text body only, never the subject.
     if (mail.template === 'seller-rejected' || mail.template === 'seller-suspended') {

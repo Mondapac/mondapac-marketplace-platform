@@ -208,6 +208,13 @@
     }
   },
   {
+    "type": "identity.account-other-sessions-signed-out.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id"
+    }
+  },
+  {
     "type": "identity.account-password-changed.v1",
     "aggregateType": "account",
     "fields": {

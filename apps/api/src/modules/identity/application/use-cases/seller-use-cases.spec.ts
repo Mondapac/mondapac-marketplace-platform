@@ -58,6 +58,7 @@ import { SellerAccessOfSystem } from './seller-access-of-system.use-case';
 import { identityMailSubscriptions } from '../../presentation/subscribers/mail.subscriptions';
 import { SendExistingAccountMail } from './send-existing-account-mail.use-case';
 import { SendLinkMail } from './send-link-mail.use-case';
+import { SendOtherSessionsSignedOutMail } from './send-other-sessions-signed-out-mail.use-case';
 import { SendPasswordChangedMail } from './send-password-changed-mail.use-case';
 import { SendWelcomeMail } from './send-welcome-mail.use-case';
 import { SendInvitationMail } from './send-invitation-mail.use-case';
@@ -180,6 +181,7 @@ function setUp() {
         memberships: fakes.membershipRepository,
         grants: fakes.grantReader,
       }),
+      new SendOtherSessionsSignedOutMail(gate, mailDeps),
     ),
     seed: new SeedRoles(gate, {
       unitOfWork,
@@ -1198,6 +1200,10 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
         ['identity.invitation-mail', 'identity.invitation-issued.v1'],
         ['identity.second-factor-mail', 'identity.second-factor-changed.v1'],
         ['identity.password-changed-mail', 'identity.account-password-changed.v1'],
+        [
+          'identity.other-sessions-signed-out-mail',
+          'identity.account-other-sessions-signed-out.v1',
+        ],
       ]);
       expect(s.subscriptions.map((x) => x.event.type)).not.toContain(
         'identity.account-email-verified.v1',
