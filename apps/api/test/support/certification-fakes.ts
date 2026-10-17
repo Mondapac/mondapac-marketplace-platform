@@ -29,10 +29,7 @@ import type {
   WithdrawWrite,
 } from '../../src/modules/certification/application/ports/seller-certificate.repository';
 import type { SellerZonesSource } from '../../src/modules/certification/application/ports/claim-facts.ports';
-import type {
-  RateCounterKind,
-  RateReservation,
-} from '../../src/modules/certification/domain/rate-limits';
+import type { RateReservation } from '../../src/modules/certification/domain/rate-limits';
 import type { SubmissionKind } from '../../src/modules/certification/domain/seller-certificate';
 import type { SellerCertificationStatus } from '../../src/modules/certification/domain/validity';
 import type { OutboxWriter } from '../../src/platform/events/outbox-writer';
@@ -419,7 +416,7 @@ export class MemoryCounters implements RateCounterRepository {
         const key = `${c.limit.kind}:${Buffer.from(c.keyHash).toString('hex')}`;
         const count = (this.counts.get(key) ?? 0) + 1;
         this.counts.set(key, count);
-        return { kind: c.limit.kind as RateCounterKind, count, windowStartedAt: now };
+        return { kind: c.limit.kind, count, windowStartedAt: now };
       }),
     );
   }

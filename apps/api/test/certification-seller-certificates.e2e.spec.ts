@@ -537,7 +537,7 @@ describe('seller certificate routes over HTTP (integration)', () => {
           .set(h)
           .send({ data: JS_PDF.toString('base64') });
         last = response.status;
-        retryAfter = response.headers['retry-after'] as string | undefined;
+        retryAfter = response.headers['retry-after'];
       }
       expect(last).toBe(429);
       expect(Number(retryAfter)).toBeGreaterThan(0);

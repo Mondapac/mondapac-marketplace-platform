@@ -431,12 +431,11 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
       const r = rig();
       const certificateId = await newHalal(r);
       const account = r.contextOf();
-      let last: Result<unknown, { code: string }> = { ok: true, value: null };
       for (let i = 0; i < 60; i += 1) {
-        last = await r.saveDraft.execute(account, { certificateId, draft: draftOf(r) });
-        expect(last.ok).toBe(true);
+        const saved = await r.saveDraft.execute(account, { certificateId, draft: draftOf(r) });
+        expect(saved.ok).toBe(true);
       }
-      last = await r.saveDraft.execute(account, { certificateId, draft: draftOf(r) });
+      const last = await r.saveDraft.execute(account, { certificateId, draft: draftOf(r) });
       expect(last).toMatchObject({ ok: false, error: { code: 'request.throttled' } });
       await expect(
         r.saveDraft.execute(r.contextOf(), { certificateId, draft: draftOf(r) }),
@@ -697,9 +696,8 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
       // A closed issuer cannot be picked, so move the issuer's state after the pick.
       await unwrap(r.saveDraft.execute(r.contextOf(), { certificateId, draft: draftOf(r) }));
       await unwrap(r.upload.execute(r.contextOf(), { certificateId, data: b64(PDF) }));
-      r.deps.types
-        .issuer(market, r.activeIssuer.id)
-        .then((issuer) => Object.assign(issuer!, { state: 'derecognised' }));
+      const picked = await r.deps.types.issuer(market, r.activeIssuer.id);
+      Object.assign(picked!, { state: 'derecognised' });
       await expect(r.submit.execute(r.contextOf(), { certificateId })).resolves.toEqual({
         ok: false,
         error: { code: 'issuer.not-active' },
