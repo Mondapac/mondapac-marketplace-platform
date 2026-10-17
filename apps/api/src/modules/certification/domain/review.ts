@@ -34,9 +34,20 @@ export interface ReviewReasonSpec {
   readonly outcomes: readonly NegativeOutcome[];
 }
 
+/**
+ * One reason an admin may give for not accepting an issuer request (design 2.1, S8): a code and
+ * the plain words of the mail to the seller.
+ */
+export interface IssuerRequestReasonSpec {
+  readonly code: string;
+  readonly label: string;
+}
+
 export interface ReviewPolicy {
   readonly checks: readonly ReviewCheckSpec[];
   readonly reasons: readonly ReviewReasonSpec[];
+  /** The reasons of a "not accepted" answer to an issuer request; empty means none can be given. */
+  readonly issuerRequestReasons: readonly IssuerRequestReasonSpec[];
 }
 
 export const MAX_REASON_TEXT_LENGTH = 1000;

@@ -34,4 +34,8 @@ export const ZZ_REVIEW_POLICY: ReviewPolicy = {
       outcomes: ['declined'],
     },
   ],
+  issuerRequestReasons: [
+    { code: 'registry-unknown', label: 'The registry has never heard of this body.' },
+    { code: 'not-a-certifier', label: 'This body does not certify.' },
+  ],
 };

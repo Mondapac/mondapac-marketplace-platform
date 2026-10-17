@@ -82,5 +82,19 @@
       "label": "The declaration could not be accepted.",
       "outcomes": ["changes-requested", "declined"]
     }
+  ],
+  "issuerRequestReasons": [
+    {
+      "code": "issuer-not-recognised",
+      "label": "The body you named is not one the platform's experts recognise as an issuer."
+    },
+    {
+      "code": "issuer-not-identified",
+      "label": "We could not identify the body you named from the request and the file."
+    },
+    {
+      "code": "issuer-other-type",
+      "label": "The body you named does not issue certificates of this type."
+    }
   ]
 }

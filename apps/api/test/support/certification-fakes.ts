@@ -92,6 +92,8 @@ export class MemoryCertificates implements SellerCertificateRepository {
   /** Typecode per type id, for the list and read answers. */
   readonly typeCodes = new Map<string, string>();
   failNextWrite: Error | null = null;
+  /** `sellerId|typeId` of the open issuer requests, for `draft-issuer-not-listed`. */
+  readonly openIssuerRequests = new Set<string>();
 
   private touch(id: string, expected: number, now: Temporal.Instant) {
     if (this.failNextWrite !== null) {
@@ -120,6 +122,7 @@ export class MemoryCertificates implements SellerCertificateRepository {
       approvedSubmissionId: row.approvedSubmissionId,
       approvedBoundaryAt: row.approvedBoundaryAt,
       approvedIssuerState: null,
+      issuerRequestOpen: this.openIssuerRequests.has(`${row.sellerId}|${row.typeId}`),
       submissionCount: this.submissions.filter((s) => s.write.certificateId === row.id).length,
       statusChangedAt: row.statusChangedAt,
       lastChangedAt: row.lastChangedAt,

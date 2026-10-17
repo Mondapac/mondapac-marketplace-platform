@@ -40,6 +40,12 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX products_market_id_published_revision_id_key ON catalog.products USING btree (market_id, published_revision_id) WHERE (published_revision_id IS NOT NULL)',
   'certification.issuers_market_id_type_id_accreditation_number_key':
     'CREATE UNIQUE INDEX issuers_market_id_type_id_accreditation_number_key ON certification.issuers USING btree (market_id, type_id, accreditation_number) WHERE (accreditation_number IS NOT NULL)',
+  // docs/design/data/certification.md 3.8 (slice 6): the admin queue of open issuer requests and
+  // the seller's draft-issuer-not-listed code.
+  'certification.issuer_requests_market_id_created_at_open_idx':
+    "CREATE INDEX issuer_requests_market_id_created_at_open_idx ON certification.issuer_requests USING btree (market_id, created_at, id) WHERE (state = 'open'::text)",
+  'certification.issuer_requests_market_id_seller_id_type_id_open_idx':
+    "CREATE INDEX issuer_requests_market_id_seller_id_type_id_open_idx ON certification.issuer_requests USING btree (market_id, seller_id, type_id) WHERE (state = 'open'::text)",
   'certification.relaxation_proposals_market_id_subject_pending_key':
     "CREATE UNIQUE INDEX relaxation_proposals_market_id_subject_pending_key ON certification.relaxation_proposals USING btree (market_id, subject_kind, subject_id) WHERE (state = 'pending'::text)",
   'certification.outbox_market_id_event_id_unpublished_idx':

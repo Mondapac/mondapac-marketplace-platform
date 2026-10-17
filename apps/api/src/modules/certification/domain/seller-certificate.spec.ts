@@ -223,6 +223,7 @@ describe('sellerStatusOf', () => {
     approvedBoundaryAt: NOW.add({ hours: 24 * 90 }),
     hasApproval: true,
     approvedIssuerState: 'active',
+    issuerRequestOpen: false,
     ...overrides,
   });
 
@@ -238,6 +239,17 @@ describe('sellerStatusOf', () => {
     ).toBe(code);
   });
 
+  it('shows a draft with an open issuer request as draft-issuer-not-listed, only while a draft', () => {
+    const draft = { ...approved(), hasApproval: false, approvedBoundaryAt: null };
+    expect(sellerStatusOf({ ...draft, status: 'draft', issuerRequestOpen: true }, NOW).code).toBe(
+      'draft-issuer-not-listed',
+    );
+    expect(
+      sellerStatusOf({ ...draft, status: 'changes-needed', issuerRequestOpen: true }, NOW).code,
+    ).toBe('changes-needed');
+    expect(sellerStatusOf({ ...approved(), issuerRequestOpen: true }, NOW).code).toBe('approved');
+  });
+
   it('shows a first review as awaiting review', () => {
     expect(
       sellerStatusOf(
@@ -247,6 +259,7 @@ describe('sellerStatusOf', () => {
           approvedBoundaryAt: null,
           hasApproval: false,
           approvedIssuerState: null,
+          issuerRequestOpen: false,
         },
         NOW,
       ).code,

@@ -30,6 +30,8 @@ const COVERED_BY_SELLER_CERTIFICATE_SPEC = [
   'submission_review_checks',
   'submission_scope_readings',
   'seller_issuer_confirmations',
+  // Certification slice 6: covered by certification-issuer-request.db-spec.ts.
+  'issuer_request_documents',
 ];
 
 function insertOnlyTables(): string[] {
@@ -88,6 +90,18 @@ it('has exactly the row and the statement trigger on every insert-only table of 
         'issuer_contact_channels_retire_once',
         19,
         'certification.issuer_contact_channels_guard_update',
+      ],
+      [
+        'issuer_request_documents',
+        'issuer_request_documents_clean',
+        7,
+        'certification.issuer_request_document_link_clean',
+      ],
+      [
+        'issuer_requests',
+        'issuer_requests_answer_once',
+        19,
+        'certification.issuer_requests_guard_update',
       ],
       [
         'relaxation_proposals',
@@ -173,6 +187,18 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
       return null;
     } catch (error) {
       return (error as { code?: string }).code ?? 'unknown';
+    }
+  }
+
+  /**
+   * `sqlState` for an owner `TRUNCATE ... CASCADE`: the cascade locks every table under the type
+   * graph, so a spec running in parallel can make it lose a deadlock (40P01) before the trigger
+   * fires. A deadlock is not the answer under test; the statement is tried again.
+   */
+  async function truncateState(client: Client, text: string): Promise<string | null> {
+    for (let attempt = 1; ; attempt += 1) {
+      const state = await sqlState(client, text);
+      if (state !== '40P01' || attempt === 5) return state;
     }
   }
 
@@ -1230,7 +1256,7 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
           market.marketId,
         ]),
       ).toBe('23001');
-      expect(await sqlState(owner, `TRUNCATE certification.${table} CASCADE`)).toBe('23001');
+      expect(await truncateState(owner, `TRUNCATE certification.${table} CASCADE`)).toBe('23001');
     }
     const kept = await sql.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM certification.seller_certification_submissions WHERE id = $1`,

@@ -25,6 +25,11 @@ export interface StoredCertificate {
   /** The boundary stored at approval, for the status display only (never a claim input). */
   readonly approvedBoundaryAt: Temporal.Instant | null;
   readonly approvedIssuerState: IssuerState | null;
+  /**
+   * True while the seller has an open "my issuer is not listed" request of this type (design
+   * 3.3 `draft-issuer-not-listed`). A flag only: the request's text never comes with it.
+   */
+  readonly issuerRequestOpen: boolean;
   /** Submissions ever made: zero means the record can still be deleted. */
   readonly submissionCount: number;
   readonly statusChangedAt: Temporal.Instant;

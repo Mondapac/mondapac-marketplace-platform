@@ -116,8 +116,14 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  {
+    "name": "certification.own-issuer-request-create",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "certification.seed-certification-types", "rule": "system" },
   { "name": "certification.send-decision-mail", "rule": "system" },
+  { "name": "certification.send-issuer-request-mail", "rule": "system" },
   {
     "name": "commission-payouts.commission-rates",
     "rule": "own-resources",

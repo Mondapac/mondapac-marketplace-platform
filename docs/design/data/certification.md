@@ -298,6 +298,20 @@ seller_id, type_id) WHERE state = 'open'`.
 `issuer_request_documents`: PK `(market_id, issuer_request_id, document_id)`; FKs to both parents,
 RESTRICT; `position smallint`. Insert-only.
 
+- **As built (slice 6, migration `20261017130000_certification_issuer_requests`; Mojtaba to sign).**
+  The link carries `type_id` and `seller_id` copies, so its two composite FKs bind the file to the
+  request's own seller and type: `(market_id, issuer_request_id, type_id, seller_id)` →
+  `issuer_requests` (new unique key on those four columns) and `(market_id, document_id, type_id,
+  seller_id)` → `uploaded_documents (market_id, id, type_id, owner_seller_id)`. Unique `(market_id,
+  document_id)` (a file joins one request) and `(market_id, issuer_request_id, position)`. Triggers:
+  `issuer_requests_answer_once` (`BEFORE UPDATE`: only an `open` row moves, to a final state, version
+  + 1; an answered row is frozen), `issuer_request_documents_clean` (`BEFORE INSERT`: a `clean` file
+  of purpose `issuer-request` only) and the shared `reject_mutation` pair on the link. The typed-name
+  ciphertext CHECK is the `v<n>.` envelope, 41 to 2048 characters. One file per request today (sent
+  with the request); it counts against the upload limit and `issuer-request.seller.day` (3 a day),
+  not the 200 MiB draft quota, and has no `document_index` row. Retention of these files is open
+  (purge package).
+
 ### 3.9 `uploaded_documents` and `document_previews` (slice 4)
 
 `uploaded_documents` (root of one uploaded file):

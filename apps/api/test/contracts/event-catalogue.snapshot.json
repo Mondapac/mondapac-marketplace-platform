@@ -109,6 +109,15 @@
     }
   },
   {
+    "type": "certification.issuer-request-answered.v1",
+    "aggregateType": "issuer-request",
+    "fields": {
+      "issuerRequestId": "id",
+      "outcome": "enumOf(issuer-added|not-accepted)",
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "certification.seller-certification-approved.v1",
     "aggregateType": "seller-certification",
     "fields": {

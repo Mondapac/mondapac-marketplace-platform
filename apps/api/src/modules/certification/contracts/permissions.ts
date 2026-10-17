@@ -3,7 +3,8 @@ import { declarePermissions, definePermission } from '../../../platform/authz';
 // The permission catalogue of certification (certification design 7.1; platform-foundations 6.1).
 // A key is declared with the first use case that names it, together with identity's seed of the
 // default roles that receive it. The platform keys of the review package are view, review and
-// approve; revoke and the document, type, issuer and policy keys come with their slices.
+// approve; the issuer keys come with the issuer requests (slice 6); revoke and the document, type
+// and policy keys come with their slices.
 
 /**
  * Read the seller's own certificates, their status codes and reasons, and their own documents
@@ -60,10 +61,33 @@ export const CERTIFICATION_SELLER_CERTIFICATE_APPROVE = definePermission('certif
   protected: true,
 });
 
+/**
+ * The issuer registry and the queue of "my issuer is not listed" requests, including the
+ * decrypted typed name and the request's files, each read audited (design 7.1, 7.2). Platform
+ * scope; Onboarding and Compliance and Certification Reviewer by identity's seed.
+ */
+export const CERTIFICATION_ISSUER_VIEW = definePermission('certification', {
+  key: 'certification.issuer.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Change the issuer registry and answer issuer requests (design 7.1; CERT-04). Protected: no
+ * default role lists it; the Platform Administrator holds it and grants it in a custom role.
+ */
+export const CERTIFICATION_ISSUER_EDIT = definePermission('certification', {
+  key: 'certification.issuer.edit',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CERTIFICATION_PERMISSIONS = declarePermissions('certification', [
   CERTIFICATION_OWN_CERTIFICATE_VIEW,
   CERTIFICATION_OWN_CERTIFICATE_MANAGE,
   CERTIFICATION_SELLER_CERTIFICATE_VIEW,
   CERTIFICATION_SELLER_CERTIFICATE_REVIEW,
   CERTIFICATION_SELLER_CERTIFICATE_APPROVE,
+  CERTIFICATION_ISSUER_VIEW,
+  CERTIFICATION_ISSUER_EDIT,
 ]);

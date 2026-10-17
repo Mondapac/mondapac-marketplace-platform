@@ -51,6 +51,11 @@ import { SendDecisionMail } from './application/use-cases/send-decision-mail.use
 import { reviewProviders } from './infrastructure/review-providers';
 import { AdminCertificateReviewController } from './presentation/admin-certificate-review.controller';
 import { decisionMailSubscriptions } from './presentation/subscribers/decision-mail.subscriptions';
+import { SendIssuerRequestMail } from './application/use-cases/send-issuer-request-mail.use-case';
+import { issuerRequestProviders } from './infrastructure/issuer-request-providers';
+import { AdminIssuerRequestController } from './presentation/admin-issuer-request.controller';
+import { OwnIssuerRequestController } from './presentation/own-issuer-request.controller';
+import { issuerRequestMailSubscriptions } from './presentation/subscribers/issuer-request-mail.subscriptions';
 import { sellerCertificateProviders } from './infrastructure/seller-certificate-providers';
 import { OwnCertificateController } from './presentation/own-certificate.controller';
 import { seedCertificationTypesJob } from './presentation/jobs/seed-certification-types.job';
@@ -88,18 +93,29 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
  */
 @Module({
   imports: [PersistenceModule, SellersModule, IdentityModule],
-  controllers: [OwnCertificateController, AdminCertificateReviewController],
+  controllers: [
+    OwnCertificateController,
+    AdminCertificateReviewController,
+    OwnIssuerRequestController,
+    AdminIssuerRequestController,
+  ],
   providers: [
     PersistenceModule.outboxWriterFor('certification'),
     registerEvents('certification', CERTIFICATION_EVENTS),
     registerPermissions('certification', CERTIFICATION_PERMISSIONS),
     PersistenceModule.auditWriterFor('certification'),
     registerAuditActions('certification', CERTIFICATION_AUDIT_ACTIONS),
-    registerSubscriptionsFrom('certification', [SendDecisionMail], (mail: SendDecisionMail) =>
-      decisionMailSubscriptions(mail),
+    registerSubscriptionsFrom(
+      'certification',
+      [SendDecisionMail, SendIssuerRequestMail],
+      (mail: SendDecisionMail, issuerRequestMail: SendIssuerRequestMail) => [
+        ...decisionMailSubscriptions(mail),
+        ...issuerRequestMailSubscriptions(issuerRequestMail),
+      ],
     ),
     ...sellerCertificateProviders,
     ...reviewProviders,
+    ...issuerRequestProviders,
     PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
     claimFactsReaderProvider,
