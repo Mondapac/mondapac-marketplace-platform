@@ -1,5 +1,6 @@
 import { money as makeMoney } from '@mondapac/shared-kernel';
 import type { Id, Money, Temporal } from '@mondapac/shared-kernel';
+import { linesTax } from './order';
 import type {
   CancelReason,
   Fulfilment,
@@ -21,12 +22,18 @@ export interface OrderLineView {
   readonly unitPrice: Money;
   readonly lineAmount: Money;
   readonly taxInclusive: boolean;
+  /** The tax rate frozen at placement; null on lines placed before tax was recorded. */
+  readonly taxRateBps: number | null;
+  /** The tax of the line (inside `lineAmount` when tax-inclusive); null when unknown. */
+  readonly tax: Money | null;
 }
 
 export interface SellerOrderView {
   readonly sellerId: Id<'Seller'>;
   readonly subtotal: Money;
   readonly shipping: Money;
+  /** The tax of the seller's lines; null when any of them was placed before tax was recorded. */
+  readonly tax: Money | null;
   readonly total: Money;
   readonly fulfilment: Fulfilment;
   readonly carrier: string | null;
@@ -42,6 +49,8 @@ export interface OrderView {
   readonly cancelReason: CancelReason | null;
   readonly paymentState: PaymentState;
   readonly total: Money;
+  /** The tax of the whole order; null when any line was placed before tax was recorded. */
+  readonly tax: Money | null;
   readonly createdAt: Temporal.Instant;
   readonly confirmedAt: Temporal.Instant | null;
   readonly cancelledAt: Temporal.Instant | null;
@@ -53,6 +62,8 @@ export interface OrderView {
 export interface AdminOrderView extends OrderView {
   readonly accountId: Id<'Account'>;
   readonly paymentIntentId: string | null;
+  /** The tax strategy in force at placement; null for the Market's built-in one. */
+  readonly taxStrategyId: Id<'TaxStrategy'> | null;
 }
 
 /** Who placed an order, for an admin entitled to see it. PERSONAL DATA: never logged. */
@@ -125,7 +136,14 @@ const lineView = (line: OrderLine, currency: string): OrderLineView => ({
   unitPrice: line.unitPrice,
   lineAmount: makeMoney(line.lineAmount, currency),
   taxInclusive: line.taxInclusive,
+  taxRateBps: line.taxRateBps,
+  tax: line.taxAmount === null ? null : makeMoney(line.taxAmount, currency),
 });
+
+const taxOf = (lines: readonly OrderLine[], currency: string): Money | null => {
+  const tax = linesTax(lines);
+  return tax === null ? null : makeMoney(tax, currency);
+};
 
 /** A seller order as a seller sees it in the panel: its own part of one paid order. */
 export interface SellerOrderDetailView extends SellerOrderView {
@@ -148,6 +166,7 @@ export function sellerOrderDetailView(record: {
   readonly lines: readonly OrderLine[];
 }): SellerOrderDetailView {
   const { sellerOrder: seller, currency } = record;
+  const lines = record.lines.filter((line) => line.sellerOrderId === seller.id);
   return {
     sellerOrderId: seller.id,
     orderId: record.orderId,
@@ -155,15 +174,14 @@ export function sellerOrderDetailView(record: {
     sellerId: seller.sellerId,
     subtotal: makeMoney(seller.subtotal, currency),
     shipping: makeMoney(seller.shipping, currency),
+    tax: taxOf(lines, currency),
     total: makeMoney(seller.total, currency),
     fulfilment: seller.fulfilment,
     carrier: seller.carrier,
     trackingRef: seller.trackingRef,
     shippedAt: seller.shippedAt,
     deliveredAt: seller.deliveredAt,
-    lines: record.lines
-      .filter((line) => line.sellerOrderId === seller.id)
-      .map((line) => lineView(line, currency)),
+    lines: lines.map((line) => lineView(line, currency)),
   };
 }
 
@@ -176,24 +194,27 @@ export function orderView(order: OrderState): OrderView {
     cancelReason: order.cancelReason,
     paymentState: order.paymentState,
     total: order.total,
+    tax: taxOf(order.lines, currency),
     createdAt: order.createdAt,
     confirmedAt: order.confirmedAt,
     cancelledAt: order.cancelledAt,
     payBy: order.status === 'pending-payment' ? order.paymentExpiresAt : null,
-    sellerOrders: order.sellerOrders.map((seller) => ({
-      sellerId: seller.sellerId,
-      subtotal: money(seller.subtotal),
-      shipping: money(seller.shipping),
-      total: money(seller.total),
-      fulfilment: seller.fulfilment,
-      carrier: seller.carrier,
-      trackingRef: seller.trackingRef,
-      shippedAt: seller.shippedAt,
-      deliveredAt: seller.deliveredAt,
-      lines: order.lines
-        .filter((line) => line.sellerOrderId === seller.id)
-        .map((line) => lineView(line, currency)),
-    })),
+    sellerOrders: order.sellerOrders.map((seller) => {
+      const lines = order.lines.filter((line) => line.sellerOrderId === seller.id);
+      return {
+        sellerId: seller.sellerId,
+        subtotal: money(seller.subtotal),
+        shipping: money(seller.shipping),
+        tax: taxOf(lines, currency),
+        total: money(seller.total),
+        fulfilment: seller.fulfilment,
+        carrier: seller.carrier,
+        trackingRef: seller.trackingRef,
+        shippedAt: seller.shippedAt,
+        deliveredAt: seller.deliveredAt,
+        lines: lines.map((line) => lineView(line, currency)),
+      };
+    }),
   };
 }
 
@@ -201,4 +222,5 @@ export const adminOrderView = (order: OrderState): AdminOrderView => ({
   ...orderView(order),
   accountId: order.accountId,
   paymentIntentId: order.stripePaymentIntentId,
+  taxStrategyId: order.taxStrategyId,
 });

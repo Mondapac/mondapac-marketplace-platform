@@ -1143,6 +1143,10 @@
       "total": "Total"
     },
     "reference": "Order {id}",
+    "tax": {
+      "not-recorded": "Not recorded",
+      "built-in": "Market default"
+    },
     "none": "Not set",
     "loading": "Loading orders...",
     "more": "Show more",
@@ -1179,6 +1183,10 @@
       "customer-email": "Customer email",
       "customer": "Customer account",
       "payment-intent": "Payment reference",
+      "tax": "Tax",
+      "tax-strategy": "Tax strategy",
+      "tax-included": "Tax in prices",
+      "tax-added": "Tax added",
       "total": "Order total",
       "seller-account": "Seller account",
       "fulfilment": "Fulfilment",
@@ -1194,7 +1202,8 @@
       "variant": "Variant {id}",
       "offer": "Offer {id}",
       "quantity": "{quantity} x {price}",
-      "tax-included": "Tax included"
+      "tax-included": "Tax included",
+      "tax": "Tax {rate}: {amount}"
     },
     "detail": {
       "page-title": "Order",

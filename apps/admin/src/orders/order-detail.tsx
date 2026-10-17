@@ -3,6 +3,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { formatMoney } from '../pricing/format.ts';
 import { known } from '../sellers/format.ts';
 import { formatInstant } from '../shared/format.ts';
+import { numberFormat } from '../shared/intl.ts';
 import { shortId } from '../shared/short-id.ts';
 import { FallbackId, FullId } from './fallback-id.tsx';
 import { FulfilmentBadge, OrderStatusBadge } from './status-badge.tsx';
@@ -60,6 +61,19 @@ export function OrderDetail({ order }: { readonly order: AdminOrder }) {
       label: t('field.payment-intent'),
       value: order.paymentIntentId && <span className="break-all">{order.paymentIntentId}</span>,
     },
+    {
+      label: t('field.tax'),
+      value: order.tax === null ? t('tax.not-recorded') : formatMoney(order.tax, locale),
+    },
+    {
+      label: t('field.tax-strategy'),
+      value:
+        order.tax === null ? null : order.taxStrategyId === null ? (
+          t('tax.built-in')
+        ) : (
+          <FullId id={order.taxStrategyId} />
+        ),
+    },
     { label: t('field.total'), value: formatMoney(order.total, locale) },
   ];
   return (
@@ -113,11 +127,22 @@ function SellerPartCard({ part }: { readonly part: SellerPart }) {
         <dd className="text-end tabular-nums">{formatMoney(part.subtotal, locale)}</dd>
         <dt className="text-fg-muted">{t('field.shipping')}</dt>
         <dd className="text-end tabular-nums">{formatMoney(part.shipping, locale)}</dd>
+        <dt className="text-fg-muted">{t(`field.${taxLabel(part)}`)}</dt>
+        <dd className="text-end tabular-nums">
+          {part.tax === null ? t('tax.not-recorded') : formatMoney(part.tax, locale)}
+        </dd>
         <dt className="font-semibold">{t('field.part-total')}</dt>
         <dd className="text-end font-semibold tabular-nums">{formatMoney(part.total, locale)}</dd>
       </dl>
     </Card>
   );
+}
+
+/** Whether the part's tax is inside its prices, added on top of them, or a mix of both. */
+function taxLabel(part: SellerPart): 'tax-included' | 'tax-added' | 'tax' {
+  if (part.lines.every((line) => line.taxInclusive)) return 'tax-included';
+  if (part.lines.every((line) => !line.taxInclusive)) return 'tax-added';
+  return 'tax';
 }
 
 function LineRow({ line }: { readonly line: OrderLine }) {
@@ -140,6 +165,14 @@ function LineRow({ line }: { readonly line: OrderLine }) {
             price: formatMoney(line.unitPrice, locale),
           })}
           {line.taxInclusive ? ` · ${t('line.tax-included')}` : ''}
+          {line.tax !== null && line.taxRateBps !== null
+            ? ` · ${t('line.tax', {
+                rate: numberFormat(locale, { style: 'percent', maximumFractionDigits: 2 }).format(
+                  line.taxRateBps / 10_000,
+                ),
+                amount: formatMoney(line.tax, locale),
+              })}`
+            : ''}
         </div>
       </div>
       <div className="font-medium tabular-nums">{formatMoney(line.lineAmount, locale)}</div>

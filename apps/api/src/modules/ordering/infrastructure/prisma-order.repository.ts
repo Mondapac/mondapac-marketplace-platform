@@ -43,6 +43,7 @@ interface OrderRow {
   readonly confirmedAt: Date | null;
   readonly cancelledAt: Date | null;
   readonly version: number;
+  readonly taxStrategyId: string | null;
   readonly sellerOrders: readonly {
     readonly id: string;
     readonly sellerId: string;
@@ -68,6 +69,8 @@ interface OrderRow {
     readonly taxInclusive: boolean;
     readonly reservationLineId: string;
     readonly commissionRateBps: number | null;
+    readonly taxRateBps: number | null;
+    readonly taxAmount: bigint | null;
   }[];
 }
 
@@ -103,6 +106,8 @@ const toLine = (l: LineRow, currency: string): OrderLine => ({
   taxInclusive: l.taxInclusive,
   reservationLineId: l.reservationLineId,
   commissionRateBps: l.commissionRateBps,
+  taxRateBps: l.taxRateBps,
+  taxAmount: l.taxAmount,
 });
 
 const byOffer = (a: { offerId: string; variantId: string }, b: typeof a): number =>
@@ -130,6 +135,7 @@ function toOrder(row: OrderRow): OrderState {
     confirmedAt: row.confirmedAt === null ? null : toInstant(row.confirmedAt),
     cancelledAt: row.cancelledAt === null ? null : toInstant(row.cancelledAt),
     version: row.version,
+    taxStrategyId: row.taxStrategyId as Id<'TaxStrategy'> | null,
     sellerOrders,
     lines,
   };
@@ -177,6 +183,7 @@ export class PrismaOrderRepository implements OrderRepository {
         confirmedAt: order.confirmedAt === null ? null : toDate(order.confirmedAt),
         cancelledAt: order.cancelledAt === null ? null : toDate(order.cancelledAt),
         version: order.version,
+        taxStrategyId: order.taxStrategyId,
       },
     });
     await tx.orderingSellerOrder.createMany({
@@ -206,6 +213,8 @@ export class PrismaOrderRepository implements OrderRepository {
         taxInclusive: l.taxInclusive,
         reservationLineId: l.reservationLineId,
         commissionRateBps: l.commissionRateBps,
+        taxRateBps: l.taxRateBps,
+        taxAmount: l.taxAmount,
       })),
     });
   }
