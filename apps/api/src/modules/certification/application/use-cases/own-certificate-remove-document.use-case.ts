@@ -8,6 +8,7 @@ import {
   ownerOf,
   parseCertificateId,
   parseDocumentId,
+  logWithdrawnByEdit,
   parseWithdrawPending,
   storeFailure,
   withdrawForEdit,
@@ -122,6 +123,7 @@ export class OwnCertificateRemoveDocument extends UseCase<
       })
       .catch((error: unknown) => storeFailure(context, 'certification.remove-document', error));
     if (!removed.ok) return removed;
+    logWithdrawnByEdit(context, certificateId, removed.value);
     await Promise.all(discard.map((key) => deps.vault.discard(key).catch(() => undefined)));
     return ok({ removed: true, withdrawnSubmissionId: removed.value });
   }

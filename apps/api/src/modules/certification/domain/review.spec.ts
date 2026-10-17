@@ -240,7 +240,8 @@ describe('the status of a submission (design 3.2)', () => {
     }
   });
 
-  it('fails closed on a submission with neither a pointer nor a decision', () => {
-    expect(() => submissionStatusOf({ outcome: null, pending: false, current: false })).toThrow();
+  it('shows a submission with no decision as pending even when no pointer names it (L1)', () => {
+    expect(submissionStatusOf({ outcome: null, pending: false, current: false })).toBe('pending');
+    expect(submissionStatusOf({ outcome: null, pending: false, current: true })).toBe('pending');
   });
 });

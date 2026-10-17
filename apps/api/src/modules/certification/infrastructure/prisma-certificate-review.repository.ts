@@ -31,6 +31,7 @@ import {
   CERTIFICATE_INCLUDE,
   DOCUMENT_INCLUDE,
   fromDay,
+  newestSubmissions,
   openIssuerRequestTypes,
   toCertificate,
   toDate,
@@ -146,6 +147,7 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
     const certificate = toCertificate(
       row,
       await openIssuerRequestTypes(this.prisma, market, [row.sellerId]),
+      await newestSubmissions(this.prisma, market, [row]),
     );
     const history = await tx.certificationSellerCertificationHistory.findMany({
       where: { marketId: market.marketId, sellerCertificationId: certificateId },
@@ -177,7 +179,13 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
     }
     const others =
       options.others === true
-        ? await this.#others(market, certificateId, submission.id, row.approvedSubmissionId)
+        ? await this.#others(
+            market,
+            certificateId,
+            submission.id,
+            row.approvedSubmissionId,
+            row._count.submissions,
+          )
         : [];
 
     const checkRows = await tx.certificationReviewCheck.findMany({
@@ -271,13 +279,16 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
   /**
    * The record's other submissions, newest first on the (record, number) key, at most 10, and the
    * approved one when it is older than those: the reviewer sees the earlier submission, its reason
-   * (AC 15) and, beside a renewal, the certificate in force.
+   * (AC 15) and, beside a renewal, the certificate in force. Only numbers up to `newestNo`, the
+   * count the root read saw, so a submission made after that read (whose pointer the read could
+   * not see) is never listed (Hassan L1).
    */
   async #others(
     market: MarketContext,
     certificateId: Id<'SellerCertification'>,
     shownId: string,
     approvedId: string | null,
+    newestNo: number,
   ): Promise<readonly OtherSubmission[]> {
     const tx = this.prisma.tx(market);
     const rows = await tx.certificationSellerCertificationSubmission.findMany({
@@ -285,6 +296,7 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
         marketId: market.marketId,
         sellerCertificationId: certificateId,
         id: { not: shownId },
+        submissionNo: { lte: newestNo },
       },
       select: OTHER_SELECT,
       orderBy: { submissionNo: 'desc' },

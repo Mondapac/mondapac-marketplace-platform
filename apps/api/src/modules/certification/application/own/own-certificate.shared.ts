@@ -276,7 +276,8 @@ const editLogger = new Logger('OwnCertificateEdit');
  * `draft` when it was never approved, one history row and the event
  * `seller-certification-withdrawn.v1` are written. `draft`, when given, is written in the same
  * root update (one version step). The root's version guard refuses a record that moved since it
- * was read (a reviewer's decision included). Answers the root's version after the write.
+ * was read (a reviewer's decision included). Answers the root's version after the write. The caller
+ * logs with {@link logWithdrawnByEdit} after its unit commits.
  */
 export async function withdrawForEdit(
   deps: Pick<OwnCertificateDependencies, 'certificates' | 'outbox' | 'ids'>,
@@ -314,13 +315,24 @@ export async function withdrawForEdit(
       },
     }),
   ]);
+  return stored.version + 1;
+}
+
+/**
+ * The log line of a withdraw by edit, written by the use case after its unit committed and only
+ * when it withdrew something (Hassan L2): a rolled-back unit logs nothing.
+ */
+export function logWithdrawnByEdit(
+  context: CallContext,
+  certificateId: string,
+  submissionId: string | null,
+): void {
+  if (submissionId === null) return;
   editLogger.log({
     msg: 'certification.submission-withdrawn-by-edit',
-    certificateId: stored.id,
+    certificateId,
     submissionId,
-    kind: stored.pendingKind,
-    marketId: market.marketId,
+    marketId: context.market.marketId,
     correlationId: context.correlationId,
   });
-  return stored.version + 1;
 }

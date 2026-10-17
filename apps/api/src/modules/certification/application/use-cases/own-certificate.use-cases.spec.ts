@@ -1074,6 +1074,47 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
       expect(withdrawnEvents(r)).toHaveLength(0);
     });
 
+    it('spends no upload attempt on an upload refused for want of confirmation (L3)', async () => {
+      const r = rig();
+      const certificateId = await pendingFirst(r);
+      const spent = new Map(r.counters.counts);
+      await expect(
+        r.upload.execute(r.contextOf(), { certificateId, data: b64(PDF) }),
+      ).resolves.toEqual({ ok: false, error: { code: 'certificate.edit-withdraws-submission' } });
+      expect(r.counters.counts).toEqual(spent);
+      // A confirmed upload does spend one.
+      await unwrap(
+        r.upload.execute(r.contextOf(), { certificateId, data: b64(PDF), withdrawPending: true }),
+      );
+      expect([...r.counters.counts.values()].reduce((a, b) => a + b, 0)).toBeGreaterThan(
+        [...spent.values()].reduce((a, b) => a + b, 0),
+      );
+    });
+
+    it('refuses an acting-as session on upload and remove, withdrawing nothing (I3)', async () => {
+      const r = rig();
+      const certificateId = await pendingFirst(r);
+      const [first] = await r.certificates.listDocuments(market, certificateId as never);
+      await expect(
+        r.upload.execute(actingAs(r.contextOf()), {
+          certificateId,
+          data: b64(PDF),
+          withdrawPending: true,
+        }),
+      ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
+      await expect(
+        r.remove.execute(actingAs(r.contextOf()), {
+          certificateId,
+          documentId: first!.id,
+          withdrawPending: true,
+        }),
+      ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(r.certificates.certificates.get(certificateId)!.pendingSubmissionId).not.toBeNull();
+      expect(r.certificates.submissions[0]!.withdrawn).toBeNull();
+      expect(withdrawnEvents(r)).toHaveLength(0);
+      expect(r.certificates.documents.has(first!.id)).toBe(true);
+    });
+
     it('resubmits after changes were requested, as a resubmission of the same record', async () => {
       const r = rig();
       const certificateId = await pendingFirst(r);

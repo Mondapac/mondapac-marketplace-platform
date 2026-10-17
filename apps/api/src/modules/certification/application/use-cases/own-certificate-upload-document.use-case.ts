@@ -10,6 +10,7 @@ import {
   invalid,
   ownerOf,
   parseCertificateId,
+  logWithdrawnByEdit,
   parseWithdrawPending,
   reserveLimits,
   storeFailure,
@@ -103,6 +104,23 @@ export class OwnCertificateUploadDocument extends UseCase<
     const { deps } = this;
     const { market } = context;
 
+    // Cheap checks first, before any limit is spent: the certificate is the seller's, open for
+    // edit (an edit of a pending submission needs the seller's confirmation) and has room. A refused
+    // upload costs no attempt (Hassan L3); the write unit checks all of it again.
+    const checked = await deps.unitOfWork
+      .run<
+        | { ok: true; typeId: Id<'CertificationType'> }
+        | { refusal: OwnCertificateUploadDocumentFailure },
+        never
+      >(
+        market,
+        async () => ok(await this.#room(context, owner.sellerId, certificateId, withdrawConfirmed)),
+        { readOnly: true },
+      )
+      .catch((error: unknown) => storeFailure(context, 'certification.upload.read', error));
+    if (!checked.ok) return checked;
+    if ('refusal' in checked.value) return err(checked.value.refusal);
+
     // Which upload limit applies: a seller with an approved revision has a zone (design 7.5).
     let approved: boolean;
     try {
@@ -120,21 +138,6 @@ export class OwnCertificateUploadDocument extends UseCase<
       })),
     );
     if (throttled !== null) return err(throttled);
-
-    // Cheap checks first: the certificate is the seller's, open for edit and has room.
-    const checked = await deps.unitOfWork
-      .run<
-        | { ok: true; typeId: Id<'CertificationType'> }
-        | { refusal: OwnCertificateUploadDocumentFailure },
-        never
-      >(
-        market,
-        async () => ok(await this.#room(context, owner.sellerId, certificateId, withdrawConfirmed)),
-        { readOnly: true },
-      )
-      .catch((error: unknown) => storeFailure(context, 'certification.upload.read', error));
-    if (!checked.ok) return checked;
-    if ('refusal' in checked.value) return err(checked.value.refusal);
 
     const bytes = Buffer.from(input.data, 'base64');
     if (bytes.length > MAX_DOCUMENT_BYTES) return err({ code: 'file.too-large' });
@@ -220,6 +223,7 @@ export class OwnCertificateUploadDocument extends UseCase<
       await deps.vault.discard(vaulted.objectKey).catch(() => undefined);
       return written;
     }
+    logWithdrawnByEdit(context, certificateId, written.value.withdrawnSubmissionId);
     return written;
   }
 

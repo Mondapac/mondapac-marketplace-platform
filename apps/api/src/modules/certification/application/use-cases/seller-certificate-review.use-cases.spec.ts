@@ -701,6 +701,30 @@ describe.each(['AU', 'ZZ'] as const)('admin review of a seller certificate, Mark
       });
     });
 
+    it('shows an undecided entry the root did not name as pending, never failing the page (L1)', async () => {
+      const r = rig();
+      asRenewal(r);
+      const raced = r.ids.next<'Submission'>();
+      r.reviews.others = [
+        {
+          ...r.reviews.others[0]!,
+          id: raced,
+          submissionNo: 3,
+          kind: 'renewal',
+          decision: null,
+        },
+        ...r.reviews.others,
+      ];
+      const page = await r.read.execute(r.actor(), { certificateId: r.certificateId });
+      if (!page.ok) throw new Error(JSON.stringify(page.error));
+      expect(page.value.otherSubmissions[0]).toMatchObject({
+        submissionId: raced,
+        status: 'pending',
+        decision: null,
+        validUntil: null,
+      });
+    });
+
     it('shows the reviewer the earlier submissions with their decision and reason', async () => {
       const r = rig();
       const approvedId = asRenewal(r);
@@ -745,6 +769,11 @@ describe.each(['AU', 'ZZ'] as const)('admin review of a seller certificate, Mark
         certificateNumber: 'HC-0001',
         expiryDate: '2027-01-01',
         validUntil: OLD_BOUNDARY.toString(),
+      });
+      // The page read is audited with the submissions it showed (I1).
+      expect(r.audit.entries.at(-1)).toMatchObject({
+        action: 'certification.review-page.viewed',
+        after: { otherSubmissionIds: [refusedId, approvedId] },
       });
       // The decision unit never reads the list.
       const snapshot = await r.reviews.snapshot(market, r.certificateId);

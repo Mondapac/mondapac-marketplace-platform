@@ -38,12 +38,6 @@ export const CERTIFICATE_INCLUDE = {
   pendingSubmission: { select: { kind: true } },
   approvedSubmission: { select: { issuer: { select: { state: true } } } },
   _count: { select: { submissions: true } },
-  // The newest submission and its decision (design 3.3): one row on the (record, number) key.
-  submissions: {
-    select: { id: true, decision: { select: { outcome: true } } },
-    orderBy: { submissionNo: 'desc' },
-    take: 1,
-  },
 } as const;
 
 export const DOCUMENT_INCLUDE = { _count: { select: { submissionLinks: true } } } as const;
@@ -70,7 +64,37 @@ export interface CertificateRow {
   pendingSubmission: { kind: string } | null;
   approvedSubmission: { issuer: { state: string } | null } | null;
   _count: { submissions: number };
-  submissions: { id: string; decision: { outcome: string } | null }[];
+}
+
+/** The newest submission of a record and its decision (design 3.3 `latestOutcome`). */
+export interface NewestSubmission {
+  readonly id: string;
+  readonly outcome: string | null;
+}
+
+/**
+ * The newest submission of each record, by record id, in one bounded statement: submission numbers
+ * run 1..n without gaps (insert-only, `submission_no = count + 1` at submit), so the newest is the
+ * row whose number equals the record's count, one lookup each on the unique
+ * `(market_id, seller_certification_id, submission_no)` key. At most one row per record.
+ */
+export async function newestSubmissions(
+  prisma: PrismaService,
+  market: MarketContext,
+  rows: readonly Pick<CertificateRow, 'id' | '_count'>[],
+): Promise<ReadonlyMap<string, NewestSubmission>> {
+  const keys = rows
+    .filter((row) => row._count.submissions > 0)
+    .map((row) => ({ sellerCertificationId: row.id, submissionNo: row._count.submissions }));
+  if (keys.length === 0) return new Map();
+  const found = await prisma.tx(market).certificationSellerCertificationSubmission.findMany({
+    where: { marketId: market.marketId, OR: keys },
+    select: { id: true, sellerCertificationId: true, decision: { select: { outcome: true } } },
+    take: keys.length,
+  });
+  return new Map(
+    found.map((s) => [s.sellerCertificationId, { id: s.id, outcome: s.decision?.outcome ?? null }]),
+  );
 }
 
 /**
@@ -93,11 +117,13 @@ export async function openIssuerRequestTypes(
 
 /**
  * A stored certificate. `openRequests` is the answer of {@link openIssuerRequestTypes} for the
- * certificate's seller: whether a "my issuer is not listed" request of its type is open.
+ * certificate's seller: whether a "my issuer is not listed" request of its type is open. `newest`
+ * is the answer of {@link newestSubmissions} for the rows read.
  */
 export function toCertificate(
   row: CertificateRow,
   openRequests: ReadonlySet<string>,
+  newest: ReadonlyMap<string, NewestSubmission>,
 ): StoredCertificate {
   const draft: StoredDraft = {
     issuerId: row.draftIssuerId as Id<'Issuer'> | null,
@@ -119,7 +145,7 @@ export function toCertificate(
     approvedBoundaryAt: row.approvedBoundaryAt === null ? null : toInstant(row.approvedBoundaryAt),
     approvedIssuerState: (row.approvedSubmission?.issuer?.state ?? null) as IssuerState | null,
     issuerRequestOpen: openRequests.has(`${row.sellerId}|${row.typeId}`),
-    latestOutcome: latestOutcomeOf(row),
+    latestOutcome: latestOutcomeOf(row, newest.get(row.id)),
     submissionCount: row._count.submissions,
     statusChangedAt: toInstant(row.statusChangedAt),
     lastChangedAt: toInstant(row.lastChangedAt),
@@ -129,10 +155,12 @@ export function toCertificate(
   };
 }
 
-function latestOutcomeOf(row: CertificateRow): SubmissionOutcome | null {
-  const newest = row.submissions[0];
+function latestOutcomeOf(
+  row: CertificateRow,
+  newest: NewestSubmission | undefined,
+): SubmissionOutcome | null {
   if (newest === undefined || newest.id === row.pendingSubmissionId) return null;
-  return (newest.decision?.outcome ?? null) as SubmissionOutcome | null;
+  return newest.outcome as SubmissionOutcome | null;
 }
 
 /** The draft columns of the root (data design 3.4) from a stored draft. */
@@ -229,7 +257,11 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       include: CERTIFICATE_INCLUDE,
     });
     if (row === null) return null;
-    return toCertificate(row, await openIssuerRequestTypes(this.prisma, market, [sellerId]));
+    return toCertificate(
+      row,
+      await openIssuerRequestTypes(this.prisma, market, [sellerId]),
+      await newestSubmissions(this.prisma, market, [row]),
+    );
   }
 
   async listOwn(
@@ -261,7 +293,8 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       take: page.limit,
     });
     const open = await openIssuerRequestTypes(this.prisma, market, [sellerId]);
-    return rows.map((row) => toCertificate(row, open));
+    const newest = await newestSubmissions(this.prisma, market, rows);
+    return rows.map((row) => toCertificate(row, open, newest));
   }
 
   async saveDraft(

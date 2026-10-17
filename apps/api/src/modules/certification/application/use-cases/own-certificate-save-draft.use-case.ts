@@ -17,6 +17,7 @@ import {
   parseWithdrawPending,
   reserveLimits,
   storeFailure,
+  logWithdrawnByEdit,
   summaryOf,
   withdrawForEdit,
   type CertificateSummary,
@@ -232,6 +233,7 @@ export class OwnCertificateSaveDraft extends UseCase<
       })
       .catch((error: unknown) => storeFailure(context, 'certification.save-draft.write', error));
     if (!written.ok) return written;
+    logWithdrawnByEdit(context, certificateId, withdrawn);
     return ok({
       certificate: written.value,
       draft: draftViewOf(draft),

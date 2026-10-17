@@ -291,7 +291,11 @@ export class SellerCertificateReviewRead extends UseCase<
         await deps.audit.record(
           context,
           ReviewPageViewed.entry(certificateId, {
-            after: { submissionId: submission.id, reason },
+            after: {
+              submissionId: submission.id,
+              reason,
+              otherSubmissionIds: snapshot.others.map((other) => other.id),
+            },
           }),
         );
         return ok(undefined);

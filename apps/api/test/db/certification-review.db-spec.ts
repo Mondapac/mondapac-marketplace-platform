@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto';
-import { ok, Temporal, uuidV7 } from '@mondapac/shared-kernel';
+import { err, ok, Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
+import { testCallContext } from '@mondapac/shared-kernel/testing';
+import { withdrawForEdit } from '../../src/modules/certification/application/own/own-certificate.shared';
+import { CERTIFICATION_EVENTS } from '../../src/modules/certification/domain/events';
+import { EventCatalogue } from '../../src/platform/events/event-catalogue';
+import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
+import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
+import { ids } from './outbox-support';
 import { Client } from 'pg';
 import type { SubmitWrite } from '../../src/modules/certification/application/ports/seller-certificate.repository';
 import type { CertificationTypeCode } from '../../src/modules/certification';
@@ -14,6 +21,7 @@ import { TEST_MARKETS } from '../support/test-config';
 import {
   createPersistence,
   marketOf,
+  modelMap,
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
@@ -781,6 +789,130 @@ describe.each(TEST_MARKETS)('certification admin review in market %s (database)'
       ]);
       expect(snapshot!.others[2]!.decision!.expiryBoundaryAt).toEqual(B1);
       expect((await inUnit(() => reviews.snapshot(market, f.id)))!.others).toEqual([]);
+    });
+
+    describe('withdraw by edit in one unit with the file write (Mojtaba N2)', () => {
+      const outboxWriter = () => {
+        const catalogue = new EventCatalogue();
+        catalogue.register('certification', CERTIFICATION_EVENTS);
+        catalogue.seal();
+        return new PrismaOutboxWriterFactory(
+          modelMap,
+          persistence.service,
+          catalogue,
+          ids,
+          NO_PERMISSION_KEYS,
+        ).forModule('certification');
+      };
+      const newDocument = (f: Awaited<ReturnType<typeof fixture>>, expectedVersion: number) => {
+        const id = uuid7() as Id<'UploadedDocument'>;
+        return {
+          id,
+          certificateId: f.id,
+          expectedVersion,
+          sellerId: f.seller as Id<'Seller'>,
+          typeId: f.typeId as Id<'CertificationType'>,
+          position: 2,
+          mediaType: 'application/pdf' as const,
+          byteSize: 500,
+          pageCount: 1,
+          objectKey: `certification/${f.seller}/${id}`,
+          dataKeyEnvelope: ENVELOPE,
+          cleanSha256: sha(id),
+          indexHmac: randomHmac(),
+          now: T2,
+        };
+      };
+      const rows = async (f: Awaited<ReturnType<typeof fixture>>) => ({
+        decisions: (
+          await sql.query(
+            `SELECT outcome, withdraw_cause FROM certification.seller_submission_decisions
+              WHERE market_id = $1 AND submission_id = $2`,
+            [market.marketId, f.submissionId],
+          )
+        ).rows,
+        edited: (
+          await sql.query<{ n: string }>(
+            `SELECT count(*) AS n FROM certification.seller_certification_history
+              WHERE market_id = $1 AND seller_certification_id = $2 AND reason_code = 'edited'`,
+            [market.marketId, f.id],
+          )
+        ).rows.map((r) => Number(r.n))[0],
+        events: (
+          await sql.query(
+            `SELECT type FROM certification.outbox WHERE market_id = $1 AND aggregate_id = $2`,
+            [market.marketId, f.id],
+          )
+        ).rows.map((r: { type: string }) => r.type),
+      });
+      const editIn = (f: Awaited<ReturnType<typeof fixture>>) => ({
+        deps: { certificates: sellerSide, outbox: outboxWriter(), ids },
+        context: testCallContext(market, 'system'),
+        owner: { sellerId: f.seller as Id<'Seller'>, accountId: account() },
+      });
+
+      it('commits the withdrawal, its history row, its event and the new file together', async () => {
+        const f = await fixture();
+        const { deps, context, owner } = editIn(f);
+        const document = newDocument(f, 4);
+        const result = await persistence.unitOfWork.run(market, async () => {
+          const stored = await sellerSide.findOwn(market, owner.sellerId, f.id);
+          const version = await withdrawForEdit(deps, context, owner, stored!, T2);
+          await sellerSide.addDocument(market, { ...document, expectedVersion: version });
+          return ok(version);
+        });
+        expect(result).toEqual({ ok: true, value: 4 });
+        const stored = await inUnit(() => sellerSide.findOwn(market, owner.sellerId, f.id));
+        expect(stored).toMatchObject({
+          version: 5,
+          status: 'draft',
+          pendingSubmissionId: null,
+          latestOutcome: 'withdrawn',
+        });
+        expect(
+          (await inUnit(() => sellerSide.listDocuments(market, f.id))).map((d) => d.id),
+        ).toEqual([f.documentId, document.id]);
+        expect(await rows(f)).toEqual({
+          decisions: [{ outcome: 'withdrawn', withdraw_cause: 'edited' }],
+          edited: 1,
+          events: ['certification.seller-certification-withdrawn.v1'],
+        });
+      });
+
+      it('rolls the withdrawal, its history row and its event back when the file write fails', async () => {
+        const f = await fixture();
+        const { deps, context, owner } = editIn(f);
+        const result = await persistence.unitOfWork.run(market, async () => {
+          const stored = await sellerSide.findOwn(market, owner.sellerId, f.id);
+          const version = await withdrawForEdit(deps, context, owner, stored!, T2);
+          // A file that is not on the draft: the use case answers document.not-found.
+          const outcome = await sellerSide.removeDocument(
+            market,
+            f.id,
+            uuid7() as Id<'UploadedDocument'>,
+            version,
+            T2,
+          );
+          return outcome === 'missing' ? err({ code: 'document.not-found' } as const) : ok(outcome);
+        });
+        expect(result).toEqual({ ok: false, error: { code: 'document.not-found' } });
+        // A quota refusal inside the unit rolls back the same way.
+        const quota = await persistence.unitOfWork.run(market, async () => {
+          const stored = await sellerSide.findOwn(market, owner.sellerId, f.id);
+          await withdrawForEdit(deps, context, owner, stored!, T2);
+          const reserved = await sellerSide.reserveQuota(market, owner.sellerId, 10, 1, T2);
+          return reserved ? ok(true) : err({ code: 'draft-quota.exceeded' } as const);
+        });
+        expect(quota).toEqual({ ok: false, error: { code: 'draft-quota.exceeded' } });
+        const stored = await inUnit(() => sellerSide.findOwn(market, owner.sellerId, f.id));
+        expect(stored).toMatchObject({
+          version: 3,
+          status: 'in-review',
+          pendingSubmissionId: f.submissionId,
+          latestOutcome: null,
+        });
+        expect(await rows(f)).toEqual({ decisions: [], edited: 0, events: [] });
+      });
     });
 
     it('lists the approved submission beside a pending renewal even past ten others', async () => {

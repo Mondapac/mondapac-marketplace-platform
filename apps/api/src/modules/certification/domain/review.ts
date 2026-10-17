@@ -193,7 +193,9 @@ export type SubmissionStatus =
 /**
  * A submission's status from its decision row and the root's pointers (data design 3.5, 3.6):
  * pending while the root points at it as pending; an approval is `superseded` once another
- * submission of the record is approved (design 3.2 row 6). A submission with neither is a fault.
+ * submission of the record is approved (design 3.2 row 6). A submission with no decision row is
+ * undecided, so `pending` even when the pointer read did not name it (a read that raced a submit;
+ * Hassan L1): a display never throws, and nothing here grants or decides.
  */
 export function submissionStatusOf(input: {
   readonly outcome: DecisionOutcome | 'withdrawn' | null;
@@ -202,8 +204,7 @@ export function submissionStatusOf(input: {
   /** The root's approved pointer names it. */
   readonly current: boolean;
 }): SubmissionStatus {
-  if (input.pending) return 'pending';
-  if (input.outcome === null) throw new Error('a submission with no decision is not pending');
+  if (input.pending || input.outcome === null) return 'pending';
   if (input.outcome === 'approved') return input.current ? 'approved' : 'superseded';
   return input.outcome;
 }

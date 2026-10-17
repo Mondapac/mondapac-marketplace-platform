@@ -176,13 +176,17 @@ export function draftEditVerdict(
 /**
  * The record's status after its pending submission is withdrawn by the seller (design 3.1): a
  * record that was never approved goes back to `draft`; an approved or expired one keeps its status
- * and its approved submission, untouched.
+ * and its approved submission, untouched. A record with an approval is never left `in-review`
+ * (Hassan I2): should one be found there, it goes to `approved`. That grants nothing by itself:
+ * validity still needs the approved submission's boundary after now and an issuer that is not
+ * derecognised (2.4 rule 1), so past the boundary the answer stays "not valid".
  */
 export function statusAfterWithdraw(
   status: SellerCertificationStatus,
   hasApproval: boolean,
 ): SellerCertificationStatus {
-  return status === 'in-review' && !hasApproval ? 'draft' : status;
+  if (status !== 'in-review') return status;
+  return hasApproval ? 'approved' : 'draft';
 }
 
 const sameDate = (a: Temporal.PlainDate | null, b: Temporal.PlainDate | null): boolean =>

@@ -174,6 +174,13 @@ describe('withdraw by edit (design 3.2 row 2, slice 8)', () => {
     expect(statusAfterWithdraw('expired', true)).toBe('expired');
   });
 
+  it('never leaves a record with an approval in-review after a withdrawal (I2)', () => {
+    expect(statusAfterWithdraw('in-review', true)).toBe('approved');
+    for (const status of ['approved', 'expired', 'in-review'] as const) {
+      expect(statusAfterWithdraw(status, true)).not.toBe('in-review');
+    }
+  });
+
   it('compares every field of two drafts', () => {
     const base: DraftContent = {
       issuerId: ISSUER as Id<'Issuer'>,
