@@ -101,6 +101,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           commissionRateBps: 1500,
           taxRateBps: 1000,
           taxAmount: 227n,
+          taxCategoryCode: 'taxable',
         },
       ],
     };

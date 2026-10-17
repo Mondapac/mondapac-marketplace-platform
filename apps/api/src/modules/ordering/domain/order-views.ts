@@ -24,6 +24,8 @@ export interface OrderLineView {
   readonly taxInclusive: boolean;
   /** The tax rate frozen at placement; null on lines placed before tax was recorded. */
   readonly taxRateBps: number | null;
+  /** The product's tax category code frozen at placement; null on older orders. */
+  readonly taxCategoryCode: string | null;
   /** The tax of the line (inside `lineAmount` when tax-inclusive); null when unknown. */
   readonly tax: Money | null;
 }
@@ -137,6 +139,7 @@ const lineView = (line: OrderLine, currency: string): OrderLineView => ({
   lineAmount: makeMoney(line.lineAmount, currency),
   taxInclusive: line.taxInclusive,
   taxRateBps: line.taxRateBps,
+  taxCategoryCode: line.taxCategoryCode,
   tax: line.taxAmount === null ? null : makeMoney(line.taxAmount, currency),
 });
 

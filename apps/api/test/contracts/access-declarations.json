@@ -17,6 +17,7 @@
   { "name": "catalog.offer-search-facts", "rule": "system" },
   { "name": "catalog.offer-sell-units", "rule": "anonymous" },
   { "name": "catalog.offer-sell-units-system", "rule": "system" },
+  { "name": "catalog.offer-tax-categories", "rule": "anonymous" },
   {
     "name": "catalog.own-offer-read",
     "rule": "permissions",

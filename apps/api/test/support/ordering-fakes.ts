@@ -28,6 +28,7 @@ import type {
   SellerOrderRecord,
 } from '../../src/modules/ordering/application/ports/order.repository';
 import type { Fulfilment, OrderState, SellerOrder } from '../../src/modules/ordering/domain/order';
+import type { OrderTaxCategories } from '../../src/modules/ordering/application/ports/order-tax-categories';
 import type { TaxAnswer, TaxFacade, TaxFailure, TaxLineInput } from '../../src/modules/tax';
 import type { FlatFeeMap, ShippingFacade, ShippingFailure } from '../../src/modules/shipping';
 import type {
@@ -469,6 +470,35 @@ export class FakeLabels implements OrderLabels {
   /** Sets the label of one (Offer, Variant). */
   label(key: OrderUnitKey, productName: string, variantLabel: string | null): void {
     this.units.set(orderUnitKey(key), { productName, variantLabel });
+  }
+}
+
+/**
+ * The tax category of each Offer bought, as checkout reads it from catalog: `byOffer` first, then
+ * `fallback` (a category code of the Market under test), a switch to fail, and the asked ids.
+ */
+export class FakeTaxCategories implements OrderTaxCategories {
+  readonly byOffer = new Map<Id<'Offer'>, string>();
+  /** Offers the catalog does not know (no published revision): absent from the answer. */
+  readonly unknown = new Set<Id<'Offer'>>();
+  fail = false;
+  calls: (readonly Id<'Offer'>[])[] = [];
+
+  constructor(private readonly fallback: string) {}
+
+  categoriesOf(
+    _context: CallContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<ReadonlyMap<Id<'Offer'>, string>> {
+    this.calls.push(offerIds);
+    if (this.fail) return Promise.reject(new Error('taxCategories'));
+    return Promise.resolve(
+      new Map(
+        offerIds
+          .filter((id) => !this.unknown.has(id))
+          .map((id) => [id, this.byOffer.get(id) ?? this.fallback] as const),
+      ),
+    );
   }
 }
 

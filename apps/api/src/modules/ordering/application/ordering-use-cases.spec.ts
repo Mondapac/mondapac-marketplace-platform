@@ -15,6 +15,7 @@ import {
   FakeLabels,
   FakeShipping,
   FakeTax,
+  FakeTaxCategories,
   MemoryOrders,
 } from '../../../../test/support/ordering-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
@@ -88,6 +89,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
   let shipping: FakeShipping;
   let commission: FakeCommission;
   let tax: FakeTax;
+  let taxCategories: FakeTaxCategories;
   let labels: FakeLabels;
   let deps: OrderingDependencies;
   let written: PendingEvent[];
@@ -117,6 +119,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     shipping = new FakeShipping();
     commission = new FakeCommission();
     tax = new FakeTax();
+    taxCategories = new FakeTaxCategories(code === 'AU' ? 'taxable' : 'zz_standard');
     labels = new FakeLabels();
     written = [];
     // Seller A charges a flat 5.00 for delivery; seller B delivers free (an explicit zero).
@@ -137,6 +140,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       shipping,
       commission,
       tax,
+      taxCategories,
       outbox: {
         append: (_context, events) => {
           written.push(...events);
@@ -1377,6 +1381,9 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
   });
 
   describe('tax on the order', () => {
+    // A category code the Market under test knows (the real tax module checks it).
+    const category = code === 'AU' ? 'taxable' : 'zz_standard';
+    const reduced = code === 'AU' ? 'gst_free' : 'zz_reduced';
     const taxOf = (order: {
       lines: readonly { offerId: string; taxRateBps: number | null; taxAmount: bigint | null }[];
     }) => Object.fromEntries(order.lines.map((l) => [l.offerId, [l.taxRateBps, l.taxAmount]]));
@@ -1394,15 +1401,54 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(order.taxStrategyId).toBe(tax.strategyId);
       expect(order.total.amount).toBe(2000n + 750n + 99n + 500n);
       expect(gateway.sessions[0]!.packages.map((p) => p.amount)).toEqual([2099n, 500n, 750n]);
-      // One call for the whole cart, as the customer, with no tax category yet.
+      // One call for the whole cart, as the customer, with the category of each line's product.
       expect(tax.calls).toHaveLength(1);
-      expect(tax.calls[0]!.every((l) => l.categoryCode === null && l.taxInclusive)).toBe(true);
+      expect(tax.calls[0]!.every((l) => l.categoryCode === category && l.taxInclusive)).toBe(true);
 
       // A later strategy change does not touch the placed order.
       tax.rateBps = 2500;
       tax.strategyId = null;
       expect(taxOf(orders.rows.get(order.id)!)[OFFER_1]).toEqual([1000, 182n]);
       expect(orders.rows.get(order.id)!.taxStrategyId).toBe(id<'TaxStrategy'>(0x7a));
+    });
+
+    it('reads the category of each product from the catalog and freezes it on the line', async () => {
+      taxCategories.byOffer.set(OFFER_2, reduced);
+      const order = await placed();
+
+      expect(Object.fromEntries(order.lines.map((l) => [l.offerId, l.taxCategoryCode]))).toEqual({
+        [OFFER_1]: category,
+        [OFFER_2]: reduced,
+        [OFFER_3]: category,
+      });
+      // The tax module is asked with each line's own category, in line order.
+      expect(tax.calls[0]!.map((l) => l.categoryCode)).toEqual(
+        order.lines.map((l) => l.taxCategoryCode),
+      );
+      // One catalog lookup for the whole cart, for the offers bought.
+      expect(taxCategories.calls).toHaveLength(1);
+      expect([...taxCategories.calls[0]!].sort()).toEqual([OFFER_1, OFFER_2, OFFER_3].sort());
+    });
+
+    it('keeps the frozen category when the product changes its category later', async () => {
+      const order = await placed();
+      taxCategories.byOffer.set(OFFER_1, reduced);
+      expect(
+        orders.rows.get(order.id)!.lines.find((l) => l.offerId === OFFER_1)!.taxCategoryCode,
+      ).toBe(category);
+    });
+
+    it('opens no order when the category cannot be read or is unknown (fail closed)', async () => {
+      taxCategories.fail = true;
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      taxCategories.fail = false;
+      taxCategories.unknown.add(OFFER_2);
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      // No tax answer was asked for, nothing was reserved or opened.
+      expect(tax.calls).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+      expect(inventory.reserved).toEqual([]);
+      expect(gateway.sessions).toEqual([]);
     });
 
     it('charges the tax on top of a price that excludes it, as its own line per package', async () => {
@@ -1468,6 +1514,10 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         [1000, money(182n, currency)],
         [1000, money(9n, currency)],
       ]);
+      expect(view.value.sellerOrders[0]!.lines.map((l) => l.taxCategoryCode)).toEqual([
+        category,
+        category,
+      ]);
     });
 
     it('shows an unknown tax, never zero, for an order placed before tax was recorded', async () => {
@@ -1475,13 +1525,19 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       orders.rows.set(order.id, {
         ...order,
         taxStrategyId: null,
-        lines: order.lines.map((l) => ({ ...l, taxRateBps: null, taxAmount: null })),
+        lines: order.lines.map((l) => ({
+          ...l,
+          taxRateBps: null,
+          taxAmount: null,
+          taxCategoryCode: null,
+        })),
       });
       const view = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
       if (!view.ok) throw new Error('view failed');
       expect(view.value.tax).toBeNull();
       expect(view.value.sellerOrders.map((s) => s.tax)).toEqual([null, null]);
       expect(view.value.sellerOrders[0]!.lines[0]!.tax).toBeNull();
+      expect(view.value.sellerOrders[0]!.lines[0]!.taxCategoryCode).toBeNull();
     });
   });
 });
