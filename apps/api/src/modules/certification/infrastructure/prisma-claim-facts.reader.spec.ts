@@ -50,10 +50,14 @@ const basis = (overrides: Partial<Basis> = {}): Basis => ({
   expiryDate: '2027-06-30',
   typeRevisionId: id(4),
   decisionOutcome: 'approved',
+  decisionActorKind: 'admin',
   approvedZone: 'Australia/Brisbane',
   hasExpiryBoundary: true,
   requiresExpiry: true,
   issuerState: null,
+  verificationMode: 'THIRD_PARTY_DOCUMENT',
+  issuerName: null,
+  verifiedWithIssuer: false,
   ...overrides,
 });
 
@@ -160,7 +164,12 @@ describe.each(['AU', 'ZZ'] as const)('PrismaClaimFactsReader, Market %s', (marke
 
   it('maps an approved decision to the approved submission view', async () => {
     const [answer] = await reader([
-      basis({ issuerId: id(5), issuerState: 'closed-to-new' }),
+      basis({
+        issuerId: id(5),
+        issuerState: 'closed-to-new',
+        issuerName: 'Registry Name',
+        verifiedWithIssuer: true,
+      }),
     ]).sellerCertificates(market, [pair(7)]);
     expect(answer!.certificate).toMatchObject({
       certificateId: id(2),
@@ -170,8 +179,11 @@ describe.each(['AU', 'ZZ'] as const)('PrismaClaimFactsReader, Market %s', (marke
         typeRevisionId: id(4),
         requiresExpiry: true,
         zoneAtApproval: 'Australia/Brisbane',
+        verificationMode: 'THIRD_PARTY_DOCUMENT',
         issuerId: id(5),
         issuerState: 'closed-to-new',
+        issuerDisplayName: 'Registry Name',
+        verifiedWithIssuer: true,
       },
     });
     expect(answer!.certificate!.approved!.expiryDate!.toString()).toBe('2027-06-30');
@@ -209,7 +221,19 @@ describe.each(['AU', 'ZZ'] as const)('PrismaClaimFactsReader, Market %s', (marke
     ['an approved submission without the expiry rule', basis({ requiresExpiry: null })],
     ['an issuer without a readable state', basis({ issuerId: id(5), issuerState: null })],
     ['an issuer in an unknown state', basis({ issuerId: id(5), issuerState: 'maybe' })],
+    [
+      'an issuer without a name',
+      basis({ issuerId: id(5), issuerState: 'active', issuerName: null }),
+    ],
+    [
+      'an issuer with an empty name',
+      basis({ issuerId: id(5), issuerState: 'active', issuerName: '' }),
+    ],
+    ['an unknown verification mode', basis({ verificationMode: 'TRUST_ME' })],
     ['an id that is not an id', basis({ certificationId: 'not-an-id' })],
+    ['an approved decision made by the system', basis({ decisionActorKind: 'system' })],
+    ['an approved decision made by the seller', basis({ decisionActorKind: 'seller' })],
+    ['an approved decision without an actor', basis({ decisionActorKind: null })],
     ['a malformed expiry date', basis({ expiryDate: '30/06/2027' })],
   ])('rejects on %s', async (_name, rows) => {
     await expect(

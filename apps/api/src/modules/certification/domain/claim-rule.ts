@@ -1,5 +1,6 @@
 import type { Id, Temporal } from '@mondapac/shared-kernel';
 import type { ClaimBasisRequirement, ClaimDecision, ClaimQuery, ClaimReason } from './claim-types';
+import { sellerBadge } from './badge';
 import { sellerCertificateValidAt } from './validity';
 import type { SellerCertificationView, SellerZones } from './validity';
 
@@ -110,7 +111,8 @@ export function decide(query: ClaimQuery, facts: ClaimFacts, at: Temporal.Instan
       validUntil: validity.expiresAt,
     },
     policyRevisionId,
-    badge: null,
+    // Built here, from the decision just made, and only when allowed (design 4.5).
+    badge: sellerBadge(query.typeCode, sub, validity),
     inputs: query,
     evaluatedAt: at,
   };

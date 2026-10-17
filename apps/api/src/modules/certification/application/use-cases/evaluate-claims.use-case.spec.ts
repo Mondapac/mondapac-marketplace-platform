@@ -157,11 +157,14 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     approved: {
       submissionId: ids.next(),
       typeRevisionId: ids.next(),
+      verificationMode: 'THIRD_PARTY_DOCUMENT',
       requiresExpiry: true,
       expiryDate: Temporal.PlainDate.from(expiry),
       zoneAtApproval: zoneId(fx.zone),
       issuerId: ids.next(),
       issuerState: issuerState as never,
+      issuerDisplayName: 'Registry Issuer',
+      verifiedWithIssuer: true,
     },
   });
 
@@ -198,6 +201,30 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     );
     expect(a.ok && a.value[0]!.evaluatedAt).toEqual(clock.now());
     expect(JSON.stringify(a)).toBe(JSON.stringify(s));
+  });
+
+  it('carries badge data from the decision: same for both callers, nothing personal (AC 23)', async () => {
+    const q = query();
+    const cert = world.certificate!;
+    const a = await facade.evaluateClaims(anonymous(), [q]);
+    const s = await facade.evaluateClaims(system(), [q]);
+    const badge = a.ok ? a.value[0]!.badge : null;
+    expect(badge).toEqual({
+      typeCode: q.typeCode,
+      typeRevisionId: cert.approved!.typeRevisionId,
+      basis: 'SELLER',
+      sellerClaim: false,
+      issuer: { id: cert.approved!.issuerId, displayName: 'Registry Issuer' },
+      validUntilLocalDate: Temporal.PlainDate.from('2027-01-31'),
+      validUntilZone: fx.zone,
+      verifiedWithIssuer: true,
+      reviewedByPlatform: true,
+    });
+    expect(s.ok && s.value[0]!.badge).toEqual(badge);
+    const text = JSON.stringify(badge);
+    for (const absent of [cert.certificateId, cert.approved!.submissionId, q.sellerId]) {
+      expect(text).not.toContain(absent);
+    }
   });
 
   it.each([
@@ -260,6 +287,7 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
   ] as const)('denies %s', async (_name, arrange, reason) => {
     arrange();
     const r = await facade.evaluateClaims(anonymous(), [query()]);
+    expect(r.ok && r.value[0]!.badge).toBeNull();
     expect(r.ok && r.value[0]).toEqual(expect.objectContaining({ allowed: false, reason }));
   });
 
@@ -412,9 +440,9 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
   ] as const)('fails the batch closed when %s', async (_n, arrange) => {
     arrange();
     const r = await facade.evaluateClaims(anonymous(), [query(), query()]);
-    expect(r.ok && r.value.map((d) => [d.allowed, d.reason])).toEqual([
-      [false, 'unavailable'],
-      [false, 'unavailable'],
+    expect(r.ok && r.value.map((d) => [d.allowed, d.reason, d.badge])).toEqual([
+      [false, 'unavailable', null],
+      [false, 'unavailable', null],
     ]);
   });
 

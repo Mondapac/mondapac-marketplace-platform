@@ -23,11 +23,14 @@ const cert = (
   approved: {
     submissionId: 's1' as Id,
     typeRevisionId: 'r1' as Id,
+    verificationMode: 'THIRD_PARTY_DOCUMENT',
     requiresExpiry: true,
     expiryDate: Temporal.PlainDate.from('2027-03-31'),
     zoneAtApproval: SYDNEY,
     issuerId: 'i1' as Id,
     issuerState: 'active',
+    issuerDisplayName: 'Issuer One',
+    verifiedWithIssuer: false,
     ...over,
   },
 });
@@ -76,6 +79,51 @@ describe('sellerCertificateValidAt', () => {
     const zones = both(ZZ, z('Pacific/Honolulu'));
     expect(sellerCertificateValidAt(c, zones, boundary.subtract({ seconds: 1 })).valid).toBe(true);
     expect(sellerCertificateValidAt(c, zones, boundary).valid).toBe(false);
+  });
+
+  it('answers the expiry date and the zone that gave the earliest boundary (AU and ZZ)', () => {
+    // Approved in Brisbane (14:00Z), chosen Sydney (13:00Z), address Brisbane: Sydney decides.
+    const au = sellerCertificateValidAt(
+      cert({ zoneAtApproval: BRISBANE }),
+      both(SYDNEY, BRISBANE),
+      at('2027-01-01T00:00:00Z'),
+    );
+    expect(au).toEqual({
+      valid: true,
+      submissionId: 's1',
+      expiresAt: at('2027-03-31T13:00:00Z'),
+      expiryDate: Temporal.PlainDate.from('2027-03-31'),
+      expiryZone: SYDNEY,
+    });
+    // ZZ: the stored zone at approval is the earliest of the three.
+    const zz = sellerCertificateValidAt(
+      cert({ zoneAtApproval: ZZ }),
+      both(z('Pacific/Honolulu')),
+      at('2027-01-01T00:00:00Z'),
+    );
+    expect(zz).toMatchObject({ valid: true, expiryZone: ZZ });
+    // A tie names the current chosen zone before the stored one.
+    const tie = sellerCertificateValidAt(
+      cert({ zoneAtApproval: SYDNEY }),
+      both(z('Australia/Melbourne'), SYDNEY),
+      at('2027-01-01T00:00:00Z'),
+    );
+    expect(tie).toMatchObject({ valid: true, expiryZone: 'Australia/Melbourne' });
+  });
+
+  it('answers no date and no zone when the type revision requires no expiry', () => {
+    const v = sellerCertificateValidAt(
+      cert({ requiresExpiry: false, expiryDate: null }),
+      both(SYDNEY),
+      at('2027-01-01T00:00:00Z'),
+    );
+    expect(v).toEqual({
+      valid: true,
+      submissionId: 's1',
+      expiresAt: null,
+      expiryDate: null,
+      expiryZone: null,
+    });
   });
 
   it('brings the boundary forward when the current zone is earlier', () => {

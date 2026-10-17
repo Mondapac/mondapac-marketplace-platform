@@ -1,6 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import type { TimeZoneId } from './claim-types';
+import type { VerificationMode } from './type-revision';
 
 export type IssuerState = 'proposed' | 'active' | 'closed-to-new' | 'derecognised';
 
@@ -11,6 +12,8 @@ export type SellerCertificationStatus =
 export interface ApprovedSubmissionView {
   readonly submissionId: Id;
   readonly typeRevisionId: Id;
+  /** The type's mode (immutable per type code, repeated by every revision; data design 3.1). */
+  readonly verificationMode: VerificationMode;
   /** The type revision the submission was made under decides this (rule 5). */
   readonly requiresExpiry: boolean;
   /** The expiry date as written, a local date. */
@@ -19,6 +22,10 @@ export interface ApprovedSubmissionView {
   readonly zoneAtApproval: TimeZoneId;
   readonly issuerId: Id | null;
   readonly issuerState: IssuerState | null;
+  /** The issuer's public registry name (badge data, design 4.5); `null` when no issuer is named. */
+  readonly issuerDisplayName: string | null;
+  /** A reviewer recorded a full issuer confirmation for this submission (design 3.2 rule 7). */
+  readonly verifiedWithIssuer: boolean;
 }
 
 export interface SellerCertificationView {
@@ -36,7 +43,16 @@ export type InvalidReason =
   | 'expired';
 
 export type Validity =
-  | { readonly valid: true; readonly submissionId: Id; readonly expiresAt: Temporal.Instant | null }
+  | {
+      readonly valid: true;
+      readonly submissionId: Id;
+      /** The boundary; `null` when the submission's type revision requires no expiry. */
+      readonly expiresAt: Temporal.Instant | null;
+      /** The expiry date as written; set exactly when `expiresAt` is. */
+      readonly expiryDate: Temporal.PlainDate | null;
+      /** The zone that gave the boundary (ADR-0005); set exactly when `expiresAt` is. */
+      readonly expiryZone: TimeZoneId | null;
+    }
   | { readonly valid: false; readonly reason: InvalidReason };
 
 /** The pair `sellers.approvedSellerZones` answers: the chosen zone and the zone the address gives. */
@@ -104,24 +120,44 @@ export function sellerCertificateValidAt(
   }
 
   if (!sub.requiresExpiry) {
-    return { valid: true, submissionId: sub.submissionId, expiresAt: null };
+    return {
+      valid: true,
+      submissionId: sub.submissionId,
+      expiresAt: null,
+      expiryDate: null,
+      expiryZone: null,
+    };
   }
   if (sub.expiryDate === null) return { valid: false, reason: 'expiry-missing' };
 
   // The earliest of three: the boundary stored at approval, the chosen zone's and the address
-  // zone's, so a chosen zone can only bring the boundary forward (T2, amended 2026-10-08).
-  let boundary: Temporal.Instant;
+  // zone's, so a chosen zone can only bring the boundary forward (T2, amended 2026-10-08). On a
+  // tie the current zones are named before the stored one (chosen, address, at approval), so the
+  // badge names the seller's zone of today when it gives the same instant.
+  let boundary: Temporal.Instant | null = null;
+  let boundaryZone: TimeZoneId | null = null;
   try {
-    boundary = [
-      expiryBoundary(sub.expiryDate, sub.zoneAtApproval),
-      expiryBoundary(sub.expiryDate, sellerZones.zone),
-      expiryBoundary(sub.expiryDate, sellerZones.addressZone),
-    ].reduce((a, b) => (Temporal.Instant.compare(a, b) <= 0 ? a : b));
+    for (const zone of [sellerZones.zone, sellerZones.addressZone, sub.zoneAtApproval]) {
+      const candidate = expiryBoundary(sub.expiryDate, zone);
+      if (boundary === null || Temporal.Instant.compare(candidate, boundary) < 0) {
+        boundary = candidate;
+        boundaryZone = zone;
+      }
+    }
   } catch (error) {
     // A zone Temporal cannot resolve is "no zone": not allowed (design 4.2 step 1).
     if (error instanceof RangeError) return { valid: false, reason: 'seller-zone-missing' };
     throw error;
   }
+  if (boundary === null || boundaryZone === null) {
+    return { valid: false, reason: 'seller-zone-missing' };
+  }
   if (Temporal.Instant.compare(at, boundary) >= 0) return { valid: false, reason: 'expired' };
-  return { valid: true, submissionId: sub.submissionId, expiresAt: boundary };
+  return {
+    valid: true,
+    submissionId: sub.submissionId,
+    expiresAt: boundary,
+    expiryDate: sub.expiryDate,
+    expiryZone: boundaryZone,
+  };
 }
