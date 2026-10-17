@@ -486,7 +486,7 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       ).toBe('23514');
     });
 
-    it('links only a file made for a seller certificate (purpose), at the draft and at the submission', async () => {
+    it('links only a file made for a seller certificate (purpose), at the draft', async () => {
       const { typeId } = await type();
       const seller = uuid7();
       const { id } = await newCertificate(seller, typeId);
@@ -522,9 +522,44 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       const { typeId } = await type();
       const seller = uuid7();
       const { id } = await newCertificate(seller, typeId);
-      await addDocument(documentOf(id, seller, typeId, 1));
-      const second = documentOf(id, seller, typeId, 1);
-      await expect(addDocument(second)).rejects.toThrow();
+      const first = documentOf(id, seller, typeId, 1);
+      await addDocument(first);
+      // A second clean file of the same seller and type, taking position 1 again.
+      const second = uuid7();
+      await insert('uploaded_documents', {
+        id: second,
+        ...base(),
+        owner_seller_id: seller,
+        purpose: 'seller-certificate',
+        type_id: typeId,
+        state: 'clean',
+        media_type: 'application/pdf',
+        byte_size: 10,
+        page_count: 1,
+        data_key_envelope: ENVELOPE,
+        object_key: `certification/x/${second}`,
+        clean_sha256: sha(second),
+        version: 1,
+        created_at: T0.toString(),
+      });
+      const attempt = async () => {
+        try {
+          await sql.query(
+            `INSERT INTO certification.seller_certification_draft_documents
+               (market_id, tenant_id, seller_certification_id, type_id, seller_id, document_id, position)
+             VALUES ($1, $2, $3, $4, $5, $6, 1)`,
+            [market.marketId, market.tenantId, id, typeId, seller, second],
+          );
+          return null;
+        } catch (error) {
+          const { code, constraint } = error as { code?: string; constraint?: string };
+          return { code, constraint };
+        }
+      };
+      expect(await attempt()).toEqual({
+        code: '23505',
+        constraint: 'seller_cert_draft_documents_position_key',
+      });
     });
 
     it('names the constraint that refuses a malformed file row', async () => {
@@ -803,6 +838,40 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
           ),
         ),
       ).resolves.toBeNull();
+    });
+
+    it('links only a file made for a seller certificate (purpose) at the submission too', async () => {
+      const { seller, typeId, document, write } = await readyToSubmit();
+      await inUnit(() => repository.submit(market, write));
+      const other = uuid7();
+      await insert('uploaded_documents', {
+        id: other,
+        ...base(),
+        owner_seller_id: seller,
+        purpose: 'issuer-request',
+        type_id: typeId,
+        state: 'clean',
+        media_type: 'application/pdf',
+        byte_size: 10,
+        page_count: 1,
+        data_key_envelope: ENVELOPE,
+        object_key: `certification/x/${other}`,
+        clean_sha256: sha(other),
+        version: 1,
+        created_at: T0.toString(),
+      });
+      const link = (documentId: string) =>
+        sqlState(
+          sql,
+          `INSERT INTO certification.seller_submission_documents
+             (market_id, tenant_id, submission_id, type_id, seller_id, document_id, position)
+           VALUES ($1, $2, $3, $4, $5, $6, 2)`,
+          [market.marketId, market.tenantId, write.submissionId, typeId, seller, documentId],
+        );
+      expect(await link(other)).toBe('23514');
+      // Control: the trigger is not what refuses the file of the right purpose (it is already
+      // linked, so the primary key does).
+      expect(await link(document.id)).toBe('23505');
     });
 
     it('rolls the whole unit back when the version is stale', async () => {

@@ -9,7 +9,7 @@ import type { PdfVerdict } from '../application/intake/document-inspection';
 /** The scan of a 10 MiB file takes well under a second; this is the ceiling, not the budget. */
 export const PDF_INSPECTION_TIMEOUT_MS = 5_000;
 const WORKER_LIMITS = {
-  maxOldGenerationSizeMb: 256,
+  maxOldGenerationSizeMb: 128,
   maxYoungGenerationSizeMb: 32,
   stackSizeMb: 4,
 } as const;
@@ -48,6 +48,32 @@ const MODULE_FILE = path.resolve(
 const idle: Worker[] = [];
 const MAX_IDLE = 2;
 
+/** The workers parked for the next file (read-only view, for diagnostics and tests). */
+export const parkedWorkers = (): readonly Worker[] => idle;
+
+/** Parks a worker for the next file; one that dies while parked leaves the pool (L6). */
+function park(worker: Worker): void {
+  const leave = (): void => {
+    const at = idle.indexOf(worker);
+    if (at >= 0) idle.splice(at, 1);
+    worker.removeAllListeners();
+    void worker.terminate();
+  };
+  worker.once('exit', leave);
+  worker.once('error', leave);
+  worker.unref();
+  idle.push(worker);
+}
+
+/** Takes a parked worker out of the pool, or starts one. */
+function take(): Worker {
+  const parked = idle.pop();
+  if (parked === undefined) return startWorker();
+  parked.removeAllListeners('exit');
+  parked.removeAllListeners('error');
+  return parked;
+}
+
 function startWorker(): Worker {
   const worker = new Worker(BOOTSTRAP, {
     eval: true,
@@ -70,7 +96,7 @@ export function inspectPdfIsolated(
   return new Promise<PdfVerdict>((resolve) => {
     let worker: Worker;
     try {
-      worker = idle.pop() ?? startWorker();
+      worker = take();
     } catch {
       resolve({ ok: false, code: 'file.unreadable' });
       return;
@@ -84,8 +110,7 @@ export function inspectPdfIsolated(
       worker.removeAllListeners('error');
       worker.removeAllListeners('exit');
       if (reuse && idle.length < MAX_IDLE) {
-        worker.unref();
-        idle.push(worker);
+        park(worker);
       } else {
         void worker.terminate();
       }
