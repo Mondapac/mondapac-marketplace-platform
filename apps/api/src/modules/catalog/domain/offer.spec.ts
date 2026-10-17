@@ -406,6 +406,175 @@ describe.each(MARKETS)('Offer in market %s', (code) => {
     });
   });
 
+  describe('recordAttestation (ADR-0012 d4; design 4.4, B1)', () => {
+    const later = T0.add({ hours: 2 });
+    const accountId = 'a1' as Id<'Account'>;
+    const other = 'a2' as Id<'Account'>;
+    const stored = (overrides: Partial<OfferState> = {}) => {
+      const created = create();
+      if (!created.ok) throw new Error(created.error.code);
+      return Offer.restore({
+        ...created.value.state,
+        handling: 'SEALED_ORIGINAL',
+        version: 3,
+        ...overrides,
+      });
+    };
+
+    it('records who attested and when on a sealed-original Offer, with its own history kind', () => {
+      const offer = stored();
+      expect(offer.recordAttestation({ attested: true, accountId, now: later })).toEqual({
+        ok: true,
+        value: ['attestation'],
+      });
+      expect(offer.state).toMatchObject({
+        attestationRecordedAt: later,
+        attestationAccountId: accountId,
+        status: 'draft',
+        version: 4,
+      });
+      expect(offer.pendingHistory).toEqual({
+        changeKind: 'attestation-recorded',
+        changedFields: ['attestation'],
+        occurredAt: later,
+      });
+      expect(offer.pendingEvents).toEqual([]);
+    });
+
+    it('withdraws a recorded attestation, clearing both the instant and the author', () => {
+      const offer = stored({
+        status: 'published',
+        listed: true,
+        firstPublishedAt: T0,
+        submittedAt: T0,
+        attestationRecordedAt: T0,
+        attestationAccountId: other,
+      });
+      expect(offer.recordAttestation({ attested: false, accountId, now: later })).toEqual({
+        ok: true,
+        value: ['attestation'],
+      });
+      expect(offer.state).toMatchObject({
+        attestationRecordedAt: null,
+        attestationAccountId: null,
+        status: 'published',
+        version: 4,
+      });
+      expect(offer.pendingHistory?.changeKind).toBe('attestation-withdrawn');
+    });
+
+    it('keeps the first record when the attestation is recorded again (nothing stored)', () => {
+      const offer = stored({ attestationRecordedAt: T0, attestationAccountId: other });
+      expect(offer.recordAttestation({ attested: true, accountId, now: later })).toEqual({
+        ok: true,
+        value: [],
+      });
+      expect(offer.state).toMatchObject({
+        attestationRecordedAt: T0,
+        attestationAccountId: other,
+        version: 3,
+      });
+      expect(offer.pendingHistory).toBeNull();
+    });
+
+    it('stores nothing when withdrawing an attestation that is not recorded', () => {
+      const offer = stored({ handling: 'REPACKED' });
+      expect(offer.recordAttestation({ attested: false, accountId, now: later })).toEqual({
+        ok: true,
+        value: [],
+      });
+      expect(offer.pendingHistory).toBeNull();
+      expect(offer.state.version).toBe(3);
+    });
+
+    it('returns a waiting Offer to draft, as any other seller change does', () => {
+      const offer = stored({ status: 'pending-first-publish', submittedAt: T0 });
+      expect(offer.recordAttestation({ attested: true, accountId, now: later }).ok).toBe(true);
+      expect(offer.state).toMatchObject({ status: 'draft', submittedAt: null });
+    });
+
+    it.each([null, 'REPACKED', 'PREPARED', 'FRESH'] as const)(
+      'refuses to record an attestation when the handling is %s (ADR-0012 d4)',
+      (handling) => {
+        const offer = stored({ handling });
+        expect(offer.recordAttestation({ attested: true, accountId, now: later })).toEqual({
+          ok: false,
+          error: { code: 'offer.attestation-needs-sealed-original' },
+        });
+        expect(offer.state.version).toBe(3);
+        expect(offer.pendingHistory).toBeNull();
+      },
+    );
+
+    it.each(['REPACKED', 'PREPARED', 'FRESH'] as const)(
+      'clears a recorded attestation when the handling changes away to %s (Hassan M-1)',
+      (handling) => {
+        const offer = stored({
+          status: 'published',
+          listed: true,
+          firstPublishedAt: T0,
+          submittedAt: T0,
+          attestationRecordedAt: T0,
+          attestationAccountId: other,
+        });
+        expect(offer.setHandling({ handling, now: later })).toEqual({
+          ok: true,
+          value: ['handling', 'attestation'],
+        });
+        expect(offer.state).toMatchObject({
+          handling,
+          attestationRecordedAt: null,
+          attestationAccountId: null,
+          status: 'published',
+          version: 4,
+        });
+        expect(offer.pendingHistory).toEqual({
+          changeKind: 'edited',
+          changedFields: ['handling', 'attestation'],
+          occurredAt: later,
+        });
+        // Back to SEALED_ORIGINAL: the attestation is not revived; a new record is needed.
+        const back = Offer.restore(offer.state);
+        expect(back.setHandling({ handling: 'SEALED_ORIGINAL', now: later })).toEqual({
+          ok: true,
+          value: ['handling'],
+        });
+        expect(back.state.attestationRecordedAt).toBeNull();
+      },
+    );
+
+    it('keeps the attestation when the handling is set to the value it already holds', () => {
+      const offer = stored({ attestationRecordedAt: T0, attestationAccountId: other });
+      expect(offer.setHandling({ handling: 'SEALED_ORIGINAL', now: later })).toEqual({
+        ok: true,
+        value: [],
+      });
+      expect(offer.state).toMatchObject({
+        attestationRecordedAt: T0,
+        attestationAccountId: other,
+        version: 3,
+      });
+      expect(offer.pendingHistory).toBeNull();
+    });
+
+    it('changes only the handling when no attestation is recorded', () => {
+      const offer = stored();
+      expect(offer.setHandling({ handling: 'FRESH', now: later })).toEqual({
+        ok: true,
+        value: ['handling'],
+      });
+      expect(offer.pendingHistory?.changedFields).toEqual(['handling']);
+    });
+
+    it('refuses a deleted Offer', () => {
+      const offer = stored({ status: 'deleted', deletedAt: T0 });
+      expect(offer.recordAttestation({ attested: false, accountId, now: later })).toEqual({
+        ok: false,
+        error: { code: 'offer.not-editable' },
+      });
+    });
+  });
+
   it('freezes its state', () => {
     const created = create();
     if (!created.ok) throw new Error(created.error.code);

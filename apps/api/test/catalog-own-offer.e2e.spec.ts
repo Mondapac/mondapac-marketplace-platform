@@ -304,6 +304,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       'offer.not-submittable': 409,
       'offer.product-not-published': 409,
       'offer.handling-missing': 422,
+      'offer.attestation-needs-sealed-original': 422,
       'offer.delete-via-product': 422,
       'conflict.stale': 409,
       'seller.not-eligible': 403,
@@ -1199,6 +1200,125 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       ]);
     });
 
+    it('records and withdraws the attestation of an own Offer, asking every tag again', async () => {
+      // Allowed only with the attestation, as a manufacturer basis would be.
+      arm((q) =>
+        q.attestationRecorded
+          ? allowedDecision(q, certificate)
+          : refusedDecision(q, 'attestation-missing'),
+      );
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      const path = `/catalog/seller/offers/${OFFER}/attestation`;
+      const put = (payload: unknown, headers: Record<string, string>) =>
+        withMarket(http().put(path), headers).send(payload as object);
+      offer = Offer.restore(
+        offerState({ status: 'draft', listed: false, firstPublishedAt: null, submittedAt: null }),
+      );
+
+      const recorded = await put({ attested: true }, session);
+      expect(recorded.status).toBe(200);
+      expect(recorded.body).toEqual({
+        changedFields: ['attestation'],
+        attestationRecordedAt: clock.now().toString(),
+      });
+      expect(savedEdits[0]!.state).toMatchObject({
+        attestationRecordedAt: clock.now(),
+        attestationAccountId: OWNER,
+      });
+      expect(savedEdits[0]!.pendingHistory?.changeKind).toBe('attestation-recorded');
+      expect(
+        logLines.find(
+          (l) => l.msg === 'catalog.own-offer-record-attestation' && l.outcome === 'ok',
+        ),
+      ).toMatchObject({
+        marketId: code,
+        correlationId: recorded.headers['x-correlation-id'] as string,
+      });
+
+      // Withdrawn on a published Offer: its tag is asked again and suspended.
+      offer = Offer.restore(
+        offerState({ attestationRecordedAt: START, attestationAccountId: OWNER }),
+        [activeTagState(id<'OfferTag'>(0x5101), typeCode, certificate, START)],
+      );
+      const withdrawn = await put({ attested: false }, session);
+      expect(withdrawn.status).toBe(200);
+      expect(withdrawn.body).toEqual({
+        changedFields: ['attestation'],
+        attestationRecordedAt: null,
+      });
+      expect(savedEdits[1]!.tags[0]).toMatchObject({
+        status: 'suspended',
+        lastReasonCode: 'attestation-missing',
+        lastChangeCause: 'attestation-change',
+      });
+      expect(savedEdits[1]!.state).toMatchObject({ listed: false, attestationRecordedAt: null });
+
+      // Unanswered: refused, nothing stored.
+      evaluator.unavailable = true;
+      offer = Offer.restore(
+        offerState({ attestationRecordedAt: START, attestationAccountId: OWNER }),
+        [activeTagState(id<'OfferTag'>(0x5102), typeCode, certificate, START)],
+      );
+      const down = await put({ attested: false }, session);
+      expect(down.status).toBe(503);
+      expect(down.body).toEqual({ statusCode: 503, code: 'claim.check-unavailable' });
+      expect(savedEdits).toHaveLength(2);
+    });
+
+    it('refuses the attestation without CSRF, a session or the seller origin, a bad body, another handling and a stranger’s Offer', async () => {
+      arm();
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      const path = `/catalog/seller/offers/${OFFER}/attestation`;
+      const put = (payload: unknown, headers: Record<string, string>) =>
+        withMarket(http().put(path), headers).send(payload as object);
+      offer = Offer.restore(offerState());
+
+      expect((await put({ attested: true }, { cookie: session.cookie })).status).toBe(403);
+      expect((await put({ attested: true }, {})).status).toBe(401);
+      for (const body of [
+        {},
+        { attested: 'yes' },
+        { attested: true, attestationAccountId: OWNER },
+        { attested: true, attestationRecordedAt: START.toString() },
+        { attested: true, handling: 'SEALED_ORIGINAL' },
+      ]) {
+        expect((await put(body, session)).status).toBe(400);
+      }
+      const wrongOrigin = await http()
+        .put(path)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session })
+        .send({ attested: true });
+      expect(wrongOrigin.status).toBe(403);
+      const crossSite = await http()
+        .put(path)
+        .set({
+          'x-market-id': code,
+          ...panelHeaders(code, 'seller'),
+          ...session,
+          'sec-fetch-site': 'cross-site',
+        })
+        .send({ attested: true });
+      expect(crossSite.status).toBe(403);
+
+      offer = Offer.restore(offerState({ handling: 'REPACKED' }));
+      const repacked = await put({ attested: true }, session);
+      expect(repacked.status).toBe(422);
+      expect(repacked.body).toEqual({
+        statusCode: 422,
+        code: 'offer.attestation-needs-sealed-original',
+      });
+      offer = Offer.restore(offerState({ sellerId: id<'Seller'>(0xb999) }));
+      expect((await put({ attested: true }, session)).body).toEqual({
+        statusCode: 404,
+        code: 'offer.not-found',
+      });
+      expect(savedEdits).toHaveLength(0);
+    });
+
     it('documents the tag routes in OpenAPI', async () => {
       await boot({ API_DOCS_ENABLED: 'true' });
       const document = (await http().get('/docs-json').expect(200)).body as {
@@ -1218,6 +1338,11 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
           ?.responses;
       for (const status of ['204', '400', '403', '404', '409', '415', '503']) {
         expect(sellWithoutBadge).toHaveProperty(status);
+      }
+      const attestation =
+        document.paths['/catalog/seller/offers/{offerId}/attestation']?.put?.responses;
+      for (const status of ['200', '400', '401', '403', '404', '409', '415', '422', '429', '503']) {
+        expect(attestation).toHaveProperty(status);
       }
     });
   });

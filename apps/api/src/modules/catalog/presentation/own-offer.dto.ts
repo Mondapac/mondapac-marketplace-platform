@@ -75,9 +75,39 @@ export class OwnOfferSetHandlingRequest {
 export class OwnOfferHandlingSet {
   @ApiProperty({
     type: [String],
-    description: "['handling'] when the value changed; empty when the Offer already held it.",
+    description:
+      "['handling'] when the value changed, ['handling', 'attestation'] when a change away from " +
+      'SEALED_ORIGINAL also withdrew the attestation; empty when the Offer already held it.',
   })
   changedFields!: string[];
+}
+
+export class OwnOfferRecordAttestationRequest {
+  @ApiProperty({
+    description:
+      "true records the seller's attestation that the Offer's stock is genuine, sealed and " +
+      'unaltered (needed for a manufacturer-certified badge; the handling must be ' +
+      'SEALED_ORIGINAL); false withdraws it. Who and when come from the session and the clock, ' +
+      'never from the request.',
+  })
+  attested!: boolean;
+}
+
+export class OwnOfferAttestationRecorded {
+  @ApiProperty({
+    type: [String],
+    description: "['attestation'] when the record changed; empty when the Offer already held it.",
+  })
+  changedFields!: string[];
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'When the recorded attestation was made (the first record is kept); null when none.',
+  })
+  attestationRecordedAt!: string | null;
 }
 
 export class OwnOfferSubmitted {

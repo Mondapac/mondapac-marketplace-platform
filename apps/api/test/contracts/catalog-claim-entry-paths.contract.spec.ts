@@ -48,6 +48,7 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
       expect.arrayContaining([
         'use-cases/own-offer-edit.use-case.ts',
         'use-cases/own-offer-set-handling.use-case.ts',
+        'use-cases/own-offer-record-attestation.use-case.ts',
         'use-cases/own-offer-submit.use-case.ts',
         'use-cases/offer-approve.use-case.ts',
         'use-cases/product-revision-approve.use-case.ts',
@@ -99,6 +100,55 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
     expect(files.find((f) => f.file === 'revisions/submit-product.service.ts')!.text).toMatch(
       /markProductForReevaluation\(/,
     );
+  });
+
+  it('re-asks every kept tag when the attestation is recorded or withdrawn (ADR-0012 d4)', () => {
+    const writers = files.filter(({ text }) => /\.recordAttestation\(/.test(text));
+    expect(writers.map((f) => f.file)).toEqual([
+      'use-cases/own-offer-record-attestation.use-case.ts',
+    ]);
+    const text = writers[0]!.text;
+    expect(text).toMatch(/keptTagTypes\(/);
+    expect(text).toMatch(/factsInUnit\(/);
+    expect(text).toMatch(/\.settleTags\(/);
+    expect(text).toMatch(/entryPath: 'attestation-change'/);
+    // Refused in an acting-as session (B1).
+    expect(text).toMatch(/isActingAsSession\(actor\)/);
+  });
+
+  it('writes the attestation fields only in create, recordAttestation and setHandling (Hassan L-1)', () => {
+    const offerSource = readFileSync(path.resolve(APPLICATION, '../domain/offer.ts'), 'utf8').split(
+      '\n',
+    );
+    // An object-literal property, not the `readonly` declaration of the state type.
+    const write = /^(?!\s*readonly\b).*\battestation(RecordedAt|AccountId):/;
+    const header = /^ {2}(?:static |private )?(#?[A-Za-z]\w*)(?:<[^>]*>)?\(/;
+    const writers = new Map<string, string[]>();
+    let method = '(top level)';
+    for (const line of offerSource) {
+      const found = header.exec(line);
+      if (found) method = found[1]!;
+      if (write.test(line)) writers.set(method, [...(writers.get(method) ?? []), line.trim()]);
+    }
+    expect([...writers.keys()].sort()).toEqual(['create', 'recordAttestation', 'setHandling']);
+    // create starts empty and setHandling only clears: never a value from its input.
+    for (const name of ['create', 'setHandling']) {
+      for (const line of writers.get(name)!) {
+        expect(line).toMatch(/attestation(RecordedAt|AccountId): null\b/);
+        expect(line).not.toMatch(/attestation(RecordedAt|AccountId): (?!null\b)/);
+      }
+    }
+
+    // Under application/, only the record-attestation use case names the fields in a literal
+    // (its answer), and no file rebuilds an Offer state with them.
+    const appWriters = files
+      .filter(({ text }) => text.split('\n').some((line) => write.test(line)))
+      .map((f) => f.file);
+    expect(appWriters).toEqual(['use-cases/own-offer-record-attestation.use-case.ts']);
+    const recordText = files.find(
+      (f) => f.file === 'use-cases/own-offer-record-attestation.use-case.ts',
+    )!.text;
+    expect(recordText).not.toMatch(/Offer\.restore\(\{/);
   });
 
   it('serialises tag writes against publication through the product lock (slice 11)', () => {

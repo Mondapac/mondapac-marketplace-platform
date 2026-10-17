@@ -49,6 +49,7 @@ import { OfferRequestChanges } from './application/use-cases/offer-request-chang
 import { OwnOfferDelete } from './application/use-cases/own-offer-delete.use-case';
 import { OwnOfferEdit } from './application/use-cases/own-offer-edit.use-case';
 import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handling.use-case';
+import { OwnOfferRecordAttestation } from './application/use-cases/own-offer-record-attestation.use-case';
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
 import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
@@ -372,6 +373,16 @@ const productTypeProvider: FactoryProvider<string> = {
       clock: true,
     }),
     useCaseProvider(OwnOfferSetHandling, {
+      unitOfWork: true,
+      offers: true,
+      eligibility: true,
+      save: true,
+      claims: true,
+      evaluator: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnOfferRecordAttestation, {
       unitOfWork: true,
       offers: true,
       eligibility: true,

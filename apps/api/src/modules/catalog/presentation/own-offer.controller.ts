@@ -47,6 +47,7 @@ import {
 import { OwnOfferDelete } from '../application/use-cases/own-offer-delete.use-case';
 import { OwnOfferSubmit } from '../application/use-cases/own-offer-submit.use-case';
 import { OwnOfferSetHandling } from '../application/use-cases/own-offer-set-handling.use-case';
+import { OwnOfferRecordAttestation } from '../application/use-cases/own-offer-record-attestation.use-case';
 import { OwnOfferEdit } from '../application/use-cases/own-offer-edit.use-case';
 import { OwnOfferCreateOnPlatformProduct } from '../application/use-cases/own-offer-create-on-platform-product.use-case';
 import { OwnOfferRead } from '../application/use-cases/own-offer-read.use-case';
@@ -61,7 +62,9 @@ import {
   OwnOfferCreateRequest,
   OwnOfferEdited,
   OwnOfferEditRequest,
+  OwnOfferAttestationRecorded,
   OwnOfferHandlingSet,
+  OwnOfferRecordAttestationRequest,
   OwnOfferSetHandlingRequest,
   OwnOfferSubmitRequest,
   OwnOfferSubmitted,
@@ -87,6 +90,7 @@ export const OWN_OFFER_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'offer.not-submittable': 409,
   'offer.product-not-published': 409,
   'offer.handling-missing': 422,
+  'offer.attestation-needs-sealed-original': 422,
   'offer.delete-via-product': 422,
   'conflict.stale': 409,
   'seller.not-eligible': 403,
@@ -132,6 +136,7 @@ export class OwnOfferController {
     private readonly createOffer: OwnOfferCreateOnPlatformProduct,
     private readonly editOffer: OwnOfferEdit,
     private readonly setOfferHandling: OwnOfferSetHandling,
+    private readonly recordOfferAttestation: OwnOfferRecordAttestation,
     private readonly submitOffer: OwnOfferSubmit,
     private readonly deleteOffer: OwnOfferDelete,
     private readonly listOffers: OwnOffersList,
@@ -389,9 +394,11 @@ export class OwnOfferController {
       'Needs catalog.own-product.edit and a seller who may sell. Body: handling, one of ' +
       'SEALED_ORIGINAL, REPACKED, PREPARED, FRESH. An Offer of another seller, a deleted one or ' +
       'an unknown id is a byte-identical offer.not-found. An Offer waiting for review or ' +
-      'needing changes returns to draft; a published Offer stays published. Every tag is asked ' +
-      'again against the new handling: one no longer allowed is suspended and the Offer goes ' +
-      'off sale; an unanswered check refuses (claim.check-unavailable). Shares the save budget ' +
+      'needing changes returns to draft; a published Offer stays published. A change away from ' +
+      'SEALED_ORIGINAL withdraws a recorded attestation in the same change (changedFields ' +
+      'handling and attestation); returning to SEALED_ORIGINAL needs a new attestation. Every ' +
+      'tag is asked again against the new handling: one no longer allowed is suspended and the ' +
+      'Offer goes off sale; an unanswered check refuses (claim.check-unavailable). Shares the save budget ' +
       'of draft saves: 60 a minute and 1,000 a day per account.',
   })
   @ApiHeader(CSRF)
@@ -440,6 +447,89 @@ export class OwnOfferController {
     const failed = outcome instanceof HttpException && outcome.getStatus() >= 500;
     this.#logger[failed ? 'warn' : 'log']({
       msg: 'catalog.own-offer-set-handling',
+      outcome:
+        outcome instanceof HttpException ? (outcome.getResponse() as { code: string }).code : 'ok',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (outcome instanceof HttpException) throw outcome;
+    return outcome;
+  }
+
+  @Put(':offerId/attestation')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Record or withdraw the seller attestation of an own Offer',
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell; refused in an acting-as ' +
+      'session. Body: attested (true records, false withdraws). The attestation states that the ' +
+      'stock is genuine, sealed and unaltered; a manufacturer-certified badge needs it and the ' +
+      'handling SEALED_ORIGINAL. Recording needs that handling ' +
+      '(offer.attestation-needs-sealed-original). Who and when are taken from the session and ' +
+      'the clock; recording again keeps the first record. An Offer of another seller, a deleted ' +
+      'one or an unknown id is a byte-identical offer.not-found. An Offer waiting for review or ' +
+      'needing changes returns to draft; a published Offer stays published. Every tag is asked ' +
+      'again: one no longer allowed is suspended and the Offer goes off sale, one allowed again ' +
+      'is restored; an unanswered check refuses (claim.check-unavailable). Shares the save ' +
+      'budget of draft saves: 60 a minute and 1,000 a day per account.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiBody({ type: OwnOfferRecordAttestationRequest })
+  @ApiOkResponse({ type: OwnOfferAttestationRecorded })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied (also an acting-as session), request.csrf or seller.not-eligible',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'offer.not-editable, conflict.stale or conflict.retry',
+  })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorBody,
+    description: 'offer.attestation-needs-sealed-original',
+  })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or claim.check-unavailable',
+  })
+  async recordAttestation(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+    @Body() body: unknown,
+  ): Promise<OwnOfferAttestationRecorded> {
+    const input = closedBody(request, body, ['attested']);
+    let outcome: OwnOfferAttestationRecorded | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.recordOfferAttestation.execute(context, {
+        offerId,
+        attested: input.attested,
+      });
+      outcome = result.ok
+        ? {
+            changedFields: [...result.value.changedFields],
+            attestationRecordedAt: result.value.attestationRecordedAt,
+          }
+        : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    }
+    const failed = outcome instanceof HttpException && outcome.getStatus() >= 500;
+    this.#logger[failed ? 'warn' : 'log']({
+      msg: 'catalog.own-offer-record-attestation',
       outcome:
         outcome instanceof HttpException ? (outcome.getResponse() as { code: string }).code : 'ok',
       marketId: context.market.marketId,
