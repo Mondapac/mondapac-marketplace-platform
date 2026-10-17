@@ -11,6 +11,7 @@ import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared
 import request from 'supertest';
 import { CheckClaimText } from '../src/modules/catalog/application/claim-text/check-claim-text.service';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
+import { OWN_OFFER_FINDER } from '../src/modules/catalog/application/ports/own-offer-finder';
 import {
   OWN_CATALOG_READER,
   type PendingRevisionRow,
@@ -83,11 +84,13 @@ it('maps every refusal code of the product review use cases to its exact status'
     'product.not-editable': 409,
     'seller.not-eligible': 409,
     'conflict.stale': 409,
+    'conflict.retry': 409,
     'variant.unknown': 409,
     'variant.none': 409,
     'variant.limit-reached': 422,
     'claim-text.refused': 422,
     'access.unavailable': 503,
+    'claim.check-unavailable': 503,
   });
 });
 
@@ -183,6 +186,10 @@ describe('admin product revision review over HTTP (integration)', () => {
               return Promise.resolve(waiting.slice(0, page.limit));
             },
           })
+          // The owner has no Offer on the product here: the approval asks nothing (the re-ask of
+          // tags at publication is covered by the use-case and db specs, slice 11).
+          .overrideProvider(OWN_OFFER_FINDER)
+          .useValue({ findOwnOnProduct: () => Promise.resolve(null) })
           .overrideProvider(OWN_CATALOG_READER)
           .useValue({
             pendingReviewCount: () =>

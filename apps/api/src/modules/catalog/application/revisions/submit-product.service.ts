@@ -21,6 +21,9 @@ import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
+import type { OfferRepository } from '../ports/offer.repository';
+import type { TagReevaluationRequestRepository } from '../ports/tag-reevaluation-requests';
+import { markProductForReevaluation } from '../tags/publish-fan-out';
 import { refusalOf, type RefusedField } from '../working-copy/save-draft.service';
 import type { FreezeRevision, FreezeRevisionFailure } from './freeze-revision.service';
 
@@ -46,15 +49,20 @@ export interface FrozenSubmission {
 }
 
 /**
- * The claim steps of a seller's submit (design 4.2 row 1; 5.1a points 1, 4, 6): `ask` runs after
- * the claim-text check, outside any unit (it opens its own read-only unit and calls the facade);
- * `settle` runs in the write unit, after the content was frozen again and found equal, before
- * the product is stored. Either refuses the whole submit; `claim.inputs-changed` from `settle`
- * means a lost race, and the caller submits again.
+ * The claim steps of a seller's submit (design 4.2 rows 1, 4; 5.1a points 1, 3, 4, 6): `ask` runs
+ * after the claim-text check, outside any unit (it opens its own read-only unit and calls the
+ * facade); `settle` runs in the write unit, after the content was frozen again and found equal
+ * and after the product row is written (lock order: product, then Offer), and learns whether
+ * the revision publishes at once: then it is the publish re-ask of point 3 and settles the tags
+ * against the revision being published. Either refuses the whole submit, which rolls the unit
+ * back; `claim.inputs-changed` from `settle` means a lost race, and the caller submits again.
  */
 export interface SubmitClaims {
   ask(frozen: FrozenSubmission): Promise<Result<void, SubmitProductFailure>>;
-  settle(frozen: FrozenSubmission): Promise<Result<void, SubmitProductFailure>>;
+  settle(
+    frozen: FrozenSubmission,
+    outcome: { readonly published: boolean },
+  ): Promise<Result<void, SubmitProductFailure>>;
 }
 
 /** Per type the `ClaimReason` code of its first refused variant (CUX 3.7). */
@@ -97,7 +105,14 @@ export interface SubmitProductDependencies {
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  /** The Offers of a PLATFORM product, marked `rechecking` at its publish (M1). */
+  readonly offers: OfferRepository;
+  /** The fan-out request a PLATFORM publish writes (design 5.4). */
+  readonly requests: TagReevaluationRequestRepository;
 }
+
+/** A PLATFORM publish marks every Offer of the product in its unit: room for a large product. */
+const PLATFORM_PUBLISH_TIMEOUT_MS = 30_000;
 
 /**
  * The submit of a product's working copy (catalog design 4.2 row 1; slice 6): an internal service
@@ -302,18 +317,30 @@ export class SubmitProduct {
             content: frozen.value.content,
           };
           await revisions.add(market, revision);
+          await products.save(market, product);
+          const publishedAtOnce = submitted.value.published;
           if (input.claims !== undefined) {
-            const settled = await input.claims.settle({
-              product,
-              revisionId,
-              content: frozen.value.content,
-            });
+            // After the product row: a tag write locks the product before its Offer (slice 11).
+            const settled = await input.claims.settle(
+              { product, revisionId, content: frozen.value.content },
+              { published: publishedAtOnce },
+            );
             if (!settled.ok) return settled;
           }
-          await products.save(market, product);
+          if (publishedAtOnce && product.state.scope === 'PLATFORM') {
+            // Rule M1 (design 5.4): every PLATFORM publish marks the tags of the product's
+            // Offers `rechecking` in this unit and asks the fan-out to re-ask them.
+            await markProductForReevaluation(this.deps, market, {
+              productId: product.state.id,
+              revisionId,
+              actor: { kind: 'admin', accountId: actor.accountId },
+              now,
+            });
+          }
           await this.deps.outbox.append(context, product.pendingEvents);
-          return ok({ revisionId, revisionNo, published: submitted.value.published });
+          return ok({ revisionId, revisionNo, published: publishedAtOnce });
         },
+        author.kind === 'admin' ? { timeoutMs: PLATFORM_PUBLISH_TIMEOUT_MS } : undefined,
       );
       this.#logger.log({
         msg: 'catalog.submit-product',

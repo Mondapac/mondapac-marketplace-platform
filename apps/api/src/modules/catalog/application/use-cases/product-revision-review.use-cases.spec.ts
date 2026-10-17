@@ -1,3 +1,10 @@
+import {
+  FakeClaimEvaluator,
+  FixedFactsClaimQueryBuilder,
+  activeTagState,
+  allowedDecision,
+  refusedDecision,
+} from '../../../../../test/support/catalog-tag-fakes';
 import { Temporal } from '@mondapac/shared-kernel';
 import type {
   CallContext,
@@ -21,6 +28,8 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import { Offer, type OfferState } from '../../domain/offer';
+import type { OfferTagState, TagClaimQuery, TagDecision } from '../../domain/offer-tag';
 import { Product, type ProductState } from '../../domain/product';
 import type { StoredRevision } from '../../domain/stored-revision';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
@@ -138,6 +147,10 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       claim?: 'clean' | 'found' | 'down' | 'unmapped';
       hashDriftsInUnit?: boolean;
       saveThrows?: Error;
+      /** The owner's Offer on the product with its open tags (slice 11 re-ask). */
+      offer?: { state: OfferState; tags: OfferTagState[] };
+      decide?: (query: TagClaimQuery) => TagDecision;
+      unavailable?: boolean;
     } = {},
   ) {
     const state = options.product === undefined ? productState() : options.product;
@@ -205,6 +218,16 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
         });
       },
     } as unknown as CheckClaimText;
+    let offerRow = options.offer ?? null;
+    const savedOffers: Offer[] = [];
+    const evaluator = new FakeClaimEvaluator(
+      options.decide ??
+        (() => {
+          throw new Error('no tag to ask');
+        }),
+      [],
+    );
+    evaluator.unavailable = options.unavailable ?? false;
     const approve = new ProductRevisionApprove(gate, {
       unitOfWork,
       products,
@@ -214,6 +237,22 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       policy: realPolicy,
       outbox,
       clock,
+      offerFinder: {
+        findOwnOnProduct: () =>
+          Promise.resolve(offerRow === null ? null : Offer.restore(offerRow.state, offerRow.tags)),
+      },
+      offers: {
+        save: (_m: MarketContext, offer: Offer) => {
+          savedOffers.push(offer);
+          offerRow = { state: offer.state, tags: [...offer.tags] };
+          return Promise.resolve(null);
+        },
+      } as never,
+      claims: new FixedFactsClaimQueryBuilder(null, {
+        variantIds: [variantId],
+        platformCategoryPaths: [],
+      }),
+      evaluator,
     });
     const requestChanges = new ProductRevisionRequestChanges(gate, {
       unitOfWork,
@@ -222,7 +261,7 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       outbox,
       clock,
     });
-    return { approve, requestChanges, saved, decisions, events };
+    return { approve, requestChanges, saved, decisions, events, savedOffers, evaluator };
   }
 
   const approveInput = (checks: string[] = ALL_CHECKS) => ({
@@ -236,6 +275,101 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
     revisionId,
     version: 4,
     reasonCode,
+  });
+
+  describe('approve re-asks the owner Offer tags before the pointer moves (5.1a point 3)', () => {
+    const certificate = {
+      certificateId: ids.next(),
+      versionId: ids.next(),
+      typeRevisionId: ids.next(),
+    };
+    const pendingOffer = (typeCode: string) => {
+      const state: OfferState = {
+        id: ids.next<'Offer'>(),
+        marketId: code as MarketId,
+        sellerId,
+        productId,
+        sellerSku: 'SKU-1',
+        conditionCode: 'new',
+        description: {},
+        handling: 'SEALED_ORIGINAL',
+        attestationRecordedAt: null,
+        attestationAccountId: null,
+        status: 'pending-first-publish',
+        offSaleCauses: [],
+        listed: false,
+        submittedAt: T0,
+        firstPublishedAt: null,
+        deletedAt: null,
+        version: 2,
+        createdAt: T0,
+      };
+      const tag = activeTagState(ids.next<'OfferTag'>(), typeCode, certificate, T0, {
+        status: 'pending-publish',
+        badge: null,
+        copyRevisionId: revisionId,
+        copyRevisionPublished: false,
+        lastChangeCause: 'revision-submit',
+      });
+      return { state, tags: [tag] };
+    };
+    const typeCode = code === 'AU' ? 'halal' : 'zz-cert';
+
+    it('makes a pending-publish tag active only from the fresh allowed answer, in the publish unit', async () => {
+      const r = rig({
+        offer: pendingOffer(typeCode),
+        decide: (q) => allowedDecision(q, certificate),
+      });
+      expect(await r.approve.execute(adminContext(), approveInput())).toEqual({
+        ok: true,
+        value: {},
+      });
+      expect(r.evaluator.calls).toHaveLength(1);
+      expect(r.evaluator.calls[0]![0]).toMatchObject({
+        productRevisionId: revisionId,
+        variantId,
+        typeCode,
+      });
+      expect(r.saved).toHaveLength(1);
+      expect(r.savedOffers).toHaveLength(1);
+      expect(r.savedOffers[0]!.tags[0]).toMatchObject({
+        status: 'active',
+        copyRevisionId: revisionId,
+        copyRevisionPublished: true,
+        lastChangeCause: 'revision-publish',
+      });
+      expect(r.savedOffers[0]!.tags[0]!.badge).not.toBeNull();
+      expect(r.events.map((e) => e.type)).toEqual([
+        'catalog.product-revision-published.v1',
+        'catalog.offer-tag-added.v1',
+      ]);
+    });
+
+    it('suspends a pending-publish tag refused at publication; the product is still published', async () => {
+      const r = rig({
+        offer: pendingOffer(typeCode),
+        decide: (q) => refusedDecision(q, 'no-valid-seller-certificate'),
+      });
+      expect(await r.approve.execute(adminContext(), approveInput())).toMatchObject({ ok: true });
+      expect(r.saved[0]!.state.publishedRevisionId).toBe(revisionId);
+      expect(r.savedOffers[0]!.tags[0]).toMatchObject({
+        status: 'suspended',
+        badge: null,
+        copyRevisionPublished: true,
+      });
+      expect(r.savedOffers[0]!.state.offSaleCauses).toEqual(['tag-suspended']);
+    });
+
+    it('fails closed when the ask is unanswered: nothing published, nothing stored', async () => {
+      const r = rig({ offer: pendingOffer(typeCode), unavailable: true });
+      expect(await r.approve.execute(adminContext(), approveInput())).toEqual({
+        ok: false,
+        error: { code: 'claim.check-unavailable' },
+      });
+      expect(r.saved).toEqual([]);
+      expect(r.decisions).toEqual([]);
+      expect(r.savedOffers).toEqual([]);
+    });
   });
 
   describe('approve', () => {

@@ -61,8 +61,10 @@ it('maps every refusal code of the review use cases to its exact status', () => 
     'seller.not-eligible': 409,
     'type.not-allowed': 409,
     'conflict.stale': 409,
+    'conflict.retry': 409,
     'claim-text.refused': 422,
     'access.unavailable': 503,
+    'claim.check-unavailable': 503,
   });
 });
 

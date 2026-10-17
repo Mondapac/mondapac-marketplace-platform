@@ -4,10 +4,13 @@ import type { OfferNamesSystemQuery } from '../application/use-cases/offer-names
 import type { SellUnitLabelsQuery } from '../application/use-cases/sell-unit-labels.use-case';
 import type { OfferSellUnitsSystemQuery } from '../application/use-cases/offer-sell-units-system.use-case';
 import type { OfferSellUnitsQuery } from '../application/use-cases/offer-sell-units.use-case';
+import type { OfferListingsQuery } from '../application/use-cases/offer-listings.use-case';
+import type { OfferListingsSystemQuery } from '../application/use-cases/offer-listings-system.use-case';
 import type {
   CatalogBatchTooLarge,
   CatalogFacade,
   CatalogValidationFailed,
+  OfferListingsMap,
   OfferSellUnitsMap,
   SellUnitKey,
   SellUnitLabelsMap,
@@ -19,6 +22,8 @@ export interface CatalogFacadeUseCases {
   readonly offerSellUnitsSystem: OfferSellUnitsSystemQuery;
   readonly offerNamesSystem: OfferNamesSystemQuery;
   readonly sellUnitLabels: SellUnitLabelsQuery;
+  readonly offerListings: OfferListingsQuery;
+  readonly offerListingsSystem: OfferListingsSystemQuery;
 }
 
 /**
@@ -63,5 +68,20 @@ export class CatalogFacadeImplementation implements CatalogFacade {
     Result<SellUnitLabelsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
   > {
     return this.useCases.sellUnitLabels.execute(context, { keys, locale });
+  }
+
+  offerListings(
+    context: CallContext,
+    keys: readonly SellUnitKey[],
+    locale: string,
+  ): Promise<
+    Result<OfferListingsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
+  > {
+    // Which of the pair; the gate still checks the rule.
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.offerListingsSystem
+        : this.useCases.offerListings;
+    return useCase.execute(context, { keys, locale });
   }
 }

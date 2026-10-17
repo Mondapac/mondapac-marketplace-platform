@@ -59,6 +59,58 @@ export function sellUnitKey(key: SellUnitKey): string {
   return `${key.offerId}:${key.variantId}`;
 }
 
+/** The certification badge copied from certification's decision (CD 4.5); display only. */
+export interface OfferListingBadge {
+  readonly typeCode: string;
+  readonly typeRevisionId: Id;
+  readonly basis: 'SELLER' | 'MANUFACTURER';
+  readonly sellerClaim: boolean;
+  readonly issuer: { readonly id: Id; readonly displayName: string } | null;
+  /** An ISO calendar date in `validUntilZone`, or null. */
+  readonly validUntilLocalDate: string | null;
+  readonly validUntilZone: string | null;
+  readonly verifiedWithIssuer: boolean;
+  readonly reviewedByPlatform: true;
+}
+
+/**
+ * One certification tag of a listed Offer (catalog design 9.1), answered to the `system` caller
+ * only: `active`, `rechecking` and `suspended` tags with status and basis; `badge` is present
+ * exactly for `active`. An `anonymous` caller receives no tags until catalog consumes the
+ * certification revoke and expiry events (slice 12): a stored `active` tag can outlive its
+ * certificate, so no buyer badge is built from it (Hassan, certification revoke review). Never
+ * permission to claim anything: `ordering` asks `evaluateClaims` itself (AC 14).
+ */
+export interface OfferListingTag {
+  readonly typeCode: string;
+  readonly status: 'active' | 'rechecking' | 'suspended';
+  readonly basis: 'SELLER' | 'MANUFACTURER' | null;
+  readonly badge: OfferListingBadge | null;
+}
+
+/**
+ * What `offerListings` gives per (Offer, Variant): published state only. `listed` is catalog's own
+ * state (published, product published, no off-sale cause; 4.4); `variantBelongs` says the variant
+ * is a published variant of the product's published revision. Names and labels are the published
+ * revision's, in the asked locale with the INTL-13 fallback (the Market's default locale, then any);
+ * seller-entered text: escape it. `primaryImageId` is the first clean image of the published
+ * revision (a URL is built by code). Advisory only (ADR-0025 d1): never permission to buy.
+ */
+export interface OfferListing {
+  readonly sellerId: Id<'Seller'>;
+  readonly productId: Id<'Product'>;
+  readonly publishedRevisionId: Id<'ProductRevision'>;
+  readonly listed: boolean;
+  readonly variantBelongs: boolean;
+  readonly productName: string | null;
+  readonly variantLabel: string | null;
+  readonly primaryImageId: Id | null;
+  readonly tags: readonly OfferListingTag[];
+}
+
+/** The answer of `offerListings`, keyed by {@link sellUnitKey}. */
+export type OfferListingsMap = ReadonlyMap<string, OfferListing>;
+
 /** A request refused before any read: a code and the fields, never their values. */
 export interface CatalogValidationFailed {
   readonly code: 'validation.failed';
@@ -122,6 +174,22 @@ export interface CatalogFacade {
     locale: string,
   ): Promise<
     Result<SellUnitLabelsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
+  >;
+
+  /**
+   * The published listing of each requested (Offer, Variant), at most 200 keys, refused whole
+   * above (catalog design 9.1; Hassan L7). A key whose Offer is unknown, of another Market,
+   * deleted or never published, or whose product is not published, is **absent**: nothing
+   * unpublished is ever answered. Two use cases behind this method: `anonymous` for a request
+   * actor (no tags: `tags` is always empty until slice 12, see {@link OfferListingTag}) and
+   * `system` for the system actor. In-process only.
+   */
+  offerListings(
+    context: CallContext,
+    keys: readonly SellUnitKey[],
+    locale: string,
+  ): Promise<
+    Result<OfferListingsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
   >;
 }
 

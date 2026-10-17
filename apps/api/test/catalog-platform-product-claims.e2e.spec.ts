@@ -7,9 +7,11 @@ import { ATTRIBUTE_REPOSITORY } from '../src/modules/catalog/application/ports/a
 import { CATALOG_MARKET_POLICY } from '../src/modules/catalog/application/ports/catalog-market-policy';
 import type { CatalogMarketPolicy } from '../src/modules/catalog/application/ports/catalog-market-policy';
 import { CLAIM_TEXT_MATCHER } from '../src/modules/catalog/application/ports/claim-text-matcher';
+import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
 import { PRODUCT_REVISION_REPOSITORY } from '../src/modules/catalog/application/ports/product-revision.repository';
 import { RATE_COUNTER_REPOSITORY } from '../src/modules/catalog/application/ports/rate-counter.repository';
+import { TAG_REEVALUATION_REQUESTS } from '../src/modules/catalog/application/ports/tag-reevaluation-requests';
 import { WORKING_COPY_REPOSITORY } from '../src/modules/catalog/application/ports/working-copy.repository';
 import { Product } from '../src/modules/catalog/domain/product';
 import { simpleProductType } from '../src/modules/catalog/domain/product-types/simple';
@@ -23,6 +25,7 @@ import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import { NO_OFFERS_ON_PRODUCT, RecordingReevaluationRequests } from './support/catalog-tag-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -56,6 +59,7 @@ describe('claim-text control behind the platform product routes (integration, sl
   let products: Map<string, Product>;
   let copies: Map<string, WorkingCopy>;
   let revisions: Map<string, StoredRevision>;
+  let fanOut: RecordingReevaluationRequests;
   let matcherUp: boolean;
   let matched: number;
   const http = () => request(app.getHttpServer());
@@ -101,6 +105,10 @@ describe('claim-text control behind the platform product routes (integration, sl
               return Promise.resolve();
             },
           })
+          .overrideProvider(OFFER_REPOSITORY)
+          .useValue(NO_OFFERS_ON_PRODUCT)
+          .overrideProvider(TAG_REEVALUATION_REQUESTS)
+          .useValue(fanOut)
           .overrideProvider(WORKING_COPY_REPOSITORY)
           .useValue({
             find: (_m: unknown, productId: string) =>
@@ -229,6 +237,7 @@ describe('claim-text control behind the platform product routes (integration, sl
     products = new Map();
     copies = new Map();
     revisions = new Map();
+    fanOut = new RecordingReevaluationRequests();
     matcherUp = true;
     matched = 0;
   });
@@ -357,6 +366,10 @@ describe('claim-text control behind the platform product routes (integration, sl
       expect(published.body).toMatchObject({ revisionNo: 1, published: true });
       expect(revisions.size).toBe(1);
       expect(matched).toBeGreaterThan(0);
+      // A PLATFORM publish writes its fan-out request in the publish unit (design 5.4, M1).
+      expect(fanOut.requested).toEqual([
+        { productId: PRODUCT, productRevisionId: [...revisions.keys()][0] },
+      ]);
     });
   });
 });

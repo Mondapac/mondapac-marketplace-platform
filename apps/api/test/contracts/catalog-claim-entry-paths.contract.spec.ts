@@ -23,21 +23,23 @@ const files = sources(APPLICATION).map((file) => ({
   text: readFileSync(file, 'utf8'),
 }));
 
-/** Offer writes that change a claim input (design 5.4 "all tags" rows). */
+/**
+ * Offer writes that change a claim input (design 5.4 "all tags" rows), and the writes that move a
+ * product's published pointer (a revision submit that may publish at once, an approval).
+ */
 const CLAIM_INPUT_WRITES =
-  /\boffer\.(setHandling|edit|submit|recordAttestation|approve)\(|\bproduct\.approveRevision\(/;
-/** The domain's tag writes. */
-const TAG_WRITES = /\.(addTags|settleTags|setPendingPublishTags)\(/;
+  /\boffer\.(setHandling|edit|submit|recordAttestation|approve)\(|\bproduct\.(approveRevision|submitRevision)\(/;
+/** The domain's tag writes from fresh decisions. */
+const TAG_WRITES = /\.(addTags|settleTags|setPendingPublishTags|settlePublish)\(/;
+/** A claim-bearing file settles its tags on decisions, or (M1) marks them for the fan-out. */
+const SETTLES = /\.(settleTags|settlePublish)\(|\bclaims\.settle\(|markProductForReevaluation\(/;
 
 /**
  * Files that change a claim input but are known not to ask yet, each with the slice that brings
- * the ask. Keep this list short; an entry here is an open carry in the slice handoff.
+ * the ask. Keep this list short; an entry here is an open carry in the slice handoff. Empty since
+ * slice 11 (the approval and publication re-asks).
  */
-const DEFERRED: Readonly<Record<string, string>> = {
-  // The re-ask at an Offer's approval and at a revision's publication (Hassan M1 part 1).
-  'use-cases/offer-approve.use-case.ts': 'slice 11',
-  'use-cases/product-revision-approve.use-case.ts': 'slice 11',
-};
+const DEFERRED: Readonly<Record<string, string>> = {};
 
 describe('catalog claim entry paths (design 5.1, 5.4)', () => {
   it('finds the known writers, so the scan is not vacuous', () => {
@@ -47,7 +49,9 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
         'use-cases/own-offer-edit.use-case.ts',
         'use-cases/own-offer-set-handling.use-case.ts',
         'use-cases/own-offer-submit.use-case.ts',
-        ...Object.keys(DEFERRED),
+        'use-cases/offer-approve.use-case.ts',
+        'use-cases/product-revision-approve.use-case.ts',
+        'revisions/submit-product.service.ts',
       ]),
     );
   });
@@ -57,16 +61,47 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
       const found = files.find((f) => f.file === file);
       expect(found).toBeDefined();
       expect(CLAIM_INPUT_WRITES.test(found!.text)).toBe(true);
-      expect(/\.settleTags\(/.test(found!.text)).toBe(false);
+      expect(SETTLES.test(found!.text)).toBe(false);
     }
   });
 
   it('settles the tags of every Offer write that changes a claim input', () => {
     const missing = files
       .filter(({ file, text }) => CLAIM_INPUT_WRITES.test(text) && !(file in DEFERRED))
-      .filter(({ text }) => !/\.settleTags\(/.test(text))
+      .filter(({ text }) => !SETTLES.test(text))
       .map((f) => f.file);
     expect(missing).toEqual([]);
+  });
+
+  it('re-asks at both approvals and at a publish at once (Hassan M1 condition, slice 11)', () => {
+    const text = (file: string) => files.find((f) => f.file === file)!.text;
+    expect(text('use-cases/offer-approve.use-case.ts')).toMatch(/\.settleTags\(/);
+    expect(text('use-cases/offer-approve.use-case.ts')).toMatch(/factsInUnit\(/);
+    expect(text('use-cases/product-revision-approve.use-case.ts')).toMatch(/\.settlePublish\(/);
+    // The submit service hands the outcome to the seller's claim steps, which settle a publish.
+    expect(text('revisions/submit-product.service.ts')).toMatch(/claims\.settle\(/);
+    expect(text('use-cases/own-product-submit.use-case.ts')).toMatch(/\.settlePublish\(/);
+  });
+
+  it('marks rechecking only together with a fan-out request (rule M1)', () => {
+    const marking = files.filter(({ text }) => /\.markRechecking\(/.test(text));
+    expect(marking.map((f) => f.file)).toEqual(['tags/publish-fan-out.ts']);
+    expect(marking[0]!.text).toMatch(/requestForPublish\(/);
+    // Every PLATFORM publish (the submit service is the only publish of PLATFORM content).
+    expect(files.find((f) => f.file === 'revisions/submit-product.service.ts')!.text).toMatch(
+      /markProductForReevaluation\(/,
+    );
+  });
+
+  it('serialises tag writes against publication through the product lock (slice 11)', () => {
+    const claims = files.find((f) => f.file === 'tags/offer-claims.ts')!.text;
+    expect(claims).toMatch(/lockProduct\(/);
+    // Every unit that writes a tag on the published facts goes through factsInUnit.
+    const publishedWriters = files
+      .filter(({ text }) => /\.(addTags|settleTags)\(/.test(text))
+      .filter(({ text }) => !/factsInUnit\(/.test(text))
+      .map((f) => f.file);
+    expect(publishedWriters).toEqual([]);
   });
 
   it('asks the evaluator through ClaimQueryBuilder wherever a tag is written', () => {
@@ -76,7 +111,7 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
         ({ text }) =>
           !text.includes('ClaimEvaluator') ||
           !text.includes('ClaimQueryBuilder') ||
-          !/askPrepared\(|askClaims\(/.test(text),
+          !/askPrepared\(|askClaims\(|askClaimsMany\(/.test(text),
       )
       .map((f) => f.file);
     expect(missing).toEqual([]);

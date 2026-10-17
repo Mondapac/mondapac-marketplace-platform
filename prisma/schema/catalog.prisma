@@ -446,6 +446,7 @@ model CatalogProductRevision {
   images                 CatalogProductRevisionImage[]
   decision               CatalogProductRevisionDecision?
   tagCopies              CatalogOfferTag[]
+  reevaluationRequests   CatalogTagReevaluationRequest[]
 
   @@unique([marketId, productId, revisionNo])
   @@unique([marketId, id])
@@ -807,6 +808,10 @@ model CatalogOfferTagHistory {
   issuerId             String?         @map("issuer_id") @db.Uuid
   policyRevisionId     String?         @map("policy_revision_id") @db.Uuid
   copyRevisionId       String?         @map("copy_revision_id") @db.Uuid
+  /// The copy's type revision and expiry (slice 11; Mojtaba's slice 8 follow-up). NULL on rows
+  /// recorded before migration 20261017180000.
+  typeRevisionId       String?         @map("type_revision_id") @db.Uuid
+  validUntil           DateTime?       @map("valid_until") @db.Timestamptz(6)
   reasonCode           String?         @map("reason_code")
   /// The closed entry-path list of D 5.4.
   entryPath            String          @map("entry_path")
@@ -824,5 +829,37 @@ model CatalogOfferTagHistory {
   @@unique([marketId, tagId, changeSeq])
   @@index([marketId, offerId, occurredAt])
   @@map("offer_tag_history")
+  @@schema("catalog")
+}
+
+/// A work item of the tag re-ask fan-out (catalog design 5.4, 5.5; data design 3.18; slice 11).
+/// A PLATFORM publish writes one `revision-published` request in its unit; the job
+/// `catalog.reevaluate-tags` settles the product's Offers in batches, resumable by Offer id. One
+/// pending request per product (a newer publish supersedes the older one in its unit), one per
+/// revision, one per consumed event. The CHECKs, the partial uniques, the claim index and the
+/// column grant are hand-written.
+model CatalogTagReevaluationRequest {
+  id                String                  @id @db.Uuid
+  marketId          String                  @map("market_id") @db.VarChar(8)
+  tenantId          String                  @map("tenant_id")
+  /// revision-published | category-changed | certification-event | types-reallowed.
+  kind              String
+  /// Set exactly for `revision-published`.
+  productId         String?                 @map("product_id") @db.Uuid
+  productRevisionId String?                 @map("product_revision_id") @db.Uuid
+  /// The consumed event that created it; NULL for a publish.
+  sourceEventId     String?                 @map("source_event_id") @db.Uuid
+  /// pending | settled | superseded.
+  state             String
+  /// Keyset position (Offer id) of a resumable run.
+  cursorOfferId     String?                 @map("cursor_offer_id") @db.Uuid
+  /// asked, kept, switched, suspended, restored, unavailable (a metric).
+  counts            Json                    @db.JsonB
+  createdAt         DateTime                @map("created_at") @db.Timestamptz(6)
+  settledAt         DateTime?               @map("settled_at") @db.Timestamptz(6)
+  revision          CatalogProductRevision? @relation(fields: [marketId, productId, productRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  @@map("tag_reevaluation_requests")
   @@schema("catalog")
 }

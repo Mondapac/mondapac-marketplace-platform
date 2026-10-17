@@ -38,6 +38,8 @@ import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infra
 import { PrismaWorkingCopyRepository } from '../../src/modules/catalog/infrastructure/prisma-working-copy.repository';
 import { SharpImageProcessor } from '../../src/modules/catalog/infrastructure/sharp-image-processor';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
+import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
+import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
@@ -215,6 +217,10 @@ describe.each(TEST_MARKETS)(
         outbox: { append: () => Promise.resolve() },
         clock,
         ids: { next: <K extends string>() => uuid7() as Id<K> },
+        offers: new PrismaOfferRepository(persistence.service, {
+          next: <K extends string>() => uuid7() as Id<K>,
+        }),
+        requests: new PrismaTagReevaluationRequests(persistence.service),
       });
 
       const save = {

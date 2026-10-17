@@ -33,6 +33,16 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX offers_market_id_seller_id_seller_sku_open_key ON catalog.offers USING btree (market_id, seller_id, seller_sku) WHERE (status <> 'deleted'::text)",
   'catalog.offers_market_id_submitted_at_pending_idx':
     "CREATE INDEX offers_market_id_submitted_at_pending_idx ON catalog.offers USING btree (market_id, submitted_at, id) WHERE (status = 'pending-first-publish'::text)",
+  // docs/design/data/catalog.md 3.18 (slice 11): one pending fan-out request per product, one
+  // request per published revision, one per consumed event, and the job's claim order.
+  'catalog.tag_reevaluation_requests_market_id_created_at_pending_idx':
+    "CREATE INDEX tag_reevaluation_requests_market_id_created_at_pending_idx ON catalog.tag_reevaluation_requests USING btree (market_id, created_at, id) WHERE (state = 'pending'::text)",
+  'catalog.tag_reevaluation_requests_market_id_product_id_pending_key':
+    "CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_product_id_pending_key ON catalog.tag_reevaluation_requests USING btree (market_id, product_id) WHERE ((state = 'pending'::text) AND (kind = 'revision-published'::text))",
+  'catalog.tag_reevaluation_requests_market_id_product_revision_id_key':
+    "CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_product_revision_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, product_revision_id) WHERE (kind = 'revision-published'::text)",
+  'catalog.tag_reevaluation_requests_market_id_source_event_id_key':
+    'CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_source_event_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, source_event_id) WHERE (source_event_id IS NOT NULL)',
   'catalog.product_variants_market_id_product_id_single_key':
     "CREATE UNIQUE INDEX product_variants_market_id_product_id_single_key ON catalog.product_variants USING btree (market_id, product_id) WHERE (variant_model = 'single'::text)",
   'catalog.products_market_id_owner_seller_id_created_at_idx':

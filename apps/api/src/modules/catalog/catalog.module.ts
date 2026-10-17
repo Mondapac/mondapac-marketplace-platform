@@ -104,6 +104,7 @@ import {
 } from './application/ports/product-image.repository';
 import { IMAGE_PROCESSOR } from './application/ports/image-processor';
 import { OBJECT_STORE } from '../../platform/storage/object-store';
+import { TAG_REEVALUATION_REQUESTS } from './application/ports/tag-reevaluation-requests';
 import { OwnProductImageUpload } from './application/use-cases/own-product-image-upload.use-case';
 import { OwnProductImageList } from './application/use-cases/own-product-image-list.use-case';
 import { OwnProductImageRead } from './application/use-cases/own-product-image-read.use-case';
@@ -115,6 +116,11 @@ import { ProductImageTakeDown } from './application/use-cases/product-image-take
 import { ProductRevisionImageList } from './application/use-cases/product-revision-image-list.use-case';
 import { SweepOrphanImages } from './application/use-cases/sweep-orphan-images.use-case';
 import { sweepOrphanImagesJob } from './presentation/jobs/sweep-orphan-images.job';
+import { ReevaluateTags } from './application/use-cases/reevaluate-tags.use-case';
+import { OfferListingsQuery } from './application/use-cases/offer-listings.use-case';
+import { OfferListingsSystemQuery } from './application/use-cases/offer-listings-system.use-case';
+import { OFFER_LISTINGS_READER } from './application/ports/offer-listings.reader';
+import { reevaluateTagsJob } from './presentation/jobs/reevaluate-tags.job';
 import { OwnProductController } from './presentation/own-product.controller';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
@@ -169,6 +175,8 @@ const PORT = {
   images: PRODUCT_IMAGE_REPOSITORY,
   imageProcessor: IMAGE_PROCESSOR,
   objectStore: OBJECT_STORE,
+  requests: TAG_REEVALUATION_REQUESTS,
+  listingsReader: OFFER_LISTINGS_READER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -317,6 +325,8 @@ const productTypeProvider: FactoryProvider<string> = {
       outbox: true,
       clock: true,
       ids: true,
+      offers: true,
+      requests: true,
     }),
     useCaseProvider(PlatformProductCreate, {
       unitOfWork: true,
@@ -411,6 +421,8 @@ const productTypeProvider: FactoryProvider<string> = {
       check: true,
       outbox: true,
       clock: true,
+      claims: true,
+      evaluator: true,
     }),
     useCaseProvider(OfferRequestChanges, {
       unitOfWork: true,
@@ -434,6 +446,10 @@ const productTypeProvider: FactoryProvider<string> = {
       policy: true,
       outbox: true,
       clock: true,
+      offerFinder: true,
+      offers: true,
+      claims: true,
+      evaluator: true,
     }),
     useCaseProvider(ProductRevisionRequestChanges, {
       unitOfWork: true,
@@ -468,6 +484,7 @@ const productTypeProvider: FactoryProvider<string> = {
       offers: true,
       claims: true,
       evaluator: true,
+      outbox: true,
       clock: true,
       ids: true,
     }),
@@ -553,19 +570,40 @@ const productTypeProvider: FactoryProvider<string> = {
       clock: true,
       ids: true,
     }),
+    useCaseProvider(ReevaluateTags, {
+      unitOfWork: true,
+      requests: true,
+      offers: true,
+      claims: true,
+      evaluator: true,
+      outbox: true,
+      clock: true,
+    }),
     registerJobsFrom(
       'catalog',
-      [SeedCategoryTree, SeedAttributes, SweepOrphanImages],
-      (categories: SeedCategoryTree, attributes: SeedAttributes, sweep: SweepOrphanImages) => [
+      [SeedCategoryTree, SeedAttributes, SweepOrphanImages, ReevaluateTags],
+      (
+        categories: SeedCategoryTree,
+        attributes: SeedAttributes,
+        sweep: SweepOrphanImages,
+        reevaluate: ReevaluateTags,
+      ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
         sweepOrphanImagesJob(sweep),
+        reevaluateTagsJob(reevaluate),
       ],
     ),
     useCaseProvider(OfferSellUnitsQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferSellUnitsSystemQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferNamesSystemQuery, { unitOfWork: true, namesReader: true }),
     useCaseProvider(SellUnitLabelsQuery, { unitOfWork: true, labelsReader: true }),
+    useCaseProvider(OfferListingsQuery, { unitOfWork: true, listingsReader: true, policy: true }),
+    useCaseProvider(OfferListingsSystemQuery, {
+      unitOfWork: true,
+      listingsReader: true,
+      policy: true,
+    }),
     {
       provide: CATALOG_FACADE,
       inject: [
@@ -573,18 +611,24 @@ const productTypeProvider: FactoryProvider<string> = {
         OfferSellUnitsSystemQuery,
         OfferNamesSystemQuery,
         SellUnitLabelsQuery,
+        OfferListingsQuery,
+        OfferListingsSystemQuery,
       ],
       useFactory: (
         offerSellUnits: OfferSellUnitsQuery,
         offerSellUnitsSystem: OfferSellUnitsSystemQuery,
         offerNamesSystem: OfferNamesSystemQuery,
         sellUnitLabels: SellUnitLabelsQuery,
+        offerListings: OfferListingsQuery,
+        offerListingsSystem: OfferListingsSystemQuery,
       ) =>
         new CatalogFacadeImplementation({
           offerSellUnits,
           offerSellUnitsSystem,
           offerNamesSystem,
           sellUnitLabels,
+          offerListings,
+          offerListingsSystem,
         }),
     },
     useCaseProvider(OfferSearchFactsQuery, { unitOfWork: true, searchReader: true }),

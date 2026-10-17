@@ -590,6 +590,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'catalog.offer_tag_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // docs/design/data/catalog.md 3.18 (slice 11): the fan-out queue moves its state, cursor and
+    // counts; what it names never changes. No DELETE until the purge of 10.3.
+    'catalog.tag_reevaluation_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['counts', 'cursor_offer_id', 'settled_at', 'state'],
+    },
     // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller
     // and currency never change; a regular record's content never changes (only its status,

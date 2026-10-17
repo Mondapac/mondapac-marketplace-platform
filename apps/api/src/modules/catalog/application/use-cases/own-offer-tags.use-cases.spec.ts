@@ -151,6 +151,7 @@ describe.each([
     const claims = new FixedFactsClaimQueryBuilder(options.published === false ? null : facts);
     const offers: OfferRepository = {
       add: () => Promise.reject(new Error('unused')),
+      listOnProduct: () => Promise.resolve([]),
       listPendingReview: () => Promise.resolve([]),
       findById: (_m, id) => {
         reads += 1;

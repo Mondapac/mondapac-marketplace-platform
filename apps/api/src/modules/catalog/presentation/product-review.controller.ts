@@ -59,11 +59,13 @@ export const PRODUCT_REVIEW_STATUS: Readonly<Record<string, number>> = Object.fr
   'product.not-editable': 409,
   'seller.not-eligible': 409,
   'conflict.stale': 409,
+  'conflict.retry': 409,
   'variant.unknown': 409,
   'variant.none': 409,
   'variant.limit-reached': 422,
   'claim-text.refused': 422,
   'access.unavailable': 503,
+  'claim.check-unavailable': 503,
 });
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -95,7 +97,11 @@ export class ProductReviewController {
     description:
       'Needs catalog.product.approve. Names the product version the reviewer saw and the named ' +
       'checks ticked; the queue row lists the required ones. The texts are claim-checked again ' +
-      'and the seller must still be allowed to sell. The revision becomes the published one.',
+      "and the seller must still be allowed to sell. Every certification tag of the seller's " +
+      'Offer is asked again against this revision before it is published: an allowed tag is ' +
+      'active, one no longer allowed is suspended (the Offer goes off sale); an unanswered check ' +
+      'refuses (claim.check-unavailable); a lost race is retried, then conflict.retry. The ' +
+      'revision becomes the published one.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'productId', format: 'uuid' })
@@ -110,14 +116,18 @@ export class ProductReviewController {
     type: ApiErrorBody,
     description:
       'conflict.stale, review.not-current-revision, review.checks-missing (details.issues), ' +
-      'revision.base-changed, product.not-editable, seller.not-eligible or variant.*',
+      'revision.base-changed, product.not-editable, seller.not-eligible, conflict.retry or ' +
+      'variant.*',
   })
   @ApiUnprocessableEntityResponse({
     type: ApiErrorBody,
     description: 'claim-text.refused or variant.limit-reached',
   })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
-  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or claim.check-unavailable',
+  })
   async approve(
     @Call() context: CallContext,
     @Req() request: Request,

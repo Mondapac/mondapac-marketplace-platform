@@ -63,6 +63,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.create in market %s', (co
       run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
     } as unknown as UnitOfWork;
     const products: ProductRepository = {
+      lockAtVersion: () => Promise.resolve(true),
       nextProductCode: () => Promise.resolve(`P${String(stored.length + 1).padStart(8, '0')}`),
       add: (_m, product) => {
         stored.push(product);

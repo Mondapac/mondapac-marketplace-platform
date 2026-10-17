@@ -72,6 +72,14 @@ export const OWN_PRODUCT_STATUS: Readonly<Record<string, number>> = Object.freez
   'type.not-allowed': 422,
   'offer.sku-taken': 409,
   'claim-text.refused': 422,
+  // The claim steps of a submit (design 4.2 row 1, 5.1a): T4, the requested set, the publish
+  // re-ask of a revision that publishes at once (slice 11).
+  'claim.tags-would-be-lost': 422,
+  'claim.requested-tag-not-allowed': 422,
+  'offer.handling-missing': 422,
+  'tag.type-unknown': 422,
+  'conflict.retry': 409,
+  'claim.check-unavailable': 503,
 });
 
 function refusal(error: Refusal, response: Response, context?: CallContext): HttpException {
@@ -348,7 +356,11 @@ export class OwnProductController {
       'frozen content, freezes the revision and stores it. The revision publishes at once or ' +
       'waits for review (published in the answer). A claim in a text refuses the submit ' +
       '(claim-text.refused, details.fields); a draft that is not ready lists its issues ' +
-      '(revision.not-ready, details.issues).',
+      "(revision.not-ready, details.issues). Certification tags of the seller's Offer are asked " +
+      'against the submitted revision: one that would be lost refuses (claim.tags-would-be-lost, ' +
+      'details.tags); when the revision publishes at once, that ask settles the tags against it. ' +
+      'An unanswered check refuses (claim.check-unavailable); a lost race is retried, then ' +
+      'conflict.retry.',
   })
   @ApiParam(PRODUCT_PARAM)
   @ApiHeader(CSRF)
@@ -367,17 +379,21 @@ export class OwnProductController {
   @ApiConflictResponse({
     type: ApiErrorBody,
     description:
-      'conflict.stale, revision.pending-exists, revision.base-changed, product.not-a-draft or another state refusal',
+      'conflict.stale, conflict.retry, revision.pending-exists, revision.base-changed, product.not-a-draft or another state refusal',
   })
   @ApiUnprocessableEntityResponse({
     type: ApiErrorBody,
-    description: 'claim-text.refused, revision.not-ready or type.not-allowed',
+    description:
+      'claim-text.refused, revision.not-ready, type.not-allowed, claim.tags-would-be-lost or ' +
+      'offer.handling-missing',
   })
   @ApiTooManyRequestsResponse({ type: ApiErrorBody, description: 'request.throttled' })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiServiceUnavailableResponse({
     type: ApiErrorBody,
-    description: 'access.unavailable, revision.schema-unavailable or revision.type-unknown',
+    description:
+      'access.unavailable, claim.check-unavailable, revision.schema-unavailable or ' +
+      'revision.type-unknown',
   })
   async submit(
     @Call() context: CallContext,

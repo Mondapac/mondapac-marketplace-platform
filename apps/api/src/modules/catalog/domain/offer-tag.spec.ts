@@ -670,4 +670,273 @@ describe.each([
       expect(next.tags.map((t) => t.status)).toEqual(['removed', 'active']);
     });
   });
+
+  describe('publication re-ask and rule M1 (slice 11)', () => {
+    const pendingFacts = () => facts({ revisionPublished: false });
+    const decideAll = (
+      offer: Offer,
+      types: readonly string[],
+      f: ClaimFacts,
+      decide: (q: TagClaimQuery) => TagDecision,
+    ) => new Map(types.map((type) => [type, claimQueriesFor(offer.state, f, type)!.map(decide)]));
+
+    /** An Offer of a never-published product with `pending-publish` tags of the given types. */
+    const withPendingTag = (types: readonly string[] = [typeCode]): Offer => {
+      const offer = Offer.restore(
+        offerState({ status: 'pending-first-publish', listed: false, firstPublishedAt: null }),
+      );
+      expect(
+        offer.setPendingPublishTags({
+          tags: types.map((type) => ({ tagId: ids.next<'OfferTag'>(), typeCode: type })),
+          facts: pendingFacts(),
+          decisions: decideAll(offer, types, pendingFacts(), (q) => allowed(q)),
+          entryPath: 'revision-submit',
+          actor: seller,
+          hash,
+          now: T0,
+        }).ok,
+      ).toBe(true);
+      return Offer.restore(offer.state, offer.tags);
+    };
+
+    const publish = (
+      offer: Offer,
+      decide: (q: TagClaimQuery) => TagDecision,
+      requested?: readonly { tagId: ReturnType<typeof ids.next<'OfferTag'>>; typeCode: string }[],
+    ) => {
+      const types = requested?.map((r) => r.typeCode) ?? offer.tags.map((t) => t.typeCode);
+      return offer.settlePublish({
+        facts: facts(),
+        decisions: decideAll(offer, types, facts(), decide),
+        entryPath: 'revision-publish',
+        actor: seller,
+        hash,
+        now: T1,
+        ...(requested === undefined ? {} : { requested }),
+      });
+    };
+
+    it('makes a pending-publish tag active only from a fresh allowed answer, announced as added', () => {
+      const offer = withPendingTag();
+      expect(publish(offer, (q) => allowed(q))).toEqual({
+        ok: true,
+        value: { kept: 1, suspended: 0, restored: 0, switched: 0 },
+      });
+      expect(offer.tags[0]).toMatchObject({
+        status: 'active',
+        copyRevisionPublished: true,
+        copyRevisionId: revisionId,
+        changeSeq: 2,
+        lastChangeCause: 'revision-publish',
+      });
+      expect(offer.tags[0]!.badge).not.toBeNull();
+      expect(offer.pendingEvents.map((e) => e.type)).toEqual(['catalog.offer-tag-added.v1']);
+      expect(offer.pendingTagHistory).toEqual([
+        expect.objectContaining({ fromStatus: 'pending-publish', toStatus: 'active' }),
+      ]);
+    });
+
+    it('suspends a pending-publish tag refused at publication, its copy now naming the published revision', () => {
+      const offer = withPendingTag();
+      expect(publish(offer, (q) => refused(q, 'no-valid-seller-certificate'))).toMatchObject({
+        value: { suspended: 1 },
+      });
+      expect(offer.tags[0]).toMatchObject({
+        status: 'suspended',
+        badge: null,
+        copyRevisionPublished: true,
+        copyRevisionId: revisionId,
+        lastReasonCode: 'no-valid-seller-certificate',
+      });
+      expect(offer.state.offSaleCauses).toEqual(['tag-suspended']);
+    });
+
+    it('re-asks kept tags at publication: suspends a refused one and restores a suspended one', () => {
+      const offer = withActiveTag();
+      expect(publish(offer, (q) => refused(q, 'certificate-expired'))).toMatchObject({
+        value: { suspended: 1 },
+      });
+      expect(offer.tags[0]!.status).toBe('suspended');
+      const suspended = Offer.restore(offer.state, offer.tags);
+      expect(publish(suspended, (q) => allowed(q))).toMatchObject({ value: { restored: 1 } });
+      expect(suspended.tags[0]).toMatchObject({ status: 'active' });
+      expect(suspended.state.listed).toBe(true);
+    });
+
+    it('fails closed on an unavailable or stale answer: nothing becomes active', () => {
+      const offer = withPendingTag();
+      expect(publish(offer, (q) => refused(q, 'unavailable'))).toMatchObject({
+        error: { code: 'claim.check-unavailable' },
+      });
+      expect(
+        publish(offer, (q) => allowed(q, { inputs: { ...q, attestationRecorded: true } })),
+      ).toMatchObject({ error: { code: 'claim.inputs-changed' } });
+      expect(offer.tags[0]!.status).toBe('pending-publish');
+      expect(offer.hasChanges).toBe(false);
+    });
+
+    it('refuses facts that do not name a published revision', () => {
+      const offer = withPendingTag();
+      expect(() =>
+        offer.settlePublish({
+          facts: pendingFacts(),
+          decisions: new Map(),
+          entryPath: 'revision-publish',
+          actor: seller,
+          hash,
+          now: T1,
+        }),
+      ).toThrow();
+    });
+
+    it('makes the tags exactly the requested set at a first submit that publishes at once', () => {
+      const offer = withPendingTag();
+      const fresh = Offer.restore(
+        offerState({ status: 'pending-first-publish', listed: false, firstPublishedAt: null }),
+      );
+      const tagId = ids.next<'OfferTag'>();
+      expect(publish(fresh, (q) => allowed(q), [{ tagId, typeCode }])).toMatchObject({
+        ok: true,
+      });
+      expect(fresh.tags[0]).toMatchObject({
+        id: tagId,
+        status: 'active',
+        changeSeq: 1,
+        copyRevisionPublished: true,
+      });
+      expect(fresh.pendingEvents.map((e) => e.type)).toEqual(['catalog.offer-tag-added.v1']);
+
+      expect(publish(offer, (q) => allowed(q), [])).toMatchObject({ ok: true });
+      expect(offer.tags[0]).toMatchObject({
+        status: 'removed',
+        lastChangeCause: 'revision-publish',
+      });
+    });
+
+    it('refuses the whole first submit when one requested type is not allowed', () => {
+      const offer = Offer.restore(
+        offerState({ status: 'pending-first-publish', listed: false, firstPublishedAt: null }),
+      );
+      expect(
+        publish(offer, (q) => refused(q, 'policy-not-applicable'), [
+          { tagId: ids.next<'OfferTag'>(), typeCode },
+        ]),
+      ).toEqual({
+        ok: false,
+        error: {
+          code: 'claim.tag-not-allowed',
+          tags: [{ typeCode, reason: 'policy-not-applicable' }],
+        },
+      });
+      expect(offer.tags).toEqual([]);
+    });
+
+    it('treats a live tag at a first submit as changed inputs (the product was published meanwhile)', () => {
+      const offer = withActiveTag();
+      expect(
+        publish(offer, (q) => allowed(q), [{ tagId: ids.next<'OfferTag'>(), typeCode }]),
+      ).toMatchObject({ error: { code: 'claim.inputs-changed' } });
+    });
+
+    it('marks only active tags rechecking without badge data, keeping the Offer listed (M1)', () => {
+      const offer = withActiveTag();
+      expect(offer.markRechecking({ entryPath: 'revision-publish', actor: seller, now: T1 })).toBe(
+        1,
+      );
+      expect(offer.tags[0]).toMatchObject({ status: 'rechecking', badge: null, changeSeq: 2 });
+      expect(offer.state.listed).toBe(true);
+      expect(offer.pendingEvents).toEqual([]);
+      expect(offer.pendingTagHistory).toEqual([
+        expect.objectContaining({ fromStatus: 'active', toStatus: 'rechecking' }),
+      ]);
+
+      const suspended = withActiveTag();
+      publish(suspended, (q) => refused(q, 'certificate-expired'));
+      const read = Offer.restore(suspended.state, suspended.tags);
+      expect(read.markRechecking({ entryPath: 'revision-publish', actor: seller, now: T1 })).toBe(
+        0,
+      );
+      expect(read.tags[0]!.status).toBe('suspended');
+      expect(read.hasChanges).toBe(false);
+    });
+
+    it('settles a rechecking tag back to active on a fresh allowed answer', () => {
+      const offer = withActiveTag();
+      offer.markRechecking({ entryPath: 'revision-publish', actor: seller, now: T1 });
+      const read = Offer.restore(offer.state, offer.tags);
+      expect(
+        read.settleTags({
+          facts: facts(),
+          decisions: answer(read),
+          entryPath: 'revision-publish',
+          actor: seller,
+          hash,
+          now: T1,
+        }).ok,
+      ).toBe(true);
+      expect(read.tags[0]).toMatchObject({ status: 'active', changeSeq: 3 });
+      expect(read.tags[0]!.badge).not.toBeNull();
+    });
+
+    it('refuses a second change of one tag in one unit (one history row per change_seq)', () => {
+      const offer = withActiveTag();
+      offer.markRechecking({ entryPath: 'revision-publish', actor: seller, now: T1 });
+      expect(() =>
+        offer.settleTags({
+          facts: facts(),
+          decisions: answer(offer),
+          entryPath: 'revision-publish',
+          actor: seller,
+          hash,
+          now: T1,
+        }),
+      ).toThrow('more than one change');
+    });
+
+    it('approves after the re-ask of the same unit, the publication versioned after its tag events', () => {
+      const offer = withActiveTag({
+        status: 'pending-first-publish',
+        listed: false,
+        firstPublishedAt: null,
+      });
+      const version = offer.state.version;
+      expect(
+        offer.settleTags({
+          facts: facts(),
+          decisions: answer(offer, (q) => refused(q, 'certificate-expired')),
+          entryPath: 'offer-approve',
+          actor: seller,
+          hash,
+          now: T1,
+        }).ok,
+      ).toBe(true);
+      expect(offer.approve({ now: T1 })).toEqual({ ok: true, value: undefined });
+      expect(offer.state).toMatchObject({ status: 'published', listed: false });
+      expect(offer.pendingEvents.map((e) => [e.type, e.aggregateVersion])).toEqual([
+        ['catalog.offer-tag-suspended.v1', version + 1],
+        ['catalog.offer-published.v1', version + 2],
+      ]);
+
+      const kept = withActiveTag({
+        status: 'pending-first-publish',
+        listed: false,
+        firstPublishedAt: null,
+      });
+      const keptVersion = kept.state.version;
+      kept.settleTags({
+        facts: facts(),
+        decisions: answer(kept),
+        entryPath: 'offer-approve',
+        actor: seller,
+        hash,
+        now: T1,
+      });
+      expect(kept.approve({ now: T1 }).ok).toBe(true);
+      // A settle that only touched the Offer: the publication is still its first event.
+      expect(kept.pendingEvents.map((e) => [e.type, e.aggregateVersion])).toEqual([
+        ['catalog.offer-published.v1', keptVersion + 1],
+      ]);
+      expect(kept.state.version).toBe(keptVersion + 1);
+    });
+  });
 });

@@ -28,6 +28,11 @@ import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infra
 import { PrismaWorkingCopyRepository } from '../../src/modules/catalog/infrastructure/prisma-working-copy.repository';
 import type { CertificationFacade } from '../../src/modules/certification';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
+import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
+import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
+import { ClaimQueryBuilder } from '../../src/modules/catalog/application/tags/claim-query-builder';
+import { PrismaCategoryPathsReader } from '../../src/modules/catalog/infrastructure/prisma-category-paths.reader';
+import { FakeClaimEvaluator, allowedDecision } from '../support/catalog-tag-fakes';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
@@ -68,6 +73,13 @@ describe.each(TEST_MARKETS)(
     let submit: SubmitProduct;
     let approve: ProductRevisionApprove;
     let requestChanges: ProductRevisionRequestChanges;
+    let offerStore: PrismaOfferRepository;
+    let evaluator: FakeClaimEvaluator;
+    const certificate = {
+      certificateId: uuid7() as Id,
+      versionId: uuid7() as Id,
+      typeRevisionId: uuid7() as Id,
+    };
     let categoryId: string;
     let eligible = true;
     const reviewClock = new FixedClock(T1);
@@ -109,6 +121,10 @@ describe.each(TEST_MARKETS)(
       copies = new PrismaWorkingCopyRepository(persistence.service);
       revisions = new PrismaProductRevisionRepository(persistence.service);
       reader = new PrismaOwnCatalogReader(persistence.service);
+      offerStore = new PrismaOfferRepository(persistence.service, {
+        next: <K extends string>() => uuid7() as Id<K>,
+      });
+      evaluator = new FakeClaimEvaluator((query) => allowedDecision(query, certificate), []);
 
       const familyId = uuid7();
       const familyRevisionId = uuid7();
@@ -205,6 +221,10 @@ describe.each(TEST_MARKETS)(
         outbox,
         clock,
         ids: { next: <K extends string>() => uuid7() as Id<K> },
+        offers: new PrismaOfferRepository(persistence.service, {
+          next: <K extends string>() => uuid7() as Id<K>,
+        }),
+        requests: new PrismaTagReevaluationRequests(persistence.service),
       });
       approve = new ProductRevisionApprove(gate, {
         unitOfWork: persistence.unitOfWork,
@@ -215,6 +235,14 @@ describe.each(TEST_MARKETS)(
         policy,
         outbox,
         clock: reviewClock,
+        offerFinder: offerStore,
+        offers: offerStore,
+        claims: new ClaimQueryBuilder({
+          products,
+          revisions,
+          categoryPaths: new PrismaCategoryPathsReader(persistence.service),
+        }),
+        evaluator,
       });
       requestChanges = new ProductRevisionRequestChanges(gate, {
         unitOfWork: persistence.unitOfWork,

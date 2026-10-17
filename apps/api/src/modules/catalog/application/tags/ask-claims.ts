@@ -38,3 +38,44 @@ export async function askClaims(
   flat.forEach(({ typeCode }, index) => out.get(typeCode)!.push(answers[index]!));
   return ok(out);
 }
+
+/**
+ * Asks for the queries of several commands at once (the fan-out: many Offers of one product),
+ * outside any unit, in calls of at most 100 queries across them (design 5.4 "asks in batches of
+ * 100"). One failed call makes the whole answer unavailable. Answers, per input in order, the
+ * decisions per type, as {@link askClaims} would for that input alone.
+ */
+export async function askClaimsMany(
+  evaluator: ClaimEvaluator,
+  context: CallContext,
+  inputs: readonly ReadonlyMap<string, readonly TagClaimQuery[]>[],
+): Promise<Result<Map<string, readonly TagDecision[]>[], ClaimCheckUnavailable>> {
+  const flat: {
+    readonly input: number;
+    readonly typeCode: string;
+    readonly query: TagClaimQuery;
+  }[] = [];
+  inputs.forEach((byType, input) => {
+    for (const [typeCode, queries] of byType) {
+      for (const query of queries) flat.push({ input, typeCode, query });
+    }
+  });
+  const answers: TagDecision[] = [];
+  for (let start = 0; start < flat.length; start += MAX_CLAIM_QUERIES_PER_CALL) {
+    const batch = flat.slice(start, start + MAX_CLAIM_QUERIES_PER_CALL);
+    const answer = await evaluator.evaluate(
+      context,
+      batch.map(({ query }) => query),
+    );
+    if (!answer.ok) return answer;
+    if (answer.value.length !== batch.length) return err({ code: 'claim.check-unavailable' });
+    answers.push(...answer.value);
+  }
+  const out = inputs.map((byType) => {
+    const map = new Map<string, TagDecision[]>();
+    for (const typeCode of byType.keys()) map.set(typeCode, []);
+    return map;
+  });
+  flat.forEach(({ input, typeCode }, index) => out[input]!.get(typeCode)!.push(answers[index]!));
+  return ok(out);
+}

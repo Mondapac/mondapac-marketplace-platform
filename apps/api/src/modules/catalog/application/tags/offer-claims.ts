@@ -37,6 +37,11 @@ export function keptTagTypes(offer: Offer): string[] {
   return offer.tags.filter((tag) => KEPT.has(tag.status)).map((tag) => tag.typeCode);
 }
 
+/** The type codes of every tag that is not removed: a publish re-asks them all (5.1a point 3). */
+export function openTagTypes(offer: Offer): string[] {
+  return offer.tags.filter((tag) => tag.status !== 'removed').map((tag) => tag.typeCode);
+}
+
 /** The actor of a seller's tag change, for the history row. */
 export function sellerTagActor(actor: AuthenticatedActor): TagActor {
   return { kind: 'seller', accountId: actor.accountId };
@@ -74,10 +79,14 @@ export async function preparePublishedAsk(
 }
 
 /**
- * In a write unit: the published facts read again, or {@link RETRY} when the product moved since
- * the ask was prepared (a revision published in between; Hassan M1, M2). The decisions are then
- * judged against these facts, never against the ones the ask was built on. Null when nothing was
- * asked.
+ * In a write unit: the product locked at the version the ask was prepared on, then the published
+ * facts read again; {@link RETRY} when the product moved since (a revision published in between;
+ * Hassan M1, M2). The lock comes first (slice 11; the M1 condition on slice 8): under READ
+ * COMMITTED a publish that has not committed yet is invisible to a plain read, so the tag write
+ * waits for the publish's row lock and then sees the new version instead of writing a decision
+ * on the old revision after it. Lock order: the product row, then the Offer row, as every
+ * publish unit does. The decisions are then judged against these facts, never against the ones
+ * the ask was built on. Null when nothing was asked.
  */
 export async function factsInUnit(
   builder: ClaimQueryBuilder,
@@ -86,6 +95,8 @@ export async function factsInUnit(
   prepared: PreparedAsk,
 ): Promise<ClaimFacts | null | typeof RETRY> {
   if (prepared.queries.size === 0) return null;
+  if (prepared.productVersion === null) return RETRY;
+  if (!(await builder.lockProduct(market, productId, prepared.productVersion))) return RETRY;
   const snapshot = await builder.publishedSnapshot(market, productId);
   if (snapshot.productVersion !== prepared.productVersion) return RETRY;
   return snapshot.facts;
