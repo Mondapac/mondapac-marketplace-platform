@@ -1200,6 +1200,20 @@ export class IdentityFakes {
         found === undefined || found.session.marketId !== market.marketId ? null : found.session,
       );
     },
+    listUnrevokedOf: (market, accountId, now, limit) =>
+      Promise.resolve(
+        [...this.sessions.values()]
+          .map((found) => found.session)
+          .filter(
+            (s) =>
+              s.marketId === market.marketId &&
+              s.accountId === accountId &&
+              s.revokedAt === null &&
+              Temporal.Instant.compare(s.absoluteExpiresAt, now) > 0,
+          )
+          .sort((a, b) => Temporal.Instant.compare(b.lastSeenAt, a.lastSeenAt))
+          .slice(0, limit),
+      ),
     touch: (_market, id, now, lastSeenBefore) => {
       const found = this.sessions.get(id);
       if (

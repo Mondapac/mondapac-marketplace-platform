@@ -1,4 +1,15 @@
-import { Body, Controller, HttpCode, HttpException, Logger, Put, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpException,
+  Logger,
+  Post,
+  Put,
+  Req,
+  Res,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -21,12 +32,16 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { ChangeDisplayName } from '../application/use-cases/change-display-name.use-case';
 import { ChangePanelPreferences } from '../application/use-cases/change-panel-preferences.use-case';
+import { ListOwnSessions } from '../application/use-cases/list-own-sessions.use-case';
+import { SignOutOtherSessions } from '../application/use-cases/sign-out-other-sessions.use-case';
 import { adminBody, adminFailure } from './admin.answer';
 import { ApiErrorBody } from './customer-sign-up.dto';
 import {
   ChangeDisplayNameRequest,
   ChangePanelPreferencesRequest,
   DisplayNameChanged,
+  OtherSessionsSignedOut,
+  OwnSessions,
   PanelPreferencesChanged,
 } from './profile.dto';
 
@@ -95,6 +110,57 @@ async function answerChangePreferences(
   return outcome;
 }
 
+/** The holder's own live sessions, for both panels (profile package 4). Logs codes only. */
+async function answerListSessions(
+  logger: Logger,
+  msg: string,
+  context: CallContext,
+  response: Response,
+  useCase: ListOwnSessions,
+): Promise<OwnSessions> {
+  const result = await useCase.execute(context, {});
+  let outcome: OwnSessions | HttpException;
+  if (result.ok) {
+    response.setHeader('Cache-Control', 'no-store');
+    outcome = { items: result.value.items.map((item) => ({ ...item })) };
+  } else outcome = adminFailure(response, result.error);
+  logger.log({
+    msg,
+    outcome:
+      outcome instanceof HttpException ? (outcome.getResponse() as { code: string }).code : 'ok',
+    marketId: context.market.marketId,
+    correlationId: context.correlationId,
+  });
+  if (outcome instanceof HttpException) throw outcome;
+  return outcome;
+}
+
+/** Ends every other session of the holder, for both panels (profile package 4). */
+async function answerSignOutOthers(
+  logger: Logger,
+  msg: string,
+  context: CallContext,
+  response: Response,
+  useCase: SignOutOtherSessions,
+): Promise<OtherSessionsSignedOut> {
+  const result = await useCase.execute(context, {});
+  let outcome: OtherSessionsSignedOut | HttpException;
+  if (result.ok) {
+    response.setHeader('Cache-Control', 'no-store');
+    outcome = result.value;
+  } else outcome = adminFailure(response, result.error);
+  logger.log({
+    msg,
+    outcome:
+      outcome instanceof HttpException ? (outcome.getResponse() as { code: string }).code : 'ok',
+    revokedSessions: outcome instanceof HttpException ? 0 : outcome.revokedSessions,
+    marketId: context.market.marketId,
+    correlationId: context.correlationId,
+  });
+  if (outcome instanceof HttpException) throw outcome;
+  return outcome;
+}
+
 /**
  * The signed-in admin's own profile over HTTP: `PUT profile/display-name`. Reads the admin
  * session cookie and needs its CSRF token. The use case takes the account from the session, so
@@ -109,6 +175,8 @@ export class AdminProfileController {
   constructor(
     private readonly changeDisplayName: ChangeDisplayName,
     private readonly changePreferences: ChangePanelPreferences,
+    private readonly listSessions: ListOwnSessions,
+    private readonly signOutOthers: SignOutOtherSessions,
   ) {}
 
   @Put('profile/display-name')
@@ -179,6 +247,61 @@ export class AdminProfileController {
       this.changePreferences,
     );
   }
+
+  @Get('profile/sessions')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'The live sessions of the signed-in admin account',
+    description:
+      'The coarse device and times of each; no session id, token or address. Not cached.',
+  })
+  @ApiOkResponse({ type: OwnSessions })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  listOwnSessions(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<OwnSessions> {
+    return answerListSessions(
+      this.#logger,
+      'identity.admin-list-sessions',
+      context,
+      response,
+      this.listSessions,
+    );
+  }
+
+  @Post('profile/sessions/sign-out-others')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Sign the signed-in admin account out of every other device',
+    description: 'Revokes every session of the account except the current one, which stays.',
+  })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiOkResponse({ type: OtherSessionsSignedOut })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'request.csrf or access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  signOutOtherSessions(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<OtherSessionsSignedOut> {
+    return answerSignOutOthers(
+      this.#logger,
+      'identity.admin-sign-out-other-sessions',
+      context,
+      response,
+      this.signOutOthers,
+    );
+  }
 }
 
 /** The same route for a seller-side member, on the seller session. */
@@ -191,6 +314,8 @@ export class SellerProfileController {
   constructor(
     private readonly changeDisplayName: ChangeDisplayName,
     private readonly changePreferences: ChangePanelPreferences,
+    private readonly listSessions: ListOwnSessions,
+    private readonly signOutOthers: SignOutOtherSessions,
   ) {}
 
   @Put('profile/display-name')
@@ -262,6 +387,61 @@ export class SellerProfileController {
       response,
       body,
       this.changePreferences,
+    );
+  }
+
+  @Get('profile/sessions')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'The live sessions of the signed-in seller-side account',
+    description:
+      'The coarse device and times of each; no session id, token or address. Not cached.',
+  })
+  @ApiOkResponse({ type: OwnSessions })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  listOwnSessions(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<OwnSessions> {
+    return answerListSessions(
+      this.#logger,
+      'identity.seller-list-sessions',
+      context,
+      response,
+      this.listSessions,
+    );
+  }
+
+  @Post('profile/sessions/sign-out-others')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Sign the signed-in seller-side account out of every other device',
+    description: 'Revokes every session of the account except the current one, which stays.',
+  })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiOkResponse({ type: OtherSessionsSignedOut })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'request.csrf or access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  signOutOtherSessions(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<OtherSessionsSignedOut> {
+    return answerSignOutOthers(
+      this.#logger,
+      'identity.seller-sign-out-other-sessions',
+      context,
+      response,
+      this.signOutOthers,
     );
   }
 }

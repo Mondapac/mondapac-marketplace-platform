@@ -306,6 +306,7 @@ describe('relay', () => {
         'x-market-id': 'NZ',
         'x-forwarded-for': '1.2.3.4',
         'x-csrf-token': 't',
+        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) Firefox/143.0',
       }),
       ['identity', 'admin', 'sign-in'],
       fetchImpl,
@@ -315,6 +316,8 @@ describe('relay', () => {
     expect(sent.get('x-market-id')).toBe('AU');
     expect(sent.get('cookie')).toBe('a=b');
     expect(sent.get('x-csrf-token')).toBe('t');
+    // The API reduces it to a browser and system code on a new session (profile).
+    expect(sent.get('user-agent')).toBe('Mozilla/5.0 (X11; Linux x86_64) Firefox/143.0');
     expect(sent.has('x-forwarded-for')).toBe(false);
     expect(sent.has('host')).toBe(false);
   });

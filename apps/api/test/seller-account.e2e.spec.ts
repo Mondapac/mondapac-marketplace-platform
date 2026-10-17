@@ -84,6 +84,8 @@ const cookieOf = (setCookie: unknown): string => {
   return line!.split(';', 1)[0]!;
 };
 
+/** The answer of `GET profile/sessions` (profile package 4). */
+type OwnSessionsBody = { items: { current: boolean; device: string | null }[] };
 describe('seller accounts over HTTP (integration)', () => {
   let app: NestExpressApplication;
   let logLines: LogLine[];
@@ -313,6 +315,49 @@ describe('seller accounts over HTTP (integration)', () => {
       );
       expect(changed.status).toBe(200);
       expect(JSON.stringify(logLines)).not.toContain('Amina R.');
+    });
+
+    it('keeps the coarse device of a sign-in, lists the own devices and signs out of the others', async () => {
+      await boot();
+      const confirmed = await signUpAndConfirm(code);
+      const first = cookieOf(confirmed.headers['set-cookie']);
+      const userAgent =
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15';
+      const second = await post(
+        'sign-in',
+        code,
+        { email: EMAIL, password: PASSWORD },
+        { 'user-agent': userAgent },
+      );
+      expect(second.status).toBe(200);
+      const cookie = cookieOf(second.headers['set-cookie']);
+      const csrfToken = (second.body as { csrfToken: string }).csrfToken;
+      const list = (sessionCookie: string) =>
+        http()
+          .get('/identity/seller/profile/sessions')
+          .set({ 'x-market-id': code, cookie: sessionCookie });
+
+      const listed = await list(cookie);
+      expect(listed.status).toBe(200);
+      expect((listed.body as OwnSessionsBody).items).toHaveLength(2);
+      expect((listed.body as OwnSessionsBody).items[0]).toMatchObject({
+        current: true,
+        device: 'safari.macos',
+      });
+      expect((listed.body as OwnSessionsBody).items[1]).toMatchObject({ current: false });
+      // The raw header is never stored or answered.
+      expect(JSON.stringify(listed.body)).not.toContain('Version/18.6');
+
+      const done = await post(
+        'profile/sessions/sign-out-others',
+        code,
+        {},
+        { cookie, 'x-csrf-token': csrfToken },
+      );
+      expect(done.status).toBe(200);
+      expect(done.body).toEqual({ code: 'other-sessions-signed-out', revokedSessions: 1 });
+      expect((await list(first)).body).toEqual({ statusCode: 401, code: 'session.invalid' });
+      expect(((await list(cookie)).body as OwnSessionsBody).items).toHaveLength(1);
     });
 
     it('"keep me signed in" sets Max-Age to the kept absolute lifetime; a non-boolean is refused', async () => {

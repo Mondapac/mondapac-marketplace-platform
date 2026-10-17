@@ -122,6 +122,9 @@ model IdentitySession {
   tokenHash          Bytes                 @map("token_hash")
   /// cookie | bearer: a session is refused on the other transport.
   transport          String
+  /// Coarse device of the sign-in request, `<browser>.<system>` from fixed lists (profile
+  /// package 4); never the raw User-Agent. NULL when the request sent none.
+  device             String?               @db.VarChar(32)
   createdAt          DateTime              @map("created_at") @db.Timestamptz(6)
   /// Written at most once a minute; in no index, so the update can stay HOT.
   lastSeenAt         DateTime              @map("last_seen_at") @db.Timestamptz(6)

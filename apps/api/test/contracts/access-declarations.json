@@ -166,6 +166,11 @@
   },
   { "name": "identity.find-access-decisions-by-basis", "rule": "system" },
   { "name": "identity.issue-first-admin-invitation", "rule": "system" },
+  {
+    "name": "identity.list-own-sessions",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "identity.list-registered-sellers", "rule": "system" },
   {
     "name": "identity.list-seller-step-up-policy",
@@ -222,6 +227,11 @@
   { "name": "identity.sign-in-customer", "rule": "anonymous" },
   { "name": "identity.sign-in-seller", "rule": "anonymous" },
   { "name": "identity.sign-out", "rule": "own-resources", "whenSellerNotApproved": "allow" },
+  {
+    "name": "identity.sign-out-other-sessions",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "identity.start-admin-invitation-acceptance", "rule": "anonymous" },
   { "name": "identity.start-second-factor-enrolment", "rule": "anonymous" },
   {

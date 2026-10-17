@@ -30,6 +30,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set([]),
   POST: new Set([
+    // The signed-in admin's other sessions are ended; this one stays (profile).
+    'identity/admin/profile/sessions/sign-out-others',
     'identity/admin/sign-in',
     'identity/admin/second-factor',
     'identity/admin/sign-out',
@@ -141,6 +143,8 @@ const FORWARDED_REQUEST_HEADERS = [
   'origin',
   'sec-fetch-site',
   'x-csrf-token',
+  // The API keeps only a coarse browser and system code of it on a new session (profile).
+  'user-agent',
 ] as const;
 
 /** Response headers that cross back to the browser (Set-Cookie is handled on its own). */
