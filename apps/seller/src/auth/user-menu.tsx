@@ -25,6 +25,7 @@ export function UserMenu({
   const router = useRouter();
   const links: readonly AccountMenuLink[] = [
     { id: 'profile', label: t('profile'), href: '/account/profile', icon: 'user' },
+    { id: 'sessions', label: t('sessions'), href: '/account/sessions', icon: 'monitor' },
     ...(approved
       ? [
           {

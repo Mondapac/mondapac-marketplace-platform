@@ -38,6 +38,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'inventory/seller/sources-order',
   ]),
   POST: new Set([
+    // The signed-in member's other sessions are ended; this one stays (profile).
+    'identity/seller/profile/sessions/sign-out-others',
     'identity/seller/sign-up',
     'identity/seller/confirm-email',
     'identity/seller/verification-email',
@@ -161,6 +163,8 @@ const FORWARDED_REQUEST_HEADERS = [
   'origin',
   'sec-fetch-site',
   'x-csrf-token',
+  // The API keeps only a coarse browser and system code of it on a new session (profile).
+  'user-agent',
 ] as const;
 
 /** Response headers that cross back to the browser (Set-Cookie is handled on its own). */
