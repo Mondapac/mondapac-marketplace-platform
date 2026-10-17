@@ -75,7 +75,9 @@ export class OwnOfferSetHandlingRequest {
 export class OwnOfferHandlingSet {
   @ApiProperty({
     type: [String],
-    description: "['handling'] when the value changed; empty when the Offer already held it.",
+    description:
+      "['handling'] when the value changed, ['handling', 'attestation'] when a change away from " +
+      'SEALED_ORIGINAL also withdrew the attestation; empty when the Offer already held it.',
   })
   changedFields!: string[];
 }

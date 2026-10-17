@@ -10,6 +10,7 @@ import { Client } from 'pg';
 import { ClaimQueryBuilder } from '../../src/modules/catalog/application/tags/claim-query-builder';
 import { OwnOfferAddTag } from '../../src/modules/catalog/application/use-cases/own-offer-add-tag.use-case';
 import { OwnOfferRecordAttestation } from '../../src/modules/catalog/application/use-cases/own-offer-record-attestation.use-case';
+import { OwnOfferSetHandling } from '../../src/modules/catalog/application/use-cases/own-offer-set-handling.use-case';
 import { PrismaCategoryPathsReader } from '../../src/modules/catalog/infrastructure/prisma-category-paths.reader';
 import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
@@ -250,6 +251,7 @@ describe.each(TEST_MARKETS)(
         outbox: deps.outbox,
         record: new OwnOfferRecordAttestation(gate, deps),
         addTag: new OwnOfferAddTag(gate, { ...deps, ids }),
+        setHandling: new OwnOfferSetHandling(gate, deps),
       };
     }
 
@@ -377,6 +379,60 @@ describe.each(TEST_MARKETS)(
         { to_status: 'suspended', entry_path: 'attestation-change' },
         { to_status: 'active', entry_path: 'attestation-change' },
       ]);
+    });
+
+    it('clears the attestation when handling leaves SEALED_ORIGINAL; back again keeps the tag suspended until a new record (Hassan M-1)', async () => {
+      evaluator.unavailable = false;
+      const sellerId = uuid7() as Id<'Seller'>;
+      const accountId = uuid7() as Id<'Account'>;
+      const offerId = await publishedOffer(sellerId);
+      const r = rig(sellerId, accountId);
+      expect((await r.record.execute(r.context, { offerId, attested: true })).ok).toBe(true);
+      expect((await r.addTag.execute(r.context, { offerId, typeCode })).ok).toBe(true);
+
+      expect(await r.setHandling.execute(r.context, { offerId, handling: 'REPACKED' })).toEqual({
+        ok: true,
+        value: { changedFields: ['handling', 'attestation'] },
+      });
+      expect(await offerRow(offerId)).toMatchObject({
+        attestation_recorded_at: null,
+        attestation_account_id: null,
+        listed: false,
+        off_sale_tag_suspended: true,
+      });
+      expect((await offerHistory(offerId)).at(-1)).toEqual({
+        change_kind: 'edited',
+        changed_fields: ['handling', 'attestation'],
+        attestation_recorded: false,
+        actor_kind: 'seller',
+        actor_account_id: accountId,
+      });
+      expect(await tagRow(offerId)).toMatchObject({
+        status: 'suspended',
+        last_change_cause: 'handling-change',
+      });
+
+      expect(
+        await r.setHandling.execute(r.context, { offerId, handling: 'SEALED_ORIGINAL' }),
+      ).toEqual({ ok: true, value: { changedFields: ['handling'] } });
+      expect(await offerRow(offerId)).toMatchObject({
+        attestation_recorded_at: null,
+        listed: false,
+      });
+      expect(await tagRow(offerId)).toMatchObject({
+        status: 'suspended',
+        last_reason_code: 'attestation-missing',
+      });
+
+      expect((await r.record.execute(r.context, { offerId, attested: true })).ok).toBe(true);
+      expect(await offerRow(offerId)).toMatchObject({
+        listed: true,
+        off_sale_tag_suspended: false,
+      });
+      expect(await tagRow(offerId)).toMatchObject({
+        status: 'active',
+        last_change_cause: 'attestation-change',
+      });
     });
 
     it('changes nothing when the check is unavailable, and refuses another handling', async () => {

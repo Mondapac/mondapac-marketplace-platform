@@ -348,7 +348,9 @@ export class Offer {
    * `edit`; a published Offer stays published and its use case re-asks every kept tag against the
    * new handling in the same unit (`settleTags`; AC 11). Answers the changed field ids
    * (`['handling']` or none); a draft or published Offer that already holds the value stores
-   * nothing and leaves the version alone.
+   * nothing and leaves the version alone. A change away from `SEALED_ORIGINAL` clears a recorded
+   * attestation in the same change (`['handling', 'attestation']`; Hassan M-1): the statement no
+   * longer holds, and a return to `SEALED_ORIGINAL` needs a new `recordAttestation`.
    */
   setHandling(input: {
     readonly handling: OfferHandling;
@@ -364,18 +366,18 @@ export class Offer {
     if (!changed && (state.status === 'draft' || published)) return ok([]);
     if (this.#pendingHistory !== null)
       throw new Error('setHandling: the Offer already has a change');
+    const clearsAttestation =
+      changed && input.handling !== 'SEALED_ORIGINAL' && state.attestationRecordedAt !== null;
+    const fields = !changed ? [] : clearsAttestation ? ['handling', 'attestation'] : ['handling'];
     this.#state = Object.freeze({
       ...state,
       handling: input.handling,
+      ...(clearsAttestation ? { attestationRecordedAt: null, attestationAccountId: null } : {}),
       ...(published ? {} : { status: 'draft' as const, submittedAt: null }),
       version: state.version + 1,
     });
-    this.#pendingHistory = {
-      changeKind: 'edited',
-      changedFields: changed ? ['handling'] : [],
-      occurredAt: input.now,
-    };
-    return ok(changed ? ['handling'] : []);
+    this.#pendingHistory = { changeKind: 'edited', changedFields: fields, occurredAt: input.now };
+    return ok(fields);
   }
 
   /**

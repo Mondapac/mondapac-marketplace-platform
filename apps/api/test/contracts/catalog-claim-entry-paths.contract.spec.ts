@@ -116,6 +116,41 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
     expect(text).toMatch(/isActingAsSession\(actor\)/);
   });
 
+  it('writes the attestation fields only in create, recordAttestation and setHandling (Hassan L-1)', () => {
+    const offerSource = readFileSync(path.resolve(APPLICATION, '../domain/offer.ts'), 'utf8').split(
+      '\n',
+    );
+    // An object-literal property, not the `readonly` declaration of the state type.
+    const write = /^(?!\s*readonly\b).*\battestation(RecordedAt|AccountId):/;
+    const header = /^ {2}(?:static |private )?(#?[A-Za-z]\w*)(?:<[^>]*>)?\(/;
+    const writers = new Map<string, string[]>();
+    let method = '(top level)';
+    for (const line of offerSource) {
+      const found = header.exec(line);
+      if (found) method = found[1]!;
+      if (write.test(line)) writers.set(method, [...(writers.get(method) ?? []), line.trim()]);
+    }
+    expect([...writers.keys()].sort()).toEqual(['create', 'recordAttestation', 'setHandling']);
+    // create starts empty and setHandling only clears: never a value from its input.
+    for (const name of ['create', 'setHandling']) {
+      for (const line of writers.get(name)!) {
+        expect(line).toMatch(/attestation(RecordedAt|AccountId): null\b/);
+        expect(line).not.toMatch(/attestation(RecordedAt|AccountId): (?!null\b)/);
+      }
+    }
+
+    // Under application/, only the record-attestation use case names the fields in a literal
+    // (its answer), and no file rebuilds an Offer state with them.
+    const appWriters = files
+      .filter(({ text }) => text.split('\n').some((line) => write.test(line)))
+      .map((f) => f.file);
+    expect(appWriters).toEqual(['use-cases/own-offer-record-attestation.use-case.ts']);
+    const recordText = files.find(
+      (f) => f.file === 'use-cases/own-offer-record-attestation.use-case.ts',
+    )!.text;
+    expect(recordText).not.toMatch(/Offer\.restore\(\{/);
+  });
+
   it('serialises tag writes against publication through the product lock (slice 11)', () => {
     const claims = files.find((f) => f.file === 'tags/offer-claims.ts')!.text;
     expect(claims).toMatch(/lockProduct\(/);

@@ -506,6 +506,66 @@ describe.each(MARKETS)('Offer in market %s', (code) => {
       },
     );
 
+    it.each(['REPACKED', 'PREPARED', 'FRESH'] as const)(
+      'clears a recorded attestation when the handling changes away to %s (Hassan M-1)',
+      (handling) => {
+        const offer = stored({
+          status: 'published',
+          listed: true,
+          firstPublishedAt: T0,
+          submittedAt: T0,
+          attestationRecordedAt: T0,
+          attestationAccountId: other,
+        });
+        expect(offer.setHandling({ handling, now: later })).toEqual({
+          ok: true,
+          value: ['handling', 'attestation'],
+        });
+        expect(offer.state).toMatchObject({
+          handling,
+          attestationRecordedAt: null,
+          attestationAccountId: null,
+          status: 'published',
+          version: 4,
+        });
+        expect(offer.pendingHistory).toEqual({
+          changeKind: 'edited',
+          changedFields: ['handling', 'attestation'],
+          occurredAt: later,
+        });
+        // Back to SEALED_ORIGINAL: the attestation is not revived; a new record is needed.
+        const back = Offer.restore(offer.state);
+        expect(back.setHandling({ handling: 'SEALED_ORIGINAL', now: later })).toEqual({
+          ok: true,
+          value: ['handling'],
+        });
+        expect(back.state.attestationRecordedAt).toBeNull();
+      },
+    );
+
+    it('keeps the attestation when the handling is set to the value it already holds', () => {
+      const offer = stored({ attestationRecordedAt: T0, attestationAccountId: other });
+      expect(offer.setHandling({ handling: 'SEALED_ORIGINAL', now: later })).toEqual({
+        ok: true,
+        value: [],
+      });
+      expect(offer.state).toMatchObject({
+        attestationRecordedAt: T0,
+        attestationAccountId: other,
+        version: 3,
+      });
+      expect(offer.pendingHistory).toBeNull();
+    });
+
+    it('changes only the handling when no attestation is recorded', () => {
+      const offer = stored();
+      expect(offer.setHandling({ handling: 'FRESH', now: later })).toEqual({
+        ok: true,
+        value: ['handling'],
+      });
+      expect(offer.pendingHistory?.changedFields).toEqual(['handling']);
+    });
+
     it('refuses a deleted Offer', () => {
       const offer = stored({ status: 'deleted', deletedAt: T0 });
       expect(offer.recordAttestation({ attested: false, accountId, now: later })).toEqual({

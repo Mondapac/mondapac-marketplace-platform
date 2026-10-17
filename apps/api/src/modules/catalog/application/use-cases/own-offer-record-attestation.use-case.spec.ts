@@ -26,6 +26,7 @@ import {
 } from '../../../../../test/support/catalog-tag-fakes';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import { OwnOfferRecordAttestation } from './own-offer-record-attestation.use-case';
+import { OwnOfferSetHandling } from './own-offer-set-handling.use-case';
 
 // `own-offer.record-attestation` in memory (ADR-0012 d4; catalog design 4.4, 5.4, 8.2; Ali B1), on
 // both Market fixtures.
@@ -108,15 +109,22 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.record-attestation in market %s'
       reserve?: { code: 'request.throttled'; retryAfterSeconds: number } | null;
       tags?: OfferTagState[];
       refuseWithoutAttestation?: boolean;
+      /** Allowed only on SEALED_ORIGINAL with the attestation, as the manufacturer basis is. */
+      manufacturerBasis?: boolean;
+      /** Reads answer the last saved Offer, so commands can be chained. */
+      stateful?: boolean;
       unavailable?: boolean;
     } = {},
   ) {
     const state = options.offer === undefined ? offerState() : options.offer;
     const evaluator = new FakeClaimEvaluator(
       (query) =>
-        options.refuseWithoutAttestation === true && !query.attestationRecorded
+        (options.refuseWithoutAttestation === true || options.manufacturerBasis === true) &&
+        !query.attestationRecorded
           ? refusedDecision(query, 'attestation-missing')
-          : allowedDecision(query, certificateIds),
+          : options.manufacturerBasis === true && query.handling !== 'SEALED_ORIGINAL'
+            ? refusedDecision(query, 'handling-requires-seller')
+            : allowedDecision(query, certificateIds),
       [typeCode],
     );
     evaluator.unavailable = options.unavailable ?? false;
@@ -127,7 +135,8 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.record-attestation in market %s'
     const unitOfWork = {
       run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
     } as unknown as UnitOfWork;
-    const useCase = new OwnOfferRecordAttestation(gate, {
+    let current = state === null ? null : { state, tags: options.tags ?? [] };
+    const deps = {
       unitOfWork,
       offers: {
         add: () => Promise.reject(new Error('unused')),
@@ -135,10 +144,11 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.record-attestation in market %s'
         listPendingReview: () => Promise.resolve([]),
         findManyByIds: () => Promise.resolve([]),
         findById: () =>
-          Promise.resolve(state === null ? null : Offer.restore(state, options.tags ?? [])),
-        save: (_m, offer) => {
+          Promise.resolve(current === null ? null : Offer.restore(current.state, current.tags)),
+        save: (_m: MarketContext, offer: Offer) => {
           if (options.saveThrows !== undefined) return Promise.reject(options.saveThrows);
           saved.push(offer);
+          if (options.stateful === true) current = { state: offer.state, tags: [...offer.tags] };
           return Promise.resolve(null);
         },
       },
@@ -153,8 +163,10 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.record-attestation in market %s'
       evaluator,
       outbox,
       clock,
-    });
-    return { useCase, state, saved, reserved, evaluator, outbox };
+    };
+    const useCase = new OwnOfferRecordAttestation(gate, deps);
+    const setHandling = new OwnOfferSetHandling(gate, deps);
+    return { useCase, setHandling, state, saved, reserved, evaluator, outbox };
   }
 
   const sealed = (overrides: Partial<OfferState> = {}) =>
@@ -302,6 +314,43 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.record-attestation in market %s'
       'catalog.offer-tag-restored.v1',
       'catalog.offer-listing-changed.v1',
     ]);
+  });
+
+  it('keeps a manufacturer-basis tag suspended after handling goes away and back, until a new record (Hassan M-1)', async () => {
+    const offer = attestedPublished();
+    const r = rig({
+      offer,
+      tags: [activeTagState(ids.next<'OfferTag'>(), typeCode, certificateIds, T0)],
+      manufacturerBasis: true,
+      stateful: true,
+    });
+    const context = contextOf('seller');
+
+    const away = await r.setHandling.execute(context, { offerId: offer.id, handling: 'REPACKED' });
+    expect(away).toEqual({ ok: true, value: { changedFields: ['handling', 'attestation'] } });
+    expect(r.saved.at(-1)!.state).toMatchObject({
+      attestationRecordedAt: null,
+      attestationAccountId: null,
+      listed: false,
+    });
+    expect(r.saved.at(-1)!.tags[0]!.status).toBe('suspended');
+
+    const back = await r.setHandling.execute(context, {
+      offerId: offer.id,
+      handling: 'SEALED_ORIGINAL',
+    });
+    expect(back).toEqual({ ok: true, value: { changedFields: ['handling'] } });
+    expect(r.evaluator.calls.at(-1)!.map((q) => q.attestationRecorded)).toEqual([false]);
+    expect(r.saved.at(-1)!.tags[0]).toMatchObject({
+      status: 'suspended',
+      lastReasonCode: 'attestation-missing',
+    });
+    expect(r.saved.at(-1)!.state.listed).toBe(false);
+
+    const recorded = await r.useCase.execute(context, { offerId: offer.id, attested: true });
+    expect(recorded.ok).toBe(true);
+    expect(r.saved.at(-1)!.tags[0]!.status).toBe('active');
+    expect(r.saved.at(-1)!.state.listed).toBe(true);
   });
 
   it('refuses the change, storing nothing, when the check is unavailable (fail closed)', async () => {

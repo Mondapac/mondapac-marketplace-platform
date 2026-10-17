@@ -394,9 +394,11 @@ export class OwnOfferController {
       'Needs catalog.own-product.edit and a seller who may sell. Body: handling, one of ' +
       'SEALED_ORIGINAL, REPACKED, PREPARED, FRESH. An Offer of another seller, a deleted one or ' +
       'an unknown id is a byte-identical offer.not-found. An Offer waiting for review or ' +
-      'needing changes returns to draft; a published Offer stays published. Every tag is asked ' +
-      'again against the new handling: one no longer allowed is suspended and the Offer goes ' +
-      'off sale; an unanswered check refuses (claim.check-unavailable). Shares the save budget ' +
+      'needing changes returns to draft; a published Offer stays published. A change away from ' +
+      'SEALED_ORIGINAL withdraws a recorded attestation in the same change (changedFields ' +
+      'handling and attestation); returning to SEALED_ORIGINAL needs a new attestation. Every ' +
+      'tag is asked again against the new handling: one no longer allowed is suspended and the ' +
+      'Offer goes off sale; an unanswered check refuses (claim.check-unavailable). Shares the save budget ' +
       'of draft saves: 60 a minute and 1,000 a day per account.',
   })
   @ApiHeader(CSRF)
