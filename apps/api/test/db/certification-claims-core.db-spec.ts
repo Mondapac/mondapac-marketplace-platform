@@ -26,6 +26,10 @@ const uuid7 = (): string =>
 const COVERED_BY_SELLER_CERTIFICATE_SPEC = [
   'seller_submission_documents',
   'seller_certification_history',
+  // Certification migration 4: covered by certification-review.db-spec.ts.
+  'submission_review_checks',
+  'submission_scope_readings',
+  'seller_issuer_confirmations',
 ];
 
 function insertOnlyTables(): string[] {

@@ -31,8 +31,11 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // slice 6). Version 4 adds `sellers.business-details.view` (the review page, which decrypts
     // business data, sellers slice 7a-read): every default role that holds
     // `identity.seller-access.approve` holds it too, because the gate has no "any of" (sellers
-    // design 6.2, Hassan M4); the seed contract test checks the pairing.
-    seedVersion: 4,
+    // design 6.2, Hassan M4); the seed contract test checks the pairing. Version 5 adds
+    // `certification.seller-certificate.view` and `.review` (certification slice 7: the review
+    // queue, checks, request changes and decline). The protected `.approve` is not listed: a
+    // default role never lists a protected key (R11), the Platform Administrator grants it.
+    seedVersion: 5,
     nameKey: 'identity.role.onboarding-compliance',
     permissionKeys: [
       'identity.seller-access.view',
@@ -42,6 +45,8 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'sellers.seller-file.review',
       'sellers.seller.view',
       'sellers.business-details.view',
+      'certification.seller-certificate.view',
+      'certification.seller-certificate.review',
     ],
   },
   {
@@ -108,7 +113,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 7 adds `commission-payouts.settlement.view`, likewise unprotected (Phase 5 package 5).
     // Version 8 adds `payments.connected-account.view`, likewise unprotected (Phase 5 package 3).
     // Version 9 adds `notifications.support-contact.view`, likewise unprotected (support contact).
-    seedVersion: 9,
+    // Version 10 adds `certification.seller-certificate.view`, likewise unprotected (certification
+    // slice 7). The review key reads decrypted certificate fields and is not a viewer key.
+    seedVersion: 10,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -123,6 +130,25 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'commission-payouts.settlement.view',
       'payments.connected-account.view',
       'notifications.support-contact.view',
+      'certification.seller-certificate.view',
+    ],
+  },
+  {
+    // Reviews seller certificates (certification slice 7). Reads the seller's store name and
+    // business details for the holder-name check; decides "request changes" and "decline".
+    // Approval is the protected `certification.seller-certificate.approve`, granted by the
+    // Platform Administrator in a custom role.
+    scope: 'platform',
+    kind: 'default',
+    seedCode: 'certification-reviewer',
+    seedVersion: 1,
+    nameKey: 'identity.role.certification-reviewer',
+    permissionKeys: [
+      'identity.seller-access.view',
+      'sellers.seller.view',
+      'sellers.business-details.view',
+      'certification.seller-certificate.view',
+      'certification.seller-certificate.review',
     ],
   },
 ];

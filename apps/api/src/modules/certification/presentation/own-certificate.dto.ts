@@ -117,3 +117,102 @@ export class CertificateDeleted {
 export class CertificateDocumentRemoved {
   @ApiProperty() removed!: true;
 }
+
+// Answers and requests of the admin review routes (certification design 7.2; slice 7). The
+// review page holds personal data (certificate number, business details) and is `no-store`.
+
+export class ReviewQueueRowView {
+  @ApiProperty({ format: 'uuid' }) certificateId!: string;
+  @ApiProperty({ description: 'The version a decision must name.' }) version!: number;
+  @ApiProperty({ format: 'uuid' }) submissionId!: string;
+  @ApiProperty() submissionNo!: number;
+  @ApiProperty({ enum: ['initial', 'renewal'] }) kind!: string;
+  @ApiProperty() typeCode!: string;
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ nullable: true, type: String }) storeName!: string | null;
+  @ApiProperty({ nullable: true, type: String }) issuerName!: string | null;
+  @ApiProperty() submittedAt!: string;
+}
+
+export class ReviewQueueView {
+  @ApiProperty({ type: [ReviewQueueRowView] }) items!: ReviewQueueRowView[];
+  @ApiProperty({ nullable: true, type: String }) nextAfterId!: string | null;
+  @ApiProperty() total!: number;
+}
+
+export class ReviewPageView {
+  @ApiProperty({ type: Object }) certificate!: Record<string, unknown>;
+  @ApiProperty({ type: Object }) submission!: Record<string, unknown>;
+  @ApiProperty({ type: [Object] }) documents!: Record<string, unknown>[];
+  @ApiProperty({ type: [Object], description: 'Every check of the Market with its latest result.' })
+  checks!: Record<string, unknown>[];
+  @ApiProperty({ type: Object, nullable: true }) scope!: Record<string, unknown> | null;
+  @ApiProperty({ type: Object, nullable: true }) confirmation!: Record<string, unknown> | null;
+  @ApiProperty({ type: Object, description: 'The reasons by outcome, with their next steps.' })
+  reasons!: Record<string, unknown>;
+  @ApiProperty({ type: [Object], description: 'Same number or same file at another seller.' })
+  duplicateHints!: Record<string, unknown>[];
+  @ApiProperty({ type: Object }) business!: Record<string, unknown>;
+  @ApiProperty({ type: [Object] }) history!: Record<string, unknown>[];
+  @ApiProperty({ type: Object, nullable: true }) decision!: Record<string, unknown> | null;
+}
+
+export class ReviewCheckRequest {
+  @ApiProperty({ format: 'uuid' }) submissionId!: string;
+  @ApiProperty({ description: 'A check code of the Market policy.' }) checkCode!: string;
+  @ApiProperty({ enum: ['done', 'problem', 'not-applicable'] }) result!: string;
+}
+
+export class ReviewCheckRecorded {
+  @ApiProperty({ format: 'uuid' }) checkId!: string;
+  @ApiProperty() checkCode!: string;
+  @ApiProperty() result!: string;
+  @ApiProperty() recordedAt!: string;
+}
+
+export class ReviewScopeRequest {
+  @ApiProperty({ format: 'uuid' }) submissionId!: string;
+  @ApiProperty({ description: 'The location the certificate covers, as read.' }) location!: string;
+  @ApiProperty({ description: 'The product or activity scope, as read.' }) scope!: string;
+}
+
+export class ReviewScopeRecorded {
+  @ApiProperty() recordedAt!: string;
+}
+
+export class ReviewConfirmationRequest {
+  @ApiProperty({ format: 'uuid' }) submissionId!: string;
+  @ApiProperty({ format: 'uuid', description: 'A contact channel of the submission issuer.' })
+  channelId!: string;
+  @ApiProperty({ example: '2027-06-30' }) confirmedOn!: string;
+  @ApiProperty({ description: 'The issuer reference of the confirmation (stored encrypted).' })
+  reference!: string;
+  @ApiProperty() confirmsNumber!: boolean;
+  @ApiProperty() confirmsHolder!: boolean;
+}
+
+export class ReviewConfirmationRecorded {
+  @ApiProperty({ format: 'uuid' }) submissionId!: string;
+  @ApiProperty({ description: 'The record version after the change.' }) version!: number;
+  @ApiProperty() recordedAt!: string;
+}
+
+export class ReviewApproveRequest {
+  @ApiProperty({ format: 'uuid', description: 'The submission the reviewer saw.' })
+  submissionId!: string;
+  @ApiProperty({ description: 'The record version the reviewer saw.' }) version!: number;
+}
+
+export class ReviewNegativeDecisionRequest extends ReviewApproveRequest {
+  @ApiProperty({ description: 'A reason code of the Market policy.' }) reasonCode!: string;
+  @ApiProperty({ required: false, nullable: true, type: String }) reasonText?: string | null;
+}
+
+export class ReviewDecided {
+  @ApiProperty({ format: 'uuid' }) certificateId!: string;
+  @ApiProperty({ format: 'uuid' }) submissionId!: string;
+  @ApiProperty({ enum: ['approved', 'changes-requested', 'declined'] }) outcome!: string;
+  @ApiProperty() status!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty() decidedAt!: string;
+}

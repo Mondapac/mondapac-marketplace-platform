@@ -16,6 +16,15 @@ export interface CertificationUnavailable {
   readonly code: 'certification.unavailable';
 }
 
+/** What `sellerCertificateOverview` answers per seller: type codes only, no certificate fields. */
+export interface SellerCertificateOverviewRow {
+  readonly sellerId: Id<'Seller'>;
+  /** Codes of the types the seller holds a valid certificate of (a display measure; not a claim). */
+  readonly validTypeCodes: readonly string[];
+  /** Codes of the types with a submission waiting for review. */
+  readonly awaitingReviewTypeCodes: readonly string[];
+}
+
 /** One text to check. The locale is the text's declared one; the match ignores it (M8). */
 export interface ClaimTextInput {
   readonly locale: string;
@@ -82,6 +91,16 @@ export interface CertificationFacade {
     context: CallContext,
     filter: { readonly status?: 'active' | 'inactive' },
   ): Promise<Result<readonly CertificationTypeView[], Failure>>;
+
+  /**
+   * For the sellers admin list (SEL-10, CERT-30): per requested seller (at most 100 distinct ids),
+   * the type codes with a valid certificate and with one awaiting review. Admin callers holding
+   * `certification.seller-certificate.view` only; the claim is decided by `evaluateClaims` alone.
+   */
+  sellerCertificateOverview(
+    context: CallContext,
+    sellerIds: readonly string[],
+  ): Promise<Result<readonly SellerCertificateOverviewRow[], Failure>>;
 }
 
 /** Nest token of the {@link CertificationFacade}, provided and exported by `CertificationModule`. */

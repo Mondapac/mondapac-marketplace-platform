@@ -20,6 +20,7 @@ describe('loadAppConfig', () => {
       logLevel: 'info',
       hostedMarkets: ['AU', 'ZZ'],
       apiDocsEnabled: false,
+      certificationReviewerDocumentsEnabled: false,
       marketConfigDirs: [expect.stringMatching(/config[\\/]markets$/)],
       serviceAreaConfigDirs: [expect.stringMatching(/config[\\/]service-areas$/)],
       localeConfigDirs: [expect.stringMatching(/config[\\/]locales$/)],
@@ -220,6 +221,18 @@ describe('loadAppConfig', () => {
     expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', API_DOCS_ENABLED: 'yes' })).toThrow(
       /API_DOCS_ENABLED/,
     );
+  });
+
+  it('lets a reviewer download certificate files only when explicitly enabled', () => {
+    const base = { HOSTED_MARKETS: 'AU' };
+    expect(loadAppConfig(base).certificationReviewerDocumentsEnabled).toBe(false);
+    expect(
+      loadAppConfig({ ...base, CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true' })
+        .certificationReviewerDocumentsEnabled,
+    ).toBe(true);
+    expect(() =>
+      loadAppConfig({ ...base, CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'yes' }),
+    ).toThrow(/CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED/);
   });
 
   it('takes the market configuration directory from MARKET_CONFIG_DIR', () => {

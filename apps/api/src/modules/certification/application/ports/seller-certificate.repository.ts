@@ -71,6 +71,8 @@ export interface NewDocument {
   readonly objectKey: string;
   readonly dataKeyEnvelope: string;
   readonly cleanSha256: Buffer;
+  /** The keyed index of the plaintext bytes (design 10.2): 32 bytes, for the reviewer's hint. */
+  readonly indexHmac: Uint8Array;
   readonly now: Temporal.Instant;
 }
 
@@ -93,6 +95,8 @@ export interface SubmitWrite {
   readonly contentSchemaVersion: number;
   /** `hmac-sha256:<64 hex>`. */
   readonly contentHash: string;
+  /** The keyed index of the normalised certificate number (design 10.2); null without a number. */
+  readonly numberIndexHmac: Uint8Array | null;
   readonly submittedZone: string;
   readonly submittedAt: Temporal.Instant;
   readonly submittedByAccountId: Id<'Account'>;
@@ -165,7 +169,7 @@ export interface SellerCertificateRepository {
     certificateId: Id<'SellerCertification'>,
     documentId: Id<'UploadedDocument'>,
   ): Promise<StoredDocument | null>;
-  /** Inserts the file and its draft link and moves the root's version. */
+  /** Inserts the file, its keyed index row and its draft link and moves the root's version. */
   addDocument(market: MarketContext, document: NewDocument): Promise<void>;
   /**
    * Takes a file off the draft and moves the root's version. A file no submission holds is

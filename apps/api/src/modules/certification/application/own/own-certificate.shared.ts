@@ -20,6 +20,7 @@ import type {
   DocumentVault,
 } from '../ports/document-ports';
 import type { RateCounterKeys, RateCounterRepository } from '../ports/rate-counters';
+import type { CertificateIndexKeys } from '../ports/review.ports';
 import type { SellerZonesSource } from '../ports/claim-facts.ports';
 import type {
   SellerCertificateRepository,
@@ -37,6 +38,8 @@ export interface OwnCertificateDependencies {
   readonly cipher: CertificateFieldCipher;
   readonly counters: RateCounterRepository;
   readonly counterKeys: RateCounterKeys;
+  /** The keyed indexes of the reviewer's duplicate hint (design 10.2). */
+  readonly indexKeys: CertificateIndexKeys;
   readonly zones: SellerZonesSource;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;

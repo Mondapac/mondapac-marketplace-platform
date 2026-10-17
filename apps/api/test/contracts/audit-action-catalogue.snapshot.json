@@ -1,5 +1,98 @@
 [
   {
+    "action": "certification.document.downloaded",
+    "targetType": "certification.seller-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "documentId": "id",
+      "submissionId": "id"
+    }
+  },
+  {
+    "action": "certification.issuer-confirmation.recorded",
+    "targetType": "certification.seller-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "issuerId": "id",
+      "submissionId": "id"
+    }
+  },
+  {
+    "action": "certification.review-check.recorded",
+    "targetType": "certification.seller-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "checkId": "id",
+      "result": "enumOf(done|problem|not-applicable)",
+      "submissionId": "id"
+    }
+  },
+  {
+    "action": "certification.review-page.viewed",
+    "targetType": "certification.seller-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "reason": "enumOf(review|duplicate-hint)",
+      "submissionId": "id"
+    }
+  },
+  {
+    "action": "certification.review-scope.recorded",
+    "targetType": "certification.seller-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "submissionId": "id"
+    }
+  },
+  {
+    "action": "certification.seller-certification.approved",
+    "targetType": "certification.seller-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(initial|resubmission|renewal)",
+      "submissionId": "id",
+      "typeRevisionId": "id"
+    }
+  },
+  {
+    "action": "certification.seller-certification.changes-requested",
+    "targetType": "certification.seller-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(initial|resubmission|renewal)",
+      "reasonTextGiven": "boolean",
+      "submissionId": "id",
+      "typeRevisionId": "id"
+    }
+  },
+  {
+    "action": "certification.seller-certification.declined",
+    "targetType": "certification.seller-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(initial|resubmission|renewal)",
+      "reasonTextGiven": "boolean",
+      "submissionId": "id",
+      "typeRevisionId": "id"
+    }
+  },
+  {
     "action": "commission-payouts.commission-rate.clear",
     "targetType": "commission-payouts.seller-commission-rate",
     "targetId": "id",

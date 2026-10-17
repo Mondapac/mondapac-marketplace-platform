@@ -100,6 +100,44 @@
     }
   },
   {
+    "type": "certification.seller-certification-approved.v1",
+    "aggregateType": "seller-certification",
+    "fields": {
+      "sellerCertificationId": "id",
+      "sellerId": "id",
+      "submissionId": "id",
+      "typeId": "id",
+      "kind": "enumOf(initial|resubmission|renewal)"
+    }
+  },
+  {
+    "type": "certification.seller-certification-changes-requested.v1",
+    "aggregateType": "seller-certification",
+    "fields": {
+      "sellerCertificationId": "id",
+      "sellerId": "id",
+      "submissionId": "id"
+    }
+  },
+  {
+    "type": "certification.seller-certification-declined.v1",
+    "aggregateType": "seller-certification",
+    "fields": {
+      "sellerCertificationId": "id",
+      "sellerId": "id",
+      "submissionId": "id"
+    }
+  },
+  {
+    "type": "certification.seller-certification-issuer-confirmed.v1",
+    "aggregateType": "seller-certification",
+    "fields": {
+      "sellerCertificationId": "id",
+      "sellerId": "id",
+      "submissionId": "id"
+    }
+  },
+  {
     "type": "certification.seller-certification-submitted.v1",
     "aggregateType": "seller-certification",
     "fields": {

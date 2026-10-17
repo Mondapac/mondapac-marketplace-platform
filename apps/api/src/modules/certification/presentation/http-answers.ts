@@ -68,6 +68,7 @@ export function closedBody(
   request: Request,
   body: unknown,
   keys: readonly string[],
+  optionalKeys: readonly string[] = [],
 ): Record<string, unknown> | HttpException {
   if (request.is('application/json') !== 'application/json') {
     return fail(415, 'request.body-unsupported');
@@ -79,7 +80,7 @@ export function closedBody(
   const fields: { path: string; code: string }[] = [];
   for (const key of Object.keys(record).sort()) {
     if (fields.length >= 10) break;
-    if (!keys.includes(key)) {
+    if (!keys.includes(key) && !optionalKeys.includes(key)) {
       fields.push({
         path: Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�'),
         code: 'unknown-field',

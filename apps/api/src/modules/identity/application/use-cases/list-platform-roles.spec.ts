@@ -337,11 +337,11 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       roleId: roleOf('viewer'),
       kind: 'default',
       seedCode: 'viewer',
-      permissionCount: 12,
+      permissionCount: 13,
       grantable: true,
     });
     expect(byId(items, roleOf('viewer')).name).toBeNull();
-    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(12);
+    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(13);
     expect(byId(items, LEAD_ROLE)).toMatchObject({
       kind: 'custom',
       seedCode: null,
@@ -362,7 +362,7 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       expect(line).toEqual({
         msg: 'identity.list-platform-roles',
         outcome: 'platform-roles.listed',
-        roles: 9,
+        roles: 10,
         grantable: expect.any(Number) as number,
         marketId: code,
         correlationId: 'platform-roles-0001',

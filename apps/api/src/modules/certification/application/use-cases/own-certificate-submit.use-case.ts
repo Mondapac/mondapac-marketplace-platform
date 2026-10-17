@@ -4,6 +4,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { CERTIFICATION_OWN_CERTIFICATE_MANAGE } from '../../contracts/permissions';
 import { SellerCertificationSubmitted } from '../../domain/events';
 import { SUBMIT_LIMITS } from '../../domain/rate-limits';
+import { normaliseCertificateNumber } from '../../domain/review';
 import {
   expiryBoundaryIn,
   incompleteFields,
@@ -250,6 +251,16 @@ export class OwnCertificateSubmit extends UseCase<
     const hashed = await deps.cipher.hash(market, owner.sellerId, canonical.value);
     if (!hashed.ok) return err({ code: 'access.denied' });
 
+    // The keyed index of the normalised number (design 10.2), computed with the other crypto.
+    const numberIndexHmac =
+      content.certificateNumber === null
+        ? null
+        : deps.indexKeys.numberHmac(
+            market,
+            stored.typeId,
+            normaliseCertificateNumber(content.certificateNumber),
+          );
+
     // 6. One unit: re-read by version, write the submission, its files, the root, the history
     // row and the event.
     const submissionId = deps.ids.next<'Submission'>();
@@ -281,6 +292,7 @@ export class OwnCertificateSubmit extends UseCase<
           selfDeclarationNoteCiphertext: sealedNote.value,
           contentSchemaVersion: SUBMISSION_CONTENT_SCHEMA_VERSION,
           contentHash: `hmac-sha256:${hashed.value}`,
+          numberIndexHmac,
           submittedZone: sellerZone,
           submittedAt: now,
           submittedByAccountId: owner.accountId,

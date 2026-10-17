@@ -206,6 +206,16 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'certification.seller_submission_documents': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'certification.seller_certification_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Migration 4 (admin review): checks, scope readings and issuer confirmations are insert-only
+    // (triggers); the two keyed indexes also get DELETE for erasure and for a removed draft file (L4).
+    'certification.submission_review_checks': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.submission_scope_readings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.seller_issuer_confirmations': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.certificate_number_index': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'certification.document_index': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },

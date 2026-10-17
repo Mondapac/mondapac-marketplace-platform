@@ -16,6 +16,10 @@ export const CERTIFICATE_FIELD_LABELS = Object.freeze({
   ),
   'submission-certificate-number': fieldLabel('certification.submission.certificate-number'),
   'submission-self-declaration-note': fieldLabel('certification.submission.self-declaration-note'),
+  'decision-reason-text': fieldLabel('certification.submission-decision.reason-text'),
+  'scope-location': fieldLabel('certification.scope-reading.location'),
+  'scope-text': fieldLabel('certification.scope-reading.scope'),
+  'confirmation-reference': fieldLabel('certification.issuer-confirmation.reference'),
 } satisfies Record<CertificateField, ReturnType<typeof fieldLabel>>);
 
 /** The label under which a file's data key is wrapped (data design 4.2). */

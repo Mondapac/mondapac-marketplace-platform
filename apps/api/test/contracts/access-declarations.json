@@ -116,6 +116,7 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "certification.seed-certification-types", "rule": "system" },
+  { "name": "certification.send-decision-mail", "rule": "system" },
   {
     "name": "commission-payouts.commission-rates",
     "rule": "own-resources",

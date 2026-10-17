@@ -252,6 +252,10 @@ model CertificationSellerCertificationSubmission {
   decision                     CertificationSellerSubmissionDecision?
   documents                    CertificationSubmissionDocument[]
   history                      CertificationSellerCertificationHistory[]
+  reviewChecks                 CertificationReviewCheck[]
+  scopeReadings                CertificationScopeReading[]
+  issuerConfirmations          CertificationIssuerConfirmation[]
+  numberIndexRows              CertificationCertificateNumberIndex[]
 
   @@unique([marketId, id])
   /// The target of the pointer foreign keys of the root (CE4).
@@ -259,6 +263,8 @@ model CertificationSellerCertificationSubmission {
   @@unique([marketId, sellerCertificationId, submissionNo], map: "seller_certification_submissions_market_id_cert_id_no_key")
   /// The target of the issuer confirmation foreign key (migration with slice 7).
   @@unique([marketId, id, issuerId])
+  /// The target of the number index's foreign key (slice 7): a row names its submission's seller.
+  @@unique([marketId, id, sellerId], map: "seller_cert_submissions_id_seller_key")
   /// The target of the document-link foreign key, which carries the type and the seller, so a
   /// submission can only hold its own seller's files of its own type (PR 382, database-designer 4).
   @@unique([marketId, id, typeId, sellerId], map: "seller_cert_submissions_id_type_seller_key")
@@ -339,6 +345,7 @@ model CertificationIssuerContactChannel {
   retiredAt DateTime?           @map("retired_at") @db.Timestamptz(6)
   createdAt DateTime            @map("created_at") @db.Timestamptz(6)
   issuer    CertificationIssuer @relation(fields: [marketId, issuerId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  confirmations CertificationIssuerConfirmation[]
 
   @@unique([marketId, id])
   /// The target of the confirmation foreign key (migration with slice 7).
@@ -425,8 +432,11 @@ model CertificationUploadedDocument {
   type            CertificationType?                 @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   draftLinks      CertificationSellerDraftDocument[]
   submissionLinks CertificationSubmissionDocument[]
+  indexRows       CertificationDocumentIndex[]
 
   @@unique([marketId, id])
+  /// The target of the document index's foreign key (slice 7): a row names its file's owner.
+  @@unique([marketId, id, ownerSellerId], map: "uploaded_documents_market_id_id_owner_seller_id_key")
   /// The target of the draft link's foreign key: the link names the owner and the type.
   @@unique([marketId, id, typeId, ownerSellerId], map: "uploaded_documents_market_id_id_type_id_owner_seller_id_key")
   @@unique([marketId, objectKey])
@@ -530,5 +540,104 @@ model CertificationSellerCertificationHistory {
   @@unique([marketId, id])
   @@index([marketId, sellerCertificationId, occurredAt])
   @@map("seller_certification_history")
+  @@schema("certification")
+}
+
+/// One recorded review check (data design 3.10, slice 7; V4). Insert-only (CE3): a re-recording is
+/// a new row and the latest row per (submission, check code) counts. `check_code` is a code of the
+/// Market's `reviewChecks` (checked by the use case, not a CHECK).
+model CertificationReviewCheck {
+  id                  String                                     @id @db.Uuid
+  marketId            String                                     @map("market_id") @db.VarChar(8)
+  tenantId            String                                     @map("tenant_id")
+  submissionId        String                                     @map("submission_id") @db.Uuid
+  checkCode           String                                     @map("check_code")
+  /// done | problem | not-applicable
+  result              String
+  recordedByAccountId String                                     @map("recorded_by_account_id") @db.Uuid
+  recordedAt          DateTime                                   @map("recorded_at") @db.Timestamptz(6)
+  submission          CertificationSellerCertificationSubmission @relation(fields: [marketId, submissionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  /// The approval guard reads the latest row per code over this index.
+  @@index([marketId, submissionId, checkCode, recordedAt(sort: Desc)])
+  @@map("submission_review_checks")
+  @@schema("certification")
+}
+
+/// The location and scope as read by the reviewer (data design 3.10, D 3.2 rule 5): two encrypted
+/// texts under the seller's key. Insert-only (CE3); the latest row per submission counts.
+model CertificationScopeReading {
+  id                  String                                     @id @db.Uuid
+  marketId            String                                     @map("market_id") @db.VarChar(8)
+  tenantId            String                                     @map("tenant_id")
+  submissionId        String                                     @map("submission_id") @db.Uuid
+  locationCiphertext  String                                     @map("location_ciphertext")
+  scopeCiphertext     String                                     @map("scope_ciphertext")
+  recordedByAccountId String                                     @map("recorded_by_account_id") @db.Uuid
+  recordedAt          DateTime                                   @map("recorded_at") @db.Timestamptz(6)
+  submission          CertificationSellerCertificationSubmission @relation(fields: [marketId, submissionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  @@index([marketId, submissionId, recordedAt(sort: Desc)])
+  @@map("submission_scope_readings")
+  @@schema("certification")
+}
+
+/// A reviewer's confirmation with the issuer (data design 3.16a, D 3.2 rule 7): at most one per
+/// submission, only through a registered channel of the submission's issuer, both ticks required.
+/// Insert-only (CE3); `verifiedWithIssuer` is "a row exists".
+model CertificationIssuerConfirmation {
+  marketId            String                                     @map("market_id") @db.VarChar(8)
+  tenantId            String                                     @map("tenant_id")
+  submissionId        String                                     @map("submission_id") @db.Uuid
+  issuerId            String                                     @map("issuer_id") @db.Uuid
+  channelId           String                                     @map("channel_id") @db.Uuid
+  confirmedOn         DateTime                                   @map("confirmed_on") @db.Date
+  referenceCiphertext String                                     @map("reference_ciphertext")
+  confirmsNumber      Boolean                                    @map("confirms_number")
+  confirmsHolder      Boolean                                    @map("confirms_holder")
+  recordedByAccountId String                                     @map("recorded_by_account_id") @db.Uuid
+  recordedAt          DateTime                                   @map("recorded_at") @db.Timestamptz(6)
+  submission          CertificationSellerCertificationSubmission @relation(fields: [marketId, submissionId, issuerId], references: [marketId, id, issuerId], onDelete: Restrict, onUpdate: Restrict)
+  channel             CertificationIssuerContactChannel          @relation(fields: [marketId, issuerId, channelId], references: [marketId, issuerId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, submissionId])
+  @@map("seller_issuer_confirmations")
+  @@schema("certification")
+}
+
+/// The keyed index of a submission's certificate number (data design 3.17, D 10.2): HMAC-SHA-256
+/// under the stack secret over Market, type and the normalised number. Pseudonymous personal data
+/// that survives the seller's key, so the erasure handler deletes the seller's rows (L4).
+model CertificationCertificateNumberIndex {
+  marketId     String                                     @map("market_id") @db.VarChar(8)
+  tenantId     String                                     @map("tenant_id")
+  submissionId String                                     @map("submission_id") @db.Uuid
+  sellerId     String                                     @map("seller_id") @db.Uuid
+  indexHmac    Bytes                                      @map("index_hmac")
+  submission   CertificationSellerCertificationSubmission @relation(fields: [marketId, submissionId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, submissionId])
+  @@index([marketId, indexHmac])
+  @@index([marketId, sellerId])
+  @@map("certificate_number_index")
+  @@schema("certification")
+}
+
+/// The keyed index of an uploaded file's plaintext bytes (data design 3.17): written with the file,
+/// deleted with it while it is a draft, and deleted for the seller on erasure (L4).
+model CertificationDocumentIndex {
+  marketId   String                        @map("market_id") @db.VarChar(8)
+  tenantId   String                        @map("tenant_id")
+  documentId String                        @map("document_id") @db.Uuid
+  sellerId   String                        @map("seller_id") @db.Uuid
+  indexHmac  Bytes                         @map("index_hmac")
+  document   CertificationUploadedDocument @relation(fields: [marketId, documentId, sellerId], references: [marketId, id, ownerSellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, documentId])
+  @@index([marketId, indexHmac])
+  @@index([marketId, sellerId])
+  @@map("document_index")
   @@schema("certification")
 }
