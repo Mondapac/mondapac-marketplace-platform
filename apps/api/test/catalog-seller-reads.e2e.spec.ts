@@ -50,6 +50,7 @@ describe('seller read routes over HTTP (integration)', () => {
   let app: NestExpressApplication;
   let logLines: LogLine[];
   let product: Product | null;
+  let changeRequest: unknown;
   let offer: Offer | null;
   let listed: { products: Product[]; offers: Offer[] };
   let pageCalls: unknown[];
@@ -71,7 +72,10 @@ describe('seller read routes over HTTP (integration)', () => {
           .overrideProvider(WORKING_COPY_REPOSITORY)
           .useValue({ find: () => Promise.resolve(null) })
           .overrideProvider(PRODUCT_REVISION_REPOSITORY)
-          .useValue({ find: () => Promise.resolve(null) })
+          .useValue({
+            find: () => Promise.resolve(null),
+            latestChangeRequest: () => Promise.resolve(changeRequest),
+          })
           .overrideProvider(OFFER_REPOSITORY)
           .useValue({ findById: () => Promise.resolve(offer) })
           .overrideProvider(ALLOWED_PRODUCT_TYPES_READER)
@@ -223,6 +227,7 @@ describe('seller read routes over HTTP (integration)', () => {
     fakes.reset();
     clock = new FixedClock(START);
     product = null;
+    changeRequest = null;
     offer = null;
     listed = { products: [], offers: [] };
     pageCalls = [];
@@ -375,7 +380,25 @@ describe('seller read routes over HTTP (integration)', () => {
         workingCopy: null,
         published: null,
         pending: null,
+        changeRequest: null,
       });
+
+      changeRequest = {
+        revisionId: id<'ProductRevision'>(0xd001),
+        revisionNo: 2,
+        reasonCode: 'description-claim',
+        decidedAt: START,
+      };
+      const sentBack = await get(code, `/catalog/seller/products/${PRODUCT}`, session);
+      expect(sentBack.body).toMatchObject({
+        changeRequest: {
+          revisionId: id<'ProductRevision'>(0xd001),
+          revisionNo: 2,
+          reasonCode: 'description-claim',
+          decidedAt: START.toString(),
+        },
+      });
+      changeRequest = null;
 
       product = Product.restore({ ...state(code), ownerSellerId: id<'Seller'>(0xb999) });
       const other = await get(code, `/catalog/seller/products/${PRODUCT}`, session);

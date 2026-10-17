@@ -213,25 +213,21 @@ export class PrismaOfferRepository implements OfferRepository {
 
   async listPendingReview(
     market: MarketContext,
-    page: { readonly afterId: Id<'Offer'> | null; readonly limit: number },
+    page: {
+      readonly after: { readonly submittedAt: Temporal.Instant; readonly id: string } | null;
+      readonly limit: number;
+    },
   ): Promise<readonly Offer[]> {
     const tx = this.prisma.tx(market);
     const where = { marketId: market.marketId, status: 'pending-first-publish' } as const;
-    const cursor =
-      page.afterId === null
-        ? null
-        : await tx.catalogOffer.findFirst({
-            // Without the status: a decided Offer still anchors the page it ended.
-            where: { marketId: market.marketId, id: page.afterId },
-            select: { id: true, submittedAt: true },
-          });
+    const cursor = page.after;
     const after =
-      cursor?.submittedAt == null
+      cursor === null
         ? {}
         : {
             OR: [
-              { submittedAt: { gt: cursor.submittedAt } },
-              { submittedAt: cursor.submittedAt, id: { gt: cursor.id } },
+              { submittedAt: { gt: toDate(cursor.submittedAt) } },
+              { submittedAt: toDate(cursor.submittedAt), id: { gt: cursor.id } },
             ],
           };
     const rows = await tx.catalogOffer.findMany({
