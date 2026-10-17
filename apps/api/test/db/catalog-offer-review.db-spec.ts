@@ -237,7 +237,10 @@ describe.each(TEST_MARKETS)(
         market,
         async () => ({
           ok: true as const,
-          value: await offers.listPendingReview(market, { afterId: a, limit: 500 }),
+          value: await offers.listPendingReview(market, {
+            after: { submittedAt: T0.add({ minutes: 1 }), id: a },
+            limit: 500,
+          }),
         }),
         { readOnly: true },
       );
@@ -252,12 +255,12 @@ describe.each(TEST_MARKETS)(
       const earlier = await submitted(T0.add({ minutes: 10 }));
       const draft = await draftOffer();
       const mine = new Set<string>([later, earlier, draft]);
-      const list = (afterId: Id<'Offer'> | null, limit: number) =>
+      const list = (after: { submittedAt: Temporal.Instant; id: string } | null, limit: number) =>
         persistence.unitOfWork.run(
           market,
           async () => ({
             ok: true as const,
-            value: await offers.listPendingReview(market, { afterId, limit }),
+            value: await offers.listPendingReview(market, { after, limit }),
           }),
           { readOnly: true },
         );
@@ -269,7 +272,12 @@ describe.each(TEST_MARKETS)(
       expect(all.value.every((o) => o.state.status === 'pending-first-publish')).toBe(true);
 
       const first = await list(null, 1);
-      const second = await list(first.ok ? first.value[0]!.state.id : null, 1);
+      const second = await list(
+        first.ok
+          ? { submittedAt: first.value[0]!.state.submittedAt!, id: first.value[0]!.state.id }
+          : null,
+        1,
+      );
       if (!first.ok || !second.ok) throw new Error('list failed');
       expect(first.value).toHaveLength(1);
       expect(second.value[0]?.state.id).not.toBe(first.value[0]!.state.id);

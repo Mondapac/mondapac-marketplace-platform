@@ -55,6 +55,16 @@
     }
   },
   {
+    "type": "catalog.product-revision-changes-requested.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "revisionId": "id",
+      "reasonCode": "enumOf(content-unclear|description-claim|sku-or-condition|handling-unclear|other)",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
     "type": "catalog.product-revision-published.v1",
     "aggregateType": "product",
     "fields": {

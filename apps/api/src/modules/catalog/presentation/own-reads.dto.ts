@@ -98,6 +98,14 @@ export class OwnProductForm {
   categories!: OwnFormCategory[];
 }
 
+export class OwnChangeRequestView {
+  @ApiProperty({ format: 'uuid' }) revisionId!: string;
+  @ApiProperty() revisionNo!: number;
+  @ApiProperty({ description: 'A reason code of the Market list; the panel words it.' })
+  reasonCode!: string;
+  @ApiProperty({ description: 'ISO instant.' }) decidedAt!: string;
+}
+
 export class OwnProductView {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty() productCode!: string;
@@ -121,6 +129,13 @@ export class OwnProductView {
   workingCopy!: OwnWorkingCopyView | null;
   @ApiProperty({ nullable: true, type: OwnRevisionViewDto }) published!: OwnRevisionViewDto | null;
   @ApiProperty({ nullable: true, type: OwnRevisionViewDto }) pending!: OwnRevisionViewDto | null;
+  @ApiProperty({
+    nullable: true,
+    type: OwnChangeRequestView,
+    description:
+      'The reviewer sent the newest revision back; null when it was not (a newer submit clears it).',
+  })
+  changeRequest!: OwnChangeRequestView | null;
 }
 
 export class OwnOfferProductLabel {

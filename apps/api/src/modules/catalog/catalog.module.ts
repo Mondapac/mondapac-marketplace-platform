@@ -33,6 +33,10 @@ import {
 import { ALLOWED_PRODUCT_TYPES_READER } from './application/ports/allowed-product-types.reader';
 import { OFFER_REPOSITORY } from './application/ports/offer.repository';
 import { SELLER_ELIGIBILITY_READER } from './application/ports/seller-eligibility.reader';
+import { SELLER_NAMES_READER } from './application/ports/seller-names.reader';
+import { ProductRevisionApprove } from './application/use-cases/product-revision-approve.use-case';
+import { ProductRevisionRequestChanges } from './application/use-cases/product-revision-request-changes.use-case';
+import { ProductReviewController } from './presentation/product-review.controller';
 import { OwnOfferCreateOnPlatformProduct } from './application/use-cases/own-offer-create-on-platform-product.use-case';
 import { OfferApprove } from './application/use-cases/offer-approve.use-case';
 import { OfferRequestChanges } from './application/use-cases/offer-request-changes.use-case';
@@ -144,6 +148,7 @@ const PORT = {
   offers: OFFER_REPOSITORY,
   eligibility: SELLER_ELIGIBILITY_READER,
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
+  sellerNames: SELLER_NAMES_READER,
   ownReader: OWN_CATALOG_READER,
   images: PRODUCT_IMAGE_REPOSITORY,
   imageProcessor: IMAGE_PROCESSOR,
@@ -215,6 +220,7 @@ const productTypeProvider: FactoryProvider<string> = {
     OwnProductController,
     ProductImageController,
     OfferReviewController,
+    ProductReviewController,
   ],
   imports: [CertificationModule, SellersModule],
   providers: [
@@ -372,6 +378,24 @@ const productTypeProvider: FactoryProvider<string> = {
       offers: true,
       ownReader: true,
       policy: true,
+      sellerNames: true,
+    }),
+    useCaseProvider(ProductRevisionApprove, {
+      unitOfWork: true,
+      products: true,
+      revisions: true,
+      eligibility: true,
+      check: true,
+      policy: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(ProductRevisionRequestChanges, {
+      unitOfWork: true,
+      products: true,
+      revisions: true,
+      outbox: true,
+      clock: true,
     }),
     useCaseProvider(OwnProductCreate, {
       unitOfWork: true,
