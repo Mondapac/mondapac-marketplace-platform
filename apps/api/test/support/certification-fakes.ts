@@ -94,6 +94,17 @@ export class MemoryCertificates implements SellerCertificateRepository {
   failNextWrite: Error | null = null;
   /** `sellerId|typeId` of the open issuer requests, for `draft-issuer-not-listed`. */
   readonly openIssuerRequests = new Set<string>();
+  /** Reviewer decisions by submission id, set by a test that plays the review side. */
+  readonly decisions = new Map<string, 'approved' | 'changes-requested' | 'declined'>();
+
+  private latestOutcome(row: MemoryCertificate) {
+    const newest = this.submissions
+      .filter((s) => s.write.certificateId === row.id)
+      .sort((a, b) => b.write.submissionNo - a.write.submissionNo)[0];
+    if (newest === undefined || newest.write.submissionId === row.pendingSubmissionId) return null;
+    if (newest.withdrawn !== null) return 'withdrawn' as const;
+    return this.decisions.get(newest.write.submissionId) ?? null;
+  }
 
   private touch(id: string, expected: number, now: Temporal.Instant) {
     if (this.failNextWrite !== null) {
@@ -123,6 +134,7 @@ export class MemoryCertificates implements SellerCertificateRepository {
       approvedBoundaryAt: row.approvedBoundaryAt,
       approvedIssuerState: null,
       issuerRequestOpen: this.openIssuerRequests.has(`${row.sellerId}|${row.typeId}`),
+      latestOutcome: this.latestOutcome(row),
       submissionCount: this.submissions.filter((s) => s.write.certificateId === row.id).length,
       statusChangedAt: row.statusChangedAt,
       lastChangedAt: row.lastChangedAt,
@@ -332,6 +344,7 @@ export class MemoryCertificates implements SellerCertificateRepository {
     const row = this.touch(w.certificateId, w.expectedVersion, w.decidedAt);
     const submission = this.submissions.find((s) => s.write.submissionId === w.submissionId);
     if (submission !== undefined) submission.withdrawn = w;
+    if (w.draft !== undefined) row.draft = { ...w.draft };
     row.status = w.toStatus;
     row.pendingSubmissionId = null;
     row.pendingKind = null;

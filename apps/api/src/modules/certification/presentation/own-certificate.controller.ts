@@ -26,6 +26,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiPayloadTooLargeResponse,
+  ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
@@ -58,8 +59,8 @@ import {
   CertificateDeleted,
   CertificateDetailView,
   CertificateDocumentRemoved,
+  CertificateDocumentUploaded,
   CertificateDocumentUploadRequest,
-  CertificateDocumentView,
   CertificateDraftRequest,
   CertificateDraftSaved,
   CertificateListView,
@@ -84,6 +85,7 @@ export const OWN_CERTIFICATE_STATUS: Readonly<Record<string, number>> = Object.f
   'type.inactive': 409,
   'certificate.exists': 409,
   'certificate.not-editable': 409,
+  'certificate.edit-withdraws-submission': 409,
   'certificate.has-submissions': 409,
   'certificate.has-pending-submission': 409,
   'certificate.not-submittable': 409,
@@ -137,6 +139,28 @@ function jsonOf(body: unknown): unknown {
     return undefined;
   }
 }
+
+/**
+ * The seller's confirmation that an edit withdraws the pending submission (design 3.2 row 2). Only
+ * the text `true` confirms; `false` or no value is no confirmation; anything else reaches the use
+ * case as it is and is refused there as `validation.failed`.
+ */
+function withdrawFlag(raw: unknown): unknown {
+  if (raw === undefined) return undefined;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return raw;
+}
+
+const WITHDRAW_PENDING = {
+  name: 'withdrawPending',
+  required: false,
+  enum: ['true', 'false'],
+  description:
+    'Confirms that this change withdraws the pending submission (cause edited). Without it a ' +
+    'change to a pending certificate is refused with certificate.edit-withdraws-submission and ' +
+    'nothing is written.',
+};
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
@@ -301,9 +325,12 @@ export class OwnCertificateController {
     summary: 'Save the draft of an own certificate',
     description:
       'Needs certification.own-certificate.manage. The whole draft, every field present (null ' +
-      'clears it). Allowed while the record has no pending submission.',
+      'clears it). While a submission is pending, a save that changes a value withdraws it ' +
+      '(withdrawPending=true required); an unchanged save writes nothing. The approved ' +
+      'certificate of a renewal stays valid and untouched.',
   })
   @ApiHeader(CSRF)
+  @ApiQuery(WITHDRAW_PENDING)
   @ApiBody({ type: CertificateDraftRequest })
   @ApiOkResponse({ type: CertificateDraftSaved })
   @ApiBadRequestResponse({
@@ -318,7 +345,7 @@ export class OwnCertificateController {
   @ApiNotFoundResponse({ type: CertificationErrorBody, description: 'certificate.not-found' })
   @ApiConflictResponse({
     type: CertificationErrorBody,
-    description: 'certificate.not-editable, conflict.stale',
+    description: 'certificate.not-editable, certificate.edit-withdraws-submission, conflict.stale',
   })
   @ApiUnsupportedMediaTypeResponse({
     type: CertificationErrorBody,
@@ -334,13 +361,18 @@ export class OwnCertificateController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
     @Param('certificateId') certificateId: string,
+    @Query('withdrawPending') withdrawPending: unknown,
     @Body() body: unknown,
   ): Promise<CertificateDraftSaved> {
     const input = closedBody(request, body, DRAFT_KEYS);
     let outcome: CertificateDraftSaved | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
-      const result = await this.saveDraft.execute(context, { certificateId, draft: input });
+      const result = await this.saveDraft.execute(context, {
+        certificateId,
+        draft: input,
+        withdrawPending: withdrawFlag(withdrawPending),
+      });
       outcome = result.ok ? result.value : refusal(result.error, response, context);
     }
     return this.settle('certification.own-certificate-save-draft', context, outcome);
@@ -464,11 +496,13 @@ export class OwnCertificateController {
       'Needs certification.own-certificate.manage. A base64 JPEG, PNG or PDF of at most 10 MiB; ' +
       'at most 10 files per certificate and 200 MiB of drafts per seller. The type is read from ' +
       'the content; images are written again without metadata; a PDF with encryption or active ' +
-      'content is refused. The file is stored encrypted.',
+      'content is refused. The file is stored encrypted. While a submission is pending, adding ' +
+      'a file withdraws it (withdrawPending=true required).',
   })
+  @ApiQuery(WITHDRAW_PENDING)
   @ApiHeader(CSRF)
   @ApiBody({ type: CertificateDocumentUploadRequest })
-  @ApiCreatedResponse({ type: CertificateDocumentView })
+  @ApiCreatedResponse({ type: CertificateDocumentUploaded })
   @ApiBadRequestResponse({ type: CertificationErrorBody, description: 'validation.failed' })
   @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -479,7 +513,8 @@ export class OwnCertificateController {
   @ApiConflictResponse({
     type: CertificationErrorBody,
     description:
-      'certificate.not-editable, document.limit-reached, draft-quota.exceeded, conflict.stale',
+      'certificate.not-editable, certificate.edit-withdraws-submission, document.limit-reached, ' +
+      'draft-quota.exceeded, conflict.stale',
   })
   @ApiPayloadTooLargeResponse({ type: CertificationErrorBody, description: 'file.too-large' })
   @ApiUnprocessableEntityResponse({
@@ -501,15 +536,17 @@ export class OwnCertificateController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
     @Param('certificateId') certificateId: string,
+    @Query('withdrawPending') withdrawPending: unknown,
     @Body() body: unknown,
-  ): Promise<CertificateDocumentView> {
+  ): Promise<CertificateDocumentUploaded> {
     const input = closedBody(request, jsonOf(body), ['data']);
-    let outcome: CertificateDocumentView | HttpException;
+    let outcome: CertificateDocumentUploaded | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.uploadDocument.execute(context, {
         certificateId,
         data: input.data,
+        withdrawPending: withdrawFlag(withdrawPending),
       });
       outcome = result.ok ? result.value : refusal(result.error, response, context);
     }
@@ -555,9 +592,11 @@ export class OwnCertificateController {
     summary: 'Take a file off the draft of an own certificate',
     description:
       'Needs certification.own-certificate.manage. A file no submission holds is deleted; one a ' +
-      'submission holds only leaves the draft.',
+      'submission holds only leaves the draft. While a submission is pending, removing a file ' +
+      'withdraws it (withdrawPending=true required).',
   })
   @ApiHeader(CSRF)
+  @ApiQuery(WITHDRAW_PENDING)
   @ApiOkResponse({ type: CertificateDocumentRemoved })
   @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -570,7 +609,7 @@ export class OwnCertificateController {
   })
   @ApiConflictResponse({
     type: CertificationErrorBody,
-    description: 'certificate.not-editable, conflict.stale',
+    description: 'certificate.not-editable, certificate.edit-withdraws-submission, conflict.stale',
   })
   @ApiServiceUnavailableResponse({
     type: CertificationErrorBody,
@@ -581,8 +620,13 @@ export class OwnCertificateController {
     @Res({ passthrough: true }) response: Response,
     @Param('certificateId') certificateId: string,
     @Param('documentId') documentId: string,
-  ): Promise<{ removed: true }> {
-    const result = await this.removeDocument.execute(context, { certificateId, documentId });
+    @Query('withdrawPending') withdrawPending: unknown,
+  ): Promise<CertificateDocumentRemoved> {
+    const result = await this.removeDocument.execute(context, {
+      certificateId,
+      documentId,
+      withdrawPending: withdrawFlag(withdrawPending),
+    });
     const outcome = result.ok ? result.value : refusal(result.error, response, context);
     return this.settle('certification.own-certificate-document-remove', context, outcome);
   }

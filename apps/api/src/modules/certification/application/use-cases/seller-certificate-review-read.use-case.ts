@@ -5,9 +5,11 @@ import { CERTIFICATION_SELLER_CERTIFICATE_REVIEW } from '../../contracts/permiss
 import { ReviewPageViewed } from '../../domain/audit';
 import {
   checkCodesFor,
+  submissionStatusOf,
   type CheckResult,
   type NegativeOutcome,
   type ReviewPolicy,
+  type SubmissionStatus,
 } from '../../domain/review';
 import type { CertificateField } from '../ports/document-ports';
 import type { BusinessDetailsAnswer } from '../ports/review.ports';
@@ -43,6 +45,32 @@ export interface ReviewReasonView {
   readonly code: string;
   readonly check: string | null;
   readonly nextStep: string;
+}
+
+/**
+ * Another submission of the record (AC 15): what was sent, how it was decided and why. Personal
+ * data (number, reason text) is decrypted for the reviewer; the route is `no-store`.
+ */
+export interface OtherSubmissionView {
+  readonly submissionId: string;
+  readonly submissionNo: number;
+  readonly kind: string;
+  /** Derived (design 3.2): `approved` is the certificate in force, `superseded` an older one. */
+  readonly status: SubmissionStatus;
+  readonly submittedAt: string;
+  readonly issuerName: string | null;
+  readonly certificateNumber: string | null;
+  readonly issueDate: string | null;
+  readonly expiryDate: string | null;
+  /** For an approval: the boundary stored with it (00:00 after the expiry date, seller zone). */
+  readonly validUntil: string | null;
+  readonly decision: {
+    readonly outcome: string;
+    readonly reasonCode: string | null;
+    readonly reasonText: string | null;
+    readonly withdrawCause: string | null;
+    readonly decidedAt: string;
+  } | null;
 }
 
 export interface SellerCertificateReviewReadOutput {
@@ -129,6 +157,11 @@ export interface SellerCertificateReviewReadOutput {
     readonly reasonText: string | null;
     readonly decidedAt: string;
   } | null;
+  /**
+   * The record's other submissions, newest first (at most 10, plus the approved one): the earlier
+   * submission and its reason for a correction, the certificate in force beside a renewal.
+   */
+  readonly otherSubmissions: readonly OtherSubmissionView[];
 }
 
 export type SellerCertificateReviewReadFailure =
@@ -191,7 +224,7 @@ export class SellerCertificateReviewRead extends UseCase<
       .run(
         market,
         async () => {
-          const snapshot = await deps.reviews.snapshot(market, certificateId);
+          const snapshot = await deps.reviews.snapshot(market, certificateId, { others: true });
           if (snapshot === null || snapshot.submission === null) return ok(null);
           const hints = await deps.reviews.duplicateHints(
             market,
@@ -229,6 +262,18 @@ export class SellerCertificateReviewRead extends UseCase<
         open('decision-reason-text', submission.decision?.reasonTextCiphertext ?? null),
       ],
     );
+    const others = await Promise.all(
+      snapshot.others.map(async (other) => ({
+        certificateNumber: await open(
+          'submission-certificate-number',
+          other.certificateNumberCiphertext,
+        ),
+        reasonText: await open(
+          'decision-reason-text',
+          other.decision?.reasonTextCiphertext ?? null,
+        ),
+      })),
+    );
 
     let business: BusinessDetailsAnswer;
     try {
@@ -262,6 +307,7 @@ export class SellerCertificateReviewRead extends UseCase<
         scopeText,
         reference,
         reasonText,
+        others,
       }),
     );
   }
@@ -274,6 +320,11 @@ interface Clear {
   readonly scopeText: string | null;
   readonly reference: string | null;
   readonly reasonText: string | null;
+  /** Per entry of `snapshot.others`, in order. */
+  readonly others: readonly {
+    readonly certificateNumber: string | null;
+    readonly reasonText: string | null;
+  }[];
 }
 
 function outputOf(
@@ -395,5 +446,34 @@ function outputOf(
             reasonText: clear.reasonText,
             decidedAt: submission.decision.decidedAt.toString(),
           },
+    otherSubmissions: snapshot.others.map((other, index) => ({
+      submissionId: other.id,
+      submissionNo: other.submissionNo,
+      kind: other.kind,
+      status: submissionStatusOf({
+        outcome: other.decision?.outcome ?? null,
+        pending: certificate.pendingSubmissionId === other.id,
+        current: certificate.approvedSubmissionId === other.id,
+      }),
+      submittedAt: other.submittedAt.toString(),
+      issuerName: other.issuerName,
+      certificateNumber: clear.others[index]?.certificateNumber ?? null,
+      issueDate: other.issueDate === null ? null : other.issueDate.toString(),
+      expiryDate: other.expiryDate === null ? null : other.expiryDate.toString(),
+      validUntil:
+        other.decision?.outcome === 'approved' && other.decision.expiryBoundaryAt !== null
+          ? other.decision.expiryBoundaryAt.toString()
+          : null,
+      decision:
+        other.decision === null
+          ? null
+          : {
+              outcome: other.decision.outcome,
+              reasonCode: other.decision.reasonCode,
+              reasonText: clear.others[index]?.reasonText ?? null,
+              withdrawCause: other.decision.withdrawCause,
+              decidedAt: other.decision.decidedAt.toString(),
+            },
+    })),
   };
 }

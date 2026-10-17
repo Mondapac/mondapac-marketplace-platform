@@ -12,7 +12,7 @@ import type {
   SubmitWrite,
   WithdrawWrite,
 } from '../application/ports/seller-certificate.repository';
-import type { SubmissionKind } from '../domain/seller-certificate';
+import type { SubmissionKind, SubmissionOutcome } from '../domain/seller-certificate';
 import type { IssuerState, SellerCertificationStatus } from '../domain/validity';
 
 /** The partial unique index of data design 3.4: one open certificate per seller and type (T1). */
@@ -38,6 +38,12 @@ export const CERTIFICATE_INCLUDE = {
   pendingSubmission: { select: { kind: true } },
   approvedSubmission: { select: { issuer: { select: { state: true } } } },
   _count: { select: { submissions: true } },
+  // The newest submission and its decision (design 3.3): one row on the (record, number) key.
+  submissions: {
+    select: { id: true, decision: { select: { outcome: true } } },
+    orderBy: { submissionNo: 'desc' },
+    take: 1,
+  },
 } as const;
 
 export const DOCUMENT_INCLUDE = { _count: { select: { submissionLinks: true } } } as const;
@@ -64,6 +70,7 @@ export interface CertificateRow {
   pendingSubmission: { kind: string } | null;
   approvedSubmission: { issuer: { state: string } | null } | null;
   _count: { submissions: number };
+  submissions: { id: string; decision: { outcome: string } | null }[];
 }
 
 /**
@@ -112,12 +119,31 @@ export function toCertificate(
     approvedBoundaryAt: row.approvedBoundaryAt === null ? null : toInstant(row.approvedBoundaryAt),
     approvedIssuerState: (row.approvedSubmission?.issuer?.state ?? null) as IssuerState | null,
     issuerRequestOpen: openRequests.has(`${row.sellerId}|${row.typeId}`),
+    latestOutcome: latestOutcomeOf(row),
     submissionCount: row._count.submissions,
     statusChangedAt: toInstant(row.statusChangedAt),
     lastChangedAt: toInstant(row.lastChangedAt),
     createdAt: toInstant(row.createdAt),
     version: row.version,
     draft,
+  };
+}
+
+function latestOutcomeOf(row: CertificateRow): SubmissionOutcome | null {
+  const newest = row.submissions[0];
+  if (newest === undefined || newest.id === row.pendingSubmissionId) return null;
+  return (newest.decision?.outcome ?? null) as SubmissionOutcome | null;
+}
+
+/** The draft columns of the root (data design 3.4) from a stored draft. */
+function draftColumns(draft: StoredDraft) {
+  return {
+    draftIssuerId: draft.issuerId,
+    draftCertificateNumberCiphertext: draft.certificateNumberCiphertext,
+    draftIssueDate: toDay(draft.issueDate),
+    draftExpiryDate: toDay(draft.expiryDate),
+    draftSelfDeclared: draft.selfDeclared,
+    draftSelfDeclarationNoteCiphertext: draft.selfDeclarationNoteCiphertext,
   };
 }
 
@@ -248,12 +274,7 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
     const { count } = await this.prisma.tx(market).certificationSellerCertification.updateMany({
       where: { marketId: market.marketId, id, version: expectedVersion },
       data: {
-        draftIssuerId: draft.issuerId,
-        draftCertificateNumberCiphertext: draft.certificateNumberCiphertext,
-        draftIssueDate: toDay(draft.issueDate),
-        draftExpiryDate: toDay(draft.expiryDate),
-        draftSelfDeclared: draft.selfDeclared,
-        draftSelfDeclarationNoteCiphertext: draft.selfDeclarationNoteCiphertext,
+        ...draftColumns(draft),
         lastChangedAt: toDate(now),
         version: expectedVersion + 1,
       },
@@ -533,6 +554,7 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       data: {
         status: write.toStatus,
         pendingSubmissionId: null,
+        ...(write.draft === undefined ? {} : draftColumns(write.draft)),
         ...(write.toStatus === write.fromStatus
           ? {}
           : { statusChangedAt: toDate(write.decidedAt) }),

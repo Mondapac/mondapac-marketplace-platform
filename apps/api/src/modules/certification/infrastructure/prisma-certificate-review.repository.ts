@@ -9,6 +9,7 @@ import type {
   DecisionNotice,
   DecisionWrite,
   DuplicateHint,
+  OtherSubmission,
   ReviewChannel,
   ReviewHistoryRow,
   ReviewIssuer,
@@ -40,6 +41,29 @@ import {
 
 const MAX_HINTS = 10;
 const HISTORY_ROWS = 20;
+const OTHER_SUBMISSIONS = 10;
+
+const OTHER_SELECT = {
+  id: true,
+  submissionNo: true,
+  kind: true,
+  submittedAt: true,
+  certificateNumberCiphertext: true,
+  issueDate: true,
+  expiryDate: true,
+  issuer: { select: { displayName: true } },
+  decision: {
+    select: {
+      outcome: true,
+      reasonCode: true,
+      reasonTextCiphertext: true,
+      withdrawCause: true,
+      expiryBoundaryAt: true,
+      actorKind: true,
+      decidedAt: true,
+    },
+  },
+} as const;
 
 const SUBMISSION_INCLUDE = {
   typeRevision: {
@@ -111,6 +135,7 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
   async snapshot(
     market: MarketContext,
     certificateId: Id<'SellerCertification'>,
+    options: { readonly others?: boolean } = {},
   ): Promise<ReviewSnapshot | null> {
     const tx = this.prisma.tx(market);
     const row = await tx.certificationSellerCertification.findFirst({
@@ -148,8 +173,12 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
       orderBy: { submissionNo: 'desc' },
     });
     if (submission === null) {
-      return { certificate, submission: null, pending: false, history: historyRows };
+      return { certificate, submission: null, pending: false, history: historyRows, others: [] };
     }
+    const others =
+      options.others === true
+        ? await this.#others(market, certificateId, submission.id, row.approvedSubmissionId)
+        : [];
 
     const checkRows = await tx.certificationReviewCheck.findMany({
       where: { marketId: market.marketId, submissionId: submission.id },
@@ -235,7 +264,64 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
       submission: stored,
       pending: row.pendingSubmissionId === submission.id,
       history: historyRows,
+      others,
     };
+  }
+
+  /**
+   * The record's other submissions, newest first on the (record, number) key, at most 10, and the
+   * approved one when it is older than those: the reviewer sees the earlier submission, its reason
+   * (AC 15) and, beside a renewal, the certificate in force.
+   */
+  async #others(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+    shownId: string,
+    approvedId: string | null,
+  ): Promise<readonly OtherSubmission[]> {
+    const tx = this.prisma.tx(market);
+    const rows = await tx.certificationSellerCertificationSubmission.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerCertificationId: certificateId,
+        id: { not: shownId },
+      },
+      select: OTHER_SELECT,
+      orderBy: { submissionNo: 'desc' },
+      take: OTHER_SUBMISSIONS,
+    });
+    if (approvedId !== null && approvedId !== shownId && !rows.some((r) => r.id === approvedId)) {
+      const approved = await tx.certificationSellerCertificationSubmission.findFirst({
+        where: { marketId: market.marketId, sellerCertificationId: certificateId, id: approvedId },
+        select: OTHER_SELECT,
+      });
+      if (approved !== null) rows.push(approved);
+    }
+    return rows.map((r): OtherSubmission => ({
+      id: r.id as Id<'Submission'>,
+      submissionNo: r.submissionNo,
+      kind: r.kind as SubmissionKind,
+      submittedAt: toInstant(r.submittedAt),
+      issuerName: r.issuer?.displayName ?? null,
+      certificateNumberCiphertext: r.certificateNumberCiphertext,
+      issueDate: fromDay(r.issueDate),
+      expiryDate: fromDay(r.expiryDate),
+      decision:
+        r.decision === null
+          ? null
+          : {
+              outcome: r.decision.outcome as StoredDecision['outcome'],
+              reasonCode: r.decision.reasonCode,
+              reasonTextCiphertext: r.decision.reasonTextCiphertext,
+              decidedAt: toInstant(r.decision.decidedAt),
+              actorKind: r.decision.actorKind as StoredDecision['actorKind'],
+              withdrawCause: r.decision.withdrawCause as 'edited' | 'cancelled' | 'revoked' | null,
+              expiryBoundaryAt:
+                r.decision.expiryBoundaryAt === null
+                  ? null
+                  : toInstant(r.decision.expiryBoundaryAt),
+            },
+    }));
   }
 
   async duplicateHints(

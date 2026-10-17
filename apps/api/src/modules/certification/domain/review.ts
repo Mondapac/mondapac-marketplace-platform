@@ -186,6 +186,28 @@ export function statusAfterDecision(
   return outcome === 'changes-requested' ? 'changes-needed' : 'declined';
 }
 
+/** The status of one submission (design 3.2), derived: it is never stored. */
+export type SubmissionStatus =
+  'pending' | 'approved' | 'superseded' | 'changes-requested' | 'declined' | 'withdrawn';
+
+/**
+ * A submission's status from its decision row and the root's pointers (data design 3.5, 3.6):
+ * pending while the root points at it as pending; an approval is `superseded` once another
+ * submission of the record is approved (design 3.2 row 6). A submission with neither is a fault.
+ */
+export function submissionStatusOf(input: {
+  readonly outcome: DecisionOutcome | 'withdrawn' | null;
+  /** The root's pending pointer names it. */
+  readonly pending: boolean;
+  /** The root's approved pointer names it. */
+  readonly current: boolean;
+}): SubmissionStatus {
+  if (input.pending) return 'pending';
+  if (input.outcome === null) throw new Error('a submission with no decision is not pending');
+  if (input.outcome === 'approved') return input.current ? 'approved' : 'superseded';
+  return input.outcome;
+}
+
 /**
  * The text the duplicate-hint index is computed over (design 3.2 rule 6, 10.2): NFKC, upper case,
  * letters and digits only, so spacing, case, width and punctuation do not hide a copy.

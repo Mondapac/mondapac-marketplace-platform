@@ -3,6 +3,10 @@ import { ok, Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import type { SubmitWrite } from '../../src/modules/certification/application/ports/seller-certificate.repository';
+import type { CertificationTypeCode } from '../../src/modules/certification';
+import { sellerCertificateValidAt } from '../../src/modules/certification/domain/validity';
+import { PrismaClaimFactsReader } from '../../src/modules/certification/infrastructure/prisma-claim-facts.reader';
+import { PrismaRawReadPort } from '../../src/platform/persistence/raw-reads/prisma-raw-read-port';
 import { PrismaCertificateReviewRepository } from '../../src/modules/certification/infrastructure/prisma-certificate-review.repository';
 import { PrismaSellerCertificateRepository } from '../../src/modules/certification/infrastructure/prisma-seller-certificate.repository';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
@@ -132,7 +136,7 @@ describe.each(TEST_MARKETS)('certification admin review in market %s (database)'
       `UPDATE certification.certification_types SET published_revision_id = $1 WHERE id = $2`,
       [revisionId, typeId],
     );
-    return { typeId, revisionId };
+    return { typeId, revisionId, code: `t${typeId.slice(-12)}` };
   }
 
   async function issuer(typeId: string) {
@@ -584,6 +588,259 @@ describe.each(TEST_MARKETS)('certification admin review in market %s (database)'
       expect(await inUnit(() => reviews.eraseIndexRows(market, gone.seller as Id<'Seller'>))).toBe(
         0,
       );
+    });
+  });
+
+  describe('resubmission and renewal over the real tables (slice 8, AC 15)', () => {
+    const ZONES = { zone: 'Australia/Brisbane', addressZone: 'Australia/Brisbane' } as never;
+    const B1 = Temporal.Instant.from('2028-01-01T14:00:00Z');
+    const B4 = Temporal.Instant.from('2029-01-01T14:00:00Z');
+
+    it('keeps the approved certificate valid and confirmed while a renewal is pending, sent back, withdrawn by edit, then approved', async () => {
+      const { typeId, revisionId, code: typeCode } = await type();
+      const { issuerId, channelId } = await issuer(typeId);
+      const f = await submitted(typeId, revisionId, issuerId);
+      const sellerId = f.seller as Id<'Seller'>;
+      const reader = new PrismaClaimFactsReader(
+        persistence.unitOfWork,
+        new PrismaRawReadPort(persistence.root).forModule('certification'),
+      );
+      const facts = async () =>
+        (
+          await reader.sellerCertificates(market, [
+            { sellerId, typeCode: typeCode as CertificationTypeCode },
+          ])
+        )[0]!.certificate!;
+      const decision = (
+        submissionId: Id<'Submission'>,
+        expectedVersion: number,
+        outcome: 'approved' | 'changes-requested',
+        fromStatus: 'in-review' | 'approved',
+        boundary: Temporal.Instant | null = null,
+      ) => ({
+        expectedVersion,
+        certificateId: f.id,
+        submissionId,
+        outcome,
+        accountId: account(),
+        decidedAt: T2,
+        approvedZone: outcome === 'approved' ? 'Australia/Brisbane' : null,
+        expiryBoundaryAt: boundary,
+        reasonCode: outcome === 'approved' ? null : 'unreadable',
+        reasonTextCiphertext: outcome === 'approved' ? null : ENVELOPE,
+        fromStatus,
+        toStatus: 'approved' as const,
+        historyId: uuid7() as Id<'CertificationHistory'>,
+      });
+      const renewal = (no: number, expectedVersion: number, expiry: string): SubmitWrite => ({
+        ...f.write,
+        expectedVersion,
+        submissionId: uuid7() as Id<'Submission'>,
+        submissionNo: no,
+        kind: 'renewal',
+        expiryDate: Temporal.PlainDate.from(expiry),
+        submittedAt: T2,
+        numberIndexHmac: randomHmac(),
+        fromStatus: 'approved',
+        toStatus: 'approved',
+        historyId: uuid7() as Id<'CertificationHistory'>,
+      });
+
+      // 1. The first submission is approved and confirmed with the issuer (versions 3 -> 5).
+      await inUnit(() => decideAt(decision(f.submissionId, 3, 'approved', 'in-review', B1)));
+      await inUnit(() =>
+        reviews.recordConfirmation(market, {
+          certificateId: f.id,
+          expectedVersion: 4,
+          submissionId: f.submissionId,
+          issuerId: issuerId as Id<'Issuer'>,
+          channelId: channelId as Id<'IssuerContactChannel'>,
+          confirmedOn: Temporal.PlainDate.from('2026-10-16'),
+          referenceCiphertext: ENVELOPE,
+          accountId: account(),
+          now: T2,
+        }),
+      );
+      expect(await facts()).toMatchObject({
+        status: 'approved',
+        approved: { submissionId: f.submissionId, verifiedWithIssuer: true },
+      });
+
+      // 2. A renewal is pending: the record stays approved, the claim still reads submission 1.
+      const second = renewal(2, 5, '2029-01-01');
+      await inUnit(() => sellerSide.submit(market, second));
+      const own = () => inUnit(() => sellerSide.findOwn(market, sellerId, f.id));
+      expect(await own()).toMatchObject({
+        status: 'approved',
+        pendingSubmissionId: second.submissionId,
+        pendingKind: 'renewal',
+        approvedSubmissionId: f.submissionId,
+        latestOutcome: null,
+      });
+      const pendingFacts = await facts();
+      expect(pendingFacts).toMatchObject({
+        status: 'approved',
+        approved: { submissionId: f.submissionId, verifiedWithIssuer: true },
+      });
+      // Valid until its own boundary, invalid after it until a renewal is approved (AC 15).
+      expect(
+        sellerCertificateValidAt(pendingFacts, ZONES, B1.subtract({ seconds: 1 })),
+      ).toMatchObject({ valid: true, submissionId: f.submissionId });
+      expect(sellerCertificateValidAt(pendingFacts, ZONES, B1)).toMatchObject({ valid: false });
+
+      // 3. The renewal is sent back: the approved one is untouched (version 7).
+      await inUnit(() =>
+        decideAt(decision(second.submissionId, 6, 'changes-requested', 'approved')),
+      );
+      expect(await own()).toMatchObject({
+        status: 'approved',
+        pendingSubmissionId: null,
+        approvedSubmissionId: f.submissionId,
+        latestOutcome: 'changes-requested',
+        approvedBoundaryAt: B1,
+      });
+      expect(await facts()).toMatchObject({ approved: { submissionId: f.submissionId } });
+
+      // 4. A correction is sent, then withdrawn by edit in one root update (versions 8 -> 9).
+      const third = renewal(3, 7, '2029-01-01');
+      await inUnit(() => sellerSide.submit(market, third));
+      const newDraft = {
+        ...(await own())!.draft,
+        expiryDate: Temporal.PlainDate.from('2029-02-01'),
+      };
+      await expect(
+        inUnit(() =>
+          sellerSide.withdraw(market, {
+            certificateId: f.id,
+            expectedVersion: 7,
+            submissionId: third.submissionId,
+            cause: 'edited',
+            draft: newDraft,
+            accountId: account(),
+            decidedAt: T2,
+            fromStatus: 'approved',
+            toStatus: 'approved',
+            historyId: uuid7() as Id<'CertificationHistory'>,
+          }),
+        ),
+      ).rejects.toBeInstanceOf(StaleAggregateError);
+      await inUnit(() =>
+        sellerSide.withdraw(market, {
+          certificateId: f.id,
+          expectedVersion: 8,
+          submissionId: third.submissionId,
+          cause: 'edited',
+          draft: newDraft,
+          accountId: account(),
+          decidedAt: T2,
+          fromStatus: 'approved',
+          toStatus: 'approved',
+          historyId: uuid7() as Id<'CertificationHistory'>,
+        }),
+      );
+      const afterEdit = await own();
+      expect(afterEdit).toMatchObject({
+        version: 9,
+        status: 'approved',
+        pendingSubmissionId: null,
+        approvedSubmissionId: f.submissionId,
+        latestOutcome: 'withdrawn',
+      });
+      expect(afterEdit!.draft.expiryDate!.toString()).toBe('2029-02-01');
+
+      // 5. The next renewal is approved: the pointer moves; the confirmation does not follow.
+      const fourth = renewal(4, 9, '2029-01-01');
+      await inUnit(() => sellerSide.submit(market, fourth));
+      await inUnit(() => decideAt(decision(fourth.submissionId, 10, 'approved', 'approved', B4)));
+      expect(await own()).toMatchObject({
+        status: 'approved',
+        approvedSubmissionId: fourth.submissionId,
+        approvedBoundaryAt: B4,
+        latestOutcome: 'approved',
+      });
+      const renewed = await facts();
+      expect(renewed).toMatchObject({
+        approved: { submissionId: fourth.submissionId, verifiedWithIssuer: false },
+      });
+      expect(sellerCertificateValidAt(renewed, ZONES, B1)).toMatchObject({ valid: true });
+
+      // 6. The reviewer's list: newest first, each with its decision.
+      const snapshot = await inUnit(() => reviews.snapshot(market, f.id, { others: true }));
+      expect(snapshot!.submission!.id).toBe(fourth.submissionId);
+      expect(
+        snapshot!.others.map((o) => [
+          o.submissionNo,
+          o.kind,
+          o.decision?.outcome,
+          o.decision?.reasonCode ?? o.decision?.withdrawCause ?? null,
+        ]),
+      ).toEqual([
+        [3, 'renewal', 'withdrawn', 'edited'],
+        [2, 'renewal', 'changes-requested', 'unreadable'],
+        [1, 'initial', 'approved', null],
+      ]);
+      expect(snapshot!.others[2]!.decision!.expiryBoundaryAt).toEqual(B1);
+      expect((await inUnit(() => reviews.snapshot(market, f.id)))!.others).toEqual([]);
+    });
+
+    it('lists the approved submission beside a pending renewal even past ten others', async () => {
+      const { typeId, revisionId } = await type();
+      const { issuerId } = await issuer(typeId);
+      const f = await submitted(typeId, revisionId, issuerId);
+      await inUnit(() =>
+        decideAt({
+          expectedVersion: 3,
+          certificateId: f.id,
+          submissionId: f.submissionId,
+          outcome: 'approved',
+          accountId: account(),
+          decidedAt: T2,
+          approvedZone: 'Australia/Brisbane',
+          expiryBoundaryAt: B1,
+          reasonCode: null,
+          reasonTextCiphertext: null,
+          fromStatus: 'in-review',
+          toStatus: 'approved',
+          historyId: uuid7() as Id<'CertificationHistory'>,
+        }),
+      );
+      let version = 4;
+      for (let no = 2; no <= 13; no += 1) {
+        const write: SubmitWrite = {
+          ...f.write,
+          expectedVersion: version,
+          submissionId: uuid7() as Id<'Submission'>,
+          submissionNo: no,
+          kind: 'renewal',
+          submittedAt: T2,
+          numberIndexHmac: randomHmac(),
+          fromStatus: 'approved',
+          toStatus: 'approved',
+          historyId: uuid7() as Id<'CertificationHistory'>,
+        };
+        await inUnit(() => sellerSide.submit(market, write));
+        version += 1;
+        if (no === 13) break;
+        await inUnit(() =>
+          sellerSide.withdraw(market, {
+            certificateId: f.id,
+            expectedVersion: version,
+            submissionId: write.submissionId,
+            cause: 'cancelled',
+            accountId: account(),
+            decidedAt: T2,
+            fromStatus: 'approved',
+            toStatus: 'approved',
+            historyId: uuid7() as Id<'CertificationHistory'>,
+          }),
+        );
+        version += 1;
+      }
+      const snapshot = await inUnit(() => reviews.snapshot(market, f.id, { others: true }));
+      expect(snapshot!.submission!.submissionNo).toBe(13);
+      expect(snapshot!.others.map((o) => o.submissionNo)).toEqual([
+        12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 1,
+      ]);
     });
   });
 

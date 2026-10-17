@@ -19,9 +19,34 @@ export class CertificateCreateRequest {
 export class CertificateSummaryView {
   @ApiProperty({ format: 'uuid' }) certificateId!: string;
   @ApiProperty() typeCode!: string;
-  @ApiProperty({ description: 'The seller-visible status code (design 3.3).' }) status!: string;
+  @ApiProperty({
+    description: 'The seller-visible status code (design 3.3).',
+    enum: [
+      'draft',
+      'draft-issuer-not-listed',
+      'awaiting-review',
+      'changes-needed',
+      'declined',
+      'approved',
+      'approved-expiring',
+      'approved-renewal-pending',
+      'approved-renewal-changes-needed',
+      'expired',
+      'expired-renewal-pending',
+      'revoked',
+      'issuer-not-recognised',
+    ],
+  })
+  status!: string;
   @ApiProperty({ description: 'The status of the record itself.' }) recordStatus!: string;
-  @ApiProperty({ nullable: true, type: String }) submitBy!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'For approved-expiring and approved-renewal-changes-needed: the instant the approved ' +
+      'certificate stops counting.',
+  })
+  submitBy!: string | null;
   @ApiProperty() editable!: boolean;
   @ApiProperty() deletable!: boolean;
   @ApiProperty() withdrawable!: boolean;
@@ -52,6 +77,16 @@ export class CertificateDocumentView {
   @ApiProperty() createdAt!: string;
 }
 
+export class CertificateDocumentUploaded extends CertificateDocumentView {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: 'The pending submission this change withdrew (cause edited), or null.',
+  })
+  withdrawnSubmissionId!: string | null;
+}
+
 export class CertificateDetailView {
   @ApiProperty({ type: CertificateSummaryView }) certificate!: CertificateSummaryView;
   @ApiProperty({ type: CertificateDraftView }) draft!: CertificateDraftView;
@@ -61,6 +96,13 @@ export class CertificateDetailView {
 export class CertificateDraftSaved {
   @ApiProperty({ type: CertificateSummaryView }) certificate!: CertificateSummaryView;
   @ApiProperty({ type: CertificateDraftView }) draft!: CertificateDraftView;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: 'The pending submission this change withdrew (cause edited), or null.',
+  })
+  withdrawnSubmissionId!: string | null;
 }
 
 export class CertificateDraftRequest {
@@ -116,6 +158,13 @@ export class CertificateDeleted {
 
 export class CertificateDocumentRemoved {
   @ApiProperty() removed!: true;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: 'The pending submission this change withdrew (cause edited), or null.',
+  })
+  withdrawnSubmissionId!: string | null;
 }
 
 // Answers and requests of the admin review routes (certification design 7.2; slice 7). The
@@ -126,7 +175,7 @@ export class ReviewQueueRowView {
   @ApiProperty({ description: 'The version a decision must name.' }) version!: number;
   @ApiProperty({ format: 'uuid' }) submissionId!: string;
   @ApiProperty() submissionNo!: number;
-  @ApiProperty({ enum: ['initial', 'renewal'] }) kind!: string;
+  @ApiProperty({ enum: ['initial', 'resubmission', 'renewal'] }) kind!: string;
   @ApiProperty() typeCode!: string;
   @ApiProperty({ format: 'uuid' }) sellerId!: string;
   @ApiProperty({ nullable: true, type: String }) storeName!: string | null;
@@ -138,6 +187,39 @@ export class ReviewQueueView {
   @ApiProperty({ type: [ReviewQueueRowView] }) items!: ReviewQueueRowView[];
   @ApiProperty({ nullable: true, type: String }) nextAfterId!: string | null;
   @ApiProperty() total!: number;
+}
+
+export class ReviewOtherDecisionView {
+  @ApiProperty({ enum: ['approved', 'changes-requested', 'declined', 'withdrawn'] })
+  outcome!: string;
+  @ApiProperty({ nullable: true, type: String }) reasonCode!: string | null;
+  @ApiProperty({ nullable: true, type: String }) reasonText!: string | null;
+  @ApiProperty({ nullable: true, enum: ['edited', 'cancelled', 'revoked'], type: String })
+  withdrawCause!: string | null;
+  @ApiProperty() decidedAt!: string;
+}
+
+export class ReviewOtherSubmissionView {
+  @ApiProperty({ format: 'uuid' }) submissionId!: string;
+  @ApiProperty() submissionNo!: number;
+  @ApiProperty({ enum: ['initial', 'resubmission', 'renewal'] }) kind!: string;
+  @ApiProperty({
+    enum: ['pending', 'approved', 'superseded', 'changes-requested', 'declined', 'withdrawn'],
+  })
+  status!: string;
+  @ApiProperty() submittedAt!: string;
+  @ApiProperty({ nullable: true, type: String }) issuerName!: string | null;
+  @ApiProperty({ nullable: true, type: String }) certificateNumber!: string | null;
+  @ApiProperty({ nullable: true, type: String }) issueDate!: string | null;
+  @ApiProperty({ nullable: true, type: String }) expiryDate!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'For an approval: the instant it stops counting.',
+  })
+  validUntil!: string | null;
+  @ApiProperty({ type: ReviewOtherDecisionView, nullable: true })
+  decision!: ReviewOtherDecisionView | null;
 }
 
 export class ReviewPageView {
@@ -155,6 +237,13 @@ export class ReviewPageView {
   @ApiProperty({ type: Object }) business!: Record<string, unknown>;
   @ApiProperty({ type: [Object] }) history!: Record<string, unknown>[];
   @ApiProperty({ type: Object, nullable: true }) decision!: Record<string, unknown> | null;
+  @ApiProperty({
+    type: [ReviewOtherSubmissionView],
+    description:
+      'The other submissions of the record, newest first (at most 10, plus the approved one): ' +
+      'the earlier submission and its reason, and beside a renewal the certificate in force.',
+  })
+  otherSubmissions!: ReviewOtherSubmissionView[];
 }
 
 export class ReviewCheckRequest {

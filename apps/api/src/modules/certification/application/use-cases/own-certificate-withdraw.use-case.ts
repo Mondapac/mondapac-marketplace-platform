@@ -3,7 +3,7 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CERTIFICATION_OWN_CERTIFICATE_MANAGE } from '../../contracts/permissions';
 import { SellerCertificationWithdrawn } from '../../domain/events';
-import { isDraftEditable } from '../../domain/seller-certificate';
+import { isDraftEditable, statusAfterWithdraw } from '../../domain/seller-certificate';
 import {
   invalid,
   ownerOf,
@@ -74,10 +74,7 @@ export class OwnCertificateWithdraw extends UseCase<
         const submissionId = stored.pendingSubmissionId;
         if (submissionId === null)
           return err({ code: 'certificate.no-pending-submission' } as const);
-        const toStatus =
-          stored.status === 'in-review' && stored.approvedSubmissionId === null
-            ? 'draft'
-            : stored.status;
+        const toStatus = statusAfterWithdraw(stored.status, stored.approvedSubmissionId !== null);
         await deps.certificates.withdraw(market, {
           certificateId,
           expectedVersion: stored.version,

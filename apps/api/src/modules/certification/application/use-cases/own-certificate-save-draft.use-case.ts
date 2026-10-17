@@ -1,25 +1,31 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CERTIFICATION_OWN_CERTIFICATE_MANAGE } from '../../contracts/permissions';
 import { DRAFT_SAVE_LIMITS } from '../../domain/rate-limits';
 import {
+  draftEditVerdict,
   isDraftEditable,
   parseDraftContent,
+  sameDraftContent,
   type DraftContent,
 } from '../../domain/seller-certificate';
 import {
   invalid,
   ownerOf,
   parseCertificateId,
+  parseWithdrawPending,
   reserveLimits,
   storeFailure,
   summaryOf,
+  withdrawForEdit,
   type CertificateSummary,
+  type EditWithdrawsFailure,
   type OwnCertificateDependencies,
   type RateFailure,
   type ValidationFailure,
 } from '../own/own-certificate.shared';
+import type { StoredDraft } from '../ports/seller-certificate.repository';
 
 type DraftFault = 'type' | 'not-applicable' | 'unknown' | 'not-selectable';
 
@@ -27,6 +33,12 @@ export interface OwnCertificateSaveDraftInput {
   readonly certificateId: unknown;
   /** The whole draft: every field present, `null` clears it. */
   readonly draft: unknown;
+  /**
+   * The seller confirmed that a change to a field the pending submission holds withdraws it
+   * (design 3.2 row 2). Absent or false: such a change is refused with
+   * `certificate.edit-withdraws-submission` and nothing is written.
+   */
+  readonly withdrawPending?: unknown;
 }
 
 /** The draft as the seller gets it back: dates as local dates, the texts in clear. */
@@ -53,6 +65,8 @@ export function draftViewOf(draft: DraftContent): DraftView {
 export interface OwnCertificateSaveDraftOutput {
   readonly certificate: CertificateSummary;
   readonly draft: DraftView;
+  /** The pending submission this save withdrew (cause `edited`), or null. */
+  readonly withdrawnSubmissionId: string | null;
 }
 
 export type OwnCertificateSaveDraftFailure =
@@ -60,6 +74,7 @@ export type OwnCertificateSaveDraftFailure =
   | { readonly code: 'access.unavailable' }
   | { readonly code: 'certificate.not-found' }
   | { readonly code: 'certificate.not-editable' }
+  | EditWithdrawsFailure
   | { readonly code: 'conflict.stale' }
   | RateFailure
   | ValidationFailure;
@@ -68,9 +83,14 @@ export type OwnCertificateSaveDraftFailure =
  * `own-certificate.save-draft` (design 3.1, 7.2): the seller replaces the working copy of a
  * certificate: the issuer from the registry of the same type and Market, the certificate number
  * and the self-declaration note (both encrypted under the seller's key), the issue and expiry
- * local dates and the self-declaration tick. Allowed while no submission is pending. Spends one
- * save of the account's limits. Rule: key `certification.own-certificate.manage`; a certificate
- * of another seller is the same `certificate.not-found` as an unknown id.
+ * local dates and the self-declaration tick. Spends one save of the account's limits. While a
+ * submission is pending (first review, correction or renewal), a save that changes a value is
+ * withdraw by edit (design 3.2 row 2, slice 8): refused with `certificate.edit-withdraws-submission`
+ * until the seller confirms with `withdrawPending`, then the submission is withdrawn (cause
+ * `edited`) and the draft written in one unit and one version step; the approved submission of a
+ * renewal stays valid and untouched. A save that changes nothing while pending writes nothing.
+ * Rule: key `certification.own-certificate.manage`; an acting-as session is refused; a
+ * certificate of another seller is the same `certificate.not-found` as an unknown id.
  */
 export class OwnCertificateSaveDraft extends UseCase<
   OwnCertificateSaveDraftInput,
@@ -102,6 +122,8 @@ export class OwnCertificateSaveDraft extends UseCase<
     const parsed = parseDraftContent(input.draft);
     if (!parsed.ok) return err({ code: 'validation.failed', fields: parsed.error });
     const draft = parsed.value;
+    const withdrawConfirmed = parseWithdrawPending(input.withdrawPending);
+    if (withdrawConfirmed === null) return invalid('withdrawPending', 'type');
 
     const { deps } = this;
     const throttled = await reserveLimits(
@@ -146,8 +168,22 @@ export class OwnCertificateSaveDraft extends UseCase<
         fields: [{ path: 'issuerId', code: fault }],
       });
     }
-    if (!isDraftEditable(stored.status, stored.pendingSubmissionId)) {
-      return err({ code: 'certificate.not-editable' });
+    const verdict = draftEditVerdict(stored.status, stored.pendingSubmissionId, withdrawConfirmed);
+    if (verdict === 'closed') return err({ code: 'certificate.not-editable' });
+    if (verdict !== 'edit') {
+      // A pending submission holds the stored draft's values: an unchanged save is no edit.
+      const unchanged = await this.#sameAsStored(context, owner.sellerId, stored.draft, draft);
+      if (!unchanged.ok) return unchanged;
+      if (unchanged.value) {
+        return ok({
+          certificate: summaryOf(stored, false, this.deps.clock.now()),
+          draft: draftViewOf(draft),
+          withdrawnSubmissionId: null,
+        });
+      }
+      if (verdict === 'confirm-withdraw') {
+        return err({ code: 'certificate.edit-withdraws-submission' });
+      }
     }
 
     const number =
@@ -172,28 +208,75 @@ export class OwnCertificateSaveDraft extends UseCase<
     if (!note.ok) return err({ code: 'access.denied' });
 
     const now = deps.clock.now();
+    const sealed: StoredDraft = {
+      issuerId: draft.issuerId,
+      certificateNumberCiphertext: number.value,
+      issueDate: draft.issueDate,
+      expiryDate: draft.expiryDate,
+      selfDeclared: draft.selfDeclared,
+      selfDeclarationNoteCiphertext: note.value,
+    };
+    const withdrawn = verdict === 'withdraw-then-edit' ? stored.pendingSubmissionId : null;
     const written = await deps.unitOfWork
       .run<CertificateSummary, OwnCertificateSaveDraftFailure>(market, async () => {
-        await deps.certificates.saveDraft(
-          market,
-          certificateId,
-          stored.version,
-          {
-            issuerId: draft.issuerId,
-            certificateNumberCiphertext: number.value,
-            issueDate: draft.issueDate,
-            expiryDate: draft.expiryDate,
-            selfDeclared: draft.selfDeclared,
-            selfDeclarationNoteCiphertext: note.value,
-          },
-          now,
-        );
+        if (withdrawn !== null) {
+          // The version guard refuses a record that moved since the read: a reviewer's decision
+          // or another edit makes this `conflict.stale`, never a withdrawal of the wrong one.
+          await withdrawForEdit(deps, context, owner, stored, now, sealed);
+        } else {
+          await deps.certificates.saveDraft(market, certificateId, stored.version, sealed, now);
+        }
         const saved = await deps.certificates.findOwn(market, owner.sellerId, certificateId);
         if (saved === null) throw new Error('save-draft: the certificate vanished');
-        return ok(summaryOf(saved, true, now));
+        return ok(summaryOf(saved, isDraftEditable(saved.status, saved.pendingSubmissionId), now));
       })
       .catch((error: unknown) => storeFailure(context, 'certification.save-draft.write', error));
     if (!written.ok) return written;
-    return ok({ certificate: written.value, draft: draftViewOf(draft) });
+    return ok({
+      certificate: written.value,
+      draft: draftViewOf(draft),
+      withdrawnSubmissionId: withdrawn,
+    });
+  }
+
+  /** Whether the new draft equals the stored one; the stored texts are opened to compare. */
+  async #sameAsStored(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    stored: StoredDraft,
+    draft: DraftContent,
+  ): Promise<Result<boolean, OwnCertificateSaveDraftFailure>> {
+    const { market } = context;
+    const { cipher } = this.deps;
+    const number =
+      stored.certificateNumberCiphertext === null
+        ? ok(null)
+        : await cipher.open(
+            market,
+            sellerId,
+            'draft-certificate-number',
+            stored.certificateNumberCiphertext,
+          );
+    if (!number.ok) return err({ code: 'access.denied' });
+    const note =
+      stored.selfDeclarationNoteCiphertext === null
+        ? ok(null)
+        : await cipher.open(
+            market,
+            sellerId,
+            'draft-self-declaration-note',
+            stored.selfDeclarationNoteCiphertext,
+          );
+    if (!note.ok) return err({ code: 'access.denied' });
+    return ok(
+      sameDraftContent(draft, {
+        issuerId: stored.issuerId,
+        certificateNumber: number.value,
+        issueDate: stored.issueDate,
+        expiryDate: stored.expiryDate,
+        selfDeclared: stored.selfDeclared,
+        selfDeclarationNote: note.value,
+      }),
+    );
   }
 }

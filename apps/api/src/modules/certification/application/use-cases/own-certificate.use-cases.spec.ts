@@ -670,7 +670,7 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
       expect(r.certificates.quotas.get(r.sellerId)).toBe(0);
     });
 
-    it('refuses a second submit while one is pending, and edits to the draft', async () => {
+    it('refuses a second submit while one is pending, and unconfirmed edits to the draft', async () => {
       const r = rig();
       const certificateId = await completeHalal(r);
       await unwrap(r.submit.execute(r.contextOf(), { certificateId }));
@@ -678,12 +678,16 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
         ok: false,
         error: { code: 'certificate.has-pending-submission' },
       });
+      // Withdraw by edit (slice 8): a change needs the seller's confirmation first.
       await expect(
-        r.saveDraft.execute(r.contextOf(), { certificateId, draft: draftOf(r) }),
-      ).resolves.toEqual({ ok: false, error: { code: 'certificate.not-editable' } });
+        r.saveDraft.execute(r.contextOf(), {
+          certificateId,
+          draft: draftOf(r, { certificateNumber: 'HC-2026-009' }),
+        }),
+      ).resolves.toEqual({ ok: false, error: { code: 'certificate.edit-withdraws-submission' } });
       await expect(
         r.upload.execute(r.contextOf(), { certificateId, data: b64(PDF) }),
-      ).resolves.toEqual({ ok: false, error: { code: 'certificate.not-editable' } });
+      ).resolves.toEqual({ ok: false, error: { code: 'certificate.edit-withdraws-submission' } });
     });
 
     it('refuses an issuer that is no longer active', async () => {
@@ -860,6 +864,321 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
       const back = await unwrap(r.withdraw.execute(r.contextOf(), { certificateId }));
       expect(back).toMatchObject({ recordStatus: 'approved', status: 'approved' });
       expect(root.approvedSubmissionId).not.toBeNull();
+    });
+  });
+
+  describe('withdraw by edit, resubmission and renewal (slice 8, AC 14, AC 15)', () => {
+    /** Plays the reviewer's approval of the pending submission (slice 7 writes it for real). */
+    function approveByHand(r: Rig, certificateId: string, boundary = T0.add({ hours: 24 * 200 })) {
+      const root = r.certificates.certificates.get(certificateId)!;
+      r.certificates.decisions.set(root.pendingSubmissionId!, 'approved');
+      root.status = 'approved';
+      root.approvedSubmissionId = root.pendingSubmissionId;
+      root.pendingSubmissionId = null;
+      root.pendingKind = null;
+      root.approvedBoundaryAt = boundary;
+      root.version += 1;
+      return root;
+    }
+    /** Plays the reviewer's "changes needed" on the pending submission. */
+    function sendBackByHand(r: Rig, certificateId: string) {
+      const root = r.certificates.certificates.get(certificateId)!;
+      r.certificates.decisions.set(root.pendingSubmissionId!, 'changes-requested');
+      if (root.approvedSubmissionId === null) root.status = 'changes-needed';
+      root.pendingSubmissionId = null;
+      root.pendingKind = null;
+      root.version += 1;
+      return root;
+    }
+    async function pendingFirst(r: Rig) {
+      const certificateId = await completeHalal(r);
+      await unwrap(r.submit.execute(r.contextOf(), { certificateId }));
+      return certificateId;
+    }
+    async function pendingRenewal(r: Rig) {
+      const certificateId = await pendingFirst(r);
+      approveByHand(r, certificateId);
+      await unwrap(
+        r.saveDraft.execute(r.contextOf(), {
+          certificateId,
+          draft: draftOf(r, { expiryDate: '2029-12-31' }),
+        }),
+      );
+      const renewal = await unwrap(r.submit.execute(r.contextOf(), { certificateId }));
+      expect(renewal.kind).toBe('renewal');
+      return { certificateId, renewalId: renewal.submissionId };
+    }
+    const withdrawnEvents = (r: Rig) =>
+      r.outbox.events.filter((e) => e.type === 'certification.seller-certification-withdrawn.v1');
+
+    it('writes nothing for an unchanged save while a submission is pending', async () => {
+      const r = rig();
+      const certificateId = await pendingFirst(r);
+      const root = r.certificates.certificates.get(certificateId)!;
+      const version = root.version;
+      const saved = await unwrap(
+        r.saveDraft.execute(r.contextOf(), { certificateId, draft: draftOf(r) }),
+      );
+      expect(saved).toMatchObject({
+        withdrawnSubmissionId: null,
+        certificate: { status: 'awaiting-review', withdrawable: true },
+      });
+      expect(root.version).toBe(version);
+      expect(root.pendingSubmissionId).not.toBeNull();
+      expect(withdrawnEvents(r)).toHaveLength(0);
+    });
+
+    it('refuses a change to a pending submission until the seller confirms, writing nothing', async () => {
+      const r = rig();
+      const certificateId = await pendingFirst(r);
+      const root = r.certificates.certificates.get(certificateId)!;
+      const version = root.version;
+      await expect(
+        r.saveDraft.execute(r.contextOf(), {
+          certificateId,
+          draft: draftOf(r, { certificateNumber: 'HC-2026-002' }),
+        }),
+      ).resolves.toEqual({ ok: false, error: { code: 'certificate.edit-withdraws-submission' } });
+      expect(root.version).toBe(version);
+      expect(root.pendingSubmissionId).not.toBeNull();
+      expect(r.certificates.submissions[0]!.withdrawn).toBeNull();
+      await expect(
+        r.saveDraft.execute(r.contextOf(), {
+          certificateId,
+          draft: draftOf(r, { certificateNumber: 'HC-2026-002' }),
+          withdrawPending: 'yes',
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'withdrawPending', code: 'type' }] },
+      });
+    });
+
+    it('withdraws a first submission by edit: draft, history, event, one version step', async () => {
+      const r = rig();
+      const certificateId = await pendingFirst(r);
+      const root = r.certificates.certificates.get(certificateId)!;
+      const version = root.version;
+      const pendingId = root.pendingSubmissionId!;
+      const saved = await unwrap(
+        r.saveDraft.execute(r.contextOf(), {
+          certificateId,
+          draft: draftOf(r, { certificateNumber: 'HC-2026-002' }),
+          withdrawPending: true,
+        }),
+      );
+      expect(saved).toMatchObject({
+        withdrawnSubmissionId: pendingId,
+        certificate: {
+          recordStatus: 'draft',
+          status: 'draft',
+          editable: true,
+          withdrawable: false,
+        },
+        draft: { certificateNumber: 'HC-2026-002' },
+      });
+      expect(root.version).toBe(version + 1);
+      expect(root.pendingSubmissionId).toBeNull();
+      expect(r.certificates.submissions[0]!.withdrawn).toMatchObject({ cause: 'edited' });
+      expect(r.certificates.history.at(-1)).toMatchObject({
+        fromStatus: 'in-review',
+        toStatus: 'draft',
+        reasonCode: 'edited',
+      });
+      expect(withdrawnEvents(r)).toHaveLength(1);
+      expect(withdrawnEvents(r)[0]).toMatchObject({
+        aggregateVersion: version + 1,
+        payload: { cause: 'edited', submissionId: pendingId },
+      });
+      const read = await unwrap(r.read.execute(r.contextOf(), { certificateId }));
+      expect(read.draft.certificateNumber).toBe('HC-2026-002');
+    });
+
+    it('withdraws only the renewal by edit: the approved certificate stays as it was', async () => {
+      const r = rig();
+      const { certificateId, renewalId } = await pendingRenewal(r);
+      const root = r.certificates.certificates.get(certificateId)!;
+      const approvedId = root.approvedSubmissionId;
+      const boundary = root.approvedBoundaryAt;
+      const listed = await unwrap(r.list.execute(r.contextOf(), {}));
+      expect(listed.certificates[0]!.status).toBe('approved-renewal-pending');
+      const saved = await unwrap(
+        r.saveDraft.execute(r.contextOf(), {
+          certificateId,
+          draft: draftOf(r, { expiryDate: '2030-06-30' }),
+          withdrawPending: true,
+        }),
+      );
+      expect(saved.withdrawnSubmissionId).toBe(renewalId);
+      expect(saved.certificate).toMatchObject({ recordStatus: 'approved', status: 'approved' });
+      expect(root.approvedSubmissionId).toBe(approvedId);
+      expect(root.approvedBoundaryAt).toEqual(boundary);
+      expect(r.certificates.history.at(-1)).toMatchObject({
+        fromStatus: 'approved',
+        toStatus: 'approved',
+        reasonCode: 'edited',
+      });
+    });
+
+    it('treats adding or removing a file of a pending submission as an edit', async () => {
+      const r = rig();
+      const certificateId = await pendingFirst(r);
+      const objects = r.vault.objects.size;
+      await expect(
+        r.upload.execute(r.contextOf(), { certificateId, data: b64(await png('#00ff00')) }),
+      ).resolves.toEqual({ ok: false, error: { code: 'certificate.edit-withdraws-submission' } });
+      // Refused before the file is read or stored.
+      expect(r.vault.objects.size).toBe(objects);
+      const added = await unwrap(
+        r.upload.execute(r.contextOf(), {
+          certificateId,
+          data: b64(await png('#00ff00')),
+          withdrawPending: true,
+        }),
+      );
+      expect(added.withdrawnSubmissionId).not.toBeNull();
+      expect(r.certificates.certificates.get(certificateId)!.status).toBe('draft');
+      expect(withdrawnEvents(r)).toHaveLength(1);
+
+      await unwrap(r.submit.execute(r.contextOf(), { certificateId }));
+      const [first] = await r.certificates.listDocuments(market, certificateId as never);
+      await expect(
+        r.remove.execute(r.contextOf(), { certificateId, documentId: first!.id }),
+      ).resolves.toEqual({ ok: false, error: { code: 'certificate.edit-withdraws-submission' } });
+      const removed = await unwrap(
+        r.remove.execute(r.contextOf(), {
+          certificateId,
+          documentId: first!.id,
+          withdrawPending: true,
+        }),
+      );
+      expect(removed).toMatchObject({ removed: true });
+      expect(removed.withdrawnSubmissionId).not.toBeNull();
+      expect(withdrawnEvents(r)).toHaveLength(2);
+      // The submitted file only left the draft; the submissions keep it.
+      expect(r.certificates.documents.has(first!.id)).toBe(true);
+    });
+
+    it('refuses withdraw by edit in an acting-as session and on a stale record', async () => {
+      const r = rig();
+      const certificateId = await pendingFirst(r);
+      const edit = { certificateId, draft: draftOf(r, { certificateNumber: 'X-1' }) };
+      await expect(
+        r.saveDraft.execute(actingAs(r.contextOf()), { ...edit, withdrawPending: true }),
+      ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
+      r.certificates.failNextWrite = new StaleAggregateError('seller-certification', certificateId);
+      await expect(
+        r.saveDraft.execute(r.contextOf(), { ...edit, withdrawPending: true }),
+      ).resolves.toEqual({ ok: false, error: { code: 'conflict.stale' } });
+      expect(r.certificates.certificates.get(certificateId)!.pendingSubmissionId).not.toBeNull();
+      expect(withdrawnEvents(r)).toHaveLength(0);
+    });
+
+    it('resubmits after changes were requested, as a resubmission of the same record', async () => {
+      const r = rig();
+      const certificateId = await pendingFirst(r);
+      sendBackByHand(r, certificateId);
+      const read = await unwrap(r.read.execute(r.contextOf(), { certificateId }));
+      expect(read.certificate).toMatchObject({ status: 'changes-needed', editable: true });
+      // The earlier answers are kept in the draft (the correction form is prefilled).
+      expect(read.draft.certificateNumber).toBe('HC-2026-001');
+      await unwrap(
+        r.saveDraft.execute(r.contextOf(), {
+          certificateId,
+          draft: draftOf(r, { certificateNumber: 'HC-2026-001A' }),
+        }),
+      );
+      const again = await unwrap(r.submit.execute(r.contextOf(), { certificateId }));
+      expect(again.kind).toBe('resubmission');
+      const root = r.certificates.certificates.get(certificateId)!;
+      expect(root).toMatchObject({ status: 'in-review', pendingSubmissionId: again.submissionId });
+      expect(r.certificates.submissions.map((s) => s.write.submissionNo)).toEqual([1, 2]);
+      expect(r.outbox.events.at(-1)).toMatchObject({
+        type: 'certification.seller-certification-submitted.v1',
+        payload: { kind: 'resubmission' },
+      });
+    });
+
+    it('shows a renewal sent back as approved-renewal-changes-needed until it is sent again', async () => {
+      const r = rig();
+      const { certificateId } = await pendingRenewal(r);
+      const root = sendBackByHand(r, certificateId);
+      expect(root.status).toBe('approved');
+      const read = await unwrap(r.read.execute(r.contextOf(), { certificateId }));
+      expect(read.certificate).toMatchObject({
+        status: 'approved-renewal-changes-needed',
+        recordStatus: 'approved',
+        submitBy: root.approvedBoundaryAt!.toString(),
+        editable: true,
+      });
+      await unwrap(
+        r.saveDraft.execute(r.contextOf(), {
+          certificateId,
+          draft: draftOf(r, { expiryDate: '2029-11-30' }),
+        }),
+      );
+      const correction = await unwrap(r.submit.execute(r.contextOf(), { certificateId }));
+      expect(correction.kind).toBe('renewal');
+      const after = await unwrap(r.read.execute(r.contextOf(), { certificateId }));
+      expect(after.certificate.status).toBe('approved-renewal-pending');
+      // A cancelled renewal leaves the plain approved status.
+      await unwrap(r.withdraw.execute(r.contextOf(), { certificateId }));
+      const cancelled = await unwrap(r.read.execute(r.contextOf(), { certificateId }));
+      expect(cancelled.certificate.status).toBe('approved');
+    });
+
+    it('renews an expired record, but never with a certificate that is itself expired', async () => {
+      const r = rig();
+      const certificateId = await pendingFirst(r);
+      const root = approveByHand(r, certificateId, T0.subtract({ hours: 1 }));
+      root.status = 'expired';
+      await unwrap(
+        r.saveDraft.execute(r.contextOf(), {
+          certificateId,
+          draft: draftOf(r, { expiryDate: '2026-10-15' }),
+        }),
+      );
+      await expect(r.submit.execute(r.contextOf(), { certificateId })).resolves.toEqual({
+        ok: false,
+        error: { code: 'certificate.expired' },
+      });
+      await unwrap(
+        r.saveDraft.execute(r.contextOf(), {
+          certificateId,
+          draft: draftOf(r, { expiryDate: '2028-10-15' }),
+        }),
+      );
+      const renewal = await unwrap(r.submit.execute(r.contextOf(), { certificateId }));
+      expect(renewal.kind).toBe('renewal');
+      expect(root.status).toBe('expired');
+      const read = await unwrap(r.read.execute(r.contextOf(), { certificateId }));
+      expect(read.certificate.status).toBe('expired-renewal-pending');
+    });
+
+    it('keeps one open submission per certificate and never renews a revoked or declined one', async () => {
+      const r = rig();
+      const { certificateId } = await pendingRenewal(r);
+      await expect(r.submit.execute(r.contextOf(), { certificateId })).resolves.toEqual({
+        ok: false,
+        error: { code: 'certificate.has-pending-submission' },
+      });
+      const root = r.certificates.certificates.get(certificateId)!;
+      for (const status of ['revoked', 'declined'] as const) {
+        root.status = status;
+        root.pendingSubmissionId = null;
+        root.pendingKind = null;
+        await expect(
+          r.saveDraft.execute(r.contextOf(), {
+            certificateId,
+            draft: draftOf(r, { expiryDate: '2030-01-01' }),
+            withdrawPending: true,
+          }),
+        ).resolves.toEqual({ ok: false, error: { code: 'certificate.not-editable' } });
+        await expect(r.submit.execute(r.contextOf(), { certificateId })).resolves.toEqual({
+          ok: false,
+          error: { code: 'certificate.not-submittable' },
+        });
+      }
     });
   });
 
