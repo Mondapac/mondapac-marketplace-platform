@@ -18,13 +18,22 @@ const JPEG_QUALITY = 90;
 
 type Refusal = { readonly code: DocumentRefusalCode };
 
+const BUSY = (): Result<InspectedDocument, Refusal> => err({ code: 'request.throttled' });
+
 sharp.concurrency(1);
 sharp.cache(false);
 
+/** Files that may wait for a slot; a further one is refused as busy (security review L5). */
+export const MAX_WAITING = 2 * MAX_CONCURRENT;
+
 let running = 0;
 const waiting: (() => void)[] = [];
-async function withSlot<T>(work: () => Promise<T>): Promise<T> {
-  if (running >= MAX_CONCURRENT) await new Promise<void>((resolve) => waiting.push(resolve));
+/** Runs `work` in one of the slots; with the queue full, answers `busy` and runs nothing. */
+async function withSlot<T>(work: () => Promise<T>, busy: () => T): Promise<T> {
+  if (running >= MAX_CONCURRENT) {
+    if (waiting.length >= MAX_WAITING) return busy();
+    await new Promise<void>((resolve) => waiting.push(resolve));
+  }
   running += 1;
   try {
     return await work();
@@ -41,7 +50,8 @@ async function withSlot<T>(work: () => Promise<T>): Promise<T> {
  * when it is animated or multi-page or when its decoded format is not the one its first bytes
  * claim (a polyglot), and written again from its pixels in the same format: sharp writes no
  * metadata unless asked, so EXIF, GPS, ICC profiles and embedded thumbnails of the upload are gone.
- * A PDF is checked by {@link inspectPdf} and kept as received. Nothing about the upload's name or
+ * Beyond {@link MAX_WAITING} files waiting for a slot, a file is refused as `request.throttled`
+ * (try again later), so a burst cannot queue without limit. A PDF is checked by {@link inspectPdf} and kept as received. Nothing about the upload's name or
  * declared type is read. No scanner, no sandbox and no preview in this release.
  */
 export class SharpDocumentIntake implements DocumentIntake {
@@ -57,9 +67,9 @@ export class SharpDocumentIntake implements DocumentIntake {
         return verdict.ok
           ? ok({ mediaType, bytes, pageCount: verdict.pageCount })
           : err({ code: verdict.code });
-      });
+      }, BUSY);
     }
-    return withSlot(() => this.#image(bytes, mediaType));
+    return withSlot(() => this.#image(bytes, mediaType), BUSY);
   }
 
   async #image(

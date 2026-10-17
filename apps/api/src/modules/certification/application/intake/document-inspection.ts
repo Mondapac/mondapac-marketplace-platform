@@ -18,7 +18,9 @@ export type DocumentRefusalCode =
   | 'file.encrypted'
   | 'file.active-content'
   | 'file.too-complex'
-  | 'file.inspection-timeout';
+  | 'file.inspection-timeout'
+  /** The intake is busy: try again later (maps to 429). */
+  | 'request.throttled';
 
 export type DocumentMediaType = 'image/jpeg' | 'image/png' | 'application/pdf';
 
@@ -48,9 +50,10 @@ export function detectMediaType(bytes: Uint8Array): DocumentMediaType | null {
 /**
  * The names that make a PDF active or hidden content (brief s5; design 9.3): scripts, launch and
  * open actions, additional actions, embedded files, rich media, forms and XFA. `/Encrypt` is the
- * encrypted file. A name ends at a delimiter or white space, so `/JSON` is not `/JS`.
+ * encrypted file. A name ends at white space or a delimiter (ISO 32000 7.2.3, NUL included), so
+ * `/JSON` is not `/JS`.
  */
-const ACTIVE_NAMES = [
+const ACTIVE_NAMES: ReadonlySet<string> = new Set([
   'JavaScript',
   'JS',
   'Launch',
@@ -64,20 +67,25 @@ const ACTIVE_NAMES = [
   'GoToE',
   'SubmitForm',
   'ImportData',
-] as const;
-const NAME_END = String.raw`(?=[\s()<>\[\]{}/%]|$)`;
-const ACTIVE = new RegExp(String.raw`/(?:${ACTIVE_NAMES.join('|')})${NAME_END}`);
-const ENCRYPTED = new RegExp(String.raw`/Encrypt${NAME_END}`);
+]);
 
-/** Compressed object streams inflated at most; more than this is refused, never skipped. */
+/** Object streams (and other streams that could be one) scanned at most; more is refused. */
 export const MAX_OBJECT_STREAMS = 64;
-/** One object stream inflates to at most this many bytes. */
+/** One stream inflates to at most this many bytes. */
 const MAX_STREAM_INFLATED_BYTES = 8 * 1024 * 1024;
-/** All object streams of one file inflate to at most this many bytes together (decompression bomb). */
-export const MAX_TOTAL_INFLATED_BYTES = 32 * 1024 * 1024;
+/** All streams of one file inflate to at most this many bytes together (decompression bomb). */
+export const MAX_TOTAL_INFLATED_BYTES = 16 * 1024 * 1024;
 /** One dictionary is read at most this far, and nested at most this deep; beyond it, refused. */
 const MAX_DICTIONARY_CHARS = 256 * 1024;
 const MAX_DICTIONARY_DEPTH = 32;
+/** A comment between `>>` and `stream` is at most this long; a longer one is refused. */
+const MAX_GAP_CHARS = 256;
+/**
+ * A name longer than this cannot be an active name once its `#xx` escapes are decoded (the longest
+ * is 13 characters, each written in at most 3), so it is not decoded: no allocation per name.
+ */
+const MAX_DECODED_NAME_RAW = 64;
+const LONG_NAME = '\u0001';
 
 /** An internal stop with the refusal to answer; the scan never accepts what it could not read. */
 class Refusal extends Error {
@@ -88,155 +96,348 @@ class Refusal extends Error {
   }
 }
 
-/** `#41` in a name is `A`: decoded first, so `/Java#53cript` cannot hide a name. */
-function decodeNameEscapes(text: string): string {
-  return text.replace(/#([0-9A-Fa-f]{2})/g, (_, hex: string) =>
-    String.fromCharCode(Number.parseInt(hex, 16)),
-  );
-}
-
+/** White space (NUL included) and delimiters of ISO 32000 7.2.2-7.2.3: the bytes that end a name. */
+const ENDS_NAME = new Uint8Array(256);
+for (const code of [0x00, 0x09, 0x0a, 0x0c, 0x0d, 0x20]) ENDS_NAME[code] = 1;
+for (const char of '()<>[]{}/%') ENDS_NAME[char.charCodeAt(0)] = 1;
 const isWhite = (code: number): boolean =>
   code === 0x20 || code === 0x0a || code === 0x0d || code === 0x09 || code === 0x0c || code === 0;
-const isDelimiter = (code: number): boolean =>
-  code === 0x28 ||
-  code === 0x29 ||
-  code === 0x3c ||
-  code === 0x3e ||
-  code === 0x5b ||
-  code === 0x5d ||
-  code === 0x7b ||
-  code === 0x7d ||
-  code === 0x2f ||
-  code === 0x25;
+
+const hexValue = (code: number): number => {
+  if (code >= 0x30 && code <= 0x39) return code - 0x30;
+  if (code >= 0x41 && code <= 0x46) return code - 0x41 + 10;
+  if (code >= 0x61 && code <= 0x66) return code - 0x61 + 10;
+  return -1;
+};
+
+/** The name in `bytes[from, to)` with its `#xx` escapes decoded (`#41` is `A`); short names only. */
+function nameOf(bytes: Buffer, from: number, to: number): string {
+  if (to - from > MAX_DECODED_NAME_RAW) return LONG_NAME;
+  let escaped = false;
+  for (let at = from; at < to; at += 1) {
+    if (bytes[at] === 0x23) {
+      escaped = true;
+      break;
+    }
+  }
+  if (!escaped) return bytes.latin1Slice(from, to);
+  let decoded = '';
+  for (let at = from; at < to; at += 1) {
+    const code = bytes[at] as number;
+    const high = code === 0x23 && at + 2 < to ? hexValue(bytes[at + 1] as number) : -1;
+    const low = high >= 0 ? hexValue(bytes[at + 2] as number) : -1;
+    if (low >= 0) {
+      decoded += String.fromCharCode(high * 16 + low);
+      at += 2;
+    } else decoded += String.fromCharCode(code);
+  }
+  return decoded;
+}
+
+/**
+ * Every name of the bytes, wherever it stands (in a dictionary, a trailer, plain text or a stream
+ * body): `/Encrypt` is the encrypted file, an active name is active content. One forward pass; a
+ * name is read by the same rule as the dictionary reader, with its escapes decoded name by name.
+ */
+function scanNames(bytes: Buffer): void {
+  const length = bytes.length;
+  let at = bytes.indexOf(0x2f);
+  while (at >= 0) {
+    let end = at + 1;
+    while (end < length && ENDS_NAME[bytes[end] as number] === 0) end += 1;
+    const name = nameOf(bytes, at + 1, end);
+    if (name === 'Encrypt') throw new Refusal('file.encrypted');
+    if (ACTIVE_NAMES.has(name)) throw new Refusal('file.active-content');
+    at = bytes.indexOf(0x2f, end);
+  }
+}
+
+/** A stream the scan must read: it could be an object stream, whatever its `/Type` says. */
+interface StreamRange {
+  start: number;
+  end: number;
+  /** `true`: one `/FlateDecode`, to inflate; `false`: no filter, the bytes are the content. */
+  flate: boolean;
+}
 
 interface ScanResult {
   /** `/Type /Page` objects seen. */
   pages: number;
   /** The largest `/Count` of a `/Type /Pages` dictionary. */
   declared: number;
-  /** Data ranges of the streams whose dictionary names `/ObjStm`. */
-  objectStreams: { start: number; end: number }[];
+  streams: StreamRange[];
 }
 
+/** What the first (outer) dictionary of an object says about the stream behind it. */
+interface DictionaryFacts {
+  objStm: boolean;
+  hasN: boolean;
+  hasFirst: boolean;
+  /** `/DecodeParms`, `/DP` or `/Predictor` anywhere in the dictionary. */
+  hasParms: boolean;
+  filters: string[];
+  filterUnclear: boolean;
+}
+
+/** Skips the white space and comments that a reader skips between `>>` and `stream`. */
+const gapEnd = (bytes: Buffer, from: number): number => {
+  let at = from;
+  while (at < bytes.length) {
+    const code = bytes[at] as number;
+    if (isWhite(code)) at += 1;
+    else if (code === 0x25) {
+      // A comment is rescanned if it holds a dictionary, so its length is bounded.
+      const started = at;
+      while (at < bytes.length && bytes[at] !== 0x0a && bytes[at] !== 0x0d) {
+        at += 1;
+        if (at - started > MAX_GAP_CHARS) throw new Refusal('file.too-complex');
+      }
+    } else return at;
+  }
+  return at;
+};
+
 /**
- * One pass, forward only (linear), over the dictionaries of a text: every `<< ... >>` is read
+ * One pass, forward only (linear), over the dictionaries of the bytes: every `<< ... >>` is read
  * token by token (names with their escapes decoded, strings, nesting) within fixed bounds. A
  * dictionary that does not close within the bounds, or a stray byte inside it, is refused
- * (`file.too-complex` or `file.unreadable`): nothing is skipped on a guess. The data of a stream
- * is jumped over to its `endstream`; the ranges of object streams are returned for inflating.
+ * (`file.too-complex` or `file.unreadable`): nothing is skipped on a guess. The stream behind a
+ * dictionary is found after white space and comments, as a reader does, and is jumped over to its
+ * `endstream`; a stream that could be an object stream is returned for reading.
  */
-function scanDictionaries(text: string, withStreams: boolean): ScanResult {
-  const result: ScanResult = { pages: 0, declared: 0, objectStreams: [] };
+function scanDictionaries(bytes: Buffer, withStreams: boolean): ScanResult {
+  const result: ScanResult = { pages: 0, declared: 0, streams: [] };
   let cursor = 0;
   for (;;) {
-    const open = text.indexOf('<<', cursor);
+    const open = bytes.indexOf('<<', cursor, 'latin1');
     if (open < 0) return result;
-    const { end, objectStream } = readDictionary(text, open, result);
+    const { end, facts } = readDictionary(bytes, open, result);
     cursor = end;
     if (!withStreams) continue;
-    let after = end;
-    while (after < text.length && isWhite(text.charCodeAt(after))) after += 1;
-    if (!text.startsWith('stream', after)) continue;
+    const after = gapEnd(bytes, end);
+    if (!bytes.toString('latin1', after, after + 6).startsWith('stream')) continue;
     let start = after + 6;
-    if (text[start] === '\r') start += 1;
-    if (text[start] === '\n') start += 1;
-    const dataEnd = text.indexOf('endstream', start);
+    if (bytes[start] === 0x0d) start += 1;
+    if (bytes[start] === 0x0a) start += 1;
+    const dataEnd = bytes.indexOf('endstream', start, 'latin1');
     if (dataEnd < 0) throw new Refusal('file.unreadable');
-    if (objectStream) {
-      if (result.objectStreams.length >= MAX_OBJECT_STREAMS) throw new Refusal('file.too-complex');
-      result.objectStreams.push({ start, end: dataEnd });
+    // N and First are what a reader needs of an object stream; /Type is not checked by readers.
+    if (facts.objStm || facts.hasN || facts.hasFirst) {
+      if (result.streams.length >= MAX_OBJECT_STREAMS) throw new Refusal('file.too-complex');
+      const unfiltered = facts.filters.length === 0;
+      const plainFlate = facts.filters.length === 1 && facts.filters[0] === 'FlateDecode';
+      if (facts.filterUnclear || facts.hasParms || !(unfiltered || plainFlate)) {
+        throw new Refusal('file.too-complex');
+      }
+      result.streams.push({ start, end: dataEnd, flate: plainFlate });
     }
     cursor = dataEnd + 9;
   }
 }
 
 interface Frame {
+  /** Next token is a key (`false`: its value). */
+  expectValue: boolean;
+  key: string;
+  arrayDepth: number;
   typePages: boolean;
   count: number | null;
+  countUnclear: boolean;
+  filters: string[];
+  filterUnclear: boolean;
+  objStm: boolean;
 }
 
-/** Reads the dictionary that opens at `open`; returns where it ends. */
+const newFrame = (): Frame => ({
+  expectValue: false,
+  key: '',
+  arrayDepth: 0,
+  typePages: false,
+  count: null,
+  countUnclear: false,
+  filters: [],
+  filterUnclear: false,
+  objStm: false,
+});
+
+type Value = { kind: 'name'; name: string } | { kind: 'int'; value: number } | { kind: 'other' };
+
+const OTHER: Value = { kind: 'other' };
+
+function onValue(result: ScanResult, frame: Frame, value: Value): void {
+  if (frame.arrayDepth > 0) {
+    // An element of an array value: only a filter array is read; a Count array is unclear.
+    if (frame.key === 'Filter') {
+      if (frame.arrayDepth === 1 && value.kind === 'name') frame.filters.push(value.name);
+      else frame.filterUnclear = true;
+    } else if (frame.key === 'Count') frame.countUnclear = true;
+    return;
+  }
+  if (!frame.expectValue) return;
+  frame.expectValue = false;
+  switch (frame.key) {
+    case 'Type':
+      // A type that is not a name written here (a reference, say) leaves the structure unknown.
+      if (value.kind !== 'name') throw new Refusal('file.too-complex');
+      if (value.name === 'Page') result.pages += 1;
+      else if (value.name === 'Pages') frame.typePages = true;
+      else if (value.name === 'ObjStm') frame.objStm = true;
+      break;
+    case 'Count':
+      if (value.kind === 'int') frame.count = value.value;
+      else frame.countUnclear = true;
+      break;
+    case 'Filter':
+      if (value.kind === 'name') frame.filters.push(value.name);
+      else frame.filterUnclear = true;
+      break;
+    default:
+  }
+}
+
+function closeFrame(result: ScanResult, frame: Frame): void {
+  if (!frame.typePages) return;
+  if (frame.countUnclear) throw new Refusal('file.too-complex');
+  if (frame.count !== null) result.declared = Math.max(result.declared, frame.count);
+}
+
+/** Reads the dictionary that opens at `open`; returns where it ends and what it says. */
 function readDictionary(
-  text: string,
+  bytes: Buffer,
   open: number,
   result: ScanResult,
-): { end: number; objectStream: boolean } {
+): { end: number; facts: DictionaryFacts } {
+  const length = bytes.length;
   const frames: Frame[] = [];
-  let objectStream = false;
-  let previousName: string | null = null;
+  const facts: DictionaryFacts = {
+    objStm: false,
+    hasN: false,
+    hasFirst: false,
+    hasParms: false,
+    filters: [],
+    filterUnclear: false,
+  };
+
   let i = open;
   for (;;) {
     if (i - open > MAX_DICTIONARY_CHARS) throw new Refusal('file.too-complex');
-    if (i >= text.length) throw new Refusal('file.unreadable');
-    const code = text.charCodeAt(i);
+    if (i >= length) throw new Refusal('file.unreadable');
+    const code = bytes[i] as number;
+    const frame = frames[frames.length - 1];
     if (code === 0x3c) {
-      if (text.charCodeAt(i + 1) === 0x3c) {
+      if (bytes[i + 1] === 0x3c) {
         if (frames.length >= MAX_DICTIONARY_DEPTH) throw new Refusal('file.too-complex');
-        frames.push({ typePages: false, count: null });
+        frames.push(newFrame());
         i += 2;
       } else {
-        const close = text.indexOf('>', i + 1);
+        const close = bytes.indexOf(0x3e, i + 1);
         if (close < 0 || close - open > MAX_DICTIONARY_CHARS) throw new Refusal('file.too-complex');
         i = close + 1;
+        if (frame) onValue(result, frame, OTHER);
       }
-      previousName = null;
     } else if (code === 0x3e) {
-      if (text.charCodeAt(i + 1) !== 0x3e) throw new Refusal('file.unreadable');
-      const frame = frames.pop();
-      if (frame?.typePages && frame.count !== null) {
-        result.declared = Math.max(result.declared, frame.count);
-      }
+      if (bytes[i + 1] !== 0x3e || !frame) throw new Refusal('file.unreadable');
+      frames.pop();
+      closeFrame(result, frame);
       i += 2;
-      previousName = null;
-      if (frames.length === 0) return { end: i, objectStream };
+      if (frames.length === 0) {
+        facts.objStm = frame.objStm;
+        facts.filters = frame.filters;
+        facts.filterUnclear = frame.filterUnclear;
+        return { end: i, facts };
+      }
+      const parent = frames[frames.length - 1] as Frame;
+      onValue(result, parent, OTHER);
+    } else if (!frame) {
+      throw new Refusal('file.unreadable');
     } else if (code === 0x2f) {
       let j = i + 1;
-      while (j < text.length && !isWhite(text.charCodeAt(j)) && !isDelimiter(text.charCodeAt(j))) {
-        j += 1;
-      }
-      const name = decodeNameEscapes(text.slice(i + 1, j));
-      const frame = frames[frames.length - 1];
-      if (previousName === 'Type') {
-        if (name === 'ObjStm') objectStream = true;
-        else if (name === 'Page') result.pages += 1;
-        else if (name === 'Pages' && frame) frame.typePages = true;
-      }
-      previousName = name;
+      while (j < length && ENDS_NAME[bytes[j] as number] === 0) j += 1;
+      const name = nameOf(bytes, i + 1, j);
+      if (frame.arrayDepth === 0 && !frame.expectValue) {
+        frame.key = name;
+        frame.expectValue = true;
+        if (name === 'N') facts.hasN = true;
+        else if (name === 'First') facts.hasFirst = true;
+        else if (name === 'DecodeParms' || name === 'DP' || name === 'Predictor') {
+          facts.hasParms = true;
+        }
+      } else onValue(result, frame, { kind: 'name', name });
       i = j;
     } else if (code === 0x28) {
       let depth = 0;
       let j = i;
       do {
-        const c = text.charCodeAt(j);
+        const c = bytes[j];
         if (c === 0x5c) j += 1;
         else if (c === 0x28) depth += 1;
         else if (c === 0x29) depth -= 1;
         j += 1;
-        if (j - open > MAX_DICTIONARY_CHARS || j > text.length) {
-          throw new Refusal('file.too-complex');
-        }
+        if (j - open > MAX_DICTIONARY_CHARS || j > length) throw new Refusal('file.too-complex');
       } while (depth > 0);
       i = j;
-      previousName = null;
+      onValue(result, frame, OTHER);
     } else if (code === 0x25) {
-      while (i < text.length && text.charCodeAt(i) !== 0x0a && text.charCodeAt(i) !== 0x0d) {
+      while (i < length && bytes[i] !== 0x0a && bytes[i] !== 0x0d) {
         i += 1;
         if (i - open > MAX_DICTIONARY_CHARS) throw new Refusal('file.too-complex');
       }
-    } else if (code >= 0x30 && code <= 0x39) {
-      let j = i;
-      while (j < text.length && text.charCodeAt(j) >= 0x30 && text.charCodeAt(j) <= 0x39) j += 1;
-      const frame = frames[frames.length - 1];
-      if (previousName === 'Count' && frame) {
-        frame.count = j - i > 9 ? 999_999_999 : Number(text.slice(i, j));
-      }
-      previousName = null;
-      i = j;
-    } else {
-      if (code === 0x5b || code === 0x5d) previousName = null;
+    } else if (code === 0x5b) {
+      frame.arrayDepth += 1;
       i += 1;
+    } else if (code === 0x5d) {
+      if (frame.arrayDepth === 0) throw new Refusal('file.unreadable');
+      frame.arrayDepth -= 1;
+      if (frame.arrayDepth === 0) frame.expectValue = false;
+      i += 1;
+    } else if (ENDS_NAME[code] === 1) {
+      i += 1;
+    } else {
+      // A number, a keyword (`true`, `null`, `R`): read to the next white space or delimiter.
+      let j = i;
+      while (j < length && ENDS_NAME[bytes[j] as number] === 0) j += 1;
+      if (isDigits(bytes, i, j)) {
+        const next = referenceEnd(bytes, j);
+        if (next > 0) {
+          // `8 0 R`: a reference, not a value written here.
+          onValue(result, frame, OTHER);
+          j = next;
+        } else {
+          onValue(result, frame, {
+            kind: 'int',
+            value: j - i > 9 ? 999_999_999 : Number(bytes.latin1Slice(i, j)),
+          });
+        }
+      } else onValue(result, frame, OTHER);
+      i = j;
     }
   }
+}
+
+function isDigits(bytes: Buffer, from: number, to: number): boolean {
+  let at = from;
+  if (bytes[at] === 0x2b || bytes[at] === 0x2d) at += 1;
+  if (at >= to) return false;
+  for (; at < to; at += 1) {
+    const c = bytes[at] as number;
+    if (c < 0x30 || c > 0x39) return false;
+  }
+  return true;
+}
+
+/** After an integer ends at `from`: where `G R` ends when a reference follows, else 0. */
+function referenceEnd(bytes: Buffer, from: number): number {
+  const length = bytes.length;
+  let at = from;
+  while (at < length && isWhite(bytes[at] as number)) at += 1;
+  const generation = at;
+  while (at < length && (bytes[at] as number) >= 0x30 && (bytes[at] as number) <= 0x39) at += 1;
+  if (at === generation) return 0;
+  const afterGeneration = at;
+  while (at < length && isWhite(bytes[at] as number)) at += 1;
+  if (at === afterGeneration || bytes[at] !== 0x52) return 0;
+  at += 1;
+  return at >= length || ENDS_NAME[bytes[at] as number] === 1 ? at : 0;
 }
 
 export type PdfVerdict =
@@ -248,50 +449,56 @@ export type PdfVerdict =
  * encrypted, holds none of the active names above and has at most {@link MAX_PDF_PAGES} pages
  * (counted by `/Type /Page` objects, or the largest `/Count` of a page tree).
  *
- * The scan covers the whole file and the compressed object streams, where objects can hide. It
- * fails closed: more object streams than {@link MAX_OBJECT_STREAMS}, more inflated bytes than
- * {@link MAX_TOTAL_INFLATED_BYTES}, a dictionary that is not read within bounds, or a stream that
- * does not inflate are refused, never accepted unscanned. A name inside a stream that uses another
- * filter, or an object that a viewer reconstructs from a damaged file, is out of reach; the file
- * is only ever served back as a download, never rendered by this server (design 9.4).
+ * The scan covers every name of the whole file, and the streams that could be object streams
+ * (any stream with `/N` or `/First`, or `/Type /ObjStm`), where objects can hide. It fails
+ * closed: more such streams than {@link MAX_OBJECT_STREAMS}, more inflated bytes than
+ * {@link MAX_TOTAL_INFLATED_BYTES}, a filter chain, another filter or a predictor on such a
+ * stream, a `/Type` or a page-tree `/Count` that is not written directly, a dictionary that is not
+ * read within bounds, or a stream that does not inflate are refused, never accepted unscanned.
+ * What a viewer reconstructs from a damaged file is out of reach; the file is only ever served back
+ * as a download, never rendered by this server (design 9.4).
  *
- * Synchronous and CPU-bound: the API runs it in a worker thread (`inspectPdfIsolated`).
+ * Synchronous and CPU-bound: the API runs it in a worker thread (`inspectPdfIsolated`). It works on
+ * the bytes, never on a string copy of them: memory stays near the size of the input.
  */
-export function inspectPdf(bytes: Uint8Array): PdfVerdict {
-  if (detectMediaType(bytes) !== 'application/pdf') {
+export function inspectPdf(input: Uint8Array): PdfVerdict {
+  if (detectMediaType(input) !== 'application/pdf') {
     return { ok: false, code: 'file.unsupported-type' };
   }
   try {
-    return inspectPdfOrRefuse(bytes);
+    return inspectPdfOrRefuse(Buffer.from(input.buffer, input.byteOffset, input.byteLength));
   } catch (error) {
     if (error instanceof Refusal) return { ok: false, code: error.code };
     throw error;
   }
 }
 
-function inspectPdfOrRefuse(bytes: Uint8Array): PdfVerdict {
-  const raw = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('latin1');
-  if (!raw.slice(-2048).includes('%%EOF')) throw new Refusal('file.unreadable');
+function inspectPdfOrRefuse(bytes: Buffer): PdfVerdict {
+  const tailFrom = Math.max(0, bytes.length - 2048);
+  if (!bytes.subarray(tailFrom).includes('%%EOF')) throw new Refusal('file.unreadable');
 
   let pages = 0;
   let declared = 0;
-  let budget = MAX_TOTAL_INFLATED_BYTES;
-  const examine = (text: string, withStreams: boolean): ScanResult => {
-    const decoded = decodeNameEscapes(text);
-    if (ENCRYPTED.test(decoded)) throw new Refusal('file.encrypted');
-    if (ACTIVE.test(decoded)) throw new Refusal('file.active-content');
-    const found = scanDictionaries(text, withStreams);
+  const examine = (content: Buffer, withStreams: boolean): ScanResult => {
+    scanNames(content);
+    const found = scanDictionaries(content, withStreams);
     pages += found.pages;
     declared = Math.max(declared, found.declared);
     return found;
   };
 
-  const top = examine(raw, true);
-  for (const range of top.objectStreams) {
+  const top = examine(bytes, true);
+  let budget = MAX_TOTAL_INFLATED_BYTES;
+  for (const range of top.streams) {
+    const data = bytes.subarray(range.start, range.end);
+    if (!range.flate) {
+      examine(data, false);
+      continue;
+    }
     if (budget <= 0) throw new Refusal('file.too-complex');
     let inflated: Buffer;
     try {
-      inflated = inflateSync(bytes.subarray(range.start, range.end), {
+      inflated = inflateSync(data, {
         maxOutputLength: Math.min(MAX_STREAM_INFLATED_BYTES, budget),
       });
     } catch (error) {
@@ -299,7 +506,7 @@ function inspectPdfOrRefuse(bytes: Uint8Array): PdfVerdict {
       throw new Refusal(tooBig ? 'file.too-complex' : 'file.unreadable');
     }
     budget -= inflated.length;
-    examine(inflated.toString('latin1'), false);
+    examine(inflated, false);
   }
 
   const pageCount = Math.max(pages, declared);
