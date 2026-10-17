@@ -17,6 +17,9 @@
     "defaultRateBps": 1200,
     "provisionalTaxRateBps": 1500
   },
+  "tax": {
+    "defaultRateBps": 1500
+  },
   "search": {
     "textSearchConfig": "simple"
   },

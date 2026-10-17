@@ -1194,6 +1194,16 @@ const marketSchema = z
       })
       .optional(),
     /**
+     * Tax settings, owned by `tax`. `defaultRateBps`: the tax rate of the built-in strategy used
+     * while an admin has not activated a strategy of their own (AU GST 1000 = 10 %). Without this
+     * section the Market has no built-in strategy and tax calculation fails closed.
+     */
+    tax: z
+      .strictObject({
+        defaultRateBps: z.number().int().min(0).max(5000),
+      })
+      .optional(),
+    /**
      * Notifications settings, owned by `notifications`. `supportEmail`: the Market's support
      * address as first seeded; an admin may change it at run time (the stored value wins), so
      * this is only the default shown until the first change. Without it nothing is shown.
