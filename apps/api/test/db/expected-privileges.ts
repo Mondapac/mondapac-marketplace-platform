@@ -165,8 +165,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'version',
       ],
     },
+    // DELETE only for a draft that was never submitted (certificate slice 3).
     'certification.seller_certifications': {
-      table: ['INSERT', 'SELECT', 'UPDATE'],
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
     'certification.seller_certification_submissions': {
@@ -187,6 +188,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['decided_at', 'decided_by_account_id', 'state', 'version'],
     },
     'certification.platform_subjects': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Migration 3 (seller certificate submit): files are written once and deleted with an unsent
+    // draft; quotas and rate counters are counters; the draft links come and go; the submission
+    // links and the history are insert-only (triggers).
+    'certification.uploaded_documents': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.seller_draft_quotas': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'certification.rate_counters': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'certification.seller_certification_draft_documents': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'certification.seller_submission_documents': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.seller_certification_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },

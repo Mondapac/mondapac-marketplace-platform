@@ -109,6 +109,26 @@
     }
   },
   {
+    "type": "certification.seller-certification-submitted.v1",
+    "aggregateType": "seller-certification",
+    "fields": {
+      "sellerCertificationId": "id",
+      "sellerId": "id",
+      "submissionId": "id",
+      "kind": "enumOf(initial|resubmission|renewal)"
+    }
+  },
+  {
+    "type": "certification.seller-certification-withdrawn.v1",
+    "aggregateType": "seller-certification",
+    "fields": {
+      "sellerCertificationId": "id",
+      "sellerId": "id",
+      "submissionId": "id",
+      "cause": "enumOf(edited|cancelled|revoked)"
+    }
+  },
+  {
     "type": "identity.account-disabled.v1",
     "aggregateType": "account",
     "fields": {

@@ -23,6 +23,11 @@ const uuid7 = (): string =>
  * schema that the application may only SELECT and INSERT, except the outbox and the inbox, which
  * are queues. A new table of this shape without the two triggers fails the catalog test below.
  */
+const COVERED_BY_SELLER_CERTIFICATE_SPEC = [
+  'seller_submission_documents',
+  'seller_certification_history',
+];
+
 function insertOnlyTables(): string[] {
   return Object.entries(EXPECTED_PRIVILEGES.tables)
     .filter(
@@ -87,10 +92,28 @@ it('has exactly the row and the statement trigger on every insert-only table of 
         'certification.relaxation_proposals_guard_update',
       ],
       [
+        'seller_certification_draft_documents',
+        'seller_certification_draft_documents_clean',
+        7,
+        'certification.document_link_clean',
+      ],
+      [
+        'seller_submission_documents',
+        'seller_submission_documents_clean',
+        7,
+        'certification.document_link_clean',
+      ],
+      [
         'type_revision_texts',
         'type_revision_texts_revision_open',
         7,
         'certification.revision_content_guard_insert',
+      ],
+      [
+        'uploaded_documents',
+        'uploaded_documents_guard_update',
+        19,
+        'certification.uploaded_documents_guard',
       ],
     ];
     const guardNames = new Set(GUARDS.map((g) => g[1]));
@@ -1180,7 +1203,17 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
       ).toBe('42501');
       expect(await sqlState(sql, `DELETE FROM certification.${table} WHERE false`)).toBe('42501');
       expect(await sqlState(sql, `TRUNCATE certification.${table} CASCADE`)).toBe('42501');
-      // On a real row, so that the row trigger fires (a WHERE false would never reach it).
+      // On a real row, so that the row trigger fires (a WHERE false would never reach it). The
+      // tables of the seller-certificate slice hold no row here; their own spec covers them, and
+      // only they may be skipped: a table with no row that is not listed there fails.
+      const rows = await sql.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM certification.${table} WHERE market_id = $1`,
+        [market.marketId],
+      );
+      if (rows.rows[0]?.n === 0) {
+        expect(COVERED_BY_SELLER_CERTIFICATE_SPEC).toContain(table);
+        continue;
+      }
       expect(
         await sqlState(
           owner,
