@@ -180,6 +180,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX shop_slugs_market_id_seller_id_held_key ON sellers.shop_slugs USING btree (market_id, seller_id) WHERE (state = 'held'::text)",
   'platform.event_delivery_market_id_next_attempt_at_pending_idx':
     "CREATE INDEX event_delivery_market_id_next_attempt_at_pending_idx ON platform.event_delivery USING btree (market_id, next_attempt_at) WHERE (status = 'pending'::text)",
+  // Storefront: at most one draft and one published version per page.
+  'storefront.page_versions_one_draft_key':
+    "CREATE UNIQUE INDEX page_versions_one_draft_key ON storefront.page_versions USING btree (market_id, page_id) WHERE (state = 'draft'::text)",
+  'storefront.page_versions_one_published_key':
+    "CREATE UNIQUE INDEX page_versions_one_published_key ON storefront.page_versions USING btree (market_id, page_id) WHERE (state = 'published'::text)",
   // Tax: at most one active strategy per Market.
   'tax.tax_strategies_one_active_key':
     'CREATE UNIQUE INDEX tax_strategies_one_active_key ON tax.tax_strategies USING btree (market_id) WHERE active',
