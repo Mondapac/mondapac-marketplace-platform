@@ -495,8 +495,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.product_revision_variants': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Photos (slice 13): a photo is inserted, read and deleted while no revision uses it; its
-    // renditions go with it by the cascade; the revision's photo rows are insert-only.
-    'catalog.product_images': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // renditions go with it by the cascade; the revision's photo rows are insert-only. A photo's state
+    // and its takedown columns are updated (takedown, forward-only by trigger).
+    'catalog.product_images': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['state', 'taken_down_at', 'taken_down_by_account_id', 'takedown_reason_code'],
+    },
     'catalog.product_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_images': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.rate_counters': {

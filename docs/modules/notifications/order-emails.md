@@ -44,3 +44,12 @@ come with their own packages.
 - **Reading at send time:** `ordering.shipmentNotice` (system rule, ids plus carrier and tracking
   number), then `identity.contactEmailOf`. No schema change: the outbox and inbox tables already
   exist.
+
+## Templates (Phase 6 package 4)
+
+- **Templates:** the texts of all messages are data in `domain/message-templates.ts` (`{name}`
+  slots, filled in one pass, so a value holding `{x}` is never expanded). The Market's
+  `defaultLocale` picks the text: exact tag, then the language part, then English. A new language
+  is a new entry per template; no flow changes. Today only English exists, and the three mails read
+  exactly as before.
+- **Text messages:** not built (owner decision 2026-10-16: provider "later", phone-number storage is its own identity package).

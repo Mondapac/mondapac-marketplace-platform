@@ -188,7 +188,9 @@ describe.each(TEST_MARKETS)('the seller team in market %s (database, slice 11)',
    * Two owners act on each other at once, both held until each has counted the holders. Exactly
    * one commits; the serializable check refuses the other's commit (40001), its retry re-reads
    * its actor in the unit and finds it demoted or removed: `access.denied`, before it counts
-   * again. Without the serializable unit both commit and the shop has no owner left.
+   * again. Without the serializable unit both commit and the shop has no owner left. Postgres may
+   * also refuse both first attempts; both then retry and count again before either commits, so
+   * the check is that no count happens once the first run has settled.
    */
   async function race(
     first: (
@@ -213,10 +215,14 @@ describe.each(TEST_MARKETS)('the seller team in market %s (database, slice 11)',
 
     let results: Result<unknown, unknown>[];
     let counts: number;
+    let countsAtFirstSettle: number | undefined;
     try {
       results = await Promise.all(
         [first(sellerId, one, two), second(sellerId, one, two)].map((run) =>
-          run.finally(() => oneSettled.open()),
+          run.finally(() => {
+            countsAtFirstSettle ??= spy.mock.calls.length;
+            oneSettled.open();
+          }),
         ),
       );
       counts = spy.mock.calls.length;
@@ -227,7 +233,8 @@ describe.each(TEST_MARKETS)('the seller team in market %s (database, slice 11)',
       restoreTimeout();
     }
 
-    expect(counts).toBe(2);
+    expect(counts).toBeGreaterThanOrEqual(2);
+    expect(countsAtFirstSettle).toBe(counts);
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, error: { code: 'access.denied' } }]);
     expect(await activeOwners(sellerId)).toHaveLength(1);
