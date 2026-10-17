@@ -1,6 +1,14 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Clock,
+  Id,
+  IdGenerator,
+  Result,
+  Temporal,
+} from '@mondapac/shared-kernel';
+import { isActingAsSession } from '../acting-as';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
@@ -12,10 +20,29 @@ import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
+import type { ClaimEvaluator } from '../ports/claim-evaluator';
+import type { Offer } from '../../domain/offer';
+import type { ClaimFacts, TagActor, TagDecision } from '../../domain/offer-tag';
+import type { ClaimQueryBuilder } from '../tags/claim-query-builder';
+import {
+  askPrepared,
+  claimsFailClosed,
+  factsInUnit,
+  NOTHING_ASKED,
+  hashesOf,
+  keptTagTypes,
+  MAX_CLAIM_ATTEMPTS,
+  parseRequestedTags,
+  preparePublishedAsk,
+  RETRY,
+  sellerTagActor,
+} from '../tags/offer-claims';
 import { refusalOf, type RefusedField } from '../working-copy/save-draft.service';
 
 export interface OwnOfferSubmitInput {
   readonly offerId: string;
+  /** Type codes to tag at the submit (design 5.1a point 6); absent is none. Closed schema. */
+  readonly requestedTags?: unknown;
 }
 
 export interface OwnOfferSubmitOutput {
@@ -32,7 +59,14 @@ export type OwnOfferSubmitFailure =
   | { readonly code: 'offer.handling-missing' }
   | { readonly code: 'offer.product-not-published' }
   | { readonly code: 'type.not-allowed' }
+  | { readonly code: 'tag.type-unknown' }
+  | {
+      readonly code: 'claim.requested-tag-not-allowed';
+      readonly tags: readonly { readonly typeCode: string; readonly reason: string }[];
+    }
+  | { readonly code: 'claim.check-unavailable' }
   | { readonly code: 'conflict.stale' }
+  | { readonly code: 'conflict.retry' }
   | { readonly code: 'claim-text.refused'; readonly fields: readonly RefusedField[] }
   | {
       readonly code: 'validation.failed';
@@ -48,7 +82,11 @@ export interface OwnOfferSubmitDependencies {
   readonly check: CheckClaimText;
   readonly policy: CatalogMarketPolicy;
   readonly outbox: OutboxWriter;
+  /** The claim facts and queries (design 5.1). */
+  readonly claims: ClaimQueryBuilder;
+  readonly evaluator: ClaimEvaluator;
   readonly clock: Clock;
+  readonly ids: IdGenerator;
 }
 
 /**
@@ -61,8 +99,18 @@ export interface OwnOfferSubmitDependencies {
  * claim-text control again, since the vocabulary can have grown since the last save. In one unit
  * the Offer is read again, its version must equal the one that was checked (else
  * `conflict.stale`), the Market's `catalog.approval-required` is read, and the Offer waits for
- * review or is published at once. Handling must already be recorded (`offer.handling-missing`):
- * its own command arrives with the next catalog package. Tags join with slice 8.
+ * review or is published at once. Handling must already be recorded (`offer.handling-missing`).
+ *
+ * Tags (design 5.1a point 6, 5.2, 5.4): every kept tag is asked again against the product's
+ * published revision, and `requestedTags` (closed: at most 20 distinct active type codes of the
+ * Market, else `validation.failed` or `tag.type-unknown`) asks for each new type; both outside
+ * any unit, after the claim-text control. If any requested type is not allowed the whole submit is
+ * refused (`claim.requested-tag-not-allowed`, per type the reason code); an `unavailable` answer
+ * refuses it (`claim.check-unavailable`). In the unit a kept tag no longer allowed is `suspended`
+ * and a requested one is written `active` (the product is published, so this is the add of 5.3).
+ * A lost race asks again, at most three times, then `conflict.retry`. A non-empty `requestedTags`
+ * must be refused in an acting-as session (Hassan M1); the actor has no acting-as field until
+ * SEL-08 (open carry).
  */
 export class OwnOfferSubmit extends UseCase<
   OwnOfferSubmitInput,
@@ -102,7 +150,7 @@ export class OwnOfferSubmit extends UseCase<
     context: CallContext,
     input: OwnOfferSubmitInput,
   ): Promise<Result<OwnOfferSubmitOutput, OwnOfferSubmitFailure>> {
-    const { actor, market } = context;
+    const { actor } = context;
     if (
       actor.kind !== 'authenticated' ||
       actor.population !== 'seller' ||
@@ -122,12 +170,42 @@ export class OwnOfferSubmit extends UseCase<
     if (offerId === null || !offerId.ok) {
       return err({ code: 'validation.failed', fields: [{ path: 'offerId', code: 'format' }] });
     }
+    const requested = parseRequestedTags(input.requestedTags);
+    if (!requested.ok) return err({ code: 'validation.failed', fields: [requested.error] });
+    if (requested.value.length > 0) {
+      // Badge requests are not offered in an acting-as session (Hassan M1 of 5.1a, L1).
+      if (isActingAsSession(actor)) return err({ code: 'access.denied' });
+      const active = await deps.evaluator.activeTypeCodes(context);
+      if (!active.ok) return err(active.error);
+      if (requested.value.some((code) => !active.value.has(code))) {
+        return err({ code: 'tag.type-unknown' });
+      }
+    }
+
+    for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
+      const outcome = await claimsFailClosed(() =>
+        this.#attempt(context, offerId.value, sellerId, requested.value),
+      );
+      if (outcome !== RETRY) return outcome;
+    }
+    return err({ code: 'conflict.retry' });
+  }
+
+  async #attempt(
+    context: CallContext,
+    offerId: Id<'Offer'>,
+    sellerId: Id<'Seller'>,
+    requested: readonly string[],
+  ): Promise<Result<OwnOfferSubmitOutput, OwnOfferSubmitFailure> | typeof RETRY> {
+    const { actor, market } = context;
+    if (actor.kind !== 'authenticated') return err({ code: 'access.denied' });
+    const { deps } = this;
 
     // Read-only first: ownership, the product's state and the texts to check.
     const guard = await deps.unitOfWork.run(
       market,
       async () => {
-        const offer = await deps.offers.findById(market, offerId.value);
+        const offer = await deps.offers.findById(market, offerId);
         if (
           offer === null ||
           offer.state.sellerId !== sellerId ||
@@ -136,23 +214,40 @@ export class OwnOfferSubmit extends UseCase<
           return ok(null);
         }
         const product = await deps.products.findById(market, offer.state.productId);
+        // The kept tags and the requested types that have no open tag yet (an open one is kept).
+        const open = new Set(offer.tags.map((tag) => tag.typeCode));
+        const kept = keptTagTypes(offer);
+        const added = requested.filter((code) => !open.has(code));
+        const types = [...kept, ...added];
+        const prepared =
+          types.length === 0 ||
+          offer.state.handling === null ||
+          product?.state.status !== 'published'
+            ? null
+            : await preparePublishedAsk(deps.claims, market, offer.state, types);
         return ok({
           description: offer.state.description,
           status: offer.state.status,
           version: offer.state.version,
+          handling: offer.state.handling,
           productStatus: product?.state.status ?? null,
           typeCode: product?.state.typeCode ?? null,
+          added,
+          prepared,
         });
       },
       { readOnly: true },
     );
     if (!guard.ok) return err({ code: 'access.unavailable' });
     if (guard.value === null) return err({ code: 'offer.not-found' });
-    const { description, status, version, productStatus, typeCode } = guard.value;
+    const { description, status, version, productStatus, typeCode, added } = guard.value;
     if (status !== 'draft') return err({ code: 'offer.not-submittable' });
     if (productStatus !== 'published' || typeCode === null) {
       return err({ code: 'offer.product-not-published' });
     }
+    if (guard.value.handling === null) return err({ code: 'offer.handling-missing' });
+    const prepared = guard.value.prepared ?? NOTHING_ASKED;
+    if (prepared === 'unavailable') return err({ code: 'claim.check-unavailable' });
     const allowed = await deps.allowedTypes.allowedFor(context, sellerId);
     if (allowed === null) return err({ code: 'access.unavailable' });
     if (allowed !== 'all' && !allowed.has(typeCode)) return err({ code: 'type.not-allowed' });
@@ -183,45 +278,120 @@ export class OwnOfferSubmit extends UseCase<
       if (refused.length > 0) return err({ code: 'claim-text.refused', fields: refused });
     }
 
+    // Every kept and requested tag, outside any unit (the facade opens its own).
+    const asked = await askPrepared(deps.evaluator, context, prepared);
+    if (!asked.ok) return err(asked.error);
+    const hash = hashesOf(prepared);
+
     try {
-      return await deps.unitOfWork.run<OwnOfferSubmitOutput, OwnOfferSubmitFailure>(
-        market,
-        async () => {
-          const offer = await deps.offers.findById(market, offerId.value);
-          if (
-            offer === null ||
-            offer.state.sellerId !== sellerId ||
-            offer.state.status === 'deleted'
-          ) {
-            return err({ code: 'offer.not-found' } as const);
-          }
-          if (offer.state.version !== version) return err({ code: 'conflict.stale' } as const);
-          const product = await deps.products.findById(market, offer.state.productId);
-          if (product?.state.status !== 'published') {
-            return err({ code: 'offer.product-not-published' } as const);
-          }
-          let approvalRequired: boolean;
-          try {
-            approvalRequired = await deps.policy.approvalRequired(market);
-          } catch {
-            return err({ code: 'access.unavailable' } as const);
-          }
-          const submitted = offer.submit({ approvalRequired, now: deps.clock.now() });
-          if (!submitted.ok) {
-            return err(
-              submitted.error.code === 'offer.handling-missing'
-                ? ({ code: 'offer.handling-missing' } as const)
-                : ({ code: 'offer.not-submittable' } as const),
-            );
-          }
-          await deps.offers.save(market, offer, { kind: 'seller', accountId: actor.accountId });
-          await deps.outbox.append(context, offer.pendingEvents);
-          return ok({ published: submitted.value.published });
-        },
-      );
+      const written = await deps.unitOfWork.run<
+        OwnOfferSubmitOutput | typeof RETRY,
+        OwnOfferSubmitFailure
+      >(market, async () => {
+        const offer = await deps.offers.findById(market, offerId);
+        if (
+          offer === null ||
+          offer.state.sellerId !== sellerId ||
+          offer.state.status === 'deleted'
+        ) {
+          return err({ code: 'offer.not-found' } as const);
+        }
+        if (offer.state.version !== version) return ok(RETRY);
+        const product = await deps.products.findById(market, offer.state.productId);
+        if (product?.state.status !== 'published') {
+          return err({ code: 'offer.product-not-published' } as const);
+        }
+        let approvalRequired: boolean;
+        try {
+          approvalRequired = await deps.policy.approvalRequired(market);
+        } catch {
+          return err({ code: 'access.unavailable' } as const);
+        }
+        const now = deps.clock.now();
+        const submitted = offer.submit({ approvalRequired, now });
+        if (!submitted.ok) {
+          return err(
+            submitted.error.code === 'offer.handling-missing'
+              ? ({ code: 'offer.handling-missing' } as const)
+              : ({ code: 'offer.not-submittable' } as const),
+          );
+        }
+        // The facts again, in this unit (Hassan M2): the decisions are judged against the
+        // published revision of now; one published since the ask means asking again.
+        const facts = await factsInUnit(deps.claims, market, offer.state.productId, prepared);
+        if (facts === RETRY) return ok(RETRY);
+        if (prepared.queries.size > 0 && facts === null) {
+          return err({ code: 'claim.check-unavailable' } as const);
+        }
+        const tagged = this.#settleTags(
+          offer,
+          facts,
+          asked.value,
+          added,
+          hash,
+          sellerTagActor(actor),
+          now,
+        );
+        if (tagged !== null) return tagged;
+        await deps.offers.save(market, offer, { kind: 'seller', accountId: actor.accountId });
+        await deps.outbox.append(context, offer.pendingEvents);
+        return ok({ published: submitted.value.published });
+      });
+      if (written.ok && written.value === RETRY) return RETRY;
+      return written as Result<OwnOfferSubmitOutput, OwnOfferSubmitFailure>;
     } catch (error) {
-      if (error instanceof StaleAggregateError) return err({ code: 'conflict.stale' });
+      if (error instanceof StaleAggregateError) return RETRY;
       throw error;
+    }
+  }
+
+  /**
+   * In the submit unit: the kept tags settled and the requested ones added, both on the decisions
+   * of this request whose inputs equal the state being saved. Null when done; else the answer.
+   */
+  #settleTags(
+    offer: Offer,
+    facts: ClaimFacts | null,
+    decisions: ReadonlyMap<string, readonly TagDecision[]>,
+    added: readonly string[],
+    hash: (canonical: string) => string,
+    actor: TagActor,
+    now: Temporal.Instant,
+  ): Result<typeof RETRY, OwnOfferSubmitFailure> | null {
+    const settled = offer.settleTags({
+      facts,
+      decisions,
+      entryPath: 'offer-edit',
+      actor,
+      hash,
+      now,
+    });
+    if (!settled.ok) {
+      return settled.error.code === 'claim.inputs-changed'
+        ? ok(RETRY)
+        : err({ code: 'claim.check-unavailable' });
+    }
+    if (added.length === 0) return null;
+    if (facts === null) return err({ code: 'claim.check-unavailable' });
+    const result = offer.addTags({
+      tags: added.map((typeCode) => ({ tagId: this.deps.ids.next<'OfferTag'>(), typeCode })),
+      facts,
+      decisions,
+      entryPath: 'tag-add',
+      actor,
+      hash,
+      now,
+    });
+    if (result.ok) return null;
+    switch (result.error.code) {
+      case 'claim.inputs-changed':
+        return ok(RETRY);
+      case 'claim.tag-not-allowed':
+        return err({ code: 'claim.requested-tag-not-allowed', tags: result.error.tags });
+      case 'offer.handling-missing':
+        return err({ code: 'offer.handling-missing' });
+      default:
+        return err({ code: 'claim.check-unavailable' });
     }
   }
 }

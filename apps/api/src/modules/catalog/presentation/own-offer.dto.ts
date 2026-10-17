@@ -87,6 +87,35 @@ export class OwnOfferSubmitted {
   published!: boolean;
 }
 
+export class OwnOfferSubmitRequest {
+  @ApiProperty({
+    required: false,
+    type: [String],
+    description:
+      'Certification type codes to tag at this submit (at most 20, distinct, active types of the ' +
+      'Market). Each is asked of certification against the published revision; one not allowed ' +
+      'refuses the whole submit (claim.requested-tag-not-allowed, details.tags). The body may be ' +
+      'absent. No decision, basis, certificate or status is ever accepted.',
+  })
+  requestedTags?: string[];
+}
+
+export class OwnOfferAddTagRequest {
+  @ApiProperty({
+    description:
+      'A certification type code, an active type of the Market. Only the code: no decision, ' +
+      'basis, certificate, issuer or status is accepted (they come from certification).',
+  })
+  typeCode!: string;
+}
+
+export class OwnOfferTagAdded {
+  @ApiProperty() typeCode!: string;
+  @ApiProperty({ enum: ['active'] }) status!: string;
+  @ApiProperty({ enum: ['SELLER', 'MANUFACTURER'], description: 'The basis of the tag (CERT-24).' })
+  basis!: string;
+}
+
 export class OwnProductCreateRequest {
   @ApiProperty({
     description:

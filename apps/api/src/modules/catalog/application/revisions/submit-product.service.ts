@@ -11,7 +11,7 @@ import type {
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import type { ProductRefusal } from '../../domain/product';
+import type { Product, ProductRefusal } from '../../domain/product';
 import { classify, decideOutcome } from '../../domain/product-revision-policy';
 import type { RevisionContent } from '../../domain/revision-content';
 import { revisionTextsOf, summaryOf } from '../../domain/revision-texts';
@@ -28,7 +28,37 @@ export interface SubmitProductInput {
   readonly productId: Id<'Product'>;
   /** The client saw the warning that a pending revision is replaced (brief s4 d 1). */
   readonly replacePending: boolean;
+  /**
+   * The id the revision takes when it is stored, minted by the caller before its claim asks so
+   * the queries name the frozen revision being submitted (design 5.1a point 1). Minted here when
+   * absent.
+   */
+  readonly revisionId?: Id<'ProductRevision'>;
+  /** A seller's claim asks of this submit (design 4.2 row 1, 5.1a); none for an admin. */
+  readonly claims?: SubmitClaims;
 }
+
+/** The frozen revision being submitted, as the claim steps see it. */
+export interface FrozenSubmission {
+  readonly product: Product;
+  readonly revisionId: Id<'ProductRevision'>;
+  readonly content: RevisionContent;
+}
+
+/**
+ * The claim steps of a seller's submit (design 4.2 row 1; 5.1a points 1, 4, 6): `ask` runs after
+ * the claim-text check, outside any unit (it opens its own read-only unit and calls the facade);
+ * `settle` runs in the write unit, after the content was frozen again and found equal, before
+ * the product is stored. Either refuses the whole submit; `claim.inputs-changed` from `settle`
+ * means a lost race, and the caller submits again.
+ */
+export interface SubmitClaims {
+  ask(frozen: FrozenSubmission): Promise<Result<void, SubmitProductFailure>>;
+  settle(frozen: FrozenSubmission): Promise<Result<void, SubmitProductFailure>>;
+}
+
+/** Per type the `ClaimReason` code of its first refused variant (CUX 3.7). */
+type TagReasons = readonly { readonly typeCode: string; readonly reason: string }[];
 
 export interface SubmitProductOutput {
   readonly revisionId: Id<'ProductRevision'>;
@@ -45,7 +75,16 @@ export type SubmitProductFailure =
   | { readonly code: 'working-copy.not-found' }
   | { readonly code: 'working-copy.invalid-content' }
   | { readonly code: 'conflict.stale' }
-  | { readonly code: 'claim-text.refused'; readonly fields: readonly RefusedField[] };
+  | { readonly code: 'claim-text.refused'; readonly fields: readonly RefusedField[] }
+  | { readonly code: 'offer.handling-missing' }
+  | { readonly code: 'claim.requested-tag-not-allowed'; readonly tags: TagReasons }
+  | { readonly code: 'claim.tags-would-be-lost'; readonly tags: TagReasons }
+  | { readonly code: 'claim.check-unavailable' }
+  | { readonly code: 'claim.inputs-changed' }
+  | {
+      readonly code: 'validation.failed';
+      readonly fields: readonly { readonly path: string; readonly code: string }[];
+    };
 
 export interface SubmitProductDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -119,7 +158,11 @@ export class SubmitProduct {
     // 1. Freeze, in a read-only unit. The claim check below runs after this unit has closed:
     // units do not nest and the matcher opens its own (certification's note on #197).
     const first = await unitOfWork.run<
-      { readonly content: RevisionContent; readonly contentHash: ContentHash },
+      {
+        readonly product: Product;
+        readonly content: RevisionContent;
+        readonly contentHash: ContentHash;
+      },
       SubmitProductFailure
     >(
       market,
@@ -128,7 +171,11 @@ export class SubmitProduct {
         if (!loaded.ok) return loaded;
         const frozen = await freeze.freeze(market, loaded.value.product, loaded.value.copy);
         if (!frozen.ok) return frozen;
-        return ok({ content: frozen.value.content, contentHash: frozen.value.contentHash });
+        return ok({
+          product: loaded.value.product,
+          content: frozen.value.content,
+          contentHash: frozen.value.contentHash,
+        });
       },
       { readOnly: true },
     );
@@ -167,6 +214,17 @@ export class SubmitProduct {
       return err({ code: 'claim-text.refused', fields: refused });
     }
     const checkedHash = first.value.contentHash;
+    const revisionId = input.revisionId ?? this.deps.ids.next<'ProductRevision'>();
+
+    // The seller's claim asks against the frozen revision, outside any unit (design 5.1a).
+    if (input.claims !== undefined) {
+      const asked = await input.claims.ask({
+        product: first.value.product,
+        revisionId,
+        content: first.value.content,
+      });
+      if (!asked.ok) return asked;
+    }
 
     // 2. Freeze again and store, in one unit.
     try {
@@ -213,7 +271,6 @@ export class SubmitProduct {
             sensitiveRevisionPending,
             author: author.kind === 'seller' ? 'seller' : 'admin-platform',
           });
-          const revisionId = this.deps.ids.next<'ProductRevision'>();
           const revisionNo = await revisions.nextRevisionNo(market, product.state.id);
           const submitted = product.submitRevision({
             revisionId,
@@ -245,6 +302,14 @@ export class SubmitProduct {
             content: frozen.value.content,
           };
           await revisions.add(market, revision);
+          if (input.claims !== undefined) {
+            const settled = await input.claims.settle({
+              product,
+              revisionId,
+              content: frozen.value.content,
+            });
+            if (!settled.ok) return settled;
+          }
           await products.save(market, product);
           await this.deps.outbox.append(context, product.pendingEvents);
           return ok({ revisionId, revisionNo, published: submitted.value.published });
