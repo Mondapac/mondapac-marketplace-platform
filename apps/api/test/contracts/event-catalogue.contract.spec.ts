@@ -113,6 +113,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.order-confirmation-mail',
       'notifications.order-shipped-mail',
       'notifications.seller-new-order-mail',
+      'notifications.seller-order-notice',
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
       'search.index-deleted-offer',
@@ -127,6 +128,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('ordering.order-paid.v1')).toEqual([
       'notifications.order-confirmation-mail',
       'notifications.seller-new-order-mail',
+      'notifications.seller-order-notice',
     ]);
     expect(subscriptions.subscribersOf('ordering.order-shipped.v1')).toEqual([
       'notifications.order-shipped-mail',
