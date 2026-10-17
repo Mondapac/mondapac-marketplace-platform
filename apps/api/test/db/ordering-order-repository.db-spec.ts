@@ -13,7 +13,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { testDatabaseUrl } from './test-database';
+import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // The order store on PostgreSQL (ordering.orders, seller_orders, order_lines), as the application
 // role, for both Market fixtures: round trip with the seller split, the optimistic version, the
@@ -32,16 +32,20 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
   let db: Persistence;
   let repository: PrismaOrderRepository;
   let sql: Client;
+  let owner: Client;
 
   beforeAll(async () => {
     db = createPersistence();
     repository = new PrismaOrderRepository(db.service);
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
+    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    await owner.connect();
   });
   afterAll(async () => {
     await db.close();
     await sql.end();
+    await owner.end();
   });
 
   const value = async <T>(target: MarketContext, work: () => Promise<T>): Promise<T> => {
@@ -77,6 +81,9 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           sellerId: ids.next<'Seller'>(),
           subtotal: 2500n,
           shipping: 0n,
+          shippingTaxRateBps: null,
+          shippingTax: null,
+          shippingTaxInclusive: null,
           total: 2500n,
           fulfilment: 'to-ship',
           carrier: null,
@@ -120,6 +127,56 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(read).toEqual(order);
     expect(own).toEqual(order);
     expect(foreign).toBeNull();
+  });
+
+  it('keeps the frozen shipping tax with its rate and price basis', async () => {
+    const base = newOrder();
+    const order = {
+      ...base,
+      sellerOrders: base.sellerOrders.map((seller) => ({
+        ...seller,
+        shippingTaxRateBps: 1000,
+        shippingTax: 45n,
+        shippingTaxInclusive: true,
+      })),
+    };
+    await value(market, () => repository.insert(market, order));
+
+    // A tax-exclusive order is charged on top: its seller total may exceed subtotal plus shipping.
+    const exclusive = newOrder();
+    const topped = {
+      ...exclusive,
+      total: money(2500n + 500n + 250n + 50n, currency),
+      sellerOrders: exclusive.sellerOrders.map((seller) => ({
+        ...seller,
+        shipping: 500n,
+        shippingTaxRateBps: 1000,
+        shippingTax: 50n,
+        shippingTaxInclusive: false,
+        total: 2500n + 500n + 250n + 50n,
+      })),
+    };
+    await value(market, () => repository.insert(market, topped));
+    expect(await value(market, () => repository.findById(market, topped.id))).toEqual(topped);
+
+    expect(await value(market, () => repository.findById(market, order.id))).toEqual(order);
+    // The three columns go together and stay in range, even for the table owner; the application
+    // role cannot change them at all.
+    const attempt = (set: string) =>
+      owner
+        .query(`UPDATE ordering.seller_orders SET ${set} WHERE id = '${order.sellerOrders[0]!.id}'`)
+        .then(
+          () => 'allowed',
+          (error: { code?: string }) => error.code,
+        );
+    expect(await attempt('shipping_tax_inclusive = NULL')).toBe(CHECK);
+    expect(await attempt('shipping_tax_rate_bps = 5001')).toBe(CHECK);
+    expect(await attempt('shipping_tax_amount = -1')).toBe(CHECK);
+    await expect(
+      sql.query(`UPDATE ordering.seller_orders SET shipping_tax_amount = 0 WHERE id = $1`, [
+        order.sellerOrders[0]!.id,
+      ]),
+    ).rejects.toMatchObject({ code: '42501' });
   });
 
   it('saves under the version and refuses a stale write', async () => {

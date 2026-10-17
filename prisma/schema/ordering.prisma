@@ -59,6 +59,11 @@ model OrderingSellerOrder {
   sellerId            String              @map("seller_id") @db.Uuid
   subtotalAmount      BigInt              @map("subtotal_amount")
   shippingAmount      BigInt              @map("shipping_amount")
+  /// The tax on the flat shipping fee, frozen at placement beside the rate and the price basis
+  /// (ADR-0039 decision 4). All three are null on orders placed before it was recorded (CHECK).
+  shippingTaxRateBps  Int?                @map("shipping_tax_rate_bps")
+  shippingTaxAmount   BigInt?             @map("shipping_tax_amount")
+  shippingTaxInclusive Boolean?           @map("shipping_tax_inclusive")
   totalAmount         BigInt              @map("total_amount")
   /// to-ship, shipped or delivered (CHECK). Moves only forward.
   fulfilment          String

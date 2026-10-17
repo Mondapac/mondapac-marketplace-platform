@@ -457,11 +457,18 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(list.headers['cache-control']).toBe('no-store');
       expect(body(list).orders).toHaveLength(1);
       expect(one.body).toMatchObject({ orderId, accountId: CUSTOMER, paymentIntentId: null });
-      // The tax frozen at checkout, as minor-unit strings, and the strategy (the built-in one).
+      // The tax frozen at checkout, as minor-unit strings (goods 273 plus the 500 delivery fee's
+      // 45, both inclusive), and the strategy (the built-in one).
       expect(one.body).toMatchObject({
-        tax: { amount: '273', currency },
+        tax: { amount: '318', currency },
         taxStrategyId: null,
-        sellerOrders: [{ tax: { amount: '273', currency }, lines: [{ taxRateBps: 1000 }] }],
+        sellerOrders: [
+          {
+            shippingTax: { amount: '45', currency },
+            tax: { amount: '318', currency },
+            lines: [{ taxRateBps: 1000 }],
+          },
+        ],
       });
       expect(noKey.status).toBe(403);
       expect(customerTries.status).toBeGreaterThanOrEqual(401);
