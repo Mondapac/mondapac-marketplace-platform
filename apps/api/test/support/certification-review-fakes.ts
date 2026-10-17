@@ -5,10 +5,15 @@ import type {
   DecisionNotice,
   DecisionWrite,
   DuplicateHint,
+  FullHistoryPage,
+  FullHistoryRow,
   OtherSubmission,
   ReviewQueueEntry,
   ReviewSnapshot,
   ReviewSubmission,
+  RevocationNotice,
+  RevocationView,
+  RevokeWrite,
   CheckWrite,
   ConfirmationWrite,
   ScopeWrite,
@@ -38,6 +43,15 @@ export class MemoryReviews implements CertificateReviewRepository {
   /** The record's other submissions a test sets, newest first (the review page's list). */
   others: OtherSubmission[] = [];
   readonly history: ReviewSnapshot['history'][number][] = [];
+  /** Every history row with its id, account and note, as the full read sees them (slice 11). */
+  readonly fullHistory: FullHistoryRow[] = [];
+  /** Withdrawals written by a revoke (cause `revoked`). */
+  readonly withdrawals: { submissionId: Id<'Submission'>; cause: 'revoked' }[] = [];
+  /**
+   * The type revision of the approved submission when it is not `submission` (a test that sets
+   * a pending renewal beside an approved one sets it).
+   */
+  approvedTypeRevisionId: Id<'CertificationTypeRevision'> | null = null;
   erased = 0;
   readonly marketId: string;
 
@@ -176,7 +190,123 @@ export class MemoryReviews implements CertificateReviewRepository {
       actorKind: 'admin',
       reasonCode: write.reasonCode,
     });
+    this.fullHistory.push({
+      id: write.historyId,
+      fromStatus: write.fromStatus,
+      toStatus: write.toStatus,
+      submissionId: write.submissionId,
+      actorKind: 'admin',
+      actorAccountId: write.accountId,
+      reasonCode: write.reasonCode,
+      noteCiphertext: null,
+      occurredAt: write.decidedAt,
+    });
     return Promise.resolve();
+  }
+
+  revocationView(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+  ): Promise<RevocationView | null> {
+    if (!this.own(market) || certificateId !== this.certificate.id) return Promise.resolve(null);
+    const approvedId = this.certificate.approvedSubmissionId;
+    const typeRevisionId =
+      approvedId === null
+        ? null
+        : approvedId === this.submission.id
+          ? this.submission.typeRevisionId
+          : this.approvedTypeRevisionId;
+    return Promise.resolve({
+      certificate: {
+        ...this.certificate,
+        version: this.certificate.version + (lockContext.getStore() === undefined ? 0 : 1),
+      },
+      approved:
+        approvedId === null || typeRevisionId === null
+          ? null
+          : { submissionId: approvedId, typeRevisionId },
+    });
+  }
+
+  revoke(_market: MarketContext, write: RevokeWrite): Promise<void> {
+    if (
+      this.certificate.status !== write.fromStatus ||
+      this.certificate.approvedSubmissionId !== write.approvedSubmissionId ||
+      this.certificate.pendingSubmissionId !== write.withdrawnSubmissionId
+    ) {
+      throw new StaleAggregateError('seller-certification', this.certificate.id);
+    }
+    this.bump(lockContext.getStore() ?? this.certificate.version);
+    if (write.withdrawnSubmissionId !== null) {
+      this.withdrawals.push({ submissionId: write.withdrawnSubmissionId, cause: 'revoked' });
+      if (this.submission.id === write.withdrawnSubmissionId) {
+        this.submission.decision = {
+          outcome: 'withdrawn',
+          reasonCode: null,
+          reasonTextCiphertext: null,
+          decidedAt: write.revokedAt,
+          actorKind: 'admin',
+        };
+      }
+    }
+    this.certificate.status = 'revoked';
+    this.certificate.pendingSubmissionId = null;
+    this.certificate.pendingKind = null;
+    this.history.push({
+      fromStatus: write.fromStatus,
+      toStatus: 'revoked',
+      occurredAt: write.revokedAt,
+      actorKind: 'admin',
+      reasonCode: write.reasonCode,
+    });
+    this.fullHistory.push({
+      id: write.historyId,
+      fromStatus: write.fromStatus,
+      toStatus: 'revoked',
+      submissionId: write.approvedSubmissionId,
+      actorKind: 'admin',
+      actorAccountId: write.accountId,
+      reasonCode: write.reasonCode,
+      noteCiphertext: write.noteCiphertext,
+      occurredAt: write.revokedAt,
+    });
+    return Promise.resolve();
+  }
+
+  revocationNotice(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+  ): Promise<RevocationNotice | null> {
+    if (!this.own(market) || certificateId !== this.certificate.id) return Promise.resolve(null);
+    const revoked = [...this.fullHistory].reverse().find((row) => row.toStatus === 'revoked');
+    return Promise.resolve({
+      sellerId: this.certificate.sellerId,
+      typeCode: this.certificate.typeCode,
+      status: this.certificate.status,
+      approvedSubmissionId: this.certificate.approvedSubmissionId,
+      reasonCode: revoked?.reasonCode ?? null,
+    });
+  }
+
+  historyPage(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+    page: { readonly beforeId: Id<'CertificationHistory'> | null; readonly limit: number },
+  ): Promise<FullHistoryPage | null> {
+    if (!this.own(market) || certificateId !== this.certificate.id) return Promise.resolve(null);
+    const newestFirst = [...this.fullHistory].reverse();
+    let start = 0;
+    if (page.beforeId !== null) {
+      const at = newestFirst.findIndex((row) => row.id === page.beforeId);
+      if (at < 0) return Promise.resolve(null);
+      start = at + 1;
+    }
+    const rest = newestFirst.slice(start);
+    return Promise.resolve({
+      sellerId: this.certificate.sellerId,
+      rows: rest.slice(0, page.limit),
+      more: rest.length > page.limit,
+    });
   }
 
   overview(

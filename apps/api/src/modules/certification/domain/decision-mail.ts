@@ -70,6 +70,29 @@ export function declinedMail(input: {
   };
 }
 
+/**
+ * An admin revoked the certificate (design 12; CERT-16: "the seller is told"). The Market's plain
+ * label of the reason; never the admin's note.
+ */
+export function revokedMail(input: {
+  readonly typeCode: string;
+  readonly reasonLabel: string | null;
+}): DecisionMail {
+  const type = line(input.typeCode);
+  return {
+    subject: 'Your certificate was revoked',
+    text: [
+      'Your certificate was revoked',
+      '',
+      `Your ${type} certificate has been revoked and no longer counts.`,
+      ...(input.reasonLabel === null ? [] : ['', `Reason: ${line(input.reasonLabel)}`]),
+      '',
+      `Your offers no longer show the ${type} certification. You can add a new certificate in your seller panel; the certification comes back once it is approved.`,
+      '',
+    ].join('\n'),
+  };
+}
+
 // The answer to a seller's "my issuer is not listed" request (design 12, `issuer-request-answered`).
 // Neither mail repeats the issuer's name the seller typed (request text, never a registry value) nor
 // names the added issuer: the seller picks it in the form, where the registry shows it.

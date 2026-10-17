@@ -31,7 +31,14 @@ export const ZZ_REVIEW_POLICY: ReviewPolicy = {
       check: 'seal-read',
       nextStep: 'ask-support',
       label: 'The certificate is not genuine.',
-      outcomes: ['declined'],
+      outcomes: ['declined', 'revoked'],
+    },
+    {
+      code: 'body-withdrew',
+      check: null,
+      nextStep: 'ask-support',
+      label: 'The body took the certificate back.',
+      outcomes: ['revoked'],
     },
   ],
   issuerRequestReasons: [

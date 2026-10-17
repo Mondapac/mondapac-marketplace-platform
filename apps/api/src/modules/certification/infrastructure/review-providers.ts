@@ -43,10 +43,12 @@ import { ApproveSellerCertificate } from '../application/use-cases/seller-certif
 import { DeclineSellerCertificate } from '../application/use-cases/seller-certificate-decline.use-case';
 import { SellerCertificateRecordCheck } from '../application/use-cases/seller-certificate-record-check.use-case';
 import { SellerCertificateRecordConfirmation } from '../application/use-cases/seller-certificate-record-confirmation.use-case';
+import { SellerCertificateHistoryRead } from '../application/use-cases/seller-certificate-history-read.use-case';
 import { SellerCertificateRecordScope } from '../application/use-cases/seller-certificate-record-scope.use-case';
 import { RequestChangesSellerCertificate } from '../application/use-cases/seller-certificate-request-changes.use-case';
 import { SellerCertificateReviewDocumentRead } from '../application/use-cases/seller-certificate-review-document-read.use-case';
 import { SellerCertificateReviewRead } from '../application/use-cases/seller-certificate-review-read.use-case';
+import { RevokeSellerCertificate } from '../application/use-cases/seller-certificate-revoke.use-case';
 import { SellerCertificatesQueue } from '../application/use-cases/seller-certificates-queue.use-case';
 import {
   SendDecisionMail,
@@ -72,6 +74,8 @@ export const reviewUseCases = [
   ApproveSellerCertificate,
   RequestChangesSellerCertificate,
   DeclineSellerCertificate,
+  RevokeSellerCertificate,
+  SellerCertificateHistoryRead,
   SellerCertificateOverview,
 ] as const;
 

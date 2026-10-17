@@ -5,7 +5,12 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { EventDelivery } from '../../../../platform/events/event-delivery';
 import type { MailTransport } from '../../../../platform/mail/mail-transport';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { approvedMail, changesRequestedMail, declinedMail } from '../../domain/decision-mail';
+import {
+  approvedMail,
+  changesRequestedMail,
+  declinedMail,
+  revokedMail,
+} from '../../domain/decision-mail';
 import type { DecisionOutcome } from '../../domain/review';
 import type { SellerOwnerContact } from '../ports/decision-mail.ports';
 import type { CertificationMailPolicy, ReviewPolicyProvider } from '../ports/review.ports';
@@ -20,12 +25,22 @@ export interface DecisionMailDependencies {
   readonly policies: ReviewPolicyProvider;
 }
 
+/** A review decision on a submission, or the revoke of the record (design 12). */
+export type MailedDecision = DecisionOutcome | 'revoked';
+
 /** One delivery of a decision event: ids only; the decision is read now. */
 export interface SendDecisionMailInput {
   readonly delivery: EventDelivery;
   readonly submissionId: string;
   readonly sellerId: string;
-  readonly decision: DecisionOutcome;
+  readonly decision: MailedDecision;
+  /** The record, for `revoked` (the revoke is on the record, not on a submission). */
+  readonly certificateId?: string;
+}
+
+interface Notice {
+  readonly typeCode: string;
+  readonly reasonCode: string | null;
 }
 
 export type SendDecisionMailOutput =
@@ -39,7 +54,8 @@ const logger = new Logger('CertificationDecisionMail');
 
 /**
  * The mail to a seller's Owner after a review decision (certification design 12): approved,
- * changes needed (with the reason) or declined (with the reason). Rule `system`, from the
+ * changes needed (with the reason), declined (with the reason) or revoked (with the reason; slice
+ * 11). A revoke mail goes only while the record is still `revoked` on the named submission. Rule `system`, from the
  * subscriptions of the module's own decision events. As the other handlers (PN2): a read-only
  * unit loads the decision, the address is read through `identity`, the mail is sent outside any
  * unit and `runOnce` marks the delivery; a crash in between sends it again (at least once). The
@@ -75,14 +91,36 @@ export class SendDecisionMail extends UseCase<
 
     const loaded = await deps.unitOfWork.run(
       market,
-      async () => ok(await deps.reviews.decisionNotice(market, submission.value)),
+      async (): Promise<Result<Notice | null, never>> => {
+        if (input.decision === 'revoked') {
+          const certificate = parseId<'SellerCertification'>(input.certificateId ?? '');
+          if (!certificate.ok) throw new Error('decision-mail: the event holds a bad id');
+          const revoked = await deps.reviews.revocationNotice(market, certificate.value);
+          return ok(
+            revoked === null ||
+              revoked.status !== 'revoked' ||
+              revoked.sellerId !== seller.value ||
+              revoked.approvedSubmissionId !== submission.value
+              ? null
+              : revoked,
+          );
+        }
+        const decided = await deps.reviews.decisionNotice(market, submission.value);
+        return ok(
+          decided === null ||
+            decided.outcome !== input.decision ||
+            decided.sellerId !== seller.value
+            ? null
+            : decided,
+        );
+      },
       { readOnly: true },
     );
     if (!loaded.ok) throw new Error('decision-mail: the read unit failed');
     const notice = loaded.value;
 
     let skipped: 'decision.gone' | 'recipient.none' | null = null;
-    if (notice === null || notice.outcome !== input.decision || notice.sellerId !== seller.value) {
+    if (notice === null) {
       skipped = 'decision.gone';
     } else {
       const to = await deps.contacts.emailOf(context, seller.value);
@@ -98,7 +136,9 @@ export class SendDecisionMail extends UseCase<
             ? approvedMail({ typeCode: notice.typeCode })
             : input.decision === 'changes-requested'
               ? changesRequestedMail({ typeCode: notice.typeCode, reasonLabel })
-              : declinedMail({ typeCode: notice.typeCode, reasonLabel });
+              : input.decision === 'declined'
+                ? declinedMail({ typeCode: notice.typeCode, reasonLabel })
+                : revokedMail({ typeCode: notice.typeCode, reasonLabel });
         await deps.transport.send({
           to,
           from: deps.mailPolicy.mailSender(market),

@@ -305,3 +305,61 @@ export class ReviewDecided {
   @ApiProperty() version!: number;
   @ApiProperty() decidedAt!: string;
 }
+
+export class RevokeRequest {
+  @ApiProperty({ description: 'The record version the admin saw.' }) version!: number;
+  @ApiProperty({ description: "A reason code of the Market policy listed for 'revoked'." })
+  reasonCode!: string;
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    type: String,
+    description: 'An optional note (at most 1000 characters), kept encrypted on the history row.',
+  })
+  reasonText?: string | null;
+}
+
+export class RevokeDone {
+  @ApiProperty({ format: 'uuid' }) certificateId!: string;
+  @ApiProperty({ enum: ['revoked'] }) status!: string;
+  @ApiProperty({ format: 'uuid', description: 'The approved submission the record held.' })
+  submissionId!: string;
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description: 'The pending submission withdrawn with the revoke (cause revoked), if any.',
+  })
+  withdrawnSubmissionId!: string | null;
+  @ApiProperty({ description: 'The record version after the revoke.' }) version!: number;
+  @ApiProperty() revokedAt!: string;
+}
+
+export class HistoryEntryView {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ nullable: true, type: String }) fromStatus!: string | null;
+  @ApiProperty() toStatus!: string;
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) submissionId!: string | null;
+  @ApiProperty({ enum: ['seller', 'admin', 'system'] }) actorKind!: string;
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) actorAccountId!: string | null;
+  @ApiProperty({ nullable: true, type: String }) reasonCode!: string | null;
+  @ApiProperty({ nullable: true, type: String, description: "The Market's label of the code." })
+  reasonLabel!: string | null;
+  @ApiProperty({ nullable: true, type: String, description: 'The decrypted note, if any.' })
+  note!: string | null;
+  @ApiProperty() occurredAt!: string;
+}
+
+export class HistoryView {
+  @ApiProperty({ format: 'uuid' }) certificateId!: string;
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ type: [HistoryEntryView], description: 'Newest first.' })
+  entries!: HistoryEntryView[];
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description: 'Pass as beforeId for the next (older) page; null on the last page.',
+  })
+  nextBeforeId!: string | null;
+}
