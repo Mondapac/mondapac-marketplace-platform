@@ -287,13 +287,13 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
         {
           sellerId: SELLER_A,
           kind: SELLER_ORDER_PAID,
-          params: { sellerOrderId: id(0x21), items: 3, customerAccountId: NOTICE.accountId },
+          params: { sellerOrderId: id(0x21), items: 3 },
           m: code,
         },
         {
           sellerId: SELLER_B,
           kind: SELLER_ORDER_PAID,
-          params: { sellerOrderId: id(0x22), items: 4, customerAccountId: NOTICE.accountId },
+          params: { sellerOrderId: id(0x22), items: 4 },
           m: code,
         },
       ]);
@@ -363,7 +363,7 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
       expect(result.ok && result.value.items[0]!.createdAt).toBe('2026-10-17T10:05:00Z');
       expect(result.ok && result.value.next).toBeNull();
       expect(checks).toEqual(['notifications.see-seller-order-notices']);
-      // The customer's account id is stored for the display name, never returned.
+      // No customer data reaches the notice.
       expect(JSON.stringify(result)).not.toContain(NOTICE.accountId);
     });
 

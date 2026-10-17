@@ -71,11 +71,9 @@ export class RecordSellerOrderNotices extends UseCase<
         kind: SELLER_ORDER_PAID,
         params: {
           sellerOrderId: sellerOrder.sellerOrderId,
+          // No customer data: the panel's short name ("Maryam R.", john 2026-10-17) is read at
+          // display time from the seller order, under the permission that shows customers.
           items: sellerOrder.lines.reduce((sum, line) => sum + line.quantity, 0),
-          // The customer's account id only, never the name: the panel's short name ("Maryam R.",
-          // john 2026-10-17) is read at display time, so a renamed or erased account shows that.
-          // It is not part of the notice the API returns.
-          customerAccountId: notice.value.accountId,
         },
         createdAt: now,
       }));
