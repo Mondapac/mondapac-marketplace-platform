@@ -64,6 +64,15 @@ class MemoryImages implements ProductImageRepository {
   cleanIdsOf() {
     return Promise.resolve(new Set<string>());
   }
+  listForRevision() {
+    return Promise.resolve([]);
+  }
+  takeDown() {
+    return Promise.resolve(false);
+  }
+  listUnattached() {
+    return Promise.resolve([]);
+  }
   deleteUnused(_m: unknown, _p: unknown, imageId: string) {
     const index = this.rows.findIndex((row) => row.id === imageId);
     if (index < 0) return Promise.resolve(false);

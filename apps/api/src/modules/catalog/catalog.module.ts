@@ -103,6 +103,12 @@ import { OwnProductImageList } from './application/use-cases/own-product-image-l
 import { OwnProductImageRead } from './application/use-cases/own-product-image-read.use-case';
 import { OwnProductImageDelete } from './application/use-cases/own-product-image-delete.use-case';
 import { ProductImageController } from './presentation/product-image.controller';
+import { ProductImageReviewController } from './presentation/product-image-review.controller';
+import { ProductImageAdminRead } from './application/use-cases/product-image-admin-read.use-case';
+import { ProductImageTakeDown } from './application/use-cases/product-image-take-down.use-case';
+import { ProductRevisionImageList } from './application/use-cases/product-revision-image-list.use-case';
+import { SweepOrphanImages } from './application/use-cases/sweep-orphan-images.use-case';
+import { sweepOrphanImagesJob } from './presentation/jobs/sweep-orphan-images.job';
 import { OwnProductController } from './presentation/own-product.controller';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
@@ -221,6 +227,7 @@ const productTypeProvider: FactoryProvider<string> = {
     ProductImageController,
     OfferReviewController,
     ProductReviewController,
+    ProductImageReviewController,
   ],
   imports: [CertificationModule, SellersModule],
   providers: [
@@ -445,6 +452,26 @@ const productTypeProvider: FactoryProvider<string> = {
       images: true,
       objectStore: true,
     }),
+    useCaseProvider(ProductRevisionImageList, {
+      unitOfWork: true,
+      revisions: true,
+      images: true,
+    }),
+    useCaseProvider(ProductImageAdminRead, { unitOfWork: true, images: true, objectStore: true }),
+    useCaseProvider(ProductImageTakeDown, {
+      unitOfWork: true,
+      images: true,
+      objectStore: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(SweepOrphanImages, {
+      unitOfWork: true,
+      images: true,
+      workingCopies: true,
+      objectStore: true,
+      clock: true,
+    }),
     useCaseProvider(OwnProductsList, { unitOfWork: true, ownReader: true, policy: true }),
     useCaseProvider(OwnProductRead, {
       unitOfWork: true,
@@ -484,10 +511,11 @@ const productTypeProvider: FactoryProvider<string> = {
     }),
     registerJobsFrom(
       'catalog',
-      [SeedCategoryTree, SeedAttributes],
-      (categories: SeedCategoryTree, attributes: SeedAttributes) => [
+      [SeedCategoryTree, SeedAttributes, SweepOrphanImages],
+      (categories: SeedCategoryTree, attributes: SeedAttributes, sweep: SweepOrphanImages) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
+        sweepOrphanImagesJob(sweep),
       ],
     ),
     useCaseProvider(OfferSellUnitsQuery, { unitOfWork: true, reader: true }),
