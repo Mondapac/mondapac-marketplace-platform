@@ -107,3 +107,54 @@ export function issuerNotAcceptedMail(input: {
     ].join('\n'),
   };
 }
+
+// The expiry warning and the expiry notice (design 12; brief s4 c 2): the consequence and the
+// date by which a renewal should be submitted. Dates are the seller's local dates as written on
+// the certificate (ISO form, YYYY-MM-DD), never an instant. No number, issuer or file is named.
+
+export function expiryWarningMail(input: {
+  readonly typeCode: string;
+  readonly expiryDate: string;
+  readonly thresholdDays: number;
+  /** The renewal submit-by date; null when it has already passed (submit now). */
+  readonly submitBy: string | null;
+}): DecisionMail {
+  const type = line(input.typeCode);
+  const expiry = line(input.expiryDate);
+  const days = input.thresholdDays === 1 ? '1 day' : `${input.thresholdDays} days`;
+  return {
+    subject: `Your certificate expires in ${days}`,
+    text: [
+      `Your certificate expires in ${days}`,
+      '',
+      `Your ${type} certificate is valid until the end of ${expiry}, your local time.`,
+      '',
+      `After that, your offers can no longer show the ${type} certification, and offers that rely on it cannot be bought with it, until a renewed certificate is approved.`,
+      '',
+      input.submitBy === null
+        ? 'Please submit your renewed certificate now, so it can be reviewed before it expires.'
+        : `Please submit your renewed certificate by ${line(input.submitBy)}, so it can be reviewed before it expires.`,
+      '',
+      'Open your seller panel to renew it.',
+      '',
+    ].join('\n'),
+  };
+}
+
+export function expiredMail(input: {
+  readonly typeCode: string;
+  readonly expiryDate: string;
+}): DecisionMail {
+  const type = line(input.typeCode);
+  return {
+    subject: 'Your certificate has expired',
+    text: [
+      'Your certificate has expired',
+      '',
+      `Your ${type} certificate expired at the end of ${line(input.expiryDate)}, your local time.`,
+      '',
+      `Your offers no longer show the ${type} certification. Submit a renewed certificate in your seller panel; the certification comes back once it is approved.`,
+      '',
+    ].join('\n'),
+  };
+}

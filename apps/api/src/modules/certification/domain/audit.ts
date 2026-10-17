@@ -45,6 +45,17 @@ export const SellerCertificationDeclinedAudit = defineAuditAction({
   after: { ...decisionAfter, reasonTextGiven: auditField.boolean() },
 });
 
+/**
+ * The expiry job moved an approved certificate to `expired` (design 3.1, 11; AC 9): written with
+ * the system actor in the unit of the change. Names the approved submission and its type revision.
+ */
+export const SellerCertificationExpiredAudit = defineAuditAction({
+  action: 'certification.seller-certification.expired',
+  targetType: SELLER_CERTIFICATION_TARGET,
+  actors: ['system'],
+  after: { submissionId: auditField.id(), typeRevisionId: auditField.id() },
+});
+
 /** One row per recorded review check (M6: a re-recording is a new row and a new audit row). */
 export const ReviewCheckRecorded = defineAuditAction({
   action: 'certification.review-check.recorded',
@@ -134,6 +145,7 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   SellerCertificationApprovedAudit,
   SellerCertificationChangesRequestedAudit,
   SellerCertificationDeclinedAudit,
+  SellerCertificationExpiredAudit,
   ReviewCheckRecorded,
   ReviewScopeRecorded,
   IssuerConfirmationRecorded,

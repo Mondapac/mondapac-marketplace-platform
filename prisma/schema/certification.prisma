@@ -702,3 +702,21 @@ model CertificationIssuerRequestDocument {
   @@map("issuer_request_documents")
   @@schema("certification")
 }
+
+/// One marker per (approved submission or manufacturer revision, warning threshold) (data design
+/// 3.18, slice 9): written by the expiry job in the root's unit together with the event, so a
+/// re-run creates nothing (D 8.6, AC 9). One table for two parents, no foreign key (C4).
+/// Insert-only (CE3); a renewal is a new submission, so its warnings start afresh.
+model CertificationExpiryWarning {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  /// submission | product-revision
+  versionKind   String   @map("version_kind")
+  versionId     String   @map("version_id") @db.Uuid
+  thresholdDays Int      @map("threshold_days") @db.SmallInt
+  createdAt     DateTime @map("created_at") @db.Timestamptz(6)
+
+  @@id([marketId, versionKind, versionId, thresholdDays])
+  @@map("expiry_warnings")
+  @@schema("certification")
+}

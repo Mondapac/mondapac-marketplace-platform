@@ -77,6 +77,37 @@ export const SellerCertificationIssuerConfirmed = defineEvent({
   },
 });
 
+/**
+ * The expiry job moved an approved certificate past its boundary to `expired` (design 3.1, 8.6;
+ * AC 9). The claim was already "no" at the boundary; this records it. Consumers: own mail,
+ * catalog (re-evaluate).
+ */
+export const SellerCertificationExpired = defineEvent({
+  type: 'certification.seller-certification-expired.v1',
+  aggregateType: 'seller-certification',
+  payload: {
+    sellerCertificationId: eventField.id(),
+    sellerId: eventField.id(),
+    submissionId: eventField.id(),
+    typeId: eventField.id(),
+  },
+});
+
+/**
+ * A warning threshold of the approved submission was reached on the seller's local day (design
+ * 8.6; CERT-14). `thresholdDays` is one of the Market's configured values. Consumer: own mail.
+ */
+export const SellerCertificationExpiryWarningDue = defineEvent({
+  type: 'certification.seller-certification-expiry-warning-due.v1',
+  aggregateType: 'seller-certification',
+  payload: {
+    sellerCertificationId: eventField.id(),
+    sellerId: eventField.id(),
+    submissionId: eventField.id(),
+    thresholdDays: eventField.integer(),
+  },
+});
+
 export const ISSUER_REQUEST_OUTCOME_VALUES = ['issuer-added', 'not-accepted'] as const;
 
 /**
@@ -105,5 +136,7 @@ export const CERTIFICATION_EVENTS: readonly EventDefinition[] = [
   SellerCertificationChangesRequested,
   SellerCertificationDeclined,
   SellerCertificationIssuerConfirmed,
+  SellerCertificationExpired,
+  SellerCertificationExpiryWarningDue,
   IssuerRequestAnswered,
 ];

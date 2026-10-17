@@ -125,6 +125,17 @@
     }
   },
   {
+    "action": "certification.seller-certification.expired",
+    "targetType": "certification.seller-certification",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "submissionId": "id",
+      "typeRevisionId": "id"
+    }
+  },
+  {
     "action": "commission-payouts.commission-rate.clear",
     "targetType": "commission-payouts.seller-commission-rate",
     "targetId": "id",
