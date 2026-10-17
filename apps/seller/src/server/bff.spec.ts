@@ -10,6 +10,7 @@ const config: PanelConfig = {
   passwordMinLength: 15,
   passwordMaxLength: 128,
   marketName: 'Australia',
+  locale: 'en-AU',
   supportEmail: 'support@example.com',
   storefrontAddress: null,
   clientAddressKey: null,
@@ -166,6 +167,31 @@ describe('relay allowlist for the seller file', () => {
   });
 });
 
+describe('relay allowlist for the own profile', () => {
+  const send = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    relay(
+      config,
+      new Request(`http://seller.localhost:3001/api/${path}`, { method, headers, body: '{}' }),
+      path.split('/'),
+      upstreamOk(),
+    );
+
+  it('relays the display name write on its exact path and method, same-origin only', async () => {
+    const path = 'identity/seller/profile/display-name';
+    expect((await send('PUT', path)).status).toBe(200);
+    expect((await send('POST', path)).status).toBe(404);
+    expect((await send('PUT', `${path}/extra`)).status).toBe(404);
+    const crossSite = { ...sameOrigin, 'sec-fetch-site': 'cross-site' };
+    expect((await send('PUT', path, crossSite)).status).toBe(403);
+  });
+
+  it('relays the password change by POST only', async () => {
+    const path = 'identity/seller/change-password';
+    expect((await send('POST', path)).status).toBe(200);
+    expect((await send('PUT', path)).status).toBe(404);
+  });
+});
+
 describe('relay', () => {
   it('answers 404 for a host that is not listed', async () => {
     const fetchImpl = upstreamOk();
@@ -284,6 +310,7 @@ describe('relay', () => {
         'x-market-id': 'NZ',
         'x-forwarded-for': '1.2.3.4',
         'x-csrf-token': 't',
+        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) Firefox/143.0',
       }),
       ['identity', 'seller', 'sign-in'],
       fetchImpl,
@@ -293,6 +320,8 @@ describe('relay', () => {
     expect(sent.get('x-market-id')).toBe('AU');
     expect(sent.get('cookie')).toBe('a=b');
     expect(sent.get('x-csrf-token')).toBe('t');
+    // The API reduces it to a browser and system code on a new session (profile).
+    expect(sent.get('user-agent')).toBe('Mozilla/5.0 (X11; Linux x86_64) Firefox/143.0');
     expect(sent.has('x-forwarded-for')).toBe(false);
     expect(sent.has('host')).toBe(false);
   });

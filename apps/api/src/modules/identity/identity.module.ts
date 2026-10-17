@@ -1,10 +1,15 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { err, ok } from '@mondapac/shared-kernel';
 import type { Clock } from '@mondapac/shared-kernel';
 import {
   AUTHENTICATOR,
   AUTHORISATION_CHECK,
   PermissionRegistry,
   registerPermissions,
+  registerStepUpActions,
+  STEP_UP_SOURCE,
+  StepUpActionRegistry,
+  type StepUpCheck,
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
@@ -111,6 +116,10 @@ import { InviteAdmin } from './application/use-cases/invite-admin.use-case';
 import { ResendAdminInvitation } from './application/use-cases/resend-admin-invitation.use-case';
 import { ResetOtherAdminSecondFactor } from './application/use-cases/reset-other-admin-second-factor.use-case';
 import { RevokeAdminInvitation } from './application/use-cases/revoke-admin-invitation.use-case';
+import { ChangeDisplayName } from './application/use-cases/change-display-name.use-case';
+import { ChangePanelPreferences } from './application/use-cases/change-panel-preferences.use-case';
+import { ListOwnSessions } from './application/use-cases/list-own-sessions.use-case';
+import { SignOutOtherSessions } from './application/use-cases/sign-out-other-sessions.use-case';
 import { ChangePassword } from './application/use-cases/change-password.use-case';
 import { CompleteAdminSignIn } from './application/use-cases/complete-admin-sign-in.use-case';
 import { CompleteSellerSignIn } from './application/use-cases/complete-seller-sign-in.use-case';
@@ -138,6 +147,7 @@ import { DescribeActor } from './application/use-cases/describe-actor.use-case';
 import { DescribeSellerStatus } from './application/use-cases/describe-seller-status.use-case';
 import { ListRegisteredSellers } from './application/use-cases/list-registered-sellers.use-case';
 import { ContactEmailOf } from './application/use-cases/contact-email-of.use-case';
+import { CustomerAccountSummaries } from './application/use-cases/customer-account-summaries.use-case';
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
 import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
@@ -172,9 +182,17 @@ import { CheckedInCommonPasswords } from './infrastructure/passwords/checked-in-
 import { reviewerProviders } from './infrastructure/reviewers/reviewer-providers';
 import { roleProviders } from './infrastructure/roles/role-providers';
 import { secondFactorProviders } from './infrastructure/second-factor/second-factor-providers';
+import { STEP_UP_REPOSITORY } from './application/ports/step-up.repository';
+import { IDENTITY_STEP_UP_ACTIONS } from './contracts/step-up';
+import { ListSellerStepUpPolicy } from './application/use-cases/list-seller-step-up-policy.use-case';
+import { RequireStepUp } from './application/use-cases/require-step-up.use-case';
+import { SetSellerStepUpPolicy } from './application/use-cases/set-seller-step-up-policy.use-case';
+import { VerifySellerStepUp } from './application/use-cases/verify-seller-step-up.use-case';
+import { SellerStepUpController } from './presentation/seller-step-up.controller';
 import { sellerProviders } from './infrastructure/sellers/seller-providers';
 import { sessionProviders } from './infrastructure/sessions/session-providers';
 import { AdminPasswordController } from './presentation/admin-password.controller';
+import { AdminProfileController, SellerProfileController } from './presentation/profile.controller';
 import { AdminSecondFactorController } from './presentation/admin-second-factor.controller';
 import { AdminSessionController } from './presentation/admin-session.controller';
 import { AdminSellersController } from './presentation/admin-sellers.controller';
@@ -241,6 +259,8 @@ const PORT = {
   challengeTokens: CHALLENGE_TOKENS,
   invitationTokens: INVITATION_TOKENS,
   enrolmentTags: ENROLMENT_SECRET_TAGS,
+  stepUp: STEP_UP_REPOSITORY,
+  stepUpActions: StepUpActionRegistry,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -373,11 +393,14 @@ function useCaseProvider<D, U>(
     SellerSecondFactorController,
     CustomerPasswordController,
     SellerPasswordController,
+    SellerProfileController,
     SellerRolesController,
     SellerTeamController,
+    SellerStepUpController,
     AdminSessionController,
     AdminSecondFactorController,
     AdminPasswordController,
+    AdminProfileController,
     AdminTeamController,
     AdminSellersController,
   ],
@@ -387,6 +410,7 @@ function useCaseProvider<D, U>(
     PersistenceModule.auditWriterFor('identity'),
     registerAuditActions('identity', IDENTITY_AUDIT_ACTIONS),
     registerPermissions('identity', IDENTITY_PERMISSIONS),
+    registerStepUpActions('identity', IDENTITY_STEP_UP_ACTIONS),
     { provide: PASSWORD_HASHER, useFactory: () => new Argon2idPasswordHasher() },
     { provide: COMMON_PASSWORD_LIST, useFactory: () => new CheckedInCommonPasswords() },
     {
@@ -475,6 +499,7 @@ function useCaseProvider<D, U>(
       grants: true,
       effectiveKeys: true,
       factors: true,
+      records: true,
     }),
     useCaseProvider(PurgeExpired, {
       unitOfWork: true,
@@ -752,6 +777,12 @@ function useCaseProvider<D, U>(
       memberships: true,
       grants: true,
     }),
+    useCaseProvider(CustomerAccountSummaries, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+    }),
     useCaseProvider(MembershipOf, { unitOfWork: true, memberships: true, assignments: true }),
     useCaseProvider(TeamMembershipOf, { unitOfWork: true, memberships: true, assignments: true }),
     useCaseProvider(SellerAccessOf, { unitOfWork: true, sellerAccess: true }),
@@ -829,6 +860,25 @@ function useCaseProvider<D, U>(
       hasher: true,
       commonPasswords: true,
       policy: true,
+      clock: true,
+    }),
+    useCaseProvider(ChangeDisplayName, {
+      unitOfWork: true,
+      accounts: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(ChangePanelPreferences, {
+      unitOfWork: true,
+      accounts: true,
+    }),
+    // Profile package 4: the holder's own signed-in devices, and signing out the others.
+    useCaseProvider(ListOwnSessions, { unitOfWork: true, sessions: true, clock: true }),
+    useCaseProvider(SignOutOtherSessions, {
+      unitOfWork: true,
+      accounts: true,
+      sessions: true,
+      audit: true,
       clock: true,
     }),
     useCaseProvider(SendPasswordChangedMail, {
@@ -1435,6 +1485,58 @@ function useCaseProvider<D, U>(
       clock: true,
       ids: true,
     }),
+    useCaseProvider(RequireStepUp, {
+      unitOfWork: true,
+      stepUp: true,
+      stepUpActions: true,
+      factors: true,
+      clock: true,
+    }),
+    useCaseProvider(ListSellerStepUpPolicy, {
+      unitOfWork: true,
+      stepUp: true,
+      stepUpActions: true,
+    }),
+    useCaseProvider(VerifySellerStepUp, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
+      audit: true,
+      policy: true,
+      stepUp: true,
+      stepUpActions: true,
+    }),
+    useCaseProvider(SetSellerStepUpPolicy, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
+      audit: true,
+      policy: true,
+      stepUp: true,
+      stepUpActions: true,
+    }),
+    {
+      // What `platform/authz` binds to the route guard `@RequiresStepUp(...)`: the same use case as
+      // the facade's `requireStepUp`, through the gate.
+      provide: STEP_UP_SOURCE,
+      inject: [RequireStepUp],
+      useFactory: (requireStepUp: RequireStepUp): StepUpCheck => ({
+        async check(context, actionKey) {
+          const result = await requireStepUp.execute(context, { actionKey });
+          return result.ok ? ok(undefined) : err(result.error);
+        },
+      }),
+    },
     {
       provide: IDENTITY_FACADE,
       inject: [
@@ -1443,6 +1545,8 @@ function useCaseProvider<D, U>(
         TeamMembershipOf,
         ConfirmSellerSecondFactor,
         ContactEmailOf,
+        RequireStepUp,
+        CustomerAccountSummaries,
       ],
       useFactory: (
         describeActor: DescribeActor,
@@ -1450,6 +1554,8 @@ function useCaseProvider<D, U>(
         teamMembershipOf: TeamMembershipOf,
         confirmSellerSecondFactor: ConfirmSellerSecondFactor,
         contactEmailOf: ContactEmailOf,
+        requireStepUp: RequireStepUp,
+        customerAccountSummaries: CustomerAccountSummaries,
       ) =>
         new IdentityFacadeImplementation({
           describeActor,
@@ -1457,6 +1563,8 @@ function useCaseProvider<D, U>(
           teamMembershipOf,
           confirmSellerSecondFactor,
           contactEmailOf,
+          requireStepUp,
+          customerAccountSummaries,
         }),
     },
     {
@@ -1547,6 +1655,12 @@ function useCaseProvider<D, U>(
         ),
     ),
   ],
-  exports: [AUTHENTICATOR, AUTHORISATION_CHECK, IDENTITY_FACADE, SELLER_ACCESS_CONTRACT],
+  exports: [
+    AUTHENTICATOR,
+    AUTHORISATION_CHECK,
+    IDENTITY_FACADE,
+    SELLER_ACCESS_CONTRACT,
+    STEP_UP_SOURCE,
+  ],
 })
 export class IdentityModule {}

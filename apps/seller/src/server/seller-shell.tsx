@@ -1,9 +1,19 @@
 import 'server-only';
-import { AppShell, Sidebar, Topbar, visibleNavItems } from '@mondapac/ui';
+import {
+  AppShell,
+  SIDEBAR_COOKIE,
+  Sidebar,
+  THEME_COOKIE,
+  navTrail,
+  Topbar,
+  sidebarCollapsed,
+  themeChoice,
+} from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
-import { sellerNav } from '../nav.ts';
+import { sellerNavItems } from '../nav.ts';
 import type { SellerSession } from './session.ts';
 
 /** The panel shell around a signed-in page: sidebar, topbar with the account menu. */
@@ -19,12 +29,9 @@ export async function SellerShell({
   readonly children: ReactNode;
 }) {
   const t = await getTranslations();
-  const approved = session.sellerAccessState === 'approved';
-  // Security and Team are for approved sellers; Seller account (setup) is for the others.
-  const approvedOnly = new Set(['s_security', 's_team']);
-  const items = visibleNavItems(sellerNav, new Set(session.permissionKeys)).filter((item) =>
-    approved ? item.id !== 's_setup' : !approvedOnly.has(item.id),
-  );
+  const jar = await cookies();
+  const collapsed = sidebarCollapsed(jar.get(SIDEBAR_COOKIE)?.value);
+  const items = sellerNavItems(session.sellerAccessState, session.permissionKeys);
   // Phone bottom bar (IA 4): Home and Catalogue, only when the caller may see both.
   const tabIds = ['s_home', 's_products'];
   const tabs = tabIds.map((id) => items.find((item) => item.id === id));
@@ -33,6 +40,7 @@ export async function SellerShell({
         id: item.id,
         href: item.href,
         label: t(item.labelKey),
+        icon: item.icon,
         active: item.id === activeId,
       }))
     : undefined;
@@ -45,7 +53,10 @@ export async function SellerShell({
         close: t('nav.close'),
         more: t('nav.more'),
         main: t('nav.main'),
+        collapse: t('nav.collapse'),
+        expand: t('nav.expand'),
       }}
+      collapsed={collapsed}
       sidebar={
         <Sidebar
           panelName={t('panel.name')}
@@ -57,7 +68,17 @@ export async function SellerShell({
       topbar={
         <Topbar
           pageTitle={title}
-          actions={<UserMenu name={session.displayName} csrfToken={session.csrfToken} />}
+          trail={navTrail(items, activeId, title, (key) => t(key))}
+          trailLabel={t('nav.breadcrumb')}
+          actions={
+            <UserMenu
+              name={session.displayName}
+              email={session.email}
+              theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
+              approved={session.sellerAccessState === 'approved'}
+              csrfToken={session.csrfToken}
+            />
+          }
         />
       }
     >

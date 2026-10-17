@@ -61,13 +61,19 @@ async function prepare() {
     },
   );
   if (run.status !== 0) throw new Error('the claim vocabulary step failed');
-  await waitFor('the API (is `pnpm dev` running?)', async () => {
-    try {
-      return (await fetch(`${API}/health`)).ok;
-    } catch {
-      return false;
-    }
-  });
+  // Five minutes, like dev-local.bat: on Windows the first build after a pull, beside the
+  // worker's own build, can take longer than two.
+  await waitFor(
+    'the API (is `pnpm dev` running? look at the "MondaPac API" window)',
+    async () => {
+      try {
+        return (await fetch(`${API}/health`)).ok;
+      } catch {
+        return false;
+      }
+    },
+    300,
+  );
   await waitFor('the mail catcher (Mailpit, docker compose up -d)', async () => {
     try {
       return (await fetch(`${MAILPIT}/api/v1/info`)).ok;
@@ -538,7 +544,21 @@ async function ensureBuyer() {
   const first = await session.request('POST', '/identity/customer/sign-in', BUYER);
   if (first.status === 200) return;
   const since = Date.now() - 2000;
-  await session.ok('POST', '/identity/customer/sign-up', BUYER);
+  const signUp = await session.request('POST', '/identity/customer/sign-up', BUYER);
+  if (signUp.status === 403 && signUp.body?.code === 'request.csrf') {
+    // The seed sends the storefront's Origin and Sec-Fetch-Site like a browser does, so this
+    // means the running API does not list the storefront origin: it was started before
+    // STOREFRONT_ORIGIN was set (the Market file is read at start-up). Never loosen the check.
+    throw new Error(
+      `the API refused the buyer sign-up (403 request.csrf): it does not allow ${ORIGINS.customer}. ` +
+        'Close the "MondaPac API" and "MondaPac worker" windows and run scripts\\demo-local.bat again.',
+    );
+  }
+  if (signUp.status < 200 || signUp.status > 299) {
+    throw new Error(
+      `POST /identity/customer/sign-up -> ${signUp.status} ${JSON.stringify(signUp.body)}`,
+    );
+  }
   const token = await mailLink(BUYER.email, /#(\S+)/, { since });
   await session.ok('POST', '/identity/customer/confirm-email', { token, password: BUYER.password });
 }
@@ -622,11 +642,21 @@ try {
   await showcasePrices(sessions, offerIdsBySeller);
 
   log('[7/8] Buyer account');
-  await ensureBuyer();
+  let buyerError;
+  try {
+    await ensureBuyer();
+  } catch (error) {
+    buyerError = error;
+    log(`  (buyer account skipped: ${error.message})`);
+  }
 
   log('[8/8] Writing the sample logins');
   writeCredentials(state);
   log(`Done. Logins: ${CREDENTIALS_FILE}`);
+  if (buyerError) {
+    log('The buyer account was NOT created (see step 7); everything else is in place.');
+    process.exitCode = 1;
+  }
 } finally {
   await db.end();
 }

@@ -43,7 +43,7 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
 /**
  * The Nest modules that bind their own audit writer and register their actions. A module joins
  * this list only with the audited actions its approved design names (pricing: design 8; shipping: the flat-fee change, Phase 5 package 4; commission-payouts: a seller's commission rate
- * set or removed, Phase 5 package 5; payments: the payout-account
+ * set or removed, Phase 5 package 5; tax: the admin-defined tax strategies; payments: the payout-account
  * change and pause rows, Phase 5 package 3 leftovers).
  */
 const AUDITING_MODULES = [
@@ -54,6 +54,7 @@ const AUDITING_MODULES = [
   'PricingModule',
   'SellersModule',
   'ShippingModule',
+  'TaxModule',
 ] as const;
 const SRC = path.join(__dirname, '../../src');
 
@@ -245,6 +246,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.account-role.changed',
       'identity.account.disabled',
       'identity.account.enabled',
+      'identity.account.other-sessions-signed-out',
       'identity.admin-session.opened',
       'identity.invitation.accepted',
       'identity.invitation.issued',
@@ -269,6 +271,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.seller-member.removed',
       'identity.seller-second-factor-reset.confirmed',
       'identity.seller-second-factor-reset.requested',
+      'identity.seller-step-up-policy.changed',
     ]);
   });
 
@@ -437,6 +440,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['PricingModule', 'pricing'],
       ['SellersModule', 'sellers'],
       ['ShippingModule', 'shipping'],
+      ['TaxModule', 'tax'],
     ]);
   });
 
@@ -472,6 +476,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['SellersModule', 'writer'],
       ['ShippingModule', 'actions'],
       ['ShippingModule', 'writer'],
+      ['TaxModule', 'actions'],
+      ['TaxModule', 'writer'],
     ]);
     expect(found.filter((entry) => entry.owner !== entry.allowed)).toEqual([]);
   });
@@ -565,6 +571,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: registerAuditActions('sellers')`,
       `${path.join('modules', 'shipping', 'shipping.module.ts')}: auditWriterFor('shipping')`,
       `${path.join('modules', 'shipping', 'shipping.module.ts')}: registerAuditActions('shipping')`,
+      `${path.join('modules', 'tax', 'tax.module.ts')}: auditWriterFor('tax')`,
+      `${path.join('modules', 'tax', 'tax.module.ts')}: registerAuditActions('tax')`,
     ]);
   });
 });

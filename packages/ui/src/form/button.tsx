@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from 'react';
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from 'react';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'link' | 'destructive';
 
@@ -58,5 +58,28 @@ export function Button({
     >
       {children}
     </button>
+  );
+}
+
+export interface LinkButtonProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
+  readonly href: string;
+  readonly variant?: Exclude<ButtonVariant, 'link'>;
+}
+
+/** A link that looks like a button: a page action that opens another page (New product). */
+export function LinkButton({ variant = 'primary', className, children, ...rest }: LinkButtonProps) {
+  return (
+    <a
+      className={[
+        'inline-flex h-(--mp-size-control) items-center justify-center rounded-md px-4 font-medium',
+        VARIANT[variant],
+        className ?? '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      {...rest}
+    >
+      {children}
+    </a>
   );
 }

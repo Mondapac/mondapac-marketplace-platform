@@ -1,9 +1,9 @@
-import { Badge, Banner } from '@mondapac/ui';
-import { getTranslations } from 'next-intl/server';
+import { Banner, Card } from '@mondapac/ui';
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server';
 import { FieldList } from './field-list.tsx';
-import { formatInstant, known, OFFER_STATUSES } from './format.ts';
+import { formatInstant, known, OFFER_STATUSES, readable } from './format.ts';
 import { OfferActions } from './offer-actions.tsx';
-import { OFFER_TONE } from './offers-table.tsx';
+import { OfferHeader } from './offer-header.tsx';
 import type { OfferView } from './types.ts';
 
 const HANDLINGS = ['SEALED_ORIGINAL', 'REPACKED', 'PREPARED', 'FRESH'];
@@ -30,30 +30,20 @@ export async function OfferDetail({
   readonly csrfToken?: string;
 }) {
   const t = await getTranslations();
+  const marketLocale = await getLocale();
+  const zone = await getTimeZone();
   const status = known(offer.status, OFFER_STATUSES);
-  const name = offer.product.name ?? offer.product.productCode ?? offer.sellerSku;
   const descriptions = Object.entries(offer.description);
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="break-words text-2xl font-semibold">{name}</h1>
-        <Badge tone={OFFER_TONE[status] ?? 'neutral'}>{t(`catalog.offers.status.${status}`)}</Badge>
-        {canEdit && status !== 'published' ? (
-          <a className="font-medium text-link underline" href={`/offers/${offer.offerId}/edit`}>
-            {t('catalog.offer-edit.title')}
-          </a>
-        ) : null}
-        {canViewPrices ? (
-          <a className="font-medium text-link underline" href={`/offers/${offer.offerId}/prices`}>
-            {t('price.title')}
-          </a>
-        ) : null}
-        {canViewStock ? (
-          <a className="font-medium text-link underline" href={`/offers/${offer.offerId}/stock`}>
-            {t('stock.levels.title')}
-          </a>
-        ) : null}
-      </div>
+      <OfferHeader
+        offer={offer}
+        active="details"
+        canViewPrices={canViewPrices}
+        canViewStock={canViewStock}
+        canEdit={canEdit}
+        t={t}
+      />
       {status === 'changes-needed' ? (
         <Banner tone="attention">{t('catalog.offer-actions.changes-needed')}</Banner>
       ) : null}
@@ -63,64 +53,68 @@ export async function OfferDetail({
       {canEdit ? (
         <OfferActions offerId={offer.offerId} status={status} csrfToken={csrfToken} />
       ) : null}
-      <FieldList
-        rows={[
-          { label: t('catalog.offers.col.sku'), value: offer.sellerSku },
-          { label: t('catalog.offer.condition'), value: offer.conditionCode },
-          {
-            label: t('catalog.offers.col.listed'),
-            value: offer.listed ? t('catalog.offers.listed.yes') : t('catalog.offers.listed.no'),
-          },
-          {
-            label: t('catalog.offer.attestation'),
-            value: offer.attestationRecorded
-              ? t('catalog.offer.attested')
-              : t('catalog.offer.not-attested'),
-          },
-          {
-            label: t('catalog.offer.handling'),
-            value:
-              offer.handling === null
-                ? null
-                : t(`catalog.offer.handling-value.${known(offer.handling, HANDLINGS)}`),
-          },
-          {
-            label: t('catalog.offers.col.submitted'),
-            value: offer.submittedAt === null ? null : formatInstant(offer.submittedAt),
-          },
-          {
-            label: t('catalog.offer.first-published'),
-            value: offer.firstPublishedAt === null ? null : formatInstant(offer.firstPublishedAt),
-          },
-          { label: t('catalog.product.created'), value: formatInstant(offer.createdAt) },
-        ]}
-      />
+      <Card>
+        <FieldList
+          rows={[
+            { label: t('catalog.offers.col.sku'), value: offer.sellerSku },
+            { label: t('catalog.offer.condition'), value: readable(offer.conditionCode) },
+            {
+              label: t('catalog.offers.col.listed'),
+              value: offer.listed ? t('catalog.offers.listed.yes') : t('catalog.offers.listed.no'),
+            },
+            {
+              label: t('catalog.offer.attestation'),
+              value: offer.attestationRecorded
+                ? t('catalog.offer.attested')
+                : t('catalog.offer.not-attested'),
+            },
+            {
+              label: t('catalog.offer.handling'),
+              value:
+                offer.handling === null
+                  ? null
+                  : t(`catalog.offer.handling-value.${known(offer.handling, HANDLINGS)}`),
+            },
+            {
+              label: t('catalog.offers.col.submitted'),
+              value:
+                offer.submittedAt === null
+                  ? null
+                  : formatInstant(offer.submittedAt, marketLocale, zone),
+            },
+            {
+              label: t('catalog.offer.first-published'),
+              value:
+                offer.firstPublishedAt === null
+                  ? null
+                  : formatInstant(offer.firstPublishedAt, marketLocale, zone),
+            },
+            {
+              label: t('catalog.product.created'),
+              value: formatInstant(offer.createdAt, marketLocale, zone),
+            },
+          ]}
+        />
+      </Card>
       {offer.offSaleCauses.length > 0 ? (
-        <section className="rounded-lg border border-line p-4">
-          <h2 className="mb-2 text-lg font-semibold">{t('catalog.offer.off-sale')}</h2>
+        <Card title={t('catalog.offer.off-sale')}>
           <ul className="list-disc ps-5">
             {offer.offSaleCauses.map((cause) => (
               <li key={cause}>{t(`catalog.offer.cause.${known(cause, CAUSES)}`)}</li>
             ))}
           </ul>
-        </section>
+        </Card>
       ) : null}
       {descriptions.length > 0 ? (
-        <section className="rounded-lg border border-line p-4">
-          <h2 className="mb-2 text-lg font-semibold">{t('catalog.offer.description')}</h2>
+        <Card title={t('catalog.offer.description')}>
           {descriptions.map(([locale, text]) => (
             <p key={locale} className="whitespace-pre-line break-words">
-              <span className="me-2 text-fg-muted">{locale}</span>
+              <span className="me-2 text-sm text-fg-muted">{locale}</span>
               {text}
             </p>
           ))}
-        </section>
+        </Card>
       ) : null}
-      <p>
-        <a className="font-medium text-link underline" href="/offers">
-          {t('catalog.offers.back')}
-        </a>
-      </p>
     </div>
   );
 }

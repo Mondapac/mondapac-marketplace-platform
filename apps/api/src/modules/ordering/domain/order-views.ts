@@ -55,6 +55,62 @@ export interface AdminOrderView extends OrderView {
   readonly paymentIntentId: string | null;
 }
 
+/** Who placed an order, for an admin entitled to see it. PERSONAL DATA: never logged. */
+export interface OrderCustomerView {
+  readonly displayName: string | null;
+  readonly email: string;
+}
+
+/** An order line with its published names (seller text); both are null when unknown. */
+export interface LabelledLineView extends OrderLineView {
+  readonly productName: string | null;
+  readonly variantLabel: string | null;
+}
+
+/** A seller's part of an order with the public store name (null when unknown). */
+export interface LabelledSellerOrderView extends Omit<SellerOrderView, 'lines'> {
+  readonly storeName: string | null;
+  readonly lines: readonly LabelledLineView[];
+}
+
+/** An admin order with the names the admin pages show. */
+export interface LabelledAdminOrderView extends Omit<AdminOrderView, 'sellerOrders'> {
+  /** Null when unknown or when the admin may not see customers. */
+  readonly customer: OrderCustomerView | null;
+  readonly sellerOrders: readonly LabelledSellerOrderView[];
+}
+
+/** A seller order as the seller panel shows it, with the published names of its lines. */
+export interface LabelledSellerOrderDetailView extends Omit<SellerOrderDetailView, 'lines'> {
+  readonly lines: readonly LabelledLineView[];
+}
+
+/** The seller's paid seller orders per fulfilment step, whatever the page or filter. */
+export interface SellerOrderCounts {
+  readonly toShip: number;
+  readonly shipped: number;
+  readonly delivered: number;
+}
+
+/** The Market's orders per status, whatever the page or filter. */
+export interface OrderStatusCounts {
+  readonly pendingPayment: number;
+  readonly confirmed: number;
+  readonly cancelled: number;
+}
+
+export interface LabelledSellerOrderPageView {
+  readonly sellerOrders: readonly LabelledSellerOrderDetailView[];
+  readonly counts: SellerOrderCounts;
+  /** Pass back as `cursor` for the next page; null on the last page. */
+  readonly nextCursor: string | null;
+}
+
+/** The admin list: a page of labelled orders and the Market's counts per status. */
+export interface AdminOrderPageView extends OrderPageView<LabelledAdminOrderView> {
+  readonly counts: OrderStatusCounts;
+}
+
 export interface OrderPageView<V> {
   readonly orders: readonly V[];
   /** Pass back as `cursor` for the next page; null on the last page. */

@@ -126,6 +126,21 @@ export const ProductRevisionPublished = defineEvent({
 });
 
 /**
+ * A reviewer sent a pending product revision back to its seller (catalog design 4.2 row 5). The
+ * reason is a code of the Market list, never text. Ids and the scope.
+ */
+export const ProductRevisionChangesRequested = defineEvent({
+  type: 'catalog.product-revision-changes-requested.v1',
+  aggregateType: 'product',
+  payload: {
+    productId: eventField.id(),
+    revisionId: eventField.id(),
+    reasonCode: eventField.enumOf(OFFER_CHANGE_REASONS),
+    scope: eventField.enumOf(['platform', 'seller'] as const),
+  },
+});
+
+/**
  * Every event catalog publishes, declared with `defineEvent` and registered with the event
  * catalogue by `CatalogModule`. Each new type changes the catalogue snapshot
  * (`apps/api/test/contracts/event-catalogue.snapshot.json`).
@@ -141,4 +156,5 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   PlatformCategoryCreated,
   ProductRevisionSubmitted,
   ProductRevisionPublished,
+  ProductRevisionChangesRequested,
 ];

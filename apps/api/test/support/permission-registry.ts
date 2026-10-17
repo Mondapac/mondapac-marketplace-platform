@@ -4,6 +4,7 @@ import {
   type EffectiveKeyResolver,
 } from '../../src/modules/identity/application/access/effective-keys';
 import { CATALOG_PERMISSIONS } from '../../src/modules/catalog/contracts/permissions';
+import { CERTIFICATION_PERMISSIONS } from '../../src/modules/certification/contracts/permissions';
 import { COMMISSION_PAYOUTS_PERMISSIONS } from '../../src/modules/commission-payouts/contracts/permissions';
 import { IDENTITY_PERMISSIONS } from '../../src/modules/identity/contracts/permissions';
 import { INVENTORY_PERMISSIONS } from '../../src/modules/inventory/contracts/permissions';
@@ -13,6 +14,7 @@ import { PAYMENTS_PERMISSIONS } from '../../src/modules/payments/contracts/permi
 import { PRICING_PERMISSIONS } from '../../src/modules/pricing/contracts/permissions';
 import { SELLERS_PERMISSIONS } from '../../src/modules/sellers/contracts/permissions';
 import { SHIPPING_PERMISSIONS } from '../../src/modules/shipping/contracts/permissions';
+import { TAX_PERMISSIONS } from '../../src/modules/tax/contracts/permissions';
 import { PermissionRegistry } from '../../src/platform/authz/permission-registry';
 
 /**
@@ -26,6 +28,7 @@ export function realPermissionRegistry(): PermissionRegistry {
   registry.register('identity', IDENTITY_PERMISSIONS);
   registry.register('sellers', SELLERS_PERMISSIONS);
   registry.register('catalog', CATALOG_PERMISSIONS);
+  registry.register('certification', CERTIFICATION_PERMISSIONS);
   registry.register('inventory', INVENTORY_PERMISSIONS);
   registry.register('ordering', ORDERING_PERMISSIONS);
   registry.register('payments', PAYMENTS_PERMISSIONS);
@@ -33,6 +36,7 @@ export function realPermissionRegistry(): PermissionRegistry {
   registry.register('shipping', SHIPPING_PERMISSIONS);
   registry.register('commission-payouts', COMMISSION_PAYOUTS_PERMISSIONS);
   registry.register('notifications', NOTIFICATIONS_PERMISSIONS);
+  registry.register('tax', TAX_PERMISSIONS);
   registry.seal();
   return registry;
 }

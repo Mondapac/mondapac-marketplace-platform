@@ -1,7 +1,16 @@
 'use client';
 
-import { Badge, Banner, Button, Card, Dialog, TextField, type BadgeTone } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import {
+  ActionRow,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Dialog,
+  TextField,
+  type BadgeTone,
+} from '@mondapac/ui';
+import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { useThrottle } from '../auth/use-throttle.ts';
@@ -46,6 +55,8 @@ export function PayoutAccountView({
   readonly back: StripeReturn;
 }) {
   const t = useTranslations('payout');
+  const locale = useLocale();
+  const zone = useTimeZone();
   const [account, setAccount] = useState(initial);
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState('');
@@ -131,7 +142,7 @@ export function PayoutAccountView({
   }
 
   return (
-    <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
       {back === 'return' ? (
         <Banner tone="info" title={t('back.return.title')}>
@@ -174,7 +185,7 @@ export function PayoutAccountView({
         {account.requirementsPastDue ? <Banner tone="critical">{t('past-due')}</Banner> : null}
         {coolingOff && account.coolingOffUntil !== null ? (
           <Banner tone="attention" title={t('cooling-off.title')}>
-            {t('cooling-off.body', { until: formatInstant(account.coolingOffUntil) })}
+            {t('cooling-off.body', { until: formatInstant(account.coolingOffUntil, locale, zone) })}
             {account.payoutsPaused ? ` ${t('cooling-off.paused')}` : ''}
           </Banner>
         ) : null}
@@ -183,7 +194,7 @@ export function PayoutAccountView({
         ) : null}
         {canManage ? (
           account.secondFactorActive ? (
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <ActionRow>
               <Button type="button" onClick={() => setOpen(true)}>
                 {t(`action.${actionKey}`)}
               </Button>
@@ -197,7 +208,7 @@ export function PayoutAccountView({
                   {t('action.check')}
                 </Button>
               ) : null}
-            </div>
+            </ActionRow>
           ) : (
             <Banner tone="info" title={t('second-factor.title')}>
               <p>{t('second-factor.body')}</p>
@@ -225,12 +236,14 @@ export function PayoutAccountView({
             {account.changes.map((change) => (
               <li
                 key={`${change.detectedAt}-${change.kind}`}
-                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2 first:pt-0 last:pb-0"
+                className="flex flex-col gap-1 py-2 first:pt-0 last:pb-0 sm:grid sm:grid-cols-[minmax(0,var(--mp-size-data-label))_minmax(0,1fr)] sm:gap-x-6"
               >
+                <span className="text-fg-muted">
+                  {formatInstant(change.detectedAt, locale, zone)}
+                </span>
                 <span className="font-medium">
                   {t(`changes.kind.${known(change.kind, CHANGE_KINDS)}`)}
                 </span>
-                <span className="text-sm text-fg-muted">{formatInstant(change.detectedAt)}</span>
               </li>
             ))}
           </ul>
@@ -251,7 +264,11 @@ export function PayoutAccountView({
           </>
         }
       >
-        <form onSubmit={(event) => void submit(event)} noValidate className="flex flex-col gap-4">
+        <form
+          onSubmit={(event) => void submit(event)}
+          noValidate
+          className="flex max-w-(--mp-size-form-max) flex-col gap-4"
+        >
           <p>{t('dialog.body')}</p>
           {problem ? (
             <Banner tone="critical">

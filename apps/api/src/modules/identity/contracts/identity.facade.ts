@@ -1,5 +1,6 @@
 import type { CallContext, Id, Population, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { StepUpFailure } from './step-up';
 
 /**
  * Who the calling actor is (identity design 8.1 `describeActor`): ids and codes only, never a
@@ -43,6 +44,25 @@ export type ContactEmailTarget =
   | { readonly kind: 'seller-owner'; readonly sellerId: Id<'Seller'> };
 
 /**
+ * One customer of {@link IdentityFacade.customerAccountSummaries}. The name and the address are
+ * PERSONAL DATA for the admin who asked: no module logs them or puts them in an event, an audit
+ * row, a cache, an outbox or an error body, and they are rendered as escaped text only.
+ */
+export interface CustomerAccountSummary {
+  readonly accountId: Id<'Account'>;
+  /** Null when the customer gave none (customers sign up without a name). */
+  readonly displayName: string | null;
+  /** The sign-in address, as typed. */
+  readonly email: string;
+}
+
+/** A request the facade refused before any read: a code and the field, never its value. */
+export interface IdentityValidationFailed {
+  readonly code: 'validation.failed';
+  readonly fields: readonly { readonly path: string; readonly code: string }[];
+}
+
+/**
  * The public facade of `identity` (identity design 8.1). Every method takes the caller's
  * `CallContext` first, unchanged, and is a thin call of one use case, so the gate runs (PF 6.4
  * row 2). Other modules inject {@link IDENTITY_FACADE}; they never read identity's tables.
@@ -75,6 +95,18 @@ export interface IdentityFacade {
   ): Promise<Result<void, ConfirmSecondFactorFailure>>;
 
   /**
+   * Whether the sensitive seller action `actionKey` (a registered step-up action) may go ahead
+   * now (seller OTP policy). Call it first in the use case that does the action, with the
+   * caller's `CallContext` unchanged, and pass its refusal on: `second-factor.required`
+   * (`actionKey` in the details) tells the panel to verify a code for that action and repeat the
+   * request; `second-factor.enrolment-required` that the member must set up two-step first. A
+   * caller that is not a seller session passes. An unregistered key answers
+   * `access.unavailable`. Rule `own-resources`, allowed while the seller is not approved (the guarded
+   * action refuses it itself).
+   */
+  requireStepUp(context: CallContext, actionKey: string): Promise<Result<void, StepUpFailure>>;
+
+  /**
    * The address to mail a notice to, for the `system` caller only (the order emails): a customer
    * account's own, or a seller Owner's. `null` when there is none to use: unknown, of another
    * Market or population, disabled or not verified, all alike. Personal data: the caller uses it
@@ -84,6 +116,18 @@ export interface IdentityFacade {
     context: CallContext,
     target: ContactEmailTarget,
   ): Promise<Result<string | null, AccessDenied>>;
+
+  /**
+   * The display name and sign-in address of each requested customer account, for an admin page
+   * that shows who placed an order. Rule `permissions [identity.customer-account.view]`, checked
+   * by the gate and again in the read; the system actor, a seller, a customer and an acting-as
+   * session are refused. At most 100 ids, duplicates answered once; an unknown id, another
+   * Market's and a non-customer account are absent. Not exposed over HTTP.
+   */
+  customerAccountSummaries(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<Result<readonly CustomerAccountSummary[], AccessDenied | IdentityValidationFailed>>;
 }
 
 /** Nest token of the {@link IdentityFacade}, provided and exported by `IdentityModule`. */

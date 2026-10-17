@@ -4,8 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { sellerNav } from '../nav.ts';
-import { visibleNavItems } from '@mondapac/ui';
+import { settingsTabs } from '../settings/settings-header.tsx';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
@@ -71,7 +70,8 @@ describe('StockLocations', () => {
   it('lists the locations in order with the Default badge, address and zone', () => {
     mount();
     expect(screen.getByText('Default', { selector: 'span' })).toBeTruthy();
-    expect(screen.getByText('1 Test St, Sunnybank')).toBeTruthy();
+    // Street first, then the place, each on its own line.
+    expect(screen.getByText('1 Test St Sunnybank').textContent).toBe('1 Test St\nSunnybank');
     expect(screen.getByText('Australia/Brisbane')).toBeTruthy();
     expect(screen.getByText('No address')).toBeTruthy();
   });
@@ -125,14 +125,12 @@ describe('StockLocations', () => {
     );
   });
 
-  it('disables the first up and the last down button', () => {
+  it('shows only the moves that do something: no up on the first, no down on the last', () => {
     mount();
-    expect(screen.getByRole('button', { name: 'Move Default up' }).hasAttribute('disabled')).toBe(
-      true,
-    );
-    expect(screen.getByRole('button', { name: 'Move Garage down' }).hasAttribute('disabled')).toBe(
-      true,
-    );
+    expect(screen.queryByRole('button', { name: 'Move Default up' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Move Default down' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Move Garage up' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Move Garage down' })).toBeNull();
   });
 
   it('turns off Add at the limit', () => {
@@ -184,9 +182,9 @@ describe('helpers', () => {
     ).toEqual({ form: { key: 'stock.error.limit', values: { max: 5 } }, fields: {} });
   });
 
-  it('shows the stock page in the nav only with the view permission', () => {
-    const ids = (keys: string[]) => visibleNavItems(sellerNav, new Set(keys)).map((i) => i.id);
-    expect(ids([])).not.toContain('s_stock');
-    expect(ids(['inventory.stock.view'])).toContain('s_stock');
+  it('shows the stock locations settings tab only with the view permission', () => {
+    const ids = (keys: string[]) => settingsTabs(keys, (key) => key).map((tab) => tab.id);
+    expect(ids([])).not.toContain('locations');
+    expect(ids(['inventory.stock.view'])).toContain('locations');
   });
 });

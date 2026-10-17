@@ -17,6 +17,10 @@ export interface OrderLineView {
   readonly lineId: string;
   readonly offerId: string;
   readonly variantId: string;
+  /** The product's published name in the Market locale; null when the API cannot name it. */
+  readonly productName: string | null;
+  /** The variant's label (such as a size); null when it has none. */
+  readonly variantLabel: string | null;
   readonly quantity: number;
   readonly unitPrice: Money;
   readonly lineAmount: Money;
@@ -42,6 +46,9 @@ export interface SellerOrderPage {
   readonly sellerOrders: readonly SellerOrderView[];
   readonly nextCursor: string | null;
 }
+
+export const FULFILMENT_FILTERS = ['all', 'to-ship', 'shipped', 'delivered'] as const;
+export type FulfilmentFilter = (typeof FULFILMENT_FILTERS)[number];
 
 /** The seller's own flat delivery fee, set by the platform. */
 export interface OwnFee extends Money {

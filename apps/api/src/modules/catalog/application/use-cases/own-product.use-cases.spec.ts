@@ -172,6 +172,8 @@ describe.each(FIXTURES)(
           revisions.set(revision.id, revision);
           return Promise.resolve();
         },
+        recordDecision: () => Promise.resolve(),
+        latestChangeRequest: () => Promise.resolve(null),
         find: (_m, productId, id) => {
           const found = revisions.get(id);
           return Promise.resolve(found?.productId === productId ? found : null);

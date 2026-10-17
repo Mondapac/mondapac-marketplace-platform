@@ -10,7 +10,13 @@ export interface SellerSession {
   readonly sellerAccessState: 'pending' | 'approved' | 'rejected';
   readonly email: string;
   readonly secondFactorActive: boolean;
+  /** The previous successful sign-in (ISO 8601, UTC), or null when none is on record. */
+  readonly lastSignInAt: string | null;
   readonly displayName: string;
+  /** The holder's own IANA time zone, or null when none was chosen. */
+  readonly timezone: string | null;
+  /** The holder's panel language code, or null when none was chosen. */
+  readonly locale: string | null;
   readonly csrfToken: string;
 }
 

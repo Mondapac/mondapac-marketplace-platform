@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { ok, Temporal } from '@mondapac/shared-kernel';
-import type { Result } from '@mondapac/shared-kernel';
+import type { Id, Result } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client, DatabaseError } from 'pg';
 import { SessionAuthenticator } from '../../src/modules/identity/application/access/session-authenticator';
@@ -93,11 +93,14 @@ describe('customer sign-in (database integration)', () => {
   let db: Persistence;
   let sql: Client;
   let hasher: CountingHasher;
+  let records: PrismaSignInRecordRepository;
+  let uow: Persistence['unitOfWork'];
   let register: RegisterCustomer;
   let signIn: SignInCustomer;
   let signOut: SignOut;
   let purge: PurgeExpired;
   let authenticator: SessionAuthenticator;
+  let sessions: PrismaSessionRepository;
   let warnings: jest.SpyInstance;
 
   beforeAll(async () => {
@@ -113,9 +116,10 @@ describe('customer sign-in (database integration)', () => {
         clock,
       ),
     );
-    const sessions = new PrismaSessionRepository(db.service);
+    uow = db.unitOfWork;
+    sessions = new PrismaSessionRepository(db.service);
     const throttles = new PrismaThrottleRepository(db.service);
-    const records = new PrismaSignInRecordRepository(db.service);
+    records = new PrismaSignInRecordRepository(db.service);
     const links = new PrismaOneTimeLinkRepository(db.service);
     hasher = new CountingHasher();
     const gate = createUseCaseGate(markets, allow);
@@ -205,6 +209,53 @@ describe('customer sign-in (database integration)', () => {
       return { email, accountId: rows[0]!.id };
     }
 
+    it("answers the account's previous successful sign-in, never the session's own", async () => {
+      const { email, accountId } = await verifiedAccount();
+      const startedAt = clock.now();
+      clock.set(startedAt.add({ minutes: 1 }));
+      const first = await signIn.execute(context(), {
+        email,
+        password: PASSWORD,
+        client: freshClient(),
+      });
+      const firstAt = clock.now();
+      clock.set(firstAt.add({ hours: 2 }));
+      const second = await signIn.execute(context(), {
+        email,
+        password: PASSWORD,
+        client: freshClient(),
+      });
+      expect([first.ok, second.ok]).toEqual([true, true]);
+      const sessionIds = (
+        await sql.query<{ id: string }>(
+          'SELECT id FROM identity.sessions WHERE market_id = $1 AND account_id = $2 ORDER BY created_at',
+          [code, accountId],
+        )
+      ).rows.map((r) => r.id as never);
+
+      const latest = (except: never) =>
+        uow.run(
+          market,
+          async () => ok(await records.latestSuccessBefore(market, accountId as never, except)),
+          {
+            readOnly: true,
+          },
+        );
+
+      // Seen from the second session: the first. Seen from the first: the second (the newest other).
+      await expect(latest(sessionIds[1]!)).resolves.toEqual(ok(firstAt));
+      await expect(latest(sessionIds[0]!)).resolves.toEqual(ok(firstAt.add({ hours: 2 })));
+      await expect(
+        uow.run(
+          market,
+          async () =>
+            ok(await records.latestSuccessBefore(market, randomUUID() as never, sessionIds[0]!)),
+          { readOnly: true },
+        ),
+      ).resolves.toEqual(ok(null));
+      clock.set(startedAt);
+    });
+
     it('opens a session: only the token hash is stored, and the attempt is recorded with its address', async () => {
       const { email, accountId } = await verifiedAccount();
       const client = freshClient();
@@ -272,6 +323,55 @@ describe('customer sign-in (database integration)', () => {
         [sessions.rows[0]!.id],
       );
       expect(revoked.rows).toEqual([{ revoked_reason: 'sign-out' }]);
+    });
+
+    it("keeps the sign-in's coarse device and lists only the account's live sessions", async () => {
+      const { email, accountId } = await verifiedAccount();
+      const opened = [];
+      for (const device of ['firefox.linux', null] as const) {
+        const result = await signIn.execute(context(), {
+          email,
+          password: PASSWORD,
+          client: { ...freshClient(), device },
+        });
+        if (!result.ok) throw new Error('expected a session');
+        opened.push(result.value.token);
+        clock.advance(Temporal.Duration.from({ minutes: 2 }));
+      }
+      const stored = await sql.query<{ device: string | null }>(
+        'SELECT device FROM identity.sessions WHERE account_id = $1 ORDER BY created_at',
+        [accountId],
+      );
+      expect(stored.rows.map((row) => row.device)).toEqual(['firefox.linux', null]);
+
+      const listed = await uow.run(
+        market,
+        async () =>
+          ok(await sessions.listUnrevokedOf(market, accountId as Id<'Account'>, clock.now(), 50)),
+        { readOnly: true },
+      );
+      if (!listed.ok) throw new Error('expected a list');
+      // Most recently used first.
+      expect(listed.value.map((session) => session.device)).toEqual([null, 'firefox.linux']);
+
+      await uow.run(market, async () =>
+        ok(
+          await sessions.revokeAllOf(
+            market,
+            accountId as Id<'Account'>,
+            'signed-out-elsewhere',
+            clock.now(),
+            listed.value[0]!.id,
+          ),
+        ),
+      );
+      const after = await uow.run(
+        market,
+        async () =>
+          ok(await sessions.listUnrevokedOf(market, accountId as Id<'Account'>, clock.now(), 50)),
+        { readOnly: true },
+      );
+      expect(after.ok && after.value.map((session) => session.id)).toEqual([listed.value[0]!.id]);
     });
 
     it('writes lastSeenAt at most once a minute', async () => {
@@ -496,13 +596,14 @@ describe('customer sign-in (database integration)', () => {
         expiresInSeconds?: number;
         revokedAt?: string | null;
         revokedReason?: string | null;
+        device?: string | null;
       }) =>
         sql.query(
           `INSERT INTO identity.sessions (id, market_id, tenant_id, account_id, population, seller_id,
              token_hash, transport, created_at, last_seen_at, idle_timeout_seconds, absolute_expires_at,
-             revoked_at, revoked_reason)
+             revoked_at, revoked_reason, device)
            VALUES ($1, $2, 'default', $3, $4, $5, $6, $7, now(), now(), 600,
-             now() + make_interval(secs => $8), $9, $10)`,
+             now() + make_interval(secs => $8), $9, $10, $11)`,
           [
             randomUUID(),
             code,
@@ -514,6 +615,7 @@ describe('customer sign-in (database integration)', () => {
             overrides.expiresInSeconds ?? 3600,
             overrides.revokedAt === undefined ? null : overrides.revokedAt,
             overrides.revokedReason === undefined ? null : overrides.revokedReason,
+            overrides.device === undefined ? null : overrides.device,
           ],
         );
 
@@ -534,6 +636,10 @@ describe('customer sign-in (database integration)', () => {
       );
       expect(await violated(insertSession({ transport: 'header' }))).toBe(
         'sessions_transport_check',
+      );
+      // Profile package 4: the device is a code pair, never a raw User-Agent.
+      expect(await violated(insertSession({ device: 'Chrome/141 (Windows)' }))).toBe(
+        'sessions_device_check',
       );
     });
 

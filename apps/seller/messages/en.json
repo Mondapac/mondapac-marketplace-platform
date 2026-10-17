@@ -4,29 +4,156 @@
     "market": "MondaPac {marketName}",
     "support": "Need help? Email {supportEmail}."
   },
+  "theme": {
+    "menu": "Theme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "account-menu": {
+    "trigger": "Account menu for {name}",
+    "pages": "Your account",
+    "profile": "My profile",
+    "sessions": "Signed-in devices",
+    "security": "Security",
+    "sign-out": "Sign out",
+    "signing-out": "Signing out…",
+    "sign-out-failed": "We couldn't sign you out. Check your connection and try again."
+  },
   "nav": {
     "menu": "Open navigation menu",
     "close": "Close navigation menu",
     "more": "More",
     "main": "Main navigation",
-    "home": "Home",
+    "breadcrumb": "Breadcrumb",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
+    "home": "Dashboard",
     "setup": "Seller account",
     "products": "Products",
     "offers": "Offers",
-    "stock": "Stock locations",
-    "security": "Security",
     "orders": "Orders",
     "earnings": "Earnings",
-    "payout": "Payout account",
-    "team": "Team"
+    "team": "Team",
+    "settings": "Settings"
   },
   "home": {
-    "title": "Home",
-    "empty": "Your seller workspace is being set up.",
-    "signed-in-as": "Signed in as {name}",
-    "sign-out": "Sign out",
-    "sign-out-failed": "We couldn't sign you out. Check your connection and try again.",
-    "user-menu": "Account"
+    "title": "Dashboard",
+    "intro": "Welcome, {name}. Here is what needs attention in your shop and your latest activity."
+  },
+  "dashboard": {
+    "view-all": "View all",
+    "unnamed-product": "Unnamed product",
+    "error": {
+      "card": "This could not be loaded. Reload the page to try again."
+    },
+    "none": {
+      "title": "Nothing to show here yet",
+      "body": "Your role has no dashboard widgets. Use the menu to open the sections you can use."
+    },
+    "scope": {
+      "latest": "Latest {count}",
+      "orders-all": "All your paid orders",
+      "orders-latest": "Among your latest {count} paid orders",
+      "offers-all": "All your offers",
+      "offers-latest": "Among your latest {count} offers",
+      "offers-open": "Waiting offers among your latest {count}",
+      "changed-latest": "Most recently changed first"
+    },
+    "notice": {
+      "payout-unreadable": "We could not check your payout account just now.",
+      "payout": {
+        "title": "Your payout account is not ready",
+        "body": "You are paid through it, so orders cannot be paid out until it is set up.",
+        "action": "Set up payouts"
+      },
+      "sources": {
+        "title": "Add a stock location",
+        "body": "Stock is held at a location. Add one before you set stock for your offers.",
+        "action": "Add a location"
+      }
+    },
+    "attention": {
+      "title": "Needs attention",
+      "to-ship": {
+        "label": "Orders to ship"
+      },
+      "in-review": {
+        "label": "Offers waiting for review"
+      },
+      "changes": {
+        "label": "Offers needing changes"
+      },
+      "balance": {
+        "label": "Your balance",
+        "scope": "All time, as in your earnings"
+      }
+    },
+    "orders": {
+      "title": "Recent orders",
+      "empty": "No paid orders yet.",
+      "col": {
+        "order": "Order",
+        "status": "Status",
+        "total": "Total",
+        "paid": "Paid"
+      },
+      "status": {
+        "to-ship": "To ship",
+        "shipped": "Shipped",
+        "delivered": "Delivered",
+        "unknown": "Unknown"
+      }
+    },
+    "offers": {
+      "title": "Offers waiting on you or on review",
+      "empty": "No offers are waiting for review or changes.",
+      "col": {
+        "status": "Status"
+      }
+    },
+    "low-stock": {
+      "title": "Low stock",
+      "empty": "Nothing is low or out of stock.",
+      "none-left": "None left",
+      "col": {
+        "item": "Item",
+        "status": "Stock",
+        "left": "Units left",
+        "changed": "Changed"
+      },
+      "status": {
+        "low": "Low",
+        "out": "Out of stock",
+        "unknown": "Unknown"
+      }
+    },
+    "earnings": {
+      "title": "Latest earnings entries",
+      "empty": "No ledger entries yet.",
+      "col": {
+        "entry": "Entry",
+        "amount": "Amount",
+        "when": "When"
+      },
+      "kind": {
+        "sale": "Sale",
+        "shipping": "Delivery fee",
+        "commission": "Commission",
+        "unknown": "Other"
+      }
+    },
+    "states": {
+      "title": "Offers by status",
+      "empty": "No offers yet."
+    },
+    "actions": {
+      "title": "Quick actions",
+      "add-product": "Add a product",
+      "stock-locations": "Stock locations",
+      "payout-account": "Payout account",
+      "invite-team": "Invite a team member"
+    }
   },
   "showcase": {
     "title": "Sell to neighbours who care where their food comes from.",
@@ -314,7 +441,7 @@
       "no-access": {
         "title": "You don't have access to this page",
         "body": "Your role doesn't include the team. Ask the shop owner.",
-        "action": "Go to Home"
+        "action": "Go to Dashboard"
       },
       "actions": "Actions",
       "actions-for": "Actions for {name}",
@@ -664,7 +791,7 @@
       "title": "We couldn't find that",
       "body": "It may have been removed, or it isn't part of your shop."
     },
-    "back-home": "Back to home",
+    "back-home": "Back to dashboard",
     "next-page": "Next page",
     "col": {
       "status": "Status",
@@ -729,8 +856,8 @@
         "submitted": "Submitted"
       },
       "listed": {
-        "yes": "On sale",
-        "no": "Not on sale"
+        "yes": "Yes",
+        "no": "No"
       },
       "status": {
         "draft": "Draft",
@@ -763,7 +890,11 @@
         "tag-suspended": "A certification tag is suspended",
         "description-claim-text": "The description makes a claim that needs a matching certificate",
         "unknown": "Unknown reason"
-      }
+      },
+      "tab": {
+        "details": "Details"
+      },
+      "tabs": "Offer sections"
     },
     "create": {
       "title": "New product",
@@ -945,7 +1076,8 @@
         "unavailable": "The request could not be sent. Try again later.",
         "unknown": "Something went wrong. Try again."
       }
-    }
+    },
+    "not-given": "Not given"
   },
   "stock": {
     "title": "Stock locations",
@@ -1015,20 +1147,58 @@
         "below-held": "You can't set the stock below the units held in checkouts.",
         "not-ready": "Stock isn't ready yet. Try again in a moment.",
         "not-found": "This offer or location was not found. Reload the page."
-      }
+      },
+      "on-hand": "Units in stock"
     }
   },
   "orders": {
     "title": "Orders",
-    "intro": "Paid orders for your store, newest first. Ship each one, then mark it delivered when it arrives.",
+    "intro": "Paid orders for your store, newest first. Open an order to ship it, then mark it delivered when it arrives.",
+    "not-found": {
+      "title": "Order not found",
+      "body": "This order does not exist, or it belongs to another store."
+    },
     "fee": "Delivery fee on every order: {fee}. The platform sets it for your store; the customer pays it with the order.",
-    "empty": "No paid orders yet. They appear here as soon as a customer pays.",
     "more": "Show more orders",
     "optional": "optional",
-    "card-title": "Order {id}",
-    "paid": "Paid {when}",
-    "line": "Item {n} × {quantity}",
-    "each": "{price} each",
+    "ref": "#{id}",
+    "detail-title": "Order #{id}",
+    "back": "Back to orders",
+    "not-given": "Not given",
+    "col": {
+      "order": "Order",
+      "status": "Status",
+      "paid": "Paid",
+      "items": "Items",
+      "total": "Total"
+    },
+    "filter": {
+      "label": "Filter orders by fulfilment",
+      "all": "All",
+      "empty": {
+        "title": "No orders in this state",
+        "body": "Orders appear here as they move on.",
+        "body-more": "None of the orders loaded so far are in this state. Show more orders to look further back."
+      }
+    },
+    "paid-line": "Paid {when}",
+    "items-count": "{count, plural, one {# item} other {# items}}",
+    "lines": "Items in this order",
+    "line": {
+      "fallback": "Item {id}",
+      "qty-price": "{quantity} × {price}",
+      "col": {
+        "item": "Item",
+        "quantity": "Qty",
+        "unit": "Unit price",
+        "amount": "Amount"
+      }
+    },
+    "totals": "Totals",
+    "fulfilment": "Fulfilment",
+    "not-shipped": "This order has not been shipped yet.",
+    "shipped-on": "Shipped",
+    "delivered-on": "Delivered",
     "subtotal": "Items",
     "delivery": "Delivery",
     "delivery-free": "Free",
@@ -1039,14 +1209,11 @@
       "delivered": "Delivered"
     },
     "ship": {
-      "title": "Send this order",
       "carrier": "Carrier",
       "tracking": "Tracking reference",
       "hint": "The customer gets an email with the carrier and tracking reference.",
       "submit": "Mark as shipped"
     },
-    "shipped-at": "Shipped {when}",
-    "delivered-at": "Delivered {when}",
     "deliver": "Mark as delivered",
     "validation": {
       "required": "Enter the carrier.",
@@ -1061,6 +1228,10 @@
       "denied": "Your role cannot do this.",
       "unavailable": "Orders are not available right now. Try again shortly.",
       "unknown": "Something went wrong. Try again."
+    },
+    "empty-state": {
+      "title": "No paid orders yet",
+      "body": "They appear here as soon as a customer pays."
     }
   },
   "earnings": {
@@ -1084,10 +1255,13 @@
       "shipping": "Shipping",
       "commission": "Commission"
     },
-    "empty": "No earnings yet. Rows appear here as soon as a customer pays for an order.",
     "more": "Load more",
     "more-failed": "More rows could not be loaded. Try again.",
-    "unavailable": "Your earnings are not available right now. Try again shortly."
+    "unavailable": "Your earnings are not available right now. Try again shortly.",
+    "empty-state": {
+      "title": "No earnings yet",
+      "body": "Rows appear here as soon as a customer pays for an order."
+    }
   },
   "price": {
     "title": "Prices",
@@ -1153,11 +1327,25 @@
   "load": {
     "retry": "Try again"
   },
+  "settings": {
+    "title": "Settings",
+    "tabs": "Settings sections",
+    "tab": {
+      "security": "Security",
+      "payout": "Payout account",
+      "locations": "Stock locations"
+    }
+  },
   "security": {
     "title": "Security",
     "page-title": "Security – Seller account – MondaPac",
     "error": {
       "unavailable": "We couldn't load this page. Try again."
+    },
+    "heading": "Two-step verification",
+    "badge": {
+      "on": "On",
+      "off": "Off"
     },
     "intro": "Two-step verification asks for a code from your phone each time you sign in. It is optional, and we recommend it.",
     "status": {
@@ -1312,5 +1500,124 @@
       "unknown": "Something went wrong on our side. Try again."
     },
     "checked": "Checked just now"
+  },
+  "route": {
+    "loading": "Loading the page",
+    "error": {
+      "title": "This page could not be shown",
+      "message": "Something went wrong on our side. Try again, or go back to the dashboard. Nothing you saved was lost.",
+      "retry": "Try again",
+      "home": "Go to the dashboard",
+      "reference": "Reference for support:"
+    }
+  },
+  "profile": {
+    "title": "My profile",
+    "details": "Details",
+    "name": "Name",
+    "email": "Sign-in email",
+    "two-step": "Two-step verification",
+    "two-step-on": "On",
+    "two-step-off": "Off",
+    "missing": "Not given",
+    "unavailable": "We couldn't load your profile. Try again.",
+    "manage-security": "Manage",
+    "last-sign-in": "Last sign-in",
+    "last-sign-in-none": "No earlier sign-in on record",
+    "name-title": "Your name",
+    "name-label": "Display name",
+    "name-help": "Other people on your team see this name. Use 1 to 100 characters.",
+    "name-save": "Save name",
+    "name-saved": "Your name was updated.",
+    "name-same": "That is already your name.",
+    "prefs-title": "Time zone and language",
+    "prefs-intro-admin": "These are your own display choices. Lists and reports in the admin panel keep showing UTC.",
+    "prefs-intro-seller": "These are your own display choices. Lists and reports keep showing times in your store's time zone.",
+    "timezone": "Time zone",
+    "timezone-label": "Time zone",
+    "timezone-default-admin": "Default (UTC)",
+    "timezone-default-seller": "Default (store time zone)",
+    "timezone-help-admin": "Used for the times on this page, such as your last sign-in.",
+    "timezone-help-seller": "Used for the times on this page, such as your last sign-in.",
+    "language": "Language",
+    "language-label": "Language",
+    "language-default": "Default",
+    "language-en": "English",
+    "language-help": "English is the only language for now. Your choice is kept for when more are added.",
+    "prefs-save": "Save settings",
+    "prefs-saved": "Your settings were saved.",
+    "prefs-same": "Those settings are already saved.",
+    "password-title": "Change password",
+    "password-intro": "Changing your password signs you out on your other devices. You stay signed in here.",
+    "current-password": "Current password",
+    "new-password": "New password",
+    "new-password-help": "Use {min} to {max} characters. A short sentence works well.",
+    "show-password": "Show password",
+    "hide-password": "Hide password",
+    "code-label": "6-digit code",
+    "code-digit": "Digit {position} of {total}",
+    "backup-label": "Backup code",
+    "use-backup": "Use a backup code instead",
+    "use-app": "Use your authenticator app instead",
+    "password-save": "Change password",
+    "password-saved": "Your password was changed. Your other devices were signed out.",
+    "error": {
+      "name-length": "Enter a name of 1 to 100 characters.",
+      "prefs-invalid": "That time zone or language is not available. Choose one from the list.",
+      "name-characters": "Remove web addresses and special formatting characters from the name.",
+      "current-required": "Enter your current password.",
+      "current-incorrect": "That password is incorrect.",
+      "new-length": "Use {min} to {max} characters.",
+      "new-common": "That password is too easy to guess. Choose a different one.",
+      "new-contains-identity": "Don't use your email or name in your password.",
+      "code-required": "Enter the code.",
+      "code-rejected": "That code didn't work. Enter the newest code from your app.",
+      "code-locked": "Too many wrong codes. Code checks are paused for now. Try again later.",
+      "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+      "csrf": "Refresh the page and try again.",
+      "denied": "You don't have permission to do that.",
+      "unavailable": "We can't do that right now. Try again in a moment.",
+      "network": "You're offline or the connection dropped. Check it and try again.",
+      "unknown": "Something went wrong on our side. Try again."
+    }
+  },
+  "sessions": {
+    "title": "Signed-in devices",
+    "unavailable": "We couldn't load your signed-in devices. Try again.",
+    "list-title": "Where you're signed in",
+    "intro": "These are the browsers and devices signed in to your account now. If you don't recognise one, sign out of all other devices and change your password.",
+    "this-device": "This device",
+    "signed-in": "Signed in",
+    "last-active": "Last active",
+    "active-now": "Active now",
+    "device": "{browser} on {system}",
+    "unknown-device": "Unknown device",
+    "browser": {
+      "edge": "Edge",
+      "opera": "Opera",
+      "samsung": "Samsung Internet",
+      "firefox": "Firefox",
+      "chrome": "Chrome",
+      "safari": "Safari",
+      "other": "A browser"
+    },
+    "system": {
+      "windows": "Windows",
+      "macos": "macOS",
+      "ios": "iPhone or iPad",
+      "android": "Android",
+      "chromeos": "ChromeOS",
+      "linux": "Linux",
+      "other": "another system"
+    },
+    "only-this-device": "You're signed in on this device only.",
+    "sign-out-others": "Sign out of all other devices",
+    "signed-out-others": "{count, plural, =0 {No other device was signed in.} one {Signed out of # other device.} other {Signed out of # other devices.}}",
+    "dialog": {
+      "title": "Sign out of all other devices?",
+      "body": "{count, plural, one {The other device} other {The # other devices}} will have to sign in again. This device stays signed in.",
+      "keep": "Keep them signed in",
+      "action": "Sign out others"
+    }
   }
 }

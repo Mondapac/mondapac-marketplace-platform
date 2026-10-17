@@ -183,9 +183,72 @@ describe('SignInForm', () => {
 });
 
 describe('UserMenu', () => {
+  const menu = (approved = true) => (
+    <UserMenu
+      name="Sam Lee"
+      email="sam@example.test"
+      theme="system"
+      approved={approved}
+      csrfToken="csrf-1"
+    />
+  );
+  const open = () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu for Sam Lee' }));
+
+  it('shows who is signed in, their pages and the theme once opened', () => {
+    render(wrap(menu()));
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+    open();
+    expect(screen.getByText('sam@example.test')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'My profile' }).getAttribute('href')).toBe(
+      '/account/profile',
+    );
+    expect(screen.getByRole('link', { name: 'Security' }).getAttribute('href')).toBe(
+      '/account/security',
+    );
+    expect(screen.getByRole('radio', { name: 'System' }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('leaves Security out until the seller is approved', () => {
+    render(wrap(menu(false)));
+    open();
+    expect(screen.queryByRole('link', { name: 'Security' })).toBeNull();
+  });
+
+  it('closes on Escape and returns focus to the avatar', () => {
+    render(wrap(menu()));
+    open();
+    fireEvent.keyDown(screen.getByRole('link', { name: 'My profile' }), { key: 'Escape' });
+    expect(screen.queryByRole('link', { name: 'My profile' })).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Account menu for Sam Lee' }),
+    );
+  });
+
+  it('moves through the themes with the arrow keys, one tab stop for the group', () => {
+    render(wrap(menu()));
+    open();
+    const system = screen.getByRole('radio', { name: 'System' });
+    expect(system.getAttribute('tabindex')).toBe('0');
+    expect(screen.getByRole('radio', { name: 'Dark' }).getAttribute('tabindex')).toBe('-1');
+    fireEvent.keyDown(system, { key: 'ArrowRight' });
+    const light = screen.getByRole('radio', { name: 'Light' });
+    expect(light.getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(light);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
+
+  it('stays open after a click inside the panel', () => {
+    render(wrap(menu()));
+    open();
+    fireEvent.click(screen.getByText('sam@example.test'));
+    expect(screen.getByRole('link', { name: 'My profile' })).toBeTruthy();
+  });
+
   it('signs out with the CSRF token and goes to sign-in', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: {} });
-    render(wrap(<UserMenu name="Sam" csrfToken="csrf-1" />));
+    render(wrap(menu()));
+    open();
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/sign-in?notice=signed-out'));
     expect(call).toHaveBeenCalledWith('POST', 'identity/seller/sign-out', {}, 'csrf-1');
@@ -193,14 +256,16 @@ describe('UserMenu', () => {
 
   it('treats an already ended session as signed out', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 401, code: 'session.invalid' } });
-    render(wrap(<UserMenu name="Sam" csrfToken="csrf-1" />));
+    render(wrap(menu()));
+    open();
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     await waitFor(() => expect(router.replace).toHaveBeenCalled());
   });
 
   it('stays and says so when sign-out failed', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 0, code: 'network' } });
-    render(wrap(<UserMenu name="Sam" csrfToken="csrf-1" />));
+    render(wrap(menu()));
+    open();
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     expect((await screen.findByRole('alert')).textContent).toContain("couldn't sign you out");
     expect(router.replace).not.toHaveBeenCalled();

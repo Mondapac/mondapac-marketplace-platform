@@ -151,7 +151,11 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     );
     const pending = await value(market, () => repository.findPending(market, account));
     const confirmed = await value(market, () =>
-      repository.listAll(market, { status: 'confirmed' }, { limit: 100, after: null }),
+      repository.listAll(
+        market,
+        { status: 'confirmed', reference: null },
+        { limit: 100, after: null },
+      ),
     );
 
     expect(first.map((o) => o.id)).toEqual([rows[2]!.id, rows[1]!.id]);
@@ -166,9 +170,34 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
 
     expect(await value(other, () => repository.findById(other, order.id))).toBeNull();
     const all = await value(other, () =>
-      repository.listAll(other, { status: null }, { limit: 100, after: null }),
+      repository.listAll(other, { status: null, reference: null }, { limit: 100, after: null }),
     );
     expect(all.some((o) => o.id === order.id)).toBe(false);
+    const byReference = await value(other, () =>
+      repository.listAll(other, { status: null, reference: order.id }, { limit: 100, after: null }),
+    );
+    expect(byReference).toEqual([]);
+    const before = await value(market, () => repository.countAll(market));
+    await value(market, () => repository.insert(market, newOrder()));
+    const after = await value(market, () => repository.countAll(market));
+    const otherCounts = await value(other, () => repository.countAll(other));
+    expect(after.pendingPayment).toBe(before.pendingPayment + 1);
+    expect(await value(other, () => repository.countAll(other))).toEqual(otherCounts);
+  });
+
+  it('finds an order by its own id or by one of its seller order ids', async () => {
+    const order = newOrder();
+    const unrelated = newOrder();
+    await value(market, () => repository.insert(market, order));
+    await value(market, () => repository.insert(market, unrelated));
+    const find = (reference: string) =>
+      value(market, () =>
+        repository.listAll(market, { status: null, reference }, { limit: 100, after: null }),
+      );
+
+    expect((await find(order.id)).map((o) => o.id)).toEqual([order.id]);
+    expect((await find(order.sellerOrders[0]!.id)).map((o) => o.id)).toEqual([order.id]);
+    expect(await find(ids.next<'Order'>())).toEqual([]);
   });
 
   const rawOrder = async (overrides: Record<string, unknown>): Promise<string | null> => {
@@ -342,7 +371,28 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     const unpaidSeller = unpaid.sellerOrders[0]!;
 
     const own = await value(market, () =>
-      repository.listForSeller(market, seller.sellerId, { limit: 10, after: null }),
+      repository.listForSeller(
+        market,
+        seller.sellerId,
+        { fulfilment: null },
+        { limit: 10, after: null },
+      ),
+    );
+    const toShip = await value(market, () =>
+      repository.listForSeller(
+        market,
+        seller.sellerId,
+        { fulfilment: 'to-ship' },
+        { limit: 10, after: null },
+      ),
+    );
+    const shipped = await value(market, () =>
+      repository.listForSeller(
+        market,
+        seller.sellerId,
+        { fulfilment: 'shipped' },
+        { limit: 10, after: null },
+      ),
     );
     const foreign = await value(market, () =>
       repository.findForSeller(market, ids.next<'Seller'>(), seller.id),
@@ -355,6 +405,16 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     );
 
     expect(own.map((r) => r.sellerOrder.id)).toEqual([seller.id]);
+    expect(toShip.map((r) => r.sellerOrder.id)).toEqual([seller.id]);
+    expect(shipped).toEqual([]);
+    expect(await value(market, () => repository.countForSeller(market, seller.sellerId))).toEqual({
+      toShip: 1,
+      shipped: 0,
+      delivered: 0,
+    });
+    expect(
+      await value(market, () => repository.countForSeller(market, unpaidSeller.sellerId)),
+    ).toEqual({ toShip: 0, shipped: 0, delivered: 0 });
     expect(foreign).toBeNull();
     expect(notPaid).toBeNull();
     expect(elsewhere).toBeNull();

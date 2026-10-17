@@ -29,6 +29,9 @@ const session = (permissionKeys: string[]): AdminSession => ({
   roleId: 'r',
   permissionKeys,
   secondFactorActive: true,
+  lastSignInAt: null,
+  timezone: null,
+  locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',
   csrfToken: 'c',
@@ -60,6 +63,6 @@ describe('the sellers pages and identity.seller-access.view', () => {
     render(await SellersWithoutOwnerPage());
     expect(screen.queryByText('orphaned list')).toBeNull();
     expect(screen.getByText("You don't have access to this page")).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Go to Home' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Go to Dashboard' })).toBeTruthy();
   });
 });

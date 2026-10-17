@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card, CheckboxRow, TextField } from '@mondapac/ui';
+import { ActionRow, Badge, Banner, Button, Card, CheckboxRow, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -149,7 +149,11 @@ export function TwoStepPanel({
     <Banner tone="critical">{e(`error.${error.key}`, error.values)}</Banner>
   ) : null;
   const form = (onSubmit: (event: FormEvent) => Promise<void>, children: ReactNode) => (
-    <form onSubmit={(event) => void onSubmit(event)} noValidate className="flex flex-col gap-4">
+    <form
+      onSubmit={(event) => void onSubmit(event)}
+      noValidate
+      className="flex max-w-(--mp-size-form-max) flex-col gap-4"
+    >
       {problem}
       {children}
     </form>
@@ -304,21 +308,27 @@ export function TwoStepPanel({
     body = (
       <div className="flex flex-col gap-4">
         {view.kind === 'removed' ? <Banner tone="info">{t('remove.done')}</Banner> : null}
-        <p role="status" className="font-medium">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-lg font-semibold">{t('heading')}</h2>
+          <Badge tone={active ? 'success' : 'neutral'}>
+            {t(active ? 'badge.on' : 'badge.off')}
+          </Badge>
+        </div>
+        <p role="status" className="sr-only">
           {t(active ? 'status.on' : 'status.off')}
         </p>
         <p className="text-fg-secondary">{t('intro')}</p>
         {active ? (
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <ActionRow>
             <Button type="button" variant="secondary" onClick={() => go({ kind: 'regenerate' })}>
               {t('action.new-codes')}
             </Button>
             <Button type="button" variant="secondary" onClick={() => go({ kind: 'remove' })}>
               {t('action.turn-off')}
             </Button>
-          </div>
+          </ActionRow>
         ) : (
-          <Button type="button" onClick={() => go({ kind: 'password' })}>
+          <Button type="button" className="sm:self-start" onClick={() => go({ kind: 'password' })}>
             {t('action.turn-on')}
           </Button>
         )}
@@ -326,9 +336,5 @@ export function TwoStepPanel({
     );
   }
 
-  return (
-    <Card>
-      <div className="max-w-xl">{body}</div>
-    </Card>
-  );
+  return <Card>{body}</Card>;
 }

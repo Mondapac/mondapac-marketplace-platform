@@ -1,6 +1,16 @@
 'use client';
 
-import { Banner, Button, CheckboxRow, Select, TextField } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  CheckboxRow,
+  EmptyState,
+  FieldAction,
+  Select,
+  SkeletonRows,
+  Tabs,
+  TextField,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -134,6 +144,16 @@ export function SellersList({
     else if (term.length >= SEARCH_MIN && term.length <= SEARCH_MAX) setSearch(term);
   }
 
+  // A tab starts unfiltered: a search or filter set under one tab never narrows the next one.
+  function selectTab(id: Tab) {
+    if (id === tab) return;
+    setTab(id);
+    setDraft('');
+    setSearch('');
+    setKind('');
+    setOutsideArea(false);
+  }
+
   const tooShort = draft.trim().length === 1;
   const stateTab = isStateTab(tab);
   const tabs: readonly Tab[] =
@@ -141,31 +161,22 @@ export function SellersList({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* One row that scrolls sideways on a phone, rather than tabs wrapping onto two lines. */}
-      <nav aria-label={t('tabs')} className="flex gap-4 overflow-x-auto border-b border-line">
-        {tabs.map((id) => {
+      <Tabs
+        label={t('tabs')}
+        activeId={tab}
+        onSelect={(id) => selectTab(id as typeof tab)}
+        items={tabs.map((id) => {
           const count = countOf(counts, stateCounts, id);
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-current={id === tab ? 'page' : undefined}
-              onClick={() => setTab(id)}
-              className={
-                id === tab
-                  ? 'min-h-12 shrink-0 whitespace-nowrap border-b-2 border-link px-1 font-medium text-fg'
-                  : 'min-h-12 shrink-0 whitespace-nowrap border-b-2 border-transparent px-1 text-fg-muted hover:text-fg'
-              }
-            >
-              {t(`tab.${id}`)}
-              {count === null ? '' : ` (${count})`}
-            </button>
-          );
+          return { id, label: `${t(`tab.${id}`)}${count === null ? '' : ` (${count})`}` };
         })}
-      </nav>
+      />
       {stateTab ? null : (
-        <div className="flex flex-wrap items-end gap-4">
-          <form onSubmit={submitSearch} className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start">
+          <form
+            onSubmit={submitSearch}
+            role="search"
+            className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-2"
+          >
             <TextField
               label={t('search.label')}
               value={draft}
@@ -174,9 +185,11 @@ export function SellersList({
               help={t('search.help')}
               error={tooShort ? t('search.too-short') : undefined}
             />
-            <Button type="submit" variant="secondary">
-              {t('search.submit')}
-            </Button>
+            <FieldAction>
+              <Button type="submit" variant="secondary">
+                {t('search.submit')}
+              </Button>
+            </FieldAction>
           </form>
           {tab === 'awaiting-review' ? (
             <Select
@@ -188,11 +201,13 @@ export function SellersList({
             />
           ) : null}
           {tab === 'incomplete' ? (
-            <CheckboxRow
-              label={t('filter.outside-area')}
-              checked={outsideArea}
-              onChange={(event) => setOutsideArea(event.target.checked)}
-            />
+            <FieldAction from="lg">
+              <CheckboxRow
+                label={t('filter.outside-area')}
+                checked={outsideArea}
+                onChange={(event) => setOutsideArea(event.target.checked)}
+              />
+            </FieldAction>
           ) : null}
         </div>
       )}
@@ -204,17 +219,22 @@ export function SellersList({
           </Button>
         </div>
       ) : null}
-      {rows.length > 0 ? (
-        <SellersTable rows={rows} canReview={canReview} showOwner={stateCounts !== null} />
+      {loading && rows.length === 0 ? <SkeletonRows label={t('loading')} /> : null}
+      {rows.length > 0 || (!loading && failure === null) ? (
+        <SellersTable
+          rows={rows}
+          canReview={canReview}
+          showOwner={stateCounts !== null}
+          empty={
+            <EmptyState
+              size="compact"
+              icon={search === '' || stateTab ? 'store' : 'search'}
+              title={t(search === '' || stateTab ? `empty.${tab}` : 'empty.search')}
+            />
+          }
+        />
       ) : null}
-      {!loading && failure === null && rows.length === 0 ? (
-        <div className="rounded-lg border border-line p-6">
-          <p className="font-medium">
-            {t(search === '' || stateTab ? `empty.${tab}` : 'empty.search')}
-          </p>
-        </div>
-      ) : null}
-      {loading ? <p className="text-fg-muted">{t('loading')}</p> : null}
+      {loading && rows.length > 0 ? <SkeletonRows label={t('loading')} rows={1} /> : null}
       {next !== null && !loading ? (
         <div>
           <Button variant="secondary" onClick={() => void load(next)}>

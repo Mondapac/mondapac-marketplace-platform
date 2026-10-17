@@ -12,6 +12,7 @@ import { CatalogModule } from '../catalog';
 import { IdentityModule } from '../identity';
 import { AVAILABILITY_SIGNAL_REPOSITORY } from './application/ports/availability-signal.repository';
 import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
+import { SELL_UNIT_LABELS_SOURCE } from './application/ports/sell-unit-labels';
 import { AVAILABILITY_READER } from './application/ports/availability-reader';
 import { OFFER_STOCK_READER } from './application/ports/offer-stock.reader';
 import { STOCK_REPOSITORY } from './application/ports/stock.repository';
@@ -34,6 +35,7 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { AvailabilitySystemQuery } from './application/use-cases/availability-system.use-case';
 import { AvailabilityQuery } from './application/use-cases/availability.use-case';
 import { ViewOfferStock } from './application/use-cases/view-offer-stock.use-case';
+import { ListLowStock } from './application/use-cases/list-low-stock.use-case';
 import { SetStockLevel } from './application/use-cases/set-stock-level.use-case';
 import { INVENTORY_EVENTS } from './domain/events';
 import { INVENTORY_POLICY_PROVIDER } from './application/ports/inventory-policy-provider';
@@ -72,6 +74,7 @@ const PORT = {
   items: AVAILABILITY_READER,
   signals: AVAILABILITY_SIGNAL_REPOSITORY,
   offers: OFFER_SELL_UNITS_SOURCE,
+  labels: SELL_UNIT_LABELS_SOURCE,
   outbox: OUTBOX_WRITER,
   ids: ID_GENERATOR,
   clock: CLOCK,
@@ -163,6 +166,11 @@ function useCaseProvider<D, U>(
       offerStock: true,
       offers: true,
       clock: true,
+    }),
+    useCaseProvider(ListLowStock, {
+      unitOfWork: true,
+      offerStock: true,
+      labels: true,
     }),
     useCaseProvider(EnsureSellerInventory, {
       unitOfWork: true,

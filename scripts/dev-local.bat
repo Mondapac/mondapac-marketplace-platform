@@ -41,6 +41,10 @@ findstr /b /c:"CLIENT_ADDRESS_SOURCE=" "apps\seller\.env.local" >nul 2>nul || (
   echo apps\seller\.env.local has no CLIENT_ADDRESS_SOURCE: adding CLIENT_ADDRESS_SOURCE=socket
   echo CLIENT_ADDRESS_SOURCE=socket>>"apps\seller\.env.local"
 )
+findstr /b /c:"PANEL_LOCALE=" "apps\seller\.env.local" >nul 2>nul || (
+  echo apps\seller\.env.local has no PANEL_LOCALE: adding PANEL_LOCALE=en-AU, the AU Market's locale
+  echo PANEL_LOCALE=en-AU>>"apps\seller\.env.local"
+)
 if not exist "apps\admin\.env.local" (
   echo Creating apps\admin\.env.local from apps\admin\.env.example
   copy /y "apps\admin\.env.example" "apps\admin\.env.local" >nul
@@ -48,6 +52,10 @@ if not exist "apps\admin\.env.local" (
 findstr /b /c:"CLIENT_ADDRESS_SOURCE=" "apps\admin\.env.local" >nul 2>nul || (
   echo apps\admin\.env.local has no CLIENT_ADDRESS_SOURCE: adding CLIENT_ADDRESS_SOURCE=socket
   echo CLIENT_ADDRESS_SOURCE=socket>>"apps\admin\.env.local"
+)
+findstr /b /c:"PANEL_LOCALE=" "apps\admin\.env.local" >nul 2>nul || (
+  echo apps\admin\.env.local has no PANEL_LOCALE: adding PANEL_LOCALE=en-AU, the AU Market's locale
+  echo PANEL_LOCALE=en-AU>>"apps\admin\.env.local"
 )
 
 echo [1/5] Installing packages

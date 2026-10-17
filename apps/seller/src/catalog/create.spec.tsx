@@ -8,7 +8,8 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { createProblemOf } from './create-errors.ts';
-import { CreateForm, descriptionOf, readable } from './create-form.tsx';
+import { CreateForm, descriptionOf } from './create-form.tsx';
+import { readable } from './format.ts';
 import type { ProductOptions } from './types.ts';
 
 const call = vi.mocked(callApi);

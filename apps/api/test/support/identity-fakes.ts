@@ -83,6 +83,10 @@ import {
   type SellerMembershipRepository,
 } from '../../src/modules/identity/application/ports/seller-team.repository';
 import {
+  STEP_UP_REPOSITORY,
+  type StepUpRepository,
+} from '../../src/modules/identity/application/ports/step-up.repository';
+import {
   INVITATION_REPOSITORY,
   InvitationAlreadyPendingError,
   type InvitationRepository,
@@ -174,6 +178,9 @@ export class IdentityFakes {
   /** Sign-in challenges by id, with the hex of their token hash (slice 7). */
   readonly challenges = new Map<string, { challenge: SignInChallenge; tokenHash: string }>();
   readonly invitations = new Map<string, InvitationState>();
+  /** Seller step-up rules by "market|seller|action", and proofs by "market|session|action". */
+  readonly stepUpPolicies = new Map<string, { required: boolean; updatedAt: Temporal.Instant }>();
+  readonly stepUpProofs = new Map<string, Temporal.Instant>();
   /**
    * Access decisions by id (slice 9), as stored: the reason only as the fake ciphertext, under
    * the seller's key; the clear reason is never kept here.
@@ -216,6 +223,8 @@ export class IdentityFakes {
     this.factors.clear();
     this.challenges.clear();
     this.invitations.clear();
+    this.stepUpPolicies.clear();
+    this.stepUpProofs.clear();
     this.decisions.clear();
     this.credentialLocks.length = 0;
     this.sellerLocks.length = 0;
@@ -283,6 +292,17 @@ export class IdentityFakes {
         [...this.accounts.values()].some(
           (a) => a.marketId === market.marketId && a.population === population,
         ),
+      ),
+    customerSummaries: (market: MarketContext, ids: readonly Id<'Account'>[]) =>
+      Promise.resolve(
+        ids.flatMap((id) => {
+          const state = this.accounts.get(id);
+          return state === undefined ||
+            state.marketId !== market.marketId ||
+            state.population !== 'customer'
+            ? []
+            : [{ id, displayName: state.displayName, email: state.email.typed }];
+        }),
       ),
     lockCredential: (market: MarketContext, id: Id<'Account'>) => {
       const state = this.accounts.get(id);
@@ -1112,6 +1132,40 @@ export class IdentityFakes {
     },
   };
 
+  readonly stepUpRepository: StepUpRepository = {
+    policiesOf: (market, sellerId) => {
+      const prefix = `${market.marketId}|${sellerId}|`;
+      return Promise.resolve(
+        [...this.stepUpPolicies]
+          .filter(([key]) => key.startsWith(prefix))
+          .map(([key, row]) => ({
+            actionKey: key.slice(prefix.length),
+            required: row.required,
+            updatedAt: row.updatedAt,
+          })),
+      );
+    },
+    policyOf: (market, sellerId, actionKey) =>
+      Promise.resolve(
+        this.stepUpPolicies.get(`${market.marketId}|${sellerId}|${actionKey}`)?.required ?? null,
+      ),
+    savePolicy: (market, sellerId, actionKey, required, _updatedBy, now) => {
+      this.stepUpPolicies.set(`${market.marketId}|${sellerId}|${actionKey}`, {
+        required,
+        updatedAt: now,
+      });
+      return Promise.resolve();
+    },
+    proofOf: (market, sessionId, actionKey) =>
+      Promise.resolve(
+        this.stepUpProofs.get(`${market.marketId}|${sessionId}|${actionKey}`) ?? null,
+      ),
+    recordProof: (market, sessionId, actionKey, now) => {
+      this.stepUpProofs.set(`${market.marketId}|${sessionId}|${actionKey}`, now);
+      return Promise.resolve();
+    },
+  };
+
   readonly sessionRepository: SessionRepository = {
     add: (_market: MarketContext, session: Session, tokenHash: Uint8Array) => {
       this.sessions.set(session.id, { session, tokenHash: hex(tokenHash) });
@@ -1146,6 +1200,20 @@ export class IdentityFakes {
         found === undefined || found.session.marketId !== market.marketId ? null : found.session,
       );
     },
+    listUnrevokedOf: (market, accountId, now, limit) =>
+      Promise.resolve(
+        [...this.sessions.values()]
+          .map((found) => found.session)
+          .filter(
+            (s) =>
+              s.marketId === market.marketId &&
+              s.accountId === accountId &&
+              s.revokedAt === null &&
+              Temporal.Instant.compare(s.absoluteExpiresAt, now) > 0,
+          )
+          .sort((a, b) => Temporal.Instant.compare(b.lastSeenAt, a.lastSeenAt))
+          .slice(0, limit),
+      ),
     touch: (_market, id, now, lastSeenBefore) => {
       const found = this.sessions.get(id);
       if (
@@ -1294,6 +1362,24 @@ export class IdentityFakes {
     add: (market, record) => {
       this.records.push({ ...record, marketId: market.marketId });
       return Promise.resolve();
+    },
+    latestSuccessBefore: (market, accountId, exceptSession) => {
+      const latest = this.records
+        .filter(
+          (record) =>
+            record.marketId === market.marketId &&
+            record.accountId === accountId &&
+            record.outcome === 'signed-in' &&
+            record.sessionId !== exceptSession,
+        )
+        .reduce<Temporal.Instant | null>(
+          (best, record) =>
+            best === null || Temporal.Instant.compare(record.occurredAt, best) > 0
+              ? record.occurredAt
+              : best,
+          null,
+        );
+      return Promise.resolve(latest);
     },
     oldest: () => Promise.resolve(null),
     deleteBetween: () => Promise.resolve(0),
@@ -1683,6 +1769,8 @@ export class IdentityFakes {
       .useValue(this.accountRepository)
       .overrideProvider(SESSION_REPOSITORY)
       .useValue(this.sessionRepository)
+      .overrideProvider(STEP_UP_REPOSITORY)
+      .useValue(this.stepUpRepository)
       .overrideProvider(THROTTLE_REPOSITORY)
       .useValue(this.throttleRepository)
       .overrideProvider(SIGN_IN_RECORD_REPOSITORY)

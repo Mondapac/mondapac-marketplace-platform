@@ -1,4 +1,4 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { Offer } from '../../domain/offer';
 import type { Product } from '../../domain/product';
 import type { WorkingCopy } from '../../domain/working-copy';
@@ -14,6 +14,24 @@ export interface ProductLabel {
   readonly productCode: string;
   readonly typeCode: string;
   readonly name: string | null;
+}
+
+/** A SELLER product waiting for its pending revision to be reviewed (the review queue). */
+export interface PendingRevisionRow {
+  readonly productId: Id<'Product'>;
+  /** The product version a decision must name. */
+  readonly productVersion: number;
+  readonly sellerId: Id<'Seller'>;
+  readonly productCode: string;
+  readonly typeCode: string;
+  readonly revisionId: Id<'ProductRevision'>;
+  readonly revisionNo: number;
+  /** True while the product has never been published. */
+  readonly firstPublication: boolean;
+  readonly sensitiveReasons: readonly string[];
+  readonly hasImages: boolean;
+  readonly name: string | null;
+  readonly submittedAt: Temporal.Instant;
 }
 
 /** One field of a product family as the product form shows it: names and option labels per locale. */
@@ -43,6 +61,14 @@ export interface ProductForm {
   readonly categories: readonly ProductFormCategory[];
 }
 
+/** The seller's Offers per status; `deleted` is never counted. */
+export interface OfferStatusCounts {
+  readonly draft: number;
+  readonly pendingFirstPublish: number;
+  readonly changesNeeded: number;
+  readonly published: number;
+}
+
 /**
  * The seller's own catalogue lists (catalog design 8.2, 9.2a): products and Offers of one seller,
  * newest first by id (UUID v7). The owner is in every statement, so another seller's row is never
@@ -62,6 +88,29 @@ export interface OwnCatalogReader {
     sellerId: Id<'Seller'>,
     page: ListPage<'Offer'>,
   ): Promise<readonly Offer[]>;
+
+  /** How many of the seller's Offers are in each status, deleted ones left out (one count). */
+  offerStatusCounts(market: MarketContext, sellerId: Id<'Seller'>): Promise<OfferStatusCounts>;
+
+  /** How many Offers of the Market wait for their first publication (the review queue). */
+  pendingReviewCount(market: MarketContext): Promise<number>;
+
+  /** How many SELLER products hold a pending revision (the review queue). */
+  pendingRevisionCount(market: MarketContext): Promise<number>;
+
+  /**
+   * SELLER products with a pending revision, oldest submit first (then by product id), at most
+   * `limit` after `after` (the submit instant and product id of the last row of the previous
+   * page; null for the first). The name is the pending revision's, in `locale`, else null.
+   */
+  listPendingRevisions(
+    market: MarketContext,
+    page: {
+      readonly after: { readonly submittedAt: Temporal.Instant; readonly id: string } | null;
+      readonly limit: number;
+    },
+    locale: string,
+  ): Promise<readonly PendingRevisionRow[]>;
 
   /**
    * The code, type and published name (in `locale`, else null) of the given products of any

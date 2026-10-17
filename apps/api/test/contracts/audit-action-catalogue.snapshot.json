@@ -81,6 +81,17 @@
     }
   },
   {
+    "action": "identity.account.other-sessions-signed-out",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "keptSessionId": "id",
+      "revokedSessions": "integer"
+    }
+  },
+  {
     "action": "identity.admin-session.opened",
     "targetType": "identity.account",
     "targetId": "id",
@@ -375,6 +386,20 @@
     }
   },
   {
+    "action": "identity.seller-step-up-policy.changed",
+    "targetType": "identity.seller-access",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change)",
+      "required": "boolean"
+    },
+    "after": {
+      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change)",
+      "required": "boolean"
+    }
+  },
+  {
     "action": "notifications.support-contact.changed",
     "targetType": "notifications.support-contact",
     "targetId": "enumOf(support-email)",
@@ -643,6 +668,68 @@
     },
     "after": {
       "feeMinor": "integer"
+    }
+  },
+  {
+    "action": "tax.strategy.activate",
+    "targetType": "tax.strategy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "replacedActive": "boolean"
+    },
+    "after": null
+  },
+  {
+    "action": "tax.strategy.create",
+    "targetType": "tax.strategy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "categoryCount": "integer",
+      "kind": "enumOf(flat-rate|by-category)",
+      "rateBps": "integer"
+    }
+  },
+  {
+    "action": "tax.strategy.deactivate",
+    "targetType": "tax.strategy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "categoryCount": "integer",
+      "kind": "enumOf(flat-rate|by-category)",
+      "rateBps": "integer"
+    },
+    "after": null
+  },
+  {
+    "action": "tax.strategy.delete",
+    "targetType": "tax.strategy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "categoryCount": "integer",
+      "kind": "enumOf(flat-rate|by-category)",
+      "rateBps": "integer"
+    },
+    "after": null
+  },
+  {
+    "action": "tax.strategy.update",
+    "targetType": "tax.strategy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "categoryCount": "integer",
+      "kind": "enumOf(flat-rate|by-category)",
+      "rateBps": "integer"
+    },
+    "after": {
+      "categoryCount": "integer",
+      "kind": "enumOf(flat-rate|by-category)",
+      "rateBps": "integer"
     }
   }
 ]

@@ -8,6 +8,7 @@ const config: PanelConfig = {
   passwordMinLength: 15,
   passwordMaxLength: 128,
   marketName: 'Australia',
+  locale: 'en-AU',
   supportEmail: 'support@example.com',
   clientAddressKey: null,
 };
@@ -305,6 +306,7 @@ describe('relay', () => {
         'x-market-id': 'NZ',
         'x-forwarded-for': '1.2.3.4',
         'x-csrf-token': 't',
+        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) Firefox/143.0',
       }),
       ['identity', 'admin', 'sign-in'],
       fetchImpl,
@@ -314,6 +316,8 @@ describe('relay', () => {
     expect(sent.get('x-market-id')).toBe('AU');
     expect(sent.get('cookie')).toBe('a=b');
     expect(sent.get('x-csrf-token')).toBe('t');
+    // The API reduces it to a browser and system code on a new session (profile).
+    expect(sent.get('user-agent')).toBe('Mozilla/5.0 (X11; Linux x86_64) Firefox/143.0');
     expect(sent.has('x-forwarded-for')).toBe(false);
     expect(sent.has('host')).toBe(false);
   });
@@ -472,6 +476,16 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${path}/extra`)).status).toBe(404);
   });
 
+  it('relays the own display name (PUT) and password change (POST) on their exact paths only', async () => {
+    const name = 'identity/admin/profile/display-name';
+    expect((await call('PUT', name)).status).toBe(200);
+    expect((await call('POST', name)).status).toBe(404);
+    expect((await call('PUT', `${name}/extra`)).status).toBe(404);
+    const password = 'identity/admin/change-password';
+    expect((await call('POST', password)).status).toBe(200);
+    expect((await call('PUT', password)).status).toBe(404);
+  });
+
   it('relays the flat delivery fee write for a seller UUID on PUT only', async () => {
     expect((await call('PUT', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(200);
     expect((await call('PUT', 'shipping/admin/sellers/nope/flat-fee')).status).toBe(404);
@@ -596,6 +610,37 @@ describe('relay of the connected accounts list', () => {
     const other = ['payments', 'admin', 'connected-accounts', 'x'];
     expect((await relay(config, get(''), other, upstream)).status).toBe(404);
     expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+  });
+});
+
+describe('relay of the orders list', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/orders${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['ordering', 'admin', 'orders'];
+
+  it('forwards only the status and cursor keys of the query', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get('?status=confirmed&cursor=abc&limit=500&x=1'),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/ordering/admin/orders?status=confirmed&cursor=abc',
+    );
+  });
+
+  it('refuses other paths and methods', async () => {
+    const upstream = upstreamOk();
+    const other = ['ordering', 'admin', 'orders', '0190a000-0000-7000-8000-000000000001'];
+    expect((await relay(config, get(''), other, upstream)).status).toBe(404);
+    expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
   });
 });
 

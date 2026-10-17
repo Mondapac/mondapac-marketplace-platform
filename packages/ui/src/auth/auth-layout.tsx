@@ -41,7 +41,7 @@ export function AuthLayout({
       <main className="flex flex-col justify-between px-6 py-8 sm:px-12">
         <div className="text-sm font-semibold text-fg">{marketName}</div>
         <div className="mx-auto w-full max-w-(--mp-size-auth-card) py-10">
-          <span className="inline-block rounded-md bg-selected px-2 py-1 text-xs font-medium text-accent">
+          <span className="inline-block rounded-md bg-selected px-2 py-1 text-xs font-medium text-link">
             {badge}
           </span>
           <h1 className="mt-3 mb-6 text-2xl font-semibold text-fg">{title}</h1>
@@ -56,7 +56,10 @@ export function AuthLayout({
         <p className="max-w-md text-3xl font-semibold">{showcaseTitle}</p>
         <ul className="flex max-w-md flex-col gap-3">
           {showcaseCards.map((card) => (
-            <li key={card.name} className="rounded-lg bg-surface px-4 py-3 text-fg">
+            <li
+              key={card.name}
+              className="rounded-lg border border-line-control bg-showcase-card px-4 py-3 text-fg"
+            >
               <div className="font-medium">{card.name}</div>
               <div className="text-sm text-fg-muted">{card.detail}</div>
             </li>

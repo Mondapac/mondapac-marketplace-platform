@@ -14,6 +14,7 @@ const baseEnv = {
   PANEL_HOSTS: 'http://admin.localhost:3002=AU',
   PANEL_PASSWORD_LENGTH: '15-128',
   PANEL_MARKET_NAME: 'Australia',
+  PANEL_LOCALE: 'en-AU',
   PANEL_SUPPORT_EMAIL: 'support@example.com',
 };
 

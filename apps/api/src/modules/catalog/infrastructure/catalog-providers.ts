@@ -53,7 +53,12 @@ import {
   SELLER_ELIGIBILITY_READER,
   type SellerEligibilityReader,
 } from '../application/ports/seller-eligibility.reader';
+import {
+  SELLER_NAMES_READER,
+  type SellerNamesReader,
+} from '../application/ports/seller-names.reader';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
+import { SellersSellerNamesReader } from './sellers-seller-names.reader';
 import { SellersAllowedProductTypesReader } from './sellers-allowed-product-types.reader';
 import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.reader';
 import { PrismaOfferRepository } from './prisma-offer.repository';
@@ -67,6 +72,11 @@ import { PrismaProductImageRepository } from './prisma-product-image.repository'
 import { SharpImageProcessor } from './sharp-image-processor';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
+import {
+  SELL_UNIT_LABELS_READER,
+  type SellUnitLabelsReader,
+} from '../application/ports/sell-unit-labels.reader';
+import { PrismaSellUnitLabelsReader } from './prisma-sell-unit-labels.reader';
 import { PrismaOfferNamesReader } from './prisma-offer-names.reader';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
@@ -127,6 +137,12 @@ export const catalogProviders: readonly Provider[] = [
       new SellersSellerEligibilityReader(sellers),
   },
   {
+    provide: SELLER_NAMES_READER,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerNamesReader =>
+      new SellersSellerNamesReader(sellers),
+  },
+  {
     provide: ALLOWED_PRODUCT_TYPES_READER,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): AllowedProductTypesReader =>
@@ -136,6 +152,12 @@ export const catalogProviders: readonly Provider[] = [
     provide: OFFER_NAMES_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferNamesReader => new PrismaOfferNamesReader(prisma),
+  },
+  {
+    provide: SELL_UNIT_LABELS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellUnitLabelsReader =>
+      new PrismaSellUnitLabelsReader(prisma),
   },
   {
     provide: OFFER_SELL_UNITS_READER,

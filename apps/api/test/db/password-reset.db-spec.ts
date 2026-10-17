@@ -603,6 +603,17 @@ describe.each(TEST_MARKETS)(
           { cookie, 'x-csrf-token': csrfToken },
         );
 
+        if (population === 'seller') {
+          // The member's factor is active, so a change now needs a code (profile package); the
+          // voiding with a valid code is covered by the unit test.
+          expect(changed.status).toBe(400);
+          expect(changed.body).toMatchObject({
+            code: 'validation.failed',
+            details: { fields: [{ path: 'code', code: 'required' }] },
+          });
+          expect(await challengesAndFactors(accountId)).toEqual({ challenges: 1, factors: 1 });
+          return;
+        }
         expect(changed.status).toBe(200);
         expect(await challengesAndFactors(accountId)).toEqual({ challenges: 0, factors: 1 });
       });

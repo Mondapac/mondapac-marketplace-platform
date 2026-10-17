@@ -120,7 +120,11 @@ export class AdminPriceHoldController {
     });
     this.log('pricing.list-price-holds-route', context, result.ok ? 'listed' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return { items: result.value.items.map(rowOf), next: result.value.next };
+    return {
+      items: result.value.items.map(rowOf),
+      next: result.value.next,
+      total: result.value.total,
+    };
   }
 
   @Get(':recordId')
@@ -275,6 +279,9 @@ function rowOf(view: PriceHoldPage['items'][number]): PriceHoldRow {
     offerId: view.offerId,
     variantId: view.variantId,
     sellerId: view.sellerId,
+    productName: view.productName,
+    variantLabel: view.variantLabel,
+    storeName: view.storeName,
     kind: view.kind,
     ...(view.window === null
       ? {}

@@ -12,6 +12,7 @@ import {
   FakeGateway,
   FakeInventory,
   FakeCommission,
+  FakeLabels,
   FakeShipping,
   MemoryOrders,
 } from '../../../../test/support/ordering-fakes';
@@ -85,6 +86,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
   let cart: FakeCart;
   let shipping: FakeShipping;
   let commission: FakeCommission;
+  let labels: FakeLabels;
   let deps: OrderingDependencies;
   let written: PendingEvent[];
 
@@ -112,6 +114,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     cart = new FakeCart();
     shipping = new FakeShipping();
     commission = new FakeCommission();
+    labels = new FakeLabels();
     written = [];
     // Seller A charges a flat 5.00 for delivery; seller B delivers free (an explicit zero).
     shipping.fees.set(SELLER_A, money(500n, currency));
@@ -138,6 +141,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       },
       ids: new SequenceIdGenerator(clock),
       clock,
+      labels,
     };
   });
 
@@ -655,6 +659,117 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(confirmed.ok && confirmed.value.orders).toEqual([]);
       expect(bad).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
     });
+
+    const adminContext = () =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xad),
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'order-0005-abcd',
+      );
+
+    it('names the products, stores and customer, with one batched call per lookup', async () => {
+      const result = await start();
+      if (!result.ok) throw new Error('checkout failed');
+      labels.label({ offerId: OFFER_1, variantId: VARIANT }, 'Lamb mince', '500 g');
+      labels.stores.set(SELLER_A, 'Corner Butcher');
+      labels.customers.set(ACCOUNT, { displayName: null, email: 'jane@example.com' });
+
+      const list = await new AdminListOrders(gate, deps).execute(adminContext(), {});
+      const view = await new AdminViewOrder(gate, deps).execute(adminContext(), {
+        orderId: result.value.orderId,
+      });
+
+      if (!list.ok || !view.ok) throw new Error('read failed');
+      expect(list.value.orders[0]).toEqual(view.value);
+      expect(view.value.customer).toEqual({ displayName: null, email: 'jane@example.com' });
+      const a = view.value.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
+      const b = view.value.sellerOrders.find((s) => s.sellerId === SELLER_B)!;
+      expect(a.storeName).toBe('Corner Butcher');
+      expect(b.storeName).toBeNull();
+      expect(a.lines.find((l) => l.offerId === OFFER_1)).toMatchObject({
+        productName: 'Lamb mince',
+        variantLabel: '500 g',
+      });
+      expect(a.lines.find((l) => l.offerId === OFFER_3)).toMatchObject({
+        productName: null,
+        variantLabel: null,
+      });
+      // Distinct keys: three units, two sellers, one customer; per read, never per order.
+      expect(labels.calls.slice(0, 3)).toEqual([
+        { lookup: 'units', count: 3 },
+        { lookup: 'stores', count: 2 },
+        { lookup: 'customers', count: 1 },
+      ]);
+    });
+
+    it('still answers, with null names, when every lookup fails', async () => {
+      const result = await start();
+      if (!result.ok) throw new Error('checkout failed');
+      labels.fail.add('units').add('stores').add('customers');
+
+      const view = await new AdminViewOrder(gate, deps).execute(adminContext(), {
+        orderId: result.value.orderId,
+      });
+
+      if (!view.ok) throw new Error('read failed');
+      expect(view.value.customer).toBeNull();
+      for (const seller of view.value.sellerOrders) {
+        expect(seller.storeName).toBeNull();
+        for (const line of seller.lines) {
+          expect(line).toMatchObject({ productName: null, variantLabel: null });
+        }
+      }
+    });
+
+    it('finds an order by its id or a seller order id, and refuses a malformed reference', async () => {
+      const result = await start();
+      if (!result.ok) throw new Error('checkout failed');
+      const sellerOrderId = orders.rows.get(result.value.orderId)!.sellerOrders[0]!.id;
+      const find = (q: unknown) => new AdminListOrders(gate, deps).execute(adminContext(), { q });
+
+      const byOrder = await find(result.value.orderId.toUpperCase());
+      const bySellerOrder = await find(` ${sellerOrderId} `);
+      const none = await find(id<'Order'>(0x999));
+      const bad = await find('654165CC');
+
+      expect(byOrder.ok && byOrder.value.orders.map((o) => o.orderId)).toEqual([
+        result.value.orderId,
+      ]);
+      expect(bySellerOrder.ok && bySellerOrder.value.orders).toHaveLength(1);
+      expect(none.ok && none.value.orders).toEqual([]);
+      expect(none.ok && none.value.counts).toEqual({
+        pendingPayment: 1,
+        confirmed: 0,
+        cancelled: 0,
+      });
+      expect(bad).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'q', code: 'format' }] },
+      });
+      // A customer's own list takes no filter.
+      expect(
+        await new ListOrders(gate, deps).execute(customer, { q: result.value.orderId }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    });
+
+    it('looks nothing up for an empty page', async () => {
+      const list = await new AdminListOrders(gate, deps).execute(adminContext(), {});
+
+      expect(list).toEqual({
+        ok: true,
+        value: {
+          orders: [],
+          nextCursor: null,
+          counts: { pendingPayment: 0, confirmed: 0, cancelled: 0 },
+        },
+      });
+      expect(labels.calls).toEqual([]);
+    });
   });
   describe('flat delivery fee', () => {
     it('refuses the whole cart when a seller has no fee, naming no seller to the customer', async () => {
@@ -734,6 +849,65 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(confirmed).toEqual(ok('confirmed'));
       return order;
     };
+
+    it('filters by fulfilment step and refuses an unknown one', async () => {
+      const order = await paid();
+      await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+
+      const shipped = await list(sellerA, { status: 'shipped' });
+      const toShip = await list(sellerA, { status: 'to-ship' });
+      const bad = await list(sellerA, { status: 'cancelled' });
+
+      expect(shipped.ok && shipped.value.sellerOrders.map((s) => s.fulfilment)).toEqual([
+        'shipped',
+      ]);
+      expect(toShip.ok && toShip.value.sellerOrders).toEqual([]);
+      // The counts are the shop's whole set, whatever the filter.
+      expect(toShip.ok && toShip.value.counts).toEqual({ toShip: 0, shipped: 1, delivered: 0 });
+      expect(bad).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'status', code: 'value' }] },
+      });
+    });
+
+    it('names the lines of the list, the detail and each step, with one call per page', async () => {
+      const order = await paid();
+      labels.label({ offerId: OFFER_1, variantId: VARIANT }, 'Lamb mince', '500 g');
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+
+      const page = await list(sellerA);
+      const view = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+      const shipped = await ship(sellerA, sellerOrderId);
+      const delivered = await deliver(sellerA, sellerOrderId);
+
+      for (const answer of [
+        page.ok ? page.value.sellerOrders[0] : undefined,
+        view.ok ? view.value : undefined,
+        shipped.ok ? shipped.value : undefined,
+        delivered.ok ? delivered.value : undefined,
+      ]) {
+        expect(answer?.lines.find((l) => l.offerId === OFFER_1)).toMatchObject({
+          productName: 'Lamb mince',
+          variantLabel: '500 g',
+        });
+        expect(answer?.lines.find((l) => l.offerId === OFFER_3)).toMatchObject({
+          productName: null,
+          variantLabel: null,
+        });
+      }
+      // Two distinct units of seller A, asked once per answer; never a store or a customer.
+      expect(labels.calls).toEqual(Array(4).fill({ lookup: 'units', count: 2 }));
+    });
+
+    it('still ships, with null names, when the name lookup fails', async () => {
+      const order = await paid();
+      labels.fail.add('units');
+
+      const shipped = await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+
+      expect(shipped.ok && shipped.value.fulfilment).toBe('shipped');
+      expect(shipped.ok && shipped.value.lines.every((l) => l.productName === null)).toBe(true);
+    });
 
     it('shows a seller only its own paid orders, and nothing before payment', async () => {
       const order = await placed();

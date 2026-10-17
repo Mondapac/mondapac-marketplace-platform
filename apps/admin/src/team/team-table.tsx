@@ -1,4 +1,12 @@
-import { Badge, type BadgeTone } from '@mondapac/ui';
+import {
+  Badge,
+  CARD_TABLE,
+  EmailText,
+  EmptyState,
+  Icon,
+  type BadgeTone,
+  MemberColumns,
+} from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { roleLabel } from './role-label.ts';
 import { RowActions, type RowTarget } from './row-actions.tsx';
@@ -25,14 +33,18 @@ function Person({ t, row }: { readonly t: Translate; readonly row: AccountRow | 
   return (
     <div className="min-w-0">
       <div className="break-words font-medium text-fg">
-        {name ?? row.email}
+        {name ?? <EmailText address={row.email} />}
         {row.type === 'account' && row.self ? (
           <span className="ms-2 text-xs font-normal text-fg-muted">
             {t('identity.members.label.you')}
           </span>
         ) : null}
       </div>
-      {name === null ? null : <div className="break-words text-sm text-fg-muted">{row.email}</div>}
+      {name === null ? null : (
+        <div className="break-words text-sm text-fg-muted">
+          <EmailText address={row.email} />
+        </div>
+      )}
     </div>
   );
 }
@@ -77,27 +89,23 @@ export async function TeamTable({
   const t = await getTranslations();
   if (page.items.length === 0 && after === null) {
     return (
-      <div className="rounded-lg border border-line p-6">
-        <h2 className="text-lg font-semibold">{t('identity.members.empty.title')}</h2>
-        <p className="mt-1 text-fg-muted">{t('identity.members.empty.body')}</p>
-      </div>
+      <EmptyState
+        icon="users"
+        title={t('identity.members.empty.title')}
+        body={t('identity.members.empty.body')}
+      />
     );
   }
   if (page.items.length === 0) {
     return <p className="text-fg-muted">{t('identity.members.empty.page')}</p>;
   }
   return (
-    <div className="relative overflow-x-auto rounded-lg border border-line">
+    <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
       {/* Fixed layout, like the Roles tab: Person takes what is left, the others have set widths. */}
-      <table className="w-full table-fixed text-start text-sm md:min-w-160 max-md:block">
+      <table className={`${CARD_TABLE.table} lg:min-w-160 lg:table-fixed`}>
         <caption className="sr-only">{t('identity.members.table-caption')}</caption>
-        <colgroup className="max-md:hidden">
-          <col />
-          <col className="w-56" />
-          <col className="w-36" />
-          <col className="w-28" />
-        </colgroup>
-        <thead className="bg-muted text-fg-muted max-md:sr-only">
+        <MemberColumns />
+        <thead className={CARD_TABLE.head}>
           <tr>
             <th scope="col" className="px-4 py-3 font-medium">
               {t('identity.members.label.person')}
@@ -113,46 +121,33 @@ export async function TeamTable({
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-line-row max-md:block">
+        <tbody className={CARD_TABLE.body}>
           {page.items.map((row) => {
             const status = statusOf(t, row);
             const id = row.type === 'account' ? row.accountId : row.invitationId;
             return (
-              <tr
-                key={`${row.type}-${id}`}
-                className="max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:items-center max-md:gap-x-3 max-md:gap-y-2 max-md:p-4"
-              >
-                <td className="px-4 py-3 align-middle max-md:p-0">
+              <tr key={`${row.type}-${id}`} className={CARD_TABLE.row}>
+                <td className={CARD_TABLE.cell}>
                   <Person t={t} row={row} />
                 </td>
-                <td
-                  className="px-4 py-3 align-middle max-md:col-span-2 max-md:p-0 max-md:before:me-2 max-md:before:inline-block max-md:before:w-20 max-md:before:align-top max-md:before:text-fg-muted max-md:before:content-[attr(data-label)]"
-                  data-label={t('identity.members.label.role')}
-                >
-                  {row.role?.kind === 'system' ? (
-                    <span className="me-1" aria-hidden="true">
-                      🔒
-                    </span>
-                  ) : null}
-                  {roleLabel(t, row.role)}
-                  {row.role?.kind === 'system' ? (
-                    <span className="sr-only"> {t('identity.members.role.system')}</span>
-                  ) : null}
-                </td>
-                <td
-                  className="px-4 py-3 align-middle max-md:col-span-2 max-md:p-0 max-md:before:me-2 max-md:before:inline-block max-md:before:w-20 max-md:before:align-top max-md:before:text-fg-muted max-md:before:content-[attr(data-label)]"
-                  data-label={t('identity.members.label.status')}
-                >
-                  <Badge tone={status.tone}>
-                    {status.sent === true ? (
-                      <span className="me-1" aria-hidden="true">
-                        ✉
-                      </span>
+                <td className={CARD_TABLE.labelled} data-label={t('identity.members.label.role')}>
+                  <span className="inline-flex min-w-0 items-center gap-(--mp-space-1-5)">
+                    {row.role?.kind === 'system' ? (
+                      <Icon name="lock" className="text-icon-muted" />
                     ) : null}
+                    {roleLabel(t, row.role)}
+                    {row.role?.kind === 'system' ? (
+                      <span className="sr-only"> {t('identity.members.role.system')}</span>
+                    ) : null}
+                  </span>
+                </td>
+                <td className={CARD_TABLE.labelled} data-label={t('identity.members.label.status')}>
+                  <Badge tone={status.tone}>
+                    {status.sent === true ? <Icon name="mail" className="size-[1em]" /> : null}
                     {status.label}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 text-end align-middle max-md:col-start-2 max-md:row-start-1 max-md:p-0">
+                <td className={`${CARD_TABLE.corner} text-end`}>
                   <RowActions target={targetOf(row)} csrfToken={csrfToken} roles={roles} />
                 </td>
               </tr>

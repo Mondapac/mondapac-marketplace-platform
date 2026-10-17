@@ -2,6 +2,7 @@ import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import type { AuditActionDefinition, AuditEntry, Id } from '@mondapac/shared-kernel';
 import { INVITATION_KINDS, SELLER_ACCESS_STATES, SELLER_ORIGINS } from '../events';
 import { ROLE_KINDS, ROLE_SCOPES } from '../role';
+import { STEP_UP_ACTION_KEYS } from '../step-up';
 
 // The audited actions of identity (docs/design/domain/platform-audit.md 5; identity design
 // 10.1), registered at boot with `registerAuditActions('identity', IDENTITY_AUDIT_ACTIONS)`
@@ -244,6 +245,19 @@ export const SellerMemberRemovedAudit = defineAuditAction({
   after: { sellerId: auditField.id() },
 });
 
+/**
+ * The Seller Owner changed one of the shop's two-step rules (seller OTP policy). Target: the
+ * seller. The action key and the old and new value; no code, no name (R5). `before.required` is
+ * the effective value before the change (the default when no rule was stored).
+ */
+export const SellerStepUpPolicyChangedAudit = defineAuditAction({
+  action: 'identity.seller-step-up-policy.changed',
+  targetType: 'identity.seller-access',
+  actors: ['authenticated'],
+  before: { actionKey: auditField.enumOf(STEP_UP_ACTION_KEYS), required: auditField.boolean() },
+  after: { actionKey: auditField.enumOf(STEP_UP_ACTION_KEYS), required: auditField.boolean() },
+});
+
 /** The account statuses (identity design 3.1), as an audit row names them. */
 const ACCOUNT_STATUSES = ['active', 'disabled'] as const;
 
@@ -432,6 +446,21 @@ export const AdminSessionOpenedAudit = defineAuditAction({
 });
 
 /**
+ * The holder signed out every other session of the own account (profile package 4, active
+ * sessions). Target: the account; the actor is its holder, on the session that was kept. The
+ * count only: never a device or an address (R5).
+ */
+export const OtherSessionsSignedOutAudit = defineAuditAction({
+  action: 'identity.account.other-sessions-signed-out',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: {
+    keptSessionId: auditField.id(),
+    revokedSessions: auditField.integer(),
+  },
+});
+
+/**
  * The decisions on a seller's access (identity design 3.3, 10.1; PA 5 row 9; slice 9). Target: the
  * seller access record. The actor is the admin who decided (AC 11, AC 27). `before` and `after`
  * are state codes; `after.decisionId` names the `AccessDecision`, which holds the reason
@@ -519,6 +548,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   AccountRoleAssigned,
   AccountRoleChangedAudit,
   SellerMemberRemovedAudit,
+  SellerStepUpPolicyChangedAudit,
   AccountDisabledAudit,
   AccountEnabledAudit,
   InvitationIssuedAudit,
@@ -532,6 +562,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   SellerSecondFactorResetRequestedAudit,
   SellerSecondFactorResetConfirmedAudit,
   AdminSessionOpenedAudit,
+  OtherSessionsSignedOutAudit,
   SellerAccessApprovedAudit,
   SellerAccessRejectedAudit,
   SellerAccessSuspendedAudit,

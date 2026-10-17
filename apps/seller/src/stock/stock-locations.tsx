@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button } from '@mondapac/ui';
+import { addressLines, Badge, Banner, Button, DataList } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -80,8 +80,20 @@ export function StockLocations({
   const full = view.sources.length >= view.max;
 
   return (
-    <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
-      <p className="text-fg-muted">{t('stock.intro', { max: view.max })}</p>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <p className="min-w-0 flex-1 text-fg-muted">{t('stock.intro', { max: view.max })}</p>
+        {canEdit && mode === null ? (
+          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+            <Button onClick={() => open({ kind: 'add' })} disabled={full}>
+              {t('stock.add')}
+            </Button>
+            {full ? (
+              <p className="text-sm text-fg-muted">{t('stock.full', { max: view.max })}</p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       {saved ? <Banner tone="success">{t('stock.saved')}</Banner> : null}
       {mode === null && problem !== null ? (
         <Banner tone="critical">
@@ -121,16 +133,6 @@ export function StockLocations({
           onCancel={() => open(null)}
         />
       ) : null}
-      {canEdit && mode === null ? (
-        <div>
-          <Button onClick={() => open({ kind: 'add' })} disabled={full}>
-            {t('stock.add')}
-          </Button>
-          {full ? (
-            <p className="mt-2 text-sm text-fg-muted">{t('stock.full', { max: view.max })}</p>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -153,7 +155,6 @@ function SourceRow({
   readonly onMove: (by: -1 | 1) => void;
 }) {
   const t = useTranslations();
-  const address = source.address === null ? null : Object.values(source.address).join(', ');
   return (
     <li className="rounded-lg border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -161,37 +162,41 @@ function SourceRow({
         <h2 className="text-base font-semibold">{source.name}</h2>
         {source.isDefault ? <Badge tone="info">{t('stock.default')}</Badge> : null}
       </div>
-      <dl className="mt-2 grid gap-1 text-sm">
-        <div className="flex flex-wrap gap-2">
-          <dt className="text-fg-muted">{t('stock.form.address')}</dt>
-          <dd>{address ?? t('stock.no-address')}</dd>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <dt className="text-fg-muted">{t('stock.form.zone')}</dt>
-          <dd>{source.timeZone ?? t('stock.zone-own')}</dd>
-        </div>
-      </dl>
+      <div className="mt-3 text-sm">
+        <DataList
+          missing={t('stock.no-address')}
+          rows={[
+            { label: t('stock.form.address'), value: addressLines(source.address) },
+            { label: t('stock.form.zone'), value: source.timeZone ?? t('stock.zone-own') },
+          ]}
+        />
+      </div>
       {canEdit ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button variant="secondary" onClick={onEdit} disabled={busy}>
             {t('stock.edit')}
           </Button>
-          <Button
-            variant="secondary"
-            onClick={() => onMove(-1)}
-            disabled={busy || index === 0}
-            aria-label={t('stock.move-up', { name: source.name })}
-          >
-            {t('stock.up')}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => onMove(1)}
-            disabled={busy || last}
-            aria-label={t('stock.move-down', { name: source.name })}
-          >
-            {t('stock.down')}
-          </Button>
+          {/* Moving only shows where it can move: not up from the first, not down from the last. */}
+          {index > 0 ? (
+            <Button
+              variant="secondary"
+              onClick={() => onMove(-1)}
+              disabled={busy}
+              aria-label={t('stock.move-up', { name: source.name })}
+            >
+              {t('stock.up')}
+            </Button>
+          ) : null}
+          {last ? null : (
+            <Button
+              variant="secondary"
+              onClick={() => onMove(1)}
+              disabled={busy}
+              aria-label={t('stock.move-down', { name: source.name })}
+            >
+              {t('stock.down')}
+            </Button>
+          )}
         </div>
       ) : null}
     </li>

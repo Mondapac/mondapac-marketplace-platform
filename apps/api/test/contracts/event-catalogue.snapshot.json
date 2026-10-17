@@ -55,6 +55,16 @@
     }
   },
   {
+    "type": "catalog.product-revision-changes-requested.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "revisionId": "id",
+      "reasonCode": "enumOf(content-unclear|description-claim|sku-or-condition|handling-unclear|other)",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
     "type": "catalog.product-revision-published.v1",
     "aggregateType": "product",
     "fields": {
@@ -90,7 +100,35 @@
     }
   },
   {
+    "type": "certification.seller-certification-submitted.v1",
+    "aggregateType": "seller-certification",
+    "fields": {
+      "sellerCertificationId": "id",
+      "sellerId": "id",
+      "submissionId": "id",
+      "kind": "enumOf(initial|resubmission|renewal)"
+    }
+  },
+  {
+    "type": "certification.seller-certification-withdrawn.v1",
+    "aggregateType": "seller-certification",
+    "fields": {
+      "sellerCertificationId": "id",
+      "sellerId": "id",
+      "submissionId": "id",
+      "cause": "enumOf(edited|cancelled|revoked)"
+    }
+  },
+  {
     "type": "identity.account-disabled.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "population": "enumOf(customer|seller|admin)"
+    }
+  },
+  {
+    "type": "identity.account-display-name-changed.v1",
     "aggregateType": "account",
     "fields": {
       "accountId": "id",

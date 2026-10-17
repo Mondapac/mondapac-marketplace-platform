@@ -9,6 +9,8 @@ import type { InvitationRow, MemberRow, SellerRole, TeamPage } from './types.ts'
 vi.mock('./row-actions.tsx', () => ({ RowActions: () => null }));
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
+  getLocale: () => Promise.resolve('en-AU'),
+  getTimeZone: () => Promise.resolve('UTC'),
 }));
 
 const hint = { allowed: true, code: null };

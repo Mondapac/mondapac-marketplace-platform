@@ -94,7 +94,7 @@ describe('money helpers', () => {
     expect(inputOf('995', 'AUD')).toBe('9.95');
     expect(inputOf('5', 'AUD')).toBe('0.05');
     expect(inputOf('500', 'JPY')).toBe('500');
-    expect(formatMinor('995', 'AUD')).toBe('$9.95');
+    expect(formatMinor('995', 'AUD', 'en-AU')).toBe('$9.95');
   });
 
   it('name a failed write', () => {

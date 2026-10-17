@@ -86,6 +86,9 @@ export interface PriceSeriesRepository {
     limit: number,
   ): Promise<readonly PendingHoldView[]>;
 
+  /** How many records of the Market are pending review, regular and special together. */
+  countPendingHolds(market: MarketContext): Promise<number>;
+
   /** One record of the queue by id, or null when absent, foreign or no longer pending. */
   findPendingHold(
     market: MarketContext,

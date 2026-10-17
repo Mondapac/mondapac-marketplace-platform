@@ -11,6 +11,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { Icon, type IconName } from '../icon/icon.tsx';
 
 /** Gap between the menu and its trigger, and the least space kept to the viewport edge. */
 const GAP = 4;
@@ -23,6 +24,9 @@ export interface MenuItem {
   readonly disabled?: boolean;
   readonly reason?: string;
   readonly tone?: 'default' | 'critical';
+  readonly icon?: IconName;
+  /** Set on every item of a choose-one menu: the items become radio items, the chosen one ticked. */
+  readonly checked?: boolean;
   readonly onSelect: () => void;
 }
 
@@ -30,10 +34,16 @@ export interface MenuProps {
   /** Accessible name of the trigger, e.g. "Actions for Ada". */
   readonly label: string;
   readonly items: readonly MenuItem[];
+  /** The trigger's icon; without one the trigger shows an ellipsis. */
+  readonly icon?: IconName;
+  /** Pointer hint on the trigger, such as the current choice. */
+  readonly title?: string;
+  /** `narrow` suits a few short labels, such as a choose-one menu. */
+  readonly width?: 'default' | 'narrow';
 }
 
 /** A button that opens a menu of actions (WAI-ARIA menu button: arrows, Home, End, Escape). */
-export function Menu({ label, items }: MenuProps) {
+export function Menu({ label, items, icon, title, width = 'default' }: MenuProps) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -76,13 +86,22 @@ export function Menu({ label, items }: MenuProps) {
   }, [open, position]);
 
   const focusItem = (index: number) => {
-    const nodes = list.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    const nodes = list.current?.querySelectorAll<HTMLElement>(
+      '[role="menuitem"], [role="menuitemradio"]',
+    );
     if (nodes === undefined || nodes.length === 0) return;
     nodes[(index + nodes.length) % nodes.length]?.focus();
   };
 
   useEffect(() => {
-    if (open) focusItem(0);
+    // A choose-one menu opens on the chosen item (WAI-ARIA menu with radio items).
+    if (open)
+      focusItem(
+        Math.max(
+          0,
+          items.findIndex((item) => item.checked === true),
+        ),
+      );
   }, [open]);
 
   useEffect(() => {
@@ -97,7 +116,8 @@ export function Menu({ label, items }: MenuProps) {
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const nodes = Array.from(
-      list.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+      list.current?.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]') ??
+        [],
     );
     const at = nodes.indexOf(document.activeElement as HTMLElement);
     if (event.key === 'ArrowDown') focusItem(at + 1);
@@ -121,6 +141,7 @@ export function Menu({ label, items }: MenuProps) {
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-label={label}
+        title={title}
         onClick={() => setOpen((value) => !value)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' && !open) {
@@ -130,7 +151,7 @@ export function Menu({ label, items }: MenuProps) {
         }}
         className="inline-flex h-(--mp-size-control) w-(--mp-size-control) items-center justify-center rounded-md border border-line-control bg-surface text-fg hover:bg-muted"
       >
-        <span aria-hidden="true">⋯</span>
+        {icon === undefined ? <span aria-hidden="true">⋯</span> : <Icon name={icon} />}
       </button>
       {open
         ? createPortal(
@@ -145,13 +166,14 @@ export function Menu({ label, items }: MenuProps) {
                 ...place,
                 visibility: place === null ? 'hidden' : 'visible',
               }}
-              className="z-50 w-64 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-md border border-line bg-surface py-1 shadow-lg"
+              className={`z-50 ${width === 'narrow' ? 'w-44' : 'w-64'} max-w-[calc(100vw-1rem)] overflow-y-auto rounded-md border border-line bg-surface py-1 shadow-lg`}
             >
               {items.map((item) => (
                 <button
                   key={item.id}
                   type="button"
-                  role="menuitem"
+                  role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
+                  aria-checked={item.checked}
                   aria-disabled={item.disabled === true ? true : undefined}
                   tabIndex={-1}
                   onClick={() => {
@@ -170,7 +192,21 @@ export function Menu({ label, items }: MenuProps) {
                         : 'text-fg hover:bg-muted',
                   ].join(' ')}
                 >
-                  {item.label}
+                  {item.icon === undefined && item.checked === undefined ? (
+                    item.label
+                  ) : (
+                    <span className="flex items-center gap-(--mp-space-2-5)">
+                      {item.icon === undefined ? null : (
+                        <Icon name={item.icon} className="text-icon" />
+                      )}
+                      <span
+                        className={`min-w-0 flex-1 ${item.checked === true ? 'font-medium' : ''}`}
+                      >
+                        {item.label}
+                      </span>
+                      {item.checked === true ? <Icon name="check" className="text-link" /> : null}
+                    </span>
+                  )}
                   {item.disabled === true && item.reason !== undefined ? (
                     <span className="mt-0.5 block text-xs font-normal">{item.reason}</span>
                   ) : null}

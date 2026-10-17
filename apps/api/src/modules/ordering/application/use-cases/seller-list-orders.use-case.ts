@@ -2,13 +2,13 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { ORDERING_SELLER_ORDER_VIEW } from '../../contracts/permissions';
 import type { OrderingDependencies } from '../checkout-flow';
-import { listSellerOrders, type FulfilmentFailure } from '../fulfilment-flow';
-import type { SellerOrderPageView } from '../../domain/order-views';
+import { listSellerOrders, type FulfilmentFailure, type SellerListInput } from '../fulfilment-flow';
+import type { LabelledSellerOrderPageView } from '../../domain/order-views';
 
-/** The seller's paid seller orders, newest payment first (rule `permissions [ordering.seller-order.view]`). */
+/** The seller's paid seller orders, newest payment first, optionally by fulfilment step (rule `permissions [ordering.seller-order.view]`). */
 export class SellerListOrders extends UseCase<
-  { readonly limit?: unknown; readonly cursor?: unknown },
-  SellerOrderPageView,
+  SellerListInput,
+  LabelledSellerOrderPageView,
   FulfilmentFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -24,10 +24,7 @@ export class SellerListOrders extends UseCase<
     super(gate);
   }
 
-  protected handle(
-    context: CallContext,
-    input: { readonly limit?: unknown; readonly cursor?: unknown },
-  ) {
+  protected handle(context: CallContext, input: SellerListInput) {
     return listSellerOrders(this.deps, context, input);
   }
 }

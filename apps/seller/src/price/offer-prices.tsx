@@ -1,7 +1,7 @@
 'use client';
 
-import { Banner, Button, TextField } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { Banner, Button, Card, FieldAction, TextField } from '@mondapac/ui';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
@@ -29,6 +29,7 @@ function VariantRow({
   readonly zone: string;
 }) {
   const t = useTranslations();
+  const locale = useLocale();
   const router = useRouter();
   const [version, setVersion] = useState(variant.seriesVersion);
   const [text, setText] = useState(
@@ -75,70 +76,75 @@ function VariantRow({
   }
 
   return (
-    <section className="rounded-lg border border-line p-4">
-      <h2 className="mb-3 text-lg font-semibold">{t('price.variant', { number })}</h2>
-      <p className="mb-2 text-fg-muted">
-        {variant.inForce === null
-          ? t('price.none')
-          : t('price.in-force', {
-              amount: formatMinor(variant.inForce.amount, currency),
-              since: formatInZone(variant.inForce.effectiveFrom, zone),
-            })}
-      </p>
-      {variant.held !== null ? (
-        <div className="mb-3">
-          <Banner tone="attention">
-            <p>
-              {t(`price.held.${variant.held.direction}`, {
-                amount: formatMinor(variant.held.amount, currency),
-                since: formatInZone(variant.held.submittedAt, zone),
+    <Card title={t('price.variant', { number })}>
+      <div className="max-w-(--mp-size-form-max)">
+        <p className="mb-2 text-fg-muted">
+          {variant.inForce === null
+            ? t('price.none')
+            : t('price.in-force', {
+                amount: formatMinor(variant.inForce.amount, currency, locale),
+                since: formatInZone(variant.inForce.effectiveFrom, zone, locale),
               })}
-            </p>
-          </Banner>
-        </div>
-      ) : null}
-      {variant.retired ? <p className="text-fg-muted">{t('price.retired')}</p> : null}
-      {readOnly ? null : (
-        <form className="flex flex-col gap-1" onSubmit={(event) => void submit(event)} noValidate>
-          <div className="flex flex-wrap items-end gap-2">
-            <TextField
-              name={`price-${variant.variantId}`}
-              label={t('price.field', { currency })}
-              inputMode="decimal"
-              value={text}
-              error={error ?? undefined}
-              onChange={(event) => {
-                setText(event.target.value);
-                setDone(null);
-              }}
-            />
-            <Button
-              type="submit"
-              variant="secondary"
-              loading={pending}
-              disabled={pending || text.trim() === ''}
-            >
-              {t('price.save')}
-            </Button>
+        </p>
+        {variant.held !== null ? (
+          <div className="mb-3">
+            <Banner tone="attention">
+              <p>
+                {t(`price.held.${variant.held.direction}`, {
+                  amount: formatMinor(variant.held.amount, currency, locale),
+                  since: formatInZone(variant.held.submittedAt, zone, locale),
+                })}
+              </p>
+            </Banner>
           </div>
-          {done === null ? null : (
-            <span className="text-sm text-fg-muted">{t(`price.saved.${done}`)}</span>
-          )}
-        </form>
-      )}
-      {variant.seriesVersion === null && variant.special === null ? null : (
-        <SpecialPrice
-          offerId={offerId}
-          variant={variant}
-          currency={currency}
-          canEdit={!readOnly}
-          csrfToken={csrfToken}
-          zone={zone}
-          version={version}
-          onVersion={setVersion}
-        />
-      )}
-    </section>
+        ) : null}
+        {variant.retired ? <p className="text-fg-muted">{t('price.retired')}</p> : null}
+        {readOnly ? null : (
+          <form className="flex flex-col gap-1" onSubmit={(event) => void submit(event)} noValidate>
+            <div className="flex flex-wrap items-start gap-2">
+              <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
+                <TextField
+                  name={`price-${variant.variantId}`}
+                  label={t('price.field', { currency })}
+                  inputMode="decimal"
+                  value={text}
+                  error={error ?? undefined}
+                  onChange={(event) => {
+                    setText(event.target.value);
+                    setDone(null);
+                  }}
+                />
+              </div>
+              <FieldAction>
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  loading={pending}
+                  disabled={pending || text.trim() === ''}
+                >
+                  {t('price.save')}
+                </Button>
+              </FieldAction>
+            </div>
+            {done === null ? null : (
+              <span className="text-sm text-fg-muted">{t(`price.saved.${done}`)}</span>
+            )}
+          </form>
+        )}
+        {variant.seriesVersion === null && variant.special === null ? null : (
+          <SpecialPrice
+            offerId={offerId}
+            variant={variant}
+            currency={currency}
+            canEdit={!readOnly}
+            csrfToken={csrfToken}
+            zone={zone}
+            version={version}
+            onVersion={setVersion}
+          />
+        )}
+      </div>
+    </Card>
   );
 }
 

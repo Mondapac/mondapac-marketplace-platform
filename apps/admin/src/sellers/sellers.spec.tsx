@@ -9,7 +9,7 @@ import { adminNav } from '../nav.ts';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
-import { formatInstant } from './format.ts';
+import { formatInstant } from '../shared/format.ts';
 import { SellersList } from './sellers-list.tsx';
 import type { SellerListPage, SellerRow } from './types.ts';
 
@@ -111,6 +111,48 @@ describe('admin seller list', () => {
     expect(await screen.findByText('No sellers match that search.')).toBeTruthy();
   });
 
+  it('starts each tab unfiltered: a search and filters do not follow to the next tab', async () => {
+    answer(page([row()]));
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    answer(page([]));
+    fireEvent.change(screen.getByLabelText('Submission'), { target: { value: 'identity-change' } });
+    answer(page([]));
+    const field = screen.getByLabelText<HTMLInputElement>(/Store name or shop address/);
+    fireEvent.change(field, { target: { value: 'cedar' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'POST',
+        'sellers/admin/list',
+        { tab: 'awaiting-review', limit: 25, kind: 'identity-change', search: 'cedar' },
+        'csrf-1',
+      ),
+    );
+    answer({ ...page([row()]), tab: 'all' });
+    fireEvent.click(screen.getByRole('button', { name: /^All sellers/ }));
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'POST',
+        'sellers/admin/list',
+        { tab: 'all', limit: 25 },
+        'csrf-1',
+      ),
+    );
+    expect(screen.getByLabelText<HTMLInputElement>(/Store name or shop address/).value).toBe('');
+    answer(page([row()]));
+    fireEvent.click(screen.getByRole('button', { name: /^Awaiting review/ }));
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'POST',
+        'sellers/admin/list',
+        { tab: 'awaiting-review', limit: 25 },
+        'csrf-1',
+      ),
+    );
+    expect(screen.getByLabelText<HTMLSelectElement>('Submission').value).toBe('');
+  });
+
   it('does not search for one character', async () => {
     answer(page([row()]));
     mount();
@@ -166,9 +208,9 @@ describe('admin seller list', () => {
   });
 
   it('formats instants in UTC and survives bad input', () => {
-    expect(formatInstant('2026-10-09T23:30:00.000Z')).toContain('UTC');
-    expect(formatInstant(null)).toBe('-');
-    expect(formatInstant('nope')).toBe('-');
+    expect(formatInstant('2026-10-09T23:30:00.000Z', 'en-AU')).toContain('UTC');
+    expect(formatInstant(null, 'en-AU')).toBe('-');
+    expect(formatInstant('nope', 'en-AU')).toBe('-');
   });
 
   it('shows the Sellers nav item only with sellers.seller.view', () => {

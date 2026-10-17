@@ -8,12 +8,16 @@ import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CART_CHECKOUT_FACADE, CartModule } from '../cart';
+import { CatalogModule } from '../catalog';
 import { COMMISSION_PAYOUTS_FACADE, CommissionPayoutsModule } from '../commission-payouts';
+import { IdentityModule } from '../identity';
 import { InventoryModule } from '../inventory';
 import { INVENTORY_ORDERING_PORT } from '../inventory/contracts/ordering-port';
+import { SellersModule } from '../sellers';
 import { SHIPPING_FACADE, ShippingModule } from '../shipping';
 import type { OrderingDependencies } from './application/checkout-flow';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
+import { ORDER_LABELS } from './application/ports/order-labels';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
 import { ORDERING_POLICY } from './application/ports/ordering-policy';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
@@ -55,6 +59,7 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['outbox', OUTBOX_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
+  ['labels', ORDER_LABELS],
 ];
 
 /** Every ordering use case shares one dependency object, built from the same ports. */
@@ -83,7 +88,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * checkout, and a worker job writes each paid seller order into the seller ledger.
  */
 @Module({
-  imports: [CartModule, InventoryModule, ShippingModule, CommissionPayoutsModule],
+  imports: [
+    CartModule,
+    CatalogModule,
+    IdentityModule,
+    InventoryModule,
+    SellersModule,
+    ShippingModule,
+    CommissionPayoutsModule,
+  ],
   controllers: [OrdersController, AdminOrdersController, SellerOrdersController],
   providers: [
     PersistenceModule.outboxWriterFor('ordering'),

@@ -57,7 +57,11 @@ import { FixedRegisterLookupPolicy, validIdentifiers } from '../support/sellers-
 import { PrismaService } from '../../src/platform/persistence/prisma.service';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { ok } from '@mondapac/shared-kernel';
-import { AUTHORISATION_CHECK, type AuthorisationCheck } from '../../src/platform/authz';
+import {
+  AUTHORISATION_CHECK,
+  STEP_UP_SOURCE,
+  type AuthorisationCheck,
+} from '../../src/platform/authz';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { OUTBOX_RELAY, type OutboxRelay } from '../../src/platform/events/event-bus';
 import { EVENT_DISPATCHER, type EventDispatcher } from '../../src/platform/events/event-delivery';
@@ -167,6 +171,9 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           .useValue(transport)
           .overrideProvider(AUTHORISATION_CHECK)
           .useValue(sellerOwnerCheck)
+          // The two-step rule is covered by test/seller-step-up.e2e.spec.ts; here the point is the files.
+          .overrideProvider(STEP_UP_SOURCE)
+          .useValue({ check: () => Promise.resolve(ok(undefined)) })
           .overrideProvider(REGISTER_LOOKUP_POLICY)
           .useValue(registerPolicy)
           .overrideProvider(BUSINESS_REGISTER_LOOKUPS)
@@ -393,9 +400,9 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     expect(asAnonymous).toEqual({
       ok: true,
       value: [
-        { sellerId: never, exists: false },
-        { sellerId, exists: true },
-        { sellerId: elsewhere, exists: false },
+        { sellerId: never, exists: false, storeName: null },
+        { sellerId, exists: true, storeName: null },
+        { sellerId: elsewhere, exists: false, storeName: null },
       ],
     });
     expect(JSON.stringify(asSystem)).toBe(JSON.stringify(asAnonymous));
@@ -1110,7 +1117,7 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
     it('gives sellerSummaries the draft zone to the system caller only, never across Markets', async () => {
       const { sellerId, context } = await draftSeller();
       const none = await facade().sellerSummaries(systemContext(code), [sellerId]);
-      expect(none).toEqual({ ok: true, value: [{ sellerId, exists: true }] });
+      expect(none).toEqual({ ok: true, value: [{ sellerId, exists: true, storeName: null }] });
 
       await app.get(MyFileSaveGeneral).execute(context, GENERAL);
       await app.get(MyFileSaveAddress).execute(context, { address: FIXTURE.address });
@@ -1124,12 +1131,16 @@ describe.each(TEST_MARKETS)('sellers files in market %s (database integration)',
           {
             sellerId,
             exists: true,
+            storeName: null,
             operatingTimezone: { zone: FIXTURE.zones[0], provisional: true },
           },
         ],
       });
-      expect(asRequest).toEqual({ ok: true, value: [{ sellerId, exists: true }] });
-      expect(elsewhere).toEqual({ ok: true, value: [{ sellerId, exists: false }] });
+      expect(asRequest).toEqual({ ok: true, value: [{ sellerId, exists: true, storeName: null }] });
+      expect(elsewhere).toEqual({
+        ok: true,
+        value: [{ sellerId, exists: false, storeName: null }],
+      });
     });
 
     it('saves the draft encrypted at rest under the seller`s key and reads it back', async () => {

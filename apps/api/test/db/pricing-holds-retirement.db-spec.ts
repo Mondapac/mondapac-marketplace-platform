@@ -161,10 +161,23 @@ describe.each(TEST_MARKETS)('pricing holds and retirement in market %s (database
       outbox: outbox(),
       clock,
     });
+  // The names come from other modules' facades (their own db specs cover them): none here.
+  const noLabels = {
+    unitLabels: { labelsOf: () => Promise.resolve(new Map()) },
+    storeNames: { namesOf: () => Promise.resolve(new Map()) },
+  };
   const list = () =>
-    new ListPriceHolds(gate, { unitOfWork: persistence.unitOfWork, series: repository() });
+    new ListPriceHolds(gate, {
+      unitOfWork: persistence.unitOfWork,
+      series: repository(),
+      ...noLabels,
+    });
   const view = () =>
-    new ViewPriceHold(gate, { unitOfWork: persistence.unitOfWork, series: repository() });
+    new ViewPriceHold(gate, {
+      unitOfWork: persistence.unitOfWork,
+      series: repository(),
+      ...noLabels,
+    });
   const retireDeps = () => ({
     unitOfWork: handledOnce(),
     series: repository(),
@@ -482,6 +495,7 @@ describe.each(TEST_MARKETS)('pricing holds and retirement in market %s (database
         findByOffer: (m, o) => inner.findByOffer(m, o),
         findByProductVariant: (m, p, v) => inner.findByProductVariant(m, p, v),
         listPendingHolds: (m, a, l) => inner.listPendingHolds(m, a, l),
+        countPendingHolds: (m) => inner.countPendingHolds(m),
         findPendingHold: (m, r) => inner.findPendingHold(m, r),
         add: (m, s) => inner.add(m, s),
         save: (m, s) => inner.save(m, s),
@@ -517,6 +531,7 @@ describe.each(TEST_MARKETS)('pricing holds and retirement in market %s (database
         findByOffer: (m, o) => inner.findByOffer(m, o),
         findByProductVariant: (m, p, v) => inner.findByProductVariant(m, p, v),
         listPendingHolds: (m, a, l) => inner.listPendingHolds(m, a, l),
+        countPendingHolds: (m) => inner.countPendingHolds(m),
         findPendingHold: (m, r) => inner.findPendingHold(m, r),
         add: (m, s) => inner.add(m, s),
         save: (m, s) => inner.save(m, s),
@@ -572,9 +587,12 @@ describe.each(TEST_MARKETS)('pricing holds and retirement in market %s (database
   describe('the queue query', () => {
     it('reads the queue in order from the partial pending index', async () => {
       await held();
-      // A small table prefers a sequential scan; with it off the index is the only way to read
-      // this order. The statement is the one the repository sends for a page after a cursor.
+      // A small table prefers a sequential scan, and the OR of the cursor condition lets the
+      // planner pick a bitmap scan plus a Sort when the statistics are thin. With both off the
+      // partial index is the only access path, so the plan shows whether it supplies the order
+      // with no Sort. The statement is the one the repository sends for a page after a cursor.
       await sql.query('SET enable_seqscan = off');
+      await sql.query('SET enable_bitmapscan = off');
       try {
         const plan = await sql.query<{ 'QUERY PLAN': string }>(
           `EXPLAIN SELECT id FROM pricing.regular_price_records
@@ -588,6 +606,7 @@ describe.each(TEST_MARKETS)('pricing holds and retirement in market %s (database
         expect(text).not.toContain('Sort');
       } finally {
         await sql.query('RESET enable_seqscan');
+        await sql.query('RESET enable_bitmapscan');
       }
     });
   });
@@ -759,6 +778,7 @@ describe.each(TEST_MARKETS)('pricing holds and retirement in market %s (database
         findByOffer: (m, o) => inner.findByOffer(m, o),
         findByProductVariant: (m, p, v) => inner.findByProductVariant(m, p, v),
         listPendingHolds: (m, a, l) => inner.listPendingHolds(m, a, l),
+        countPendingHolds: (m) => inner.countPendingHolds(m),
         findPendingHold: (m, r) => inner.findPendingHold(m, r),
         add: (m, s) => inner.add(m, s),
         save: (m, s) => inner.save(m, s),
@@ -796,6 +816,7 @@ describe.each(TEST_MARKETS)('pricing holds and retirement in market %s (database
         findByKey: (m, key) => inner.findByKey(m, key),
         findByRecordId: (m, id) => inner.findByRecordId(m, id),
         listPendingHolds: (m, a, l) => inner.listPendingHolds(m, a, l),
+        countPendingHolds: (m) => inner.countPendingHolds(m),
         findPendingHold: (m, r) => inner.findPendingHold(m, r),
         findByProductVariant: (m, p, v) => inner.findByProductVariant(m, p, v),
         add: (m, s) => inner.add(m, s),

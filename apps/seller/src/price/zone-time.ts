@@ -1,3 +1,5 @@
+import { dateFormat } from '../shared/intl.ts';
+
 /** The zone times fall back to when the seller's own zone could not be read. */
 export const FALLBACK_ZONE = 'UTC';
 
@@ -8,7 +10,10 @@ const formatters = new Map<string, Intl.DateTimeFormat>();
 function partsFormatter(zone: string): Intl.DateTimeFormat {
   let formatter = formatters.get(zone);
   if (formatter === undefined) {
-    formatter = new Intl.DateTimeFormat('en-AU', {
+    // Machine reading of the parts, not display: the root locale with Latin digits, so no
+    // Market language or numbering system can change what is parsed.
+    formatter = new Intl.DateTimeFormat('und', {
+      numberingSystem: 'latn',
       timeZone: zone,
       hourCycle: 'h23',
       year: 'numeric',
@@ -47,6 +52,11 @@ export function isKnownZone(zone: string): boolean {
   }
 }
 
+/** The seller's zone when it is one this runtime knows, otherwise UTC. */
+export function resolveZone(zone: string | null | undefined): string {
+  return zone !== null && zone !== undefined && isKnownZone(zone) ? zone : FALLBACK_ZONE;
+}
+
 /**
  * A `datetime-local` value ("2026-10-20T01:00") read as a wall-clock time in an IANA zone and
  * answered as a UTC instant ("2026-10-19T14:00:00Z"), or null when it is not a time or the zone
@@ -77,21 +87,26 @@ export function instantOfZoned(text: string, zone: string): string | null {
   return first === undefined ? null : new Date(first).toISOString().replace('.000Z', 'Z');
 }
 
-const display = new Map<string, Intl.DateTimeFormat>();
+/**
+ * The zone's short name at that instant in the Market locale ("AEST"). Where Intl has no
+ * abbreviation and answers an offset ("GMT+10", "UTC+4"), the IANA id is used instead, so the
+ * label is never an offset that could be misread; "UTC" stays "UTC".
+ */
+export function zoneName(date: Date, locale: string, zone: string): string {
+  const parts = dateFormat(locale, { timeZoneName: 'short', timeZone: zone }).formatToParts(date);
+  const name = parts.find((part) => part.type === 'timeZoneName')?.value ?? zone;
+  return zone !== FALLBACK_ZONE && /^(GMT|UTC)/.test(name) ? zone : name;
+}
 
-/** An instant from the API shown in a zone and labelled with the zone's id. */
-export function formatInZone(iso: string | null, zone: string): string {
+/** An instant from the API shown in a zone and labelled with the zone's short name. */
+export function formatInZone(iso: string | null, zone: string, locale: string): string {
   if (iso === null) return '-';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime()) || !isKnownZone(zone)) return '-';
-  let formatter = display.get(zone);
-  if (formatter === undefined) {
-    formatter = new Intl.DateTimeFormat('en-AU', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-      timeZone: zone,
-    });
-    display.set(zone, formatter);
-  }
-  return `${formatter.format(date)} ${zone}`;
+  const text = dateFormat(locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: zone,
+  }).format(date);
+  return `${text} ${zoneName(date, locale, zone)}`;
 }

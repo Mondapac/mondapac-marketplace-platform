@@ -3,6 +3,8 @@ import { PERMISSION_KEY_LOOKUP } from '../events/outbox-writer';
 import { MarketRegistry } from '../market-config/market-registry';
 import { AUTHORISATION_CHECK, type AuthorisationCheck } from './authorisation-check';
 import { PermissionRegistry } from './permission-registry';
+import { StepUpActionRegistry } from './step-up-registry';
+import { StepUpGuard, STEP_UP_CHECK, STEP_UP_SOURCE, type StepUpCheck } from './step-up.guard';
 import { createUseCaseGate } from './use-case-gate';
 import { USE_CASE_GATE } from './use-case-gate.token';
 
@@ -34,6 +36,14 @@ export class AuthzModule {
         // `onApplicationBootstrap`, which seals it.
         { provide: PermissionRegistry, useFactory: () => new PermissionRegistry() },
         { provide: PERMISSION_KEY_LOOKUP, useExisting: PermissionRegistry },
+        StepUpActionRegistry,
+        // identity's answer to "may this seller session do this action now?" (seller OTP policy).
+        {
+          provide: STEP_UP_CHECK,
+          inject: [STEP_UP_SOURCE],
+          useFactory: (source: StepUpCheck): StepUpCheck => source,
+        },
+        StepUpGuard,
         {
           provide: USE_CASE_GATE,
           inject: [MarketRegistry, AUTHORISATION_CHECK],
@@ -41,7 +51,14 @@ export class AuthzModule {
             createUseCaseGate(markets, authorisation),
         },
       ],
-      exports: [USE_CASE_GATE, PermissionRegistry, PERMISSION_KEY_LOOKUP],
+      exports: [
+        USE_CASE_GATE,
+        PermissionRegistry,
+        PERMISSION_KEY_LOOKUP,
+        StepUpActionRegistry,
+        STEP_UP_CHECK,
+        StepUpGuard,
+      ],
     };
   }
 }

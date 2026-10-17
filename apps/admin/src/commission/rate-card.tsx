@@ -1,11 +1,11 @@
 'use client';
 
-import { Badge, Banner, Button, Card, Dialog, TextField } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { ActionRow, Badge, Banner, Button, Card, Dialog, TextField } from '@mondapac/ui';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { commissionProblemOf } from './errors.ts';
-import { bpsOf, MAX_RATE_BPS, percentOf, type CommissionRate } from './types.ts';
+import { bpsOf, MAX_RATE_BPS, percentInput, percentOf, type CommissionRate } from './types.ts';
 
 /** A seller's commission rate: the rate in force, its source, a percent field and a reset. */
 export function CommissionRateCard({
@@ -18,8 +18,9 @@ export function CommissionRateCard({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('commission');
+  const locale = useLocale();
   const [rate, setRate] = useState(initial);
-  const [text, setText] = useState(percentOf(initial.rateBps).replaceAll(',', ''));
+  const [text, setText] = useState(percentInput(initial.rateBps));
   const [pending, setPending] = useState<'save' | 'reset' | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
@@ -30,7 +31,7 @@ export function CommissionRateCard({
 
   function adopt(next: CommissionRate) {
     setRate(next);
-    setText(percentOf(next.rateBps).replaceAll(',', ''));
+    setText(percentInput(next.rateBps));
   }
 
   function fail(failure: Parameters<typeof commissionProblemOf>[0]) {
@@ -89,14 +90,14 @@ export function CommissionRateCard({
         <p className="text-sm text-fg-muted">{t('intro')}</p>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="text-fg-muted">{t('current')}:</span>
-          <strong className="text-2xl tabular-nums">{percentOf(rate.rateBps)}%</strong>
+          <strong className="text-2xl tabular-nums">{percentOf(rate.rateBps, locale)}%</strong>
           <Badge tone={rate.source === 'seller' ? 'info' : 'neutral'}>
             {t(`source.${rate.source}`)}
           </Badge>
         </div>
         {rate.source === 'seller' ? (
           <p className="text-sm text-fg-muted">
-            {t('market-rate', { rate: percentOf(rate.marketRateBps) })}
+            {t('market-rate', { rate: percentOf(rate.marketRateBps, locale) })}
           </p>
         ) : null}
         {saved === null ? null : <Banner tone="success">{t(`${saved}-done`)}</Banner>}
@@ -112,7 +113,7 @@ export function CommissionRateCard({
               error={invalid ? t('invalid', { max: MAX_RATE_BPS / 100 }) : undefined}
               onChange={(event) => setText(event.target.value)}
             />
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <ActionRow>
               <Button type="submit" loading={pending === 'save'} disabled={pending === 'reset'}>
                 {t('save')}
               </Button>
@@ -125,7 +126,7 @@ export function CommissionRateCard({
                   {t('reset')}
                 </Button>
               ) : null}
-            </div>
+            </ActionRow>
           </form>
         ) : null}
       </div>
@@ -151,7 +152,7 @@ export function CommissionRateCard({
           </>
         }
       >
-        <p>{t('reset-body', { rate: percentOf(rate.marketRateBps) })}</p>
+        <p>{t('reset-body', { rate: percentOf(rate.marketRateBps, locale) })}</p>
       </Dialog>
     </Card>
   );

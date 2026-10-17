@@ -2,8 +2,10 @@ import { money, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
+  OrderFilter,
   OrderPage,
   OrderRepository,
+  SellerOrderFilter,
   SellerOrderPage,
   SellerOrderRecord,
 } from '../application/ports/order.repository';
@@ -17,6 +19,7 @@ import type {
   PaymentState,
   SellerOrder,
 } from '../domain/order';
+import type { OrderStatusCounts, SellerOrderCounts } from '../domain/order-views';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -243,15 +246,16 @@ export class PrismaOrderRepository implements OrderRepository {
     return rows.map(toOrder);
   }
 
-  async listAll(
-    market: MarketContext,
-    filter: { readonly status: OrderStatus | null },
-    page: OrderPage,
-  ) {
+  async listAll(market: MarketContext, filter: OrderFilter, page: OrderPage) {
     const rows = await this.prisma.tx(market).orderingOrder.findMany({
       where: {
         marketId: market.marketId,
         ...(filter.status === null ? {} : { status: filter.status }),
+        ...(filter.reference === null
+          ? {}
+          : {
+              OR: [{ id: filter.reference }, { sellerOrders: { some: { id: filter.reference } } }],
+            }),
         ...afterCursor(page),
       },
       include: INCLUDE,
@@ -259,6 +263,21 @@ export class PrismaOrderRepository implements OrderRepository {
       take: page.limit,
     });
     return rows.map(toOrder);
+  }
+
+  async countAll(market: MarketContext): Promise<OrderStatusCounts> {
+    const groups = await this.prisma.tx(market).orderingOrder.groupBy({
+      by: ['status'],
+      where: { marketId: market.marketId },
+      _count: { _all: true },
+    });
+    const count = (status: OrderStatus) =>
+      groups.find((group) => group.status === status)?._count._all ?? 0;
+    return {
+      pendingPayment: count('pending-payment'),
+      confirmed: count('confirmed'),
+      cancelled: count('cancelled'),
+    };
   }
 
   async save(market: MarketContext, order: OrderState): Promise<'saved' | 'stale'> {
@@ -278,11 +297,17 @@ export class PrismaOrderRepository implements OrderRepository {
     return updated.count === 0 ? 'stale' : 'saved';
   }
 
-  async listForSeller(market: MarketContext, sellerId: Id<'Seller'>, page: SellerOrderPage) {
+  async listForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+    page: SellerOrderPage,
+  ) {
     const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
       where: {
         marketId: market.marketId,
         sellerId,
+        ...(filter.fulfilment === null ? {} : { fulfilment: filter.fulfilment }),
         order: { status: 'confirmed' },
         ...sellerCursor(page),
       },
@@ -291,6 +316,17 @@ export class PrismaOrderRepository implements OrderRepository {
       take: page.limit,
     });
     return rows.map(toRecord);
+  }
+
+  async countForSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerOrderCounts> {
+    const groups = await this.prisma.tx(market).orderingSellerOrder.groupBy({
+      by: ['fulfilment'],
+      where: { marketId: market.marketId, sellerId, order: { status: 'confirmed' } },
+      _count: { _all: true },
+    });
+    const count = (fulfilment: Fulfilment) =>
+      groups.find((group) => group.fulfilment === fulfilment)?._count._all ?? 0;
+    return { toShip: count('to-ship'), shipped: count('shipped'), delivered: count('delivered') };
   }
 
   async findForSeller(

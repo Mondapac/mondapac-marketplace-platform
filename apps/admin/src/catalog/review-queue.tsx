@@ -1,10 +1,10 @@
 'use client';
 
-import { Badge, Banner, Button, Select } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { Badge, Banner, Button, EmptyState, Select } from '@mondapac/ui';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
-import { formatInstant } from '../sellers/format.ts';
+import { formatInstant } from '../shared/format.ts';
 import { reviewProblemOf, type ReviewProblem } from './review-errors.ts';
 import { CHANGE_REASONS, type ReviewRow } from './types.ts';
 
@@ -34,9 +34,7 @@ export function ReviewQueue({
     <div className="flex flex-col gap-4">
       {notice === null ? null : <Banner tone="success">{t(`notice.${notice}`)}</Banner>}
       {visible.length === 0 ? (
-        <div className="rounded-lg border border-line p-6">
-          <p className="font-medium">{t('empty')}</p>
-        </div>
+        <EmptyState icon="inbox" title={t('empty')} />
       ) : (
         <ul className="flex flex-col gap-3">
           {visible.map((row) => (
@@ -73,6 +71,7 @@ function ReviewCard({
 }) {
   const t = useTranslations('catalog.review');
   const tr = useTranslations();
+  const locale = useLocale();
   const [step, setStep] = useState<Step>('closed');
   const [reasonCode, setReasonCode] = useState('');
   const [pending, setPending] = useState(false);
@@ -115,7 +114,7 @@ function ReviewCard({
   };
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-line p-4">
+    <li className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-5">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="break-words text-lg font-semibold">{name}</h2>
         <Badge tone="neutral">{row.sellerSku}</Badge>
@@ -125,7 +124,7 @@ function ReviewCard({
         <Field label={t('field.handling')} value={row.handling ?? t('field.handling-missing')} />
         <Field
           label={t('field.submitted')}
-          value={row.submittedAt === null ? '-' : formatInstant(row.submittedAt)}
+          value={row.submittedAt === null ? '-' : formatInstant(row.submittedAt, locale)}
         />
         <Field label={t('field.seller')} value={row.sellerId} mono />
       </dl>

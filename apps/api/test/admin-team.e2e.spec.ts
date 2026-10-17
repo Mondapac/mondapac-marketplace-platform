@@ -55,6 +55,8 @@ const tokens = new RandomSessionTokens();
 let clock: FixedClock;
 let deliveries = 0;
 
+/** The answer of `GET profile/sessions` (profile package 4). */
+type OwnSessionsBody = { items: { current: boolean; device: string | null }[] };
 describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => {
   let app: NestExpressApplication;
   let logLines: LogLine[];
@@ -301,6 +303,74 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
       const malformed = await post(code, `accounts/${VIEWER}/role`, { roleId: 'x' }, root);
       expect(malformed.status).toBe(400);
       expect(malformed.body).toMatchObject({ code: 'validation.failed' });
+    });
+
+    it('lets any admin, even a viewer, change only its own display name', async () => {
+      await boot();
+      await seeded(code);
+      const viewer = sessionOf(code, VIEWER, 3);
+      const put = (body: unknown, headers: Record<string, string>) =>
+        http()
+          .put('/identity/admin/profile/display-name')
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...headers })
+          .send(body as object);
+
+      const renamed = await put({ displayName: ' Viewer Vee ' }, viewer);
+      expect(renamed.status).toBe(200);
+      expect(renamed.body).toEqual({ code: 'display-name-changed', changed: true });
+      expect(fakes.accounts.get(VIEWER)!.displayName).toBe('Viewer Vee');
+      expect(fakes.accounts.get(ROOT)!.displayName).toBe('Account 1');
+      // The body names no account: an extra field is refused, never used.
+      const sneaky = await put({ displayName: 'Vee', accountId: ROOT }, viewer);
+      expect(sneaky.status).toBe(400);
+      expect(sneaky.body).toMatchObject({ code: 'validation.failed' });
+      expect(fakes.accounts.get(ROOT)!.displayName).toBe('Account 1');
+      const noCsrf = await put({ displayName: 'Vee' }, { cookie: viewer.cookie });
+      expect(noCsrf.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+      const noSession = await put({ displayName: 'Vee' }, {});
+      expect(noSession.status).toBe(401);
+      const session = await http()
+        .get('/identity/admin/session')
+        .set({ 'x-market-id': code, cookie: viewer.cookie });
+      expect(session.body).toMatchObject({ displayName: 'Viewer Vee', lastSignInAt: null });
+    });
+
+    it('lists only its own devices and signs out of the others, keeping this one', async () => {
+      await boot();
+      await seeded(code);
+      const here = sessionOf(code, VIEWER, 3);
+      const elsewhere = sessionOf(code, VIEWER, 4);
+      const root = sessionOf(code, ROOT, 1);
+      const list = (headers: Record<string, string>) =>
+        http()
+          .get('/identity/admin/profile/sessions')
+          .set({ 'x-market-id': code, cookie: headers.cookie ?? '' });
+
+      const listed = await list(here);
+      expect(listed.status).toBe(200);
+      expect(listed.headers['cache-control']).toBe('no-store');
+      expect((listed.body as OwnSessionsBody).items).toHaveLength(2);
+      expect((listed.body as OwnSessionsBody).items[0]).toMatchObject({
+        current: true,
+        device: null,
+      });
+      expect(JSON.stringify(listed.body)).not.toMatch(/01990000-0000-7000-8000-/);
+
+      const signOut = (headers: Record<string, string>) =>
+        http()
+          .post('/identity/admin/profile/sessions/sign-out-others')
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...headers })
+          .send({});
+      const noCsrf = await signOut({ cookie: here.cookie });
+      expect(noCsrf.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+      const done = await signOut(here);
+      expect(done.status).toBe(200);
+      expect(done.body).toEqual({ code: 'other-sessions-signed-out', revokedSessions: 1 });
+
+      expect(((await list(here)).body as OwnSessionsBody).items).toHaveLength(1);
+      expect((await list(elsewhere)).status).toBe(401);
+      // Another admin's session is untouched.
+      expect((await list(root)).status).toBe(200);
     });
 
     it('disables an admin: its session stops working at once; enables it again', async () => {

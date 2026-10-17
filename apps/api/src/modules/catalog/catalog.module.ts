@@ -1,6 +1,11 @@
 import { CertificationModule } from '../certification';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -28,6 +33,10 @@ import {
 import { ALLOWED_PRODUCT_TYPES_READER } from './application/ports/allowed-product-types.reader';
 import { OFFER_REPOSITORY } from './application/ports/offer.repository';
 import { SELLER_ELIGIBILITY_READER } from './application/ports/seller-eligibility.reader';
+import { SELLER_NAMES_READER } from './application/ports/seller-names.reader';
+import { ProductRevisionApprove } from './application/use-cases/product-revision-approve.use-case';
+import { ProductRevisionRequestChanges } from './application/use-cases/product-revision-request-changes.use-case';
+import { ProductReviewController } from './presentation/product-review.controller';
 import { OwnOfferCreateOnPlatformProduct } from './application/use-cases/own-offer-create-on-platform-product.use-case';
 import { OfferApprove } from './application/use-cases/offer-approve.use-case';
 import { OfferRequestChanges } from './application/use-cases/offer-request-changes.use-case';
@@ -37,6 +46,8 @@ import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handl
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
 import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
+import { SELL_UNIT_LABELS_READER } from './application/ports/sell-unit-labels.reader';
+import { SellUnitLabelsQuery } from './application/use-cases/sell-unit-labels.use-case';
 import { OFFER_NAMES_READER } from './application/ports/offer-names.reader';
 import { OfferNamesSystemQuery } from './application/use-cases/offer-names-system.use-case';
 import { OFFER_SELL_UNITS_READER } from './application/ports/offer-sell-units.reader';
@@ -54,6 +65,7 @@ import { PlatformProductCreate } from './application/use-cases/platform-product-
 import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from './application/use-cases/platform-product-submit.use-case';
 import { CATALOG_PERMISSIONS } from './contracts/permissions';
+import { CATALOG_STEP_UP_ACTIONS } from './contracts/step-up';
 import { CATEGORY_SEED } from './application/ports/category-seed';
 import { PLATFORM_CATEGORY_REPOSITORY } from './application/ports/platform-category.repository';
 import { SeedAttributes } from './application/use-cases/seed-attributes.use-case';
@@ -132,9 +144,11 @@ const PORT = {
   reader: OFFER_SELL_UNITS_READER,
   searchReader: OFFER_SEARCH_FACTS_READER,
   namesReader: OFFER_NAMES_READER,
+  labelsReader: SELL_UNIT_LABELS_READER,
   offers: OFFER_REPOSITORY,
   eligibility: SELLER_ELIGIBILITY_READER,
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
+  sellerNames: SELLER_NAMES_READER,
   ownReader: OWN_CATALOG_READER,
   images: PRODUCT_IMAGE_REPOSITORY,
   imageProcessor: IMAGE_PROCESSOR,
@@ -206,6 +220,7 @@ const productTypeProvider: FactoryProvider<string> = {
     OwnProductController,
     ProductImageController,
     OfferReviewController,
+    ProductReviewController,
   ],
   imports: [CertificationModule, SellersModule],
   providers: [
@@ -222,6 +237,7 @@ const productTypeProvider: FactoryProvider<string> = {
     },
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
     registerPermissions('catalog', CATALOG_PERMISSIONS),
+    registerStepUpActions('catalog', CATALOG_STEP_UP_ACTIONS),
     ...catalogProviders,
     serviceProvider(CheckClaimText, {
       unitOfWork: true,
@@ -362,6 +378,24 @@ const productTypeProvider: FactoryProvider<string> = {
       offers: true,
       ownReader: true,
       policy: true,
+      sellerNames: true,
+    }),
+    useCaseProvider(ProductRevisionApprove, {
+      unitOfWork: true,
+      products: true,
+      revisions: true,
+      eligibility: true,
+      check: true,
+      policy: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(ProductRevisionRequestChanges, {
+      unitOfWork: true,
+      products: true,
+      revisions: true,
+      outbox: true,
+      clock: true,
     }),
     useCaseProvider(OwnProductCreate, {
       unitOfWork: true,
@@ -459,15 +493,27 @@ const productTypeProvider: FactoryProvider<string> = {
     useCaseProvider(OfferSellUnitsQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferSellUnitsSystemQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferNamesSystemQuery, { unitOfWork: true, namesReader: true }),
+    useCaseProvider(SellUnitLabelsQuery, { unitOfWork: true, labelsReader: true }),
     {
       provide: CATALOG_FACADE,
-      inject: [OfferSellUnitsQuery, OfferSellUnitsSystemQuery, OfferNamesSystemQuery],
+      inject: [
+        OfferSellUnitsQuery,
+        OfferSellUnitsSystemQuery,
+        OfferNamesSystemQuery,
+        SellUnitLabelsQuery,
+      ],
       useFactory: (
         offerSellUnits: OfferSellUnitsQuery,
         offerSellUnitsSystem: OfferSellUnitsSystemQuery,
         offerNamesSystem: OfferNamesSystemQuery,
+        sellUnitLabels: SellUnitLabelsQuery,
       ) =>
-        new CatalogFacadeImplementation({ offerSellUnits, offerSellUnitsSystem, offerNamesSystem }),
+        new CatalogFacadeImplementation({
+          offerSellUnits,
+          offerSellUnitsSystem,
+          offerNamesSystem,
+          sellUnitLabels,
+        }),
     },
     useCaseProvider(OfferSearchFactsQuery, { unitOfWork: true, searchReader: true }),
     useCaseProvider(PublishedOfferIdsQuery, { unitOfWork: true, searchReader: true }),

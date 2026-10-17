@@ -3,7 +3,11 @@ import type { Id, MarketContext, Population, Result } from '@mondapac/shared-ker
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { SubjectKeyService } from '../../../platform/subject-keys/subject-key-service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
-import type { AccountAddRefused, AccountRepository } from '../application/ports/account.repository';
+import type {
+  AccountAddRefused,
+  AccountRepository,
+  CustomerSummaryRow,
+} from '../application/ports/account.repository';
 import { Account, type AccountState } from '../domain/account';
 
 /** Constraint names this repository turns into domain errors (data design 3.3, N1). */
@@ -30,6 +34,8 @@ const SELECTED = {
   email: true,
   emailNormalized: true,
   displayName: true,
+  timezone: true,
+  locale: true,
   status: true,
   emailVerifiedAt: true,
   existingAccountNoticeAt: true,
@@ -47,6 +53,8 @@ interface SelectedRow {
   readonly email: string;
   readonly emailNormalized: string;
   readonly displayName: string | null;
+  readonly timezone: string | null;
+  readonly locale: string | null;
   readonly status: string;
   readonly emailVerifiedAt: Date | null;
   readonly existingAccountNoticeAt: Date | null;
@@ -110,6 +118,22 @@ export class PrismaAccountRepository implements AccountRepository {
     return row !== null;
   }
 
+  async customerSummaries(
+    market: MarketContext,
+    ids: readonly Id<'Account'>[],
+  ): Promise<readonly CustomerSummaryRow[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.tx(market).identityAccount.findMany({
+      where: { marketId: market.marketId, population: 'customer', id: { in: [...ids] } },
+      select: { id: true, displayName: true, email: true },
+    });
+    return rows.map((row) => ({
+      id: row.id as Id<'Account'>,
+      displayName: row.displayName,
+      email: row.email,
+    }));
+  }
+
   private restore(row: SelectedRow): Account {
     const credential = row.passwordCredential;
     const marketId = parseMarketId(row.marketId);
@@ -128,6 +152,8 @@ export class PrismaAccountRepository implements AccountRepository {
       population: row.population as Population,
       email: { typed: row.email, normalized: row.emailNormalized },
       displayName: row.displayName,
+      timezone: row.timezone,
+      locale: row.locale,
       status: row.status,
       emailVerifiedAt: toOptionalInstant(row.emailVerifiedAt),
       existingAccountNoticeAt: toOptionalInstant(row.existingAccountNoticeAt),
@@ -197,6 +223,8 @@ export class PrismaAccountRepository implements AccountRepository {
       where: { marketId: market.marketId, id: state.id, version: expected },
       data: {
         displayName: state.displayName,
+        timezone: state.timezone ?? null,
+        locale: state.locale ?? null,
         // Slice 8b: disable and enable. Written under the version guard, in the caller's
         // serializable unit (HF8: every writer of accounts.status).
         status: state.status,

@@ -218,6 +218,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   RevisionText: { table: 'REVISION_TEXT_FIELDS' },
   RevisionVariantContent: { table: 'REVISION_VARIANT_FIELDS' },
   SellUnit: { noCustomerText: 'numbers and ids' },
+  SellUnitKey: { noCustomerText: 'ids' },
+  SellUnitLabel: {
+    noCustomerText: 'published product name and Variant label, read back from a revision',
+  },
   SensitiveChangesPolicy: { noCustomerText: 'flags per change kind' },
   StoredRevision: { noCustomerText: 'record around the content; the texts are RevisionContent' },
   VariantDraft: { noCustomerText: 'ids and option codes; labels are RevisionVariantContent' },

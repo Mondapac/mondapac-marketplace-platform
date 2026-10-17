@@ -17,17 +17,29 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/session',
     'identity/admin/sellers',
     'payments/admin/connected-accounts',
+    // The Market's orders (ordering), read-only: the list; one order is read by the page server.
+    'ordering/admin/orders',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
-  PUT: new Set(['notifications/admin/support-contact']),
+  PUT: new Set([
+    'notifications/admin/support-contact',
+    // The signed-in admin's own display name (profile).
+    'identity/admin/profile/display-name',
+    // The signed-in admin's own time zone and language (profile).
+    'identity/admin/profile/preferences',
+  ]),
   DELETE: new Set([]),
   POST: new Set([
+    // The signed-in admin's other sessions are ended; this one stays (profile).
+    'identity/admin/profile/sessions/sign-out-others',
     'identity/admin/sign-in',
     'identity/admin/second-factor',
     'identity/admin/sign-out',
     'identity/admin/invitations',
     'identity/admin/password-reset-email',
     'identity/admin/reset-password',
+    // The signed-in admin's own password; the body carries a code from the app.
+    'identity/admin/change-password',
     'identity/admin/invitation/enrolment',
     'identity/admin/invitation/accept',
     'identity/admin/roles',
@@ -81,6 +93,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'identity/admin/sellers': ['state', 'limit', 'after'],
   'payments/admin/connected-accounts': ['status', 'cursor'],
+  'ordering/admin/orders': ['status', 'cursor'],
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** GET templates with a resource id whose query crosses, and the keys that may cross. */
@@ -130,6 +143,8 @@ const FORWARDED_REQUEST_HEADERS = [
   'origin',
   'sec-fetch-site',
   'x-csrf-token',
+  // The API keeps only a coarse browser and system code of it on a new session (profile).
+  'user-agent',
 ] as const;
 
 /** Response headers that cross back to the browser (Set-Cookie is handled on its own). */

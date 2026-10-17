@@ -1,12 +1,12 @@
 'use client';
 
-import { Banner, Button, Select, TextField } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { ActionRow, Banner, Button, Card, Select, TextField } from '@mondapac/ui';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { decisionProblemOf, type DecisionProblem } from './decision-errors.ts';
-import { formatInstant } from './format.ts';
+import { formatInstant } from '../shared/format.ts';
 import type { ReviewRegister } from './review-types.ts';
 
 const OUTCOMES = ['active', 'not-found', 'cancelled'] as const;
@@ -38,6 +38,7 @@ export function DecisionPanel({
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
+  const locale = useLocale();
   const router = useRouter();
   const [step, setStep] = useState<Step>('idle');
   const [reason, setReason] = useState('');
@@ -98,8 +99,7 @@ export function DecisionPanel({
 
   const check = register.manualCheck;
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-line p-4">
-      <h2 className="text-lg font-semibold">{t('sellers.decision.title')}</h2>
+    <Card title={t('sellers.decision.title')}>
       {decisionInProgress ? <Banner tone="info">{t('sellers.decision.in-progress')}</Banner> : null}
       {notice === null ? null : (
         <Banner tone={notice === 'settling' ? 'info' : 'success'}>
@@ -121,14 +121,18 @@ export function DecisionPanel({
       )}
 
       {canCheck ? (
-        <form className="flex flex-col gap-3" onSubmit={recordCheck} noValidate>
+        <form
+          className="flex max-w-(--mp-size-form-max) flex-col gap-3"
+          onSubmit={recordCheck}
+          noValidate
+        >
           <h3 className="font-medium">{t('sellers.decision.check.title')}</h3>
           <p className="text-sm text-fg-muted">
             {check === null
               ? t('sellers.decision.check.none')
               : t('sellers.decision.check.recorded', {
                   outcome: t(`sellers.decision.check.outcome.${check.observedOutcome}`),
-                  when: formatInstant(check.recordedAt),
+                  when: formatInstant(check.recordedAt, locale),
                 })}
           </p>
           <p className="text-sm text-fg-muted">{t('sellers.decision.check.help')}</p>
@@ -143,7 +147,7 @@ export function DecisionPanel({
             }))}
             onChange={(event) => setOutcome(event.target.value)}
           />
-          <div>
+          <ActionRow>
             <Button
               type="submit"
               variant="secondary"
@@ -152,7 +156,7 @@ export function DecisionPanel({
             >
               {t('sellers.decision.check.save')}
             </Button>
-          </div>
+          </ActionRow>
         </form>
       ) : null}
 
@@ -164,7 +168,7 @@ export function DecisionPanel({
           {step === 'confirm-approve' ? (
             <div className="flex flex-col gap-3">
               <p>{t('sellers.decision.approve-confirm')}</p>
-              <div className="flex gap-3">
+              <ActionRow>
                 <Button
                   loading={pending}
                   disabled={locked}
@@ -179,11 +183,15 @@ export function DecisionPanel({
                 <Button variant="secondary" disabled={pending} onClick={() => setStep('idle')}>
                   {t('sellers.decision.cancel')}
                 </Button>
-              </div>
+              </ActionRow>
             </div>
           ) : null}
           {step === 'reject' ? (
-            <form className="flex flex-col gap-3" onSubmit={reject} noValidate>
+            <form
+              className="flex max-w-(--mp-size-form-max) flex-col gap-3"
+              onSubmit={reject}
+              noValidate
+            >
               <TextField
                 name="reason"
                 label={t('sellers.decision.reason')}
@@ -195,7 +203,7 @@ export function DecisionPanel({
                 }
                 onChange={(event) => setReason(event.target.value)}
               />
-              <div className="flex gap-3">
+              <ActionRow>
                 <Button
                   type="submit"
                   variant="destructive"
@@ -207,11 +215,11 @@ export function DecisionPanel({
                 <Button variant="secondary" disabled={pending} onClick={() => setStep('idle')}>
                   {t('sellers.decision.cancel')}
                 </Button>
-              </div>
+              </ActionRow>
             </form>
           ) : null}
           {step === 'idle' ? (
-            <div className="flex gap-3">
+            <ActionRow>
               <Button
                 disabled={locked || register.blocksApproval}
                 onClick={() => {
@@ -233,10 +241,10 @@ export function DecisionPanel({
               >
                 {t('sellers.decision.reject')}
               </Button>
-            </div>
+            </ActionRow>
           ) : null}
         </div>
       ) : null}
-    </section>
+    </Card>
   );
 }

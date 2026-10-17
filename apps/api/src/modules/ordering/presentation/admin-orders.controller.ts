@@ -21,7 +21,12 @@ import {
 import { AdminListOrders } from '../application/use-cases/admin-list-orders.use-case';
 import { AdminViewOrder } from '../application/use-cases/admin-view-order.use-case';
 import { refusal } from './http-answers';
-import { AdminOrderBody, AdminOrderPageBody, adminOrderBody, pageBody } from './orders.dto';
+import {
+  AdminOrderBody,
+  AdminOrderPageBody,
+  adminOrderBody,
+  adminOrderPageBody,
+} from './orders.dto';
 
 const ERROR = { type: Object };
 
@@ -61,6 +66,11 @@ export class AdminOrdersController {
     enum: ['pending-payment', 'confirmed', 'cancelled'],
   })
   @ApiQuery({
+    name: 'q',
+    required: false,
+    description: 'An order id or a seller order id (the reference in the order emails), exact.',
+  })
+  @ApiQuery({
     name: 'cursor',
     required: false,
     description: 'The `nextCursor` of the previous page.',
@@ -74,15 +84,21 @@ export class AdminOrdersController {
   async orders(
     @Call() context: CallContext,
     @Query('status') status: unknown,
+    @Query('q') q: unknown,
     @Query('cursor') cursor: unknown,
     @Query('limit') limit: unknown,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.list.execute(context, { status, cursor, limit: parseLimit(limit) });
+    const result = await this.list.execute(context, {
+      status,
+      q,
+      cursor,
+      limit: parseLimit(limit),
+    });
     this.log('ordering.admin-list-orders-route', context, result.ok ? 'listed' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return pageBody(result.value, adminOrderBody);
+    return adminOrderPageBody(result.value);
   }
 
   @Get(':orderId')

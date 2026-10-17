@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, LoadError } from '@mondapac/ui';
+import { Banner, Button, EmptyState, LoadError, SkeletonRows, Tabs } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -75,27 +75,15 @@ export function AccountsList() {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
-      {/* One row that scrolls sideways on a phone, rather than tabs wrapping onto two lines. */}
-      <nav aria-label={t('tabs')} className="flex gap-4 overflow-x-auto border-b border-line">
-        {FILTERS.map((id) => (
-          <button
-            key={id}
-            type="button"
-            aria-current={id === filter ? 'page' : undefined}
-            onClick={() => setFilter(id)}
-            className={
-              id === filter
-                ? 'min-h-12 shrink-0 whitespace-nowrap border-b-2 border-link px-1 font-medium text-fg'
-                : 'min-h-12 shrink-0 whitespace-nowrap border-b-2 border-transparent px-1 text-fg-muted hover:text-fg'
-            }
-          >
-            {t(id === 'all' ? 'tab.all' : `status.${id}`)}
-          </button>
-        ))}
-      </nav>
+      <Tabs
+        label={t('tabs')}
+        activeId={filter}
+        onSelect={(id) => setFilter(id as typeof filter)}
+        items={FILTERS.map((id) => ({ id, label: t(id === 'all' ? 'tab.all' : `status.${id}`) }))}
+      />
       {failed === 'first' ? (
         <LoadError
-          className="flex flex-col items-start gap-3 rounded-lg border border-line p-6"
+          className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"
           message={t('error.unavailable')}
           retryLabel={tl('retry')}
           onRetry={() => void load(null)}
@@ -103,11 +91,9 @@ export function AccountsList() {
       ) : null}
       {rows.length > 0 ? <AccountsTable rows={rows} /> : null}
       {!loading && failed === null && rows.length === 0 ? (
-        <div className="rounded-lg border border-line p-6">
-          <p className="font-medium">{t(filter === 'all' ? 'empty.all' : 'empty.status')}</p>
-        </div>
+        <EmptyState icon="wallet" title={t(filter === 'all' ? 'empty.all' : 'empty.status')} />
       ) : null}
-      {loading ? <p className="text-fg-muted">{t('loading')}</p> : null}
+      {loading ? <SkeletonRows label={t('loading')} rows={rows.length > 0 ? 1 : 3} /> : null}
       {failed === 'more' ? <Banner tone="critical">{t('error.unavailable')}</Banner> : null}
       {next !== null && !loading ? (
         <div>

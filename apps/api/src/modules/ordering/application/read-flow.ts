@@ -4,12 +4,16 @@ import type { OrderStatus } from '../domain/order';
 import {
   adminOrderView,
   orderView,
+  type AdminOrderPageView,
   type AdminOrderView,
+  type LabelledAdminOrderView,
+  type OrderStatusCounts,
   type OrderPageView,
   type OrderView,
 } from '../domain/order-views';
 import type { OrderingDependencies } from './checkout-flow';
-import type { OrderPage } from './ports/order.repository';
+import { labelAdminOrders } from './order-labels';
+import type { OrderFilter, OrderPage } from './ports/order.repository';
 
 export type ReadFailure =
   | {
@@ -38,12 +42,14 @@ export interface ListInput {
   readonly limit?: unknown;
   readonly cursor?: unknown;
   readonly status?: unknown;
+  /** Admin only: an order id or a seller order id (the reference in the emails), exact. */
+  readonly q?: unknown;
 }
 
 function pageOf(
   input: ListInput,
-  allowStatus: boolean,
-): Result<{ page: OrderPage; status: OrderStatus | null }, ReadFailure> {
+  allowFilters: boolean,
+): Result<{ page: OrderPage; filter: OrderFilter }, ReadFailure> {
   const fields: { path: string; code: string }[] = [];
   let limit = DEFAULT_PAGE_SIZE;
   if (input.limit !== undefined) {
@@ -64,13 +70,20 @@ function pageOf(
   }
   let status: OrderStatus | null = null;
   if (input.status !== undefined) {
-    if (allowStatus && STATUSES.includes(input.status as OrderStatus)) {
+    if (allowFilters && STATUSES.includes(input.status as OrderStatus)) {
       status = input.status as OrderStatus;
     } else fields.push({ path: 'status', code: 'value' });
   }
+  let reference: string | null = null;
+  if (input.q !== undefined) {
+    // Any id of the right shape; a trimmed, lower-cased copy is matched, never echoed.
+    const parsed = typeof input.q === 'string' ? parseId(input.q.trim().toLowerCase()) : null;
+    if (allowFilters && parsed !== null && parsed.ok) reference = parsed.value;
+    else fields.push({ path: 'q', code: 'format' });
+  }
   return fields.length > 0
     ? err({ code: 'validation.failed', fields })
-    : ok({ page: { limit, after }, status });
+    : ok({ page: { limit, after }, filter: { status, reference } });
 }
 
 function cut<T extends { orderId: Id<'Order'>; createdAt: Temporal.Instant }>(
@@ -140,10 +153,10 @@ export async function viewAnyOrder(
   deps: OrderingDependencies,
   context: CallContext,
   input: { readonly orderId: unknown },
-): Promise<Result<AdminOrderView, ReadFailure>> {
+): Promise<Result<LabelledAdminOrderView, ReadFailure>> {
   const orderId = parseOrderId(input?.orderId);
   if (!orderId.ok) return orderId;
-  return deps.unitOfWork.run<AdminOrderView, ReadFailure>(
+  const read = await deps.unitOfWork.run<AdminOrderView, ReadFailure>(
     context.market,
     async () => {
       const order = await deps.orders.findById(context.market, orderId.value);
@@ -153,26 +166,40 @@ export async function viewAnyOrder(
     },
     { readOnly: true },
   );
+  if (!read.ok) return read;
+  const [labelled] = await labelAdminOrders(deps.labels, context, [read.value]);
+  return ok(labelled!);
 }
 
 export async function listAllOrders(
   deps: OrderingDependencies,
   context: CallContext,
   input: ListInput,
-): Promise<Result<OrderPageView<AdminOrderView>, ReadFailure>> {
+): Promise<Result<AdminOrderPageView, ReadFailure>> {
   const parsed = pageOf(input ?? {}, true);
   if (!parsed.ok) return parsed;
-  const { page, status } = parsed.value;
-  return deps.unitOfWork.run<OrderPageView<AdminOrderView>, ReadFailure>(
+  const { page, filter } = parsed.value;
+  const read = await deps.unitOfWork.run<
+    OrderPageView<AdminOrderView> & { readonly counts: OrderStatusCounts },
+    ReadFailure
+  >(
     context.market,
     async () => {
-      const rows = await deps.orders.listAll(
-        context.market,
-        { status },
-        { ...page, limit: page.limit + 1 },
-      );
-      return ok(cut(rows.map(adminOrderView), page.limit));
+      const rows = await deps.orders.listAll(context.market, filter, {
+        ...page,
+        limit: page.limit + 1,
+      });
+      return ok({
+        ...cut(rows.map(adminOrderView), page.limit),
+        counts: await deps.orders.countAll(context.market),
+      });
     },
     { readOnly: true },
   );
+  if (!read.ok) return read;
+  return ok({
+    orders: await labelAdminOrders(deps.labels, context, read.value.orders),
+    nextCursor: read.value.nextCursor,
+    counts: read.value.counts,
+  });
 }

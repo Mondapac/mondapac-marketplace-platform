@@ -12,9 +12,18 @@ import type {
   CheckoutGateway,
   GatewayFailure,
 } from '../../src/modules/ordering/application/ports/checkout-gateway';
+import {
+  orderUnitKey,
+  type OrderCustomer,
+  type OrderLabels,
+  type OrderUnitKey,
+  type OrderUnitLabel,
+} from '../../src/modules/ordering/application/ports/order-labels';
 import type {
+  OrderFilter,
   OrderPage,
   OrderRepository,
+  SellerOrderFilter,
   SellerOrderPage,
   SellerOrderRecord,
 } from '../../src/modules/ordering/application/ports/order.repository';
@@ -81,13 +90,28 @@ export class MemoryOrders implements OrderRepository {
       ),
     );
   }
-  listAll(_m: MarketContext, filter: { status: OrderState['status'] | null }, page: OrderPage) {
+  listAll(_m: MarketContext, filter: OrderFilter, page: OrderPage) {
     return Promise.resolve(
       this.newestFirst(
-        [...this.rows.values()].filter((o) => filter.status === null || o.status === filter.status),
+        [...this.rows.values()].filter(
+          (o) =>
+            (filter.status === null || o.status === filter.status) &&
+            (filter.reference === null ||
+              o.id === filter.reference ||
+              o.sellerOrders.some((s) => s.id === filter.reference)),
+        ),
         page,
       ),
     );
+  }
+  countAll() {
+    const all = [...this.rows.values()];
+    const count = (status: OrderState['status']) => all.filter((o) => o.status === status).length;
+    return Promise.resolve({
+      pendingPayment: count('pending-payment'),
+      confirmed: count('confirmed'),
+      cancelled: count('cancelled'),
+    });
   }
   save(_m: MarketContext, order: OrderState) {
     const stored = this.rows.get(order.id);
@@ -120,10 +144,16 @@ export class MemoryOrders implements OrderRepository {
           .map((seller) => this.recordOf(order, seller)),
       );
   }
-  listForSeller(_m: MarketContext, sellerId: Id<'Seller'>, page: SellerOrderPage) {
+  listForSeller(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+    page: SellerOrderPage,
+  ) {
     const after = page.after;
     return Promise.resolve(
       this.paid(sellerId)
+        .filter((r) => filter.fulfilment === null || r.sellerOrder.fulfilment === filter.fulfilment)
         .sort(
           (a, b) =>
             b.confirmedAt.epochMilliseconds - a.confirmedAt.epochMilliseconds ||
@@ -138,6 +168,16 @@ export class MemoryOrders implements OrderRepository {
         )
         .slice(0, page.limit),
     );
+  }
+  countForSeller(_m: MarketContext, sellerId: Id<'Seller'>) {
+    const paid = this.paid(sellerId);
+    const count = (step: Fulfilment) =>
+      paid.filter((r) => r.sellerOrder.fulfilment === step).length;
+    return Promise.resolve({
+      toShip: count('to-ship'),
+      shipped: count('shipped'),
+      delivered: count('delivered'),
+    });
   }
   findForSeller(_m: MarketContext, sellerId: Id<'Seller'>, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(
@@ -387,5 +427,46 @@ export class FakeCart implements CartCheckoutFacade {
   clearOrdered(_c: CallContext, request: unknown) {
     this.cleared.push(request);
     return Promise.resolve(ok({ removed: 1 }));
+  }
+}
+
+/** Names by key; `fail` makes a lookup throw, as an adapter does on a refusal. */
+export class FakeLabels implements OrderLabels {
+  readonly units = new Map<string, OrderUnitLabel>();
+  readonly stores = new Map<Id<'Seller'>, string>();
+  readonly customers = new Map<Id<'Account'>, OrderCustomer>();
+  readonly fail = new Set<'units' | 'stores' | 'customers'>();
+  readonly calls: { readonly lookup: string; readonly count: number }[] = [];
+
+  unitLabelsOf(
+    _context: CallContext,
+    keys: readonly OrderUnitKey[],
+  ): Promise<ReadonlyMap<string, OrderUnitLabel>> {
+    this.calls.push({ lookup: 'units', count: keys.length });
+    if (this.fail.has('units')) return Promise.reject(new Error('units'));
+    return Promise.resolve(this.units);
+  }
+
+  storeNamesOf(
+    _context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, string>> {
+    this.calls.push({ lookup: 'stores', count: sellerIds.length });
+    if (this.fail.has('stores')) return Promise.reject(new Error('stores'));
+    return Promise.resolve(this.stores);
+  }
+
+  customersOf(
+    _context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, OrderCustomer>> {
+    this.calls.push({ lookup: 'customers', count: accountIds.length });
+    if (this.fail.has('customers')) return Promise.reject(new Error('customers'));
+    return Promise.resolve(this.customers);
+  }
+
+  /** Sets the label of one (Offer, Variant). */
+  label(key: OrderUnitKey, productName: string, variantLabel: string | null): void {
+    this.units.set(orderUnitKey(key), { productName, variantLabel });
   }
 }

@@ -8,6 +8,11 @@ import {
 } from '../application/ports/inventory-policy-provider';
 import { ConfigInventoryPolicyProvider } from './config-inventory-policy-provider';
 import {
+  SELL_UNIT_LABELS_SOURCE,
+  type SellUnitLabelsSource,
+} from '../application/ports/sell-unit-labels';
+import { CatalogSellUnitLabels } from './catalog-sell-unit-labels';
+import {
   SELLER_INVENTORY_REPOSITORY,
   type SellerInventoryRepository,
 } from '../application/ports/seller-inventory.repository';
@@ -91,6 +96,12 @@ export const inventoryProviders: readonly FactoryProvider[] = [
     inject: [CATALOG_FACADE],
     useFactory: (catalog: CatalogFacade): OfferSellUnitsSource =>
       new CatalogOfferSellUnits(catalog),
+  },
+  {
+    provide: SELL_UNIT_LABELS_SOURCE,
+    inject: [CATALOG_FACADE, MarketRegistry],
+    useFactory: (catalog: CatalogFacade, markets: MarketRegistry): SellUnitLabelsSource =>
+      new CatalogSellUnitLabels(catalog, markets),
   },
   {
     provide: INVENTORY_POLICY_PROVIDER,

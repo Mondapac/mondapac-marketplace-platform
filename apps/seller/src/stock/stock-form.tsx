@@ -58,7 +58,7 @@ export function StockForm({
 
   return (
     <Card title={source === null ? t('stock.form.add-title') : t('stock.form.edit-title')}>
-      <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
+      <form className="flex max-w-(--mp-size-form-max) flex-col gap-4" onSubmit={submit} noValidate>
         {problem === null ? null : (
           <Banner tone="critical">{t(problem.form.key, problem.form.values)}</Banner>
         )}

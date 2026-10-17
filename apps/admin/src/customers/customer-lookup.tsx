@@ -1,11 +1,20 @@
 'use client';
 
-import { Badge, Banner, Button, Card, Dialog, TextField } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import {
+  ActionRow,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Dialog,
+  FieldAction,
+  TextField,
+} from '@mondapac/ui';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { useCountdown } from '../api/use-countdown.ts';
-import { formatInstant } from '../sellers/format.ts';
+import { formatInstant } from '../shared/format.ts';
 import { customerProblemOf } from './errors.ts';
 import { EMAIL_MAX, type CustomerAccount } from './types.ts';
 
@@ -37,6 +46,7 @@ export function CustomerLookup({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('customers');
+  const locale = useLocale();
   const [email, setEmail] = useState('');
   const [invalid, setInvalid] = useState(false);
   const [pending, setPending] = useState(false);
@@ -118,14 +128,14 @@ export function CustomerLookup({
             label: t('field.email-verified'),
             value: t(customer.emailVerified ? 'yes' : 'no'),
           },
-          { label: t('field.created'), value: formatInstant(customer.createdAt) },
+          { label: t('field.created'), value: formatInstant(customer.createdAt, locale) },
         ];
 
   return (
-    <div className="flex max-w-(--mp-size-form-max) flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
       <form
-        className="flex flex-col gap-3 sm:flex-row sm:items-start"
+        className="flex max-w-(--mp-size-form-max) flex-col gap-3 sm:flex-row sm:items-start"
         onSubmit={(event) => void find(event)}
         noValidate
         role="search"
@@ -150,10 +160,11 @@ export function CustomerLookup({
             }}
           />
         </div>
-        {/* Lines the button up with the input, under its label (20px line + 6px gap), on wider screens. */}
-        <Button type="submit" loading={pending} disabled={wait > 0} className="sm:mt-6.5">
-          {t('find')}
-        </Button>
+        <FieldAction>
+          <Button type="submit" loading={pending} disabled={wait > 0}>
+            {t('find')}
+          </Button>
+        </FieldAction>
       </form>
       {problem === null ? null : problem.key === 'not-found' ? (
         <Banner tone="info" title={t('not-found.title')}>
@@ -186,7 +197,7 @@ export function CustomerLookup({
             ))}
           </dl>
           {canChangeStatus ? (
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <ActionRow>
               <Button
                 variant={active ? 'destructive' : 'secondary'}
                 onClick={() => {
@@ -197,7 +208,7 @@ export function CustomerLookup({
               >
                 {t(active ? 'disable.action' : 'enable.action')}
               </Button>
-            </div>
+            </ActionRow>
           ) : null}
         </Card>
       )}

@@ -46,7 +46,10 @@ import type { FieldProblem } from './register-customer.use-case';
 export interface ChangePasswordInput {
   readonly currentPassword: string;
   readonly newPassword: string;
-  /** Required for an admin (Hassan I2 (b)): a code from the app or a recovery code. */
+  /**
+   * Required for an admin (Hassan I2 (b)) and for a seller-side member whose two-step sign-in is
+   * active: a code from the app or a recovery code. Ignored for a seller without a factor.
+   */
   readonly code?: string;
   readonly client: SignInClient;
 }
@@ -105,6 +108,7 @@ type Closed =
   | {
       readonly kind: 'refused';
       readonly code:
+        | 'access.unavailable'
         | 'password.current-incorrect'
         | 'session.invalid'
         | 'second-factor.invalid'
@@ -178,13 +182,16 @@ export class ChangePassword extends UseCase<
     const tooLong = (['currentPassword', 'newPassword'] as const).filter(
       (field) => Buffer.byteLength(input[field], 'utf8') > MAX_PASSWORD_BYTES,
     );
-    // Hassan I2 (b), slice 7b: an admin also presents a code (app or recovery code).
-    const presented = population === 'admin' ? parsePresentedCode(input.code ?? '') : null;
+    // Hassan I2 (b), slice 7b: an admin also presents a code (app or recovery code). A seller-side
+    // member presents one when the own two-step sign-in is active (the profile package): whether
+    // it is active is read in the reservation unit, so a malformed code only counts there.
+    const codeable = population === 'admin' || population === 'seller';
+    const presented = codeable ? parsePresentedCode(input.code ?? '') : null;
     const fields: FieldProblem[] = tooLong.map((path) => ({ path, code: 'length' }));
     if (population === 'admin' && presented === null) fields.push({ path: 'code', code: 'format' });
     if (fields.length > 0) return err({ code: 'validation.failed', fields });
-    const factorRule = population === 'admin' ? policy.secondFactorThrottle(market) : null;
-    if (population === 'admin' && factorRule === null) return err(UNAVAILABLE);
+    const factorRule = codeable ? policy.secondFactorThrottle(market) : null;
+    if (codeable && factorRule === null) return err(UNAVAILABLE);
     const rules = policy.signInThrottles(market);
 
     // 1. The reservation unit (HF1): count the attempt, read the actor's account.
@@ -195,6 +202,8 @@ export class ChangePassword extends UseCase<
       /** An admin's factor and its reserved `second-factor.account` attempt (HF2). */
       readonly factor: { readonly secret: string; readonly attempt: ReservedAttempt } | null;
       readonly factorLocked: number | null;
+      /** A seller-side member with an active factor who presented no usable code. */
+      readonly codeMissing: boolean;
     };
     let reserved: Reservation;
     try {
@@ -202,7 +211,14 @@ export class ChangePassword extends UseCase<
         const now = this.deps.clock.now();
         const account = await accounts.findById(market, actor.accountId);
         if (account === null) {
-          return ok({ reserved: [], account, throttled: null, factor: null, factorLocked: null });
+          return ok({
+            reserved: [],
+            account,
+            throttled: null,
+            factor: null,
+            factorLocked: null,
+            codeMissing: false,
+          });
         }
         const email = account.state.email.normalized;
         const accountKey = keys.account(market, population, email);
@@ -229,9 +245,14 @@ export class ChangePassword extends UseCase<
         const verdict = reservationVerdict(reserved, now);
         let factor: Reservation['factor'] = null;
         let factorLocked: number | null = null;
+        let codeMissing = false;
         if (factorRule !== null && verdict.allowed) {
           const active = await this.deps.factors.findByAccount(market, actor.accountId);
-          if (active !== null && active.isActive) {
+          if (active !== null && active.isActive && presented === null) {
+            // Only a seller-side member gets here (an admin without a code was refused above):
+            // nothing was tried, so no factor attempt is counted.
+            codeMissing = true;
+          } else if (active !== null && active.isActive) {
             const counter = secondFactorCounter(keys, market, population, email, factorRule);
             const attempt = await reserveSecondFactor(throttles, market, counter, now);
             if (attempt.kind === 'locked') factorLocked = attempt.retryAfterSeconds;
@@ -244,6 +265,7 @@ export class ChangePassword extends UseCase<
           throttled: verdict.allowed ? null : verdict.retryAfterSeconds,
           factor,
           factorLocked,
+          codeMissing,
         });
       });
       if (!run.ok) return err(UNAVAILABLE);
@@ -259,8 +281,14 @@ export class ChangePassword extends UseCase<
       return err({ code: 'request.throttled', retryAfterSeconds: reserved.throttled });
     }
     const signInReservations = reserved.reserved.map((r) => r.reservation);
+    if (reserved.codeMissing) {
+      return this.releasing(context, signInReservations, {
+        code: 'validation.failed' as const,
+        fields: [{ path: 'code', code: 'required' }],
+      });
+    }
     const factorAttempt = reserved.factor?.attempt ?? null;
-    if (population === 'admin' && factorAttempt === null) {
+    if ((population === 'admin' || reserved.factorLocked !== null) && factorAttempt === null) {
       // HF2 lock, or an admin session without an active factor (3.5 forbids one): no change.
       await this.releasing(context, signInReservations, UNAVAILABLE);
       return reserved.factorLocked === null
@@ -357,6 +385,15 @@ export class ChangePassword extends UseCase<
           await throttles.release(market, reservations);
           await this.record(context, input.client, 'password.current-incorrect', now);
           return ok({ kind: 'refused', code: 'password.current-incorrect' });
+        }
+        // A seller-side member who had no active factor when the call began: if one was switched
+        // on meanwhile, this change would skip a code it now needs, so it is repeated (Hassan L1).
+        if (factorAttempt === null && population === 'seller') {
+          const late = await this.deps.factors.findByAccount(market, actor.accountId);
+          if (late !== null && late.isActive) {
+            await throttles.release(market, reservations);
+            return ok({ kind: 'refused', code: 'access.unavailable' });
+          }
         }
         // An admin's code is spent here, after the credential lock (I-1): a replayed or
         // concurrent code stays counted and changes nothing else (HF2).

@@ -1,5 +1,5 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { parseId, Temporal } from '@mondapac/shared-kernel';
+import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
@@ -8,6 +8,7 @@ import { SendInvitationMail } from '../src/modules/identity/application/use-case
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
+import { STEP_UP_SOURCE } from '../src/platform/authz';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
@@ -60,7 +61,14 @@ describe('seller team over HTTP (integration, slice 11)', () => {
     ({ app, logLines } = await createTestApp({
       env: { LOG_LEVEL: 'info', ...env },
       panelOrigins: true,
-      override: (builder) => fakes.override(builder).overrideProvider(CLOCK).useValue(clock),
+      // The two-step rule of the team actions has its own suite (seller-step-up.e2e.spec.ts).
+      override: (builder) =>
+        fakes
+          .override(builder)
+          .overrideProvider(CLOCK)
+          .useValue(clock)
+          .overrideProvider(STEP_UP_SOURCE)
+          .useValue({ check: () => Promise.resolve(ok(undefined)) }),
     }));
   }
 

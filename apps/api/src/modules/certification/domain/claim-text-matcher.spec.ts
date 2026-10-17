@@ -1,12 +1,14 @@
 import type { CertificationTypeCode } from './claim-types';
 import {
   compactForm,
+  latinContextFold,
   matchClaimTerms,
   normaliseClaimText,
   prepareVocabulary,
   tokenise,
 } from './claim-text-matcher';
 import type { ClaimVocabularyEntry } from './claim-text-matcher';
+import { UTS39_CONFUSABLES } from './generated/uts39-confusables';
 
 const code = (s: string): CertificationTypeCode => s as CertificationTypeCode;
 
@@ -99,6 +101,75 @@ describe('claim text matcher', () => {
       expect(run(organic, 'orgаnіc')).toEqual(['organic:token']); // Cyrillic а and і
     });
 
+    it('sees through the look-alikes the interim table missed (issue #133, Hassan PR 132)', () => {
+      for (const text of ['haɩal', 'haɨal', 'HAƗAL', 'haƚal', 'haɫal', 'haɭal']) {
+        expect([text, run(AU, text)]).toEqual([text, ['halal:token']]);
+      }
+      expect(run(AU, 'haᎥal')).toEqual(['halal:token']); // Cherokee i
+      expect(run(AU, 'HAᏞAL')).toEqual(['halal:token']); // Cherokee L
+      expect(run(AU, 'Ꮋalal')).toEqual(['halal:token']); // Cherokee H
+      expect(run(AU, 'ꮋalal')).toEqual(['halal:token']); // Cherokee small h
+      expect(run(AU, 'ha¡al')).toEqual(['halal:compact']); // inverted exclamation, leet map
+    });
+
+    it('applies the full UTS #39 table: mathematical, circled and other rarer letters', () => {
+      expect(run(AU, '𝐡𝐚𝐥𝐚𝐥')).toEqual(['halal:token']);
+      expect(run(AU, '𝖍𝖆𝖑𝖆𝖑')).toEqual(['halal:token']);
+      expect(run(AU, 'ⓗⓐⓛⓐⓛ')).toEqual(['halal:token']);
+      expect(run(AU, 'hɑlɑl')).toEqual(['halal:token']);
+      expect(run(AU, 'ħalal')).toEqual(['halal:token']);
+      expect(run(AU, 'ᴋosher')).toEqual(['kosher:token']);
+      expect(run(ZZ, 'ƶedpure')).toEqual(['zed-pure:token']);
+    });
+
+    it('reads capital look-alikes before lower-casing (Hassan B1 on PR 378)', () => {
+      for (const text of ['ᏦOSHER', 'ⲔOSHER', 'ᏦᎾᏚᎻᎬᏒ']) {
+        expect([text, run(AU, text)]).toEqual([text, ['kosher:token']]);
+      }
+      const msc = [
+        { typeCode: code('msc'), terms: ['msc'] },
+        { typeCode: code('gmo-free'), terms: ['gmo free'] },
+        { typeCode: code('organic'), terms: ['organic'] },
+      ];
+      expect(run(msc, 'ᎷSC')).toEqual(['msc:token']);
+      expect(run(msc, 'ⲘSC')).toEqual(['msc:token']);
+      expect(run(msc, 'GᎷO FREE')).toEqual(['gmo-free:token']);
+      expect(run(msc, 'orga∩ic')).toEqual(['organic:token']);
+      expect(run(AU, 'vega∩')).toEqual(['vegan:token']);
+    });
+
+    it('gives a letter and its other case one skeleton (a case edit changes nothing)', () => {
+      expect(normaliseClaimText('ЗЕД ЧИСТО')).toBe(normaliseClaimText('зед чисто'));
+      expect(normaliseClaimText('ᏦOSHER')).toBe(normaliseClaimText('ꮶosher'));
+    });
+
+    it('reads an Arabic letter between Latin letters as its Latin look-alike (Hassan S1)', () => {
+      expect(run(AU, 'haاal')).toEqual(['halal:token']);
+      expect(run(AU, 'HAﺍAL')).toEqual(['halal:token']);
+      expect(run(AU, 'kهsher')).toEqual(['kosher:token']);
+      expect(run(AU, 'حلال')).toEqual(['halal:token']); // Arabic words keep their own folds
+    });
+
+    it('reads non-ASCII digits as the letters they look like too (Hassan S2)', () => {
+      expect(run(AU, 'k٥sher')).toEqual(['kosher:token']);
+      expect(run(AU, 'k۵sher')).toEqual(['kosher:token']);
+      expect(run(AU, '٧egan')).toEqual(['vegan:token']);
+    });
+
+    it('folds the Greek lunate sigmas to c before NFKC (Hassan S3)', () => {
+      const organic = [{ typeCode: code('organic'), terms: ['organic certified'] }];
+      expect(run(organic, 'ORGANIϹ ϹERTIFIED')).toEqual(['organic:token']);
+      expect(run(organic, 'organiϲ certified')).toEqual(['organic:token']);
+    });
+
+    it('leaves ASCII and the Arabic script to the curated tables', () => {
+      // UTS maps `0` to O, `%` to letters and `m` to `rn`; the token pass keeps them as written.
+      expect(normaliseClaimText('100% ham')).toBe('100% ham');
+      // UTS maps alef to `l` and heh to `o`: Arabic stays Arabic, so no Latin term meets it.
+      expect(normaliseClaimText('حلال الله')).toBe('حلال الله');
+      expect(run(AU, 'Grass-fed beef, made in Melbourne')).toEqual([]);
+    });
+
     it('maps squared letters', () => {
       expect(run(AU, '🅷🅰🅻🅰🅻')).toEqual(['halal:token']);
     });
@@ -134,7 +205,8 @@ describe('claim text matcher', () => {
     });
 
     it('catches Arabic-Indic digits in a mixed text', () => {
-      expect(run(AU, 'ha١al')).toEqual(['halal:compact']);
+      // The visual reading of the digit (١ looks like l) matches in the token pass (Hassan S2).
+      expect(run(AU, 'ha١al')).toEqual(['halal:token']);
     });
 
     it('catches symbol, emoji, enclosing-mark and modifier separators (Hassan)', () => {
@@ -272,8 +344,8 @@ describe('claim text matcher: Arabic-script corpus', () => {
   });
 
   it('keeps the Latin digit path (C2)', () => {
-    expect(run(AU, 'ha١al')).toEqual(['halal:compact']);
-    expect(run(AU, 'ha۱al')).toEqual(['halal:compact']);
+    expect(run(AU, 'ha١al')).toEqual(['halal:token']); // visual reading (Hassan S2)
+    expect(run(AU, 'ha۱al')).toEqual(['halal:token']);
     expect(run(AU, 'ha1al')).toEqual(['halal:compact']);
     expect(run(AU, 'h4l4l')).toEqual(['halal:compact']);
   });
@@ -321,5 +393,167 @@ describe('claim text matcher: Arabic-script corpus', () => {
   it('pins the known false positives of the second pass, which fail closed (C3)', () => {
     expect(halal('حل المشكلة')).toBe(true);
     expect(halal('محل اللحوم')).toBe(true);
+  });
+});
+
+describe('claim text matcher: Latin context across separators (Hassan S5)', () => {
+  it('reads an Arabic look-alike between Latin letters across punctuation and spaces', () => {
+    for (const text of ['ha.ا.al', 'h-a-ا-a-l', 'ha ا al', 'ha.l.al']) {
+      expect([text, run(AU, text)]).toEqual([text, ['halal:compact']]);
+    }
+  });
+
+  it('does not latinise an Arabic word that has no Latin letter around it', () => {
+    expect(normaliseClaimText('ا')).toBe('ا');
+    expect(normaliseClaimText('، ا ،')).not.toMatch(/[a-z]/);
+    expect(normaliseClaimText('كتاب ا قلم')).not.toMatch(/[a-z]/);
+    expect(normaliseClaimText('123 ا 456')).not.toMatch(/[a-z]/);
+  });
+
+  it('keeps the fold main had: only a directly adjacent Arabic letter blocks it (Hassan #380 H1)', () => {
+    for (const text of ['halaا ب', 'halaا-بيع', 'لحم halaا ب']) {
+      expect([text, run(AU, text)]).toEqual([text, ['halal:token']]);
+    }
+  });
+
+  it('keeps the fold main had beside a Latin modifier letter (Hassan #380 re-review)', () => {
+    for (const text of ['h4\u1d2fا41', 'h4l4\u1d2fا', 'h4\u1d2fا\u1d2f4\u1d2f1']) {
+      expect([text, run(AU, text)]).toEqual([text, ['halal:compact']]);
+    }
+  });
+
+  // Frozen copy of the rule on main before the separators change: the oracle.
+  const mainFold = (s: string): string[] => {
+    const arabic = /\p{Script=Arabic}/u;
+    const arabicLetter = /(?=\p{L})\p{Script=Arabic}/u;
+    const latinLetter = /(?=\p{L})\p{Script=Latin}/u;
+    const chars = [...s];
+    return chars.map((ch, i) => {
+      if (!arabic.test(ch)) return ch;
+      const before = chars[i - 1] ?? '';
+      const after = chars[i + 1] ?? '';
+      if (arabicLetter.test(before) || arabicLetter.test(after)) return ch;
+      if (!latinLetter.test(before) && !latinLetter.test(after)) return ch;
+      const prototype = UTS39_CONFUSABLES.get(ch)?.toLowerCase();
+      return prototype !== undefined && /^[a-z]+$/.test(prototype) ? prototype : ch;
+    });
+  };
+
+  it('folds everything main folded, on every mixed Arabic/Latin/separator string (differential)', () => {
+    // U+1D2F and U+10780 are Latin modifier letters: separators for the nearest-letter search.
+    const alphabet = ['h', 'a', 'l', 'ا', 'ه', 'ب', ' ', '-', '.', '٠', '\u1d2f', '\u{10780}'];
+    const strings: string[] = [];
+    const build = (prefix: string, depth: number) => {
+      strings.push(prefix);
+      if (depth === 0) return;
+      for (const c of alphabet) build(prefix + c, depth - 1);
+    };
+    build('', 5);
+    let seed = 12345; // deterministic generator for longer strings
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31);
+    for (let n = 0; n < 3000; n++) {
+      let t = '';
+      for (let k = 0; k < 6 + (next() % 8); k++) t += alphabet[next() % alphabet.length];
+      strings.push(t);
+    }
+    for (const text of strings) {
+      const original = [...text];
+      const expected = mainFold(text);
+      const actual = [...latinContextFold(text)];
+      // Every prototype in this alphabet is one letter, so the strings align character by character.
+      expect(actual).toHaveLength(original.length);
+      for (const [i, ch] of expected.entries()) {
+        if (ch !== original[i] && actual[i] !== ch) {
+          throw new Error(`fold lost: ${JSON.stringify(text)} at ${i}`);
+        }
+      }
+    }
+  });
+
+  it('does not reach across a letter of another script', () => {
+    expect(normaliseClaimText('a ب ا ب a')).not.toContain('l');
+  });
+});
+
+describe('claim text matcher: spans (Hassan N1)', () => {
+  const kosher = prepareVocabulary([AU[1]!]);
+
+  it('reports the span of the kosher token in the number reading of the text', () => {
+    // The first reading has the tokens ٠ and k٥sher; only the visual reading finds kosher.
+    const [m] = matchClaimTerms(['٠ k٥sher'], kosher)[0]!;
+    expect(m).toEqual({ typeCode: 'kosher', pass: 'token', span: { fromToken: 1, toToken: 1 } });
+  });
+
+  it('is unchanged when both readings split the same way', () => {
+    const [m] = matchClaimTerms(['fresh k٥sher meat'], kosher)[0]!;
+    expect(m!.span).toEqual({ fromToken: 1, toToken: 1 });
+  });
+});
+
+describe('claim text matcher: spans on unreliable piece counts (Hassan #380 L1)', () => {
+  const kosher = prepareVocabulary([AU[1]!]);
+
+  it('never reports the wrong token when a symbol turns into letters', () => {
+    const [m] = matchClaimTerms(['™ k٥sher ٠ halal'], kosher)[0]!;
+    // Correct is {1,1} (k5sher in [tm, k5sher, 0, halal]) or the widened span; never {2,2}.
+    expect([
+      { fromToken: 1, toToken: 1 },
+      { fromToken: 0, toToken: 3 },
+    ]).toContainEqual(m!.span);
+  });
+});
+
+// Timing tests compare against a baseline measured in the same process, so a busy machine slows
+// both sides: a wall-clock bound alone flakes under the parallel load of jest and CI.
+const minMs = (fn: () => void, runs = 5): number => {
+  let best = Infinity;
+  for (let i = 0; i < runs; i++) {
+    const start = performance.now();
+    fn();
+    best = Math.min(best, performance.now() - start);
+  }
+  return best;
+};
+
+describe('claim text matcher: speed (Hassan S4, #380 M1)', () => {
+  it.each(['長', '♪'])(
+    'normalises 20,000 x %s no slower than a fixed multiple of a control',
+    (ch) => {
+      const text = ch.repeat(20_000);
+      normaliseClaimText(text);
+      normaliseClaimText(text, true);
+      // Control: the same length of ASCII, which takes the fast path the memo gives other characters.
+      const control = 'a'.repeat(20_000);
+      const base = minMs(() => normaliseClaimText(control, true));
+      // Under jest, memoised: 長 about 4x the control, ♪ about 3x; before the memo 長 ran at about
+      // 15x and ♪ at 7-12x. 長 is the meaningful check (2x margin each side); ♪ is a smoke test.
+      const bound = ch === '長' ? 8 : 15;
+      for (const visual of [false, true]) {
+        const ms = minMs(() => normaliseClaimText(text, visual));
+        expect([ch, visual, ms < bound * base]).toEqual([ch, visual, true]);
+      }
+    },
+  );
+
+  it('translates visual-only matches with one piece table per text, not one per type', () => {
+    const letters = 'abcdefghijklmnopqrstuvwxyz';
+    const word = (i: number) => `zo${letters[i]}${letters[(i * 7) % 26]}`;
+    const vocab = (n: number) =>
+      prepareVocabulary(
+        Array.from({ length: n }, (_, i) => ({ typeCode: code(`t${i}`), terms: [word(i)] })),
+      );
+    // Every word matches only in the visual reading (٥ is o); ٠ forces the readings to split apart.
+    const text = (n: number) =>
+      '٠ ' + Array.from({ length: n }, (_, i) => word(i).replace('o', '٥')).join(' ');
+    const big = (n: number) => (text(n) + ' ').repeat(Math.floor(19_000 / (text(n).length + 1)));
+    const t = big(20);
+    const texts = [t, t, t]; // about 57,000 characters
+    const one = vocab(1);
+    const twenty = vocab(20);
+    expect(matchClaimTerms(texts, twenty)[0]!).toHaveLength(20);
+    const base = minMs(() => matchClaimTerms(texts, one), 3);
+    const many = minMs(() => matchClaimTerms(texts, twenty), 3);
+    // One table per text: 20 types cost about the same as 1; per-type tables cost about 20 times.
+    expect([many < 6 * base + 50]).toEqual([true]);
   });
 });

@@ -3,12 +3,13 @@
 import {
   Banner,
   Button,
+  EmptyState,
   LedgerTable,
   LedgerTotals,
   type BadgeTone,
   type LedgerRow,
 } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { shortInstant } from '../catalog/format.ts';
@@ -26,12 +27,14 @@ const shortId = (id: string): string => id.slice(-8).toUpperCase();
 /** The seller's earnings: totals (sales, shipping, commission, balance) and the ledger. */
 export function Earnings({ initial }: { readonly initial: Ledger }) {
   const t = useTranslations('earnings');
+  const locale = useLocale();
+  const zone = useTimeZone();
   const [entries, setEntries] = useState<readonly LedgerEntry[]>(initial.entries);
   const [cursor, setCursor] = useState(initial.nextCursor);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const { currency, totals } = initial;
-  const money = (amount: string) => formatMinor(amount, currency);
+  const money = (amount: string) => formatMinor(amount, currency, locale);
 
   async function more() {
     if (cursor === null || loading) return;
@@ -55,7 +58,7 @@ export function Earnings({ initial }: { readonly initial: Ledger }) {
   const rows: LedgerRow[] = entries.map((entry) => ({
     id: entry.entryId,
     dateTime: entry.occurredAt,
-    when: shortInstant(entry.occurredAt),
+    when: shortInstant(entry.occurredAt, locale, zone),
     order: shortId(entry.orderId),
     orderTitle: entry.orderId,
     kind: t(`kind.${entry.kind}`),
@@ -65,7 +68,7 @@ export function Earnings({ initial }: { readonly initial: Ledger }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="max-w-(--mp-size-form-max) text-fg-muted">{t('intro')}</p>
+      <p className="text-fg-muted">{t('intro')}</p>
       <LedgerTotals
         items={[
           { id: 'sales', label: t('totals.sales'), value: money(totals.sales) },
@@ -79,9 +82,10 @@ export function Earnings({ initial }: { readonly initial: Ledger }) {
           },
         ]}
       />
-      <h2 className="text-lg font-semibold">{t('ledger')}</h2>
+      {/* An empty ledger is its own region: the empty state's heading stands for it. */}
+      {rows.length === 0 ? null : <h2 className="text-lg font-semibold">{t('ledger')}</h2>}
       {rows.length === 0 ? (
-        <p className="text-fg-muted">{t('empty')}</p>
+        <EmptyState icon="receipt" title={t('empty-state.title')} body={t('empty-state.body')} />
       ) : (
         <LedgerTable
           rows={rows}
