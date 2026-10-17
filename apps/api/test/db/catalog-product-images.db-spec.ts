@@ -669,6 +669,14 @@ describe.each(TEST_MARKETS)(
         size: 'thumb',
       });
       expect(!readBySeller.ok && readBySeller.error.code).toBe('image.not-found');
+
+      // The takedown record stays: the seller cannot delete a taken-down photo (Hassan #384 L1).
+      const deleted = await remove.execute(sellerContext(), {
+        productId: product.state.id,
+        imageId: view.imageId,
+      });
+      expect(!deleted.ok && deleted.error.code).toBe('image.not-found');
+      expect((await stateOf(view.imageId))?.state).toBe('taken-down');
     });
 
     it('refuses a bad reason, a seller and an unknown photo; stores nothing', async () => {

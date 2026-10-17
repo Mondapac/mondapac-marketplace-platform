@@ -159,7 +159,8 @@ export class PrismaProductImageRepository implements ProductImageRepository {
     if (used > 0) return false;
     try {
       const { count } = await tx.catalogProductImage.deleteMany({
-        where: { marketId: market.marketId, productId, id: imageId },
+        // Clean only: a taken-down row is the takedown's record (Hassan #384 L1), also for the sweep.
+        where: { marketId: market.marketId, productId, id: imageId, state: 'clean' },
       });
       return count === 1;
     } catch (error) {

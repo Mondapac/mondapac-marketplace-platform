@@ -74,7 +74,9 @@ export class OwnProductImageDelete extends UseCase<
       const owned = await ownedProduct(deps.products, market, sellerId, product.value);
       const found =
         owned === null ? null : await deps.images.find(market, product.value, image.value);
-      if (found === null) return err({ code: 'image.not-found' as const });
+      // A taken-down photo is the takedown's record: the seller cannot delete it (Hassan #384 L1).
+      if (found === null || found.state !== 'clean')
+        return err({ code: 'image.not-found' as const });
       if (!(await deps.images.deleteUnused(market, product.value, image.value))) {
         return err({ code: 'image.in-use' as const });
       }

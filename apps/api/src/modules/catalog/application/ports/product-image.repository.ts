@@ -97,7 +97,7 @@ export interface ProductImageRepository {
   ): Promise<readonly UnattachedImage[]>;
   /**
    * True when deleted; false when a revision uses it (also when one joined after the check: the
-   * foreign key refuses) or it does not exist.
+   * foreign key refuses), it is taken down (the takedown record stays) or it does not exist.
    */
   deleteUnused(
     market: MarketContext,
