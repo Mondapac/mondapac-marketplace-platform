@@ -153,12 +153,15 @@ function skeletonRound(s: string, visualDigits: boolean): string {
 const SEPARATOR_CHAR = /^(?:[^\p{L}\p{N}]|\p{Lm})$/u;
 
 /**
- * An Arabic-script letter with an ASCII-letter look-alike that has no Arabic letter on either
- * side, inside Latin text, is read as that letter: «haاal» is halal (Hassan S1). Punctuation,
- * spaces and other separators between the letters do not hide the context («ha.ا.al», «ha ا al»;
- * Hassan S5), but a letter of another script does. Inside Arabic words the folds stand.
+ * An Arabic-script letter with an ASCII-letter look-alike that has no Arabic letter directly
+ * next to it, inside Latin text, is read as that letter: «haاal» is halal (Hassan S1). Only a
+ * DIRECTLY adjacent Arabic letter blocks the fold (as before Hassan S5, so nothing that folded
+ * then stops folding: «halaا ب», «halaا-بيع»). Skipping punctuation, spaces and other separators
+ * can only ADD Latin context («ha.ا.al», «ha ا al»); a letter of another script does not count
+ * as Latin context. Inside Arabic words the folds stand.
  */
-function latinContextFold(s: string): string {
+/** @internal exported for the differential test only. */
+export function latinContextFold(s: string): string {
   if (!ARABIC_SCRIPT.test(s)) return s;
   const chars = [...s];
   // The nearest non-separator character on each side, found in one pass each way.
@@ -177,7 +180,8 @@ function latinContextFold(s: string): string {
   return chars
     .map((ch, i) => {
       if (!ARABIC_SCRIPT.test(ch)) return ch;
-      if (ARABIC_LETTER.test(before[i]!) || ARABIC_LETTER.test(after[i]!)) return ch;
+      if (ARABIC_LETTER.test(chars[i - 1] ?? '') || ARABIC_LETTER.test(chars[i + 1] ?? ''))
+        return ch;
       if (!LATIN_LETTER.test(before[i]!) && !LATIN_LETTER.test(after[i]!)) return ch;
       const prototype = UTS39_CONFUSABLES.get(ch)?.toLowerCase();
       return prototype !== undefined && /^[a-z]+$/.test(prototype) ? prototype : ch;
@@ -259,32 +263,62 @@ type Span = { readonly fromToken: number; readonly toToken: number };
 /** Raw pieces of a text between separators: a digit stays in its piece, whatever the reading. */
 const RAW_PIECE = /[^\p{L}\p{N}]+/u;
 
+interface PieceCount {
+  readonly number: number;
+  readonly visual: number;
+}
+
 /**
- * The span of a match found in the visual reading, as token indexes of the number reading (the
- * one the spans are about). The readings split a text differently only around non-ASCII digits
- * (٠ ۰ are `.` in the visual reading; Tamil and Malayalam digits expand), so each raw piece of
- * the text is counted in both readings and the match is widened to whole pieces. When the counts
- * do not add up to the tokens of the whole text, the span covers every token: it over-reports,
- * never points at the wrong token.
+ * The raw pieces of one text with their token counts in both readings, built at most once per
+ * text and shared by every vocabulary entry (Hassan M1). `null` when the counts cannot be
+ * trusted: the pieces joined by spaces must normalise and tokenise to exactly the tokens of the
+ * whole text in both readings (a symbol NFKC turns into letters, or an ignorable inside a word,
+ * breaks that; Hassan L1).
  */
-function toNumberReading(
+function pieceTable(
   text: string,
-  visualSpan: Span,
-  numberTokens: number,
-  visualTokens: number,
-): Span {
-  const whole: Span = { fromToken: 0, toToken: Math.max(0, numberTokens - 1) };
+  numberTokens: readonly string[],
+  visualTokens: readonly string[],
+) {
   const pieces = text.split(RAW_PIECE).filter((p) => p.length > 0);
-  const counts = pieces.map((piece) => ({
+  const joined = pieces.join(' ');
+  const same = (a: readonly string[], b: readonly string[]) =>
+    a.length === b.length && a.every((t, i) => t === b[i]);
+  if (
+    !same(tokenise(normaliseClaimText(joined)), numberTokens) ||
+    !same(tokenise(normaliseClaimText(joined, true)), visualTokens)
+  ) {
+    return null;
+  }
+  const counts: PieceCount[] = pieces.map((piece) => ({
     number: tokenise(normaliseClaimText(piece)).length,
     visual: tokenise(normaliseClaimText(piece, true)).length,
   }));
   if (
-    counts.reduce((n, c) => n + c.number, 0) !== numberTokens ||
-    counts.reduce((n, c) => n + c.visual, 0) !== visualTokens
+    counts.reduce((n, c) => n + c.number, 0) !== numberTokens.length ||
+    counts.reduce((n, c) => n + c.visual, 0) !== visualTokens.length
   ) {
-    return whole;
+    return null;
   }
+  return counts;
+}
+
+/**
+ * The span of a match found in the visual reading, as token indexes of the number reading (the
+ * one the spans are about). The readings split a text differently only around non-ASCII digits
+ * (٠ ۰ are `.` in the visual reading; Tamil and Malayalam digits expand), so each raw piece of
+ * the text is counted in both readings and the match is widened to whole pieces. When the piece
+ * table cannot be checked against the whole text (`pieceTable`) or the match falls in no piece,
+ * the span covers every token: it over-reports rather than pointing at a token that is not the
+ * match (the span only drives highlighting; the match itself is always reported).
+ */
+function toNumberReading(
+  counts: readonly PieceCount[] | null,
+  visualSpan: Span,
+  numberTokens: number,
+): Span {
+  const whole: Span = { fromToken: 0, toToken: Math.max(0, numberTokens - 1) };
+  if (counts === null) return whole;
   let numberAt = 0;
   let visualAt = 0;
   let from = -1;
@@ -316,6 +350,7 @@ export function matchClaimTerms(
       compact: compactForm(n),
     }));
     const matches: ClaimTermMatch[] = [];
+    let table: readonly PieceCount[] | null | undefined; // built lazily, once for this text
     for (const entry of vocabulary.entries) {
       let found: ClaimTermMatch | null = null;
       for (const [r, { tokens }] of readings.entries()) {
@@ -324,10 +359,10 @@ export function matchClaimTerms(
           if (at >= 0) {
             const own = { fromToken: at, toToken: at + phrase.length - 1 };
             const first = readings[0]!.tokens;
-            const span =
-              r === 0 || (first.length === tokens.length && first.every((t, i) => t === tokens[i]))
-                ? own
-                : toNumberReading(text, own, first.length, tokens.length);
+            const sameSplit =
+              r === 0 || (first.length === tokens.length && first.every((t, i) => t === tokens[i]));
+            if (!sameSplit && table === undefined) table = pieceTable(text, first, tokens);
+            const span = sameSplit ? own : toNumberReading(table ?? null, own, first.length);
             found = { typeCode: entry.typeCode, pass: 'token', span };
             break;
           }
