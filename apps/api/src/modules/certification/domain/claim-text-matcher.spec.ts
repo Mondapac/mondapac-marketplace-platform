@@ -525,10 +525,12 @@ describe('claim text matcher: speed (Hassan S4, #380 M1)', () => {
       // Control: the same length of ASCII, which takes the fast path the memo gives other characters.
       const control = 'a'.repeat(20_000);
       const base = minMs(() => normaliseClaimText(control, true));
-      // Memoised, these run at about 2-7x the control; the code before the memo ran at about 30x.
+      // Under jest, memoised: 長 about 4x the control, ♪ about 3x; before the memo 長 ran at about
+      // 15x and ♪ at 7-12x. 長 is the meaningful check (2x margin each side); ♪ is a smoke test.
+      const bound = ch === '長' ? 8 : 15;
       for (const visual of [false, true]) {
         const ms = minMs(() => normaliseClaimText(text, visual));
-        expect([ch, visual, ms < 15 * base]).toEqual([ch, visual, true]);
+        expect([ch, visual, ms < bound * base]).toEqual([ch, visual, true]);
       }
     },
   );
