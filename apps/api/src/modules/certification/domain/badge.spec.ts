@@ -174,6 +174,27 @@ describe.each(MARKETS)('badge data ($name)', (m) => {
     expect(d.badge?.issuer).toBeNull();
   });
 
+  it('is never verified with issuer when no issuer is shown (no id, or no registry name)', () => {
+    const noName = decide(
+      query,
+      factsFor(m, { issuerDisplayName: null, verifiedWithIssuer: true }),
+      now,
+    );
+    expect(noName.badge).toMatchObject({ issuer: null, verifiedWithIssuer: false });
+    const noIssuer = decide(
+      query,
+      factsFor(m, {
+        issuerId: null,
+        issuerState: null,
+        issuerDisplayName: null,
+        verifiedWithIssuer: true,
+      }),
+      now,
+    );
+    expect(noIssuer.allowed).toBe(true);
+    expect(noIssuer.badge).toMatchObject({ issuer: null, verifiedWithIssuer: false });
+  });
+
   it('has no validity date when the type revision approved under does not require one', () => {
     const d = decide(query, factsFor(m, { requiresExpiry: false }), now);
     expect(d.badge).toMatchObject({ validUntilLocalDate: null, validUntilZone: null });

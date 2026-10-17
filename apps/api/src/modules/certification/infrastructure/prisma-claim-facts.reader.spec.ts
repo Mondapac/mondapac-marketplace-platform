@@ -50,6 +50,7 @@ const basis = (overrides: Partial<Basis> = {}): Basis => ({
   expiryDate: '2027-06-30',
   typeRevisionId: id(4),
   decisionOutcome: 'approved',
+  decisionActorKind: 'admin',
   approvedZone: 'Australia/Brisbane',
   hasExpiryBoundary: true,
   requiresExpiry: true,
@@ -230,6 +231,9 @@ describe.each(['AU', 'ZZ'] as const)('PrismaClaimFactsReader, Market %s', (marke
     ],
     ['an unknown verification mode', basis({ verificationMode: 'TRUST_ME' })],
     ['an id that is not an id', basis({ certificationId: 'not-an-id' })],
+    ['an approved decision made by the system', basis({ decisionActorKind: 'system' })],
+    ['an approved decision made by the seller', basis({ decisionActorKind: 'seller' })],
+    ['an approved decision without an actor', basis({ decisionActorKind: null })],
     ['a malformed expiry date', basis({ expiryDate: '30/06/2027' })],
   ])('rejects on %s', async (_name, rows) => {
     await expect(

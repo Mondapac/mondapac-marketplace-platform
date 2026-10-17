@@ -28,6 +28,7 @@ export const BADGE_FIELDS = [
  *   type's current one, so easing a type never upgrades an approved badge;
  * - `sellerClaim` is true unless the mode is exactly `THIRD_PARTY_DOCUMENT` (an unknown mode reads
  *   as the weaker badge), and a seller claim is never "verified with issuer";
+ * - "verified with issuer" also needs the issuer to be shown;
  * - the issuer appears only when both its id and its public registry name are known;
  * - the validity date and zone are those of the boundary the decision used (design 2.4 rule 2).
  */
@@ -52,7 +53,8 @@ export function sellerBadge(
     issuer,
     validUntilLocalDate: dated ? validity.expiryDate : null,
     validUntilZone: dated ? validity.expiryZone : null,
-    verifiedWithIssuer: !sellerClaim && submission.verifiedWithIssuer === true,
+    // Only with a shown issuer: "verified with issuer" never stands without the issuer named.
+    verifiedWithIssuer: !sellerClaim && issuer !== null && submission.verifiedWithIssuer === true,
     reviewedByPlatform: true,
   };
 }

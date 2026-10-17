@@ -35,8 +35,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/u;
 
 /**
  * {@link ClaimFactsReader} over the module's own raw read port (ADR-0030; data design 7.3: S1
- * with the badge columns of slice 10, S2 in its slice-1 form). Each call opens one read-only unit of the request's Market and
- * runs one statement in it, so a basis is decided from one snapshot. Answers follow the order of
+ * with the badge columns of slice 10, S2 in its slice-1 form). Each call opens one read-only unit
+ * of the request's Market and runs one statement in it, so a basis is decided from one snapshot. Answers follow the order of
  * the request, one per request, each carrying its key; the statements' row order is never used
  * (rows are matched by their position in the call's arrays or by code). Anything unexpected
  * rejects (the caller answers `unavailable`), never a default:
@@ -144,6 +144,13 @@ function viewOf(row: SellerBasisRow): SellerCertificationView {
   // The approved pointer needs an `approved` decision with its zone; without one there is no
   // valid certificate (Hassan), whatever the root's status says.
   if (row.decisionOutcome !== 'approved' || row.approvedZone === null) return view(null);
+  // Every approval today is a reviewer's (`admin`): the badge states `reviewedByPlatform: true`
+  // on that basis. Any other actor on an approved decision is unreadable, so the batch fails
+  // closed (Hassan L1). CERT-11's self-declaration auto-approval must derive `reviewedByPlatform`
+  // from this field instead of relaxing this check.
+  if (row.decisionActorKind !== 'admin') {
+    throw new Error('approved decision was not made by a reviewer');
+  }
   if (row.typeRevisionId === null || row.requiresExpiry === null) {
     throw new Error('approved submission has no readable type revision');
   }

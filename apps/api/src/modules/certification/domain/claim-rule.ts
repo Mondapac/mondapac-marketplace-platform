@@ -111,7 +111,6 @@ export function decide(query: ClaimQuery, facts: ClaimFacts, at: Temporal.Instan
       validUntil: validity.expiresAt,
     },
     policyRevisionId,
-    // Badge data is built here, from the decision just made, and only when allowed (4.5).
     // Built here, from the decision just made, and only when allowed (design 4.5).
     badge: sellerBadge(query.typeCode, sub, validity),
     inputs: query,

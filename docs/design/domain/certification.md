@@ -551,7 +551,9 @@ true unless the mode is exactly `THIRD_PARTY_DOCUMENT` (an unknown mode gets the
 `validUntilZone` are set exactly when `certificate.validUntil` is. When two zones give the same
 boundary, the zone named is the first of chosen zone, address zone, zone at approval (today's zone
 before the stored one). `reviewedByPlatform` is always `true` because no automatic approval exists
-yet; the self-declaration auto-approval of CERT-11 must derive it from the decision row.
+yet: S1 reads the decision's `actor_kind` and the reader refuses (batch `unavailable`) an approved
+decision not made by `admin`; the self-declaration auto-approval of CERT-11 must derive
+`reviewedByPlatform` from that field. `verifiedWithIssuer` also needs the issuer shown.
 
 ### 4.6 Claim terms, the matcher and the claim guard port (ADR-0019 R1, decision 12; CERT-01)
 - **Shape.** Per type revision and locale: a list of terms written by people (R10), each a phrase of

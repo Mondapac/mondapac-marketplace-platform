@@ -68,6 +68,8 @@ interface CertificateSpec {
     readonly issuerState?: string | null;
     /** A reviewer's full issuer confirmation of this submission (needs an issuer). */
     readonly confirmed?: boolean;
+    /** Who made the approved decision; a reviewer (`admin`) unless a case says otherwise. */
+    readonly actor?: 'admin' | 'system';
   };
 }
 
@@ -233,14 +235,16 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
       await owner.query(
         `INSERT INTO certification.seller_submission_decisions
            (market_id, tenant_id, submission_id, outcome, approved_zone, expiry_boundary_at,
-            actor_kind, decided_at)
-         VALUES ($1, $2, $3, 'approved', 'Australia/Brisbane', $4, 'system', $5)`,
+            actor_kind, actor_account_id, decided_at)
+         VALUES ($1, $2, $3, 'approved', 'Australia/Brisbane', $4, $6, $7, $5)`,
         [
           marketId,
           tenantId,
           submissionId,
           approved.boundary === false ? null : '2027-06-30T14:00:00Z',
           T0,
+          approved.actor ?? 'admin',
+          (approved.actor ?? 'admin') === 'system' ? null : uuid7(),
         ],
       );
     } else if (decision === 'withdrawn') {
@@ -468,14 +472,41 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
         issuerId: null,
         issuerDisplayName: null,
       });
-      // The other Market never sees this Market's confirmation.
+      // The other Market never sees this Market's confirmation: the same type code and seller,
+      // approved there with an issuer but not confirmed, reads as not verified (Hassan, Mojtaba L3).
+      const twinType = await seedType(other, { code: documented.code });
+      const twin = await seedCertificate(other, twinType, {
+        sellerId: confirmedSeller,
+        approved: { issuerState: 'active' },
+      });
       const [elsewhere] = await reader.sellerCertificates(other, [
         {
           sellerId: confirmedSeller as Id<'Seller'>,
           typeCode: documented.code as CertificationTypeCode,
         },
       ]);
-      expect(elsewhere!.certificate).toBeNull();
+      expect(elsewhere!.certificate).toMatchObject({
+        certificateId: twin.certificateId,
+        approved: { issuerId: twin.issuerId, verifiedWithIssuer: false },
+      });
+      const [again] = await reader.sellerCertificates(market, [
+        {
+          sellerId: confirmedSeller as Id<'Seller'>,
+          typeCode: documented.code as CertificationTypeCode,
+        },
+      ]);
+      expect(again!.certificate!.approved!.verifiedWithIssuer).toBe(true);
+    });
+
+    it('rejects an approved decision not made by a reviewer (Hassan L1: the badge says reviewed)', async () => {
+      const type = await seedType(market, { code: `auto-${tag}` });
+      const seller = uuid7();
+      await seedCertificate(market, type, { sellerId: seller, approved: { actor: 'system' } });
+      await expect(
+        reader.sellerCertificates(market, [
+          { sellerId: seller as Id<'Seller'>, typeCode: type.code as CertificationTypeCode },
+        ]),
+      ).rejects.toThrow(/not made by a reviewer/);
     });
 
     it('answers aligned with the request whatever the order, keyed, with duplicates and misses', async () => {

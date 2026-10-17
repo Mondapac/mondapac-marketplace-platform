@@ -48,6 +48,8 @@ export interface SellerBasisRow {
   readonly typeRevisionId: string | null;
   /** The decision row's outcome; null when the approved pointer has no decision row. */
   readonly decisionOutcome: string | null;
+  /** Who made the decision (`seller`, `admin`, `system`); null when there is no decision row. */
+  readonly decisionActorKind: string | null;
   readonly approvedZone: string | null;
   readonly hasExpiryBoundary: boolean;
   readonly requiresExpiry: boolean | null;
@@ -178,7 +180,7 @@ const parseOfferSearchRow = (raw: unknown): OfferSearchRow => {
 
 const SELLER_BASIS_SQL = `SELECT q.ord::int4 AS ord, t.id AS type_id, c.id AS certification_id, c.status,
        s.id AS submission_id, s.issuer_id, s.expiry_date::text AS expiry_date, s.type_revision_id,
-       d.outcome AS decision_outcome, d.approved_zone, (d.expiry_boundary_at IS NOT NULL) AS has_expiry_boundary,
+       d.outcome AS decision_outcome, d.actor_kind AS decision_actor_kind, d.approved_zone, (d.expiry_boundary_at IS NOT NULL) AS has_expiry_boundary,
        tr.requires_expiry, i.state AS issuer_state, t.verification_mode, i.display_name AS issuer_name,
        (ic.submission_id IS NOT NULL) AS verified_with_issuer
   FROM unnest($2::uuid[], $3::text[]) WITH ORDINALITY AS q(seller_id, type_code, ord)
@@ -257,6 +259,7 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
         expiryDate: textOrNull(row['expiry_date']),
         typeRevisionId: textOrNull(row['type_revision_id']),
         decisionOutcome: textOrNull(row['decision_outcome']),
+        decisionActorKind: textOrNull(row['decision_actor_kind']),
         approvedZone: textOrNull(row['approved_zone']),
         hasExpiryBoundary: flag(row['has_expiry_boundary']),
         requiresExpiry: flagOrNull(row['requires_expiry']),
