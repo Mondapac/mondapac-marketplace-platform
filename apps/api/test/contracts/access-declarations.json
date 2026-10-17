@@ -227,6 +227,7 @@
   { "name": "identity.send-existing-account-mail", "rule": "system" },
   { "name": "identity.send-invitation-mail", "rule": "system" },
   { "name": "identity.send-link-mail", "rule": "system" },
+  { "name": "identity.send-other-sessions-signed-out-mail", "rule": "system" },
   { "name": "identity.send-password-changed-mail", "rule": "system" },
   { "name": "identity.send-second-factor-mail", "rule": "system" },
   { "name": "identity.send-seller-access-mail", "rule": "system" },

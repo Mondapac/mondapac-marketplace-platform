@@ -103,6 +103,11 @@ export class MarketConfigIdentityPolicy implements IdentityMarketPolicy, LinkTar
     return this.markets.get(market.marketId).identity.secondFactorThrottles?.account ?? null;
   }
 
+  /** `sign-out-others.account` (profile package 4); null when not configured, so it fails closed. */
+  signOutOthersThrottle(market: MarketContext): ThrottleRule | null {
+    return this.markets.get(market.marketId).identity.signOutOthersThrottle ?? null;
+  }
+
   /**
    * Slice 9 (identity design 3.3): `identity.sellerReapplyLimit` (3 for AU); null when the Market
    * configures none, so re-apply fails closed.

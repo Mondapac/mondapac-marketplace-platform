@@ -66,7 +66,9 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   invitation is purged), `challenges` (`maxAttempts` 1 to 5, `lifetimeSeconds` 30 to 300; 5 and
   300 for AU) and `secondFactorThrottles.account` (`limit` 1 to 10, `windowMinutes` and
   `blockMinutes` 1440 to 10080, never 0: the block is the lock; 10, 1440 and 1440 for AU;
-  identity design 6.8, HF2). It also checks that `keepSignedInSessions.seller.absoluteLifetimeMinutes` is greater than
+  identity design 6.8, HF2). The optional `signOutOthersThrottle` (`limit` 1 to 20,
+  `windowMinutes` 10 to 1440, `blockMinutes` 0 to 1440; 5, 60 and 0 for AU) limits how often an
+  account signs out its other sessions; without it that action fails closed. It also checks that `keepSignedInSessions.seller.absoluteLifetimeMinutes` is greater than
   `sessions.seller.absoluteLifetimeMinutes` (1-B). Slice 9 adds two optional keys: the
   `accept-invitation` page in `links.targets.seller` (the page of the Seller Owner invitation
   mail; a Market without it issues no seller invitation and answers `access.unavailable`) and

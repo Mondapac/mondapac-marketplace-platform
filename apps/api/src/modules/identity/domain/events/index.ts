@@ -126,6 +126,18 @@ export const AccountDisplayNameChanged = defineEvent({
   },
 });
 
+/**
+ * The holder signed out every other session of the own account from "Signed-in devices"
+ * (profile package 4; Hassan's follow-up). Recorded only when at least one session was ended.
+ * Drives the "your other devices were signed out" notice, so a holder whose session was taken
+ * learns of it. Ids only.
+ */
+export const AccountOtherSessionsSignedOut = defineEvent({
+  type: 'identity.account-other-sessions-signed-out.v1',
+  aggregateType: 'account',
+  payload: { accountId: eventField.id() },
+});
+
 /** The kinds of an invitation (identity design 3.4): admin (slice 7), seller-owner (9), staff (11). */
 export const INVITATION_KINDS = ['seller-owner', 'staff', 'admin'] as const;
 
@@ -373,6 +385,7 @@ export const IDENTITY_EVENTS: readonly EventDefinition[] = [
   SellerRegistered,
   AccountPasswordChanged,
   AccountDisplayNameChanged,
+  AccountOtherSessionsSignedOut,
   InvitationIssued,
   InvitationAccepted,
   SecondFactorChanged,
