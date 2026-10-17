@@ -1,0 +1,26 @@
+// The customers module's tables (the buyer's delivery address book). Every model is named
+// Customers<Name> and mapped to its table with @@map. The CHECKs, the one-default-address index and
+// the grants are hand-written in the migration.
+
+/// A delivery address in a customer's address book. Everything the customer typed (recipient
+/// name, phone, address lines, region, postcode, delivery notes) is one ciphertext under the
+/// customer account's subject key, so destroying that key erases the address. Only the country,
+/// the default flag and the times are clear. At most one default address per customer.
+model CustomersAddress {
+  id                String   @id @db.Uuid
+  marketId          String   @map("market_id") @db.VarChar(8)
+  tenantId          String   @map("tenant_id")
+  /// The customer account (identity), a plain id with no foreign key.
+  accountId         String   @map("account_id") @db.Uuid
+  /// Personal; the canonical JSON of the address, sealed under the account's subject key.
+  contentCiphertext String   @map("content_ciphertext")
+  /// ISO 3166 country of the address (the Market's address country).
+  countryCode       String   @map("country_code") @db.VarChar(2)
+  isDefault         Boolean  @default(false) @map("is_default")
+  createdAt         DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@index([marketId, accountId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("addresses")
+  @@schema("customers")
+}

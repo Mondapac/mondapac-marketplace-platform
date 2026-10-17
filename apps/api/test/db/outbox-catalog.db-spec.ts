@@ -79,6 +79,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX seller_certifications_market_id_pending_idx ON certification.seller_certifications USING btree (market_id, status_changed_at, id) WHERE (pending_submission_id IS NOT NULL)',
   'certification.seller_certifications_market_id_seller_id_type_id_open_key':
     "CREATE UNIQUE INDEX seller_certifications_market_id_seller_id_type_id_open_key ON certification.seller_certifications USING btree (market_id, seller_id, type_id) WHERE (status <> ALL (ARRAY['declined'::text, 'revoked'::text]))",
+  'customers.addresses_one_default_key':
+    'CREATE UNIQUE INDEX addresses_one_default_key ON customers.addresses USING btree (market_id, account_id) WHERE is_default',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.invitations_market_id_email_pending_platform_key':
