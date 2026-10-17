@@ -42,6 +42,18 @@ export function isProductImageUploadRequest(
   return method === 'POST' && url !== undefined && PRODUCT_IMAGE_PATH.test(url);
 }
 
+/** A base64 certificate file of 10 MiB is 14 million characters; the rest is the JSON around it. */
+const CERTIFICATE_DOCUMENT_BODY_LIMIT = '14500kb';
+const CERTIFICATE_DOCUMENT_PATH =
+  /^\/certification\/seller\/certificates\/[0-9a-fA-F-]{36}\/documents\/?(?:\?.*)?$/;
+
+export function isCertificateDocumentUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+): boolean {
+  return method === 'POST' && url !== undefined && CERTIFICATE_DOCUMENT_PATH.test(url);
+}
+
 /**
  * HTTP-level setup shared by the real server (main.ts) and the HTTP tests, so what is
  * tested is what runs. The application must be created with {@link APP_OPTIONS}.
@@ -81,6 +93,13 @@ export function configureApp(app: NestExpressApplication): void {
   app.useBodyParser('raw', {
     type: (request) => isProductImageUploadRequest(request.method, request.url),
     limit: PRODUCT_IMAGE_BODY_LIMIT,
+    inflate: false,
+  });
+  // The certificate file route alone takes a still larger body (a base64 file of at most 10 MiB,
+  // certification slice 4), read as bytes; its controller parses the JSON itself.
+  app.useBodyParser('raw', {
+    type: (request) => isCertificateDocumentUploadRequest(request.method, request.url),
+    limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
     inflate: false,
   });
   app.useBodyParser('json', { limit: '64kb', strict: true, inflate: false });
