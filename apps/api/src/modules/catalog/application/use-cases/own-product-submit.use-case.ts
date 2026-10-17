@@ -6,10 +6,12 @@ import type { ClaimEvaluator } from '../ports/claim-evaluator';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { OwnOfferFinder } from '../ports/own-offer-finder';
 import type { ClaimQueryBuilder } from '../tags/claim-query-builder';
+import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import {
   askPrepared,
   claimsFailClosed,
   hashesOf,
+  keptTagTypes,
   MAX_CLAIM_ATTEMPTS,
   parseRequestedTags,
   sellerTagActor,
@@ -59,6 +61,7 @@ export interface OwnProductSubmitDependencies {
   readonly offers: OfferRepository;
   readonly claims: ClaimQueryBuilder;
   readonly evaluator: ClaimEvaluator;
+  readonly outbox: OutboxWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
 }
@@ -188,18 +191,21 @@ export class OwnProductSubmit extends UseCase<
   ): SubmitClaims {
     const { deps } = this;
     const { market, actor } = context;
-    // `pending`: the pending-publish set to write. `t4`: nothing to write, but the Offer must be
-    // the one T4 asked about (its version, or still none), else the submit asks again (Hassan M1).
-    let plan:
-      | {
-          readonly kind: 'pending';
-          readonly offerVersion: number;
-          readonly types: readonly string[];
-          readonly decisions: ReadonlyMap<string, readonly TagDecision[]>;
-          readonly hash: (canonical: string) => string;
-        }
-      | { readonly kind: 't4'; readonly offerVersion: number | null }
-      | null = null;
+    // What `ask` learned, for `settle`. `pending`: a never-published product's requested set.
+    // `t4`: an already-published product's kept tags; nothing is written when the revision waits
+    // for review, but the Offer must be the one T4 asked about (its version, or still none), else
+    // the submit asks again (Hassan M1); when it publishes at once the same decisions are the
+    // publish re-ask (5.1a point 3).
+    let plan: {
+      readonly kind: 'pending' | 't4';
+      readonly offerVersion: number | null;
+      readonly types: readonly string[];
+      readonly decisions: ReadonlyMap<string, readonly TagDecision[]>;
+      readonly hash: (canonical: string) => string;
+    } | null = null;
+    const nothingAsked = (): never => {
+      throw new Error('own-product.submit: nothing was asked');
+    };
 
     return {
       ask: async (frozen: FrozenSubmission) => {
@@ -228,9 +234,9 @@ export class OwnProductSubmit extends UseCase<
               frozen.product.state.id,
             );
             if (offer === null) return ok(null);
-            const types = firstSubmit
-              ? requested
-              : offer.tags.filter((tag) => T4_STATUSES.has(tag.status)).map((t) => t.typeCode);
+            // A published product's submit asks every kept tag (`suspended` too: a publish at
+            // once may restore it); T4 judges only `active` and `rechecking` ones.
+            const types = firstSubmit ? requested : keptTagTypes(offer);
             const hasPending = offer.tags.some((tag) => tag.status === 'pending-publish');
             if (types.length === 0) return ok({ offer, types, hasPending, prepared: null });
             if (offer.state.handling === null) {
@@ -255,7 +261,15 @@ export class OwnProductSubmit extends UseCase<
         );
         if (!read.ok) return err({ code: 'access.unavailable' });
         if (read.value === null) {
-          if (!firstSubmit) plan = { kind: 't4', offerVersion: null };
+          if (!firstSubmit) {
+            plan = {
+              kind: 't4',
+              offerVersion: null,
+              types: [],
+              decisions: new Map(),
+              hash: nothingAsked,
+            };
+          }
           return requested.length > 0
             ? err({
                 code: 'validation.failed',
@@ -265,18 +279,15 @@ export class OwnProductSubmit extends UseCase<
         }
         const { offer, types, hasPending, prepared } = read.value;
         if (prepared === 'no-handling') return err({ code: 'offer.handling-missing' });
-        if (!firstSubmit) plan = { kind: 't4', offerVersion: offer.state.version };
         if (types.length === 0) {
           // A first submit with no request still clears the pending set of an earlier submit.
-          if (firstSubmit && hasPending) {
+          if (!firstSubmit || hasPending) {
             plan = {
-              kind: 'pending',
+              kind: firstSubmit ? 'pending' : 't4',
               offerVersion: offer.state.version,
               types: [],
               decisions: new Map(),
-              hash: () => {
-                throw new Error('own-product.submit: nothing was asked');
-              },
+              hash: nothingAsked,
             };
           }
           return ok(undefined);
@@ -287,6 +298,9 @@ export class OwnProductSubmit extends UseCase<
         // Judged here, before the submit unit, so a refusal stores nothing; the domain judges the
         // same decisions again in the unit (5.1a point 6; T4, point 4).
         const refused: { typeCode: string; reason: string }[] = [];
+        const t4Types = new Set(
+          offer.tags.filter((tag) => T4_STATUSES.has(tag.status)).map((tag) => tag.typeCode),
+        );
         for (const typeCode of types) {
           const verdict = judgeTag(
             prepared.queries.get(typeCode) as readonly TagClaimQuery[],
@@ -295,21 +309,19 @@ export class OwnProductSubmit extends UseCase<
           if (verdict.kind === 'unavailable' || verdict.kind === 'stale') {
             return err({ code: 'claim.check-unavailable' });
           }
-          if (verdict.kind === 'not-allowed') refused.push({ typeCode, reason: verdict.reason });
-        }
-        if (!firstSubmit) {
-          // T4: refuse or let through; nothing is stored (the settle only re-checks the Offer).
-          if (refused.length > 0) {
-            plan = null;
-            return err({ code: 'claim.tags-would-be-lost', tags: refused });
+          if (verdict.kind === 'not-allowed' && (firstSubmit || t4Types.has(typeCode))) {
+            refused.push({ typeCode, reason: verdict.reason });
           }
-          return ok(undefined);
         }
         if (refused.length > 0) {
-          return err({ code: 'claim.requested-tag-not-allowed', tags: refused });
+          return err(
+            firstSubmit
+              ? { code: 'claim.requested-tag-not-allowed', tags: refused }
+              : { code: 'claim.tags-would-be-lost', tags: refused },
+          );
         }
         plan = {
-          kind: 'pending',
+          kind: firstSubmit ? 'pending' : 't4',
           offerVersion: offer.state.version,
           types,
           decisions: asked.value,
@@ -318,7 +330,7 @@ export class OwnProductSubmit extends UseCase<
         return ok(undefined);
       },
 
-      settle: async (frozen: FrozenSubmission) => {
+      settle: async (frozen: FrozenSubmission, outcome: { readonly published: boolean }) => {
         if (plan === null) return ok(undefined);
         if (actor.kind !== 'authenticated') return err({ code: 'access.denied' });
         const offer = await deps.offerFinder.findOwnOnProduct(
@@ -326,30 +338,39 @@ export class OwnProductSubmit extends UseCase<
           sellerId,
           frozen.product.state.id,
         );
-        if (plan.kind === 't4') {
-          return (offer?.state.version ?? null) === plan.offerVersion
-            ? ok(undefined)
-            : err({ code: 'claim.inputs-changed' });
-        }
-        if (offer === null || offer.state.version !== plan.offerVersion) {
+        if ((offer?.state.version ?? null) !== plan.offerVersion) {
           return err({ code: 'claim.inputs-changed' });
         }
+        // T4 on a revision that waits for review stores nothing (5.1a point 4).
+        if (offer === null || (plan.kind === 't4' && !outcome.published)) return ok(undefined);
         const facts = await deps.claims.revisionFacts(
           market,
           frozen.product,
           frozen.revisionId,
           frozen.content,
-          false,
+          outcome.published,
         );
-        const set = offer.setPendingPublishTags({
-          tags: plan.types.map((typeCode) => ({ tagId: deps.ids.next<'OfferTag'>(), typeCode })),
+        const now = deps.clock.now();
+        const tags = plan.types.map((typeCode) => ({
+          tagId: deps.ids.next<'OfferTag'>(),
+          typeCode,
+        }));
+        const common = {
           facts,
           decisions: plan.decisions,
-          entryPath: 'revision-submit',
           actor: sellerTagActor(actor),
           hash: plan.hash,
-          now: deps.clock.now(),
-        });
+          now,
+        };
+        // Published at once: the publish re-ask of 5.1a point 3, on decisions whose inputs name
+        // the revision being published. Waiting: the pending-publish set of point 6.
+        const set = !outcome.published
+          ? offer.setPendingPublishTags({ ...common, tags, entryPath: 'revision-submit' })
+          : offer.settlePublish({
+              ...common,
+              entryPath: 'revision-publish',
+              ...(plan.kind === 'pending' ? { requested: tags } : {}),
+            });
         if (!set.ok) {
           switch (set.error.code) {
             case 'claim.inputs-changed':
@@ -368,6 +389,7 @@ export class OwnProductSubmit extends UseCase<
           }
         }
         await deps.offers.save(market, offer, { kind: 'seller', accountId: actor.accountId });
+        await deps.outbox.append(context, offer.pendingEvents);
         return ok(undefined);
       },
     };

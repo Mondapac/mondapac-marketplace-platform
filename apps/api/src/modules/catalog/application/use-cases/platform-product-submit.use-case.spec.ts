@@ -1,3 +1,7 @@
+import {
+  NO_OFFERS_ON_PRODUCT,
+  RecordingReevaluationRequests,
+} from '../../../../../test/support/catalog-tag-fakes';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
 import {
@@ -129,6 +133,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       },
     } as unknown as UnitOfWork;
     const products: ProductRepository = {
+      lockAtVersion: () => Promise.resolve(true),
       nextProductCode: () => Promise.resolve('P00000001'),
       add: () => Promise.resolve(),
       findById: (_m, id) => {
@@ -234,6 +239,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       policy,
       handlerFor: (typeCode) => (typeCode === 'simple' ? simpleProductType : undefined),
     });
+    const fanOut = new RecordingReevaluationRequests();
     const submit = new SubmitProduct({
       unitOfWork,
       products,
@@ -245,6 +251,8 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       outbox,
       clock,
       ids,
+      offers: NO_OFFERS_ON_PRODUCT,
+      requests: fanOut,
     });
     const useCase = new PlatformProductSubmit(
       options.gateOverride === undefined ? gate : createUseCaseGate(markets, options.gateOverride),

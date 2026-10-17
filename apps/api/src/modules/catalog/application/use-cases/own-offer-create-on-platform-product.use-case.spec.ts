@@ -129,6 +129,7 @@ describe.each(['AU', 'ZZ'] as const)(
       const useCase = new OwnOfferCreateOnPlatformProduct(gate, {
         unitOfWork,
         products: {
+          lockAtVersion: () => Promise.resolve(true),
           nextProductCode: () => Promise.reject(new Error('unused')),
           add: () => Promise.reject(new Error('unused')),
           findById: () => Promise.resolve(state === null ? null : Product.restore(state)),
@@ -141,6 +142,7 @@ describe.each(['AU', 'ZZ'] as const)(
             return Promise.resolve(null);
           },
           findById: () => Promise.resolve(null),
+          listOnProduct: () => Promise.resolve([]),
           listPendingReview: () => Promise.resolve([]),
           save: () => Promise.reject(new Error('unused')),
         },

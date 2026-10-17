@@ -26,6 +26,8 @@ export const TAG_ENTRY_PATHS = [
   'revision-submit',
   'revision-publish',
   'revision-revert',
+  // The reviewer's approval of an Offer's first publication (catalog slice 11; Hassan M1 part 1).
+  'offer-approve',
   'category-change',
   'match',
   'promotion',

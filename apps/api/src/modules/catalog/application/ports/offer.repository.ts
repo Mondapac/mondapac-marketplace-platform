@@ -49,6 +49,17 @@ export interface OfferRepository {
 
   /** The Offer in this Market, or null: another Market's id is not found. */
   findById(market: MarketContext, id: Id<'Offer'>): Promise<Offer | null>;
+
+  /**
+   * The Offers of a product that are not deleted, with their open tags, in id order after
+   * `afterId` (null for the first page), at most `limit` (slice 11: the M1 marking of a PLATFORM
+   * publish and the fan-out's keyset). Each is saveable under the version it was read at.
+   */
+  listOnProduct(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    page: { readonly afterId: Id<'Offer'> | null; readonly limit: number },
+  ): Promise<readonly Offer[]>;
 }
 
 export const OFFER_REPOSITORY = Symbol('OFFER_REPOSITORY');

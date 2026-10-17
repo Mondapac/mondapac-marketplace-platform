@@ -63,8 +63,10 @@ export const OFFER_REVIEW_STATUS: Readonly<Record<string, number>> = Object.free
   'seller.not-eligible': 409,
   'type.not-allowed': 409,
   'conflict.stale': 409,
+  'conflict.retry': 409,
   'claim-text.refused': 422,
   'access.unavailable': 503,
+  'claim.check-unavailable': 503,
 });
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -128,7 +130,10 @@ export class OfferReviewController {
     description:
       'Needs catalog.product.approve. Names the Offer version the reviewer saw. The description ' +
       'is claim-checked again; the seller must still be allowed to sell and the product must be ' +
-      'published.',
+      'published. Every certification tag of the Offer is asked again against the published ' +
+      'revision: a tag no longer allowed is suspended and the Offer is published off sale; an ' +
+      'unanswered check refuses (claim.check-unavailable); a lost race is retried, then ' +
+      'conflict.retry.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'offerId', format: 'uuid' })
@@ -141,11 +146,15 @@ export class OfferReviewController {
   @ApiConflictResponse({
     type: ApiErrorBody,
     description:
-      'offer.not-pending-review, offer.product-not-published, seller.not-eligible or conflict.stale',
+      'offer.not-pending-review, offer.product-not-published, seller.not-eligible, ' +
+      'conflict.stale or conflict.retry',
   })
   @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: 'claim-text.refused' })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
-  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or claim.check-unavailable',
+  })
   async approve(
     @Call() context: CallContext,
     @Req() request: Request,

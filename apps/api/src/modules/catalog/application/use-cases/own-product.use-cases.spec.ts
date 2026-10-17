@@ -34,6 +34,8 @@ import {
   activeTagState,
   allowedDecision,
   refusedDecision,
+  NO_OFFERS_ON_PRODUCT,
+  RecordingReevaluationRequests,
 } from '../../../../../test/support/catalog-tag-fakes';
 import type { OfferAddRefusal, OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
@@ -219,6 +221,7 @@ describe.each(FIXTURES)(
         },
       } as unknown as UnitOfWork;
       const products: ProductRepository = {
+        lockAtVersion: () => Promise.resolve(true),
         nextProductCode: () => Promise.resolve('P00000001'),
         add: () => Promise.resolve(),
         findById: (_m, id) => {
@@ -328,6 +331,7 @@ describe.each(FIXTURES)(
         policy,
         handlerFor: (typeCode) => (typeCode === 'simple' ? simpleProductType : undefined),
       });
+      const fanOut = new RecordingReevaluationRequests();
       const submit = new SubmitProduct({
         unitOfWork,
         products,
@@ -339,6 +343,8 @@ describe.each(FIXTURES)(
         outbox,
         clock,
         ids,
+        offers: NO_OFFERS_ON_PRODUCT,
+        requests: fanOut,
       });
       const eligibility = { isEligible: () => Promise.resolve(options.eligible ?? true) };
       const allowedTypes = {
@@ -355,9 +361,11 @@ describe.each(FIXTURES)(
           eligibility,
           allowedTypes,
           offerFinder,
+          outbox,
           offers: {
             add: () => Promise.reject(new Error('unused')),
             findById: () => Promise.reject(new Error('unused')),
+            listOnProduct: () => Promise.resolve([]),
             listPendingReview: () => Promise.resolve([]),
             save: (_m, offer) => {
               if (openUnits === 0) throw new Error('the Offer is saved outside the submit unit');
@@ -378,6 +386,7 @@ describe.each(FIXTURES)(
       const added: Product[] = [];
       const createProducts: ProductRepository = {
         ...products,
+        lockAtVersion: () => Promise.resolve(true),
         nextProductCode: () => Promise.resolve('P00000007'),
         add: (_m, product) => {
           added.push(product);
@@ -392,6 +401,7 @@ describe.each(FIXTURES)(
           return Promise.resolve(null);
         },
         findById: () => Promise.resolve(null),
+        listOnProduct: () => Promise.resolve([]),
         listPendingReview: () => Promise.resolve([]),
         save: () => Promise.reject(new Error('unused')),
       };
@@ -762,11 +772,14 @@ describe.each(FIXTURES)(
         });
         expect(r.revisions.size).toBe(revisionsBefore);
         r.evaluator.decide = (query) => allowedDecision(query, certificateIds);
-        expect((await r.useCase.execute(contextOf('seller'), request(product.state.id))).ok).toBe(
-          true,
-        );
-        expect(r.savedOffers).toHaveLength(0);
-        expect(r.ownOffer()!.tags[0]!.status).toBe('active');
+        const published = await r.useCase.execute(contextOf('seller'), request(product.state.id));
+        expect(published.ok && published.value.published).toBe(true);
+        // Published at once (approval off): the T4 ask is the publish re-ask (5.1a point 3), so
+        // the tag's copy now names the revision just published.
+        expect(r.savedOffers).toHaveLength(1);
+        const tag = r.ownOffer()!.tags[0]!;
+        expect(tag.status).toBe('active');
+        expect(tag.copyRevisionId).toBe(published.ok ? published.value.revisionId : null);
       });
     });
 

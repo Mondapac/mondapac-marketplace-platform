@@ -17,6 +17,11 @@ import type {
 import type { Product } from '../../src/modules/catalog/domain/product';
 import type { RevisionContent } from '../../src/modules/catalog/domain/revision-content';
 import type { OutboxWriter } from '../../src/platform/events/outbox-writer';
+import type { OfferRepository } from '../../src/modules/catalog/application/ports/offer.repository';
+import type {
+  PendingReevaluation,
+  TagReevaluationRequestRepository,
+} from '../../src/modules/catalog/application/ports/tag-reevaluation-requests';
 
 // In-memory stand-ins for the claim path of catalog (slice 8): an evaluator that answers per
 // query, a query builder over fixed facts and a recording outbox.
@@ -128,6 +133,15 @@ export class FixedFactsClaimQueryBuilder extends ClaimQueryBuilder {
   publishedReads = 0;
   onPublishedRead: ((read: number, fake: FixedFactsClaimQueryBuilder) => void) | null = null;
 
+  /** The product locks taken in write units (slice 11); `lockFails` makes the next ones fail. */
+  locks = 0;
+  lockFails = false;
+
+  override lockProduct(): Promise<boolean> {
+    this.locks += 1;
+    return Promise.resolve(!this.lockFails);
+  }
+
   override publishedFacts(): Promise<ClaimFacts | null> {
     return Promise.resolve(this.published);
   }
@@ -211,3 +225,43 @@ export function activeTagState(
     ...overrides,
   };
 }
+
+/** A fan-out queue that records the publish requests (slice 11). */
+export class RecordingReevaluationRequests implements TagReevaluationRequestRepository {
+  readonly requested: {
+    readonly productId: Id<'Product'>;
+    readonly productRevisionId: Id<'ProductRevision'>;
+  }[] = [];
+
+  requestForPublish(
+    _market: MarketContext,
+    request: {
+      readonly productId: Id<'Product'>;
+      readonly productRevisionId: Id<'ProductRevision'>;
+    },
+  ): Promise<void> {
+    this.requested.push({
+      productId: request.productId,
+      productRevisionId: request.productRevisionId,
+    });
+    return Promise.resolve();
+  }
+
+  listPending(): Promise<readonly PendingReevaluation[]> {
+    return Promise.resolve([]);
+  }
+
+  progress(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+
+  close(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+}
+
+/** An Offer store with no Offer on any product: what a PLATFORM publish marks is nothing. */
+export const NO_OFFERS_ON_PRODUCT = {
+  listOnProduct: () => Promise.resolve([]),
+  save: () => Promise.reject(new Error('NO_OFFERS_ON_PRODUCT: nothing to save')),
+} as unknown as OfferRepository;

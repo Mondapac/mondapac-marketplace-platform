@@ -77,6 +77,19 @@ export class ClaimQueryBuilder {
   }
 
   /**
+   * Locks the product row at the version a tag write's ask was built on (slice 11; Hassan M1
+   * condition): false when the product moved since, so the write asks again. Held to the end of
+   * the caller's unit, which serialises the tag write against a revision publication.
+   */
+  lockProduct(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    productVersion: number,
+  ): Promise<boolean> {
+    return this.deps.products.lockAtVersion(market, productId, productVersion);
+  }
+
+  /**
    * The facts of a named revision's content: the frozen revision being submitted (not yet stored;
    * its id is the one the submit unit will store) or a stored one.
    */

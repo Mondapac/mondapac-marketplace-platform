@@ -90,6 +90,7 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
       run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
     } as unknown as UnitOfWork;
     const products: ProductRepository = {
+      lockAtVersion: () => Promise.resolve(true),
       nextProductCode: () => Promise.resolve('P00000001'),
       add: () => Promise.resolve(),
       findById: (_m, id) => Promise.resolve(stored.get(id) ?? null),

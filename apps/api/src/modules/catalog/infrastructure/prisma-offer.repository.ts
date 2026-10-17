@@ -356,7 +356,12 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
           certificateId: row.copy?.certificateId ?? null,
           certificateVersionId: row.copy?.certificateVersionId ?? null,
           issuerId: row.copy?.issuerId ?? null,
+          typeRevisionId: row.copy?.typeRevisionId ?? null,
           policyRevisionId: row.copy?.policyRevisionId ?? null,
+          validUntil:
+            row.copy?.validUntil === null || row.copy?.validUntil === undefined
+              ? null
+              : toDate(row.copy.validUntil),
           copyRevisionId: row.copyRevisionId,
           reasonCode: row.reasonCode,
           entryPath: row.entryPath,
@@ -412,6 +417,40 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
       select: { id: true },
     });
     return row === null ? null : this.findById(market, row.id as Id<'Offer'>);
+  }
+
+  async listOnProduct(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    page: { readonly afterId: Id<'Offer'> | null; readonly limit: number },
+  ): Promise<readonly Offer[]> {
+    const tx = this.prisma.tx(market);
+    // Served by `offers_market_id_product_id_open_idx` (status <> 'deleted').
+    const rows = await tx.catalogOffer.findMany({
+      where: {
+        marketId: market.marketId,
+        productId,
+        status: { not: 'deleted' },
+        ...(page.afterId === null ? {} : { id: { gt: page.afterId } }),
+      },
+      orderBy: { id: 'asc' },
+      take: page.limit,
+    });
+    if (rows.length === 0) return [];
+    const tags = await tx.catalogOfferTag.findMany({
+      where: {
+        marketId: market.marketId,
+        offerId: { in: rows.map((row) => row.id) },
+        status: { not: 'removed' },
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map((row) =>
+      offerFromRow(
+        row,
+        tags.filter((tag) => tag.offerId === row.id),
+      ),
+    );
   }
 
   async findById(market: MarketContext, id: Id<'Offer'>): Promise<Offer | null> {

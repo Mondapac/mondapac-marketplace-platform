@@ -101,6 +101,16 @@ import { PrismaAttributeRepository } from './prisma-attribute.repository';
 import { CheckedInCategorySeed } from './seed/checked-in-category-seed';
 import { PrismaPlatformCategoryRepository } from './prisma-platform-category.repository';
 import { PrismaProductRepository } from './prisma-product.repository';
+import {
+  TAG_REEVALUATION_REQUESTS,
+  type TagReevaluationRequestRepository,
+} from '../application/ports/tag-reevaluation-requests';
+import { PrismaTagReevaluationRequests } from './prisma-tag-reevaluation-requests';
+import {
+  OFFER_LISTINGS_READER,
+  type OfferListingsReader,
+} from '../application/ports/offer-listings.reader';
+import { PrismaOfferListingsReader } from './prisma-offer-listings.reader';
 
 const CATALOG_SECRET = Symbol('CATALOG_SECRET');
 
@@ -132,6 +142,19 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService, ID_GENERATOR],
     useFactory: (prisma: PrismaService, ids: IdGenerator): OfferRepository =>
       new PrismaOfferRepository(prisma, ids),
+  },
+  {
+    provide: OFFER_LISTINGS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferListingsReader =>
+      new PrismaOfferListingsReader(prisma),
+  },
+  // The fan-out work queue (design 5.4; data design 3.18).
+  {
+    provide: TAG_REEVALUATION_REQUESTS,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TagReevaluationRequestRepository =>
+      new PrismaTagReevaluationRequests(prisma),
   },
   // The same store answers the seller's Offer on a product (design 5.1a).
   { provide: OWN_OFFER_FINDER, useExisting: OFFER_REPOSITORY },

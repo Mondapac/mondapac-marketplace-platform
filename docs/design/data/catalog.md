@@ -559,6 +559,8 @@ offer_id, offer_version)`; `outcome` CHECK `approved`, `changes-requested`; `rea
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | `uuid` | no | PK |
+| `market_id` | `varchar(8)` | no | CHECK format; unique `(market_id, id)`; every statement carries it |
+| `tenant_id` | `text` | no | CHECK format (ADR-0001 seam) |
 | `kind` | `text` | no | CHECK `revision-published`, `category-changed`, `certification-event`, `types-reallowed` |
 | `product_id` | `uuid` | yes | For `revision-published`. CHECK `(kind = 'revision-published') = (product_id IS NOT NULL)` |
 | `product_revision_id` | `uuid` | yes | Same nullability as `product_id`; FK same product |
@@ -1148,6 +1150,32 @@ handling and `listed` rules (`offer_history_handling_required_check`, `offer_his
 with `listed = (status = 'published' AND cardinality(off_sale_causes) = 0)`), `actor_account_id` is
 NULL iff `actor_kind = 'system'` and `acting_admin_account_id` only with a seller actor.
 
+**As built in migration 9** (`20261017180000_catalog_fanout`, slice 11, Hossein 2026-10-17;
+awaiting Mojtaba's sign-off): (a) `tag_reevaluation_requests` per 3.18 with its CHECKs, the
+partial uniques (one pending `revision-published` request per product, one per revision, one per
+source event) and the claim index, created with the empty table; grants SELECT, INSERT and UPDATE of
+`state`, `cursor_offer_id`, `counts`, `settled_at` only (no DELETE until the 10.3 purge); (b) the
+slice 8 follow-up columns `offer_tag_history.type_revision_id` and `valid_until` (nullable: the
+history is insert-only, so earlier rows keep NULL and the history-presence check does not compare
+them); (c) the entry-path CHECKs of `offer_tags.last_change_cause` and
+`offer_tag_history.entry_path` gain `offer-approve` (added `NOT VALID`, then `VALIDATE`). Behaviour
+(design 5.1a point 3, 5.4): every tag write takes a conditional lock of the product row at the
+version it asked about, so it waits for a racing publish and then asks again; `offer.approve`,
+`product-revision.approve` and a submit that publishes at once re-ask every open tag in the publish
+unit (a `pending-publish` tag becomes `active` only on that fresh answer); a PLATFORM publish marks
+`active` tags `rechecking` in its unit (rule M1; a `suspended` tag stays `suspended`) and writes the
+request the job `catalog.reevaluate-tags` settles Offer by Offer. `product-revision.approve` locks the
+product row at the reviewed version before it reads the pending revision and the owner's Offer
+(Hassan M-1). The job's `progress` stores counts alone at an equal cursor (Mojtaba F4).
+Follow-ups (Mojtaba, PR #397 review): **F1** (contract step for slice 12) the history-presence
+trigger should also compare `type_revision_id` and `valid_until` with `IS NOT DISTINCT FROM`,
+tolerating legacy rows whose two columns are NULL, optionally backed by a `NOT VALID` CHECK that new
+rows carry both; **F3** if lock waits on `products` appear in production, the tag-write lock can
+become `SELECT ... FOR SHARE` (concurrent tag writes stop serialising on one another; a publish
+still waits for them), instead of the no-op version update. `offerListings` for the
+`anonymous` rule answers no tags at all until slice 12 consumes the certification revoke and expiry
+events (a stored `active` tag can outlive its certificate; Hassan, certification revoke review).
+
 This matches D 15.1's list (1, 2, 3, 4, 7, 8, 10, 11, 12, 13, 18, 21, 23, 24, 25, 26) plus 9
 (trigram, only with option A) and 22 (url keys). No migration: P1, 5, 6, 14, 15, 16, 17, 19, 20 —
 every column those slices write exists earlier (match and promotion columns, all five off-sale
@@ -1268,7 +1296,7 @@ delete and the sweep both fail.
 
 | Job | Every | Lock key (PM8) | Work |
 |---|---|---|---|
-| `catalog.reevaluate-tags` | 1 min | `6604185390120384521` | A7, requests of 3.18 |
+| `catalog.reevaluate-tags` | 30 s | `6604185390120384521` | A7, requests of 3.18 |
 | `catalog.reconcile-tags` | Daily 03:00 Market zone | `2217309458861320097` | A15 |
 | `catalog.rescan-claim-text` | On event, resumable | `7391146002835117703` | A14 |
 | `catalog.purge-unreferenced-masters` | Daily | `4870913325561946201` | 10.2 |

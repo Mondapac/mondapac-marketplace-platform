@@ -11,6 +11,8 @@
   { "name": "cart.set-line-quantity", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
+  { "name": "catalog.offer-listings", "rule": "anonymous" },
+  { "name": "catalog.offer-listings-system", "rule": "system" },
   { "name": "catalog.offer-names-system", "rule": "system" },
   { "name": "catalog.offer-search-facts", "rule": "system" },
   { "name": "catalog.offer-sell-units", "rule": "anonymous" },
@@ -51,6 +53,7 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "catalog.published-offer-ids", "rule": "system" },
+  { "name": "catalog.reevaluate-tags", "rule": "system" },
   { "name": "catalog.seed-attributes", "rule": "system" },
   { "name": "catalog.seed-category-tree", "rule": "system" },
   { "name": "catalog.sell-unit-labels", "rule": "anonymous" },

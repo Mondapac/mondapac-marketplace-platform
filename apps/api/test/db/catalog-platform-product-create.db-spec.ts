@@ -64,6 +64,7 @@ describe.each(TEST_MARKETS)(
       const real = new PrismaProductRepository(persistence.service);
       // Not the shared counter: a parallel spec asserts consecutive codes from it.
       const products: ProductRepository = {
+        lockAtVersion: () => Promise.resolve(true),
         nextProductCode: () => {
           lastCode = `Q${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`;
           return Promise.resolve(lastCode);

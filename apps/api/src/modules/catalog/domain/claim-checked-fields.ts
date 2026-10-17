@@ -218,6 +218,15 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'read copy of the published revision text, already claim-checked when the revision was frozen',
   },
   OfferSellUnits: { noCustomerText: 'sell units, numbers and ids' },
+  OfferListing: {
+    noCustomerText:
+      'read copy of the published revision name and Variant label, already claim-checked when the revision was frozen, with ids and tags',
+  },
+  OfferListingTag: { noCustomerText: 'tag status, basis code and the OfferListingBadge copy' },
+  OfferListingBadge: {
+    noCustomerText:
+      "display copy of certification's badge data, written only by certification and never entered here (ADR-0028 d3)",
+  },
   PlatformCategoryState: { table: 'PLATFORM_CATEGORY_FIELDS' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },
   ProductTypeHandler: { noCustomerText: 'interface of methods' },

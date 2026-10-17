@@ -53,6 +53,9 @@ export const OFF_SALE_CAUSES = [
 ] as const;
 export type OffSaleCause = (typeof OFF_SALE_CAUSES)[number];
 
+/** The statuses a write that keeps tags asks again (design 5.2, 5.3). */
+const KEPT_STATUSES: readonly OfferTagStatus[] = ['active', 'rechecking', 'suspended'];
+
 /** Why a command was refused: a stable code, never data. */
 export type OfferRefusal =
   | { readonly code: 'offer.sku-invalid' }
@@ -398,7 +401,9 @@ export class Offer {
     if (this.#state.status !== 'pending-first-publish') {
       return err({ code: 'offer.not-pending-review' });
     }
-    this.#assertNoChange('approve');
+    // The re-ask of the approval (5.1a point 3) settles the tags first, in the same unit; its
+    // causes-only change is part of this publication and its history row is this one.
+    if (this.#pendingHistory?.changeKind !== 'causes-changed') this.#assertNoChange('approve');
     this.#publish(input.now, 'publication-approved', {});
     return ok(undefined);
   }
@@ -554,9 +559,7 @@ export class Offer {
    * through the publish re-ask (5.1a point 3).
    */
   settleTags(input: Omit<ClaimAnswerInput, 'facts'> & { readonly facts: ClaimFacts | null }) {
-    const kept = this.#tags.filter((tag) =>
-      (['active', 'rechecking', 'suspended'] as readonly OfferTagStatus[]).includes(tag.status),
-    );
+    const kept = this.#tags.filter((tag) => KEPT_STATUSES.includes(tag.status));
     const summary = { kept: 0, suspended: 0, restored: 0, switched: 0 };
     if (kept.length === 0) return ok(summary);
     const facts = input.facts;
@@ -567,74 +570,232 @@ export class Offer {
     const judged = this.#judgeAll({ ...input, facts }, types);
     if (!judged.ok) return judged;
     for (const tag of kept) {
-      const { judgement, inputsHash } = judged.value.get(tag.typeCode)!;
-      const base = {
-        inputsHash,
-        copyRevisionId: facts.productRevisionId,
-        copyRevisionPublished: true,
-        evaluatedAt:
-          judgement.kind === 'allowed' || judgement.kind === 'not-allowed'
-            ? judgement.evaluatedAt
-            : input.now,
-      };
-      if (judgement.kind === 'allowed') {
-        const switched = tag.status === 'active' && tag.copy?.basis !== judgement.copy.basis;
-        const candidate: OfferTagState = {
-          ...tag,
-          ...base,
-          status: 'active',
-          copy: judgement.copy,
-          badge: judgement.badge,
-          lastReasonCode: 'allowed',
-        };
-        // One history row per change of status or claim copy (data design 3.16; Mojtaba F1,
-        // Hassan M4): a basis switch or a new certificate version is a change of its own.
-        const changed =
-          candidate.status !== tag.status || tagCopyKey(candidate) !== tagCopyKey(tag);
-        const next: OfferTagState = changed
-          ? {
-              ...candidate,
-              lastChangeCause: input.entryPath,
-              statusChangedAt: input.now,
-              changeSeq: tag.changeSeq + 1,
-            }
-          : candidate;
-        this.#putTag(next, false);
-        if (changed) this.#historyOf(next, tag.status, input.entryPath, input.actor, input.now);
-        if (tag.status === 'suspended') {
-          this.#tagEvent(OfferTagRestored, next, input.now);
-          summary.restored += 1;
-        } else if (switched) {
-          this.#tagEvent(OfferTagBasisSwitched, next, input.now);
-          summary.switched += 1;
-        } else {
-          summary.kept += 1;
-        }
-        continue;
-      }
-      if (judgement.kind !== 'not-allowed') throw new Error('settleTags: judged without a verdict');
-      const statusChange = tag.status !== 'suspended';
-      // A refused tag keeps the copy (and its revision) of its last allowed decision.
-      const next: OfferTagState = {
-        ...tag,
-        inputsHash: base.inputsHash,
-        evaluatedAt: base.evaluatedAt,
-        status: 'suspended',
-        badge: null,
-        lastReasonCode: judgement.reason,
-        ...(statusChange ? { lastChangeCause: input.entryPath, statusChangedAt: input.now } : {}),
-        changeSeq: statusChange ? tag.changeSeq + 1 : tag.changeSeq,
-      };
-      this.#putTag(next, false);
-      if (statusChange) {
-        this.#historyOf(next, tag.status, input.entryPath, input.actor, input.now);
-        this.#tagEvent(OfferTagSuspended, next, input.now);
-      }
-      summary.suspended += 1;
+      this.#applyVerdict(tag, judged.value.get(tag.typeCode)!, { ...input, facts }, summary);
     }
     this.#refreshTagCause(input.now);
     this.#touch();
     return ok(summary);
+  }
+
+  /**
+   * The re-ask of a publication (design 5.1a point 3; 4.2 rows 3, 4; slice 11): every tag that is
+   * not removed (`pending-publish` included) is judged on decisions of this request whose inputs
+   * name the revision being published, before the pointer moves, in the publish unit. The facts
+   * must name that revision as the published one. Fail closed: one stale answer refuses the whole
+   * settle (`claim.inputs-changed`, the use case asks again) and one `unavailable` answer refuses
+   * it (`claim.check-unavailable`): nothing becomes `active` on a stale or missing answer. Then
+   * an allowed tag is `active` with a fresh copy and badge (a `pending-publish` one is announced
+   * as added, a `suspended` one as restored); a refused one is `suspended` without badge data,
+   * which takes the Offer off sale (cause `tag-suspended`, CERT-15).
+   *
+   * `requested` is the first submit of a never-published product that publishes at once (5.1a
+   * point 6 with no review in between): the open tags must all be `pending-publish`, the tags
+   * become exactly the requested set (a type left out is `removed`), and one requested type that
+   * is not allowed refuses the whole submit (`claim.tag-not-allowed`), as at a submit that waits.
+   */
+  settlePublish(
+    input: ClaimAnswerInput & {
+      readonly requested?: readonly {
+        readonly tagId: Id<'OfferTag'>;
+        readonly typeCode: string;
+      }[];
+    },
+  ): Result<TagSettlement, OfferTagRefusal> {
+    if (!input.facts.revisionPublished) {
+      throw new Error('settlePublish: the facts must name the revision being published');
+    }
+    const summary = { kept: 0, suspended: 0, restored: 0, switched: 0 };
+    if (this.#state.status === 'deleted') return err({ code: 'offer.not-taggable' });
+    const open = this.#tags.filter((tag) => tag.status !== 'removed');
+    const requested = input.requested;
+    if (requested === undefined) {
+      if (open.length === 0) return ok(summary);
+      if (this.#state.handling === null) return err({ code: 'offer.handling-missing' });
+      const judged = this.#judgeAll(
+        input,
+        open.map((tag) => tag.typeCode),
+      );
+      if (!judged.ok) return judged;
+      for (const tag of open) {
+        this.#applyVerdict(tag, judged.value.get(tag.typeCode)!, input, summary);
+      }
+      this.#refreshTagCause(input.now);
+      this.#touch();
+      return ok(summary);
+    }
+    // A product never published carries no tag but `pending-publish` (data design 3.15 CHECKs).
+    if (open.some((tag) => tag.status !== 'pending-publish')) {
+      return err({ code: 'claim.inputs-changed' });
+    }
+    const types = requested.map((tag) => tag.typeCode);
+    if (new Set(types).size !== types.length) return err({ code: 'tag.exists' });
+    let verdicts = new Map<string, JudgedTag>();
+    if (types.length > 0) {
+      if (this.#state.handling === null) return err({ code: 'offer.handling-missing' });
+      const judged = this.#judgeAll(input, types);
+      if (!judged.ok) return judged;
+      verdicts = judged.value;
+    }
+    const refused = types.flatMap((typeCode) => {
+      const verdict = verdicts.get(typeCode)!.judgement;
+      return verdict.kind === 'not-allowed' ? [{ typeCode, reason: verdict.reason }] : [];
+    });
+    if (refused.length > 0) return err({ code: 'claim.tag-not-allowed', tags: refused });
+    for (const tag of open) {
+      if (!types.includes(tag.typeCode)) {
+        this.#removeTag(tag, 'revision-publish', input.actor, input.now);
+      }
+    }
+    for (const { tagId, typeCode } of requested) {
+      const verdict = verdicts.get(typeCode)!;
+      const existing = open.find((tag) => tag.typeCode === typeCode);
+      if (existing !== undefined) {
+        this.#applyVerdict(existing, verdict, input, summary);
+        continue;
+      }
+      const { judgement, inputsHash } = verdict;
+      if (judgement.kind !== 'allowed') throw new Error('settlePublish: judged without a verdict');
+      const tag: OfferTagState = {
+        id: tagId,
+        typeCode,
+        status: 'active',
+        copy: judgement.copy,
+        badge: judgement.badge,
+        copyRevisionId: input.facts.productRevisionId,
+        copyRevisionPublished: true,
+        inputsHash,
+        lastReasonCode: 'allowed',
+        lastChangeCause: input.entryPath,
+        evaluatedAt: judgement.evaluatedAt,
+        statusChangedAt: input.now,
+        changeSeq: 1,
+        removedAt: null,
+        removedByKind: null,
+        removedByAccountId: null,
+        createdAt: input.now,
+      };
+      this.#putTag(tag, true);
+      this.#historyOf(tag, null, input.entryPath, input.actor, input.now);
+      this.#tagEvent(OfferTagAdded, tag, input.now);
+      summary.kept += 1;
+    }
+    this.#refreshTagCause(input.now);
+    if (this.#newTagIds.size > 0 || this.#changedTagIds.size > 0) this.#touch();
+    return ok(summary);
+  }
+
+  /**
+   * Rule M1 (Hassan; design 5.4): a write that changes a claim input of tags it does not settle in
+   * the same unit (every PLATFORM publish, a published variant set change) marks them
+   * `rechecking` in that unit, so no stale badge is shown until the fan-out asks again. Only an
+   * `active` tag changes: its badge data goes (`rechecking` carries none, data design CHECK) and
+   * the Offer stays listed (5.3). A `suspended` tag already shows no badge and stays `suspended`,
+   * so the Offer stays off sale until a fresh allowed decision (AC 13); a `rechecking` tag stays
+   * as it is; a `pending-publish` tag is not live. Answers how many tags changed.
+   */
+  markRechecking(input: {
+    readonly entryPath: TagEntryPath;
+    readonly actor: TagActor;
+    readonly now: Temporal.Instant;
+  }): number {
+    if (this.#state.status === 'deleted') return 0;
+    let marked = 0;
+    for (const tag of this.#tags) {
+      if (tag.status !== 'active') continue;
+      const next: OfferTagState = {
+        ...tag,
+        status: 'rechecking',
+        badge: null,
+        lastChangeCause: input.entryPath,
+        statusChangedAt: input.now,
+        changeSeq: tag.changeSeq + 1,
+      };
+      this.#putTag(next, false);
+      this.#historyOf(next, tag.status, input.entryPath, input.actor, input.now);
+      marked += 1;
+    }
+    if (marked > 0) this.#touch();
+    return marked;
+  }
+
+  /**
+   * Applies one tag's verdict (design 5.2, 5.3): allowed keeps or makes it `active` with the fresh
+   * copy and badge; refused makes it `suspended` without badge data. One history row per change of
+   * status or copy (data design 3.16; Mojtaba F1, Hassan M4) and the tag event of the change.
+   */
+  #applyVerdict(
+    tag: OfferTagState,
+    verdict: JudgedTag,
+    input: ClaimAnswerInput,
+    summary: { kept: number; suspended: number; restored: number; switched: number },
+  ): void {
+    const { judgement, inputsHash } = verdict;
+    const facts = input.facts;
+    if (judgement.kind === 'allowed') {
+      const switched = tag.status === 'active' && tag.copy?.basis !== judgement.copy.basis;
+      const candidate: OfferTagState = {
+        ...tag,
+        inputsHash,
+        copyRevisionId: facts.productRevisionId,
+        copyRevisionPublished: true,
+        evaluatedAt: judgement.evaluatedAt,
+        status: 'active',
+        copy: judgement.copy,
+        badge: judgement.badge,
+        lastReasonCode: 'allowed',
+      };
+      // A basis switch or a new certificate version is a change of its own (F1, M4).
+      const changed = candidate.status !== tag.status || tagCopyKey(candidate) !== tagCopyKey(tag);
+      const next: OfferTagState = changed
+        ? {
+            ...candidate,
+            lastChangeCause: input.entryPath,
+            statusChangedAt: input.now,
+            changeSeq: tag.changeSeq + 1,
+          }
+        : candidate;
+      this.#putTag(next, false);
+      if (changed) this.#historyOf(next, tag.status, input.entryPath, input.actor, input.now);
+      if (tag.status === 'suspended') {
+        this.#tagEvent(OfferTagRestored, next, input.now);
+        summary.restored += 1;
+      } else if (tag.status === 'pending-publish') {
+        // The first time the badge is effective (5.1a point 3): announced as added.
+        this.#tagEvent(OfferTagAdded, next, input.now);
+        summary.kept += 1;
+      } else if (switched) {
+        this.#tagEvent(OfferTagBasisSwitched, next, input.now);
+        summary.switched += 1;
+      } else {
+        summary.kept += 1;
+      }
+      return;
+    }
+    if (judgement.kind !== 'not-allowed') throw new Error('settle: judged without a verdict');
+    const statusChange = tag.status !== 'suspended';
+    // A refused tag keeps the copy of its last allowed decision. A `pending-publish` tag's copy
+    // names the frozen revision this publish makes the published one, so it is a published copy
+    // from now on (data design CHECK `offer_tags_published_copy_check`).
+    const fromPending = tag.status === 'pending-publish';
+    const next: OfferTagState = {
+      ...tag,
+      inputsHash,
+      evaluatedAt: judgement.evaluatedAt,
+      status: 'suspended',
+      badge: null,
+      lastReasonCode: judgement.reason,
+      ...(fromPending
+        ? { copyRevisionId: facts.productRevisionId, copyRevisionPublished: true }
+        : {}),
+      ...(statusChange ? { lastChangeCause: input.entryPath, statusChangedAt: input.now } : {}),
+      changeSeq: statusChange ? tag.changeSeq + 1 : tag.changeSeq,
+    };
+    this.#putTag(next, false);
+    if (statusChange) {
+      this.#historyOf(next, tag.status, input.entryPath, input.actor, input.now);
+      this.#tagEvent(OfferTagSuspended, next, input.now);
+    }
+    summary.suspended += 1;
   }
 
   /**
@@ -804,9 +965,20 @@ export class Offer {
     return removed;
   }
 
+  /**
+   * Stores a tag change in the aggregate. One change of status or copy per tag per unit (Mojtaba,
+   * slice 8 follow-up): the database raises `change_seq` by exactly one per row update and the
+   * repository's update is conditional on the value read, so a second change of the same tag in
+   * one unit is a defect and throws here instead of failing at commit. A new tag is inserted at
+   * `change_seq` 1 and cannot change again in its unit.
+   */
   #putTag(tag: OfferTagState, isNew: boolean): void {
     const frozen = Object.freeze({ ...tag });
     const index = this.#tags.findIndex((existing) => existing.id === tag.id);
+    const base = isNew || this.#newTagIds.has(tag.id) ? 0 : this.#readChangeSeqs.get(tag.id);
+    if (base === undefined || tag.changeSeq < Math.max(base, 1) || tag.changeSeq > base + 1) {
+      throw new Error('putTag: more than one change of a tag in one unit');
+    }
     if (isNew) {
       if (index !== -1) throw new Error('putTag: the tag id is taken');
       this.#tags.push(frozen);
@@ -915,8 +1087,10 @@ export class Offer {
     changeKind: 'published' | 'publication-approved',
     extra: { readonly submittedAt?: Temporal.Instant },
   ): void {
+    // The next event's version: a tag settle of the same unit that only touched the Offer has
+    // already raised it once, and the publication is its first event (Q-K3).
+    const version = this.#nextEventVersion();
     const state = this.#state;
-    const version = state.version + 1;
     this.#state = Object.freeze({
       ...state,
       ...extra,

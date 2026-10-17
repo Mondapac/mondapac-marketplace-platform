@@ -162,6 +162,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
       unitOfWork,
       offers: {
         add: () => Promise.reject(new Error('unused')),
+        listOnProduct: () => Promise.resolve([]),
         listPendingReview: () => Promise.resolve([]),
         findById: () => {
           reads += 1;

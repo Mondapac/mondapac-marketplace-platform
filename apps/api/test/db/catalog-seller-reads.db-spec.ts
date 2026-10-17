@@ -32,6 +32,7 @@ import { PrismaProductRepository } from '../../src/modules/catalog/infrastructur
 import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infrastructure/prisma-product-revision.repository';
 import { PrismaWorkingCopyRepository } from '../../src/modules/catalog/infrastructure/prisma-working-copy.repository';
 import { TEST_MARKETS } from '../support/test-config';
+import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
@@ -196,6 +197,10 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       },
       clock,
       ids: { next: <K extends string>() => uuid7() as Id<K> },
+      offers: new PrismaOfferRepository(persistence.service, {
+        next: <K extends string>() => uuid7() as Id<K>,
+      }),
+      requests: new PrismaTagReevaluationRequests(persistence.service),
     });
   });
   beforeEach(() => {

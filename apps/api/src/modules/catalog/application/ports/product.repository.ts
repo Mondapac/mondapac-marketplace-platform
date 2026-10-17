@@ -23,6 +23,16 @@ export interface ProductRepository {
    * `StaleAggregateError` when the row changed since (P 10).
    */
   save(market: MarketContext, product: Product): Promise<void>;
+
+  /**
+   * Takes the product row's lock in the open unit, conditional on the version the caller read
+   * (catalog slice 11; Hassan M1 condition on slice 8): one `UPDATE` that sets the version to
+   * itself. True when the row is still at that version; false when it moved (a publish committed
+   * since the read, or is committing now: the statement waits for its lock, then sees the new
+   * version). A tag write takes it before it judges its decisions, so a revision publication and
+   * a tag write on the same product never interleave. Nothing else of the row changes.
+   */
+  lockAtVersion(market: MarketContext, id: Id<'Product'>, version: number): Promise<boolean>;
 }
 
 export const PRODUCT_REPOSITORY = Symbol('PRODUCT_REPOSITORY');
