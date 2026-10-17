@@ -66,6 +66,22 @@ export const SellerCertificationDeclined = defineEvent({
   },
 });
 
+/**
+ * An admin revoked an approved or expired certificate (design 3.1, 8.3; CERT-16, AC 16). The claim
+ * is "no" from the commit on; this tells the consumers. `submissionId` is the approved submission
+ * the record held. Consumers: own mail, catalog (re-evaluate). Ids only: never the reason.
+ */
+export const SellerCertificationRevoked = defineEvent({
+  type: 'certification.seller-certification-revoked.v1',
+  aggregateType: 'seller-certification',
+  payload: {
+    sellerCertificationId: eventField.id(),
+    sellerId: eventField.id(),
+    submissionId: eventField.id(),
+    typeId: eventField.id(),
+  },
+});
+
 /** A reviewer confirmed a certificate with its issuer (design 3.2 rule 7). Consumer: catalog. */
 export const SellerCertificationIssuerConfirmed = defineEvent({
   type: 'certification.seller-certification-issuer-confirmed.v1',
@@ -135,6 +151,7 @@ export const CERTIFICATION_EVENTS: readonly EventDefinition[] = [
   SellerCertificationApproved,
   SellerCertificationChangesRequested,
   SellerCertificationDeclined,
+  SellerCertificationRevoked,
   SellerCertificationIssuerConfirmed,
   SellerCertificationExpired,
   SellerCertificationExpiryWarningDue,

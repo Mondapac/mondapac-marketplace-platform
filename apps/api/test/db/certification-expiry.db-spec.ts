@@ -553,7 +553,10 @@ describe.each(TEST_MARKETS)('certification expiry job in market %s (database)', 
   });
 
   it('uses the partial index A9 for the selection', async () => {
+    // A bitmap scan on another partial index plus a sort can cost the same on a
+    // tiny table; turn both off so the plan shows whether A9 serves the ordered read.
     await owner.query('SET enable_seqscan = off');
+    await owner.query('SET enable_bitmapscan = off');
     const plan = await owner.query<{ 'QUERY PLAN': string }>(
       `EXPLAIN SELECT id FROM certification.seller_certifications
        WHERE market_id = $1 AND status = 'approved' AND approved_boundary_at < $2
@@ -570,6 +573,7 @@ describe.each(TEST_MARKETS)('certification expiry job in market %s (database)', 
       [market.marketId, '2022-01-01T00:00:00Z', '2021-01-01T00:00:00Z', uuid7()],
     );
     await owner.query('RESET enable_seqscan');
+    await owner.query('RESET enable_bitmapscan');
     expect(plan.rows.map((r) => r['QUERY PLAN']).join('\n')).toContain(
       'seller_certifications_market_id_approved_boundary_at_idx',
     );

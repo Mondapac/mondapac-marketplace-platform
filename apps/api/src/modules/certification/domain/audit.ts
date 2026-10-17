@@ -56,6 +56,38 @@ export const SellerCertificationExpiredAudit = defineAuditAction({
   after: { submissionId: auditField.id(), typeRevisionId: auditField.id() },
 });
 
+/**
+ * An admin revoked the certificate (design 3.1, 11; AC 16, AC 22): one row in the unit of the
+ * change. Names the approved submission and its type revision (the keyed content hash is on that
+ * submission's row), the pending submission withdrawn in the same unit when there was one, and
+ * whether a note was given. Never the reason code (Market data) or the note.
+ */
+export const SellerCertificationRevokedAudit = defineAuditAction({
+  action: 'certification.seller-certification.revoked',
+  targetType: SELLER_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    submissionId: auditField.id(),
+    typeRevisionId: auditField.id(),
+    withdrawnSubmissionId: auditField.optional(auditField.id()),
+    noteGiven: auditField.boolean(),
+  },
+});
+
+/** The most history rows one read returns (design 11 full history; VER-14). */
+export const MAX_HISTORY_ROWS_SHOWN = 100;
+
+/**
+ * An admin read the full status history of a certificate (design 11; VER-14, AC 22), which
+ * decrypts the notes. One row per read: the history rows it returned, by id.
+ */
+export const HistoryViewed = defineAuditAction({
+  action: 'certification.history.viewed',
+  targetType: SELLER_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: { historyIds: auditField.listOf(auditField.id(), MAX_HISTORY_ROWS_SHOWN) },
+});
+
 /** One row per recorded review check (M6: a re-recording is a new row and a new audit row). */
 export const ReviewCheckRecorded = defineAuditAction({
   action: 'certification.review-check.recorded',
@@ -146,6 +178,8 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   SellerCertificationChangesRequestedAudit,
   SellerCertificationDeclinedAudit,
   SellerCertificationExpiredAudit,
+  SellerCertificationRevokedAudit,
+  HistoryViewed,
   ReviewCheckRecorded,
   ReviewScopeRecorded,
   IssuerConfirmationRecorded,

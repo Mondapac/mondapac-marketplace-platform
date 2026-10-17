@@ -19,7 +19,7 @@ export const DEFAULT_REVIEW_POLICY_DIR = path.resolve(
 
 const code = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/);
 const mode = z.enum(['THIRD_PARTY_DOCUMENT', 'SELF_DECLARATION']);
-const outcome = z.enum(['changes-requested', 'declined']);
+const outcome = z.enum(['changes-requested', 'declined', 'revoked']);
 const file = z.strictObject({
   market: z.string().regex(/^[A-Z][A-Z0-9_]{1,7}$/),
   note: z.string().optional(),

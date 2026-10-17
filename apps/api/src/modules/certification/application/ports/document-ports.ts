@@ -64,6 +64,7 @@ export type CertificateField =
   | 'submission-certificate-number'
   | 'submission-self-declaration-note'
   | 'decision-reason-text'
+  | 'history-note'
   | 'scope-location'
   | 'scope-text'
   | 'confirmation-reference'

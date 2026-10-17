@@ -196,6 +196,66 @@ export interface DecisionWrite {
   readonly historyId: Id<'CertificationHistory'>;
 }
 
+/** What a revoke needs of the record before and inside its unit (design 3.1). */
+export interface RevocationView {
+  readonly certificate: StoredCertificate;
+  /** The approved submission the record holds, with its type revision; null without one. */
+  readonly approved: {
+    readonly submissionId: Id<'Submission'>;
+    readonly typeRevisionId: Id<'CertificationTypeRevision'>;
+  } | null;
+}
+
+/**
+ * Everything a revoke writes in its one unit (design 3.1 last row, 3.2 row 2; data design 3.6,
+ * 3.13): the pending submission's withdrawal (cause `revoked`) when there is one, one history row
+ * with the reason and the sealed note, and the root's status. The approved submission's decision
+ * row is never touched (data design 3.6).
+ */
+export interface RevokeWrite {
+  readonly certificateId: Id<'SellerCertification'>;
+  readonly approvedSubmissionId: Id<'Submission'>;
+  /** The pending submission to withdraw in the same unit, or null. */
+  readonly withdrawnSubmissionId: Id<'Submission'> | null;
+  readonly fromStatus: SellerCertificationStatus;
+  readonly reasonCode: string;
+  readonly noteCiphertext: string | null;
+  readonly accountId: Id<'Account'>;
+  readonly revokedAt: Temporal.Instant;
+  readonly historyId: Id<'CertificationHistory'>;
+}
+
+/** The revoke as the seller's mail reads it (design 12): ids, codes and the record's status now. */
+export interface RevocationNotice {
+  readonly sellerId: Id<'Seller'>;
+  readonly typeCode: string;
+  readonly status: SellerCertificationStatus;
+  readonly approvedSubmissionId: Id<'Submission'> | null;
+  /** The reason code of the history row that moved the record to `revoked`; null without one. */
+  readonly reasonCode: string | null;
+}
+
+/** One row of the full status history (data design 3.13; design 11). The note is ciphertext. */
+export interface FullHistoryRow {
+  readonly id: Id<'CertificationHistory'>;
+  readonly fromStatus: SellerCertificationStatus | null;
+  readonly toStatus: SellerCertificationStatus;
+  readonly submissionId: Id<'Submission'> | null;
+  readonly actorKind: 'seller' | 'admin' | 'system';
+  readonly actorAccountId: Id<'Account'> | null;
+  readonly reasonCode: string | null;
+  readonly noteCiphertext: string | null;
+  readonly occurredAt: Temporal.Instant;
+}
+
+export interface FullHistoryPage {
+  readonly sellerId: Id<'Seller'>;
+  /** Newest first (instant, then id). */
+  readonly rows: readonly FullHistoryRow[];
+  /** True when older rows exist beyond this page. */
+  readonly more: boolean;
+}
+
 export interface SellerOverviewRow {
   readonly sellerId: Id<'Seller'>;
   readonly validTypeCodes: readonly string[];
@@ -253,6 +313,28 @@ export interface CertificateReviewRepository {
   ): Promise<void>;
   /** Writes the decision rows; call `lockForDecision` first in the same unit. */
   decide(market: MarketContext, write: DecisionWrite): Promise<void>;
+  /** The record and its approved submission, for a revoke; null when unknown in the Market. */
+  revocationView(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+  ): Promise<RevocationView | null>;
+  /** Writes the revoke rows; call `lockForDecision` first in the same unit. */
+  revoke(market: MarketContext, write: RevokeWrite): Promise<void>;
+  /** The revoke of a record, for the mail; null when the record is unknown in the Market. */
+  revocationNotice(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+  ): Promise<RevocationNotice | null>;
+  /**
+   * One page of the record's full history, newest first: at most `limit` rows older than the row
+   * `beforeId` (all from the newest when null). Null when the record, or the `beforeId` row of
+   * this record, is unknown in the Market.
+   */
+  historyPage(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+    page: { readonly beforeId: Id<'CertificationHistory'> | null; readonly limit: number },
+  ): Promise<FullHistoryPage | null>;
   /** Per requested seller (at most 100), the types with a valid and with a waiting certificate. */
   overview(
     market: MarketContext,

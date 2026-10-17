@@ -7,7 +7,7 @@ import {
   checkCodesFor,
   submissionStatusOf,
   type CheckResult,
-  type NegativeOutcome,
+  type ReasonOutcome,
   type ReviewPolicy,
   type SubmissionStatus,
 } from '../../domain/review';
@@ -127,8 +127,8 @@ export interface SellerCertificateReviewReadOutput {
     readonly reference: string | null;
     readonly recordedAt: string;
   } | null;
-  /** The reasons a reviewer may give, by outcome. */
-  readonly reasons: Readonly<Record<NegativeOutcome, readonly ReviewReasonView[]>>;
+  /** The reasons a reviewer may give, by outcome (`revoked`: the revoke form, slice 11). */
+  readonly reasons: Readonly<Record<ReasonOutcome, readonly ReviewReasonView[]>>;
   /** Other sellers' certificates with the same number or file; a hint, never a refusal. */
   readonly duplicateHints: readonly {
     readonly kind: 'number' | 'file';
@@ -342,7 +342,7 @@ function outputOf(
   const { certificate } = snapshot;
   const submission = snapshot.submission!;
   const latest = new Map(submission.checks.map((check) => [check.code, check]));
-  const reasonsOf = (outcome: NegativeOutcome): readonly ReviewReasonView[] =>
+  const reasonsOf = (outcome: ReasonOutcome): readonly ReviewReasonView[] =>
     policy.reasons
       .filter((reason) => reason.outcomes.includes(outcome))
       .map(({ code, check, nextStep }) => ({ code, check, nextStep }));
@@ -418,6 +418,7 @@ function outputOf(
     reasons: {
       'changes-requested': reasonsOf('changes-requested'),
       declined: reasonsOf('declined'),
+      revoked: reasonsOf('revoked'),
     },
     duplicateHints: hints.map((hint) => ({
       kind: hint.kind,

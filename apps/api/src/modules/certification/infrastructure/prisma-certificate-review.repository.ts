@@ -9,6 +9,8 @@ import type {
   DecisionNotice,
   DecisionWrite,
   DuplicateHint,
+  FullHistoryPage,
+  FullHistoryRow,
   OtherSubmission,
   ReviewChannel,
   ReviewHistoryRow,
@@ -16,6 +18,9 @@ import type {
   ReviewQueueEntry,
   ReviewSnapshot,
   ReviewSubmission,
+  RevocationNotice,
+  RevocationView,
+  RevokeWrite,
   ScopeWrite,
   SellerOverviewRow,
   StoredConfirmation,
@@ -540,6 +545,185 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
           : { statusChangedAt: toDate(write.decidedAt) }),
       },
     });
+  }
+
+  async revocationView(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+  ): Promise<RevocationView | null> {
+    const tx = this.prisma.tx(market);
+    const row = await tx.certificationSellerCertification.findFirst({
+      where: { marketId: market.marketId, id: certificateId },
+      include: CERTIFICATE_INCLUDE,
+    });
+    if (row === null) return null;
+    const certificate = toCertificate(
+      row,
+      await openIssuerRequestTypes(this.prisma, market, [row.sellerId]),
+      await newestSubmissions(this.prisma, market, [row]),
+    );
+    if (row.approvedSubmissionId === null) return { certificate, approved: null };
+    const approved = await tx.certificationSellerCertificationSubmission.findFirst({
+      where: {
+        marketId: market.marketId,
+        sellerCertificationId: certificateId,
+        id: row.approvedSubmissionId,
+      },
+      select: { id: true, typeRevisionId: true },
+    });
+    return {
+      certificate,
+      approved:
+        approved === null
+          ? null
+          : {
+              submissionId: approved.id as Id<'Submission'>,
+              typeRevisionId: approved.typeRevisionId as Id<'CertificationTypeRevision'>,
+            },
+    };
+  }
+
+  async revoke(market: MarketContext, write: RevokeWrite): Promise<void> {
+    const tx = this.prisma.tx(market);
+    const base = { marketId: market.marketId, tenantId: market.tenantId };
+    const at = toDate(write.revokedAt);
+    if (write.withdrawnSubmissionId !== null) {
+      // The pending renewal or correction leaves the queue with the revoke (design 3.2 row 2).
+      await tx.certificationSellerSubmissionDecision.create({
+        data: {
+          ...base,
+          submissionId: write.withdrawnSubmissionId,
+          outcome: 'withdrawn',
+          withdrawCause: 'revoked',
+          actorKind: 'admin',
+          actorAccountId: write.accountId,
+          decidedAt: at,
+        },
+        select: { submissionId: true },
+      });
+    }
+    await tx.certificationSellerCertificationHistory.create({
+      data: {
+        ...base,
+        id: write.historyId,
+        sellerCertificationId: write.certificateId,
+        fromStatus: write.fromStatus,
+        toStatus: 'revoked',
+        submissionId: write.approvedSubmissionId,
+        actorKind: 'admin',
+        actorAccountId: write.accountId,
+        reasonCode: write.reasonCode,
+        noteCiphertext: write.noteCiphertext,
+        occurredAt: at,
+      },
+      select: { id: true },
+    });
+    // The approved pointer stays (it names what was revoked); the status alone ends validity.
+    const { count } = await tx.certificationSellerCertification.updateMany({
+      where: {
+        marketId: market.marketId,
+        id: write.certificateId,
+        status: write.fromStatus,
+        approvedSubmissionId: write.approvedSubmissionId,
+        pendingSubmissionId: write.withdrawnSubmissionId,
+      },
+      data: { status: 'revoked', pendingSubmissionId: null, statusChangedAt: at },
+    });
+    // The version lock was taken first, so the record cannot have moved; refuse loudly if it did.
+    if (count !== 1) throw new StaleAggregateError('seller-certification', write.certificateId);
+  }
+
+  async revocationNotice(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+  ): Promise<RevocationNotice | null> {
+    const tx = this.prisma.tx(market);
+    const row = await tx.certificationSellerCertification.findFirst({
+      where: { marketId: market.marketId, id: certificateId },
+      select: {
+        sellerId: true,
+        status: true,
+        approvedSubmissionId: true,
+        type: { select: { code: true } },
+      },
+    });
+    if (row === null) return null;
+    const revoked = await tx.certificationSellerCertificationHistory.findFirst({
+      where: {
+        marketId: market.marketId,
+        sellerCertificationId: certificateId,
+        toStatus: 'revoked',
+      },
+      select: { reasonCode: true },
+      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+    });
+    return {
+      sellerId: row.sellerId as Id<'Seller'>,
+      typeCode: row.type.code,
+      status: row.status as SellerCertificationStatus,
+      approvedSubmissionId: row.approvedSubmissionId as Id<'Submission'> | null,
+      reasonCode: revoked?.reasonCode ?? null,
+    };
+  }
+
+  async historyPage(
+    market: MarketContext,
+    certificateId: Id<'SellerCertification'>,
+    page: { readonly beforeId: Id<'CertificationHistory'> | null; readonly limit: number },
+  ): Promise<FullHistoryPage | null> {
+    const tx = this.prisma.tx(market);
+    const root = await tx.certificationSellerCertification.findFirst({
+      where: { marketId: market.marketId, id: certificateId },
+      select: { sellerId: true },
+    });
+    if (root === null) return null;
+    const where = { marketId: market.marketId, sellerCertificationId: certificateId };
+    let older = {};
+    if (page.beforeId !== null) {
+      const cursor = await tx.certificationSellerCertificationHistory.findFirst({
+        where: { ...where, id: page.beforeId },
+        select: { id: true, occurredAt: true },
+      });
+      if (cursor === null) return null;
+      older = {
+        OR: [
+          { occurredAt: { lt: cursor.occurredAt } },
+          { occurredAt: cursor.occurredAt, id: { lt: cursor.id } },
+        ],
+      };
+    }
+    // Served by (market_id, seller_certification_id, occurred_at) (data design A13).
+    const rows = await tx.certificationSellerCertificationHistory.findMany({
+      where: { ...where, ...older },
+      select: {
+        id: true,
+        fromStatus: true,
+        toStatus: true,
+        submissionId: true,
+        actorKind: true,
+        actorAccountId: true,
+        reasonCode: true,
+        noteCiphertext: true,
+        occurredAt: true,
+      },
+      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+      take: page.limit + 1,
+    });
+    return {
+      sellerId: root.sellerId as Id<'Seller'>,
+      more: rows.length > page.limit,
+      rows: rows.slice(0, page.limit).map((h): FullHistoryRow => ({
+        id: h.id as Id<'CertificationHistory'>,
+        fromStatus: h.fromStatus as SellerCertificationStatus | null,
+        toStatus: h.toStatus as SellerCertificationStatus,
+        submissionId: h.submissionId as Id<'Submission'> | null,
+        actorKind: h.actorKind as FullHistoryRow['actorKind'],
+        actorAccountId: h.actorAccountId as Id<'Account'> | null,
+        reasonCode: h.reasonCode,
+        noteCiphertext: h.noteCiphertext,
+        occurredAt: toInstant(h.occurredAt),
+      })),
+    };
   }
 
   async overview(
