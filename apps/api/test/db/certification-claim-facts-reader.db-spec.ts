@@ -54,6 +54,7 @@ interface TypeSpec {
   readonly defaultBasis?: 'SELLER_REQUIRED' | 'NOT_APPLICABLE';
   readonly published?: boolean;
   readonly phrase?: string;
+  readonly mode?: 'THIRD_PARTY_DOCUMENT' | 'SELF_DECLARATION';
 }
 
 interface CertificateSpec {
@@ -65,6 +66,8 @@ interface CertificateSpec {
     readonly decision?: 'approved' | 'withdrawn' | 'none';
     readonly boundary?: boolean;
     readonly issuerState?: string | null;
+    /** A reviewer's full issuer confirmation of this submission (needs an issuer). */
+    readonly confirmed?: boolean;
   };
 }
 
@@ -81,15 +84,15 @@ async function seedTypeRow(
     await owner.query(
       `INSERT INTO certification.certification_types
          (id, market_id, tenant_id, code, verification_mode, status, published_revision_id, version, created_at)
-       VALUES ($1, $2, $3, $4, 'THIRD_PARTY_DOCUMENT', 'active', NULL, 1, $5)`,
-      [typeId, ...scope(target), spec.code, T0],
+       VALUES ($1, $2, $3, $4, $6, 'active', NULL, 1, $5)`,
+      [typeId, ...scope(target), spec.code, T0, spec.mode ?? 'THIRD_PARTY_DOCUMENT'],
     );
     await owner.query(
       `INSERT INTO certification.certification_type_revisions
          (id, market_id, tenant_id, type_id, revision_no, verification_mode, requires_issuer_registry,
           requires_document, requires_expiry, default_basis, auto_approve_self_declaration,
           badge_icon_key, author_account_id, created_at)
-       VALUES ($1, $2, $3, $4, 1, 'THIRD_PARTY_DOCUMENT', true, true, $5, $6, false, 'halal', $7, $8)`,
+       VALUES ($1, $2, $3, $4, 1, $9, $10, true, $5, $6, false, 'halal', $7, $8)`,
       [
         revisionId,
         ...scope(target),
@@ -98,6 +101,8 @@ async function seedTypeRow(
         spec.defaultBasis ?? 'SELLER_REQUIRED',
         uuid7(),
         T0,
+        spec.mode ?? 'THIRD_PARTY_DOCUMENT',
+        (spec.mode ?? 'THIRD_PARTY_DOCUMENT') === 'THIRD_PARTY_DOCUMENT',
       ],
     );
     await owner.query(
@@ -246,6 +251,31 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
         [marketId, tenantId, submissionId, T0],
       );
     }
+    if (approved.confirmed === true && issuerId !== null) {
+      const channelId = uuid7();
+      await owner.query(
+        `INSERT INTO certification.issuer_contact_channels
+           (id, market_id, tenant_id, issuer_id, kind, value, created_at)
+         VALUES ($1, $2, $3, $4, 'web-page', 'https://issuer.example/verify', $5)`,
+        [channelId, marketId, tenantId, issuerId, T0],
+      );
+      await owner.query(
+        `INSERT INTO certification.seller_issuer_confirmations
+           (market_id, tenant_id, submission_id, issuer_id, channel_id, confirmed_on,
+            reference_ciphertext, confirms_number, confirms_holder, recorded_by_account_id, recorded_at)
+         VALUES ($1, $2, $3, $4, $5, '2026-10-08', $6, true, true, $7, $8)`,
+        [
+          marketId,
+          tenantId,
+          submissionId,
+          issuerId,
+          channelId,
+          `v1.${'B'.repeat(40)}`,
+          uuid7(),
+          T0,
+        ],
+      );
+    }
     await owner.query(
       `UPDATE certification.seller_certifications SET approved_submission_id = $1 WHERE id = $2`,
       [submissionId, certificateId],
@@ -379,6 +409,9 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
           zoneAtApproval: 'Australia/Brisbane',
           issuerId: seeded.issuerId,
           issuerState: 'active',
+          verificationMode: 'THIRD_PARTY_DOCUMENT',
+          issuerDisplayName: `Issuer ${seeded.issuerId}`,
+          verifiedWithIssuer: false,
         },
       });
       expect(view.approved!.expiryDate!.toString()).toBe('2027-06-30');
@@ -387,6 +420,62 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
         addressZone: 'Australia/Brisbane',
       } as never;
       expect(sellerCertificateValidAt(view, zones, NOW)).toMatchObject({ valid: true });
+    });
+
+    it('reads the badge facts: verified with issuer only for the confirmed submission, mode of the type (AC 23)', async () => {
+      const documented = await seedType(market, { code: `badge-${tag}` });
+      const declared = await seedType(market, {
+        code: `self-${tag}`,
+        mode: 'SELF_DECLARATION',
+        requiresExpiry: false,
+      });
+      const confirmedSeller = uuid7();
+      const plainSeller = uuid7();
+      const declaringSeller = uuid7();
+      await seedCertificate(market, documented, {
+        sellerId: confirmedSeller,
+        approved: { issuerState: 'active', confirmed: true },
+      });
+      await seedCertificate(market, documented, {
+        sellerId: plainSeller,
+        approved: { issuerState: 'active' },
+      });
+      await seedCertificate(market, declared, {
+        sellerId: declaringSeller,
+        approved: { expiryDate: null },
+      });
+      const answers = await reader.sellerCertificates(market, [
+        {
+          sellerId: confirmedSeller as Id<'Seller'>,
+          typeCode: documented.code as CertificationTypeCode,
+        },
+        {
+          sellerId: plainSeller as Id<'Seller'>,
+          typeCode: documented.code as CertificationTypeCode,
+        },
+        {
+          sellerId: declaringSeller as Id<'Seller'>,
+          typeCode: declared.code as CertificationTypeCode,
+        },
+      ]);
+      expect(answers.map((a) => a.certificate?.approved?.verifiedWithIssuer)).toEqual([
+        true,
+        false,
+        false,
+      ]);
+      expect(answers[2]!.certificate!.approved).toMatchObject({
+        verificationMode: 'SELF_DECLARATION',
+        issuerId: null,
+        issuerDisplayName: null,
+      });
+      // The other Market never sees this Market's confirmation.
+      const [elsewhere] = await reader.sellerCertificates(other, [
+        {
+          sellerId: confirmedSeller as Id<'Seller'>,
+          typeCode: documented.code as CertificationTypeCode,
+        },
+      ]);
+      expect(elsewhere!.certificate).toBeNull();
     });
 
     it('answers aligned with the request whatever the order, keyed, with duplicates and misses', async () => {

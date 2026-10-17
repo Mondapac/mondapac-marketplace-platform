@@ -13,6 +13,7 @@ import type {
   TypeAndPolicy,
 } from '../application/ports/claim-facts.ports';
 import type { TimeZoneId } from '../domain/claim-types';
+import { VERIFICATION_MODES, type VerificationMode } from '../domain/type-revision';
 import type {
   IssuerState,
   SellerCertificationStatus,
@@ -33,8 +34,8 @@ const BASES: readonly string[] = ['SELLER_REQUIRED', 'NOT_APPLICABLE'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/u;
 
 /**
- * {@link ClaimFactsReader} over the module's own raw read port (ADR-0030; data design 7.3, S1
- * and S2 in their slice-1 forms). Each call opens one read-only unit of the request's Market and
+ * {@link ClaimFactsReader} over the module's own raw read port (ADR-0030; data design 7.3: S1
+ * with the badge columns of slice 10, S2 in its slice-1 form). Each call opens one read-only unit of the request's Market and
  * runs one statement in it, so a basis is decided from one snapshot. Answers follow the order of
  * the request, one per request, each carrying its key; the statements' row order is never used
  * (rows are matched by their position in the call's arrays or by code). Anything unexpected
@@ -149,16 +150,25 @@ function viewOf(row: SellerBasisRow): SellerCertificationView {
   const submission = parseId(row.submissionId);
   const revision = parseId(row.typeRevisionId);
   if (!submission.ok || !revision.ok) throw new Error('submission id is not an id');
+  if (!(VERIFICATION_MODES as readonly string[]).includes(row.verificationMode)) {
+    throw new Error('certification type has an invalid verification mode');
+  }
   let issuerId: Id | null = null;
   let issuerState: IssuerState | null = null;
+  let issuerDisplayName: string | null = null;
   if (row.issuerId !== null) {
     const issuer = parseId(row.issuerId);
     if (!issuer.ok) throw new Error('issuer id is not an id');
     if (row.issuerState === null || !ISSUER_STATES.includes(row.issuerState)) {
       throw new Error('issuer has no readable state');
     }
+    // The registry name is NOT NULL; an issuer without one is unreadable (fail closed).
+    if (row.issuerName === null || row.issuerName.length === 0) {
+      throw new Error('issuer has no readable name');
+    }
     issuerId = issuer.value;
     issuerState = row.issuerState as IssuerState;
+    issuerDisplayName = row.issuerName;
   }
   // A type that requires an expiry and a decision without a boundary is not valid: no expiry
   // date reaches the measure, which answers `expiry-missing`.
@@ -167,11 +177,15 @@ function viewOf(row: SellerBasisRow): SellerCertificationView {
   return view({
     submissionId: submission.value,
     typeRevisionId: revision.value,
+    verificationMode: row.verificationMode as VerificationMode,
     requiresExpiry: row.requiresExpiry,
     expiryDate,
     zoneAtApproval: row.approvedZone as TimeZoneId,
     issuerId,
     issuerState,
+    issuerDisplayName,
+    // Read from the approved submission only: a renewal starts without it (design 3.2 rule 7).
+    verifiedWithIssuer: row.verifiedWithIssuer,
   });
 }
 
