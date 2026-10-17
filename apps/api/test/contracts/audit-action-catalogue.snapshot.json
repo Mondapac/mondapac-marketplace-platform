@@ -63,6 +63,102 @@
     }
   },
   {
+    "action": "certification.issuer.activated",
+    "targetType": "certification.issuer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "typeId": "id"
+    }
+  },
+  {
+    "action": "certification.issuer.closed-to-new",
+    "targetType": "certification.issuer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "typeId": "id"
+    }
+  },
+  {
+    "action": "certification.issuer.created",
+    "targetType": "certification.issuer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "accreditationNumberGiven": "boolean",
+      "typeId": "id"
+    }
+  },
+  {
+    "action": "certification.issuer.derecognised",
+    "targetType": "certification.issuer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "affectedCertificates": "integer",
+      "supersededProposalId": "optional(id)",
+      "typeId": "id"
+    }
+  },
+  {
+    "action": "certification.issuer.expert-reference-viewed",
+    "targetType": "certification.issuer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "optional(id)"
+    }
+  },
+  {
+    "action": "certification.issuer.reactivation-approved",
+    "targetType": "certification.issuer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id"
+    }
+  },
+  {
+    "action": "certification.issuer.reactivation-requested",
+    "targetType": "certification.issuer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id",
+      "reasonGiven": "boolean"
+    }
+  },
+  {
+    "action": "certification.relaxation-proposal.rejected",
+    "targetType": "certification.relaxation-proposal",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "subject": "enumOf(type-revision|claim-policy-revision|issuer-reactivation|type-reactivation)",
+      "subjectId": "id"
+    }
+  },
+  {
+    "action": "certification.relaxation-proposal.withdrawn",
+    "targetType": "certification.relaxation-proposal",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "subject": "enumOf(type-revision|claim-policy-revision|issuer-reactivation|type-reactivation)",
+      "subjectId": "id"
+    }
+  },
+  {
     "action": "certification.review-check.recorded",
     "targetType": "certification.seller-certification",
     "targetId": "id",
@@ -156,6 +252,72 @@
       "submissionId": "id",
       "typeRevisionId": "id",
       "withdrawnSubmissionId": "optional(id)"
+    }
+  },
+  {
+    "action": "certification.type.deactivated",
+    "targetType": "certification.type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "publishedRevisionId": "id"
+    }
+  },
+  {
+    "action": "certification.type.reactivation-approved",
+    "targetType": "certification.type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id"
+    }
+  },
+  {
+    "action": "certification.type.reactivation-requested",
+    "targetType": "certification.type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id",
+      "reasonGiven": "boolean"
+    }
+  },
+  {
+    "action": "certification.type.relaxation-approved",
+    "targetType": "certification.type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id",
+      "revisionId": "id"
+    }
+  },
+  {
+    "action": "certification.type.relaxation-requested",
+    "targetType": "certification.type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id",
+      "reasonGiven": "boolean",
+      "revisionId": "id"
+    }
+  },
+  {
+    "action": "certification.type.revised",
+    "targetType": "certification.type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "claimTermsChanged": "boolean",
+      "reasonGiven": "boolean",
+      "revisionId": "id"
     }
   },
   {

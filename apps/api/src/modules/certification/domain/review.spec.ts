@@ -136,6 +136,8 @@ describe('approval guards', () => {
     hasScope: true,
     requiresIssuerRegistry: true,
     issuer: { state: 'active' as const, typeMatches: true },
+    typeActive: true,
+    hasApproval: false,
     boundary: NOW.add({ hours: 5 }),
     now: NOW,
     selfDeclared: null,
@@ -179,6 +181,11 @@ describe('approval guards', () => {
       code: 'issuer.not-active',
     });
     expect(approvalRefusal({ ...ok, issuer: null })).toEqual({ code: 'issuer.not-active' });
+  });
+
+  it('adds no new certificate of an inactive type; a renewal of an approved one goes on (AC 19, CERT-03)', () => {
+    expect(approvalRefusal({ ...ok, typeActive: false })).toEqual({ code: 'type.inactive' });
+    expect(approvalRefusal({ ...ok, typeActive: false, hasApproval: true })).toBeNull();
   });
 
   it('refuses a boundary that is not after now', () => {

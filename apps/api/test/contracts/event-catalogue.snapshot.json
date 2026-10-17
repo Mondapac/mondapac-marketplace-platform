@@ -162,12 +162,51 @@
     }
   },
   {
+    "type": "certification.certification-type-activated.v1",
+    "aggregateType": "certification-type",
+    "fields": {
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.certification-type-deactivated.v1",
+    "aggregateType": "certification-type",
+    "fields": {
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.certification-type-revised.v1",
+    "aggregateType": "certification-type",
+    "fields": {
+      "typeId": "id",
+      "revisionId": "id",
+      "claimTermsChanged": "boolean"
+    }
+  },
+  {
+    "type": "certification.issuer-deactivated.v1",
+    "aggregateType": "issuer",
+    "fields": {
+      "issuerId": "id",
+      "form": "enumOf(closed-to-new|derecognised)"
+    }
+  },
+  {
     "type": "certification.issuer-request-answered.v1",
     "aggregateType": "issuer-request",
     "fields": {
       "issuerRequestId": "id",
       "outcome": "enumOf(issuer-added|not-accepted)",
       "sellerId": "id"
+    }
+  },
+  {
+    "type": "certification.relaxation-proposed.v1",
+    "aggregateType": "relaxation-proposal",
+    "fields": {
+      "proposalId": "id",
+      "subject": "enumOf(type-revision|claim-policy-revision|issuer-reactivation|type-reactivation)"
     }
   },
   {

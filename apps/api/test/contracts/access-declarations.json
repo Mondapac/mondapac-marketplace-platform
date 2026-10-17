@@ -129,6 +129,7 @@
   },
   { "name": "certification.seed-certification-types", "rule": "system" },
   { "name": "certification.send-decision-mail", "rule": "system" },
+  { "name": "certification.send-derecognition-mail", "rule": "system" },
   { "name": "certification.send-expiry-mail", "rule": "system" },
   { "name": "certification.send-issuer-request-mail", "rule": "system" },
   {

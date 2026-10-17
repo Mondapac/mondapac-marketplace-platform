@@ -29,3 +29,15 @@ export const DOCUMENT_DATA_KEY_LABEL = fieldLabel('certification.document.data-k
 
 /** The purpose of `seller_certification_submissions.content_hash` (data design 4.2). */
 export const SUBMISSION_CONTENT_HASH_PURPOSE = hashPurpose('certification.submission.content');
+
+/**
+ * The registry's admin text (data design CE7, CE8, 3.22). The expert approval is sealed under the
+ * Market's platform subject, with one label per column that holds it; the change reason under the
+ * key of the row that holds it (a type revision or a relaxation proposal), so one label serves both.
+ */
+export const EXPERT_REFERENCE_LABELS = Object.freeze({
+  issuer: fieldLabel('certification.issuer.expert-reference'),
+  proposal: fieldLabel('certification.relaxation-proposal.expert-reference'),
+});
+
+export const CHANGE_REASON_LABEL = fieldLabel('certification.registry-change.reason');
