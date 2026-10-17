@@ -48,6 +48,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   HOSTED_MARKETS: hostedMarkets,
   API_DOCS_ENABLED: z.enum(['true', 'false']).default('false'),
+  CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: z.enum(['true', 'false']).default('false'),
   MARKET_CONFIG_DIR: z.string().min(1).default(DEFAULT_MARKET_CONFIG_DIR),
   SERVICE_AREA_CONFIG_DIR: z.string().min(1).default(DEFAULT_SERVICE_AREA_CONFIG_DIR),
   LOCALE_CONFIG_DIR: z.string().min(1).default(DEFAULT_LOCALE_CONFIG_DIR),
@@ -121,6 +122,8 @@ export interface AppConfig {
   readonly hostedMarkets: readonly MarketId[];
   /** Serve Swagger UI at /docs. Off unless explicitly enabled (fails closed). */
   readonly apiDocsEnabled: boolean;
+  /** A reviewer may download a submitted certificate file. Off until the PDF scan hardening lands. */
+  readonly certificationReviewerDocumentsEnabled: boolean;
   /** Directories holding `<CODE>.json` Market configuration (ADR-0003 decision 5). */
   readonly marketConfigDirs: readonly string[];
   /** Directories holding `<MARKET>.json` ServiceArea postcode sets (ADR-0005 decision 7). */
@@ -272,6 +275,8 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     logLevel: parsed.data.LOG_LEVEL,
     hostedMarkets: Object.freeze([...parsed.data.HOSTED_MARKETS]),
     apiDocsEnabled: parsed.data.API_DOCS_ENABLED === 'true',
+    certificationReviewerDocumentsEnabled:
+      parsed.data.CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED === 'true',
     marketConfigDirs: Object.freeze([path.resolve(parsed.data.MARKET_CONFIG_DIR)]),
     serviceAreaConfigDirs: Object.freeze([path.resolve(parsed.data.SERVICE_AREA_CONFIG_DIR)]),
     localeConfigDirs: Object.freeze([path.resolve(parsed.data.LOCALE_CONFIG_DIR)]),

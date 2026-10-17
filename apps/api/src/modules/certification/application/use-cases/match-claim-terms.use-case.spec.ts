@@ -92,6 +92,7 @@ describe.each(['AU', 'ZZ'])('certification facade reads, Market %s', (marketCode
     matchClaimTermsSystem: new MatchClaimTermsSystem(gate, reader),
     certificationTypes: new CertificationTypes(gate, reader),
     certificationTypesSystem: new CertificationTypesSystem(gate, reader),
+    sellerCertificateOverview: undefined as never,
   });
   const own = marketCode === 'AU' ? 'halal' : 'зед чисто';
   const other = marketCode === 'AU' ? 'зед чисто' : 'halal';

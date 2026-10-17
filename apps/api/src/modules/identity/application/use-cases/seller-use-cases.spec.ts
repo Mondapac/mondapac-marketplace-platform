@@ -277,11 +277,12 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         .map((r) => [r.scope, r.kind, r.seedCode, r.permissionKeys.length]),
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
-      ['platform', 'default', 'onboarding-compliance', 7],
+      ['platform', 'default', 'onboarding-compliance', 9],
       ['platform', 'default', 'catalogue-moderator', 6],
       ['platform', 'default', 'operations-support', 5],
       ['platform', 'default', 'finance', 2],
-      ['platform', 'default', 'viewer', 12],
+      ['platform', 'default', 'viewer', 13],
+      ['platform', 'default', 'certification-reviewer', 5],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 6],
       ['seller', 'default', 'order-fulfilment', 0],
@@ -312,6 +313,8 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         .sort(),
     );
     expect(keysOf('onboarding-compliance')).toEqual([
+      'certification.seller-certificate.review',
+      'certification.seller-certificate.view',
       'identity.seller-access.approve',
       'identity.seller-access.suspend',
       'identity.seller-access.view',
@@ -333,6 +336,13 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'identity.customer-account.view',
       'identity.seller-access.view',
       'identity.seller-account.reset-second-factor',
+      'sellers.seller.view',
+    ]);
+    expect(keysOf('certification-reviewer')).toEqual([
+      'certification.seller-certificate.review',
+      'certification.seller-certificate.view',
+      'identity.seller-access.view',
+      'sellers.business-details.view',
       'sellers.seller.view',
     ]);
     expect(keysOf('finance')).toEqual(['identity.seller-access.view', 'sellers.seller.view']);
@@ -491,10 +501,10 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
     it('creates the two system roles once; a second run creates none', async () => {
       const s = setUp();
 
-      // 2 system and 10 default roles (slice 8a-1; the default roles have their own suite).
+      // 2 system and 11 default roles (slice 8a-1; the default roles have their own suite).
       await expect(s.seed.execute(system, {})).resolves.toEqual({
         ok: true,
-        value: { created: 12, upgraded: 0 },
+        value: { created: 13, upgraded: 0 },
       });
       await expect(s.seed.execute(system, {})).resolves.toEqual({
         ok: true,

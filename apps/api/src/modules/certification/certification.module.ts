@@ -1,5 +1,7 @@
 import { Module, type FactoryProvider } from '@nestjs/common';
+import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { registerPermissions } from '../../platform/authz';
+import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { MarketRegistry } from '../../platform/market-config/market-registry';
@@ -8,6 +10,7 @@ import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-
 import { USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { IdentityModule } from '../identity';
 import { SellersModule } from '../sellers';
 import {
   APPROVED_SELLER_ZONES,
@@ -41,7 +44,13 @@ import { SeedCertificationTypes } from './application/use-cases/seed-certificati
 import { certificationTypeRepositoryProvider } from './infrastructure/certification-type-repository.provider';
 import { CheckedInTypeSeed } from './infrastructure/seed/checked-in-type-seed';
 import { CERTIFICATION_PERMISSIONS } from './contracts/permissions';
+import { CERTIFICATION_AUDIT_ACTIONS } from './domain/audit';
 import { CERTIFICATION_EVENTS } from './domain/events';
+import { SellerCertificateOverview } from './application/use-cases/seller-certificate-overview.use-case';
+import { SendDecisionMail } from './application/use-cases/send-decision-mail.use-case';
+import { reviewProviders } from './infrastructure/review-providers';
+import { AdminCertificateReviewController } from './presentation/admin-certificate-review.controller';
+import { decisionMailSubscriptions } from './presentation/subscribers/decision-mail.subscriptions';
 import { sellerCertificateProviders } from './infrastructure/seller-certificate-providers';
 import { OwnCertificateController } from './presentation/own-certificate.controller';
 import { seedCertificationTypesJob } from './presentation/jobs/seed-certification-types.job';
@@ -78,13 +87,19 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
  * the seller basis and the type default; policy rows arrive with slice 13.
  */
 @Module({
-  imports: [PersistenceModule, SellersModule],
-  controllers: [OwnCertificateController],
+  imports: [PersistenceModule, SellersModule, IdentityModule],
+  controllers: [OwnCertificateController, AdminCertificateReviewController],
   providers: [
     PersistenceModule.outboxWriterFor('certification'),
     registerEvents('certification', CERTIFICATION_EVENTS),
     registerPermissions('certification', CERTIFICATION_PERMISSIONS),
+    PersistenceModule.auditWriterFor('certification'),
+    registerAuditActions('certification', CERTIFICATION_AUDIT_ACTIONS),
+    registerSubscriptionsFrom('certification', [SendDecisionMail], (mail: SendDecisionMail) =>
+      decisionMailSubscriptions(mail),
+    ),
     ...sellerCertificateProviders,
+    ...reviewProviders,
     PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
     claimFactsReaderProvider,
@@ -142,6 +157,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         MatchClaimTermsSystem,
         CertificationTypes,
         CertificationTypesSystem,
+        SellerCertificateOverview,
       ],
       useFactory: (
         evaluateClaims: EvaluateClaims,
@@ -150,6 +166,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         matchClaimTermsSystem: MatchClaimTermsSystem,
         certificationTypes: CertificationTypes,
         certificationTypesSystem: CertificationTypesSystem,
+        sellerCertificateOverview: SellerCertificateOverview,
       ) =>
         new CertificationFacadeImplementation({
           evaluateClaims,
@@ -158,6 +175,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
           matchClaimTermsSystem,
           certificationTypes,
           certificationTypesSystem,
+          sellerCertificateOverview,
         }),
     },
   ],

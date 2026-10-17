@@ -10,6 +10,7 @@ import {
 import sharp from 'sharp';
 import {
   fakeCounterKeys,
+  fakeIndexKeys,
   FakeCipher,
   MemoryCertificates,
   MemoryCounters,
@@ -134,6 +135,7 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
       cipher,
       counters,
       counterKeys: fakeCounterKeys,
+      indexKeys: fakeIndexKeys,
       zones: zonesOf({
         [sellerId]: { zone, addressZone: zone },
         [otherSeller]: { zone, addressZone: zone },

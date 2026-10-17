@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, PendingEvent, Result } from '@mondapac/shared-kernel';
+import type { CertificateIndexKeys } from '../../src/modules/certification/application/ports/review.ports';
 import type { RateCounter } from '../../src/modules/certification/application/ports/rate-counters';
 import type {
   CertificateTypeCatalog,
@@ -427,6 +428,18 @@ export class MemoryCounters implements RateCounterRepository {
 export const fakeCounterKeys: RateCounterKeys = {
   keyOf: (market, kind, subject) =>
     new Uint8Array(createHash('sha256').update(`${kind}|${market.marketId}|${subject}`).digest()),
+};
+
+/** A keyed index stand-in: a hash of the market, type and input; the real one is an HMAC. */
+export const fakeIndexKeys: CertificateIndexKeys = {
+  numberHmac: (market, typeId, normalised) =>
+    new Uint8Array(
+      createHash('sha256').update(`n|${market.marketId}|${typeId}|${normalised}`).digest(),
+    ),
+  documentHmac: (market, typeId, bytes) =>
+    new Uint8Array(
+      createHash('sha256').update(`d|${market.marketId}|${typeId}|`).update(bytes).digest(),
+    ),
 };
 
 /** Reversible stand-in for the subject key: not secret, but shaped like the real envelope. */

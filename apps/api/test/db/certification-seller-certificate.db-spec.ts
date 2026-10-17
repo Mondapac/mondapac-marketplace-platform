@@ -196,6 +196,7 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       objectKey: `certification/${sellerId}/${id}`,
       dataKeyEnvelope: ENVELOPE,
       cleanSha256: sha(id),
+      indexHmac: new Uint8Array(32).fill(7),
       now: T0,
       ...overrides,
     };
@@ -761,6 +762,7 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
         documentIds: [document.id],
         fromStatus: 'draft',
         toStatus: 'in-review',
+        numberIndexHmac: null,
         historyId: uuid7() as Id<'CertificationHistory'>,
       };
       return { typeId, seller, id, document, write };

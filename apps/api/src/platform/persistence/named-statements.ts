@@ -31,6 +31,14 @@ export function isApprovedStatement(request: RawStatementRequest, market: Market
   const { sql, values } = args as { sql?: unknown; values?: unknown };
   if (typeof sql !== 'string' || !Array.isArray(values)) return false;
   if (operation === '$queryRaw') {
+    if (sql === SHARE_PENDING_SUBMISSION_TEXT) {
+      return (
+        values.length === 3 &&
+        values[0] === market.marketId &&
+        values[1] === market.tenantId &&
+        typeof values[2] === 'string'
+      );
+    }
     return (
       sql === LOCK_STOCK_ITEMS_TEXT &&
       values.length === 3 &&
@@ -75,6 +83,11 @@ export interface LockedStockItem {
   readonly version: number;
 }
 
+/** The root a review check or scope reading hangs on, share-locked (certification review R3). */
+export interface SharedPendingRoot {
+  readonly certificateId: string;
+}
+
 /** The checked-in list: statement name to its input and its rows. */
 export interface NamedStatements {
   /**
@@ -86,6 +99,16 @@ export interface NamedStatements {
   readonly 'inventory.lock-stock-items': {
     readonly params: { readonly ids: readonly string[] };
     readonly row: LockedStockItem;
+  };
+  /**
+   * Takes `FOR SHARE` on the seller certificate whose pending submission is `submissionId`, in the
+   * unit's Market and tenant. `FOR SHARE`, not `FOR KEY SHARE`: only it conflicts with the
+   * `FOR NO KEY UPDATE` lock of the version update, so a decision and a recorded check serialise
+   * while two checks do not block each other. No row means the submission is not pending.
+   */
+  readonly 'certification.share-pending-submission': {
+    readonly params: { readonly submissionId: string };
+    readonly row: SharedPendingRoot;
   };
 }
 
@@ -152,6 +175,40 @@ async function lockStockItems(
   }));
 }
 
+/** The statement of `certification.share-pending-submission`: Market, tenant, then the submission. */
+export function sharePendingSubmissionStatement(
+  market: MarketContext,
+  submissionId: string,
+): Prisma.Sql {
+  return Prisma.sql`
+    SELECT c.id
+      FROM "certification"."seller_certifications" AS c
+     WHERE c.market_id = ${market.marketId}
+       AND c.tenant_id = ${market.tenantId}
+       AND c.pending_submission_id = ${submissionId}::uuid
+       FOR SHARE OF c`;
+}
+
+async function sharePendingSubmission(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'certification.share-pending-submission'>,
+): Promise<SharedPendingRoot[]> {
+  const name = 'certification.share-pending-submission';
+  if (typeof params.submissionId !== 'string' || !UUID.test(params.submissionId)) {
+    throw new NamedStatementRefusedError(name, 'ids-malformed');
+  }
+  const rows = (await runner.query(
+    sharePendingSubmissionStatement(market, params.submissionId),
+  )) as { id: string }[];
+  return rows.map((row) => ({ certificateId: row.id }));
+}
+
+const SHARE_PENDING_SUBMISSION_TEXT = sharePendingSubmissionStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+).sql;
+
 /** The text the guard recognises for `inventory.lock-stock-items`, taken from the builder itself. */
 const LOCK_STOCK_ITEMS_TEXT = lockStockItemsStatement(
   { marketId: 'XX', tenantId: 'x' } as MarketContext,
@@ -167,7 +224,17 @@ export async function runNamedStatement<K extends NamedStatementName>(
 ): Promise<NamedStatementRow<K>[]> {
   switch (name) {
     case 'inventory.lock-stock-items':
-      return await lockStockItems(runner, market, params);
+      return await lockStockItems(
+        runner,
+        market,
+        params as NamedStatementParams<'inventory.lock-stock-items'>,
+      );
+    case 'certification.share-pending-submission':
+      return await sharePendingSubmission(
+        runner,
+        market,
+        params as NamedStatementParams<'certification.share-pending-submission'>,
+      );
     default:
       throw new Error('Unknown named statement');
   }

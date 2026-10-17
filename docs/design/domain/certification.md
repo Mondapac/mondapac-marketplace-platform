@@ -1029,6 +1029,14 @@ Javad has the pace of `identity` and `sellers`.
 | Byte encryption on `SubjectKeyService` (T6 A accepted) | 4 |
 | Not pulled: the extension-point registry and `AttributeSchema` (fixed form; brief s11), Redis, Market configuration in the database | — |
 
+### 14.4 Slice 7 as built (admin review; 2026-10-17)
+- **Keys.** `certification.seller-certificate.view` (queue, `sellerCertificateOverview`), `.review` (page, checks, scope, issuer confirmation, files) and the protected `.approve`, which all three decisions need (approve, request changes, decline). A default role never lists a protected key, so the new default role `certification-reviewer` and `onboarding-compliance` v5 hold view and review; the Platform Administrator grants `.approve` in a custom role (the pricing H4 precedent). `viewer` v10 gains view.
+- **Checks and reasons** are checked-in Market files, `config/certification-review/<MARKET>.json` (ZZ in code for tests), loaded by `CheckedInReviewPolicy`; a Market without a file cannot be reviewed (fail closed). The words are working texts until Reza's ux-copy.
+- **Duplicate hint.** HMAC-SHA-256 rows (`certificate_number_index`, `document_index`) are written at submit and upload under the module's stack secret, so the hint needs no decryption and no key at review time. They exist only for files and submissions made after this migration. The erasure handler that calls `eraseIndexRows` (L4) is not wired yet.
+- **Late confirmation** is allowed on the approved submission; it moves the record version (the next decision names the new one) and publishes `seller-certification-issuer-confirmed.v1`.
+- **Reviewer file download** is `GET .../documents/{id}`, off unless `CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED=true` (the PDF scan hardening of PR 382 follow-up has to merge first). The review page lists the files either way.
+- **Mail.** Approved, changes requested and declined mails go to the seller Owner through the module's own events (`certification.*-mail` subscriptions); the Market's plain reason label is in the text, the reviewer's free text and the number never are.
+
 ### 14.3 Spikes (run, not merged)
 | # | Spike |
 |---|---|

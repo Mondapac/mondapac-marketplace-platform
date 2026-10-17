@@ -15,6 +15,8 @@ export {
   type CertificationUnavailable,
   type CertificationValidationFailed,
   type ClaimTextInput,
+  type SellerCertificateOverviewRow,
 } from './certification.facade';
 export { CERTIFICATION_PERMISSIONS } from './permissions';
+export { CERTIFICATION_AUDIT_ACTIONS } from '../domain/audit';
 export { CERTIFICATION_EVENTS } from '../domain/events';

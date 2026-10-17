@@ -107,11 +107,13 @@ export class OwnCertificateUploadDocument extends UseCase<
 
     // Cheap checks first: the certificate is the seller's, open for edit and has room.
     const checked = await deps.unitOfWork
-      .run<{ ok: true } | { refusal: OwnCertificateUploadDocumentFailure }, never>(
-        market,
-        async () => ok(await this.#room(context, owner.sellerId, certificateId)),
-        { readOnly: true },
-      )
+      .run<
+        | { ok: true; typeId: Id<'CertificationType'> }
+        | { refusal: OwnCertificateUploadDocumentFailure },
+        never
+      >(market, async () => ok(await this.#room(context, owner.sellerId, certificateId)), {
+        readOnly: true,
+      })
       .catch((error: unknown) => storeFailure(context, 'certification.upload.read', error));
     if (!checked.ok) return checked;
     if ('refusal' in checked.value) return err(checked.value.refusal);
@@ -128,6 +130,8 @@ export class OwnCertificateUploadDocument extends UseCase<
     }
     const file = inspected.value;
 
+    // The keyed index of the bytes (design 10.2), computed outside the unit with the other crypto.
+    const indexHmac = deps.indexKeys.documentHmac(market, checked.value.typeId, file.bytes);
     const documentId = deps.ids.next<'UploadedDocument'>();
     const sealed = await this.#seal(context, owner.sellerId, documentId, file.bytes);
     if (!sealed.ok) return sealed;
@@ -168,6 +172,7 @@ export class OwnCertificateUploadDocument extends UseCase<
           objectKey: vaulted.objectKey,
           dataKeyEnvelope: vaulted.dataKeyEnvelope,
           cleanSha256: vaulted.cleanSha256,
+          indexHmac,
           now,
         });
         return ok({
@@ -191,7 +196,9 @@ export class OwnCertificateUploadDocument extends UseCase<
     context: CallContext,
     sellerId: Id<'Seller'>,
     certificateId: Id<'SellerCertification'>,
-  ): Promise<{ ok: true } | { refusal: OwnCertificateUploadDocumentFailure }> {
+  ): Promise<
+    { ok: true; typeId: Id<'CertificationType'> } | { refusal: OwnCertificateUploadDocumentFailure }
+  > {
     const { market } = context;
     const { certificates } = this.deps;
     const stored = await certificates.findOwn(market, sellerId, certificateId);
@@ -203,7 +210,7 @@ export class OwnCertificateUploadDocument extends UseCase<
     if (documents.length >= MAX_DOCUMENTS_PER_CERTIFICATE) {
       return { refusal: { code: 'document.limit-reached' } };
     }
-    return { ok: true };
+    return { ok: true, typeId: stored.typeId };
   }
 
   async #seal(

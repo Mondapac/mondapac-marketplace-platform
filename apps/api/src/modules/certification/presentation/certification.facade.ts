@@ -1,9 +1,11 @@
+import { err } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { EvaluateClaims } from '../application/use-cases/evaluate-claims.use-case';
 import type { EvaluateClaimsSystem } from '../application/use-cases/evaluate-claims-system.use-case';
 import type { CertificationTypes } from '../application/use-cases/certification-types.use-case';
 import type { CertificationTypesSystem } from '../application/use-cases/certification-types-system.use-case';
+import type { SellerCertificateOverview } from '../application/use-cases/seller-certificate-overview.use-case';
 import type { MatchClaimTerms } from '../application/use-cases/match-claim-terms.use-case';
 import type { MatchClaimTermsSystem } from '../application/use-cases/match-claim-terms-system.use-case';
 import type {
@@ -12,6 +14,7 @@ import type {
   CertificationUnavailable,
   CertificationValidationFailed,
   ClaimTextInput,
+  SellerCertificateOverviewRow,
 } from '../contracts/certification.facade';
 import type { ClaimTermMatch } from '../domain/claim-text-matcher';
 import type { ClaimDecision, ClaimQuery } from '../domain/claim-types';
@@ -24,6 +27,7 @@ export interface CertificationFacadeUseCases {
   readonly matchClaimTermsSystem: MatchClaimTermsSystem;
   readonly certificationTypes: CertificationTypes;
   readonly certificationTypesSystem: CertificationTypesSystem;
+  readonly sellerCertificateOverview: SellerCertificateOverview;
 }
 
 type Failure = AccessDenied | CertificationValidationFailed | CertificationUnavailable;
@@ -67,5 +71,18 @@ export class CertificationFacadeImplementation implements CertificationFacade {
         ? this.useCases.certificationTypesSystem
         : this.useCases.certificationTypes;
     return useCase.execute(context, { filter });
+  }
+
+  async sellerCertificateOverview(
+    context: CallContext,
+    sellerIds: readonly string[],
+  ): Promise<Result<readonly SellerCertificateOverviewRow[], Failure>> {
+    const result = await this.useCases.sellerCertificateOverview.execute(context, { sellerIds });
+    if (result.ok) return result;
+    const { error } = result;
+    if (error.code === 'access.denied' || error.code === 'validation.failed') {
+      return err(error);
+    }
+    return err({ code: 'certification.unavailable' });
   }
 }

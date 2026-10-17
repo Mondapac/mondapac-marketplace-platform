@@ -304,7 +304,8 @@ describe('reviewer photo routes over HTTP (integration)', () => {
       expect(read?.get?.responses).toHaveProperty(status);
       expect(down?.post?.responses).toHaveProperty(status);
     }
-  });
+    // Boots the application twice: allow for a loaded machine.
+  }, 30_000);
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
     it('lists the photos of a revision in order for a viewer, with no-store', async () => {

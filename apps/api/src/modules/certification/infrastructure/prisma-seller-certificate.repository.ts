@@ -18,13 +18,13 @@ import type { IssuerState, SellerCertificationStatus } from '../domain/validity'
 /** The partial unique index of data design 3.4: one open certificate per seller and type (T1). */
 const UNIQUE_OPEN_CERTIFICATE = 'seller_certifications_market_id_seller_id_type_id_open_key';
 
-const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
-const toInstant = (date: Date): Temporal.Instant =>
+export const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
+export const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 /** A `date` column: the calendar day as written, with no zone. */
-const toDay = (date: Temporal.PlainDate | null): Date | null =>
+export const toDay = (date: Temporal.PlainDate | null): Date | null =>
   date === null ? null : new Date(`${date.toString()}T00:00:00.000Z`);
-const fromDay = (date: Date | null): Temporal.PlainDate | null =>
+export const fromDay = (date: Date | null): Temporal.PlainDate | null =>
   date === null
     ? null
     : Temporal.PlainDate.from({
@@ -33,16 +33,16 @@ const fromDay = (date: Date | null): Temporal.PlainDate | null =>
         day: date.getUTCDate(),
       });
 
-const CERTIFICATE_INCLUDE = {
+export const CERTIFICATE_INCLUDE = {
   type: { select: { code: true } },
   pendingSubmission: { select: { kind: true } },
   approvedSubmission: { select: { issuer: { select: { state: true } } } },
   _count: { select: { submissions: true } },
 } as const;
 
-const DOCUMENT_INCLUDE = { _count: { select: { submissionLinks: true } } } as const;
+export const DOCUMENT_INCLUDE = { _count: { select: { submissionLinks: true } } } as const;
 
-interface CertificateRow {
+export interface CertificateRow {
   id: string;
   sellerId: string;
   typeId: string;
@@ -66,7 +66,7 @@ interface CertificateRow {
   _count: { submissions: number };
 }
 
-function toCertificate(row: CertificateRow): StoredCertificate {
+export function toCertificate(row: CertificateRow): StoredCertificate {
   const draft: StoredDraft = {
     issuerId: row.draftIssuerId as Id<'Issuer'> | null,
     certificateNumberCiphertext: row.draftCertificateNumberCiphertext,
@@ -95,7 +95,7 @@ function toCertificate(row: CertificateRow): StoredCertificate {
   };
 }
 
-interface DocumentRow {
+export interface DocumentRow {
   id: string;
   mediaType: string | null;
   byteSize: bigint;
@@ -108,7 +108,7 @@ interface DocumentRow {
   _count: { submissionLinks: number };
 }
 
-function toDocument(row: DocumentRow, position: number): StoredDocument {
+export function toDocument(row: DocumentRow, position: number): StoredDocument {
   if (row.cleanSha256 === null || row.mediaType === null) {
     // Only clean files are ever linked (the link trigger): anything else is a fault.
     throw new Error('certification document: a linked file is not clean');
@@ -252,6 +252,12 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       where: { marketId: market.marketId, sellerCertificationId: id },
     });
     if (links.length > 0) {
+      await tx.certificationDocumentIndex.deleteMany({
+        where: {
+          marketId: market.marketId,
+          documentId: { in: links.map((link) => link.documentId) },
+        },
+      });
       await tx.certificationUploadedDocument.deleteMany({
         where: {
           marketId: market.marketId,
@@ -334,6 +340,15 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       },
       select: { id: true },
     });
+    await tx.certificationDocumentIndex.create({
+      data: {
+        ...base,
+        documentId: document.id,
+        sellerId: document.sellerId,
+        indexHmac: Uint8Array.from(document.indexHmac),
+      },
+      select: { documentId: true },
+    });
     await tx.certificationSellerDraftDocument.create({
       data: {
         ...base,
@@ -368,6 +383,9 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       where: { marketId: market.marketId, documentId },
     });
     if (held > 0) return 'unlinked';
+    await tx.certificationDocumentIndex.deleteMany({
+      where: { marketId: market.marketId, documentId },
+    });
     await tx.certificationUploadedDocument.deleteMany({
       where: { marketId: market.marketId, id: documentId },
     });
@@ -402,6 +420,17 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       },
       select: { id: true },
     });
+    if (write.numberIndexHmac !== null) {
+      await tx.certificationCertificateNumberIndex.create({
+        data: {
+          ...base,
+          submissionId: write.submissionId,
+          sellerId: write.sellerId,
+          indexHmac: Uint8Array.from(write.numberIndexHmac),
+        },
+        select: { submissionId: true },
+      });
+    }
     if (write.documentIds.length > 0) {
       await tx.certificationSubmissionDocument.createMany({
         data: write.documentIds.map((documentId, index) => ({

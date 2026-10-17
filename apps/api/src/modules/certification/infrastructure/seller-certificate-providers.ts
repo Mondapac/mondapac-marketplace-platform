@@ -50,6 +50,11 @@ import { OwnCertificateSubmit } from '../application/use-cases/own-certificate-s
 import { OwnCertificateUploadDocument } from '../application/use-cases/own-certificate-upload-document.use-case';
 import { OwnCertificateWithdraw } from '../application/use-cases/own-certificate-withdraw.use-case';
 import { OwnCertificatesList } from '../application/use-cases/own-certificates-list.use-case';
+import {
+  CERTIFICATE_INDEX_KEYS,
+  type CertificateIndexKeys,
+} from '../application/ports/review.ports';
+import { HmacCertificateIndexKeys } from './hmac-index-keys';
 import { HmacRateCounterKeys, localCertificationSecret } from './hmac-rate-counter-keys';
 import { ObjectStoreDocumentVault } from './object-store-document-vault';
 import { PrismaCertificateTypeCatalog } from './prisma-certificate-type-catalog';
@@ -121,6 +126,11 @@ export const sellerCertificateProviders: readonly Provider[] = [
     inject: [CERTIFICATION_SECRET],
     useFactory: (secret: Uint8Array): RateCounterKeys => new HmacRateCounterKeys(secret),
   },
+  {
+    provide: CERTIFICATE_INDEX_KEYS,
+    inject: [CERTIFICATION_SECRET],
+    useFactory: (secret: Uint8Array): CertificateIndexKeys => new HmacCertificateIndexKeys(secret),
+  },
   { provide: DOCUMENT_INTAKE, useFactory: (): DocumentIntake => new SharpDocumentIntake() },
   {
     provide: DOCUMENT_VAULT,
@@ -145,6 +155,7 @@ export const sellerCertificateProviders: readonly Provider[] = [
       CERTIFICATE_FIELD_CIPHER,
       RATE_COUNTER_REPOSITORY,
       RATE_COUNTER_KEYS,
+      CERTIFICATE_INDEX_KEYS,
       SELLER_ZONES_SOURCE,
       OUTBOX_WRITER,
       CLOCK,
@@ -159,6 +170,7 @@ export const sellerCertificateProviders: readonly Provider[] = [
       cipher: CertificateFieldCipher,
       counters: RateCounterRepository,
       counterKeys: RateCounterKeys,
+      indexKeys: CertificateIndexKeys,
       zones: SellerZonesSource,
       outbox: OutboxWriter,
       clock: Clock,
@@ -172,6 +184,7 @@ export const sellerCertificateProviders: readonly Provider[] = [
       cipher,
       counters,
       counterKeys,
+      indexKeys,
       zones,
       outbox,
       clock,

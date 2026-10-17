@@ -62,7 +62,11 @@ export type CertificateField =
   | 'draft-certificate-number'
   | 'draft-self-declaration-note'
   | 'submission-certificate-number'
-  | 'submission-self-declaration-note';
+  | 'submission-self-declaration-note'
+  | 'decision-reason-text'
+  | 'scope-location'
+  | 'scope-text'
+  | 'confirmation-reference';
 
 /**
  * Field encryption and the content hash under the seller's subject key (design 10.1, 10.2).
