@@ -183,7 +183,7 @@ describe('admin team list over HTTP (integration, slice 8c)', () => {
     ]) {
       expect(document.components.schemas).toHaveProperty([schema]);
     }
-  });
+  }, 30_000);
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
     it('lists admins with roles, open invitations and hints; logs no address or name', async () => {

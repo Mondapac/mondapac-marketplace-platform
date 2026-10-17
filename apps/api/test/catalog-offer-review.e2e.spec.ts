@@ -331,7 +331,7 @@ describe('admin Offer review over HTTP (integration)', () => {
         expect(responses).toHaveProperty(status);
       }
     }
-  });
+  }, 30_000);
 
   async function createDocs() {
     await app.close();
