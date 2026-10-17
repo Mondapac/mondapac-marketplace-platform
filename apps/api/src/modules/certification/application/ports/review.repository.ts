@@ -94,6 +94,29 @@ export interface ReviewSubmission {
   readonly decision: StoredDecision | null;
 }
 
+/**
+ * Another submission of the same record, as the review page lists it (AC 15: the reviewer sees
+ * the earlier submission and its reason). Ciphertext only; the use case decrypts.
+ */
+export interface OtherSubmission {
+  readonly id: Id<'Submission'>;
+  readonly submissionNo: number;
+  readonly kind: SubmissionKind;
+  readonly submittedAt: Temporal.Instant;
+  readonly issuerName: string | null;
+  readonly certificateNumberCiphertext: string | null;
+  readonly issueDate: Temporal.PlainDate | null;
+  readonly expiryDate: Temporal.PlainDate | null;
+  /** Null only for the pending submission (shown beside an approved one). */
+  readonly decision:
+    | (StoredDecision & {
+        readonly withdrawCause: 'edited' | 'cancelled' | 'revoked' | null;
+        /** The boundary stored with an approval; null otherwise or without an expiry. */
+        readonly expiryBoundaryAt: Temporal.Instant | null;
+      })
+    | null;
+}
+
 export interface ReviewHistoryRow {
   readonly fromStatus: SellerCertificationStatus | null;
   readonly toStatus: SellerCertificationStatus;
@@ -113,6 +136,11 @@ export interface ReviewSnapshot {
   readonly pending: boolean;
   /** The latest rows, newest last, at most 20. */
   readonly history: readonly ReviewHistoryRow[];
+  /**
+   * With `others`: the record's other submissions, newest first, at most 10, plus the approved one
+   * when it is older than those (the current certificate beside a renewal). Empty otherwise.
+   */
+  readonly others: readonly OtherSubmission[];
 }
 
 export interface DuplicateHint {
@@ -188,6 +216,7 @@ export interface CertificateReviewRepository {
   snapshot(
     market: MarketContext,
     certificateId: Id<'SellerCertification'>,
+    options?: { readonly others?: boolean },
   ): Promise<ReviewSnapshot | null>;
   /**
    * Other sellers' certificates whose keyed number or file index equals one of this submission's

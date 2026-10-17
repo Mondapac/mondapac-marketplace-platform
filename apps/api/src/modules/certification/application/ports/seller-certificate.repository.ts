@@ -1,5 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { SubmissionKind } from '../../domain/seller-certificate';
+import type { SubmissionKind, SubmissionOutcome } from '../../domain/seller-certificate';
 import type { IssuerState, SellerCertificationStatus } from '../../domain/validity';
 
 /** The draft columns of the root (data design 3.4); the number and the note are ciphertext. */
@@ -30,6 +30,11 @@ export interface StoredCertificate {
    * 3.3 `draft-issuer-not-listed`). A flag only: the request's text never comes with it.
    */
   readonly issuerRequestOpen: boolean;
+  /**
+   * The decision on the newest submission; null when it is the pending one or there is none
+   * (design 3.3 `approved-renewal-changes-needed`).
+   */
+  readonly latestOutcome: SubmissionOutcome | null;
   /** Submissions ever made: zero means the record can still be deleted. */
   readonly submissionCount: number;
   readonly statusChangedAt: Temporal.Instant;
@@ -118,6 +123,11 @@ export interface WithdrawWrite {
   readonly expectedVersion: number;
   readonly submissionId: Id<'Submission'>;
   readonly cause: 'edited' | 'cancelled' | 'revoked';
+  /**
+   * Withdraw by edit (cause `edited`, design 3.2 row 2): the new draft, written in the same
+   * statement as the root's pointer, so the edit and the withdrawal are one version step.
+   */
+  readonly draft?: StoredDraft;
   readonly accountId: Id<'Account'>;
   readonly decidedAt: Temporal.Instant;
   readonly fromStatus: SellerCertificationStatus;

@@ -12,7 +12,7 @@ import type {
   SubmitWrite,
   WithdrawWrite,
 } from '../application/ports/seller-certificate.repository';
-import type { SubmissionKind } from '../domain/seller-certificate';
+import type { SubmissionKind, SubmissionOutcome } from '../domain/seller-certificate';
 import type { IssuerState, SellerCertificationStatus } from '../domain/validity';
 
 /** The partial unique index of data design 3.4: one open certificate per seller and type (T1). */
@@ -66,6 +66,37 @@ export interface CertificateRow {
   _count: { submissions: number };
 }
 
+/** The newest submission of a record and its decision (design 3.3 `latestOutcome`). */
+export interface NewestSubmission {
+  readonly id: string;
+  readonly outcome: string | null;
+}
+
+/**
+ * The newest submission of each record, by record id, in one bounded statement: submission numbers
+ * run 1..n without gaps (insert-only, `submission_no = count + 1` at submit), so the newest is the
+ * row whose number equals the record's count, one lookup each on the unique
+ * `(market_id, seller_certification_id, submission_no)` key. At most one row per record.
+ */
+export async function newestSubmissions(
+  prisma: PrismaService,
+  market: MarketContext,
+  rows: readonly Pick<CertificateRow, 'id' | '_count'>[],
+): Promise<ReadonlyMap<string, NewestSubmission>> {
+  const keys = rows
+    .filter((row) => row._count.submissions > 0)
+    .map((row) => ({ sellerCertificationId: row.id, submissionNo: row._count.submissions }));
+  if (keys.length === 0) return new Map();
+  const found = await prisma.tx(market).certificationSellerCertificationSubmission.findMany({
+    where: { marketId: market.marketId, OR: keys },
+    select: { id: true, sellerCertificationId: true, decision: { select: { outcome: true } } },
+    take: keys.length,
+  });
+  return new Map(
+    found.map((s) => [s.sellerCertificationId, { id: s.id, outcome: s.decision?.outcome ?? null }]),
+  );
+}
+
 /**
  * The types for which the seller has an open request (design 3.3 `draft-issuer-not-listed`), on the
  * unique partial index `issuer_requests_market_id_seller_id_type_id_open_key`. Ids only.
@@ -86,11 +117,13 @@ export async function openIssuerRequestTypes(
 
 /**
  * A stored certificate. `openRequests` is the answer of {@link openIssuerRequestTypes} for the
- * certificate's seller: whether a "my issuer is not listed" request of its type is open.
+ * certificate's seller: whether a "my issuer is not listed" request of its type is open. `newest`
+ * is the answer of {@link newestSubmissions} for the rows read.
  */
 export function toCertificate(
   row: CertificateRow,
   openRequests: ReadonlySet<string>,
+  newest: ReadonlyMap<string, NewestSubmission>,
 ): StoredCertificate {
   const draft: StoredDraft = {
     issuerId: row.draftIssuerId as Id<'Issuer'> | null,
@@ -112,12 +145,33 @@ export function toCertificate(
     approvedBoundaryAt: row.approvedBoundaryAt === null ? null : toInstant(row.approvedBoundaryAt),
     approvedIssuerState: (row.approvedSubmission?.issuer?.state ?? null) as IssuerState | null,
     issuerRequestOpen: openRequests.has(`${row.sellerId}|${row.typeId}`),
+    latestOutcome: latestOutcomeOf(row, newest.get(row.id)),
     submissionCount: row._count.submissions,
     statusChangedAt: toInstant(row.statusChangedAt),
     lastChangedAt: toInstant(row.lastChangedAt),
     createdAt: toInstant(row.createdAt),
     version: row.version,
     draft,
+  };
+}
+
+function latestOutcomeOf(
+  row: CertificateRow,
+  newest: NewestSubmission | undefined,
+): SubmissionOutcome | null {
+  if (newest === undefined || newest.id === row.pendingSubmissionId) return null;
+  return newest.outcome as SubmissionOutcome | null;
+}
+
+/** The draft columns of the root (data design 3.4) from a stored draft. */
+function draftColumns(draft: StoredDraft) {
+  return {
+    draftIssuerId: draft.issuerId,
+    draftCertificateNumberCiphertext: draft.certificateNumberCiphertext,
+    draftIssueDate: toDay(draft.issueDate),
+    draftExpiryDate: toDay(draft.expiryDate),
+    draftSelfDeclared: draft.selfDeclared,
+    draftSelfDeclarationNoteCiphertext: draft.selfDeclarationNoteCiphertext,
   };
 }
 
@@ -203,7 +257,11 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       include: CERTIFICATE_INCLUDE,
     });
     if (row === null) return null;
-    return toCertificate(row, await openIssuerRequestTypes(this.prisma, market, [sellerId]));
+    return toCertificate(
+      row,
+      await openIssuerRequestTypes(this.prisma, market, [sellerId]),
+      await newestSubmissions(this.prisma, market, [row]),
+    );
   }
 
   async listOwn(
@@ -235,7 +293,8 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       take: page.limit,
     });
     const open = await openIssuerRequestTypes(this.prisma, market, [sellerId]);
-    return rows.map((row) => toCertificate(row, open));
+    const newest = await newestSubmissions(this.prisma, market, rows);
+    return rows.map((row) => toCertificate(row, open, newest));
   }
 
   async saveDraft(
@@ -248,12 +307,7 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
     const { count } = await this.prisma.tx(market).certificationSellerCertification.updateMany({
       where: { marketId: market.marketId, id, version: expectedVersion },
       data: {
-        draftIssuerId: draft.issuerId,
-        draftCertificateNumberCiphertext: draft.certificateNumberCiphertext,
-        draftIssueDate: toDay(draft.issueDate),
-        draftExpiryDate: toDay(draft.expiryDate),
-        draftSelfDeclared: draft.selfDeclared,
-        draftSelfDeclarationNoteCiphertext: draft.selfDeclarationNoteCiphertext,
+        ...draftColumns(draft),
         lastChangedAt: toDate(now),
         version: expectedVersion + 1,
       },
@@ -533,6 +587,7 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       data: {
         status: write.toStatus,
         pendingSubmissionId: null,
+        ...(write.draft === undefined ? {} : draftColumns(write.draft)),
         ...(write.toStatus === write.fromStatus
           ? {}
           : { statusChangedAt: toDate(write.decidedAt) }),

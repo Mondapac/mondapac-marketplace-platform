@@ -8,6 +8,7 @@ import {
   normaliseCertificateNumber,
   reasonFor,
   statusAfterDecision,
+  submissionStatusOf,
   type ReviewPolicy,
 } from './review';
 
@@ -222,5 +223,25 @@ describe('the normalised certificate number', () => {
     expect(normaliseCertificateNumber(' hc-123 / 456 ')).toBe('HC123456');
     expect(normaliseCertificateNumber('ＨＣ１２３')).toBe('HC123');
     expect(normaliseCertificateNumber('hc.123')).toBe(normaliseCertificateNumber('HC 123'));
+  });
+});
+
+describe('the status of a submission (design 3.2)', () => {
+  it('reads pending from the pointer, superseded from an approval that is no longer current', () => {
+    expect(submissionStatusOf({ outcome: null, pending: true, current: false })).toBe('pending');
+    expect(submissionStatusOf({ outcome: 'approved', pending: false, current: true })).toBe(
+      'approved',
+    );
+    expect(submissionStatusOf({ outcome: 'approved', pending: false, current: false })).toBe(
+      'superseded',
+    );
+    for (const outcome of ['changes-requested', 'declined', 'withdrawn'] as const) {
+      expect(submissionStatusOf({ outcome, pending: false, current: false })).toBe(outcome);
+    }
+  });
+
+  it('shows a submission with no decision as pending even when no pointer names it (L1)', () => {
+    expect(submissionStatusOf({ outcome: null, pending: false, current: false })).toBe('pending');
+    expect(submissionStatusOf({ outcome: null, pending: false, current: true })).toBe('pending');
   });
 });

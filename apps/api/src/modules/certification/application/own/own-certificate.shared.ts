@@ -11,8 +11,13 @@ import type {
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import { SellerCertificationWithdrawn } from '../../domain/events';
 import { rateVerdict, type RateLimit } from '../../domain/rate-limits';
-import { sellerStatusOf, type SellerStatusCode } from '../../domain/seller-certificate';
+import {
+  sellerStatusOf,
+  statusAfterWithdraw,
+  type SellerStatusCode,
+} from '../../domain/seller-certificate';
 import type { CertificateTypeCatalog } from '../ports/certificate-type-catalog';
 import type {
   CertificateFieldCipher,
@@ -26,6 +31,7 @@ import type {
   SellerCertificateRepository,
   StoredCertificate,
   StoredDocument,
+  StoredDraft,
 } from '../ports/seller-certificate.repository';
 
 /** The ports the own-certificate use cases share; each takes the whole object and uses its part. */
@@ -156,7 +162,10 @@ export interface CertificateSummary {
   readonly status: SellerStatusCode;
   /** The record's own status, for the panel's actions. */
   readonly recordStatus: string;
-  /** For `approved-expiring`: the instant the certificate stops counting. */
+  /**
+   * For `approved-expiring` and `approved-renewal-changes-needed`: the instant the approved
+   * certificate stops counting.
+   */
   readonly submitBy: string | null;
   readonly editable: boolean;
   /** True while the record never had a submission (it can be deleted). */
@@ -189,6 +198,7 @@ export function summaryOf(
       hasApproval: stored.approvedSubmissionId !== null,
       approvedIssuerState: stored.approvedIssuerState,
       issuerRequestOpen: stored.issuerRequestOpen,
+      latestOutcome: stored.latestOutcome,
     },
     now,
   );
@@ -241,3 +251,88 @@ export function storeFailure(
 
 /** The result of a read-only unit that failed to open or run. */
 export const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' } as const);
+
+/**
+ * An edit of a field or a file that the pending submission holds, sent without the seller's
+ * confirmation (design 3.2 row 2; the panel's "Save and withdraw your submission?" dialog). Nothing
+ * is written; the same request with `withdrawPending` withdraws the submission and saves the edit.
+ */
+export interface EditWithdrawsFailure {
+  readonly code: 'certificate.edit-withdraws-submission';
+}
+
+/** The seller's confirmation flag: absent means not confirmed; anything but a boolean is invalid. */
+export function parseWithdrawPending(raw: unknown): boolean | null {
+  if (raw === undefined || raw === null) return false;
+  return typeof raw === 'boolean' ? raw : null;
+}
+
+const editLogger = new Logger('OwnCertificateEdit');
+
+/**
+ * Withdraw by edit (design 3.2 row 2, slice 8), in the caller's open unit: the pending submission
+ * leaves the queue with the decision `withdrawn` (cause `edited`), the record keeps its approved
+ * submission untouched (a renewal withdrawn never weakens or extends what is valid) or goes back to
+ * `draft` when it was never approved, one history row and the event
+ * `seller-certification-withdrawn.v1` are written. `draft`, when given, is written in the same
+ * root update (one version step). The root's version guard refuses a record that moved since it
+ * was read (a reviewer's decision included). Answers the root's version after the write. The caller
+ * logs with {@link logWithdrawnByEdit} after its unit commits.
+ */
+export async function withdrawForEdit(
+  deps: Pick<OwnCertificateDependencies, 'certificates' | 'outbox' | 'ids'>,
+  context: CallContext,
+  owner: Owner,
+  stored: StoredCertificate,
+  now: Temporal.Instant,
+  draft?: StoredDraft,
+): Promise<number> {
+  const submissionId = stored.pendingSubmissionId;
+  if (submissionId === null) throw new Error('withdraw by edit: nothing is pending');
+  const { market } = context;
+  await deps.certificates.withdraw(market, {
+    certificateId: stored.id,
+    expectedVersion: stored.version,
+    submissionId,
+    cause: 'edited',
+    ...(draft === undefined ? {} : { draft }),
+    accountId: owner.accountId,
+    decidedAt: now,
+    fromStatus: stored.status,
+    toStatus: statusAfterWithdraw(stored.status, stored.approvedSubmissionId !== null),
+    historyId: deps.ids.next<'CertificationHistory'>(),
+  });
+  await deps.outbox.append(context, [
+    SellerCertificationWithdrawn.record({
+      aggregateId: stored.id,
+      aggregateVersion: stored.version + 1,
+      occurredAt: now,
+      payload: {
+        sellerCertificationId: stored.id,
+        sellerId: owner.sellerId,
+        submissionId,
+        cause: 'edited',
+      },
+    }),
+  ]);
+  return stored.version + 1;
+}
+
+/**
+ * The log line of a withdraw by edit, written by the use case after its unit committed and only
+ * when it withdrew something (Hassan L2): a rolled-back unit logs nothing.
+ */
+export function logWithdrawnByEdit(
+  context: CallContext,
+  certificateId: string,
+  submissionId: string | null,
+): void {
+  if (submissionId === null) return;
+  editLogger.log({
+    msg: 'certification.submission-withdrawn-by-edit',
+    certificateId,
+    submissionId,
+    marketId: context.market.marketId,
+    correlationId: context.correlationId,
+  });
+}

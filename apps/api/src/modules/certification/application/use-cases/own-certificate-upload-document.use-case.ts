@@ -3,16 +3,20 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CERTIFICATION_OWN_CERTIFICATE_MANAGE } from '../../contracts/permissions';
 import { UNAPPROVED_UPLOAD_LIMITS, UPLOAD_LIMITS } from '../../domain/rate-limits';
-import { isDraftEditable, MAX_DOCUMENTS_PER_CERTIFICATE } from '../../domain/seller-certificate';
+import { draftEditVerdict, MAX_DOCUMENTS_PER_CERTIFICATE } from '../../domain/seller-certificate';
 import { MAX_DOCUMENT_BYTES, type DocumentRefusalCode } from '../intake/document-inspection';
 import type { VaultedDocument } from '../ports/document-ports';
 import {
   invalid,
   ownerOf,
   parseCertificateId,
+  logWithdrawnByEdit,
+  parseWithdrawPending,
   reserveLimits,
   storeFailure,
+  withdrawForEdit,
   type DocumentView,
+  type EditWithdrawsFailure,
   type OwnCertificateDependencies,
   type RateFailure,
   type ValidationFailure,
@@ -22,6 +26,13 @@ export interface OwnCertificateUploadDocumentInput {
   readonly certificateId: unknown;
   /** The file as standard base64 text; the type comes from the decoded content. */
   readonly data: unknown;
+  /** The seller confirmed that the change withdraws the pending submission (design 3.2 row 2). */
+  readonly withdrawPending?: unknown;
+}
+
+/** The stored file, and the pending submission this upload withdrew (cause `edited`), or null. */
+export interface UploadedDocumentView extends DocumentView {
+  readonly withdrawnSubmissionId: string | null;
 }
 
 export type OwnCertificateUploadDocumentFailure =
@@ -29,6 +40,7 @@ export type OwnCertificateUploadDocumentFailure =
   | { readonly code: 'access.unavailable' }
   | { readonly code: 'certificate.not-found' }
   | { readonly code: 'certificate.not-editable' }
+  | EditWithdrawsFailure
   | { readonly code: 'document.limit-reached' }
   | { readonly code: 'draft-quota.exceeded' }
   | { readonly code: 'conflict.stale' }
@@ -47,12 +59,15 @@ const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
  * metadata, a PDF with active content, encryption or too many pages is refused, and a refused file
  * is not stored. An accepted file is `clean` at once (no scanner yet), encrypted with its own data
  * key wrapped under the seller's key, and counted against the draft quota. Limits: 10 MiB a file,
- * 10 files a certificate, 30 uploads a day (10 for a seller not yet approved). Rule: key
- * `certification.own-certificate.manage`.
+ * 10 files a certificate, 30 uploads a day (10 for a seller not yet approved). While a submission
+ * is pending this is withdraw by edit (design 3.2 row 2): refused with
+ * `certificate.edit-withdraws-submission` before the file is read until the seller confirms with
+ * `withdrawPending`, then the submission is withdrawn (cause `edited`) in the unit that adds the
+ * file. Rule: key `certification.own-certificate.manage`; an acting-as session is refused.
  */
 export class OwnCertificateUploadDocument extends UseCase<
   OwnCertificateUploadDocumentInput,
-  DocumentView,
+  UploadedDocumentView,
   OwnCertificateUploadDocumentFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -71,7 +86,7 @@ export class OwnCertificateUploadDocument extends UseCase<
   protected async handle(
     context: CallContext,
     input: OwnCertificateUploadDocumentInput,
-  ): Promise<Result<DocumentView, OwnCertificateUploadDocumentFailure>> {
+  ): Promise<Result<UploadedDocumentView, OwnCertificateUploadDocumentFailure>> {
     const owner = ownerOf(context, { write: true });
     if (owner === null) return err({ code: 'access.denied' });
     if (typeof input !== 'object' || input === null) return invalid('body', 'type');
@@ -83,9 +98,28 @@ export class OwnCertificateUploadDocument extends UseCase<
       return err({ code: 'file.too-large' });
     }
     if (input.data.length % 4 !== 0 || !BASE64.test(input.data)) return invalid('data', 'format');
+    const withdrawConfirmed = parseWithdrawPending(input.withdrawPending);
+    if (withdrawConfirmed === null) return invalid('withdrawPending', 'type');
 
     const { deps } = this;
     const { market } = context;
+
+    // Cheap checks first, before any limit is spent: the certificate is the seller's, open for
+    // edit (an edit of a pending submission needs the seller's confirmation) and has room. A refused
+    // upload costs no attempt (Hassan L3); the write unit checks all of it again.
+    const checked = await deps.unitOfWork
+      .run<
+        | { ok: true; typeId: Id<'CertificationType'> }
+        | { refusal: OwnCertificateUploadDocumentFailure },
+        never
+      >(
+        market,
+        async () => ok(await this.#room(context, owner.sellerId, certificateId, withdrawConfirmed)),
+        { readOnly: true },
+      )
+      .catch((error: unknown) => storeFailure(context, 'certification.upload.read', error));
+    if (!checked.ok) return checked;
+    if ('refusal' in checked.value) return err(checked.value.refusal);
 
     // Which upload limit applies: a seller with an approved revision has a zone (design 7.5).
     let approved: boolean;
@@ -104,19 +138,6 @@ export class OwnCertificateUploadDocument extends UseCase<
       })),
     );
     if (throttled !== null) return err(throttled);
-
-    // Cheap checks first: the certificate is the seller's, open for edit and has room.
-    const checked = await deps.unitOfWork
-      .run<
-        | { ok: true; typeId: Id<'CertificationType'> }
-        | { refusal: OwnCertificateUploadDocumentFailure },
-        never
-      >(market, async () => ok(await this.#room(context, owner.sellerId, certificateId)), {
-        readOnly: true,
-      })
-      .catch((error: unknown) => storeFailure(context, 'certification.upload.read', error));
-    if (!checked.ok) return checked;
-    if ('refusal' in checked.value) return err(checked.value.refusal);
 
     const bytes = Buffer.from(input.data, 'base64');
     if (bytes.length > MAX_DOCUMENT_BYTES) return err({ code: 'file.too-large' });
@@ -139,11 +160,17 @@ export class OwnCertificateUploadDocument extends UseCase<
 
     const now = deps.clock.now();
     const written = await deps.unitOfWork
-      .run<DocumentView, OwnCertificateUploadDocumentFailure>(market, async () => {
+      .run<UploadedDocumentView, OwnCertificateUploadDocumentFailure>(market, async () => {
         const stored = await deps.certificates.findOwn(market, owner.sellerId, certificateId);
         if (stored === null) return err({ code: 'certificate.not-found' } as const);
-        if (!isDraftEditable(stored.status, stored.pendingSubmissionId)) {
-          return err({ code: 'certificate.not-editable' } as const);
+        const verdict = draftEditVerdict(
+          stored.status,
+          stored.pendingSubmissionId,
+          withdrawConfirmed,
+        );
+        if (verdict === 'closed') return err({ code: 'certificate.not-editable' } as const);
+        if (verdict === 'confirm-withdraw') {
+          return err({ code: 'certificate.edit-withdraws-submission' } as const);
         }
         const documents = await deps.certificates.listDocuments(market, certificateId);
         if (documents.length >= MAX_DOCUMENTS_PER_CERTIFICATE) {
@@ -157,12 +184,18 @@ export class OwnCertificateUploadDocument extends UseCase<
           now,
         );
         if (!reserved) return err({ code: 'draft-quota.exceeded' } as const);
+        let version = stored.version;
+        let withdrawnSubmissionId: string | null = null;
+        if (verdict === 'withdraw-then-edit') {
+          withdrawnSubmissionId = stored.pendingSubmissionId;
+          version = await withdrawForEdit(deps, context, owner, stored, now);
+        }
         const position =
           documents.reduce((max, document) => Math.max(max, document.position), 0) + 1;
         await deps.certificates.addDocument(market, {
           id: documentId,
           certificateId,
-          expectedVersion: stored.version,
+          expectedVersion: version,
           sellerId: owner.sellerId,
           typeId: stored.typeId,
           position,
@@ -182,6 +215,7 @@ export class OwnCertificateUploadDocument extends UseCase<
           byteSize: file.bytes.length,
           pageCount: file.pageCount,
           createdAt: now.toString(),
+          withdrawnSubmissionId,
         });
       })
       .catch((error: unknown) => storeFailure(context, 'certification.upload.write', error));
@@ -189,6 +223,7 @@ export class OwnCertificateUploadDocument extends UseCase<
       await deps.vault.discard(vaulted.objectKey).catch(() => undefined);
       return written;
     }
+    logWithdrawnByEdit(context, certificateId, written.value.withdrawnSubmissionId);
     return written;
   }
 
@@ -196,6 +231,7 @@ export class OwnCertificateUploadDocument extends UseCase<
     context: CallContext,
     sellerId: Id<'Seller'>,
     certificateId: Id<'SellerCertification'>,
+    withdrawConfirmed: boolean,
   ): Promise<
     { ok: true; typeId: Id<'CertificationType'> } | { refusal: OwnCertificateUploadDocumentFailure }
   > {
@@ -203,8 +239,10 @@ export class OwnCertificateUploadDocument extends UseCase<
     const { certificates } = this.deps;
     const stored = await certificates.findOwn(market, sellerId, certificateId);
     if (stored === null) return { refusal: { code: 'certificate.not-found' } };
-    if (!isDraftEditable(stored.status, stored.pendingSubmissionId)) {
-      return { refusal: { code: 'certificate.not-editable' } };
+    const verdict = draftEditVerdict(stored.status, stored.pendingSubmissionId, withdrawConfirmed);
+    if (verdict === 'closed') return { refusal: { code: 'certificate.not-editable' } };
+    if (verdict === 'confirm-withdraw') {
+      return { refusal: { code: 'certificate.edit-withdraws-submission' } };
     }
     const documents = await certificates.listDocuments(market, certificateId);
     if (documents.length >= MAX_DOCUMENTS_PER_CERTIFICATE) {

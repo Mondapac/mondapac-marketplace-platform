@@ -153,6 +153,58 @@ export function isDraftEditable(
 }
 
 /**
+ * What an edit of the draft (fields or files) may do (design 3.2 row 2, slice 8). `edit`: the
+ * draft is open. `confirm-withdraw`: a submission is pending and the seller has not yet confirmed
+ * that the edit withdraws it (the panel's "Save and withdraw" dialog). `withdraw-then-edit`: the
+ * seller confirmed; the pending submission is withdrawn (cause `edited`) in the unit that writes
+ * the edit. `closed`: nothing can change (declined, revoked, or a state no transition allows).
+ */
+export type DraftEditVerdict = 'edit' | 'confirm-withdraw' | 'withdraw-then-edit' | 'closed';
+
+export function draftEditVerdict(
+  status: SellerCertificationStatus,
+  pendingSubmissionId: string | null,
+  withdrawConfirmed: boolean,
+): DraftEditVerdict {
+  if (pendingSubmissionId === null) return isDraftEditable(status, null) ? 'edit' : 'closed';
+  // A pending submission exists only on `in-review` (first review or correction) and on an
+  // `approved` or `expired` record (renewal, design 3.1).
+  if (status !== 'in-review' && status !== 'approved' && status !== 'expired') return 'closed';
+  return withdrawConfirmed ? 'withdraw-then-edit' : 'confirm-withdraw';
+}
+
+/**
+ * The record's status after its pending submission is withdrawn by the seller (design 3.1): a
+ * record that was never approved goes back to `draft`; an approved or expired one keeps its status
+ * and its approved submission, untouched. A record with an approval is never left `in-review`
+ * (Hassan I2): should one be found there, it goes to `approved`. That grants nothing by itself:
+ * validity still needs the approved submission's boundary after now and an issuer that is not
+ * derecognised (2.4 rule 1), so past the boundary the answer stays "not valid".
+ */
+export function statusAfterWithdraw(
+  status: SellerCertificationStatus,
+  hasApproval: boolean,
+): SellerCertificationStatus {
+  if (status !== 'in-review') return status;
+  return hasApproval ? 'approved' : 'draft';
+}
+
+const sameDate = (a: Temporal.PlainDate | null, b: Temporal.PlainDate | null): boolean =>
+  a === null || b === null ? a === b : a.equals(b);
+
+/** True when two drafts hold the same values; an unchanged save withdraws nothing (ux FL3). */
+export function sameDraftContent(a: DraftContent, b: DraftContent): boolean {
+  return (
+    a.issuerId === b.issuerId &&
+    a.certificateNumber === b.certificateNumber &&
+    sameDate(a.issueDate, b.issueDate) &&
+    sameDate(a.expiryDate, b.expiryDate) &&
+    a.selfDeclared === b.selfDeclared &&
+    a.selfDeclarationNote === b.selfDeclarationNote
+  );
+}
+
+/**
  * The kind of the next submission (design 3.2 row 1): `renewal` when the record was approved at
  * some point and is `approved` or `expired`, `resubmission` after `changes-requested`, else
  * `initial`. `null` when the record cannot be submitted (pending, declined, revoked).
@@ -245,6 +297,7 @@ export type SellerStatusCode =
   | 'approved'
   | 'approved-expiring'
   | 'approved-renewal-pending'
+  | 'approved-renewal-changes-needed'
   | 'expired'
   | 'expired-renewal-pending'
   | 'revoked'
@@ -260,11 +313,22 @@ export interface SellerStatusInput {
   readonly approvedIssuerState: IssuerState | null;
   /** True while the seller has an open "my issuer is not listed" request for this type. */
   readonly issuerRequestOpen: boolean;
+  /**
+   * The decision on the newest submission, or null when it is pending or there is none. With an
+   * approval, `changes-requested` here means the renewal (or correction) after it was sent back.
+   */
+  readonly latestOutcome: SubmissionOutcome | null;
 }
+
+/** A decision on a submission (data design 3.6): one terminal row per submission. */
+export type SubmissionOutcome = 'approved' | 'changes-requested' | 'declined' | 'withdrawn';
 
 export interface SellerStatus {
   readonly code: SellerStatusCode;
-  /** The instant after which the seller should have submitted a renewal (approved-expiring). */
+  /**
+   * The instant the approved certificate stops counting, for `approved-expiring` (submit the
+   * renewal before it) and `approved-renewal-changes-needed` ("valid until {date} only").
+   */
   readonly submitBy: Temporal.Instant | null;
 }
 
@@ -300,6 +364,10 @@ export function sellerStatusOf(input: SellerStatusInput, now: Temporal.Instant):
     return { code: 'issuer-not-recognised', submitBy: none };
   }
   if (pendingKind !== null) return { code: 'approved-renewal-pending', submitBy: none };
+  // The newest submission came after the approved one and was sent back (ux FL4 row 4).
+  if (input.latestOutcome === 'changes-requested') {
+    return { code: 'approved-renewal-changes-needed', submitBy: boundary };
+  }
   if (boundary !== null) {
     const warnFrom = boundary.subtract({ hours: EXPIRING_WITHIN_DAYS * 24 });
     if (Temporal.Instant.compare(now, warnFrom) >= 0) {

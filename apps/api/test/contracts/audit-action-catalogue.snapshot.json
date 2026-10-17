@@ -71,6 +71,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
+      "otherSubmissionIds": "listOf(id, max 11)",
       "reason": "enumOf(review|duplicate-hint)",
       "submissionId": "id"
     }

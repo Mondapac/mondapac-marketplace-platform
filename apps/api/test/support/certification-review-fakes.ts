@@ -5,6 +5,7 @@ import type {
   DecisionNotice,
   DecisionWrite,
   DuplicateHint,
+  OtherSubmission,
   ReviewQueueEntry,
   ReviewSnapshot,
   ReviewSubmission,
@@ -34,6 +35,8 @@ export class MemoryReviews implements CertificateReviewRepository {
   certificate: Mutable<StoredCertificate>;
   submission: Mutable<ReviewSubmission>;
   hints: DuplicateHint[] = [];
+  /** The record's other submissions a test sets, newest first (the review page's list). */
+  others: OtherSubmission[] = [];
   readonly history: ReviewSnapshot['history'][number][] = [];
   erased = 0;
   readonly marketId: string;
@@ -69,6 +72,7 @@ export class MemoryReviews implements CertificateReviewRepository {
   snapshot(
     market: MarketContext,
     certificateId: Id<'SellerCertification'>,
+    options: { readonly others?: boolean } = {},
   ): Promise<ReviewSnapshot | null> {
     if (!this.own(market) || certificateId !== this.certificate.id) return Promise.resolve(null);
     const pending = this.certificate.pendingSubmissionId === this.submission.id;
@@ -81,6 +85,7 @@ export class MemoryReviews implements CertificateReviewRepository {
       submission: pending || approved ? { ...this.submission } : null,
       pending,
       history: [...this.history],
+      others: options.others === true ? [...this.others] : [],
     });
   }
 
