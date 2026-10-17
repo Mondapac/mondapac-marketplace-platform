@@ -117,6 +117,11 @@ interface ClaimAnswerInput {
 type OfferHandlingRefusal =
   { readonly code: 'offer.handling-invalid' } | { readonly code: 'offer.not-editable' };
 
+/** Why `recordAttestation` was refused. */
+type OfferAttestationRefusal =
+  | { readonly code: 'offer.attestation-needs-sealed-original' }
+  | { readonly code: 'offer.not-editable' };
+
 /** Why a status transition (submit, approve, request changes, delete) was refused. */
 export type OfferTransitionRefusal =
   | { readonly code: 'offer.not-submittable' }
@@ -133,6 +138,8 @@ export interface OfferPendingHistory {
     | 'publication-approved'
     | 'changes-requested'
     | 'causes-changed'
+    | 'attestation-recorded'
+    | 'attestation-withdrawn'
     | 'deleted';
   readonly changedFields: readonly string[];
   readonly occurredAt: Temporal.Instant;
@@ -369,6 +376,58 @@ export class Offer {
       occurredAt: input.now,
     };
     return ok(changed ? ['handling'] : []);
+  }
+
+  /**
+   * The seller's per-Offer attestation (`own-offer.record-attestation`; ADR-0012 decision 4;
+   * design 4.4, 8.2; B1: a command of its own, never part of `edit`, Import or a bulk action): the
+   * statement that the stock is genuine, sealed and unaltered, which the manufacturer basis needs
+   * together with `SEALED_ORIGINAL`. `attested: true` records the author and the instant;
+   * `false` withdraws it (both cleared). Recording needs the handling `SEALED_ORIGINAL`: the
+   * statement contradicts any other handling, so it is refused rather than stored unused.
+   * Recording again keeps the first record, and withdrawing an absent one stores nothing; the
+   * same return to `draft` as `edit` otherwise. A published Offer stays published and its use
+   * case re-asks every kept tag in the same unit (`settleTags`, entry path `attestation-change`):
+   * a withdrawal can suspend a manufacturer-basis tag, a recording can restore one. Answers the
+   * changed field ids (`['attestation']` or none).
+   */
+  recordAttestation(input: {
+    readonly attested: boolean;
+    readonly accountId: Id<'Account'>;
+    readonly now: Temporal.Instant;
+  }): Result<readonly string[], OfferAttestationRefusal> {
+    const state = this.#state;
+    if (state.status === 'deleted') return err({ code: 'offer.not-editable' });
+    if (input.attested && state.handling !== 'SEALED_ORIGINAL') {
+      return err({ code: 'offer.attestation-needs-sealed-original' });
+    }
+    const recorded = state.attestationRecordedAt !== null;
+    const changed = input.attested !== recorded;
+    const published = state.status === 'published';
+    if (!changed && (state.status === 'draft' || published)) return ok([]);
+    if (this.#pendingHistory !== null) {
+      throw new Error('recordAttestation: the Offer already has a change');
+    }
+    this.#state = Object.freeze({
+      ...state,
+      ...(changed
+        ? input.attested
+          ? { attestationRecordedAt: input.now, attestationAccountId: input.accountId }
+          : { attestationRecordedAt: null, attestationAccountId: null }
+        : {}),
+      ...(published ? {} : { status: 'draft' as const, submittedAt: null }),
+      version: state.version + 1,
+    });
+    this.#pendingHistory = {
+      changeKind: !changed
+        ? 'edited'
+        : input.attested
+          ? 'attestation-recorded'
+          : 'attestation-withdrawn',
+      changedFields: changed ? ['attestation'] : [],
+      occurredAt: input.now,
+    };
+    return ok(changed ? ['attestation'] : []);
   }
 
   /**

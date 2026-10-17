@@ -48,6 +48,7 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
       expect.arrayContaining([
         'use-cases/own-offer-edit.use-case.ts',
         'use-cases/own-offer-set-handling.use-case.ts',
+        'use-cases/own-offer-record-attestation.use-case.ts',
         'use-cases/own-offer-submit.use-case.ts',
         'use-cases/offer-approve.use-case.ts',
         'use-cases/product-revision-approve.use-case.ts',
@@ -99,6 +100,20 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
     expect(files.find((f) => f.file === 'revisions/submit-product.service.ts')!.text).toMatch(
       /markProductForReevaluation\(/,
     );
+  });
+
+  it('re-asks every kept tag when the attestation is recorded or withdrawn (ADR-0012 d4)', () => {
+    const writers = files.filter(({ text }) => /\.recordAttestation\(/.test(text));
+    expect(writers.map((f) => f.file)).toEqual([
+      'use-cases/own-offer-record-attestation.use-case.ts',
+    ]);
+    const text = writers[0]!.text;
+    expect(text).toMatch(/keptTagTypes\(/);
+    expect(text).toMatch(/factsInUnit\(/);
+    expect(text).toMatch(/\.settleTags\(/);
+    expect(text).toMatch(/entryPath: 'attestation-change'/);
+    // Refused in an acting-as session (B1).
+    expect(text).toMatch(/isActingAsSession\(actor\)/);
   });
 
   it('serialises tag writes against publication through the product lock (slice 11)', () => {

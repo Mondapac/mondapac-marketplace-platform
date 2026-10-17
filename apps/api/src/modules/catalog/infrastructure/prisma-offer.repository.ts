@@ -256,6 +256,10 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
           conditionCode: state.conditionCode,
           description: { ...state.description },
           handling: state.handling,
+          // Written only by `recordAttestation` (B1); both or neither (offers_attestation_check).
+          attestationRecordedAt:
+            state.attestationRecordedAt === null ? null : toDate(state.attestationRecordedAt),
+          attestationAccountId: state.attestationAccountId,
           status: state.status,
           ...causeFlags(state.offSaleCauses),
           listed: state.listed,
