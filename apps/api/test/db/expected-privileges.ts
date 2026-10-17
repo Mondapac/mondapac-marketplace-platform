@@ -39,6 +39,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     catalog: ['USAGE'],
     certification: ['USAGE'],
     commission_payouts: ['USAGE'],
+    customers: ['USAGE'],
     tax: ['USAGE'],
     pricing: ['USAGE'],
     sellers: ['USAGE'],
@@ -395,6 +396,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'tax.tax_strategies': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['active', 'config', 'kind', 'name', 'updated_at', 'updated_by'],
+    },
+    // Customers (package 1): a customer adds, changes (sealed content, default flag) and removes
+    // their own delivery addresses.
+    'customers.addresses': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['content_ciphertext', 'is_default', 'updated_at'],
     },
     // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
     // change, the identity never, and no row is deleted.
