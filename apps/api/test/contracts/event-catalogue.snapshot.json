@@ -229,6 +229,16 @@
     }
   },
   {
+    "type": "certification.seller-certification-revoked.v1",
+    "aggregateType": "seller-certification",
+    "fields": {
+      "sellerCertificationId": "id",
+      "sellerId": "id",
+      "submissionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
     "type": "certification.seller-certification-submitted.v1",
     "aggregateType": "seller-certification",
     "fields": {

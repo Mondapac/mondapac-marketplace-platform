@@ -42,13 +42,16 @@ import { DeclineSellerCertificate } from '../application/use-cases/seller-certif
 import { SellerCertificateRecordCheck } from '../application/use-cases/seller-certificate-record-check.use-case';
 import { SellerCertificateRecordConfirmation } from '../application/use-cases/seller-certificate-record-confirmation.use-case';
 import { SellerCertificateRecordScope } from '../application/use-cases/seller-certificate-record-scope.use-case';
+import { SellerCertificateHistoryRead } from '../application/use-cases/seller-certificate-history-read.use-case';
 import { RequestChangesSellerCertificate } from '../application/use-cases/seller-certificate-request-changes.use-case';
+import { RevokeSellerCertificate } from '../application/use-cases/seller-certificate-revoke.use-case';
 import { SellerCertificateReviewDocumentRead } from '../application/use-cases/seller-certificate-review-document-read.use-case';
 import { SellerCertificateReviewRead } from '../application/use-cases/seller-certificate-review-read.use-case';
 import { SellerCertificatesQueue } from '../application/use-cases/seller-certificates-queue.use-case';
 import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
 import {
   CertificationErrorBody,
+  HistoryView,
   ReviewApproveRequest,
   ReviewCheckRecorded,
   ReviewCheckRequest,
@@ -60,6 +63,8 @@ import {
   ReviewQueueView,
   ReviewScopeRecorded,
   ReviewScopeRequest,
+  RevokeDone,
+  RevokeRequest,
 } from './own-certificate.dto';
 
 /**
@@ -67,7 +72,8 @@ import {
  * malformed request is 400; an unknown certificate or file is 404; a submission that is no longer
  * the pending one, a record that moved under the reviewer, or a second confirmation is 409; a
  * decision the rules refuse (checks open, no scope, issuer not active, expired, no zone) is 422;
- * the file download while its switch is off is 403.
+ * the file download while its switch is off is 403. A revoke of a record that is already revoked,
+ * or that was never approved, is 409 (slice 11).
  */
 export const ADMIN_REVIEW_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
@@ -76,6 +82,7 @@ export const ADMIN_REVIEW_STATUS: Readonly<Record<string, number>> = Object.free
   'document.download-disabled': 403,
   'review.not-current-submission': 409,
   'certificate.revoked': 409,
+  'certificate.not-revocable': 409,
   'confirmation.exists': 409,
   'confirmation.no-issuer': 409,
   'conflict.stale': 409,
@@ -125,6 +132,8 @@ export class AdminCertificateReviewController {
     private readonly approve: ApproveSellerCertificate,
     private readonly requestChanges: RequestChangesSellerCertificate,
     private readonly decline: DeclineSellerCertificate,
+    private readonly revokeCertificate: RevokeSellerCertificate,
+    private readonly historyRead: SellerCertificateHistoryRead,
   ) {}
 
   @Get()
@@ -547,6 +556,94 @@ export class AdminCertificateReviewController {
       outcome = result.ok ? result.value : refusal(result.error, response, context);
     }
     return this.settle('certification.review-decline', context, outcome);
+  }
+
+  @Get(':certificateId/history')
+  @Header('Cache-Control', 'private, no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'The full status history of one certificate',
+    description:
+      'Needs certification.document.view (protected: no default role holds it; the Platform ' +
+      'Administrator grants it in a custom role). Newest first, paged with `beforeId` and ' +
+      '`limit` (1 to 100, default 50): each change with its statuses, submission, actor and ' +
+      'instant, the reason code and label, and the decrypted note. Each read is audited (VER-14).',
+  })
+  @ApiOkResponse({ type: HistoryView })
+  @ApiBadRequestResponse({ type: CertificationErrorBody, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: CertificationErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: CertificationErrorBody, description: 'certificate.not-found' })
+  @ApiServiceUnavailableResponse({
+    type: CertificationErrorBody,
+    description: 'access.unavailable',
+  })
+  async getHistory(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('certificateId') certificateId: string,
+    @Query('beforeId') beforeId?: unknown,
+    @Query('limit') limit?: unknown,
+  ): Promise<HistoryView> {
+    const result = await this.historyRead.execute(context, { certificateId, beforeId, limit });
+    const outcome = result.ok
+      ? (result.value as unknown as HistoryView)
+      : refusal(result.error, response, context);
+    return this.settle('certification.history-read', context, outcome);
+  }
+
+  @Post(':certificateId/revoke')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Revoke an approved or expired certificate',
+    description:
+      'Needs certification.seller-certificate.revoke (protected: no default role holds it; the ' +
+      'Platform Administrator grants it in a custom role). Names the record version; a reason ' +
+      "code of the Market listed for 'revoked' is required, a note is optional. The record " +
+      'becomes revoked (terminal) and no claim is allowed from that instant; a pending renewal is ' +
+      'withdrawn; the seller gets a mail with the reason.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: RevokeRequest })
+  @ApiOkResponse({ type: RevokeDone })
+  @ApiBadRequestResponse({ type: CertificationErrorBody, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: CertificationErrorBody,
+    description: 'access.denied, request.csrf',
+  })
+  @ApiNotFoundResponse({ type: CertificationErrorBody, description: 'certificate.not-found' })
+  @ApiConflictResponse({
+    type: CertificationErrorBody,
+    description: 'certificate.revoked, certificate.not-revocable, conflict.stale',
+  })
+  @ApiUnsupportedMediaTypeResponse({
+    type: CertificationErrorBody,
+    description: 'request.body-unsupported',
+  })
+  @ApiServiceUnavailableResponse({
+    type: CertificationErrorBody,
+    description: 'access.unavailable',
+  })
+  async postRevoke(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('certificateId') certificateId: string,
+    @Body() body: unknown,
+  ): Promise<RevokeDone> {
+    const input = closedBody(request, body, ['version', 'reasonCode'], ['reasonText']);
+    let outcome: RevokeDone | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.revokeCertificate.execute(context, {
+        certificateId,
+        ...input,
+      } as Parameters<(typeof this.revokeCertificate)['execute']>[1]);
+      outcome = result.ok ? result.value : refusal(result.error, response, context);
+    }
+    return this.settle('certification.revoke', context, outcome);
   }
 
   private settle<T extends object>(

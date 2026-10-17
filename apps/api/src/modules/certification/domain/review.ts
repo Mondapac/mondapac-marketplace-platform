@@ -14,6 +14,13 @@ export const DECISION_OUTCOMES = ['approved', 'changes-requested', 'declined'] a
 export type DecisionOutcome = (typeof DECISION_OUTCOMES)[number];
 export type NegativeOutcome = Exclude<DecisionOutcome, 'approved'>;
 
+/**
+ * The outcomes a Market reason can be listed under (design 5.1 `reasons`: 3.2 rows 4 and 5, and
+ * the revoke of 3.1).
+ */
+export const REASON_OUTCOMES = ['changes-requested', 'declined', 'revoked'] as const;
+export type ReasonOutcome = (typeof REASON_OUTCOMES)[number];
+
 /** One review check of a Market (design 5.1 `reviewChecks`). */
 export interface ReviewCheckSpec {
   readonly code: string;
@@ -31,7 +38,7 @@ export interface ReviewReasonSpec {
   readonly nextStep: string;
   /** Plain words for the mail to the seller. */
   readonly label: string;
-  readonly outcomes: readonly NegativeOutcome[];
+  readonly outcomes: readonly ReasonOutcome[];
 }
 
 /**
@@ -101,7 +108,7 @@ export function missingChecks(
 export function reasonFor(
   policy: ReviewPolicy,
   code: string,
-  outcome: NegativeOutcome,
+  outcome: ReasonOutcome,
 ): ReviewReasonSpec | null {
   return policy.reasons.find((r) => r.code === code && r.outcomes.includes(outcome)) ?? null;
 }

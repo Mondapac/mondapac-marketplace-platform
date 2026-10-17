@@ -59,7 +59,7 @@
       "check": "tampering",
       "nextStep": "contact-support",
       "label": "The certificate shows signs of having been altered.",
-      "outcomes": ["declined"]
+      "outcomes": ["declined", "revoked"]
     },
     {
       "code": "issuer-not-recognised",
@@ -73,7 +73,7 @@
       "check": "issuer-enquiry",
       "nextStep": "contact-support",
       "label": "The issuer did not confirm the certificate.",
-      "outcomes": ["declined"]
+      "outcomes": ["declined", "revoked"]
     },
     {
       "code": "declaration-not-accepted",
@@ -81,6 +81,20 @@
       "nextStep": "contact-support",
       "label": "The declaration could not be accepted.",
       "outcomes": ["changes-requested", "declined"]
+    },
+    {
+      "code": "withdrawn-by-issuer",
+      "check": null,
+      "nextStep": "add-new-certificate",
+      "label": "The issuer has withdrawn or suspended this certificate.",
+      "outcomes": ["revoked"]
+    },
+    {
+      "code": "approved-in-error",
+      "check": null,
+      "nextStep": "contact-support",
+      "label": "The certificate was approved in error and no longer counts.",
+      "outcomes": ["revoked"]
     }
   ],
   "issuerRequestReasons": [

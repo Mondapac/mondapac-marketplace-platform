@@ -11,6 +11,16 @@
     }
   },
   {
+    "action": "certification.history.viewed",
+    "targetType": "certification.seller-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "historyIds": "listOf(id, max 100)"
+    }
+  },
+  {
     "action": "certification.issuer-confirmation.recorded",
     "targetType": "certification.seller-certification",
     "targetId": "id",
@@ -133,6 +143,19 @@
     "after": {
       "submissionId": "id",
       "typeRevisionId": "id"
+    }
+  },
+  {
+    "action": "certification.seller-certification.revoked",
+    "targetType": "certification.seller-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "noteGiven": "boolean",
+      "submissionId": "id",
+      "typeRevisionId": "id",
+      "withdrawnSubmissionId": "optional(id)"
     }
   },
   {
