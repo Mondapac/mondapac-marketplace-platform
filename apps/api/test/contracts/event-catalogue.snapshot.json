@@ -1,5 +1,14 @@
 [
   {
+    "type": "catalog.image-taken-down.v1",
+    "aggregateType": "product-image",
+    "fields": {
+      "productId": "id",
+      "imageId": "id",
+      "reasonCode": "enumOf(certification-mark|misleading|rights|unsafe-or-illegal|other)"
+    }
+  },
+  {
     "type": "catalog.offer-changes-requested.v1",
     "aggregateType": "offer",
     "fields": {

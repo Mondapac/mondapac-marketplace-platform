@@ -140,6 +140,31 @@ export const ProductRevisionChangesRequested = defineEvent({
   },
 });
 
+/** The reasons a reviewer may give when a photo is taken down (catalog design 10.5). */
+export const IMAGE_TAKEDOWN_REASONS = [
+  'certification-mark',
+  'misleading',
+  'rights',
+  'unsafe-or-illegal',
+  'other',
+] as const;
+export type ImageTakedownReason = (typeof IMAGE_TAKEDOWN_REASONS)[number];
+
+/**
+ * A reviewer took a product photo down (catalog design 10.5): its files are removed and it is no
+ * longer served. The aggregate version is 2 (created, then taken down: the move is forward-only).
+ * Ids and the reason code.
+ */
+export const ProductImageTakenDown = defineEvent({
+  type: 'catalog.image-taken-down.v1',
+  aggregateType: 'product-image',
+  payload: {
+    productId: eventField.id(),
+    imageId: eventField.id(),
+    reasonCode: eventField.enumOf(IMAGE_TAKEDOWN_REASONS),
+  },
+});
+
 /**
  * Every event catalog publishes, declared with `defineEvent` and registered with the event
  * catalogue by `CatalogModule`. Each new type changes the catalogue snapshot
@@ -157,4 +182,5 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   ProductRevisionSubmitted,
   ProductRevisionPublished,
   ProductRevisionChangesRequested,
+  ProductImageTakenDown,
 ];

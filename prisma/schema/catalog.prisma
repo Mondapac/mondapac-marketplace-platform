@@ -663,22 +663,27 @@ model CatalogOfferHistory {
 /// working copy; `taken-down` is reserved for the takedown use case. Deleted only while no
 /// revision uses it.
 model CatalogProductImage {
-  marketId          String                         @map("market_id") @db.VarChar(8)
-  tenantId          String                         @map("tenant_id")
-  id                String                         @db.Uuid
-  productId         String                         @map("product_id") @db.Uuid
-  uploaderAccountId String                         @map("uploader_account_id") @db.Uuid
+  marketId             String                         @map("market_id") @db.VarChar(8)
+  tenantId             String                         @map("tenant_id")
+  id                   String                         @db.Uuid
+  productId            String                         @map("product_id") @db.Uuid
+  uploaderAccountId    String                         @map("uploader_account_id") @db.Uuid
   /// clean | taken-down (CHECK).
-  state             String
+  state                String
   /// The size of the largest rendition.
-  pixelWidth        Int                            @map("pixel_width")
-  pixelHeight       Int                            @map("pixel_height")
+  pixelWidth           Int                            @map("pixel_width")
+  pixelHeight          Int                            @map("pixel_height")
   /// The size of the upload in bytes (abuse review); the upload itself is not kept.
-  byteSize          Int                            @map("byte_size")
-  createdAt         DateTime                       @map("created_at") @db.Timestamptz(6)
-  product           CatalogProduct                 @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  renditions        CatalogProductImageRendition[]
-  revisionImages    CatalogProductRevisionImage[]
+  byteSize             Int                            @map("byte_size")
+  createdAt            DateTime                       @map("created_at") @db.Timestamptz(6)
+  /// The three takedown columns are set together with state `taken-down` (CHECK); the state only
+  /// moves clean to taken-down (trigger).
+  takenDownAt          DateTime?                      @map("taken_down_at") @db.Timestamptz(6)
+  takenDownByAccountId String?                        @map("taken_down_by_account_id") @db.Uuid
+  takedownReasonCode   String?                        @map("takedown_reason_code")
+  product              CatalogProduct                 @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  renditions           CatalogProductImageRendition[]
+  revisionImages       CatalogProductRevisionImage[]
 
   @@id([marketId, id])
   @@unique([marketId, id, productId])

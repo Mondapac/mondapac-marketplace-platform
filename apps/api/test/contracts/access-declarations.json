@@ -54,6 +54,7 @@
   { "name": "catalog.seed-attributes", "rule": "system" },
   { "name": "catalog.seed-category-tree", "rule": "system" },
   { "name": "catalog.sell-unit-labels", "rule": "anonymous" },
+  { "name": "catalog.sweep-orphan-images", "rule": "system" },
   { "name": "certification.certification-types", "rule": "anonymous" },
   { "name": "certification.certification-types-system", "rule": "system" },
   { "name": "certification.evaluate-claims", "rule": "anonymous" },
