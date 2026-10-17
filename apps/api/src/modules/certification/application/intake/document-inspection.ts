@@ -120,7 +120,7 @@ function nameOf(bytes: Buffer, from: number, to: number): string {
       break;
     }
   }
-  if (!escaped) return bytes.latin1Slice(from, to);
+  if (!escaped) return bytes.toString('latin1', from, to);
   let decoded = '';
   for (let at = from; at < to; at += 1) {
     const code = bytes[at] as number;
@@ -405,7 +405,7 @@ function readDictionary(
         } else {
           onValue(result, frame, {
             kind: 'int',
-            value: j - i > 9 ? 999_999_999 : Number(bytes.latin1Slice(i, j)),
+            value: j - i > 9 ? 999_999_999 : Number(bytes.toString('latin1', i, j)),
           });
         }
       } else onValue(result, frame, OTHER);
