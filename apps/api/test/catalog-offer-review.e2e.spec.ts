@@ -9,6 +9,7 @@ import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer
 import type { OfferActor } from '../src/modules/catalog/application/ports/offer.repository';
 import { OWN_CATALOG_READER } from '../src/modules/catalog/application/ports/own-catalog.reader';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
+import { SELLER_NAMES_READER } from '../src/modules/catalog/application/ports/seller-names.reader';
 import { SELLER_ELIGIBILITY_READER } from '../src/modules/catalog/application/ports/seller-eligibility.reader';
 import { StaleAggregateError } from '../src/platform/unit-of-work/errors';
 import { Offer, type OfferState } from '../src/modules/catalog/domain/offer';
@@ -110,7 +111,7 @@ describe('admin Offer review over HTTP (integration)', () => {
             },
             listPendingReview: (
               _m: MarketContext,
-              page: { afterId: Id<'Offer'> | null; limit: number },
+              page: { after: { submittedAt: Temporal.Instant; id: string } | null; limit: number },
             ) => {
               const waiting = [...offers.values()]
                 .filter((o) => o.state.status === 'pending-first-publish')
@@ -119,9 +120,9 @@ describe('admin Offer review over HTTP (integration)', () => {
                     a.state.submittedAt!.epochMilliseconds - b.state.submittedAt!.epochMilliseconds,
                 );
               const from =
-                page.afterId === null
+                page.after === null
                   ? 0
-                  : waiting.findIndex((o) => o.state.id === page.afterId) + 1;
+                  : waiting.findIndex((o) => o.state.id === page.after!.id) + 1;
               return Promise.resolve(waiting.slice(from, from + page.limit));
             },
           })
@@ -133,10 +134,16 @@ describe('admin Offer review over HTTP (integration)', () => {
           .overrideProvider(OWN_CATALOG_READER)
           .useValue({
             pendingReviewCount: () => Promise.resolve(1),
+            pendingRevisionCount: () => Promise.resolve(0),
+            listPendingRevisions: () => Promise.resolve([]),
             productLabels: () =>
               Promise.resolve([
                 { productId: PRODUCT, productCode: 'P00000001', typeCode: 'simple', name: 'Dates' },
               ]),
+          })
+          .overrideProvider(SELLER_NAMES_READER)
+          .useValue({
+            storeNames: () => Promise.resolve(new Map([[SELLER, 'Dates Co']])),
           })
           .overrideProvider(ALLOWED_PRODUCT_TYPES_READER)
           .useValue({ allowedFor: () => Promise.resolve(allowed) })
@@ -358,6 +365,7 @@ describe('admin Offer review over HTTP (integration)', () => {
         kind: 'offer-first-publication',
         version: 4,
         sellerId: SELLER,
+        storeName: 'Dates Co',
         product: { productCode: 'P00000001', typeCode: 'simple', name: 'Dates' },
         handling: 'SEALED_ORIGINAL',
       });

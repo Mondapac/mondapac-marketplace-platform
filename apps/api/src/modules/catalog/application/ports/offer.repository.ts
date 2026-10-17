@@ -1,4 +1,4 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { Offer } from '../../domain/offer';
 
 /** Why a new Offer could not be stored: the two partial uniques of data design 3.13. */
@@ -34,13 +34,17 @@ export interface OfferRepository {
   save(market: MarketContext, offer: Offer, actor: OfferActor): Promise<'offer.sku-taken' | null>;
 
   /**
-   * The Offers waiting for their first publication (`pending-first-publish`), oldest submit first,
-   * at most `limit` after the Offer `afterId` of the previous page (null for the first page).
-   * An `afterId` of an Offer of this Market that has been decided since still anchors the page; an unknown one, or one with no submit stamp (edited back to draft), starts from the beginning.
+   * The Offers waiting for their first publication (`pending-first-publish`), oldest submit first
+   * (then by id), at most `limit` after the position `after` of the previous page (null for the
+   * first page). The position is the submit instant and id of the last row shown, so a row decided
+   * since still anchors the page.
    */
   listPendingReview(
     market: MarketContext,
-    page: { readonly afterId: Id<'Offer'> | null; readonly limit: number },
+    page: {
+      readonly after: { readonly submittedAt: Temporal.Instant; readonly id: string } | null;
+      readonly limit: number;
+    },
   ): Promise<readonly Offer[]>;
 
   /** The Offer in this Market, or null: another Market's id is not found. */

@@ -4,6 +4,7 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import type {
   ListPage,
   OwnCatalogReader,
+  PendingRevisionRow,
   ProductForm,
   ProductFormField,
   ProductLabel,
@@ -86,6 +87,88 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
   async pendingReviewCount(market: MarketContext): Promise<number> {
     return this.prisma.tx(market).catalogOffer.count({
       where: { marketId: market.marketId, status: 'pending-first-publish' },
+    });
+  }
+
+  async pendingRevisionCount(market: MarketContext): Promise<number> {
+    return this.prisma.tx(market).catalogProduct.count({
+      where: { marketId: market.marketId, scope: 'SELLER', pendingRevisionId: { not: null } },
+    });
+  }
+
+  async listPendingRevisions(
+    market: MarketContext,
+    page: {
+      readonly after: { readonly submittedAt: Temporal.Instant; readonly id: string } | null;
+      readonly limit: number;
+    },
+    locale: string,
+  ): Promise<readonly PendingRevisionRow[]> {
+    const tx = this.prisma.tx(market);
+    const cursor = page.after;
+    const after =
+      cursor === null
+        ? {}
+        : {
+            OR: [
+              { pendingSubmittedAt: { gt: new Date(cursor.submittedAt.epochMilliseconds) } },
+              {
+                pendingSubmittedAt: new Date(cursor.submittedAt.epochMilliseconds),
+                id: { gt: cursor.id },
+              },
+            ],
+          };
+    const products = await tx.catalogProduct.findMany({
+      where: {
+        marketId: market.marketId,
+        scope: 'SELLER',
+        pendingRevisionId: { not: null },
+        ...after,
+      },
+      orderBy: [{ pendingSubmittedAt: 'asc' }, { id: 'asc' }],
+      take: Math.min(page.limit, MAX_PAGE),
+    });
+    const revisionIds = products.flatMap((row) =>
+      row.pendingRevisionId === null ? [] : [row.pendingRevisionId],
+    );
+    if (revisionIds.length === 0) return [];
+    const revisions = await tx.catalogProductRevision.findMany({
+      where: { marketId: market.marketId, id: { in: revisionIds } },
+      select: {
+        id: true,
+        revisionNo: true,
+        sensitiveReasons: true,
+        texts: { where: { locale }, select: { name: true } },
+        images: { select: { imageId: true }, take: 1 },
+      },
+    });
+    const byId = new Map(revisions.map((row) => [row.id, row]));
+    return products.flatMap((row) => {
+      const revision = row.pendingRevisionId === null ? undefined : byId.get(row.pendingRevisionId);
+      if (
+        revision === undefined ||
+        row.ownerSellerId === null ||
+        row.pendingSubmittedAt === null ||
+        row.pendingRevisionId === null
+      ) {
+        return [];
+      }
+      return [
+        {
+          productId: row.id as Id<'Product'>,
+          productVersion: row.version,
+          sellerId: row.ownerSellerId as Id<'Seller'>,
+          productCode: row.productCode,
+          typeCode: row.typeCode,
+          revisionId: row.pendingRevisionId as Id<'ProductRevision'>,
+          revisionNo: revision.revisionNo,
+          firstPublication: row.publishedRevisionId === null,
+          sensitiveReasons: revision.sensitiveReasons,
+          hasImages: revision.images.length > 0,
+          name: revision.texts[0]?.name ?? null,
+          submittedAt: toInstant(row.pendingSubmittedAt),
+        },
+      ];
     });
   }
 
