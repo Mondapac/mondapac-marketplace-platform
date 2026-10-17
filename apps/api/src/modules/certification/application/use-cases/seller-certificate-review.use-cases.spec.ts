@@ -146,6 +146,7 @@ describe.each(['AU', 'ZZ'] as const)('admin review of a seller certificate, Mark
         approvedBoundaryAt: null,
         approvedIssuerState: null,
         issuerRequestOpen: false,
+        latestOutcome: null,
         submissionCount: 1,
         statusChangedAt: T0,
         lastChangedAt: T0,
@@ -565,6 +566,218 @@ describe.each(['AU', 'ZZ'] as const)('admin review of a seller certificate, Mark
         reasonCode: r.reasons[0]!.code,
       });
       expect(result).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    });
+  });
+
+  describe('resubmission and renewal (slice 8, AC 15)', () => {
+    const OLD_BOUNDARY = Temporal.Instant.from('2027-01-01T14:00:00Z');
+    const seal = (field: string, value: string) =>
+      `v1.${Buffer.from(`${field}|${value}`).toString('base64url')}`;
+
+    /** The rig's pending submission as a renewal of an approved (or expired) record. */
+    function asRenewal(r: ReturnType<typeof rig>, status: 'approved' | 'expired' = 'approved') {
+      const approvedId = r.ids.next<'Submission'>();
+      r.reviews.submission.kind = 'renewal';
+      r.reviews.submission.submissionNo = 2;
+      Object.assign(r.reviews.certificate, {
+        status,
+        pendingKind: 'renewal',
+        approvedSubmissionId: approvedId,
+        approvedBoundaryAt: OLD_BOUNDARY,
+        submissionCount: 2,
+      });
+      r.reviews.others = [
+        {
+          id: approvedId,
+          submissionNo: 1,
+          kind: 'initial',
+          submittedAt: Temporal.Instant.from('2026-01-02T00:00:00Z'),
+          issuerName: 'Halal Authority',
+          certificateNumberCiphertext: seal('submission-certificate-number', 'HC-0001'),
+          issueDate: Temporal.PlainDate.from('2026-01-01'),
+          expiryDate: Temporal.PlainDate.from('2027-01-01'),
+          decision: {
+            outcome: 'approved',
+            reasonCode: null,
+            reasonTextCiphertext: null,
+            decidedAt: Temporal.Instant.from('2026-01-03T00:00:00Z'),
+            actorKind: 'admin',
+            withdrawCause: null,
+            expiryBoundaryAt: OLD_BOUNDARY,
+          },
+        },
+      ];
+      return approvedId;
+    }
+
+    async function ready(r: ReturnType<typeof rig>, context: CallContext) {
+      await r.recordAll(context);
+      await r.recordScope(context);
+    }
+
+    it('approves a renewal: the pointer moves, the record stays approved, kind renewal', async () => {
+      const r = rig();
+      asRenewal(r);
+      const context = r.actor();
+      await ready(r, context);
+      const result = await r.approve.execute(context, {
+        certificateId: r.certificateId,
+        submissionId: r.submissionId,
+        version: 3,
+      });
+      expect(result).toMatchObject({
+        ok: true,
+        value: { outcome: 'approved', status: 'approved' },
+      });
+      expect(r.reviews.certificate).toMatchObject({
+        status: 'approved',
+        approvedSubmissionId: r.submissionId,
+        pendingSubmissionId: null,
+      });
+      // The new boundary is the renewal's own (2028-01-01 in Brisbane), never the old one.
+      expect(r.reviews.certificate.approvedBoundaryAt!.toString()).toBe('2028-01-01T14:00:00Z');
+      expect(r.outbox.events).toHaveLength(1);
+      expect(r.outbox.events[0]).toMatchObject({
+        type: 'certification.seller-certification-approved.v1',
+        payload: { kind: 'renewal', submissionId: r.submissionId },
+      });
+      expect(r.reviews.history.at(-1)).toMatchObject({
+        fromStatus: 'approved',
+        toStatus: 'approved',
+      });
+    });
+
+    it('approves the renewal of an expired record back to approved', async () => {
+      const r = rig();
+      asRenewal(r, 'expired');
+      const context = r.actor();
+      await ready(r, context);
+      const result = await r.approve.execute(context, {
+        certificateId: r.certificateId,
+        submissionId: r.submissionId,
+        version: 3,
+      });
+      expect(result).toMatchObject({ ok: true, value: { status: 'approved' } });
+      expect(r.reviews.history.at(-1)).toMatchObject({
+        fromStatus: 'expired',
+        toStatus: 'approved',
+      });
+    });
+
+    it('refuses a renewal that is itself expired and leaves the approved one in place', async () => {
+      const r = rig({ expiry: '2026-10-15' });
+      const approvedId = asRenewal(r);
+      const context = r.actor();
+      await ready(r, context);
+      await expect(
+        r.approve.execute(context, {
+          certificateId: r.certificateId,
+          submissionId: r.submissionId,
+          version: 3,
+        }),
+      ).resolves.toEqual({ ok: false, error: { code: 'certificate.expired' } });
+      expect(r.reviews.certificate).toMatchObject({
+        approvedSubmissionId: approvedId,
+        approvedBoundaryAt: OLD_BOUNDARY,
+      });
+    });
+
+    it('sends a renewal back without touching the approved certificate', async () => {
+      const r = rig();
+      const approvedId = asRenewal(r);
+      const reason = r.reasons.find((x) => x.outcomes.includes('changes-requested'))!;
+      const result = await r.changes.execute(r.actor(), {
+        certificateId: r.certificateId,
+        submissionId: r.submissionId,
+        version: 3,
+        reasonCode: reason.code,
+      });
+      expect(result).toMatchObject({ ok: true, value: { status: 'approved' } });
+      expect(r.reviews.certificate).toMatchObject({
+        status: 'approved',
+        approvedSubmissionId: approvedId,
+        approvedBoundaryAt: OLD_BOUNDARY,
+        pendingSubmissionId: null,
+      });
+    });
+
+    it('shows an undecided entry the root did not name as pending, never failing the page (L1)', async () => {
+      const r = rig();
+      asRenewal(r);
+      const raced = r.ids.next<'Submission'>();
+      r.reviews.others = [
+        {
+          ...r.reviews.others[0]!,
+          id: raced,
+          submissionNo: 3,
+          kind: 'renewal',
+          decision: null,
+        },
+        ...r.reviews.others,
+      ];
+      const page = await r.read.execute(r.actor(), { certificateId: r.certificateId });
+      if (!page.ok) throw new Error(JSON.stringify(page.error));
+      expect(page.value.otherSubmissions[0]).toMatchObject({
+        submissionId: raced,
+        status: 'pending',
+        decision: null,
+        validUntil: null,
+      });
+    });
+
+    it('shows the reviewer the earlier submissions with their decision and reason', async () => {
+      const r = rig();
+      const approvedId = asRenewal(r);
+      const refusedId = r.ids.next<'Submission'>();
+      r.reviews.submission.submissionNo = 3;
+      r.reviews.others = [
+        {
+          id: refusedId,
+          submissionNo: 2,
+          kind: 'renewal',
+          submittedAt: Temporal.Instant.from('2026-10-10T00:00:00Z'),
+          issuerName: 'Halal Authority',
+          certificateNumberCiphertext: seal('submission-certificate-number', 'HC-0002'),
+          issueDate: Temporal.PlainDate.from('2026-10-01'),
+          expiryDate: Temporal.PlainDate.from('2027-10-01'),
+          decision: {
+            outcome: 'changes-requested',
+            reasonCode: 'unreadable',
+            reasonTextCiphertext: seal('decision-reason-text', 'Page 2 is blurred.'),
+            decidedAt: Temporal.Instant.from('2026-10-11T00:00:00Z'),
+            actorKind: 'admin',
+            withdrawCause: null,
+            expiryBoundaryAt: null,
+          },
+        },
+        ...r.reviews.others,
+      ];
+      const page = await r.read.execute(r.actor(), { certificateId: r.certificateId });
+      if (!page.ok) throw new Error(JSON.stringify(page.error));
+      expect(page.value.submission).toMatchObject({ kind: 'renewal', submissionNo: 3 });
+      expect(page.value.otherSubmissions).toHaveLength(2);
+      expect(page.value.otherSubmissions[0]).toMatchObject({
+        submissionId: refusedId,
+        status: 'changes-requested',
+        certificateNumber: 'HC-0002',
+        validUntil: null,
+        decision: { reasonCode: 'unreadable', reasonText: 'Page 2 is blurred.' },
+      });
+      expect(page.value.otherSubmissions[1]).toMatchObject({
+        submissionId: approvedId,
+        status: 'approved',
+        certificateNumber: 'HC-0001',
+        expiryDate: '2027-01-01',
+        validUntil: OLD_BOUNDARY.toString(),
+      });
+      // The page read is audited with the submissions it showed (I1).
+      expect(r.audit.entries.at(-1)).toMatchObject({
+        action: 'certification.review-page.viewed',
+        after: { otherSubmissionIds: [refusedId, approvedId] },
+      });
+      // The decision unit never reads the list.
+      const snapshot = await r.reviews.snapshot(market, r.certificateId);
+      expect(snapshot!.others).toEqual([]);
     });
   });
 

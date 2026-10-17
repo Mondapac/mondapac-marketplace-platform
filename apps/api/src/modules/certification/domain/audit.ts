@@ -73,6 +73,9 @@ export const IssuerConfirmationRecorded = defineAuditAction({
 });
 
 /** A reviewer opened the review page, which decrypts (design 4.3); `reason` says how they got in. */
+/** The review page lists at most 10 other submissions and the approved one (slice 8). */
+export const MAX_OTHER_SUBMISSIONS_SHOWN = 11;
+
 export const ReviewPageViewed = defineAuditAction({
   action: 'certification.review-page.viewed',
   targetType: SELLER_CERTIFICATION_TARGET,
@@ -80,6 +83,8 @@ export const ReviewPageViewed = defineAuditAction({
   after: {
     submissionId: auditField.id(),
     reason: auditField.enumOf(REVIEW_READ_REASONS),
+    /** The other submissions the page showed (slice 8; at most 10 and the approved one). */
+    otherSubmissionIds: auditField.listOf(auditField.id(), MAX_OTHER_SUBMISSIONS_SHOWN),
   },
 });
 

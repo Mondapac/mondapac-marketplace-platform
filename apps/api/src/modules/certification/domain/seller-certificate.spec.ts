@@ -2,12 +2,15 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import {
   expiryBoundaryIn,
+  draftEditVerdict,
   incompleteFields,
   isDraftEditable,
   parseDraftContent,
+  sameDraftContent,
   sellerStatusOf,
   submissionContentOf,
   submissionKindFor,
+  statusAfterWithdraw,
   type DraftContent,
   type SellerStatusInput,
   type TypeSettings,
@@ -143,6 +146,62 @@ describe('editing and submission kind', () => {
   });
 });
 
+describe('withdraw by edit (design 3.2 row 2, slice 8)', () => {
+  it('edits an open record, asks first while a submission is pending, then withdraws it', () => {
+    expect(draftEditVerdict('draft', null, false)).toBe('edit');
+    expect(draftEditVerdict('approved', null, true)).toBe('edit');
+    expect(draftEditVerdict('in-review', 'pending', false)).toBe('confirm-withdraw');
+    expect(draftEditVerdict('approved', 'pending', false)).toBe('confirm-withdraw');
+    expect(draftEditVerdict('expired', 'pending', false)).toBe('confirm-withdraw');
+    expect(draftEditVerdict('in-review', 'pending', true)).toBe('withdraw-then-edit');
+    expect(draftEditVerdict('approved', 'pending', true)).toBe('withdraw-then-edit');
+    expect(draftEditVerdict('expired', 'pending', true)).toBe('withdraw-then-edit');
+  });
+
+  it('never edits a closed record, whatever the seller confirms', () => {
+    for (const confirmed of [false, true]) {
+      expect(draftEditVerdict('declined', null, confirmed)).toBe('closed');
+      expect(draftEditVerdict('revoked', null, confirmed)).toBe('closed');
+      expect(draftEditVerdict('revoked', 'pending', confirmed)).toBe('closed');
+      expect(draftEditVerdict('in-review', null, confirmed)).toBe('closed');
+      expect(draftEditVerdict('draft', 'pending', confirmed)).toBe('closed');
+    }
+  });
+
+  it('takes a never-approved record back to draft and keeps an approved or expired one', () => {
+    expect(statusAfterWithdraw('in-review', false)).toBe('draft');
+    expect(statusAfterWithdraw('approved', true)).toBe('approved');
+    expect(statusAfterWithdraw('expired', true)).toBe('expired');
+  });
+
+  it('never leaves a record with an approval in-review after a withdrawal (I2)', () => {
+    expect(statusAfterWithdraw('in-review', true)).toBe('approved');
+    for (const status of ['approved', 'expired', 'in-review'] as const) {
+      expect(statusAfterWithdraw(status, true)).not.toBe('in-review');
+    }
+  });
+
+  it('compares every field of two drafts', () => {
+    const base: DraftContent = {
+      issuerId: ISSUER as Id<'Issuer'>,
+      certificateNumber: 'HC-1',
+      issueDate: Temporal.PlainDate.from('2026-01-01'),
+      expiryDate: Temporal.PlainDate.from('2027-01-01'),
+      selfDeclared: null,
+      selfDeclarationNote: null,
+    };
+    expect(sameDraftContent(base, { ...base })).toBe(true);
+    expect(sameDraftContent(base, { ...base, certificateNumber: 'HC-2' })).toBe(false);
+    expect(sameDraftContent(base, { ...base, issuerId: null })).toBe(false);
+    expect(
+      sameDraftContent(base, { ...base, expiryDate: Temporal.PlainDate.from('2027-01-02') }),
+    ).toBe(false);
+    expect(sameDraftContent(base, { ...base, issueDate: null })).toBe(false);
+    expect(sameDraftContent(base, { ...base, selfDeclared: false })).toBe(false);
+    expect(sameDraftContent(base, { ...base, selfDeclarationNote: 'x' })).toBe(false);
+  });
+});
+
 describe('incompleteFields', () => {
   it('asks a third-party type for issuer, number, expiry and a file', () => {
     expect(incompleteFields(thirdParty, emptyDraft, 0).map((f) => f.path)).toEqual([
@@ -224,6 +283,7 @@ describe('sellerStatusOf', () => {
     hasApproval: true,
     approvedIssuerState: 'active',
     issuerRequestOpen: false,
+    latestOutcome: 'approved',
     ...overrides,
   });
 
@@ -260,6 +320,7 @@ describe('sellerStatusOf', () => {
           hasApproval: false,
           approvedIssuerState: null,
           issuerRequestOpen: false,
+          latestOutcome: null,
         },
         NOW,
       ).code,
@@ -279,6 +340,41 @@ describe('sellerStatusOf', () => {
     expect(sellerStatusOf(approved({ pendingKind: 'renewal' }), NOW).code).toBe(
       'approved-renewal-pending',
     );
+  });
+
+  it('shows a renewal sent back for changes while the approved one is valid, with its boundary', () => {
+    const refused = approved({ latestOutcome: 'changes-requested' });
+    expect(sellerStatusOf(refused, NOW)).toEqual({
+      code: 'approved-renewal-changes-needed',
+      submitBy: refused.approvedBoundaryAt,
+    });
+    // Also inside the warning window: the reason to act is the refused renewal.
+    const soon = approved({
+      latestOutcome: 'changes-requested',
+      approvedBoundaryAt: NOW.add({ hours: 24 * 3 }),
+    });
+    expect(sellerStatusOf(soon, NOW).code).toBe('approved-renewal-changes-needed');
+    // A correction sent again is a pending renewal; a declined or withdrawn one is plain approved.
+    expect(
+      sellerStatusOf(approved({ latestOutcome: 'changes-requested', pendingKind: 'renewal' }), NOW)
+        .code,
+    ).toBe('approved-renewal-pending');
+    expect(sellerStatusOf(approved({ latestOutcome: 'withdrawn' }), NOW).code).toBe('approved');
+    expect(sellerStatusOf(approved({ latestOutcome: 'declined' }), NOW).code).toBe('approved');
+  });
+
+  it('never shows a refused renewal as valid past the boundary or with a derecognised issuer', () => {
+    const past = approved({
+      latestOutcome: 'changes-requested',
+      approvedBoundaryAt: NOW.subtract({ hours: 1 }),
+    });
+    expect(sellerStatusOf(past, NOW).code).toBe('expired');
+    expect(
+      sellerStatusOf(
+        approved({ latestOutcome: 'changes-requested', approvedIssuerState: 'derecognised' }),
+        NOW,
+      ).code,
+    ).toBe('issuer-not-recognised');
   });
 
   it('shows expired past the stored boundary whether or not the job ran', () => {

@@ -258,6 +258,7 @@ describe('seller certificate routes over HTTP (integration)', () => {
       'document.not-found': 404,
       'certificate.exists': 409,
       'certificate.not-editable': 409,
+      'certificate.edit-withdraws-submission': 409,
       'conflict.stale': 409,
       'certificate.incomplete': 422,
       'file.too-large': 413,
@@ -346,8 +347,38 @@ describe('seller certificate routes over HTTP (integration)', () => {
         certificate: { status: 'awaiting-review', editable: false, withdrawable: true },
         documents: [{ documentId }],
       });
-      // Pending: no edit, no new file, no second submit.
-      await http().put(`${base}/certificates/${certificateId}`).set(h).send(draft()).expect(409);
+      // Pending: an unchanged save writes nothing; a change needs the seller's confirmation
+      // (withdraw by edit); no second submit.
+      const unchanged = await http()
+        .put(`${base}/certificates/${certificateId}`)
+        .set(h)
+        .send(draft())
+        .expect(200);
+      expect(unchanged.body).toMatchObject({
+        withdrawnSubmissionId: null,
+        certificate: { status: 'awaiting-review' },
+      });
+      const unconfirmed = await http()
+        .put(`${base}/certificates/${certificateId}`)
+        .set(h)
+        .send(draft({ certificateNumber: 'HC-2026-002' }))
+        .expect(409);
+      expect((unconfirmed.body as { code: string }).code).toBe(
+        'certificate.edit-withdraws-submission',
+      );
+      const badFlag = await http()
+        .put(`${base}/certificates/${certificateId}?withdrawPending=yes`)
+        .set(h)
+        .send(draft({ certificateNumber: 'HC-2026-002' }))
+        .expect(400);
+      expect(badFlag.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'withdrawPending', code: 'type' }] },
+      });
+      await http()
+        .delete(`${base}/certificates/${certificateId}/documents/${documentId}`)
+        .set(h)
+        .expect(409);
       await http().post(`${base}/certificates/${certificateId}/submit`).set(h).expect(409);
       await http().delete(`${base}/certificates/${certificateId}`).set(h).expect(409);
 
@@ -368,6 +399,55 @@ describe('seller certificate routes over HTTP (integration)', () => {
         .delete(`${base}/certificates/${certificateId}/documents/${documentId}`)
         .set(h)
         .expect(200);
+    });
+
+    it('withdraws a pending submission by edit when the seller confirms (slice 8)', async () => {
+      await boot();
+      await seeded(code);
+      const h = headers(code, sessionOf(code));
+      const created = await http()
+        .post(`${base}/certificates`)
+        .set(h)
+        .send({ typeCode: 'halal' })
+        .expect(201);
+      const certificateId = (created.body as { certificateId: string }).certificateId;
+      await http().put(`${base}/certificates/${certificateId}`).set(h).send(draft()).expect(200);
+      const png = await sharp({
+        create: { width: 8, height: 8, channels: 3, background: '#0000ff' },
+      })
+        .png()
+        .toBuffer();
+      await http()
+        .post(`${base}/certificates/${certificateId}/documents`)
+        .set(h)
+        .send({ data: png.toString('base64') })
+        .expect(201);
+      const submitted = await http()
+        .post(`${base}/certificates/${certificateId}/submit`)
+        .set(h)
+        .expect(201);
+      const submissionId = (submitted.body as { submissionId: string }).submissionId;
+
+      const saved = await http()
+        .put(`${base}/certificates/${certificateId}?withdrawPending=true`)
+        .set(h)
+        .send(draft({ certificateNumber: 'HC-2026-002' }))
+        .expect(200);
+      expect(saved.body).toMatchObject({
+        withdrawnSubmissionId: submissionId,
+        certificate: { status: 'draft', editable: true, withdrawable: false },
+        draft: { certificateNumber: 'HC-2026-002' },
+      });
+      expect(outbox.events.at(-1)).toMatchObject({
+        type: 'certification.seller-certification-withdrawn.v1',
+        payload: { cause: 'edited', submissionId },
+      });
+      // The edited draft is submitted again as a new submission of the same record.
+      const again = await http()
+        .post(`${base}/certificates/${certificateId}/submit`)
+        .set(h)
+        .expect(201);
+      expect(again.body).toMatchObject({ certificateId, kind: 'initial' });
     });
 
     it('deletes a draft that was never submitted', async () => {
