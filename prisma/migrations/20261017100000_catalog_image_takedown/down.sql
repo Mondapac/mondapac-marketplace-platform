@@ -1,4 +1,5 @@
--- Reverses 20261017090000_catalog_image_takedown. Taken-down photos would violate the earlier
+SET lock_timeout = '5s';
+-- Reverses 20261017100000_catalog_image_takedown. Taken-down photos would violate the earlier
 -- state CHECK only if the CHECK still allowed them; it does (clean, taken-down), so the rows stay
 -- and only the takedown columns are lost.
 CREATE OR REPLACE FUNCTION "catalog"."product_revision_images_clean"() RETURNS trigger

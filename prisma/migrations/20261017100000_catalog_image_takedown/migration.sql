@@ -1,3 +1,4 @@
+SET lock_timeout = '5s';
 -- Catalog slice 13 leftovers: photo takedown (catalog data design 3.19, 10.5) and Mojtaba's notes on
 -- the clean-image trigger.
 --
