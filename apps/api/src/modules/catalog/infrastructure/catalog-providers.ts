@@ -107,6 +107,11 @@ import {
 } from '../application/ports/tag-reevaluation-requests';
 import { PrismaTagReevaluationRequests } from './prisma-tag-reevaluation-requests';
 import {
+  TAG_SELECTION_READER,
+  type TagSelectionReader,
+} from '../application/ports/tag-selection.reader';
+import { PrismaTagSelectionReader } from './prisma-tag-selection.reader';
+import {
   OFFER_LISTINGS_READER,
   type OfferListingsReader,
 } from '../application/ports/offer-listings.reader';
@@ -155,6 +160,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): TagReevaluationRequestRepository =>
       new PrismaTagReevaluationRequests(prisma),
+  },
+  // The tag selections of the certification-event re-ask and the reconciliation (design 5.5, 5.6).
+  {
+    provide: TAG_SELECTION_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TagSelectionReader => new PrismaTagSelectionReader(prisma),
   },
   // The same store answers the seller's Offer on a product (design 5.1a).
   { provide: OWN_OFFER_FINDER, useExisting: OFFER_REPOSITORY },

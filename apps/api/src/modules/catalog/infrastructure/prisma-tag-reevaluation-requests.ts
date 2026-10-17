@@ -3,7 +3,9 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
+  CERTIFICATION_CAUSES,
   NO_COUNTS,
+  type CertificationCause,
   type PendingReevaluation,
   type ReevaluationCounts,
   type TagReevaluationRequestRepository,
@@ -23,6 +25,9 @@ function countsOf(value: unknown): ReevaluationCounts {
   }
   return out as unknown as ReevaluationCounts;
 }
+
+const isCause = (value: string | null): value is CertificationCause =>
+  (CERTIFICATION_CAUSES as readonly (string | null)[]).includes(value);
 
 const jsonOf = (counts: ReevaluationCounts): Prisma.InputJsonObject =>
   Object.fromEntries(COUNT_KEYS.map((key) => [key, counts[key]]));
@@ -74,26 +79,88 @@ export class PrismaTagReevaluationRequests implements TagReevaluationRequestRepo
     });
   }
 
+  async requestForEvent(
+    market: MarketContext,
+    request: {
+      readonly id: Id<'TagReevaluationRequest'>;
+      readonly cause: CertificationCause;
+      readonly subjectId: Id;
+      readonly sourceEventId: Id;
+      readonly now: Temporal.Instant;
+    },
+  ): Promise<void> {
+    // `createMany` with `skipDuplicates` is `ON CONFLICT DO NOTHING`: a second write of the same
+    // event leaves the first request as it is (the unit stays usable, no 23505).
+    await this.prisma.tx(market).catalogTagReevaluationRequest.createMany({
+      data: [
+        {
+          id: request.id,
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          kind: 'certification-event',
+          productId: null,
+          productRevisionId: null,
+          sourceEventId: request.sourceEventId,
+          cause: request.cause,
+          subjectId: request.subjectId,
+          state: 'pending',
+          cursorOfferId: null,
+          counts: jsonOf(NO_COUNTS),
+          createdAt: toDate(request.now),
+          settledAt: null,
+        },
+      ],
+      skipDuplicates: true,
+    });
+  }
+
   async listPending(market: MarketContext, limit: number): Promise<readonly PendingReevaluation[]> {
+    // Served by the claim index (`state = 'pending'`), both kinds in one order.
     const rows = await this.prisma.tx(market).catalogTagReevaluationRequest.findMany({
-      where: { marketId: market.marketId, state: 'pending', kind: 'revision-published' },
+      where: { marketId: market.marketId, state: 'pending' },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: limit,
     });
-    return rows.flatMap((row) =>
-      row.productId === null || row.productRevisionId === null
-        ? []
-        : [
-            {
-              id: row.id as Id<'TagReevaluationRequest'>,
-              productId: row.productId as Id<'Product'>,
-              productRevisionId: row.productRevisionId as Id<'ProductRevision'>,
-              cursorOfferId: row.cursorOfferId as Id<'Offer'> | null,
-              counts: countsOf(row.counts),
-              createdAt: Temporal.Instant.fromEpochMilliseconds(row.createdAt.getTime()),
-            },
-          ],
-    );
+    return rows.flatMap((row): PendingReevaluation[] => {
+      const common = {
+        id: row.id as Id<'TagReevaluationRequest'>,
+        cursorOfferId: row.cursorOfferId as Id<'Offer'> | null,
+        counts: countsOf(row.counts),
+        createdAt: Temporal.Instant.fromEpochMilliseconds(row.createdAt.getTime()),
+      };
+      if (
+        row.kind === 'revision-published' &&
+        row.productId !== null &&
+        row.productRevisionId !== null
+      ) {
+        return [
+          {
+            ...common,
+            kind: 'revision-published',
+            productId: row.productId as Id<'Product'>,
+            productRevisionId: row.productRevisionId as Id<'ProductRevision'>,
+          },
+        ];
+      }
+      if (
+        row.kind === 'certification-event' &&
+        isCause(row.cause) &&
+        row.subjectId !== null &&
+        row.sourceEventId !== null
+      ) {
+        return [
+          {
+            ...common,
+            kind: 'certification-event',
+            cause: row.cause,
+            subjectId: row.subjectId as Id,
+            sourceEventId: row.sourceEventId as Id,
+          },
+        ];
+      }
+      // A kind this build does not settle yet (category, types re-allowed): left pending.
+      return [];
+    });
   }
 
   async progress(

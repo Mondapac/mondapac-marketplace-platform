@@ -366,7 +366,7 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
           reasonCode: row.reasonCode,
           entryPath: row.entryPath,
           changeSeq: row.changeSeq,
-          causeEventId: null,
+          causeEventId: row.causeEventId,
           actorKind: row.actor.kind,
           actorAccountId: row.actor.accountId,
           actingAdminAccountId:
@@ -437,6 +437,34 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
       take: page.limit,
     });
     if (rows.length === 0) return [];
+    const tags = await tx.catalogOfferTag.findMany({
+      where: {
+        marketId: market.marketId,
+        offerId: { in: rows.map((row) => row.id) },
+        status: { not: 'removed' },
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map((row) =>
+      offerFromRow(
+        row,
+        tags.filter((tag) => tag.offerId === row.id),
+      ),
+    );
+  }
+
+  async findManyByIds(
+    market: MarketContext,
+    ids: readonly Id<'Offer'>[],
+  ): Promise<readonly Offer[]> {
+    if (ids.length === 0) return [];
+    const tx = this.prisma.tx(market);
+    const rows = await tx.catalogOffer.findMany({
+      where: { marketId: market.marketId, id: { in: [...ids] } },
+      orderBy: { id: 'asc' },
+    });
+    if (rows.length === 0) return [];
+    // The open tags only; served by the open-tag partial unique.
     const tags = await tx.catalogOfferTag.findMany({
       where: {
         marketId: market.marketId,

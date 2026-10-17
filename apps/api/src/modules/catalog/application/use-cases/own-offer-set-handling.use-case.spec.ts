@@ -132,6 +132,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-handling in market %s', (cod
         add: () => Promise.reject(new Error('unused')),
         listOnProduct: () => Promise.resolve([]),
         listPendingReview: () => Promise.resolve([]),
+        findManyByIds: () => Promise.resolve([]),
         findById: () =>
           Promise.resolve(state === null ? null : Offer.restore(state, options.tags ?? [])),
         save: (_m, offer) => {

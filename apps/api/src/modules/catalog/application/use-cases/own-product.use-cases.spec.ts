@@ -367,6 +367,7 @@ describe.each(FIXTURES)(
             findById: () => Promise.reject(new Error('unused')),
             listOnProduct: () => Promise.resolve([]),
             listPendingReview: () => Promise.resolve([]),
+            findManyByIds: () => Promise.resolve([]),
             save: (_m, offer) => {
               if (openUnits === 0) throw new Error('the Offer is saved outside the submit unit');
               savedOffers.push(offer);
@@ -403,6 +404,7 @@ describe.each(FIXTURES)(
         findById: () => Promise.resolve(null),
         listOnProduct: () => Promise.resolve([]),
         listPendingReview: () => Promise.resolve([]),
+        findManyByIds: () => Promise.resolve([]),
         save: () => Promise.reject(new Error('unused')),
       };
       const create = new OwnProductCreate(gate, {

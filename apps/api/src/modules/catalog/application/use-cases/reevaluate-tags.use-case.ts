@@ -9,11 +9,17 @@ import type { TagDecision } from '../../domain/offer-tag';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
 import type { OfferRepository } from '../ports/offer.repository';
 import type {
+  CertificationCause,
+  PendingCertificationReevaluation,
+  PendingPublishReevaluation,
   PendingReevaluation,
   ReevaluationCounts,
   TagReevaluationRequestRepository,
 } from '../ports/tag-reevaluation-requests';
+import type { TagSelection, TagSelectionReader } from '../ports/tag-selection.reader';
+import type { OfferTagState } from '../../domain/offer-tag';
 import { askClaimsMany } from '../tags/ask-claims';
+import { addCounts, reaskOffers } from '../tags/reask-offers';
 import type { ClaimQueryBuilder } from '../tags/claim-query-builder';
 import {
   claimsFailClosed,
@@ -54,6 +60,42 @@ export interface ReevaluateTagsDependencies {
   readonly evaluator: ClaimEvaluator;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
+  readonly tagSelection: TagSelectionReader;
+}
+
+/**
+ * What a certification cause selects (design 5.5) and whether the selected `active` tags are
+ * marked `rechecking` before the ask: an expired or revoked certificate makes the claim "no" from
+ * its own instant, so no badge may stay while the answer is fetched (AC 12).
+ */
+export function selectionOf(
+  cause: CertificationCause,
+  subjectId: Id,
+): {
+  readonly selection: TagSelection;
+  readonly markFirst: boolean;
+} {
+  switch (cause) {
+    case 'seller-certification-approved':
+      return { selection: { by: 'seller', id: subjectId }, markFirst: false };
+    case 'seller-certification-expired':
+    case 'seller-certification-revoked':
+      return { selection: { by: 'certificate', id: subjectId }, markFirst: true };
+    case 'seller-certification-issuer-confirmed':
+      return { selection: { by: 'certificate-version', id: subjectId }, markFirst: false };
+  }
+}
+
+/** True when the tag's own copy is what the selection names (the Offer's other tags are not). */
+export function selectsTag(selection: TagSelection, tag: OfferTagState): boolean {
+  switch (selection.by) {
+    case 'certificate':
+      return tag.copy?.certificateId === selection.id;
+    case 'certificate-version':
+      return tag.copy?.certificateVersionId === selection.id;
+    case 'seller':
+      return true;
+  }
 }
 
 type RequestOutcome = 'settled' | 'superseded' | 'pending';
@@ -76,7 +118,11 @@ const SYSTEM = { kind: 'system', accountId: null } as const;
 
 /**
  * `catalog.reevaluate-tags` (catalog design 5.4 "Publish fan-out"; rule M1; slice 11): the job half
- * of a PLATFORM publish. Rule `system`, per hosted Market, in the worker. For each pending
+ * of a PLATFORM publish, and (slice 12, design 5.5) of a consumed certification event: a
+ * `certification-event` request selects the Offers whose tags its cause names from catalog's own
+ * rows (published copies only), a page at a time in Offer id order, and re-asks them through
+ * {@link reaskOffers} (entry path `certification-event`, the event id on each history row); its
+ * counts are the re-ask metric of 19.2 item 5. Rule `system`, per hosted Market, in the worker. For each pending
  * `revision-published` request, oldest first: if the product's published revision is no longer the
  * request's, the request is superseded (a newer publish wrote its own). Otherwise the product's
  * Offers are taken in id order after the request's cursor, a page at a time; the kept tags of the
@@ -126,7 +172,10 @@ export class ReevaluateTags extends UseCase<
     let open = 0;
     const stuckBefore = deps.clock.now().subtract(REEVALUATE_STUCK_AFTER);
     for (const request of pending.value) {
-      const outcome = await this.#settle(context, request);
+      const outcome =
+        request.kind === 'revision-published'
+          ? await this.#settle(context, request)
+          : await this.#settleCertification(context, request);
       if (outcome !== 'pending') {
         closed += 1;
         continue;
@@ -137,8 +186,10 @@ export class ReevaluateTags extends UseCase<
         this.#logger.warn({
           msg: 'catalog.reevaluate-tags.request-stuck',
           requestId: request.id,
-          productId: request.productId,
-          productRevisionId: request.productRevisionId,
+          kind: request.kind,
+          ...(request.kind === 'revision-published'
+            ? { productId: request.productId, productRevisionId: request.productRevisionId }
+            : { cause: request.cause }),
           marketId: market.marketId,
           correlationId: context.correlationId,
         });
@@ -147,8 +198,76 @@ export class ReevaluateTags extends UseCase<
     return ok({ closed, open });
   }
 
+  /**
+   * Settles one `certification-event` request as far as this run goes (design 5.5): pages of at
+   * most {@link REEVALUATE_PAGE} selected Offers after the cursor, each re-asked and settled. An
+   * incomplete page (unanswered, `unavailable` or a lost race) keeps the cursor, so the next run
+   * asks that page again; its tags stay `rechecking` meanwhile. A page that fails a second time
+   * raises an alert (an error log) while its tags stay without badge.
+   */
+  async #settleCertification(
+    context: CallContext,
+    request: PendingCertificationReevaluation,
+  ): Promise<RequestOutcome> {
+    const { market } = context;
+    const { deps } = this;
+    const { selection, markFirst } = selectionOf(request.cause, request.subjectId);
+    let counts: ReevaluationCounts = request.counts;
+    let cursor = request.cursorOfferId;
+    for (let page = 0; page < REEVALUATE_MAX_PAGES; page += 1) {
+      const read = await deps.unitOfWork.run(
+        market,
+        async () =>
+          ok(
+            await deps.tagSelection.selectedOffers(market, selection, {
+              afterId: cursor,
+              limit: REEVALUATE_PAGE,
+            }),
+          ),
+        { readOnly: true },
+      );
+      if (!read.ok) return 'pending';
+      const offerIds = read.value;
+      const failedBefore = counts.unavailable > 0;
+      const outcome = await reaskOffers(deps, context, offerIds, {
+        entryPath: 'certification-event',
+        causeEventId: request.sourceEventId,
+        selects: (tag) => selectsTag(selection, tag),
+        markFirst,
+      });
+      counts = addCounts(counts, outcome.counts);
+      for (const offerId of outcome.skipped) {
+        this.#skippedOffer(context, request, offerId, 'no-queries');
+      }
+      if (!outcome.complete) {
+        if (failedBefore && outcome.counts.unavailable > 0) {
+          // Alert (design 5.5): the same page failed again; its tags stay `rechecking`.
+          this.#logger.error({
+            msg: 'catalog.reevaluate-tags.batch-failed-twice',
+            requestId: request.id,
+            cause: request.cause,
+            marketId: market.marketId,
+            correlationId: context.correlationId,
+          });
+        }
+        await this.#progress(context, request, cursor, counts);
+        return 'pending';
+      }
+      const last = offerIds[offerIds.length - 1];
+      if (last !== undefined) cursor = last;
+      if (offerIds.length < REEVALUATE_PAGE) {
+        return (await this.#close(context, request, 'settled', counts)) ? 'settled' : 'pending';
+      }
+      await this.#progress(context, request, cursor, counts);
+    }
+    return 'pending';
+  }
+
   /** Settles one request as far as this run goes. */
-  async #settle(context: CallContext, request: PendingReevaluation): Promise<RequestOutcome> {
+  async #settle(
+    context: CallContext,
+    request: PendingPublishReevaluation,
+  ): Promise<RequestOutcome> {
     const { market } = context;
     const { deps } = this;
     let counts: ReevaluationCounts = request.counts;
@@ -327,10 +446,28 @@ export class ReevaluateTags extends UseCase<
     );
   }
 
+  /** An Offer a certification request could not ask (no published revision or handling). */
+  #skippedOffer(
+    context: CallContext,
+    request: PendingCertificationReevaluation,
+    offerId: Id<'Offer'>,
+    reason: 'no-queries',
+  ): void {
+    this.#logger.warn({
+      msg: 'catalog.reevaluate-tags.offer-skipped',
+      code: reason,
+      requestId: request.id,
+      cause: request.cause,
+      offerId,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+  }
+
   /** An Offer this run left `rechecking`, by id and reason only (Hassan L-2). */
   #skipped(
     context: CallContext,
-    request: PendingReevaluation,
+    request: PendingPublishReevaluation,
     offerId: Id<'Offer'>,
     reason: 'no-queries' | 'retry' | 'unavailable',
   ): void {
@@ -362,9 +499,12 @@ export class ReevaluateTags extends UseCase<
       ),
     );
     const done = closed.ok && closed.value;
+    // The re-ask metric (19.2 item 5): how many tags each request asked and what changed.
     this.#logger.log({
       msg: 'catalog.reevaluate-tags.request',
       code: done ? state : 'not-pending',
+      kind: request.kind,
+      ...(request.kind === 'certification-event' ? { cause: request.cause } : {}),
       ...counts,
       marketId: market.marketId,
       correlationId: context.correlationId,

@@ -75,11 +75,11 @@ export interface OfferListingBadge {
 
 /**
  * One certification tag of a listed Offer (catalog design 9.1), answered to the `system` caller
- * only: `active`, `rechecking` and `suspended` tags with status and basis. Until catalog consumes
- * the certification revoke and expiry events (slice 12), `active` is the stored status and does
- * NOT yet reflect a revoked or expired certificate, so `badge` is always null and an `anonymous`
- * caller receives no tags (Hassan, certification revoke review, L-1). Never permission to claim
- * anything: `ordering` asks `evaluateClaims` itself (AC 14).
+ * only: `active`, `rechecking` and `suspended` tags with status and basis. `badge` is present
+ * only on an `active` tag whose copy is valid at the read (slice 12: catalog consumes the
+ * certification revoke and expiry events, and settles them within the fan-out job's run); an
+ * `anonymous` caller receives no tags (Hassan, certification revoke review, L-1). Never permission
+ * to claim anything: `ordering` asks `evaluateClaims` itself (AC 14).
  */
 export interface OfferListingTag {
   readonly typeCode: string;
@@ -181,8 +181,8 @@ export interface CatalogFacade {
    * above (catalog design 9.1; Hassan L7). A key whose Offer is unknown, of another Market,
    * deleted or never published, or whose product is not published, is **absent**: nothing
    * unpublished is ever answered. Two use cases behind this method: `anonymous` for a request
-   * actor (no tags: `tags` is always empty until slice 12, see {@link OfferListingTag}) and
-   * `system` for the system actor. In-process only.
+   * actor (no tags: `tags` is always empty, see {@link OfferListingTag}) and `system` for the
+   * system actor (tags, with the badge of a valid `active` tag). In-process only.
    */
   offerListings(
     context: CallContext,

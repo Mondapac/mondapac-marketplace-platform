@@ -105,6 +105,13 @@ import {
 import { IMAGE_PROCESSOR } from './application/ports/image-processor';
 import { OBJECT_STORE } from '../../platform/storage/object-store';
 import { TAG_REEVALUATION_REQUESTS } from './application/ports/tag-reevaluation-requests';
+import { TAG_SELECTION_READER } from './application/ports/tag-selection.reader';
+import { OwnOfferRemoveSuspendedTag } from './application/use-cases/own-offer-remove-suspended-tag.use-case';
+import { ReconcileTags } from './application/use-cases/reconcile-tags.use-case';
+import { ReevaluateFromCertification } from './application/use-cases/reevaluate-from-certification.use-case';
+import { reconcileTagsJob } from './presentation/jobs/reconcile-tags.job';
+import { certificationSubscriptions } from './presentation/subscribers/certification.subscriptions';
+import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { OwnProductImageUpload } from './application/use-cases/own-product-image-upload.use-case';
 import { OwnProductImageList } from './application/use-cases/own-product-image-list.use-case';
 import { OwnProductImageRead } from './application/use-cases/own-product-image-read.use-case';
@@ -176,6 +183,7 @@ const PORT = {
   imageProcessor: IMAGE_PROCESSOR,
   objectStore: OBJECT_STORE,
   requests: TAG_REEVALUATION_REQUESTS,
+  tagSelection: TAG_SELECTION_READER,
   listingsReader: OFFER_LISTINGS_READER,
 } as const satisfies Record<string, InjectionToken>;
 
@@ -405,6 +413,13 @@ const productTypeProvider: FactoryProvider<string> = {
       outbox: true,
       clock: true,
     }),
+    useCaseProvider(OwnOfferRemoveSuspendedTag, {
+      unitOfWork: true,
+      offers: true,
+      eligibility: true,
+      outbox: true,
+      clock: true,
+    }),
     useCaseProvider(OwnOfferDelete, {
       unitOfWork: true,
       offers: true,
@@ -578,31 +593,61 @@ const productTypeProvider: FactoryProvider<string> = {
       evaluator: true,
       outbox: true,
       clock: true,
+      tagSelection: true,
+    }),
+    useCaseProvider(ReconcileTags, {
+      unitOfWork: true,
+      offers: true,
+      claims: true,
+      evaluator: true,
+      outbox: true,
+      clock: true,
+      tagSelection: true,
+    }),
+    useCaseProvider(ReevaluateFromCertification, {
+      unitOfWork: true,
+      requests: true,
+      ids: true,
+      clock: true,
     }),
     registerJobsFrom(
       'catalog',
-      [SeedCategoryTree, SeedAttributes, SweepOrphanImages, ReevaluateTags],
+      [SeedCategoryTree, SeedAttributes, SweepOrphanImages, ReevaluateTags, ReconcileTags],
       (
         categories: SeedCategoryTree,
         attributes: SeedAttributes,
         sweep: SweepOrphanImages,
         reevaluate: ReevaluateTags,
+        reconcile: ReconcileTags,
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
         sweepOrphanImagesJob(sweep),
         reevaluateTagsJob(reevaluate),
+        reconcileTagsJob(reconcile),
       ],
+    ),
+    // Certification events consumed (design 5.5, 9.5; slice 12).
+    registerSubscriptionsFrom(
+      'catalog',
+      [ReevaluateFromCertification],
+      (reevaluate: ReevaluateFromCertification) => certificationSubscriptions(reevaluate),
     ),
     useCaseProvider(OfferSellUnitsQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferSellUnitsSystemQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferNamesSystemQuery, { unitOfWork: true, namesReader: true }),
     useCaseProvider(SellUnitLabelsQuery, { unitOfWork: true, labelsReader: true }),
-    useCaseProvider(OfferListingsQuery, { unitOfWork: true, listingsReader: true, policy: true }),
+    useCaseProvider(OfferListingsQuery, {
+      unitOfWork: true,
+      listingsReader: true,
+      policy: true,
+      clock: true,
+    }),
     useCaseProvider(OfferListingsSystemQuery, {
       unitOfWork: true,
       listingsReader: true,
       policy: true,
+      clock: true,
     }),
     {
       provide: CATALOG_FACADE,

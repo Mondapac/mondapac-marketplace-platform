@@ -939,4 +939,173 @@ describe.each([
       expect(kept.state.version).toBe(keptVersion + 1);
     });
   });
+
+  describe('certification re-evaluation (slice 12; design 5.3, 5.5; AC 12, 13, 19)', () => {
+    const eventId = ids.next();
+    const reask = (offer: Offer, decide: (q: TagClaimQuery, i: number) => TagDecision) =>
+      offer.settleTags({
+        facts: facts(),
+        decisions: answer(offer, decide),
+        entryPath: 'certification-event',
+        actor: { kind: 'system', accountId: null },
+        hash,
+        now: T1,
+        causeEventId: eventId,
+      });
+    const manufacturerCertificateId = ids.next();
+    const manufacturer = (q: TagClaimQuery): TagDecision => {
+      const base = allowed(q);
+      return {
+        ...base,
+        basis: 'MANUFACTURER',
+        certificate: {
+          ...base.certificate!,
+          kind: 'manufacturer',
+          certificateId: manufacturerCertificateId,
+        },
+        badge: { ...base.badge!, basis: 'MANUFACTURER', sellerClaim: false },
+      };
+    };
+
+    it('marks only the selected active tags rechecking, recording the consumed event', () => {
+      const offer = withActiveTag();
+      const tagId = offer.tags[0]!.id;
+      expect(
+        offer.markRechecking({
+          entryPath: 'certification-event',
+          actor: { kind: 'system', accountId: null },
+          now: T1,
+          tagIds: new Set(['another-tag']),
+          causeEventId: eventId,
+        }),
+      ).toBe(0);
+      expect(
+        offer.markRechecking({
+          entryPath: 'certification-event',
+          actor: { kind: 'system', accountId: null },
+          now: T1,
+          tagIds: new Set([tagId]),
+          causeEventId: eventId,
+        }),
+      ).toBe(1);
+      expect(offer.tags[0]).toMatchObject({ status: 'rechecking', badge: null });
+      expect(offer.pendingTagHistory).toEqual([
+        expect.objectContaining({
+          toStatus: 'rechecking',
+          entryPath: 'certification-event',
+          causeEventId: eventId,
+          actor: { kind: 'system', accountId: null },
+        }),
+      ]);
+    });
+
+    it('suspends a rechecking tag refused after a revocation: off sale, not deleted (AC 12)', () => {
+      const offer = withActiveTag();
+      offer.markRechecking({
+        entryPath: 'certification-event',
+        actor: { kind: 'system', accountId: null },
+        now: T1,
+      });
+      const read = Offer.restore(offer.state, offer.tags);
+      expect(reask(read, (q) => refused(q, 'certificate-revoked'))).toMatchObject({
+        value: { suspended: 1 },
+      });
+      expect(read.tags[0]).toMatchObject({
+        status: 'suspended',
+        badge: null,
+        lastReasonCode: 'certificate-revoked',
+      });
+      expect(read.state).toMatchObject({
+        status: 'published',
+        offSaleCauses: ['tag-suspended'],
+        listed: false,
+      });
+      expect(read.pendingTagHistory).toEqual([
+        expect.objectContaining({ fromStatus: 'rechecking', causeEventId: eventId }),
+      ]);
+    });
+
+    it('switches the basis of a rechecking tag when another basis is valid, announcing it (AC 12)', () => {
+      const offer = withActiveTag();
+      offer.markRechecking({
+        entryPath: 'certification-event',
+        actor: { kind: 'system', accountId: null },
+        now: T1,
+      });
+      const read = Offer.restore(offer.state, offer.tags);
+      expect(reask(read, manufacturer)).toMatchObject({ value: { switched: 1 } });
+      expect(read.tags[0]).toMatchObject({ status: 'active', copy: { basis: 'MANUFACTURER' } });
+      expect(read.state.listed).toBe(true);
+      expect(read.pendingEvents.map((e) => [e.type, e.payload])).toEqual([
+        ['catalog.offer-tag-basis-switched.v1', expect.objectContaining({ basis: 'manufacturer' })],
+      ]);
+    });
+
+    it('restores a suspended tag only on a fresh allowed answer, never from the stored copy (AC 13)', () => {
+      const offer = withActiveTag();
+      reask(offer, (q) => refused(q, 'certificate-expired'));
+      const suspended = Offer.restore(offer.state, offer.tags);
+      expect(
+        suspended.settleTags({
+          facts: facts(),
+          decisions: answer(suspended, (q) =>
+            allowed(q, { reason: 'unavailable', allowed: false }),
+          ),
+          entryPath: 'reconciliation',
+          actor: { kind: 'system', accountId: null },
+          hash,
+          now: T1,
+        }),
+      ).toMatchObject({ error: { code: 'claim.check-unavailable' } });
+      expect(suspended.tags[0]!.status).toBe('suspended');
+      // Marking never touches a suspended tag: it stays off sale until an allowed answer.
+      expect(
+        suspended.markRechecking({
+          entryPath: 'reconciliation',
+          actor: { kind: 'system', accountId: null },
+          now: T1,
+        }),
+      ).toBe(0);
+      expect(reask(suspended, (q) => allowed(q))).toMatchObject({ value: { restored: 1 } });
+      expect(suspended.tags[0]).toMatchObject({ status: 'active' });
+      expect(suspended.state).toMatchObject({ offSaleCauses: [], listed: true });
+    });
+
+    it('sells without the badge: removes only a suspended tag and lists the Offer again (AC 19)', () => {
+      const active = withActiveTag();
+      expect(active.removeSuspendedTag({ typeCode, actor: seller, now: T1 })).toMatchObject({
+        error: { code: 'tag.not-suspended' },
+      });
+      expect(active.hasChanges).toBe(false);
+
+      const offer = withActiveTag();
+      reask(offer, (q) => refused(q, 'certificate-expired'));
+      const suspended = Offer.restore(offer.state, offer.tags);
+      expect(suspended.removeSuspendedTag({ typeCode, actor: seller, now: T1 })).toEqual({
+        ok: true,
+        value: undefined,
+      });
+      expect(suspended.tags[0]).toMatchObject({
+        status: 'removed',
+        removedByKind: 'seller',
+        removedByAccountId: seller.accountId,
+        lastChangeCause: 'seller-remove-suspended',
+      });
+      expect(suspended.state).toMatchObject({ offSaleCauses: [], listed: true });
+      expect(suspended.pendingEvents.map((e) => e.type)).toEqual([
+        'catalog.offer-tag-removed.v1',
+        'catalog.offer-listing-changed.v1',
+      ]);
+      expect(suspended.pendingTagHistory).toEqual([
+        expect.objectContaining({
+          fromStatus: 'suspended',
+          toStatus: 'removed',
+          entryPath: 'seller-remove-suspended',
+        }),
+      ]);
+      expect(suspended.removeSuspendedTag({ typeCode, actor: seller, now: T1 })).toMatchObject({
+        error: { code: 'tag.not-found' },
+      });
+    });
+  });
 });

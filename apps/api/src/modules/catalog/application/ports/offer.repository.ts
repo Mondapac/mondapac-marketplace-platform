@@ -51,6 +51,13 @@ export interface OfferRepository {
   findById(market: MarketContext, id: Id<'Offer'>): Promise<Offer | null>;
 
   /**
+   * The Offers of these ids in this Market, with their open tags, in id order; an unknown id is
+   * left out (slice 12: a page of the certification re-ask and of the reconciliation). Each is
+   * saveable under the version it was read at.
+   */
+  findManyByIds(market: MarketContext, ids: readonly Id<'Offer'>[]): Promise<readonly Offer[]>;
+
+  /**
    * The Offers of a product that are not deleted, with their open tags, in id order after
    * `afterId` (null for the first page), at most `limit` (slice 11: the M1 marking of a PLATFORM
    * publish and the fan-out's keyset). Each is saveable under the version it was read at.

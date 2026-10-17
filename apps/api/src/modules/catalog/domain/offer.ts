@@ -77,6 +77,7 @@ export type OfferTagRefusal =
   | { readonly code: 'tag.not-found' }
   | { readonly code: 'tag.suspended' }
   | { readonly code: 'tag.not-removable' }
+  | { readonly code: 'tag.not-suspended' }
   | {
       readonly code: 'claim.tag-not-allowed';
       readonly tags: readonly { readonly typeCode: string; readonly reason: string }[];
@@ -108,6 +109,8 @@ interface ClaimAnswerInput {
   /** SHA-256 hex of a canonical text (the domain holds no crypto). */
   readonly hash: (canonical: string) => string;
   readonly now: Temporal.Instant;
+  /** The consumed event of a handler or job change, recorded on its history rows. */
+  readonly causeEventId?: Id | null;
 }
 
 /** Why `setHandling` was refused. */
@@ -697,11 +700,15 @@ export class Offer {
     readonly entryPath: TagEntryPath;
     readonly actor: TagActor;
     readonly now: Temporal.Instant;
+    /** Only these tags (a certification event's selection, design 5.5); all when absent. */
+    readonly tagIds?: ReadonlySet<string>;
+    readonly causeEventId?: Id | null;
   }): number {
     if (this.#state.status === 'deleted') return 0;
     let marked = 0;
     for (const tag of this.#tags) {
       if (tag.status !== 'active') continue;
+      if (input.tagIds !== undefined && !input.tagIds.has(tag.id)) continue;
       const next: OfferTagState = {
         ...tag,
         status: 'rechecking',
@@ -711,7 +718,14 @@ export class Offer {
         changeSeq: tag.changeSeq + 1,
       };
       this.#putTag(next, false);
-      this.#historyOf(next, tag.status, input.entryPath, input.actor, input.now);
+      this.#historyOf(
+        next,
+        tag.status,
+        input.entryPath,
+        input.actor,
+        input.now,
+        input.causeEventId ?? null,
+      );
       marked += 1;
     }
     if (marked > 0) this.#touch();
@@ -732,7 +746,12 @@ export class Offer {
     const { judgement, inputsHash } = verdict;
     const facts = input.facts;
     if (judgement.kind === 'allowed') {
-      const switched = tag.status === 'active' && tag.copy?.basis !== judgement.copy.basis;
+      // A tag that was effective (`active`, or `rechecking` after a handler marked it) and is
+      // allowed again on another basis is a basis switch (design 5.3; AC 12).
+      const switched =
+        (tag.status === 'active' || tag.status === 'rechecking') &&
+        tag.copy !== null &&
+        tag.copy.basis !== judgement.copy.basis;
       const candidate: OfferTagState = {
         ...tag,
         inputsHash,
@@ -755,7 +774,16 @@ export class Offer {
           }
         : candidate;
       this.#putTag(next, false);
-      if (changed) this.#historyOf(next, tag.status, input.entryPath, input.actor, input.now);
+      if (changed) {
+        this.#historyOf(
+          next,
+          tag.status,
+          input.entryPath,
+          input.actor,
+          input.now,
+          input.causeEventId ?? null,
+        );
+      }
       if (tag.status === 'suspended') {
         this.#tagEvent(OfferTagRestored, next, input.now);
         summary.restored += 1;
@@ -792,7 +820,14 @@ export class Offer {
     };
     this.#putTag(next, false);
     if (statusChange) {
-      this.#historyOf(next, tag.status, input.entryPath, input.actor, input.now);
+      this.#historyOf(
+        next,
+        tag.status,
+        input.entryPath,
+        input.actor,
+        input.now,
+        input.causeEventId ?? null,
+      );
       this.#tagEvent(OfferTagSuspended, next, input.now);
     }
     summary.suspended += 1;
@@ -912,6 +947,29 @@ export class Offer {
     return ok(undefined);
   }
 
+  /**
+   * "Sell without this badge" (design 5.3 `suspended` → `removed`; brief s7): the seller removes a
+   * `suspended` tag with an explicit confirmation, which the use case requires. Removing only
+   * restricts, so nothing is asked. The cause `tag-suspended` goes when no other tag is suspended
+   * and the Offer is listed again without the badge. Any other status is refused: an `active` tag
+   * has its own removal, and a `rechecking` one waits for its answer (`tag.not-suspended`).
+   */
+  removeSuspendedTag(input: {
+    readonly typeCode: string;
+    readonly actor: TagActor;
+    readonly now: Temporal.Instant;
+  }): Result<void, OfferTagRefusal> {
+    if (this.#state.status === 'deleted') return err({ code: 'offer.not-taggable' });
+    const tag = this.#openTag(input.typeCode);
+    if (tag === undefined) return err({ code: 'tag.not-found' });
+    if (tag.status !== 'suspended') return err({ code: 'tag.not-suspended' });
+    const removed = this.#removeTag(tag, 'seller-remove-suspended', input.actor, input.now);
+    this.#tagEvent(OfferTagRemoved, removed, input.now);
+    this.#refreshTagCause(input.now);
+    this.#touch();
+    return ok(undefined);
+  }
+
   /** The tag of the type that is not removed (at most one per type), if any. */
   #openTag(typeCode: string): OfferTagState | undefined {
     return this.#tags.find((tag) => tag.typeCode === typeCode && tag.status !== 'removed');
@@ -996,6 +1054,7 @@ export class Offer {
     entryPath: TagEntryPath,
     actor: TagActor,
     now: Temporal.Instant,
+    causeEventId: Id | null = null,
   ): void {
     this.#tagHistory.push({
       tagId: tag.id,
@@ -1008,6 +1067,7 @@ export class Offer {
       reasonCode: tag.lastReasonCode,
       entryPath,
       actor,
+      causeEventId,
       occurredAt: now,
     });
   }

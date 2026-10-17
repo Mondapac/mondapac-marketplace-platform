@@ -54,6 +54,7 @@ import { OwnOffersList } from '../application/use-cases/own-offers-list.use-case
 import { closedBody, optionalClosedBody, pageQuery, refusalWith } from './http-answers';
 import { OwnOfferAddTag } from '../application/use-cases/own-offer-add-tag.use-case';
 import { OwnOfferRemoveTag } from '../application/use-cases/own-offer-remove-tag.use-case';
+import { OwnOfferRemoveSuspendedTag } from '../application/use-cases/own-offer-remove-suspended-tag.use-case';
 import { OwnOfferList, OwnOfferViewDto } from './own-reads.dto';
 import {
   OwnOfferCreated,
@@ -65,6 +66,7 @@ import {
   OwnOfferSubmitRequest,
   OwnOfferSubmitted,
   OwnOfferAddTagRequest,
+  OwnOfferSellWithoutBadgeRequest,
   OwnOfferTagAdded,
 } from './own-offer.dto';
 import { ApiErrorBody } from './platform-product.dto';
@@ -100,6 +102,7 @@ export const OWN_OFFER_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'tag.not-found': 404,
   'tag.suspended': 409,
   'tag.not-removable': 409,
+  'tag.not-suspended': 409,
   'tag.product-not-published': 409,
   'tag.type-unknown': 422,
   'claim.tag-not-allowed': 422,
@@ -135,6 +138,7 @@ export class OwnOfferController {
     private readonly readOffer: OwnOfferRead,
     private readonly addOfferTag: OwnOfferAddTag,
     private readonly removeOfferTag: OwnOfferRemoveTag,
+    private readonly removeSuspendedOfferTag: OwnOfferRemoveSuspendedTag,
   ) {}
 
   @Get()
@@ -614,6 +618,59 @@ export class OwnOfferController {
     const result = await this.removeOfferTag.execute(context, { offerId, typeCode });
     const outcome = result.ok ? {} : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
     this.settleRead('catalog.own-offer-remove-tag', context, outcome);
+  }
+
+  @Post(':offerId/tags/:typeCode/sell-without-badge')
+  @HttpCode(204)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Sell an Offer without a suspended certification badge',
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell; refused in a Login as Seller ' +
+      'session. Body: confirmSellWithoutBadge, which must be true. Removes the suspended tag of ' +
+      'that type (who and when recorded); the Offer is listed again without the badge once no ' +
+      'other tag is suspended. Asks nothing. A tag that is not suspended is tag.not-suspended; ' +
+      'adding the type again later is a new tag, checked by certification.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiParam({ name: 'typeCode' })
+  @ApiBody({ type: OwnOfferSellWithoutBadgeRequest })
+  @ApiNoContentResponse({ description: 'Removed; the Offer sells without the badge.' })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description:
+      'access.denied (also in a Login as Seller session), request.csrf or seller.not-eligible',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found or tag.not-found' })
+  @ApiConflictResponse({ type: ApiErrorBody, description: 'tag.not-suspended or conflict.stale' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async sellWithoutBadge(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+    @Param('typeCode') typeCode: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const input = closedBody(request, body, ['confirmSellWithoutBadge']);
+    let outcome: Record<string, never> | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.removeSuspendedOfferTag.execute(context, {
+        offerId,
+        typeCode,
+        confirmSellWithoutBadge: input.confirmSellWithoutBadge,
+      });
+      outcome = result.ok ? {} : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    }
+    this.settleRead('catalog.own-offer-remove-suspended-tag', context, outcome);
   }
 
   @Delete(':offerId')

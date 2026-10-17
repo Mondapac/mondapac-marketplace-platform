@@ -1176,6 +1176,46 @@ still waits for them), instead of the no-op version update. `offerListings` for 
 `anonymous` rule answers no tags at all until slice 12 consumes the certification revoke and expiry
 events (a stored `active` tag can outlive its certificate; Hassan, certification revoke review).
 
+**As built in migration 10** (`20261017200000_catalog_tag_selection`, slice 12, Hossein
+2026-10-17; awaiting Mojtaba's sign-off): (a) the five selection indexes and the reconciliation
+index of 3.15, plain `CREATE INDEX` (no deployed environment holds catalog rows; a deployed one
+would build each `CONCURRENTLY`, alone in its file); (b) `tag_reevaluation_requests.cause` and
+`subject_id` (nullable, written once at insert, no `UPDATE` grant) with
+`tag_reevaluation_requests_cause_check`: a `certification-event` request names its cause (closed
+list: `seller-certification-approved`, `-expired`, `-revoked`, `-issuer-confirmed`; the product
+certification, claim-policy and issuer causes join when certification publishes those events)
+and the id its selection matches (seller, certificate or submission); (c) **F1 done**: the
+history-presence function also compares `type_revision_id` and `valid_until` with `IS NOT
+DISTINCT FROM`, tolerating only a legacy row (a copy with a basis but both columns NULL), and
+`offer_tag_history_type_revision_check` (`basis IS NULL OR type_revision_id IS NOT NULL`, `NOT
+VALID`) makes every new row with a copy carry its type revision, so only pre-migration-9 rows can
+match the legacy branch. Behaviour (D 5.2 point 4, 5.3, 5.5, 5.6): the handler
+`catalog.reevaluate-from-certification` (subscriptions on certification's approved, expired,
+revoked and issuer-confirmed seller events; Market from the envelope; `runOnce`) only writes the
+request; the job `catalog.reevaluate-tags` selects the Offers from the indexes above (published
+copies only, D 5.1a point 5), marks the selected `active` tags `rechecking` first for an expired or
+revoked certificate, asks, and settles each Offer in its own unit under the product lock (entry
+path `certification-event`, `cause_event_id` on the history row, counts on the request as the re-ask
+metric of D 19.2 item 5). `unavailable` never activates: the selected `active` tags go `rechecking`
+and the request stays pending; a page that fails twice logs an alert. Deviations from D, for
+Mohammad's and Hassan's review: (1) `seller-certification-approved` carries a type id and catalog
+stores type codes, so the approval selects every live tag of the seller (a superset; costs asks
+only); (2) the reconciliation `catalog.reconcile-tags` runs every 10 minutes and re-asks, oldest
+first and bounded (1,000 tags a run), every tag whose last ask is 24 h old, instead of one run at
+03:00 local time (the scheduler has no wall-clock trigger; every live tag is still asked at least
+daily, and an unanswered run's tags stay due); two consecutive failed runs of a Market log the
+alert; (3) on an unanswered page the reconciliation also marks `active` tags `rechecking` (D 5.2
+point 4), so an outage of certification longer than a run removes badges until it answers;
+(4) Hassan L-1 decided here: the `system` `offerListings` read answers the badge of an `active`
+tag again, but only while its copy's `valid_until` is after the read instant (an expiry shows no
+badge even before its event is handled); the `anonymous` read keeps answering no tags.
+"Sell without this badge" is `own-offer.remove-suspended-tag` (`POST
+/catalog/seller/offers/{offerId}/tags/{typeCode}/sell-without-badge`, body
+`{confirmSellWithoutBadge: true}`, refused in acting-as; entry path `seller-remove-suspended`).
+Not yet built: the product-certification, claim-policy and issuer-deactivated handlers (no
+producer event yet), the C-6 mail and the tag suspended or restored mails (no mail path in catalog
+yet), and the tag audit rows of D 11.3.
+
 This matches D 15.1's list (1, 2, 3, 4, 7, 8, 10, 11, 12, 13, 18, 21, 23, 24, 25, 26) plus 9
 (trigram, only with option A) and 22 (url keys). No migration: P1, 5, 6, 14, 15, 16, 17, 19, 20 —
 every column those slices write exists earlier (match and promotion columns, all five off-sale

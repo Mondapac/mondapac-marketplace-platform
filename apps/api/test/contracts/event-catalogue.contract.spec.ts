@@ -82,6 +82,11 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     const subscriptions = graphs.get('worker')!.get(SubscriptionRegistry);
 
     expect(subscriptions.names()).toEqual([
+      // Catalog slice 12: tag re-evaluation from certification events (design 5.5, 9.5).
+      'catalog.reevaluate-on-seller-certification-approved',
+      'catalog.reevaluate-on-seller-certification-expired',
+      'catalog.reevaluate-on-seller-certification-issuer-confirmed',
+      'catalog.reevaluate-on-seller-certification-revoked',
       'certification.approved-mail',
       'certification.changes-requested-mail',
       'certification.declined-mail',
