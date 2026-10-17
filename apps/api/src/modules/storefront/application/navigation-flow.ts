@@ -30,8 +30,11 @@ const MODULE_OF_SLOT: Readonly<Record<string, 'nav-link' | 'nav-category'>> = {
 export const viewNavigation = (deps: StorefrontDependencies, context: CallContext) =>
   viewPage(deps, context, { page: NAVIGATION_KEY }, true);
 
-export const approveNavigation = (deps: StorefrontDependencies, context: CallContext) =>
-  publishPage(deps, context, { page: NAVIGATION_KEY }, true);
+export const approveNavigation = (
+  deps: StorefrontDependencies,
+  context: CallContext,
+  input: { readonly body: unknown },
+) => publishPage(deps, context, { page: NAVIGATION_KEY, body: input?.body }, true);
 
 export const restoreNavigationVersion = (
   deps: StorefrontDependencies,

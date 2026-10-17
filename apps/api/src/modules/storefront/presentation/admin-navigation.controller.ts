@@ -28,6 +28,7 @@ import { closedBody, refusal } from './http-answers';
 import {
   NavigationDraftRequest,
   PageDetailBody,
+  PublishRequest,
   RestoreRequest,
   detailBody,
 } from './storefront.dto';
@@ -158,17 +159,28 @@ export class AdminNavigationController {
       'on; the one they saw is kept. Audited.',
   })
   @ApiHeader(CSRF)
+  @ApiBody({ type: PublishRequest })
   @ApiOkResponse({ type: PageDetailBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse(UNAUTHORIZED)
   @ApiForbiddenResponse(FORBIDDEN)
-  @ApiConflictResponse({ ...ERROR, description: 'storefront.nothing-to-publish' })
-  async approveDraft(@Call() context: CallContext, @Res({ passthrough: true }) response: Response) {
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'storefront.nothing-to-publish or storefront.draft-changed',
+  })
+  async approveDraft(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
     response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, ['versionNo', 'updatedAt']);
+    if (invalid !== null) throw invalid;
     return this.answer(
       'storefront.approve-navigation-route',
       context,
-      await this.approve.execute(context, {}),
+      await this.approve.execute(context, { body }),
     );
   }
 }

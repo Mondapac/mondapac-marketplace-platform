@@ -64,6 +64,7 @@ const toVersion = (row: {
   readonly versionNo: number;
   readonly state: string;
   readonly placements: unknown;
+  readonly settings: unknown;
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly publishedAt: Date | null;
@@ -73,9 +74,31 @@ const toVersion = (row: {
   versionNo: row.versionNo,
   state: row.state as VersionState,
   placements: row.placements,
+  settings: row.settings,
   createdAt: toInstant(row.createdAt),
   updatedAt: toInstant(row.updatedAt),
   publishedAt: maybeInstant(row.publishedAt),
+});
+
+const pageData = (market: MarketContext, page: PageRecord, by: Id<'Account'>) => ({
+  id: page.id,
+  marketId: market.marketId,
+  tenantId: market.tenantId,
+  kind: page.kind,
+  systemKey: page.systemKey,
+  slug: page.slug,
+  templateKey: page.templateKey,
+  title: page.title,
+  seo: page.seo as object,
+  linkedType: page.linked?.type ?? null,
+  linkedId: page.linked?.id ?? null,
+  startsAt: maybeDate(page.startsAt),
+  endsAt: maybeDate(page.endsAt),
+  archivedAt: null,
+  archivedRedirect: null,
+  createdAt: toDate(page.createdAt),
+  updatedAt: toDate(page.updatedAt),
+  updatedBy: by,
 });
 
 /** {@link PageRepository} on the `storefront` schema, scoped by `marketId` in every `where`. */
@@ -155,28 +178,20 @@ export class PrismaPageRepository implements PageRepository {
   }
 
   async insertPage(market: MarketContext, page: PageRecord, by: Id<'Account'>): Promise<void> {
-    await this.prisma.tx(market).storefrontPage.create({
-      data: {
-        id: page.id,
-        marketId: market.marketId,
-        tenantId: market.tenantId,
-        kind: page.kind,
-        systemKey: page.systemKey,
-        slug: page.slug,
-        templateKey: page.templateKey,
-        title: page.title,
-        seo: page.seo as object,
-        linkedType: page.linked?.type ?? null,
-        linkedId: page.linked?.id ?? null,
-        startsAt: maybeDate(page.startsAt),
-        endsAt: maybeDate(page.endsAt),
-        archivedAt: null,
-        archivedRedirect: null,
-        createdAt: toDate(page.createdAt),
-        updatedAt: toDate(page.updatedAt),
-        updatedBy: by,
-      },
+    await this.prisma.tx(market).storefrontPage.create({ data: pageData(market, page, by) });
+  }
+
+  async insertSystemPageIfAbsent(
+    market: MarketContext,
+    page: PageRecord,
+    by: Id<'Account'>,
+  ): Promise<boolean> {
+    // ON CONFLICT DO NOTHING: a concurrent first edit's row wins without aborting this unit.
+    const { count } = await this.prisma.tx(market).storefrontPage.createMany({
+      data: [pageData(market, page, by)],
+      skipDuplicates: true,
     });
+    return count === 1;
   }
 
   async updatePage(
@@ -285,6 +300,18 @@ export class PrismaPageRepository implements PageRepository {
     await this.prisma.tx(market).storefrontPageVersion.updateMany({
       where: { marketId: market.marketId, id, state: 'draft' },
       data: { placements: placements as object, updatedAt: toDate(stamp.at), updatedBy: stamp.by },
+    });
+  }
+
+  async updateDraftSettings(
+    market: MarketContext,
+    id: Id<'StorefrontPageVersion'>,
+    settings: Record<string, unknown>,
+    stamp: Stamp,
+  ): Promise<void> {
+    await this.prisma.tx(market).storefrontPageVersion.updateMany({
+      where: { marketId: market.marketId, id, state: 'draft' },
+      data: { settings: settings as object, updatedAt: toDate(stamp.at), updatedBy: stamp.by },
     });
   }
 

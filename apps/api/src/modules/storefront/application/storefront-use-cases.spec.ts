@@ -135,6 +135,12 @@ class MemoryPages implements PageRepository {
     this.pages.set(page.id, page);
     return Promise.resolve();
   }
+  insertSystemPageIfAbsent(m: MarketContext, page: PageRecord) {
+    if ([...this.pages.values()].some((p) => p.systemKey === page.systemKey)) {
+      return Promise.resolve(false);
+    }
+    return this.insertPage(m, page).then(() => true);
+  }
   updatePage(
     _m: MarketContext,
     pageId: Id<'StorefrontPage'>,
@@ -190,6 +196,7 @@ class MemoryPages implements PageRepository {
     this.versionRows.set(draft.id, {
       ...draft,
       state: 'draft',
+      settings: null,
       createdAt: stamp.at,
       updatedAt: stamp.at,
       publishedAt: null,
@@ -206,6 +213,22 @@ class MemoryPages implements PageRepository {
       this.versionRows.set(versionId, {
         ...row,
         placements: structuredClone(placements),
+        updatedAt: stamp.at,
+      });
+    }
+    return Promise.resolve();
+  }
+  updateDraftSettings(
+    _m: MarketContext,
+    versionId: Id<'StorefrontPageVersion'>,
+    settings: Record<string, unknown>,
+    stamp: Stamp,
+  ) {
+    const row = this.versionRows.get(versionId)!;
+    if (row.state === 'draft') {
+      this.versionRows.set(versionId, {
+        ...row,
+        settings: structuredClone(settings),
         updatedAt: stamp.at,
       });
     }
@@ -315,6 +338,22 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
       page: { versionNo: number | null; slots: { key: string; modules: { module: string }[] }[] };
     }>(run(ViewPublishedStorefrontPage, buyer, { key }));
   const landing = (slug: string) => run(ViewPublishedLandingPage, buyer, { slug });
+  /** The draft as a publisher reviews it: its version number and last change time. */
+  const reviewed = async (page: string | null) => {
+    const view = await value<PageDetailView>(
+      page === null
+        ? run(ViewStorefrontNavigation, admin, {})
+        : run(ViewStorefrontPage, admin, { page }),
+    );
+    return {
+      versionNo: view.draft.versionNo ?? 1,
+      updatedAt: (view.draft.updatedAt ?? T0).toString(),
+    };
+  };
+  const publish = async (context: CallContext, page: string) =>
+    run(PublishStorefrontPage, context, { page, body: await reviewed(page) });
+  const approve = async (context: CallContext) =>
+    run(ApproveStorefrontNavigation, context, { body: await reviewed(null) });
 
   it('lists every system page as defaults, then the landing pages; the catalogue is code', async () => {
     const list = await value<{ systemKey: string | null; status: string }[]>(
@@ -350,10 +389,10 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
     expect(draft.draft.placements.main).toHaveLength(4);
     expect((await published('home')).page.versionNo).toBeNull();
 
-    expect(await errorOf(run(PublishStorefrontPage, editor, { page: 'home' }))).toEqual({
+    expect(await errorOf(publish(editor, 'home'))).toEqual({
       code: 'access.denied',
     });
-    const done = await value<PageDetailView>(run(PublishStorefrontPage, admin, { page: 'home' }));
+    const done = await value<PageDetailView>(publish(admin, 'home'));
     expect(done.published?.versionNo).toBe(1);
     const home = await published('home');
     expect(home.page.versionNo).toBe(1);
@@ -396,7 +435,7 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
       }),
     );
     expect(removed.draft.placements.main!.map((p) => p.id)).toEqual([ids[3], ids[2], first]);
-    await value(run(PublishStorefrontPage, admin, { page: 'home' }));
+    await value(publish(admin, 'home'));
     const served = (await published('home')).page.slots.find((s) => s.key === 'main')!.modules;
     expect(served).toHaveLength(2);
     expect(
@@ -424,10 +463,10 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
         }),
       ),
     ).toEqual({ code: 'storefront.page-locked' });
-    expect(await errorOf(run(PublishStorefrontPage, admin, { page: 'account' }))).toEqual({
+    expect(await errorOf(publish(admin, 'account'))).toEqual({
       code: 'storefront.page-locked',
     });
-    expect(await errorOf(run(PublishStorefrontPage, admin, { page: 'offers' }))).toEqual({
+    expect(await errorOf(publish(admin, 'offers'))).toEqual({
       code: 'storefront.nothing-to-publish',
     });
   });
@@ -445,7 +484,7 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
       code: 'storefront.slug-taken',
     });
 
-    await value(run(PublishStorefrontPage, admin, { page: created.id }));
+    await value(publish(admin, created.id!));
     const live = await value<{ kind: string; page: { title: string } }>(landing('eid-specials'));
     expect(live).toMatchObject({ kind: 'page', page: { title: 'Eid specials' } });
 
@@ -458,13 +497,27 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
 
   it('keeps an old slug sending buyers on, and an archived page sends them where the admin chose', async () => {
     const created = await value<PageDetailView>(run(CreateStorefrontPage, editor, newPage));
-    await value(run(PublishStorefrontPage, admin, { page: created.id }));
-    await value(
+    await value(publish(admin, created.id!));
+    const edited = await value<PageDetailView>(
       run(UpdateStorefrontPageSettings, editor, {
         page: created.id,
         body: { title: 'Eid', slug: 'eid-2026' },
       }),
     );
+    // An editor's settings wait in the draft: buyers see them only once an admin publishes it.
+    expect(edited.draft.settings).toMatchObject({
+      kind: 'dynamic',
+      title: 'Eid',
+      slug: 'eid-2026',
+    });
+    expect(edited).toMatchObject({ title: 'Eid specials', slug: 'eid-specials' });
+    expect(await value(landing('eid-specials'))).toMatchObject({
+      kind: 'page',
+      page: { title: 'Eid specials' },
+    });
+    expect(await errorOf(landing('eid-2026'))).toEqual({ code: 'storefront.page-not-found' });
+    await value(publish(admin, created.id!));
+    expect(await value(landing('eid-2026'))).toMatchObject({ page: { title: 'Eid' } });
     expect(await value(landing('eid-specials'))).toEqual({
       kind: 'redirect',
       to: '/l/eid-2026',
@@ -477,6 +530,15 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
     expect(
       await errorOf(run(ArchiveStorefrontPage, editor, { page: created.id, body: {} })),
     ).toEqual({ code: 'access.denied' });
+    // No redirect loop: a landing page never sends buyers to itself.
+    expect(
+      await errorOf(
+        run(ArchiveStorefrontPage, admin, {
+          page: created.id,
+          body: { redirectTo: '/l/eid-2026' },
+        }),
+      ),
+    ).toEqual({ code: 'validation.failed', fields: [{ path: 'redirectTo', code: 'not-live' }] });
     await value(
       run(ArchiveStorefrontPage, admin, {
         page: created.id,
@@ -503,9 +565,7 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
         body: { module: 'banner', config: { title: 'One', image: { ref: 'a', alt: 'A' } } },
       }),
     );
-    const first = await value<PageDetailView>(
-      run(PublishStorefrontPage, admin, { page: 'offers' }),
-    );
+    const first = await value<PageDetailView>(publish(admin, 'offers'));
     const v1 = first.versions.find((v) => v.state === 'published')!;
     const banner = first.draft.placements.top![0]!.id;
     await value(
@@ -515,7 +575,7 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
         placementId: banner,
       }),
     );
-    await value(run(PublishStorefrontPage, admin, { page: 'offers' }));
+    await value(publish(admin, 'offers'));
     const restored = await value<PageDetailView>(
       run(RestoreStorefrontPageVersion, editor, { page: 'offers', versionId: v1.id }),
     );
@@ -539,11 +599,18 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
     expect(before.page.versionNo).toBeNull();
     expect(before.page.slots.every((s) => s.modules.length === 0)).toBe(true);
 
-    expect(await errorOf(run(ApproveStorefrontNavigation, editor, {}))).toEqual({
+    expect(await errorOf(approve(editor))).toEqual({
       code: 'access.denied',
     });
     // The navigation is not a page: the page routes do not reach it.
-    expect(await errorOf(run(PublishStorefrontPage, admin, { page: 'navigation' }))).toEqual({
+    expect(
+      await errorOf(
+        run(PublishStorefrontPage, admin, {
+          page: 'navigation',
+          body: { versionNo: 1, updatedAt: T0.toString() },
+        }),
+      ),
+    ).toEqual({
       code: 'storefront.page-not-found',
     });
     expect(
@@ -559,7 +626,7 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
       code: 'storefront.page-not-found',
     });
 
-    await value(run(ApproveStorefrontNavigation, admin, {}));
+    await value(approve(admin));
     const after = await value<{
       page: { versionNo: number; slots: { key: string; modules: unknown[] }[] };
     }>(run(ViewPublishedStorefrontNavigation, buyer, {}));
@@ -580,6 +647,43 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
         }),
       ),
     ).toMatchObject({ code: 'validation.failed' });
+  });
+
+  it('publishes only the draft the publisher reviewed', async () => {
+    await value(run(AddStorefrontModule, editor, { page: 'home', slot: 'main', body: shelf }));
+    const seen = await reviewed('home');
+    clock.set(T0.add({ minutes: 1 }));
+    await value(run(AddStorefrontModule, editor, { page: 'home', slot: 'main', body: shelf }));
+    expect(await errorOf(run(PublishStorefrontPage, admin, { page: 'home', body: seen }))).toEqual({
+      code: 'storefront.draft-changed',
+    });
+    expect(
+      await errorOf(run(PublishStorefrontPage, admin, { page: 'home', body: { versionNo: 1 } })),
+    ).toEqual({ code: 'validation.failed', fields: [{ path: 'updatedAt', code: 'required' }] });
+    expect((await published('home')).page.versionNo).toBeNull();
+    await value(publish(admin, 'home'));
+    expect((await published('home')).page.versionNo).toBe(1);
+    clock.set(T0);
+  });
+
+  it("keeps a live page's window until an admin publishes the change, and an old slug only leads to a live page", async () => {
+    const created = await value<PageDetailView>(run(CreateStorefrontPage, editor, newPage));
+    await value(publish(admin, created.id!));
+    await value(
+      run(UpdateStorefrontPageSettings, editor, {
+        page: created.id,
+        body: { title: 'Eid', slug: 'eid-2026', endsAt: '2026-10-18T00:00:00Z' },
+      }),
+    );
+    clock.set(Temporal.Instant.from('2026-10-19T00:00:00Z'));
+    // Unpublished, the window the editor set does not end the page.
+    expect(await value(landing('eid-specials'))).toMatchObject({ kind: 'page' });
+    clock.set(T0);
+    await value(publish(admin, created.id!));
+    clock.set(Temporal.Instant.from('2026-10-19T00:00:00Z'));
+    expect(await errorOf(landing('eid-2026'))).toEqual({ code: 'storefront.page-not-found' });
+    expect(await errorOf(landing('eid-specials'))).toEqual({ code: 'storefront.page-not-found' });
+    clock.set(T0);
   });
 
   it('refuses a seller actor and leaves buyers no write', async () => {

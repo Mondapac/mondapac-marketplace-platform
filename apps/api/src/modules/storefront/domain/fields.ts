@@ -11,8 +11,11 @@ export interface FieldProblem {
 export type Problems = FieldProblem[];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
-/** A site path: starts with one slash, no scheme, no `//`, no `..` segment, plain URL characters. */
-const SITE_PATH = /^\/(?!\/)[A-Za-z0-9/_.~%?=&+-]*$/u;
+/**
+ * A site path: starts with one slash, no scheme, no `//`, no `..` segment, plain URL characters.
+ * No `%`: an encoded slash, backslash or dot could become another site, or `..`, once decoded.
+ */
+const SITE_PATH = /^\/(?!\/)[A-Za-z0-9/_.~?=&+-]*$/u;
 const IMAGE_REF = /^[a-z0-9][a-z0-9-]{0,63}$/u;
 const CODE = /^[a-z][a-z0-9-]{0,31}$/u;
 const HIDDEN = /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Zl}\p{Zp}]/u;

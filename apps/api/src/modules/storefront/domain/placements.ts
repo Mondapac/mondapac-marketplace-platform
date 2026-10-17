@@ -122,6 +122,29 @@ export const storedPlacements = (placements: Placements): Record<string, unknown
     ]),
   );
 
+/** The most one module's stored settings, and one version's placements, may take (JSON bytes). */
+export const MAX_PLACEMENT_BYTES = 32 * 1024;
+export const MAX_VERSION_BYTES = 256 * 1024;
+
+const jsonBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value), 'utf8');
+
+/**
+ * Size problems of a version about to be stored: each module within {@link MAX_PLACEMENT_BYTES}
+ * and the whole within {@link MAX_VERSION_BYTES}, so a buyer's read of a page stays small.
+ */
+export function sizeProblems(placements: Placements): Problems {
+  const problems: Problems = [];
+  for (const [slot, list] of Object.entries(placements)) {
+    list.forEach((entry, index) => {
+      if (jsonBytes(entry) > MAX_PLACEMENT_BYTES) problem(problems, at(slot, index), 'too-large');
+    });
+  }
+  if (problems.length === 0 && jsonBytes(storedPlacements(placements)) > MAX_VERSION_BYTES) {
+    problem(problems, 'placements', 'too-large');
+  }
+  return problems;
+}
+
 export interface AddInput {
   readonly module: unknown;
   readonly config: unknown;

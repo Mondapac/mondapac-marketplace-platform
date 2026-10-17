@@ -183,3 +183,34 @@ export function parseArchive(body: unknown): Parsed<{ readonly redirectTo: strin
   }
   return result(problems, { redirectTo: value as string });
 }
+
+/** Settings a draft holds until it is published (the page row keeps what buyers see). */
+export type PendingSettings =
+  ({ readonly kind: 'dynamic' } & DynamicSettings) | ({ readonly kind: 'system' } & SystemSettings);
+
+/** The stored form of pending settings: the body that would set them, instants as strings. */
+export function storedSettings(settings: PendingSettings): Record<string, unknown> {
+  if (settings.kind === 'system') return { title: settings.title, seo: settings.seo };
+  return {
+    title: settings.title,
+    slug: settings.slug,
+    seo: settings.seo,
+    linked: settings.linked,
+    startsAt: settings.startsAt?.toString() ?? null,
+    endsAt: settings.endsAt?.toString() ?? null,
+  };
+}
+
+/** Reads stored pending settings back, re-checked as a request body; null when none or bad. */
+export function parseStoredSettings(
+  stored: unknown,
+  page: { readonly kind: 'system' | 'dynamic'; readonly templateKey: string },
+): PendingSettings | null {
+  if (stored === null || stored === undefined) return null;
+  if (page.kind === 'system') {
+    const parsed = parseSystemSettings(stored);
+    return parsed.ok ? { kind: 'system', ...parsed.value } : null;
+  }
+  const parsed = parseDynamicSettings(stored, page.templateKey);
+  return parsed.ok ? { kind: 'dynamic', ...parsed.value } : null;
+}

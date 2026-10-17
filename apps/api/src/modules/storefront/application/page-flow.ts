@@ -13,8 +13,11 @@ import {
   parseArchive,
   parseDynamicSettings,
   parseNewPage,
+  parseStoredSettings,
   parseSystemSettings,
+  storedSettings,
   type Linked,
+  type PendingSettings,
   type Seo,
 } from '../domain/page-settings';
 import {
@@ -25,6 +28,7 @@ import {
   readPlacements,
   removePlacement,
   reorderPlacements,
+  sizeProblems,
   storedPlacements,
   updatePlacement,
   type AddInput,
@@ -63,7 +67,9 @@ export type PageFailure =
   | { readonly code: 'storefront.slot-full' }
   | { readonly code: 'storefront.slug-taken' }
   /** Publish with no draft: there is nothing new to publish. */
-  | { readonly code: 'storefront.nothing-to-publish' };
+  | { readonly code: 'storefront.nothing-to-publish' }
+  /** Publish of a draft that changed after the version and time the publisher reviewed. */
+  | { readonly code: 'storefront.draft-changed' };
 
 export type PageStatus = 'default' | 'draft' | 'scheduled' | 'published' | 'ended' | 'archived';
 
@@ -100,10 +106,15 @@ export interface PageDetailView extends PageSummaryView {
   readonly endsAt: Temporal.Instant | null;
   readonly archivedRedirect: string | null;
   readonly slots: readonly SlotDefinition[];
-  /** The draft, or (no draft) what a new draft would start from. */
+  /**
+   * The draft, or (no draft) what a new draft would start from. `settings`: the settings the
+   * draft puts on the page when it is published (null: it leaves them as they are); the page's
+   * own settings above are the ones buyers see.
+   */
   readonly draft: {
     readonly versionNo: number | null;
     readonly placements: Placements;
+    readonly settings: PendingSettings | null;
     readonly updatedAt: Temporal.Instant | null;
   };
   readonly published: { readonly versionNo: number; readonly placements: Placements } | null;
@@ -308,6 +319,7 @@ async function detailOf(
       draft: {
         versionNo: null,
         placements: defaultPlacements(template, { title: ref.key }, () => `default-${(n += 1)}`),
+        settings: null,
         updatedAt: null,
       },
       published: null,
@@ -345,11 +357,13 @@ async function detailOf(
         ? {
             versionNo: draft.versionNo,
             placements: readPlacements(template, draft.placements).placements,
+            settings: parseStoredSettings(draft.settings, page),
             updatedAt: draft.updatedAt,
           }
         : {
             versionNo: null,
             placements: base ?? defaultPlacements(template, page, () => `default-${(n += 1)}`),
+            settings: null,
             updatedAt: null,
           },
     published:
@@ -425,14 +439,17 @@ async function lockForChange(
       createdAt: stamp.at,
       updatedAt: stamp.at,
     };
-    await deps.pages.insertPage(market, created, stamp.by);
-    await deps.audit.record(
-      context,
-      StorefrontPageCreated.entry(created.id, {
-        after: { template: created.templateKey, linkedType: null },
-      }),
-    );
-    page = await deps.pages.lockPage(market, created.id);
+    // A concurrent first edit may insert the row first: this edit then goes onto that row.
+    if (await deps.pages.insertSystemPageIfAbsent(market, created, stamp.by)) {
+      await deps.audit.record(
+        context,
+        StorefrontPageCreated.entry(created.id, {
+          after: { template: created.templateKey, linkedType: null },
+        }),
+      );
+    }
+    const row = await deps.pages.findSystemPage(market, ref.key);
+    page = row === null ? null : await deps.pages.lockPage(market, row.id);
   } else if (page !== null && ref.kind === 'system') {
     page = await deps.pages.lockPage(market, page.id);
   }
@@ -482,6 +499,7 @@ async function draftOf(
       versionNo,
       state: 'draft',
       placements: stored,
+      settings: null,
       createdAt: stamp.at,
       updatedAt: stamp.at,
       publishedAt: null,
@@ -519,6 +537,8 @@ export async function changeDraft(
     const { draft, placements } = await draftOf(deps, context, locked.page, template, stamp);
     const changed = change(template, placements, locked.page);
     if (!changed.ok) return err(changed.error);
+    const tooLarge = sizeProblems(changed.value);
+    if (tooLarge.length > 0) return err({ code: 'validation.failed', fields: tooLarge } as const);
     await deps.pages.updateDraft(context.market, draft.id, storedPlacements(changed.value), stamp);
     await deps.pages.updatePage(context.market, locked.page.id, {}, stamp);
     await deps.audit.record(
@@ -715,9 +735,9 @@ async function slugTaken(
 }
 
 /**
- * An admin changes a page's settings. A dynamic page's whole settings are replaced; a changed
- * slug leaves a redirect from the old one (and a slug the page takes back loses its redirect). A
- * system page changes its title and SEO fields only.
+ * An admin changes a page's settings. They go into the page's draft and reach buyers only when a
+ * platform admin publishes it (security review H-1): a dynamic page's whole settings are
+ * replaced, a system page changes its title and SEO fields only.
  */
 export async function updateSettings(
   deps: StorefrontDependencies,
@@ -737,53 +757,131 @@ export async function updateSettings(
     const locked = await lockForChange(deps, context, ref, stamp, false);
     if (!locked.ok) return err(locked.error);
     const page = locked.page;
-    let slugChanged = false;
-    let windowSet = false;
+    let pending: PendingSettings;
     if (page.kind === 'system') {
       const parsed = parseSystemSettings(input.body);
       if (!parsed.ok) return err({ code: 'validation.failed', fields: parsed.problems } as const);
-      await deps.pages.updatePage(context.market, page.id, parsed.value, stamp);
+      pending = { kind: 'system', ...parsed.value };
     } else {
       const parsed = parseDynamicSettings(input.body, page.templateKey);
       if (!parsed.ok) return err({ code: 'validation.failed', fields: parsed.problems } as const);
-      const next = parsed.value;
-      if (next.slug !== page.slug) {
-        if (await slugTaken(deps, context, next.slug, page.id)) {
-          return err({ code: 'storefront.slug-taken' } as const);
-        }
-        await deps.pages.deleteRedirect(context.market, next.slug);
-        await deps.pages.insertRedirect(
-          context.market,
-          { id: deps.ids.next<'StorefrontRedirect'>(), fromSlug: page.slug!, pageId: page.id },
-          stamp.at,
-        );
-        slugChanged = true;
+      // Checked again on publish, when the slug is taken.
+      if (
+        parsed.value.slug !== page.slug &&
+        (await slugTaken(deps, context, parsed.value.slug, page.id))
+      ) {
+        return err({ code: 'storefront.slug-taken' } as const);
       }
-      windowSet = next.startsAt !== null || next.endsAt !== null;
-      await deps.pages.updatePage(context.market, page.id, next, stamp);
+      pending = { kind: 'dynamic', ...parsed.value };
     }
+    const template = templateOf(page.templateKey);
+    const { draft } = await draftOf(deps, context, page, template, stamp);
+    await deps.pages.updateDraftSettings(context.market, draft.id, storedSettings(pending), stamp);
+    await deps.pages.updatePage(context.market, page.id, {}, stamp);
     await deps.audit.record(
       context,
-      StorefrontPageUpdated.entry(page.id, { after: { slugChanged, windowSet } }),
+      StorefrontPageUpdated.entry(page.id, {
+        after: {
+          slugChanged: pending.kind === 'dynamic' && pending.slug !== page.slug,
+          windowSet:
+            pending.kind === 'dynamic' && (pending.startsAt !== null || pending.endsAt !== null),
+        },
+      }),
     );
     return ok((await detailOf(deps, context, { kind: 'id', id: page.id }))!);
   });
 }
 
+/** What the publisher reviewed: the draft's version number and last change time. */
+function reviewedOf(
+  body: unknown,
+): { readonly versionNo: number; readonly updatedAt: Temporal.Instant } | Problems {
+  const problems: Problems = [];
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return [{ path: '', code: 'format' }];
+  }
+  const { versionNo, updatedAt, ...rest } = body as Record<string, unknown>;
+  for (const key of Object.keys(rest).slice(0, 5))
+    problems.push({ path: key, code: 'unknown-field' });
+  if (typeof versionNo !== 'number' || !Number.isInteger(versionNo) || versionNo < 1) {
+    problems.push({ path: 'versionNo', code: versionNo === undefined ? 'required' : 'format' });
+  }
+  let reviewedAt: Temporal.Instant | null = null;
+  if (typeof updatedAt === 'string' && updatedAt.length <= 40) {
+    try {
+      reviewedAt = Temporal.Instant.from(updatedAt);
+    } catch {
+      // Falls through to `format`.
+    }
+  }
+  if (reviewedAt === null) {
+    problems.push({ path: 'updatedAt', code: updatedAt === undefined ? 'required' : 'format' });
+  }
+  return problems.length > 0
+    ? problems
+    : { versionNo: versionNo as number, updatedAt: reviewedAt! };
+}
+
+/**
+ * Puts a published draft's pending settings on the page row. A dynamic page's new slug must be
+ * free; the old one, if buyers could reach it, then sends them to the new one.
+ */
+async function applySettings(
+  deps: StorefrontDependencies,
+  context: CallContext,
+  page: PageRecord,
+  pending: PendingSettings,
+  wasPublished: boolean,
+  stamp: Stamp,
+): Promise<PageFailure | null> {
+  const market = context.market;
+  if (pending.kind === 'system') {
+    await deps.pages.updatePage(market, page.id, { title: pending.title, seo: pending.seo }, stamp);
+    return null;
+  }
+  const settings = {
+    slug: pending.slug,
+    title: pending.title,
+    seo: pending.seo,
+    linked: pending.linked,
+    startsAt: pending.startsAt,
+    endsAt: pending.endsAt,
+  };
+  if (settings.slug !== page.slug) {
+    if (await slugTaken(deps, context, settings.slug, page.id)) {
+      return { code: 'storefront.slug-taken' };
+    }
+    await deps.pages.deleteRedirect(market, settings.slug);
+    if (wasPublished) {
+      await deps.pages.insertRedirect(
+        market,
+        { id: deps.ids.next<'StorefrontRedirect'>(), fromSlug: page.slug!, pageId: page.id },
+        stamp.at,
+      );
+    }
+  }
+  await deps.pages.updatePage(market, page.id, settings, stamp);
+  return null;
+}
+
 /**
  * A platform admin publishes a page's draft (or, `navigation`, approves the navigation draft):
- * the draft must fill every slot's minimum. The version buyers saw is kept as `retired`.
+ * the draft must be the one they reviewed (its version number and last change time, security
+ * review M-1) and fill every slot's minimum. Its pending settings go onto the page; the version
+ * buyers saw is kept as `retired`.
  */
 export async function publishPage(
   deps: StorefrontDependencies,
   context: CallContext,
-  input: { readonly page: unknown },
+  input: { readonly page: unknown; readonly body: unknown },
   navigation = false,
 ): Promise<Result<PageDetailView, PageFailure>> {
   const admin = adminOf(context);
   if (admin === null) return err({ code: 'access.denied' });
   const ref = pageRefOf(input?.page);
   if (ref === null) return err({ code: 'storefront.page-not-found' });
+  const reviewed = reviewedOf(input.body);
+  if (Array.isArray(reviewed)) return err({ code: 'validation.failed', fields: reviewed });
   const stamp: Stamp = { at: deps.clock.now(), by: admin.accountId };
   return deps.unitOfWork.run<PageDetailView, PageFailure>(context.market, async () => {
     if (
@@ -802,14 +900,25 @@ export async function publishPage(
     const page = locked.page;
     const draft = await deps.pages.findDraft(context.market, page.id);
     if (draft === null) return err({ code: 'storefront.nothing-to-publish' } as const);
+    if (draft.versionNo !== reviewed.versionNo || !draft.updatedAt.equals(reviewed.updatedAt)) {
+      return err({ code: 'storefront.draft-changed' } as const);
+    }
+    const pending = parseStoredSettings(draft.settings, page);
+    const linked = pending?.kind === 'dynamic' ? pending.linked : page.linked;
     const template = templateOf(page.templateKey);
     const { placements } = readPlacements(template, draft.placements);
-    const problems = publishProblems(template, placements, page.linked?.type ?? null);
+    const problems = publishProblems(template, placements, linked?.type ?? null);
     if (problems.length > 0) return err({ code: 'validation.failed', fields: problems } as const);
+    const wasPublished = (await deps.pages.findPublished(context.market, page.id)) !== null;
+    if (pending !== null) {
+      const refused = await applySettings(deps, context, page, pending, wasPublished, stamp);
+      if (refused !== null) return err(refused);
+    } else {
+      await deps.pages.updatePage(context.market, page.id, {}, stamp);
+    }
     // The stored draft is rewritten as checked now, so what is published is what was checked.
     await deps.pages.updateDraft(context.market, draft.id, storedPlacements(placements), stamp);
     await deps.pages.publishDraft(context.market, page.id, draft.id, stamp);
-    await deps.pages.updatePage(context.market, page.id, {}, stamp);
     await deps.audit.record(
       context,
       StorefrontPagePublished.entry(page.id, {
@@ -842,6 +951,14 @@ export async function archivePage(
     const locked = await lockForChange(deps, context, ref, stamp, false);
     if (!locked.ok) return err(locked.error);
     if (locked.page.kind !== 'dynamic') return err({ code: 'storefront.page-locked' } as const);
+    // A landing page sends buyers only to a landing page that is still up (no redirect loop).
+    const target = /^\/l\/([a-z0-9-]+)$/u.exec(parsed.value.redirectTo ?? '')?.[1];
+    if (target !== undefined) {
+      const to = await deps.pages.findBySlug(context.market, target);
+      if (to === null || to.id === locked.page.id || to.archivedAt !== null) {
+        return err(invalid('redirectTo', 'not-live'));
+      }
+    }
     await deps.pages.updatePage(
       context.market,
       locked.page.id,

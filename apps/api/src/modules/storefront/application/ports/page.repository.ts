@@ -28,6 +28,11 @@ export interface VersionRecord {
   readonly state: VersionState;
   /** The stored JSON; read back only through `readPlacements`. */
   readonly placements: unknown;
+  /**
+   * A draft's page settings (the stored JSON, read back only through `parseStoredSettings`), put
+   * on the page row when it is published; null: the draft leaves them as they are.
+   */
+  readonly settings: unknown;
   readonly createdAt: Temporal.Instant;
   readonly updatedAt: Temporal.Instant;
   readonly publishedAt: Temporal.Instant | null;
@@ -65,6 +70,15 @@ export interface PageRepository {
   lockPage(market: MarketContext, id: Id<'StorefrontPage'>): Promise<PageRecord | null>;
 
   insertPage(market: MarketContext, page: PageRecord, by: Id<'Account'>): Promise<void>;
+  /**
+   * Inserts a system page's row unless the Market already has one for its key (a concurrent
+   * first edit); true when this call inserted it.
+   */
+  insertSystemPageIfAbsent(
+    market: MarketContext,
+    page: PageRecord,
+    by: Id<'Account'>,
+  ): Promise<boolean>;
   updatePage(
     market: MarketContext,
     id: Id<'StorefrontPage'>,
@@ -112,6 +126,12 @@ export interface PageRepository {
     market: MarketContext,
     id: Id<'StorefrontPageVersion'>,
     placements: Record<string, unknown>,
+    stamp: Stamp,
+  ): Promise<void>;
+  updateDraftSettings(
+    market: MarketContext,
+    id: Id<'StorefrontPageVersion'>,
+    settings: Record<string, unknown>,
     stamp: Stamp,
   ): Promise<void>;
   /** Retires the published version (if any) and publishes the draft `draftId`. */

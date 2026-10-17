@@ -6,7 +6,7 @@ import type { StorefrontDependencies } from '../storefront-dependencies';
 
 /** `storefront.publish-page`: A platform admin publishes a page's draft (protected key). */
 export class PublishStorefrontPage extends UseCase<
-  { readonly page: unknown },
+  { readonly page: unknown; readonly body: unknown },
   PageDetailView,
   PageFailure
 > {
@@ -22,7 +22,10 @@ export class PublishStorefrontPage extends UseCase<
     super(gate);
   }
 
-  protected handle(context: CallContext, input: { readonly page: unknown }) {
+  protected handle(
+    context: CallContext,
+    input: { readonly page: unknown; readonly body: unknown },
+  ) {
     return publishPage(this.deps, context, input);
   }
 }

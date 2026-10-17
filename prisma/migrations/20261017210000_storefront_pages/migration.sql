@@ -37,6 +37,7 @@ CREATE TABLE "storefront"."page_versions" (
     "version_no" INTEGER NOT NULL,
     "state" TEXT NOT NULL,
     "placements" JSONB NOT NULL,
+    "settings" JSONB,
     "created_at" TIMESTAMPTZ(6) NOT NULL,
     "created_by" UUID NOT NULL,
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
@@ -119,6 +120,7 @@ ALTER TABLE "storefront"."page_versions"
   ADD CONSTRAINT "page_versions_version_no_check" CHECK ("version_no" >= 1),
   ADD CONSTRAINT "page_versions_state_check" CHECK ("state" IN ('draft', 'published', 'retired')),
   ADD CONSTRAINT "page_versions_placements_check" CHECK (jsonb_typeof("placements") = 'object'),
+  ADD CONSTRAINT "page_versions_settings_check" CHECK ("settings" IS NULL OR jsonb_typeof("settings") = 'object'),
   ADD CONSTRAINT "page_versions_published_check" CHECK (
     ("state" = 'draft' AND "published_at" IS NULL AND "published_by" IS NULL)
     OR ("state" <> 'draft' AND "published_at" IS NOT NULL AND "published_by" IS NOT NULL));
@@ -134,5 +136,5 @@ ALTER TABLE "storefront"."redirects"
 -- A redirect is created, and removed when its page takes the old slug back.
 GRANT USAGE ON SCHEMA "storefront" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("slug", "title", "seo", "linked_type", "linked_id", "starts_at", "ends_at", "archived_at", "archived_redirect", "updated_at", "updated_by") ON TABLE "storefront"."pages" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE ("state", "placements", "updated_at", "updated_by", "published_at", "published_by") ON TABLE "storefront"."page_versions" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("state", "placements", "settings", "updated_at", "updated_by", "published_at", "published_by") ON TABLE "storefront"."page_versions" TO "mondapac_app";
 GRANT SELECT, INSERT, DELETE ON TABLE "storefront"."redirects" TO "mondapac_app";

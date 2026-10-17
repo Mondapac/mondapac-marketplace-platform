@@ -7,7 +7,7 @@ import type { StorefrontDependencies } from '../storefront-dependencies';
 
 /** `storefront.approve-navigation`: A platform admin approves the navigation draft, so buyers see it (protected key). */
 export class ApproveStorefrontNavigation extends UseCase<
-  Record<string, never>,
+  { readonly body: unknown },
   PageDetailView,
   PageFailure
 > {
@@ -23,7 +23,7 @@ export class ApproveStorefrontNavigation extends UseCase<
     super(gate);
   }
 
-  protected handle(context: CallContext) {
-    return approveNavigation(this.deps, context);
+  protected handle(context: CallContext, input: { readonly body: unknown }) {
+    return approveNavigation(this.deps, context, input);
   }
 }

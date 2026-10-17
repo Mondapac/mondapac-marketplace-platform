@@ -53,6 +53,7 @@ it('maps every refusal code of the storefront routes to its exact status', () =>
     'storefront.slot-full': 409,
     'storefront.slug-taken': 409,
     'storefront.nothing-to-publish': 409,
+    'storefront.draft-changed': 409,
   });
 });
 
@@ -168,7 +169,7 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
     endsAt: null,
     archivedRedirect: null,
     slots: [],
-    draft: { versionNo: 1, placements: { main: [] }, updatedAt: START },
+    draft: { versionNo: 1, placements: { main: [] }, settings: null, updatedAt: START },
     published: null,
     versions: [{ id: id(0xe1), versionNo: 1, state: 'draft', createdAt: START, publishedAt: null }],
   };
@@ -185,6 +186,7 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
     slots: [{ key: 'main', kind: 'modules', width: 'full', modules: [] }],
   };
   const newPage = { templateKey: 'campaign-landing', title: 'Eid', slug: 'eid' };
+  const reviewed = { versionNo: 1, updatedAt: START.toString() };
 
   beforeEach(() => {
     fakes.reset();
@@ -220,21 +222,23 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
         })
       ).status,
     ).toBe(200);
-    expect((await call('post', `/storefront/admin/pages/${PAGE_ID}/publish`, session)).status).toBe(
-      200,
-    );
+    expect(
+      (await call('post', `/storefront/admin/pages/${PAGE_ID}/publish`, session, reviewed)).status,
+    ).toBe(200);
     const slots = { slots: { rail: [] } };
     expect((await call('put', '/storefront/admin/navigation/draft', session, slots)).status).toBe(
       200,
     );
-    expect((await call('post', '/storefront/admin/navigation/approve', session)).status).toBe(200);
+    expect(
+      (await call('post', '/storefront/admin/navigation/approve', session, reviewed)).status,
+    ).toBe(200);
     expect(calls).toEqual([
       { name: 'create', input: newPage },
       { name: 'add', input: { page: 'home', slot: 'main', body: module } },
       { name: 'reorder', input: { page: PAGE_ID, slot: 'main', placementIds: ['a'] } },
-      { name: 'publish', input: { page: PAGE_ID } },
+      { name: 'publish', input: { page: PAGE_ID, body: reviewed } },
       { name: 'navigation-draft', input: slots },
-      { name: 'approve', input: {} },
+      { name: 'approve', input: { body: reviewed } },
     ]);
   });
 
@@ -263,7 +267,8 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
   it('maps the refusals of the admin routes', async () => {
     await boot();
     const session = adminSession();
-    const publish = () => call('post', `/storefront/admin/pages/${PAGE_ID}/publish`, session);
+    const publish = () =>
+      call('post', `/storefront/admin/pages/${PAGE_ID}/publish`, session, reviewed);
     next = err({
       code: 'validation.failed',
       fields: [{ path: 'slots.main', code: 'too-few-modules' }],
@@ -274,6 +279,8 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
       details: { fields: [{ path: 'slots.main', code: 'too-few-modules' }] },
     });
     next = err({ code: 'storefront.nothing-to-publish' });
+    expect((await publish()).status).toBe(409);
+    next = err({ code: 'storefront.draft-changed' });
     expect((await publish()).status).toBe(409);
     next = err({ code: 'storefront.page-not-found' });
     expect((await publish()).status).toBe(404);

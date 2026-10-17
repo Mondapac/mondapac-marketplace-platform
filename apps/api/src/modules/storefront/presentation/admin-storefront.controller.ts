@@ -49,6 +49,7 @@ import { closedBody, refusal } from './http-answers';
 import {
   AddModuleRequest,
   ArchiveRequest,
+  PublishRequest,
   CatalogueBody,
   NewPageRequest,
   PageDetailBody,
@@ -412,6 +413,7 @@ export class AdminStorefrontController {
   })
   @ApiHeader(CSRF)
   @ApiParam(PAGE)
+  @ApiBody({ type: PublishRequest })
   @ApiOkResponse({ type: PageDetailBody })
   @ApiBadRequestResponse({
     ...ERROR,
@@ -423,15 +425,20 @@ export class AdminStorefrontController {
   @ApiConflictResponse({
     ...ERROR,
     description:
-      'storefront.nothing-to-publish, storefront.page-locked or storefront.page-archived',
+      'storefront.nothing-to-publish, storefront.draft-changed, storefront.slug-taken, ' +
+      'storefront.page-locked or storefront.page-archived',
   })
   async publishDraft(
     @Call() context: CallContext,
     @Param('page') page: string,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.publish.execute(context, { page });
+    const invalid = closedBody(request, body, ['versionNo', 'updatedAt']);
+    if (invalid !== null) throw invalid;
+    const result = await this.publish.execute(context, { page, body });
     return this.answer('storefront.publish-page-route', context, result, detailBody);
   }
 

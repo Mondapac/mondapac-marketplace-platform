@@ -417,6 +417,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'placements',
         'published_at',
         'published_by',
+        'settings',
         'state',
         'updated_at',
         'updated_by',

@@ -1,5 +1,12 @@
 import { parseModuleConfig, MODULE_KEYS, type ModuleKey } from './modules';
-import { isSlug, parseArchive, parseDynamicSettings, parseNewPage } from './page-settings';
+import {
+  isSlug,
+  parseArchive,
+  parseDynamicSettings,
+  parseNewPage,
+  parseStoredSettings,
+  storedSettings,
+} from './page-settings';
 import {
   addPlacement,
   defaultPlacements,
@@ -8,6 +15,7 @@ import {
   removePlacement,
   reorderPlacements,
   servedSlots,
+  sizeProblems,
   storedPlacements,
   updatePlacement,
   type Placements,
@@ -99,6 +107,8 @@ describe('the module catalogue', () => {
       '/a/../admin',
       'https://user:pw@example.com',
       '/a b',
+      '/%2F%2Fevil.example',
+      '/%2e%2e/admin',
     ]) {
       expect(link(bad)).toEqual(['config.href:format']);
     }
@@ -289,5 +299,40 @@ describe('page settings', () => {
     });
     expect(parseArchive({ redirectTo: 'https://evil.example' }).ok).toBe(false);
     expect(parseArchive({ redirectTo: '//evil.example' }).ok).toBe(false);
+  });
+  it('keeps each stored module and each version small', () => {
+    const entry = (n: number) => ({
+      id: `p${n}`,
+      module: 'text-block' as ModuleKey,
+      enabled: true,
+      config: { body: 'x'.repeat(30_000) } as never,
+    });
+    expect(sizeProblems({ main: [entry(1)] })).toEqual([]);
+    expect(sizeProblems({ main: [{ ...entry(1), config: { body: 'x'.repeat(40_000) } }] })).toEqual(
+      [{ path: 'main[0]', code: 'too-large' }],
+    );
+    expect(sizeProblems({ main: Array.from({ length: 9 }, (_, n) => entry(n)) })).toEqual([
+      { path: 'placements', code: 'too-large' },
+    ]);
+  });
+
+  it('stores pending settings as a body and reads them back checked', () => {
+    const page = { kind: 'dynamic' as const, templateKey: 'campaign-landing' };
+    const parsed = parseDynamicSettings(
+      { title: 'Eid', slug: 'eid', endsAt: '2026-11-01T00:00:00Z' },
+      page.templateKey,
+    );
+    if (!parsed.ok) throw new Error('bad settings');
+    const stored = storedSettings({ kind: 'dynamic', ...parsed.value });
+    expect(stored).toMatchObject({ slug: 'eid', endsAt: '2026-11-01T00:00:00Z', startsAt: null });
+    expect(parseStoredSettings(stored, page)).toMatchObject({ kind: 'dynamic', title: 'Eid' });
+    expect(parseStoredSettings({ ...stored, slug: 'Bad Slug' }, page)).toBeNull();
+    expect(parseStoredSettings(null, page)).toBeNull();
+    expect(
+      parseStoredSettings(
+        { title: 'Home', seo: {} },
+        { kind: 'system', templateKey: 'system.home' },
+      ),
+    ).toEqual({ kind: 'system', title: 'Home', seo: {} });
   });
 });

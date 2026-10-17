@@ -59,6 +59,8 @@ model StorefrontPageVersion {
   /// draft, published or retired (CHECK).
   state       String
   placements  Json
+  /// A draft's page settings, put on the page row when it is published; null: unchanged.
+  settings    Json?
   createdAt   DateTime       @map("created_at") @db.Timestamptz(6)
   createdBy   String         @map("created_by") @db.Uuid
   updatedAt   DateTime       @map("updated_at") @db.Timestamptz(6)

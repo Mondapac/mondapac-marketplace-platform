@@ -128,8 +128,12 @@ describe.each(TEST_MARKETS)('storefront page store in market %s (database)', (co
     await value(market, () =>
       pages.updateDraft(market, v2, { main: [{ id: 'a', module: 'faq' }] }, stamp(3)),
     );
-    expect((await value(market, () => pages.findDraft(market, page.id)))?.placements).toEqual({
-      main: [{ id: 'a', module: 'faq' }],
+    await value(market, () =>
+      pages.updateDraftSettings(market, v2, { title: 'Eid 2026', seo: {} }, stamp(3)),
+    );
+    expect(await value(market, () => pages.findDraft(market, page.id))).toMatchObject({
+      placements: { main: [{ id: 'a', module: 'faq' }] },
+      settings: { title: 'Eid 2026', seo: {} },
     });
     await value(market, () => pages.publishDraft(market, page.id, v2, stamp(4)));
     const versions = await value(market, () => pages.versions(market, page.id, 10));
@@ -169,6 +173,13 @@ describe.each(TEST_MARKETS)('storefront page store in market %s (database)', (co
       });
     await insert(system());
     expect(await code_(insert(system()))).toBe(UNIQUE);
+    // A concurrent first edit of a system page loses quietly, inside a unit that goes on.
+    expect(
+      await value(market, async () => {
+        const inserted = await pages.insertSystemPageIfAbsent(market, system(), by);
+        return [inserted, (await pages.findSystemPage(market, key))?.systemKey];
+      }),
+    ).toEqual([false, key]);
     expect((await value(market, () => pages.findSystemPage(market, key)))?.systemKey).toBe(key);
 
     const from = `old-${page.slug}`;

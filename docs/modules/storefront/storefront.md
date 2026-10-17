@@ -25,6 +25,16 @@ go live only after a platform admin approves them.
   pages by slug, served at `/l/<slug>`; never deleted, archived instead), `page_versions` (one
   `draft`, one `published` per page, older ones `retired`; `placements` JSON per slot), and
   `redirects` (old slugs).
+- **Settings wait for publishing**: a page's title, slug, SEO fields, linked entity and live
+  window, once changed, are held in its draft (`page_versions.settings`) and put on the page row
+  only when a platform admin publishes it, so an editor never changes what buyers see. A new
+  slug must be free at that moment; the old one then redirects (if buyers could reach it).
+- **Publishing what was reviewed**: publish and approve take the draft's `versionNo` and
+  `updatedAt` as the publisher saw them, and answer `storefront.draft-changed` (409) when the
+  draft changed since.
+- **Size**: one module's stored settings stay within 32 KB and one version's placements within
+  256 KB. The public reads are in the `default` per-origin rate-limit class like every
+  market-scoped route.
 - **Navigation** is the system page `navigation` (slots `rail`, `drawer-popular`,
   `drawer-categories`), with its own use cases and keys.
 
@@ -41,7 +51,11 @@ go live only after a platform admin approves them.
 | `storefront.navigation.approve` | yes | approve the navigation draft |
 
 No default role holds a key (role seed unchanged); a platform admin gives the editor keys to a
-custom role. Publishing, archiving and approving stay with the Platform Administrator.
+custom role. Publishing, archiving and approving stay with the Platform Administrator, who may
+also edit, so one admin can publish their own draft. That is accepted while the protected keys
+are theirs alone; if another role ever holds `storefront.page.publish` or
+`storefront.navigation.approve`, refuse a publish by the draft's last editor (security review
+L-2).
 
 ## Routes
 
@@ -54,7 +68,8 @@ or a system key), `POST .../slots/:slot/modules`, `PUT|DELETE .../slots/:slot/mo
 
 Public (`@RoutePopulation('customer')`, no session, `no-store`): `GET storefront/pages/:key`
 (a never-published system page answers its template defaults), `GET storefront/landing/:slug`
-(a live page, or `{ kind: 'redirect', to }` for an old or archived slug), `GET
+(a live page, or `{ kind: 'redirect', to }` for an old slug of a live, published page or an
+archived slug; an archived page never sends buyers to an archived page or to itself), `GET
 storefront/navigation`.
 
 ## Not in v1 (follow-ups)

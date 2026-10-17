@@ -4,6 +4,7 @@ import type { PageSummaryView } from '../application/use-cases/list-pages.use-ca
 import type { CatalogueView } from '../application/use-cases/view-catalogue.use-case';
 import type { PageDetailView } from '../application/use-cases/view-page.use-case';
 import type { PublishedAnswer } from '../application/use-cases/view-published-page.use-case';
+import type { PendingSettings } from '../domain/page-settings';
 import type { Placements } from '../domain/placements';
 
 // Bodies of the storefront routes. Module settings are data (plain texts, ids, site paths and
@@ -63,7 +64,7 @@ export class PageDetailBody extends PageSummaryBody {
   @ApiProperty({ type: [Object], description: SLOT_DESCRIPTION }) slots!: object[];
   @ApiProperty({
     type: Object,
-    description: `{ versionNo (null: not created yet; what a new draft starts from), placements, updatedAt }. ${PLACEMENTS_DESCRIPTION}`,
+    description: `{ versionNo (null: not created yet; what a new draft starts from), placements, settings (what publishing puts on the page; null: unchanged), updatedAt }. ${PLACEMENTS_DESCRIPTION}`,
   })
   draft!: object;
   @ApiProperty({ type: Object, nullable: true, description: '{ versionNo, placements }' })
@@ -145,6 +146,16 @@ export class ArchiveRequest {
   redirectTo?: string | null;
 }
 
+export class PublishRequest {
+  @ApiProperty({ description: "The draft's versionNo, as the publisher reviewed it." })
+  versionNo!: number;
+  @ApiProperty({
+    format: 'date-time',
+    description: "The draft's updatedAt, as the publisher reviewed it: a later change answers 409.",
+  })
+  updatedAt!: string;
+}
+
 export class NavigationDraftRequest {
   @ApiProperty({
     type: Object,
@@ -183,6 +194,19 @@ export const summaryBody = (view: PageSummaryView): PageSummaryBody => ({
   updatedAt: instant(view.updatedAt),
 });
 
+const settingsBody = (settings: PendingSettings | null): object | null => {
+  if (settings === null) return null;
+  if (settings.kind === 'system') return { title: settings.title, seo: settings.seo };
+  return {
+    title: settings.title,
+    slug: settings.slug,
+    seo: settings.seo,
+    linked: settings.linked,
+    startsAt: instant(settings.startsAt),
+    endsAt: instant(settings.endsAt),
+  };
+};
+
 export const detailBody = (view: PageDetailView): PageDetailBody => ({
   ...summaryBody(view),
   seo: view.seo,
@@ -194,6 +218,7 @@ export const detailBody = (view: PageDetailView): PageDetailBody => ({
   draft: {
     versionNo: view.draft.versionNo,
     placements: placementsBody(view.draft.placements),
+    settings: settingsBody(view.draft.settings),
     updatedAt: instant(view.draft.updatedAt),
   },
   published:

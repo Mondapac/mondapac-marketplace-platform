@@ -145,6 +145,9 @@ export async function viewPublishedDynamicPage(
           ? notFound()
           : ok({ kind: 'redirect', to: current.archivedRedirect });
       }
+      // Only to a page buyers can see now, so an old slug never tells of an unpublished one.
+      if (!live(current, now)) return notFound();
+      if ((await deps.pages.findPublished(context.market, current.id)) === null) return notFound();
       return ok({ kind: 'redirect', to: `/l/${current.slug}` });
     },
     { readOnly: true },
