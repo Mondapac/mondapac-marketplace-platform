@@ -32,6 +32,9 @@ const COVERED_BY_SELLER_CERTIFICATE_SPEC = [
   'seller_issuer_confirmations',
   // Certification slice 6: covered by certification-issuer-request.db-spec.ts.
   'issuer_request_documents',
+  // Certification slice 9: covered by certification-expiry.db-spec.ts (42501 for the
+  // application, the trigger for the owner).
+  'expiry_warnings',
 ];
 
 function insertOnlyTables(): string[] {

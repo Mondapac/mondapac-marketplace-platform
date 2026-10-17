@@ -446,14 +446,14 @@ describe.each(TEST_MARKETS)('certification expiry job in market %s (database)', 
       await sqlState(owner, `DELETE FROM certification.expiry_warnings WHERE version_id = $1`, [
         row.version_id,
       ]),
-    ).not.toBeNull();
+    ).toBe('23001');
     expect(
       await sqlState(
         owner,
         `UPDATE certification.expiry_warnings SET threshold_days = 1 WHERE version_id = $1`,
         [row.version_id],
       ),
-    ).not.toBeNull();
+    ).toBe('23001');
     for (const bad of [{ version_kind: 'offer' }, { threshold_days: 0 }, { threshold_days: 400 }]) {
       expect(
         await sqlState(
