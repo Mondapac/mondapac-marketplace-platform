@@ -1,4 +1,5 @@
 import type { Offer, OffSaleCause, OfferHandling, OfferStatus } from '../../domain/offer';
+import type { OfferTagStatus, TagBadge, TagBasis } from '../../domain/offer-tag';
 import type { ProductLabel } from '../ports/own-catalog.reader';
 import { isoOf } from './own-reads.shared';
 
@@ -23,10 +24,38 @@ export interface OwnOfferView {
   readonly firstPublishedAt: string | null;
   readonly createdAt: string;
   readonly version: number;
+  /** The open tags, each with its basis (AC 14); on the single read only. */
+  readonly tags?: readonly OwnOfferTagView[];
 }
 
-export function offerViewOf(offer: Offer, label: ProductLabel | undefined): OwnOfferView {
+/** One open tag as the seller sees it (design 5.3 "Seller sees"): badge data only while active. */
+export interface OwnOfferTagView {
+  readonly typeCode: string;
+  readonly status: OfferTagStatus;
+  readonly basis: TagBasis | null;
+  readonly reasonCode: string | null;
+  readonly badge: TagBadge | null;
+}
+
+export function offerViewOf(
+  offer: Offer,
+  label: ProductLabel | undefined,
+  options: { readonly withTags?: boolean } = {},
+): OwnOfferView {
   const { state } = offer;
+  const tags = options.withTags
+    ? {
+        tags: offer.tags
+          .filter((tag) => tag.status !== 'removed')
+          .map((tag) => ({
+            typeCode: tag.typeCode,
+            status: tag.status,
+            basis: tag.copy?.basis ?? null,
+            reasonCode: tag.status === 'active' ? null : tag.lastReasonCode,
+            badge: tag.status === 'active' ? tag.badge : null,
+          })),
+      }
+    : {};
   return {
     offerId: state.id,
     productId: state.productId,
@@ -47,5 +76,6 @@ export function offerViewOf(offer: Offer, label: ProductLabel | undefined): OwnO
     firstPublishedAt: isoOf(state.firstPublishedAt),
     createdAt: state.createdAt.toString(),
     version: state.version,
+    ...tags,
   };
 }

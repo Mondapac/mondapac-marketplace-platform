@@ -558,6 +558,35 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'catalog.offer_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // docs/design/data/catalog.md 3.15, 3.16 (slice 8): a tag's type, Offer, seller and creation
+    // never change; its status, claim copy and removal do. The history is insert-only.
+    'catalog.offer_tags': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'badge_data',
+        'basis',
+        'certificate_id',
+        'certificate_kind',
+        'certificate_version_id',
+        'change_seq',
+        'copy_revision_id',
+        'copy_revision_published',
+        'evaluated_at',
+        'inputs_hash',
+        'issuer_id',
+        'last_change_cause',
+        'last_reason_code',
+        'policy_revision_id',
+        'removed_at',
+        'removed_by_account_id',
+        'removed_by_kind',
+        'status',
+        'status_changed_at',
+        'type_revision_id',
+        'valid_until',
+      ],
+    },
+    'catalog.offer_tag_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller
     // and currency never change; a regular record's content never changes (only its status,

@@ -37,6 +37,14 @@
     }
   },
   {
+    "type": "catalog.offer-listing-changed.v1",
+    "aggregateType": "offer",
+    "fields": {
+      "listed": "boolean",
+      "offerId": "id"
+    }
+  },
+  {
     "type": "catalog.offer-moved.v1",
     "aggregateType": "offer",
     "fields": {
@@ -54,6 +62,51 @@
       "offerId": "id",
       "productId": "id",
       "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.offer-tag-added.v1",
+    "aggregateType": "offer",
+    "fields": {
+      "basis": "optional(enumOf(seller|manufacturer))",
+      "offerId": "id",
+      "tagId": "id"
+    }
+  },
+  {
+    "type": "catalog.offer-tag-basis-switched.v1",
+    "aggregateType": "offer",
+    "fields": {
+      "basis": "optional(enumOf(seller|manufacturer))",
+      "offerId": "id",
+      "tagId": "id"
+    }
+  },
+  {
+    "type": "catalog.offer-tag-removed.v1",
+    "aggregateType": "offer",
+    "fields": {
+      "basis": "optional(enumOf(seller|manufacturer))",
+      "offerId": "id",
+      "tagId": "id"
+    }
+  },
+  {
+    "type": "catalog.offer-tag-restored.v1",
+    "aggregateType": "offer",
+    "fields": {
+      "basis": "optional(enumOf(seller|manufacturer))",
+      "offerId": "id",
+      "tagId": "id"
+    }
+  },
+  {
+    "type": "catalog.offer-tag-suspended.v1",
+    "aggregateType": "offer",
+    "fields": {
+      "basis": "optional(enumOf(seller|manufacturer))",
+      "offerId": "id",
+      "tagId": "id"
     }
   },
   {

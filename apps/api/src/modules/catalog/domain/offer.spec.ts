@@ -156,14 +156,44 @@ describe.each(MARKETS)('Offer in market %s', (code) => {
       },
     );
 
-    it.each(['published', 'deleted'] as const)('refuses a %s Offer', (status) => {
-      const offer = stored({ status, firstPublishedAt: T0, deletedAt: T0 });
+    it('refuses a deleted Offer', () => {
+      const offer = stored({ status: 'deleted', deletedAt: T0 });
       expect(offer.edit(form({ sellerSku: 'SKU-009' }))).toEqual({
         ok: false,
         error: { code: 'offer.not-editable' },
       });
       expect(offer.state.sellerSku).toBe('SKU-001');
       expect(offer.pendingHistory).toBeNull();
+    });
+
+    it('edits a published Offer in place: it stays published and listed, no queue (AC 33)', () => {
+      const offer = stored({
+        status: 'published',
+        listed: true,
+        handling: 'FRESH',
+        submittedAt: T0,
+        firstPublishedAt: T0,
+      });
+      expect(offer.edit(form({ sellerSku: 'SKU-009' }))).toEqual({
+        ok: true,
+        value: ['sellerSku'],
+      });
+      expect(offer.state).toMatchObject({
+        status: 'published',
+        listed: true,
+        submittedAt: T0,
+        sellerSku: 'SKU-009',
+        version: 4,
+      });
+      expect(offer.pendingHistory).toMatchObject({ changeKind: 'edited' });
+      const unchanged = stored({
+        status: 'published',
+        listed: true,
+        handling: 'FRESH',
+        firstPublishedAt: T0,
+      });
+      expect(unchanged.edit(form())).toEqual({ ok: true, value: [] });
+      expect(unchanged.hasChanges).toBe(false);
     });
 
     it('refuses a SKU, condition or description the create rules refuse, and changes nothing', () => {

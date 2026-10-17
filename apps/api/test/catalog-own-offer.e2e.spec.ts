@@ -4,6 +4,8 @@ import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { CheckClaimText } from '../src/modules/catalog/application/claim-text/check-claim-text.service';
+import { CLAIM_EVALUATOR } from '../src/modules/catalog/application/ports/claim-evaluator';
+import { ClaimQueryBuilder } from '../src/modules/catalog/application/tags/claim-query-builder';
 import { ALLOWED_PRODUCT_TYPES_READER } from '../src/modules/catalog/application/ports/allowed-product-types.reader';
 import {
   CATALOG_MARKET_POLICY,
@@ -23,6 +25,13 @@ import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sess
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
+import {
+  FakeClaimEvaluator,
+  FixedFactsClaimQueryBuilder,
+  activeTagState,
+  allowedDecision,
+  refusedDecision,
+} from './support/catalog-tag-fakes';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
@@ -64,6 +73,8 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
   let verdicts: unknown[];
   let productReads: number;
   let claimChecks: number;
+  let evaluator: FakeClaimEvaluator;
+  let claimFacts: FixedFactsClaimQueryBuilder;
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -111,7 +122,11 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
             },
           })
           .overrideProvider(SaveWorkingCopy)
-          .useValue({ reserveSaves: () => Promise.resolve(reserve) }),
+          .useValue({ reserveSaves: () => Promise.resolve(reserve) })
+          .overrideProvider(CLAIM_EVALUATOR)
+          .useValue(evaluator)
+          .overrideProvider(ClaimQueryBuilder)
+          .useValue(claimFacts),
     }));
   }
 
@@ -242,6 +257,10 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
     verdicts = [];
     productReads = 0;
     claimChecks = 0;
+    evaluator = new FakeClaimEvaluator(() => {
+      throw new Error('no claim was expected');
+    }, []);
+    claimFacts = new FixedFactsClaimQueryBuilder(null);
   });
   afterEach(async () => {
     await app.close();
@@ -293,6 +312,16 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       'claim-text.refused': 422,
       'request.throttled': 429,
       'access.unavailable': 503,
+      'tag.exists': 409,
+      'tag.not-found': 404,
+      'tag.suspended': 409,
+      'tag.not-removable': 409,
+      'tag.product-not-published': 409,
+      'tag.type-unknown': 422,
+      'claim.tag-not-allowed': 422,
+      'claim.requested-tag-not-allowed': 422,
+      'claim.check-unavailable': 503,
+      'conflict.retry': 409,
     });
   });
 
@@ -827,7 +856,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       expect(savedEdits).toHaveLength(0);
     });
 
-    it('answers 409 for a published Offer, a taken SKU and 403 for a seller who may not sell', async () => {
+    it('edits a published Offer in place, answers 409 for a taken SKU and 403 for a seller who may not sell', async () => {
       await boot();
       await seeded(code);
       const session = sessionOf(code);
@@ -836,8 +865,8 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
         offerState({ status: 'published', firstPublishedAt: START, handling: 'FRESH' }),
       );
       const published = await put(url, editBody(), session);
-      expect(published.status).toBe(409);
-      expect(published.body).toEqual({ statusCode: 409, code: 'offer.not-editable' });
+      expect(published.status).toBe(200);
+      expect(savedEdits.at(-1)?.state.status).toBe('published');
 
       offer = Offer.restore(offerState());
       saveRefusal = 'offer.sku-taken';
@@ -850,7 +879,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       const notEligible = await put(url, editBody(), session);
       expect(notEligible.status).toBe(403);
       expect(notEligible.body).toEqual({ statusCode: 403, code: 'seller.not-eligible' });
-      expect(savedEdits).toHaveLength(0);
+      expect(savedEdits).toHaveLength(1);
     });
 
     it('answers a text with a claim as 422 and a spent budget as 429, storing nothing', async () => {
@@ -929,7 +958,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       ).toMatchObject({ outcome: 'ok', marketId: code });
     });
 
-    it('refuses handling without CSRF or a session, a bad body, a published Offer and a stranger’s Offer', async () => {
+    it('refuses handling without CSRF or a session, a bad body and a stranger’s Offer; changes a published one', async () => {
       await boot();
       await seeded(code);
       offer = Offer.restore(offerState());
@@ -945,8 +974,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
         offerState({ status: 'published', listed: true, firstPublishedAt: START }),
       );
       expect((await put(path, { handling: 'FRESH' }, session)).body).toEqual({
-        statusCode: 409,
-        code: 'offer.not-editable',
+        changedFields: ['handling'],
       });
       offer = Offer.restore(offerState({ sellerId: id<'Seller'>(0xb999) }));
       expect((await put(path, { handling: 'FRESH' }, session)).body).toEqual({
@@ -958,7 +986,174 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
         .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session })
         .send({ handling: 'FRESH' });
       expect(wrongOrigin.status).toBe(403);
+      expect(savedEdits).toHaveLength(1);
+    });
+  });
+
+  describe.each(TEST_MARKETS)('tags in market %s', (code) => {
+    const OFFER = id<'Offer'>(0x9101);
+    const typeCode = code === 'AU' ? 'halal' : 'zz-cert';
+    const certificate = {
+      certificateId: id(0x7001),
+      versionId: id(0x7002),
+      typeRevisionId: id(0x7003),
+    };
+    const offerState = (overrides: Partial<OfferState> = {}): OfferState => ({
+      id: OFFER,
+      marketId: code as AccountState['marketId'],
+      sellerId: SELLER,
+      productId: PRODUCT,
+      sellerSku: 'SKU-1',
+      conditionCode: 'new',
+      description: {},
+      handling: 'SEALED_ORIGINAL',
+      attestationRecordedAt: null,
+      attestationAccountId: null,
+      status: 'published',
+      offSaleCauses: [],
+      listed: true,
+      submittedAt: START,
+      firstPublishedAt: START,
+      deletedAt: null,
+      version: 2,
+      createdAt: START,
+      ...overrides,
+    });
+    const tagsUrl = `/catalog/seller/offers/${OFFER}/tags`;
+    const withMarket = (test: request.Test, headers: Record<string, string>) =>
+      test.set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...headers });
+    const arm = (
+      decide = (q: Parameters<typeof allowedDecision>[0]) => allowedDecision(q, certificate),
+    ) => {
+      evaluator.decide = decide;
+      evaluator.active = [typeCode];
+      claimFacts.published = {
+        productId: PRODUCT,
+        productRevisionId: id<'ProductRevision'>(0xd001),
+        revisionPublished: true,
+        variantIds: [id<'Variant'>(0x6001)],
+        platformCategoryPaths: [],
+      };
+    };
+
+    it('adds a tag: 201 with the type, status and basis only, and logs the outcome', async () => {
+      arm();
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+      const response = await withMarket(http().post(tagsUrl), sessionOf(code)).send({ typeCode });
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual({ typeCode, status: 'active', basis: 'SELLER' });
+      expect(savedEdits).toHaveLength(1);
+      expect(savedEdits[0]!.tags[0]).toMatchObject({ typeCode, status: 'active' });
+      expect(
+        logLines.find((l) => l.msg === 'catalog.own-offer-add-tag' && l.code === 'added'),
+      ).toBeDefined();
+    });
+
+    it('answers 422 with the reason per type, 503 when unanswered, 400 for a client badge', async () => {
+      arm((q) => refusedDecision(q, 'no-certificate'));
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(offerState());
+      const session = sessionOf(code);
+      const refused = await withMarket(http().post(tagsUrl), session).send({ typeCode });
+      expect(refused.status).toBe(422);
+      expect(refused.body).toEqual({
+        statusCode: 422,
+        code: 'claim.tag-not-allowed',
+        details: { tags: [{ typeCode, reason: 'no-certificate' }] },
+      });
+      evaluator.unavailable = true;
+      const down = await withMarket(http().post(tagsUrl), session).send({ typeCode });
+      expect(down.status).toBe(503);
+      expect(down.body).toEqual({ statusCode: 503, code: 'claim.check-unavailable' });
+      const forged = await withMarket(http().post(tagsUrl), session).send({
+        typeCode,
+        badge: { reviewedByPlatform: true },
+      });
+      expect(forged.status).toBe(400);
+      const unknown = await withMarket(http().post(tagsUrl), session).send({
+        typeCode: 'other-type',
+      });
+      expect(unknown.status).toBe(422);
+      expect(unknown.body).toEqual({ statusCode: 422, code: 'tag.type-unknown' });
       expect(savedEdits).toHaveLength(0);
+    });
+
+    it('removes an active tag with 204, refuses a suspended one with 409 and needs CSRF', async () => {
+      arm();
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      offer = Offer.restore(offerState(), [
+        activeTagState(id<'OfferTag'>(0x5001), typeCode, certificate, START),
+      ]);
+      expect(
+        (
+          await withMarket(http().delete(`${tagsUrl}/${typeCode}`), {
+            cookie: session.cookie,
+          }).send()
+        ).status,
+      ).toBe(403);
+      const removed = await withMarket(http().delete(`${tagsUrl}/${typeCode}`), session).send();
+      expect(removed.status).toBe(204);
+      expect(savedEdits[0]!.tags[0]!.status).toBe('removed');
+      offer = Offer.restore(offerState(), [
+        activeTagState(id<'OfferTag'>(0x5002), typeCode, certificate, START, {
+          status: 'suspended',
+          badge: null,
+          lastReasonCode: 'certificate-expired',
+          changeSeq: 2,
+        }),
+      ]);
+      const suspended = await withMarket(http().delete(`${tagsUrl}/${typeCode}`), session).send();
+      expect(suspended.status).toBe(409);
+      expect(suspended.body).toEqual({ statusCode: 409, code: 'tag.suspended' });
+      const missing = await withMarket(http().delete(`${tagsUrl}/other-type`), session).send();
+      expect(missing.status).toBe(404);
+    });
+
+    it('takes requestedTags on submit and refuses an unknown key in the body', async () => {
+      arm();
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      offer = Offer.restore(
+        offerState({ status: 'draft', listed: false, submittedAt: null, firstPublishedAt: null }),
+      );
+      const bad = await withMarket(
+        http().post(`/catalog/seller/offers/${OFFER}/submit`),
+        session,
+      ).send({
+        requestedTags: [typeCode],
+        basis: 'SELLER',
+      });
+      expect(bad.status).toBe(400);
+      const submitted = await withMarket(
+        http().post(`/catalog/seller/offers/${OFFER}/submit`),
+        session,
+      ).send({ requestedTags: [typeCode] });
+      expect(submitted.status).toBe(200);
+      expect(savedEdits.at(-1)!.tags).toEqual([
+        expect.objectContaining({ typeCode, status: 'active' }),
+      ]);
+    });
+
+    it('documents the tag routes in OpenAPI', async () => {
+      await boot({ API_DOCS_ENABLED: 'true' });
+      const document = (await http().get('/docs-json').expect(200)).body as {
+        paths: Record<string, Record<string, { responses: Record<string, unknown> }>>;
+      };
+      const add = document.paths['/catalog/seller/offers/{offerId}/tags']?.post?.responses;
+      for (const status of ['201', '400', '403', '404', '409', '422', '429', '503']) {
+        expect(add).toHaveProperty(status);
+      }
+      const remove =
+        document.paths['/catalog/seller/offers/{offerId}/tags/{typeCode}']?.delete?.responses;
+      for (const status of ['204', '400', '403', '404', '409']) {
+        expect(remove).toHaveProperty(status);
+      }
     });
   });
 });

@@ -488,7 +488,17 @@ describe('seller product routes over HTTP (integration)', () => {
         revisionNo: 1,
         published: false,
       });
-      expect(submitCalls).toEqual([{ productId: PRODUCT, replacePending: false }]);
+      expect(submitCalls).toEqual([
+        {
+          productId: PRODUCT,
+          replacePending: false,
+          revisionId: expect.any(String) as string,
+          claims: {
+            ask: expect.any(Function) as unknown,
+            settle: expect.any(Function) as unknown,
+          },
+        },
+      ]);
 
       product = Product.restore({ ...state(code), ownerSellerId: id<'Seller'>(0xb999) });
       const other = await post(

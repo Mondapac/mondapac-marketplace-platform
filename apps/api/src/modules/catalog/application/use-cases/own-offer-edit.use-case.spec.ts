@@ -15,6 +15,15 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { Offer, type OfferState } from '../../domain/offer';
+import type { ClaimFacts, OfferTagState } from '../../domain/offer-tag';
+import {
+  FakeClaimEvaluator,
+  FixedFactsClaimQueryBuilder,
+  RecordingOutbox,
+  activeTagState,
+  allowedDecision,
+  refusedDecision,
+} from '../../../../../test/support/catalog-tag-fakes';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type { CheckClaimText, ClaimTextVerdict } from '../claim-text/check-claim-text.service';
 import { OwnOfferEdit } from './own-offer-edit.use-case';
@@ -69,6 +78,31 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
     ...overrides,
   });
 
+  const typeCode = code === 'AU' ? 'halal' : 'zz-cert';
+  const variantIds = [ids.next<'Variant'>(), ids.next<'Variant'>()];
+  const certificateIds = {
+    certificateId: ids.next(),
+    versionId: ids.next(),
+    typeRevisionId: ids.next(),
+  };
+  const factsOf = (state: OfferState): ClaimFacts => ({
+    productId: state.productId,
+    productRevisionId: ids.next<'ProductRevision'>(),
+    revisionPublished: true,
+    variantIds,
+    platformCategoryPaths: [[ids.next<'Category'>()]],
+  });
+  const publishedOffer = () =>
+    offerState({
+      status: 'published',
+      firstPublishedAt: T0,
+      submittedAt: T0,
+      handling: 'SEALED_ORIGINAL',
+      listed: true,
+    });
+  const activeTag = (state: OfferState): OfferTagState =>
+    activeTagState(ids.next<'OfferTag'>(), typeCode, certificateIds, state.createdAt);
+
   function rig(
     options: {
       offer?: OfferState | null;
@@ -83,9 +117,25 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
         | { code: 'request.throttled'; retryAfterSeconds: number }
         | { code: 'access.unavailable' }
         | null;
+      tags?: OfferTagState[];
+      facts?: ClaimFacts | null;
+      refuse?: string;
+      unavailable?: boolean;
     } = {},
   ) {
     const state = options.offer === undefined ? offerState() : options.offer;
+    const evaluator = new FakeClaimEvaluator(
+      (query) =>
+        options.refuse !== undefined
+          ? refusedDecision(query, options.refuse)
+          : allowedDecision(query, certificateIds),
+      [typeCode],
+    );
+    evaluator.unavailable = options.unavailable ?? false;
+    const outbox = new RecordingOutbox();
+    const claims = new FixedFactsClaimQueryBuilder(
+      options.facts === undefined && state !== null ? factsOf(state) : (options.facts ?? null),
+    );
     const saved: Offer[] = [];
     const checked: { locale: string; text: string }[][] = [];
     const reserved: number[] = [];
@@ -117,7 +167,9 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
           reads += 1;
           const current =
             reads > 1 && options.secondRead !== undefined ? options.secondRead : state;
-          return Promise.resolve(current === null ? null : Offer.restore(current));
+          return Promise.resolve(
+            current === null ? null : Offer.restore(current, options.tags ?? []),
+          );
         },
         save: (_m, offer) => {
           if (options.saveThrows !== undefined) return Promise.reject(options.saveThrows);
@@ -135,9 +187,12 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
         },
       },
       policy: realPolicy,
+      claims,
+      evaluator,
+      outbox,
       clock,
     });
-    return { useCase, state, saved, checked, reserved };
+    return { useCase, state, saved, checked, reserved, evaluator, outbox };
   }
 
   const form = (offerId: Id<'Offer'>, extra: Record<string, unknown> = {}) => ({
@@ -230,13 +285,53 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
     expect(r.saved[0]!.state).toMatchObject({ status: 'draft', submittedAt: null });
   });
 
-  it('refuses a published Offer as not editable', async () => {
+  it('edits a published Offer in place: it stays published and asks nothing without tags', async () => {
     const r = rig({
       offer: offerState({ status: 'published', firstPublishedAt: T0, handling: 'FRESH' }),
     });
     const outcome = await r.useCase.execute(contextOf('seller'), form(r.state!.id));
-    expect(outcome).toEqual({ ok: false, error: { code: 'offer.not-editable' } });
+    expect(outcome).toEqual({ ok: true, value: { changedFields: ['sellerSku'] } });
+    expect(r.saved[0]!.state).toMatchObject({ status: 'published', sellerSku: 'SKU-2' });
+    expect(r.evaluator.calls).toHaveLength(0);
+  });
+
+  it('asks again for every kept tag of a published Offer and keeps an allowed one active', async () => {
+    const offer = publishedOffer();
+    const r = rig({ offer, tags: [activeTag(offer)] });
+    const outcome = await r.useCase.execute(contextOf('seller'), form(offer.id));
+    expect(outcome.ok).toBe(true);
+    expect(r.evaluator.calls).toHaveLength(1);
+    expect(r.evaluator.calls[0]!.map((q) => q.variantId)).toEqual(variantIds);
+    expect(r.evaluator.calls[0]!.every((q) => q.typeCode === typeCode)).toBe(true);
+    expect(r.saved[0]!.tags[0]).toMatchObject({ typeCode, status: 'active' });
+    expect(r.outbox.types).toEqual([]);
+  });
+
+  it('suspends a tag that is no longer allowed, takes the Offer off sale and emits the events', async () => {
+    const offer = publishedOffer();
+    const r = rig({ offer, tags: [activeTag(offer)], refuse: 'certificate-expired' });
+    const outcome = await r.useCase.execute(contextOf('seller'), form(offer.id));
+    expect(outcome.ok).toBe(true);
+    const tag = r.saved[0]!.tags[0]!;
+    expect(tag).toMatchObject({
+      status: 'suspended',
+      badge: null,
+      lastReasonCode: 'certificate-expired',
+    });
+    expect(r.saved[0]!.state.listed).toBe(false);
+    expect(r.outbox.types).toEqual([
+      'catalog.offer-tag-suspended.v1',
+      'catalog.offer-listing-changed.v1',
+    ]);
+  });
+
+  it('refuses the edit when the check is unavailable and a tag is kept (fail closed)', async () => {
+    const offer = publishedOffer();
+    const r = rig({ offer, tags: [activeTag(offer)], unavailable: true });
+    const outcome = await r.useCase.execute(contextOf('seller'), form(offer.id));
+    expect(outcome).toEqual({ ok: false, error: { code: 'claim.check-unavailable' } });
     expect(r.saved).toHaveLength(0);
+    expect(r.outbox.appended).toHaveLength(0);
   });
 
   it.each(['sellerId', 'handling', 'attestation', 'tags', 'status', 'productId'])(
@@ -316,7 +411,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
     const stale = rig({ saveThrows: new StaleAggregateError('offer', 'x') });
     expect(await stale.useCase.execute(contextOf('seller'), form(stale.state!.id))).toEqual({
       ok: false,
-      error: { code: 'conflict.stale' },
+      error: { code: 'conflict.retry' },
     });
     const broken = rig({ saveThrows: new Error('db down') });
     await expect(
@@ -346,14 +441,17 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
     expect(r.saved[0]!.state.status).toBe('draft');
   });
 
-  it('writes nothing when another edit landed between the claim check and the write', async () => {
-    const r = rig({ secondRead: offerState({ version: 3 }) });
+  it('starts again from the check when another edit landed between the check and the write', async () => {
+    const first = offerState();
+    const r = rig({ offer: first, secondRead: { ...first, version: 3 } });
     const outcome = await r.useCase.execute(
       contextOf('seller'),
       form(r.state!.id, { description: { [locale]: 'a new text' } }),
     );
-    expect(outcome).toEqual({ ok: false, error: { code: 'conflict.stale' } });
-    expect(r.saved).toHaveLength(0);
+    expect(outcome.ok).toBe(true);
+    expect(r.checked).toHaveLength(2);
+    expect(r.saved).toHaveLength(1);
+    expect(r.saved[0]!.state.version).toBe(4);
   });
 
   it.each([

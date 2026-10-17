@@ -140,6 +140,58 @@ export const ProductRevisionChangesRequested = defineEvent({
   },
 });
 
+/** The basis of a tag in an event payload (catalog design 9.4), lower-case as event enums are. */
+const TAG_BASIS_FIELD = eventField.optional(eventField.enumOf(['seller', 'manufacturer'] as const));
+
+/**
+ * The tag events of catalog design 9.4. The payload names the tag by its id, not its type code:
+ * the event vocabulary has no kind for a Market's open code list (PP 5.3), so a consumer reads the
+ * type through catalog. Ids and the basis only; no reason, no actor.
+ */
+const tagPayload = { offerId: eventField.id(), tagId: eventField.id(), basis: TAG_BASIS_FIELD };
+
+/** A tag became `active` from a fresh allowed decision of a seller's add (design 5.3). */
+export const OfferTagAdded = defineEvent({
+  type: 'catalog.offer-tag-added.v1',
+  aggregateType: 'offer',
+  payload: tagPayload,
+});
+
+/** A seller removed an `active` tag (design 5.3). */
+export const OfferTagRemoved = defineEvent({
+  type: 'catalog.offer-tag-removed.v1',
+  aggregateType: 'offer',
+  payload: tagPayload,
+});
+
+/** A fresh decision did not allow a kept tag: it is `suspended` and the Offer off sale (5.3). */
+export const OfferTagSuspended = defineEvent({
+  type: 'catalog.offer-tag-suspended.v1',
+  aggregateType: 'offer',
+  payload: tagPayload,
+});
+
+/** A fresh allowed decision made a suspended tag `active` again (design 5.3). */
+export const OfferTagRestored = defineEvent({
+  type: 'catalog.offer-tag-restored.v1',
+  aggregateType: 'offer',
+  payload: tagPayload,
+});
+
+/** A fresh allowed decision kept a tag on another basis (ADR-0012 d6; design 5.3). */
+export const OfferTagBasisSwitched = defineEvent({
+  type: 'catalog.offer-tag-basis-switched.v1',
+  aggregateType: 'offer',
+  payload: tagPayload,
+});
+
+/** A published Offer went off sale or back on sale through its stored causes (design 4.4). */
+export const OfferListingChanged = defineEvent({
+  type: 'catalog.offer-listing-changed.v1',
+  aggregateType: 'offer',
+  payload: { offerId: eventField.id(), listed: eventField.boolean() },
+});
+
 /** The reasons a reviewer may give when a photo is taken down (catalog design 10.5). */
 export const IMAGE_TAKEDOWN_REASONS = [
   'certification-mark',
@@ -183,4 +235,10 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   ProductRevisionPublished,
   ProductRevisionChangesRequested,
   ProductImageTakenDown,
+  OfferTagAdded,
+  OfferTagRemoved,
+  OfferTagSuspended,
+  OfferTagRestored,
+  OfferTagBasisSwitched,
+  OfferListingChanged,
 ];

@@ -468,8 +468,8 @@ history read. Insert-only (CA3). A tag-only change has no row here: it has one i
 | `last_change_cause` | `text` | yes | The entry path or event of the last status change (closed list of 3.16) |
 | `evaluated_at` | `timestamptz(6)` | no | Last ask; the reconciliation order (D 5.6) |
 | `status_changed_at` | `timestamptz(6)` | no | |
-| `status_seq` | `integer` | no | CHECK `>= 1`. 1 at insert; raised by exactly one with every `status` change and unchanged otherwise (trigger `offer_tags_status_seq`, `23514`). Names the history row of the current status (below) |
-| `removed_at`, `removed_by_kind`, `removed_by_account_id` | | yes | CHECK `(status = 'removed') = (removed_at IS NOT NULL)`; kind CHECK `seller`, `system` |
+| `change_seq` | `integer` | no | CHECK `>= 1`. 1 at insert; raised by exactly one with every change of `status` or of the claim copy (`basis`, `certificate_kind`, `certificate_id`, `certificate_version_id`, `issuer_id`, `type_revision_id`, `policy_revision_id`, `valid_until`, `copy_revision_id`) and unchanged otherwise (trigger `offer_tags_change_seq`, `23514`; slice 8 review: Mojtaba F1, Hassan M4). Names the history row of the current status and copy (below); the repository's update of a tag is conditional on the `change_seq` it read (F2) |
+| `removed_at`, `removed_by_kind`, `removed_by_account_id` | | yes | CHECK `(status = 'removed') = (removed_at IS NOT NULL)`; kind CHECK `seller`, `system`; `(removed_by_kind = 'seller') = (removed_by_account_id IS NOT NULL)` (F4) |
 | `created_at` | `timestamptz(6)` | no | |
 
 - **CHECK `offer_tags_active_copy_check`**: `status <> 'active' OR (basis, certificate_kind,
@@ -510,10 +510,12 @@ history read. Insert-only (CA3). A tag-only change has no row here: it has one i
     the predicate literally so the partial index matches). The daily run reads every other tag; it **joins** `product_revision_decisions` for `copy_revision_id` with
     `outcome = 'published'` instead of trusting `copy_revision_published`, so a wrong flag is repaired
     within a day (5).
-- **Every status change has its history row** (Hassan, info; slice 8; SQL in 5.1; measured).
-  Constraint trigger `offer_tags_history_present` (`AFTER INSERT OR UPDATE OF status`, `DEFERRABLE
-  INITIALLY DEFERRED`): at commit, a row of `offer_tag_history` with this `tag_id`, `status_seq` and
-  `to_status` equal to the tag's must exist, else `23001`. I chose a check over a trigger that
+- **Every change of status or copy has its history row** (Hassan, info; slice 8; SQL in 5.1;
+  measured; widened to the copy in the slice 8 review, Mojtaba F1, Hassan M4). Constraint trigger
+  `offer_tags_history_present` (`AFTER INSERT OR UPDATE OF` the status and copy columns,
+  `DEFERRABLE INITIALLY DEFERRED`): at commit, a row of `offer_tag_history` with this `tag_id`,
+  `change_seq`, `to_status` and the copy columns it holds equal to the tag's must exist, else
+  `23001`. I chose a check over a trigger that
   **writes** the history row: the row's `entry_path`, actor, reason and cause event are known only to
   the use case (D 5.4), and a database-written row would hold a guess. Cost measured: +230 ms at
   commit for 11,242 tags (about 20 µs a tag; ≈ 1 s at the 50,000 bound of Q-K4); single-tag units
@@ -525,16 +527,18 @@ history read. Insert-only (CA3). A tag-only change has no row here: it has one i
 
 ### 3.16 `offer_tag_history` (slice 8; V4; the ADR-0028 d5 entry-path record)
 
-`id` PK; `tag_id` with FK `(market_id, tag_id, offer_id)` → `offer_tags (market_id, id, offer_id)`;
-`offer_id`; `type_code`; `from_status` (nullable, the 3.15 list) and `to_status`; the copy after the
+`id` PK; `tag_id` with FK `(market_id, tag_id, offer_id, type_code)` → `offer_tags (market_id, id,
+offer_id, type_code)` (F3); `offer_id`; `type_code`; `from_status` (nullable, the 3.15 list; CHECK
+`(from_status IS NULL) = (change_seq = 1)`, F4) and `to_status` (one row per change of status or
+copy: a basis switch or a new certificate version is `active` → `active`); the copy after the
 change (`basis`, `certificate_kind`, `certificate_id`, `certificate_version_id`, `issuer_id`,
 `policy_revision_id`, `copy_revision_id`); `reason_code`; **`entry_path`** CHECK closed list of D
 5.4: `offer-create`, `offer-edit`, `handling-change`, `attestation-change`, `tag-add`,
 `revision-submit`, `revision-publish`, `revision-revert`, `category-change`, `match`, `promotion`,
 `offer-reactivated`, `tax-category-override`, `import-row`, `certification-event`, `reconciliation`,
 `seller-remove`, `seller-remove-suspended`, `offer-delete`, `product-withdrawn`, `product-retired`;
-`status_seq integer` (the tag's `status_seq` after the change; **unique `(market_id, tag_id,
-status_seq)`**, the target of the presence check of 3.15); `cause_event_id uuid` (the consumed event,
+`change_seq integer` (the tag's `change_seq` after the change; **unique `(market_id, tag_id,
+change_seq)`**, the target of the presence check of 3.15); `cause_event_id uuid` (the consumed event,
 for handler rows); `actor_kind` CHECK `seller`, `admin`,
 `system`; `actor_account_id` (NULL iff system); `acting_admin_account_id`; `occurred_at`.
 
@@ -829,7 +833,7 @@ functions: `product_variants_guard()` (3.2), `product_revision_variants_not_reti
 `platform_categories_no_cycle()` (3.4), `attribute_relaxation_requests_guard()` (3.21),
 `relaxation_confirmed()`, `attribute_definition_revisions_relaxation()`,
 `attribute_definitions_archive_relaxation()`, `attribute_family_revisions_relaxation()` (3.5),
-`offer_tags_status_seq()`, `offer_tags_history_present()` (3.15), `product_images_delete_guard()`
+`offer_tags_change_seq()`, `offer_tags_history_present()` (3.15), `product_images_delete_guard()`
 (3.19). Trigger functions are SQL inside the database, not application raw SQL, so they are outside
 ADR-0030's list (Q-K8, ruled by Ali, closed). The bodies below were run on the throwaway cluster of
 11; the migration copies them verbatim.
@@ -924,23 +928,37 @@ BEGIN
   RETURN NEW;
 END; $$;
 
--- 3.15: every status change has its history row, checked at commit
+-- 3.15: every change of status or copy has its history row, checked at commit
+-- (slice 8 review: the copy columns, Mojtaba F1, Hassan M4; as in migration 20261017140000)
 CREATE FUNCTION "catalog"."offer_tags_history_present"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE cur record;
 BEGIN
-  SELECT t.status, t.status_seq INTO cur FROM "catalog"."offer_tags" t
+  SELECT t.status, t.change_seq, t.basis, t.certificate_kind, t.certificate_id,
+         t.certificate_version_id, t.issuer_id, t.policy_revision_id, t.copy_revision_id
+    INTO cur FROM "catalog"."offer_tags" t
    WHERE t.market_id = NEW.market_id AND t.id = NEW.id;
-  IF cur.status_seq <> NEW.status_seq THEN RETURN NULL; END IF;  -- a later change in the unit checks itself
+  IF cur.change_seq <> NEW.change_seq THEN RETURN NULL; END IF;  -- a later change in the unit checks itself
   IF NOT EXISTS (SELECT 1 FROM "catalog"."offer_tag_history" h
                   WHERE h.market_id = NEW.market_id AND h.tag_id = NEW.id
-                    AND h.status_seq = cur.status_seq AND h.to_status = cur.status) THEN
-    RAISE EXCEPTION 'catalog.offer_tags: status change without its offer_tag_history row'
+                    AND h.change_seq = cur.change_seq AND h.to_status = cur.status
+                    AND h.basis IS NOT DISTINCT FROM cur.basis
+                    AND h.certificate_kind IS NOT DISTINCT FROM cur.certificate_kind
+                    AND h.certificate_id IS NOT DISTINCT FROM cur.certificate_id
+                    AND h.certificate_version_id IS NOT DISTINCT FROM cur.certificate_version_id
+                    AND h.issuer_id IS NOT DISTINCT FROM cur.issuer_id
+                    AND h.policy_revision_id IS NOT DISTINCT FROM cur.policy_revision_id
+                    AND h.copy_revision_id IS NOT DISTINCT FROM cur.copy_revision_id) THEN
+    RAISE EXCEPTION 'catalog.offer_tags: status or copy change without its offer_tag_history row'
       USING ERRCODE = 'restrict_violation';
   END IF;
   RETURN NULL;
 END; $$;
-CREATE CONSTRAINT TRIGGER "offer_tags_history_present" AFTER INSERT OR UPDATE OF "status" ON "catalog"."offer_tags"
+CREATE CONSTRAINT TRIGGER "offer_tags_history_present"
+  AFTER INSERT OR UPDATE OF "status", "basis", "certificate_kind", "certificate_id",
+    "certificate_version_id", "issuer_id", "type_revision_id", "policy_revision_id",
+    "valid_until", "copy_revision_id"
+  ON "catalog"."offer_tags"
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "catalog"."offer_tags_history_present"();
 
 -- 3.19 (Hassan L3)
@@ -1087,7 +1105,7 @@ material definition with none or with a cancelled one, removing a material defin
 with none: `23514`; the same three succeed with a `confirmed` request of the right kind; a request
 used a second time: `23505`); `offer_tags_published_copy_check` (an `active` tag with
 `copy_revision_published = false`: `23514`, M1); a tag status change or a new tag without its
-history row (`23001` at commit) and a status change without `status_seq + 1` (`23514`); the image
+history row (`23001` at commit) and a status change without `change_seq + 1` (`23514`); the image
 CHECKs (`public` with a raw key, a master key under another product's prefix: `23514`), the image
 delete guard on a `public` row (`23001`) and an `UPDATE` of `product_id` as `mondapac_app`
 (`42501`); a 65th category level (`23514`); the shelf FK with another
@@ -1105,7 +1123,7 @@ seller's category (`23503`), and a child row in the other Market (PM6, `23503`).
 | 3 | 3 | `catalog_attributes` | The five tables of 3.5 (revisions' `relaxation_request_id` columns without their FKs; no `archived_by_request_id` yet) |
 | 4 | 4 | `catalog_revisions` | `product_working_copies`; `product_revisions`, texts, categories, variants (with the not-retired trigger), decisions (check columns included); `rate_counters`; on `products`: `published_revision_id`, `pending_revision_id`, `pending_submitted_at`, their FKs and CHECKs (`NOT VALID` then `VALIDATE`), the published-revision partial unique, the seller-list and queue partial indexes; the `discarded`-without-revision CHECK (`NOT VALID` then `VALIDATE`); `product_working_copies_market_id_last_saved_at_idx` with `DELETE` granted |
 | 5 | 7 | `catalog_offers` | `offers` (without `shelf_category_id`), `offer_history`; no `DELETE` on `products`, `product_variants`, `offers` (Q-K2); the Offer queue partial index (moved here from 8, see the note below the table) |
-| 6 | 8 | `catalog_offer_tags` | `offer_tags` (copy, check constraints including `offer_tags_published_copy_check`, `status_seq` and its trigger, open-tag partial unique, autovacuum settings), `offer_tag_history` (with `status_seq` and its unique), then the deferred `offer_tags_history_present` constraint trigger |
+| 6 | 8 | `catalog_offer_tags` | `offer_tags` (copy, check constraints including `offer_tags_published_copy_check`, `change_seq` and its trigger, open-tag partial unique, autovacuum settings), `offer_tag_history` (with `change_seq` and its unique), then the deferred `offer_tags_history_present` constraint trigger |
 | 7 | 9 | `catalog_name_search` | Trigram index of 6.2 (after the platform `pg_trgm` PR) |
 | 8 | 10 | `catalog_review` | `offer_publication_decisions` |
 | 9 | 11 | `catalog_fanout` | `tag_reevaluation_requests` |
@@ -1329,7 +1347,7 @@ material definition with no request or a cancelled one was refused, and allowed 
 material one was refused without a request and allowed with a `confirmed` `remove-from-family`
 request; a second open request and an expiry over 168 hours were refused; an `active` tag with
 `copy_revision_published = false`, a tag insert or status change without its history row (at commit)
-and a status change without `status_seq + 1` were refused; a master key under another product's
+and a status change without `change_seq + 1` were refused; a master key under another product's
 prefix, `public` with a raw key, a `public` image `DELETE` and an `UPDATE` of `product_id` as
 `mondapac_app` were refused; `TRUNCATE` of the request table by the owner was refused.
 

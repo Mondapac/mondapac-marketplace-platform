@@ -20,6 +20,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX carts_market_id_guest_token_hash_key ON cart.carts USING btree (market_id, guest_token_hash) WHERE (guest_token_hash IS NOT NULL)',
   'catalog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON catalog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // docs/design/data/catalog.md 3.15 (slice 8): one tag that is not removed per Offer and type.
+  'catalog.offer_tags_market_id_offer_id_type_code_open_key':
+    "CREATE UNIQUE INDEX offer_tags_market_id_offer_id_type_code_open_key ON catalog.offer_tags USING btree (market_id, offer_id, type_code) WHERE (status <> 'removed'::text)",
   // docs/design/data/catalog.md 3.13 (slice 7): one open Offer per seller and product, one open
   // Offer per seller and SKU, the fan-out keyset and the Offer half of the review queue.
   'catalog.offers_market_id_product_id_open_idx':

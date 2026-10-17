@@ -116,7 +116,11 @@ export class OwnOfferDelete extends UseCase<
             return err({ code: 'offer.delete-via-product' } as const);
           }
           const now = deps.clock.now();
-          const deleted = offer.delete({ now });
+          // Its open tags become `removed` (entry path `offer-delete`); delete asks nothing (ADR-0028 d5).
+          const deleted = offer.delete({
+            now,
+            actor: { kind: 'seller', accountId: actor.accountId },
+          });
           if (!deleted.ok) return err({ code: 'offer.not-found' } as const);
           await deps.offers.save(market, offer, { kind: 'seller', accountId: actor.accountId });
           await deps.outbox.append(context, offer.pendingEvents);
