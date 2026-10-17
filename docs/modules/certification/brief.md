@@ -551,3 +551,14 @@ PNG, PDF), 10 MiB, 10 files per certificate; JPEG/PNG re-encoded; PDFs byte-scan
 content (object streams are out of reach of the scan). Accepted files are `clean` at once.
 Documents are readable only by the owning seller. Store Manager and Catalogue and Stock seed
 version 4 carry the seller keys.
+
+Review fixes (PR 382, security and database reviews). The PDF scan is now linear: dictionaries are
+read token by token within fixed bounds (no backtracking pattern), names are decoded before any
+match, and the scan runs in a worker thread (heap limit, 5 s timeout) under the same concurrency
+limit as the images. It fails closed: more than 64 object streams, more than 32 MiB inflated in
+total (8 MiB per stream), a dictionary not read within bounds, or a timeout is refused
+(`file.too-complex`, `file.inspection-timeout`). Limits follow the approved design: 10 MiB per file,
+10 files, 20 pages per PDF, 40 megapixels per image (the earlier 50 pages and 60 megapixels are
+withdrawn). The document links bind seller and type by composite FKs, and the link trigger requires
+purpose `seller-certificate`. Not in this package: acting-as marker helper, body buffering before
+authentication, orphaned encrypted objects (sweeper), provisional seller zone at submit.

@@ -3,13 +3,14 @@ import type { Result } from '@mondapac/shared-kernel';
 import sharp from 'sharp';
 import {
   detectMediaType,
-  inspectPdf,
   MAX_DOCUMENT_BYTES,
   type DocumentRefusalCode,
 } from '../application/intake/document-inspection';
+import { inspectPdfIsolated } from './isolated-pdf-inspection';
 import type { DocumentIntake, InspectedDocument } from '../application/ports/document-ports';
 
-const MAX_PIXELS = 60_000_000;
+/** 40 megapixels (design 5.1, decision row 8). */
+const MAX_PIXELS = 40_000_000;
 const MAX_SIDE = 20_000;
 /** Decodes that may run at once in this process (the catalog photo rule). */
 const MAX_CONCURRENT = 2;
@@ -50,12 +51,13 @@ export class SharpDocumentIntake implements DocumentIntake {
     const mediaType = detectMediaType(bytes);
     if (mediaType === null) return Promise.resolve(err({ code: 'file.unsupported-type' }));
     if (mediaType === 'application/pdf') {
-      const verdict = inspectPdf(bytes);
-      return Promise.resolve(
-        verdict.ok
+      // The same concurrency limit as the images; the scan itself runs in a worker thread.
+      return withSlot(async () => {
+        const verdict = await inspectPdfIsolated(bytes);
+        return verdict.ok
           ? ok({ mediaType, bytes, pageCount: verdict.pageCount })
-          : err({ code: verdict.code }),
-      );
+          : err({ code: verdict.code });
+      });
     }
     return withSlot(() => this.#image(bytes, mediaType));
   }

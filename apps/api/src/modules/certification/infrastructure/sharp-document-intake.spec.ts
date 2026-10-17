@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import { MAX_DOCUMENT_BYTES } from '../application/intake/document-inspection';
+import { inspectPdfIsolated } from './isolated-pdf-inspection';
 import { SharpDocumentIntake } from './sharp-document-intake';
 
 // The file intake with the real image library (certification design 9.3, simplified): the type
@@ -104,5 +105,31 @@ describe('SharpDocumentIntake', () => {
     const big = Buffer.concat([PDF, Buffer.alloc(MAX_DOCUMENT_BYTES)]);
     expect(await intake.inspect(big)).toEqual({ ok: false, error: { code: 'file.too-large' } });
     expect(big.length).toBeGreaterThan(MAX_DOCUMENT_BYTES);
+  });
+
+  it('refuses, in a worker thread, a hostile PDF in well under a second (H1)', async () => {
+    const hostile = Buffer.concat([
+      Buffer.from('%PDF-1.7\n'),
+      Buffer.from('/Type /Pages '.repeat(80_000)),
+      Buffer.from('\n%%EOF\n'),
+    ]);
+    const started = Date.now();
+    expect(await intake.inspect(hostile)).toMatchObject({ ok: false });
+    expect(Date.now() - started).toBeLessThan(3_000);
+  });
+
+  it('refuses a PDF whose scan runs past the timeout, then serves the next file', async () => {
+    // About 9 MB of small dictionaries: the scan takes far longer than the 5 ms allowed here.
+    const heavy = Buffer.from(
+      '%PDF-1.7\n1 0 obj << /Type /Page >> endobj\n' +
+        '<< /A 1 % c\n>> '.repeat(600_000) +
+        '\n%%EOF\n',
+      'latin1',
+    );
+    expect(await inspectPdfIsolated(heavy, 5)).toEqual({
+      ok: false,
+      code: 'file.inspection-timeout',
+    });
+    expect(await inspectPdfIsolated(PDF)).toEqual({ ok: true, pageCount: 1 });
   });
 });

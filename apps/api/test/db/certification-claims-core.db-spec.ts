@@ -23,6 +23,11 @@ const uuid7 = (): string =>
  * schema that the application may only SELECT and INSERT, except the outbox and the inbox, which
  * are queues. A new table of this shape without the two triggers fails the catalog test below.
  */
+const COVERED_BY_SELLER_CERTIFICATE_SPEC = [
+  'seller_submission_documents',
+  'seller_certification_history',
+];
+
 function insertOnlyTables(): string[] {
   return Object.entries(EXPECTED_PRIVILEGES.tables)
     .filter(
@@ -1199,12 +1204,16 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
       expect(await sqlState(sql, `DELETE FROM certification.${table} WHERE false`)).toBe('42501');
       expect(await sqlState(sql, `TRUNCATE certification.${table} CASCADE`)).toBe('42501');
       // On a real row, so that the row trigger fires (a WHERE false would never reach it). The
-      // tables of the seller-certificate slice hold no row here; their own spec covers them.
+      // tables of the seller-certificate slice hold no row here; their own spec covers them, and
+      // only they may be skipped: a table with no row that is not listed there fails.
       const rows = await sql.query<{ n: number }>(
         `SELECT count(*)::int AS n FROM certification.${table} WHERE market_id = $1`,
         [market.marketId],
       );
-      if (rows.rows[0]?.n === 0) continue;
+      if (rows.rows[0]?.n === 0) {
+        expect(COVERED_BY_SELLER_CERTIFICATE_SPEC).toContain(table);
+        continue;
+      }
       expect(
         await sqlState(
           owner,

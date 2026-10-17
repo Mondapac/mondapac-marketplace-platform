@@ -104,6 +104,7 @@ interface DocumentRow {
   objectKey: string;
   dataKeyEnvelope: string;
   cleanSha256: Uint8Array | null;
+  purpose: string;
   _count: { submissionLinks: number };
 }
 
@@ -123,6 +124,7 @@ function toDocument(row: DocumentRow, position: number): StoredDocument {
     dataKeyEnvelope: row.dataKeyEnvelope,
     cleanSha256: Buffer.from(row.cleanSha256),
     submitted: row._count.submissionLinks > 0,
+    purpose: row.purpose,
   };
 }
 
@@ -405,6 +407,8 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
         data: write.documentIds.map((documentId, index) => ({
           ...base,
           submissionId: write.submissionId,
+          typeId: write.typeId,
+          sellerId: write.sellerId,
           documentId,
           position: index + 1,
         })),

@@ -78,6 +78,8 @@ CREATE TABLE "certification"."seller_submission_documents" (
     "market_id" VARCHAR(8) NOT NULL,
     "tenant_id" TEXT NOT NULL,
     "submission_id" UUID NOT NULL,
+    "type_id" UUID NOT NULL,
+    "seller_id" UUID NOT NULL,
     "document_id" UUID NOT NULL,
     "position" SMALLINT NOT NULL,
 
@@ -103,7 +105,7 @@ CREATE TABLE "certification"."seller_certification_history" (
 );
 
 -- CreateIndex
-CREATE INDEX "seller_certifications_market_id_seller_id_created_at_idx" ON "certification"."seller_certifications"("market_id", "seller_id", "created_at");
+CREATE INDEX "seller_certifications_market_id_seller_id_created_at_id_idx" ON "certification"."seller_certifications"("market_id", "seller_id", "created_at", "id");
 
 -- CreateIndex
 CREATE INDEX "uploaded_documents_market_id_owner_seller_id_created_at_idx" ON "certification"."uploaded_documents"("market_id", "owner_seller_id", "created_at");
@@ -121,10 +123,16 @@ CREATE UNIQUE INDEX "uploaded_documents_market_id_object_key_key" ON "certificat
 CREATE UNIQUE INDEX "seller_certification_draft_documents_market_id_document_id_key" ON "certification"."seller_certification_draft_documents"("market_id", "document_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "seller_cert_draft_documents_position_key" ON "certification"."seller_certification_draft_documents"("market_id", "seller_certification_id", "position");
+
+-- CreateIndex
 CREATE INDEX "seller_submission_documents_market_id_document_id_idx" ON "certification"."seller_submission_documents"("market_id", "document_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "seller_submission_documents_market_id_submission_id_positio_key" ON "certification"."seller_submission_documents"("market_id", "submission_id", "position");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "seller_cert_submissions_id_type_seller_key" ON "certification"."seller_certification_submissions"("market_id", "id", "type_id", "seller_id");
 
 -- CreateIndex
 CREATE INDEX "seller_certification_history_market_id_seller_certification_idx" ON "certification"."seller_certification_history"("market_id", "seller_certification_id", "occurred_at");
@@ -146,10 +154,10 @@ ALTER TABLE "certification"."seller_certification_draft_documents" ADD CONSTRAIN
 ALTER TABLE "certification"."seller_certification_draft_documents" ADD CONSTRAINT "seller_certification_draft_documents_market_id_document_id_fkey" FOREIGN KEY ("market_id", "document_id", "type_id", "seller_id") REFERENCES "certification"."uploaded_documents"("market_id", "id", "type_id", "owner_seller_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
-ALTER TABLE "certification"."seller_submission_documents" ADD CONSTRAINT "seller_submission_documents_market_id_submission_id_fkey" FOREIGN KEY ("market_id", "submission_id") REFERENCES "certification"."seller_certification_submissions"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "certification"."seller_submission_documents" ADD CONSTRAINT "seller_submission_documents_submission_fkey" FOREIGN KEY ("market_id", "submission_id", "type_id", "seller_id") REFERENCES "certification"."seller_certification_submissions"("market_id", "id", "type_id", "seller_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
-ALTER TABLE "certification"."seller_submission_documents" ADD CONSTRAINT "seller_submission_documents_market_id_document_id_fkey" FOREIGN KEY ("market_id", "document_id") REFERENCES "certification"."uploaded_documents"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "certification"."seller_submission_documents" ADD CONSTRAINT "seller_submission_documents_document_fkey" FOREIGN KEY ("market_id", "document_id", "type_id", "seller_id") REFERENCES "certification"."uploaded_documents"("market_id", "id", "type_id", "owner_seller_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE "certification"."seller_certification_history" ADD CONSTRAINT "seller_certification_history_certificate_fkey" FOREIGN KEY ("market_id", "seller_certification_id") REFERENCES "certification"."seller_certifications"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
@@ -184,8 +192,8 @@ ALTER TABLE "certification"."uploaded_documents"
     "state" IN ('received', 'scanning', 'clean', 'refused')),
   ADD CONSTRAINT "uploaded_documents_refusal_code_check" CHECK (
     "refusal_code" IN ('file.unsupported-type', 'file.too-large', 'file.unreadable',
-      'file.too-many-pages', 'file.encrypted', 'file.active-content', 'file.malware',
-      'file.scan-failed')),
+      'file.too-many-pages', 'file.encrypted', 'file.active-content', 'file.too-complex',
+      'file.inspection-timeout', 'file.malware', 'file.scan-failed')),
   ADD CONSTRAINT "uploaded_documents_refusal_pair_check" CHECK (
     ("state" = 'refused') = ("refusal_code" IS NOT NULL)),
   ADD CONSTRAINT "uploaded_documents_media_type_check" CHECK (
@@ -193,7 +201,7 @@ ALTER TABLE "certification"."uploaded_documents"
   ADD CONSTRAINT "uploaded_documents_clean_media_type_check" CHECK (
     "state" <> 'clean' OR "media_type" IS NOT NULL),
   ADD CONSTRAINT "uploaded_documents_byte_size_check" CHECK ("byte_size" BETWEEN 1 AND 33554432),
-  ADD CONSTRAINT "uploaded_documents_page_count_check" CHECK ("page_count" BETWEEN 1 AND 50),
+  ADD CONSTRAINT "uploaded_documents_page_count_check" CHECK ("page_count" BETWEEN 1 AND 20),
   ADD CONSTRAINT "uploaded_documents_data_key_envelope_check" CHECK (
     "data_key_envelope" ~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'
     AND char_length("data_key_envelope") BETWEEN 41 AND 256),
@@ -272,16 +280,19 @@ CREATE TRIGGER "uploaded_documents_guard_update"
   BEFORE UPDATE ON "certification"."uploaded_documents"
   FOR EACH ROW EXECUTE FUNCTION "certification"."uploaded_documents_guard"();
 
--- Only a clean file joins a draft or a submission (data design 3.8, AC 21). No row lock: a
--- document never changes state in this package (the application has no UPDATE on it), and a lock
--- would need an UPDATE grant the table does not carry.
+-- Only a clean file of the certificate purpose joins a draft or a submission (data design 3.8,
+-- AC 21; design 7.2). No row lock, on purpose (database-designer, PR 382): `clean` is final for
+-- every role and `clean_sha256` is set once, so a clean row can never become anything else; the
+-- only racing change (a file turning clean) can cause a false refusal, never a wrong link; and the
+-- link's own foreign key already takes FOR KEY SHARE on the document row, which blocks a DELETE.
 CREATE FUNCTION "certification"."document_link_clean"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM "certification"."uploaded_documents"
     WHERE "market_id" = NEW."market_id" AND "id" = NEW."document_id" AND "state" = 'clean'
+      AND "purpose" = 'seller-certificate'
   ) THEN
-    RAISE EXCEPTION 'certification.%: only a clean document can be linked', TG_TABLE_NAME
+    RAISE EXCEPTION 'certification.%: only a clean seller-certificate document can be linked', TG_TABLE_NAME
       USING ERRCODE = '23514';
   END IF;
   RETURN NEW;

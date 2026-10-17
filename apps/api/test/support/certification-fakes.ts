@@ -239,6 +239,7 @@ export class MemoryCertificates implements SellerCertificateRepository {
       dataKeyEnvelope: doc.dataKeyEnvelope,
       cleanSha256: doc.cleanSha256,
       submitted: this.submissions.some((s) => s.write.documentIds.includes(doc.id)),
+      purpose: 'seller-certificate',
     };
   }
 
@@ -273,6 +274,7 @@ export class MemoryCertificates implements SellerCertificateRepository {
       dataKeyEnvelope: d.dataKeyEnvelope,
       cleanSha256: d.cleanSha256,
       submitted: false,
+      purpose: 'seller-certificate',
       sellerId: d.sellerId,
       certificateId: d.certificateId,
       marketId: market.marketId,

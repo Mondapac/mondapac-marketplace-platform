@@ -1,5 +1,10 @@
 import { deflateSync } from 'node:zlib';
-import { detectMediaType, inspectPdf, MAX_PDF_PAGES } from './document-inspection';
+import {
+  detectMediaType,
+  inspectPdf,
+  MAX_OBJECT_STREAMS,
+  MAX_PDF_PAGES,
+} from './document-inspection';
 
 // The byte checks of the certificate file intake (certification design 9.3, simplified): the type
 // from the first bytes only, and the PDF scan for encryption, active content and pages.
@@ -128,5 +133,118 @@ describe('inspectPdf', () => {
       '%PDF-1.4\n2 0 obj <</Type /Pages /Count 5000>> endobj\n3 0 obj <</Type /Page>> endobj\n%%EOF\n',
     );
     expect(inspectPdf(lying)).toEqual({ ok: false, code: 'file.too-many-pages' });
+  });
+});
+
+// Security review of PR 382 (H1, M1, M2): the scan is linear, and it refuses what it cannot read.
+describe('inspectPdf under attack', () => {
+  const latin = (text: string): Buffer => Buffer.from(text, 'latin1');
+  const tail = latin('\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n');
+  const pages = latin(
+    '%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n' +
+      '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page >> endobj\n',
+  );
+  const script = '<< /S /JavaScript /JS (app.alert(1)) >>';
+  function objectStream(content: string | Buffer, options: { pad?: string; type?: string } = {}) {
+    const z = deflateSync(typeof content === 'string' ? latin(content) : content, { level: 9 });
+    return Buffer.concat([
+      latin(
+        `9 0 obj << /Type ${options.type ?? '/ObjStm'} ${options.pad ?? ''}/N 1 /First 0 ` +
+          `/Filter /FlateDecode /Length ${z.length} >>\nstream\n`,
+      ),
+      z,
+      latin('\nendstream\nendobj\n'),
+    ]);
+  }
+  const pdfWith = (...parts: Buffer[]): Buffer => Buffer.concat([pages, ...parts, tail]);
+
+  it('control: a script in one compressed object stream is refused', () => {
+    expect(inspectPdf(pdfWith(objectStream(script)))).toEqual({
+      ok: false,
+      code: 'file.active-content',
+    });
+  });
+
+  it('M1a: refuses more object streams than it scans, instead of accepting the rest unread', () => {
+    const benign = Array.from({ length: MAX_OBJECT_STREAMS }, () => objectStream('<< /Foo 1 >>'));
+    expect(inspectPdf(pdfWith(...benign))).toMatchObject({ ok: true });
+    expect(inspectPdf(pdfWith(...benign, objectStream(script)))).toEqual({
+      ok: false,
+      code: 'file.too-complex',
+    });
+  });
+
+  it('M1b: finds the object stream whatever the size of its padded dictionary', () => {
+    const padded = objectStream(script, { pad: `/Pad (${'x'.repeat(5000)}) ` });
+    expect(inspectPdf(pdfWith(padded))).toEqual({ ok: false, code: 'file.active-content' });
+  });
+
+  it('M1b: a dictionary that does not close within the bound is refused, not skipped', () => {
+    const open = latin(`9 0 obj << /Type /ObjStm /Pad (${'x'.repeat(300_000)}) >>\nstream\n`);
+    expect(inspectPdf(pdfWith(open))).toEqual({ ok: false, code: 'file.too-complex' });
+    expect(inspectPdf(pdfWith(latin('9 0 obj << /Type /ObjStm /Pad (never closed')))).toMatchObject(
+      {
+        ok: false,
+      },
+    );
+  });
+
+  it('M1c: reads a name written with escapes (/Obj#53tm, /#4aavaScript)', () => {
+    expect(inspectPdf(pdfWith(objectStream(script, { type: '/Obj#53tm' })))).toEqual({
+      ok: false,
+      code: 'file.active-content',
+    });
+    expect(inspectPdf(pdfWith(objectStream('<< /S /#4aavaScript >>')))).toEqual({
+      ok: false,
+      code: 'file.active-content',
+    });
+  });
+
+  it('M2: refuses object streams that inflate past the total budget (decompression bomb)', () => {
+    const bomb = deflateSync(Buffer.alloc(8 * 1024 * 1024 - 16, 0x20), { level: 9 });
+    const one = Buffer.concat([
+      latin('9 0 obj << /Type /ObjStm /Filter /FlateDecode >>\nstream\n'),
+      bomb,
+      latin('\nendstream\nendobj\n'),
+    ]);
+    const started = Date.now();
+    const verdict = inspectPdf(pdfWith(...Array.from({ length: 8 }, () => one)));
+    expect(verdict).toEqual({ ok: false, code: 'file.too-complex' });
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it('H1: a 1 MiB file of repeated /Type /Pages is answered in linear time', () => {
+    const hostile = Buffer.concat([
+      latin('%PDF-1.7\n'),
+      latin('/Type /Pages '.repeat(80_000)),
+      tail,
+    ]);
+    const control = Buffer.concat([
+      latin('%PDF-1.7\n'),
+      latin('/Type /Pagex '.repeat(80_000)),
+      tail,
+    ]);
+    const time = (bytes: Buffer): number => {
+      const started = process.hrtime.bigint();
+      inspectPdf(bytes);
+      return Number(process.hrtime.bigint() - started) / 1e6;
+    };
+    time(control);
+    const baseline = Math.max(time(control), 20);
+    // Before the fix this took 26 s; a generous multiple of the control keeps the test stable.
+    expect(time(hostile)).toBeLessThan(baseline * 25 + 500);
+  });
+
+  it('H1: many short dictionaries and comments stay linear (four times the input, not sixteen)', () => {
+    const timeOf = (count: number): number => {
+      const body = latin('<< /A 1 % c\n>> '.repeat(count));
+      const started = process.hrtime.bigint();
+      expect(inspectPdf(pdfWith(body))).toMatchObject({ ok: true });
+      return Number(process.hrtime.bigint() - started) / 1e6;
+    };
+    timeOf(10_000);
+    const small = Math.max(timeOf(40_000), 10);
+    // Quadratic growth would cost 16 times; the bound leaves room for a loaded machine.
+    expect(timeOf(160_000)).toBeLessThan(small * 12 + 500);
   });
 });

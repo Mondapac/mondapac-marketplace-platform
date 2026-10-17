@@ -135,6 +135,11 @@ export class OwnCertificateSubmit extends UseCase<
     if (!read.ok) return read;
     if (read.value === null) return err({ code: 'certificate.not-found' });
     const { stored, documents, type, issuer } = read.value;
+    // Design 7.2: the owner and the clean state are bound by the draft link; the purpose is
+    // checked here and again by the link trigger.
+    if (documents.some((document) => document.purpose !== 'seller-certificate')) {
+      return err({ code: 'access.denied' });
+    }
     if (type === null) return err({ code: 'access.unavailable' });
     if (stored.pendingSubmissionId !== null) {
       return err({ code: 'certificate.has-pending-submission' });

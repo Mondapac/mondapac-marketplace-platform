@@ -101,6 +101,8 @@ export const OWN_CERTIFICATE_STATUS: Readonly<Record<string, number>> = Object.f
   'file.too-many-pages': 422,
   'file.encrypted': 422,
   'file.active-content': 422,
+  'file.too-complex': 422,
+  'file.inspection-timeout': 422,
   'request.throttled': 429,
 });
 
@@ -482,7 +484,8 @@ export class OwnCertificateController {
   @ApiPayloadTooLargeResponse({ type: CertificationErrorBody, description: 'file.too-large' })
   @ApiUnprocessableEntityResponse({
     type: CertificationErrorBody,
-    description: 'file.unreadable, file.too-many-pages, file.encrypted or file.active-content',
+    description:
+      'file.unreadable, file.too-many-pages, file.encrypted, file.active-content, file.too-complex or file.inspection-timeout',
   })
   @ApiUnsupportedMediaTypeResponse({
     type: CertificationErrorBody,

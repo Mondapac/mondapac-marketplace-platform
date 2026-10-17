@@ -21,6 +21,7 @@ DROP FUNCTION "certification"."uploaded_documents_guard"();
 DROP TABLE "certification"."seller_certification_history";
 DROP TABLE "certification"."seller_submission_documents";
 DROP TABLE "certification"."seller_certification_draft_documents";
+DROP INDEX "certification"."seller_cert_submissions_id_type_seller_key";
 DROP TABLE "certification"."rate_counters";
 DROP TABLE "certification"."seller_draft_quotas";
 DROP TABLE "certification"."uploaded_documents";
@@ -30,7 +31,7 @@ ALTER TABLE "certification"."seller_certifications"
   DROP CONSTRAINT "seller_certifications_draft_cert_number_ciphertext_check",
   DROP CONSTRAINT "seller_certifications_draft_dates_check",
   DROP CONSTRAINT "seller_certifications_market_id_draft_issuer_id_type_id_fkey";
-DROP INDEX "certification"."seller_certifications_market_id_seller_id_created_at_idx";
+DROP INDEX "certification"."seller_certifications_market_id_seller_id_created_at_id_idx";
 ALTER TABLE "certification"."seller_certifications"
   DROP COLUMN "draft_self_declared",
   DROP COLUMN "draft_self_declaration_note_ciphertext",

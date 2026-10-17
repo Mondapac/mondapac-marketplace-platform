@@ -209,7 +209,8 @@ model CertificationSellerCertification {
   /// submission's seller is its certificate's and the certificate's seller never moves (Hassan M-1).
   @@unique([marketId, id, typeId, sellerId], map: "seller_certifications_market_id_id_type_id_seller_id_key")
   /// The seller's own list (every status, terminal ones included).
-  @@index([marketId, sellerId, createdAt])
+  /// Serves the keyset order of the list (created_at DESC, id DESC) exactly.
+  @@index([marketId, sellerId, createdAt, id])
   @@map("seller_certifications")
   @@schema("certification")
 }
@@ -258,6 +259,9 @@ model CertificationSellerCertificationSubmission {
   @@unique([marketId, sellerCertificationId, submissionNo], map: "seller_certification_submissions_market_id_cert_id_no_key")
   /// The target of the issuer confirmation foreign key (migration with slice 7).
   @@unique([marketId, id, issuerId])
+  /// The target of the document-link foreign key, which carries the type and the seller, so a
+  /// submission can only hold its own seller's files of its own type (PR 382, database-designer 4).
+  @@unique([marketId, id, typeId, sellerId], map: "seller_cert_submissions_id_type_seller_key")
   @@map("seller_certification_submissions")
   @@schema("certification")
 }
@@ -476,6 +480,8 @@ model CertificationSellerDraftDocument {
   @@id([marketId, sellerCertificationId, documentId])
   /// A file belongs to at most one draft.
   @@unique([marketId, documentId])
+  /// A backstop for the draft order: no two files at one position.
+  @@unique([marketId, sellerCertificationId, position], map: "seller_cert_draft_documents_position_key")
   @@map("seller_certification_draft_documents")
   @@schema("certification")
 }
@@ -487,9 +493,12 @@ model CertificationSubmissionDocument {
   tenantId     String                                     @map("tenant_id")
   submissionId String                                     @map("submission_id") @db.Uuid
   documentId   String                                     @map("document_id") @db.Uuid
+  /// Copies bound by the two composite foreign keys below: the submission's and the file's own.
+  typeId       String                                     @map("type_id") @db.Uuid
+  sellerId     String                                     @map("seller_id") @db.Uuid
   position     Int                                        @db.SmallInt
-  submission   CertificationSellerCertificationSubmission @relation(fields: [marketId, submissionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  document     CertificationUploadedDocument              @relation(fields: [marketId, documentId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  submission   CertificationSellerCertificationSubmission @relation(fields: [marketId, submissionId, typeId, sellerId], references: [marketId, id, typeId, sellerId], map: "seller_submission_documents_submission_fkey", onDelete: Restrict, onUpdate: Restrict)
+  document     CertificationUploadedDocument              @relation(fields: [marketId, documentId, typeId, sellerId], references: [marketId, id, typeId, ownerSellerId], map: "seller_submission_documents_document_fkey", onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, submissionId, documentId])
   @@unique([marketId, submissionId, position])

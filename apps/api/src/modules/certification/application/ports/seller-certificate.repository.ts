@@ -47,6 +47,8 @@ export interface StoredDocument {
   readonly cleanSha256: Buffer;
   /** True once a submission holds the file (it then stays for the record, never deleted). */
   readonly submitted: boolean;
+  /** What the file is for; a seller-certificate submission holds only `seller-certificate` files. */
+  readonly purpose: string;
 }
 
 export interface NewCertificate {
