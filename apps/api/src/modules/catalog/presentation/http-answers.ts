@@ -13,7 +13,7 @@ export function fail(status: number, code: string, details?: object): HttpExcept
 }
 
 /** The refusal fields that reach the client as `details`; any other field stays on the server. */
-const DETAIL_KEYS = ['fields', 'issues', 'retryAfterSeconds', 'max'] as const;
+const DETAIL_KEYS = ['fields', 'issues', 'retryAfterSeconds', 'max', 'tags'] as const;
 const logger = new Logger('CatalogHttp');
 
 /**
@@ -68,6 +68,7 @@ export function closedBody(
   request: Request,
   body: unknown,
   keys: readonly string[],
+  optional: readonly string[] = [],
 ): Record<string, unknown> | HttpException {
   if (request.is('application/json') !== 'application/json') {
     return fail(415, 'request.body-unsupported');
@@ -79,9 +80,9 @@ export function closedBody(
   const fields: { path: string; code: string }[] = [];
   for (const key of Object.keys(record).sort()) {
     if (fields.length >= 10) break;
-    if (!keys.includes(key)) {
+    if (!keys.includes(key) && !optional.includes(key)) {
       fields.push({
-        path: Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�'),
+        path: Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '\uFFFD'),
         code: 'unknown-field',
       });
     }
@@ -90,4 +91,20 @@ export function closedBody(
     if (!Object.hasOwn(record, key)) fields.push({ path: key, code: 'required' });
   }
   return fields.length > 0 ? fail(400, 'validation.failed', { fields }) : record;
+}
+
+/**
+ * A body that may be absent: no body at all is `{}`; a body present must be JSON and closed to
+ * the optional keys (unknown keys refused, not ignored).
+ */
+export function optionalClosedBody(
+  request: Request,
+  body: unknown,
+  optional: readonly string[],
+): Record<string, unknown> | HttpException {
+  const empty =
+    body === undefined ||
+    (typeof body === 'object' && body !== null && Object.keys(body).length === 0);
+  if (empty && request.is('application/json') !== 'application/json') return {};
+  return closedBody(request, body, [], optional);
 }

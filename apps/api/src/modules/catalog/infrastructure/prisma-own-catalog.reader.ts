@@ -65,7 +65,7 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       orderBy: { id: 'desc' },
       take: Math.min(page.limit, MAX_PAGE),
     });
-    return rows.map(offerFromRow);
+    return rows.map((row) => offerFromRow(row));
   }
 
   async offerStatusCounts(market: MarketContext, sellerId: Id<'Seller'>) {

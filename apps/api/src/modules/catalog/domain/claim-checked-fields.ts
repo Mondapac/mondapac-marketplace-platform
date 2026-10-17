@@ -198,6 +198,18 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   Offer: { noCustomerText: 'aggregate class around OfferState' },
   OfferState: { table: 'OFFER_FIELDS' },
   OfferPendingHistory: { noCustomerText: 'history kind, field ids and an instant' },
+  OfferTagState: { noCustomerText: 'tag status, codes, ids, times and the TagBadge copy' },
+  OfferTagPendingHistory: { noCustomerText: 'tag history: statuses, codes, ids and an instant' },
+  TagSettlement: { noCustomerText: 'counts' },
+  TagClaimQuery: { noCustomerText: 'claim query: ids, codes and a flag, built from stored state' },
+  TagDecision: { noCustomerText: 'certification decision: codes, ids, instants and a TagBadge' },
+  TagBadge: {
+    noCustomerText:
+      "display copy of certification's badge data (issuer display name included), written only by certification and never entered here (ADR-0028 d3)",
+  },
+  TagCopy: { noCustomerText: 'claim copy: basis, certificate ids and an instant' },
+  TagActor: { noCustomerText: 'actor kind and account id' },
+  ClaimFacts: { noCustomerText: 'ids of the revision, its variants and category paths' },
   OfferSearchFacts: {
     noCustomerText: 'read model feed: ids, a flag and OfferSearchText, nothing entered here',
   },

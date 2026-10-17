@@ -26,7 +26,15 @@ import { HmacRateCounterKeys } from '../../infrastructure/hmac-rate-counter-keys
 import { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimTextMatcher, ClaimTextToMatch } from '../ports/claim-text-matcher';
-import type { Offer } from '../../domain/offer';
+import { Offer, type OfferState } from '../../domain/offer';
+import type { OfferTagState } from '../../domain/offer-tag';
+import {
+  FakeClaimEvaluator,
+  FixedFactsClaimQueryBuilder,
+  activeTagState,
+  allowedDecision,
+  refusedDecision,
+} from '../../../../../test/support/catalog-tag-fakes';
 import type { OfferAddRefusal, OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
@@ -101,6 +109,36 @@ describe.each(FIXTURES)(
       ...extra,
     });
 
+    const typeCode = code === 'AU' ? 'halal' : 'zz-cert';
+    const certificateIds = {
+      certificateId: ids.next(),
+      versionId: ids.next(),
+      typeRevisionId: ids.next(),
+    };
+    const offerOn =
+      (overrides: Partial<OfferState> = {}) =>
+      (productId: Id<'Product'>): OfferState => ({
+        id: ids.next<'Offer'>(),
+        marketId: code as MarketId,
+        sellerId: SELLER,
+        productId,
+        sellerSku: 'SKU-1',
+        conditionCode: 'new',
+        description: {},
+        handling: 'SEALED_ORIGINAL',
+        attestationRecordedAt: null,
+        attestationAccountId: null,
+        status: 'draft',
+        offSaleCauses: [],
+        listed: false,
+        submittedAt: null,
+        firstPublishedAt: null,
+        deletedAt: null,
+        version: 1,
+        createdAt: T0,
+        ...overrides,
+      });
+
     function rig(
       matcherOverride?: ClaimTextMatcher,
       options: {
@@ -113,8 +151,37 @@ describe.each(FIXTURES)(
         reserve?: { code: 'request.throttled'; retryAfterSeconds: number } | null;
         gateOverride?: AuthorisationCheck;
         offerRefusal?: OfferAddRefusal;
+        /** The seller's Offer on the product (by product id at seed time). */
+        offer?: (productId: Id<'Product'>) => OfferState;
+        offerTags?: OfferTagState[];
+        refuse?: string;
+        unavailable?: boolean;
       } = {},
     ) {
+      const evaluator = new FakeClaimEvaluator(
+        (query) =>
+          options.refuse !== undefined
+            ? refusedDecision(query, options.refuse)
+            : allowedDecision(query, certificateIds),
+        [typeCode],
+      );
+      evaluator.unavailable = options.unavailable ?? false;
+      let ownOffer: { state: OfferState; tags: readonly OfferTagState[] } | null = null;
+      const savedOffers: Offer[] = [];
+      const offerFinder = {
+        findOwnOnProduct: (_m: MarketContext, sellerId: Id<'Seller'>, productId: Id<'Product'>) =>
+          Promise.resolve(
+            ownOffer !== null &&
+              ownOffer.state.sellerId === sellerId &&
+              ownOffer.state.productId === productId
+              ? Offer.restore(ownOffer.state, ownOffer.tags)
+              : null,
+          ),
+      };
+      const claims = new FixedFactsClaimQueryBuilder(null, {
+        variantIds: [],
+        platformCategoryPaths: [],
+      });
       const stored = new Map<string, Product>();
       const copies = new Map<string, WorkingCopy>();
       const revisions = new Map<string, StoredRevision>();
@@ -273,7 +340,32 @@ describe.each(FIXTURES)(
         options.gateOverride === undefined
           ? gate
           : createUseCaseGate(markets, options.gateOverride),
-        { unitOfWork, products, submit, eligibility, allowedTypes },
+        {
+          unitOfWork,
+          products,
+          submit,
+          eligibility,
+          allowedTypes,
+          offerFinder,
+          offers: {
+            add: () => Promise.reject(new Error('unused')),
+            findById: () => Promise.reject(new Error('unused')),
+            listPendingReview: () => Promise.resolve([]),
+            save: (_m, offer) => {
+              if (openUnits === 0) throw new Error('the Offer is saved outside the submit unit');
+              savedOffers.push(offer);
+              ownOffer = {
+                state: { ...offer.state },
+                tags: offer.tags.filter((tag) => tag.status !== 'removed'),
+              };
+              return Promise.resolve(null);
+            },
+          },
+          claims,
+          evaluator,
+          clock,
+          ids,
+        },
       );
       const added: Product[] = [];
       const createProducts: ProductRepository = {
@@ -312,6 +404,13 @@ describe.each(FIXTURES)(
       });
       const seed = (product: Product, content: WorkingCopy['content'] | null = draft()) => {
         stored.set(product.state.id, product);
+        if (options.offer !== undefined) {
+          ownOffer = { state: options.offer(product.state.id), tags: options.offerTags ?? [] };
+          claims.submitted = {
+            variantIds: product.state.variants.map((variant) => variant.id),
+            platformCategoryPaths: [],
+          };
+        }
         if (content !== null) {
           copies.set(product.state.id, {
             productId: product.state.id,
@@ -334,6 +433,9 @@ describe.each(FIXTURES)(
         matched,
         events,
         seed,
+        evaluator,
+        savedOffers,
+        ownOffer: () => ownOffer,
       };
     }
 
@@ -458,6 +560,168 @@ describe.each(FIXTURES)(
         error: { code: 'validation.failed', fields: [{ path: 'productId', code: 'format' }] },
       });
       expect(r.revisions.size).toBe(0);
+    });
+
+    describe('badge requests and the T4 check (design 5.1a)', () => {
+      const withTags = (productId: string, tags: unknown, replacePending = false) => ({
+        productId,
+        replacePending,
+        requestedTags: tags,
+      });
+
+      it('stores the requested tags as pending-publish, asked against the frozen revision', async () => {
+        const r = rig(undefined, { offer: offerOn() });
+        const product = newProduct();
+        r.seed(product);
+        const submitted = await r.useCase.execute(
+          contextOf('seller'),
+          withTags(product.state.id, [typeCode]),
+        );
+        expect(submitted.ok).toBe(true);
+        const revisionId = submitted.ok ? submitted.value.revisionId : null;
+        expect(r.revisions.has(revisionId!)).toBe(true);
+        expect(r.evaluator.calls).toHaveLength(1);
+        expect(r.evaluator.calls[0]!.map((q) => q.productRevisionId)).toEqual([revisionId]);
+        const offer = r.ownOffer()!;
+        expect(offer.tags).toEqual([
+          expect.objectContaining({
+            typeCode,
+            status: 'pending-publish',
+            badge: null,
+            copyRevisionId: revisionId,
+            copyRevisionPublished: false,
+          }),
+        ]);
+        expect(offer.state.listed).toBe(false);
+        expect(r.events.map((event) => (event as { type: string }).type)).not.toContain(
+          'catalog.offer-tag-added.v1',
+        );
+      });
+
+      it('refuses the whole submit when a requested type is not allowed, storing nothing', async () => {
+        const r = rig(undefined, { offer: offerOn(), refuse: 'no-certificate' });
+        const product = newProduct();
+        r.seed(product);
+        const submitted = await r.useCase.execute(
+          contextOf('seller'),
+          withTags(product.state.id, [typeCode]),
+        );
+        expect(submitted).toEqual({
+          ok: false,
+          error: {
+            code: 'claim.requested-tag-not-allowed',
+            tags: [{ typeCode, reason: 'no-certificate' }],
+          },
+        });
+        expect(r.revisions.size).toBe(0);
+        expect(r.savedOffers).toHaveLength(0);
+      });
+
+      it('refuses an unknown type before asking, and fails closed when the check is unavailable', async () => {
+        const r = rig(undefined, { offer: offerOn() });
+        const product = newProduct();
+        r.seed(product);
+        expect(
+          await r.useCase.execute(contextOf('seller'), withTags(product.state.id, ['not-a-type'])),
+        ).toEqual({ ok: false, error: { code: 'tag.type-unknown' } });
+        expect(r.evaluator.calls).toHaveLength(0);
+        const down = rig(undefined, { offer: offerOn(), unavailable: true });
+        down.seed(product);
+        expect(
+          await down.useCase.execute(contextOf('seller'), withTags(product.state.id, [typeCode])),
+        ).toEqual({ ok: false, error: { code: 'claim.check-unavailable' } });
+        expect(down.revisions.size).toBe(0);
+      });
+
+      it('refuses requests without an Offer, without handling and in a malformed list', async () => {
+        const product = newProduct();
+        const none = rig();
+        none.seed(product);
+        expect(
+          await none.useCase.execute(contextOf('seller'), withTags(product.state.id, [typeCode])),
+        ).toEqual({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: 'requestedTags', code: 'no-offer' }],
+          },
+        });
+        const noHandling = rig(undefined, { offer: offerOn({ handling: null }) });
+        noHandling.seed(product);
+        expect(
+          await noHandling.useCase.execute(
+            contextOf('seller'),
+            withTags(product.state.id, [typeCode]),
+          ),
+        ).toEqual({ ok: false, error: { code: 'offer.handling-missing' } });
+        for (const [tags, reason] of [
+          ['halal', 'type'],
+          [[typeCode, typeCode], 'duplicate'],
+          [['Bad Code'], 'format'],
+        ] as const) {
+          expect(
+            await none.useCase.execute(contextOf('seller'), withTags(product.state.id, tags)),
+          ).toEqual({
+            ok: false,
+            error: { code: 'validation.failed', fields: [{ path: 'requestedTags', code: reason }] },
+          });
+        }
+        expect(none.revisions.size + noHandling.revisions.size).toBe(0);
+      });
+
+      it('clears the pending set when a later first submit requests nothing', async () => {
+        const r = rig(undefined, { offer: offerOn() });
+        const product = newProduct();
+        r.seed(product);
+        expect(
+          (await r.useCase.execute(contextOf('seller'), withTags(product.state.id, [typeCode]))).ok,
+        ).toBe(true);
+        const again = await r.useCase.execute(
+          contextOf('seller'),
+          withTags(product.state.id, undefined, true),
+        );
+        expect(again.ok).toBe(true);
+        expect(r.ownOffer()!.tags).toEqual([]);
+      });
+
+      it('runs T4 on a published product: refuses a submit that would lose a tag, stores nothing on the Offer', async () => {
+        const r = rig(undefined, {
+          approvalRequired: false,
+          offer: offerOn({ status: 'published', listed: true, firstPublishedAt: T0 }),
+          offerTags: [activeTagState(ids.next<'OfferTag'>(), typeCode, certificateIds, T0)],
+        });
+        const product = newProduct();
+        r.seed(product);
+        expect((await r.useCase.execute(contextOf('seller'), request(product.state.id))).ok).toBe(
+          true,
+        );
+        expect(r.evaluator.calls).toHaveLength(0);
+        expect(
+          await r.useCase.execute(contextOf('seller'), withTags(product.state.id, [typeCode])),
+        ).toEqual({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: 'requestedTags', code: 'published' }],
+          },
+        });
+        r.evaluator.decide = (query) => refusedDecision(query, 'category-not-covered');
+        const revisionsBefore = r.revisions.size;
+        expect(await r.useCase.execute(contextOf('seller'), request(product.state.id))).toEqual({
+          ok: false,
+          error: {
+            code: 'claim.tags-would-be-lost',
+            tags: [{ typeCode, reason: 'category-not-covered' }],
+          },
+        });
+        expect(r.revisions.size).toBe(revisionsBefore);
+        r.evaluator.decide = (query) => allowedDecision(query, certificateIds);
+        expect((await r.useCase.execute(contextOf('seller'), request(product.state.id))).ok).toBe(
+          true,
+        );
+        expect(r.savedOffers).toHaveLength(0);
+        expect(r.ownOffer()!.tags[0]!.status).toBe('active');
+      });
     });
 
     const FORM = {

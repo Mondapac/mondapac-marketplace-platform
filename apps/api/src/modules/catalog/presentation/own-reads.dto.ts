@@ -145,6 +145,55 @@ export class OwnOfferProductLabel {
   name!: string | null;
 }
 
+export class OwnOfferTagBadgeIssuer {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() displayName!: string;
+}
+
+export class OwnOfferTagBadge {
+  @ApiProperty() typeCode!: string;
+  @ApiProperty({ format: 'uuid', description: 'Texts and icon of the badge come from it.' })
+  typeRevisionId!: string;
+  @ApiProperty({ enum: ['SELLER', 'MANUFACTURER'] }) basis!: string;
+  @ApiProperty() sellerClaim!: boolean;
+  @ApiProperty({ type: OwnOfferTagBadgeIssuer, nullable: true })
+  issuer!: OwnOfferTagBadgeIssuer | null;
+  @ApiProperty({ nullable: true, type: String, description: 'YYYY-MM-DD in validUntilZone.' })
+  validUntilLocalDate!: string | null;
+  @ApiProperty({ nullable: true, type: String }) validUntilZone!: string | null;
+  @ApiProperty() verifiedWithIssuer!: boolean;
+  @ApiProperty({ enum: [true] }) reviewedByPlatform!: boolean;
+}
+
+export class OwnOfferTagView {
+  @ApiProperty() typeCode!: string;
+  @ApiProperty({
+    enum: ['pending-publish', 'active', 'rechecking', 'suspended'],
+    description:
+      'pending-publish: checked at submit, confirmed at publish (no badge); suspended: the ' +
+      'Offer is off sale for it, see reasonCode.',
+  })
+  status!: string;
+  @ApiProperty({
+    nullable: true,
+    enum: ['SELLER', 'MANUFACTURER'],
+    description: 'The basis of the last allowed decision (CERT-24).',
+  })
+  basis!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The last ClaimReason code (CUX 3.7 words come from it).',
+  })
+  reasonCode!: string | null;
+  @ApiProperty({
+    type: OwnOfferTagBadge,
+    nullable: true,
+    description: 'The display copy of the badge, only while active; never an authorisation.',
+  })
+  badge!: OwnOfferTagBadge | null;
+}
+
 export class OwnOfferViewDto {
   @ApiProperty({ format: 'uuid' }) offerId!: string;
   @ApiProperty({ format: 'uuid' }) productId!: string;
@@ -165,6 +214,12 @@ export class OwnOfferViewDto {
   @ApiProperty({ nullable: true, type: String }) firstPublishedAt!: string | null;
   @ApiProperty() createdAt!: string;
   @ApiProperty() version!: number;
+  @ApiProperty({
+    type: [OwnOfferTagView],
+    required: false,
+    description: 'The open tags of the Offer; on the single-Offer read only.',
+  })
+  tags?: OwnOfferTagView[];
 }
 
 export class OwnOfferStatusCounts {

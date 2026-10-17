@@ -36,6 +36,14 @@ import {
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
 import { OFFER_REPOSITORY, type OfferRepository } from '../application/ports/offer.repository';
+import { OWN_OFFER_FINDER } from '../application/ports/own-offer-finder';
+import { CLAIM_EVALUATOR, type ClaimEvaluator } from '../application/ports/claim-evaluator';
+import {
+  CATEGORY_PATHS_READER,
+  type CategoryPathsReader,
+} from '../application/ports/category-paths.reader';
+import { CertificationClaimEvaluator } from './certification-claim-evaluator';
+import { PrismaCategoryPathsReader } from './prisma-category-paths.reader';
 import { OFFER_NAMES_READER, type OfferNamesReader } from '../application/ports/offer-names.reader';
 import {
   OFFER_SEARCH_FACTS_READER,
@@ -124,6 +132,21 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService, ID_GENERATOR],
     useFactory: (prisma: PrismaService, ids: IdGenerator): OfferRepository =>
       new PrismaOfferRepository(prisma, ids),
+  },
+  // The same store answers the seller's Offer on a product (design 5.1a).
+  { provide: OWN_OFFER_FINDER, useExisting: OFFER_REPOSITORY },
+  // catalog design 5; ADR-0028: `certification.evaluateClaims` and the active type codes.
+  {
+    provide: CLAIM_EVALUATOR,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): ClaimEvaluator =>
+      new CertificationClaimEvaluator(certification),
+  },
+  {
+    provide: CATEGORY_PATHS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryPathsReader =>
+      new PrismaCategoryPathsReader(prisma),
   },
   {
     provide: OWN_CATALOG_READER,

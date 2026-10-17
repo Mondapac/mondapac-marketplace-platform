@@ -445,6 +445,7 @@ model CatalogProductRevision {
   variants               CatalogProductRevisionVariant[]
   images                 CatalogProductRevisionImage[]
   decision               CatalogProductRevisionDecision?
+  tagCopies              CatalogOfferTag[]
 
   @@unique([marketId, productId, revisionNo])
   @@unique([marketId, id])
@@ -603,6 +604,7 @@ model CatalogOffer {
   createdAt                   DateTime              @map("created_at") @db.Timestamptz(6)
   product                     CatalogProduct        @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   history                     CatalogOfferHistory[]
+  tags                        CatalogOfferTag[]
 
   /// The target of composite foreign keys (C3); the A1 batch read.
   @@unique([marketId, id])
@@ -727,5 +729,100 @@ model CatalogProductRevisionImage {
   @@unique([marketId, revisionId, position])
   @@index([marketId, imageId])
   @@map("product_revision_images")
+  @@schema("catalog")
+}
+
+/// A certification tag of an Offer with its claim copy (catalog design 5.3, 5.4; data design 3.15).
+/// The copy restricts only (ADR-0028 d3): `active` needs a fresh allowed decision. A removed tag
+/// keeps its row and re-adding the type is a new row. The CHECKs, the open-tag partial unique, the
+/// `status_seq` trigger, the deferred history-present trigger and the grants are hand-written.
+model CatalogOfferTag {
+  id                    String                   @id @db.Uuid
+  marketId              String                   @map("market_id") @db.VarChar(8)
+  tenantId              String                   @map("tenant_id")
+  /// Never updated; with `seller_id` the target of the same-seller foreign key (CE4).
+  offerId               String                   @map("offer_id") @db.Uuid
+  sellerId              String                   @map("seller_id") @db.Uuid
+  /// A certification type code (CA4); never updated.
+  typeCode              String                   @map("type_code")
+  /// pending-publish | active | rechecking | suspended | removed.
+  status                String
+  /// SELLER | MANUFACTURER.
+  basis                 String?
+  /// seller | manufacturer.
+  certificateKind       String?                  @map("certificate_kind")
+  certificateId         String?                  @map("certificate_id") @db.Uuid
+  certificateVersionId  String?                  @map("certificate_version_id") @db.Uuid
+  issuerId              String?                  @map("issuer_id") @db.Uuid
+  typeRevisionId        String?                  @map("type_revision_id") @db.Uuid
+  /// Null = the type default.
+  policyRevisionId      String?                  @map("policy_revision_id") @db.Uuid
+  validUntil            DateTime?                @map("valid_until") @db.Timestamptz(6)
+  /// Certification's badge data, an object; only while `active` (CHECK).
+  badgeData             Json?                    @map("badge_data") @db.JsonB
+  /// The product revision the decision named.
+  copyRevisionId        String?                  @map("copy_revision_id") @db.Uuid
+  /// True when that revision was the product's published one at the decision (5.1a point 5).
+  copyRevisionPublished Boolean                  @map("copy_revision_published")
+  /// SHA-256 of the canonical inputs (32 bytes).
+  inputsHash            Bytes?                   @map("inputs_hash")
+  lastReasonCode        String?                  @map("last_reason_code")
+  lastChangeCause       String?                  @map("last_change_cause")
+  evaluatedAt           DateTime                 @map("evaluated_at") @db.Timestamptz(6)
+  statusChangedAt       DateTime                 @map("status_changed_at") @db.Timestamptz(6)
+  /// 1 at insert, one more with every status change (trigger).
+  statusSeq             Int                      @map("status_seq")
+  removedAt             DateTime?                @map("removed_at") @db.Timestamptz(6)
+  /// seller | system.
+  removedByKind         String?                  @map("removed_by_kind")
+  removedByAccountId    String?                  @map("removed_by_account_id") @db.Uuid
+  createdAt             DateTime                 @map("created_at") @db.Timestamptz(6)
+  offer                 CatalogOffer             @relation(fields: [marketId, offerId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  copyRevision          CatalogProductRevision?  @relation(fields: [marketId, copyRevisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  history               CatalogOfferTagHistory[]
+
+  @@unique([marketId, id])
+  /// The target of the history foreign key (same Offer).
+  @@unique([marketId, id, offerId])
+  @@map("offer_tags")
+  @@schema("catalog")
+}
+
+/// The tag history (V4; data design 3.16): one row per status change, naming the entry path of
+/// ADR-0028 d5. Insert-only (CA3): SELECT and INSERT for the application, and triggers refuse
+/// UPDATE, DELETE and TRUNCATE for every role.
+model CatalogOfferTagHistory {
+  id                   String          @id @db.Uuid
+  marketId             String          @map("market_id") @db.VarChar(8)
+  tenantId             String          @map("tenant_id")
+  tagId                String          @map("tag_id") @db.Uuid
+  offerId              String          @map("offer_id") @db.Uuid
+  typeCode             String          @map("type_code")
+  fromStatus           String?         @map("from_status")
+  toStatus             String          @map("to_status")
+  basis                String?
+  certificateKind      String?         @map("certificate_kind")
+  certificateId        String?         @map("certificate_id") @db.Uuid
+  certificateVersionId String?         @map("certificate_version_id") @db.Uuid
+  issuerId             String?         @map("issuer_id") @db.Uuid
+  policyRevisionId     String?         @map("policy_revision_id") @db.Uuid
+  copyRevisionId       String?         @map("copy_revision_id") @db.Uuid
+  reasonCode           String?         @map("reason_code")
+  /// The closed entry-path list of D 5.4.
+  entryPath            String          @map("entry_path")
+  /// The tag's `status_seq` after the change; unique per tag.
+  statusSeq            Int             @map("status_seq")
+  /// The consumed event, for handler rows.
+  causeEventId         String?         @map("cause_event_id") @db.Uuid
+  /// seller | admin | system.
+  actorKind            String          @map("actor_kind")
+  actorAccountId       String?         @map("actor_account_id") @db.Uuid
+  actingAdminAccountId String?         @map("acting_admin_account_id") @db.Uuid
+  occurredAt           DateTime        @map("occurred_at") @db.Timestamptz(6)
+  tag                  CatalogOfferTag @relation(fields: [marketId, tagId, offerId], references: [marketId, id, offerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, tagId, statusSeq])
+  @@index([marketId, offerId, occurredAt])
+  @@map("offer_tag_history")
   @@schema("catalog")
 }

@@ -51,7 +51,9 @@ import { OwnOfferEdit } from '../application/use-cases/own-offer-edit.use-case';
 import { OwnOfferCreateOnPlatformProduct } from '../application/use-cases/own-offer-create-on-platform-product.use-case';
 import { OwnOfferRead } from '../application/use-cases/own-offer-read.use-case';
 import { OwnOffersList } from '../application/use-cases/own-offers-list.use-case';
-import { closedBody, pageQuery, refusalWith } from './http-answers';
+import { closedBody, optionalClosedBody, pageQuery, refusalWith } from './http-answers';
+import { OwnOfferAddTag } from '../application/use-cases/own-offer-add-tag.use-case';
+import { OwnOfferRemoveTag } from '../application/use-cases/own-offer-remove-tag.use-case';
 import { OwnOfferList, OwnOfferViewDto } from './own-reads.dto';
 import {
   OwnOfferCreated,
@@ -60,7 +62,10 @@ import {
   OwnOfferEditRequest,
   OwnOfferHandlingSet,
   OwnOfferSetHandlingRequest,
+  OwnOfferSubmitRequest,
   OwnOfferSubmitted,
+  OwnOfferAddTagRequest,
+  OwnOfferTagAdded,
 } from './own-offer.dto';
 import { ApiErrorBody } from './platform-product.dto';
 
@@ -90,6 +95,17 @@ export const OWN_OFFER_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'claim-text.refused': 422,
   'request.throttled': 429,
   'access.unavailable': 503,
+  // Tags (catalog design 5.2, 5.3).
+  'tag.exists': 409,
+  'tag.not-found': 404,
+  'tag.suspended': 409,
+  'tag.not-removable': 409,
+  'tag.product-not-published': 409,
+  'tag.type-unknown': 422,
+  'claim.tag-not-allowed': 422,
+  'claim.requested-tag-not-allowed': 422,
+  'claim.check-unavailable': 503,
+  'conflict.retry': 409,
 });
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -117,6 +133,8 @@ export class OwnOfferController {
     private readonly deleteOffer: OwnOfferDelete,
     private readonly listOffers: OwnOffersList,
     private readonly readOffer: OwnOfferRead,
+    private readonly addOfferTag: OwnOfferAddTag,
+    private readonly removeOfferTag: OwnOfferRemoveTag,
   ) {}
 
   @Get()
@@ -288,15 +306,18 @@ export class OwnOfferController {
   @HttpCode(200)
   @ReadsSession()
   @ApiOperation({
-    summary: 'Edit the content of an own Offer that is not yet published',
+    summary: 'Edit the content of an own Offer',
     description:
       'Needs catalog.own-product.edit and a seller who may sell. The whole content form: SKU, ' +
       'condition and description. An Offer of another seller, a deleted one or an unknown id is ' +
       'a byte-identical offer.not-found. A changed text that holds a certification-like claim or ' +
       'a hidden character, or that cannot be checked, refuses the whole edit ' +
       '(claim-text.refused, details.fields). An Offer waiting for review or needing changes ' +
-      'returns to draft. A published Offer is offer.not-editable. Shares the save budget of ' +
-      'draft saves: 60 a minute and 1,000 a day per account.',
+      'returns to draft; a published Offer stays published with no queue. Every tag of the ' +
+      'Offer is asked of certification again: one no longer allowed is suspended and the Offer ' +
+      'goes off sale; an unanswered check refuses the edit (claim.check-unavailable). A lost ' +
+      'race is retried, then conflict.retry. Shares the save budget of draft saves: 60 a minute ' +
+      'and 1,000 a day per account.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'offerId', format: 'uuid' })
@@ -314,7 +335,7 @@ export class OwnOfferController {
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'offer.sku-taken, offer.not-editable or conflict.stale',
+    description: 'offer.sku-taken, offer.not-editable or conflict.retry',
   })
   @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: 'claim-text.refused' })
   @ApiTooManyRequestsResponse({
@@ -364,8 +385,10 @@ export class OwnOfferController {
       'Needs catalog.own-product.edit and a seller who may sell. Body: handling, one of ' +
       'SEALED_ORIGINAL, REPACKED, PREPARED, FRESH. An Offer of another seller, a deleted one or ' +
       'an unknown id is a byte-identical offer.not-found. An Offer waiting for review or ' +
-      'needing changes returns to draft. A published Offer is offer.not-editable. Shares the ' +
-      'save budget of draft saves: 60 a minute and 1,000 a day per account.',
+      'needing changes returns to draft; a published Offer stays published. Every tag is asked ' +
+      'again against the new handling: one no longer allowed is suspended and the Offer goes ' +
+      'off sale; an unanswered check refuses (claim.check-unavailable). Shares the save budget ' +
+      'of draft saves: 60 a minute and 1,000 a day per account.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'offerId', format: 'uuid' })
@@ -383,7 +406,7 @@ export class OwnOfferController {
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'offer.not-editable or conflict.stale',
+    description: 'offer.not-editable, conflict.stale or conflict.retry',
   })
   @ApiTooManyRequestsResponse({
     type: ApiErrorBody,
@@ -428,13 +451,17 @@ export class OwnOfferController {
   @ApiOperation({
     summary: 'Submit a draft Offer for publication',
     description:
-      'Needs catalog.own-product.edit and a seller who may sell. No body. The Offer must be ' +
+      'Needs catalog.own-product.edit and a seller who may sell. The body is optional: ' +
+      '`requestedTags` names certification types to tag at the submit. The Offer must be ' +
       "the seller's own draft with its handling recorded, on a published product of a type the " +
-      'seller may sell; every description text is claim-checked again. Where the Market asks for ' +
-      'approval the Offer waits for review (published: false); otherwise it is published at once.',
+      'seller may sell; every description text is claim-checked again and every tag is asked ' +
+      'of certification again (a kept tag no longer allowed is suspended; a requested type not ' +
+      'allowed refuses the whole submit). Where the Market asks for approval the Offer waits for ' +
+      'review (published: false); otherwise it is published at once.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiBody({ type: OwnOfferSubmitRequest, required: false })
   @ApiOkResponse({ type: OwnOfferSubmitted })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({
@@ -448,23 +475,145 @@ export class OwnOfferController {
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'offer.not-submittable, offer.product-not-published or conflict.stale',
+    description:
+      'offer.not-submittable, offer.product-not-published, conflict.stale or conflict.retry',
   })
   @ApiUnprocessableEntityResponse({
     type: ApiErrorBody,
-    description: 'offer.handling-missing, type.not-allowed or claim-text.refused',
+    description:
+      'offer.handling-missing, type.not-allowed, claim-text.refused, tag.type-unknown or ' +
+      'claim.requested-tag-not-allowed (details.tags: typeCode and reason per type)',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'A body that is not JSON' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or claim.check-unavailable',
+  })
+  async submit(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+    @Body() body: unknown,
+  ): Promise<OwnOfferSubmitted> {
+    const input = optionalClosedBody(request, body, ['requestedTags']);
+    let outcome: OwnOfferSubmitted | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.submitOffer.execute(context, {
+        offerId,
+        ...(Object.hasOwn(input, 'requestedTags') ? { requestedTags: input.requestedTags } : {}),
+      });
+      outcome = result.ok
+        ? { published: result.value.published }
+        : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    }
+    return this.settleRead('catalog.own-offer-submit', context, outcome);
+  }
+
+  @Post(':offerId/tags')
+  @HttpCode(201)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Add a certification tag to an own Offer',
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell. Body: typeCode only. ' +
+      'Certification decides (evaluateClaims) for every variant of the published product; the ' +
+      'tag is written active only when every variant is allowed on one certificate. A refusal ' +
+      'names the type and the reason code (claim.tag-not-allowed, details.tags); an unanswered ' +
+      'check refuses (claim.check-unavailable). A product never published takes its tags as ' +
+      'requestedTags at its first submit (tag.product-not-published). Shares the save budget.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiBody({ type: OwnOfferAddTagRequest })
+  @ApiCreatedResponse({ type: OwnOfferTagAdded })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf or seller.not-eligible',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'tag.exists, tag.product-not-published or conflict.retry',
+  })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorBody,
+    description:
+      'offer.handling-missing, tag.type-unknown or claim.tag-not-allowed (details.tags: ' +
+      'typeCode and reason)',
+  })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or claim.check-unavailable',
+  })
+  async addTag(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+    @Body() body: unknown,
+  ): Promise<OwnOfferTagAdded> {
+    const input = closedBody(request, body, ['typeCode']);
+    let outcome: OwnOfferTagAdded | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.addOfferTag.execute(context, { offerId, typeCode: input.typeCode });
+      outcome = result.ok
+        ? { ...result.value }
+        : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    }
+    return this.settleRead('catalog.own-offer-add-tag', context, outcome);
+  }
+
+  @Delete(':offerId/tags/:typeCode')
+  @HttpCode(204)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Remove an active certification tag from an own Offer',
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell. Removing asks nothing. A ' +
+      'suspended tag is tag.suspended: it is removed only with the "sell without this badge" ' +
+      'confirmation. A pending-publish tag is left out at the next submit instead.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiParam({ name: 'typeCode' })
+  @ApiNoContentResponse({ description: 'Removed.' })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf or seller.not-eligible',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found or tag.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'tag.suspended, tag.not-removable or conflict.stale',
   })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
-  async submit(
+  async removeTag(
     @Call() context: CallContext,
     @Res({ passthrough: true }) response: Response,
     @Param('offerId') offerId: string,
-  ): Promise<OwnOfferSubmitted> {
-    const result = await this.submitOffer.execute(context, { offerId });
-    const outcome = result.ok
-      ? { published: result.value.published }
-      : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
-    return this.settleRead('catalog.own-offer-submit', context, outcome);
+    @Param('typeCode') typeCode: string,
+  ): Promise<void> {
+    const result = await this.removeOfferTag.execute(context, { offerId, typeCode });
+    const outcome = result.ok ? {} : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    this.settleRead('catalog.own-offer-remove-tag', context, outcome);
   }
 
   @Delete(':offerId')

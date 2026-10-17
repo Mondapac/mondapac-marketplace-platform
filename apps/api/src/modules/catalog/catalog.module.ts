@@ -32,6 +32,12 @@ import {
 } from './application/ports/product-type-lookup';
 import { ALLOWED_PRODUCT_TYPES_READER } from './application/ports/allowed-product-types.reader';
 import { OFFER_REPOSITORY } from './application/ports/offer.repository';
+import { OWN_OFFER_FINDER } from './application/ports/own-offer-finder';
+import { CLAIM_EVALUATOR } from './application/ports/claim-evaluator';
+import { CATEGORY_PATHS_READER } from './application/ports/category-paths.reader';
+import { ClaimQueryBuilder } from './application/tags/claim-query-builder';
+import { OwnOfferAddTag } from './application/use-cases/own-offer-add-tag.use-case';
+import { OwnOfferRemoveTag } from './application/use-cases/own-offer-remove-tag.use-case';
 import { SELLER_ELIGIBILITY_READER } from './application/ports/seller-eligibility.reader';
 import { SELLER_NAMES_READER } from './application/ports/seller-names.reader';
 import { ProductRevisionApprove } from './application/use-cases/product-revision-approve.use-case';
@@ -152,6 +158,10 @@ const PORT = {
   namesReader: OFFER_NAMES_READER,
   labelsReader: SELL_UNIT_LABELS_READER,
   offers: OFFER_REPOSITORY,
+  offerFinder: OWN_OFFER_FINDER,
+  claims: ClaimQueryBuilder,
+  evaluator: CLAIM_EVALUATOR,
+  categoryPaths: CATEGORY_PATHS_READER,
   eligibility: SELLER_ELIGIBILITY_READER,
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
   sellerNames: SELLER_NAMES_READER,
@@ -295,6 +305,7 @@ const productTypeProvider: FactoryProvider<string> = {
         images: ProductImageRepository,
       ): FreezeRevision => new FreezeRevision({ attributes, policy, handlerFor, images }),
     },
+    serviceProvider(ClaimQueryBuilder, { products: true, revisions: true, categoryPaths: true }),
     serviceProvider(SubmitProduct, {
       unitOfWork: true,
       products: true,
@@ -337,6 +348,9 @@ const productTypeProvider: FactoryProvider<string> = {
       check: true,
       save: true,
       policy: true,
+      claims: true,
+      evaluator: true,
+      outbox: true,
       clock: true,
     }),
     useCaseProvider(OwnOfferSetHandling, {
@@ -344,6 +358,9 @@ const productTypeProvider: FactoryProvider<string> = {
       offers: true,
       eligibility: true,
       save: true,
+      claims: true,
+      evaluator: true,
+      outbox: true,
       clock: true,
     }),
     useCaseProvider(OwnOfferSubmit, {
@@ -354,6 +371,27 @@ const productTypeProvider: FactoryProvider<string> = {
       allowedTypes: true,
       check: true,
       policy: true,
+      outbox: true,
+      claims: true,
+      evaluator: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnOfferAddTag, {
+      unitOfWork: true,
+      offers: true,
+      eligibility: true,
+      save: true,
+      claims: true,
+      evaluator: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnOfferRemoveTag, {
+      unitOfWork: true,
+      offers: true,
+      eligibility: true,
       outbox: true,
       clock: true,
     }),
@@ -426,6 +464,12 @@ const productTypeProvider: FactoryProvider<string> = {
       submit: true,
       eligibility: true,
       allowedTypes: true,
+      offerFinder: true,
+      offers: true,
+      claims: true,
+      evaluator: true,
+      clock: true,
+      ids: true,
     }),
     useCaseProvider(OwnProductOptions, { policy: true, allowedTypes: true }),
     useCaseProvider(OwnProductImageUpload, {

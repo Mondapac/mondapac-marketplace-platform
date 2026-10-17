@@ -15,6 +15,15 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { Offer, type OfferState } from '../../domain/offer';
+import type { ClaimFacts, OfferTagState } from '../../domain/offer-tag';
+import {
+  FakeClaimEvaluator,
+  FixedFactsClaimQueryBuilder,
+  RecordingOutbox,
+  activeTagState,
+  allowedDecision,
+  refusedDecision,
+} from '../../../../../test/support/catalog-tag-fakes';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import { OwnOfferSetHandling } from './own-offer-set-handling.use-case';
 
@@ -67,15 +76,51 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-handling in market %s', (cod
     ...overrides,
   });
 
+  const typeCode = code === 'AU' ? 'halal' : 'zz-cert';
+  const variantIds = [ids.next<'Variant'>()];
+  const certificateIds = {
+    certificateId: ids.next(),
+    versionId: ids.next(),
+    typeRevisionId: ids.next(),
+  };
+  const factsOf = (state: OfferState): ClaimFacts => ({
+    productId: state.productId,
+    productRevisionId: ids.next<'ProductRevision'>(),
+    revisionPublished: true,
+    variantIds,
+    platformCategoryPaths: [],
+  });
+  const publishedOffer = () =>
+    offerState({
+      status: 'published',
+      listed: true,
+      firstPublishedAt: T0,
+      submittedAt: T0,
+      handling: 'SEALED_ORIGINAL',
+    });
+
   function rig(
     options: {
       offer?: OfferState | null;
       eligible?: boolean;
       saveThrows?: Error;
       reserve?: { code: 'request.throttled'; retryAfterSeconds: number } | null;
+      tags?: OfferTagState[];
+      refuseHandling?: string;
+      unavailable?: boolean;
     } = {},
   ) {
     const state = options.offer === undefined ? offerState() : options.offer;
+    const evaluator = new FakeClaimEvaluator(
+      (query) =>
+        options.refuseHandling !== undefined && query.handling === options.refuseHandling
+          ? refusedDecision(query, 'handling-not-allowed')
+          : allowedDecision(query, certificateIds),
+      [typeCode],
+    );
+    evaluator.unavailable = options.unavailable ?? false;
+    const outbox = new RecordingOutbox();
+    const claims = new FixedFactsClaimQueryBuilder(state === null ? null : factsOf(state));
     const saved: Offer[] = [];
     const reserved: number[] = [];
     const unitOfWork = {
@@ -86,7 +131,8 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-handling in market %s', (cod
       offers: {
         add: () => Promise.reject(new Error('unused')),
         listPendingReview: () => Promise.resolve([]),
-        findById: () => Promise.resolve(state === null ? null : Offer.restore(state)),
+        findById: () =>
+          Promise.resolve(state === null ? null : Offer.restore(state, options.tags ?? [])),
         save: (_m, offer) => {
           if (options.saveThrows !== undefined) return Promise.reject(options.saveThrows);
           saved.push(offer);
@@ -100,9 +146,12 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-handling in market %s', (cod
           return Promise.resolve(options.reserve ?? null);
         },
       },
+      claims,
+      evaluator,
+      outbox,
       clock,
     });
-    return { useCase, state, saved, reserved };
+    return { useCase, state, saved, reserved, evaluator, outbox };
   }
 
   it('records the handling on the actor’s own draft Offer and writes an edited history row', async () => {
@@ -162,20 +211,59 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-handling in market %s', (cod
     });
   });
 
-  it('refuses a published Offer as offer.not-editable, storing nothing', async () => {
+  it('changes a published Offer in place, asking with the new handling for each kept tag', async () => {
+    const offer = publishedOffer();
     const r = rig({
-      offer: offerState({
-        status: 'published',
-        listed: true,
-        firstPublishedAt: T0,
-        handling: 'FRESH',
-      }),
+      offer,
+      tags: [activeTagState(ids.next<'OfferTag'>(), typeCode, certificateIds, T0)],
     });
     const outcome = await r.useCase.execute(contextOf('seller'), {
-      offerId: r.state!.id,
+      offerId: offer.id,
       handling: 'PREPARED',
     });
-    expect(outcome).toEqual({ ok: false, error: { code: 'offer.not-editable' } });
+    expect(outcome).toEqual({ ok: true, value: { changedFields: ['handling'] } });
+    expect(r.evaluator.calls).toHaveLength(1);
+    expect(r.evaluator.calls[0]!.map((q) => q.handling)).toEqual(['PREPARED']);
+    expect(r.saved[0]!.state).toMatchObject({ status: 'published', handling: 'PREPARED' });
+    expect(r.saved[0]!.tags[0]!.status).toBe('active');
+  });
+
+  it('suspends a tag the new handling no longer allows and takes the Offer off sale', async () => {
+    const offer = publishedOffer();
+    const r = rig({
+      offer,
+      tags: [activeTagState(ids.next<'OfferTag'>(), typeCode, certificateIds, T0)],
+      refuseHandling: 'REPACKED',
+    });
+    const outcome = await r.useCase.execute(contextOf('seller'), {
+      offerId: offer.id,
+      handling: 'REPACKED',
+    });
+    expect(outcome.ok).toBe(true);
+    expect(r.saved[0]!.tags[0]).toMatchObject({
+      status: 'suspended',
+      lastReasonCode: 'handling-not-allowed',
+      lastChangeCause: 'handling-change',
+    });
+    expect(r.saved[0]!.state.listed).toBe(false);
+    expect(r.outbox.types).toEqual([
+      'catalog.offer-tag-suspended.v1',
+      'catalog.offer-listing-changed.v1',
+    ]);
+  });
+
+  it('refuses the change, storing nothing, when the check is unavailable', async () => {
+    const offer = publishedOffer();
+    const r = rig({
+      offer,
+      tags: [activeTagState(ids.next<'OfferTag'>(), typeCode, certificateIds, T0)],
+      unavailable: true,
+    });
+    const outcome = await r.useCase.execute(contextOf('seller'), {
+      offerId: offer.id,
+      handling: 'PREPARED',
+    });
+    expect(outcome).toEqual({ ok: false, error: { code: 'claim.check-unavailable' } });
     expect(r.saved).toHaveLength(0);
   });
 
@@ -241,12 +329,12 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-handling in market %s', (cod
     expect(throttled.saved).toHaveLength(0);
   });
 
-  it('maps a stale save to conflict.stale', async () => {
+  it('asks again after a stale save and answers conflict.retry after the last attempt', async () => {
     const r = rig({ saveThrows: new StaleAggregateError('Offer', 'x') });
     const outcome = await r.useCase.execute(contextOf('seller'), {
       offerId: r.state!.id,
       handling: 'FRESH',
     });
-    expect(outcome).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+    expect(outcome).toEqual({ ok: false, error: { code: 'conflict.retry' } });
   });
 });
