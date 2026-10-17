@@ -17,6 +17,7 @@ import {
   canonicalClaimInputs,
   claimQueriesFor,
   judgeTag,
+  tagCopyKey,
   type ClaimFacts,
   type OfferTagPendingHistory,
   type OfferTagState,
@@ -208,15 +209,21 @@ export class Offer {
   readonly #tagHistory: OfferTagPendingHistory[] = [];
   readonly #newTagIds = new Set<string>();
   readonly #changedTagIds = new Set<string>();
+  /** Each stored tag's `change_seq` as read: the guard of its update (Mojtaba F2). */
+  readonly #readChangeSeqs: ReadonlyMap<string, number>;
+  /** False for a read-only projection built without its tags: such an Offer is never saved (I1). */
+  readonly #tagsLoaded: boolean;
 
   private constructor(
     state: OfferState,
     persistedVersion: number | null,
-    tags: readonly OfferTagState[],
+    tags: readonly OfferTagState[] | null,
   ) {
     this.#state = Object.freeze(state);
     this.#persistedVersion = persistedVersion;
-    this.#tags = tags.map((tag) => Object.freeze({ ...tag }));
+    this.#tagsLoaded = tags !== null;
+    this.#tags = (tags ?? []).map((tag) => Object.freeze({ ...tag }));
+    this.#readChangeSeqs = new Map(this.#tags.map((tag) => [tag.id, tag.changeSeq]));
   }
 
   /**
@@ -520,7 +527,7 @@ export class Offer {
         lastChangeCause: input.entryPath,
         evaluatedAt: judgement.evaluatedAt,
         statusChangedAt: input.now,
-        statusSeq: 1,
+        changeSeq: 1,
         removedAt: null,
         removedByKind: null,
         removedByAccountId: null,
@@ -572,25 +579,28 @@ export class Offer {
       };
       if (judgement.kind === 'allowed') {
         const switched = tag.status === 'active' && tag.copy?.basis !== judgement.copy.basis;
-        const statusChange = tag.status !== 'active';
-        const next: OfferTagState = {
+        const candidate: OfferTagState = {
           ...tag,
           ...base,
           status: 'active',
           copy: judgement.copy,
           badge: judgement.badge,
           lastReasonCode: 'allowed',
-          ...(statusChange || switched
-            ? { lastChangeCause: input.entryPath, statusChangedAt: input.now }
-            : {}),
-          statusSeq: statusChange ? tag.statusSeq + 1 : tag.statusSeq,
         };
+        // One history row per change of status or claim copy (data design 3.16; Mojtaba F1,
+        // Hassan M4): a basis switch or a new certificate version is a change of its own.
+        const changed =
+          candidate.status !== tag.status || tagCopyKey(candidate) !== tagCopyKey(tag);
+        const next: OfferTagState = changed
+          ? {
+              ...candidate,
+              lastChangeCause: input.entryPath,
+              statusChangedAt: input.now,
+              changeSeq: tag.changeSeq + 1,
+            }
+          : candidate;
         this.#putTag(next, false);
-        // A history row per status change: its key is (tag, status_seq), which a basis switch
-        // keeps (data design 3.16); the switch is the event and the new copy.
-        if (statusChange) {
-          this.#historyOf(next, tag.status, input.entryPath, input.actor, input.now);
-        }
+        if (changed) this.#historyOf(next, tag.status, input.entryPath, input.actor, input.now);
         if (tag.status === 'suspended') {
           this.#tagEvent(OfferTagRestored, next, input.now);
           summary.restored += 1;
@@ -604,14 +614,16 @@ export class Offer {
       }
       if (judgement.kind !== 'not-allowed') throw new Error('settleTags: judged without a verdict');
       const statusChange = tag.status !== 'suspended';
+      // A refused tag keeps the copy (and its revision) of its last allowed decision.
       const next: OfferTagState = {
         ...tag,
-        ...base,
+        inputsHash: base.inputsHash,
+        evaluatedAt: base.evaluatedAt,
         status: 'suspended',
         badge: null,
         lastReasonCode: judgement.reason,
         ...(statusChange ? { lastChangeCause: input.entryPath, statusChangedAt: input.now } : {}),
-        statusSeq: statusChange ? tag.statusSeq + 1 : tag.statusSeq,
+        changeSeq: statusChange ? tag.changeSeq + 1 : tag.changeSeq,
       };
       this.#putTag(next, false);
       if (statusChange) {
@@ -682,7 +694,20 @@ export class Offer {
         evaluatedAt: judgement.evaluatedAt,
       };
       if (existing !== undefined) {
-        this.#putTag({ ...existing, ...copy }, false);
+        const candidate: OfferTagState = { ...existing, ...copy };
+        if (tagCopyKey(candidate) === tagCopyKey(existing)) {
+          this.#putTag(candidate, false);
+          continue;
+        }
+        // A new frozen revision or certificate is a copy change: its own history row (F1, M4).
+        const next: OfferTagState = {
+          ...candidate,
+          lastChangeCause: 'revision-submit',
+          statusChangedAt: input.now,
+          changeSeq: existing.changeSeq + 1,
+        };
+        this.#putTag(next, false);
+        this.#historyOf(next, existing.status, 'revision-submit', input.actor, input.now);
         continue;
       }
       const tag: OfferTagState = {
@@ -692,7 +717,7 @@ export class Offer {
         ...copy,
         lastChangeCause: 'revision-submit',
         statusChangedAt: input.now,
-        statusSeq: 1,
+        changeSeq: 1,
         removedAt: null,
         removedByKind: null,
         removedByAccountId: null,
@@ -769,7 +794,7 @@ export class Offer {
       badge: null,
       lastChangeCause: entryPath,
       statusChangedAt: now,
-      statusSeq: tag.statusSeq + 1,
+      changeSeq: tag.changeSeq + 1,
       removedAt: now,
       removedByKind: actor.kind === 'seller' ? 'seller' : 'system',
       removedByAccountId: actor.kind === 'seller' ? actor.accountId : null,
@@ -805,7 +830,7 @@ export class Offer {
       typeCode: tag.typeCode,
       fromStatus,
       toStatus: tag.status,
-      statusSeq: tag.statusSeq,
+      changeSeq: tag.changeSeq,
       copy: tag.copy,
       copyRevisionId: tag.copyRevisionId,
       reasonCode: tag.lastReasonCode,
@@ -917,8 +942,22 @@ export class Offer {
   }
 
   /** An Offer read back from storage, with its tags; records no event. */
-  static restore(state: OfferState, tags: readonly OfferTagState[] = []): Offer {
-    return new Offer(state, state.version, tags);
+  /**
+   * An Offer read back from storage with its open tags. Without `tags` it is a read-only
+   * projection (a list or queue row): saving it throws (I1), so a write never drops its tags.
+   */
+  static restore(state: OfferState, tags?: readonly OfferTagState[]): Offer {
+    return new Offer(state, state.version, tags ?? null);
+  }
+
+  /** False for a read-only projection restored without its tags (never saved). */
+  get tagsLoaded(): boolean {
+    return this.#tagsLoaded;
+  }
+
+  /** The `change_seq` a stored tag had when it was read; its update is conditional on it (F2). */
+  readChangeSeqOf(tagId: string): number | undefined {
+    return this.#readChangeSeqs.get(tagId);
   }
 
   /** The tags, removed ones included, in their stored order. */

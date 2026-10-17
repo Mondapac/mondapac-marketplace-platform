@@ -159,7 +159,7 @@ export interface OfferTagState {
   readonly evaluatedAt: Temporal.Instant;
   readonly statusChangedAt: Temporal.Instant;
   /** 1 at insert, one more with every status change (names the history row of the status). */
-  readonly statusSeq: number;
+  readonly changeSeq: number;
   readonly removedAt: Temporal.Instant | null;
   readonly removedByKind: 'seller' | 'system' | null;
   readonly removedByAccountId: Id<'Account'> | null;
@@ -172,7 +172,7 @@ export interface OfferTagPendingHistory {
   readonly typeCode: string;
   readonly fromStatus: OfferTagStatus | null;
   readonly toStatus: OfferTagStatus;
-  readonly statusSeq: number;
+  readonly changeSeq: number;
   readonly copy: TagCopy | null;
   readonly copyRevisionId: Id<'ProductRevision'> | null;
   readonly reasonCode: string | null;
@@ -266,6 +266,47 @@ export function canonicalClaimInputs(queries: readonly TagClaimQuery[]): string 
   ]);
 }
 
+function sameInstant(a: Temporal.Instant | null, b: Temporal.Instant | null): boolean {
+  return a === null || b === null ? a === b : a.equals(b);
+}
+
+/** Every variant's badge is the same badge (Hassan I2): one copy and one badge cover the tag. */
+function sameBadge(a: TagBadge, b: TagBadge): boolean {
+  return (
+    a.typeCode === b.typeCode &&
+    a.typeRevisionId === b.typeRevisionId &&
+    a.basis === b.basis &&
+    a.sellerClaim === b.sellerClaim &&
+    (a.issuer === null || b.issuer === null
+      ? a.issuer === b.issuer
+      : a.issuer.id === b.issuer.id && a.issuer.displayName === b.issuer.displayName) &&
+    a.validUntilLocalDate === b.validUntilLocalDate &&
+    a.validUntilZone === b.validUntilZone &&
+    a.verifiedWithIssuer === b.verifiedWithIssuer &&
+    a.reviewedByPlatform === b.reviewedByPlatform
+  );
+}
+
+/**
+ * The key of a tag's claim copy (data design 3.15, 3.16): a change of it, like a change of status,
+ * raises `change_seq` and writes a history row (Mojtaba F1, Hassan M4). The same columns as the
+ * trigger `offer_tags_change_seq` compares.
+ */
+export function tagCopyKey(tag: OfferTagState): string {
+  const copy = tag.copy;
+  return JSON.stringify([
+    copy?.basis ?? null,
+    copy?.certificateKind ?? null,
+    copy?.certificateId ?? null,
+    copy?.certificateVersionId ?? null,
+    copy?.issuerId ?? null,
+    copy?.typeRevisionId ?? null,
+    copy?.policyRevisionId ?? null,
+    copy?.validUntil?.toString() ?? null,
+    tag.copyRevisionId,
+  ]);
+}
+
 /**
  * The verdict on one tag (design 5.2). Fail closed throughout:
  * - any `unavailable` answer (or a missing one) is `unavailable`, never an allowed tag (point 4);
@@ -285,6 +326,10 @@ export function judgeTag(
     return { kind: 'unavailable' };
   }
   if (decisions.some((decision) => decision.reason === 'unavailable')) {
+    return { kind: 'unavailable' };
+  }
+  // The reason `allowed` exactly when allowed (Hassan I2); anything else is a malformed answer.
+  if (decisions.some((decision) => decision.allowed !== (decision.reason === 'allowed'))) {
     return { kind: 'unavailable' };
   }
   for (let i = 0; i < decisions.length; i += 1) {
@@ -322,7 +367,11 @@ export function judgeTag(
       decision.certificate.kind === certificate.kind &&
       decision.certificate.certificateId === certificate.certificateId &&
       decision.certificate.versionId === certificate.versionId &&
-      decision.certificate.typeRevisionId === certificate.typeRevisionId,
+      decision.certificate.issuerId === certificate.issuerId &&
+      decision.certificate.typeRevisionId === certificate.typeRevisionId &&
+      sameInstant(decision.certificate.validUntil, certificate.validUntil) &&
+      decision.badge !== null &&
+      sameBadge(decision.badge, badge),
   );
   if (!agrees) return { kind: 'not-allowed', reason: 'not-covered', evaluatedAt: at };
   return {

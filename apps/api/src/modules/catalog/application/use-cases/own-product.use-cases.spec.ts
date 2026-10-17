@@ -156,6 +156,8 @@ describe.each(FIXTURES)(
         offerTags?: OfferTagState[];
         refuse?: string;
         unavailable?: boolean;
+        /** Called before each read of the seller's Offer; may change it (another write). */
+        onOfferRead?: (read: number, state: OfferState) => OfferState;
       } = {},
     ) {
       const evaluator = new FakeClaimEvaluator(
@@ -168,15 +170,21 @@ describe.each(FIXTURES)(
       evaluator.unavailable = options.unavailable ?? false;
       let ownOffer: { state: OfferState; tags: readonly OfferTagState[] } | null = null;
       const savedOffers: Offer[] = [];
+      let offerReads = 0;
       const offerFinder = {
-        findOwnOnProduct: (_m: MarketContext, sellerId: Id<'Seller'>, productId: Id<'Product'>) =>
-          Promise.resolve(
+        findOwnOnProduct: (_m: MarketContext, sellerId: Id<'Seller'>, productId: Id<'Product'>) => {
+          offerReads += 1;
+          if (ownOffer !== null && options.onOfferRead !== undefined) {
+            ownOffer = { ...ownOffer, state: options.onOfferRead(offerReads, ownOffer.state) };
+          }
+          return Promise.resolve(
             ownOffer !== null &&
               ownOffer.state.sellerId === sellerId &&
               ownOffer.state.productId === productId
               ? Offer.restore(ownOffer.state, ownOffer.tags)
               : null,
-          ),
+          );
+        },
       };
       const claims = new FixedFactsClaimQueryBuilder(null, {
         variantIds: [],
@@ -682,6 +690,44 @@ describe.each(FIXTURES)(
         );
         expect(again.ok).toBe(true);
         expect(r.ownOffer()!.tags).toEqual([]);
+      });
+
+      it('submits again when the Offer changed between the T4 ask and the submit unit (Hassan M1)', async () => {
+        const r = rig(undefined, {
+          approvalRequired: false,
+          offer: offerOn({ status: 'published', listed: true, firstPublishedAt: T0 }),
+          offerTags: [activeTagState(ids.next<'OfferTag'>(), typeCode, certificateIds, T0)],
+          // Every read after the first publish sees a newer Offer version.
+          onOfferRead: (read, state) =>
+            read > 1 ? { ...state, version: state.version + 1 } : state,
+        });
+        const product = newProduct();
+        r.seed(product);
+        expect((await r.useCase.execute(contextOf('seller'), request(product.state.id))).ok).toBe(
+          true,
+        );
+        // Each attempt's unit ends in an error, so the real unit of work stores none of it (this
+        // in-memory unit does not roll back, so the stored revisions are not counted here).
+        expect(await r.useCase.execute(contextOf('seller'), request(product.state.id))).toEqual({
+          ok: false,
+          error: { code: 'conflict.retry' },
+        });
+        expect(r.evaluator.calls.length).toBeGreaterThanOrEqual(3);
+      });
+
+      it('refuses requestedTags in an acting-as session (Hassan L1)', async () => {
+        const r = rig(undefined, { offer: offerOn() });
+        const product = newProduct();
+        r.seed(product);
+        const context = contextOf('seller');
+        const actor = { ...context.actor, actingAs: { adminAccountId: ids.next() } };
+        expect(
+          await r.useCase.execute(
+            { ...context, actor: actor },
+            withTags(product.state.id, [typeCode]),
+          ),
+        ).toEqual({ ok: false, error: { code: 'access.denied' } });
+        expect(r.revisions.size).toBe(0);
       });
 
       it('runs T4 on a published product: refuses a submit that would lose a tag, stores nothing on the Offer', async () => {

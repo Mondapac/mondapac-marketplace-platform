@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import { isActingAsSession } from '../acting-as';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
@@ -85,7 +86,9 @@ export class OwnOfferRemoveTag extends UseCase<
     if (
       actor.kind !== 'authenticated' ||
       actor.population !== 'seller' ||
-      actor.sellerId === null
+      actor.sellerId === null ||
+      // Not offered in an acting-as session (design 8.2 "AA"; Hassan L1).
+      isActingAsSession(actor)
     ) {
       return err({ code: 'access.denied' });
     }

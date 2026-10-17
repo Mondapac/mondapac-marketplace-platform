@@ -8,6 +8,7 @@ import type {
   Result,
   Temporal,
 } from '@mondapac/shared-kernel';
+import { isActingAsSession } from '../acting-as';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
@@ -25,6 +26,9 @@ import type { ClaimFacts, TagActor, TagDecision } from '../../domain/offer-tag';
 import type { ClaimQueryBuilder } from '../tags/claim-query-builder';
 import {
   askPrepared,
+  claimsFailClosed,
+  factsInUnit,
+  NOTHING_ASKED,
   hashesOf,
   keptTagTypes,
   MAX_CLAIM_ATTEMPTS,
@@ -169,6 +173,8 @@ export class OwnOfferSubmit extends UseCase<
     const requested = parseRequestedTags(input.requestedTags);
     if (!requested.ok) return err({ code: 'validation.failed', fields: [requested.error] });
     if (requested.value.length > 0) {
+      // Badge requests are not offered in an acting-as session (Hassan M1 of 5.1a, L1).
+      if (isActingAsSession(actor)) return err({ code: 'access.denied' });
       const active = await deps.evaluator.activeTypeCodes(context);
       if (!active.ok) return err(active.error);
       if (requested.value.some((code) => !active.value.has(code))) {
@@ -177,7 +183,9 @@ export class OwnOfferSubmit extends UseCase<
     }
 
     for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
-      const outcome = await this.#attempt(context, offerId.value, sellerId, requested.value);
+      const outcome = await claimsFailClosed(() =>
+        this.#attempt(context, offerId.value, sellerId, requested.value),
+      );
       if (outcome !== RETRY) return outcome;
     }
     return err({ code: 'conflict.retry' });
@@ -238,7 +246,7 @@ export class OwnOfferSubmit extends UseCase<
       return err({ code: 'offer.product-not-published' });
     }
     if (guard.value.handling === null) return err({ code: 'offer.handling-missing' });
-    const prepared = guard.value.prepared ?? { facts: null, queries: new Map() };
+    const prepared = guard.value.prepared ?? NOTHING_ASKED;
     if (prepared === 'unavailable') return err({ code: 'claim.check-unavailable' });
     const allowed = await deps.allowedTypes.allowedFor(context, sellerId);
     if (allowed === null) return err({ code: 'access.unavailable' });
@@ -308,9 +316,16 @@ export class OwnOfferSubmit extends UseCase<
               : ({ code: 'offer.not-submittable' } as const),
           );
         }
+        // The facts again, in this unit (Hassan M2): the decisions are judged against the
+        // published revision of now; one published since the ask means asking again.
+        const facts = await factsInUnit(deps.claims, market, offer.state.productId, prepared);
+        if (facts === RETRY) return ok(RETRY);
+        if (prepared.queries.size > 0 && facts === null) {
+          return err({ code: 'claim.check-unavailable' } as const);
+        }
         const tagged = this.#settleTags(
           offer,
-          prepared.facts,
+          facts,
           asked.value,
           added,
           hash,

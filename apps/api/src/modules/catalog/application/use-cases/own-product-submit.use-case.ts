@@ -8,12 +8,14 @@ import type { OwnOfferFinder } from '../ports/own-offer-finder';
 import type { ClaimQueryBuilder } from '../tags/claim-query-builder';
 import {
   askPrepared,
+  claimsFailClosed,
   hashesOf,
   MAX_CLAIM_ATTEMPTS,
   parseRequestedTags,
   sellerTagActor,
   type PreparedAsk,
 } from '../tags/offer-claims';
+import { isActingAsSession } from '../acting-as';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
@@ -154,6 +156,8 @@ export class OwnProductSubmit extends UseCase<
     if (allowed !== 'all' && !allowed.has(typeCode.value)) return err({ code: 'type.not-allowed' });
 
     if (requested.value.length > 0) {
+      // Badge requests are not offered in an acting-as session (Hassan M1 of 5.1a, L1).
+      if (isActingAsSession(actor)) return err({ code: 'access.denied' });
       const active = await this.deps.evaluator.activeTypeCodes(context);
       if (!active.ok) return err(active.error);
       if (requested.value.some((code) => !active.value.has(code))) {
@@ -162,12 +166,14 @@ export class OwnProductSubmit extends UseCase<
     }
 
     for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
-      const result = await this.deps.submit.execute(context, {
-        productId: product.value,
-        replacePending: input.replacePending,
-        revisionId: this.deps.ids.next<'ProductRevision'>(),
-        claims: this.#claims(context, sellerId, requested.value),
-      });
+      const result = await claimsFailClosed(() =>
+        this.deps.submit.execute(context, {
+          productId: product.value,
+          replacePending: input.replacePending,
+          revisionId: this.deps.ids.next<'ProductRevision'>(),
+          claims: this.#claims(context, sellerId, requested.value),
+        }),
+      );
       if (!result.ok && result.error.code === 'claim.inputs-changed') continue;
       return result as Result<SubmitProductOutput, OwnProductSubmitFailure>;
     }
@@ -182,12 +188,18 @@ export class OwnProductSubmit extends UseCase<
   ): SubmitClaims {
     const { deps } = this;
     const { market, actor } = context;
-    let plan: {
-      readonly offerVersion: number;
-      readonly types: readonly string[];
-      readonly decisions: ReadonlyMap<string, readonly TagDecision[]>;
-      readonly hash: (canonical: string) => string;
-    } | null = null;
+    // `pending`: the pending-publish set to write. `t4`: nothing to write, but the Offer must be
+    // the one T4 asked about (its version, or still none), else the submit asks again (Hassan M1).
+    let plan:
+      | {
+          readonly kind: 'pending';
+          readonly offerVersion: number;
+          readonly types: readonly string[];
+          readonly decisions: ReadonlyMap<string, readonly TagDecision[]>;
+          readonly hash: (canonical: string) => string;
+        }
+      | { readonly kind: 't4'; readonly offerVersion: number | null }
+      | null = null;
 
     return {
       ask: async (frozen: FrozenSubmission) => {
@@ -236,13 +248,14 @@ export class OwnProductSubmit extends UseCase<
               offer,
               types,
               hasPending,
-              prepared: queries === null ? null : { facts, queries },
+              prepared: queries === null ? null : { facts, queries, productVersion: null },
             });
           },
           { readOnly: true },
         );
         if (!read.ok) return err({ code: 'access.unavailable' });
         if (read.value === null) {
+          if (!firstSubmit) plan = { kind: 't4', offerVersion: null };
           return requested.length > 0
             ? err({
                 code: 'validation.failed',
@@ -252,10 +265,12 @@ export class OwnProductSubmit extends UseCase<
         }
         const { offer, types, hasPending, prepared } = read.value;
         if (prepared === 'no-handling') return err({ code: 'offer.handling-missing' });
+        if (!firstSubmit) plan = { kind: 't4', offerVersion: offer.state.version };
         if (types.length === 0) {
           // A first submit with no request still clears the pending set of an earlier submit.
           if (firstSubmit && hasPending) {
             plan = {
+              kind: 'pending',
               offerVersion: offer.state.version,
               types: [],
               decisions: new Map(),
@@ -283,15 +298,18 @@ export class OwnProductSubmit extends UseCase<
           if (verdict.kind === 'not-allowed') refused.push({ typeCode, reason: verdict.reason });
         }
         if (!firstSubmit) {
-          // T4: refuse or let through; nothing is stored.
-          return refused.length > 0
-            ? err({ code: 'claim.tags-would-be-lost', tags: refused })
-            : ok(undefined);
+          // T4: refuse or let through; nothing is stored (the settle only re-checks the Offer).
+          if (refused.length > 0) {
+            plan = null;
+            return err({ code: 'claim.tags-would-be-lost', tags: refused });
+          }
+          return ok(undefined);
         }
         if (refused.length > 0) {
           return err({ code: 'claim.requested-tag-not-allowed', tags: refused });
         }
         plan = {
+          kind: 'pending',
           offerVersion: offer.state.version,
           types,
           decisions: asked.value,
@@ -308,6 +326,11 @@ export class OwnProductSubmit extends UseCase<
           sellerId,
           frozen.product.state.id,
         );
+        if (plan.kind === 't4') {
+          return (offer?.state.version ?? null) === plan.offerVersion
+            ? ok(undefined)
+            : err({ code: 'claim.inputs-changed' });
+        }
         if (offer === null || offer.state.version !== plan.offerVersion) {
           return err({ code: 'claim.inputs-changed' });
         }

@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import { isActingAsSession } from '../acting-as';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
@@ -11,6 +12,8 @@ import type { ClaimEvaluator } from '../ports/claim-evaluator';
 import type { ClaimQueryBuilder } from '../tags/claim-query-builder';
 import {
   askPrepared,
+  claimsFailClosed,
+  factsInUnit,
   hashesOf,
   keptTagTypes,
   MAX_CLAIM_ATTEMPTS,
@@ -122,7 +125,9 @@ export class OwnOfferSetHandling extends UseCase<
     if (
       actor.kind !== 'authenticated' ||
       actor.population !== 'seller' ||
-      actor.sellerId === null
+      actor.sellerId === null ||
+      // Not offered in an acting-as session (design 8.2 "AA"; Hassan L1).
+      isActingAsSession(actor)
     ) {
       return err({ code: 'access.denied' });
     }
@@ -154,7 +159,9 @@ export class OwnOfferSetHandling extends UseCase<
     if (throttled !== null) return err(throttled);
 
     for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
-      const outcome = await this.#attempt(context, offerId.value, sellerId, handling);
+      const outcome = await claimsFailClosed(() =>
+        this.#attempt(context, offerId.value, sellerId, handling),
+      );
       if (outcome !== RETRY) return outcome;
     }
     return err({ code: 'conflict.retry' });
@@ -219,11 +226,9 @@ export class OwnOfferSetHandling extends UseCase<
                 } as const),
           );
         }
-        const types = keptTagTypes(offer);
-        const facts =
-          types.length === 0
-            ? null
-            : await deps.claims.publishedFactsOf(market, offer.state.productId);
+        // The facts again, in this unit: a revision published since the ask means asking again.
+        const facts = await factsInUnit(deps.claims, market, offer.state.productId, prepared);
+        if (facts === RETRY) return ok(RETRY);
         const settled = offer.settleTags({
           facts,
           decisions: asked.value,

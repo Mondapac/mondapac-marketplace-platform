@@ -24,7 +24,8 @@ const files = sources(APPLICATION).map((file) => ({
 }));
 
 /** Offer writes that change a claim input (design 5.4 "all tags" rows). */
-const CLAIM_INPUT_WRITES = /\boffer\.(setHandling|edit|submit|recordAttestation)\(/;
+const CLAIM_INPUT_WRITES =
+  /\boffer\.(setHandling|edit|submit|recordAttestation|approve)\(|\bproduct\.approveRevision\(/;
 /** The domain's tag writes. */
 const TAG_WRITES = /\.(addTags|settleTags|setPendingPublishTags)\(/;
 
@@ -32,7 +33,11 @@ const TAG_WRITES = /\.(addTags|settleTags|setPendingPublishTags)\(/;
  * Files that change a claim input but are known not to ask yet, each with the slice that brings
  * the ask. Keep this list short; an entry here is an open carry in the slice handoff.
  */
-const DEFERRED: Readonly<Record<string, string>> = {};
+const DEFERRED: Readonly<Record<string, string>> = {
+  // The re-ask at an Offer's approval and at a revision's publication (Hassan M1 part 1).
+  'use-cases/offer-approve.use-case.ts': 'slice 11',
+  'use-cases/product-revision-approve.use-case.ts': 'slice 11',
+};
 
 describe('catalog claim entry paths (design 5.1, 5.4)', () => {
   it('finds the known writers, so the scan is not vacuous', () => {
@@ -42,8 +47,18 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
         'use-cases/own-offer-edit.use-case.ts',
         'use-cases/own-offer-set-handling.use-case.ts',
         'use-cases/own-offer-submit.use-case.ts',
+        ...Object.keys(DEFERRED),
       ]),
     );
+  });
+
+  it('defers only files that still change a claim input without asking', () => {
+    for (const file of Object.keys(DEFERRED)) {
+      const found = files.find((f) => f.file === file);
+      expect(found).toBeDefined();
+      expect(CLAIM_INPUT_WRITES.test(found!.text)).toBe(true);
+      expect(/\.settleTags\(/.test(found!.text)).toBe(false);
+    }
   });
 
   it('settles the tags of every Offer write that changes a claim input', () => {

@@ -68,7 +68,7 @@ export function tagFromRow(row: TagRow): OfferTagState {
     lastChangeCause: row.lastChangeCause as TagEntryPath | null,
     evaluatedAt: toInstant(row.evaluatedAt),
     statusChangedAt: toInstant(row.statusChangedAt),
-    statusSeq: row.statusSeq,
+    changeSeq: row.changeSeq,
     removedAt: orNull(row.removedAt),
     removedByKind: row.removedByKind as 'seller' | 'system' | null,
     removedByAccountId: row.removedByAccountId as Id<'Account'> | null,
@@ -100,15 +100,18 @@ function tagChange(tag: OfferTagState) {
     lastChangeCause: tag.lastChangeCause,
     evaluatedAt: toDate(tag.evaluatedAt),
     statusChangedAt: toDate(tag.statusChangedAt),
-    statusSeq: tag.statusSeq,
+    changeSeq: tag.changeSeq,
     removedAt: tag.removedAt === null ? null : toDate(tag.removedAt),
     removedByKind: tag.removedByKind,
     removedByAccountId: tag.removedByAccountId,
   };
 }
 
-/** A stored Offer row as the aggregate. */
-export function offerFromRow(row: OfferRow, tags: readonly TagRow[] = []): Offer {
+/**
+ * A stored Offer row as the aggregate. Without `tags` the Offer is a read-only projection (a list
+ * or queue row) that cannot be saved (I1); a write reads it through `findById`.
+ */
+export function offerFromRow(row: OfferRow, tags?: readonly TagRow[]): Offer {
   const flags: Record<OffSaleCause, boolean> = {
     'type-not-allowed': row.offSaleTypeNotAllowed,
     'product-retired': row.offSaleProductRetired,
@@ -137,7 +140,7 @@ export function offerFromRow(row: OfferRow, tags: readonly TagRow[] = []): Offer
       version: row.version,
       createdAt: toInstant(row.createdAt),
     },
-    tags.map(tagFromRow),
+    tags?.map(tagFromRow),
   );
 }
 
@@ -242,6 +245,7 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
     const history = offer.pendingHistory;
     if (expected === null) throw new Error('save: the offer was never stored; use add');
     if (state.marketId !== market.marketId) throw new Error('save: the offer is of another Market');
+    if (!offer.tagsLoaded) throw new Error('save: the offer was read without its tags');
     if (!offer.hasChanges) return null;
     const tx = this.prisma.tx(market);
     try {
@@ -300,8 +304,9 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
 
   /**
    * The tag rows the Offer added or changed, then their history rows (data design 3.15, 3.16).
-   * The root's version guard above already serialised the change; the deferred trigger checks at
-   * commit that every status change has its history row.
+   * Each update is conditional on the `change_seq` the tag had when read (Mojtaba F2): a tag
+   * changed by another unit since answers `StaleAggregateError` and the command asks again. The
+   * deferred trigger checks at commit that every change of status or copy has its history row.
    */
   async #saveTags(market: MarketContext, offer: Offer, actor: OfferActor): Promise<void> {
     const { added, changed } = offer.pendingTagChanges;
@@ -327,8 +332,10 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
     }
     for (const id of changed) {
       const tag = byId.get(id)!;
+      const readSeq = offer.readChangeSeqOf(tag.id);
+      if (readSeq === undefined) throw new Error('save: a changed tag that was never read');
       const { count } = await tx.catalogOfferTag.updateMany({
-        where: { marketId: market.marketId, id: tag.id, offerId: state.id },
+        where: { marketId: market.marketId, id: tag.id, offerId: state.id, changeSeq: readSeq },
         data: tagChange(tag),
       });
       if (count !== 1) throw new StaleAggregateError('offer', state.id);
@@ -353,7 +360,7 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
           copyRevisionId: row.copyRevisionId,
           reasonCode: row.reasonCode,
           entryPath: row.entryPath,
-          statusSeq: row.statusSeq,
+          changeSeq: row.changeSeq,
           causeEventId: null,
           actorKind: row.actor.kind,
           actorAccountId: row.actor.accountId,
@@ -390,6 +397,7 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
       orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
       take: page.limit,
     });
+    // A read-only projection for the review queue (no tags): never saved; a decision re-reads.
     return rows.map((row) => offerFromRow(row));
   }
 

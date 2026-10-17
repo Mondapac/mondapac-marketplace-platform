@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, IdGenerator, Result } from '@mondapac/shared-kernel';
+import { isActingAsSession } from '../acting-as';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
@@ -14,6 +15,8 @@ import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader
 import type { ClaimQueryBuilder } from '../tags/claim-query-builder';
 import {
   askPrepared,
+  claimsFailClosed,
+  factsInUnit,
   hashesOf,
   MAX_CLAIM_ATTEMPTS,
   RETRY,
@@ -121,7 +124,9 @@ export class OwnOfferAddTag extends UseCase<
     if (
       actor.kind !== 'authenticated' ||
       actor.population !== 'seller' ||
-      actor.sellerId === null
+      actor.sellerId === null ||
+      // Not offered in an acting-as session (design 8.2 "AA"; Hassan L1).
+      isActingAsSession(actor)
     ) {
       return err({ code: 'access.denied' });
     }
@@ -151,7 +156,9 @@ export class OwnOfferAddTag extends UseCase<
     if (!active.value.has(typeCode)) return err({ code: 'tag.type-unknown' });
 
     for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
-      const outcome = await this.#attempt(context, offerId.value, sellerId, typeCode);
+      const outcome = await claimsFailClosed(() =>
+        this.#attempt(context, offerId.value, sellerId, typeCode),
+      );
       if (outcome !== RETRY) return outcome;
     }
     return err({ code: 'conflict.retry' });
@@ -182,11 +189,14 @@ export class OwnOfferAddTag extends UseCase<
         if (offer === null) return err({ code: 'offer.not-found' });
         if (offer.tags.some((tag) => tag.typeCode === typeCode)) return err({ code: 'tag.exists' });
         if (offer.state.handling === null) return err({ code: 'offer.handling-missing' });
-        const facts = await deps.claims.publishedFactsOf(market, offer.state.productId);
+        const { facts, productVersion } = await deps.claims.publishedSnapshot(
+          market,
+          offer.state.productId,
+        );
         if (facts === null) return err({ code: 'tag.product-not-published' });
         const queries = deps.claims.queries(offer.state, facts, [typeCode]);
         if (queries === null) return err({ code: 'offer.handling-missing' });
-        return ok({ version: offer.state.version, prepared: { facts, queries } });
+        return ok({ version: offer.state.version, prepared: { facts, queries, productVersion } });
       },
       { readOnly: true },
     );
@@ -207,7 +217,9 @@ export class OwnOfferAddTag extends UseCase<
         const offer = await ownOffer();
         if (offer === null) return err({ code: 'offer.not-found' });
         if (offer.state.version !== guard.value.version) return ok(RETRY);
-        const facts = await deps.claims.publishedFactsOf(market, offer.state.productId);
+        // The facts again, in this unit: a revision published since the ask means asking again.
+        const facts = await factsInUnit(deps.claims, market, offer.state.productId, prepared);
+        if (facts === RETRY) return ok(RETRY);
         if (facts === null) return err({ code: 'tag.product-not-published' });
         const added = offer.addTags({
           tags: [{ tagId: deps.ids.next<'OfferTag'>(), typeCode }],

@@ -4,7 +4,10 @@ import type {
   ClaimCheckUnavailable,
   ClaimEvaluator,
 } from '../../src/modules/catalog/application/ports/claim-evaluator';
-import { ClaimQueryBuilder } from '../../src/modules/catalog/application/tags/claim-query-builder';
+import {
+  ClaimQueryBuilder,
+  type PublishedSnapshot,
+} from '../../src/modules/catalog/application/tags/claim-query-builder';
 import type {
   ClaimFacts,
   OfferTagState,
@@ -119,12 +122,24 @@ export class FixedFactsClaimQueryBuilder extends ClaimQueryBuilder {
     });
   }
 
+  /** The product version each published read answers. */
+  productVersion = 1;
+  /** Published reads so far; `onPublishedRead` may change the fake before the n-th answer. */
+  publishedReads = 0;
+  onPublishedRead: ((read: number, fake: FixedFactsClaimQueryBuilder) => void) | null = null;
+
   override publishedFacts(): Promise<ClaimFacts | null> {
     return Promise.resolve(this.published);
   }
 
   override publishedFactsOf(): Promise<ClaimFacts | null> {
-    return Promise.resolve(this.published);
+    return this.publishedSnapshot().then((snapshot) => snapshot.facts);
+  }
+
+  override publishedSnapshot(): Promise<PublishedSnapshot> {
+    this.publishedReads += 1;
+    this.onPublishedRead?.(this.publishedReads, this);
+    return Promise.resolve({ facts: this.published, productVersion: this.productVersion });
   }
 
   override revisionFacts(
@@ -188,7 +203,7 @@ export function activeTagState(
     lastChangeCause: 'tag-add',
     evaluatedAt: at,
     statusChangedAt: at,
-    statusSeq: 1,
+    changeSeq: 1,
     removedAt: null,
     removedByKind: null,
     removedByAccountId: null,

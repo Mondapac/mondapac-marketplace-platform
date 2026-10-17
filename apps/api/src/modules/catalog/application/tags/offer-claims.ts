@@ -2,6 +2,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type {
   AuthenticatedActor,
   CallContext,
+  Id,
   MarketContext,
   Result,
 } from '@mondapac/shared-kernel';
@@ -14,6 +15,7 @@ import {
   type TagClaimQuery,
   type TagDecision,
 } from '../../domain/offer-tag';
+import { CategoryPathsUnavailableError } from '../ports/category-paths.reader';
 import type { ClaimCheckUnavailable, ClaimEvaluator } from '../ports/claim-evaluator';
 import { askClaims } from './ask-claims';
 import { sha256Hex, type ClaimQueryBuilder } from './claim-query-builder';
@@ -44,7 +46,12 @@ export function sellerTagActor(actor: AuthenticatedActor): TagActor {
 export interface PreparedAsk {
   readonly facts: ClaimFacts | null;
   readonly queries: ReadonlyMap<string, readonly TagClaimQuery[]>;
+  /** The product version the facts were read at; null when nothing was asked. */
+  readonly productVersion: number | null;
 }
+
+/** No question: nothing to ask, nothing to compare. */
+export const NOTHING_ASKED: PreparedAsk = { facts: null, queries: new Map(), productVersion: null };
 
 /**
  * The facts and queries for the given types against the product's published revision, built
@@ -58,12 +65,30 @@ export async function preparePublishedAsk(
   offer: OfferState,
   types: readonly string[],
 ): Promise<PreparedAsk | 'unavailable'> {
-  if (types.length === 0) return { facts: null, queries: new Map() };
-  const facts = await builder.publishedFactsOf(market, offer.productId);
+  if (types.length === 0) return NOTHING_ASKED;
+  const { facts, productVersion } = await builder.publishedSnapshot(market, offer.productId);
   if (facts === null) return 'unavailable';
   const queries = builder.queries(offer, facts, types);
   if (queries === null) return 'unavailable';
-  return { facts, queries };
+  return { facts, queries, productVersion };
+}
+
+/**
+ * In a write unit: the published facts read again, or {@link RETRY} when the product moved since
+ * the ask was prepared (a revision published in between; Hassan M1, M2). The decisions are then
+ * judged against these facts, never against the ones the ask was built on. Null when nothing was
+ * asked.
+ */
+export async function factsInUnit(
+  builder: ClaimQueryBuilder,
+  market: MarketContext,
+  productId: Id<'Product'>,
+  prepared: PreparedAsk,
+): Promise<ClaimFacts | null | typeof RETRY> {
+  if (prepared.queries.size === 0) return null;
+  const snapshot = await builder.publishedSnapshot(market, productId);
+  if (snapshot.productVersion !== prepared.productVersion) return RETRY;
+  return snapshot.facts;
 }
 
 /**
@@ -146,6 +171,23 @@ export function tagFailureOf(
       return { code: 'claim.tag-not-allowed', tags: refusal.tags };
     default:
       return { code: refusal.code };
+  }
+}
+
+/**
+ * Runs one attempt of a claim-bearing command; claim facts that cannot be read (a category path
+ * that cannot be built, Hassan M3) answer `claim.check-unavailable` instead of a fault.
+ */
+export async function claimsFailClosed<T>(
+  attempt: () => Promise<T>,
+): Promise<T | { readonly ok: false; readonly error: ClaimCheckUnavailable }> {
+  try {
+    return await attempt();
+  } catch (error) {
+    if (error instanceof CategoryPathsUnavailableError) {
+      return { ok: false, error: { code: 'claim.check-unavailable' } };
+    }
+    throw error;
   }
 }
 

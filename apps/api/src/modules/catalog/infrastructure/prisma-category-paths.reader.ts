@@ -1,9 +1,14 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { CategoryPathsReader } from '../application/ports/category-paths.reader';
+import {
+  CategoryPathsUnavailableError,
+  type CategoryPathsReader,
+} from '../application/ports/category-paths.reader';
 
 /** Deeper than any tree the no-cycle trigger allows (data design 3.4: refused at 64). */
 const MAX_DEPTH = 64;
+/** Steps one path may take: each level, plus a merge hop per level. */
+const MAX_STEPS = MAX_DEPTH * 2;
 
 interface Node {
   readonly id: string;
@@ -12,12 +17,23 @@ interface Node {
   readonly mergedIntoId: string | null;
 }
 
+/** One path being built: the next id to visit, the ids kept so far (leaf first), steps taken. */
+interface Walk {
+  readonly origin: string;
+  next: string | null;
+  readonly kept: string[];
+  steps: number;
+  /** True while the walk is still at the named category (an archived one gives no path). */
+  atLeaf: boolean;
+  dropped: boolean;
+}
+
 /**
- * {@link CategoryPathsReader} on `catalog.platform_categories` (data design 3.4). Reads the nodes
- * it needs level by level (one statement per level, each with `marketId` at the top of `where`),
- * follows a merge to its target and drops an archived category, then builds each path root first.
- * A path that cannot be completed (an unknown or archived ancestor, a merge loop, a depth past the
- * cap) is dropped: a claim is never asked on a path the tree does not hold.
+ * {@link CategoryPathsReader} on `catalog.platform_categories` (data design 3.4). Every walk
+ * starts at a named category and climbs to a root; the nodes a round needs are read in one
+ * statement (`marketId` at the top of `where`). A merged node is replaced by its target, an
+ * archived ancestor is skipped and an archived named category drops its path. Anything that
+ * cannot be resolved throws {@link CategoryPathsUnavailableError} (fail closed, Hassan M3).
  */
 export class PrismaCategoryPathsReader implements CategoryPathsReader {
   constructor(private readonly prisma: PrismaService) {}
@@ -28,73 +44,62 @@ export class PrismaCategoryPathsReader implements CategoryPathsReader {
   ): Promise<readonly (readonly Id<'Category'>[])[]> {
     const tx = this.prisma.tx(market);
     const nodes = new Map<string, Node>();
-    const load = async (ids: Iterable<string>): Promise<void> => {
-      const missing = [...new Set(ids)].filter((id) => !nodes.has(id));
-      if (missing.length === 0) return;
+    const walks: Walk[] = categoryIds.map((origin) => ({
+      origin,
+      next: origin,
+      kept: [],
+      steps: 0,
+      atLeaf: true,
+      dropped: false,
+    }));
+
+    for (let round = 0; ; round += 1) {
+      if (round > MAX_STEPS) throw new CategoryPathsUnavailableError('too deep');
+      const missing = new Set<string>();
+      for (const walk of walks) {
+        while (walk.next !== null && !walk.dropped) {
+          const node = nodes.get(walk.next);
+          if (node === undefined) {
+            missing.add(walk.next);
+            break;
+          }
+          walk.steps += 1;
+          if (walk.steps > MAX_STEPS) throw new CategoryPathsUnavailableError('loop');
+          if (node.status === 'merged') {
+            if (node.mergedIntoId === null) throw new CategoryPathsUnavailableError('merge');
+            walk.next = node.mergedIntoId;
+            continue;
+          }
+          if (node.status === 'archived') {
+            if (walk.atLeaf) {
+              walk.dropped = true;
+              break;
+            }
+            walk.next = node.parentId;
+            continue;
+          }
+          if (node.status !== 'active') throw new CategoryPathsUnavailableError('status');
+          if (walk.kept.includes(node.id)) throw new CategoryPathsUnavailableError('loop');
+          walk.kept.push(node.id);
+          walk.atLeaf = false;
+          walk.next = node.parentId;
+        }
+      }
+      if (missing.size === 0) break;
       const rows = await tx.catalogPlatformCategory.findMany({
-        where: { marketId: market.marketId, id: { in: missing } },
+        where: { marketId: market.marketId, id: { in: [...missing] } },
         select: { id: true, parentId: true, status: true, mergedIntoId: true },
       });
       for (const row of rows) nodes.set(row.id, row);
-    };
-
-    // Resolve each named category to its live node: follow merges, drop archived.
-    let frontier = [...new Set(categoryIds)];
-    const live = new Map<string, string | null>(frontier.map((id) => [id, id]));
-    for (let depth = 0; depth < MAX_DEPTH && frontier.length > 0; depth += 1) {
-      await load(frontier);
-      const next: string[] = [];
-      for (const [origin, current] of live) {
-        if (current === null) continue;
-        const node = nodes.get(current);
-        if (node === undefined || node.status === 'archived') live.set(origin, null);
-        else if (node.status === 'merged') {
-          live.set(origin, node.mergedIntoId);
-          if (node.mergedIntoId !== null) next.push(node.mergedIntoId);
-        }
-      }
-      frontier = next;
-    }
-
-    // Load every missing ancestor, one level per statement, until each path reaches a node
-    // whose parent is loaded or is a root (or an ancestor cannot be found).
-    for (let depth = 0; depth < MAX_DEPTH; depth += 1) {
-      const needed = new Set<string>();
-      for (const start of live.values()) {
-        let cursor = start === null ? undefined : nodes.get(start);
-        for (let steps = 0; cursor !== undefined && steps < MAX_DEPTH; steps += 1) {
-          if (cursor.parentId === null) break;
-          const parent = nodes.get(cursor.parentId);
-          if (parent === undefined) {
-            needed.add(cursor.parentId);
-            break;
-          }
-          cursor = parent;
-        }
-      }
-      if (needed.size === 0) break;
-      const before = nodes.size;
-      await load(needed);
-      if (nodes.size === before) break;
+      // A category this Market does not hold: the path cannot be built.
+      if (rows.length !== missing.size) throw new CategoryPathsUnavailableError('unknown');
     }
 
     const paths: Id<'Category'>[][] = [];
     const seen = new Set<string>();
-    for (const origin of categoryIds) {
-      const start = live.get(origin) ?? null;
-      const node = start === null ? undefined : nodes.get(start);
-      if (node === undefined || node.status !== 'active') continue;
-      const path: string[] = [];
-      let cursor: Node | undefined = node;
-      while (cursor !== undefined && path.length < MAX_DEPTH) {
-        path.unshift(cursor.id);
-        if (cursor.parentId === null) break;
-        cursor = nodes.get(cursor.parentId);
-        if (cursor !== undefined && cursor.status !== 'active') cursor = undefined;
-      }
-      // Complete only when it reached a root.
-      const root = nodes.get(path[0]!);
-      if (root === undefined || root.parentId !== null) continue;
+    for (const walk of walks) {
+      if (walk.dropped || walk.kept.length === 0) continue;
+      const path = [...walk.kept].reverse();
       const key = path.join('/');
       if (seen.has(key)) continue;
       seen.add(key);

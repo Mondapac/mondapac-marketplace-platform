@@ -230,6 +230,68 @@ describe.each([
     });
   });
 
+  describe('judgeTag answer shape (Hassan I2)', () => {
+    it('treats an allowed answer without reason allowed, or the reverse, as unavailable', () => {
+      const offer = Offer.restore(offerState(), []);
+      const queries = queriesOf(offer);
+      expect(
+        judgeTag(
+          queries,
+          queries.map((q) => allowed(q, { reason: 'no-certificate' })),
+        ),
+      ).toEqual({ kind: 'unavailable' });
+      expect(
+        judgeTag(
+          queries,
+          queries.map((q) => ({ ...refused(q, 'allowed') })),
+        ),
+      ).toEqual({ kind: 'unavailable' });
+    });
+
+    it('refuses as not-covered when the variants carry different badges or issuers', () => {
+      const offer = Offer.restore(offerState(), []);
+      const queries = queriesOf(offer);
+      const otherBadge = judgeTag(
+        queries,
+        queries.map((q, i) =>
+          i === 0
+            ? allowed(q)
+            : allowed(q, { badge: { ...allowed(q).badge!, verifiedWithIssuer: true } }),
+        ),
+      );
+      expect(otherBadge).toMatchObject({ kind: 'not-allowed', reason: 'not-covered' });
+      const otherIssuer = judgeTag(
+        queries,
+        queries.map((q, i) =>
+          i === 0
+            ? allowed(q)
+            : allowed(q, { certificate: { ...allowed(q).certificate!, issuerId: ids.next() } }),
+        ),
+      );
+      expect(otherIssuer).toMatchObject({ kind: 'not-allowed', reason: 'not-covered' });
+    });
+
+    it('answers every variant input-invalid as a refusal, never a fault (I3)', () => {
+      const offer = Offer.restore(offerState(), []);
+      const queries = queriesOf(offer);
+      const invalid = queries.map((q) => ({ ...refused(q, 'input-invalid'), inputs: null }));
+      expect(judgeTag(queries, invalid)).toMatchObject({
+        kind: 'not-allowed',
+        reason: 'input-invalid',
+      });
+      expect(add(offer, new Map([[typeCode, invalid]]))).toMatchObject({
+        error: { code: 'claim.tag-not-allowed', tags: [{ typeCode, reason: 'input-invalid' }] },
+      });
+    });
+  });
+
+  describe('read-only projections (I1)', () => {
+    it('marks an Offer restored without tags as not saveable, and one with tags as saveable', () => {
+      expect(Offer.restore(offerState()).tagsLoaded).toBe(false);
+      expect(Offer.restore(offerState(), []).tagsLoaded).toBe(true);
+    });
+  });
+
   describe('Offer.addTags', () => {
     it('adds an active tag with its copy, badge, history row and event (AC 7, 14)', () => {
       const offer = Offer.restore(offerState());
@@ -238,7 +300,7 @@ describe.each([
       expect(tag).toMatchObject({
         typeCode,
         status: 'active',
-        statusSeq: 1,
+        changeSeq: 1,
         copy: { basis: 'SELLER', certificateKind: 'seller', certificateVersionId: versionId },
         copyRevisionId: revisionId,
         copyRevisionPublished: true,
@@ -333,7 +395,7 @@ describe.each([
       expect(offer.tags[0]).toMatchObject({
         status: 'suspended',
         badge: null,
-        statusSeq: 2,
+        changeSeq: 2,
         lastReasonCode: 'no-valid-seller-certificate',
         lastChangeCause: 'offer-edit',
       });
@@ -344,7 +406,7 @@ describe.each([
         ['catalog.offer-listing-changed.v1', version + 2],
       ]);
       expect(offer.pendingTagHistory).toEqual([
-        expect.objectContaining({ fromStatus: 'active', toStatus: 'suspended', statusSeq: 2 }),
+        expect.objectContaining({ fromStatus: 'active', toStatus: 'suspended', changeSeq: 2 }),
       ]);
     });
 
@@ -353,7 +415,7 @@ describe.each([
       settle(offer, (q) => refused(q, 'no-valid-seller-certificate'));
       const suspended = Offer.restore(offer.state, offer.tags);
       expect(settle(suspended, (q) => allowed(q))).toMatchObject({ value: { restored: 1 } });
-      expect(suspended.tags[0]).toMatchObject({ status: 'active', statusSeq: 3 });
+      expect(suspended.tags[0]).toMatchObject({ status: 'active', changeSeq: 3 });
       expect(suspended.tags[0]!.badge).not.toBeNull();
       expect(suspended.state).toMatchObject({ offSaleCauses: [], listed: true });
       expect(suspended.pendingEvents.map((e) => e.type)).toEqual([
@@ -362,14 +424,16 @@ describe.each([
       ]);
     });
 
-    it('keeps an allowed tag with a fresh copy and no history row; records a basis switch', () => {
+    it('keeps an allowed tag with an unchanged copy: no history row, no event, same change_seq', () => {
       const offer = withActiveTag();
       expect(settle(offer, (q) => allowed(q))).toMatchObject({ value: { kept: 1 } });
       expect(offer.pendingTagHistory).toEqual([]);
       expect(offer.pendingEvents).toEqual([]);
-      expect(offer.tags[0]!.statusSeq).toBe(1);
+      expect(offer.tags[0]!.changeSeq).toBe(1);
       expect(offer.hasChanges).toBe(true);
+    });
 
+    it('writes a history row for a basis switch (change_seq + 1) and announces it (F1)', () => {
       const again = withActiveTag();
       const manufacturer = (q: TagClaimQuery) =>
         allowed(q, {
@@ -381,8 +445,32 @@ describe.each([
       expect(again.pendingEvents.map((e) => e.type)).toEqual([
         'catalog.offer-tag-basis-switched.v1',
       ]);
-      expect(again.pendingTagHistory).toEqual([]);
-      expect(again.tags[0]).toMatchObject({ statusSeq: 1, copy: { basis: 'MANUFACTURER' } });
+      expect(again.pendingTagHistory).toEqual([
+        expect.objectContaining({
+          fromStatus: 'active',
+          toStatus: 'active',
+          changeSeq: 2,
+          copy: expect.objectContaining({ basis: 'MANUFACTURER' }) as unknown,
+        }),
+      ]);
+      expect(again.tags[0]).toMatchObject({ changeSeq: 2, copy: { basis: 'MANUFACTURER' } });
+    });
+
+    it('writes a history row for a new certificate version on the same basis (M4)', () => {
+      const offer = withActiveTag();
+      const newVersion = ids.next();
+      const renewed = (q: TagClaimQuery) =>
+        allowed(q, { certificate: { ...allowed(q).certificate!, versionId: newVersion } });
+      expect(settle(offer, renewed)).toMatchObject({ value: { kept: 1 } });
+      expect(offer.pendingEvents).toEqual([]);
+      expect(offer.pendingTagHistory).toEqual([
+        expect.objectContaining({
+          fromStatus: 'active',
+          toStatus: 'active',
+          changeSeq: 2,
+          copy: expect.objectContaining({ certificateVersionId: newVersion }) as unknown,
+        }),
+      ]);
     });
 
     it('changes nothing on an unavailable or stale answer (fail closed)', () => {
@@ -488,6 +576,42 @@ describe.each([
       expect(next.tags[0]).toMatchObject({ status: 'removed', removedByKind: 'seller' });
       expect(next.pendingTagHistory).toEqual([
         expect.objectContaining({ fromStatus: 'pending-publish', toStatus: 'removed' }),
+      ]);
+    });
+
+    it('writes a history row when a kept pending tag takes the copy of a new frozen revision (F1)', () => {
+      const offer = draft();
+      request(offer, [typeCode]);
+      const next = Offer.restore(offer.state, offer.tags);
+      const newer = facts({
+        revisionPublished: false,
+        productRevisionId: ids.next<'ProductRevision'>(),
+      });
+      expect(
+        next.setPendingPublishTags({
+          tags: [{ tagId: ids.next<'OfferTag'>(), typeCode }],
+          facts: newer,
+          decisions: new Map([
+            [typeCode, claimQueriesFor(next.state, newer, typeCode)!.map((q) => allowed(q))],
+          ]),
+          entryPath: 'revision-submit',
+          actor: seller,
+          hash,
+          now: T1,
+        }),
+      ).toEqual({ ok: true, value: undefined });
+      expect(next.tags[0]).toMatchObject({
+        status: 'pending-publish',
+        changeSeq: 2,
+        copyRevisionId: newer.productRevisionId,
+      });
+      expect(next.pendingTagHistory).toEqual([
+        expect.objectContaining({
+          fromStatus: 'pending-publish',
+          toStatus: 'pending-publish',
+          changeSeq: 2,
+          copyRevisionId: newer.productRevisionId,
+        }),
       ]);
     });
 

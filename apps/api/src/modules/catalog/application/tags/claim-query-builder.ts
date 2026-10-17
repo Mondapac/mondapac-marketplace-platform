@@ -14,6 +14,16 @@ export interface ClaimQueryBuilderDependencies {
   readonly categoryPaths: CategoryPathsReader;
 }
 
+/**
+ * The published facts of a product with the product version they were read at. A write unit
+ * compares the version with the one its ask was built on, so a revision published in between
+ * makes the command ask again (Hassan M1). `productVersion` is null for an unknown product.
+ */
+export interface PublishedSnapshot {
+  readonly facts: ClaimFacts | null;
+  readonly productVersion: number | null;
+}
+
 /** SHA-256 hex of a canonical text: the stored `inputs_hash` of a tag copy (design 5.4). */
 export const sha256Hex = (text: string): string =>
   createHash('sha256').update(text, 'utf8').digest('hex');
@@ -50,8 +60,20 @@ export class ClaimQueryBuilder {
     market: MarketContext,
     productId: Id<'Product'>,
   ): Promise<ClaimFacts | null> {
+    return (await this.publishedSnapshot(market, productId)).facts;
+  }
+
+  /** The published facts and the product version they were read at (in the caller's unit). */
+  async publishedSnapshot(
+    market: MarketContext,
+    productId: Id<'Product'>,
+  ): Promise<PublishedSnapshot> {
     const product = await this.deps.products.findById(market, productId);
-    return product === null ? null : this.publishedFacts(market, product);
+    if (product === null) return { facts: null, productVersion: null };
+    return {
+      facts: await this.publishedFacts(market, product),
+      productVersion: product.state.version,
+    };
   }
 
   /**

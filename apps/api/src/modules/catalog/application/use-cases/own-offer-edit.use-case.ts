@@ -11,6 +11,8 @@ import type { ClaimEvaluator } from '../ports/claim-evaluator';
 import type { ClaimQueryBuilder } from '../tags/claim-query-builder';
 import {
   askPrepared,
+  claimsFailClosed,
+  factsInUnit,
   hashesOf,
   keptTagTypes,
   MAX_CLAIM_ATTEMPTS,
@@ -156,7 +158,7 @@ export class OwnOfferEdit extends UseCase<
     if (throttled !== null) return err(throttled);
 
     for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
-      const outcome = await this.#attempt(context, parsed.value, sellerId);
+      const outcome = await claimsFailClosed(() => this.#attempt(context, parsed.value, sellerId));
       if (outcome !== RETRY) return outcome;
     }
     return err({ code: 'conflict.retry' });
@@ -242,11 +244,9 @@ export class OwnOfferEdit extends UseCase<
         const now = deps.clock.now();
         const edited = offer.edit({ sellerSku, conditionCode, description, now });
         if (!edited.ok) return err(failureOf(edited.error));
-        const types = keptTagTypes(offer);
-        const facts =
-          types.length === 0
-            ? null
-            : await deps.claims.publishedFactsOf(market, offer.state.productId);
+        // The facts again, in this unit: a revision published since the ask means asking again.
+        const facts = await factsInUnit(deps.claims, market, offer.state.productId, prepared);
+        if (facts === RETRY) return ok(RETRY);
         const settled = offer.settleTags({
           facts,
           decisions: asked.value,

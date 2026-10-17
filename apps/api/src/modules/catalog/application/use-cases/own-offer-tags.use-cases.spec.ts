@@ -23,6 +23,7 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { Offer, type OfferState } from '../../domain/offer';
 import type { ClaimFacts, OfferTagState, TagClaimQuery } from '../../domain/offer-tag';
+import { CategoryPathsUnavailableError } from '../ports/category-paths.reader';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { OfferRepository } from '../ports/offer.repository';
@@ -67,6 +68,13 @@ describe.each([
         sellerId: population === 'seller' ? owner : null,
       }),
     );
+
+  /** A seller context whose actor carries the reserved acting-as marker (SEL-08). */
+  const actingAs = (): CallContext => {
+    const context = contextOf('seller');
+    const actor = { ...context.actor, actingAs: { adminAccountId: ids.next() } };
+    return { ...context, actor: actor };
+  };
 
   const offerState = (overrides: Partial<OfferState> = {}): OfferState => ({
     id: ids.next<'Offer'>(),
@@ -216,6 +224,7 @@ describe.each([
       saved,
       outbox,
       evaluator,
+      claims,
       offerId: initial?.state.id ?? ids.next<'Offer'>(),
       current: () => current,
     };
@@ -231,7 +240,7 @@ describe.each([
         variantIds.map((id) => [id, sellerId, 'SEALED_ORIGINAL']),
       );
       const tag = r.current()!.tags[0]!;
-      expect(tag).toMatchObject({ typeCode, status: 'active', statusSeq: 1 });
+      expect(tag).toMatchObject({ typeCode, status: 'active', changeSeq: 1 });
       expect(tag.badge).toMatchObject({ typeCode, typeRevisionId: certificate.typeRevisionId });
       expect(r.saved[0]!.pendingTagHistory).toEqual([
         expect.objectContaining({ toStatus: 'active', entryPath: 'tag-add' }),
@@ -396,7 +405,7 @@ describe.each([
         status: 'removed',
         removedByKind: 'seller',
         badge: null,
-        statusSeq: 2,
+        changeSeq: 2,
       });
       expect(r.outbox.types).toEqual(['catalog.offer-tag-removed.v1']);
     });
@@ -408,7 +417,7 @@ describe.each([
             status: 'suspended',
             badge: null,
             lastReasonCode: 'certificate-expired',
-            statusSeq: 2,
+            changeSeq: 2,
           }),
         ],
       });
@@ -507,6 +516,126 @@ describe.each([
         error: { code: 'validation.failed', fields: [{ path: 'requestedTags', code: 'type' }] },
       });
       expect(r.saved).toHaveLength(0);
+    });
+  });
+
+  describe('serialisation with revision publication (Hassan M1, M2)', () => {
+    const draft = () =>
+      offerState({ status: 'draft', listed: false, submittedAt: null, firstPublishedAt: null });
+
+    it('add-tag asks again when the product moved between the ask and the write', async () => {
+      const r = rig();
+      r.claims.onPublishedRead = (read, fake) => {
+        if (read === 2) fake.productVersion += 1;
+      };
+      const outcome = await r.add.execute(contextOf('seller'), { offerId: r.offerId, typeCode });
+      expect(outcome.ok).toBe(true);
+      expect(r.evaluator.calls).toHaveLength(2);
+      expect(r.saved).toHaveLength(1);
+    });
+
+    it('submit judges against the facts read in its own unit: a revision published every time is conflict.retry', async () => {
+      const r = rig({ offer: draft() });
+      r.claims.onPublishedRead = (read, fake) => {
+        fake.productVersion = read;
+      };
+      expect(
+        await r.submit.execute(contextOf('seller'), {
+          offerId: r.offerId,
+          requestedTags: [typeCode],
+        }),
+      ).toEqual({ ok: false, error: { code: 'conflict.retry' } });
+      expect(r.evaluator.calls).toHaveLength(3);
+      expect(r.saved).toHaveLength(0);
+    });
+
+    it('submit never activates on decisions about a revision other than the one read in the unit (M2)', async () => {
+      const r = rig({ offer: draft() });
+      r.claims.onPublishedRead = (read, fake) => {
+        // Same product version, another published revision on every in-unit read.
+        if (read % 2 === 0 && fake.published !== null) {
+          fake.published = { ...fake.published, productRevisionId: ids.next<'ProductRevision'>() };
+        }
+      };
+      expect(
+        await r.submit.execute(contextOf('seller'), {
+          offerId: r.offerId,
+          requestedTags: [typeCode],
+        }),
+      ).toEqual({ ok: false, error: { code: 'conflict.retry' } });
+      expect(r.saved).toHaveLength(0);
+    });
+
+    it('answers claim.check-unavailable, not a fault, when the category paths cannot be built (M3)', async () => {
+      const r = rig();
+      r.claims.onPublishedRead = () => {
+        throw new CategoryPathsUnavailableError('unknown');
+      };
+      expect(await r.add.execute(contextOf('seller'), { offerId: r.offerId, typeCode })).toEqual({
+        ok: false,
+        error: { code: 'claim.check-unavailable' },
+      });
+      const s = rig({ offer: draft() });
+      s.claims.onPublishedRead = () => {
+        throw new CategoryPathsUnavailableError('unknown');
+      };
+      expect(
+        await s.submit.execute(contextOf('seller'), {
+          offerId: s.offerId,
+          requestedTags: [typeCode],
+        }),
+      ).toEqual({ ok: false, error: { code: 'claim.check-unavailable' } });
+    });
+
+    it('never faults when every answer is input-invalid (I3)', async () => {
+      const invalid = (q: TagClaimQuery) => ({
+        ...refusedDecision(q, 'input-invalid'),
+        inputs: null,
+      });
+      const r = rig({ decide: invalid });
+      expect(await r.add.execute(contextOf('seller'), { offerId: r.offerId, typeCode })).toEqual({
+        ok: false,
+        error: { code: 'claim.tag-not-allowed', tags: [{ typeCode, reason: 'input-invalid' }] },
+      });
+      const kept = rig({
+        offer: draft(),
+        tags: [activeTagState(ids.next<'OfferTag'>(), typeCode, certificate, T0)],
+        decide: invalid,
+      });
+      const submitted = await kept.submit.execute(contextOf('seller'), { offerId: kept.offerId });
+      expect(submitted.ok).toBe(true);
+      expect(kept.current()!.tags[0]).toMatchObject({
+        status: 'suspended',
+        lastReasonCode: 'input-invalid',
+      });
+    });
+  });
+
+  describe('acting-as sessions (Hassan L1)', () => {
+    it('refuses add-tag, remove-tag and a submit with requestedTags; a plain submit is not a tag write', async () => {
+      const r = rig({ tags: [activeTagState(ids.next<'OfferTag'>(), typeCode, certificate, T0)] });
+      expect(await r.add.execute(actingAs(), { offerId: r.offerId, typeCode })).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(await r.remove.execute(actingAs(), { offerId: r.offerId, typeCode })).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      const d = rig({
+        offer: offerState({
+          status: 'draft',
+          listed: false,
+          submittedAt: null,
+          firstPublishedAt: null,
+        }),
+      });
+      expect(
+        await d.submit.execute(actingAs(), { offerId: d.offerId, requestedTags: [typeCode] }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(r.saved).toHaveLength(0);
+      expect(d.saved).toHaveLength(0);
+      expect(r.evaluator.calls).toHaveLength(0);
     });
   });
 });

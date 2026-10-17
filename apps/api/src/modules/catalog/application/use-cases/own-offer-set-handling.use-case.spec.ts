@@ -337,4 +337,17 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-handling in market %s', (cod
     });
     expect(outcome).toEqual({ ok: false, error: { code: 'conflict.retry' } });
   });
+
+  it('refuses an acting-as session before any read (Hassan L1)', async () => {
+    const r = rig();
+    const context = contextOf('seller');
+    const actor = { ...context.actor, actingAs: { adminAccountId: ids.next() } };
+    const outcome = await r.useCase.execute(
+      { ...context, actor: actor },
+      { offerId: r.state!.id, handling: 'FRESH' },
+    );
+    expect(outcome).toEqual({ ok: false, error: { code: 'access.denied' } });
+    expect(r.saved).toHaveLength(0);
+    expect(r.reserved).toHaveLength(0);
+  });
 });

@@ -65,6 +65,7 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       orderBy: { id: 'desc' },
       take: Math.min(page.limit, MAX_PAGE),
     });
+    // Read-only projections for the list (no tags): never saved (I1).
     return rows.map((row) => offerFromRow(row));
   }
 

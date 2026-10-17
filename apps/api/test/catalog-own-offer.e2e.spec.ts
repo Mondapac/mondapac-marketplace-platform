@@ -1104,7 +1104,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
           status: 'suspended',
           badge: null,
           lastReasonCode: 'certificate-expired',
-          statusSeq: 2,
+          changeSeq: 2,
         }),
       ]);
       const suspended = await withMarket(http().delete(`${tagsUrl}/${typeCode}`), session).send();
