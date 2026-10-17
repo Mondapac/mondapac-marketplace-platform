@@ -78,6 +78,7 @@ model CertificationType {
   issuers             CertificationIssuer[]
   certificates        CertificationSellerCertification[]
   documents           CertificationUploadedDocument[]
+  issuerRequests      CertificationIssuerRequest[]
 
   /// The target of composite foreign keys (C3).
   @@unique([marketId, id])
@@ -153,6 +154,7 @@ model CertificationIssuer {
   submissions             CertificationSellerCertificationSubmission[]
   draftOf                 CertificationSellerCertification[]           @relation("CertificateDraftIssuer")
   channels                CertificationIssuerContactChannel[]
+  issuerRequests          CertificationIssuerRequest[]
 
   @@unique([marketId, id])
   /// The target of every issuer foreign key, which carries the type (CE4).
@@ -433,6 +435,7 @@ model CertificationUploadedDocument {
   draftLinks      CertificationSellerDraftDocument[]
   submissionLinks CertificationSubmissionDocument[]
   indexRows       CertificationDocumentIndex[]
+  requestLinks    CertificationIssuerRequestDocument[]
 
   @@unique([marketId, id])
   /// The target of the document index's foreign key (slice 7): a row names its file's owner.
@@ -639,5 +642,63 @@ model CertificationDocumentIndex {
   @@index([marketId, indexHmac])
   @@index([marketId, sellerId])
   @@map("document_index")
+  @@schema("certification")
+}
+
+/// "My issuer is not listed" (data design 3.8; D 2.1 `IssuerRequest`): one seller's request for a
+/// missing issuer of one registry type, with the issuer's name as the seller typed it. The name is
+/// request text only, encrypted under the seller's subject key (label
+/// certification.issuer-request.typed-name, D 10.1) and immutable (not in the UPDATE grant). There
+/// is no column or foreign key from `issuers` to a request: the text has no path into the registry
+/// or a submission (AC 11). Never deleted. The open-queue and per-seller partial indexes are in the
+/// migration (invisible to Prisma).
+model CertificationIssuerRequest {
+  id                   String                               @id @db.Uuid
+  marketId             String                               @map("market_id") @db.VarChar(8)
+  tenantId             String                               @map("tenant_id")
+  sellerId             String                               @map("seller_id") @db.Uuid
+  typeId               String                               @map("type_id") @db.Uuid
+  /// Personal (a seller's text); a v1 envelope of the platform SubjectKeyService.
+  typedNameCiphertext  String                               @map("typed_name_ciphertext")
+  /// open | issuer-added | not-accepted
+  state                String
+  /// A reason code of the Market's list (S8); set iff not-accepted.
+  answerReasonCode     String?                              @map("answer_reason_code")
+  /// The issuer the admin added, of the request's type (the foreign key carries the type); set iff
+  /// issuer-added.
+  issuerId             String?                              @map("issuer_id") @db.Uuid
+  answeredAt           DateTime?                            @map("answered_at") @db.Timestamptz(6)
+  answeredByAccountId  String?                              @map("answered_by_account_id") @db.Uuid
+  version              Int
+  createdAt            DateTime                             @map("created_at") @db.Timestamptz(6)
+  type                 CertificationType                    @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  issuer               CertificationIssuer?                 @relation(fields: [marketId, issuerId, typeId], references: [marketId, id, typeId], onDelete: Restrict, onUpdate: Restrict)
+  documents            CertificationIssuerRequestDocument[]
+
+  @@unique([marketId, id])
+  /// The target of the document link's foreign key: the link names the seller and the type.
+  @@unique([marketId, id, typeId, sellerId], map: "issuer_requests_market_id_id_type_id_seller_id_key")
+  @@map("issuer_requests")
+  @@schema("certification")
+}
+
+/// The files of an issuer request (data design 3.8). Insert-only (CE3). The foreign keys bind the
+/// file's owner and type to the request's; a trigger admits only a clean `issuer-request` file.
+model CertificationIssuerRequestDocument {
+  marketId        String                        @map("market_id") @db.VarChar(8)
+  tenantId        String                        @map("tenant_id")
+  issuerRequestId String                        @map("issuer_request_id") @db.Uuid
+  typeId          String                        @map("type_id") @db.Uuid
+  sellerId        String                        @map("seller_id") @db.Uuid
+  documentId      String                        @map("document_id") @db.Uuid
+  position        Int                           @db.SmallInt
+  request         CertificationIssuerRequest    @relation(fields: [marketId, issuerRequestId, typeId, sellerId], references: [marketId, id, typeId, sellerId], map: "issuer_request_documents_request_fkey", onDelete: Restrict, onUpdate: Restrict)
+  document        CertificationUploadedDocument @relation(fields: [marketId, documentId, typeId, sellerId], references: [marketId, id, typeId, ownerSellerId], map: "issuer_request_documents_document_fkey", onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, issuerRequestId, documentId])
+  /// A file belongs to at most one request.
+  @@unique([marketId, documentId])
+  @@unique([marketId, issuerRequestId, position])
+  @@map("issuer_request_documents")
   @@schema("certification")
 }

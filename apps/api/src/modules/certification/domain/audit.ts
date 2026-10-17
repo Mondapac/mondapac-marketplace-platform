@@ -1,6 +1,6 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import type { AuditActionDefinition } from '@mondapac/shared-kernel';
-import { SUBMISSION_KINDS } from './events';
+import { ISSUER_REQUEST_OUTCOME_VALUES, SUBMISSION_KINDS } from './events';
 
 // The audited actions of certification's admin review (design 11; AC 22), registered at boot with
 // `registerAuditActions('certification', CERTIFICATION_AUDIT_ACTIONS)` and written through the
@@ -91,6 +91,39 @@ export const ReviewDocumentDownloaded = defineAuditAction({
   after: { submissionId: auditField.id(), documentId: auditField.id() },
 });
 
+/** The audit target type of a seller's "my issuer is not listed" request. */
+export const ISSUER_REQUEST_TARGET = 'certification.issuer-request';
+
+/**
+ * An admin answered an issuer request (design 11). The issuer id when one was added; never the
+ * typed name and never the reason code (Market data, on the request row).
+ */
+export const IssuerRequestAnsweredAudit = defineAuditAction({
+  action: 'certification.issuer-request.answered',
+  targetType: ISSUER_REQUEST_TARGET,
+  actors: ['authenticated'],
+  after: {
+    outcome: auditField.enumOf(ISSUER_REQUEST_OUTCOME_VALUES),
+    issuerId: auditField.optional(auditField.id()),
+  },
+});
+
+/** An admin opened an issuer request, which decrypts the typed name (as VER-14 for certificates). */
+export const IssuerRequestViewed = defineAuditAction({
+  action: 'certification.issuer-request.viewed',
+  targetType: ISSUER_REQUEST_TARGET,
+  actors: ['authenticated'],
+  after: { sellerId: auditField.id() },
+});
+
+/** An admin read the bytes of one file of an issuer request. */
+export const IssuerRequestDocumentDownloaded = defineAuditAction({
+  action: 'certification.issuer-request.document-downloaded',
+  targetType: ISSUER_REQUEST_TARGET,
+  actors: ['authenticated'],
+  after: { documentId: auditField.id() },
+});
+
 /** Every audited action of certification, for its module's registration. */
 export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   SellerCertificationApprovedAudit,
@@ -101,4 +134,7 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   IssuerConfirmationRecorded,
   ReviewPageViewed,
   ReviewDocumentDownloaded,
+  IssuerRequestAnsweredAudit,
+  IssuerRequestViewed,
+  IssuerRequestDocumentDownloaded,
 ]);

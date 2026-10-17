@@ -44,6 +44,11 @@ export const SUBMIT_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'submit.certificate.day', limit: 5, windowMinutes: DAY },
 ]);
 
+/** "My issuer is not listed" requests per seller (design 7.5): 3 per 24 h. */
+export const ISSUER_REQUEST_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'issuer-request.seller.day', limit: 3, windowMinutes: DAY },
+]);
+
 /** A counter as the reservation unit left it: this attempt is already counted. */
 export interface RateReservation {
   readonly kind: RateCounterKind;

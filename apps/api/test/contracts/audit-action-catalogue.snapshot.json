@@ -22,6 +22,37 @@
     }
   },
   {
+    "action": "certification.issuer-request.answered",
+    "targetType": "certification.issuer-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "issuerId": "optional(id)",
+      "outcome": "enumOf(issuer-added|not-accepted)"
+    }
+  },
+  {
+    "action": "certification.issuer-request.document-downloaded",
+    "targetType": "certification.issuer-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "documentId": "id"
+    }
+  },
+  {
+    "action": "certification.issuer-request.viewed",
+    "targetType": "certification.issuer-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "sellerId": "id"
+    }
+  },
+  {
     "action": "certification.review-check.recorded",
     "targetType": "certification.seller-certification",
     "targetId": "id",

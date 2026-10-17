@@ -277,12 +277,12 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         .map((r) => [r.scope, r.kind, r.seedCode, r.permissionKeys.length]),
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
-      ['platform', 'default', 'onboarding-compliance', 9],
+      ['platform', 'default', 'onboarding-compliance', 10],
       ['platform', 'default', 'catalogue-moderator', 6],
       ['platform', 'default', 'operations-support', 5],
       ['platform', 'default', 'finance', 2],
       ['platform', 'default', 'viewer', 13],
-      ['platform', 'default', 'certification-reviewer', 5],
+      ['platform', 'default', 'certification-reviewer', 6],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 6],
       ['seller', 'default', 'order-fulfilment', 0],
@@ -301,8 +301,9 @@ describe('the checked-in role seed (identity design 5.6)', () => {
 
     // Viewer: every unprotected `view` key of the platform scope, as the registry declares them,
     // except the keys that decrypt personal data (sellers design 6.1: the Viewer never reads
-    // business details in clear).
-    const DECRYPTING_VIEW_KEYS = ['sellers.business-details.view'];
+    // business details in clear), and `certification.issuer.view` (certification slice 6: the
+    // issuer request read decrypts the seller's typed issuer name).
+    const DECRYPTING_VIEW_KEYS = ['sellers.business-details.view', 'certification.issuer.view'];
     expect(keysOf('viewer')).toEqual(
       registry
         .list('platform')
@@ -313,6 +314,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         .sort(),
     );
     expect(keysOf('onboarding-compliance')).toEqual([
+      'certification.issuer.view',
       'certification.seller-certificate.review',
       'certification.seller-certificate.view',
       'identity.seller-access.approve',
@@ -339,6 +341,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'sellers.seller.view',
     ]);
     expect(keysOf('certification-reviewer')).toEqual([
+      'certification.issuer.view',
       'certification.seller-certificate.review',
       'certification.seller-certificate.view',
       'identity.seller-access.view',

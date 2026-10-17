@@ -238,6 +238,7 @@ export function expiryBoundaryIn(expiryDate: Temporal.PlainDate, zone: string): 
 /** The status codes the seller sees (design 3.3). */
 export type SellerStatusCode =
   | 'draft'
+  | 'draft-issuer-not-listed'
   | 'awaiting-review'
   | 'changes-needed'
   | 'declined'
@@ -257,6 +258,8 @@ export interface SellerStatusInput {
   readonly approvedBoundaryAt: Temporal.Instant | null;
   readonly hasApproval: boolean;
   readonly approvedIssuerState: IssuerState | null;
+  /** True while the seller has an open "my issuer is not listed" request for this type. */
+  readonly issuerRequestOpen: boolean;
 }
 
 export interface SellerStatus {
@@ -276,7 +279,9 @@ export function sellerStatusOf(input: SellerStatusInput, now: Temporal.Instant):
   if (status === 'declined') return { code: 'declined', submitBy: none };
   if (status === 'revoked') return { code: 'revoked', submitBy: none };
   if (status === 'changes-needed') return { code: 'changes-needed', submitBy: none };
-  if (status === 'draft') return { code: 'draft', submitBy: none };
+  if (status === 'draft') {
+    return { code: input.issuerRequestOpen ? 'draft-issuer-not-listed' : 'draft', submitBy: none };
+  }
   // `in-review` is the first review of a record that was never approved; a renewal of an approved
   // record leaves the record `approved` or `expired` with a pending pointer (design 3.1).
   if (status === 'in-review' || !input.hasApproval) {

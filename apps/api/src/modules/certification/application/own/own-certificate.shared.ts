@@ -188,6 +188,7 @@ export function summaryOf(
       approvedBoundaryAt: stored.approvedBoundaryAt,
       hasApproval: stored.approvedSubmissionId !== null,
       approvedIssuerState: stored.approvedIssuerState,
+      issuerRequestOpen: stored.issuerRequestOpen,
     },
     now,
   );

@@ -67,6 +67,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'CATALOG_REVISIONS');
   await createCopy(name, 'CATALOG_ATTRIBUTES');
   await createCopy(name, 'PRICING_CONSTRAINTS');
+  await createCopy(name, 'CERT_CLAIMS_CORE');
 }
 
 /**
@@ -106,6 +107,11 @@ export default async function globalSetup(): Promise<void> {
  *   (40P01) the writers of other files, so each of these files keeps its own copy;
  *   `cert_seed`: certification-seed.db-spec.ts runs the type seed and reads whole Markets (the
  *   vocabulary), so no other file's types live there.
+ * - `cert_claims_core`: certification-claims-core.db-spec.ts (with the types registry suite it
+ *   runs) probes the owner's TRUNCATE ... CASCADE on the insert-only certification tables; from
+ *   certification_type_revisions that reaches every table under certification_types (issuers,
+ *   seller certificates, uploaded documents, issuer requests and their links), so it deadlocked
+ *   (40P01) the certification writers of other files and keeps its own copy.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -128,7 +134,8 @@ async function createCopy(
     | 'CERT_SEED'
     | 'CATALOG_REVISIONS'
     | 'CATALOG_ATTRIBUTES'
-    | 'PRICING_CONSTRAINTS',
+    | 'PRICING_CONSTRAINTS'
+    | 'CERT_CLAIMS_CORE',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });

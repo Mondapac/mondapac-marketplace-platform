@@ -35,8 +35,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // `certification.seller-certificate.view` and `.review` (certification slice 7: the review
     // queue, the review page, checks, scope and issuer confirmation). All three decisions (approve,
     // request changes, decline) need the protected `.approve`, which is not listed: a default role
-    // never lists a protected key (R11), the Platform Administrator grants it.
-    seedVersion: 5,
+    // never lists a protected key (R11), the Platform Administrator grants it. Version 6 adds
+    // `certification.issuer.view` (certification slice 6: the issuer request queue and the typed
+    // name); answering needs the protected `certification.issuer.edit`, not listed.
+    seedVersion: 6,
     nameKey: 'identity.role.onboarding-compliance',
     permissionKeys: [
       'identity.seller-access.view',
@@ -48,6 +50,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'sellers.business-details.view',
       'certification.seller-certificate.view',
       'certification.seller-certificate.review',
+      'certification.issuer.view',
     ],
   },
   {
@@ -139,11 +142,12 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // business details for the holder-name check and records checks, scope and confirmation. It
     // cannot decide: approve, request changes and decline all need the protected
     // `certification.seller-certificate.approve`, which the Platform Administrator grants in a
-    // custom role (do not add it here).
+    // custom role (do not add it here). Version 2 adds `certification.issuer.view` (certification
+    // slice 6: the issuer request queue); the protected `certification.issuer.edit` is not listed.
     scope: 'platform',
     kind: 'default',
     seedCode: 'certification-reviewer',
-    seedVersion: 1,
+    seedVersion: 2,
     nameKey: 'identity.role.certification-reviewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -151,6 +155,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'sellers.business-details.view',
       'certification.seller-certificate.view',
       'certification.seller-certificate.review',
+      'certification.issuer.view',
     ],
   },
 ];
