@@ -64,7 +64,9 @@ function exported(
     | 'TEST_CATALOG_ATTRIBUTES_DATABASE_URL'
     | 'TEST_CATALOG_ATTRIBUTES_OWNER_DATABASE_URL'
     | 'TEST_PRICING_CONSTRAINTS_DATABASE_URL'
-    | 'TEST_PRICING_CONSTRAINTS_OWNER_DATABASE_URL',
+    | 'TEST_PRICING_CONSTRAINTS_OWNER_DATABASE_URL'
+    | 'TEST_CERT_CLAIMS_CORE_DATABASE_URL'
+    | 'TEST_CERT_CLAIMS_CORE_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -263,4 +265,17 @@ export function pricingConstraintsTestDatabaseUrl(): string {
 
 export function pricingConstraintsOwnerTestDatabaseUrl(): string {
   return exported('TEST_PRICING_CONSTRAINTS_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that certification-claims-core.db-spec.ts (and the types registry suite it runs) probes
+ * the owner's TRUNCATE ... CASCADE on (global-setup.ts), as the application login and as its owner:
+ * no other file writes the certification tables those probes lock.
+ */
+export function certClaimsCoreTestDatabaseUrl(): string {
+  return exported('TEST_CERT_CLAIMS_CORE_DATABASE_URL');
+}
+
+export function certClaimsCoreOwnerTestDatabaseUrl(): string {
+  return exported('TEST_CERT_CLAIMS_CORE_OWNER_DATABASE_URL');
 }

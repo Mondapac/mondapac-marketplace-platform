@@ -4,7 +4,7 @@ import { TEST_MARKETS } from '../support/test-config';
 import { marketOf, otherMarketOf } from './persistence-support';
 import { EXPECTED_PRIVILEGES } from './expected-privileges';
 import { registerTypesRegistrySuite } from './certification-types-registry.db-suite';
-import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { certClaimsCoreOwnerTestDatabaseUrl, certClaimsCoreTestDatabaseUrl } from './test-database';
 
 // Certification migration 1 on PostgreSQL (docs/design/data/certification.md 3.1, 3.2, 3.4 to
 // 3.7, 6.1, 8), for both Market fixtures: the constraints, the same-parent keys (CE4), the
@@ -30,6 +30,8 @@ const COVERED_BY_SELLER_CERTIFICATE_SPEC = [
   'submission_review_checks',
   'submission_scope_readings',
   'seller_issuer_confirmations',
+  // Certification slice 6: covered by certification-issuer-request.db-spec.ts.
+  'issuer_request_documents',
 ];
 
 function insertOnlyTables(): string[] {
@@ -51,7 +53,7 @@ function insertOnlyTables(): string[] {
 }
 
 it('has exactly the row and the statement trigger on every insert-only table of the schema, and only there (CE3)', async () => {
-  const client = new Client({ connectionString: testDatabaseUrl() });
+  const client = new Client({ connectionString: certClaimsCoreTestDatabaseUrl() });
   await client.connect();
   try {
     const { rows } = await client.query<{
@@ -88,6 +90,24 @@ it('has exactly the row and the statement trigger on every insert-only table of 
         'issuer_contact_channels_retire_once',
         19,
         'certification.issuer_contact_channels_guard_update',
+      ],
+      [
+        'issuer_request_documents',
+        'issuer_request_documents_clean',
+        7,
+        'certification.issuer_request_document_link_clean',
+      ],
+      [
+        'issuer_requests',
+        'issuer_requests_answer_once',
+        19,
+        'certification.issuer_requests_guard_update',
+      ],
+      [
+        'issuer_requests',
+        'issuer_requests_insert_open',
+        7,
+        'certification.issuer_requests_guard_insert',
       ],
       [
         'relaxation_proposals',
@@ -152,8 +172,8 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
   let owner: Client;
 
   beforeAll(async () => {
-    sql = new Client({ connectionString: testDatabaseUrl() });
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    sql = new Client({ connectionString: certClaimsCoreTestDatabaseUrl() });
+    owner = new Client({ connectionString: certClaimsCoreOwnerTestDatabaseUrl() });
     await sql.connect();
     await owner.connect();
   });

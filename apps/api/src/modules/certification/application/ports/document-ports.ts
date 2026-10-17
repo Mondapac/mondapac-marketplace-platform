@@ -66,7 +66,8 @@ export type CertificateField =
   | 'decision-reason-text'
   | 'scope-location'
   | 'scope-text'
-  | 'confirmation-reference';
+  | 'confirmation-reference'
+  | 'issuer-request-typed-name';
 
 /**
  * Field encryption and the content hash under the seller's subject key (design 10.1, 10.2).

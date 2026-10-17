@@ -33,6 +33,7 @@ const file = z.strictObject({
       outcomes: z.array(outcome).min(1),
     }),
   ),
+  issuerRequestReasons: z.array(z.strictObject({ code, label: z.string().min(1).max(300) })),
 });
 
 const logger = new Logger('CertificationReviewPolicyFiles');
@@ -40,12 +41,22 @@ const logger = new Logger('CertificationReviewPolicyFiles');
 /** A policy that is unreadable, malformed or inconsistent: the start-up stops. */
 export class ReviewPolicyError extends Error {}
 
-/** Check codes are distinct, reasons are distinct and name a check of the list (when they name one). */
+/**
+ * Check codes are distinct, reasons are distinct and name a check of the list (when they name one),
+ * and the issuer request reasons are distinct.
+ */
 export function assertReviewPolicy(policy: ReviewPolicy, where: string): void {
   const checks = new Set<string>();
   for (const check of policy.checks) {
     if (checks.has(check.code)) throw new ReviewPolicyError(`${where}: check ${check.code} twice`);
     checks.add(check.code);
+  }
+  const answers = new Set<string>();
+  for (const reason of policy.issuerRequestReasons) {
+    if (answers.has(reason.code)) {
+      throw new ReviewPolicyError(`${where}: issuer request reason ${reason.code} twice`);
+    }
+    answers.add(reason.code);
   }
   const reasons = new Set<string>();
   for (const reason of policy.reasons) {
@@ -83,7 +94,11 @@ export function loadFileReviewPolicies(
     if (path.basename(name, '.json') !== parsed.data.market) {
       throw new ReviewPolicyError(`${name}: names Market ${parsed.data.market}`);
     }
-    const policy: ReviewPolicy = { checks: parsed.data.checks, reasons: parsed.data.reasons };
+    const policy: ReviewPolicy = {
+      checks: parsed.data.checks,
+      reasons: parsed.data.reasons,
+      issuerRequestReasons: parsed.data.issuerRequestReasons,
+    };
     assertReviewPolicy(policy, name);
     policies[parsed.data.market] = policy;
   }

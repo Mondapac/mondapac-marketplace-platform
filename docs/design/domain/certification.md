@@ -1049,6 +1049,14 @@ Javad has the pace of `identity` and `sellers`.
 - **Reviewer file download** is `GET .../documents/{id}`, off unless `CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED=true` (the PDF scan hardening of PR 382 follow-up has to merge first). The review page lists the files either way.
 - **Mail.** Approved, changes requested and declined mails go to the seller Owner through the module's own events (`certification.*-mail` subscriptions); the Market's plain reason label is in the text, the reviewer's free text and the number never are.
 
+### 14.5 Slice 6 as built (issuer request and queue; 2026-10-17)
+- **Routes.** Seller: `POST /certification/seller/issuer-requests` (type code, typed name, one file as base64 on the larger-body route; refused for a type without an issuer registry, `type.no-issuer-registry` 409). Admin: `GET /certification/admin/issuer-requests` (open requests, oldest first, no typed name), `GET .../{id}` (typed name decrypted, active issuers of the type, the Market's reasons), `GET .../{id}/documents/{documentId}` (behind `CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED`) and `POST .../{id}/answer` (once, under the version).
+- **Keys.** `certification.issuer.view` (queue, read, file; held by `onboarding-compliance` v6 and `certification-reviewer` v2, not by `viewer`, because the read decrypts seller text) and the protected `certification.issuer.edit` (the answer; granted by the Platform Administrator in a custom role).
+- **Answer.** `issuer-added` names an active issuer of the request's own type and Market (the admin creates it in the registry first, slice 12; another type is `issuer.not-found`); `not-accepted` gives a reason code of the Market's `issuerRequestReasons` in `config/certification-review/<MARKET>.json` (a Market without the list cannot answer, fail closed). It publishes `certification.issuer-request-answered.v1` (ids and outcome only) and writes `certification.issuer-request.answered`; the read and the file read are audited too (`.viewed`, `.document-downloaded`), beyond 11's list, as VER-14 does for certificates.
+- **Typed name.** Encrypted under the seller's key (`certification.issuer-request.typed-name`) and shown only to the admin read. No event, audit row, log line or mail carries it, and it never reaches an issuer; the answer mail to the seller Owner names the type and, for `not-accepted`, the Market's reason label only.
+- **One open request per seller and type.** A second is refused with `issuer-request.already-open` (409) before the file work, and by a unique partial index under a race; it still counts against the 3 a day. Once answered, the seller may ask again.
+- **Seller status.** A draft of a type with an open request of the same seller shows `draft-issuer-not-listed`.
+
 ### 14.3 Spikes (run, not merged)
 | # | Spike |
 |---|---|

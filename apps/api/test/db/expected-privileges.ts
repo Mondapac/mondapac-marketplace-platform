@@ -216,6 +216,20 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'certification.document_index': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Migration 5 (issuer requests, slice 6): a request is never deleted and its typed name never
+    // changes; only the answer columns move, once (guard trigger). The file links are insert-only.
+    'certification.issuer_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'answer_reason_code',
+        'answered_at',
+        'answered_by_account_id',
+        'issuer_id',
+        'state',
+        'version',
+      ],
+    },
+    'certification.issuer_request_documents': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },

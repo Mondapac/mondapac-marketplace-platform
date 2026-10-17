@@ -2,7 +2,7 @@ import { uuidV7 } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { TEST_MARKETS } from '../support/test-config';
 import { marketOf, otherMarketOf } from './persistence-support';
-import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { certClaimsCoreOwnerTestDatabaseUrl, certClaimsCoreTestDatabaseUrl } from './test-database';
 
 // Certification migration 2 on PostgreSQL (docs/design/data/certification.md 3.2, 3.3, 3.7,
 // 3.20, 3.22, 4.4, 6.1, 8), for both Market fixtures: revision texts and claim terms, issuer
@@ -27,8 +27,8 @@ export function registerTypesRegistrySuite(): void {
     let owner: Client;
 
     beforeAll(async () => {
-      sql = new Client({ connectionString: testDatabaseUrl() });
-      owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+      sql = new Client({ connectionString: certClaimsCoreTestDatabaseUrl() });
+      owner = new Client({ connectionString: certClaimsCoreOwnerTestDatabaseUrl() });
       await sql.connect();
       await owner.connect();
     });

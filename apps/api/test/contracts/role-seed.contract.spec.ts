@@ -127,6 +127,14 @@ const PINNED: readonly (readonly [string, string])[] = [
     'platform:certification-reviewer@1',
     'c53755422ef712b9665cb5916fb0fa43921f4df8f1a98dc3b10939c0f8fdcbc9',
   ],
+  [
+    'platform:onboarding-compliance@6',
+    '3e948bf3120f7ef3490d3f328dcd15e812aed0bb101b7005f9e46b11fabe47d3',
+  ],
+  [
+    'platform:certification-reviewer@2',
+    '6a6bf309ae88e3327c9da8e4e76f47da656ff1df3ffff581199462d637b770ec',
+  ],
 ];
 
 const ENTRY = /^(platform|seller):([a-z][a-z0-9-]*)@([1-9][0-9]*)$/;

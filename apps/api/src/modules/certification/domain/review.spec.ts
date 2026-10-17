@@ -36,6 +36,7 @@ const POLICY: ReviewPolicy = {
       outcomes: ['declined'],
     },
   ],
+  issuerRequestReasons: [],
 };
 const NOW = Temporal.Instant.from('2026-10-16T00:00:00Z');
 const day = (text: string) => Temporal.PlainDate.from(text);

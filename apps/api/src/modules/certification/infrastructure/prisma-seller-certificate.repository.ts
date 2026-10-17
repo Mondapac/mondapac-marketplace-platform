@@ -66,7 +66,32 @@ export interface CertificateRow {
   _count: { submissions: number };
 }
 
-export function toCertificate(row: CertificateRow): StoredCertificate {
+/**
+ * The types for which the seller has an open request (design 3.3 `draft-issuer-not-listed`), on the
+ * unique partial index `issuer_requests_market_id_seller_id_type_id_open_key`. Ids only.
+ */
+export async function openIssuerRequestTypes(
+  prisma: PrismaService,
+  market: MarketContext,
+  sellerIds: readonly string[],
+): Promise<ReadonlySet<string>> {
+  if (sellerIds.length === 0) return new Set();
+  const rows = await prisma.tx(market).certificationIssuerRequest.findMany({
+    where: { marketId: market.marketId, sellerId: { in: [...sellerIds] }, state: 'open' },
+    select: { sellerId: true, typeId: true },
+    distinct: ['sellerId', 'typeId'],
+  });
+  return new Set(rows.map((row) => `${row.sellerId}|${row.typeId}`));
+}
+
+/**
+ * A stored certificate. `openRequests` is the answer of {@link openIssuerRequestTypes} for the
+ * certificate's seller: whether a "my issuer is not listed" request of its type is open.
+ */
+export function toCertificate(
+  row: CertificateRow,
+  openRequests: ReadonlySet<string>,
+): StoredCertificate {
   const draft: StoredDraft = {
     issuerId: row.draftIssuerId as Id<'Issuer'> | null,
     certificateNumberCiphertext: row.draftCertificateNumberCiphertext,
@@ -86,6 +111,7 @@ export function toCertificate(row: CertificateRow): StoredCertificate {
     approvedSubmissionId: row.approvedSubmissionId as Id<'Submission'> | null,
     approvedBoundaryAt: row.approvedBoundaryAt === null ? null : toInstant(row.approvedBoundaryAt),
     approvedIssuerState: (row.approvedSubmission?.issuer?.state ?? null) as IssuerState | null,
+    issuerRequestOpen: openRequests.has(`${row.sellerId}|${row.typeId}`),
     submissionCount: row._count.submissions,
     statusChangedAt: toInstant(row.statusChangedAt),
     lastChangedAt: toInstant(row.lastChangedAt),
@@ -176,7 +202,8 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       where: { marketId: market.marketId, sellerId, id },
       include: CERTIFICATE_INCLUDE,
     });
-    return row === null ? null : toCertificate(row);
+    if (row === null) return null;
+    return toCertificate(row, await openIssuerRequestTypes(this.prisma, market, [sellerId]));
   }
 
   async listOwn(
@@ -207,7 +234,8 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: page.limit,
     });
-    return rows.map(toCertificate);
+    const open = await openIssuerRequestTypes(this.prisma, market, [sellerId]);
+    return rows.map((row) => toCertificate(row, open));
   }
 
   async saveDraft(

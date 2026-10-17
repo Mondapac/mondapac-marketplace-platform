@@ -30,6 +30,7 @@ import {
   CERTIFICATE_INCLUDE,
   DOCUMENT_INCLUDE,
   fromDay,
+  openIssuerRequestTypes,
   toCertificate,
   toDate,
   toDay,
@@ -117,7 +118,10 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
       include: CERTIFICATE_INCLUDE,
     });
     if (row === null) return null;
-    const certificate = toCertificate(row);
+    const certificate = toCertificate(
+      row,
+      await openIssuerRequestTypes(this.prisma, market, [row.sellerId]),
+    );
     const history = await tx.certificationSellerCertificationHistory.findMany({
       where: { marketId: market.marketId, sellerCertificationId: certificateId },
       orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],

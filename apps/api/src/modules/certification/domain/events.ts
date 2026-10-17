@@ -77,6 +77,23 @@ export const SellerCertificationIssuerConfirmed = defineEvent({
   },
 });
 
+export const ISSUER_REQUEST_OUTCOME_VALUES = ['issuer-added', 'not-accepted'] as const;
+
+/**
+ * An admin answered a seller's "my issuer is not listed" request (design 2.1, 8.3). Consumer: own
+ * mail to the seller. Ids and the outcome only: never the typed name, which stays encrypted on the
+ * request row, and never the reason code (Market data, read again by the mail handler).
+ */
+export const IssuerRequestAnswered = defineEvent({
+  type: 'certification.issuer-request-answered.v1',
+  aggregateType: 'issuer-request',
+  payload: {
+    issuerRequestId: eventField.id(),
+    sellerId: eventField.id(),
+    outcome: eventField.enumOf(ISSUER_REQUEST_OUTCOME_VALUES),
+  },
+});
+
 /**
  * Every event certification publishes, for the event catalogue. Adding one adds it to the
  * snapshot (`apps/api/test/contracts/event-catalogue.snapshot.json`).
@@ -88,4 +105,5 @@ export const CERTIFICATION_EVENTS: readonly EventDefinition[] = [
   SellerCertificationChangesRequested,
   SellerCertificationDeclined,
   SellerCertificationIssuerConfirmed,
+  IssuerRequestAnswered,
 ];

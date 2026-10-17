@@ -69,3 +69,41 @@ export function declinedMail(input: {
     ].join('\n'),
   };
 }
+
+// The answer to a seller's "my issuer is not listed" request (design 12, `issuer-request-answered`).
+// Neither mail repeats the issuer's name the seller typed (request text, never a registry value) nor
+// names the added issuer: the seller picks it in the form, where the registry shows it.
+
+export function issuerAddedMail(input: { readonly typeCode: string }): DecisionMail {
+  const type = line(input.typeCode);
+  return {
+    subject: 'The issuer you asked about is now listed',
+    text: [
+      'The issuer you asked about is now listed',
+      '',
+      `We checked your request for a missing ${type} issuer and added the issuer to the list.`,
+      '',
+      'Open your seller panel, choose the issuer in your certificate and submit it for review.',
+      '',
+    ].join('\n'),
+  };
+}
+
+export function issuerNotAcceptedMail(input: {
+  readonly typeCode: string;
+  readonly reasonLabel: string | null;
+}): DecisionMail {
+  const type = line(input.typeCode);
+  return {
+    subject: 'We could not add the issuer you asked about',
+    text: [
+      'We could not add the issuer you asked about',
+      '',
+      `We checked your request for a missing ${type} issuer and could not add it to the list.`,
+      ...(input.reasonLabel === null ? [] : ['', `Reason: ${line(input.reasonLabel)}`]),
+      '',
+      'You can choose another listed issuer in your seller panel, or contact support.',
+      '',
+    ].join('\n'),
+  };
+}

@@ -116,6 +116,7 @@ describe('admin certificate review over HTTP (integration)', () => {
         approvedSubmissionId: null,
         approvedBoundaryAt: null,
         approvedIssuerState: null,
+        issuerRequestOpen: false,
         submissionCount: 1,
         statusChangedAt: START,
         lastChangedAt: START,

@@ -93,8 +93,9 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     expect(roleOf('platform', 'onboarding-compliance')).toMatchObject({
       kind: 'default',
       sellerId: null,
-      seedVersion: 5,
+      seedVersion: 6,
       permissionKeys: [
+        'certification.issuer.view',
         'certification.seller-certificate.review',
         'certification.seller-certificate.view',
         'identity.seller-access.approve',
@@ -136,12 +137,13 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     );
   });
 
-  it('upgrades onboarding-compliance from version 1 to 5: adds the sellers and certification keys, one seed-applied row, other roles untouched', async () => {
+  it('upgrades onboarding-compliance from version 1 to 6: adds the sellers and certification keys, one seed-applied row, other roles untouched', async () => {
     const REVIEW = 'sellers.seller-file.review';
     const VIEW = 'sellers.seller.view';
     const DETAILS = 'sellers.business-details.view';
     const CERT_VIEW = 'certification.seller-certificate.view';
     const CERT_REVIEW = 'certification.seller-certificate.review';
+    const ISSUER_VIEW = 'certification.issuer.view';
     // The previous build's definition: version 1 without the sellers and certification keys.
     const v1 = seedWith((role) =>
       role.seedCode === 'onboarding-compliance'
@@ -154,7 +156,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
                 key !== VIEW &&
                 key !== DETAILS &&
                 key !== CERT_VIEW &&
-                key !== CERT_REVIEW,
+                key !== CERT_REVIEW &&
+                key !== ISSUER_VIEW,
             ),
           }
         : role,
@@ -172,7 +175,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('platform', 'onboarding-compliance')).toMatchObject({
       id: before.id,
-      seedVersion: 5,
+      seedVersion: 6,
       permissionKeys: [
         ...before.permissionKeys,
         REVIEW,
@@ -180,6 +183,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         DETAILS,
         CERT_VIEW,
         CERT_REVIEW,
+        ISSUER_VIEW,
       ].sort(),
     });
     expect(roleOf('platform', 'viewer')).toEqual(viewerBefore);
@@ -188,8 +192,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ...RoleSeedApplied.entry(before.id, {
           before: { seedVersion: 1 },
           after: {
-            seedVersion: 5,
-            addedKeys: [REVIEW, VIEW, DETAILS, CERT_VIEW, CERT_REVIEW].sort(),
+            seedVersion: 6,
+            addedKeys: [REVIEW, VIEW, DETAILS, CERT_VIEW, CERT_REVIEW, ISSUER_VIEW].sort(),
             removedKeys: [],
           },
         }),

@@ -33,13 +33,18 @@ describe('the checked-in review policies', () => {
   it.each([
     [
       'a duplicate check',
-      { checks: [ZZ_REVIEW_POLICY.checks[0]!, ZZ_REVIEW_POLICY.checks[0]!], reasons: [] },
+      {
+        checks: [ZZ_REVIEW_POLICY.checks[0]!, ZZ_REVIEW_POLICY.checks[0]!],
+        reasons: [],
+        issuerRequestReasons: [],
+      },
     ],
     [
       'a reason for an unknown check',
       {
         checks: ZZ_REVIEW_POLICY.checks,
         reasons: [{ ...ZZ_REVIEW_POLICY.reasons[0]!, check: 'no-such-check' }],
+        issuerRequestReasons: [],
       },
     ],
     [
@@ -47,6 +52,18 @@ describe('the checked-in review policies', () => {
       {
         checks: ZZ_REVIEW_POLICY.checks,
         reasons: [{ ...ZZ_REVIEW_POLICY.reasons[0]!, outcomes: [] }],
+        issuerRequestReasons: [],
+      },
+    ],
+    [
+      'a duplicate issuer request reason',
+      {
+        checks: ZZ_REVIEW_POLICY.checks,
+        reasons: ZZ_REVIEW_POLICY.reasons,
+        issuerRequestReasons: [
+          ZZ_REVIEW_POLICY.issuerRequestReasons[0]!,
+          ZZ_REVIEW_POLICY.issuerRequestReasons[0]!,
+        ],
       },
     ],
   ])('refuses %s', (_name, policy) => {
