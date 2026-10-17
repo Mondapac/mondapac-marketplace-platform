@@ -1,8 +1,10 @@
-// The texts of the two order emails (Phase 6 package 1, owner decision Q10). Plain text only: the
+// The texts of the order emails (Phase 6 package 1, owner decision Q10). Plain text only: the
 // mail transport sends no HTML, so user-entered text (product names) cannot become markup. A
 // name is still flattened to one line without control or format characters, so it cannot break
-// the layout of the message. The label of the customer mail is "Order confirmation", never
-// "Tax invoice" (the tax adviser has not confirmed the wording).
+// the layout of the message. The texts live in `message-templates.ts`. The label of the customer
+// mail is "Order confirmation", never "Tax invoice" (the tax adviser has not confirmed the wording).
+
+import { renderTemplate } from './message-templates';
 
 export interface MailLine {
   /** The product name as the seller entered it, or null when catalog has none. */
@@ -35,47 +37,27 @@ export function orderConfirmationMail(input: {
   readonly orderId: string;
   readonly lines: readonly MailLine[];
   readonly orderUrl: string;
+  readonly locale?: string;
 }): ComposedMail {
-  return {
-    subject: 'Order confirmation',
-    text: [
-      'Order confirmation',
-      '',
-      'Thank you. Your payment was received and your order is confirmed.',
-      '',
-      `Order reference: ${input.orderId}`,
-      '',
-      'Items:',
-      ...input.lines.map(lineText),
-      '',
-      'View your order (you will be asked to sign in):',
-      input.orderUrl,
-      '',
-    ].join('\n'),
-  };
+  const { subject, text } = renderTemplate('order-confirmation', input.locale ?? 'en', {
+    orderId: input.orderId,
+    items: input.lines.map(lineText).join('\n'),
+    orderUrl: input.orderUrl,
+  });
+  return { subject, text };
 }
 
 /** The seller's "New order": the reference and the seller's own lines. No customer data. */
 export function sellerNewOrderMail(input: {
   readonly sellerOrderId: string;
   readonly lines: readonly MailLine[];
+  readonly locale?: string;
 }): ComposedMail {
-  return {
-    subject: 'New order',
-    text: [
-      'New order',
-      '',
-      'You have a new paid order to prepare.',
-      '',
-      `Order reference: ${input.sellerOrderId}`,
-      '',
-      'Items:',
-      ...input.lines.map(lineText),
-      '',
-      'Open your seller panel to see the order and record the shipment.',
-      '',
-    ].join('\n'),
-  };
+  const { subject, text } = renderTemplate('seller-new-order', input.locale ?? 'en', {
+    sellerOrderId: input.sellerOrderId,
+    items: input.lines.map(lineText).join('\n'),
+  });
+  return { subject, text };
 }
 
 /** The customer's "Shipped": the carrier, the tracking number when there is one, and the order link. */
@@ -84,21 +66,14 @@ export function orderShippedMail(input: {
   readonly carrier: string;
   readonly trackingRef: string | null;
   readonly orderUrl: string;
+  readonly locale?: string;
 }): ComposedMail {
-  return {
-    subject: 'Shipped',
-    text: [
-      'Shipped',
-      '',
-      'Good news: a seller has shipped part of your order.',
-      '',
-      `Order reference: ${input.orderId}`,
-      `Carrier: ${plainLine(input.carrier)}`,
-      ...(input.trackingRef === null ? [] : [`Tracking number: ${plainLine(input.trackingRef)}`]),
-      '',
-      'View your order (you will be asked to sign in):',
-      input.orderUrl,
-      '',
-    ].join('\n'),
-  };
+  const { subject, text } = renderTemplate('order-shipped', input.locale ?? 'en', {
+    orderId: input.orderId,
+    carrier: plainLine(input.carrier),
+    tracking:
+      input.trackingRef === null ? '' : `\nTracking number: ${plainLine(input.trackingRef)}`,
+    orderUrl: input.orderUrl,
+  });
+  return { subject, text };
 }
