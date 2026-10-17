@@ -1,4 +1,4 @@
--- Reverses 20261017140000_catalog_offer_tags (docs/design/data/catalog.md 8.3): the grants, the
+-- Reverses 20261017150000_catalog_offer_tags (docs/design/data/catalog.md 8.3): the grants, the
 -- triggers and their functions, then the tables, child before parent. The insert-only triggers do
 -- not fire on DROP TABLE. CHECKs, indexes and foreign keys go with their tables.
 SET lock_timeout = '5s';
