@@ -6,6 +6,7 @@ import {
   testAuthenticatedActor,
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
+import type { PendingEvent } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import sharp from 'sharp';
 import type { AuthorisationCheck } from '../../src/platform/authz';
@@ -22,6 +23,10 @@ import { SubmitProduct } from '../../src/modules/catalog/application/revisions/s
 import { OwnProductImageDelete } from '../../src/modules/catalog/application/use-cases/own-product-image-delete.use-case';
 import { OwnProductImageList } from '../../src/modules/catalog/application/use-cases/own-product-image-list.use-case';
 import { OwnProductImageRead } from '../../src/modules/catalog/application/use-cases/own-product-image-read.use-case';
+import { ProductImageAdminRead } from '../../src/modules/catalog/application/use-cases/product-image-admin-read.use-case';
+import { ProductImageTakeDown } from '../../src/modules/catalog/application/use-cases/product-image-take-down.use-case';
+import { ProductRevisionImageList } from '../../src/modules/catalog/application/use-cases/product-revision-image-list.use-case';
+import { SweepOrphanImages } from '../../src/modules/catalog/application/use-cases/sweep-orphan-images.use-case';
 import { OwnProductImageUpload } from '../../src/modules/catalog/application/use-cases/own-product-image-upload.use-case';
 import type { SaveWorkingCopy } from '../../src/modules/catalog/application/working-copy/save-working-copy.service';
 import { Product } from '../../src/modules/catalog/domain/product';
@@ -87,6 +92,12 @@ describe.each(TEST_MARKETS)(
     let read: OwnProductImageRead;
     let remove: OwnProductImageDelete;
     let submit: SubmitProduct;
+    let takeDown: ProductImageTakeDown;
+    let adminRead: ProductImageAdminRead;
+    let revisionImages: ProductRevisionImageList;
+    let sweepLater: SweepOrphanImages;
+    let sweepNow: SweepOrphanImages;
+    let events: PendingEvent[];
     let revisions: PrismaProductRevisionRepository;
     let categoryId: string;
 
@@ -228,6 +239,35 @@ describe.each(TEST_MARKETS)(
       });
       read = new OwnProductImageRead(gate, common);
       remove = new OwnProductImageDelete(gate, common);
+      events = [];
+      takeDown = new ProductImageTakeDown(gate, {
+        unitOfWork: persistence.unitOfWork,
+        images,
+        objectStore: store,
+        outbox: {
+          append: (_context, pending) => {
+            events.push(...pending);
+            return Promise.resolve();
+          },
+        },
+        clock,
+      });
+      adminRead = new ProductImageAdminRead(gate, common);
+      revisionImages = new ProductRevisionImageList(gate, {
+        unitOfWork: persistence.unitOfWork,
+        revisions,
+        images,
+      });
+      const sweepWith = (at: Temporal.Instant) =>
+        new SweepOrphanImages(gate, {
+          unitOfWork: persistence.unitOfWork,
+          images,
+          workingCopies: copies,
+          objectStore: store,
+          clock: new FixedClock(at),
+        });
+      sweepNow = sweepWith(T0);
+      sweepLater = sweepWith(T0.add({ hours: 24 * 30 }));
     });
     beforeEach(() => {
       throttled = false;
@@ -518,6 +558,313 @@ describe.each(TEST_MARKETS)(
           [market.marketId, market.tenantId, revisionId, mine.state.id, foreign.imageId],
         ),
       ).rejects.toThrow();
+    });
+
+    const adminContext = () =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: uuid7() as Id<'Account'>,
+          sessionId: uuid7() as Id<'Session'>,
+          sellerId: null,
+        }),
+      );
+    const systemContext = () => testCallContext(market, 'system', 'sweep-db-0001');
+    const stateOf = async (imageId: string) =>
+      (
+        await app.query(
+          'SELECT state, taken_down_at, takedown_reason_code FROM catalog.product_images WHERE id = $1',
+          [imageId],
+        )
+      ).rows[0] as
+        | { state: string; taken_down_at: Date | null; takedown_reason_code: string | null }
+        | undefined;
+    const objectsOf = (imageId: string) =>
+      [...store.objects.keys()].filter((key) => key.includes(imageId));
+
+    it('lists a revision to a reviewer in order and serves a rendition to the admin only', async () => {
+      const product = await draftedProduct();
+      const first = await uploaded(product.state.id);
+      const second = await uploaded(product.state.id);
+      await saveDraft(product.state.id, [second.imageId, first.imageId]);
+      const result = await submit.execute(sellerContext(), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      if (!result.ok) throw new Error(result.error.code);
+
+      const listed = await revisionImages.execute(adminContext(), {
+        productId: product.state.id,
+        revisionId: result.value.revisionId,
+      });
+      expect(listed.ok && listed.value.map((i) => [i.imageId, i.position, i.state])).toEqual([
+        [second.imageId, 1, 'clean'],
+        [first.imageId, 2, 'clean'],
+      ]);
+      const unknown = await revisionImages.execute(adminContext(), {
+        productId: product.state.id,
+        revisionId: uuid7(),
+      });
+      expect(!unknown.ok && unknown.error.code).toBe('revision.not-found');
+
+      const served = await adminRead.execute(adminContext(), {
+        productId: product.state.id,
+        imageId: first.imageId,
+        size: 'thumb',
+      });
+      expect(served.ok && served.value.contentType).toBe('image/jpeg');
+      const asSeller = await adminRead.execute(sellerContext(), {
+        productId: product.state.id,
+        imageId: first.imageId,
+        size: 'thumb',
+      });
+      expect(!asSeller.ok && asSeller.error.code).toBe('access.denied');
+      const wrongProduct = await adminRead.execute(adminContext(), {
+        productId: (await draftedProduct()).state.id,
+        imageId: first.imageId,
+        size: 'thumb',
+      });
+      expect(!wrongProduct.ok && wrongProduct.error.code).toBe('image.not-found');
+    });
+
+    it('takes a photo down once: row marked, files gone, one event, no longer served or listed to the seller', async () => {
+      const product = await draftedProduct();
+      const view = await uploaded(product.state.id);
+      events.length = 0;
+      const done = await takeDown.execute(adminContext(), {
+        productId: product.state.id,
+        imageId: view.imageId,
+        reasonCode: 'certification-mark',
+      });
+      expect(done.ok).toBe(true);
+      expect(await stateOf(view.imageId)).toMatchObject({
+        state: 'taken-down',
+        takedown_reason_code: 'certification-mark',
+      });
+      expect((await stateOf(view.imageId))?.taken_down_at).toBeInstanceOf(Date);
+      expect(objectsOf(view.imageId)).toEqual([]);
+      expect(events.map((e) => e.type)).toEqual(['catalog.image-taken-down.v1']);
+
+      const again = await takeDown.execute(adminContext(), {
+        productId: product.state.id,
+        imageId: view.imageId,
+        reasonCode: 'other',
+      });
+      expect(again.ok).toBe(true);
+      expect(events).toHaveLength(1);
+      expect((await stateOf(view.imageId))?.takedown_reason_code).toBe('certification-mark');
+
+      const served = await adminRead.execute(adminContext(), {
+        productId: product.state.id,
+        imageId: view.imageId,
+        size: 'thumb',
+      });
+      expect(!served.ok && served.error.code).toBe('image.not-found');
+      const listed = await list.execute(sellerContext(), { productId: product.state.id });
+      expect(listed.ok && listed.value).toEqual([]);
+      const readBySeller = await read.execute(sellerContext(), {
+        productId: product.state.id,
+        imageId: view.imageId,
+        size: 'thumb',
+      });
+      expect(!readBySeller.ok && readBySeller.error.code).toBe('image.not-found');
+
+      // The takedown record stays: the seller cannot delete a taken-down photo (Hassan #384 L1).
+      const deleted = await remove.execute(sellerContext(), {
+        productId: product.state.id,
+        imageId: view.imageId,
+      });
+      expect(!deleted.ok && deleted.error.code).toBe('image.not-found');
+      expect((await stateOf(view.imageId))?.state).toBe('taken-down');
+    });
+
+    it('refuses a bad reason, a seller and an unknown photo; stores nothing', async () => {
+      const product = await draftedProduct();
+      const view = await uploaded(product.state.id);
+      events.length = 0;
+      const bad = await takeDown.execute(adminContext(), {
+        productId: product.state.id,
+        imageId: view.imageId,
+        reasonCode: 'because',
+      });
+      expect(!bad.ok && bad.error.code).toBe('validation.failed');
+      const seller = await takeDown.execute(sellerContext(), {
+        productId: product.state.id,
+        imageId: view.imageId,
+        reasonCode: 'other',
+      });
+      expect(!seller.ok && seller.error.code).toBe('access.denied');
+      const unknown = await takeDown.execute(adminContext(), {
+        productId: product.state.id,
+        imageId: uuid7(),
+        reasonCode: 'other',
+      });
+      expect(!unknown.ok && unknown.error.code).toBe('image.not-found');
+      expect((await stateOf(view.imageId))?.state).toBe('clean');
+      expect(events).toEqual([]);
+    });
+
+    it('a taken-down photo cannot join a new revision, and the draft is refused at submit', async () => {
+      const product = await draftedProduct();
+      const view = await uploaded(product.state.id);
+      await takeDown.execute(adminContext(), {
+        productId: product.state.id,
+        imageId: view.imageId,
+        reasonCode: 'rights',
+      });
+      await expect(
+        app.query(
+          `INSERT INTO catalog.product_revision_images (market_id, tenant_id, revision_id, product_id, image_id, position)
+           VALUES ($1, $2, $3, $4, $5, 1)`,
+          [market.marketId, market.tenantId, uuid7(), product.state.id, view.imageId],
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      await saveDraft(product.state.id, [view.imageId]);
+      const result = await submit.execute(sellerContext(), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      expect(!result.ok && result.error.code).toBe('revision.not-ready');
+    });
+
+    it('keeps the revision row of a photo taken down later and lists it as taken down', async () => {
+      const product = await draftedProduct();
+      const photo = await uploaded(product.state.id);
+      await saveDraft(product.state.id, [photo.imageId]);
+      const result = await submit.execute(sellerContext(), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      if (!result.ok) throw new Error(result.error.code);
+      const done = await takeDown.execute(adminContext(), {
+        productId: product.state.id,
+        imageId: photo.imageId,
+        reasonCode: 'certification-mark',
+      });
+      expect(done.ok).toBe(true);
+      const listed = await revisionImages.execute(adminContext(), {
+        productId: product.state.id,
+        revisionId: result.value.revisionId,
+      });
+      expect(listed.ok && listed.value.map((i) => [i.imageId, i.state])).toEqual([
+        [photo.imageId, 'taken-down'],
+      ]);
+    });
+
+    describe('the state guard and the grants', () => {
+      it('allows clean to taken-down only, never back, never a second move', async () => {
+        const product = await draftedProduct();
+        const view = await uploaded(product.state.id);
+        const set = (state: string, extra = 'now()', who = 'null', reason = "'other'") =>
+          app.query(
+            `UPDATE catalog.product_images SET state = $2, taken_down_at = ${extra},
+               taken_down_by_account_id = ${who === 'null' ? 'NULL' : '$3'},
+               takedown_reason_code = ${reason} WHERE id = $1`,
+            who === 'null' ? [view.imageId, state] : [view.imageId, state, who],
+          );
+        // The three takedown columns go together with the state (CHECK).
+        await expect(set('taken-down')).rejects.toMatchObject({ code: '23514' });
+        await set('taken-down', 'now()', uuid7());
+        await expect(set('clean', 'NULL', 'null', 'NULL')).rejects.toMatchObject({
+          code: '23514',
+        });
+        await expect(set('taken-down', 'now()', uuid7())).rejects.toMatchObject({
+          code: '23514',
+        });
+        expect((await stateOf(view.imageId))?.state).toBe('taken-down');
+      });
+
+      it('refuses a reason outside the closed list and an update of any other column', async () => {
+        const product = await draftedProduct();
+        const view = await uploaded(product.state.id);
+        await expect(
+          app.query(
+            `UPDATE catalog.product_images SET state = 'taken-down', taken_down_at = now(),
+               taken_down_by_account_id = $2, takedown_reason_code = 'whim' WHERE id = $1`,
+            [view.imageId, uuid7()],
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+        await expect(
+          app.query('UPDATE catalog.product_images SET pixel_width = 10 WHERE id = $1', [
+            view.imageId,
+          ]),
+        ).rejects.toMatchObject({ code: '42501' });
+      });
+
+      it('refuses to delete a photo a revision holds with a foreign key violation (23503)', async () => {
+        const photo = await uploaded((await draftedProduct()).state.id);
+        await submittedWith(photo.imageId);
+        await expect(
+          app.query('DELETE FROM catalog.product_images WHERE id = $1', [photo.imageId]),
+        ).rejects.toMatchObject({ code: '23503' });
+      });
+
+      async function submittedWith(imageId: string) {
+        // The photo belongs to another product than the one drafted here, so build its own.
+        const row = await app.query('SELECT product_id FROM catalog.product_images WHERE id = $1', [
+          imageId,
+        ]);
+        const productId = (row.rows[0] as { product_id: string }).product_id as Id<'Product'>;
+        await saveDraft(productId, [imageId]);
+        const result = await submit.execute(sellerContext(), {
+          productId,
+          replacePending: false,
+        });
+        if (!result.ok) throw new Error(result.error.code);
+        return { product: productId };
+      }
+    });
+
+    describe('the orphan sweep', () => {
+      it('keeps young photos, photos a revision holds and photos a draft names; removes the rest', async () => {
+        const product = await draftedProduct();
+        const orphan = await uploaded(product.state.id);
+        const held = await uploaded(product.state.id);
+        await saveDraft(product.state.id, [held.imageId]);
+        const submittedResult = await submit.execute(sellerContext(), {
+          productId: product.state.id,
+          replacePending: false,
+        });
+        if (!submittedResult.ok) throw new Error(submittedResult.error.code);
+        // `held` is on a revision; `loneNamed` is only named by a draft.
+        const solo = await draftedProduct();
+        const loneOrphan = await uploaded(solo.state.id);
+        const loneNamed = await uploaded(solo.state.id);
+        await saveDraft(solo.state.id, [loneNamed.imageId]);
+
+        // At the upload instant nothing is old enough.
+        const young = await sweepNow.execute(systemContext(), {});
+        expect(young.ok && young.value.deleted).toBe(0);
+        expect(await stateOf(orphan.imageId)).toBeDefined();
+
+        const swept = await sweepLater.execute(systemContext(), {});
+        expect(swept.ok).toBe(true);
+        expect(await stateOf(orphan.imageId)).toBeUndefined();
+        expect(objectsOf(orphan.imageId)).toEqual([]);
+        expect(await stateOf(loneOrphan.imageId)).toBeUndefined();
+        expect(objectsOf(loneOrphan.imageId)).toEqual([]);
+        for (const kept of [held, loneNamed]) {
+          expect((await stateOf(kept.imageId))?.state).toBe('clean');
+          expect(objectsOf(kept.imageId)).toHaveLength(3);
+        }
+        const again = await sweepLater.execute(systemContext(), {});
+        expect(again.ok && again.value.deleted).toBe(0);
+        const asAdmin = await sweepLater.execute(adminContext(), {});
+        expect(!asAdmin.ok && asAdmin.error.code).toBe('access.denied');
+      });
+
+      it('leaves taken-down photos alone', async () => {
+        const product = await draftedProduct();
+        const view = await uploaded(product.state.id);
+        await takeDown.execute(adminContext(), {
+          productId: product.state.id,
+          imageId: view.imageId,
+          reasonCode: 'other',
+        });
+        await sweepLater.execute(systemContext(), {});
+        expect((await stateOf(view.imageId))?.state).toBe('taken-down');
+      });
     });
   },
 );
