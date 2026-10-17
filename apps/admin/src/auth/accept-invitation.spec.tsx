@@ -165,7 +165,8 @@ describe('admin accept invitation', () => {
     expect(await screen.findByText(/Too many wrong codes. Start again/)).toBeTruthy();
     expect(screen.getByLabelText('Your name')).toBeTruthy();
     expect(screen.queryByText('ABCD EFGH IJKL MNOP')).toBeNull();
-    expect(document.activeElement?.textContent).toBe('Your details');
+    // The heading takes focus in an effect, which can run after the text above is found.
+    await waitFor(() => expect(document.activeElement?.textContent).toBe('Your details'));
   });
 
   it.each(['request.busy', 'access.unavailable'])('says to try again for %s', async (code) => {
