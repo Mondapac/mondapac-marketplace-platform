@@ -23,7 +23,7 @@ import { sqlState } from './sql-state';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // Catalog slice 8 on PostgreSQL (catalog data design 3.15, 3.16, 5.1, 7; migration
-// 20261017130000_catalog_offer_tags), for both Market fixtures: the CHECKs, the open-tag unique,
+// 20261017140000_catalog_offer_tags), for both Market fixtures: the CHECKs, the open-tag unique,
 // the status_seq trigger, the history-present constraint trigger, the insert-only history, the
 // grants, Market independence, and the Offer repository's round trip of tags and history.
 
