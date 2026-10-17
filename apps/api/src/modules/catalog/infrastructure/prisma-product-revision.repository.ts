@@ -2,7 +2,11 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { ContentHash, Id, MarketContext } from '@mondapac/shared-kernel';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { ProductRevisionRepository } from '../application/ports/product-revision.repository';
+import type {
+  ChangeRequestView,
+  ProductRevisionRepository,
+  ReviewDecision,
+} from '../application/ports/product-revision.repository';
 import type { SensitiveReason } from '../domain/product-revision-policy';
 import type { RevisionContent } from '../domain/revision-content';
 import type { RevisionKind, StoredRevision } from '../domain/stored-revision';
@@ -174,6 +178,51 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
       actingAdminAccountId: row.actingAdminAccountId as Id<'Account'> | null,
       submittedAt: toInstant(row.submittedAt),
       content,
+    };
+  }
+
+  async recordDecision(market: MarketContext, decision: ReviewDecision): Promise<void> {
+    const published = decision.outcome === 'published';
+    await this.prisma.tx(market).catalogProductRevisionDecision.create({
+      data: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        revisionId: decision.revisionId,
+        outcome: decision.outcome,
+        publishKind: published ? 'reviewed' : null,
+        reasonCode: decision.reasonCode,
+        requiredChecks: [...decision.requiredChecks],
+        confirmedChecks: [...decision.confirmedChecks],
+        decidedByKind: 'admin',
+        decidedByAccountId: decision.decidedByAccountId,
+        productVersion: decision.productVersion,
+        decidedAt: toDate(decision.decidedAt),
+      },
+      select: { revisionId: true },
+    });
+  }
+
+  async latestChangeRequest(
+    market: MarketContext,
+    productId: Id<'Product'>,
+  ): Promise<ChangeRequestView | null> {
+    const row = await this.prisma.tx(market).catalogProductRevision.findFirst({
+      where: { marketId: market.marketId, productId },
+      orderBy: { revisionNo: 'desc' },
+      select: {
+        id: true,
+        revisionNo: true,
+        decision: { select: { outcome: true, reasonCode: true, decidedAt: true } },
+      },
+    });
+    if (row?.decision?.outcome !== 'changes-requested' || row.decision.reasonCode === null) {
+      return null;
+    }
+    return {
+      revisionId: row.id as Id<'ProductRevision'>,
+      revisionNo: row.revisionNo,
+      reasonCode: row.decision.reasonCode,
+      decidedAt: toInstant(row.decision.decidedAt),
     };
   }
 }

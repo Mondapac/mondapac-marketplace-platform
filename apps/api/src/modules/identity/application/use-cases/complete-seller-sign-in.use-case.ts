@@ -125,6 +125,7 @@ export class CompleteSellerSignIn extends UseCase<
             population: 'seller',
             sellerId: gate.seller.state.sellerId,
             transport: 'cookie',
+            device: input.client.device ?? null,
             lifetime,
             now,
           });

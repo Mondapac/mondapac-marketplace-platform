@@ -14,6 +14,7 @@
     "trigger": "Account menu for {name}",
     "pages": "Your account",
     "profile": "My profile",
+    "sessions": "Signed-in devices",
     "sign-out": "Sign out",
     "signing-out": "Signing out…",
     "sign-out-failed": "We couldn't sign you out. Check your connection and try again."
@@ -1415,6 +1416,45 @@
       "unavailable": "We can't do that right now. Try again in a moment.",
       "network": "You're offline or the connection dropped. Check it and try again.",
       "unknown": "Something went wrong on our side. Try again."
+    }
+  },
+  "sessions": {
+    "title": "Signed-in devices",
+    "unavailable": "We couldn't load your signed-in devices. Try again.",
+    "list-title": "Where you're signed in",
+    "intro": "These are the browsers and devices signed in to your account now. If you don't recognise one, sign out of all other devices and change your password.",
+    "this-device": "This device",
+    "signed-in": "Signed in",
+    "last-active": "Last active",
+    "active-now": "Active now",
+    "device": "{browser} on {system}",
+    "unknown-device": "Unknown device",
+    "browser": {
+      "edge": "Edge",
+      "opera": "Opera",
+      "samsung": "Samsung Internet",
+      "firefox": "Firefox",
+      "chrome": "Chrome",
+      "safari": "Safari",
+      "other": "A browser"
+    },
+    "system": {
+      "windows": "Windows",
+      "macos": "macOS",
+      "ios": "iPhone or iPad",
+      "android": "Android",
+      "chromeos": "ChromeOS",
+      "linux": "Linux",
+      "other": "another system"
+    },
+    "only-this-device": "You're signed in on this device only.",
+    "sign-out-others": "Sign out of all other devices",
+    "signed-out-others": "{count, plural, =0 {No other device was signed in.} one {Signed out of # other device.} other {Signed out of # other devices.}}",
+    "dialog": {
+      "title": "Sign out of all other devices?",
+      "body": "{count, plural, one {The other device} other {The # other devices}} will have to sign in again. This device stays signed in.",
+      "keep": "Keep them signed in",
+      "action": "Sign out others"
     }
   }
 }

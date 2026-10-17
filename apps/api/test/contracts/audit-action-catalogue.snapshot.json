@@ -81,6 +81,17 @@
     }
   },
   {
+    "action": "identity.account.other-sessions-signed-out",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "keptSessionId": "id",
+      "revokedSessions": "integer"
+    }
+  },
+  {
     "action": "identity.admin-session.opened",
     "targetType": "identity.account",
     "targetId": "id",

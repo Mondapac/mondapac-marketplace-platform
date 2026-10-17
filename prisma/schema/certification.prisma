@@ -77,6 +77,7 @@ model CertificationType {
   publishedRevision   CertificationTypeRevision?  @relation("TypePublished", fields: [marketId, id, publishedRevisionId], references: [marketId, typeId, id], onDelete: Restrict, onUpdate: Restrict)
   issuers             CertificationIssuer[]
   certificates        CertificationSellerCertification[]
+  documents           CertificationUploadedDocument[]
 
   /// The target of composite foreign keys (C3).
   @@unique([marketId, id])
@@ -150,6 +151,7 @@ model CertificationIssuer {
   createdAt               DateTime               @map("created_at") @db.Timestamptz(6)
   type                    CertificationType      @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   submissions             CertificationSellerCertificationSubmission[]
+  draftOf                 CertificationSellerCertification[]           @relation("CertificateDraftIssuer")
   channels                CertificationIssuerContactChannel[]
 
   @@unique([marketId, id])
@@ -180,8 +182,21 @@ model CertificationSellerCertification {
   approvedBoundaryAt   DateTime?                                    @map("approved_boundary_at") @db.Timestamptz(6)
   statusChangedAt      DateTime                                     @map("status_changed_at") @db.Timestamptz(6)
   lastChangedAt        DateTime                                     @map("last_changed_at") @db.Timestamptz(6)
+  /// The seller's working copy (data design 3.4, draft columns). Only an issuer of the same type
+  /// and Market (AC 11); its state is checked at submit.
+  draftIssuerId        String?                                      @map("draft_issuer_id") @db.Uuid
+  /// Personal, encrypted under the seller's key (label certification.seller-certification.draft-certificate-number).
+  draftCertificateNumberCiphertext String?                          @map("draft_certificate_number_ciphertext")
+  draftIssueDate       DateTime?                                    @map("draft_issue_date") @db.Date
+  draftExpiryDate      DateTime?                                    @map("draft_expiry_date") @db.Date
+  /// The seller's own tick (R14).
+  draftSelfDeclared    Boolean?                                     @map("draft_self_declared")
+  draftSelfDeclarationNoteCiphertext String?                        @map("draft_self_declaration_note_ciphertext")
   version              Int
   createdAt            DateTime                                     @map("created_at") @db.Timestamptz(6)
+  draftIssuer          CertificationIssuer?                         @relation("CertificateDraftIssuer", fields: [marketId, draftIssuerId, typeId], references: [marketId, id, typeId], onDelete: Restrict, onUpdate: Restrict)
+  draftDocuments       CertificationSellerDraftDocument[]
+  history              CertificationSellerCertificationHistory[]
   type                 CertificationType                            @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   submissions          CertificationSellerCertificationSubmission[] @relation("CertificateSubmissions")
   pendingSubmission    CertificationSellerCertificationSubmission?  @relation("CertificatePending", fields: [marketId, id, pendingSubmissionId], references: [marketId, sellerCertificationId, id], onDelete: Restrict, onUpdate: Restrict)
@@ -193,6 +208,9 @@ model CertificationSellerCertification {
   /// The target of the submission foreign key, which carries the type and the seller, so a
   /// submission's seller is its certificate's and the certificate's seller never moves (Hassan M-1).
   @@unique([marketId, id, typeId, sellerId], map: "seller_certifications_market_id_id_type_id_seller_id_key")
+  /// The seller's own list (every status, terminal ones included).
+  /// Serves the keyset order of the list (created_at DESC, id DESC) exactly.
+  @@index([marketId, sellerId, createdAt, id])
   @@map("seller_certifications")
   @@schema("certification")
 }
@@ -232,6 +250,8 @@ model CertificationSellerCertificationSubmission {
   pendingOf                    CertificationSellerCertification[] @relation("CertificatePending")
   approvedOf                   CertificationSellerCertification[] @relation("CertificateApproved")
   decision                     CertificationSellerSubmissionDecision?
+  documents                    CertificationSubmissionDocument[]
+  history                      CertificationSellerCertificationHistory[]
 
   @@unique([marketId, id])
   /// The target of the pointer foreign keys of the root (CE4).
@@ -239,6 +259,9 @@ model CertificationSellerCertificationSubmission {
   @@unique([marketId, sellerCertificationId, submissionNo], map: "seller_certification_submissions_market_id_cert_id_no_key")
   /// The target of the issuer confirmation foreign key (migration with slice 7).
   @@unique([marketId, id, issuerId])
+  /// The target of the document-link foreign key, which carries the type and the seller, so a
+  /// submission can only hold its own seller's files of its own type (PR 382, database-designer 4).
+  @@unique([marketId, id, typeId, sellerId], map: "seller_cert_submissions_id_type_seller_key")
   @@map("seller_certification_submissions")
   @@schema("certification")
 }
@@ -364,5 +387,148 @@ model CertificationPlatformSubject {
   createdAt DateTime @map("created_at") @db.Timestamptz(6)
 
   @@map("platform_subjects")
+  @@schema("certification")
+}
+
+/// One uploaded file (data design 3.9, simplified for the first release, the same decision as the
+/// catalog photos): the bytes live in the object store, encrypted with a random per-file AES-256-GCM
+/// key whose envelope (wrapped under the owner's subject key) is `data_key_envelope`. There is no
+/// scanner, no sandbox, no preview and no evidence bucket, so `evidence_key`, `retain_until` and
+/// `promoted_at` are not created. A refused file is never stored; the `received`, `scanning` and
+/// `refused` values stay in the CHECK so a scanner can be added later. A set-once trigger keeps the
+/// identity of the row fixed. The client's file name is never stored.
+model CertificationUploadedDocument {
+  id              String                             @id @db.Uuid
+  marketId        String                             @map("market_id") @db.VarChar(8)
+  tenantId        String                             @map("tenant_id")
+  /// The seller for seller files; NULL for admin-recorded manufacturer files (later).
+  ownerSellerId   String?                            @map("owner_seller_id") @db.Uuid
+  /// seller-certificate | issuer-request | product-certificate
+  purpose         String
+  typeId          String?                            @map("type_id") @db.Uuid
+  /// received | scanning | clean | refused
+  state           String
+  refusalCode     String?                            @map("refusal_code")
+  /// Found by inspection of the content, never the client's.
+  mediaType       String?                            @map("media_type")
+  /// Plaintext size in bytes.
+  byteSize        BigInt                             @map("byte_size")
+  pageCount       Int?                               @map("page_count") @db.SmallInt
+  /// The per-file data key wrapped under the owner's subject key (label certification.document.data-key).
+  dataKeyEnvelope String                             @map("data_key_envelope")
+  /// Key of the encrypted object (`certification/<sellerId>/<documentId>`).
+  objectKey       String                             @map("object_key")
+  /// SHA-256 of the stored (encrypted) bytes, recorded when the file became clean.
+  cleanSha256     Bytes?                             @map("clean_sha256")
+  version         Int
+  createdAt       DateTime                           @map("created_at") @db.Timestamptz(6)
+  type            CertificationType?                 @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  draftLinks      CertificationSellerDraftDocument[]
+  submissionLinks CertificationSubmissionDocument[]
+
+  @@unique([marketId, id])
+  /// The target of the draft link's foreign key: the link names the owner and the type.
+  @@unique([marketId, id, typeId, ownerSellerId], map: "uploaded_documents_market_id_id_type_id_owner_seller_id_key")
+  @@unique([marketId, objectKey])
+  @@index([marketId, ownerSellerId, createdAt])
+  @@map("uploaded_documents")
+  @@schema("certification")
+}
+
+/// Bytes of draft files a seller holds (data design 3.12). The limit is Market configuration, so it
+/// is no CHECK: the upload reserves with one guarded statement.
+model CertificationSellerDraftQuota {
+  marketId   String   @map("market_id") @db.VarChar(8)
+  tenantId   String   @map("tenant_id")
+  sellerId   String   @map("seller_id") @db.Uuid
+  draftBytes BigInt   @map("draft_bytes")
+  updatedAt  DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@id([marketId, sellerId])
+  @@map("seller_draft_quotas")
+  @@schema("certification")
+}
+
+/// Fixed-window counters of the seller-side limits (data design 3.12; SL-data 3.11): keyed HMAC
+/// subject under this module's rate-counter key, so no account or seller id is stored in clear.
+model CertificationRateCounter {
+  marketId        String   @map("market_id") @db.VarChar(8)
+  tenantId        String   @map("tenant_id")
+  kind            String
+  keyHash         Bytes    @map("key_hash")
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz(6)
+  count           Int
+
+  @@id([marketId, kind, keyHash])
+  @@map("rate_counters")
+  @@schema("certification")
+}
+
+/// The files of a certificate's draft (data design 3.11). Mutable: the seller adds and removes
+/// files. The foreign keys bind the file's owner and type to the certificate's.
+model CertificationSellerDraftDocument {
+  marketId              String                           @map("market_id") @db.VarChar(8)
+  tenantId              String                           @map("tenant_id")
+  sellerCertificationId String                           @map("seller_certification_id") @db.Uuid
+  typeId                String                           @map("type_id") @db.Uuid
+  sellerId              String                           @map("seller_id") @db.Uuid
+  documentId            String                           @map("document_id") @db.Uuid
+  position              Int                              @db.SmallInt
+  certificate           CertificationSellerCertification @relation(fields: [marketId, sellerCertificationId, typeId, sellerId], references: [marketId, id, typeId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  document              CertificationUploadedDocument    @relation(fields: [marketId, documentId, typeId, sellerId], references: [marketId, id, typeId, ownerSellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, sellerCertificationId, documentId])
+  /// A file belongs to at most one draft.
+  @@unique([marketId, documentId])
+  /// A backstop for the draft order: no two files at one position.
+  @@unique([marketId, sellerCertificationId, position], map: "seller_cert_draft_documents_position_key")
+  @@map("seller_certification_draft_documents")
+  @@schema("certification")
+}
+
+/// The files a submission holds (data design 3.11). Insert-only (CE3). A resubmission that keeps a
+/// file links the same document row. The count limit (10) is request validation.
+model CertificationSubmissionDocument {
+  marketId     String                                     @map("market_id") @db.VarChar(8)
+  tenantId     String                                     @map("tenant_id")
+  submissionId String                                     @map("submission_id") @db.Uuid
+  documentId   String                                     @map("document_id") @db.Uuid
+  /// Copies bound by the two composite foreign keys below: the submission's and the file's own.
+  typeId       String                                     @map("type_id") @db.Uuid
+  sellerId     String                                     @map("seller_id") @db.Uuid
+  position     Int                                        @db.SmallInt
+  submission   CertificationSellerCertificationSubmission @relation(fields: [marketId, submissionId, typeId, sellerId], references: [marketId, id, typeId, sellerId], map: "seller_submission_documents_submission_fkey", onDelete: Restrict, onUpdate: Restrict)
+  document     CertificationUploadedDocument              @relation(fields: [marketId, documentId, typeId, sellerId], references: [marketId, id, typeId, ownerSellerId], map: "seller_submission_documents_document_fkey", onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, submissionId, documentId])
+  @@unique([marketId, submissionId, position])
+  @@index([marketId, documentId])
+  @@map("seller_submission_documents")
+  @@schema("certification")
+}
+
+/// The status history of a certificate (data design 3.13; V4, CERT-17). Insert-only (CE3). The
+/// first row is written at the first submission; creating a draft writes none, so a never-submitted
+/// record can be deleted.
+model CertificationSellerCertificationHistory {
+  id                    String                                      @id @db.Uuid
+  marketId              String                                      @map("market_id") @db.VarChar(8)
+  tenantId              String                                      @map("tenant_id")
+  sellerCertificationId String                                      @map("seller_certification_id") @db.Uuid
+  fromStatus            String?                                     @map("from_status")
+  toStatus              String                                      @map("to_status")
+  submissionId          String?                                     @map("submission_id") @db.Uuid
+  /// seller | admin | system
+  actorKind             String                                      @map("actor_kind")
+  actorAccountId        String?                                     @map("actor_account_id") @db.Uuid
+  reasonCode            String?                                     @map("reason_code")
+  noteCiphertext        String?                                     @map("note_ciphertext")
+  occurredAt            DateTime                                    @map("occurred_at") @db.Timestamptz(6)
+  certificate           CertificationSellerCertification            @relation(fields: [marketId, sellerCertificationId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict, map: "seller_certification_history_certificate_fkey")
+  submission            CertificationSellerCertificationSubmission? @relation(fields: [marketId, sellerCertificationId, submissionId], references: [marketId, sellerCertificationId, id], onDelete: Restrict, onUpdate: Restrict, map: "seller_certification_history_submission_fkey")
+
+  @@unique([marketId, id])
+  @@index([marketId, sellerCertificationId, occurredAt])
+  @@map("seller_certification_history")
   @@schema("certification")
 }

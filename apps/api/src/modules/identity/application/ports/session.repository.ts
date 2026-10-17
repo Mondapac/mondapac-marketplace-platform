@@ -35,6 +35,18 @@ export interface SessionRepository {
   findById(market: MarketContext, id: Id<'Session'>): Promise<Session | null>;
 
   /**
+   * The account's sessions that are not revoked and not past their absolute expiry at `now`,
+   * most recently used first, at most `limit` (profile package 4). The idle timeout is the
+   * caller's to apply (`sessionIsLive`).
+   */
+  listUnrevokedOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    now: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly Session[]>;
+
+  /**
    * Writes `lastSeenAt = now` when it is older than `lastSeenBefore` and the session is not
    * revoked; a no-op otherwise (at most once a minute, identity design 6.1).
    */

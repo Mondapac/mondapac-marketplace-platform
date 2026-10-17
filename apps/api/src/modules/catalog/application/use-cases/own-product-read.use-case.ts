@@ -53,6 +53,16 @@ export interface OwnProductReadOutput {
   } | null;
   readonly published: OwnRevisionView | null;
   readonly pending: OwnRevisionView | null;
+  /**
+   * The reviewer's request for changes on the newest revision, with the reason code of the
+   * Market list; null when the newest revision was not sent back (a newer submit clears it).
+   */
+  readonly changeRequest: {
+    readonly revisionId: string;
+    readonly revisionNo: number;
+    readonly reasonCode: string;
+    readonly decidedAt: string;
+  } | null;
 }
 
 export type OwnProductReadFailure =
@@ -141,13 +151,14 @@ export class OwnProductRead extends UseCase<
           copy,
           published: await revisionOf(state.publishedRevisionId),
           pending: await revisionOf(state.pendingRevisionId),
+          changeRequest: await deps.revisions.latestChangeRequest(market, state.id),
         });
       },
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     if (read.value === null) return err({ code: 'product.not-found' });
-    const { product, form, copy, published, pending } = read.value;
+    const { product, form, copy, published, pending, changeRequest } = read.value;
     const { state } = product;
     return ok({
       productId: state.id,
@@ -176,6 +187,15 @@ export class OwnProductRead extends UseCase<
             },
       published: published === null ? null : viewOf(published),
       pending: pending === null ? null : viewOf(pending),
+      changeRequest:
+        changeRequest === null
+          ? null
+          : {
+              revisionId: changeRequest.revisionId,
+              revisionNo: changeRequest.revisionNo,
+              reasonCode: changeRequest.reasonCode,
+              decidedAt: changeRequest.decidedAt.toString(),
+            },
     });
   }
 }

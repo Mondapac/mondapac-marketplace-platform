@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiExtraModels, ApiProperty, getSchemaPath } from '@nestjs/swagger';
 import { OFFER_CHANGE_REASONS } from '../domain/events';
 
 // Bodies and answers of the admin Offer review routes (catalog design 4.4, 8.2, 9.2). Ids, codes
@@ -47,6 +47,9 @@ export class ReviewQueueRowDto {
   @ApiProperty({ format: 'uuid' })
   sellerId!: string;
 
+  @ApiProperty({ nullable: true, type: String, description: 'Public store name, if known.' })
+  storeName!: string | null;
+
   @ApiProperty({ format: 'uuid' })
   productId!: string;
 
@@ -69,18 +72,73 @@ export class ReviewQueueRowDto {
   submittedAt!: string | null;
 }
 
+export class ProductRevisionRowDto {
+  @ApiProperty({ enum: ['product-revision'] })
+  kind!: 'product-revision';
+
+  @ApiProperty({ format: 'uuid' })
+  productId!: string;
+
+  @ApiProperty({ format: 'uuid', description: 'The pending revision a decision must name.' })
+  revisionId!: string;
+
+  @ApiProperty()
+  revisionNo!: number;
+
+  @ApiProperty({ description: 'The product version a decision must name.' })
+  version!: number;
+
+  @ApiProperty({ format: 'uuid' })
+  sellerId!: string;
+
+  @ApiProperty({ nullable: true, type: String, description: 'Public store name, if known.' })
+  storeName!: string | null;
+
+  @ApiProperty({ type: ReviewQueueProduct })
+  product!: ReviewQueueProduct;
+
+  @ApiProperty({ description: 'True while the product has never been published.' })
+  firstPublication!: boolean;
+
+  @ApiProperty({ type: [String], description: 'What changed, as classification codes.' })
+  reasons!: string[];
+
+  @ApiProperty({
+    type: [String],
+    description: 'The named checks an approval must confirm in `checksConfirmed`.',
+  })
+  requiredChecks!: string[];
+
+  @ApiProperty()
+  hasImages!: boolean;
+
+  @ApiProperty({ description: 'ISO instant; oldest first.' })
+  submittedAt!: string;
+}
+
+@ApiExtraModels(ReviewQueueRowDto, ProductRevisionRowDto)
 export class ReviewQueueList {
-  @ApiProperty({ type: [ReviewQueueRowDto] })
-  items!: ReviewQueueRowDto[];
+  @ApiProperty({
+    type: 'array',
+    items: {
+      oneOf: [
+        { $ref: getSchemaPath(ReviewQueueRowDto) },
+        { $ref: getSchemaPath(ProductRevisionRowDto) },
+      ],
+    },
+  })
+  items!: (ReviewQueueRowDto | ProductRevisionRowDto)[];
 
   @ApiProperty({
     nullable: true,
     type: String,
-    description: 'Send as `afterId` for the next page.',
+    description: 'Opaque cursor; send as `afterId` for the next page.',
   })
   nextAfterId!: string | null;
 
-  @ApiProperty({ description: 'Every Offer of the Market in the queue, whatever the page.' })
+  @ApiProperty({
+    description: 'Every Offer and pending product revision in the queue, whatever the page.',
+  })
   total!: number;
 }
 

@@ -1,5 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId, Population } from '@mondapac/shared-kernel';
+import type { DeviceCode } from './device';
 
 /** Where a session's token travels; a session is bound to one (identity design 6.2). */
 export type SessionTransport = 'cookie' | 'bearer';
@@ -23,6 +24,8 @@ export interface Session {
   /** Set if and only if the population is `seller` (from slice 5). */
   readonly sellerId: Id<'Seller'> | null;
   readonly transport: SessionTransport;
+  /** The coarse device it was opened on (profile package 4); null when unknown. */
+  readonly device: DeviceCode | null;
   readonly createdAt: Temporal.Instant;
   readonly lastSeenAt: Temporal.Instant;
   readonly idleTimeoutSeconds: number;
@@ -54,6 +57,8 @@ export function openSession(input: {
   /** Required for, and only for, the seller population (`sessions_seller_id_check`). */
   readonly sellerId?: Id<'Seller'> | null;
   readonly transport: SessionTransport;
+  /** The coarse device of the sign-in request; null when it sent no User-Agent. */
+  readonly device?: DeviceCode | null;
   readonly lifetime: SessionLifetime;
   readonly now: Temporal.Instant;
 }): Session {
@@ -78,6 +83,7 @@ export function openSession(input: {
     population: input.population,
     sellerId,
     transport: input.transport,
+    device: input.device ?? null,
     createdAt: now,
     lastSeenAt: now,
     idleTimeoutSeconds: lifetime.idleTimeoutSeconds,
@@ -124,4 +130,6 @@ export type SessionRevokedReason =
   | 'membership-removed'
   /** Every session of the seller's accounts: the seller was rejected or suspended (3.3; slice 9). */
   | 'seller-rejected'
-  | 'seller-suspended';
+  | 'seller-suspended'
+  /** The holder signed out of every other device from the profile (profile package 4). */
+  | 'signed-out-elsewhere';

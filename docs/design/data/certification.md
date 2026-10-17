@@ -326,6 +326,17 @@ RESTRICT; `position smallint`. Insert-only.
   `DELETE` of a row whose `evidence_key` is set, for every role. A promoted document is also
   referenced by a submission or revision link (RESTRICT), so deletion fails twice.
 - The client's file name is never stored (brief s9).
+- **As built (PR 382, migration `certification_seller_certificate_submit`; the scanner design above is
+  deferred).** Columns: `object_key text NOT NULL` (one key, unique per Market: the ObjectStore
+  object `certification/<sellerId>/<documentId>`, ciphertext of the draft area); **no**
+  `draft_object_key`, `evidence_key`, `retain_until` or `promoted_at` yet (they arrive with the
+  scanner and promotion package, with their CHECKs). Intake is simplified (brief change log): an
+  accepted file is inserted `clean` at once, with `clean_sha256` (SHA-256 of the stored bytes) and
+  `media_type`. Backstops: `byte_size BETWEEN 1 AND 32 MiB`, `page_count BETWEEN 1 AND 20` (the
+  approved PDF limit, row 8 of the G2 record). Refusal codes also include `file.too-complex` and
+  `file.inspection-timeout` (the PDF scan fails closed). The index is the full `(market_id,
+  owner_seller_id, created_at)`, not the partial one: no `evidence_key` exists to filter on. Extra
+  uniques for the link keys: `(market_id, id)` and `(market_id, id, type_id, owner_seller_id)`.
 - Indexes: draft purge and quota recount, partial `(market_id, owner_seller_id, created_at) WHERE
   evidence_key IS NULL`; scan handler by PK.
 
@@ -355,12 +366,21 @@ Both insert-only (CE3).
 
 `seller_certification_draft_documents`: PK `(market_id, seller_certification_id, document_id)`; FKs
 to the root and to `uploaded_documents`, RESTRICT; `position smallint`. Mutable (`SELECT, INSERT,
-DELETE`): the seller adds and removes draft files.
+DELETE`): the seller adds and removes draft files. As built: the columns `type_id` and `seller_id`
+sit in both composite FKs (to the root on `(market_id, id, type_id, seller_id)` and to the file on
+`(market_id, id, type_id, owner_seller_id)`), so a file of another seller or type cannot be linked;
+unique `(market_id, document_id)` (a file belongs to one draft) and unique `(market_id,
+seller_certification_id, position)` as a backstop for the order.
 
 `seller_submission_documents`: PK `(market_id, submission_id, document_id)`; FKs RESTRICT;
 `position smallint` CHECK `>= 1`, unique `(market_id, submission_id, position)`. Insert-only (CE3).
 A resubmission that keeps a file links the same document row (no copy). The count limit (10) is
-request validation.
+request validation. As built: the link carries `type_id` and `seller_id` too, with two composite
+FKs, `seller_submission_documents_submission_fkey` to `seller_certification_submissions (market_id,
+id, type_id, seller_id)` and `seller_submission_documents_document_fkey` to `uploaded_documents
+(market_id, id, type_id, owner_seller_id)`, so the database refuses another seller's file or a file
+of another type whatever the caller writes (PR 382, database-designer follow-up 4). Both link tables
+also pass the link trigger of 6.1, which requires purpose `seller-certificate`.
 
 ### 3.12 `seller_draft_quotas` and `rate_counters` (slice 4; D 7.5, 16.1 item 7)
 
@@ -678,6 +698,11 @@ rounded up to a power of two. The plaintext limit itself is checked in the domai
 | `change_reason_ciphertext` (type revisions, policy revisions, reactivation proposals; CE8) | 500 | 2,707 | 4096 | 2, 7 |
 | `relaxation_proposals.proposed_expert_reference_ciphertext` | 500 | 2,707 | 4096 | 2 |
 
+Draft ciphertext rows (PR 382): `seller_certifications.draft_certificate_number_ciphertext` (64
+characters, bound 512) and `draft_self_declaration_note_ciphertext` (1,000, bound 8192) carry the
+same envelope CHECKs as their submission columns, added `NOT VALID` and validated in the same
+migration; `seller_certification_history.note_ciphertext` (bound 8192) likewise.
+
 Columns added later take their row here in the same PR as their migration. The boundary test
 (40 refused, 41 and the bound accepted, bound + 1 refused) is written once per bound value, not
 per column.
@@ -739,6 +764,23 @@ Tables: `certification_type_revisions`, `type_revision_texts`, `claim_terms`,
 `product_revision_decisions`, `product_revision_review_checks`, `product_issuer_confirmations`,
 `product_certification_history`, `ai_reading_results`. The `TRUNCATE` trigger is needed: measured,
 the owner truncated a table that had only the row trigger (12).
+
+**Link trigger `certification.document_link_clean()` (as built, PR 382).** `BEFORE INSERT` on
+`seller_certification_draft_documents` and `seller_submission_documents`: the linked document must
+exist in the Market with `state = 'clean'` and `purpose = 'seller-certificate'`, else `23514`. It
+takes **no row lock** (no `FOR SHARE`), by Mojtaba's reasoning: (1) `clean` is final for every role,
+the owner included: `clean_sha256` is set once (the guard) and `(state = 'clean') = (clean_sha256 IS
+NOT NULL)`, so a clean row never becomes anything else; (2) the only change that can race with a
+link insert is a non-clean file becoming `clean`, which can only cause a false refusal that a retry
+fixes, never a wrong link; (3) a concurrent `DELETE` is already blocked, because the link's FK check
+takes `FOR KEY SHARE` on the document row. For the scanner package: give it a column-level
+`GRANT UPDATE (state, refusal_code, media_type, page_count, clean_sha256, version)` (add it to
+`columnUpdate` in `expected-privileges.ts` and to the 10.4 column test) and, in the same migration,
+add one rule to `uploaded_documents_guard`: state moves forward only (`received -> scanning ->
+clean | refused`, never out of `clean` or `refused`); add the `DELETE` branch when promotion and an
+evidence key arrive. Never `SECURITY DEFINER` (an owner-privileged path outside the grant model and
+the privilege test, with `search_path` to harden, and no gain here) and never `FOR SHARE` (not needed;
+the column grant already makes `FOR KEY SHARE` legal).
 
 The set-once guard of `uploaded_documents` (3.9) is a second trigger function,
 `certification.uploaded_documents_guard()`, in the pattern of `platform.subject_keys_guard_update`
@@ -890,7 +932,7 @@ the expected map of the privilege test changed in the same PR. `GRANT USAGE ON S
 | `seller_certification_draft_documents`, `product_certification_draft_documents`, `product_certification_draft_coverage` | `SELECT, INSERT, DELETE`; draft coverage also `UPDATE` | 5; 14 | Draft lists |
 | `product_certification_draft_editors` | `SELECT, INSERT` | 14 (removed at submission) | |
 | `product_certifications` | `SELECT, INSERT, UPDATE` | Never (a draft is rejected, not deleted: Q-C2) | |
-| `uploaded_documents` | `SELECT, INSERT, UPDATE` | 4 (draft area only; the guard trigger refuses promoted rows) | |
+| `uploaded_documents` | `SELECT, INSERT, DELETE` as built (PR 382): **no UPDATE** until the scanner package, which then adds a column-level `UPDATE (state, refusal_code, media_type, page_count, clean_sha256, version)` (6.1); the full `UPDATE` of this row is not granted | 4 (draft area only; the guard trigger refuses promoted rows) | The set-once guard still protects identity columns for the owner role |
 | `issuer_requests` | `SELECT, INSERT`, `UPDATE (state, answer_reason_code, issuer_id, answered_at, answered_by_account_id, version)` | Never | Typed name immutable |
 | `relaxation_proposals` | `SELECT, INSERT`, `UPDATE (state, decided_by_account_id, decided_at, version)` | Never | 3.20 |
 | `claim_basis_policies` | `SELECT, INSERT`, `UPDATE (published_revision_id, version)` | Never | |
@@ -917,6 +959,7 @@ in the expected map, so a new insert-only table without the trigger fails the te
 | 1 | 1 | `certification_claims_core` | `CREATE SCHEMA "certification"`; `reject_mutation()`; `outbox`, `inbox`; `certification_types`; `certification_type_revisions`; `seller_certifications` (slice-1 columns, T1 partial unique, A9 partial index); `seller_certification_submissions`; `seller_submission_decisions`; `issuers` complete (Hossein's choice at the slice, accepted by Mojtaba: the submissions' issuer key needs it); triggers; grants |
 | 2 | 2 | `certification_types_registry` | `type_revision_texts`, `claim_terms`, `change_reason_ciphertext`; `issuer_contact_channels`; `relaxation_proposals`; `platform_subjects` (the seed creates the row and key) |
 | 3 | 4 | `certification_documents` | `uploaded_documents` with its guard trigger and function; `document_previews`; `seller_draft_quotas`; `rate_counters` |
+| 3+4 (as built) | 4, 5 (simplified) | `certification_seller_certificate_submit` (PR 382) | One migration for the simplified intake: `uploaded_documents` (with `DELETE`, no `UPDATE`, guard and link triggers), `seller_draft_quotas`, `rate_counters`, the draft columns and CHECKs of `seller_certifications`, both link tables, `seller_certification_history`, `DELETE` on the root, the list index `(market_id, seller_id, created_at, id)` (A4, matching `ORDER BY created_at DESC, id DESC`). **Deferred:** `document_previews`, A7 `(market_id, status, status_changed_at, id)` (admin list package) and the A14 partial indexes (purge package) |
 | 4 | 5 | `certification_drafts_submissions` | Draft columns of `seller_certifications` and their CHECKs and FKs; `seller_certification_draft_documents`; `seller_submission_documents`; `seller_certification_history`; `DELETE` on the root; root lists indexes (A4, A7, A14) |
 | 5 | 6 | `certification_issuer_requests` | `issuer_requests`, `issuer_request_documents` |
 | 6 | 7 | `certification_review` | `submission_review_checks`, `submission_scope_readings`, `seller_issuer_confirmations`, `certificate_number_index`, `document_index`; queue and fan-out indexes (A5, A8) |

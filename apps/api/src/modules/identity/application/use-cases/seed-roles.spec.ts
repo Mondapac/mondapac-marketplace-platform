@@ -107,6 +107,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     expect(roleOf('seller', 'store-manager').permissionKeys).toEqual([
       'catalog.own-product.edit',
       'catalog.own-product.view',
+      'certification.own-certificate.manage',
+      'certification.own-certificate.view',
       'identity.seller-role.view',
       'identity.team-member.view',
     ]);
@@ -333,7 +335,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
       role.seedCode === 'store-manager'
         ? {
             ...role,
-            seedVersion: 4,
+            seedVersion: 5,
             permissionKeys: ['identity.team-member.view', 'identity.seller-access.view'].slice(
               0,
               1,
@@ -349,20 +351,22 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('seller', 'store-manager')).toMatchObject({
       id: before.id,
-      seedVersion: 4,
+      seedVersion: 5,
       version: before.version + 1,
       permissionKeys: ['identity.team-member.view'],
     });
     expect(fakes.audits).toEqual([
       {
         ...RoleSeedApplied.entry(before.id, {
-          before: { seedVersion: 3 },
+          before: { seedVersion: 4 },
           after: {
-            seedVersion: 4,
+            seedVersion: 5,
             addedKeys: [],
             removedKeys: [
               'catalog.own-product.edit',
               'catalog.own-product.view',
+              'certification.own-certificate.manage',
+              'certification.own-certificate.view',
               'identity.seller-role.view',
             ],
           },
@@ -373,8 +377,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
     expect(logged('identity.seed-roles.upgraded')?.[0]).toMatchObject({
       roleId: before.id,
-      fromSeedVersion: 3,
-      seedVersion: 4,
+      fromSeedVersion: 4,
+      seedVersion: 5,
     });
 
     // Applied once: the next run finds the role current and writes nothing.

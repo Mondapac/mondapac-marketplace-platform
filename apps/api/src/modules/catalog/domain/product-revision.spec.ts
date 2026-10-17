@@ -259,6 +259,69 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
     });
   });
 
+  describe('request changes (4.2 row 5)', () => {
+    const ask = (product: Product, revisionId: Id<'ProductRevision'>) =>
+      product.requestRevisionChanges({ revisionId, reasonCode: 'description-claim', now: T2 });
+
+    it('clears the pending pointer, keeps the published revision and announces the code', () => {
+      const product = simple();
+      submit(product, { revisionId: rev(1) });
+      submit(product, { revisionId: rev(2), outcome: PENDING });
+      const before = product.state.version;
+
+      expect(ask(product, rev(2)).ok).toBe(true);
+
+      expect(product.state).toMatchObject({
+        status: 'published',
+        publishedRevisionId: rev(1),
+        pendingRevisionId: null,
+        pendingSubmittedAt: null,
+      });
+      expect(product.state.version).toBe(before + 1);
+      const event = product.pendingEvents.at(-1);
+      expect(event?.type).toBe('catalog.product-revision-changes-requested.v1');
+      expect(event?.payload).toEqual({
+        productId,
+        revisionId: rev(2),
+        reasonCode: 'description-claim',
+        scope: 'seller',
+      });
+    });
+
+    it('keeps a never-published product unpublished', () => {
+      const product = simple();
+      submit(product, { revisionId: rev(1), outcome: PENDING });
+      expect(ask(product, rev(1)).ok).toBe(true);
+      expect(product.state).toMatchObject({
+        status: 'unpublished',
+        publishedRevisionId: null,
+        pendingRevisionId: null,
+      });
+    });
+
+    it('refuses a revision that is not the pending one, or nothing pending, and changes nothing', () => {
+      const product = simple();
+      expect(ask(product, rev(1))).toEqual({
+        ok: false,
+        error: { code: 'review.not-current-revision' },
+      });
+      submit(product, { revisionId: rev(1), outcome: PENDING });
+      const before = product.state;
+      expect(ask(product, rev(9))).toEqual({
+        ok: false,
+        error: { code: 'review.not-current-revision' },
+      });
+      expect(product.state).toEqual(before);
+    });
+
+    it('is not available on a PLATFORM product', () => {
+      expect(ask(simple('PLATFORM'), rev(1))).toEqual({
+        ok: false,
+        error: { code: 'product.seller-only' },
+      });
+    });
+  });
+
   describe('base revision', () => {
     it('refuses a submit built on a revision that is no longer the published one', () => {
       const product = simple();
