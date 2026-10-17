@@ -1,3 +1,4 @@
+import { createServer } from 'node:net';
 import { devNull } from 'node:os';
 import { Logger } from '@nestjs/common';
 import { isMinted, ok, Temporal } from '@mondapac/shared-kernel';
@@ -259,17 +260,29 @@ describe('relay (database integration)', () => {
   });
 
   describe('roles: both boot through the real start functions (P 8)', () => {
-    const config = (role: 'api' | 'worker') =>
+    // A port the OS reports free: a random pick in 40000-60000 overlapped the ephemeral range
+    // (32768-60999) and collided on a CI runner (EADDRINUSE).
+    const freePort = (): Promise<number> =>
+      new Promise((resolve, reject) => {
+        const server = createServer();
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', () => {
+          const address = server.address();
+          const port = typeof address === 'object' && address !== null ? address.port : 0;
+          server.close(() => resolve(port));
+        });
+      });
+    const config = async (role: 'api' | 'worker') =>
       testAppConfig({
         APP_ROLE: role,
         DATABASE_URL: relayTestDatabaseUrl(),
-        PORT: String(40_000 + Math.floor(Math.random() * 20_000)),
+        PORT: String(await freePort()),
       });
 
     it('api: listens and answers, and starts no relay', async () => {
       const context = eventContext(marketOf('AU'));
       await writeEvents(db, writer, context, [thing()]);
-      const apiConfig = config('api');
+      const apiConfig = await config('api');
       const app = await startApi(apiConfig, { logDestination: pinoNull() });
       try {
         expect(app).toBeDefined();
@@ -288,7 +301,7 @@ describe('relay (database integration)', () => {
       await writeEvents(db, writer, context, [thing()]);
       const [eventId] = await eventIdsOf(context.correlationId);
 
-      const worker = await startWorker(config('worker'), { logDestination: pinoNull() });
+      const worker = await startWorker(await config('worker'), { logDestination: pinoNull() });
       try {
         expect(worker).toBeDefined();
         expect('getHttpServer' in worker!.context).toBe(false);
