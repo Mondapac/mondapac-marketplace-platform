@@ -272,14 +272,14 @@ CREATE TRIGGER "uploaded_documents_guard_update"
   BEFORE UPDATE ON "certification"."uploaded_documents"
   FOR EACH ROW EXECUTE FUNCTION "certification"."uploaded_documents_guard"();
 
--- Only a clean file joins a draft or a submission (data design 3.8, AC 21). FOR SHARE keeps the
--- row from moving to another state while the link commits.
+-- Only a clean file joins a draft or a submission (data design 3.8, AC 21). No row lock: a
+-- document never changes state in this package (the application has no UPDATE on it), and a lock
+-- would need an UPDATE grant the table does not carry.
 CREATE FUNCTION "certification"."document_link_clean"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM "certification"."uploaded_documents"
     WHERE "market_id" = NEW."market_id" AND "id" = NEW."document_id" AND "state" = 'clean'
-    FOR SHARE
   ) THEN
     RAISE EXCEPTION 'certification.%: only a clean document can be linked', TG_TABLE_NAME
       USING ERRCODE = '23514';

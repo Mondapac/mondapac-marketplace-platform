@@ -110,6 +110,8 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       version: 1,
       created_at: T0.toString(),
     });
+    // The revision and its texts are one transaction (revision_content_guard_insert).
+    await sql.query('BEGIN');
     await insert('certification_type_revisions', {
       id: revisionId,
       ...base(m),
@@ -132,6 +134,7 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       name: 'Halal',
       customer_description: 'Halal certified',
     });
+    await sql.query('COMMIT');
     await sql.query(
       `UPDATE certification.certification_types SET published_revision_id = $1 WHERE id = $2`,
       [revisionId, typeId],
@@ -509,7 +512,7 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
         [{ byte_size: 33554433 }, 'uploaded_documents_byte_size_check'],
         [{ page_count: 51 }, 'uploaded_documents_page_count_check'],
         [{ media_type: 'text/html' }, 'uploaded_documents_media_type_check'],
-        [{ state: 'quarantined' }, 'uploaded_documents_state_check'],
+        [{ state: 'quarantined', clean_sha256: null }, 'uploaded_documents_state_check'],
         [{ state: 'received' }, 'uploaded_documents_clean_pair_check'],
         [{ clean_sha256: null }, 'uploaded_documents_clean_pair_check'],
         [{ clean_sha256: Buffer.alloc(31) }, 'uploaded_documents_clean_sha256_check'],

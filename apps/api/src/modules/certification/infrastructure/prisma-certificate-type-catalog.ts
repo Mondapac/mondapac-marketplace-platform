@@ -116,7 +116,7 @@ export class PrismaCertificateTypeCatalog implements CertificateTypeCatalog {
 
   async activeTypes(market: MarketContext): Promise<readonly SellerTypeView[]> {
     const rows = await this.prisma.tx(market).certificationType.findMany({
-      where: { marketId: market.marketId, status: 'active' },
+      where: { marketId: market.marketId, status: 'active', publishedRevisionId: { not: null } },
       include: TYPE_INCLUDE,
       orderBy: { code: 'asc' },
     });
