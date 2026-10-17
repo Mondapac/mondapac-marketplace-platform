@@ -7,6 +7,7 @@ import {
   AccountEmailVerified,
   AccountEnabled,
   AccountDisplayNameChanged,
+  AccountOtherSessionsSignedOut,
   AccountPasswordChanged,
   CustomerAccountRegistered,
   SignUpRepeated,
@@ -409,6 +410,25 @@ export class Account {
       }),
     );
     return ok(true);
+  }
+
+  /**
+   * The holder signed out the own other sessions (profile package 4), and at least one was
+   * ended: a version step that records `identity.account-other-sessions-signed-out.v1`, which
+   * sends the notice. The sessions themselves are revoked by the caller in the same unit.
+   */
+  recordOtherSessionsSignedOut(now: Temporal.Instant): void {
+    const state = this.#state;
+    const version = state.version + 1;
+    this.#state = Object.freeze({ ...state, version });
+    this.#events.push(
+      AccountOtherSessionsSignedOut.record({
+        aggregateId: state.id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { accountId: state.id },
+      }),
+    );
   }
 
   /**

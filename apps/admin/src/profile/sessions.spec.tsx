@@ -128,4 +128,29 @@ describe('SessionsCard', () => {
     );
     expect(router.refresh).not.toHaveBeenCalled();
   });
+
+  it('says how long to wait when sign-out of the others is used too often', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: {
+        status: 429,
+        code: 'request.throttled',
+        details: { retryAfterSeconds: 1500 },
+      },
+    } as never);
+    render(
+      wrap(
+        <SessionsCard
+          rows={[row('Chrome on Windows', true), row('Safari on macOS', false)]}
+          csrfToken="csrf"
+        />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out of all other devices' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out others' }));
+    await waitFor(() =>
+      expect(screen.getByText('Too many attempts. Try again in 25 minutes.')).toBeTruthy(),
+    );
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
 });

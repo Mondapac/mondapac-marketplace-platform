@@ -32,6 +32,17 @@ export type IdentityMail =
       readonly changedAt: Temporal.Instant;
     }
   | {
+      /**
+       * The holder signed out every other session of the account (profile package 4, Hassan's
+       * follow-up). A notice without a button: when, and "if this wasn't you". Admin and seller
+       * only: a customer has no "Signed-in devices" page.
+       */
+      readonly template: 'other-sessions-signed-out';
+      readonly population: 'admin' | 'seller';
+      /** When they were signed out: written in the Market's time zone and locale. */
+      readonly changedAt: Temporal.Instant;
+    }
+  | {
       readonly template: 'existing-account';
       readonly population: Population;
       /** The sign-in page. */

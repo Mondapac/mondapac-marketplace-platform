@@ -8,18 +8,26 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { fakeHashOf, IdentityFakes } from '../../../../../test/support/identity-fakes';
 import {
+  TEST_LOCALE_CONFIG_DIRS,
   TEST_MARKET_CONFIG_DIRS,
   TEST_MARKET_IDS,
   TEST_MARKETS,
 } from '../../../../../test/support/test-config';
 import type { AccessDecision, AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
+import type { EventDelivery } from '../../../../platform/events/event-delivery';
+import { loadLocaleCatalogues } from '../../../../platform/i18n/locale-catalogues';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import type { DeviceCode } from '../../domain/device';
 import { openSession } from '../../domain/session';
+import { CatalogueMailComposer } from '../../infrastructure/mail/mail-catalogue';
+import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
+import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
+import type { ThrottleKeys } from '../ports/session-secrets';
 import { ListOwnSessions } from './list-own-sessions.use-case';
+import { SendOtherSessionsSignedOutMail } from './send-other-sessions-signed-out-mail.use-case';
 import { SignOutOtherSessions } from './sign-out-other-sessions.use-case';
 
 // The holder's own signed-in devices and "sign out of all other devices" (profile package 4),
@@ -42,8 +50,26 @@ const PHONE = id<'Session'>('01990000-0000-7000-8000-00000000a003');
 const IDLE = id<'Session'>('01990000-0000-7000-8000-00000000a004');
 const SIGNED_OUT = id<'Session'>('01990000-0000-7000-8000-00000000a005');
 const OTHER_ACCOUNTS = id<'Session'>('01990000-0000-7000-8000-00000000a006');
+const NEW_DEVICE = id<'Session'>('01990000-0000-7000-8000-00000000a007');
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 12 * 3600 };
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+const policy = new MarketConfigIdentityPolicy(markets);
+const composer = new CatalogueMailComposer(markets, loadLocaleCatalogues(TEST_LOCALE_CONFIG_DIRS));
+const keys: ThrottleKeys = {
+  account: (market, population, email) => Buffer.from(`${market.marketId}|${population}|${email}`),
+  accountOrigin: (market, population, email, origin) =>
+    Buffer.from(`${market.marketId}|${population}|${email}|${origin}`),
+  origin: (market, origin) => Buffer.from(`${market.marketId}|${origin}`),
+};
+let deliveries = 0;
+function deliveryOf(): EventDelivery {
+  deliveries += 1;
+  return {
+    eventId: `0199ffff-0000-7000-8000-${String(deliveries).padStart(12, '0')}` as Id<'event'>,
+    subscriber: 'identity.other-sessions-signed-out-mail',
+    attempt: 1,
+  };
+}
 const allow: AuthorisationCheck = {
   check: (): Promise<AccessDecision> => Promise.resolve({ allowed: true }),
 };
@@ -116,13 +142,19 @@ describe.each(TEST_MARKETS)('own sessions in market %s', (code) => {
     seedSession(OTHER_ACCOUNTS, OTHER_ADMIN_ID, 50, 1, 'chrome.android');
   });
 
-  const deps = () => ({
+  const deps = (clock = new FixedClock(START), marketPolicy: IdentityMarketPolicy = policy) => ({
     unitOfWork: fakes.unitOfWork,
     accounts: fakes.accountRepository,
     sessions: fakes.sessionRepository,
+    throttles: fakes.throttleRepository,
+    keys,
+    outbox: fakes.outbox,
+    policy: marketPolicy,
     audit: fakes.audit,
-    clock: new FixedClock(START),
+    clock,
   });
+  const signedOutEvents = () =>
+    fakes.events.filter((e) => e.type === 'identity.account-other-sessions-signed-out.v1');
   const contextOf = (
     population: 'admin' | 'seller' | 'customer',
     accountId: Id<'Account'>,
@@ -278,6 +310,59 @@ describe.each(TEST_MARKETS)('own sessions in market %s', (code) => {
       expect(sessionOf(LAPTOP).revokedAt).toBeNull();
     });
 
+    it('records the notice event once per call that ended a session, ids only', async () => {
+      const useCase = new SignOutOtherSessions(gate, deps());
+      await useCase.execute(contextOf('admin', ADMIN_ID), {});
+      await useCase.execute(contextOf('admin', ADMIN_ID), {});
+      // The second call ended nothing, so the holder is not told again.
+      expect(signedOutEvents()).toHaveLength(1);
+      expect(signedOutEvents()[0]).toMatchObject({
+        aggregateType: 'account',
+        aggregateId: ADMIN_ID,
+        aggregateVersion: 4,
+        occurredAt: START,
+        payload: { accountId: ADMIN_ID },
+      });
+    });
+
+    it('refuses above the Market limit with the wait, and changes nothing', async () => {
+      const limit = policy.signOutOthersThrottle(market)!.limit;
+      const useCase = new SignOutOtherSessions(gate, deps());
+      for (let call = 0; call < limit; call += 1) {
+        await expect(useCase.execute(contextOf('admin', ADMIN_ID), {})).resolves.toMatchObject({
+          ok: true,
+        });
+      }
+      seedSession(NEW_DEVICE, ADMIN_ID, 1, 0, 'safari.macos');
+      const refused = await useCase.execute(contextOf('admin', ADMIN_ID), {});
+      const windowMinutes = policy.signOutOthersThrottle(market)!.windowMinutes;
+      expect(refused).toEqual({
+        ok: false,
+        error: { code: 'request.throttled', retryAfterSeconds: windowMinutes * 60 },
+      });
+      expect(sessionOf(NEW_DEVICE).revokedAt).toBeNull();
+      expect(
+        fakes.audits.filter((e) => e.action === 'identity.account.other-sessions-signed-out'),
+      ).toHaveLength(limit);
+      // Another account has its own counter.
+      await expect(
+        useCase.execute(contextOf('admin', OTHER_ADMIN_ID, OTHER_ACCOUNTS), {}),
+      ).resolves.toMatchObject({ ok: true });
+    });
+
+    it('fails closed when the Market configures no limit', async () => {
+      const unconfigured: IdentityMarketPolicy = Object.assign(
+        Object.create(policy) as IdentityMarketPolicy,
+        { signOutOthersThrottle: () => null },
+      );
+      const result = await new SignOutOtherSessions(gate, deps(undefined, unconfigured)).execute(
+        contextOf('admin', ADMIN_ID),
+        {},
+      );
+      expect(result).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+      expect(sessionOf(LAPTOP).revokedAt).toBeNull();
+    });
+
     it('refuses a customer', async () => {
       seedAccount(CUSTOMER_ID, 'customer');
       const result = await new SignOutOtherSessions(gate, deps()).execute(
@@ -285,6 +370,65 @@ describe.each(TEST_MARKETS)('own sessions in market %s', (code) => {
         {},
       );
       expect(result).toEqual({ ok: false, error: { code: 'access.denied' } });
+    });
+  });
+
+  describe('SendOtherSessionsSignedOutMail', () => {
+    const system = testCallContext(market, 'system');
+    const mailDeps = () => ({
+      unitOfWork: fakes.unitOfWork,
+      accounts: fakes.accountRepository,
+      composer,
+      transport: fakes.mailTransport,
+      policy,
+    });
+
+    it.each(['admin', 'seller'] as const)(
+      'tells the %s address when, with no link and no token',
+      async (population) => {
+        const accountId = population === 'admin' ? ADMIN_ID : SELLER_ACCOUNT_ID;
+        if (population === 'seller') seedAccount(SELLER_ACCOUNT_ID, 'seller');
+        const result = await new SendOtherSessionsSignedOutMail(gate, mailDeps()).execute(system, {
+          delivery: deliveryOf(),
+          accountId,
+          occurredAt: START,
+        });
+        expect(result).toEqual({
+          ok: true,
+          value: { code: 'other-sessions-signed-out-mail.sent' },
+        });
+        const mail = fakes.mails.at(-1)!;
+        expect(mail.to).toBe(`${accountId}@example.com`);
+        expect(mail.text).not.toMatch(/https?:|{/);
+      },
+    );
+
+    it('sends once per delivery and skips an account that is gone', async () => {
+      const send = new SendOtherSessionsSignedOutMail(gate, mailDeps());
+      const delivery = deliveryOf();
+      await send.execute(system, { delivery, accountId: ADMIN_ID, occurredAt: START });
+      await expect(
+        send.execute(system, { delivery, accountId: ADMIN_ID, occurredAt: START }),
+      ).resolves.toEqual({
+        ok: true,
+        value: { code: 'other-sessions-signed-out-mail.already-handled' },
+      });
+      await expect(
+        send.execute(system, { delivery: deliveryOf(), accountId: CUSTOMER_ID, occurredAt: START }),
+      ).resolves.toEqual({
+        ok: true,
+        value: { code: 'other-sessions-signed-out-mail.skipped', reason: 'account.gone' },
+      });
+    });
+
+    it('refuses any caller but the system', async () => {
+      await expect(
+        new SendOtherSessionsSignedOutMail(gate, mailDeps()).execute(contextOf('admin', ADMIN_ID), {
+          delivery: deliveryOf(),
+          accountId: ADMIN_ID,
+          occurredAt: START,
+        }),
+      ).resolves.toEqual({ ok: false, error: { code: 'access.denied' } });
     });
   });
 });

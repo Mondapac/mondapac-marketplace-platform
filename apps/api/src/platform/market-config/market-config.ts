@@ -424,6 +424,27 @@ const identitySchema = z
       })
       .optional(),
     /**
+     * The `sign-out-others.account` counter (profile package 4, Hassan's follow-up): how often the
+     * holder may sign out the own other sessions, per account. At most 20 in a window of 10
+     * minutes to 24 hours; a block of 0 lets the window alone refuse. Without it "sign out of all
+     * other devices" answers `access.unavailable` (fail closed).
+     */
+    signOutOthersThrottle: z
+      .strictObject({
+        limit: z.number().int().min(1).max(20),
+        windowMinutes: z
+          .number()
+          .int()
+          .min(10)
+          .max(24 * 60),
+        blockMinutes: z
+          .number()
+          .int()
+          .min(0)
+          .max(24 * 60),
+      })
+      .optional(),
+    /**
      * Re-applications a rejected seller may make since its last approval (identity design 3.3:
      * fewer than 3, so 3 for AU; slice 9). Without it re-apply answers `access.unavailable` and the
      * status read's `reapplyLimitReached` is null (fail closed).

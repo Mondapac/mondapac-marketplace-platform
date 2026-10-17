@@ -575,6 +575,11 @@ describe('customer sign-in (database integration)', () => {
       expect(await violated(insertThrottle('mail.origin', Buffer.alloc(31), null))).toBe(
         'sign_in_throttles_key_hash_check',
       );
+      // Profile package 4: the sign-out-others counter is an address kind.
+      expect(await violated(insertThrottle('sign-out-others.account', key(), key()))).toBeNull();
+      expect(await violated(insertThrottle('sign-out-others.account', key(), null))).toBe(
+        'sign_in_throttles_account_key_check',
+      );
       expect(
         await violated(
           sql.query(

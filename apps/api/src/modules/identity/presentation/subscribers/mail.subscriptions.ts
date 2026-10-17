@@ -7,6 +7,7 @@ import {
 import type { SendExistingAccountMail } from '../../application/use-cases/send-existing-account-mail.use-case';
 import type { SendInvitationMail } from '../../application/use-cases/send-invitation-mail.use-case';
 import type { SendLinkMail } from '../../application/use-cases/send-link-mail.use-case';
+import type { SendOtherSessionsSignedOutMail } from '../../application/use-cases/send-other-sessions-signed-out-mail.use-case';
 import type { SendPasswordChangedMail } from '../../application/use-cases/send-password-changed-mail.use-case';
 import type { SendSecondFactorMail } from '../../application/use-cases/send-second-factor-mail.use-case';
 import type {
@@ -15,6 +16,7 @@ import type {
 } from '../../application/use-cases/send-seller-access-mail.use-case';
 import type { SendWelcomeMail } from '../../application/use-cases/send-welcome-mail.use-case';
 import {
+  AccountOtherSessionsSignedOut,
   AccountPasswordChanged,
   InvitationIssued,
   OneTimeLinkRequested,
@@ -32,6 +34,8 @@ export const LINK_MAIL_SUBSCRIBER = 'identity.link-mail';
 export const EXISTING_ACCOUNT_MAIL_SUBSCRIBER = 'identity.existing-account-mail';
 export const WELCOME_MAIL_SUBSCRIBER = 'identity.welcome-mail';
 export const PASSWORD_CHANGED_MAIL_SUBSCRIBER = 'identity.password-changed-mail';
+/** Profile package 4 (Hassan's follow-up): the notice after "sign out of all other devices". */
+export const OTHER_SESSIONS_SIGNED_OUT_MAIL_SUBSCRIBER = 'identity.other-sessions-signed-out-mail';
 /** Slice 7b: the invitation mail and the second-factor notice. */
 export const INVITATION_MAIL_SUBSCRIBER = 'identity.invitation-mail';
 export const SECOND_FACTOR_MAIL_SUBSCRIBER = 'identity.second-factor-mail';
@@ -56,6 +60,7 @@ export function identityMailSubscriptions(
   sendInvitationMail: SendInvitationMail,
   sendSecondFactorMail: SendSecondFactorMail,
   sendSellerAccessMail: SendSellerAccessMail,
+  sendOtherSessionsSignedOutMail: SendOtherSessionsSignedOutMail,
 ): RegisteredSubscription[] {
   /** One decision event's delivery to the decision mail handler. */
   const decisionMail = async (
@@ -194,6 +199,22 @@ export function identityMailSubscriptions(
         });
         if (!result.ok) {
           throw new Error(`${PASSWORD_CHANGED_MAIL_SUBSCRIBER} refused: ${result.error.code}`);
+        }
+      },
+    }),
+    subscription({
+      name: OTHER_SESSIONS_SIGNED_OUT_MAIL_SUBSCRIBER,
+      event: AccountOtherSessionsSignedOut,
+      async handle(event, delivery, context) {
+        const result = await sendOtherSessionsSignedOutMail.execute(context, {
+          delivery,
+          accountId: event.payload.accountId,
+          occurredAt: event.occurredAt,
+        });
+        if (!result.ok) {
+          throw new Error(
+            `${OTHER_SESSIONS_SIGNED_OUT_MAIL_SUBSCRIBER} refused: ${result.error.code}`,
+          );
         }
       },
     }),

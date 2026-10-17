@@ -163,6 +163,7 @@ import { SellerAccessOf } from './application/use-cases/seller-access-of.use-cas
 import { SellerAccessOfSystem } from './application/use-cases/seller-access-of-system.use-case';
 import { SendExistingAccountMail } from './application/use-cases/send-existing-account-mail.use-case';
 import { SendLinkMail } from './application/use-cases/send-link-mail.use-case';
+import { SendOtherSessionsSignedOutMail } from './application/use-cases/send-other-sessions-signed-out-mail.use-case';
 import { SendPasswordChangedMail } from './application/use-cases/send-password-changed-mail.use-case';
 import { SendWelcomeMail } from './application/use-cases/send-welcome-mail.use-case';
 import { SignInCustomer } from './application/use-cases/sign-in-customer.use-case';
@@ -878,8 +879,19 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       accounts: true,
       sessions: true,
+      throttles: true,
+      keys: true,
+      outbox: true,
+      policy: true,
       audit: true,
       clock: true,
+    }),
+    useCaseProvider(SendOtherSessionsSignedOutMail, {
+      unitOfWork: true,
+      accounts: true,
+      composer: true,
+      transport: true,
+      policy: true,
     }),
     useCaseProvider(SendPasswordChangedMail, {
       unitOfWork: true,
@@ -1634,6 +1646,7 @@ function useCaseProvider<D, U>(
         SendInvitationMail,
         SendSecondFactorMail,
         SendSellerAccessMail,
+        SendOtherSessionsSignedOutMail,
       ],
       (
         sendLinkMail: SendLinkMail,
@@ -1643,6 +1656,7 @@ function useCaseProvider<D, U>(
         sendInvitationMail: SendInvitationMail,
         sendSecondFactorMail: SendSecondFactorMail,
         sendSellerAccessMail: SendSellerAccessMail,
+        sendOtherSessionsSignedOutMail: SendOtherSessionsSignedOutMail,
       ) =>
         identityMailSubscriptions(
           sendLinkMail,
@@ -1652,6 +1666,7 @@ function useCaseProvider<D, U>(
           sendInvitationMail,
           sendSecondFactorMail,
           sendSellerAccessMail,
+          sendOtherSessionsSignedOutMail,
         ),
     ),
   ],

@@ -84,6 +84,12 @@ export interface IdentityMarketPolicy {
   secondFactorThrottle(market: MarketContext): ThrottleRule | null;
 
   /**
+   * The `sign-out-others.account` counter (profile package 4, Hassan's follow-up: AU 5 in 60
+   * minutes, no block), or null, so "sign out of all other devices" fails closed.
+   */
+  signOutOthersThrottle(market: MarketContext): ThrottleRule | null;
+
+  /**
    * Slice 9: how many re-applications a rejected seller may make since its last approval
    * (identity design 3.3: "fewer than 3", a Market policy value), or null. No Market
    * configuration key exists yet (it needs a Market-config PR), so the adapter answers null and

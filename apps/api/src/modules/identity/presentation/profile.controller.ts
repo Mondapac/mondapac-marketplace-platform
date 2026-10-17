@@ -18,6 +18,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiServiceUnavailableResponse,
+  ApiTooManyRequestsResponse,
   ApiTags,
   ApiUnauthorizedResponse,
   ApiUnsupportedMediaTypeResponse,
@@ -284,6 +285,10 @@ export class AdminProfileController {
   })
   @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
   @ApiOkResponse({ type: OtherSessionsSignedOut })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds; Retry-After)',
+  })
   @ApiUnauthorizedResponse({
     type: ApiErrorBody,
     description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
@@ -426,6 +431,10 @@ export class SellerProfileController {
   })
   @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
   @ApiOkResponse({ type: OtherSessionsSignedOut })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds; Retry-After)',
+  })
   @ApiUnauthorizedResponse({
     type: ApiErrorBody,
     description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
