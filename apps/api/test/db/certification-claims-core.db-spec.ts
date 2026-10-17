@@ -87,10 +87,28 @@ it('has exactly the row and the statement trigger on every insert-only table of 
         'certification.relaxation_proposals_guard_update',
       ],
       [
+        'seller_certification_draft_documents',
+        'seller_certification_draft_documents_clean',
+        7,
+        'certification.document_link_clean',
+      ],
+      [
+        'seller_submission_documents',
+        'seller_submission_documents_clean',
+        7,
+        'certification.document_link_clean',
+      ],
+      [
         'type_revision_texts',
         'type_revision_texts_revision_open',
         7,
         'certification.revision_content_guard_insert',
+      ],
+      [
+        'uploaded_documents',
+        'uploaded_documents_guard_update',
+        19,
+        'certification.uploaded_documents_guard',
       ],
     ];
     const guardNames = new Set(GUARDS.map((g) => g[1]));

@@ -16,3 +16,5 @@ export {
   type CertificationValidationFailed,
   type ClaimTextInput,
 } from './certification.facade';
+export { CERTIFICATION_PERMISSIONS } from './permissions';
+export { CERTIFICATION_EVENTS } from '../domain/events';

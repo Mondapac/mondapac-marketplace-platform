@@ -24,12 +24,14 @@ export const SELLER_ROLES_SEED: readonly SeededRole[] = [
     scope: 'seller',
     kind: 'default',
     seedCode: 'store-manager',
-    seedVersion: 2,
+    seedVersion: 3,
     nameKey: 'identity.role.store-manager',
     permissionKeys: [
       'identity.team-member.view',
       'identity.seller-role.view',
       'catalog.own-product.view',
+      'certification.own-certificate.view',
+      'certification.own-certificate.manage',
     ],
   },
   {
@@ -46,9 +48,9 @@ export const SELLER_ROLES_SEED: readonly SeededRole[] = [
     scope: 'seller',
     kind: 'default',
     seedCode: 'catalogue-stock',
-    seedVersion: 2,
+    seedVersion: 3,
     nameKey: 'identity.role.catalogue-stock',
-    permissionKeys: ['catalog.own-product.view'],
+    permissionKeys: ['catalog.own-product.view', 'certification.own-certificate.view'],
   },
   {
     // Answers customers, handles returns.

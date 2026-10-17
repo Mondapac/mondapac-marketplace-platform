@@ -1,4 +1,6 @@
 import { Module, type FactoryProvider } from '@nestjs/common';
+import { registerPermissions } from '../../platform/authz';
+import { registerEvents } from '../../platform/events/event-catalogue';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { MarketRegistry } from '../../platform/market-config/market-registry';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
@@ -38,6 +40,10 @@ import { CERTIFICATION_TYPE_SEED, type CertificationTypeSeed } from './applicati
 import { SeedCertificationTypes } from './application/use-cases/seed-certification-types.use-case';
 import { certificationTypeRepositoryProvider } from './infrastructure/certification-type-repository.provider';
 import { CheckedInTypeSeed } from './infrastructure/seed/checked-in-type-seed';
+import { CERTIFICATION_PERMISSIONS } from './contracts/permissions';
+import { CERTIFICATION_EVENTS } from './domain/events';
+import { sellerCertificateProviders } from './infrastructure/seller-certificate-providers';
+import { OwnCertificateController } from './presentation/own-certificate.controller';
 import { seedCertificationTypesJob } from './presentation/jobs/seed-certification-types.job';
 
 /** The use cases that only read the published types: the gate and the reader. */
@@ -73,7 +79,12 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
  */
 @Module({
   imports: [PersistenceModule, SellersModule],
+  controllers: [OwnCertificateController],
   providers: [
+    PersistenceModule.outboxWriterFor('certification'),
+    registerEvents('certification', CERTIFICATION_EVENTS),
+    registerPermissions('certification', CERTIFICATION_PERMISSIONS),
+    ...sellerCertificateProviders,
     PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
     claimFactsReaderProvider,
