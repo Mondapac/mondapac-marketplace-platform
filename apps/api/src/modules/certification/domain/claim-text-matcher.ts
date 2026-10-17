@@ -182,7 +182,14 @@ export function latinContextFold(s: string): string {
       if (!ARABIC_SCRIPT.test(ch)) return ch;
       if (ARABIC_LETTER.test(chars[i - 1] ?? '') || ARABIC_LETTER.test(chars[i + 1] ?? ''))
         return ch;
-      if (!LATIN_LETTER.test(before[i]!) && !LATIN_LETTER.test(after[i]!)) return ch;
+      // Latin context: the directly adjacent character (main's rule, which also counts Latin
+      // modifier letters such as U+1D2F) or the nearest non-separator (Hassan #380 re-review).
+      const latinContext =
+        LATIN_LETTER.test(chars[i - 1] ?? '') ||
+        LATIN_LETTER.test(chars[i + 1] ?? '') ||
+        LATIN_LETTER.test(before[i]!) ||
+        LATIN_LETTER.test(after[i]!);
+      if (!latinContext) return ch;
       const prototype = UTS39_CONFUSABLES.get(ch)?.toLowerCase();
       return prototype !== undefined && /^[a-z]+$/.test(prototype) ? prototype : ch;
     })

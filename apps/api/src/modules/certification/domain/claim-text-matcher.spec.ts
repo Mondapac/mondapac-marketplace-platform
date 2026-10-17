@@ -416,6 +416,12 @@ describe('claim text matcher: Latin context across separators (Hassan S5)', () =
     }
   });
 
+  it('keeps the fold main had beside a Latin modifier letter (Hassan #380 re-review)', () => {
+    for (const text of ['h4\u1d2fا41', 'h4l4\u1d2fا', 'h4\u1d2fا\u1d2f4\u1d2f1']) {
+      expect([text, run(AU, text)]).toEqual([text, ['halal:compact']]);
+    }
+  });
+
   // Frozen copy of the rule on main before the separators change: the oracle.
   const mainFold = (s: string): string[] => {
     const arabic = /\p{Script=Arabic}/u;
@@ -434,7 +440,8 @@ describe('claim text matcher: Latin context across separators (Hassan S5)', () =
   };
 
   it('folds everything main folded, on every mixed Arabic/Latin/separator string (differential)', () => {
-    const alphabet = ['h', 'a', 'l', 'ا', 'ه', 'ب', ' ', '-', '.', '٠'];
+    // U+1D2F and U+10780 are Latin modifier letters: separators for the nearest-letter search.
+    const alphabet = ['h', 'a', 'l', 'ا', 'ه', 'ب', ' ', '-', '.', '٠', '\u1d2f', '\u{10780}'];
     const strings: string[] = [];
     const build = (prefix: string, depth: number) => {
       strings.push(prefix);
@@ -518,9 +525,10 @@ describe('claim text matcher: speed (Hassan S4, #380 M1)', () => {
       // Control: the same length of ASCII, which takes the fast path the memo gives other characters.
       const control = 'a'.repeat(20_000);
       const base = minMs(() => normaliseClaimText(control, true));
+      // Memoised, these run at about 2-7x the control; the code before the memo ran at about 30x.
       for (const visual of [false, true]) {
         const ms = minMs(() => normaliseClaimText(text, visual));
-        expect([ch, visual, ms < 60 * base + 100]).toEqual([ch, visual, true]);
+        expect([ch, visual, ms < 15 * base]).toEqual([ch, visual, true]);
       }
     },
   );
