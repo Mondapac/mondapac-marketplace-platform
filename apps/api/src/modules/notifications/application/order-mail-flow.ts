@@ -149,6 +149,7 @@ export async function sendOrderConfirmation(
     orderId: order.value.orderId,
     lines,
     orderUrl: url,
+    locale: deps.policy.defaultLocale(context.market),
   });
   // A send failure throws: the delivery is retried by the outbox, the order is already paid.
   await deps.transport.send({
@@ -194,6 +195,7 @@ export async function sendSellerNewOrders(
           name: names.get(line.offerId) ?? null,
           quantity: line.quantity,
         })),
+        locale: deps.policy.defaultLocale(context.market),
       });
       await deps.transport.send({
         to,
@@ -240,6 +242,7 @@ export async function sendOrderShipped(
     carrier: notice.value.carrier,
     trackingRef: notice.value.trackingRef,
     orderUrl: url,
+    locale: deps.policy.defaultLocale(context.market),
   });
   // A send failure throws: the outbox retries the delivery; the shipment is already recorded.
   await deps.transport.send({
