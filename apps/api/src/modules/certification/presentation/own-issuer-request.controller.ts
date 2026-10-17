@@ -37,6 +37,7 @@ import { CertificationErrorBody } from './own-certificate.dto';
 export const OWN_ISSUER_REQUEST_STATUS: Readonly<Record<string, number>> = Object.freeze({
   ...OWN_CERTIFICATE_STATUS,
   'type.no-issuer-registry': 409,
+  'issuer-request.already-open': 409,
 });
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -75,7 +76,8 @@ export class OwnIssuerRequestController {
       'Needs certification.own-certificate.manage. For an active type whose form takes the issuer ' +
       'from the registry: the issuer name as typed (request text only, never a registry value) and ' +
       'one base64 JPEG, PNG or PDF of at most 10 MiB, checked like a certificate file and stored ' +
-      'encrypted. At most 3 requests a day per seller. The draft of the type shows ' +
+      'encrypted. At most 3 requests a day per seller, and one open request per seller and type ' +
+      '(409 issuer-request.already-open; the request still counts). The draft of the type shows ' +
       'draft-issuer-not-listed until an admin answers.',
   })
   @ApiHeader(CSRF)
@@ -90,7 +92,9 @@ export class OwnIssuerRequestController {
   @ApiNotFoundResponse({ type: CertificationErrorBody, description: 'type.not-found' })
   @ApiConflictResponse({
     type: CertificationErrorBody,
-    description: 'type.inactive, type.no-issuer-registry, conflict.stale',
+    description:
+      'type.inactive, type.no-issuer-registry, issuer-request.already-open (one open request ' +
+      'per seller and type), conflict.stale',
   })
   @ApiPayloadTooLargeResponse({ type: CertificationErrorBody, description: 'file.too-large' })
   @ApiUnprocessableEntityResponse({

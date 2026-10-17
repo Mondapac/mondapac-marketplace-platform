@@ -46,6 +46,7 @@ export type OwnIssuerRequestCreateFailure =
   | { readonly code: 'access.unavailable' }
   | { readonly code: 'type.not-found' }
   | IssuerRequestTypeRefusal
+  | { readonly code: 'issuer-request.already-open' }
   | { readonly code: 'conflict.stale' }
   | { readonly code: DocumentRefusalCode }
   | RateFailure
@@ -63,8 +64,9 @@ const INTAKE_BUSY_RETRY_SECONDS = 5;
  * `draft-issuer-not-listed`. The typed name is encrypted under the seller's key and is request text
  * only: it never becomes an issuer, a draft field or a submission field (AC 11), and it never
  * reaches an event, an audit row, a log line or a mail. The file goes through the same intake as a
- * certificate file and is stored with the purpose `issuer-request`. Limits: 3 requests a day per
- * seller and the seller's upload budget. Rule: key `certification.own-certificate.manage`, allowed
+ * certificate file and is stored with the purpose `issuer-request`. A seller has at most one open
+ * request per type (`issuer-request.already-open`). Limits: 3 requests a day per seller and the
+ * seller's upload budget, charged before every other check, a refused request included. Rule: key `certification.own-certificate.manage`, allowed
  * for a seller not yet approved; an acting-as session is refused, and so is an unsure one (M5).
  */
 export class OwnIssuerRequestCreate extends UseCase<
@@ -135,7 +137,12 @@ export class OwnIssuerRequestCreate extends UseCase<
           const type = await deps.types.typeByCode(market, typeCode);
           if (type === null) return err({ code: 'type.not-found' } as const);
           const refusal = issuerRequestTypeRefusal(type);
-          return refusal === null ? ok(type.typeId) : err(refusal);
+          if (refusal !== null) return err(refusal);
+          // One open request per seller and type: refused before the file work.
+          if (await deps.requests.hasOpen(market, owner.sellerId, type.typeId)) {
+            return err({ code: 'issuer-request.already-open' } as const);
+          }
+          return ok(type.typeId);
         },
         { readOnly: true },
       )
@@ -191,7 +198,7 @@ export class OwnIssuerRequestCreate extends UseCase<
         }
         const refusal = issuerRequestTypeRefusal(type);
         if (refusal !== null) return err(refusal);
-        await deps.requests.add(market, {
+        const added = await deps.requests.add(market, {
           id,
           sellerId: owner.sellerId,
           typeId,
@@ -207,6 +214,8 @@ export class OwnIssuerRequestCreate extends UseCase<
           },
           now,
         });
+        // A request sent meanwhile (the unique partial index); the unit rolls back.
+        if (added !== null) return err({ code: added });
         return ok({ issuerRequestId: id, typeCode, state: 'open', createdAt: now.toString() });
       })
       .catch((error: unknown) =>

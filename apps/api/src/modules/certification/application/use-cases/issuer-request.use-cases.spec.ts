@@ -262,8 +262,8 @@ describe.each(['AU', 'ZZ'] as const)('issuer requests in market %s', (code) => {
   }
   type Rig = ReturnType<typeof rig>;
 
-  const send = (r: Rig, over: Record<string, unknown> = {}) =>
-    r.create.execute(r.contextOf(), {
+  const send = (r: Rig, over: Record<string, unknown> = {}, seller: Id<'Seller'> = r.sellerId) =>
+    r.create.execute(r.contextOf('seller', seller), {
       typeCode: 'halal',
       issuerName: CANARY,
       data: PDF.toString('base64'),
@@ -377,9 +377,50 @@ describe.each(['AU', 'ZZ'] as const)('issuer requests in market %s', (code) => {
       expect(r.vault.objects.size).toBe(0);
     });
 
-    it('allows 3 requests a day per seller (design 7.5) and fails closed without counters', async () => {
+    it('keeps one open request per seller and type; another seller and an answered one are free', async () => {
       const r = rig();
-      for (let n = 0; n < 3; n += 1) await unwrap(send(r));
+      const first = await unwrap(send(r));
+      await expect(send(r)).resolves.toEqual({
+        ok: false,
+        error: { code: 'issuer-request.already-open' },
+      });
+      // Refused before the file work: only the first request's file is stored.
+      expect(r.vault.objects.size).toBe(1);
+      expect(r.requests.rows.size).toBe(1);
+      await unwrap(send(r, {}, r.otherSeller));
+      await unwrap(
+        r.answer.execute(r.contextOf('admin'), {
+          issuerRequestId: first.issuerRequestId,
+          version: 1,
+          outcome: 'not-accepted',
+          reasonCode: reasonOf(),
+        }),
+      );
+      await unwrap(send(r));
+      expect(r.requests.rows.size).toBe(3);
+    });
+
+    it('answers already-open when a racing request wins the unique index, and discards the file', async () => {
+      const r = rig();
+      r.requests.raceNextAdd = true;
+      await expect(send(r)).resolves.toEqual({
+        ok: false,
+        error: { code: 'issuer-request.already-open' },
+      });
+      expect(r.vault.objects.size).toBe(0);
+      expect(r.requests.rows.size).toBe(0);
+    });
+
+    it('allows 3 requests a day per seller (design 7.5), a refused one included, and fails closed without counters', async () => {
+      const r = rig();
+      await unwrap(send(r));
+      // The second and third are refused as already open, yet they count against the day.
+      for (let n = 0; n < 2; n += 1) {
+        await expect(send(r)).resolves.toEqual({
+          ok: false,
+          error: { code: 'issuer-request.already-open' },
+        });
+      }
       await expect(send(r)).resolves.toMatchObject({
         ok: false,
         error: { code: 'request.throttled' },
@@ -401,7 +442,7 @@ describe.each(['AU', 'ZZ'] as const)('issuer requests in market %s', (code) => {
       const r = rig();
       const first = await unwrap(send(r));
       r.clock.advance(Temporal.Duration.from({ minutes: 5 }));
-      const second = await unwrap(send(r));
+      const second = await unwrap(send(r, {}, r.otherSeller));
       const page = await unwrap(r.queue.execute(r.contextOf('admin'), { limit: 1 }));
       expect(page.total).toBe(2);
       expect(page.items).toEqual([

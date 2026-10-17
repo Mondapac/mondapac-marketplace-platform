@@ -39,11 +39,43 @@ export class MemoryIssuerRequests implements IssuerRequestRepository {
     }
   }
 
-  add(market: MarketContext, request: NewIssuerRequest): Promise<void> {
+  /** When set, the next `add` answers as if a racing request had won the unique index. */
+  raceNextAdd = false;
+
+  private openOf(marketId: string, sellerId: string, typeId: string): boolean {
+    return [...this.rows.values()].some(
+      (row) =>
+        row.marketId === marketId &&
+        row.sellerId === sellerId &&
+        row.typeId === typeId &&
+        row.state === 'open',
+    );
+  }
+
+  hasOpen(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    typeId: Id<'CertificationType'>,
+  ): Promise<boolean> {
+    return Promise.resolve(this.openOf(market.marketId, sellerId, typeId));
+  }
+
+  add(
+    market: MarketContext,
+    request: NewIssuerRequest,
+  ): Promise<'issuer-request.already-open' | null> {
     if (this.failNextWrite !== null) {
       const error = this.failNextWrite;
       this.failNextWrite = null;
       return Promise.reject(error);
+    }
+    if (this.raceNextAdd) {
+      this.raceNextAdd = false;
+      return Promise.resolve('issuer-request.already-open');
+    }
+    // The unique partial index (market, seller, type) WHERE state = 'open'.
+    if (this.openOf(market.marketId, request.sellerId, request.typeId)) {
+      return Promise.resolve('issuer-request.already-open');
     }
     this.rows.set(request.id, {
       marketId: market.marketId,
@@ -76,7 +108,7 @@ export class MemoryIssuerRequests implements IssuerRequestRepository {
       ],
     });
     this.mirror();
-    return Promise.resolve();
+    return Promise.resolve(null);
   }
 
   openQueue(market: MarketContext, cap: number): Promise<readonly IssuerRequestQueueEntry[]> {

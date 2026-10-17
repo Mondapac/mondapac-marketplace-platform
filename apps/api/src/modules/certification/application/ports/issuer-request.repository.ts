@@ -74,7 +74,20 @@ export interface IssuerRequestNotice {
  * writes to `issuers`, a draft or a submission (AC 11).
  */
 export interface IssuerRequestRepository {
-  add(market: MarketContext, request: NewIssuerRequest): Promise<void>;
+  /**
+   * Inserts the request, its file and the link; `issuer-request.already-open` when the seller
+   * already has an open request of the type (the unique partial index, so a race is caught too).
+   */
+  add(
+    market: MarketContext,
+    request: NewIssuerRequest,
+  ): Promise<'issuer-request.already-open' | null>;
+  /** Whether the seller has an open request of the type (the cheap check before the file work). */
+  hasOpen(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    typeId: Id<'CertificationType'>,
+  ): Promise<boolean>;
   /** The open requests of the Market, oldest first (created, then id); at most `cap`. */
   openQueue(market: MarketContext, cap: number): Promise<readonly IssuerRequestQueueEntry[]>;
   find(market: MarketContext, id: Id<'IssuerRequest'>): Promise<StoredIssuerRequest | null>;

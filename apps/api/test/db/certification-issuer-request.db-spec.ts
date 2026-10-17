@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { ok, Temporal, uuidV7 } from '@mondapac/shared-kernel';
+import { err, ok, Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import type { NewIssuerRequest } from '../../src/modules/certification/application/ports/issuer-request.repository';
@@ -408,16 +408,21 @@ describe.each(TEST_MARKETS)('certification issuer requests in market %s (databas
       expect(await tryInsert(row({ typed_name_ciphertext: 'Halal Authority of Nowhere' }))).toBe(
         'issuer_requests_typed_name_ciphertext_check',
       );
+      // An unknown state is reached only through the answer path (an INSERT is guarded to open).
+      const open = row({});
+      expect(await tryInsert(open)).toBeNull();
       expect(
-        await tryInsert(
-          row({ state: 'pending', answered_at: T1.toString(), answered_by_account_id: uuid7() }),
+        await constraintOf(
+          `UPDATE certification.issuer_requests
+             SET state = 'pending', answered_at = $2, answered_by_account_id = $3, version = 2
+           WHERE id = $1`,
+          [open.id, T1.toString(), uuid7()],
         ),
       ).toBe('issuer_requests_state_check');
       expect(await tryInsert(row({ market_id: 'au' }))).toBe('issuer_requests_market_id_check');
       expect(await tryInsert(row({ tenant_id: 'Default' }))).toBe(
         'issuer_requests_tenant_id_check',
       );
-      expect(await tryInsert(row({ version: 0 }))).toBe('issuer_requests_version_check');
       expect(await tryInsert(row({ answer_reason_code: 'Bad Code' }))).toBe(
         'issuer_requests_answer_reason_code_check',
       );
@@ -494,6 +499,90 @@ describe.each(TEST_MARKETS)('certification issuer requests in market %s (databas
           [request.id],
         ),
       ).not.toBeNull();
+    });
+
+    it('inserts a request only open at version 1 (Hassan L1)', async () => {
+      const typeId = await type();
+      const issuerId = await issuer(typeId);
+      const row = (extra: Record<string, unknown>) => ({
+        id: uuid7(),
+        ...base(),
+        seller_id: uuid7(),
+        type_id: typeId,
+        typed_name_ciphertext: ENVELOPE,
+        state: 'open',
+        version: 1,
+        created_at: T0.toString(),
+        ...extra,
+      });
+      const tryInsert = (values: Record<string, unknown>, client = sql) => {
+        const columns = Object.keys(values);
+        return sqlState(
+          client,
+          `INSERT INTO certification.issuer_requests (${columns.join(', ')}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')})`,
+          Object.values(values),
+        );
+      };
+      const answered = {
+        answered_at: T1.toString(),
+        answered_by_account_id: uuid7(),
+      };
+      // Born answered, with every pair check satisfied: refused by the guard, for the owner too.
+      expect(
+        await tryInsert(
+          row({ state: 'issuer-added', issuer_id: issuerId, ...answered, version: 2 }),
+        ),
+      ).toBe('23001');
+      expect(
+        await tryInsert(
+          row({ state: 'not-accepted', answer_reason_code: 'issuer-not-recognised', ...answered }),
+          owner,
+        ),
+      ).toBe('23001');
+      expect(await tryInsert(row({ version: 2 }))).toBe('23001');
+      expect(await tryInsert(row({ version: 0 }), owner)).toBe('23001');
+      expect(await tryInsert(row({}))).toBeNull();
+    });
+
+    it('keeps one open request per seller and type (Hassan L2); answered, the type is free again', async () => {
+      const typeId = await type();
+      const seller = uuid7();
+      const first = newRequest(typeId, seller);
+      expect(await inUnit(() => requests.add(market, first))).toBeNull();
+      expect(await inUnit(() => requests.hasOpen(market, first.sellerId, first.typeId))).toBe(true);
+      expect(await inUnit(() => requests.hasOpen(other, first.sellerId, first.typeId), other)).toBe(
+        false,
+      );
+      // The second: refused by the unique partial index, and its unit writes nothing.
+      const second = newRequest(typeId, seller);
+      const refused = await persistence.unitOfWork.run(market, async () => {
+        const added = await requests.add(market, second);
+        return added === null ? ok(null) : err({ code: added });
+      });
+      expect(refused).toEqual({ ok: false, error: { code: 'issuer-request.already-open' } });
+      const left = await sql.query<{ n: number }>(
+        `SELECT (SELECT count(*) FROM certification.issuer_requests WHERE id = $1)::int
+              + (SELECT count(*) FROM certification.uploaded_documents WHERE id = $2)::int AS n`,
+        [second.id, second.document.id],
+      );
+      expect(left.rows[0]?.n).toBe(0);
+      // Another seller, or the same seller of another type, may ask.
+      expect(await inUnit(() => requests.add(market, newRequest(typeId)))).toBeNull();
+      const otherType = await type();
+      expect(await inUnit(() => requests.add(market, newRequest(otherType, seller)))).toBeNull();
+      // Answered, a new open request of the same seller and type is allowed.
+      await inUnit(() =>
+        requests.answer(market, {
+          id: first.id,
+          expectedVersion: 1,
+          outcome: 'not-accepted',
+          issuerId: null,
+          reasonCode: 'issuer-not-recognised',
+          accountId: uuid7() as Id<'Account'>,
+          answeredAt: T1,
+        }),
+      );
+      expect(await inUnit(() => requests.add(market, newRequest(typeId, seller)))).toBeNull();
     });
 
     it('grants the API no DELETE and no UPDATE of the typed name, the seller or the type', async () => {

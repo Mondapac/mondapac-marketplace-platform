@@ -323,6 +323,7 @@ describe('issuer request routes over HTTP (integration)', () => {
       'type.not-found': 404,
       'type.inactive': 409,
       'type.no-issuer-registry': 409,
+      'issuer-request.already-open': 409,
       'file.too-large': 413,
       'file.unsupported-type': 415,
       'file.active-content': 422,
@@ -357,6 +358,9 @@ describe('issuer request routes over HTTP (integration)', () => {
         createdAt: START.toString(),
       });
       const requestId = (created.body as { issuerRequestId: string }).issuerRequestId;
+      // One open request per seller and type (Hassan L2).
+      const again = await http().post(sellerBase).set(seller).send(body()).expect(409);
+      expect(again.body).toMatchObject({ code: 'issuer-request.already-open' });
 
       const queue = await http().get(adminBase).set(reviewer).expect(200);
       expect(queue.headers['cache-control']).toContain('no-store');
@@ -400,6 +404,8 @@ describe('issuer request routes over HTTP (integration)', () => {
       expect(outbox.events.map((e) => e.type)).toEqual([
         'certification.issuer-request-answered.v1',
       ]);
+      // Answered, the type is free for a new request of the same seller.
+      await http().post(sellerBase).set(seller).send(body()).expect(201);
       expect(fakes.audits.map((a) => a.action)).toEqual(
         expect.arrayContaining([
           'certification.issuer-request.viewed',

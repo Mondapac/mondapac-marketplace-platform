@@ -13,6 +13,9 @@ DROP TRIGGER "issuer_request_documents_clean" ON "certification"."issuer_request
 DROP FUNCTION "certification"."issuer_request_document_link_clean"();
 DROP TRIGGER "issuer_requests_answer_once" ON "certification"."issuer_requests";
 DROP FUNCTION "certification"."issuer_requests_guard_update"();
+DROP TRIGGER "issuer_requests_insert_open" ON "certification"."issuer_requests";
+DROP FUNCTION "certification"."issuer_requests_guard_insert"();
 
 DROP TABLE "certification"."issuer_request_documents";
+-- The partial indexes go with their table.
 DROP TABLE "certification"."issuer_requests";

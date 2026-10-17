@@ -68,7 +68,7 @@ export interface CertificateRow {
 
 /**
  * The types for which the seller has an open request (design 3.3 `draft-issuer-not-listed`), on the
- * partial index `issuer_requests_market_id_seller_id_type_id_open_idx`. Ids only.
+ * unique partial index `issuer_requests_market_id_seller_id_type_id_open_key`. Ids only.
  */
 export async function openIssuerRequestTypes(
   prisma: PrismaService,

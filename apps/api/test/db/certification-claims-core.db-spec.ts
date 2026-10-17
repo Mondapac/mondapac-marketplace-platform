@@ -4,7 +4,7 @@ import { TEST_MARKETS } from '../support/test-config';
 import { marketOf, otherMarketOf } from './persistence-support';
 import { EXPECTED_PRIVILEGES } from './expected-privileges';
 import { registerTypesRegistrySuite } from './certification-types-registry.db-suite';
-import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { certClaimsCoreOwnerTestDatabaseUrl, certClaimsCoreTestDatabaseUrl } from './test-database';
 
 // Certification migration 1 on PostgreSQL (docs/design/data/certification.md 3.1, 3.2, 3.4 to
 // 3.7, 6.1, 8), for both Market fixtures: the constraints, the same-parent keys (CE4), the
@@ -53,7 +53,7 @@ function insertOnlyTables(): string[] {
 }
 
 it('has exactly the row and the statement trigger on every insert-only table of the schema, and only there (CE3)', async () => {
-  const client = new Client({ connectionString: testDatabaseUrl() });
+  const client = new Client({ connectionString: certClaimsCoreTestDatabaseUrl() });
   await client.connect();
   try {
     const { rows } = await client.query<{
@@ -102,6 +102,12 @@ it('has exactly the row and the statement trigger on every insert-only table of 
         'issuer_requests_answer_once',
         19,
         'certification.issuer_requests_guard_update',
+      ],
+      [
+        'issuer_requests',
+        'issuer_requests_insert_open',
+        7,
+        'certification.issuer_requests_guard_insert',
       ],
       [
         'relaxation_proposals',
@@ -166,8 +172,8 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
   let owner: Client;
 
   beforeAll(async () => {
-    sql = new Client({ connectionString: testDatabaseUrl() });
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    sql = new Client({ connectionString: certClaimsCoreTestDatabaseUrl() });
+    owner = new Client({ connectionString: certClaimsCoreOwnerTestDatabaseUrl() });
     await sql.connect();
     await owner.connect();
   });
@@ -187,18 +193,6 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
       return null;
     } catch (error) {
       return (error as { code?: string }).code ?? 'unknown';
-    }
-  }
-
-  /**
-   * `sqlState` for an owner `TRUNCATE ... CASCADE`: the cascade locks every table under the type
-   * graph, so a spec running in parallel can make it lose a deadlock (40P01) before the trigger
-   * fires. A deadlock is not the answer under test; the statement is tried again.
-   */
-  async function truncateState(client: Client, text: string): Promise<string | null> {
-    for (let attempt = 1; ; attempt += 1) {
-      const state = await sqlState(client, text);
-      if (state !== '40P01' || attempt === 5) return state;
     }
   }
 
@@ -1256,7 +1250,7 @@ describe.each(TEST_MARKETS)('certification claims core in market %s (database)',
           market.marketId,
         ]),
       ).toBe('23001');
-      expect(await truncateState(owner, `TRUNCATE certification.${table} CASCADE`)).toBe('23001');
+      expect(await sqlState(owner, `TRUNCATE certification.${table} CASCADE`)).toBe('23001');
     }
     const kept = await sql.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM certification.seller_certification_submissions WHERE id = $1`,

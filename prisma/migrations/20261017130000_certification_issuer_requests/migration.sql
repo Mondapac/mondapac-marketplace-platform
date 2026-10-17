@@ -90,11 +90,30 @@ ALTER TABLE "certification"."issuer_request_documents"
   ADD CONSTRAINT "issuer_request_documents_position_check" CHECK ("position" >= 1);
 
 -- Partial indexes (data design 3.8), invisible to Prisma: the admin queue of open requests, oldest
--- first, and the seller's `draft-issuer-not-listed` code (D 3.3).
+-- first; and at most one open request per seller and type (Hassan L2; the use case answers
+-- `issuer-request.already-open`), which also serves the seller's `draft-issuer-not-listed` code
+-- (D 3.3).
 CREATE INDEX "issuer_requests_market_id_created_at_open_idx"
   ON "certification"."issuer_requests" ("market_id", "created_at", "id") WHERE "state" = 'open';
-CREATE INDEX "issuer_requests_market_id_seller_id_type_id_open_idx"
+CREATE UNIQUE INDEX "issuer_requests_market_id_seller_id_type_id_open_key"
   ON "certification"."issuer_requests" ("market_id", "seller_id", "type_id") WHERE "state" = 'open';
+
+-- A request is born open at version 1 (Hassan L1): an INSERT cannot write an answered row, which
+-- would skip the answer's checks, event and audit. A trigger function: no grant.
+CREATE FUNCTION "certification"."issuer_requests_guard_insert"() RETURNS trigger
+  LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW."state" <> 'open' OR NEW."version" <> 1 THEN
+    RAISE EXCEPTION 'certification.issuer_requests: a request is inserted open at version 1'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER "issuer_requests_insert_open"
+  BEFORE INSERT ON "certification"."issuer_requests"
+  FOR EACH ROW EXECUTE FUNCTION "certification"."issuer_requests_guard_insert"();
 
 -- An answer is given once (D 2.1): only an open request moves, to a final state, version + 1. The
 -- typed name, the seller and the type are outside the column-level UPDATE grant. A trigger

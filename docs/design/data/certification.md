@@ -293,7 +293,7 @@ transition plus a history row (3.13); it does not touch the approved submission'
 There is no column or FK from `issuers` to a request: the request text has no path into the
 registry or a submission (AC 11; D 2.1). Indexes: the admin queue, partial `(market_id, created_at,
 id) WHERE state = 'open'`; the seller's `draft-issuer-not-listed` code (D 3.3), partial `(market_id,
-seller_id, type_id) WHERE state = 'open'`.
+seller_id, type_id) WHERE state = 'open'`, UNIQUE as built (one open request per seller and type).
 
 `issuer_request_documents`: PK `(market_id, issuer_request_id, document_id)`; FKs to both parents,
 RESTRICT; `position smallint`. Insert-only.
@@ -309,8 +309,11 @@ RESTRICT; `position smallint`. Insert-only.
   of purpose `issuer-request` only) and the shared `reject_mutation` pair on the link. The typed-name
   ciphertext CHECK is the `v<n>.` envelope, 41 to 2048 characters. One file per request today (sent
   with the request); it counts against the upload limit and `issuer-request.seller.day` (3 a day),
-  not the 200 MiB draft quota, and has no `document_index` row. Retention of these files is open
-  (purge package).
+  not the 200 MiB draft quota, and has no `document_index` row. At most one open request per
+  seller and type: the partial index `issuer_requests_market_id_seller_id_type_id_open_key` is
+  UNIQUE (`issuer-request.already-open`, 409; the refused request still counts against the day),
+  and the `issuer_requests_insert_open` trigger (`BEFORE INSERT`) accepts only `state = 'open'`
+  at version 1 (Hassan L1, L2). Retention, erasure and the draft purge: 10.1 and 10.3; volume: 11.
 
 ### 3.9 `uploaded_documents` and `document_previews` (slice 4)
 
@@ -1060,7 +1063,7 @@ batches, never in a migration.
   `product_certifications_market_id_approved_boundary_at_idx`,
   `product_certifications_market_id_approved_revision_id_key`,
   `issuers_market_id_type_id_accreditation_number_key`,
-  `issuer_requests_market_id_created_at_open_idx`, `issuer_requests_market_id_seller_id_type_id_open_idx`,
+  `issuer_requests_market_id_created_at_open_idx`, `issuer_requests_market_id_seller_id_type_id_open_key`,
   `uploaded_documents_market_id_owner_seller_id_draft_idx`,
   `claim_policy_rows_market_id_category_id_idx`, `relaxation_proposals_market_id_subject_pending_key`,
   the four coverage partial uniques (revision and draft), `outbox_market_id_event_id_unpublished_idx`.
@@ -1073,7 +1076,9 @@ batches, never in a migration.
 
 Selects never-submitted records (`status = 'draft'`, no submission: `pending_submission_id IS NULL
 AND approved_submission_id IS NULL` and no submission row) with `last_changed_at < now − retention`,
-and draft-area documents (`evidence_key IS NULL`) older than the retention, refused files included.
+and draft-area documents (`purpose = 'seller-certificate' AND evidence_key IS NULL`) older than the
+retention, refused files included; an issuer-request file (`purpose = 'issuer-request'`) is never a
+draft-area document and is not selected (10.3).
 One record per unit: the draft links, the documents (and their objects, outside the unit, after
 commit: an object without a row is harmless, a row without an object is not), the HMAC rows of those
 documents, the quota decrement, the root. The retention values wait for counsel (D 19.1 item 2); the
@@ -1096,6 +1101,7 @@ stays under legal retention first. Columns not made unreadable by key destructio
 | `expiry_warnings` | Kept (3 per approved version) |
 | Submissions, decisions, history, checks, confirmations, revisions | Kept; legal retention (counsel) |
 | Evidence objects | Object Lock until `retain_until`; deletion after that is a later design (6.1) |
+| `issuer_requests` | Never deleted (no `DELETE` grant; slice 6). Erasure of the seller (10.2) is covered by key destruction: the typed name and the file's data-key envelope are both under the seller's subject key, so both become unreadable. The `issuer_request_documents` links and their `uploaded_documents` rows and objects (`purpose = 'issuer-request'`) cannot be purged until the purge package defines a rule; the draft purge (10.1) never selects them |
 
 ## 11. Volume and jobs
 
@@ -1106,6 +1112,7 @@ stays under legal retention first. Columns not made unreadable by key destructio
 | Checks, scope readings, history | ~10 per submission | 10⁶ | Revisit partitioning at 10⁷ |
 | Product coverage | 10⁴ | 5×10⁵ | One row per covered product per revision |
 | Uploaded documents | 3 to 10 per submission | 5×10⁵ | Draft purge |
+| `issuer_requests` (and one link and one file each) | 10² to 10³ | At most 3 per seller per day (`issuer-request.seller.day`) and one open per seller and type | Rate limit and the unique open index; no purge yet (10.3) |
 | Outbox | ~10 events per certificate per year | — | As identity's |
 
 | Job | Every | Lock key (PM8) | Work |

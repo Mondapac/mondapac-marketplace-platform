@@ -17,6 +17,9 @@ import {
   toInstant,
 } from './prisma-seller-certificate.repository';
 
+/** One open request per seller and type (Hassan L2): the unique partial index of the migration. */
+const UNIQUE_OPEN_REQUEST = 'issuer_requests_market_id_seller_id_type_id_open_key';
+
 /**
  * {@link IssuerRequestRepository} on `certification.issuer_requests` and its files (data design
  * 3.8). Every method runs in the open unit of its caller. The answer moves the request with one
@@ -27,9 +30,34 @@ import {
 export class PrismaIssuerRequestRepository implements IssuerRequestRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async add(market: MarketContext, request: NewIssuerRequest): Promise<void> {
+  async add(
+    market: MarketContext,
+    request: NewIssuerRequest,
+  ): Promise<'issuer-request.already-open' | null> {
     const tx = this.prisma.tx(market);
     const base = { marketId: market.marketId, tenantId: market.tenantId };
+    // The request row first: a second open request of the seller and type stops here, before the
+    // file row (the caller's unit rolls back on the refusal either way).
+    try {
+      await tx.certificationIssuerRequest.create({
+        data: {
+          ...base,
+          id: request.id,
+          sellerId: request.sellerId,
+          typeId: request.typeId,
+          typedNameCiphertext: request.typedNameCiphertext,
+          state: 'open',
+          version: 1,
+          createdAt: toDate(request.now),
+        },
+        select: { id: true },
+      });
+    } catch (error) {
+      if (this.prisma.violatedConstraint(error) === UNIQUE_OPEN_REQUEST) {
+        return 'issuer-request.already-open';
+      }
+      throw error;
+    }
     await tx.certificationUploadedDocument.create({
       data: {
         ...base,
@@ -49,19 +77,6 @@ export class PrismaIssuerRequestRepository implements IssuerRequestRepository {
       },
       select: { id: true },
     });
-    await tx.certificationIssuerRequest.create({
-      data: {
-        ...base,
-        id: request.id,
-        sellerId: request.sellerId,
-        typeId: request.typeId,
-        typedNameCiphertext: request.typedNameCiphertext,
-        state: 'open',
-        version: 1,
-        createdAt: toDate(request.now),
-      },
-      select: { id: true },
-    });
     await tx.certificationIssuerRequestDocument.create({
       data: {
         ...base,
@@ -73,6 +88,19 @@ export class PrismaIssuerRequestRepository implements IssuerRequestRepository {
       },
       select: { documentId: true },
     });
+    return null;
+  }
+
+  async hasOpen(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    typeId: Id<'CertificationType'>,
+  ): Promise<boolean> {
+    const row = await this.prisma.tx(market).certificationIssuerRequest.findFirst({
+      where: { marketId: market.marketId, sellerId, typeId, state: 'open' },
+      select: { id: true },
+    });
+    return row !== null;
   }
 
   async openQueue(market: MarketContext, cap: number): Promise<readonly IssuerRequestQueueEntry[]> {
