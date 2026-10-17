@@ -59,6 +59,11 @@ import { issuerRequestMailSubscriptions } from './presentation/subscribers/issue
 import { sellerCertificateProviders } from './infrastructure/seller-certificate-providers';
 import { OwnCertificateController } from './presentation/own-certificate.controller';
 import { seedCertificationTypesJob } from './presentation/jobs/seed-certification-types.job';
+import { ExpireSellerCertificates } from './application/use-cases/expire-seller-certificates.use-case';
+import { SendExpiryMail } from './application/use-cases/send-expiry-mail.use-case';
+import { expiryProviders } from './infrastructure/expiry-providers';
+import { expiryAndWarningsJob } from './presentation/jobs/expiry-and-warnings.job';
+import { expiryMailSubscriptions } from './presentation/subscribers/expiry-mail.subscriptions';
 
 /** The use cases that only read the published types: the gate and the reader. */
 const readerUseCases = [
@@ -107,15 +112,21 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     registerAuditActions('certification', CERTIFICATION_AUDIT_ACTIONS),
     registerSubscriptionsFrom(
       'certification',
-      [SendDecisionMail, SendIssuerRequestMail],
-      (mail: SendDecisionMail, issuerRequestMail: SendIssuerRequestMail) => [
+      [SendDecisionMail, SendIssuerRequestMail, SendExpiryMail],
+      (
+        mail: SendDecisionMail,
+        issuerRequestMail: SendIssuerRequestMail,
+        expiryMail: SendExpiryMail,
+      ) => [
         ...decisionMailSubscriptions(mail),
         ...issuerRequestMailSubscriptions(issuerRequestMail),
+        ...expiryMailSubscriptions(expiryMail),
       ],
     ),
     ...sellerCertificateProviders,
     ...reviewProviders,
     ...issuerRequestProviders,
+    ...expiryProviders,
     PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
     claimFactsReaderProvider,
@@ -159,9 +170,14 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
           ids,
         }),
     },
-    registerJobsFrom('certification', [SeedCertificationTypes], (seed: SeedCertificationTypes) => [
-      seedCertificationTypesJob(seed),
-    ]),
+    registerJobsFrom(
+      'certification',
+      [SeedCertificationTypes, ExpireSellerCertificates],
+      (seed: SeedCertificationTypes, expire: ExpireSellerCertificates) => [
+        seedCertificationTypesJob(seed),
+        expiryAndWarningsJob(expire),
+      ],
+    ),
     ...readerUseCases,
     ...evaluateUseCases,
     {

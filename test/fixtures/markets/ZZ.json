@@ -260,5 +260,9 @@
     },
     "jumpDirections": "up",
     "jumpWindow": "P3D"
+  },
+  "certification": {
+    "expiryWarningThresholdsDays": [30, 14, 1],
+    "renewalSubmitByDays": 2
   }
 }

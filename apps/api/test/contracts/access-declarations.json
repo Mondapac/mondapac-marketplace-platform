@@ -59,6 +59,7 @@
   { "name": "certification.certification-types-system", "rule": "system" },
   { "name": "certification.evaluate-claims", "rule": "anonymous" },
   { "name": "certification.evaluate-claims-system", "rule": "system" },
+  { "name": "certification.expire-seller-certificates", "rule": "system" },
   { "name": "certification.match-claim-terms", "rule": "anonymous" },
   { "name": "certification.match-claim-terms-system", "rule": "system" },
   {
@@ -123,6 +124,7 @@
   },
   { "name": "certification.seed-certification-types", "rule": "system" },
   { "name": "certification.send-decision-mail", "rule": "system" },
+  { "name": "certification.send-expiry-mail", "rule": "system" },
   { "name": "certification.send-issuer-request-mail", "rule": "system" },
   {
     "name": "commission-payouts.commission-rates",

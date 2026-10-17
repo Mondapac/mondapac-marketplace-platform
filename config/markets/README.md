@@ -79,7 +79,7 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
   required when present; 20 and 50 for AU: the custom roles a seller, and the Market's platform
   scope, may hold; a Market without it answers `access.unavailable` to creating a role). Slice 12 adds two optional keys for the Seller Owner's confirmation of a second-factor reset an admin started: `links.lifetimeMinutes.confirm-second-factor-reset` (1 to 1440; 1440 for AU, identity design 3.7, HF15) and the `confirm-second-factor-reset` page in `links.targets.seller`; a Market without either answers `access.unavailable` to starting such a reset. Slice 11 adds the optional `sellerMemberLimit` (integer 2 to 500; 25 for AU: the active members and pending Staff invitations of one seller together; a Market without it answers `access.unavailable` to inviting Staff). Later identity slices add their values here.
 - `allowedOrigins`: one list per route population, `{ "admin": [...], "seller": [...],
-  "customer": [...] }`, all three keys required (identity design 6.4, HF14; ADR-0034 decision
+"customer": [...] }`, all three keys required (identity design 6.4, HF14; ADR-0034 decision
   3). Each list holds at most 20 exact browser origins (`scheme://host[:port]`, no path, none
   twice) that may send a request with an unsafe method to that population's routes; an admin
   route checks only `admin`, a seller route only `seller`, a customer route only `customer`. A
@@ -96,6 +96,22 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
 
 Tax, payment, carrier, certification-issuer and legal-entity settings are added by the modules
 that own them, after their readiness gates (ADR-0013).
+
+## Where a module's Market values go (Ali ruling 2026-10-17, ADR-0003 decision 5)
+
+A module's Market values go in its own section of this file: one section per module, owned and
+validated by that module. A separate folder `config/<module>-<topic>/<MARKET>.json` is allowed
+only for table-shaped data (lists of records with codes and labels, such as
+`config/service-areas/` or `config/certification-review/`), never for scalar settings, and only
+if all of these hold:
+
+- only the owning module's infrastructure reads it, and the folder has a README;
+- start-up fails if the folder is missing, a file is invalid, a file's `market` differs from
+  its name, or a Market in `HOSTED_MARKETS` has no file (no warn-and-continue, no null policy);
+- it holds no secrets and no ADR-0026 editable setting (those are seeded from a section here);
+- it is versioned and reviewed like this file.
+  Seed data folders (`config/catalog-seed/`, `config/certification-seed/`) are seed input, not
+  Market configuration, and are outside this rule.
 
 ## `sellers` section (optional)
 
@@ -134,7 +150,7 @@ but cannot take seller addresses. It starts with what slices 1 and 2 need; later
   32 characters, and `sellers` refuses a scheme without an adapter at start-up. `required` says
   whether a seller must give an identifier before submitting (true for AU, SEL/Q3); `labelKey` is
   the translation key of the label ("ABN" for AU). A value valid in one scheme is not accepted for
-  another (enforced by `sellers`, not by this schema). 
+  another (enforced by `sellers`, not by this schema).
 - `registerLookup` (required; sellers slice 4a): the business register the Market checks a seller
   against. `adapter` is the lower-case code of a file in `sellers/infrastructure/register-lookups/`
   (`none` for a Market with no register, which is the launch state of AU until the vendor review
@@ -244,3 +260,19 @@ that the product index is built and queried with (`english`, `french`, `simple`,
 list in the schema). AU uses `english`. Without the section a Market uses `simple`, which folds
 case and splits words for any language. After changing it, run the `search.rebuild-index` job
 (it runs at worker start) so existing documents are rebuilt with the new configuration.
+
+## `certification` section (optional)
+
+Owned by the `certification` module (`docs/design/domain/certification.md` 5.1, 8.6). The module
+checks at start-up that every hosted Market has it and that it makes a usable expiry policy; the
+schema keeps it optional so a Market that does not host certification yet still loads. Every key
+is required; no value has a default. The review checks and reasons are table-shaped and stay in
+`config/certification-review/`.
+
+- `expiryWarningThresholdsDays` (required, 1 to 10 distinct whole days, each 1 to 366; AU
+  `[30, 14, 1]`, CERT-14): a seller is warned once per threshold, from 00:00 local on the day
+  that many days before the certificate's boundary day. When several are due at once only the
+  smallest is sent.
+- `renewalSubmitByDays` (required, whole, 0 to 366; AU 7, the synthetic Market 2): the warning
+  names the date this many days before the expiry date by which a renewal should be submitted
+  (brief s4 c 2), or "now" once that date is not ahead of the warning.

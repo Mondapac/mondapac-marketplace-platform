@@ -230,6 +230,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'certification.issuer_request_documents': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Migration 7 (expiry warnings, slice 9; data design 9.1): one marker per (version, threshold), insert-only
+    // (data design 3.18; reject_mutation triggers), kept.
+    'certification.expiry_warnings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },

@@ -200,6 +200,26 @@
     }
   },
   {
+    "type": "certification.seller-certification-expired.v1",
+    "aggregateType": "seller-certification",
+    "fields": {
+      "sellerCertificationId": "id",
+      "sellerId": "id",
+      "submissionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.seller-certification-expiry-warning-due.v1",
+    "aggregateType": "seller-certification",
+    "fields": {
+      "sellerCertificationId": "id",
+      "sellerId": "id",
+      "submissionId": "id",
+      "thresholdDays": "integer"
+    }
+  },
+  {
     "type": "certification.seller-certification-issuer-confirmed.v1",
     "aggregateType": "seller-certification",
     "fields": {
