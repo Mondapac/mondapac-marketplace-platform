@@ -21,6 +21,7 @@ const part = (over: Partial<SellerPart> = {}): SellerPart => ({
   storeName: null,
   subtotal: money('2000'),
   shipping: money('500'),
+  tax: money('182'),
   total: money('2500'),
   fulfilment: 'to-ship',
   carrier: null,
@@ -36,6 +37,8 @@ const part = (over: Partial<SellerPart> = {}): SellerPart => ({
       unitPrice: money('1000'),
       lineAmount: money('2000'),
       taxInclusive: true,
+      taxRateBps: 1000,
+      tax: money('182'),
       productName: null,
       variantLabel: null,
     },
@@ -48,6 +51,7 @@ const order = (over: Partial<AdminOrder> = {}): AdminOrder => ({
   cancelReason: null,
   paymentState: 'captured',
   total: money('2500'),
+  tax: money('182'),
   createdAt: '2026-10-13T01:00:00.000Z',
   confirmedAt: '2026-10-13T01:05:00.000Z',
   cancelledAt: null,
@@ -56,6 +60,7 @@ const order = (over: Partial<AdminOrder> = {}): AdminOrder => ({
   accountId: '0190a000-0000-7000-8000-0000000000e1',
   customer: null,
   paymentIntentId: 'pi_123',
+  taxStrategyId: null,
   ...over,
 });
 const page = (orders: AdminOrder[], nextCursor: string | null = null) => ({
@@ -290,6 +295,50 @@ describe('order detail', () => {
     expect(screen.getByText('AP123')).toBeTruthy();
     expect(screen.getAllByText('Delivered')).toHaveLength(2);
     expect(screen.getByText('Voided')).toBeTruthy();
+  });
+});
+
+describe('order tax', () => {
+  it('shows the tax of the order, of each seller and of each line, and the strategy', () => {
+    render(wrap(<OrderDetail order={order()} />));
+    expect(screen.getByText('Tax')).toBeTruthy();
+    expect(screen.getByText('Market default')).toBeTruthy();
+    expect(screen.getByText('Tax in prices')).toBeTruthy();
+    expect(screen.getAllByText('$1.82')).toHaveLength(2);
+    expect(screen.getByText(/Tax 10%: \$1\.82/)).toBeTruthy();
+  });
+
+  it('names a stored strategy by id and labels tax added on top of the prices', () => {
+    const exclusive = part({
+      lines: part().lines.map((line) => ({ ...line, taxInclusive: false, tax: money('200') })),
+      tax: money('200'),
+    });
+    render(
+      wrap(
+        <OrderDetail
+          order={order({
+            tax: money('200'),
+            taxStrategyId: '0190a000-0000-7000-8000-0000000000f1',
+            sellerOrders: [exclusive],
+          })}
+        />,
+      ),
+    );
+    expect(screen.queryByText('Market default')).toBeNull();
+    expect(screen.getByText('0190a000-0000-7000-8000-0000000000f1')).toBeTruthy();
+    expect(screen.getByText('Tax added')).toBeTruthy();
+    expect(screen.queryByText(/Tax included/)).toBeNull();
+  });
+
+  it('says the tax was not recorded on an older order, never zero', () => {
+    const old = part({
+      lines: part().lines.map((line) => ({ ...line, taxRateBps: null, tax: null })),
+      tax: null,
+    });
+    render(wrap(<OrderDetail order={order({ tax: null, sellerOrders: [old] })} />));
+    expect(screen.getAllByText('Not recorded')).toHaveLength(2);
+    expect(screen.queryByText('Market default')).toBeNull();
+    expect(screen.queryByText(/Tax 10%/)).toBeNull();
   });
 });
 

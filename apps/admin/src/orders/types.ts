@@ -34,6 +34,10 @@ export interface OrderLine {
   readonly unitPrice: Money;
   readonly lineAmount: Money;
   readonly taxInclusive: boolean;
+  /** The tax rate in basis points frozen at placement; null on orders from before tax was recorded. */
+  readonly taxRateBps: number | null;
+  /** The tax of the line (inside lineAmount when taxInclusive); null when not recorded. */
+  readonly tax: Money | null;
   /** Seller text; null when unknown. */
   readonly productName: string | null;
   /** Null when the Variant has no label or it is unknown. */
@@ -46,6 +50,8 @@ export interface SellerPart {
   readonly storeName: string | null;
   readonly subtotal: Money;
   readonly shipping: Money;
+  /** The tax of the seller's lines; null when not recorded. */
+  readonly tax: Money | null;
   readonly total: Money;
   readonly fulfilment: string;
   readonly carrier: string | null;
@@ -68,6 +74,8 @@ export interface AdminOrder {
   readonly cancelReason: string | null;
   readonly paymentState: string;
   readonly total: Money;
+  /** The tax of the order; null when not recorded (orders from before tax was recorded). */
+  readonly tax: Money | null;
   readonly createdAt: string;
   readonly confirmedAt: string | null;
   readonly cancelledAt: string | null;
@@ -76,6 +84,8 @@ export interface AdminOrder {
   readonly accountId: string;
   readonly customer: OrderCustomer | null;
   readonly paymentIntentId: string | null;
+  /** The tax strategy in force at placement; null for the Market's built-in one. */
+  readonly taxStrategyId: string | null;
 }
 
 export interface AdminOrderPage {

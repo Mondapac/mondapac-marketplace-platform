@@ -14,6 +14,7 @@ import {
   FakeCommission,
   FakeLabels,
   FakeShipping,
+  FakeTax,
   MemoryOrders,
 } from '../../../../test/support/ordering-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
@@ -86,6 +87,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
   let cart: FakeCart;
   let shipping: FakeShipping;
   let commission: FakeCommission;
+  let tax: FakeTax;
   let labels: FakeLabels;
   let deps: OrderingDependencies;
   let written: PendingEvent[];
@@ -114,6 +116,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     cart = new FakeCart();
     shipping = new FakeShipping();
     commission = new FakeCommission();
+    tax = new FakeTax();
     labels = new FakeLabels();
     written = [];
     // Seller A charges a flat 5.00 for delivery; seller B delivers free (an explicit zero).
@@ -133,6 +136,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       inventory,
       shipping,
       commission,
+      tax,
       outbox: {
         append: (_context, events) => {
           written.push(...events);
@@ -1369,6 +1373,115 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         }
       }
       expect(stuckPerRun).toEqual([0, 0, 0, 0, 2, 0]);
+    });
+  });
+
+  describe('tax on the order', () => {
+    const taxOf = (order: {
+      lines: readonly { offerId: string; taxRateBps: number | null; taxAmount: bigint | null }[];
+    }) => Object.fromEntries(order.lines.map((l) => [l.offerId, [l.taxRateBps, l.taxAmount]]));
+
+    it('freezes the tax of each line from the strategy in force; an inclusive price is not raised', async () => {
+      tax.strategyId = id<'TaxStrategy'>(0x7a);
+      const order = await placed();
+
+      // Prices include tax here: the tax is inside each line (half-up), the charge is unchanged.
+      expect(taxOf(order)).toEqual({
+        [OFFER_1]: [1000, 182n],
+        [OFFER_2]: [1000, 68n],
+        [OFFER_3]: [1000, 9n],
+      });
+      expect(order.taxStrategyId).toBe(tax.strategyId);
+      expect(order.total.amount).toBe(2000n + 750n + 99n + 500n);
+      expect(gateway.sessions[0]!.packages.map((p) => p.amount)).toEqual([2099n, 500n, 750n]);
+      // One call for the whole cart, as the customer, with no tax category yet.
+      expect(tax.calls).toHaveLength(1);
+      expect(tax.calls[0]!.every((l) => l.categoryCode === null && l.taxInclusive)).toBe(true);
+
+      // A later strategy change does not touch the placed order.
+      tax.rateBps = 2500;
+      tax.strategyId = null;
+      expect(taxOf(orders.rows.get(order.id)!)[OFFER_1]).toEqual([1000, 182n]);
+      expect(orders.rows.get(order.id)!.taxStrategyId).toBe(id<'TaxStrategy'>(0x7a));
+    });
+
+    it('charges the tax on top of a price that excludes it, as its own line per package', async () => {
+      cart.lines = cart.lines.map((l) => ({ ...l, taxInclusive: false }));
+      const order = await placed();
+
+      expect(taxOf(order)).toEqual({
+        [OFFER_1]: [1000, 200n],
+        [OFFER_2]: [1000, 75n],
+        [OFFER_3]: [1000, 10n],
+      });
+      expect(order.sellerOrders.map((s) => [s.subtotal, s.shipping, s.total])).toEqual([
+        [2099n, 500n, 2099n + 500n + 210n],
+        [750n, 0n, 750n + 75n],
+      ]);
+      expect(order.total.amount).toBe(2809n + 825n);
+      const session = gateway.sessions[0]!;
+      expect(session.packages.map((p) => [p.label, p.amount])).toEqual([
+        ['MondaPac order, package 1', 2099n],
+        ['Delivery, package 1', 500n],
+        ['Tax, package 1', 210n],
+        ['MondaPac order, package 2', 750n],
+        ['Tax, package 2', 75n],
+      ]);
+      expect(session.packages.reduce((sum, p) => sum + p.amount, 0n)).toBe(order.total.amount);
+      // The payment of the full total confirms the order.
+      expect((await confirm(order.id)).ok).toBe(true);
+    });
+
+    it('opens no order when the tax cannot be worked out (fail closed)', async () => {
+      tax.failure = { code: 'tax.unavailable' };
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      tax.failure = { code: 'access.denied' };
+      expect(await start()).toEqual(err({ code: 'access.denied' }));
+      expect(orders.rows.size).toBe(0);
+      expect(inventory.reserved).toEqual([]);
+      expect(gateway.sessions).toEqual([]);
+    });
+
+    it('shows the admin the tax of each line, each seller and the order, and the strategy', async () => {
+      tax.strategyId = id<'TaxStrategy'>(0x7b);
+      const order = await placed();
+      const admin = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xad),
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'order-0006-abcd',
+      );
+      const view = await new AdminViewOrder(gate, deps).execute(admin, { orderId: order.id });
+      if (!view.ok) throw new Error('view failed');
+
+      expect(view.value.tax).toEqual(money(182n + 68n + 9n, currency));
+      expect(view.value.taxStrategyId).toBe(tax.strategyId);
+      expect(view.value.sellerOrders.map((s) => s.tax)).toEqual([
+        money(182n + 9n, currency),
+        money(68n, currency),
+      ]);
+      expect(view.value.sellerOrders[0]!.lines.map((l) => [l.taxRateBps, l.tax])).toEqual([
+        [1000, money(182n, currency)],
+        [1000, money(9n, currency)],
+      ]);
+    });
+
+    it('shows an unknown tax, never zero, for an order placed before tax was recorded', async () => {
+      const order = await placed();
+      orders.rows.set(order.id, {
+        ...order,
+        taxStrategyId: null,
+        lines: order.lines.map((l) => ({ ...l, taxRateBps: null, taxAmount: null })),
+      });
+      const view = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
+      if (!view.ok) throw new Error('view failed');
+      expect(view.value.tax).toBeNull();
+      expect(view.value.sellerOrders.map((s) => s.tax)).toEqual([null, null]);
+      expect(view.value.sellerOrders[0]!.lines[0]!.tax).toBeNull();
     });
   });
 });

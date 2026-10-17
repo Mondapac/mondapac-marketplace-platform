@@ -28,6 +28,7 @@ import type {
   SellerOrderRecord,
 } from '../../src/modules/ordering/application/ports/order.repository';
 import type { Fulfilment, OrderState, SellerOrder } from '../../src/modules/ordering/domain/order';
+import type { TaxAnswer, TaxFacade, TaxFailure, TaxLineInput } from '../../src/modules/tax';
 import type { FlatFeeMap, ShippingFacade, ShippingFailure } from '../../src/modules/shipping';
 import type {
   CommitFailure,
@@ -468,5 +469,38 @@ export class FakeLabels implements OrderLabels {
   /** Sets the label of one (Offer, Variant). */
   label(key: OrderUnitKey, productName: string, variantLabel: string | null): void {
     this.units.set(orderUnitKey(key), { productName, variantLabel });
+  }
+}
+
+/**
+ * The tax facade as checkout uses it: one flat rate for every line (half-up, inclusive or
+ * exclusive as the line says), the strategy id it answers, and a switch to fail.
+ */
+export class FakeTax implements TaxFacade {
+  rateBps = 1000;
+  strategyId: TaxAnswer['strategyId'] = null;
+  failure: TaxFailure | null = null;
+  calls: (readonly TaxLineInput[])[] = [];
+  calculateTax(
+    _c: CallContext,
+    lines: readonly TaxLineInput[],
+  ): Promise<Result<TaxAnswer, TaxFailure>> {
+    this.calls.push(lines);
+    if (this.failure !== null) return Promise.resolve(err(this.failure));
+    const rate = BigInt(this.rateBps);
+    const halfUp = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
+    return Promise.resolve(
+      ok({
+        strategyId: this.strategyId,
+        lines: lines.map((line) => {
+          const tax = line.taxInclusive
+            ? halfUp(line.amount * rate, 10_000n + rate)
+            : halfUp(line.amount * rate, 10_000n);
+          return line.taxInclusive
+            ? { rateBps: this.rateBps, tax, net: line.amount - tax, gross: line.amount }
+            : { rateBps: this.rateBps, tax, net: line.amount, gross: line.amount + tax };
+        }),
+      }),
+    );
   }
 }

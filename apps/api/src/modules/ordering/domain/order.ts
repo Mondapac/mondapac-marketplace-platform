@@ -36,6 +36,13 @@ export interface OrderLine {
    * rate was frozen.
    */
   readonly commissionRateBps: number | null;
+  /**
+   * The tax rate and the tax of the line, frozen at placement from `tax` (ADR-0039 decision 4).
+   * Both null only on lines placed before tax was recorded. The tax is part of `lineAmount` when
+   * the price includes tax, and added on top of it otherwise.
+   */
+  readonly taxRateBps: number | null;
+  readonly taxAmount: bigint | null;
 }
 
 /**
@@ -50,7 +57,8 @@ export type Fulfilment = 'to-ship' | 'shipped' | 'delivered';
 
 /**
  * The part of an order that belongs to one seller. `shipping` is the seller's flat fee as it was
- * when the order was placed (SHP-01), part of `total`. The seller records the shipment (carrier
+ * when the order was placed (SHP-01), part of `total`, as is the tax of any line whose price
+ * excludes tax (added on top of the goods). The seller records the shipment (carrier
  * and an optional tracking reference) and then the delivery, each once and in that order.
  */
 export interface SellerOrder {
@@ -86,8 +94,26 @@ export interface OrderState {
   readonly confirmedAt: Temporal.Instant | null;
   readonly cancelledAt: Temporal.Instant | null;
   readonly version: number;
+  /**
+   * The tax strategy the order's tax was worked out under: its id, or null for the Market's
+   * built-in one (and on orders placed before tax was recorded).
+   */
+  readonly taxStrategyId: Id<'TaxStrategy'> | null;
   readonly sellerOrders: readonly SellerOrder[];
   readonly lines: readonly OrderLine[];
+}
+
+/**
+ * The tax of some order lines: the sum of their frozen tax, or null when any of them was placed
+ * before tax was recorded (an unknown tax is never shown as zero).
+ */
+export function linesTax(lines: readonly OrderLine[]): bigint | null {
+  let sum = 0n;
+  for (const line of lines) {
+    if (line.taxAmount === null) return null;
+    sum += line.taxAmount;
+  }
+  return sum;
 }
 
 /** One cart line grouped under its seller, ready to become an order line. */
