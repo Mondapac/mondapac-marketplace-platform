@@ -41,6 +41,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     commission_payouts: ['USAGE'],
     customers: ['USAGE'],
     tax: ['USAGE'],
+    storefront: ['USAGE'],
     pricing: ['USAGE'],
     sellers: ['USAGE'],
     shipping: ['USAGE'],
@@ -391,6 +392,37 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['rate_bps', 'updated_at', 'updated_by'],
     },
     'commission_payouts.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Storefront: a page is created and changed (never its kind, key or template) and never
+    // deleted; a version's content and state change; a redirect is removed when its page takes the
+    // old slug back.
+    'storefront.pages': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'archived_at',
+        'archived_redirect',
+        'ends_at',
+        'linked_id',
+        'linked_type',
+        'seo',
+        'slug',
+        'starts_at',
+        'title',
+        'updated_at',
+        'updated_by',
+      ],
+    },
+    'storefront.page_versions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'placements',
+        'published_at',
+        'published_by',
+        'state',
+        'updated_at',
+        'updated_by',
+      ],
+    },
+    'storefront.redirects': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // Tax: an admin-defined strategy is inserted, changed (name, parameters, active flag) and
     // removed.
     'tax.tax_strategies': {

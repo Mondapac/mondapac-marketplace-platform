@@ -1,0 +1,88 @@
+// The storefront module's tables: the content of the buyer site (pages and the navigation). Every
+// model is named Storefront<Name> and mapped to its table with @@map. The CHECKs, the partial
+// unique indexes and the grants are hand-written in the migration. Templates, their sections
+// (slots) and the module catalogue are code, never rows: a row only names a template key and
+// holds the ordered, validated module placements of each slot (`placements`).
+
+/// A storefront page of a Market. `system`: a fixed page of the site (home, cart, the navigation,
+/// ...), named by `systemKey`, never deleted; its row is created on its first edit. `dynamic`: a
+/// landing page an admin created from a template, served at `/l/<slug>`. A page is live when it
+/// has a published version, is not archived and `now` is inside [startsAt, endsAt).
+model StorefrontPage {
+  id               String                  @id @db.Uuid
+  marketId         String                  @map("market_id") @db.VarChar(8)
+  tenantId         String                  @map("tenant_id")
+  /// system or dynamic (CHECK).
+  kind             String
+  /// The code key of a system page; null for a dynamic page (CHECK).
+  systemKey        String?                 @map("system_key")
+  /// The URL slug of a dynamic page; null for a system page (CHECK).
+  slug             String?
+  templateKey      String                  @map("template_key")
+  title            String
+  /// { title?, description?, imageRef? }, checked by the application (a JSON object, CHECK).
+  seo              Json
+  /// category, product or seller; with `linkedId` (both or neither, CHECK).
+  linkedType       String?                 @map("linked_type")
+  linkedId         String?                 @map("linked_id") @db.Uuid
+  startsAt         DateTime?               @map("starts_at") @db.Timestamptz(6)
+  endsAt           DateTime?               @map("ends_at") @db.Timestamptz(6)
+  archivedAt       DateTime?               @map("archived_at") @db.Timestamptz(6)
+  /// Where an archived page's URL sends the buyer (a site path); null: the URL is gone.
+  archivedRedirect String?                 @map("archived_redirect")
+  createdAt        DateTime                @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                @map("updated_at") @db.Timestamptz(6)
+  /// The admin account that last changed the page or its draft (a plain id, no foreign key).
+  updatedBy        String                  @map("updated_by") @db.Uuid
+  versions         StorefrontPageVersion[]
+  redirects        StorefrontRedirect[]
+
+  /// The foreign-key target of the versions and redirects.
+  @@unique([marketId, id])
+  @@unique([marketId, systemKey])
+  @@unique([marketId, slug])
+  @@index([marketId, kind, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("pages")
+  @@schema("storefront")
+}
+
+/// One version of a page's content. At most one `draft` (the one admins edit) and one `published`
+/// (the one buyers see) per page; publishing retires the published one and publishes the draft.
+/// `placements` is { <slotKey>: [{ id, module, enabled, config }] }, checked by the application.
+model StorefrontPageVersion {
+  id          String         @id @db.Uuid
+  marketId    String         @map("market_id") @db.VarChar(8)
+  tenantId    String         @map("tenant_id")
+  pageId      String         @map("page_id") @db.Uuid
+  /// 1, 2, ... per page, in creation order.
+  versionNo   Int            @map("version_no")
+  /// draft, published or retired (CHECK).
+  state       String
+  placements  Json
+  createdAt   DateTime       @map("created_at") @db.Timestamptz(6)
+  createdBy   String         @map("created_by") @db.Uuid
+  updatedAt   DateTime       @map("updated_at") @db.Timestamptz(6)
+  updatedBy   String         @map("updated_by") @db.Uuid
+  publishedAt DateTime?      @map("published_at") @db.Timestamptz(6)
+  publishedBy String?        @map("published_by") @db.Uuid
+  page        StorefrontPage @relation(fields: [marketId, pageId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, pageId, versionNo])
+  @@map("page_versions")
+  @@schema("storefront")
+}
+
+/// An old slug of a dynamic page: a request for `/l/<fromSlug>` is sent to the page's current URL.
+model StorefrontRedirect {
+  id        String         @id @db.Uuid
+  marketId  String         @map("market_id") @db.VarChar(8)
+  tenantId  String         @map("tenant_id")
+  fromSlug  String         @map("from_slug")
+  pageId    String         @map("page_id") @db.Uuid
+  createdAt DateTime       @map("created_at") @db.Timestamptz(6)
+  page      StorefrontPage @relation(fields: [marketId, pageId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, fromSlug])
+  @@map("redirects")
+  @@schema("storefront")
+}
