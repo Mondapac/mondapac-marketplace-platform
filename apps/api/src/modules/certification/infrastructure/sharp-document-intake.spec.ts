@@ -1,7 +1,8 @@
+import { deflateSync } from 'node:zlib';
 import sharp from 'sharp';
 import { MAX_DOCUMENT_BYTES } from '../application/intake/document-inspection';
-import { inspectPdfIsolated } from './isolated-pdf-inspection';
-import { SharpDocumentIntake } from './sharp-document-intake';
+import { inspectPdfIsolated, parkedWorkers } from './isolated-pdf-inspection';
+import { MAX_WAITING, SharpDocumentIntake } from './sharp-document-intake';
 
 // The file intake with the real image library (certification design 9.3, simplified): the type
 // from the content, images written again without metadata, polyglots and oversized files refused.
@@ -131,5 +132,57 @@ describe('SharpDocumentIntake', () => {
       code: 'file.inspection-timeout',
     });
     expect(await inspectPdfIsolated(PDF)).toEqual({ ok: true, pageCount: 1 });
+  });
+
+  // Security re-review of PR 382 (M2-bis, L5, L6).
+  it('M2-bis: the hostile file of the review is refused without growing the process by 256 MB', async () => {
+    const latin = (text: string): Buffer => Buffer.from(text, 'latin1');
+    // Four object streams of 8 MiB of name escapes each: the scan used to take 700 MB for this.
+    const z = deflateSync(latin('<</a#41/b#42 (x)>>'.repeat(460_000)), { level: 9 });
+    const stream = Buffer.concat([
+      latin('<</Type/ObjStm/N 1/First 0/Filter/FlateDecode>>stream\n'),
+      z,
+      latin('\nendstream\n'),
+    ]);
+    const hostile = Buffer.concat([
+      latin('%PDF-1.7\n1 0 obj << /Type /Page >> endobj\n'),
+      stream,
+      stream,
+      stream,
+      stream,
+      latin('\n%%EOF\n'),
+    ]);
+    await inspectPdfIsolated(PDF);
+    const base = process.memoryUsage().rss;
+    let peak = base;
+    const sampler = setInterval(() => {
+      peak = Math.max(peak, process.memoryUsage().rss);
+    }, 10);
+    const verdict = await inspectPdfIsolated(hostile, 20_000);
+    clearInterval(sampler);
+    // The total inflate budget is spent: refused, never accepted unread (structural, not timed).
+    expect(verdict).toEqual({ ok: false, code: 'file.too-complex' });
+    expect((peak - base) / 1024 / 1024).toBeLessThan(256);
+  });
+
+  it('L5: files beyond the busy slots and the bounded queue are refused as busy', async () => {
+    const total = 2 + MAX_WAITING + 3;
+    const results = await Promise.all(Array.from({ length: total }, () => intake.inspect(PDF)));
+    const busy = results.filter((r) => !r.ok && r.error.code === 'request.throttled');
+    expect(busy).toHaveLength(3);
+    expect(results.filter((r) => r.ok)).toHaveLength(total - 3);
+    // The queue drains: the next file is served.
+    expect(await intake.inspect(PDF)).toMatchObject({ ok: true });
+  });
+
+  it('L6: a worker that dies while parked leaves the pool, and the next file is not delayed', async () => {
+    expect(await inspectPdfIsolated(PDF)).toEqual({ ok: true, pageCount: 1 });
+    const parked = [...parkedWorkers()];
+    expect(parked.length).toBeGreaterThan(0);
+    await Promise.all(parked.map((worker) => worker.terminate()));
+    expect(parkedWorkers()).toHaveLength(0);
+    const started = Date.now();
+    expect(await inspectPdfIsolated(PDF, 2_000)).toEqual({ ok: true, pageCount: 1 });
+    expect(Date.now() - started).toBeLessThan(1_900);
   });
 });

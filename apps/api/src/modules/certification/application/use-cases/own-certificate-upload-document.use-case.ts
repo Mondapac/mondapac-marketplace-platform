@@ -36,6 +36,9 @@ export type OwnCertificateUploadDocumentFailure =
   | RateFailure
   | ValidationFailure;
 
+/** Seconds a seller is told to wait when the file intake queue is full. */
+const INTAKE_BUSY_RETRY_SECONDS = 5;
+
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 /**
@@ -118,7 +121,13 @@ export class OwnCertificateUploadDocument extends UseCase<
     const bytes = Buffer.from(input.data, 'base64');
     if (bytes.length > MAX_DOCUMENT_BYTES) return err({ code: 'file.too-large' });
     const inspected = await deps.intake.inspect(bytes);
-    if (!inspected.ok) return err(inspected.error);
+    if (!inspected.ok) {
+      // The intake is busy (its queue is full): the seller tries again shortly.
+      if (inspected.error.code === 'request.throttled') {
+        return err({ code: 'request.throttled', retryAfterSeconds: INTAKE_BUSY_RETRY_SECONDS });
+      }
+      return err(inspected.error);
+    }
     const file = inspected.value;
 
     // The keyed index of the bytes (design 10.2), computed outside the unit with the other crypto.

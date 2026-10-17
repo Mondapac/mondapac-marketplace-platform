@@ -106,7 +106,9 @@ describe('inspectPdf', () => {
 
   it('refuses an object stream that does not inflate', () => {
     const stream = Buffer.concat([
-      Buffer.from('%PDF-1.5\n5 0 obj <</Type /ObjStm /N 1 /First 4>>\nstream\n'),
+      Buffer.from(
+        '%PDF-1.5\n5 0 obj <</Type /ObjStm /N 1 /First 4 /Filter /FlateDecode>>\nstream\n',
+      ),
       Buffer.from('not a deflate stream'),
       Buffer.from('\nendstream endobj\n3 0 obj <</Type /Page>> endobj\n%%EOF\n'),
     ]);
@@ -246,5 +248,147 @@ describe('inspectPdf under attack', () => {
     const small = Math.max(timeOf(40_000), 10);
     // Quadratic growth would cost 16 times; the bound leaves room for a loaded machine.
     expect(timeOf(160_000)).toBeLessThan(small * 12 + 500);
+  });
+
+  // Security re-review of PR 382 (M1-bis): six ways past the scan, each a regression test.
+  describe('M1-bis: the scan reads what a viewer reads', () => {
+    const rawStream = (dictionary: string, data: Buffer, gap = ''): Buffer =>
+      Buffer.concat([
+        latin(`9 0 obj ${dictionary}${gap}\nstream\n`),
+        data,
+        latin('\nendstream\nendobj\n'),
+      ]);
+    const refusedAs = (code: string) => ({ ok: false, code });
+
+    it('1: refuses a Flate filter chain [/FlateDecode /FlateDecode] holding a script', () => {
+      const z = deflateSync(deflateSync(latin(script)));
+      const dictionary = `<< /Type /ObjStm /N 1 /First 0 /Filter [/FlateDecode /FlateDecode] /Length ${z.length} >>`;
+      expect(inspectPdf(pdfWith(rawStream(dictionary, z)))).toEqual(refusedAs('file.too-complex'));
+    });
+
+    it('2: refuses [/FlateDecode /ASCIIHexDecode] holding a script in hex', () => {
+      const z = deflateSync(latin(Buffer.from(script).toString('hex') + '>'));
+      const dictionary = `<< /N 1 /First 0 /Filter [/FlateDecode /ASCIIHexDecode] /Length ${z.length} >>`;
+      expect(inspectPdf(pdfWith(rawStream(dictionary, z)))).toEqual(refusedAs('file.too-complex'));
+    });
+
+    it('2: refuses another filter or a predictor on a stream that could be an object stream', () => {
+      const z = deflateSync(latin(script));
+      for (const extra of [
+        '/Filter /LZWDecode',
+        '/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 4 >>',
+        '/Filter /FlateDecode /DP << /Predictor 12 >>',
+        '/Filter 7 0 R',
+        '/Filter /Fl',
+      ]) {
+        const dictionary = `<< /N 1 /First 0 ${extra} >>`;
+        expect(inspectPdf(pdfWith(rawStream(dictionary, z)))).toEqual(
+          refusedAs('file.too-complex'),
+        );
+      }
+    });
+
+    it('3: a NUL ends a name: /JS, /OpenAction and /Encrypt are found before it', () => {
+      expect(inspectPdf(pdfWith(latin('<< /S /JavaScript\x00/JS\x00(x) >>')))).toEqual(
+        refusedAs('file.active-content'),
+      );
+      expect(inspectPdf(pdfWith(latin('/OpenAction\x004 0 R')))).toEqual(
+        refusedAs('file.active-content'),
+      );
+      expect(inspectPdf(pdfWith(latin('trailer << /Encrypt\x006 0 R >>')))).toEqual(
+        refusedAs('file.encrypted'),
+      );
+    });
+
+    it('3: every white space and delimiter ends a name', () => {
+      for (const end of [
+        '\t',
+        '\n',
+        '\f',
+        '\r',
+        ' ',
+        '(',
+        ')',
+        '<',
+        '>',
+        '[',
+        ']',
+        '{',
+        '}',
+        '/',
+        '%',
+      ]) {
+        expect(inspectPdf(pdfWith(latin(`/JS${end}`)))).toEqual(refusedAs('file.active-content'));
+      }
+    });
+
+    it('4: reads an object stream that does not say /Type /ObjStm', () => {
+      const z = deflateSync(latin(script));
+      const dictionary = `<< /N 1 /First 0 /Filter /FlateDecode /Length ${z.length} >>`;
+      expect(inspectPdf(pdfWith(rawStream(dictionary, z)))).toEqual(
+        refusedAs('file.active-content'),
+      );
+      expect(inspectPdf(pdfWith(objectStream(script, { type: '/Foo' })))).toEqual(
+        refusedAs('file.active-content'),
+      );
+    });
+
+    it('4: pages hidden in an object stream without a /Type count toward the limit', () => {
+      const many = Array.from({ length: MAX_PDF_PAGES + 1 }, () => '<< /Type /Page >>').join(' ');
+      const z = deflateSync(latin(many));
+      const dictionary = `<< /N 1 /First 0 /Filter /FlateDecode /Length ${z.length} >>`;
+      expect(inspectPdf(pdfWith(rawStream(dictionary, z)))).toEqual(
+        refusedAs('file.too-many-pages'),
+      );
+    });
+
+    it('5: refuses an indirect /Type (/Type 8 0 R), whatever it hides', () => {
+      expect(inspectPdf(pdfWith(objectStream(script, { type: '8 0 R' })))).toEqual(
+        refusedAs('file.too-complex'),
+      );
+      expect(inspectPdf(pdfWith(latin('10 0 obj << /Type 8 0 R >> endobj')))).toEqual(
+        refusedAs('file.too-complex'),
+      );
+    });
+
+    it('5: refuses a page tree whose /Count is not written directly', () => {
+      const tree = latin(
+        '%PDF-1.4\n2 0 obj <</Type /Pages /Count 7 0 R>> endobj\n3 0 obj <</Type /Page>> endobj\n%%EOF\n',
+      );
+      expect(inspectPdf(tree)).toEqual(refusedAs('file.too-complex'));
+    });
+
+    it('5: pages written as /Type/Page with no space or as /Pa#67e still count', () => {
+      const many = Array.from({ length: MAX_PDF_PAGES + 1 }, () => '<</Type/Pa#67e>>').join(' ');
+      expect(inspectPdf(latin(`%PDF-1.4\n${many}\n%%EOF\n`))).toEqual(
+        refusedAs('file.too-many-pages'),
+      );
+    });
+
+    it('6: finds the stream after a comment between >> and stream', () => {
+      const z = deflateSync(latin(script));
+      const dictionary = `<< /Type /ObjStm /N 1 /First 0 /Filter /FlateDecode /Length ${z.length} >>`;
+      for (const gap of [' %c', '\n% c\n% d', '\r%x\r']) {
+        expect(inspectPdf(pdfWith(rawStream(dictionary, z, gap)))).toEqual(
+          refusedAs('file.active-content'),
+        );
+      }
+    });
+
+    it('6: a comment too long to skip is refused, not guessed', () => {
+      const z = deflateSync(latin(script));
+      const dictionary = `<< /Type /ObjStm /N 1 /First 0 /Filter /FlateDecode >>`;
+      expect(inspectPdf(pdfWith(rawStream(dictionary, z, ` %${'c'.repeat(5000)}`)))).toEqual(
+        refusedAs('file.too-complex'),
+      );
+    });
+
+    it('accepts the streams of an ordinary PDF: images, fonts and a predictor on an image', () => {
+      const image = latin(
+        '11 0 obj << /Subtype /Image /Width 1 /Height 1 /Filter /DCTDecode /Length 4 >>\nstream\n\xff\xd8\xff\xd9\nendstream\nendobj\n' +
+          '12 0 obj << /Filter /FlateDecode /DecodeParms << /Predictor 15 /Columns 3 >> /Length 3 >>\nstream\nabc\nendstream\nendobj\n',
+      );
+      expect(inspectPdf(pdfWith(image))).toEqual({ ok: true, pageCount: 1 });
+    });
   });
 });
