@@ -231,3 +231,47 @@ describe('certification.share-pending-submission', () => {
     ).rejects.toBeInstanceOf(NamedStatementRefusedError);
   });
 });
+
+describe.each(['AU', 'ZZ'] as const)(
+  'certification.share-type and certification.share-issuer in market %s',
+  (code) => {
+    const market = testMarketContext(code, 'default');
+    const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+
+    it('shares a type row in the unit Market only and answers its status', async () => {
+      const { runner, seen } = runnerAnswering([{ status: 'inactive' }]);
+      const rows = await runNamedStatement(runner, market, 'certification.share-type', {
+        typeId: ID(3),
+      });
+      expect(rows).toEqual([{ status: 'inactive' }]);
+      expect(seen[0]!.sql).toContain('FOR SHARE OF t');
+      expect(seen[0]!.values).toEqual([market.marketId, market.tenantId, ID(3)]);
+      const request = { operation: '$queryRaw', args: seen[0] };
+      expect(isApprovedStatement(request, market)).toBe(true);
+      expect(isApprovedStatement(request, other)).toBe(false);
+    });
+
+    it('shares an issuer row in the unit Market only and answers its state and type', async () => {
+      const { runner, seen } = runnerAnswering([{ state: 'closed-to-new', type_id: ID(3) }]);
+      const rows = await runNamedStatement(runner, market, 'certification.share-issuer', {
+        issuerId: ID(4),
+      });
+      expect(rows).toEqual([{ state: 'closed-to-new', typeId: ID(3) }]);
+      expect(seen[0]!.sql).toContain('FOR SHARE OF i');
+      expect(seen[0]!.values).toEqual([market.marketId, market.tenantId, ID(4)]);
+      const request = { operation: '$queryRaw', args: seen[0] };
+      expect(isApprovedStatement(request, market)).toBe(true);
+      expect(isApprovedStatement(request, other)).toBe(false);
+    });
+
+    it('refuses a malformed id', async () => {
+      const { runner } = runnerAnswering([]);
+      await expect(
+        runNamedStatement(runner, market, 'certification.share-type', { typeId: 'x' }),
+      ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+      await expect(
+        runNamedStatement(runner, market, 'certification.share-issuer', { issuerId: '1 OR 1=1' }),
+      ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+    });
+  },
+);

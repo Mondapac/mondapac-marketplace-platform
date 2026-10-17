@@ -129,6 +129,12 @@ export interface ReviewHistoryRow {
  * A certificate with the submission a reviewer works on: the pending one, else the approved one
  * (a late issuer confirmation is allowed on it), else null.
  */
+/** What {@link CertificateReviewRepository.shareRegistryRows} answers. */
+export interface RegistryRowsShared {
+  readonly typeStatus: 'active' | 'inactive' | null;
+  readonly issuer: { readonly state: IssuerState; readonly typeId: Id<'CertificationType'> } | null;
+}
+
 export interface ReviewSnapshot {
   readonly certificate: StoredCertificate;
   readonly submission: ReviewSubmission | null;
@@ -311,6 +317,18 @@ export interface CertificateReviewRepository {
     expectedVersion: number,
     now: Temporal.Instant,
   ): Promise<void>;
+  /**
+   * Share-locks the record's type and, when given, the submission's issuer (certification slice
+   * 12) and answers their current status and state. Called in the approval unit after
+   * `lockForDecision`: a type deactivation or an issuer's closing or derecognition either
+   * committed before (and is seen here) or waits for the approval to commit (and then counts it).
+   * Null for a row that does not exist in the Market.
+   */
+  shareRegistryRows(
+    market: MarketContext,
+    typeId: Id<'CertificationType'>,
+    issuerId: Id<'Issuer'> | null,
+  ): Promise<RegistryRowsShared>;
   /** Writes the decision rows; call `lockForDecision` first in the same unit. */
   decide(market: MarketContext, write: DecisionWrite): Promise<void>;
   /** The record and its approved submission, for a revoke; null when unknown in the Market. */

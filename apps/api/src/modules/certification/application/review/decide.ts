@@ -68,6 +68,7 @@ export type DecisionFailure =
   | { readonly code: 'certificate.incomplete' }
   | { readonly code: 'certificate.revoked' }
   | { readonly code: 'issuer.not-active' }
+  | { readonly code: 'type.inactive' }
   | { readonly code: 'certificate.expired' }
   | { readonly code: 'seller.zone-missing' }
   | { readonly code: 'conflict.stale' }
@@ -208,6 +209,14 @@ export async function decide(
         // Fail closed: a revoked record is never approved back (design 3.2 row 3).
         if (certificate.status === 'revoked') return err({ code: 'certificate.revoked' } as const);
         const boundary = approvalBoundary(current.expiryDate, zones!);
+        // The type and the issuer as they stand now, share-locked until this unit commits, so a
+        // deactivation of either is seen here or waits for this approval (slice 12; AC 19).
+        const registry = await deps.reviews.shareRegistryRows(
+          market,
+          certificate.typeId,
+          current.issuer?.id ?? null,
+        );
+        if (registry.typeStatus === null) return err({ code: 'access.unavailable' } as const);
         const blocked = approvalRefusal({
           mode: current.verificationMode,
           policy,
@@ -217,12 +226,14 @@ export async function decide(
           hasScope: current.scope !== null,
           requiresIssuerRegistry: current.requiresIssuerRegistry,
           issuer:
-            current.issuer === null
+            registry.issuer === null
               ? null
               : {
-                  state: current.issuer.state,
-                  typeMatches: current.issuer.typeId === certificate.typeId,
+                  state: registry.issuer.state,
+                  typeMatches: registry.issuer.typeId === certificate.typeId,
                 },
+          typeActive: registry.typeStatus === 'active',
+          hasApproval: certificate.approvedSubmissionId !== null,
           boundary: boundary.at,
           now,
           selfDeclared: current.selfDeclared,

@@ -263,6 +263,7 @@ describe.each(TEST_MARKETS)(
       const CERT_VIEW = 'certification.seller-certificate.view';
       const CERT_REVIEW = 'certification.seller-certificate.review';
       const ISSUER_VIEW = 'certification.issuer.view';
+      const TYPE_VIEW = 'certification.type.view';
       const REVIEW = 'sellers.seller-file.review';
       const SELLER_VIEW = 'sellers.seller.view';
       const DETAILS = 'sellers.business-details.view';
@@ -279,7 +280,11 @@ describe.each(TEST_MARKETS)(
       );
       await sql.query(
         `DELETE FROM identity.role_permissions WHERE market_id = $1 AND role_id = $2 AND permission_key = ANY($3)`,
-        [code, compliance.id, [REVIEW, SELLER_VIEW, DETAILS, CERT_VIEW, CERT_REVIEW, ISSUER_VIEW]],
+        [
+          code,
+          compliance.id,
+          [REVIEW, SELLER_VIEW, DETAILS, CERT_VIEW, CERT_REVIEW, ISSUER_VIEW, TYPE_VIEW],
+        ],
       );
       // A custom platform role (kind custom, no seed code) that holds the same key and another.
       const customId = newId<'Role'>();
@@ -304,7 +309,7 @@ describe.each(TEST_MARKETS)(
       await expect(seedRoles()).resolves.toEqual({ ok: true, value: { created: 0, upgraded: 1 } });
 
       const upgraded = await roleRow('platform', 'onboarding-compliance');
-      expect([upgraded.id, upgraded.seed_version]).toEqual([compliance.id, 6]);
+      expect([upgraded.id, upgraded.seed_version]).toEqual([compliance.id, 7]);
       expect(await keysOf(compliance.id)).toEqual(expectedKeys);
       expect(await keysOf(compliance.id)).toContain(REVIEW);
       const applied = (await auditRowsOf(compliance.id)).filter(
@@ -313,8 +318,16 @@ describe.each(TEST_MARKETS)(
       expect(applied.at(-1)).toMatchObject({
         before: { seedVersion: 1 },
         after: {
-          seedVersion: 6,
-          addedKeys: [REVIEW, SELLER_VIEW, DETAILS, CERT_VIEW, CERT_REVIEW, ISSUER_VIEW].sort(),
+          seedVersion: 7,
+          addedKeys: [
+            REVIEW,
+            SELLER_VIEW,
+            DETAILS,
+            CERT_VIEW,
+            CERT_REVIEW,
+            ISSUER_VIEW,
+            TYPE_VIEW,
+          ].sort(),
           removedKeys: [],
         },
       });
@@ -681,7 +694,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
     const { rows } = await sql.query<{ before: unknown; after: unknown }>(
       `SELECT before, after FROM platform.audit_log
         WHERE market_id = $1 AND target_id = $2 AND action = 'identity.role.seed-applied'
-          AND before->>'seedVersion' = '1' AND after->>'seedVersion' = '5'
+          AND before->>'seedVersion' = '1' AND after->>'seedVersion' = '6'
         ORDER BY occurred_at`,
       [marketId, roleId],
     );
@@ -694,7 +707,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
     expect(registry.get(EDIT)).toMatchObject({ key: EDIT, scope: 'platform', protected: false });
   });
 
-  it('upgrades a Market seeded at catalogue-moderator version 1 to 5 with the keys, in every hosted Market', async () => {
+  it('upgrades a Market seeded at catalogue-moderator version 1 to 6 with the keys, in every hosted Market', async () => {
     // Every hosted Market has its roles (first run creates them, if no other file did yet).
     await expect(runSeedJob()).resolves.toEqual({ outcome: 'ran', failedMarkets: [] });
 
@@ -722,6 +735,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
               'catalog.product.view',
               'sellers.seller.view',
               'pricing.price-hold.view',
+              'certification.type.view',
             ],
           ],
         );
@@ -738,11 +752,12 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
 
     for (const code of TEST_MARKETS) {
       const role = await moderatorOf(code);
-      expect(role.seed_version).toBe(5);
+      expect(role.seed_version).toBe(6);
       expect(await keysOf(code, role.id)).toEqual([
         EDIT,
         'catalog.product.approve',
         'catalog.product.view',
+        'certification.type.view',
         'identity.seller-access.view',
         'pricing.price-hold.view',
         'sellers.seller.view',
@@ -752,11 +767,12 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
       expect(rows.at(-1)).toEqual({
         before: { seedVersion: 1 },
         after: {
-          seedVersion: 5,
+          seedVersion: 6,
           addedKeys: [
             EDIT,
             'catalog.product.approve',
             'catalog.product.view',
+            'certification.type.view',
             'pricing.price-hold.view',
             'sellers.seller.view',
           ],

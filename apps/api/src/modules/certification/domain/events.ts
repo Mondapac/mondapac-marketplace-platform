@@ -141,6 +141,82 @@ export const IssuerRequestAnswered = defineEvent({
   },
 });
 
+// The registry events of slice 12 (design 3.5, 3.6, 8.3): ids and enums only, never a name, a
+// reference, a claim term or a change reason.
+
+/**
+ * A type revision was published, at its save (no relaxation) or on a second admin's approval
+ * (design 3.6). `claimTermsChanged` tells catalog to re-scan product text (catalog Q6).
+ */
+export const CertificationTypeRevised = defineEvent({
+  type: 'certification.certification-type-revised.v1',
+  aggregateType: 'certification-type',
+  payload: {
+    typeId: eventField.id(),
+    revisionId: eventField.id(),
+    claimTermsChanged: eventField.boolean(),
+  },
+});
+
+/**
+ * An inactive type became active again, on a second admin's approval (design 3.6; H1). Sellers
+ * may add certificates of it again. Consumer: storefront filters, later.
+ */
+export const CertificationTypeActivated = defineEvent({
+  type: 'certification.certification-type-activated.v1',
+  aggregateType: 'certification-type',
+  payload: { typeId: eventField.id() },
+});
+
+/**
+ * A type was deactivated (design 3.6; CERT-03): no new certificate of it is added, approved ones
+ * keep counting until their own boundary (AC 19). Consumer: storefront filters, later.
+ */
+export const CertificationTypeDeactivated = defineEvent({
+  type: 'certification.certification-type-deactivated.v1',
+  aggregateType: 'certification-type',
+  payload: { typeId: eventField.id() },
+});
+
+export const ISSUER_DEACTIVATION_FORMS = ['closed-to-new', 'derecognised'] as const;
+
+/**
+ * An issuer was deactivated in one of the two forms of Q6 (design 3.5, 8.3): `closed-to-new` (no
+ * new certificate names it; approved ones stay valid to their boundary) or `derecognised` (every
+ * certificate naming it is invalid from that instant). Consumers: own mail (`derecognised`, one
+ * mail per affected seller) and catalog (`derecognised`: tags whose copy names this issuer,
+ * ADR-0028 d11).
+ */
+export const IssuerDeactivated = defineEvent({
+  type: 'certification.issuer-deactivated.v1',
+  aggregateType: 'issuer',
+  payload: {
+    issuerId: eventField.id(),
+    form: eventField.enumOf(ISSUER_DEACTIVATION_FORMS),
+  },
+});
+
+export const RELAXATION_SUBJECTS = [
+  'type-revision',
+  'claim-policy-revision',
+  'issuer-reactivation',
+  'type-reactivation',
+] as const;
+
+/**
+ * A relaxation that needs a second admin was proposed (design 7.6, 8.3, 12). Internal: ids and
+ * the subject kind only. Its consumer, the mail to the other admins holding the approving key,
+ * waits for identity's list of a key's holders (open item of slice 12).
+ */
+export const RelaxationProposed = defineEvent({
+  type: 'certification.relaxation-proposed.v1',
+  aggregateType: 'relaxation-proposal',
+  payload: {
+    proposalId: eventField.id(),
+    subject: eventField.enumOf(RELAXATION_SUBJECTS),
+  },
+});
+
 /**
  * Every event certification publishes, for the event catalogue. Adding one adds it to the
  * snapshot (`apps/api/test/contracts/event-catalogue.snapshot.json`).
@@ -156,4 +232,9 @@ export const CERTIFICATION_EVENTS: readonly EventDefinition[] = [
   SellerCertificationExpired,
   SellerCertificationExpiryWarningDue,
   IssuerRequestAnswered,
+  CertificationTypeRevised,
+  CertificationTypeActivated,
+  CertificationTypeDeactivated,
+  IssuerDeactivated,
+  RelaxationProposed,
 ];

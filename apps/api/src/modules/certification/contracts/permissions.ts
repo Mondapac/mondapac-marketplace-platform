@@ -4,7 +4,7 @@ import { declarePermissions, definePermission } from '../../../platform/authz';
 // A key is declared with the first use case that names it, together with identity's seed of the
 // default roles that receive it. The platform keys of the review package are view, review and
 // approve; the issuer keys come with the issuer requests (slice 6); revoke and the document key
-// with slice 11; the type and policy keys come with their slices.
+// with slice 11; the type keys with slice 12; the policy keys come with their slice.
 
 /**
  * Read the seller's own certificates, their status codes and reasons, and their own documents
@@ -96,11 +96,37 @@ export const CERTIFICATION_ISSUER_VIEW = definePermission('certification', {
 });
 
 /**
- * Change the issuer registry and answer issuer requests (design 7.1; CERT-04). Protected: no
- * default role lists it; the Platform Administrator holds it and grants it in a custom role.
+ * Change the issuer registry (create, activate with an expert reference, the two deactivation
+ * forms, propose and approve a reactivation, read the expert references) and answer issuer
+ * requests (design 3.5, 7.1; CERT-04). A reactivation needs a second holder who is not the
+ * proposer (H1). Protected: no default role lists it; the Platform Administrator holds it and
+ * grants it in a custom role.
  */
 export const CERTIFICATION_ISSUER_EDIT = definePermission('certification', {
   key: 'certification.issuer.edit',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * The certification types of the Market: their published revisions, claim terms, status and any
+ * pending proposal (design 7.1; CERT-01, CERT-03; slice 12). No personal data: every default admin
+ * role holds it by identity's seed.
+ */
+export const CERTIFICATION_TYPE_VIEW = definePermission('certification', {
+  key: 'certification.type.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Save a type revision, deactivate a type, propose its reactivation, and approve, reject or
+ * withdraw a type proposal (design 3.6, 7.1; slice 12). A relaxing revision and a reactivation
+ * need a second holder who is not the proposer (H1). Protected (accepted at G2, 19.2 item 7): no
+ * default role lists it; the Platform Administrator holds it and grants it in a custom role.
+ */
+export const CERTIFICATION_TYPE_EDIT = definePermission('certification', {
+  key: 'certification.type.edit',
   scope: 'platform',
   protected: true,
 });
@@ -115,4 +141,6 @@ export const CERTIFICATION_PERMISSIONS = declarePermissions('certification', [
   CERTIFICATION_DOCUMENT_VIEW,
   CERTIFICATION_ISSUER_VIEW,
   CERTIFICATION_ISSUER_EDIT,
+  CERTIFICATION_TYPE_VIEW,
+  CERTIFICATION_TYPE_EDIT,
 ]);

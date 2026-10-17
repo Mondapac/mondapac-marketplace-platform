@@ -405,5 +405,89 @@
       "sellers.business-details.view",
       "sellers.seller.view"
     ]
+  },
+  {
+    "entry": "platform:onboarding-compliance@7",
+    "kind": "default",
+    "permissionKeys": [
+      "certification.issuer.view",
+      "certification.seller-certificate.review",
+      "certification.seller-certificate.view",
+      "certification.type.view",
+      "identity.seller-access.approve",
+      "identity.seller-access.suspend",
+      "identity.seller-access.view",
+      "identity.seller-account.create",
+      "sellers.business-details.view",
+      "sellers.seller-file.review",
+      "sellers.seller.view"
+    ]
+  },
+  {
+    "entry": "platform:catalogue-moderator@6",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.platform-product.edit",
+      "catalog.product.approve",
+      "catalog.product.view",
+      "certification.type.view",
+      "identity.seller-access.view",
+      "pricing.price-hold.view",
+      "sellers.seller.view"
+    ]
+  },
+  {
+    "entry": "platform:operations-support@3",
+    "kind": "default",
+    "permissionKeys": [
+      "certification.type.view",
+      "identity.customer-account.disable",
+      "identity.customer-account.view",
+      "identity.seller-access.view",
+      "identity.seller-account.reset-second-factor",
+      "sellers.seller.view"
+    ]
+  },
+  {
+    "entry": "platform:finance@3",
+    "kind": "default",
+    "permissionKeys": [
+      "certification.type.view",
+      "identity.seller-access.view",
+      "sellers.seller.view"
+    ]
+  },
+  {
+    "entry": "platform:viewer@11",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.product.view",
+      "certification.seller-certificate.view",
+      "certification.type.view",
+      "commission-payouts.settlement.view",
+      "identity.admin-account.view",
+      "identity.customer-account.view",
+      "identity.platform-role.view",
+      "identity.seller-access.view",
+      "notifications.support-contact.view",
+      "ordering.order.view",
+      "payments.connected-account.view",
+      "pricing.price-hold.view",
+      "sellers.seller.view",
+      "shipping.flat-fee.view"
+    ]
+  },
+  {
+    "entry": "platform:certification-reviewer@3",
+    "kind": "default",
+    "permissionKeys": [
+      "certification.issuer.view",
+      "certification.seller-certificate.review",
+      "certification.seller-certificate.view",
+      "certification.type.view",
+      "identity.seller-access.view",
+      "sellers.business-details.view",
+      "sellers.seller.view"
+    ]
   }
 ]

@@ -64,6 +64,11 @@ import { SendExpiryMail } from './application/use-cases/send-expiry-mail.use-cas
 import { expiryProviders } from './infrastructure/expiry-providers';
 import { expiryAndWarningsJob } from './presentation/jobs/expiry-and-warnings.job';
 import { expiryMailSubscriptions } from './presentation/subscribers/expiry-mail.subscriptions';
+import { SendDerecognitionMail } from './application/use-cases/send-derecognition-mail.use-case';
+import { registryProviders } from './infrastructure/registry-providers';
+import { AdminCertificationTypeController } from './presentation/admin-certification-type.controller';
+import { AdminIssuerRegistryController } from './presentation/admin-issuer-registry.controller';
+import { derecognitionMailSubscriptions } from './presentation/subscribers/derecognition-mail.subscriptions';
 
 /** The use cases that only read the published types: the gate and the reader. */
 const readerUseCases = [
@@ -103,6 +108,8 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     AdminCertificateReviewController,
     OwnIssuerRequestController,
     AdminIssuerRequestController,
+    AdminCertificationTypeController,
+    AdminIssuerRegistryController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('certification'),
@@ -112,21 +119,24 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     registerAuditActions('certification', CERTIFICATION_AUDIT_ACTIONS),
     registerSubscriptionsFrom(
       'certification',
-      [SendDecisionMail, SendIssuerRequestMail, SendExpiryMail],
+      [SendDecisionMail, SendIssuerRequestMail, SendExpiryMail, SendDerecognitionMail],
       (
         mail: SendDecisionMail,
         issuerRequestMail: SendIssuerRequestMail,
         expiryMail: SendExpiryMail,
+        derecognitionMail: SendDerecognitionMail,
       ) => [
         ...decisionMailSubscriptions(mail),
         ...issuerRequestMailSubscriptions(issuerRequestMail),
         ...expiryMailSubscriptions(expiryMail),
+        ...derecognitionMailSubscriptions(derecognitionMail),
       ],
     ),
     ...sellerCertificateProviders,
     ...reviewProviders,
     ...issuerRequestProviders,
     ...expiryProviders,
+    ...registryProviders,
     PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
     claimFactsReaderProvider,
