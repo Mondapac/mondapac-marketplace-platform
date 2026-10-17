@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
@@ -47,6 +48,8 @@ export type RevokeFailure =
   | { readonly code: 'certificate.not-revocable' }
   | { readonly code: 'conflict.stale' }
   | ValidationFailure;
+
+const logger = new Logger('CertificationRevoke');
 
 function guard(view: RevocationView | null, version: number): RevokeFailure | null {
   if (view === null) return { code: 'certificate.not-found' };
@@ -129,7 +132,18 @@ export class RevokeSellerCertificate extends UseCase<RevokeInput, RevokeOutput, 
     if (text.value !== null) {
       try {
         const sealed = await deps.cipher.seal(market, sellerId, 'history-note', text.value);
-        if (!sealed.ok) return err({ code: 'access.denied' });
+        if (!sealed.ok) {
+          // The seller's key is gone (erasure): the note cannot be kept, so it is refused as a
+          // field problem, not as an access refusal; a revoke without a note still works (Hassan
+          // L2). Ids only in the log.
+          logger.warn({
+            msg: 'certification.revoke.note-key-unavailable',
+            certificateId,
+            marketId: market.marketId,
+            correlationId: context.correlationId,
+          });
+          return invalid('reasonText', 'key-unavailable');
+        }
         noteCiphertext = sealed.value;
       } catch {
         return err({ code: 'access.unavailable' });

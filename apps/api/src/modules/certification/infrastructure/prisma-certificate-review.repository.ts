@@ -695,6 +695,17 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
     // Served by (market_id, seller_certification_id, occurred_at) (data design A13).
     const rows = await tx.certificationSellerCertificationHistory.findMany({
       where: { ...where, ...older },
+      select: {
+        id: true,
+        fromStatus: true,
+        toStatus: true,
+        submissionId: true,
+        actorKind: true,
+        actorAccountId: true,
+        reasonCode: true,
+        noteCiphertext: true,
+        occurredAt: true,
+      },
       orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
       take: page.limit + 1,
     });

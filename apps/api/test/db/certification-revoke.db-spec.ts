@@ -7,6 +7,7 @@ import {
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import type { CertificationTypeCode } from '../../src/modules/certification';
 import type { SellerZonesSource } from '../../src/modules/certification/application/ports/claim-facts.ports';
 import type { SubmitWrite } from '../../src/modules/certification/application/ports/seller-certificate.repository';
@@ -642,6 +643,91 @@ describe.each(TEST_MARKETS)('certification revoke in market %s (database)', (cod
       ).toMatchObject({ ok: true, value: { status: 'revoked', withdrawnSubmissionId: null } });
     });
 
+    it('a revoke holding the lock makes a seller withdrawal of the pending renewal wait and then fail stale', async () => {
+      const f = await approved('2030-06-30', { renewal: true });
+      const audit = new HoldingAudit(baseAudit);
+      const held = audit.holdNext();
+      const revoking = new RevokeSellerCertificate(gate, reviewDeps(audit, now)).execute(admin(), {
+        certificateId: f.id,
+        version: 5,
+        reasonCode: revokeCode,
+      });
+      await held.entered;
+      let withdrawn: unknown = null;
+      const withdrawing = unit(() =>
+        sellerSide.withdraw(market, {
+          certificateId: f.id,
+          expectedVersion: 5,
+          submissionId: f.renewalId!,
+          cause: 'cancelled',
+          accountId: uuid7() as Id<'Account'>,
+          decidedAt: now,
+          fromStatus: 'approved',
+          toStatus: 'approved',
+          historyId: uuid7() as Id<'CertificationHistory'>,
+        }),
+      ).then(
+        () => (withdrawn = 'committed'),
+        (error: unknown) => (withdrawn = error),
+      );
+      await delay(300);
+      expect(withdrawn).toBeNull(); // waiting on the row lock
+      held.release();
+      expect(await revoking).toMatchObject({
+        ok: true,
+        value: { status: 'revoked', withdrawnSubmissionId: f.renewalId },
+      });
+      await withdrawing;
+      expect(withdrawn).toBeInstanceOf(StaleAggregateError);
+      expect(await decisionOf(f.renewalId!)).toEqual([
+        { outcome: 'withdrawn', withdraw_cause: 'revoked', actor_kind: 'admin' },
+      ]);
+      expect(await root(f.id)).toMatchObject({ status: 'revoked', version: 6 });
+    });
+
+    it('a seller withdrawal holding the lock makes a revoke answer conflict.stale; the retry revokes with nothing pending', async () => {
+      const f = await approved('2030-06-30', { renewal: true });
+      let release!: () => void;
+      const hold = new Promise<void>((resolve) => (release = resolve));
+      let entered!: () => void;
+      const inside = new Promise<void>((resolve) => (entered = resolve));
+      const withdrawing = unit(async () => {
+        await sellerSide.withdraw(market, {
+          certificateId: f.id,
+          expectedVersion: 5,
+          submissionId: f.renewalId!,
+          cause: 'cancelled',
+          accountId: uuid7() as Id<'Account'>,
+          decidedAt: now,
+          fromStatus: 'approved',
+          toStatus: 'approved',
+          historyId: uuid7() as Id<'CertificationHistory'>,
+        });
+        entered();
+        await hold;
+      });
+      await inside;
+      const revoke = new RevokeSellerCertificate(gate, reviewDeps(baseAudit, now));
+      let revoked: unknown = null;
+      const revoking = revoke
+        .execute(admin(), { certificateId: f.id, version: 5, reasonCode: revokeCode })
+        .then((r) => (revoked = r));
+      await delay(300);
+      expect(revoked).toBeNull();
+      release();
+      await withdrawing;
+      await revoking;
+      expect(revoked).toEqual({ ok: false, error: { code: 'conflict.stale' } });
+      expect(await decisionOf(f.renewalId!)).toEqual([
+        { outcome: 'withdrawn', withdraw_cause: 'cancelled', actor_kind: 'seller' },
+      ]);
+      expect(await root(f.id)).toMatchObject({ status: 'approved', version: 6 });
+
+      expect(
+        await revoke.execute(admin(), { certificateId: f.id, version: 6, reasonCode: revokeCode }),
+      ).toMatchObject({ ok: true, value: { status: 'revoked', withdrawnSubmissionId: null } });
+    });
+
     it('a revoke holding the lock makes the expiry job count the record contended and write nothing', async () => {
       const f = await approved('2027-02-28');
       const after = f.boundary.add({ minutes: 15 });
@@ -652,14 +738,15 @@ describe.each(TEST_MARKETS)('certification revoke in market %s (database)', (cod
         { certificateId: f.id, version: 4, reasonCode: revokeCode },
       );
       await held.entered;
-      const running = job(baseAudit, after, f.id).execute(
-        testCallContext(market, 'system', `db-${uuid7()}`),
-        {},
-      );
+      let ran: unknown = null;
+      const running = job(baseAudit, after, f.id)
+        .execute(testCallContext(market, 'system', `db-${uuid7()}`), {})
+        .then((r) => (ran = r));
       await delay(300);
+      expect(ran).toBeNull(); // waiting on the row lock
       held.release();
       expect(await revoking).toMatchObject({ ok: true, value: { status: 'revoked' } });
-      const ran = await running;
+      await running;
       expect(ran).toMatchObject({ ok: true, value: { contended: 1, expired: 0 } });
       expect(await root(f.id)).toMatchObject({ status: 'revoked', version: 5 });
       expect(await auditRows(f.id, 'certification.seller-certification.expired')).toHaveLength(0);

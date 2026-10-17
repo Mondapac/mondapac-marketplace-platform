@@ -346,6 +346,34 @@ describe.each(['AU', 'ZZ'] as const)('revoke and full history, Market %s', (code
       expect(r.audit.entries).toHaveLength(0);
     });
 
+    it('refuses a note it cannot seal (erased seller key) as a reasonText problem, not access.denied; without a note it revokes (Hassan L2)', async () => {
+      const r = rig();
+      r.cipher.destroyed.add(r.sellerId);
+      expect(
+        await r.revoke.execute(r.admin(), {
+          certificateId: r.certificateId,
+          version: 5,
+          reasonCode: revokeReason.code,
+          reasonText: 'A note that cannot be kept.',
+        }),
+      ).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'reasonText', code: 'key-unavailable' }],
+        },
+      });
+      expect(r.reviews.certificate).toMatchObject({ status: 'approved', version: 5 });
+      expect(r.audit.entries).toHaveLength(0);
+      expect(
+        await r.revoke.execute(r.admin(), {
+          certificateId: r.certificateId,
+          version: 5,
+          reasonCode: revokeReason.code,
+        }),
+      ).toMatchObject({ ok: true, value: { status: 'revoked' } });
+    });
+
     it('answers conflict.stale on an old version and writes nothing', async () => {
       const r = rig();
       expect(
