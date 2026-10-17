@@ -109,6 +109,16 @@ export class OwnOfferAddTagRequest {
   typeCode!: string;
 }
 
+export class OwnOfferSellWithoutBadgeRequest {
+  @ApiProperty({
+    enum: [true],
+    description:
+      'The explicit "sell without this badge" confirmation (catalog design 5.3); must be true. ' +
+      'The suspended tag is removed and the Offer is listed again without the badge.',
+  })
+  confirmSellWithoutBadge!: boolean;
+}
+
 export class OwnOfferTagAdded {
   @ApiProperty() typeCode!: string;
   @ApiProperty({ enum: ['active'] }) status!: string;

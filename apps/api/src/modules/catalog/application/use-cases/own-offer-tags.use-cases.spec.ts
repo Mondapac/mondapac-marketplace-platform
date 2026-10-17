@@ -30,6 +30,7 @@ import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import { OwnOfferAddTag } from './own-offer-add-tag.use-case';
 import { OwnOfferRemoveTag } from './own-offer-remove-tag.use-case';
+import { OwnOfferRemoveSuspendedTag } from './own-offer-remove-suspended-tag.use-case';
 import { OwnOfferSubmit } from './own-offer-submit.use-case';
 
 // Certification tags on a seller's own Offer (catalog design 5.1 to 5.3, 5.1a point 6; CERT-21;
@@ -153,6 +154,7 @@ describe.each([
       add: () => Promise.reject(new Error('unused')),
       listOnProduct: () => Promise.resolve([]),
       listPendingReview: () => Promise.resolve([]),
+      findManyByIds: () => Promise.resolve([]),
       findById: (_m, id) => {
         reads += 1;
         if (current === null || current.state.id !== id) return Promise.resolve(null);
@@ -182,6 +184,13 @@ describe.each([
       ids,
     });
     const remove = new OwnOfferRemoveTag(gate, { unitOfWork, offers, eligibility, outbox, clock });
+    const sellWithoutBadge = new OwnOfferRemoveSuspendedTag(gate, {
+      unitOfWork,
+      offers,
+      eligibility,
+      outbox,
+      clock,
+    });
     const products = {
       findById: (_m: MarketContext, id: Id<'Product'>) =>
         Promise.resolve({
@@ -221,6 +230,7 @@ describe.each([
     return {
       add,
       remove,
+      sellWithoutBadge,
       submit,
       saved,
       outbox,
@@ -609,6 +619,97 @@ describe.each([
         status: 'suspended',
         lastReasonCode: 'input-invalid',
       });
+    });
+  });
+
+  describe('own-offer.remove-suspended-tag ("sell without this badge", design 5.3; AC 19)', () => {
+    const suspendedTag = () =>
+      activeTagState(ids.next<'OfferTag'>(), typeCode, certificate, T0, {
+        status: 'suspended',
+        badge: null,
+        lastReasonCode: 'certificate-revoked',
+        changeSeq: 2,
+      });
+
+    it('removes the suspended tag on an explicit confirmation and lists the Offer again', async () => {
+      const r = rig({
+        offer: offerState({ offSaleCauses: ['tag-suspended'], listed: false }),
+        tags: [suspendedTag()],
+      });
+      expect(
+        await r.sellWithoutBadge.execute(contextOf('seller'), {
+          offerId: r.offerId,
+          typeCode,
+          confirmSellWithoutBadge: true,
+        }),
+      ).toEqual({ ok: true, value: {} });
+      expect(r.evaluator.calls).toHaveLength(0);
+      expect(r.saved[0]!.tags[0]).toMatchObject({
+        status: 'removed',
+        removedByKind: 'seller',
+        lastChangeCause: 'seller-remove-suspended',
+      });
+      expect(r.saved[0]!.state).toMatchObject({ offSaleCauses: [], listed: true });
+      expect(r.outbox.types).toEqual([
+        'catalog.offer-tag-removed.v1',
+        'catalog.offer-listing-changed.v1',
+      ]);
+    });
+
+    it('requires the literal confirmation, and refuses an active tag', async () => {
+      const r = rig({ tags: [suspendedTag()] });
+      for (const confirmSellWithoutBadge of [undefined, false, 'true', 1]) {
+        expect(
+          await r.sellWithoutBadge.execute(contextOf('seller'), {
+            offerId: r.offerId,
+            typeCode,
+            confirmSellWithoutBadge,
+          }),
+        ).toEqual({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: 'confirmSellWithoutBadge', code: 'required' }],
+          },
+        });
+      }
+      const active = rig({
+        tags: [activeTagState(ids.next<'OfferTag'>(), typeCode, certificate, T0)],
+      });
+      expect(
+        await active.sellWithoutBadge.execute(contextOf('seller'), {
+          offerId: active.offerId,
+          typeCode,
+          confirmSellWithoutBadge: true,
+        }),
+      ).toEqual({ ok: false, error: { code: 'tag.not-suspended' } });
+      expect(r.saved).toHaveLength(0);
+      expect(active.saved).toHaveLength(0);
+    });
+
+    it('refuses an acting-as session, an admin and another seller’s Offer (AC 19)', async () => {
+      const r = rig({ tags: [suspendedTag()] });
+      const input = { offerId: r.offerId, typeCode, confirmSellWithoutBadge: true };
+      expect(await r.sellWithoutBadge.execute(actingAs(), input)).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(await r.sellWithoutBadge.execute(contextOf('admin'), input)).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      const other = rig({
+        offer: offerState({ sellerId: ids.next<'Seller'>() }),
+        tags: [suspendedTag()],
+      });
+      expect(
+        await other.sellWithoutBadge.execute(contextOf('seller'), {
+          ...input,
+          offerId: other.offerId,
+        }),
+      ).toEqual({ ok: false, error: { code: 'offer.not-found' } });
+      expect(r.saved).toHaveLength(0);
+      expect(other.saved).toHaveLength(0);
     });
   });
 

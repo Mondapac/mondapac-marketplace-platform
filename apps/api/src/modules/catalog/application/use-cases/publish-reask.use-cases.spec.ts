@@ -32,6 +32,8 @@ import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import {
   NO_COUNTS,
+  type PendingPublishReevaluation,
+  type PendingCertificationReevaluation,
   type PendingReevaluation,
   type ReevaluationCounts,
   type TagReevaluationRequestRepository,
@@ -40,6 +42,13 @@ import { OfferApprove } from './offer-approve.use-case';
 import { OfferListingsQuery } from './offer-listings.use-case';
 import { OfferListingsSystemQuery } from './offer-listings-system.use-case';
 import { ReevaluateTags } from './reevaluate-tags.use-case';
+import type { TagSelectionReader } from '../ports/tag-selection.reader';
+
+/** No certification request is pending in these publish tests: nothing is selected. */
+const NO_SELECTION: TagSelectionReader = {
+  selectedOffers: () => Promise.resolve([]),
+  staleTags: () => Promise.resolve([]),
+};
 
 // Slice 11 (catalog design 5.1a point 3, 5.4, 9.1; Hassan's slice 8 conditions, M1, L3, L7): the
 // re-ask of kept tags at `offer.approve` before the Offer is published, the fan-out job that
@@ -152,6 +161,13 @@ describe.each([
         const row = rows.get(id);
         return Promise.resolve(row === undefined ? null : Offer.restore(row.state, row.tags));
       },
+      findManyByIds: (_m, ids) =>
+        Promise.resolve(
+          [...ids].sort().flatMap((id) => {
+            const row = rows.get(id);
+            return row === undefined ? [] : [Offer.restore(row.state, row.tags)];
+          }),
+        ),
       save: (_m, offer) => {
         saved.push(offer);
         rows.set(offer.state.id, {
@@ -256,7 +272,9 @@ describe.each([
 
   describe('catalog.reevaluate-tags (the fan-out of a PLATFORM publish, design 5.4)', () => {
     class MemoryRequests implements TagReevaluationRequestRepository {
-      readonly rows: ({ -readonly [K in keyof PendingReevaluation]: PendingReevaluation[K] } & {
+      readonly rows: ({
+        -readonly [K in keyof PendingPublishReevaluation]: PendingPublishReevaluation[K];
+      } & {
         state: 'pending' | 'settled' | 'superseded';
       })[] = [];
       progressed = 0;
@@ -271,6 +289,7 @@ describe.each([
           }
         }
         this.rows.push({
+          kind: 'revision-published',
           id: ids.next<'TagReevaluationRequest'>(),
           productId: request.productId,
           productRevisionId: request.productRevisionId,
@@ -280,6 +299,14 @@ describe.each([
           state: 'pending',
         });
         return Promise.resolve();
+      }
+
+      requestForEvent(): Promise<void> {
+        return Promise.resolve();
+      }
+
+      listPendingEnding(): Promise<readonly PendingCertificationReevaluation[]> {
+        return Promise.resolve([]);
       }
 
       listPending(_m: MarketContext, limit: number): Promise<readonly PendingReevaluation[]> {
@@ -356,6 +383,7 @@ describe.each([
         evaluator,
         outbox,
         clock,
+        tagSelection: NO_SELECTION,
       });
       const run = () => job.execute(testCallContext(market, 'system'), {});
       return { run, evaluator, claims, saved, stored, outbox, requests };
@@ -492,6 +520,7 @@ describe.each([
         evaluator,
         outbox: new RecordingOutbox(),
         clock,
+        tagSelection: NO_SELECTION,
       });
       expect(await job.execute(admin(), {})).toMatchObject({ ok: false });
     });
@@ -513,6 +542,7 @@ describe.each([
         policy: {
           locales: () => ({ default: 'fallback-locale' }),
         } as unknown as CatalogMarketPolicy,
+        clock,
       };
       return {
         reads,

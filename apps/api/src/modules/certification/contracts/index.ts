@@ -19,4 +19,11 @@ export {
 } from './certification.facade';
 export { CERTIFICATION_PERMISSIONS } from './permissions';
 export { CERTIFICATION_AUDIT_ACTIONS } from '../domain/audit';
-export { CERTIFICATION_EVENTS } from '../domain/events';
+export {
+  CERTIFICATION_EVENTS,
+  // Consumed by catalog's tag re-evaluation (catalog design 5.5, 9.5; slice 12).
+  SellerCertificationApproved,
+  SellerCertificationExpired,
+  SellerCertificationIssuerConfirmed,
+  SellerCertificationRevoked,
+} from '../domain/events';

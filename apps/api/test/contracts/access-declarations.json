@@ -53,6 +53,8 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "catalog.published-offer-ids", "rule": "system" },
+  { "name": "catalog.reconcile-tags", "rule": "system" },
+  { "name": "catalog.reevaluate-from-certification", "rule": "system" },
   { "name": "catalog.reevaluate-tags", "rule": "system" },
   { "name": "catalog.seed-attributes", "rule": "system" },
   { "name": "catalog.seed-category-tree", "rule": "system" },

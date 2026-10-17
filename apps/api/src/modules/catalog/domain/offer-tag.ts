@@ -180,6 +180,8 @@ export interface OfferTagPendingHistory {
   readonly reasonCode: string | null;
   readonly entryPath: TagEntryPath;
   readonly actor: TagActor;
+  /** The consumed event of a handler-made change (data design 3.16 `cause_event_id`), else null. */
+  readonly causeEventId: Id | null;
   readonly occurredAt: Temporal.Instant;
 }
 

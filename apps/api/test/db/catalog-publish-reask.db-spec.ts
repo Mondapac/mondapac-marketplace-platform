@@ -20,6 +20,7 @@ import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
 import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infrastructure/prisma-product-revision.repository';
 import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
+import { PrismaTagSelectionReader } from '../../src/modules/catalog/infrastructure/prisma-tag-selection.reader';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
@@ -27,6 +28,7 @@ import {
   FakeClaimEvaluator,
   RecordingOutbox,
   allowedDecision,
+  ownedRequests,
   refusedDecision,
 } from '../support/catalog-tag-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
@@ -353,6 +355,8 @@ describe.each(TEST_MARKETS)(
 
     describe('the publish fan-out', () => {
       const now = Temporal.Instant.from('2026-10-17T02:00:00Z');
+      /** The products this block published: its job settles their requests only (slice 12). */
+      const ownProducts = new Set<string>();
 
       /** Two Offers with an active tag each, then a publish of revision 2 with its fan-out unit. */
       async function publishedWithTags() {
@@ -391,18 +395,24 @@ describe.each(TEST_MARKETS)(
           );
         });
         expect(marked).toEqual({ ok: true, value: 2 });
+        ownProducts.add(productId);
         return { productId, second, offers };
       }
 
       function job(evaluator: FakeClaimEvaluator) {
         return new ReevaluateTags(gate, {
           unitOfWork: persistence.unitOfWork,
-          requests: new PrismaTagReevaluationRequests(persistence.service),
+          requests: ownedRequests(
+            new PrismaTagReevaluationRequests(persistence.service),
+            (request) =>
+              request.kind === 'revision-published' && ownProducts.has(request.productId),
+          ),
           offers: new PrismaOfferRepository(persistence.service, ids),
           claims: claims(),
           evaluator,
           outbox: new RecordingOutbox(),
           clock: new FixedClock(now),
+          tagSelection: new PrismaTagSelectionReader(persistence.service),
         });
       }
 
@@ -681,7 +691,15 @@ describe.each(TEST_MARKETS)(
           persistence.unitOfWork.run(
             market,
             async () =>
-              ok(await reader.read(market, keys, { requested: 'en', fallback: 'en' }, tags)),
+              ok(
+                await reader.read(
+                  market,
+                  keys,
+                  { requested: 'en', fallback: 'en' },
+                  tags,
+                  Temporal.Instant.from('2026-10-17T04:00:00Z'),
+                ),
+              ),
             { readOnly: true },
           );
         const anonymous = await read('none');
@@ -698,9 +716,14 @@ describe.each(TEST_MARKETS)(
           tags: [],
         });
         expect(anonymous.value.get(key(suspendedOffer))).toMatchObject({ listed: false, tags: [] });
-        // No badge data for the system rule either until slice 12 (Hassan L-1).
+        // The system rule gets the badge of an active tag back from slice 12 (Hassan L-1).
         expect(system.value.get(key(activeOffer))!.tags).toEqual([
-          { typeCode, status: 'active', basis: 'SELLER', badge: null },
+          {
+            typeCode,
+            status: 'active',
+            basis: 'SELLER',
+            badge: expect.objectContaining({ typeCode, basis: 'SELLER' }) as unknown,
+          },
         ]);
         expect(system.value.get(key(suspendedOffer))!.tags).toEqual([
           { typeCode, status: 'suspended', basis: 'SELLER', badge: null },
@@ -719,8 +742,8 @@ describe.each(TEST_MARKETS)(
           expect(
             await addTagWith(evaluator).execute(sellerContext(sellerId), { offerId, typeCode }),
           ).toMatchObject({ ok: true });
-          // The certificate ends; catalog consumes no revoke or expiry event before slice 12, so
-          // the stored tag is still `active`. certification would now refuse it.
+          // The certificate ends and its event has not been handled yet, so the stored tag is
+          // still `active`; certification would now refuse it. The anonymous read shows no tag.
           evaluator.decide = (query) => refusedDecision(query, reason);
           expect(await tagsOf(offerId)).toEqual([
             expect.objectContaining({ status: 'active', has_badge: true }),
@@ -729,6 +752,7 @@ describe.each(TEST_MARKETS)(
             unitOfWork: persistence.unitOfWork,
             listingsReader: new PrismaOfferListingsReader(persistence.service),
             policy: { locales: () => ({ default: 'en' }) } as unknown as CatalogMarketPolicy,
+            clock: new FixedClock(Temporal.Instant.from(T0)),
           });
           const answer = await listings.execute(testCallContext(market, 'anonymous'), {
             keys: [{ offerId, variantId }],

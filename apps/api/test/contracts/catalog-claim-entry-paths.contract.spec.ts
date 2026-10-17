@@ -83,10 +83,18 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
     expect(text('use-cases/own-product-submit.use-case.ts')).toMatch(/\.settlePublish\(/);
   });
 
-  it('marks rechecking only together with a fan-out request (rule M1)', () => {
+  it('marks rechecking only together with a fan-out request (rule M1) or a re-ask (slice 12)', () => {
     const marking = files.filter(({ text }) => /\.markRechecking\(/.test(text));
-    expect(marking.map((f) => f.file)).toEqual(['tags/publish-fan-out.ts']);
-    expect(marking[0]!.text).toMatch(/requestForPublish\(/);
+    expect(marking.map((f) => f.file).sort()).toEqual([
+      'tags/publish-fan-out.ts',
+      'tags/reask-offers.ts',
+    ]);
+    const text = (file: string) => marking.find((f) => f.file === file)!.text;
+    expect(text('tags/publish-fan-out.ts')).toMatch(/requestForPublish\(/);
+    // The certification-event and reconciliation re-ask (design 5.5, 5.6) marks, then asks and
+    // settles the same Offers itself.
+    expect(text('tags/reask-offers.ts')).toMatch(/askClaimsMany\(/);
+    expect(text('tags/reask-offers.ts')).toMatch(/\.settleTags\(/);
     // Every PLATFORM publish (the submit service is the only publish of PLATFORM content).
     expect(files.find((f) => f.file === 'revisions/submit-product.service.ts')!.text).toMatch(
       /markProductForReevaluation\(/,

@@ -233,6 +233,9 @@ describe.each(TEST_MARKETS)('catalog offer tags in market %s (database integrati
     issuer_id: null,
     policy_revision_id: null,
     copy_revision_id: tag['copy_revision_id'],
+    // The copy's type revision and expiry (migration 10, Mojtaba F1: compared at commit).
+    type_revision_id: tag['type_revision_id'],
+    valid_until: tag['valid_until'],
     reason_code: null,
     entry_path: 'tag-add',
     change_seq: tag['change_seq'],
@@ -646,6 +649,8 @@ describe.each(TEST_MARKETS)('catalog offer tags in market %s (database integrati
           issuer_id: null,
           policy_revision_id: null,
           copy_revision_id: facts.productRevisionId,
+          type_revision_id: certificate.typeRevisionId,
+          valid_until: null,
           reason_code: 'certificate-expired',
           entry_path: 'certification-event',
           change_seq: 2,

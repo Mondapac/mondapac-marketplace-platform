@@ -19,6 +19,7 @@ import type { RevisionContent } from '../../src/modules/catalog/domain/revision-
 import type { OutboxWriter } from '../../src/platform/events/outbox-writer';
 import type { OfferRepository } from '../../src/modules/catalog/application/ports/offer.repository';
 import type {
+  PendingCertificationReevaluation,
   PendingReevaluation,
   TagReevaluationRequestRepository,
 } from '../../src/modules/catalog/application/ports/tag-reevaluation-requests';
@@ -247,6 +248,14 @@ export class RecordingReevaluationRequests implements TagReevaluationRequestRepo
     return Promise.resolve();
   }
 
+  requestForEvent(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  listPendingEnding(): Promise<readonly PendingCertificationReevaluation[]> {
+    return Promise.resolve([]);
+  }
+
   listPending(): Promise<readonly PendingReevaluation[]> {
     return Promise.resolve([]);
   }
@@ -265,3 +274,26 @@ export const NO_OFFERS_ON_PRODUCT = {
   listOnProduct: () => Promise.resolve([]),
   save: () => Promise.reject(new Error('NO_OFFERS_ON_PRODUCT: nothing to save')),
 } as unknown as OfferRepository;
+
+/**
+ * A request store that lists only the pending requests a test owns (slice 12): the database
+ * specs share one database and run in parallel, so a job run of one file must not settle another
+ * file's requests with its own fake evaluator. Every other method is the store's own.
+ */
+export function ownedRequests(
+  store: TagReevaluationRequestRepository,
+  owns: (request: PendingReevaluation) => boolean,
+): TagReevaluationRequestRepository {
+  return {
+    requestForPublish: (...args) => store.requestForPublish(...args),
+    requestForEvent: (...args) => store.requestForEvent(...args),
+    listPending: async (market, limit) =>
+      (await store.listPending(market, 1000)).filter(owns).slice(0, limit),
+    listPendingEnding: async (market, page) =>
+      (await store.listPendingEnding(market, { ...page, limit: 1000 }))
+        .filter(owns)
+        .slice(0, page.limit),
+    progress: (...args) => store.progress(...args),
+    close: (...args) => store.close(...args),
+  };
+}

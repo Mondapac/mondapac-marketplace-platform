@@ -1,8 +1,9 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { ListingTags, OfferListingsReader } from '../application/ports/offer-listings.reader';
 import {
   sellUnitKey,
+  type OfferListingBadge,
   type OfferListing,
   type OfferListingTag,
   type OfferListingsMap,
@@ -25,6 +26,44 @@ const asTexts = (value: unknown): Record<string, string> | null =>
     ? (value as Record<string, string>)
     : null;
 
+const isString = (value: unknown): value is string => typeof value === 'string';
+
+/**
+ * The stored badge data as the facade's badge, field by field, or null when it does not have the
+ * badge's shape or names another type (fail closed: never a badge built from a guess).
+ */
+function badgeOf(value: unknown, typeCode: string): OfferListingBadge | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const issuer = raw.issuer as Record<string, unknown> | null | undefined;
+  if (
+    raw.typeCode !== typeCode ||
+    !isString(raw.typeRevisionId) ||
+    (raw.basis !== 'SELLER' && raw.basis !== 'MANUFACTURER') ||
+    typeof raw.sellerClaim !== 'boolean' ||
+    (issuer !== null &&
+      (typeof issuer !== 'object' || !isString(issuer.id) || !isString(issuer.displayName))) ||
+    (raw.validUntilLocalDate !== null && !isString(raw.validUntilLocalDate)) ||
+    (raw.validUntilZone !== null && !isString(raw.validUntilZone)) ||
+    typeof raw.verifiedWithIssuer !== 'boolean' ||
+    raw.reviewedByPlatform !== true
+  ) {
+    return null;
+  }
+  return {
+    typeCode,
+    typeRevisionId: raw.typeRevisionId as Id,
+    basis: raw.basis,
+    sellerClaim: raw.sellerClaim,
+    issuer:
+      issuer === null ? null : { id: issuer.id as Id, displayName: issuer.displayName as string },
+    validUntilLocalDate: raw.validUntilLocalDate,
+    validUntilZone: raw.validUntilZone,
+    verifiedWithIssuer: raw.verifiedWithIssuer,
+    reviewedByPlatform: true,
+  };
+}
+
 /**
  * {@link OfferListingsReader}: published Offers by `(market_id, id)`, their published products,
  * then the published revisions' texts, variants and first image, the variant registry and the
@@ -39,6 +78,7 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
     keys: readonly SellUnitKey[],
     locales: { readonly requested: string; readonly fallback: string },
     tags: ListingTags,
+    now: Temporal.Instant,
   ): Promise<OfferListingsMap> {
     const result = new Map<string, OfferListing>();
     if (keys.length === 0) return result;
@@ -128,7 +168,7 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
         .filter((row) => cleanImages.has(row.imageId))
         .map((row) => [row.revisionId, row.imageId as Id]),
     );
-    // The anonymous rule reads no tag at all (slice 12 brings the revoke and expiry consumers).
+    // The anonymous rule reads no tag at all (Hassan; kept after slice 12).
     const tagRows =
       tags === 'none'
         ? []
@@ -139,7 +179,14 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
               status: { in: ['active', 'rechecking', 'suspended'] },
             },
             orderBy: [{ typeCode: 'asc' }],
-            select: { offerId: true, typeCode: true, status: true, basis: true },
+            select: {
+              offerId: true,
+              typeCode: true,
+              status: true,
+              basis: true,
+              validUntil: true,
+              badgeData: true,
+            },
           });
     const tagsOf = new Map<string, OfferListingTag[]>();
     for (const row of tagRows) {
@@ -148,9 +195,13 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
         typeCode: row.typeCode,
         status,
         basis: row.basis as OfferListingTag['basis'],
-        // No badge data until slice 12 (Hassan L-1): a stored `active` tag does not yet
-        // reflect a revoked or expired certificate, so its badge copy is never handed out.
-        badge: null,
+        // Slice 12 (Hassan L-1): an `active` tag's badge copy, only while its copy is valid at
+        // `now` and only when the stored data has the badge's shape (fail closed: no badge).
+        badge:
+          status === 'active' &&
+          (row.validUntil === null || row.validUntil.getTime() > now.epochMilliseconds)
+            ? badgeOf(row.badgeData, row.typeCode)
+            : null,
       };
       tagsOf.set(row.offerId, [...(tagsOf.get(row.offerId) ?? []), tag]);
     }

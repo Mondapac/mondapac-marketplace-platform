@@ -318,6 +318,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       'tag.not-found': 404,
       'tag.suspended': 409,
       'tag.not-removable': 409,
+      'tag.not-suspended': 409,
       'tag.product-not-published': 409,
       'tag.type-unknown': 422,
       'claim.tag-not-allowed': 422,
@@ -1116,6 +1117,62 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       expect(missing.status).toBe(404);
     });
 
+    it('sells without a suspended badge on an explicit confirmation (204), and logs the outcome', async () => {
+      arm();
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      const url = `${tagsUrl}/${typeCode}/sell-without-badge`;
+      const suspendedTag = () =>
+        activeTagState(id<'OfferTag'>(0x5003), typeCode, certificate, START, {
+          status: 'suspended',
+          badge: null,
+          lastReasonCode: 'certificate-revoked',
+          changeSeq: 2,
+        });
+      offer = Offer.restore(offerState({ offSaleCauses: ['tag-suspended'], listed: false }), [
+        suspendedTag(),
+      ]);
+      expect(
+        (
+          await withMarket(http().post(url), { cookie: session.cookie }).send({
+            confirmSellWithoutBadge: true,
+          })
+        ).status,
+      ).toBe(403);
+      const unconfirmed = await withMarket(http().post(url), session).send({
+        confirmSellWithoutBadge: false,
+      });
+      expect(unconfirmed.status).toBe(400);
+      const missing = await withMarket(http().post(url), session).send({});
+      expect(missing.status).toBe(400);
+      expect(savedEdits).toHaveLength(0);
+
+      const sold = await withMarket(http().post(url), session).send({
+        confirmSellWithoutBadge: true,
+      });
+      expect(sold.status).toBe(204);
+      expect(savedEdits[0]!.tags[0]).toMatchObject({
+        status: 'removed',
+        lastChangeCause: 'seller-remove-suspended',
+      });
+      expect(savedEdits[0]!.state).toMatchObject({ offSaleCauses: [], listed: true });
+      expect(
+        logLines.find(
+          (l) => l.msg === 'catalog.own-offer-remove-suspended-tag' && l.code === 'removed',
+        ),
+      ).toBeDefined();
+
+      offer = Offer.restore(offerState(), [
+        activeTagState(id<'OfferTag'>(0x5004), typeCode, certificate, START),
+      ]);
+      const active = await withMarket(http().post(url), session).send({
+        confirmSellWithoutBadge: true,
+      });
+      expect(active.status).toBe(409);
+      expect(active.body).toEqual({ statusCode: 409, code: 'tag.not-suspended' });
+    });
+
     it('takes requestedTags on submit and refuses an unknown key in the body', async () => {
       arm();
       await boot();
@@ -1155,6 +1212,12 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
         document.paths['/catalog/seller/offers/{offerId}/tags/{typeCode}']?.delete?.responses;
       for (const status of ['204', '400', '403', '404', '409']) {
         expect(remove).toHaveProperty(status);
+      }
+      const sellWithoutBadge =
+        document.paths['/catalog/seller/offers/{offerId}/tags/{typeCode}/sell-without-badge']?.post
+          ?.responses;
+      for (const status of ['204', '400', '403', '404', '409', '415', '503']) {
+        expect(sellWithoutBadge).toHaveProperty(status);
       }
     });
   });

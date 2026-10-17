@@ -160,6 +160,7 @@ export type TagCommandFailure =
   | { readonly code: 'tag.not-found' }
   | { readonly code: 'tag.suspended' }
   | { readonly code: 'tag.not-removable' }
+  | { readonly code: 'tag.not-suspended' }
   | { readonly code: 'tag.type-unknown' }
   | {
       readonly code: 'claim.tag-not-allowed';

@@ -849,6 +849,11 @@ model CatalogTagReevaluationRequest {
   productRevisionId String?                 @map("product_revision_id") @db.Uuid
   /// The consumed event that created it; NULL for a publish.
   sourceEventId     String?                 @map("source_event_id") @db.Uuid
+  /// For `certification-event`: the consumed event's cause (design 5.5), which names the
+  /// selection and whether the selected tags are marked `rechecking` first (slice 12).
+  cause             String?
+  /// For `certification-event`: the id the selection matches (seller, certificate or submission).
+  subjectId         String?                 @map("subject_id") @db.Uuid
   /// pending | settled | superseded.
   state             String
   /// Keyset position (Offer id) of a resumable run.

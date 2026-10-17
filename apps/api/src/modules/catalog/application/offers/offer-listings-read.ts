@@ -1,5 +1,5 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
   MAX_FACADE_BATCH,
@@ -20,6 +20,7 @@ export interface OfferListingsDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly listingsReader: OfferListingsReader;
   readonly policy: CatalogMarketPolicy;
+  readonly clock: Clock;
 }
 
 /** A BCP 47 tag's shape, as the locales of Market configuration are written. */
@@ -29,7 +30,7 @@ const LOCALE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/;
  * The read of `offerListings` (catalog design 9.1) for both rules: the request is checked whole
  * before any read (at most 200 keys, refused whole above, Hassan L7; ids and locale well formed),
  * duplicates collapse, and one read-only unit answers (ADR-0025). `tags` is decided by the use
- * case's rule, never by input: `none` for `anonymous` (no badge from a stored tag, slice 12).
+ * case's rule, never by input: `none` for `anonymous` (no tag at all), `live` for `system`.
  */
 export async function readOfferListings(
   deps: OfferListingsDependencies,
@@ -68,6 +69,7 @@ export async function readOfferListings(
           requested,
           { requested: input.locale, fallback },
           tags,
+          deps.clock.now(),
         ),
       ),
     { readOnly: true },
