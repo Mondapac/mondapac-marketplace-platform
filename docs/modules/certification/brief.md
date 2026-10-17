@@ -540,3 +540,14 @@
 | 2026-10-08 | دلیل اختیاری تغییر (بازنگری سیاست ادعا، بازنگری نوع، فعال کردن دوبارهٔ صادرکننده و نوع؛ هر چهار مورد Q-C9) فقط روی خود بازنگری، یا برای فعال کردن دوباره روی پیشنهاد آن، ذخیره می‌شود و هرگز در ردیف audit نمی‌آید؛ ردیف audit فقط شناسهٔ بازنگری یا پیشنهاد و `reasonGiven` را دارد (تصمیم Ali روی Q3 طراحی `docs/design/domain/platform-audit.md`؛ طراحی دامنه ۳.۷، ۷.۶، ۱۱ و ۱۶.۱). دلیل همچنان گرفته، ذخیره و در تاریخچهٔ سیاست نشان داده می‌شود؛ فقط جای ذخیره عوض شد. باقی ماندهٔ پاک‌نشدنی بودن متن (Hassan L5): پیش از ادغام برش ۲، یا رمزگذاری با کلیدی که بشود نابودش کرد، یا پذیرش صریح ریسک توسط صاحب پروژه از راه مشاور حقوقی. دامنه و قوانین سخت تغییری نکرد؛ مرور کوچک لازم نیست | Ali؛ Hassan مرور می‌کند؛ Hadi برای اطلاع | پذیرفته (Ali) |
 | 2026-10-08 | اصلاحیهٔ منطقهٔ زمانیِ انتخاب‌شده توسط فروشنده (مرور کوچک spike 3 در `sellers`، شرط ۳ حسن): خواندن ثابت `approvedSellerZones` به‌جای یک منطقه، `{ zone, addressZone }` برمی‌گرداند (منطقهٔ انتخاب‌شده و منطقهٔ مشتق از نشانی نسخهٔ تأییدشده). مرز انقضای گواهی فروشنده زودترین از سه مرز است: مرز ذخیره‌شده هنگام تأیید، مرز در منطقهٔ انتخاب‌شدهٔ فعلی و مرز در منطقهٔ نشانی؛ نبودن هرکدام از دو منطقه `seller-zone-missing` است. ستون یا جدول تازه‌ای لازم نیست. آزمون: فروشندهٔ با نشانی سیدنی که `Australia/Broken_Hill` را انتخاب کند هرگز ۳۰ دقیقه به اعتبار گواهی اضافه نمی‌کند. این اصلاحیه باید پیش از برش ۲ `sellers` ادغام شود (طراحی دامنه 2.3 T2، 2.4، 4.2؛ ADR-0028 تصمیم ۸ با یادداشت اصلاح) | Mohammad، Hassan، Ali | پذیرفته با تغییرات اعمال‌شده (حسن، علی، باقر؛ ۲۰۲۶-۱۰-۰۸) |
 | 2026-10-14 | The owner approved the AU claim-term list (12 terms, including Arabic «حلال» under en-AU); Hadi accepts the Arabic and Persian second-pass false positives for AU (fail closed); vegan is seeded inactive as SELF_DECLARATION without auto-approve | owner, Hadi | accepted (PR #297) |
+
+## Change log: seller certificate submit (simplified intake, 2026-10-17)
+
+Design slices 3, 4 and 5 shipped in simplified form (owner's decision for product photos, PR #288):
+no malware scanner, sandbox, previews or evidence bucket. Files go through the ObjectStore port
+(`certification/<sellerId>/<documentId>`), encrypted with a random AES-256-GCM data key wrapped
+under the seller's subject key (`certification.document.data-key`). Intake by magic bytes (JPEG,
+PNG, PDF), 10 MiB, 10 files per certificate; JPEG/PNG re-encoded; PDFs byte-scanned for active
+content (object streams are out of reach of the scan). Accepted files are `clean` at once.
+Documents are readable only by the owning seller. Store Manager and Catalogue and Stock seed
+version 4 carry the seller keys.
