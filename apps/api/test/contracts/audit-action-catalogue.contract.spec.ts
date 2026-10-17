@@ -246,6 +246,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.account-role.changed',
       'identity.account.disabled',
       'identity.account.enabled',
+      'identity.account.other-sessions-signed-out',
       'identity.admin-session.opened',
       'identity.invitation.accepted',
       'identity.invitation.issued',

@@ -69,3 +69,8 @@ export function passwordProblemOf(
       return formProblem(failure);
   }
 }
+
+/** The problem of a refused "sign out of all other devices". */
+export function sessionsProblemOf(failure: ApiFailure): Problem {
+  return formProblem(failure);
+}

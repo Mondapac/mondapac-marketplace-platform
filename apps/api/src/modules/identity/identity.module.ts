@@ -118,6 +118,8 @@ import { ResetOtherAdminSecondFactor } from './application/use-cases/reset-other
 import { RevokeAdminInvitation } from './application/use-cases/revoke-admin-invitation.use-case';
 import { ChangeDisplayName } from './application/use-cases/change-display-name.use-case';
 import { ChangePanelPreferences } from './application/use-cases/change-panel-preferences.use-case';
+import { ListOwnSessions } from './application/use-cases/list-own-sessions.use-case';
+import { SignOutOtherSessions } from './application/use-cases/sign-out-other-sessions.use-case';
 import { ChangePassword } from './application/use-cases/change-password.use-case';
 import { CompleteAdminSignIn } from './application/use-cases/complete-admin-sign-in.use-case';
 import { CompleteSellerSignIn } from './application/use-cases/complete-seller-sign-in.use-case';
@@ -869,6 +871,15 @@ function useCaseProvider<D, U>(
     useCaseProvider(ChangePanelPreferences, {
       unitOfWork: true,
       accounts: true,
+    }),
+    // Profile package 4: the holder's own signed-in devices, and signing out the others.
+    useCaseProvider(ListOwnSessions, { unitOfWork: true, sessions: true, clock: true }),
+    useCaseProvider(SignOutOtherSessions, {
+      unitOfWork: true,
+      accounts: true,
+      sessions: true,
+      audit: true,
+      clock: true,
     }),
     useCaseProvider(SendPasswordChangedMail, {
       unitOfWork: true,
