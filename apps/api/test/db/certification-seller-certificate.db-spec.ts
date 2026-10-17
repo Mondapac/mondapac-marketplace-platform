@@ -11,7 +11,12 @@ import type {
 } from '../../src/modules/certification/application/ports/seller-certificate.repository';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { TEST_MARKETS } from '../support/test-config';
-import { createPersistence, marketOf, otherMarketOf, type Persistence } from './persistence-support';
+import {
+  createPersistence,
+  marketOf,
+  otherMarketOf,
+  type Persistence,
+} from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // Certification migration 3 (seller certificate submit) on PostgreSQL, for both Market fixtures:
@@ -77,7 +82,9 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       await sql.query(text, values);
       return null;
     } catch (error) {
-      return (error as { constraint?: string }).constraint ?? (error as { code?: string }).code ?? null;
+      return (
+        (error as { constraint?: string }).constraint ?? (error as { code?: string }).code ?? null
+      );
     }
   }
   const base = (m = market) => ({ market_id: m.marketId, tenant_id: m.tenantId });
@@ -228,9 +235,10 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       const { typeId } = await type();
       const seller = uuid7();
       const first = await newCertificate(seller, typeId);
-      await sql.query(`UPDATE certification.seller_certifications SET status = 'declined' WHERE id = $1`, [
-        first.id,
-      ]);
+      await sql.query(
+        `UPDATE certification.seller_certifications SET status = 'declined' WHERE id = $1`,
+        [first.id],
+      );
       expect((await newCertificate(seller, typeId)).refusal).toBeNull();
     });
 
@@ -282,7 +290,7 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       ).toBe('23503');
     });
 
-    it('lists the seller\'s certificates newest first, page by page', async () => {
+    it("lists the seller's certificates newest first, page by page", async () => {
       const seller = uuid7();
       const ids: string[] = [];
       for (let i = 0; i < 3; i += 1) {
@@ -315,11 +323,14 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       const { typeId, revisionId } = await type();
       const active = await issuer(typeId, 'active');
       await issuer(typeId, 'derecognised');
-      const [byId, issuers, all] = await inUnit(async () => [
-        await catalog.typeById(market, typeId as Id<'CertificationType'>),
-        await catalog.activeIssuers(market, typeId as Id<'CertificationType'>),
-        await catalog.activeTypes(market),
-      ] as const);
+      const [byId, issuers, all] = await inUnit(
+        async () =>
+          [
+            await catalog.typeById(market, typeId as Id<'CertificationType'>),
+            await catalog.activeIssuers(market, typeId as Id<'CertificationType'>),
+            await catalog.activeTypes(market),
+          ] as const,
+      );
       expect(byId).toMatchObject({
         typeId,
         revisionId,
@@ -333,9 +344,10 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       await expect(
         inUnit(() => catalog.typeById(other, typeId as Id<'CertificationType'>), other),
       ).resolves.toBeNull();
-      expect(
-        await inUnit(() => catalog.issuer(market, active as Id<'Issuer'>)),
-      ).toMatchObject({ state: 'active', typeId });
+      expect(await inUnit(() => catalog.issuer(market, active as Id<'Issuer'>))).toMatchObject({
+        state: 'active',
+        typeId,
+      });
     });
   });
 
@@ -345,7 +357,11 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       const seller = uuid7();
       const { id } = await newCertificate(seller, typeId);
       const one = documentOf(id, seller, typeId, 1, { position: 1 });
-      const two = documentOf(id, seller, typeId, 2, { position: 2, mediaType: 'image/png', pageCount: null });
+      const two = documentOf(id, seller, typeId, 2, {
+        position: 2,
+        mediaType: 'image/png',
+        pageCount: null,
+      });
       await addDocument(one);
       await addDocument(two);
       const listed = await inUnit(() => repository.listDocuments(market, id));
@@ -360,7 +376,10 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       // A stale writer is refused and leaves no file behind.
       const late = documentOf(id, seller, typeId, 1);
       await expect(addDocument(late)).rejects.toBeInstanceOf(StaleAggregateError);
-      expect((await sql.query(`SELECT 1 FROM certification.uploaded_documents WHERE id = $1`, [late.id])).rowCount).toBe(0);
+      expect(
+        (await sql.query(`SELECT 1 FROM certification.uploaded_documents WHERE id = $1`, [late.id]))
+          .rowCount,
+      ).toBe(0);
     });
 
     it('binds a file to the seller and the type of its certificate', async () => {
@@ -521,11 +540,23 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       const document = documentOf(id, seller, typeId, 1);
       await addDocument(document);
       expect(
-        await sqlState(sql, `UPDATE certification.uploaded_documents SET byte_size = 5 WHERE id = $1`, [document.id]),
+        await sqlState(
+          sql,
+          `UPDATE certification.uploaded_documents SET byte_size = 5 WHERE id = $1`,
+          [document.id],
+        ),
       ).toBe('42501');
-      for (const column of ['byte_size = 5', `object_key = 'certification/z'`, `owner_seller_id = '${uuid7()}'`]) {
+      for (const column of [
+        'byte_size = 5',
+        `object_key = 'certification/z'`,
+        `owner_seller_id = '${uuid7()}'`,
+      ]) {
         expect(
-          await sqlState(owner, `UPDATE certification.uploaded_documents SET ${column} WHERE id = $1`, [document.id]),
+          await sqlState(
+            owner,
+            `UPDATE certification.uploaded_documents SET ${column} WHERE id = $1`,
+            [document.id],
+          ),
         ).toBe('23001');
       }
     });
@@ -539,15 +570,31 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       ]);
       expect(results.filter(Boolean)).toHaveLength(1);
       expect(
-        (await sql.query(`SELECT draft_bytes::int AS n FROM certification.seller_draft_quotas WHERE seller_id = $1`, [seller])).rows[0],
+        (
+          await sql.query(
+            `SELECT draft_bytes::int AS n FROM certification.seller_draft_quotas WHERE seller_id = $1`,
+            [seller],
+          )
+        ).rows[0],
       ).toEqual({ n: 60 });
-      await expect(inUnit(() => repository.reserveQuota(market, seller, 40, limit, T0))).resolves.toBe(true);
-      await expect(inUnit(() => repository.reserveQuota(market, seller, 1, limit, T0))).resolves.toBe(false);
-      await expect(inUnit(() => repository.reserveQuota(market, seller, 101, limit, T0))).resolves.toBe(false);
+      await expect(
+        inUnit(() => repository.reserveQuota(market, seller, 40, limit, T0)),
+      ).resolves.toBe(true);
+      await expect(
+        inUnit(() => repository.reserveQuota(market, seller, 1, limit, T0)),
+      ).resolves.toBe(false);
+      await expect(
+        inUnit(() => repository.reserveQuota(market, seller, 101, limit, T0)),
+      ).resolves.toBe(false);
       await inUnit(() => repository.releaseQuota(market, seller, 30, T1));
       await inUnit(() => repository.releaseQuota(market, seller, 500, T1));
       expect(
-        (await sql.query(`SELECT draft_bytes::int AS n FROM certification.seller_draft_quotas WHERE seller_id = $1`, [seller])).rows[0],
+        (
+          await sql.query(
+            `SELECT draft_bytes::int AS n FROM certification.seller_draft_quotas WHERE seller_id = $1`,
+            [seller],
+          )
+        ).rows[0],
       ).toEqual({ n: 0 });
       expect(
         await constraintOf(
@@ -591,7 +638,13 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       await expect(
         inUnit(() => repository.removeDocument(market, id, document.id, 2, T1)),
       ).resolves.toBe('deleted');
-      expect((await sql.query(`SELECT 1 FROM certification.uploaded_documents WHERE id = $1`, [document.id])).rowCount).toBe(0);
+      expect(
+        (
+          await sql.query(`SELECT 1 FROM certification.uploaded_documents WHERE id = $1`, [
+            document.id,
+          ])
+        ).rowCount,
+      ).toBe(0);
       await expect(
         inUnit(() => repository.removeDocument(market, id, document.id, 3, T1)),
       ).resolves.toBe('missing');
@@ -666,7 +719,12 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
         history: 1,
       });
       expect(
-        (await sql.query(`SELECT from_status, to_status, actor_kind FROM certification.seller_certification_history WHERE id = $1`, [write.historyId])).rows[0],
+        (
+          await sql.query(
+            `SELECT from_status, to_status, actor_kind FROM certification.seller_certification_history WHERE id = $1`,
+            [write.historyId],
+          )
+        ).rows[0],
       ).toEqual({ from_status: 'draft', to_status: 'in-review', actor_kind: 'seller' });
 
       // The submitted file stays when it leaves the draft, and is still readable by its owner.
@@ -675,16 +733,31 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       await expect(
         inUnit(() => repository.removeDocument(market, id, document.id, 3, T1)),
       ).resolves.toBe('unlinked');
-      expect((await sql.query(`SELECT 1 FROM certification.uploaded_documents WHERE id = $1`, [document.id])).rowCount).toBe(1);
+      expect(
+        (
+          await sql.query(`SELECT 1 FROM certification.uploaded_documents WHERE id = $1`, [
+            document.id,
+          ])
+        ).rowCount,
+      ).toBe(1);
       const readable = await inUnit(() =>
         repository.findDocumentForRead(market, seller as Id<'Seller'>, id, document.id),
       );
       expect(readable).toMatchObject({ id: document.id, submitted: true });
       await expect(
-        inUnit(() => repository.findDocumentForRead(market, uuid7() as Id<'Seller'>, id, document.id)),
+        inUnit(() =>
+          repository.findDocumentForRead(market, uuid7() as Id<'Seller'>, id, document.id),
+        ),
       ).resolves.toBeNull();
       await expect(
-        inUnit(() => repository.findDocumentForRead(market, seller as Id<'Seller'>, id, uuid7() as Id<'UploadedDocument'>)),
+        inUnit(() =>
+          repository.findDocumentForRead(
+            market,
+            seller as Id<'Seller'>,
+            id,
+            uuid7() as Id<'UploadedDocument'>,
+          ),
+        ),
       ).resolves.toBeNull();
     });
 
@@ -695,11 +768,21 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       ).rejects.toBeInstanceOf(StaleAggregateError);
       for (const table of ['seller_certification_submissions', 'seller_certification_history']) {
         expect(
-          (await sql.query(`SELECT 1 FROM certification.${table} WHERE seller_certification_id = $1`, [id])).rowCount,
+          (
+            await sql.query(
+              `SELECT 1 FROM certification.${table} WHERE seller_certification_id = $1`,
+              [id],
+            )
+          ).rowCount,
         ).toBe(0);
       }
       expect(
-        (await sql.query(`SELECT status, pending_submission_id FROM certification.seller_certifications WHERE id = $1`, [id])).rows[0],
+        (
+          await sql.query(
+            `SELECT status, pending_submission_id FROM certification.seller_certifications WHERE id = $1`,
+            [id],
+          )
+        ).rows[0],
       ).toEqual({ status: 'draft', pending_submission_id: null });
     });
 
@@ -724,10 +807,20 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       const stored = await inUnit(() => repository.findOwn(market, seller as Id<'Seller'>, id));
       expect(stored).toMatchObject({ status: 'draft', pendingSubmissionId: null, version: 4 });
       expect(
-        (await sql.query(`SELECT outcome, withdraw_cause, actor_kind FROM certification.seller_submission_decisions WHERE submission_id = $1`, [write.submissionId])).rows[0],
+        (
+          await sql.query(
+            `SELECT outcome, withdraw_cause, actor_kind FROM certification.seller_submission_decisions WHERE submission_id = $1`,
+            [write.submissionId],
+          )
+        ).rows[0],
       ).toEqual({ outcome: 'withdrawn', withdraw_cause: 'cancelled', actor_kind: 'seller' });
       expect(
-        (await sql.query(`SELECT from_status, to_status, reason_code FROM certification.seller_certification_history WHERE id = $1`, [historyId])).rows[0],
+        (
+          await sql.query(
+            `SELECT from_status, to_status, reason_code FROM certification.seller_certification_history WHERE id = $1`,
+            [historyId],
+          )
+        ).rows[0],
       ).toEqual({ from_status: 'in-review', to_status: 'draft', reason_code: 'cancelled' });
       // A second withdrawal of the same submission is refused by the one-outcome key.
       await expect(
@@ -765,7 +858,11 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
         ['seller_certification_draft_documents', 'seller_certification_id'],
       ] as const) {
         expect(
-          (await sql.query(`SELECT 1 FROM certification.${table} WHERE ${column} = $1`, [column === 'id' && table === 'uploaded_documents' ? document.id : id])).rowCount,
+          (
+            await sql.query(`SELECT 1 FROM certification.${table} WHERE ${column} = $1`, [
+              column === 'id' && table === 'uploaded_documents' ? document.id : id,
+            ])
+          ).rowCount,
         ).toBe(0);
       }
     });
@@ -799,8 +896,12 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
         expect(await sqlState(sql, statement, [id])).toBe('42501');
         expect(await sqlState(owner, statement, [id])).toBe('23001');
       }
-      expect(await sqlState(sql, `TRUNCATE certification.seller_certification_history`)).toBe('42501');
-      expect(await sqlState(owner, `TRUNCATE certification.seller_submission_documents`)).toBe('23001');
+      expect(await sqlState(sql, `TRUNCATE certification.seller_certification_history`)).toBe(
+        '42501',
+      );
+      expect(await sqlState(owner, `TRUNCATE certification.seller_submission_documents`)).toBe(
+        '23001',
+      );
     });
 
     it('refuses rows of another Market on the new tables', async () => {

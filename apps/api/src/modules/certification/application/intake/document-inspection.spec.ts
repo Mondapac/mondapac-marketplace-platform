@@ -88,7 +88,9 @@ describe('inspectPdf', () => {
   it('reads inside a compressed object stream, where an action can hide', () => {
     const inner = deflateSync(Buffer.from('<</S /JavaScript /JS (evil)>>', 'latin1'));
     const stream = Buffer.concat([
-      Buffer.from('%PDF-1.5\n5 0 obj <</Type /ObjStm /N 1 /First 4 /Filter /FlateDecode>>\nstream\n'),
+      Buffer.from(
+        '%PDF-1.5\n5 0 obj <</Type /ObjStm /N 1 /First 4 /Filter /FlateDecode>>\nstream\n',
+      ),
       inner,
       Buffer.from(
         '\nendstream endobj\n3 0 obj <</Type /Page>> endobj\n2 0 obj <</Type /Pages /Count 1>> endobj\n%%EOF\n',

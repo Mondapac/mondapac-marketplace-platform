@@ -39,6 +39,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     catalog: ['USAGE'],
     certification: ['USAGE'],
     commission_payouts: ['USAGE'],
+    tax: ['USAGE'],
     pricing: ['USAGE'],
     sellers: ['USAGE'],
     shipping: ['USAGE'],
@@ -362,6 +363,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['rate_bps', 'updated_at', 'updated_by'],
     },
     'commission_payouts.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Tax: an admin-defined strategy is inserted, changed (name, parameters, active flag) and
+    // removed.
+    'tax.tax_strategies': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['active', 'config', 'kind', 'name', 'updated_at', 'updated_by'],
+    },
     // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
     // change, the identity never, and no row is deleted.
     'shipping.seller_flat_fees': {

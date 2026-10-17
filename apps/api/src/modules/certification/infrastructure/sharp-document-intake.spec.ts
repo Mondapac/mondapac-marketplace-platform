@@ -56,7 +56,10 @@ describe('SharpDocumentIntake', () => {
   });
 
   it('refuses a PDF with a script', async () => {
-    expect(await intake.inspect(JS_PDF)).toEqual({ ok: false, error: { code: 'file.active-content' } });
+    expect(await intake.inspect(JS_PDF)).toEqual({
+      ok: false,
+      error: { code: 'file.active-content' },
+    });
   });
 
   it('refuses bytes with the wrong magic, whatever they are called', async () => {

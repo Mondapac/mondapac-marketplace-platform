@@ -97,3 +97,20 @@ flag only hides it. The same question recurs across `certification`, `sellers`, 
 
 ## Reviews
 Ruling: Ali (cto), 2026-10-08, in the catalog thread. Hassan (security-tester): conditional approval, 2026-10-08; blockers B1 to B3 and the should-fix items are applied in this text. Second round 2026-10-08: Ali required R1 to R4, Hassan required M1 and M2 (both applied above); both confirmed the revised text on 2026-10-08.
+
+## Implementation note (2026-10-16)
+Decision 4's registry lives in `apps/api/src/platform/placeholders/`: the two markers
+(`@FailClosedPlaceholder`, `@PermissiveInterim`, kept in a module-private `WeakMap`, no reflection
+metadata; a subclass of a marked class counts), and the bound set derived at start-up
+(`boundPlaceholders`): every provider of the composition root (its class, and the prototype of its
+instance for `useValue` and `useFactory`) plus every marked class the process has loaded, which
+covers classes built inside a factory and request- or transient-scoped providers. `start-api.ts` and
+`start-worker.ts` run `placeholdersAccepted` before the database checks: the set is logged on every
+start, and a non-empty set refuses any start that is not `NODE_ENV` explicitly `development` or
+`test`. The control for "an undecorated class in a placeholders path" is the unit rule
+`test/placeholder-files.spec.ts` (a syntax-tree check: every class in such a file carries
+`@FailClosedPlaceholder`, and the file exports nothing else), not a runtime derivation step; for
+Ali's and Hassan's confirmation on PR #376. `test/app.e2e.spec.ts` pins the real set: on
+2026-10-16 it holds one entry, the decision 4a interim `sellers.allowedProductTypesOf`
+(`SellersAllowedProductTypesReader`, until sellers slice 14), so a production start is refused
+until that slice lands.

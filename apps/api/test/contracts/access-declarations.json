@@ -337,5 +337,10 @@
     "name": "shipping.view-own-flat-fee",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "tax.calculate-tax",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
   }
 ]

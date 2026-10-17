@@ -108,7 +108,9 @@ describe('seller certificate routes over HTTP (integration)', () => {
           .useValue(new FakeCipher())
           .overrideProvider(SELLER_ZONES_SOURCE)
           .useValue(
-            zonesOf({ [SELLER]: { zone: 'Australia/Brisbane', addressZone: 'Australia/Brisbane' } }),
+            zonesOf({
+              [SELLER]: { zone: 'Australia/Brisbane', addressZone: 'Australia/Brisbane' },
+            }),
           ),
     }));
   }
@@ -346,10 +348,7 @@ describe('seller certificate routes over HTTP (integration)', () => {
       });
       // Pending: no edit, no new file, no second submit.
       await http().put(`${base}/certificates/${certificateId}`).set(h).send(draft()).expect(409);
-      await http()
-        .post(`${base}/certificates/${certificateId}/submit`)
-        .set(h)
-        .expect(409);
+      await http().post(`${base}/certificates/${certificateId}/submit`).set(h).expect(409);
       await http().delete(`${base}/certificates/${certificateId}`).set(h).expect(409);
 
       const withdrawn = await http()
@@ -396,7 +395,10 @@ describe('seller certificate routes over HTTP (integration)', () => {
         .expect(201);
       const route = `${base}/certificates/${(created.body as { certificateId: string }).certificateId}/documents`;
       const post = (bytes: Buffer) =>
-        http().post(route).set(h).send({ data: bytes.toString('base64') });
+        http()
+          .post(route)
+          .set(h)
+          .send({ data: bytes.toString('base64') });
 
       expect((await post(JS_PDF)).status).toBe(422);
       expect((await post(Buffer.from('MZ not an image'))).status).toBe(415);
@@ -446,7 +448,11 @@ describe('seller certificate routes over HTTP (integration)', () => {
         .set({ ...h, 'content-type': 'text/plain' })
         .send('halal')
         .expect(415);
-      await http().post(`${base}/certificates`).set(h).send({ typeCode: 'halal', extra: 1 }).expect(400);
+      await http()
+        .post(`${base}/certificates`)
+        .set(h)
+        .send({ typeCode: 'halal', extra: 1 })
+        .expect(400);
       await http().post(`${base}/certificates`).set(h).send({}).expect(400);
       const created = await http()
         .post(`${base}/certificates`)

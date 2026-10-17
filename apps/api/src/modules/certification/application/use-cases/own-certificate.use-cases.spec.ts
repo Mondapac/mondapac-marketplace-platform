@@ -23,6 +23,7 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/su
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
+import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { SharpDocumentIntake } from '../../infrastructure/sharp-document-intake';
 import { ownerOf, type OwnCertificateDependencies } from '../own/own-certificate.shared';
@@ -304,7 +305,9 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
         ok: false,
         error: { code: 'type.inactive' },
       });
-      await expect(r.create.execute(r.contextOf(), { typeCode: 'Not A Code!' })).resolves.toMatchObject({
+      await expect(
+        r.create.execute(r.contextOf(), { typeCode: 'Not A Code!' }),
+      ).resolves.toMatchObject({
         ok: false,
         error: { code: 'validation.failed' },
       });
@@ -389,9 +392,8 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
         draft: draftOf(r, { issuerId: r.veganIssuer.id }),
       });
       expect(wrongType).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
-      const veganId = (
-        await unwrap(r.create.execute(r.contextOf(), { typeCode: 'vegan' }))
-      ).certificateId;
+      const veganId = (await unwrap(r.create.execute(r.contextOf(), { typeCode: 'vegan' })))
+        .certificateId;
       const noRegistry = await r.saveDraft.execute(r.contextOf(), {
         certificateId: veganId,
         draft: draftOf(r, { issuerId: r.veganIssuer.id }),
@@ -420,10 +422,7 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
     it('answers a conflict when the record moved under the save', async () => {
       const r = rig();
       const certificateId = await newHalal(r);
-      r.certificates.failNextWrite = new (await import('../../../../platform/unit-of-work/errors')).StaleAggregateError(
-        'seller-certification',
-        certificateId,
-      );
+      r.certificates.failNextWrite = new StaleAggregateError('seller-certification', certificateId);
       const result = await r.saveDraft.execute(r.contextOf(), { certificateId, draft: draftOf(r) });
       expect(result).toEqual({ ok: false, error: { code: 'conflict.stale' } });
     });
@@ -459,9 +458,7 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
       expect(second).toMatchObject({ position: 2, mediaType: 'image/png', pageCount: null });
       expect(r.vault.objects.size).toBe(2);
       for (const key of r.vault.objects.keys()) {
-        expect(key).toBe(
-          `certification/${r.sellerId}/${key.split('/').pop()}`,
-        );
+        expect(key).toBe(`certification/${r.sellerId}/${key.split('/').pop()}`);
       }
       expect(r.certificates.quotas.get(r.sellerId)).toBe(
         r.certificates.documents.get(first.documentId)!.byteSize +
@@ -801,10 +798,7 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
     it('answers a conflict when the record moved under the submit', async () => {
       const r = rig();
       const certificateId = await completeHalal(r);
-      r.certificates.failNextWrite = new (await import('../../../../platform/unit-of-work/errors')).StaleAggregateError(
-        'seller-certification',
-        certificateId,
-      );
+      r.certificates.failNextWrite = new StaleAggregateError('seller-certification', certificateId);
       await expect(r.submit.execute(r.contextOf(), { certificateId })).resolves.toEqual({
         ok: false,
         error: { code: 'conflict.stale' },
@@ -894,10 +888,10 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
   });
 
   describe('reads', () => {
-    it('lists the seller\'s own certificates newest first, page by page', async () => {
+    it("lists the seller's own certificates newest first, page by page", async () => {
       const r = rig();
       await newHalal(r);
-      r.clock.advance({ minutes: 1 });
+      r.clock.advance(Temporal.Duration.from({ minutes: 1 }));
       const second = await unwrap(r.create.execute(r.contextOf(), { typeCode: 'vegan' }));
       await unwrap(r.create.execute(r.contextOf(r.otherSeller), { typeCode: 'vegan' }));
       const firstPage = await unwrap(r.list.execute(r.contextOf(), { limit: 1 }));
@@ -919,9 +913,10 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
       expect(read.documents).toHaveLength(1);
       expect(JSON.stringify(read)).not.toContain('objectKey');
       expect(JSON.stringify(read)).not.toContain('cleanSha256');
-      await expect(
-        r.read.execute(r.contextOf(r.otherSeller), { certificateId }),
-      ).resolves.toEqual({ ok: false, error: { code: 'certificate.not-found' } });
+      await expect(r.read.execute(r.contextOf(r.otherSeller), { certificateId })).resolves.toEqual({
+        ok: false,
+        error: { code: 'certificate.not-found' },
+      });
     });
 
     it('lists the active types with their form settings and active issuers', async () => {

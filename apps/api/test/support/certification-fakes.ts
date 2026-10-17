@@ -29,7 +29,10 @@ import type {
   WithdrawWrite,
 } from '../../src/modules/certification/application/ports/seller-certificate.repository';
 import type { SellerZonesSource } from '../../src/modules/certification/application/ports/claim-facts.ports';
-import type { RateCounterKind, RateReservation } from '../../src/modules/certification/domain/rate-limits';
+import type {
+  RateCounterKind,
+  RateReservation,
+} from '../../src/modules/certification/domain/rate-limits';
 import type { SubmissionKind } from '../../src/modules/certification/domain/seller-certificate';
 import type { SellerCertificationStatus } from '../../src/modules/certification/domain/validity';
 import type { OutboxWriter } from '../../src/platform/events/outbox-writer';
@@ -183,7 +186,8 @@ export class MemoryCertificates implements SellerCertificateRepository {
       .filter((row) => row.marketId === market.marketId && row.sellerId === sellerId)
       .sort(
         (a, b) =>
-          Temporal.Instant.compare(b.createdAt, a.createdAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+          Temporal.Instant.compare(b.createdAt, a.createdAt) ||
+          (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
       );
     const start = page.afterId === null ? 0 : rows.findIndex((row) => row.id === page.afterId) + 1;
     return Promise.resolve(rows.slice(start, start + page.limit).map((row) => this.view(row)));
@@ -207,7 +211,11 @@ export class MemoryCertificates implements SellerCertificateRepository {
     for (const link of this.draftLinks.filter((l) => l.certificateId === id)) {
       this.documents.delete(link.documentId);
     }
-    this.draftLinks.splice(0, this.draftLinks.length, ...this.draftLinks.filter((l) => l.certificateId !== id));
+    this.draftLinks.splice(
+      0,
+      this.draftLinks.length,
+      ...this.draftLinks.filter((l) => l.certificateId !== id),
+    );
     this.certificates.delete(id);
     return Promise.resolve(true);
   }
@@ -272,7 +280,11 @@ export class MemoryCertificates implements SellerCertificateRepository {
       certificateId: d.certificateId,
       marketId: market.marketId,
     });
-    this.draftLinks.push({ certificateId: d.certificateId, documentId: d.id, position: d.position });
+    this.draftLinks.push({
+      certificateId: d.certificateId,
+      documentId: d.id,
+      position: d.position,
+    });
     return Promise.resolve();
   }
 
@@ -439,7 +451,8 @@ export class FakeCipher implements CertificateFieldCipher {
   }
   hash(_m: MarketContext, seller: Id<'Seller'>, content: string) {
     return Promise.resolve(
-      this.gone(seller) ?? ok(createHash('sha256').update(`hash|${seller}|${content}`).digest('hex')),
+      this.gone(seller) ??
+        ok(createHash('sha256').update(`hash|${seller}|${content}`).digest('hex')),
     );
   }
 }
@@ -493,12 +506,7 @@ export function zonesOf(
   return {
     zonesOf: (_c, sellerIds) =>
       Promise.resolve(
-        new Map(
-          sellerIds.map((id) => [
-            id,
-            answers[id] ?? { zone: null, addressZone: null },
-          ]),
-        ),
+        new Map(sellerIds.map((id) => [id, answers[id] ?? { zone: null, addressZone: null }])),
       ),
   };
 }

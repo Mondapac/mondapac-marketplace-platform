@@ -301,6 +301,22 @@
     "entry": "seller:store-manager@3",
     "kind": "default",
     "permissionKeys": [
+      "catalog.own-product.edit",
+      "catalog.own-product.view",
+      "identity.seller-role.view",
+      "identity.team-member.view"
+    ]
+  },
+  {
+    "entry": "seller:catalogue-stock@3",
+    "kind": "default",
+    "permissionKeys": ["catalog.own-product.edit", "catalog.own-product.view"]
+  },
+  {
+    "entry": "seller:store-manager@4",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.own-product.edit",
       "catalog.own-product.view",
       "certification.own-certificate.manage",
       "certification.own-certificate.view",
@@ -309,8 +325,12 @@
     ]
   },
   {
-    "entry": "seller:catalogue-stock@3",
+    "entry": "seller:catalogue-stock@4",
     "kind": "default",
-    "permissionKeys": ["catalog.own-product.view", "certification.own-certificate.view"]
+    "permissionKeys": [
+      "catalog.own-product.edit",
+      "catalog.own-product.view",
+      "certification.own-certificate.view"
+    ]
   }
 ]
