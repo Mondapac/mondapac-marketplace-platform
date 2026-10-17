@@ -55,13 +55,13 @@ describe('customer address book routes over HTTP', () => {
     }));
   }
 
-  function customerSession(code: string) {
+  function customerSession(code: string, account: Id<'Account'> = ACCOUNT, n = 0) {
     const marketId = code as AccountState['marketId'];
     fakes.seedAccount({
-      id: ACCOUNT,
+      id: account,
       marketId,
       population: 'customer',
-      email: { typed: 'Shopper@Example.com', normalized: 'shopper@example.com' },
+      email: { typed: `Shopper${n}@Example.com`, normalized: `shopper${n}@example.com` },
       displayName: null,
       status: 'active',
       emailVerifiedAt: START,
@@ -75,9 +75,9 @@ describe('customer address book routes over HTTP', () => {
     void fakes.sessionRepository.add(
       { marketId, tenantId: 'default' } as never,
       openSession({
-        id: id<'Session'>(0xf101),
+        id: id<'Session'>(0xf101 + n),
         marketId,
-        accountId: ACCOUNT,
+        accountId: account,
         population: 'customer',
         sellerId: null,
         transport: 'cookie',
@@ -180,6 +180,37 @@ describe('customer address book routes over HTTP', () => {
       expect(removed.body).toEqual({ deleted: true });
       const after = await http().get('/customers/me/addresses').set(headers);
       expect(after.body).toMatchObject({ addresses: [{ id: first, isDefault: true }] });
+    });
+
+    it("never reaches another customer's address", async () => {
+      await boot();
+      const alice = customerSession(code);
+      const bob = customerSession(code, id<'Account'>(0xb202), 1);
+      const as = (s: { cookie: string; csrf: string }) => ({
+        'x-market-id': code,
+        cookie: s.cookie,
+        'x-csrf-token': s.csrf,
+      });
+      const created = await http()
+        .post('/customers/me/addresses')
+        .set(as(alice))
+        .send(body('One St'));
+      const target = (created.body as { id: string }).id;
+      const before = JSON.stringify([...store.rows.values()]);
+
+      const put = await http()
+        .put(`/customers/me/addresses/${target}`)
+        .set(as(bob))
+        .send(body('Hijack'));
+      const def = await http().post(`/customers/me/addresses/${target}/default`).set(as(bob));
+      const del = await http().delete(`/customers/me/addresses/${target}`).set(as(bob));
+      for (const res of [put, def, del]) {
+        expect(res.status).toBe(404);
+        expect(res.body).toMatchObject({ code: 'customers.address-not-found' });
+      }
+      const listed = await http().get('/customers/me/addresses').set(as(bob));
+      expect(listed.body).toMatchObject({ addresses: [] });
+      expect(JSON.stringify([...store.rows.values()])).toBe(before);
     });
 
     it('refuses a write without the CSRF token, and an unknown key in the body', async () => {

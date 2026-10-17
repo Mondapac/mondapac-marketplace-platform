@@ -30,3 +30,11 @@ This note records what is built and the rules it keeps.
 2. Checkout picks an address and copies it onto the order (snapshot); the seller sees ship-to on
    its own orders only. 3. Customer profile API. 4. Marketing consent record in `legal`.
 5. Customer account deletion (v1.5).
+
+## Open follow-ups (Hassan, PR #405 review: GO, two low findings)
+
+- Rows under a destroyed account key still count toward the limit and can be promoted to the
+  default. Package 5 (account deletion) deletes the account's `customers.addresses` rows with the
+  key, which closes this.
+- One damaged ciphertext row makes the list answer 500 (`addressFromJson` throws). Later: let
+  `open` return a typed failure, skip the row and log only the address id and a code.
