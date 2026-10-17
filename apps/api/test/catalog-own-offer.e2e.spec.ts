@@ -291,7 +291,9 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
     for (const status of ['200', '400', '403', '404', '409', '422', '429', '503']) {
       expect(edit).toHaveProperty(status);
     }
-  });
+    // Booting the app with the docs route builds the whole OpenAPI document; under a loaded
+    // runner that alone can pass the default 5 s.
+  }, 30_000);
 
   it('maps every refusal code of the use case to its exact status', () => {
     expect(OWN_OFFER_STATUS).toEqual({
