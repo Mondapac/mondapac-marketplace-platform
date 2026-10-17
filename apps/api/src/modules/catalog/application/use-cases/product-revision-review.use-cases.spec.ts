@@ -135,12 +135,14 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       product?: ProductState | null;
       revision?: StoredRevision | null;
       eligible?: boolean;
-      claim?: 'clean' | 'found' | 'down';
+      claim?: 'clean' | 'found' | 'down' | 'unmapped';
+      hashDriftsInUnit?: boolean;
       saveThrows?: Error;
     } = {},
   ) {
     const state = options.product === undefined ? productState() : options.product;
     const revision = options.revision === undefined ? revisionOf() : options.revision;
+    let findCalls = 0;
     const saved: Product[] = [];
     const decisions: ReviewDecision[] = [];
     const events: PendingEvent[] = [];
@@ -148,7 +150,11 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
     } as unknown as UnitOfWork;
     const products = {
-      findById: () => Promise.resolve(state === null ? null : Product.restore(state)),
+      // Like the real repository: a product of another Market is simply not found.
+      findById: (m: MarketContext) =>
+        Promise.resolve(
+          state === null || state.marketId !== m.marketId ? null : Product.restore(state),
+        ),
       save: (_m: MarketContext, product: Product) => {
         if (options.saveThrows !== undefined) return Promise.reject(options.saveThrows);
         saved.push(product);
@@ -156,7 +162,15 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       },
     } as never;
     const revisions = {
-      find: () => Promise.resolve(revision),
+      find: () => {
+        findCalls += 1;
+        // The guard read is the first call; every later one is inside the write unit.
+        return Promise.resolve(
+          options.hashDriftsInUnit === true && findCalls > 1 && revision !== null
+            ? { ...revision, contentHash: 'sha256:bbbb' as ContentHash }
+            : revision,
+        );
+      },
       recordDecision: (_m: MarketContext, decision: ReviewDecision) => {
         decisions.push(decision);
         return Promise.resolve();
@@ -176,9 +190,17 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
         return Promise.resolve({
           ok: true,
           value: texts.map((t) =>
-            options.claim === 'found'
-              ? { code: 'claim-text.found', field: t.field, ref: null, locale: t.locale, hits: [] }
-              : { code: 'clean', field: t.field, ref: null, locale: t.locale },
+            options.claim === 'unmapped'
+              ? { code: 'claim-text.future-verdict', field: t.field, ref: null, locale: t.locale }
+              : options.claim === 'found'
+                ? {
+                    code: 'claim-text.found',
+                    field: t.field,
+                    ref: null,
+                    locale: t.locale,
+                    hits: [],
+                  }
+                : { code: 'clean', field: t.field, ref: null, locale: t.locale },
           ),
         });
       },
@@ -362,6 +384,40 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       }
     });
 
+    it('fails closed on a verdict that is neither clean nor mapped to a refusal', async () => {
+      const r = rig({ claim: 'unmapped' });
+      expect(await r.approve.execute(adminContext(), approveInput())).toEqual({
+        ok: false,
+        error: { code: 'access.unavailable' },
+      });
+      expect(r.saved).toHaveLength(0);
+      expect(r.decisions).toHaveLength(0);
+      expect(r.events).toHaveLength(0);
+    });
+
+    it('refuses with conflict.stale when the content hash changed inside the write unit', async () => {
+      const r = rig({ hashDriftsInUnit: true });
+      expect(await r.approve.execute(adminContext(), approveInput())).toEqual({
+        ok: false,
+        error: { code: 'conflict.stale' },
+      });
+      expect(r.saved).toHaveLength(0);
+      expect(r.decisions).toHaveLength(0);
+      expect(r.events).toHaveLength(0);
+    });
+
+    it('answers product.not-found for a product of another Market, storing nothing', async () => {
+      const foreign = (code === 'AU' ? 'ZZ' : 'AU') as MarketId;
+      const r = rig({ product: productState({ marketId: foreign }) });
+      expect(await r.approve.execute(adminContext(), approveInput())).toEqual({
+        ok: false,
+        error: { code: 'product.not-found' },
+      });
+      expect(r.saved).toHaveLength(0);
+      expect(r.decisions).toHaveLength(0);
+      expect(r.events).toHaveLength(0);
+    });
+
     it('answers conflict.stale when the save loses a race, announcing nothing', async () => {
       const r = rig({ saveThrows: new StaleAggregateError('product', productId) });
       expect(await r.approve.execute(adminContext(), approveInput())).toEqual({
@@ -469,6 +525,18 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
         error: { code: 'conflict.stale' },
       });
       expect(r.decisions).toHaveLength(0);
+    });
+
+    it('answers product.not-found for a product of another Market, storing nothing', async () => {
+      const foreign = (code === 'AU' ? 'ZZ' : 'AU') as MarketId;
+      const r = rig({ product: productState({ marketId: foreign }) });
+      expect(await r.requestChanges.execute(adminContext(), changesInput())).toEqual({
+        ok: false,
+        error: { code: 'product.not-found' },
+      });
+      expect(r.saved).toHaveLength(0);
+      expect(r.decisions).toHaveLength(0);
+      expect(r.events).toHaveLength(0);
     });
 
     it('refuses a seller caller', async () => {
