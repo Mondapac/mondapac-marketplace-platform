@@ -26,26 +26,20 @@ ALTER TABLE "catalog"."tag_reevaluation_requests"
 -- the literal predicates the queries repeat (8.4). Plain CREATE INDEX, not CONCURRENTLY: no
 -- deployed environment holds catalog rows yet (8.2; the sellers list index precedent). A
 -- deployed environment would build each CONCURRENTLY, alone in its file.
+-- Each selection index ends in `offer_id`, so the handler's keyset page (`offer_id > $after ORDER
+-- BY offer_id LIMIT n`) reads it in order with no Sort (Mojtaba B1, PR #398). The issuer and
+-- type-code indexes of 3.15 come with their handlers' slice (no query uses them yet).
 -- Copy names that certificate (seller or manufacturer): expired, revoked.
 CREATE INDEX "offer_tags_market_id_certificate_id_idx"
-  ON "catalog"."offer_tags" ("market_id", "certificate_id")
+  ON "catalog"."offer_tags" ("market_id", "certificate_id", "offer_id")
   WHERE "status" <> 'removed' AND "copy_revision_published";
 -- Copy names that submission: issuer confirmed.
 CREATE INDEX "offer_tags_market_id_certificate_version_id_idx"
-  ON "catalog"."offer_tags" ("market_id", "certificate_version_id")
+  ON "catalog"."offer_tags" ("market_id", "certificate_version_id", "offer_id")
   WHERE "status" <> 'removed' AND "copy_revision_published";
--- Copy names that issuer: issuer derecognised (ADR-0028 d11).
-CREATE INDEX "offer_tags_market_id_issuer_id_idx"
-  ON "catalog"."offer_tags" ("market_id", "issuer_id")
-  WHERE "status" <> 'removed' AND "copy_revision_published";
--- Tags of a seller (and type): seller certification approved.
-CREATE INDEX "offer_tags_market_id_seller_id_type_code_idx"
-  ON "catalog"."offer_tags" ("market_id", "seller_id", "type_code")
-  WHERE "status" <> 'removed' AND "copy_revision_published";
--- Tags of a type: claim policy changed, manufacturer approved or coverage widened (Q-K5: one
--- index; the suspended subset is a filter over it).
-CREATE INDEX "offer_tags_market_id_type_code_open_idx"
-  ON "catalog"."offer_tags" ("market_id", "type_code", "offer_id")
+-- Tags of a seller: seller certification approved.
+CREATE INDEX "offer_tags_market_id_seller_id_offer_id_idx"
+  ON "catalog"."offer_tags" ("market_id", "seller_id", "offer_id")
   WHERE "status" <> 'removed' AND "copy_revision_published";
 -- Daily reconciliation, oldest ask first; skips `pending-publish` (D 17.1 item 12a).
 CREATE INDEX "offer_tags_market_id_evaluated_at_idx"

@@ -32,6 +32,16 @@ export const CERTIFICATION_CAUSES = [
 ] as const;
 export type CertificationCause = (typeof CERTIFICATION_CAUSES)[number];
 
+/**
+ * The causes that end a certificate (Hassan M-1, PR #398): their requests are listed first, and
+ * every run marks their selected `active` tags `rechecking` before any ask, however many other
+ * requests are pending, so no badge outlives a revoked or expired certificate by more than a run.
+ */
+export const ENDING_CAUSES = [
+  'seller-certification-expired',
+  'seller-certification-revoked',
+] as const satisfies readonly CertificationCause[];
+
 /** What a pending request has in common: its id, cursor, counts and age. */
 interface PendingCommon {
   readonly id: Id<'TagReevaluationRequest'>;
@@ -97,8 +107,21 @@ export interface TagReevaluationRequestRepository {
     },
   ): Promise<void>;
 
-  /** Pending requests of both kinds, oldest first, at most `limit`. */
+  /**
+   * Pending requests of the kinds this build settles (`revision-published`,
+   * `certification-event`), at most `limit`: the {@link ENDING_CAUSES} requests first, then the
+   * others, each group oldest first.
+   */
   listPending(market: MarketContext, limit: number): Promise<readonly PendingReevaluation[]>;
+
+  /**
+   * Pending `certification-event` requests of an {@link ENDING_CAUSES} cause, by id after
+   * `afterId` (null for the first page), at most `limit`: the pre-marking of every run.
+   */
+  listPendingEnding(
+    market: MarketContext,
+    page: { readonly afterId: Id<'TagReevaluationRequest'> | null; readonly limit: number },
+  ): Promise<readonly PendingCertificationReevaluation[]>;
 
   /**
    * Stores the counts and moves the cursor, only while the request is pending and never back (a

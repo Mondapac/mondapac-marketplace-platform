@@ -35,14 +35,20 @@ export class PrismaTagSelectionReader implements TagSelectionReader {
   async selectedOffers(
     market: MarketContext,
     selection: TagSelection,
-    page: { readonly afterId: Id<'Offer'> | null; readonly limit: number },
+    page: {
+      readonly afterId: Id<'Offer'> | null;
+      readonly limit: number;
+      readonly activeOnly?: boolean;
+    },
   ): Promise<readonly Id<'Offer'>[]> {
     const groups = await this.prisma.tx(market).catalogOfferTag.groupBy({
       by: ['offerId'],
       where: {
         marketId: market.marketId,
         ...selected(selection),
+        // The partial-index predicate, literally; `activeOnly` adds a filter inside it.
         status: { not: 'removed' },
+        ...(page.activeOnly === true ? { AND: [{ status: 'active' }] } : {}),
         copyRevisionPublished: true,
         ...(page.afterId === null ? {} : { offerId: { gt: page.afterId } }),
       },
@@ -65,7 +71,8 @@ export class PrismaTagSelectionReader implements TagSelectionReader {
       after === null
         ? { evaluatedAt: { lt: toDate(page.before) } }
         : {
-            evaluatedAt: { lt: toDate(page.before) },
+            // The redundant lower bound keeps the keyset inside the index condition.
+            evaluatedAt: { lt: toDate(page.before), gte: toDate(after.evaluatedAt) },
             OR: [
               { evaluatedAt: { gt: toDate(after.evaluatedAt) } },
               { evaluatedAt: toDate(after.evaluatedAt), id: { gt: after.tagId } },

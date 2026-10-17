@@ -494,12 +494,18 @@ history read. Insert-only (CA3). A tag-only change has no row here: it has one i
   tag per (Offer, type) (D 17.1). Also the "tags of these Offers" path of `offerListings`, M1 marking
   and settling (A2, A7).
 - Selection indexes of D 5.5 (slice 12), each partial `WHERE status <> 'removed' AND
-  copy_revision_published` (D 5.1a point 5; Hassan B3):
-  - `(market_id, certificate_id)` — copy names that certificate (seller or manufacturer);
-  - `(market_id, certificate_version_id)` — copy names that submission (issuer confirmed);
-  - `(market_id, issuer_id)` — issuer derecognised (ADR-0028 d11);
-  - `(market_id, seller_id, type_code)` — seller certification approved;
-  - `(market_id, type_code, offer_id) WHERE status IN ('suspended', 'rechecking') AND
+  copy_revision_published` (D 5.1a point 5; Hassan B3), each ending in `offer_id` so the handler's
+  keyset page (`offer_id > $c GROUP BY offer_id ORDER BY offer_id LIMIT n`) reads the index in
+  order with no Sort (Mojtaba B1, PR #398; plan tested):
+  - `offer_tags_market_id_certificate_id_idx` `(market_id, certificate_id, offer_id)` — copy
+    names that certificate (seller or manufacturer): expired, revoked;
+  - `offer_tags_market_id_certificate_version_id_idx` `(market_id, certificate_version_id,
+    offer_id)` — copy names that submission (issuer confirmed);
+  - `offer_tags_market_id_seller_id_offer_id_idx` `(market_id, seller_id, offer_id)` — seller
+    certification approved (every live tag of the seller, see the as-built note of 8.1);
+  - with their handlers' slice, not in migration 10 (no query uses them yet; Mojtaba follow-up 1):
+    `(market_id, issuer_id, offer_id)` — issuer derecognised (ADR-0028 d11); and
+    `(market_id, type_code, offer_id) WHERE status IN ('suspended', 'rechecking') AND
     copy_revision_published` — manufacturer approved or coverage widened (D 5.5 note); and the
     claim-policy re-ask of a whole type uses `(market_id, type_code, offer_id)` with `status <>
     'removed'` (the same index without the status narrowing: one index
@@ -540,7 +546,11 @@ change (`basis`, `certificate_kind`, `certificate_id`, `certificate_version_id`,
 `change_seq integer` (the tag's `change_seq` after the change; **unique `(market_id, tag_id,
 change_seq)`**, the target of the presence check of 3.15); `cause_event_id uuid` (the consumed event,
 for handler rows); `actor_kind` CHECK `seller`, `admin`,
-`system`; `actor_account_id` (NULL iff system); `acting_admin_account_id`; `occurred_at`.
+`system`; `actor_account_id` (NULL iff system); `acting_admin_account_id`; `occurred_at`; the copy's
+`type_revision_id` and `valid_until` (migration 9). CHECK `offer_tag_history_type_revision_check`
+(`basis IS NULL OR type_revision_id IS NOT NULL`, migration 10) is **permanently `NOT VALID`**: the
+table is insert-only, so rows written before migration 9 can never be fixed, and the constraint
+only guards new rows; never run `VALIDATE CONSTRAINT` on it (Mojtaba follow-ups 7, 9, PR #398).
 
 One row per **status or basis change** (not per kept re-ask; a kept re-ask only updates
 `evaluated_at`). With the `platform.audit_log` row of D 11.3 written in the same unit, every tag
@@ -997,7 +1007,7 @@ Measured on these numbers (11).
 | A8 | Category tree and paths (D 4.6, 5.1) | Whole Market tree, cached in process by `category_trees.version` | Sequential read of the Market's rows; `category_trees` PK |
 | A9 | Category re-ask selection: published products under a subtree (ids computed from A8) | `product_revision_categories WHERE market_id AND category_id = ANY($subtree)` joined to `products` on `published_revision_id` | `(market_id, category_id, revision_id)`; products partial unique on `published_revision_id` |
 | A10 | M1 marking in the category unit; `platform-category.impact` counts (D 9.2a) | A9 → Offers → tags (`updateMany` or `count`); the unit counts first and refuses with `category.impact-too-large` above the Market's `catalog.maxCategoryChangeTags` (AU 50,000, ≈ 8 s by the measured 1.7 s per 11,242; test Market 10). Market configuration, no column or table (Q-K4) | A9, A7 |
-| A11 | Certification-event selection (D 5.5) | Tags by certificate, submission, issuer, (seller, type), (type, unsettled) | 3.15 partial indexes |
+| A11 | Certification-event selection (D 5.5) | Offers whose tags name a certificate, submission or seller, keyset by `offer_id` (`GROUP BY offer_id ORDER BY offer_id LIMIT 50`); issuer and (type, unsettled) with their handlers | 3.15 partial indexes ending in `offer_id` |
 | A12 | Offers tab of a product, page 50 by `first_published_at` (D 9.2a) | A7's index range, sorted in memory (at most ~10³ Offers per product today) | A7's index; a `(…, first_published_at, id)` index only when a product passes 10⁴ Offers |
 | A13 | OFR-03 search, admin search, similar products (≥ 3 characters; D 9.2) | `product_revision_texts.name ILIKE $q` joined to `products` (published, scope, not retired) | **GIN trigram on `name`** (Option A of 6.2) |
 | A14 | Rescan (D 6.4) | Keyset over `products` with `published_revision_id IS NOT NULL` by id, texts by PK | PKs; the published-revision partial unique |
@@ -1129,7 +1139,7 @@ seller's category (`23503`), and a child row in the other Market (PM6, `23503`).
 | 7 | 9 | `catalog_name_search` | Trigram index of 6.2 (after the platform `pg_trgm` PR) |
 | 8 | 10 | `catalog_review` | `offer_publication_decisions` |
 | 9 | 11 | `catalog_fanout` | `tag_reevaluation_requests` |
-| 10 | 12 | `catalog_tag_selection` | The five selection indexes and the reconciliation index of 3.15 |
+| 10 | 12 | `catalog_tag_selection` | Three selection indexes and the reconciliation index of 3.15 (issuer and type-code indexes with their handlers); request `cause`, `subject_id`; F1 |
 | 11 | 13 | `catalog_images` | `product_images` (raw-key and master-prefix CHECKs, raw-key partial index, delete guard, column-level `UPDATE` grant), renditions, `product_revision_images`; `products.photo_taken_down_at` |
 | 12 | 18 | `catalog_claim_text_rescan` | `claim_text_rescans`; `products.claim_text_flagged_at` |
 | 13 | 21 | `catalog_attribute_relaxation` | `attribute_relaxation_requests` with its CHECKs, the two FK-target uniques, the status index, the open partial unique and the guard trigger; `attribute_definitions.archived_by_request_id` with its FK, unique and CHECK; the same-definition and same-family FKs from the revisions' `relaxation_request_id` and their uniques (`NOT VALID`, then `VALIDATE`); `relaxation_confirmed()` and the three M2 triggers. `down.sql`: drop the M2 triggers and functions, the FKs, uniques and the root column, then the guard trigger, its function and the table |
@@ -1177,9 +1187,17 @@ still waits for them), instead of the no-op version update. `offerListings` for 
 events (a stored `active` tag can outlive its certificate; Hassan, certification revoke review).
 
 **As built in migration 10** (`20261017200000_catalog_tag_selection`, slice 12, Hossein
-2026-10-17; awaiting Mojtaba's sign-off): (a) the five selection indexes and the reconciliation
-index of 3.15, plain `CREATE INDEX` (no deployed environment holds catalog rows; a deployed one
-would build each `CONCURRENTLY`, alone in its file); (b) `tag_reevaluation_requests.cause` and
+2026-10-17; Mojtaba's review of PR #398: B1 to B3 and follow-ups 1, 5, 7, 9 applied, re-review
+pending): (a) three selection indexes, each ending in `offer_id` (certificate, submission,
+seller; B1), and the reconciliation index of 3.15, plain `CREATE INDEX` (no deployed environment
+holds catalog rows; a deployed one would build each `CONCURRENTLY`, alone in its file); the issuer
+and type-code indexes are not built (follow-up 1: they come with their handlers' slice); the plans
+of the certificate selection and of the reconciliation, decision join included, are tested with
+sequential scans, bitmap scans and sorts off (B3: index named, no Sort, no SubPlan; Prisma sends
+the join as two `LEFT JOIN`s that the `WHERE` makes inner, driven by the `evaluated_at` index); its
+`down.sql` first deletes every `certification-event` request (B2: such a row cannot exist without
+`cause`; the inbox rows stay, so the events are not handled again, and the reconciliation repairs
+within 24 h); (b) `tag_reevaluation_requests.cause` and
 `subject_id` (nullable, written once at insert, no `UPDATE` grant) with
 `tag_reevaluation_requests_cause_check`: a `certification-event` request names its cause (closed
 list: `seller-certification-approved`, `-expired`, `-revoked`, `-issuer-confirmed`; the product
@@ -1206,9 +1224,22 @@ first and bounded (1,000 tags a run), every tag whose last ask is 24 h old, inst
 daily, and an unanswered run's tags stay due); two consecutive failed runs of a Market log the
 alert; (3) on an unanswered page the reconciliation also marks `active` tags `rechecking` (D 5.2
 point 4), so an outage of certification longer than a run removes badges until it answers;
-(4) Hassan L-1 decided here: the `system` `offerListings` read answers the badge of an `active`
+(4) Hassan L-1 (certification review) decided here: the `system` `offerListings` read answers the badge of an `active`
 tag again, but only while its copy's `valid_until` is after the read instant (an expiry shows no
 badge even before its event is handled); the `anonymous` read keeps answering no tags.
+Hassan's PR #398 review: **M-1** every run of `catalog.reevaluate-tags` first marks `rechecking`
+the selected `active` tags of every pending expired or revoked request (the Offers after its
+cursor, one unit per Offer, bounded pages; 1,000 requests a run), before any ask and whatever the
+limit of 10 requests a run, and `listPending` lists those requests first, so a badge outlives its
+certificate's end by at most one run even behind failing requests; **I-2** `listPending` names
+the kinds it settles in `WHERE`, before `LIMIT`; **L-1** the `rechecking` marking runs one unit per
+Offer and retries a lost race once on a fresh read, so one stale Offer never rolls back the page;
+**L-2** the reconciliation stops a run only when the whole batched ask fails; an Offer answered
+`unavailable` alone is marked `rechecking`, logged by id, and the run goes on. The count of
+consecutive failed runs behind the alert is kept **in the worker process** (a restart or a second
+worker process starts it at zero), so the alert can come late, never falsely; a persisted count is
+left to the platform's job metrics. **L-3** a db test proves the `system` read drops the badge of a
+still `active` tag when `valid_until <= now` (equality included).
 "Sell without this badge" is `own-offer.remove-suspended-tag` (`POST
 /catalog/seller/offers/{offerId}/tags/{typeCode}/sell-without-badge`, body
 `{confirmSellWithoutBadge: true}`, refused in acting-as; entry path `seller-remove-suspended`).
@@ -1261,7 +1292,7 @@ Backfills never run inside a migration.
   `product_variants_market_id_product_id_single_key`, `offers_market_id_seller_id_product_id_open_key`,
   `offers_market_id_seller_id_seller_sku_open_key`, `offers_market_id_product_id_open_idx`,
   `offers_market_id_submitted_at_pending_idx`, `offer_tags_market_id_offer_id_type_code_open_key`, the
-  five selection indexes and `offer_tags_market_id_evaluated_at_idx`,
+  three selection indexes of migration 10 and `offer_tags_market_id_evaluated_at_idx`,
   `tag_reevaluation_requests_market_id_product_id_pending_key`,
   `tag_reevaluation_requests_market_id_created_at_pending_idx`,
   `product_images_market_id_created_at_raw_idx`, `attribute_relaxation_requests_open_definition_key`,

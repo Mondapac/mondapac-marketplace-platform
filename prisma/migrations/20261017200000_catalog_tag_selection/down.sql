@@ -31,11 +31,14 @@ END; $$;
 ALTER TABLE "catalog"."offer_tag_history" DROP CONSTRAINT "offer_tag_history_type_revision_check";
 
 DROP INDEX "catalog"."offer_tags_market_id_evaluated_at_idx";
-DROP INDEX "catalog"."offer_tags_market_id_type_code_open_idx";
-DROP INDEX "catalog"."offer_tags_market_id_seller_id_type_code_idx";
-DROP INDEX "catalog"."offer_tags_market_id_issuer_id_idx";
+DROP INDEX "catalog"."offer_tags_market_id_seller_id_offer_id_idx";
 DROP INDEX "catalog"."offer_tags_market_id_certificate_version_id_idx";
 DROP INDEX "catalog"."offer_tags_market_id_certificate_id_idx";
+
+-- A `certification-event` request cannot be represented without its cause and subject (Mojtaba
+-- B2): drop the open and closed ones. Their inbox rows stay, so the events are not handled again;
+-- the daily reconciliation re-asks every live tag within 24 h and repairs what they would have.
+DELETE FROM "catalog"."tag_reevaluation_requests" WHERE "kind" = 'certification-event';
 
 ALTER TABLE "catalog"."tag_reevaluation_requests"
   DROP CONSTRAINT "tag_reevaluation_requests_cause_check";

@@ -19,7 +19,7 @@ import type {
 import type { TagSelection, TagSelectionReader } from '../ports/tag-selection.reader';
 import type { OfferTagState } from '../../domain/offer-tag';
 import { askClaimsMany } from '../tags/ask-claims';
-import { addCounts, reaskOffers } from '../tags/reask-offers';
+import { addCounts, markRechecking, reaskOffers } from '../tags/reask-offers';
 import type { ClaimQueryBuilder } from '../tags/claim-query-builder';
 import {
   claimsFailClosed,
@@ -30,12 +30,20 @@ import {
   type PreparedAsk,
 } from '../tags/offer-claims';
 
-/** Requests taken per run, oldest first. */
+/** Requests taken per run: ending certificates first, then the others, each oldest first. */
 export const REEVALUATE_REQUESTS_PER_RUN = 10;
 /** Offers per page of one request: one batched ask, then one unit per Offer. */
 export const REEVALUATE_PAGE = 50;
 /** Pages per request per run; the rest waits for the next run (the cursor resumes it). */
 export const REEVALUATE_MAX_PAGES = 20;
+/** Ending requests read per page by the pre-marking of a run (Hassan M-1). */
+export const PREMARK_REQUEST_PAGE = 50;
+/**
+ * Pages of ending requests per run: 1,000 requests, far above what a Market writes between two
+ * runs; the rest is pre-marked by the next run (and every one is listed first by `listPending`).
+ */
+export const PREMARK_MAX_REQUEST_PAGES = 20;
+
 /**
  * A request still pending this long after its publish (about 20 runs of the 30 s job) is logged
  * as a warning on every run, so an operator can see Offers left `rechecking` (Hassan L-2).
@@ -162,6 +170,7 @@ export class ReevaluateTags extends UseCase<
     if (context.actor.kind !== 'system') return err({ code: 'access.denied' });
     const { market } = context;
     const { deps } = this;
+    await this.#premarkEnding(context);
     const pending = await deps.unitOfWork.run(
       market,
       async () => ok(await deps.requests.listPending(market, REEVALUATE_REQUESTS_PER_RUN)),
@@ -196,6 +205,88 @@ export class ReevaluateTags extends UseCase<
       }
     }
     return ok({ closed, open });
+  }
+
+  /**
+   * The pre-marking of every run (Hassan M-1, PR #398): before any ask, the selected `active` tags
+   * of EVERY pending expired or revoked certificate request become `rechecking` (no badge), each
+   * Offer in its own unit, however many requests wait and whatever the limit of
+   * {@link REEVALUATE_REQUESTS_PER_RUN} settles. So a stored badge outlives the end of its
+   * certificate by at most one run even while older requests keep failing. Only the Offers after
+   * a request's cursor: those before it were settled on a fresh answer. Bounded: pages of
+   * requests, and per request the pages of {@link REEVALUATE_MAX_PAGES}; what remains is marked
+   * by the next run. Marking never activates anything, so it is safe to repeat.
+   */
+  async #premarkEnding(context: CallContext): Promise<void> {
+    const { market } = context;
+    const { deps } = this;
+    let afterRequest: Id<'TagReevaluationRequest'> | null = null;
+    let marked = 0;
+    for (let page = 0; page < PREMARK_MAX_REQUEST_PAGES; page += 1) {
+      const position: typeof afterRequest = afterRequest;
+      const read: Result<readonly PendingCertificationReevaluation[], never> =
+        await deps.unitOfWork.run(
+          market,
+          async (): Promise<Result<readonly PendingCertificationReevaluation[], never>> =>
+            ok(
+              await deps.requests.listPendingEnding(market, {
+                afterId: position,
+                limit: PREMARK_REQUEST_PAGE,
+              }),
+            ),
+          { readOnly: true },
+        );
+      if (!read.ok || read.value.length === 0) break;
+      for (const request of read.value) {
+        marked += await this.#premarkRequest(context, request);
+      }
+      afterRequest = read.value[read.value.length - 1]!.id;
+      if (read.value.length < PREMARK_REQUEST_PAGE) break;
+    }
+    if (marked > 0) {
+      this.#logger.log({
+        msg: 'catalog.reevaluate-tags.premarked',
+        marked,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+    }
+  }
+
+  /** Marks the selected `active` tags of one ending request, page by page; the count marked. */
+  async #premarkRequest(
+    context: CallContext,
+    request: PendingCertificationReevaluation,
+  ): Promise<number> {
+    const { market } = context;
+    const { deps } = this;
+    const { selection } = selectionOf(request.cause, request.subjectId);
+    let cursor = request.cursorOfferId;
+    let marked = 0;
+    for (let page = 0; page < REEVALUATE_MAX_PAGES; page += 1) {
+      const position = cursor;
+      const read = await deps.unitOfWork.run(
+        market,
+        async () =>
+          ok(
+            await deps.tagSelection.selectedOffers(market, selection, {
+              afterId: position,
+              limit: REEVALUATE_PAGE,
+              activeOnly: true,
+            }),
+          ),
+        { readOnly: true },
+      );
+      if (!read.ok || read.value.length === 0) break;
+      marked += await markRechecking(deps, context, read.value, {
+        entryPath: 'certification-event',
+        causeEventId: request.sourceEventId,
+        selects: (tag) => selectsTag(selection, tag),
+      });
+      cursor = read.value[read.value.length - 1]!;
+      if (read.value.length < REEVALUATE_PAGE) break;
+    }
+    return marked;
   }
 
   /**

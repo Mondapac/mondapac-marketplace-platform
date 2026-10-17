@@ -23,17 +23,13 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // docs/design/data/catalog.md 3.15 (slice 12): the selection indexes of the certification-event
   // handlers (published copies only, D 5.1a point 5) and the reconciliation order.
   'catalog.offer_tags_market_id_certificate_id_idx':
-    "CREATE INDEX offer_tags_market_id_certificate_id_idx ON catalog.offer_tags USING btree (market_id, certificate_id) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
+    "CREATE INDEX offer_tags_market_id_certificate_id_idx ON catalog.offer_tags USING btree (market_id, certificate_id, offer_id) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
   'catalog.offer_tags_market_id_certificate_version_id_idx':
-    "CREATE INDEX offer_tags_market_id_certificate_version_id_idx ON catalog.offer_tags USING btree (market_id, certificate_version_id) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
+    "CREATE INDEX offer_tags_market_id_certificate_version_id_idx ON catalog.offer_tags USING btree (market_id, certificate_version_id, offer_id) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
   'catalog.offer_tags_market_id_evaluated_at_idx':
     "CREATE INDEX offer_tags_market_id_evaluated_at_idx ON catalog.offer_tags USING btree (market_id, evaluated_at, id) WHERE (status <> ALL (ARRAY['removed'::text, 'pending-publish'::text]))",
-  'catalog.offer_tags_market_id_issuer_id_idx':
-    "CREATE INDEX offer_tags_market_id_issuer_id_idx ON catalog.offer_tags USING btree (market_id, issuer_id) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
-  'catalog.offer_tags_market_id_seller_id_type_code_idx':
-    "CREATE INDEX offer_tags_market_id_seller_id_type_code_idx ON catalog.offer_tags USING btree (market_id, seller_id, type_code) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
-  'catalog.offer_tags_market_id_type_code_open_idx':
-    "CREATE INDEX offer_tags_market_id_type_code_open_idx ON catalog.offer_tags USING btree (market_id, type_code, offer_id) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
+  'catalog.offer_tags_market_id_seller_id_offer_id_idx':
+    "CREATE INDEX offer_tags_market_id_seller_id_offer_id_idx ON catalog.offer_tags USING btree (market_id, seller_id, offer_id) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
   // docs/design/data/catalog.md 3.15 (slice 8): one tag that is not removed per Offer and type.
   'catalog.offer_tags_market_id_offer_id_type_code_open_key':
     "CREATE UNIQUE INDEX offer_tags_market_id_offer_id_type_code_open_key ON catalog.offer_tags USING btree (market_id, offer_id, type_code) WHERE (status <> 'removed'::text)",

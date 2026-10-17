@@ -33,6 +33,7 @@ import type { ProductRepository } from '../ports/product.repository';
 import {
   NO_COUNTS,
   type PendingPublishReevaluation,
+  type PendingCertificationReevaluation,
   type PendingReevaluation,
   type ReevaluationCounts,
   type TagReevaluationRequestRepository,
@@ -302,6 +303,10 @@ describe.each([
 
       requestForEvent(): Promise<void> {
         return Promise.resolve();
+      }
+
+      listPendingEnding(): Promise<readonly PendingCertificationReevaluation[]> {
+        return Promise.resolve([]);
       }
 
       listPending(_m: MarketContext, limit: number): Promise<readonly PendingReevaluation[]> {

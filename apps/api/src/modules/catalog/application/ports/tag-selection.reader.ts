@@ -27,12 +27,17 @@ export interface StaleTag {
 export interface TagSelectionReader {
   /**
    * The ids of the Offers that hold a selected tag, ascending, after `afterId` (null for the
-   * first page), at most `limit`.
+   * first page), at most `limit`. `activeOnly` narrows to selected `active` tags (the
+   * pre-marking of an ending certificate, Hassan M-1).
    */
   selectedOffers(
     market: MarketContext,
     selection: TagSelection,
-    page: { readonly afterId: Id<'Offer'> | null; readonly limit: number },
+    page: {
+      readonly afterId: Id<'Offer'> | null;
+      readonly limit: number;
+      readonly activeOnly?: boolean;
+    },
   ): Promise<readonly Id<'Offer'>[]>;
 
   /**

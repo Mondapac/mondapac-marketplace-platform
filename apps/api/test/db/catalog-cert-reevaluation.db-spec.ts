@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Logger } from '@nestjs/common';
 import { Temporal, ok, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id, IdGenerator, Result } from '@mondapac/shared-kernel';
 import {
@@ -8,12 +9,18 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import type { CertificationCause } from '../../src/modules/catalog/application/ports/tag-reevaluation-requests';
+import type { CatalogMarketPolicy } from '../../src/modules/catalog/application/ports/catalog-market-policy';
 import { ClaimQueryBuilder } from '../../src/modules/catalog/application/tags/claim-query-builder';
+import { OfferListingsSystemQuery } from '../../src/modules/catalog/application/use-cases/offer-listings-system.use-case';
 import { OwnOfferAddTag } from '../../src/modules/catalog/application/use-cases/own-offer-add-tag.use-case';
 import { ReconcileTags } from '../../src/modules/catalog/application/use-cases/reconcile-tags.use-case';
 import { ReevaluateFromCertification } from '../../src/modules/catalog/application/use-cases/reevaluate-from-certification.use-case';
-import { ReevaluateTags } from '../../src/modules/catalog/application/use-cases/reevaluate-tags.use-case';
+import {
+  REEVALUATE_REQUESTS_PER_RUN,
+  ReevaluateTags,
+} from '../../src/modules/catalog/application/use-cases/reevaluate-tags.use-case';
 import type { TagClaimQuery, TagDecision } from '../../src/modules/catalog/domain/offer-tag';
+import { PrismaOfferListingsReader } from '../../src/modules/catalog/infrastructure/prisma-offer-listings.reader';
 import { PrismaCategoryPathsReader } from '../../src/modules/catalog/infrastructure/prisma-category-paths.reader';
 import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
@@ -247,12 +254,31 @@ describe.each(TEST_MARKETS)(
         categoryPaths: new PrismaCategoryPathsReader(persistence.service),
       });
 
-    /** An Offer of a new seller on the product, with an active tag on its own certificate. */
-    async function taggedOffer(productId: string) {
+    /**
+     * An Offer of a new seller on the product, with an active tag on its own certificate (valid
+     * until `validUntil` when given, else without an expiry).
+     */
+    async function taggedOffer(productId: string, validUntil?: string) {
       const offer = await offerOn(productId);
       const certificate = certificateOf();
       const evaluator = new FakeClaimEvaluator(
-        (query) => allowedDecision(query, certificate),
+        (query) => {
+          const allowed = allowedDecision(query, certificate);
+          return validUntil === undefined
+            ? allowed
+            : {
+                ...allowed,
+                certificate: {
+                  ...allowed.certificate!,
+                  validUntil: Temporal.Instant.from(validUntil),
+                },
+                badge: {
+                  ...allowed.badge!,
+                  validUntilLocalDate: validUntil.slice(0, 10),
+                  validUntilZone: 'UTC',
+                },
+              };
+        },
         [typeCode],
       );
       const added = await new OwnOfferAddTag(gate, {
@@ -307,13 +333,18 @@ describe.each(TEST_MARKETS)(
     });
 
     /** Consumes one certification event: the handler writes its request. */
-    async function consume(cause: CertificationCause, subjectId: string, eventId = uuid7()) {
+    async function consume(
+      cause: CertificationCause,
+      subjectId: string,
+      eventId = uuid7(),
+      at = '2026-10-17T05:00:00Z',
+    ) {
       ownEvents.add(eventId);
       const handler = new ReevaluateFromCertification(gate, {
         unitOfWork: withoutInbox(),
         requests: new PrismaTagReevaluationRequests(persistence.service),
         ids,
-        clock: new FixedClock(Temporal.Instant.from('2026-10-17T05:00:00Z')),
+        clock: new FixedClock(Temporal.Instant.from(at)),
       });
       const delivery: EventDelivery = {
         eventId: eventId as Id<'event'>,
@@ -398,6 +429,22 @@ describe.each(TEST_MARKETS)(
 
     const askedSellers = (evaluator: FakeClaimEvaluator) =>
       new Set(evaluator.calls.flat().map((query) => query.sellerId));
+
+    /** The `system` offerListings read of one Offer at `now`: its tags with their badges. */
+    async function systemTags(offerId: string, variantId: string, now: string) {
+      const listings = new OfferListingsSystemQuery(gate, {
+        unitOfWork: persistence.unitOfWork,
+        listingsReader: new PrismaOfferListingsReader(persistence.service),
+        policy: { locales: () => ({ default: 'en' }) } as unknown as CatalogMarketPolicy,
+        clock: new FixedClock(Temporal.Instant.from(now)),
+      });
+      const answer = await listings.execute(system(), {
+        keys: [{ offerId, variantId }],
+        locale: 'en',
+      });
+      if (!answer.ok) throw new Error('read failed');
+      return answer.value.get(`${offerId}:${variantId}`)!.tags;
+    }
 
     describe('certification events (design 5.5)', () => {
       it('suspends the expired certificate’s tag only: off sale, not deleted; a repeat changes nothing (AC 12)', async () => {
@@ -613,6 +660,178 @@ describe.each(TEST_MARKETS)(
       });
     });
 
+    describe('pre-marking of ending certificates (Hassan M-1)', () => {
+      it('takes the badge of a revoked certificate away in the next run even behind older failing requests', async () => {
+        const { productId, variantId } = await product();
+        // Older ending requests that keep failing (certification answers `unavailable` for
+        // their sellers) fill every slot of a run.
+        const olderSellers: string[] = [];
+        for (let i = 0; i < REEVALUATE_REQUESTS_PER_RUN; i += 1) {
+          const older = await taggedOffer(productId);
+          olderSellers.push(older.sellerId);
+          await consume(
+            'seller-certification-expired',
+            older.certificate.certificateId,
+            uuid7(),
+            '2026-10-17T04:00:00Z',
+          );
+        }
+        const target = await taggedOffer(productId);
+        expect(await systemTags(target.offerId, variantId, '2026-10-17T05:30:00Z')).toEqual([
+          expect.objectContaining({ status: 'active', badge: expect.anything() as unknown }),
+        ]);
+        const eventId = await consume(
+          'seller-certification-revoked',
+          target.certificate.certificateId,
+          uuid7(),
+          '2026-10-17T05:00:00Z',
+        );
+        // The target's own answer would keep it, so a settle of its request would be visible.
+        const evaluator = evaluatorFor(
+          new Map([[target.sellerId, (q) => allowedDecision(q, target.certificate)]]),
+        );
+        await job(evaluator).execute(system(), {});
+
+        // Its request was not taken this run, yet its badge is gone.
+        expect(askedSellers(evaluator).has(target.sellerId)).toBe(false);
+        expect(await requestOf(eventId)).toEqual([expect.objectContaining({ state: 'pending' })]);
+        expect(await tagOf(target.offerId)).toMatchObject({
+          status: 'rechecking',
+          has_badge: false,
+        });
+        expect(await systemTags(target.offerId, variantId, '2026-10-17T06:00:00Z')).toEqual([
+          { typeCode, status: 'rechecking', basis: 'SELLER', badge: null },
+        ]);
+        expect((await historyOf(target.offerId)).at(-1)).toEqual({
+          to_status: 'rechecking',
+          entry_path: 'certification-event',
+          cause_event_id: eventId,
+          actor_kind: 'system',
+        });
+        // A second run marks nothing again (no second history row).
+        await job(evaluator).execute(system(), {});
+        expect(await historyOf(target.offerId)).toHaveLength(2);
+
+        // Once certification answers, the older requests and then the target's are settled (and
+        // none is left pending to hold the slots of this file's later tests).
+        const answering = evaluatorFor(
+          new Map([
+            ...olderSellers.map(
+              (seller) =>
+                [seller, (q: TagClaimQuery) => refusedDecision(q, 'certificate-expired')] as const,
+            ),
+            [target.sellerId, (q: TagClaimQuery) => refusedDecision(q, 'certificate-revoked')],
+          ]),
+        );
+        await job(answering).execute(system(), {});
+        await job(answering).execute(system(), {});
+        expect(await tagOf(target.offerId)).toMatchObject({ status: 'suspended' });
+        expect(await requestOf(eventId)).toEqual([expect.objectContaining({ state: 'settled' })]);
+      });
+    });
+
+    describe('the claim order (Hassan M-1, I-2)', () => {
+      it('lists ending certificates first, never a kind this build does not settle', async () => {
+        const repository = new PrismaTagReevaluationRequests(persistence.service);
+        const reallowedEvent = uuid7();
+        const approvedEvent = uuid7();
+        const revokedEvent = uuid7();
+        await insert('tag_reevaluation_requests', {
+          id: uuid7(),
+          ...base,
+          kind: 'types-reallowed',
+          product_id: null,
+          product_revision_id: null,
+          source_event_id: reallowedEvent,
+          state: 'pending',
+          cursor_offer_id: null,
+          counts: '{}',
+          created_at: '1999-01-01T00:00:00Z',
+          settled_at: null,
+        });
+        const write = (cause: CertificationCause, eventId: string, at: string) =>
+          persistence.unitOfWork.run(market, async () => {
+            await repository.requestForEvent(market, {
+              id: uuid7() as Id<'TagReevaluationRequest'>,
+              cause,
+              subjectId: uuid7() as Id,
+              sourceEventId: eventId as Id,
+              now: Temporal.Instant.from(at),
+            });
+            return ok(undefined);
+          });
+        try {
+          await write('seller-certification-approved', approvedEvent, '1999-01-02T00:00:00Z');
+          await write('seller-certification-revoked', revokedEvent, '1999-01-03T00:00:00Z');
+          const mine = new Set([reallowedEvent, approvedEvent, revokedEvent]);
+          const listed = await persistence.unitOfWork.run(
+            market,
+            async () => ok(await repository.listPending(market, 1000)),
+            { readOnly: true },
+          );
+          if (!listed.ok) throw new Error('read failed');
+          const own = listed.value.filter(
+            (request) => request.kind === 'certification-event' && mine.has(request.sourceEventId),
+          );
+          expect(
+            own.map((request) => request.kind === 'certification-event' && request.cause),
+          ).toEqual(['seller-certification-revoked', 'seller-certification-approved']);
+          // Every ending request comes before every other one.
+          const firstOther = listed.value.findIndex(
+            (request) =>
+              request.kind !== 'certification-event' ||
+              !['seller-certification-expired', 'seller-certification-revoked'].includes(
+                request.cause,
+              ),
+          );
+          const lastEnding = listed.value.findLastIndex(
+            (request) =>
+              request.kind === 'certification-event' &&
+              ['seller-certification-expired', 'seller-certification-revoked'].includes(
+                request.cause,
+              ),
+          );
+          expect(firstOther === -1 || lastEnding < firstOther).toBe(true);
+          const ending = await persistence.unitOfWork.run(
+            market,
+            async () =>
+              ok(await repository.listPendingEnding(market, { afterId: null, limit: 1000 })),
+            { readOnly: true },
+          );
+          if (!ending.ok) throw new Error('read failed');
+          expect(
+            ending.value.filter((request) => mine.has(request.sourceEventId)).map((r) => r.cause),
+          ).toEqual(['seller-certification-revoked']);
+        } finally {
+          await owner.query(
+            `DELETE FROM catalog.tag_reevaluation_requests
+              WHERE market_id = $1 AND source_event_id = ANY($2::uuid[])`,
+            [market.marketId, [reallowedEvent, approvedEvent, revokedEvent]],
+          );
+        }
+      });
+    });
+
+    describe('system read and the copy expiry (Hassan L-3)', () => {
+      it('drops the badge of a still active tag once now reaches its valid_until', async () => {
+        const { productId, variantId } = await product();
+        const validUntil = '2026-12-31T00:00:00Z';
+        const s = await taggedOffer(productId, validUntil);
+        expect(await tagOf(s.offerId)).toMatchObject({ status: 'active', has_badge: true });
+
+        const before = await systemTags(s.offerId, variantId, '2026-12-30T23:59:59.999Z');
+        expect(before).toEqual([
+          expect.objectContaining({ status: 'active', badge: expect.anything() as unknown }),
+        ]);
+        for (const now of [validUntil, '2026-12-31T00:00:01Z']) {
+          expect(await systemTags(s.offerId, variantId, now)).toEqual([
+            { typeCode, status: 'active', basis: 'SELLER', badge: null },
+          ]);
+        }
+        expect(await tagOf(s.offerId)).toMatchObject({ status: 'active' });
+      });
+    });
+
     describe('daily reconciliation (design 5.6)', () => {
       /** Moves the last ask of the Offer's tags to an instant only this file uses. */
       async function lastAskedAt(offerId: string, at: string) {
@@ -703,6 +922,45 @@ describe.each(TEST_MARKETS)(
         expect(await tagOf(s.offerId)).toMatchObject({ status: 'active', has_badge: true });
       });
 
+      it('goes on past one Offer answered unavailable: that one loses its badge, the next is settled (Hassan L-2)', async () => {
+        const { productId } = await product();
+        const unanswered = await taggedOffer(productId);
+        const expired = await taggedOffer(productId);
+        await lastAskedAt(unanswered.offerId, '2000-04-01T00:00:00Z');
+        await lastAskedAt(expired.offerId, '2000-04-01T00:00:01Z');
+        const evaluator = evaluatorFor(
+          new Map([
+            [unanswered.sellerId, (q) => refusedDecision(q, 'unavailable')],
+            [expired.sellerId, (q) => refusedDecision(q, 'certificate-expired')],
+          ]),
+        );
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        const log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+        try {
+          expect(
+            await reconcile(evaluator, '2000-04-02T00:00:05Z').execute(system(), {}),
+          ).toMatchObject({ ok: true, value: { suspended: 1, unavailable: 1 } });
+          // Logged by id; the run itself is not a failed run (it did not stop).
+          expect(warn).toHaveBeenCalledWith(
+            expect.objectContaining({
+              msg: 'catalog.reconcile-tags.offer-unavailable',
+              offerId: unanswered.offerId,
+            }),
+          );
+          expect(log).toHaveBeenCalledWith(
+            expect.objectContaining({ msg: 'catalog.reconcile-tags', code: 'done' }),
+          );
+        } finally {
+          warn.mockRestore();
+          log.mockRestore();
+        }
+        expect(await tagOf(unanswered.offerId)).toMatchObject({
+          status: 'rechecking',
+          has_badge: false,
+        });
+        expect(await tagOf(expired.offerId)).toMatchObject({ status: 'suspended' });
+      });
+
       it('never selects a tag whose copy names a never-published revision (5.1a point 5)', async () => {
         const { productId, revisionId } = await product(false);
         const { offerId, sellerId } = await offerOn(productId, false);
@@ -788,6 +1046,86 @@ describe.each(TEST_MARKETS)(
         await reconcile(evaluator, '2000-03-02T00:00:05Z').execute(system(), {});
         expect(askedSellers(evaluator).has(sellerId)).toBe(false);
         expect(await tagOf(offerId)).toMatchObject({ status: 'pending-publish', change_seq: 1 });
+      });
+    });
+
+    describe('query plans (Mojtaba B3)', () => {
+      /**
+       * EXPLAIN of the statement the reader sends (captured from Prisma's query log), with its
+       * parameters bound as the unnamed statement binds them. Sequential scans, bitmap scans and
+       * sorts are off, so the plan shows whether the partial index serves the ordered read alone.
+       */
+      async function planOf(statement: string, params: unknown[]) {
+        await owner.query('SET enable_seqscan = off');
+        await owner.query('SET enable_bitmapscan = off');
+        await owner.query('SET enable_sort = off');
+        try {
+          const plan = await owner.query<{ 'QUERY PLAN': string }>(`EXPLAIN ${statement}`, params);
+          return plan.rows.map((row) => row['QUERY PLAN']).join('\n');
+        } finally {
+          await owner.query('RESET enable_seqscan');
+          await owner.query('RESET enable_bitmapscan');
+          await owner.query('RESET enable_sort');
+        }
+      }
+
+      it.each([
+        ['every selected tag', ''],
+        ['the active ones (pre-marking)', ' AND t.status = $8'],
+      ])(
+        'pages the certificate selection (%s) from its index in Offer id order, with no Sort',
+        async (_label, active) => {
+          const text = await planOf(
+            `SELECT t.offer_id FROM catalog.offer_tags t
+              WHERE (t.market_id = $1 AND t.certificate_id = $2 AND t.status <> $3${active}
+                AND t.copy_revision_published = $4 AND t.offer_id > $5)
+              GROUP BY t.offer_id ORDER BY t.offer_id ASC LIMIT $6 OFFSET $7`,
+            [
+              market.marketId,
+              uuid7(),
+              'removed',
+              true,
+              uuid7(),
+              50,
+              0,
+              ...(active === '' ? [] : ['active']),
+            ],
+          );
+          expect(text).toContain('offer_tags_market_id_certificate_id_idx');
+          expect(text).not.toContain('Sort');
+        },
+      );
+
+      it('reads the reconciliation order, decision join included, from the evaluated_at index', async () => {
+        const text = await planOf(
+          `SELECT t.id, t.offer_id, t.evaluated_at FROM catalog.offer_tags t
+             LEFT JOIN catalog.product_revisions AS j0
+               ON (j0.market_id, j0.id) = (t.market_id, t.copy_revision_id)
+             LEFT JOIN catalog.product_revision_decisions AS j1
+               ON (j1.market_id, j1.revision_id) = (j0.market_id, j0.id)
+            WHERE (t.market_id = $1 AND t.status NOT IN ($2, $3) AND t.evaluated_at < $4
+              AND t.evaluated_at >= $5
+              AND (t.evaluated_at > $6 OR (t.evaluated_at = $7 AND t.id > $8))
+              AND (j1.outcome = $9 AND (j1.market_id IS NOT NULL AND j1.revision_id IS NOT NULL)
+                AND (j0.id IS NOT NULL)))
+            ORDER BY t.evaluated_at ASC, t.id ASC LIMIT $10 OFFSET $11`,
+          [
+            market.marketId,
+            'removed',
+            'pending-publish',
+            '2026-10-17T00:00:00Z',
+            '2001-01-01T00:00:00Z',
+            '2001-01-01T00:00:00Z',
+            '2001-01-01T00:00:00Z',
+            uuid7(),
+            'published',
+            100,
+            0,
+          ],
+        );
+        expect(text).toContain('offer_tags_market_id_evaluated_at_idx');
+        expect(text).not.toContain('Sort');
+        expect(text).not.toContain('SubPlan');
       });
     });
 

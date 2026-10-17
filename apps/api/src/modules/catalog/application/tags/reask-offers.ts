@@ -25,8 +25,8 @@ import {
  * certification-event handlers and the daily reconciliation. Shared so both paths are the same
  * control:
  *
- * 1. optionally (an expired or revoked certificate, 5.5) one unit marks the selected `active`
- *    tags `rechecking`, so no badge is shown while the answer is unknown;
+ * 1. optionally (an expired or revoked certificate, 5.5) the selected `active` tags are marked
+ *    `rechecking`, one unit per Offer, so no badge is shown while the answer is unknown;
  * 2. a read-only unit reads the Offers and builds, for every kept tag (`active`, `rechecking`,
  *    `suspended`), the queries against the product's published revision;
  * 3. one batched ask outside any unit (at most 100 queries a call);
@@ -65,6 +65,13 @@ export interface ReaskPageOutcome {
   readonly complete: boolean;
   /** The Offers of the page that could not be asked at all (no published revision, no handling). */
   readonly skipped: readonly Id<'Offer'>[];
+  /**
+   * True when the page as a whole went unanswered (the batched ask failed, or its queries could
+   * not be built): certification is down, not one Offer's answer.
+   */
+  readonly batchFailed: boolean;
+  /** The Offers answered `unavailable` one by one (their selected tags marked `rechecking`). */
+  readonly unavailableOffers: readonly Id<'Offer'>[];
 }
 
 const SYSTEM = { kind: 'system', accountId: null } as const;
@@ -101,13 +108,21 @@ export async function reaskOffers(
   offerIds: readonly Id<'Offer'>[],
   options: ReaskOptions,
 ): Promise<ReaskPageOutcome> {
-  if (offerIds.length === 0) return { counts: NONE, complete: true, skipped: [] };
-  if (options.markFirst) await markSelected(deps, context, offerIds, options);
+  if (offerIds.length === 0) {
+    return { counts: NONE, complete: true, skipped: [], batchFailed: false, unavailableOffers: [] };
+  }
+  if (options.markFirst) await markRechecking(deps, context, offerIds, options);
 
   const read = await prepare(deps, context, offerIds);
   if (read === 'unavailable') {
-    await markSelected(deps, context, offerIds, options);
-    return { counts: { ...NONE, unavailable: offerIds.length }, complete: false, skipped: [] };
+    await markRechecking(deps, context, offerIds, options);
+    return {
+      counts: { ...NONE, unavailable: offerIds.length },
+      complete: false,
+      skipped: [],
+      batchFailed: true,
+      unavailableOffers: [],
+    };
   }
   const asking = read.filter((item) => item.prepared !== null);
   const skipped = read.filter((item) => item.prepared === null).map((item) => item.offerId);
@@ -124,13 +139,19 @@ export async function reaskOffers(
           asking.map((item) => item.prepared!.queries),
         );
   if (!asked.ok) {
-    await markSelected(
+    await markRechecking(
       deps,
       context,
       asking.map((item) => item.offerId),
       options,
     );
-    return { counts: { ...NONE, unavailable: queryCount }, complete: false, skipped };
+    return {
+      counts: { ...NONE, unavailable: queryCount },
+      complete: false,
+      skipped,
+      batchFailed: true,
+      unavailableOffers: [],
+    };
   }
   let counts: ReevaluationCounts = { ...NONE, asked: queryCount };
   let complete = true;
@@ -155,8 +176,8 @@ export async function reaskOffers(
       restored: counts.restored + settled.restored,
     };
   }
-  if (failed.length > 0) await markSelected(deps, context, failed, options);
-  return { counts, complete, skipped };
+  if (failed.length > 0) await markRechecking(deps, context, failed, options);
+  return { counts, complete, skipped, batchFailed: false, unavailableOffers: failed };
 }
 
 /** Adds one page's counts to a running total. */
@@ -171,45 +192,53 @@ export function addCounts(a: ReevaluationCounts, b: ReevaluationCounts): Reevalu
   };
 }
 
+/** Tries per Offer: the first read, and one fresh read after a lost race (Hassan L-1). */
+const MARK_ATTEMPTS = 2;
+
 /**
- * One unit: the selected `active` tags of these Offers become `rechecking` (no badge). A lost
- * race on one Offer leaves it to the settle or the next run; a deleted Offer marks nothing.
+ * The selected `active` tags of these Offers become `rechecking` (no badge), each Offer in its own
+ * unit (Hassan L-1, PR #398): a lost race on one Offer never rolls back the others. A lost race is
+ * tried once more on a fresh read; if it is lost again, the Offer was just written by another unit
+ * (which asked about it itself) and the next run reads it again. A deleted Offer marks nothing.
+ * Returns the number of tags marked.
  */
-async function markSelected(
-  deps: ReaskDependencies,
+export async function markRechecking(
+  deps: Pick<ReaskDependencies, 'unitOfWork' | 'offers' | 'clock'>,
   context: CallContext,
   offerIds: readonly Id<'Offer'>[],
-  options: ReaskOptions,
-): Promise<void> {
-  if (offerIds.length === 0) return;
+  options: Pick<ReaskOptions, 'entryPath' | 'causeEventId' | 'selects'>,
+): Promise<number> {
   const { market } = context;
-  try {
-    await deps.unitOfWork.run(market, async () => {
-      const offers = await deps.offers.findManyByIds(market, offerIds);
-      const now = deps.clock.now();
-      for (const offer of offers) {
-        const tagIds = selectedTagIds(offer, options);
-        if (tagIds.size === 0) continue;
-        const marked = offer.markRechecking({
-          entryPath: options.entryPath,
-          actor: SYSTEM,
-          now,
-          tagIds,
-          causeEventId: options.causeEventId,
+  let total = 0;
+  for (const offerId of offerIds) {
+    for (let attempt = 1; attempt <= MARK_ATTEMPTS; attempt += 1) {
+      try {
+        const marked = await deps.unitOfWork.run(market, async () => {
+          const offer = await deps.offers.findById(market, offerId);
+          if (offer === null) return ok(0);
+          const tagIds = selectedTagIds(offer, options);
+          if (tagIds.size === 0) return ok(0);
+          const count = offer.markRechecking({
+            entryPath: options.entryPath,
+            actor: SYSTEM,
+            now: deps.clock.now(),
+            tagIds,
+            causeEventId: options.causeEventId,
+          });
+          if (count > 0) await deps.offers.save(market, offer, SYSTEM);
+          return ok(count);
         });
-        if (marked > 0) await deps.offers.save(market, offer, SYSTEM);
+        if (marked.ok) total += marked.value;
+        break;
+      } catch (error) {
+        if (!(error instanceof StaleAggregateError)) throw error;
       }
-      return ok(undefined);
-    });
-  } catch (error) {
-    // Another unit changed one of these Offers meanwhile: it asked again itself, or the next run
-    // will; the badge state of the others is retried with the page.
-    if (error instanceof StaleAggregateError) return;
-    throw error;
+    }
   }
+  return total;
 }
 
-function selectedTagIds(offer: Offer, options: ReaskOptions): Set<string> {
+function selectedTagIds(offer: Offer, options: Pick<ReaskOptions, 'selects'>): Set<string> {
   return new Set(
     offer.tags
       .filter((tag) => tag.status === 'active' && options.selects(tag))

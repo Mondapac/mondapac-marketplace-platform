@@ -48,11 +48,14 @@ export interface ReconcileTagsDependencies {
  * instead of at one wall-clock hour (the scheduler runs jobs at an interval; deviation recorded in
  * the data design's as-built note of migration 10).
  *
- * Fail closed (5.2 point 4): an unanswered page marks its `active` tags `rechecking` (no badge) and
- * ends the run; they are still due, so the next run asks them first. A `suspended` tag is made
+ * Fail closed (5.2 point 4): an unanswered page (the batched call failed) marks its `active` tags
+ * `rechecking` (no badge) and ends the run; they are still due, so the next run asks them first.
+ * An Offer answered `unavailable` alone has its tags marked `rechecking` and logged by id, and the
+ * run goes on (Hassan L-2). A `suspended` tag is made
  * `active` only by a fresh allowed answer. The run's counts (asked, kept, switched, suspended,
  * restored, unavailable) are a metric in the log line, not an audit row; each tag change has its
- * history row. Two consecutive failed runs of a Market log the alert.
+ * history row. Two consecutive failed runs of a Market log the alert; the count is kept per
+ * process (a restart or a second worker starts it again), recorded in the as-built note.
  */
 export class ReconcileTags extends UseCase<
   Record<string, never>,
@@ -123,7 +126,18 @@ export class ReconcileTags extends UseCase<
           correlationId: context.correlationId,
         });
       }
-      if (outcome.counts.unavailable > 0) {
+      for (const offerId of outcome.unavailableOffers) {
+        // One Offer unanswered (Hassan L-2): its tags are `rechecking` and still due; the run
+        // goes on with the next Offers.
+        this.#logger.warn({
+          msg: 'catalog.reconcile-tags.offer-unavailable',
+          offerId,
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+        });
+      }
+      if (outcome.batchFailed) {
+        // The whole call went unanswered: certification is down, so the run stops here.
         failed = true;
         break;
       }
