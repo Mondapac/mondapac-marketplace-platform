@@ -9,7 +9,8 @@ import type { SubmitWrite } from '../../src/modules/certification/application/po
 import { CERTIFICATION_AUDIT_ACTIONS } from '../../src/modules/certification/domain/audit';
 import { CERTIFICATION_EVENTS } from '../../src/modules/certification/domain/events';
 import { expiryBoundary } from '../../src/modules/certification/domain/validity';
-import { CheckedInExpiryPolicy } from '../../src/modules/certification/infrastructure/expiry-policy/checked-in-expiry-policy';
+import { MarketConfigExpiryPolicy } from '../../src/modules/certification/infrastructure/market-config-expiry-policy';
+import type { SellerZonesSource } from '../../src/modules/certification/application/ports/claim-facts.ports';
 import { PrismaCertificateReviewRepository } from '../../src/modules/certification/infrastructure/prisma-certificate-review.repository';
 import { PrismaSellerCertificateExpiryRepository } from '../../src/modules/certification/infrastructure/prisma-seller-certificate-expiry.repository';
 import { PrismaSellerCertificateRepository } from '../../src/modules/certification/infrastructure/prisma-seller-certificate.repository';
@@ -94,15 +95,15 @@ describe.each(TEST_MARKETS)('certification expiry job in market %s (database)', 
     await persistence.close();
   });
 
-  function job(now: Temporal.Instant) {
+  function job(now: Temporal.Instant, zones: SellerZonesSource = zonesOf(answers)) {
     const events = new EventCatalogue();
     events.register('certification', CERTIFICATION_EVENTS);
     events.seal();
     return new ExpireSellerCertificates(gate, {
       unitOfWork: persistence.unitOfWork,
       expiries: new PrismaSellerCertificateExpiryRepository(persistence.service),
-      zones: zonesOf(answers),
-      policies: new CheckedInExpiryPolicy(),
+      zones,
+      policies: new MarketConfigExpiryPolicy(markets),
       audit,
       outbox: new PrismaOutboxWriterFactory(
         modelMap,
@@ -115,8 +116,8 @@ describe.each(TEST_MARKETS)('certification expiry job in market %s (database)', 
       ids,
     });
   }
-  async function run(now: Temporal.Instant, m = market) {
-    const result = await job(now).execute(testCallContext(m, 'system', `db-${uuid7()}`), {});
+  async function run(now: Temporal.Instant, m = market, zones?: SellerZonesSource) {
+    const result = await job(now, zones).execute(testCallContext(m, 'system', `db-${uuid7()}`), {});
     if (!result.ok) throw new Error(result.error.code);
     return result.value;
   }
@@ -290,7 +291,17 @@ describe.each(TEST_MARKETS)('certification expiry job in market %s (database)', 
         historyId: uuid7() as Id<'CertificationHistory'>,
       });
     });
-    return { id, seller, typeId, submissionId: write.submissionId, boundary: boundary!, expiry };
+    return {
+      id,
+      seller,
+      typeId,
+      revisionId,
+      issuerId,
+      submissionId: write.submissionId,
+      boundary: boundary!,
+      expiry,
+      write,
+    };
   }
 
   const root = async (id: string) =>
@@ -411,6 +422,74 @@ describe.each(TEST_MARKETS)('certification expiry job in market %s (database)', 
     expect(total).toBe(8);
   });
 
+  it('writes nothing when a renewal is approved through the review path between the read and the write (Hassan L2)', async () => {
+    const c = await approved('2022-06-30');
+    const now = c.boundary.add({ minutes: 1 });
+    const renewalId = uuid7() as Id<'Submission'>;
+    const later = Temporal.PlainDate.from('2023-06-30');
+    const unit = <T>(work: () => Promise<T>) =>
+      persistence.unitOfWork
+        .run(market, async () => ok(await work()))
+        .then((r) => {
+          if (!r.ok) throw new Error('refused');
+          return r.value;
+        });
+    // The renewal is submitted and approved by a reviewer after the job read its page and before
+    // it locks the record: the zone read runs between the two, outside any unit.
+    const racing: SellerZonesSource = {
+      zonesOf: async (context, sellerIds) => {
+        await unit(() =>
+          sellerSide.submit(market, {
+            ...c.write,
+            expectedVersion: 4,
+            submissionId: renewalId,
+            submissionNo: 2,
+            kind: 'renewal',
+            expiryDate: later,
+            documentIds: [],
+            numberIndexHmac: null,
+            fromStatus: 'approved',
+            toStatus: 'approved',
+            submittedAt: now,
+            historyId: uuid7() as Id<'CertificationHistory'>,
+          }),
+        );
+        await unit(async () => {
+          await reviews.lockForDecision(market, c.id, 5, now);
+          await reviews.decide(market, {
+            certificateId: c.id,
+            submissionId: renewalId,
+            outcome: 'approved',
+            accountId: uuid7() as Id<'Account'>,
+            decidedAt: now,
+            approvedZone: zone,
+            expiryBoundaryAt: expiryBoundary(later, zone),
+            reasonCode: null,
+            reasonTextCiphertext: null,
+            fromStatus: 'approved',
+            toStatus: 'approved',
+            historyId: uuid7() as Id<'CertificationHistory'>,
+          });
+        });
+        return zonesOf(answers).zonesOf(context, sellerIds);
+      },
+    };
+    const out = await run(now, market, racing);
+    expect(out.expired).toBe(0);
+    expect(out.contended + out.changed).toBeGreaterThanOrEqual(1);
+    expect(await root(c.id)).toEqual({ status: 'approved', version: 6 });
+    expect(await outbox(c.id)).toEqual([]);
+    const audits = await sql.query(
+      `SELECT 1 FROM platform.audit_log WHERE market_id = $1 AND target_id = $2
+       AND action = 'certification.seller-certification.expired'`,
+      [market.marketId, c.id],
+    );
+    expect(audits.rows).toHaveLength(0);
+    // The renewed record is not expired by a later run either: its new boundary is a year on.
+    await run(now.add({ minutes: 15 }));
+    expect((await root(c.id)).status).toBe('approved');
+  });
+
   it('keeps the marker table insert-only and its values checked', async () => {
     const row = {
       ...base(),
@@ -481,9 +560,21 @@ describe.each(TEST_MARKETS)('certification expiry job in market %s (database)', 
        ORDER BY approved_boundary_at, id LIMIT 100`,
       [market.marketId, '2022-01-01T00:00:00Z'],
     );
+    // With a cursor, the redundant lower bound is in the index condition (Mojtaba R1).
+    const paged = await owner.query<{ 'QUERY PLAN': string }>(
+      `EXPLAIN SELECT id FROM certification.seller_certifications
+       WHERE market_id = $1 AND status = 'approved'
+         AND approved_boundary_at < $2 AND approved_boundary_at >= $3
+         AND (approved_boundary_at > $3 OR (approved_boundary_at = $3 AND id > $4))
+       ORDER BY approved_boundary_at, id LIMIT 100`,
+      [market.marketId, '2022-01-01T00:00:00Z', '2021-01-01T00:00:00Z', uuid7()],
+    );
     await owner.query('RESET enable_seqscan');
     expect(plan.rows.map((r) => r['QUERY PLAN']).join('\n')).toContain(
       'seller_certifications_market_id_approved_boundary_at_idx',
     );
+    const pagedPlan = paged.rows.map((r) => r['QUERY PLAN']).join('\n');
+    expect(pagedPlan).toContain('seller_certifications_market_id_approved_boundary_at_idx');
+    expect(pagedPlan).toMatch(/Index Cond: .*approved_boundary_at >= /);
   });
 });

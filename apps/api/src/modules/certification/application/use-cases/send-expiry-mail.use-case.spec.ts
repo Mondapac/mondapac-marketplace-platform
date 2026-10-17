@@ -15,7 +15,7 @@ import type { MailMessage } from '../../../../platform/mail/mail-transport';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { ConfigCertificationMailPolicy } from '../../infrastructure/config-certification-mail-policy';
-import { CheckedInExpiryPolicy } from '../../infrastructure/expiry-policy/checked-in-expiry-policy';
+import { MarketConfigExpiryPolicy } from '../../infrastructure/market-config-expiry-policy';
 import type { ExpiryNotice, SellerCertificateExpiryRepository } from '../ports/expiry.repository';
 import { SendExpiryMail, type SendExpiryMailInput } from './send-expiry-mail.use-case';
 
@@ -32,8 +32,13 @@ const SUBMIT_BY = { AU: '2027-03-24', ZZ: '2027-03-29' } as const;
 describe.each(['AU', 'ZZ'] as const)('expiry mail, Market %s', (code) => {
   const market: MarketContext = testMarketContext(code, 'default');
 
-  function rig(notice: Partial<ExpiryNotice> | null, email: string | null = 'owner@example.test') {
-    const ids = new SequenceIdGenerator(new FixedClock(T0));
+  function rig(
+    notice: Partial<ExpiryNotice> | null,
+    email: string | null = 'owner@example.test',
+    now: Temporal.Instant = T0,
+  ) {
+    const clock = new FixedClock(now);
+    const ids = new SequenceIdGenerator(clock);
     const sellerId = ids.next<'Seller'>();
     const submissionId = ids.next<'Submission'>();
     const certificateId = ids.next<'SellerCertification'>();
@@ -46,6 +51,7 @@ describe.each(['AU', 'ZZ'] as const)('expiry mail, Market %s', (code) => {
             status: 'approved',
             approvedSubmissionId: submissionId,
             expiryDate: Temporal.PlainDate.from('2027-03-31'),
+            boundary: Temporal.Instant.from('2027-03-31T14:00:00Z'),
             ...notice,
           };
     const expiries = {
@@ -66,7 +72,8 @@ describe.each(['AU', 'ZZ'] as const)('expiry mail, Market %s', (code) => {
         },
       },
       mailPolicy: new ConfigCertificationMailPolicy(markets),
-      policies: new CheckedInExpiryPolicy(),
+      policies: new MarketConfigExpiryPolicy(markets),
+      clock,
     });
     let n = 0;
     const delivery = (): EventDelivery =>
@@ -95,7 +102,8 @@ describe.each(['AU', 'ZZ'] as const)('expiry mail, Market %s', (code) => {
     expect(r.sent).toHaveLength(1);
     const mail = r.sent[0]!;
     expect(mail.to).toBe('owner@example.test');
-    expect(mail.subject).toBe('Your certificate expires in 30 days');
+    expect(mail.subject).toBe('Your certificate expires on 2027-03-31');
+    expect(mail.text).not.toMatch(/in \d+ days?/);
     expect(mail.text).toContain('valid until the end of 2027-03-31, your local time');
     expect(mail.text).toContain('cannot be bought with it');
     expect(mail.text).toContain(`by ${SUBMIT_BY[code]}`);
@@ -104,9 +112,18 @@ describe.each(['AU', 'ZZ'] as const)('expiry mail, Market %s', (code) => {
   it('says "now" once the submit-by date is not ahead of the warning (1-day warning)', async () => {
     const r = rig({});
     await r.send({ thresholdDays: 1 });
-    expect(r.sent[0]!.subject).toBe('Your certificate expires in 1 day');
+    expect(r.sent[0]!.subject).toBe('Your certificate expires on 2027-03-31');
     expect(r.sent[0]!.text).toContain('submit your renewed certificate now');
     expect(r.sent[0]!.text).not.toContain(SUBMIT_BY[code]);
+  });
+
+  it('sends no warning delivered after the certificate expired (Hassan I2)', async () => {
+    const r = rig({}, 'owner@example.test', Temporal.Instant.from('2027-03-31T14:00:00Z'));
+    expect(await r.send({ thresholdDays: 1 })).toEqual({
+      ok: true,
+      value: { code: 'expiry-mail.skipped', reason: 'warning.past-expiry' },
+    });
+    expect(r.sent).toHaveLength(0);
   });
 
   it('sends the expiry notice for an expired record', async () => {

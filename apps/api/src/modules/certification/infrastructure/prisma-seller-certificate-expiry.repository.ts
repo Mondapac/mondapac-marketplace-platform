@@ -6,10 +6,11 @@ import type {
   ExpiryCandidate,
   ExpiryCursor,
   ExpiryNotice,
+  ExpiryPage,
   SellerCertificateExpiryRepository,
   WarningWrite,
 } from '../application/ports/expiry.repository';
-import type { SellerCertificationStatus } from '../domain/validity';
+import { expiryBoundary, isUsableZone, type SellerCertificationStatus } from '../domain/validity';
 import { fromDay, toDate, toInstant } from './prisma-seller-certificate.repository';
 
 /** The marker kind of a seller certificate's submission (data design 3.18). */
@@ -48,9 +49,14 @@ export class PrismaSellerCertificateExpiryRepository implements SellerCertificat
     horizon: Temporal.Instant,
     after: ExpiryCursor | null,
     limit: number,
-  ): Promise<readonly ExpiryCandidate[]> {
+  ): Promise<ExpiryPage> {
     const tx = this.prisma.tx(market);
-    const window = { lt: toDate(horizon) };
+    // With a cursor, the redundant lower bound puts it in the index condition of A9 (Mojtaba R1);
+    // the OR then only splits the boundary tie by id.
+    const window =
+      after === null
+        ? { lt: toDate(horizon) }
+        : { lt: toDate(horizon), gte: toDate(after.boundary) };
     const rows = await tx.certificationSellerCertification.findMany({
       where: {
         marketId: market.marketId,
@@ -73,10 +79,24 @@ export class PrismaSellerCertificateExpiryRepository implements SellerCertificat
       market,
       rows.flatMap((row) => (row.approvedSubmissionId === null ? [] : [row.approvedSubmissionId])),
     );
-    return rows.flatMap((row) => {
+    const candidates: ExpiryCandidate[] = [];
+    for (const row of rows) {
       const candidate = toCandidate(row, warned);
-      return candidate === null ? [] : [candidate];
-    });
+      if (candidate !== null) candidates.push(candidate);
+    }
+    const lastRow = rows.at(-1);
+    return {
+      candidates,
+      rawCount: rows.length,
+      last:
+        lastRow === undefined || lastRow.approvedBoundaryAt === null
+          ? null
+          : {
+              boundary: toInstant(lastRow.approvedBoundaryAt),
+              certificateId: lastRow.id as Id<'SellerCertification'>,
+            },
+      inconsistent: rows.length - candidates.length,
+    };
   }
 
   async candidate(
@@ -160,16 +180,30 @@ export class PrismaSellerCertificateExpiryRepository implements SellerCertificat
         status: true,
         approvedSubmissionId: true,
         type: { select: { code: true } },
-        approvedSubmission: { select: { expiryDate: true } },
+        approvedSubmission: {
+          select: {
+            expiryDate: true,
+            decision: { select: { approvedZone: true, expiryBoundaryAt: true } },
+          },
+        },
       },
     });
     if (row === null) return null;
+    const expiryDate = fromDay(row.approvedSubmission?.expiryDate ?? null);
+    const decision = row.approvedSubmission?.decision ?? null;
+    const boundary =
+      expiryDate !== null && isUsableZone(decision?.approvedZone)
+        ? expiryBoundary(expiryDate, decision.approvedZone)
+        : decision?.expiryBoundaryAt
+          ? toInstant(decision.expiryBoundaryAt)
+          : null;
     return {
       sellerId: row.sellerId as Id<'Seller'>,
       typeCode: row.type.code,
       status: row.status as SellerCertificationStatus,
       approvedSubmissionId: row.approvedSubmissionId as Id<'Submission'> | null,
-      expiryDate: fromDay(row.approvedSubmission?.expiryDate ?? null),
+      expiryDate,
+      boundary,
     };
   }
 
@@ -248,6 +282,5 @@ function toCandidate(
     zoneAtApproval: submission.decision.approvedZone,
     storedBoundary: stored === null ? null : toInstant(stored),
     warnedThresholds: warned.get(row.approvedSubmissionId) ?? [],
-    selectionBoundary: toInstant(row.approvedBoundaryAt ?? stored ?? new Date(0)),
   };
 }

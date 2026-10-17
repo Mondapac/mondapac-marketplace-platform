@@ -1,8 +1,12 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import {
   loadFileReviewPolicies,
   assertReviewPolicy,
   CheckedInReviewPolicy,
+  ReviewPolicyError,
 } from './checked-in-review-policy';
 import { ZZ_REVIEW_POLICY } from './zz.review.seed';
 
@@ -18,6 +22,22 @@ describe('the checked-in review policies', () => {
     expect(au.checks.map((c) => c.code)).toContain('holder-name');
     expect(zz).toBe(ZZ_REVIEW_POLICY);
     expect(zz.checks.map((c) => c.code)).not.toEqual(au.checks.map((c) => c.code));
+  });
+
+  it('stops the start-up when the folder is missing', () => {
+    const missing = path.join(mkdtempSync(path.join(tmpdir(), 'review-policy-')), 'absent');
+    expect(() => loadFileReviewPolicies(missing)).toThrow(ReviewPolicyError);
+  });
+
+  it('accepts a Region Stack hosting AU and ZZ, both with a policy', () => {
+    expect(() => new CheckedInReviewPolicy(undefined, ['AU', 'ZZ'])).not.toThrow();
+  });
+
+  it.each(['AU', 'ZZ'])('stops the start-up when hosted Market %s has no policy', (code) => {
+    const all = { ...loadFileReviewPolicies(), ZZ: ZZ_REVIEW_POLICY };
+    const without = Object.fromEntries(Object.entries(all).filter(([market]) => market !== code));
+    expect(() => new CheckedInReviewPolicy(without, ['AU', 'ZZ'])).toThrow(ReviewPolicyError);
+    expect(() => new CheckedInReviewPolicy(without, ['AU', 'ZZ'])).toThrow(new RegExp(code));
   });
 
   it('fails closed for a Market with no policy', () => {

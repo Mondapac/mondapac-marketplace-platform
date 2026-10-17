@@ -74,8 +74,8 @@ export function assertReviewPolicy(policy: ReviewPolicy, where: string): void {
 }
 
 /**
- * Reads every `<MARKET>.json` of the directory. A missing directory is an empty set; a bad file
- * throws.
+ * Reads every `<MARKET>.json` of the directory. A missing directory or a bad file throws, so the
+ * start-up stops (Ali ruling 2026-10-17 on ADR-0003 decision 5: no warn-and-continue).
  */
 export function loadFileReviewPolicies(
   directory: string = DEFAULT_REVIEW_POLICY_DIR,
@@ -85,8 +85,8 @@ export function loadFileReviewPolicies(
   try {
     names = readdirSync(directory).filter((name) => name.endsWith('.json'));
   } catch {
-    logger.warn({ msg: 'certification.review-policy.no-directory', directory });
-    return policies;
+    logger.error({ msg: 'certification.review-policy.no-directory', directory });
+    throw new ReviewPolicyError(`${directory}: the review policy folder is missing`);
   }
   for (const name of names) {
     const parsed = file.safeParse(JSON.parse(readFileSync(path.join(directory, name), 'utf8')));
@@ -105,7 +105,27 @@ export function loadFileReviewPolicies(
   return policies;
 }
 
-/** The checked-in policies by Market id; a Market with none fails closed (no review). */
+/**
+ * Start-up check (Ali ruling 2026-10-17): every Market the Region Stack hosts has a review policy,
+ * as `ServiceAreaDirectory` requires its files. A hosted Market without one stops the start-up.
+ */
+export function assertReviewPoliciesHosted(
+  policies: Readonly<Record<string, ReviewPolicy>>,
+  hostedMarketIds: readonly string[],
+): void {
+  const missing = hostedMarketIds.filter((marketId) => policies[marketId] === undefined);
+  if (missing.length > 0) {
+    throw new ReviewPolicyError(
+      `Hosted Market(s) ${missing.join(', ')} have no file in config/certification-review/`,
+    );
+  }
+}
+
+/**
+ * The checked-in policies by Market id; a Market with none fails closed (no review). With
+ * `hostedMarketIds` (the application's binding), a hosted Market without a policy stops the
+ * start-up.
+ */
 export class CheckedInReviewPolicy implements ReviewPolicyProvider {
   readonly #policies: Readonly<Record<string, ReviewPolicy>>;
 
@@ -114,9 +134,11 @@ export class CheckedInReviewPolicy implements ReviewPolicyProvider {
       ...loadFileReviewPolicies(),
       ZZ: ZZ_REVIEW_POLICY,
     },
+    hostedMarketIds?: readonly string[],
   ) {
     this.#policies = policies;
     for (const [market, policy] of Object.entries(policies)) assertReviewPolicy(policy, market);
+    if (hostedMarketIds !== undefined) assertReviewPoliciesHosted(policies, hostedMarketIds);
   }
 
   policyFor(market: MarketContext): ReviewPolicy {

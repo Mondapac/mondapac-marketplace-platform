@@ -576,7 +576,7 @@ grant on these tables; also used for draft-area documents removed before submiss
 
 PK `(market_id, version_kind, version_id, threshold_days)`; `version_kind` CHECK `submission`,
 `product-revision`; `version_id uuid` (C4: one table for two parents, no FK; the job writes it in the
-root's unit together with the event); `threshold_days smallint` CHECK `>= 1`; `created_at`. The
+root's unit together with the event); `threshold_days smallint` CHECK `threshold_days BETWEEN 1 AND 366` (matches the loader's bound; bounds the A9 selection window); `created_at`. The
 marker makes a re-run create nothing (D 8.6, AC 9): an insert that hits the PK means "already sent".
 A renewal is a new submission, so its warnings start afresh. Insert-only.
 
@@ -1098,7 +1098,7 @@ stays under legal retention first. Columns not made unreadable by key destructio
 | Rows | Rule |
 |---|---|
 | `rate_counters` | Hourly `certification.purge-expired`: windows older than 48 h |
-| `expiry_warnings` | Kept (3 per approved version) |
+| `expiry_warnings` | Kept (at most one per configured threshold per approved version) |
 | Submissions, decisions, history, checks, confirmations, revisions | Kept; legal retention (counsel) |
 | Evidence objects | Object Lock until `retain_until`; deletion after that is a later design (6.1) |
 | `issuer_requests` | Never deleted (no `DELETE` grant; slice 6). Erasure of the seller (10.2) is covered by key destruction: the typed name and the file's data-key envelope are both under the seller's subject key, so both become unreadable. The `issuer_request_documents` links and their `uploaded_documents` rows and objects (`purpose = 'issuer-request'`) cannot be purged until the purge package defines a rule; the draft purge (10.1) never selects them |

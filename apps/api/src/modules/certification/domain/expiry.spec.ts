@@ -125,7 +125,16 @@ describe('jobBoundary and expiryActionAt (AC 8, AC 9)', () => {
     }
   });
 
-  it('uses only the stored boundary when the seller has no usable approved zones (never earlier)', () => {
+  it('recomputes the approval-zone boundary as the claim does, not the stored instant (Hassan I1)', () => {
+    // A stored instant an hour later (tzdata changed since approval) does not delay the job.
+    const f = facts(BRISBANE, { storedBoundary: at('2027-03-31T15:00:00Z') });
+    expect(jobBoundary(f, null)).toEqual({ at: at('2027-03-31T14:00:00Z'), zone: BRISBANE });
+    // Without a usable approval zone the stored instant is all there is.
+    const g = facts(BRISBANE, { zoneAtApproval: null });
+    expect(jobBoundary(g, null)).toEqual({ at: at('2027-03-31T14:00:00Z'), zone: null });
+  });
+
+  it('uses only the approval boundary when the seller has no usable approved zones (never earlier)', () => {
     const f = facts(BRISBANE);
     for (const zones of [
       null,
@@ -237,17 +246,6 @@ describe('warnings on the seller local day (AC 9, CERT-14)', () => {
     ).toEqual({ kind: 'none' });
   });
 
-  it('warns nobody without a policy, and expiry still happens', () => {
-    expect(
-      expiryActionAt(facts(BRISBANE), same(BRISBANE), null, at('2027-03-31T00:00:00Z')),
-    ).toEqual({
-      kind: 'none',
-    });
-    expect(
-      expiryActionAt(facts(BRISBANE), same(BRISBANE), null, at('2027-03-31T14:00:00Z')).kind,
-    ).toBe('expire');
-  });
-
   it('never warns past the boundary: the record expires instead', () => {
     expect(
       expiryActionAt(facts(BRISBANE), same(BRISBANE), THRESHOLDS, at('2027-04-02T00:00:00Z')),
@@ -263,7 +261,7 @@ describe('the policy and the selection horizon', () => {
     expect(candidateHorizon(at('2027-01-01T00:00:00Z'), [30, 14, 1]).toString()).toBe(
       '2027-02-01T02:00:00Z',
     );
-    expect(candidateHorizon(at('2027-01-01T00:00:00Z'), null).toString()).toBe(
+    expect(candidateHorizon(at('2027-01-01T00:00:00Z'), []).toString()).toBe(
       '2027-01-02T02:00:00Z',
     );
   });

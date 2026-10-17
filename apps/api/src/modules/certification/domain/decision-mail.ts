@@ -115,17 +115,15 @@ export function issuerNotAcceptedMail(input: {
 export function expiryWarningMail(input: {
   readonly typeCode: string;
   readonly expiryDate: string;
-  readonly thresholdDays: number;
-  /** The renewal submit-by date; null when it has already passed (submit now). */
+  /** The renewal submit-by date; null when it is not ahead of the warning (submit now). */
   readonly submitBy: string | null;
 }): DecisionMail {
   const type = line(input.typeCode);
   const expiry = line(input.expiryDate);
-  const days = input.thresholdDays === 1 ? '1 day' : `${input.thresholdDays} days`;
   return {
-    subject: `Your certificate expires in ${days}`,
+    subject: `Your certificate expires on ${expiry}`,
     text: [
-      `Your certificate expires in ${days}`,
+      `Your certificate expires on ${expiry}`,
       '',
       `Your ${type} certificate is valid until the end of ${expiry}, your local time.`,
       '',

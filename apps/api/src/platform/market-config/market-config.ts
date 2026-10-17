@@ -1032,6 +1032,22 @@ const inventorySchema = z.strictObject({
 });
 
 /**
+ * The `certification` section of a Market file (certification design 5.1, 8.6; Ali ruling
+ * 2026-10-17 on ADR-0003 decision 5): the expiry warning thresholds and the renewal submit-by
+ * days. Owned and checked at start-up by `certification`. No value has a default.
+ */
+const certificationSchema = z.strictObject({
+  /** CERT-14 (AU [30, 14, 1]): distinct whole days, each 1 to 366, at least one. */
+  expiryWarningThresholdsDays: z
+    .array(z.number().int().min(1).max(366))
+    .min(1)
+    .max(10)
+    .refine((days) => new Set(days).size === days.length, { message: 'a threshold repeats' }),
+  /** Days before the expiry date by which a renewal should be submitted (AU 7); 0 to 366. */
+  renewalSubmitByDays: z.number().int().min(0).max(366),
+});
+
+/**
  * The `pricing` section of a Market file (pricing design 4.6, 15; Ali A2: a value only pricing
  * reads lives in pricing's own section). `createPricingPolicy` re-validates every value at
  * start-up for every hosted Market; the shapes here only reject what cannot be a policy.
@@ -1257,6 +1273,10 @@ const marketSchema = z
     catalog: catalogSchema.optional(),
     /** Owned by `pricing`; optional here, checked for every hosted Market at start-up by it. */
     pricing: pricingSchema.optional(),
+    /**
+     * Owned by `certification`; optional here, checked for every hosted Market at start-up by it.
+     */
+    certification: certificationSchema.optional(),
   })
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {
     message: 'supportedLocales must include defaultLocale',

@@ -334,5 +334,9 @@
     },
     "jumpDirections": "both",
     "jumpWindow": "P7D"
+  },
+  "certification": {
+    "expiryWarningThresholdsDays": [30, 14, 1],
+    "renewalSubmitByDays": 7
   }
 }

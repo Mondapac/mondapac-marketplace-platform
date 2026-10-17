@@ -15,14 +15,28 @@ export interface ExpiryCandidate extends ExpiryFacts {
   /** The approved submission (the pointer). */
   readonly submissionId: Id<'Submission'>;
   readonly typeRevisionId: Id<'CertificationTypeRevision'>;
-  /** The root's denormalised boundary, the key of the selection (A9). */
-  readonly selectionBoundary: Temporal.Instant;
 }
 
 /** Where the next page of candidates starts: after this (boundary, id). */
 export interface ExpiryCursor {
   readonly boundary: Temporal.Instant;
   readonly certificateId: Id<'SellerCertification'>;
+}
+
+/**
+ * One page of the selection (A9). The cursor and the stop condition come from the raw rows the
+ * statement returned, never from the candidates kept (Mojtaba C1, Hassan L1): a row that cannot
+ * be a candidate (approved without a usable approved decision) is dropped from `candidates` and
+ * counted in `inconsistent`, and paging still moves past it.
+ */
+export interface ExpiryPage {
+  readonly candidates: readonly ExpiryCandidate[];
+  /** Rows the statement returned, before any was dropped. */
+  readonly rawCount: number;
+  /** The (boundary, id) of the last row returned; null for an empty page. */
+  readonly last: ExpiryCursor | null;
+  /** Rows dropped as inconsistent. */
+  readonly inconsistent: number;
 }
 
 export interface ExpireWrite {
@@ -46,20 +60,22 @@ export interface ExpiryNotice {
   readonly approvedSubmissionId: Id<'Submission'> | null;
   /** The approved submission's expiry date, a local date; null without one. */
   readonly expiryDate: Temporal.PlainDate | null;
+  /** The approval's boundary (recomputed in the approval zone when usable); null without one. */
+  readonly boundary: Temporal.Instant | null;
 }
 
 export interface SellerCertificateExpiryRepository {
   /**
    * `approved` roots whose stored boundary is before `horizon`, ordered by (boundary, id), after
-   * the cursor, at most `limit` (A9). Each with its approved submission and the thresholds
-   * already marked for it.
+   * the cursor, at most `limit` rows (A9). Each kept row with its approved submission and the
+   * thresholds already marked for it; see {@link ExpiryPage} for the paging fields.
    */
   candidates(
     market: MarketContext,
     horizon: Temporal.Instant,
     after: ExpiryCursor | null,
     limit: number,
-  ): Promise<readonly ExpiryCandidate[]>;
+  ): Promise<ExpiryPage>;
   /** The same read for one root, whatever its status; null when there is none. */
   candidate(
     market: MarketContext,
@@ -91,11 +107,12 @@ export const SELLER_CERTIFICATE_EXPIRY_REPOSITORY = Symbol(
 );
 
 /**
- * The Market's warning thresholds and renewal submit-by days (design 5.1). Null for a Market
- * without a policy: nobody is warned there (the run reports it) and expiry still happens.
+ * The Market's warning thresholds and renewal submit-by days (design 5.1), from the
+ * `certification` section of its configuration. Every hosted Market has one (checked at
+ * start-up); a Market without one throws, never a default or a null policy.
  */
 export interface ExpiryPolicyProvider {
-  policyFor(market: MarketContext): ExpiryPolicy | null;
+  policyFor(market: MarketContext): ExpiryPolicy;
 }
 
 export const EXPIRY_POLICY_PROVIDER = Symbol('CERTIFICATION_EXPIRY_POLICY_PROVIDER');

@@ -31,6 +31,7 @@ import type { SellerZoneAnswer, SellerZonesSource } from '../ports/claim-facts.p
 import type {
   ExpiryCandidate,
   ExpiryCursor,
+  ExpiryPage,
   ExpiryPolicyProvider,
   SellerCertificateExpiryRepository,
 } from '../ports/expiry.repository';
@@ -42,7 +43,7 @@ export const MAX_EXPIRY_PAGES_PER_RUN = 50;
 const LOCK_TIMEOUT_MS = 3000;
 
 export interface ExpireSellerCertificatesOutput {
-  /** Candidates read (approved, with a stored boundary inside the window). */
+  /** Rows read (approved, with a stored boundary inside the window). */
   readonly examined: number;
   readonly expired: number;
   readonly warned: number;
@@ -50,8 +51,10 @@ export interface ExpireSellerCertificatesOutput {
   readonly contended: number;
   /** Records whose state no longer called for the planned step under the lock. */
   readonly changed: number;
-  /** The Market has no usable warning policy: nobody was warned (expiry still ran). */
-  readonly warningsUnavailable: boolean;
+  /** Records whose write failed for another reason (logged); the run is marked failed. */
+  readonly failed: number;
+  /** Selected rows that cannot be a candidate (approved without an approved decision); logged. */
+  readonly inconsistent: number;
   /** Pages whose zone read failed: only the stored boundaries counted for them. */
   readonly zoneReadsFailed: number;
   /** The run stopped at the page cap with candidates left. */
@@ -71,7 +74,7 @@ export interface ExpiryDependencies {
   readonly ids: IdGenerator;
 }
 
-type Applied = 'expired' | 'warned' | 'changed' | 'contended';
+type Applied = 'expired' | 'warned' | 'changed' | 'contended' | 'failed';
 
 /**
  * `certification.expiry-and-warnings` (certification design 3.1, 8.6; AC 8, AC 9; CERT-14,
@@ -114,15 +117,19 @@ export class ExpireSellerCertificates extends UseCase<
     const { deps } = this;
     const now = deps.clock.now();
 
-    let thresholds: readonly number[] | null;
-    try {
-      thresholds = deps.policies.policyFor(market)?.warningThresholdsDays ?? null;
-    } catch {
-      thresholds = null;
-    }
+    // Every hosted Market has a policy (start-up check); none is a fault that fails the run.
+    const thresholds = deps.policies.policyFor(market).warningThresholdsDays;
     const horizon = candidateHorizon(now, thresholds);
 
-    const counts = { examined: 0, expired: 0, warned: 0, contended: 0, changed: 0 };
+    const counts = {
+      examined: 0,
+      expired: 0,
+      warned: 0,
+      contended: 0,
+      changed: 0,
+      failed: 0,
+      inconsistent: 0,
+    };
     let zoneReadsFailed = 0;
     let capped = false;
     let cursor: ExpiryCursor | null = null;
@@ -132,43 +139,49 @@ export class ExpireSellerCertificates extends UseCase<
         break;
       }
       const after: ExpiryCursor | null = cursor;
-      const read: Result<readonly ExpiryCandidate[], never> = await deps.unitOfWork.run(
+      const read: Result<ExpiryPage, never> = await deps.unitOfWork.run(
         market,
         async () => ok(await deps.expiries.candidates(market, horizon, after, EXPIRY_BATCH_SIZE)),
         { readOnly: true },
       );
       if (!read.ok) break;
-      const batch: readonly ExpiryCandidate[] = read.value;
-      if (batch.length === 0) break;
-      counts.examined += batch.length;
-
-      // Outside any unit: the sellers' current approved zones (no facade call inside a unit).
-      let zones: SellerZoneAnswer | null = null;
-      try {
-        zones = await deps.zones.zonesOf(context, [...new Set(batch.map((c) => c.sellerId))]);
-      } catch {
-        zoneReadsFailed += 1;
+      const { candidates: batch, rawCount, last, inconsistent }: ExpiryPage = read.value;
+      if (rawCount === 0 || last === null) break;
+      counts.examined += rawCount;
+      if (inconsistent > 0) {
+        counts.inconsistent += inconsistent;
+        this.#logger.warn({
+          msg: 'certification.expiry-and-warnings.inconsistent-rows',
+          inconsistent,
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+        });
       }
 
-      for (const candidate of batch) {
-        const current = zonesFor(zones, candidate.sellerId);
-        const planned = expiryActionAt(candidate, current, thresholds, now);
-        if (planned.kind === 'none') continue;
-        const outcome = await this.apply(context, candidate, current, thresholds, planned, now);
-        counts[outcome] += 1;
+      if (batch.length > 0) {
+        // Outside any unit: the sellers' current approved zones (no facade call inside a unit).
+        let zones: SellerZoneAnswer | null = null;
+        try {
+          zones = await deps.zones.zonesOf(context, [...new Set(batch.map((c) => c.sellerId))]);
+        } catch {
+          zoneReadsFailed += 1;
+        }
+
+        for (const candidate of batch) {
+          const current = zonesFor(zones, candidate.sellerId);
+          const planned = expiryActionAt(candidate, current, thresholds, now);
+          if (planned.kind === 'none') continue;
+          const outcome = await this.apply(context, candidate, current, thresholds, planned, now);
+          counts[outcome] += 1;
+        }
       }
 
-      const last: ExpiryCandidate = batch[batch.length - 1]!;
-      cursor = { boundary: last.selectionBoundary, certificateId: last.certificateId };
-      if (batch.length < EXPIRY_BATCH_SIZE) break;
+      // The cursor and the stop condition come from the raw rows (Mojtaba C1, Hassan L1).
+      cursor = last;
+      if (rawCount < EXPIRY_BATCH_SIZE) break;
     }
 
-    const output: ExpireSellerCertificatesOutput = {
-      ...counts,
-      warningsUnavailable: thresholds === null,
-      zoneReadsFailed,
-      capped,
-    };
+    const output: ExpireSellerCertificatesOutput = { ...counts, zoneReadsFailed, capped };
     this.#logger.log({
       msg: 'certification.expiry-and-warnings.done',
       ...output,
@@ -183,7 +196,7 @@ export class ExpireSellerCertificates extends UseCase<
     context: CallContext,
     candidate: ExpiryCandidate,
     zones: CurrentZones | null,
-    thresholds: readonly number[] | null,
+    thresholds: readonly number[],
     planned: Exclude<ExpiryAction, { kind: 'none' }>,
     now: Temporal.Instant,
   ): Promise<Applied> {
@@ -257,7 +270,17 @@ export class ExpireSellerCertificates extends UseCase<
       if (error instanceof StaleAggregateError || error instanceof TransactionConflictError) {
         return 'contended';
       }
-      throw error;
+      // Any other fault of one record: logged and counted, the run goes on, and the job marks
+      // the Market's run as failed at the end.
+      this.#logger.error({
+        msg: 'certification.expiry-and-warnings.record-failed',
+        certificateId: candidate.certificateId,
+        action: planned.kind,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+        err: error,
+      });
+      return 'failed';
     }
   }
 }

@@ -10,9 +10,9 @@ export const EXPIRY_AND_WARNINGS_JOB = 'certification.expiry-and-warnings';
  * `certification.expiry-and-warnings`, every 15 minutes (design 8.6, set at G2): for each hosted
  * Market the scheduler passes the Market's system-actor context, which goes unchanged to
  * `ExpireSellerCertificates` (rule `system`). Safe to run twice and concurrently: one unit per
- * record under the root's version, one marker per warning. A refusal, a Market without a warning
- * policy or a failed zone read throws after the work that could be done, so the scheduler logs
- * that Market's run as failed (the alert on two failed runs in a row, brief s9).
+ * record under the root's version, one marker per warning. A refusal, a record that failed or a
+ * failed zone read throws after the work that could be done, so the scheduler logs that Market's
+ * run as failed (the alert on two failed runs in a row, brief s9).
  */
 export function expiryAndWarningsJob(expire: ExpireSellerCertificates): JobDefinition {
   const logger = new Logger('ExpiryAndWarningsJob');
@@ -31,8 +31,8 @@ export function expiryAndWarningsJob(expire: ExpireSellerCertificates): JobDefin
         correlationId: context.correlationId,
         ...result.value,
       });
-      if (result.value.warningsUnavailable) {
-        throw new Error(`${EXPIRY_AND_WARNINGS_JOB}: the Market has no warning policy`);
+      if (result.value.failed > 0) {
+        throw new Error(`${EXPIRY_AND_WARNINGS_JOB}: ${result.value.failed} record(s) failed`);
       }
       if (result.value.zoneReadsFailed > 0) {
         throw new Error(`${EXPIRY_AND_WARNINGS_JOB}: the seller zone read failed`);

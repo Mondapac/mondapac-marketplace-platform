@@ -1,6 +1,0 @@
-{
-  "market": "AU",
-  "note": "Expiry warnings of the launch Market (certification design 5.1, 8.6; CERT-14): a warning 30, 14 and 1 days before the expiry date, each on the seller's local day, and the renewal submit-by date named in the warning, 7 days before the expiry date (team proposal; Hadi sets).",
-  "warningThresholdsDays": [30, 14, 1],
-  "renewalSubmitByDays": 7
-}

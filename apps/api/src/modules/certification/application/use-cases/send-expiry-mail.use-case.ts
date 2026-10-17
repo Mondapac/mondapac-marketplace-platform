@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { EventDelivery } from '../../../../platform/events/event-delivery';
 import type { MailTransport } from '../../../../platform/mail/mail-transport';
@@ -21,6 +22,7 @@ export interface ExpiryMailDependencies {
   readonly transport: MailTransport;
   readonly mailPolicy: CertificationMailPolicy;
   readonly policies: ExpiryPolicyProvider;
+  readonly clock: Clock;
 }
 
 /** One delivery of `-expiry-warning-due` or `-expired`: ids (and the threshold) only. */
@@ -38,7 +40,7 @@ export type SendExpiryMailOutput =
   | { readonly code: 'expiry-mail.sent' }
   | {
       readonly code: 'expiry-mail.skipped';
-      readonly reason: 'certificate.changed' | 'recipient.none';
+      readonly reason: 'certificate.changed' | 'warning.past-expiry' | 'recipient.none';
     }
   | { readonly code: 'expiry-mail.already-handled' };
 
@@ -53,7 +55,8 @@ const logger = new Logger('CertificationExpiryMail');
  * mail is sent outside any unit and `runOnce` marks the delivery (at least once). A record that
  * moved on before delivery (a renewal approved, revoked) gets no mail: a warning only while the
  * named submission is still the approved one of an `approved` record, the notice only while the
- * record is `expired` on it.
+ * record is `expired` on it. A warning delivered after its certificate's boundary is not sent
+ * (the text names the expiry date, never a count of days).
  */
 export class SendExpiryMail extends UseCase<
   SendExpiryMailInput,
@@ -100,7 +103,7 @@ export class SendExpiryMail extends UseCase<
     if (!loaded.ok) throw new Error('expiry-mail: the read unit failed');
     const notice = loaded.value;
 
-    let skipped: 'certificate.changed' | 'recipient.none' | null = null;
+    let skipped: 'certificate.changed' | 'warning.past-expiry' | 'recipient.none' | null = null;
     const expectedStatus = input.kind === 'warning' ? 'approved' : 'expired';
     if (
       notice === null ||
@@ -110,6 +113,12 @@ export class SendExpiryMail extends UseCase<
       notice.expiryDate === null
     ) {
       skipped = 'certificate.changed';
+    } else if (
+      input.kind === 'warning' &&
+      (notice.boundary === null || Temporal.Instant.compare(deps.clock.now(), notice.boundary) >= 0)
+    ) {
+      // A warning delivered after the expiry would say the wrong thing (Hassan I2).
+      skipped = 'warning.past-expiry';
     } else {
       const to = await deps.contacts.emailOf(context, seller.value);
       if (to === null) skipped = 'recipient.none';
@@ -118,18 +127,13 @@ export class SendExpiryMail extends UseCase<
         let composed;
         if (input.kind === 'warning') {
           const thresholdDays = input.thresholdDays!;
-          const submitByDays = deps.policies.policyFor(market)?.renewalSubmitByDays ?? null;
+          const submitByDays = deps.policies.policyFor(market).renewalSubmitByDays;
           // The submit-by day is named only while it is still ahead of the warning's day.
           const submitBy =
-            submitByDays === null || thresholdDays <= submitByDays
+            thresholdDays <= submitByDays
               ? null
               : renewalSubmitBy(notice.expiryDate, submitByDays).toString();
-          composed = expiryWarningMail({
-            typeCode: notice.typeCode,
-            expiryDate,
-            thresholdDays,
-            submitBy,
-          });
+          composed = expiryWarningMail({ typeCode: notice.typeCode, expiryDate, submitBy });
         } else {
           composed = expiredMail({ typeCode: notice.typeCode, expiryDate });
         }

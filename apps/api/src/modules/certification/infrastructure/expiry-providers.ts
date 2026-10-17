@@ -26,7 +26,11 @@ import {
 import { SELLER_ZONES_SOURCE } from '../application/ports/tokens';
 import { ExpireSellerCertificates } from '../application/use-cases/expire-seller-certificates.use-case';
 import { SendExpiryMail } from '../application/use-cases/send-expiry-mail.use-case';
-import { CheckedInExpiryPolicy } from './expiry-policy/checked-in-expiry-policy';
+import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import {
+  assertCertificationConfigured,
+  MarketConfigExpiryPolicy,
+} from './market-config-expiry-policy';
 import { PrismaSellerCertificateExpiryRepository } from './prisma-seller-certificate-expiry.repository';
 
 /**
@@ -42,8 +46,13 @@ export const expiryProviders: readonly Provider[] = [
       new PrismaSellerCertificateExpiryRepository(prisma),
   },
   {
+    // Start-up check: every hosted Market has the `certification` section (no default).
     provide: EXPIRY_POLICY_PROVIDER,
-    useFactory: (): ExpiryPolicyProvider => new CheckedInExpiryPolicy(),
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): ExpiryPolicyProvider => {
+      assertCertificationConfigured(markets);
+      return new MarketConfigExpiryPolicy(markets);
+    },
   },
   {
     provide: ExpireSellerCertificates,
@@ -90,6 +99,7 @@ export const expiryProviders: readonly Provider[] = [
       MAIL_TRANSPORT,
       CERTIFICATION_MAIL_POLICY,
       EXPIRY_POLICY_PROVIDER,
+      CLOCK,
     ],
     useFactory: (
       gate: UseCaseGate,
@@ -99,6 +109,7 @@ export const expiryProviders: readonly Provider[] = [
       transport: MailTransport,
       mailPolicy: CertificationMailPolicy,
       policies: ExpiryPolicyProvider,
+      clock: Clock,
     ) =>
       new SendExpiryMail(gate, {
         unitOfWork,
@@ -107,6 +118,7 @@ export const expiryProviders: readonly Provider[] = [
         transport,
         mailPolicy,
         policies,
+        clock,
       }),
   },
 ];

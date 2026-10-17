@@ -17,13 +17,14 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { TimeZoneId } from '../../domain/claim-types';
 import { expiryBoundary } from '../../domain/validity';
-import { CheckedInExpiryPolicy } from '../../infrastructure/expiry-policy/checked-in-expiry-policy';
+import { MarketConfigExpiryPolicy } from '../../infrastructure/market-config-expiry-policy';
 import type { SellerZonesSource } from '../ports/claim-facts.ports';
 import type {
   ExpireWrite,
   ExpiryCandidate,
   ExpiryCursor,
   ExpiryNotice,
+  ExpiryPage,
   SellerCertificateExpiryRepository,
   WarningWrite,
 } from '../ports/expiry.repository';
@@ -69,31 +70,42 @@ class MemoryExpiries implements SellerCertificateExpiryRepository {
     return { ...c, warnedThresholds: warned };
   }
 
+  /** Rows the statement returns but that are not candidates (no approved decision row). */
+  readonly inconsistent = new Set<string>();
+  /** Records whose write throws a fault that is not a lost race. */
+  readonly failing = new Set<string>();
+
   candidates(
     market: MarketContext,
     horizon: Temporal.Instant,
     after: ExpiryCursor | null,
     limit: number,
-  ): Promise<readonly ExpiryCandidate[]> {
-    const key = (c: ExpiryCandidate) =>
-      [c.selectionBoundary.epochNanoseconds, c.certificateId] as const;
-    const out = this.rows
+  ): Promise<ExpiryPage> {
+    const sel = (c: ExpiryCandidate) => c.storedBoundary!;
+    const rows = this.rows
       .filter((r) => r.market === market.marketId && r.candidate.status === 'approved')
       .map((r) => r.candidate)
-      .filter((c) => Temporal.Instant.compare(c.selectionBoundary, horizon) < 0)
+      .filter((c) => Temporal.Instant.compare(sel(c), horizon) < 0)
       .filter((c) => {
         if (after === null) return true;
-        const cmp = Temporal.Instant.compare(c.selectionBoundary, after.boundary);
+        const cmp = Temporal.Instant.compare(sel(c), after.boundary);
         return cmp > 0 || (cmp === 0 && c.certificateId > after.certificateId);
       })
       .sort((a, b) => {
-        const [ab, ai] = key(a);
-        const [bb, bi] = key(b);
-        return ab === bb ? (ai < bi ? -1 : 1) : ab < bb ? -1 : 1;
+        const cmp = Temporal.Instant.compare(sel(a), sel(b));
+        return cmp !== 0 ? cmp : a.certificateId < b.certificateId ? -1 : 1;
       })
-      .slice(0, limit)
+      .slice(0, limit);
+    const kept = rows
+      .filter((c) => !this.inconsistent.has(c.certificateId))
       .map((c) => this.#warned(market, c));
-    return Promise.resolve(out);
+    const last = rows.at(-1);
+    return Promise.resolve({
+      candidates: kept,
+      rawCount: rows.length,
+      last: last === undefined ? null : { boundary: sel(last), certificateId: last.certificateId },
+      inconsistent: rows.length - kept.length,
+    });
   }
 
   candidate(market: MarketContext, id: Id<'SellerCertification'>) {
@@ -116,6 +128,7 @@ class MemoryExpiries implements SellerCertificateExpiryRepository {
   }
 
   expire(market: MarketContext, write: ExpireWrite) {
+    if (this.failing.has(write.certificateId)) throw new Error('disk on fire');
     const row = this.#row(market, write.certificateId)!;
     if (row.candidate.status !== 'approved') throw new Error('not approved');
     row.candidate = { ...row.candidate, status: 'expired' };
@@ -179,7 +192,7 @@ describe.each(['AU', 'ZZ'] as const)('expiry and warnings job, Market %s', (code
   function rig(
     start: Temporal.Instant,
     zones?: SellerZonesSource,
-    policies = new CheckedInExpiryPolicy(),
+    policies = new MarketConfigExpiryPolicy(markets),
   ) {
     const clock = new FixedClock(start);
     const ids = new SequenceIdGenerator(clock);
@@ -206,7 +219,6 @@ describe.each(['AU', 'ZZ'] as const)('expiry and warnings job, Market %s', (code
         zoneAtApproval: zone,
         storedBoundary: boundary,
         warnedThresholds: [],
-        selectionBoundary: boundary,
         ...over,
       };
       store.add(m, c);
@@ -343,7 +355,6 @@ describe.each(['AU', 'ZZ'] as const)('expiry and warnings job, Market %s', (code
     const warnLater = r.add(market, {
       expiryDate: EXPIRY.add({ days: 10 }),
       storedBoundary: expiryBoundary(EXPIRY.add({ days: 10 }), zone),
-      selectionBoundary: expiryBoundary(EXPIRY.add({ days: 10 }), zone),
     });
     const [a, b] = await Promise.all([r.run(), r.run()]);
     expect(a.expired + b.expired).toBe(1);
@@ -382,17 +393,37 @@ describe.each(['AU', 'ZZ'] as const)('expiry and warnings job, Market %s', (code
     expect((await r.run()).expired).toBe(1);
   });
 
-  it('runs expiry without a warning policy and says so', async () => {
-    const none = new CheckedInExpiryPolicy({});
-    const r = rig(boundary.add({ minutes: 1 }), undefined, none);
-    r.add();
-    r.add(market, {
-      expiryDate: EXPIRY.add({ days: 5 }),
-      storedBoundary: expiryBoundary(EXPIRY.add({ days: 5 }), zone),
-      selectionBoundary: expiryBoundary(EXPIRY.add({ days: 5 }), zone),
-    });
+  it('pages on raw rows: a full page with one inconsistent row still reads the next page', async () => {
+    const r = rig(boundary.add({ hours: 24 }));
+    const all = Array.from({ length: EXPIRY_BATCH_SIZE + 3 }, () => r.add());
+    // One row of the first page is dropped as inconsistent (Mojtaba C1, Hassan L1).
+    r.store.inconsistent.add(all[10]!.certificateId);
     const out = await r.run();
-    expect(out).toMatchObject({ expired: 1, warned: 0, warningsUnavailable: true });
+    expect(out).toMatchObject({
+      examined: EXPIRY_BATCH_SIZE + 3,
+      inconsistent: 1,
+      expired: EXPIRY_BATCH_SIZE + 2,
+    });
+    const statusOf = (id: string) =>
+      r.store.rows.find((row) => row.candidate.certificateId === id)!.candidate.status;
+    // The rows of the second page were reached.
+    for (const c of all.slice(EXPIRY_BATCH_SIZE)) expect(statusOf(c.certificateId)).toBe('expired');
+    expect(statusOf(all[10]!.certificateId)).toBe('approved');
+  });
+
+  it('counts a record that fails for another reason, rolls it back and goes on', async () => {
+    const r = rig(boundary.add({ minutes: 1 }));
+    const bad = r.add();
+    const good = r.add();
+    r.store.failing.add(bad.certificateId);
+    const out = await r.run();
+    expect(out).toMatchObject({ expired: 1, failed: 1 });
+    const statusOf = (id: string) =>
+      r.store.rows.find((row) => row.candidate.certificateId === id)!.candidate.status;
+    expect(statusOf(bad.certificateId)).toBe('approved');
+    expect(statusOf(good.certificateId)).toBe('expired');
+    expect(r.audit.entries).toHaveLength(1);
+    expect(r.outbox.events).toHaveLength(1);
   });
 
   it('pages past one batch', async () => {

@@ -84,9 +84,9 @@ export function assertExpiryPolicy(policy: ExpiryPolicy, where: string): void {
  */
 export function candidateHorizon(
   now: Temporal.Instant,
-  thresholds: readonly number[] | null,
+  thresholds: readonly number[],
 ): Temporal.Instant {
-  const largest = thresholds === null || thresholds.length === 0 ? 0 : Math.max(...thresholds);
+  const largest = thresholds.length === 0 ? 0 : Math.max(...thresholds);
   return now.add({ hours: ZONE_MARGIN_HOURS + 24 * largest });
 }
 
@@ -99,8 +99,9 @@ export function renewalSubmitBy(
 }
 
 /**
- * The boundary the job acts on (design 2.4 rule 2, 8.6): the earliest of the boundary stored at
- * approval and the boundary in each current approved zone that is usable, so the status never
+ * The boundary the job acts on (design 2.4 rule 2, 8.6): the earliest of the boundary at approval
+ * (recomputed in the approval zone, as the claim does; the stored instant only without a usable
+ * approval zone) and the boundary in each current approved zone that is usable, so the status never
  * lags the claim and never runs ahead of it. Without usable current zones only the stored
  * boundary counts: the claim already answers "no" for such a seller (`seller-zone-missing`), and
  * a terminal-looking status written before the real boundary would be wrong for the record.
@@ -115,11 +116,16 @@ export function jobBoundary(facts: ExpiryFacts, zones: CurrentZones | null): Job
       candidates.push({ at: expiryBoundary(facts.expiryDate, zone), zone });
     }
   }
-  const approvalZone = isUsableZone(facts.zoneAtApproval) ? facts.zoneAtApproval : null;
-  if (facts.storedBoundary !== null) {
-    candidates.push({ at: facts.storedBoundary, zone: approvalZone });
-  } else if (approvalZone !== null) {
-    candidates.push({ at: expiryBoundary(facts.expiryDate, approvalZone), zone: approvalZone });
+  // The approval zone's boundary is computed as `validity.ts` computes it (Hassan I1), so the job
+  // and the claim agree even if tzdata changed since approval; the stored instant is used only
+  // when the approval zone is not usable.
+  if (isUsableZone(facts.zoneAtApproval)) {
+    candidates.push({
+      at: expiryBoundary(facts.expiryDate, facts.zoneAtApproval),
+      zone: facts.zoneAtApproval,
+    });
+  } else if (facts.storedBoundary !== null) {
+    candidates.push({ at: facts.storedBoundary, zone: null });
   }
   let earliest: JobBoundary | null = null;
   for (const candidate of candidates) {
@@ -151,12 +157,12 @@ export function warningStart(boundary: JobBoundary, thresholdDays: number): Temp
  * expiry moves. Past the boundary it expires. Before it, the most urgent threshold whose local
  * day has started is warned once (one marker per submission and threshold, AC 9); when several
  * fall due together (approved close to expiry) only the most urgent is sent and the others never
- * are. Without a policy (`thresholds` null) nobody is warned and expiry still happens.
+ * are.
  */
 export function expiryActionAt(
   facts: ExpiryFacts,
   zones: CurrentZones | null,
-  thresholds: readonly number[] | null,
+  thresholds: readonly number[],
   at: Temporal.Instant,
 ): ExpiryAction {
   if (facts.status !== 'approved') return { kind: 'none' };
@@ -165,7 +171,6 @@ export function expiryActionAt(
   if (Temporal.Instant.compare(at, boundary.at) >= 0) {
     return { kind: 'expire', boundary: boundary.at };
   }
-  if (thresholds === null) return { kind: 'none' };
   let due: number | null = null;
   for (const days of thresholds) {
     if (Temporal.Instant.compare(at, warningStart(boundary, days)) >= 0) {

@@ -101,8 +101,11 @@ export const reviewProviders: readonly Provider[] = [
     useFactory: (sellers: SellersFacade): ReviewSellerSource => new SellersReviewSource(sellers),
   },
   {
+    // Start-up check: the folder exists and every hosted Market has a policy file.
     provide: REVIEW_POLICY_PROVIDER,
-    useFactory: (): ReviewPolicyProvider => new CheckedInReviewPolicy(),
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): ReviewPolicyProvider =>
+      new CheckedInReviewPolicy(undefined, markets.hostedMarketIds()),
   },
   {
     provide: SELLER_OWNER_CONTACT,
