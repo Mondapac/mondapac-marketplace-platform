@@ -29,11 +29,14 @@ const facts = (over: Partial<ClaimFacts> = {}): ClaimFacts => ({
     approved: {
       submissionId: id('s1'),
       typeRevisionId: id('tr1'),
+      verificationMode: 'THIRD_PARTY_DOCUMENT',
       requiresExpiry: true,
       expiryDate: Temporal.PlainDate.from('2027-12-31'),
       zoneAtApproval: 'Australia/Sydney' as TimeZoneId,
       issuerId: id('i1'),
       issuerState: 'active',
+      issuerDisplayName: 'Issuer One',
+      verifiedWithIssuer: false,
     },
   },
   ...over,
@@ -80,8 +83,8 @@ describe('ClaimRule.decide (seller basis)', () => {
       reason: 'allowed',
       inputs: query,
       evaluatedAt: now,
-      badge: null,
     });
+    expect(d.badge).toMatchObject({ basis: 'SELLER', typeRevisionId: 'tr1' });
     expect(d.certificate).toMatchObject({
       kind: 'seller',
       certificateId: 'c1',

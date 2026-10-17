@@ -40,7 +40,11 @@ export interface ClaimQuery {
   readonly platformCategoryPaths: readonly (readonly Id<'Category'>[])[];
 }
 
-/** Badge data (design 4.5). Built in slice 10; until then a decision carries `null`. */
+/**
+ * Badge data (design 4.5; AC 23): present exactly when the decision is allowed, built by
+ * `ClaimRule.decide` from that decision. Public by design: no certificate number, holder,
+ * document, reviewer, scope or seller (the allow-list is `BADGE_FIELDS` in `badge.ts`).
+ */
 export interface BadgeData {
   readonly typeCode: CertificationTypeCode;
   readonly typeRevisionId: Id;

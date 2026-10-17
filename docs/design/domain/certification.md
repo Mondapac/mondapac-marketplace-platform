@@ -543,6 +543,18 @@ The store name on the badge is the public store name from `sellers` (brief s5), 
 storefront, not here. Badge texts come from the type revision named, so easing a type never
 upgrades an approved badge. For the manufacturer basis the same flag rule applies to the revision.
 
+Implementation notes (slice 10, 2026-10-17): built by `domain/badge.ts` (`sellerBadge`, called only
+from `ClaimRule.decide`), whose `BADGE_FIELDS` is the allow-list a spec pins. The facts come from S1
+of the data design 7.3 (`verification_mode`, `issuer_name`, `verified_with_issuer`). `sellerClaim` is
+true unless the mode is exactly `THIRD_PARTY_DOCUMENT` (an unknown mode gets the weaker badge);
+`issuer` is shown only when both id and registry name are known; `validUntilLocalDate` and
+`validUntilZone` are set exactly when `certificate.validUntil` is. When two zones give the same
+boundary, the zone named is the first of chosen zone, address zone, zone at approval (today's zone
+before the stored one). `reviewedByPlatform` is always `true` because no automatic approval exists
+yet: S1 reads the decision's `actor_kind` and the reader refuses (batch `unavailable`) an approved
+decision not made by `admin`; the self-declaration auto-approval of CERT-11 must derive
+`reviewedByPlatform` from that field. `verifiedWithIssuer` also needs the issuer shown.
+
 ### 4.6 Claim terms, the matcher and the claim guard port (ADR-0019 R1, decision 12; CERT-01)
 - **Shape.** Per type revision and locale: a list of terms written by people (R10), each a phrase of
   one or more tokens, in the script of the locale. No regular expressions from admins.
