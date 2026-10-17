@@ -559,6 +559,8 @@ offer_id, offer_version)`; `outcome` CHECK `approved`, `changes-requested`; `rea
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | `uuid` | no | PK |
+| `market_id` | `varchar(8)` | no | CHECK format; unique `(market_id, id)`; every statement carries it |
+| `tenant_id` | `text` | no | CHECK format (ADR-0001 seam) |
 | `kind` | `text` | no | CHECK `revision-published`, `category-changed`, `certification-event`, `types-reallowed` |
 | `product_id` | `uuid` | yes | For `revision-published`. CHECK `(kind = 'revision-published') = (product_id IS NOT NULL)` |
 | `product_revision_id` | `uuid` | yes | Same nullability as `product_id`; FK same product |
@@ -1162,7 +1164,15 @@ version it asked about, so it waits for a racing publish and then asks again; `o
 `product-revision.approve` and a submit that publishes at once re-ask every open tag in the publish
 unit (a `pending-publish` tag becomes `active` only on that fresh answer); a PLATFORM publish marks
 `active` tags `rechecking` in its unit (rule M1; a `suspended` tag stays `suspended`) and writes the
-request the job `catalog.reevaluate-tags` settles Offer by Offer. `offerListings` for the
+request the job `catalog.reevaluate-tags` settles Offer by Offer. `product-revision.approve` locks the
+product row at the reviewed version before it reads the pending revision and the owner's Offer
+(Hassan M-1). The job's `progress` stores counts alone at an equal cursor (Mojtaba F4).
+Follow-ups (Mojtaba, PR #397 review): **F1** (contract step for slice 12) the history-presence
+trigger should also compare `type_revision_id` and `valid_until` with `IS NOT DISTINCT FROM`,
+tolerating legacy rows whose two columns are NULL, optionally backed by a `NOT VALID` CHECK that new
+rows carry both; **F3** if lock waits on `products` appear in production, the tag-write lock can
+become `SELECT ... FOR SHARE` (concurrent tag writes stop serialising on one another; a publish
+still waits for them), instead of the no-op version update. `offerListings` for the
 `anonymous` rule answers no tags at all until slice 12 consumes the certification revoke and expiry
 events (a stored `active` tag can outlive its certificate; Hassan, certification revoke review).
 
@@ -1286,7 +1296,7 @@ delete and the sweep both fail.
 
 | Job | Every | Lock key (PM8) | Work |
 |---|---|---|---|
-| `catalog.reevaluate-tags` | 1 min | `6604185390120384521` | A7, requests of 3.18 |
+| `catalog.reevaluate-tags` | 30 s | `6604185390120384521` | A7, requests of 3.18 |
 | `catalog.reconcile-tags` | Daily 03:00 Market zone | `2217309458861320097` | A15 |
 | `catalog.rescan-claim-text` | On event, resumable | `7391146002835117703` | A14 |
 | `catalog.purge-unreferenced-masters` | Daily | `4870913325561946201` | 10.2 |

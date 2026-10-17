@@ -1,4 +1,5 @@
-import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
@@ -89,6 +90,7 @@ export class PrismaTagReevaluationRequests implements TagReevaluationRequestRepo
               productRevisionId: row.productRevisionId as Id<'ProductRevision'>,
               cursorOfferId: row.cursorOfferId as Id<'Offer'> | null,
               counts: countsOf(row.counts),
+              createdAt: Temporal.Instant.fromEpochMilliseconds(row.createdAt.getTime()),
             },
           ],
     );
@@ -97,16 +99,23 @@ export class PrismaTagReevaluationRequests implements TagReevaluationRequestRepo
   async progress(
     market: MarketContext,
     id: Id<'TagReevaluationRequest'>,
-    update: { readonly cursorOfferId: Id<'Offer'>; readonly counts: ReevaluationCounts },
+    update: { readonly cursorOfferId: Id<'Offer'> | null; readonly counts: ReevaluationCounts },
   ): Promise<boolean> {
+    const cursor = update.cursorOfferId;
     const { count } = await this.prisma.tx(market).catalogTagReevaluationRequest.updateMany({
       where: {
         marketId: market.marketId,
         id,
         state: 'pending',
-        OR: [{ cursorOfferId: null }, { cursorOfferId: { lt: update.cursorOfferId } }],
+        // Never back: forward, or equal (counts only); no cursor only while none is stored.
+        ...(cursor === null
+          ? { cursorOfferId: null }
+          : { OR: [{ cursorOfferId: null }, { cursorOfferId: { lte: cursor } }] }),
       },
-      data: { cursorOfferId: update.cursorOfferId, counts: jsonOf(update.counts) },
+      data: {
+        ...(cursor === null ? {} : { cursorOfferId: cursor }),
+        counts: jsonOf(update.counts),
+      },
     });
     return count === 1;
   }

@@ -297,6 +297,13 @@ export class ProductRevisionApprove extends UseCase<
         Record<string, never> | typeof RETRY,
         ProductRevisionApproveFailure
       >(market, async () => {
+        // The product row first, locked at the version that was checked (Hassan M-1, slice 11):
+        // a tag write holding it is waited for, so the Offer read below sees its tag and a
+        // changed Offer asks again; a tag write after this lock waits for this unit and then asks
+        // against the revision published here. Reads follow the write lock order: product, Offer.
+        if (!(await deps.products.lockAtVersion(market, productId, version))) {
+          return err({ code: 'conflict.stale' } as const);
+        }
         // Read again in the unit: the product, its pending revision and the version must be
         // the ones that were checked.
         const loaded = await loadPendingForReview(deps, market, { productId, revisionId, version });
@@ -345,8 +352,9 @@ export class ProductRevisionApprove extends UseCase<
             return err({ code: 'claim.check-unavailable' } as const);
           }
         }
-        // Nothing is written before this point, so a retry above commits nothing. The product
-        // row first, then the Offer (the lock order of every tag write, slice 11).
+        // Nothing but the no-op version write of the lock happens before this point, so a retry
+        // above changes nothing. The product row was locked first, at the top of this unit; the
+        // Offer is written after it (the lock order of every tag write, slice 11).
         await deps.products.save(market, product);
         await deps.revisions.recordDecision(market, {
           revisionId,

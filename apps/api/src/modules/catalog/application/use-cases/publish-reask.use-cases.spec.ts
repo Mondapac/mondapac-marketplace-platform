@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
 import {
@@ -255,7 +256,9 @@ describe.each([
 
   describe('catalog.reevaluate-tags (the fan-out of a PLATFORM publish, design 5.4)', () => {
     class MemoryRequests implements TagReevaluationRequestRepository {
-      readonly rows: (PendingReevaluation & { state: 'pending' | 'settled' | 'superseded' })[] = [];
+      readonly rows: ({ -readonly [K in keyof PendingReevaluation]: PendingReevaluation[K] } & {
+        state: 'pending' | 'settled' | 'superseded';
+      })[] = [];
       progressed = 0;
 
       requestForPublish(
@@ -273,6 +276,7 @@ describe.each([
           productRevisionId: request.productRevisionId,
           cursorOfferId: null,
           counts: NO_COUNTS,
+          createdAt: clock.now(),
           state: 'pending',
         });
         return Promise.resolve();
@@ -290,15 +294,20 @@ describe.each([
       progress(
         _m: MarketContext,
         id: Id<'TagReevaluationRequest'>,
-        update: { cursorOfferId: Id<'Offer'>; counts: ReevaluationCounts },
+        update: { cursorOfferId: Id<'Offer'> | null; counts: ReevaluationCounts },
       ): Promise<boolean> {
+        // Like the repository: never back; an equal cursor (or none over none) stores counts only.
         const row = this.rows.find((r) => r.id === id);
         if (row?.state !== 'pending') return Promise.resolve(false);
-        if (row.cursorOfferId !== null && update.cursorOfferId <= row.cursorOfferId) {
-          return Promise.resolve(false);
-        }
+        const cursor = update.cursorOfferId;
+        const back =
+          cursor === null
+            ? row.cursorOfferId !== null
+            : row.cursorOfferId !== null && cursor < row.cursorOfferId;
+        if (back) return Promise.resolve(false);
         this.progressed += 1;
-        Object.assign(row, update);
+        row.counts = update.counts;
+        if (cursor !== null) row.cursorOfferId = cursor;
         return Promise.resolve(true);
       }
 
@@ -400,10 +409,59 @@ describe.each([
       for (const row of stored.values()) {
         expect(row.tags[0]).toMatchObject({ status: 'rechecking', badge: null });
       }
-      expect(requests.rows[0]).toMatchObject({ state: 'pending', cursorOfferId: null });
+      // The unanswered queries are counted even before any cursor exists (Mojtaba F4).
+      expect(requests.rows[0]).toMatchObject({
+        state: 'pending',
+        cursorOfferId: null,
+        counts: { unavailable: 4, asked: 0 },
+      });
       evaluator.unavailable = false;
       expect(await run()).toEqual({ ok: true, value: { closed: 1, open: 0 } });
       for (const row of stored.values()) expect(row.tags[0]!.status).toBe('active');
+    });
+
+    it('logs Offers left rechecking and a request pending long after its publish, ids only (L-2)', async () => {
+      const warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        const { run, claims, requests } = rig(1);
+        claims.lockFails = true;
+        requests.rows[0]!.createdAt = clock.now().subtract({ minutes: 11 });
+        await run();
+        const logged = warnings.mock.calls.map(([entry]) => entry as Record<string, unknown>);
+        expect(logged).toEqual([
+          expect.objectContaining({
+            msg: 'catalog.reevaluate-tags.offer-skipped',
+            code: 'retry',
+            requestId: requests.rows[0]!.id,
+            productId,
+          }),
+          expect.objectContaining({
+            msg: 'catalog.reevaluate-tags.request-stuck',
+            requestId: requests.rows[0]!.id,
+            productRevisionId: facts.productRevisionId,
+          }),
+        ]);
+        expect(JSON.stringify(logged)).not.toContain('badge');
+      } finally {
+        warnings.mockRestore();
+      }
+    });
+
+    it('moves the cursor forward only, and stores counts alone at an equal cursor (F4)', async () => {
+      const { requests } = rig(1);
+      const id = requests.rows[0]!.id;
+      const offer = ids.next<'Offer'>();
+      const counts = (unavailable: number) => ({ ...NO_COUNTS, unavailable });
+      expect(await requests.progress(market, id, { cursorOfferId: offer, counts: counts(1) })).toBe(
+        true,
+      );
+      expect(await requests.progress(market, id, { cursorOfferId: offer, counts: counts(3) })).toBe(
+        true,
+      );
+      expect(requests.rows[0]).toMatchObject({ cursorOfferId: offer, counts: { unavailable: 3 } });
+      expect(await requests.progress(market, id, { cursorOfferId: null, counts: counts(9) })).toBe(
+        false,
+      );
     });
 
     it('leaves the request pending when the product moved since the ask (the lock fails)', async () => {

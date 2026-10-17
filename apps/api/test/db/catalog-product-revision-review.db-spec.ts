@@ -16,6 +16,7 @@ import type { AttributeRepository } from '../../src/modules/catalog/application/
 import type { CatalogMarketPolicy } from '../../src/modules/catalog/application/ports/catalog-market-policy';
 import { FreezeRevision } from '../../src/modules/catalog/application/revisions/freeze-revision.service';
 import { SubmitProduct } from '../../src/modules/catalog/application/revisions/submit-product.service';
+import { OwnOfferAddTag } from '../../src/modules/catalog/application/use-cases/own-offer-add-tag.use-case';
 import { ProductRevisionApprove } from '../../src/modules/catalog/application/use-cases/product-revision-approve.use-case';
 import { ProductRevisionRequestChanges } from '../../src/modules/catalog/application/use-cases/product-revision-request-changes.use-case';
 import { Product } from '../../src/modules/catalog/domain/product';
@@ -585,6 +586,121 @@ describe.each(TEST_MARKETS)(
       const decisions = await decisionRows(productId);
       expect(decisions.map((d) => d.outcome)).toEqual(['published', 'published']);
       expect(decisions[1]!.required_checks).toEqual([]);
+    });
+
+    it('re-asks a tag written while the approval waits on the product row against the new revision (Hassan M-1)', async () => {
+      // Revision 1 published, the owner's Offer on it, revision 2 pending.
+      const { productId, revisionId: first, version } = await submitted();
+      expect(
+        await approve.execute(adminContext(), {
+          productId,
+          revisionId: first,
+          version,
+          checksConfirmed: ALL_CHECKS,
+        }),
+      ).toMatchObject({ ok: true });
+      const offerId = uuid7() as Id<'Offer'>;
+      await insert('offers', {
+        id: offerId,
+        ...base,
+        seller_id: SELLER,
+        product_id: productId,
+        seller_sku: `SKU-${randomUUID().slice(0, 13)}`,
+        condition_code: 'new',
+        description: '{}',
+        handling: 'SEALED_ORIGINAL',
+        attestation_recorded_at: null,
+        attestation_account_id: null,
+        status: 'published',
+        off_sale_type_not_allowed: false,
+        off_sale_product_retired: false,
+        off_sale_product_not_listed: false,
+        off_sale_tag_suspended: false,
+        off_sale_description_claim_text: false,
+        listed: true,
+        submitted_at: T0.toString(),
+        first_published_at: T0.toString(),
+        deleted_at: null,
+        version: 1,
+        created_at: T0.toString(),
+      });
+      await saveCopy(productId, 'Medjool dates', first);
+      const second = await submit.execute(sellerContext(), { productId, replacePending: false });
+      if (!second.ok) throw new Error(second.error.code);
+      const pending = await inUnit(() => products.findById(market, productId), true);
+
+      // The seller adds a tag judged on revision 1. Its unit holds the product lock and the
+      // uncommitted tag while the REAL approval of revision 2 starts, then commits ~300 ms later.
+      const typeCode = code === 'AU' ? 'halal' : 'zz-cert';
+      const tagEvaluator = new FakeClaimEvaluator(
+        (query) => allowedDecision(query, certificate),
+        [typeCode],
+      );
+      const approvalCalls = evaluator.calls.length;
+      // The tag unit signals that it holds the lock, then waits for the test to release it; the
+      // approval starts from the test body, outside the tag unit's async context.
+      let held!: () => void;
+      const holding = new Promise<void>((resolve) => (held = resolve));
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      const addTag = new OwnOfferAddTag(gate, {
+        unitOfWork: persistence.unitOfWork,
+        offers: offerStore,
+        eligibility: { isEligible: () => Promise.resolve(true) },
+        save: { reserveSaves: () => Promise.resolve(null) },
+        claims: new ClaimQueryBuilder({
+          products,
+          revisions,
+          categoryPaths: new PrismaCategoryPathsReader(persistence.service),
+        }),
+        evaluator: tagEvaluator,
+        outbox: {
+          append: async () => {
+            held();
+            await released;
+          },
+        },
+        clock: reviewClock,
+        ids: { next: <K extends string>() => uuid7() as Id<K> },
+      });
+
+      const adding = addTag.execute(sellerContext(), { offerId, typeCode });
+      await holding;
+      const approval = approve
+        .execute(adminContext(), {
+          productId,
+          revisionId: second.value.revisionId,
+          version: pending!.state.version,
+          checksConfirmed: ALL_CHECKS,
+        })
+        .then((outcome) => ({ outcome, doneAt: Date.now() }));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const committedAt = Date.now();
+      release();
+
+      const added = await adding;
+      expect(added).toMatchObject({ ok: true, value: { status: 'active' } });
+      expect(tagEvaluator.calls.map((call) => call[0]!.productRevisionId)).toEqual([first]);
+      const { outcome, doneAt } = await approval;
+      expect(outcome).toEqual({ ok: true, value: {} });
+      // The approval waited for the tag's unit, then asked the new tag against revision 2.
+      expect(doneAt).toBeGreaterThanOrEqual(committedAt);
+      const asked = evaluator.calls.slice(approvalCalls).flat();
+      expect(asked.map((query) => [query.typeCode, query.productRevisionId])).toContainEqual([
+        typeCode,
+        second.value.revisionId,
+      ]);
+      expect(await productRow(productId)).toMatchObject({
+        published_revision_id: second.value.revisionId,
+      });
+      const { rows } = await app.query(
+        `SELECT status, copy_revision_id, badge_data IS NOT NULL AS has_badge
+           FROM catalog.offer_tags WHERE market_id = $1 AND offer_id = $2`,
+        [market.marketId, offerId],
+      );
+      expect(rows).toEqual([
+        { status: 'active', copy_revision_id: second.value.revisionId, has_badge: true },
+      ]);
     });
 
     it('pages the pending revisions by submit instant and id', async () => {

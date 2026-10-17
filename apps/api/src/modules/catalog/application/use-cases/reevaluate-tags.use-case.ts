@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { err, ok } from '@mondapac/shared-kernel';
+import { Temporal, err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
@@ -30,6 +30,11 @@ export const REEVALUATE_REQUESTS_PER_RUN = 10;
 export const REEVALUATE_PAGE = 50;
 /** Pages per request per run; the rest waits for the next run (the cursor resumes it). */
 export const REEVALUATE_MAX_PAGES = 20;
+/**
+ * A request still pending this long after its publish (about 20 runs of the 30 s job) is logged
+ * as a warning on every run, so an operator can see Offers left `rechecking` (Hassan L-2).
+ */
+export const REEVALUATE_STUCK_AFTER = { minutes: 10 } as const;
 
 export interface ReevaluateTagsOutput {
   /** Requests ended this run (settled or superseded). */
@@ -61,6 +66,8 @@ type PageRead =
         readonly offerId: Id<'Offer'>;
         readonly version: number;
         readonly prepared: PreparedAsk | null;
+        /** Kept tags, but no query could be built (no handling): left `rechecking`, logged. */
+        readonly skipped: boolean;
       }[];
       readonly full: boolean;
     };
@@ -117,10 +124,25 @@ export class ReevaluateTags extends UseCase<
     if (!pending.ok) return err({ code: 'access.unavailable' });
     let closed = 0;
     let open = 0;
+    const stuckBefore = deps.clock.now().subtract(REEVALUATE_STUCK_AFTER);
     for (const request of pending.value) {
       const outcome = await this.#settle(context, request);
-      if (outcome === 'pending') open += 1;
-      else closed += 1;
+      if (outcome !== 'pending') {
+        closed += 1;
+        continue;
+      }
+      open += 1;
+      if (Temporal.Instant.compare(request.createdAt, stuckBefore) < 0) {
+        // Ids only (Hassan L-2): the request has been pending for many runs.
+        this.#logger.warn({
+          msg: 'catalog.reevaluate-tags.request-stuck',
+          requestId: request.id,
+          productId: request.productId,
+          productRevisionId: request.productRevisionId,
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+        });
+      }
     }
     return ok({ closed, open });
   }
@@ -155,7 +177,12 @@ export class ReevaluateTags extends UseCase<
               queries === null
                 ? null
                 : { facts: snapshot.facts, queries, productVersion: snapshot.productVersion };
-            return { offerId: offer.state.id, version: offer.state.version, prepared };
+            return {
+              offerId: offer.state.id,
+              version: offer.state.version,
+              prepared,
+              skipped: types.length > 0 && queries === null,
+            };
           });
           return ok({ items, full: offers.length === REEVALUATE_PAGE });
         },
@@ -188,6 +215,7 @@ export class ReevaluateTags extends UseCase<
       counts = { ...counts, asked: counts.asked + queryCount };
       const decisionsOf = new Map(asking.map((item, i) => [item.offerId, asked.value[i]!]));
       for (const item of items) {
+        if (item.skipped) this.#skipped(context, request, item.offerId, 'no-queries');
         if (item.prepared !== null) {
           const settled = await this.#settleOffer(
             context,
@@ -197,6 +225,12 @@ export class ReevaluateTags extends UseCase<
             decisionsOf.get(item.offerId)!,
           );
           if (settled === RETRY || settled === 'unavailable') {
+            this.#skipped(
+              context,
+              request,
+              item.offerId,
+              settled === RETRY ? 'retry' : 'unavailable',
+            );
             if (settled === 'unavailable') {
               counts = { ...counts, unavailable: counts.unavailable + 1 };
             }
@@ -287,10 +321,28 @@ export class ReevaluateTags extends UseCase<
     counts: ReevaluationCounts,
   ): Promise<void> {
     const { market } = context;
-    if (cursor === null) return;
+    // With no cursor yet, the counts alone (Mojtaba F4: an unanswered first page is recorded).
     await this.deps.unitOfWork.run(market, async () =>
       ok(await this.deps.requests.progress(market, request.id, { cursorOfferId: cursor, counts })),
     );
+  }
+
+  /** An Offer this run left `rechecking`, by id and reason only (Hassan L-2). */
+  #skipped(
+    context: CallContext,
+    request: PendingReevaluation,
+    offerId: Id<'Offer'>,
+    reason: 'no-queries' | 'retry' | 'unavailable',
+  ): void {
+    this.#logger.warn({
+      msg: 'catalog.reevaluate-tags.offer-skipped',
+      code: reason,
+      requestId: request.id,
+      productId: request.productId,
+      offerId,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
   }
 
   async #close(

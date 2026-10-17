@@ -10,8 +10,9 @@ import type { OfferSellUnitsFailure } from '../offers/offer-sell-units-request';
 
 /**
  * `offerListings` for event handlers and jobs (catalog design 9.1): rule `system`. The same
- * published-only answer, plus `rechecking` and `suspended` tags with status and basis and no
- * badge data (Hassan L3).
+ * published-only answer, plus the `active`, `rechecking` and `suspended` tags with status and
+ * basis and no badge data (Hassan L3, L-1): until slice 12, `active` does not yet reflect a
+ * revoked or expired certificate.
  */
 export class OfferListingsSystemQuery extends UseCase<
   OfferListingsInput,

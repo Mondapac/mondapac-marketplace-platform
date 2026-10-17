@@ -4,7 +4,6 @@ import type { ListingTags, OfferListingsReader } from '../application/ports/offe
 import {
   sellUnitKey,
   type OfferListing,
-  type OfferListingBadge,
   type OfferListingTag,
   type OfferListingsMap,
   type SellUnitKey,
@@ -140,7 +139,7 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
               status: { in: ['active', 'rechecking', 'suspended'] },
             },
             orderBy: [{ typeCode: 'asc' }],
-            select: { offerId: true, typeCode: true, status: true, basis: true, badgeData: true },
+            select: { offerId: true, typeCode: true, status: true, basis: true },
           });
     const tagsOf = new Map<string, OfferListingTag[]>();
     for (const row of tagRows) {
@@ -149,11 +148,9 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
         typeCode: row.typeCode,
         status,
         basis: row.basis as OfferListingTag['basis'],
-        // Badge data only while active (data design CHECK; design 5.3).
-        badge:
-          status === 'active' && row.badgeData !== null
-            ? (row.badgeData as unknown as OfferListingBadge)
-            : null,
+        // No badge data until slice 12 (Hassan L-1): a stored `active` tag does not yet
+        // reflect a revoked or expired certificate, so its badge copy is never handed out.
+        badge: null,
       };
       tagsOf.set(row.offerId, [...(tagsOf.get(row.offerId) ?? []), tag]);
     }

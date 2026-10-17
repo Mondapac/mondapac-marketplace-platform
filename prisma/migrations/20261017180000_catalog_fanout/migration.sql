@@ -79,7 +79,9 @@ GRANT SELECT, INSERT, UPDATE ("state", "cursor_offer_id", "counts", "settled_at"
 -- keep NULL (the history is insert-only); the presence check of 3.15 is unchanged.
 
 -- D 5.4 (slice 11): the Offer approval is an entry path of its own (`offer-approve`). Both lists
--- are replaced NOT VALID, then validated: the check scans without blocking writes.
+-- are replaced NOT VALID, then validated. Note (Mojtaba F2): the migration runs in one
+-- transaction, so the VALIDATE does not avoid blocking here; the DROP/ADD already holds an ACCESS
+-- EXCLUSIVE lock to commit, bounded by lock_timeout above, and both tables are small at this stage.
 ALTER TABLE "catalog"."offer_tags" DROP CONSTRAINT "offer_tags_last_change_cause_check";
 ALTER TABLE "catalog"."offer_tags" ADD CONSTRAINT "offer_tags_last_change_cause_check" CHECK (
   "last_change_cause" IS NULL OR "last_change_cause" IN ('offer-create', 'offer-edit',

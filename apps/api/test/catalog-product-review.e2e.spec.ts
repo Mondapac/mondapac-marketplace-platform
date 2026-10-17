@@ -144,6 +144,8 @@ describe('admin product revision review over HTTP (integration)', () => {
           })
           .overrideProvider(PRODUCT_REPOSITORY)
           .useValue({
+            lockAtVersion: (_m: MarketContext, productId: Id<'Product'>, version: number) =>
+              Promise.resolve(products.get(productId)?.version === version),
             findById: (_m: MarketContext, productId: Id<'Product'>) =>
               Promise.resolve(
                 products.has(productId) ? Product.restore(products.get(productId)!) : null,

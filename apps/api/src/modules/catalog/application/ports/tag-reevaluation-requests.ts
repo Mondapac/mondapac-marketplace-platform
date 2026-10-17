@@ -27,6 +27,8 @@ export interface PendingReevaluation {
   /** The last Offer settled by an earlier run; the next run starts after it. */
   readonly cursorOfferId: Id<'Offer'> | null;
   readonly counts: ReevaluationCounts;
+  /** When the publish wrote it; a request still pending long after is logged for operators. */
+  readonly createdAt: Temporal.Instant;
 }
 
 /**
@@ -53,13 +55,15 @@ export interface TagReevaluationRequestRepository {
   listPending(market: MarketContext, limit: number): Promise<readonly PendingReevaluation[]>;
 
   /**
-   * Moves the cursor forward and stores the counts, only while the request is pending and only
-   * forward (a late overlapping run never moves it back). False when nothing changed.
+   * Stores the counts and moves the cursor, only while the request is pending and never back (a
+   * late overlapping run never moves it back). An equal cursor, or none while the stored one is
+   * none, stores the counts only, so a run that stopped before settling an Offer still records
+   * what it saw (Mojtaba F4). False when nothing changed.
    */
   progress(
     market: MarketContext,
     id: Id<'TagReevaluationRequest'>,
-    update: { readonly cursorOfferId: Id<'Offer'>; readonly counts: ReevaluationCounts },
+    update: { readonly cursorOfferId: Id<'Offer'> | null; readonly counts: ReevaluationCounts },
   ): Promise<boolean>;
 
   /** Ends a pending request as `settled` or `superseded`; false when it was not pending. */

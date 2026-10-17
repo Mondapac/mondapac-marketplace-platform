@@ -7,6 +7,7 @@ import {
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import { NO_COUNTS } from '../../src/modules/catalog/application/ports/tag-reevaluation-requests';
 import { ClaimQueryBuilder } from '../../src/modules/catalog/application/tags/claim-query-builder';
 import { markProductForReevaluation } from '../../src/modules/catalog/application/tags/publish-fan-out';
 import { OwnOfferAddTag } from '../../src/modules/catalog/application/use-cases/own-offer-add-tag.use-case';
@@ -568,6 +569,47 @@ describe.each(TEST_MARKETS)(
         ).toBe('23503');
       });
 
+      it('moves the cursor only forward and stores counts alone at an equal cursor (Mojtaba F4)', async () => {
+        const { productId, first } = await publishedProduct();
+        const repo = new PrismaTagReevaluationRequests(persistence.service);
+        const id = uuid7() as Id<'TagReevaluationRequest'>;
+        const progress = (cursor: string | null, unavailable: number) =>
+          persistence.unitOfWork.run(market, async () =>
+            ok(
+              await repo.progress(market, id, {
+                cursorOfferId: cursor as Id<'Offer'> | null,
+                counts: { ...NO_COUNTS, unavailable },
+              }),
+            ),
+          );
+        await persistence.unitOfWork.run(market, async () => {
+          await repo.requestForPublish(market, {
+            id,
+            productId: productId as Id<'Product'>,
+            productRevisionId: first as Id<'ProductRevision'>,
+            now: Temporal.Instant.from(T0),
+          });
+          return ok(undefined);
+        });
+        const stored = async () =>
+          (
+            await owner.query<{ cursor_offer_id: string | null; counts: { unavailable: number } }>(
+              `SELECT cursor_offer_id, counts FROM catalog.tag_reevaluation_requests WHERE id = $1`,
+              [id],
+            )
+          ).rows[0]!;
+        const [low, high] = [uuid7(), uuid7()];
+
+        expect(await progress(null, 2)).toEqual({ ok: true, value: true });
+        expect(await stored()).toMatchObject({ cursor_offer_id: null, counts: { unavailable: 2 } });
+        expect(await progress(high, 3)).toEqual({ ok: true, value: true });
+        expect(await progress(high, 5)).toEqual({ ok: true, value: true });
+        expect(await stored()).toMatchObject({ cursor_offer_id: high, counts: { unavailable: 5 } });
+        expect(await progress(low, 7)).toEqual({ ok: true, value: false });
+        expect(await progress(null, 7)).toEqual({ ok: true, value: false });
+        expect(await stored()).toMatchObject({ cursor_offer_id: high, counts: { unavailable: 5 } });
+      });
+
       it('grants no DELETE and no update of the identity columns', async () => {
         const { productId, first } = await publishedProduct();
         const stored = row(productId, first);
@@ -656,8 +698,9 @@ describe.each(TEST_MARKETS)(
           tags: [],
         });
         expect(anonymous.value.get(key(suspendedOffer))).toMatchObject({ listed: false, tags: [] });
+        // No badge data for the system rule either until slice 12 (Hassan L-1).
         expect(system.value.get(key(activeOffer))!.tags).toEqual([
-          expect.objectContaining({ typeCode, status: 'active', basis: 'SELLER' }),
+          { typeCode, status: 'active', basis: 'SELLER', badge: null },
         ]);
         expect(system.value.get(key(suspendedOffer))!.tags).toEqual([
           { typeCode, status: 'suspended', basis: 'SELLER', badge: null },

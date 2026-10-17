@@ -7,8 +7,8 @@ import type { OfferListingsMap, SellUnitKey } from '../../contracts/catalog.faca
  * is absent. Names, labels and the primary image come from the product's published revision
  * only. `tags` is `none` for the anonymous rule: no tag is read and every listing's `tags` is
  * empty (a stored `active` tag can outlive its certificate until slice 12 consumes the revoke
- * and expiry events); `live` answers `active`, `rechecking` and `suspended` tags, badge data only
- * for `active`. Runs in a read-only unit.
+ * and expiry events); `live` answers `active`, `rechecking` and `suspended` tags with status and
+ * basis, and no badge data until slice 12 (Hassan L-1). Runs in a read-only unit.
  */
 export interface OfferListingsReader {
   read(

@@ -75,11 +75,11 @@ export interface OfferListingBadge {
 
 /**
  * One certification tag of a listed Offer (catalog design 9.1), answered to the `system` caller
- * only: `active`, `rechecking` and `suspended` tags with status and basis; `badge` is present
- * exactly for `active`. An `anonymous` caller receives no tags until catalog consumes the
- * certification revoke and expiry events (slice 12): a stored `active` tag can outlive its
- * certificate, so no buyer badge is built from it (Hassan, certification revoke review). Never
- * permission to claim anything: `ordering` asks `evaluateClaims` itself (AC 14).
+ * only: `active`, `rechecking` and `suspended` tags with status and basis. Until catalog consumes
+ * the certification revoke and expiry events (slice 12), `active` is the stored status and does
+ * NOT yet reflect a revoked or expired certificate, so `badge` is always null and an `anonymous`
+ * caller receives no tags (Hassan, certification revoke review, L-1). Never permission to claim
+ * anything: `ordering` asks `evaluateClaims` itself (AC 14).
  */
 export interface OfferListingTag {
   readonly typeCode: string;

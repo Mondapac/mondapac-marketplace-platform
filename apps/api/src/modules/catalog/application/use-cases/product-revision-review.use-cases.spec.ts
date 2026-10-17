@@ -151,11 +151,14 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       offer?: { state: OfferState; tags: OfferTagState[] };
       decide?: (query: TagClaimQuery) => TagDecision;
       unavailable?: boolean;
+      /** The product row moved between the guard read and the write unit's lock. */
+      lockFails?: boolean;
     } = {},
   ) {
     const state = options.product === undefined ? productState() : options.product;
     const revision = options.revision === undefined ? revisionOf() : options.revision;
     let findCalls = 0;
+    let locks = 0;
     const saved: Product[] = [];
     const decisions: ReviewDecision[] = [];
     const events: PendingEvent[] = [];
@@ -163,6 +166,16 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
     } as unknown as UnitOfWork;
     const products = {
+      // Like the real repository: the row of this Market at this version, or nothing.
+      lockAtVersion: (m: MarketContext, _id: unknown, at: number) => {
+        locks += 1;
+        return Promise.resolve(
+          options.lockFails !== true &&
+            state !== null &&
+            state.marketId === m.marketId &&
+            state.version === at,
+        );
+      },
       // Like the real repository: a product of another Market is simply not found.
       findById: (m: MarketContext) =>
         Promise.resolve(
@@ -261,7 +274,16 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       outbox,
       clock,
     });
-    return { approve, requestChanges, saved, decisions, events, savedOffers, evaluator };
+    return {
+      approve,
+      requestChanges,
+      saved,
+      decisions,
+      events,
+      savedOffers,
+      evaluator,
+      locks: () => locks,
+    };
   }
 
   const approveInput = (checks: string[] = ALL_CHECKS) => ({
@@ -378,6 +400,8 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       const outcome = await r.approve.execute(adminContext(), approveInput());
 
       expect(outcome).toEqual({ ok: true, value: {} });
+      // The write unit locks the product row at the checked version first (Hassan M-1).
+      expect(r.locks()).toBe(1);
       expect(r.saved).toHaveLength(1);
       expect(r.saved[0]!.state).toMatchObject({
         status: 'published',
@@ -527,6 +551,18 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       expect(r.saved).toHaveLength(0);
       expect(r.decisions).toHaveLength(0);
       expect(r.events).toHaveLength(0);
+    });
+
+    it('refuses with conflict.stale when the product row moved before the write unit locked it (M-1)', async () => {
+      const r = rig({ lockFails: true });
+      expect(await r.approve.execute(adminContext(), approveInput())).toEqual({
+        ok: false,
+        error: { code: 'conflict.stale' },
+      });
+      expect(r.locks()).toBe(1);
+      expect(r.saved).toEqual([]);
+      expect(r.decisions).toEqual([]);
+      expect(r.events).toEqual([]);
     });
 
     it('refuses with conflict.stale when the content hash changed inside the write unit', async () => {
