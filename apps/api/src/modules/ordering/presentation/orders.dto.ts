@@ -44,6 +44,12 @@ export class OrderLineBody {
   })
   taxRateBps!: number | null;
   @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The product's tax category code frozen at placement; null on older orders.",
+  })
+  taxCategoryCode!: string | null;
+  @ApiProperty({
     type: MoneyView,
     nullable: true,
     description: 'The tax of the line, inside lineAmount when taxInclusive; null on older orders.',
@@ -183,6 +189,7 @@ const lineBody = (line: SellerOrderLike['lines'][number]): OrderLineBody => ({
   lineAmount: moneyBody(line.lineAmount),
   taxInclusive: line.taxInclusive,
   taxRateBps: line.taxRateBps,
+  taxCategoryCode: line.taxCategoryCode,
   tax: line.tax === null ? null : moneyBody(line.tax),
 });
 

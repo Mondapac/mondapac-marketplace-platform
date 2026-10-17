@@ -161,6 +161,22 @@ export interface CatalogFacade {
   >;
 
   /**
+   * The tax category code of the PUBLISHED revision of each requested Offer's product, at most
+   * 200 ids. Rule `anonymous` (a category code is public content). An Offer that is unknown, of
+   * another Market or whose product has no published revision is absent; a draft category is
+   * never returned. Not exposed over HTTP.
+   */
+  offerTaxCategories(
+    context: CallContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Offer'>, string>,
+      AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
+    >
+  >;
+
+  /**
    * The published product name and published Variant label of each requested (Offer, Variant),
    * in `locale` (any locale present when that one is missing), at most 200 keys. Rule
    * `anonymous` (names are public content once published); callers pass their `CallContext`

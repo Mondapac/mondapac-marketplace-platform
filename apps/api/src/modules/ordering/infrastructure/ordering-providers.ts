@@ -8,10 +8,15 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { CHECKOUT_GATEWAY, type CheckoutGateway } from '../application/ports/checkout-gateway';
 import { ORDER_LABELS, type OrderLabels } from '../application/ports/order-labels';
+import {
+  ORDER_TAX_CATEGORIES,
+  type OrderTaxCategories,
+} from '../application/ports/order-tax-categories';
 import { ORDER_REPOSITORY, type OrderRepository } from '../application/ports/order.repository';
 import { ORDERING_POLICY, type OrderingPolicy } from '../application/ports/ordering-policy';
 import { ConfigOrderingPolicy } from './config-ordering-policy';
 import { FacadeOrderLabels } from './facade-order-labels';
+import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
 import { PrismaOrderRepository } from './prisma-order.repository';
 import { StripeCheckoutGateway } from './stripe-checkout-gateway';
 
@@ -32,6 +37,12 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: ORDERING_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): OrderingPolicy => new ConfigOrderingPolicy(markets),
+  },
+  {
+    provide: ORDER_TAX_CATEGORIES,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): OrderTaxCategories =>
+      new FacadeOrderTaxCategories(catalog),
   },
   {
     provide: ORDER_LABELS,

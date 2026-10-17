@@ -53,6 +53,8 @@ import { OwnOfferRecordAttestation } from './application/use-cases/own-offer-rec
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
 import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
+import { OFFER_TAX_CATEGORIES_READER } from './application/ports/offer-tax-categories.reader';
+import { OfferTaxCategoriesQuery } from './application/use-cases/offer-tax-categories.use-case';
 import { SELL_UNIT_LABELS_READER } from './application/ports/sell-unit-labels.reader';
 import { SellUnitLabelsQuery } from './application/use-cases/sell-unit-labels.use-case';
 import { OFFER_NAMES_READER } from './application/ports/offer-names.reader';
@@ -171,6 +173,7 @@ const PORT = {
   searchReader: OFFER_SEARCH_FACTS_READER,
   namesReader: OFFER_NAMES_READER,
   labelsReader: SELL_UNIT_LABELS_READER,
+  taxCategoriesReader: OFFER_TAX_CATEGORIES_READER,
   offers: OFFER_REPOSITORY,
   offerFinder: OWN_OFFER_FINDER,
   claims: ClaimQueryBuilder,
@@ -648,6 +651,7 @@ const productTypeProvider: FactoryProvider<string> = {
     useCaseProvider(OfferSellUnitsSystemQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferNamesSystemQuery, { unitOfWork: true, namesReader: true }),
     useCaseProvider(SellUnitLabelsQuery, { unitOfWork: true, labelsReader: true }),
+    useCaseProvider(OfferTaxCategoriesQuery, { unitOfWork: true, taxCategoriesReader: true }),
     useCaseProvider(OfferListingsQuery, {
       unitOfWork: true,
       listingsReader: true,
@@ -667,6 +671,7 @@ const productTypeProvider: FactoryProvider<string> = {
         OfferSellUnitsSystemQuery,
         OfferNamesSystemQuery,
         SellUnitLabelsQuery,
+        OfferTaxCategoriesQuery,
         OfferListingsQuery,
         OfferListingsSystemQuery,
       ],
@@ -675,6 +680,7 @@ const productTypeProvider: FactoryProvider<string> = {
         offerSellUnitsSystem: OfferSellUnitsSystemQuery,
         offerNamesSystem: OfferNamesSystemQuery,
         sellUnitLabels: SellUnitLabelsQuery,
+        offerTaxCategories: OfferTaxCategoriesQuery,
         offerListings: OfferListingsQuery,
         offerListingsSystem: OfferListingsSystemQuery,
       ) =>
@@ -683,6 +689,7 @@ const productTypeProvider: FactoryProvider<string> = {
           offerSellUnitsSystem,
           offerNamesSystem,
           sellUnitLabels,
+          offerTaxCategories,
           offerListings,
           offerListingsSystem,
         }),

@@ -28,6 +28,7 @@ import {
 } from '../domain/order';
 import type { CheckoutGateway } from './ports/checkout-gateway';
 import type { OrderLabels } from './ports/order-labels';
+import type { OrderTaxCategories } from './ports/order-tax-categories';
 import type { OrderingPolicy } from './ports/ordering-policy';
 import type { OrderRepository } from './ports/order.repository';
 
@@ -41,6 +42,8 @@ export interface OrderingDependencies {
   readonly shipping: ShippingFacade;
   readonly commission: CommissionPayoutsFacade;
   readonly tax: TaxFacade;
+  /** The product's tax category of each Offer bought (catalog's published revision). */
+  readonly taxCategories: OrderTaxCategories;
   readonly outbox: OutboxWriter;
   readonly ids: IdGenerator;
   readonly clock: Clock;
@@ -162,13 +165,26 @@ export async function startCheckout(
 
   // The tax of each line is frozen on it now (ADR-0039 decision 4); no tax answer, no order.
   const planLines = plan.sellers.flatMap((seller) => seller.lines);
+  let categories: ReadonlyMap<Id<'Offer'>, string>;
+  try {
+    categories = await deps.taxCategories.categoriesOf(
+      context,
+      planLines.map((line) => line.offerId),
+    );
+  } catch {
+    return err({ code: 'ordering.check-unavailable' });
+  }
+  // A bought Offer has a published product, so its category is known; one that is not is a
+  // failed check, never a silent default rate.
+  if (planLines.some((line) => !categories.has(line.offerId))) {
+    return err({ code: 'ordering.check-unavailable' });
+  }
   const taxed = await deps.tax.calculateTax(
     context,
     planLines.map((line) => ({
       amount: line.unitPrice.amount * BigInt(line.quantity),
       taxInclusive: line.taxInclusive,
-      // The tax category of a line is not known to checkout yet: the strategy's default applies.
-      categoryCode: null,
+      categoryCode: categories.get(line.offerId)!,
     })),
   );
   if (!taxed.ok || taxed.value.lines.length !== planLines.length) {
@@ -265,6 +281,7 @@ export async function startCheckout(
         commissionRateBps: rate.rateBps,
         taxRateBps: tax.rateBps,
         taxAmount: tax.tax,
+        taxCategoryCode: categories.get(line.offerId)!,
       });
     }
   }

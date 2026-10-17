@@ -43,6 +43,11 @@ export interface OrderLine {
    */
   readonly taxRateBps: number | null;
   readonly taxAmount: bigint | null;
+  /**
+   * The tax category code of the product, frozen with the rate at placement (catalog's published
+   * revision). Null only on lines placed before it was recorded.
+   */
+  readonly taxCategoryCode: string | null;
 }
 
 /**

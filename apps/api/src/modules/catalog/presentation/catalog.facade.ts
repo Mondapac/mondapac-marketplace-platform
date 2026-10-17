@@ -1,6 +1,7 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { OfferNamesSystemQuery } from '../application/use-cases/offer-names-system.use-case';
+import type { OfferTaxCategoriesQuery } from '../application/use-cases/offer-tax-categories.use-case';
 import type { SellUnitLabelsQuery } from '../application/use-cases/sell-unit-labels.use-case';
 import type { OfferSellUnitsSystemQuery } from '../application/use-cases/offer-sell-units-system.use-case';
 import type { OfferSellUnitsQuery } from '../application/use-cases/offer-sell-units.use-case';
@@ -21,6 +22,7 @@ export interface CatalogFacadeUseCases {
   readonly offerSellUnits: OfferSellUnitsQuery;
   readonly offerSellUnitsSystem: OfferSellUnitsSystemQuery;
   readonly offerNamesSystem: OfferNamesSystemQuery;
+  readonly offerTaxCategories: OfferTaxCategoriesQuery;
   readonly sellUnitLabels: SellUnitLabelsQuery;
   readonly offerListings: OfferListingsQuery;
   readonly offerListingsSystem: OfferListingsSystemQuery;
@@ -58,6 +60,18 @@ export class CatalogFacadeImplementation implements CatalogFacade {
     >
   > {
     return this.useCases.offerNamesSystem.execute(context, { offerIds, locale });
+  }
+
+  offerTaxCategories(
+    context: CallContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Offer'>, string>,
+      AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
+    >
+  > {
+    return this.useCases.offerTaxCategories.execute(context, { offerIds });
   }
 
   sellUnitLabels(

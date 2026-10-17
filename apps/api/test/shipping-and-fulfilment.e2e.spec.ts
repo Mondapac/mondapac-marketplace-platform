@@ -67,6 +67,7 @@ const detail = (currency: string, patch: object = {}) => ({
       lineAmount: money(3000n, currency),
       taxInclusive: true,
       taxRateBps: 1000,
+      taxCategoryCode: 'taxable',
       tax: money(273n, currency),
     },
   ],
