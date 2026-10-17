@@ -47,9 +47,9 @@ const SAME_ADMIN = { code: 'review.second-admin-required' } as const;
  * `certification.issuer.edit`, who is not the requester (`review.second-admin-required`; the row's
  * CHECK says the same), makes a `closed-to-new` issuer `active` again under the new expert
  * reference. The reference is opened from the proposal and sealed for the issuer outside the unit
- * (labels bind each ciphertext to its column). One unit: the proposal `approved` under its version,
- * the issuer's state and reference under the issuer's version,
- * `certification.issuer.reactivation-approved`. Rule: key `certification.issuer.edit`
+ * (labels bind each ciphertext to its column). One unit, issuer row first and then the proposal
+ * (the lock order of derecognise): the issuer's state and reference under the issuer's version,
+ * the proposal `approved` under its version, `certification.issuer.reactivation-approved`. Rule: key `certification.issuer.edit`
  * (protected), not acting-as.
  */
 export class IssuerApproveReactivation extends UseCase<
@@ -148,13 +148,7 @@ export class IssuerApproveReactivation extends UseCase<
         );
         if (!next.ok)
           return err(next.error.code === 'approval.same-admin' ? SAME_ADMIN : next.error);
-        await deps.registry.closeProposal(market, {
-          id: proposalId,
-          expectedVersion: version.value,
-          state: 'approved',
-          decidedByAccountId: admin.accountId,
-          decidedAt: now,
-        });
+        // Lock order: the issuer, then its proposal (as derecognise does).
         await deps.registry.setIssuerState(market, {
           id: issuerId,
           expectedVersion: issuer.version,
@@ -162,6 +156,13 @@ export class IssuerApproveReactivation extends UseCase<
           expertReferenceCiphertext: sealed,
           accountId: admin.accountId,
           changedAt: now,
+        });
+        await deps.registry.closeProposal(market, {
+          id: proposalId,
+          expectedVersion: version.value,
+          state: 'approved',
+          decidedByAccountId: admin.accountId,
+          decidedAt: now,
         });
         await deps.audit.record(
           context,

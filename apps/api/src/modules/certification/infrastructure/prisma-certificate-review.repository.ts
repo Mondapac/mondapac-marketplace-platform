@@ -34,7 +34,6 @@ import type { SubmissionKind } from '../domain/seller-certificate';
 import type { VerificationMode } from '../domain/type-revision';
 import type { IssuerState, SellerCertificationStatus } from '../domain/validity';
 
-const ISSUER_STATES: readonly string[] = ['proposed', 'active', 'closed-to-new', 'derecognised'];
 import {
   CERTIFICATE_INCLUDE,
   DOCUMENT_INCLUDE,
@@ -47,6 +46,8 @@ import {
   toDocument,
   toInstant,
 } from './prisma-seller-certificate.repository';
+
+const ISSUER_STATES: readonly string[] = ['proposed', 'active', 'closed-to-new', 'derecognised'];
 
 const MAX_HINTS = 10;
 const HISTORY_ROWS = 20;

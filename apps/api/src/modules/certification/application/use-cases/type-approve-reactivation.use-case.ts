@@ -99,6 +99,8 @@ export class TypeApproveReactivation extends UseCase<
         const next = reactivateType(type.status, proposal, admin.accountId);
         if (!next.ok) return err(next.error);
         if (proposal.version !== version.value) return err({ code: 'conflict.stale' } as const);
+        // Lock order: the type row, then its proposal (as for issuers).
+        await deps.registry.setTypeStatus(market, typeId, 'active', type.version);
         await deps.registry.closeProposal(market, {
           id: proposalId,
           expectedVersion: version.value,
@@ -106,7 +108,6 @@ export class TypeApproveReactivation extends UseCase<
           decidedByAccountId: admin.accountId,
           decidedAt: now,
         });
-        await deps.registry.setTypeStatus(market, typeId, 'active', type.version);
         await deps.audit.record(
           context,
           TypeReactivationApprovedAudit.entry(typeId, { after: { proposalId } }),

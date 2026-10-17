@@ -148,6 +148,9 @@ const ISSUER_INCLUDE = { type: { select: { code: true } } } as const;
  * version or an insert; a revision, its texts and terms are inserted in one unit before anything
  * points at them (the content trigger requires it). Nothing is deleted.
  */
+/** The unique index on a type's revision numbers (claims-core migration). */
+const REVISION_NO_KEY = 'certification_type_revisions_market_id_type_id_revision_no_key';
+
 export class PrismaCertificationRegistryRepository implements CertificationRegistryRepository {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -270,7 +273,8 @@ export class PrismaCertificationRegistryRepository implements CertificationRegis
       });
     } catch (error) {
       // A concurrent save took the number: the second to commit loses (its unit rolls back).
-      if (this.prisma.violatedConstraint(error) !== undefined) {
+      // Only the revision number key; any other constraint fault is a defect and surfaces.
+      if (this.prisma.violatedConstraint(error) === REVISION_NO_KEY) {
         throw new StaleAggregateError('certification-type', revision.typeId);
       }
       throw error;

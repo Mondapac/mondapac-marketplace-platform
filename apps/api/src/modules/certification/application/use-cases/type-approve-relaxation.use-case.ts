@@ -108,6 +108,8 @@ export class TypeApproveRelaxation extends UseCase<
         if (based === null || proposed === null) {
           throw new Error('certification proposal without its revisions');
         }
+        // Lock order: the type row, then its proposal (as for issuers).
+        await deps.registry.publishRevision(market, typeId, revisionId, type.version);
         await deps.registry.closeProposal(market, {
           id: proposalId,
           expectedVersion: version.value,
@@ -115,7 +117,6 @@ export class TypeApproveRelaxation extends UseCase<
           decidedByAccountId: admin.accountId,
           decidedAt: now,
         });
-        await deps.registry.publishRevision(market, typeId, revisionId, type.version);
         const { claimTermsChanged } = classifyTypeRevision(based.content, proposed.content);
         await deps.audit.record(
           context,

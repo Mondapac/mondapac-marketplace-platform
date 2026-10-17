@@ -495,6 +495,19 @@ describe.each(['AU', 'ZZ'] as const)('certification registry in market %s', (cod
       expect(JSON.stringify([r.audit.entries, r.outbox.events, logs])).not.toContain('MEMO-2026');
     });
 
+    it('refuses the expert-reference read in a Login as Seller session: no decrypt, no audit row (Hassan L2)', async () => {
+      const r = rig();
+      const issuerId = await activeIssuer(r, r.admin());
+      const audited = r.audit.entries.length;
+      const open = jest.spyOn(r.cipher, 'openExpertApproval');
+      expect(await refusal(r.issuers.reference.execute(r.admin(true), { issuerId }))).toEqual({
+        code: 'access.denied',
+      });
+      expect(open).not.toHaveBeenCalled();
+      expect(r.audit.entries).toHaveLength(audited);
+      expect(auditActions(r)).not.toContain('certification.issuer.expert-reference-viewed');
+    });
+
     it('form 1 closes an issuer to new certificates and publishes the event', async () => {
       const r = rig();
       const issuerId = await activeIssuer(r, r.admin());

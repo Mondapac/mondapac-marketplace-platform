@@ -125,16 +125,16 @@ export interface ReviewHistoryRow {
   readonly reasonCode: string | null;
 }
 
-/**
- * A certificate with the submission a reviewer works on: the pending one, else the approved one
- * (a late issuer confirmation is allowed on it), else null.
- */
 /** What {@link CertificateReviewRepository.shareRegistryRows} answers. */
 export interface RegistryRowsShared {
   readonly typeStatus: 'active' | 'inactive' | null;
   readonly issuer: { readonly state: IssuerState; readonly typeId: Id<'CertificationType'> } | null;
 }
 
+/**
+ * A certificate with the submission a reviewer works on: the pending one, else the approved one
+ * (a late issuer confirmation is allowed on it), else null.
+ */
 export interface ReviewSnapshot {
   readonly certificate: StoredCertificate;
   readonly submission: ReviewSubmission | null;

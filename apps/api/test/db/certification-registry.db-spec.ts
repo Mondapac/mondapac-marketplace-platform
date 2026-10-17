@@ -166,8 +166,8 @@ describe.each(TEST_MARKETS)('certification registry in market %s (database)', (c
     return id;
   }
 
-  /** An approved certificate of `seller` naming `issuerId`, as the seller side and review write. */
-  async function approved(
+  /** A certificate of `seller` naming `issuerId`, submitted and waiting for review. */
+  async function submitted(
     typeId: Id<'CertificationType'>,
     revisionId: Id<'CertificationTypeRevision'>,
     issuerId: Id<'Issuer'>,
@@ -203,6 +203,17 @@ describe.each(TEST_MARKETS)('certification registry in market %s (database)', (c
       historyId: uuid7() as Id<'CertificationHistory'>,
     };
     await inUnit(() => sellerSide.submit(market, write));
+    return { id, submissionId };
+  }
+
+  /** An approved certificate of `seller` naming `issuerId`, as the seller side and review write. */
+  async function approved(
+    typeId: Id<'CertificationType'>,
+    revisionId: Id<'CertificationTypeRevision'>,
+    issuerId: Id<'Issuer'>,
+    seller: Id<'Seller'>,
+  ) {
+    const { id, submissionId } = await submitted(typeId, revisionId, issuerId, seller);
     await inUnit(async () => {
       await reviews.lockForDecision(market, id, 2, T2);
       await reviews.decide(market, {
@@ -426,6 +437,65 @@ describe.each(TEST_MARKETS)('certification registry in market %s (database)', (c
       sellers[2],
     ]);
     expect(await read(() => registry.approvedCertificateCount(other, issuerId), other)).toBe(0);
+  }, 30_000);
+
+  it('counts only approved certificates whose approved submission names the issuer (Mojtaba 3d)', async () => {
+    const { typeId, revisionId } = await type();
+    const [issuerId, otherIssuer] = [
+      await issuer(typeId, 'Counted Certifiers'),
+      await issuer(typeId, 'Other Certifiers'),
+    ];
+    await sql.query(
+      `UPDATE certification.issuers SET state = 'active', expert_reference_ciphertext = $2 WHERE id = ANY($1)`,
+      [[issuerId, otherIssuer], ENVELOPE],
+    );
+    const seller = () => uuid7() as Id<'Seller'>;
+    const counted = seller();
+    await approved(typeId, revisionId, issuerId, counted);
+    const revoked = await approved(typeId, revisionId, issuerId, seller());
+    const expired = await approved(typeId, revisionId, issuerId, seller());
+    await sql.query(
+      `UPDATE certification.seller_certifications SET status = 'revoked' WHERE id = $1`,
+      [revoked],
+    );
+    await sql.query(
+      `UPDATE certification.seller_certifications SET status = 'expired' WHERE id = $1`,
+      [expired],
+    );
+    await submitted(typeId, revisionId, issuerId, seller());
+    await approved(typeId, revisionId, otherIssuer, seller());
+
+    expect(await read(() => registry.approvedCertificateCount(market, issuerId))).toBe(1);
+    expect(await read(() => registry.affectedSellers(market, issuerId, null, 10))).toEqual([
+      counted,
+    ]);
+    expect(await read(() => registry.approvedCertificateCount(market, otherIssuer))).toBe(1);
+  }, 30_000);
+
+  it('makes a type status change wait behind the share lock of an approval (Hassan L3)', async () => {
+    const { typeId } = await type();
+    const held = gate();
+    let shared: unknown = null;
+    const approval = inUnit(async () => {
+      shared = await reviews.shareRegistryRows(market, typeId, null);
+      await held.opened;
+    });
+    await delay(200);
+    let changed = false;
+    const change = inUnit(async () => {
+      await registry.setTypeStatus(market, typeId, 'inactive', 1);
+      changed = true;
+    });
+    await delay(300);
+    expect(shared).toEqual({ typeStatus: 'active', issuer: null });
+    expect(changed).toBe(false);
+    held.open();
+    await Promise.all([approval, change]);
+    expect(changed).toBe(true);
+    expect(await read(() => registry.type(market, typeId))).toMatchObject({
+      status: 'inactive',
+      version: 2,
+    });
   }, 30_000);
 
   it('seals expert references under one platform subject and reasons under their own keys', async () => {
