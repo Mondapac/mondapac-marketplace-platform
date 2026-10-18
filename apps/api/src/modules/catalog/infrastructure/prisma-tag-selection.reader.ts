@@ -19,6 +19,8 @@ function selected(selection: TagSelection): Prisma.CatalogOfferTagWhereInput {
       return { certificateVersionId: selection.id };
     case 'seller':
       return { sellerId: selection.id };
+    case 'type':
+      return { typeCode: selection.code };
   }
 }
 

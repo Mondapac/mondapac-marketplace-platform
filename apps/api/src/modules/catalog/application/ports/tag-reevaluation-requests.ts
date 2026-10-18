@@ -20,17 +20,31 @@ export const NO_COUNTS: ReevaluationCounts = Object.freeze({
 });
 
 /**
- * The certification events catalog consumes (design 5.5; slice 12), as the cause of a
- * `certification-event` request (data design 3.18 `cause`, a closed list). The product
- * certification, claim-policy and issuer events join when certification publishes them.
+ * The certification events catalog consumes (design 5.5; slices 12 and 14), as the cause of a
+ * `certification-event` request (data design 3.18 `cause`, a closed list). The issuer events and
+ * the ends of a manufacturer certificate (suspended, revoked, expired) join when certification
+ * publishes them.
  */
 export const CERTIFICATION_CAUSES = [
   'seller-certification-approved',
   'seller-certification-expired',
   'seller-certification-revoked',
   'seller-certification-issuer-confirmed',
+  'claim-policy-changed',
+  'product-certification-approved',
+  'product-certification-coverage-changed',
 ] as const;
 export type CertificationCause = (typeof CERTIFICATION_CAUSES)[number];
+
+/**
+ * The causes whose subject is a certification type id (slice 14): their requests select the tags
+ * of that type (`offer_tags.type_code`), the code resolved through certification at run time.
+ */
+export const TYPE_CAUSES = [
+  'claim-policy-changed',
+  'product-certification-approved',
+  'product-certification-coverage-changed',
+] as const satisfies readonly CertificationCause[];
 
 /**
  * The causes that end a certificate (Hassan M-1, PR #398): their requests are listed first, and
@@ -63,7 +77,7 @@ export interface PendingPublishReevaluation extends PendingCommon {
 export interface PendingCertificationReevaluation extends PendingCommon {
   readonly kind: 'certification-event';
   readonly cause: CertificationCause;
-  /** The seller, certificate or submission id the selection matches (by cause). */
+  /** The seller, certificate, submission or type id the selection matches (by cause). */
   readonly subjectId: Id;
   /** The consumed event; recorded on the tag history rows the request writes. */
   readonly sourceEventId: Id;

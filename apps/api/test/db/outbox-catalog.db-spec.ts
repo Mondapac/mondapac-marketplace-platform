@@ -30,6 +30,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX offer_tags_market_id_evaluated_at_idx ON catalog.offer_tags USING btree (market_id, evaluated_at, id) WHERE (status <> ALL (ARRAY['removed'::text, 'pending-publish'::text]))",
   'catalog.offer_tags_market_id_seller_id_offer_id_idx':
     "CREATE INDEX offer_tags_market_id_seller_id_offer_id_idx ON catalog.offer_tags USING btree (market_id, seller_id, offer_id) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
+  // Slice 14 (certification): the tags of one type (claim policy, manufacturer certificate).
+  'catalog.offer_tags_market_id_type_code_offer_id_idx':
+    "CREATE INDEX offer_tags_market_id_type_code_offer_id_idx ON catalog.offer_tags USING btree (market_id, type_code, offer_id) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
   // docs/design/data/catalog.md 3.15 (slice 8): one tag that is not removed per Offer and type.
   'catalog.offer_tags_market_id_offer_id_type_code_open_key':
     "CREATE UNIQUE INDEX offer_tags_market_id_offer_id_type_code_open_key ON catalog.offer_tags USING btree (market_id, offer_id, type_code) WHERE (status <> 'removed'::text)",
@@ -76,6 +79,21 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX claim_policy_rows_market_id_category_id_idx ON certification.claim_policy_rows USING btree (market_id, category_id) WHERE (category_id IS NOT NULL)',
   'certification.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON certification.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // docs/design/data/certification.md 3.15, 3.16 (slice 14): the manufacturer certificate's live
+  // approvals for the expiry job, one approved pointer per revision, and coverage whole or by
+  // variant (ruling L1), on the draft and on each revision.
+  'certification.product_certification_draft_coverage_variant_key':
+    'CREATE UNIQUE INDEX product_certification_draft_coverage_variant_key ON certification.product_certification_draft_coverage USING btree (market_id, product_certification_id, product_id, variant_id) WHERE (variant_id IS NOT NULL)',
+  'certification.product_certification_draft_coverage_whole_key':
+    'CREATE UNIQUE INDEX product_certification_draft_coverage_whole_key ON certification.product_certification_draft_coverage USING btree (market_id, product_certification_id, product_id) WHERE (variant_id IS NULL)',
+  'certification.product_certifications_market_id_approved_boundary_at_idx':
+    "CREATE INDEX product_certifications_market_id_approved_boundary_at_idx ON certification.product_certifications USING btree (market_id, approved_boundary_at) WHERE (status = 'approved'::text)",
+  'certification.product_certifications_market_id_approved_revision_id_key':
+    'CREATE UNIQUE INDEX product_certifications_market_id_approved_revision_id_key ON certification.product_certifications USING btree (market_id, approved_revision_id) WHERE (approved_revision_id IS NOT NULL)',
+  'certification.product_revision_coverage_variant_key':
+    'CREATE UNIQUE INDEX product_revision_coverage_variant_key ON certification.product_revision_coverage USING btree (market_id, revision_id, product_id, variant_id) WHERE (variant_id IS NOT NULL)',
+  'certification.product_revision_coverage_whole_key':
+    'CREATE UNIQUE INDEX product_revision_coverage_whole_key ON certification.product_revision_coverage USING btree (market_id, revision_id, product_id) WHERE (variant_id IS NULL)',
   'certification.seller_certifications_market_id_approved_boundary_at_idx':
     "CREATE INDEX seller_certifications_market_id_approved_boundary_at_idx ON certification.seller_certifications USING btree (market_id, approved_boundary_at) WHERE (status = 'approved'::text)",
   'certification.seller_certifications_market_id_pending_idx':

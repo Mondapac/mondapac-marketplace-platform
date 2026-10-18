@@ -8,13 +8,14 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import type { TagDecision } from '../../domain/offer-tag';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
 import type { OfferRepository } from '../ports/offer.repository';
-import type {
-  CertificationCause,
-  PendingCertificationReevaluation,
-  PendingPublishReevaluation,
-  PendingReevaluation,
-  ReevaluationCounts,
-  TagReevaluationRequestRepository,
+import {
+  TYPE_CAUSES,
+  type CertificationCause,
+  type PendingCertificationReevaluation,
+  type PendingPublishReevaluation,
+  type PendingReevaluation,
+  type ReevaluationCounts,
+  type TagReevaluationRequestRepository,
 } from '../ports/tag-reevaluation-requests';
 import type { TagSelection, TagSelectionReader } from '../ports/tag-selection.reader';
 import type { OfferTagState } from '../../domain/offer-tag';
@@ -74,11 +75,14 @@ export interface ReevaluateTagsDependencies {
 /**
  * What a certification cause selects (design 5.5) and whether the selected `active` tags are
  * marked `rechecking` before the ask: an expired or revoked certificate makes the claim "no" from
- * its own instant, so no badge may stay while the answer is fetched (AC 12).
+ * its own instant, so no badge may stay while the answer is fetched (AC 12). A type cause (slice
+ * 14) selects every tag of the type by its code, which the caller resolves from the subject (a
+ * type id) first; without the code it throws (a programming error).
  */
 export function selectionOf(
   cause: CertificationCause,
   subjectId: Id,
+  typeCode: string | null = null,
 ): {
   readonly selection: TagSelection;
   readonly markFirst: boolean;
@@ -91,6 +95,11 @@ export function selectionOf(
       return { selection: { by: 'certificate', id: subjectId }, markFirst: true };
     case 'seller-certification-issuer-confirmed':
       return { selection: { by: 'certificate-version', id: subjectId }, markFirst: false };
+    case 'claim-policy-changed':
+    case 'product-certification-approved':
+    case 'product-certification-coverage-changed':
+      if (typeCode === null) throw new Error(`selectionOf: ${cause} needs the type code`);
+      return { selection: { by: 'type', code: typeCode }, markFirst: false };
   }
 }
 
@@ -103,6 +112,8 @@ export function selectsTag(selection: TagSelection, tag: OfferTagState): boolean
       return tag.copy?.certificateVersionId === selection.id;
     case 'seller':
       return true;
+    case 'type':
+      return tag.typeCode === selection.code;
   }
 }
 
@@ -302,7 +313,20 @@ export class ReevaluateTags extends UseCase<
   ): Promise<RequestOutcome> {
     const { market } = context;
     const { deps } = this;
-    const { selection, markFirst } = selectionOf(request.cause, request.subjectId);
+    // A type cause names a type id; the tags store its code (slice 14). Asked outside any unit.
+    let typeCode: string | null = null;
+    if ((TYPE_CAUSES as readonly string[]).includes(request.cause)) {
+      const resolved = await deps.evaluator.typeCodeOf(context, request.subjectId);
+      if (!resolved.ok) return 'pending';
+      if (resolved.value === null) {
+        // No such type in this Market: no tag can name it.
+        return (await this.#close(context, request, 'settled', request.counts))
+          ? 'settled'
+          : 'pending';
+      }
+      typeCode = resolved.value;
+    }
+    const { selection, markFirst } = selectionOf(request.cause, request.subjectId, typeCode);
     let counts: ReevaluationCounts = request.counts;
     let cursor = request.cursorOfferId;
     for (let page = 0; page < REEVALUATE_MAX_PAGES; page += 1) {

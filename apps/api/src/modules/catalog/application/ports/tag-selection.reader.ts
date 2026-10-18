@@ -6,12 +6,20 @@ import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
  * `copy_revision_published`): `certificate` the copy's certificate id (expired, revoked);
  * `certificate-version` the copy's submission (issuer confirmed); `seller` the Offer's seller
  * (seller certification approved: the event names a type id, which catalog does not store, so
- * every tag of the seller is re-asked; a superset that only costs asks).
+ * every tag of the seller is re-asked; a superset that only costs asks); `type` every tag of a
+ * certification type.
  */
 export type TagSelection =
   | { readonly by: 'certificate'; readonly id: Id }
   | { readonly by: 'certificate-version'; readonly id: Id }
-  | { readonly by: 'seller'; readonly id: Id };
+  | { readonly by: 'seller'; readonly id: Id }
+  /**
+   * Every tag of a certification type (slice 14: claim policy changed, manufacturer certificate
+   * approved or its coverage changed). The events name a type id and, for a manufacturer
+   * certificate, the certificate; one request holds one subject, so every tag of the type is
+   * re-asked: a superset of the design's selection (5.5) that only costs asks.
+   */
+  | { readonly by: 'type'; readonly code: string };
 
 /** One tag of the reconciliation order (design 5.6): its Offer and the instant of its last ask. */
 export interface StaleTag {

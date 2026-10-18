@@ -13,7 +13,7 @@ import type {
 export interface ReevaluateFromCertificationInput {
   readonly delivery: EventDelivery;
   readonly cause: CertificationCause;
-  /** The id the cause selects by: the seller, the certificate or the submission. */
+  /** The id the cause selects by: the seller, the certificate, the submission or the type. */
   readonly subjectId: Id;
 }
 
@@ -32,7 +32,8 @@ export interface ReevaluateFromCertificationDependencies {
 
 /**
  * The handler `catalog.reevaluate-from-certification` (catalog design 5.5, 9.5; slice 12). Rule
- * `system`, from the subscriptions on certification's seller-certification events; the Market
+ * `system`, from the subscriptions on certification's seller-certification, claim policy and
+ * manufacturer certificate events; the Market
  * is the envelope's (the subscriber context), never a payload field. In one unit opened through
  * the inbox's `runOnce`, it writes one pending `certification-event` request naming the cause,
  * the subject id and the event; the job `catalog.reevaluate-tags` then selects the tags from

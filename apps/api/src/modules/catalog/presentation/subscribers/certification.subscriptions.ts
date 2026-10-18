@@ -1,4 +1,7 @@
 import {
+  ClaimPolicyChanged,
+  ProductCertificationApproved,
+  ProductCertificationCoverageChanged,
   SellerCertificationApproved,
   SellerCertificationExpired,
   SellerCertificationIssuerConfirmed,
@@ -19,10 +22,16 @@ export const REEVALUATE_ON_SELLER_CERTIFICATION_REVOKED =
   'catalog.reevaluate-on-seller-certification-revoked';
 export const REEVALUATE_ON_SELLER_CERTIFICATION_ISSUER_CONFIRMED =
   'catalog.reevaluate-on-seller-certification-issuer-confirmed';
+export const REEVALUATE_ON_CLAIM_POLICY_CHANGED = 'catalog.reevaluate-on-claim-policy-changed';
+export const REEVALUATE_ON_PRODUCT_CERTIFICATION_APPROVED =
+  'catalog.reevaluate-on-product-certification-approved';
+export const REEVALUATE_ON_PRODUCT_CERTIFICATION_COVERAGE_CHANGED =
+  'catalog.reevaluate-on-product-certification-coverage-changed';
 
 /**
  * Catalog's subscriptions to certification's seller-certificate events (catalog design 5.5, 9.5;
- * slice 12). Entry adapters only: the delivery and the Market's system-actor context (the Market
+ * slice 12) and, from certification slice 14, to the claim policy and manufacturer certificate
+ * events, which select by the type id of their payload. Entry adapters only: the delivery and the Market's system-actor context (the Market
  * from the envelope) go unchanged to the one `system` use case, with the cause and the id the
  * cause selects by, both taken from the payload of a definition certification publishes. A
  * refusal throws, so the delivery is retried and, after its last attempt, dead-lettered with an
@@ -77,6 +86,36 @@ export function certificationSubscriptions(
           delivery,
           cause: 'seller-certification-issuer-confirmed',
           subjectId: event.payload.submissionId,
+        }),
+    }),
+    subscription({
+      name: REEVALUATE_ON_CLAIM_POLICY_CHANGED,
+      event: ClaimPolicyChanged,
+      handle: (event, delivery, context) =>
+        run(REEVALUATE_ON_CLAIM_POLICY_CHANGED, context, {
+          delivery,
+          cause: 'claim-policy-changed',
+          subjectId: event.payload.typeId,
+        }),
+    }),
+    subscription({
+      name: REEVALUATE_ON_PRODUCT_CERTIFICATION_APPROVED,
+      event: ProductCertificationApproved,
+      handle: (event, delivery, context) =>
+        run(REEVALUATE_ON_PRODUCT_CERTIFICATION_APPROVED, context, {
+          delivery,
+          cause: 'product-certification-approved',
+          subjectId: event.payload.typeId,
+        }),
+    }),
+    subscription({
+      name: REEVALUATE_ON_PRODUCT_CERTIFICATION_COVERAGE_CHANGED,
+      event: ProductCertificationCoverageChanged,
+      handle: (event, delivery, context) =>
+        run(REEVALUATE_ON_PRODUCT_CERTIFICATION_COVERAGE_CHANGED, context, {
+          delivery,
+          cause: 'product-certification-coverage-changed',
+          subjectId: event.payload.typeId,
         }),
     }),
   ];

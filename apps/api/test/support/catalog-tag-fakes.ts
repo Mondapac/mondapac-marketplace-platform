@@ -103,6 +103,18 @@ export class FakeClaimEvaluator implements ClaimEvaluator {
     if (this.activeUnavailable) return Promise.resolve(err({ code: 'claim.check-unavailable' }));
     return Promise.resolve(ok(new Set(this.active)));
   }
+
+  /** Type ids to codes for `typeCodeOf` (slice 14); `typesUnavailable` makes it unavailable. */
+  readonly typeCodes = new Map<string, string>();
+  typesUnavailable = false;
+
+  typeCodeOf(
+    _context: CallContext,
+    typeId: string,
+  ): Promise<Result<string | null, ClaimCheckUnavailable>> {
+    if (this.typesUnavailable) return Promise.resolve(err({ code: 'claim.check-unavailable' }));
+    return Promise.resolve(ok(this.typeCodes.get(typeId) ?? null));
+  }
 }
 
 /**
