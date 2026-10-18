@@ -69,7 +69,9 @@ import { expiryMailSubscriptions } from './presentation/subscribers/expiry-mail.
 import { SendDerecognitionMail } from './application/use-cases/send-derecognition-mail.use-case';
 import { registryProviders } from './infrastructure/registry-providers';
 import { claimPolicyProviders } from './infrastructure/claim-policy-providers';
+import { productCertificationProviders } from './infrastructure/product-certification-providers';
 import { AdminClaimPolicyController } from './presentation/admin-claim-policy.controller';
+import { AdminProductCertificateController } from './presentation/admin-product-certificate.controller';
 import { AdminCertificationTypeController } from './presentation/admin-certification-type.controller';
 import { AdminIssuerRegistryController } from './presentation/admin-issuer-registry.controller';
 import { derecognitionMailSubscriptions } from './presentation/subscribers/derecognition-mail.subscriptions';
@@ -118,8 +120,8 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
  * slice by slice. Today it binds the read side of the facade: the published types reader (each
  * call in a read-only unit of its own) behind `matchClaimTerms` and `certificationTypes`, and
  * `evaluateClaims` over the claim-facts reader on the module's own raw read port (ADR-0030):
- * the seller basis, the policy rows and the type default, and the manufacturer basis (slice 13;
- * no manufacturer certificate exists before slice 14, so it never allows yet).
+ * the seller basis, the policy rows and the type default, and the manufacturer basis (slices 13
+ * and 14: approved manufacturer certificates through S3, only where the Market switch is on).
  */
 @Module({
   imports: [PersistenceModule, SellersModule, IdentityModule],
@@ -131,6 +133,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     AdminCertificationTypeController,
     AdminIssuerRegistryController,
     AdminClaimPolicyController,
+    AdminProductCertificateController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('certification'),
@@ -159,6 +162,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     ...expiryProviders,
     ...registryProviders,
     ...claimPolicyProviders,
+    ...productCertificationProviders,
     PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
     claimFactsReaderProvider,

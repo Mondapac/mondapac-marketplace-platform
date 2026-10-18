@@ -4,7 +4,8 @@ import { declarePermissions, definePermission } from '../../../platform/authz';
 // A key is declared with the first use case that names it, together with identity's seed of the
 // default roles that receive it. The platform keys of the review package are view, review and
 // approve; the issuer keys come with the issuer requests (slice 6); revoke and the document key
-// with slice 11; the type keys with slice 12; the claim-policy keys with slice 13.
+// with slice 11; the type keys with slice 12; the claim-policy keys with slice 13; the
+// product-certificate view, edit and approve keys with slice 14 (`.revoke` with slice 15).
 
 /**
  * Read the seller's own certificates, their status codes and reasons, and their own documents
@@ -154,6 +155,41 @@ export const CERTIFICATION_CLAIM_POLICY_EDIT = definePermission('certification',
   protected: true,
 });
 
+/**
+ * The manufacturer certificates of the Market and their coverage, with clear fields only (design
+ * 3.4, 7.1; slice 14): no certificate number, no document. Platform scope; Catalogue Moderator and
+ * Certification Reviewer by identity's seed.
+ */
+export const CERTIFICATION_PRODUCT_CERTIFICATE_VIEW = definePermission('certification', {
+  key: 'certification.product-certificate.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Record and edit a manufacturer certificate, its fields and its coverage, and submit a revision
+ * for review (design 3.4, 7.1; slice 14). Protected: it decides what the manufacturer basis may
+ * cover (ADR-0012), so no default role lists it; the Platform Administrator holds it and grants it
+ * in a custom role.
+ */
+export const CERTIFICATION_PRODUCT_CERTIFICATE_EDIT = definePermission('certification', {
+  key: 'certification.product-certificate.edit',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Read a pending revision with its certificate number, and approve or reject it, as another person
+ * than its creator and editors (design 3.4, 7.1; Q3, AC 20; slice 14). Protected (accepted at G2,
+ * 19.2 item 7): no default role lists it; the Platform Administrator holds it and grants it in a
+ * custom role (the design's Certification Reviewer default cannot hold a protected key, R11).
+ */
+export const CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE = definePermission('certification', {
+  key: 'certification.product-certificate.approve',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CERTIFICATION_PERMISSIONS = declarePermissions('certification', [
   CERTIFICATION_OWN_CERTIFICATE_VIEW,
   CERTIFICATION_OWN_CERTIFICATE_MANAGE,
@@ -168,4 +204,7 @@ export const CERTIFICATION_PERMISSIONS = declarePermissions('certification', [
   CERTIFICATION_TYPE_EDIT,
   CERTIFICATION_CLAIM_POLICY_VIEW,
   CERTIFICATION_CLAIM_POLICY_EDIT,
+  CERTIFICATION_PRODUCT_CERTIFICATE_VIEW,
+  CERTIFICATION_PRODUCT_CERTIFICATE_EDIT,
+  CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE,
 ]);

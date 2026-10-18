@@ -10,8 +10,8 @@ export const MAX_CATALOG_REFERENCE_IDS = 500;
  * imports nothing of `catalog`. A named exception of 7.4: no actor, a `MarketContext` only (the
  * answers are not personal and are asked under admin actors only). Each call opens its own
  * read-only unit; a failure rejects, and the caller refuses its own use case
- * (`access.unavailable`), never "exists". `publishedProductRevisions` and `variantsOf` join with
- * slice 14, their first consumer (manufacturer coverage).
+ * (`access.unavailable`), never "exists". `publishedProductRevisions` and `variantsOf` came with
+ * slice 14, their first consumer (manufacturer coverage, M3).
  */
 export interface CatalogReferences {
   /**
@@ -23,6 +23,32 @@ export interface CatalogReferences {
     market: MarketContext,
     categoryIds: readonly Id<'Category'>[],
   ): Promise<ReadonlySet<Id<'Category'>>>;
+
+  /**
+   * Per requested product that is `published` in the Market, its current published revision id
+   * (M3: coverage records the revision it was checked against). A product of another Market, an
+   * unknown one and one that is not published are absent. At most
+   * {@link MAX_CATALOG_REFERENCE_IDS} ids.
+   */
+  publishedProductRevisions(
+    market: MarketContext,
+    productIds: readonly Id<'Product'>[],
+  ): Promise<ReadonlyMap<Id<'Product'>, Id<'ProductRevision'>>>;
+
+  /**
+   * Per (product, product revision) asked, the variants that revision publishes: the variants a
+   * coverage entry may be narrowed to (CERT-41). A pair whose revision is not that product's, or
+   * of another Market, answers no variants. Batched (the design's `variantsOf(market, productId)`
+   * per product), so the pair is read once and against the revision coverage records. At most
+   * {@link MAX_CATALOG_REFERENCE_IDS} pairs.
+   */
+  variantsOf(
+    market: MarketContext,
+    revisions: readonly {
+      readonly productId: Id<'Product'>;
+      readonly productRevisionId: Id<'ProductRevision'>;
+    }[],
+  ): Promise<ReadonlyMap<Id<'Product'>, ReadonlySet<Id<'Variant'>>>>;
 }
 
 export const CATALOG_REFERENCES = Symbol('CATALOG_REFERENCES');

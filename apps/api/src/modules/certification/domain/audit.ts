@@ -360,6 +360,53 @@ export const ClaimPolicyRelaxationApprovedAudit = defineAuditAction({
   after: { typeId: auditField.id(), proposalId: auditField.id(), revisionId: auditField.id() },
 });
 
+/** The audit target type of a manufacturer certificate (design 11; slice 14). */
+export const PRODUCT_CERTIFICATION_TARGET = 'certification.product-certification';
+
+/** An admin recorded a manufacturer certificate (its draft root; design 3.4 row 1, 11). */
+export const ProductCertificationRecordedAudit = defineAuditAction({
+  action: 'certification.product-certification.recorded',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: { typeId: auditField.id() },
+});
+
+/**
+ * An admin edited the draft (fields or coverage), or submitted it as a new pending revision
+ * (`revisionId` set exactly then). Counts of coverage entries only, never the number.
+ */
+export const ProductCertificationEditedAudit = defineAuditAction({
+  action: 'certification.product-certification.edited',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    typeId: auditField.id(),
+    revisionId: auditField.optional(auditField.id()),
+    coverageEntries: auditField.integer(),
+  },
+});
+
+const productDecisionAfter = {
+  revisionId: auditField.id(),
+  typeRevisionId: auditField.id(),
+} as const;
+
+/** Another admin approved the pending revision (design 3.4 row 3; AC 20). */
+export const ProductCertificationApprovedAudit = defineAuditAction({
+  action: 'certification.product-certification.approved',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: { ...productDecisionAfter, coverageChanged: auditField.boolean() },
+});
+
+/** Another admin rejected the pending revision; the reason code stays on the decision row. */
+export const ProductCertificationRejectedAudit = defineAuditAction({
+  action: 'certification.product-certification.rejected',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: productDecisionAfter,
+});
+
 /** Every audited action of certification, for its module's registration. */
 export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   SellerCertificationApprovedAudit,
@@ -394,4 +441,8 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   ClaimPolicyRevisedAudit,
   ClaimPolicyRelaxationRequestedAudit,
   ClaimPolicyRelaxationApprovedAudit,
+  ProductCertificationRecordedAudit,
+  ProductCertificationEditedAudit,
+  ProductCertificationApprovedAudit,
+  ProductCertificationRejectedAudit,
 ]);

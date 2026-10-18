@@ -82,6 +82,7 @@ export async function matchClaimTermsFor(
 
 function project(t: CertificationTypeView): CertificationTypeView {
   return {
+    typeId: t.typeId,
     code: t.code,
     status: t.status,
     publishedRevisionId: t.publishedRevisionId,

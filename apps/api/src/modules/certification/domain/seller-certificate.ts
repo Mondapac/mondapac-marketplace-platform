@@ -48,7 +48,12 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MIN_YEAR = 1900;
 const MAX_YEAR = 2200;
 
-function parseDate(value: unknown, path: string, fields: DraftField[]): Temporal.PlainDate | null {
+/** A local date field (`YYYY-MM-DD`, ADR-0005), or null; a malformed one adds `format`. */
+export function parseDate(
+  value: unknown,
+  path: string,
+  fields: DraftField[],
+): Temporal.PlainDate | null {
   if (value === null) return null;
   if (typeof value !== 'string' || !DATE.test(value)) {
     fields.push({ path, code: 'format' });
@@ -64,7 +69,13 @@ function parseDate(value: unknown, path: string, fields: DraftField[]): Temporal
   }
 }
 
-function parseText(value: unknown, path: string, max: number, fields: DraftField[]): string | null {
+/** A trimmed plain-text field of at most `max` characters, or null when empty or absent. */
+export function parseText(
+  value: unknown,
+  path: string,
+  max: number,
+  fields: DraftField[],
+): string | null {
   if (value === null) return null;
   if (typeof value !== 'string') {
     fields.push({ path, code: 'type' });

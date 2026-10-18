@@ -53,9 +53,11 @@ export const SECOND_ADMIN =
 /** The settle and refusal steps every registry route shares: one log line, ids and codes only. */
 export class RegistryHttp {
   readonly #logger: Logger;
+  readonly #table: Readonly<Record<string, number>>;
 
-  constructor(name: string) {
+  constructor(name: string, table: Readonly<Record<string, number>> = ADMIN_REGISTRY_STATUS) {
     this.#logger = new Logger(name);
+    this.#table = table;
   }
 
   answer<T extends object>(
@@ -66,7 +68,7 @@ export class RegistryHttp {
     return result.ok
       ? result.value
       : refusalWith(
-          ADMIN_REGISTRY_STATUS,
+          this.#table,
           result.error,
           response,
           context,

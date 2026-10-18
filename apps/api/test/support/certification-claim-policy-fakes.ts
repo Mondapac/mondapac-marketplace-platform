@@ -203,4 +203,53 @@ export class FakeCatalogReferences implements CatalogReferences {
     const known = this.categories.get(market.marketId) ?? new Set<string>();
     return Promise.resolve(new Set(categoryIds.filter((id) => known.has(id))));
   }
+
+  /** Published products per Market: product id -> current published revision id. */
+  readonly published = new Map<string, Map<string, string>>();
+  /** Published variants per `${marketId}|${productId}|${revisionId}`. */
+  readonly variants = new Map<string, Set<string>>();
+
+  publish(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    revisionId: Id<'ProductRevision'>,
+    variantIds: readonly Id<'Variant'>[] = [],
+  ): void {
+    const map = this.published.get(market.marketId) ?? new Map<string, string>();
+    map.set(productId, revisionId);
+    this.published.set(market.marketId, map);
+    this.variants.set(`${market.marketId}|${productId}|${revisionId}`, new Set(variantIds));
+  }
+
+  publishedProductRevisions(
+    market: MarketContext,
+    productIds: readonly Id<'Product'>[],
+  ): Promise<ReadonlyMap<Id<'Product'>, Id<'ProductRevision'>>> {
+    this.calls.push([...productIds]);
+    if (this.fail) return Promise.reject(new Error('catalog unavailable'));
+    const map = this.published.get(market.marketId) ?? new Map<string, string>();
+    const out = new Map<Id<'Product'>, Id<'ProductRevision'>>();
+    for (const id of productIds) {
+      const revision = map.get(id);
+      if (revision !== undefined) out.set(id, revision as Id<'ProductRevision'>);
+    }
+    return Promise.resolve(out);
+  }
+
+  variantsOf(
+    market: MarketContext,
+    revisions: readonly {
+      readonly productId: Id<'Product'>;
+      readonly productRevisionId: Id<'ProductRevision'>;
+    }[],
+  ): Promise<ReadonlyMap<Id<'Product'>, ReadonlySet<Id<'Variant'>>>> {
+    this.calls.push(revisions.map((r) => r.productId));
+    if (this.fail) return Promise.reject(new Error('catalog unavailable'));
+    const out = new Map<Id<'Product'>, ReadonlySet<Id<'Variant'>>>();
+    for (const r of revisions) {
+      const set = this.variants.get(`${market.marketId}|${r.productId}|${r.productRevisionId}`);
+      out.set(r.productId, new Set([...(set ?? [])] as Id<'Variant'>[]));
+    }
+    return Promise.resolve(out);
+  }
 }
