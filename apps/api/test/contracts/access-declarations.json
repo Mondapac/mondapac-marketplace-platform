@@ -153,6 +153,20 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "customers.update-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "engagement.forget-account", "rule": "system" },
+  { "name": "engagement.purge-expired-events", "rule": "system" },
+  { "name": "engagement.record-event", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "engagement.record-guest-event", "rule": "anonymous" },
+  {
+    "name": "engagement.set-personalization",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "engagement.view-personalization",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
   {

@@ -20,6 +20,11 @@
     "reason": "The guest cart is read with the cart cookie of the browser: a guest has no account or session."
   },
   {
+    "name": "engagement.record-guest-event",
+    "rule": "anonymous",
+    "reason": "The storefront records what a guest viewed, searched for or added to the cart under the engagement guest cookie (30 days): a guest has no account or session; ids only, and Sec-GPC records nothing."
+  },
+  {
     "name": "identity.accept-admin-invitation",
     "rule": "anonymous",
     "reason": "Admin invitation acceptance with the mailed token: the invitee has no session yet."
