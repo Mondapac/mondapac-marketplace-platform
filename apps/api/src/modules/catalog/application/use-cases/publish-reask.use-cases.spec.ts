@@ -48,6 +48,7 @@ import type { TagSelectionReader } from '../ports/tag-selection.reader';
 const NO_SELECTION: TagSelectionReader = {
   selectedOffers: () => Promise.resolve([]),
   staleTags: () => Promise.resolve([]),
+  ownersOfCertificate: () => Promise.resolve([]),
 };
 
 // Slice 11 (catalog design 5.1a point 3, 5.4, 9.1; Hassan's slice 8 conditions, M1, L3, L7): the

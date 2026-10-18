@@ -176,3 +176,64 @@ export class ProductDecidedView {
   @ApiProperty() version!: number;
   @ApiProperty() decidedAt!: string;
 }
+
+export class ProductEndRequest {
+  @ApiProperty({ description: 'The record version as it was read.' }) version!: number;
+  @ApiProperty({
+    description:
+      "A code of the Market's review reasons listed for the action's outcome (suspended or " +
+      'revoked).',
+  })
+  reasonCode!: string;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'An optional note, at most 1000 characters; sealed, never read back here.',
+  })
+  reasonText?: string | null;
+}
+
+export class ProductEndedView {
+  @ApiProperty({ format: 'uuid' }) certificateId!: string;
+  @ApiProperty({ enum: ['suspended', 'revoked'] }) status!: string;
+  @ApiProperty({ format: 'uuid', description: 'The approved revision the record holds.' })
+  revisionId!: string;
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    description: 'The pending revision a revocation withdrew, if any.',
+  })
+  withdrawnRevisionId!: string | null;
+  @ApiProperty() version!: number;
+  @ApiProperty() changedAt!: string;
+}
+
+export class ProductReinstateRequest {
+  @ApiProperty({ description: 'The record version as it was read.' }) version!: number;
+}
+
+export class ProductReinstatedView {
+  @ApiProperty({ format: 'uuid' }) certificateId!: string;
+  @ApiProperty({ enum: ['approved'] }) status!: string;
+  @ApiProperty({ format: 'uuid' }) revisionId!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty() reinstatedAt!: string;
+}
+
+class ProductHistoryEntryView {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ enum: STATUSES, nullable: true }) fromStatus!: string | null;
+  @ApiProperty({ enum: STATUSES }) toStatus!: string;
+  @ApiProperty({ format: 'uuid', nullable: true }) revisionId!: string | null;
+  @ApiProperty({ type: AccountRef, nullable: true, description: 'Null: the system (the job).' })
+  actor!: AccountRef | null;
+  @ApiProperty({ nullable: true }) reasonCode!: string | null;
+  @ApiProperty({ description: 'A note was given; its text is never shown here.' })
+  noteGiven!: boolean;
+  @ApiProperty() occurredAt!: string;
+}
+
+export class ProductHistoryView {
+  @ApiProperty({ format: 'uuid' }) certificateId!: string;
+  @ApiProperty({ type: [ProductHistoryEntryView], description: 'Newest first, at most 200.' })
+  entries!: ProductHistoryEntryView[];
+}

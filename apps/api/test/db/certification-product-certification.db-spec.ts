@@ -80,6 +80,8 @@ const cipher: ProductCertificateCipher = {
     if (!text.startsWith(`${holder}:`)) throw new Error('wrong label');
     return Promise.resolve(text.slice(holder.length + 1));
   },
+  sealHistoryNote: (_m, note) =>
+    Promise.resolve(`v1.${Buffer.from(`note:${note}`.padEnd(40, '~')).toString('base64url')}`),
   contentHash: (_m, content) =>
     Promise.resolve(`hmac-sha256:${createHash('sha256').update(content).digest('hex')}`),
 };

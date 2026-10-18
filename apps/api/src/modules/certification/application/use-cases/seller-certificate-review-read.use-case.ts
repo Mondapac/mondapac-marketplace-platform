@@ -128,7 +128,10 @@ export interface SellerCertificateReviewReadOutput {
     readonly recordedAt: string;
   } | null;
   /** The reasons a reviewer may give, by outcome (`revoked`: the revoke form, slice 11). */
-  readonly reasons: Readonly<Record<ReasonOutcome, readonly ReviewReasonView[]>>;
+  /** The seller path's outcomes; `suspended` is a manufacturer certificate's only (slice 15). */
+  readonly reasons: Readonly<
+    Record<Exclude<ReasonOutcome, 'suspended'>, readonly ReviewReasonView[]>
+  >;
   /** Other sellers' certificates with the same number or file; a hint, never a refusal. */
   readonly duplicateHints: readonly {
     readonly kind: 'number' | 'file';

@@ -419,6 +419,53 @@ export const ProductCertificateNumberViewedAudit = defineAuditAction({
   after: { revisionIds: auditField.listOf(auditField.id(), 2) },
 });
 
+/**
+ * An admin suspended the certificate (design 3.4 row 6, 11; slice 15): the approved revision and
+ * its type revision, and whether a note was given. Never the reason code or the note (they are on
+ * the history row).
+ */
+export const ProductCertificationSuspendedAudit = defineAuditAction({
+  action: 'certification.product-certification.suspended',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    ...productDecisionAfter,
+    withdrawnRevisionId: auditField.optional(auditField.id()),
+    noteGiven: auditField.boolean(),
+  },
+});
+
+/** Another person reinstated a suspended certificate on its approved revision (3.4 row 7). */
+export const ProductCertificationReinstatedAudit = defineAuditAction({
+  action: 'certification.product-certification.reinstated',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: productDecisionAfter,
+});
+
+/**
+ * An admin revoked the certificate (design 3.4 row 8, 11): the approved revision, the pending
+ * revision withdrawn in the same unit when there was one, and whether a note was given.
+ */
+export const ProductCertificationRevokedAudit = defineAuditAction({
+  action: 'certification.product-certification.revoked',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    ...productDecisionAfter,
+    withdrawnRevisionId: auditField.optional(auditField.id()),
+    noteGiven: auditField.boolean(),
+  },
+});
+
+/** The expiry job moved the certificate to `expired` at its boundary (3.4 row 9; system actor). */
+export const ProductCertificationExpiredAudit = defineAuditAction({
+  action: 'certification.product-certification.expired',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['system'],
+  after: productDecisionAfter,
+});
+
 /** Every audited action of certification, for its module's registration. */
 export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   SellerCertificationApprovedAudit,
@@ -458,4 +505,8 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   ProductCertificationApprovedAudit,
   ProductCertificationRejectedAudit,
   ProductCertificateNumberViewedAudit,
+  ProductCertificationSuspendedAudit,
+  ProductCertificationReinstatedAudit,
+  ProductCertificationRevokedAudit,
+  ProductCertificationExpiredAudit,
 ]);

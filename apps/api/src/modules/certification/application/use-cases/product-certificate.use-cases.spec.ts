@@ -19,6 +19,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import {
   CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE,
   CERTIFICATION_PRODUCT_CERTIFICATE_EDIT,
+  CERTIFICATION_PRODUCT_CERTIFICATE_REVOKE,
   CERTIFICATION_PRODUCT_CERTIFICATE_VIEW,
 } from '../../contracts/permissions';
 import type { ProductCertificationDependencies } from '../product/product-certification.shared';
@@ -30,6 +31,11 @@ import { ProductCertificateReviewRead } from './product-certificate-review-read.
 import { ProductCertificateSaveDraft } from './product-certificate-save-draft.use-case';
 import { ProductCertificateSubmit } from './product-certificate-submit.use-case';
 import { ProductCertificatesList } from './product-certificates-list.use-case';
+import { ProductCertificateHistoryRead } from './product-certificate-history-read.use-case';
+import { ProductCertificateReinstate } from './product-certificate-reinstate.use-case';
+import { ProductCertificateRevoke } from './product-certificate-revoke.use-case';
+import { ProductCertificateSuspend } from './product-certificate-suspend.use-case';
+import { ExpireProductCertificates } from './expire-product-certificates.use-case';
 
 // The manufacturer certificate use cases without a database (certification design 3.4, 7.1, 7.2;
 // slice 14), on both Market fixtures: the access rules (protected edit and approve keys, the view
@@ -66,6 +72,24 @@ describe('manufacturer certificate access declarations', () => {
         allOf: [CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE.key],
       });
     }
+    // Slice 15: suspend and revoke need the protected revoke key; reinstate is the approve key's
+    // (another person); the history read is the view key's; the job is the system's.
+    for (const type of [ProductCertificateSuspend, ProductCertificateRevoke]) {
+      expect(type.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: [CERTIFICATION_PRODUCT_CERTIFICATE_REVOKE.key],
+      });
+    }
+    expect(ProductCertificateReinstate.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE.key],
+    });
+    expect(ProductCertificateHistoryRead.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [CERTIFICATION_PRODUCT_CERTIFICATE_VIEW.key],
+    });
+    expect(ExpireProductCertificates.access.rule).toEqual({ kind: 'system' });
+    expect(CERTIFICATION_PRODUCT_CERTIFICATE_REVOKE.protected).toBe(true);
     for (const type of [ProductCertificateRead, ProductCertificatesList]) {
       expect(type.access.rule).toEqual({
         kind: 'permissions',
@@ -142,10 +166,37 @@ describe.each(['AU', 'ZZ'] as const)('manufacturer certificate use cases in mark
         { certificateId: ID, revisionId: ID, version: 1, reasonCode: 'x' },
       ],
       [new ProductCertificateReviewRead(gate, d), { certificateId: ID }],
+      [new ProductCertificateSuspend(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
+      [new ProductCertificateRevoke(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
+      [new ProductCertificateReinstate(gate, d), { certificateId: ID, version: 1 }],
     ] as const;
 
   // The acting-as refusal of every write is `reviewerOf` (write: true), tested in
-  // review/review.shared.spec.ts: a minted actor cannot carry acting-as outside identity.
+  // review/review.shared.spec.ts; the lifecycle writes are checked here too (Hassan L3, slice 15).
+  it('refuses an acting-as session on suspend, revoke and reinstate, before any store', async () => {
+    const d = deps();
+    const actor = testAuthenticatedActor(market, {
+      population: 'admin',
+      accountId: ID as Id<'Account'>,
+      sessionId: ID as Id<'Session'>,
+      sellerId: null,
+    });
+    // As review/review.shared.spec.ts: a minted actor carries acting-as only by this spread.
+    const marked = { ...actor, actingAs: { accountId: ID, sellerId: ID } };
+    const actingAs: CallContext = { ...testCallContext(market, actor), actor: marked };
+    for (const [useCase, input] of [
+      [new ProductCertificateSuspend(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
+      [new ProductCertificateRevoke(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
+      [new ProductCertificateReinstate(gate, d), { certificateId: ID, version: 1 }],
+    ] as const) {
+      const result = await (
+        useCase as { execute: (c: CallContext, i: unknown) => Promise<unknown> }
+      ).execute(actingAs, input);
+      expect(result).toEqual({ ok: false, error: { code: 'access.denied' } });
+    }
+    expect(touched).toEqual([]);
+  });
+
   it('refuses a seller on every route, before any store', async () => {
     const d = deps();
     for (const [useCase, input] of writes(d)) {
@@ -157,6 +208,7 @@ describe.each(['AU', 'ZZ'] as const)('manufacturer certificate use cases in mark
     for (const useCase of [
       new ProductCertificateRead(gate, d),
       new ProductCertificatesList(gate, d),
+      new ProductCertificateHistoryRead(gate, d),
     ]) {
       expect(await useCase.execute(sellerContext(), { certificateId: ID })).toEqual({
         ok: false,
@@ -197,6 +249,30 @@ describe.each(['AU', 'ZZ'] as const)('manufacturer certificate use cases in mark
       () => new ProductCertificateReject(gate, deps()),
       { certificateId: ID, revisionId: ID, version: 1 },
       'reasonCode',
+    ],
+    [
+      'suspend with a bad id',
+      () => new ProductCertificateSuspend(gate, deps()),
+      { certificateId: 'nope', version: 1, reasonCode: 'x' },
+      'certificateId',
+    ],
+    [
+      'revoke with a bad version',
+      () => new ProductCertificateRevoke(gate, deps()),
+      { certificateId: ID, version: 0, reasonCode: 'x' },
+      'version',
+    ],
+    [
+      'reinstate with a bad version',
+      () => new ProductCertificateReinstate(gate, deps()),
+      { certificateId: ID, version: 'one' },
+      'version',
+    ],
+    [
+      'history with a bad id',
+      () => new ProductCertificateHistoryRead(gate, deps()),
+      { certificateId: 'nope' },
+      'certificateId',
     ],
     [
       'list with an unknown status',

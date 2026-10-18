@@ -21,10 +21,15 @@ export { CERTIFICATION_PERMISSIONS } from './permissions';
 export { CERTIFICATION_AUDIT_ACTIONS } from '../domain/audit';
 export {
   CERTIFICATION_EVENTS,
-  // Consumed by catalog's tag re-evaluation (catalog design 5.5, 9.5; slices 12 and 14).
+  // Consumed by catalog's tag re-evaluation and warnings (catalog design 5.5, 9.5; slices 12, 14
+  // and 15).
   ClaimPolicyChanged,
   ProductCertificationApproved,
   ProductCertificationCoverageChanged,
+  ProductCertificationExpired,
+  ProductCertificationExpiryWarningDue,
+  ProductCertificationRevoked,
+  ProductCertificationSuspended,
   SellerCertificationApproved,
   SellerCertificationExpired,
   SellerCertificationIssuerConfirmed,

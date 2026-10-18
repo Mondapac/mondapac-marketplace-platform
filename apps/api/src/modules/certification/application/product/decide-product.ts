@@ -155,6 +155,7 @@ export async function decideProduct(
         outcome,
         expiryBoundaryAt: outcome === 'approved' ? boundary.at : null,
         boundaryZone: outcome === 'approved' ? boundary.zone : null,
+        rootBoundaryAt: outcome === 'approved' && pending.typeRequiresExpiry ? boundary.at : null,
         reasonCode,
         authorAccountId: root.authorAccountId,
         deciderAccountId: admin.accountId,

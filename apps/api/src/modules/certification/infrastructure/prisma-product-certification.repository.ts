@@ -7,6 +7,10 @@ import type {
   ProductCertificationSummary,
   ProductDecisionWrite,
   ProductDraftWrite,
+  ProductExpiryCandidate,
+  ProductExpiryPage,
+  ProductHistoryRow,
+  ProductLifecycleWrite,
   ProductSubmitWrite,
   StoredProductCertification,
   StoredProductDecision,
@@ -54,6 +58,73 @@ const coverageOf = (rows: readonly CoverageRow[]): CoverageEntry[] =>
     );
 
 const COVERAGE_SELECT = { productId: true, productRevisionId: true, variantId: true } as const;
+
+/** The marker kind of a manufacturer revision (data design 3.18). */
+const PRODUCT_REVISION_KIND = 'product-revision';
+
+/** The root with its approved revision and decision, as the expiry job reads it. */
+const EXPIRY_SELECT = {
+  id: true,
+  version: true,
+  typeId: true,
+  status: true,
+  approvedRevisionId: true,
+  approvedBoundaryAt: true,
+  approvedRevision: {
+    select: {
+      typeRevisionId: true,
+      expiryDate: true,
+      typeRevision: { select: { requiresExpiry: true } },
+      decisions: { select: { outcome: true, expiryBoundaryAt: true, boundaryZone: true } },
+    },
+  },
+} as const;
+
+interface ExpiryRow {
+  id: string;
+  version: number;
+  typeId: string;
+  status: string;
+  approvedRevisionId: string | null;
+  approvedRevision: {
+    typeRevisionId: string;
+    expiryDate: Date | null;
+    typeRevision: { requiresExpiry: boolean };
+    decisions: { outcome: string; expiryBoundaryAt: Date | null; boundaryZone: string | null }[];
+  } | null;
+}
+
+/** A candidate, or null for a row without an approved revision and its approval decision. */
+function expiryCandidateOf(
+  row: ExpiryRow,
+  warned: ReadonlyMap<string, readonly number[]>,
+): ProductExpiryCandidate | null {
+  const revision = row.approvedRevision;
+  const decision = revision?.decisions[0];
+  if (
+    row.approvedRevisionId === null ||
+    revision === null ||
+    decision === undefined ||
+    revision.decisions.length !== 1 ||
+    decision.outcome !== 'approved'
+  ) {
+    return null;
+  }
+  return {
+    certificateId: row.id as Id<'ProductCertification'>,
+    version: row.version,
+    typeId: row.typeId as Id<'CertificationType'>,
+    status: statusOf(row.status),
+    approvedRevisionId: row.approvedRevisionId as Id<'ProductCertificationRevision'>,
+    typeRevisionId: revision.typeRevisionId as Id<'CertificationTypeRevision'>,
+    requiresExpiry: revision.typeRevision.requiresExpiry,
+    expiryDate: fromDay(revision.expiryDate),
+    storedBoundary:
+      decision.expiryBoundaryAt === null ? null : toInstant(decision.expiryBoundaryAt),
+    boundaryZone: decision.boundaryZone,
+    warnedThresholds: [...(warned.get(row.approvedRevisionId) ?? [])],
+  };
+}
 
 /**
  * {@link ProductCertificationRepository} on `certification`'s manufacturer certificate tables
@@ -168,6 +239,7 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
         productCertificationId: true,
         typeId: true,
         typeRevisionId: true,
+        typeRevision: { select: { requiresExpiry: true } },
         revisionNo: true,
         issuerId: true,
         manufacturerName: true,
@@ -213,6 +285,7 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
       productCertificationId: row.productCertificationId as Id<'ProductCertification'>,
       typeId: row.typeId as Id<'CertificationType'>,
       typeRevisionId: row.typeRevisionId as Id<'CertificationTypeRevision'>,
+      typeRequiresExpiry: row.typeRevision.requiresExpiry,
       revisionNo: row.revisionNo,
       issuerId: row.issuerId as Id<'Issuer'>,
       manufacturerName: row.manufacturerName,
@@ -391,7 +464,7 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
           ? {
               approvedRevisionId: write.revisionId,
               approvedBoundaryAt:
-                write.expiryBoundaryAt === null ? null : toDate(write.expiryBoundaryAt),
+                write.rootBoundaryAt === null ? null : toDate(write.rootBoundaryAt),
             }
           : {}),
       },
@@ -419,6 +492,197 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
       },
       select: { id: true },
     });
+  }
+
+  async transition(market: MarketContext, write: ProductLifecycleWrite): Promise<void> {
+    const tx = this.prisma.tx(market);
+    const base = { marketId: market.marketId, tenantId: market.tenantId };
+    const at = toDate(write.now);
+    if (write.withdrawn !== null) {
+      // A system withdrawal: no decider (CHECK `(decided_by IS NULL) = (outcome = 'withdrawn')`).
+      await tx.certificationProductRevisionDecision.create({
+        data: {
+          ...base,
+          revisionId: write.withdrawn.revisionId,
+          outcome: 'withdrawn',
+          authorAccountId: write.withdrawn.authorAccountId,
+          decidedByAccountId: null,
+          decidedAt: at,
+        },
+        select: { revisionId: true },
+      });
+    }
+    const { count } = await tx.certificationProductCertification.updateMany({
+      where: {
+        marketId: market.marketId,
+        id: write.certificateId,
+        status: write.fromStatus,
+        approvedRevisionId: write.approvedRevisionId,
+        ...(write.withdrawn === null ? {} : { pendingRevisionId: write.withdrawn.revisionId }),
+      },
+      data: {
+        status: write.toStatus,
+        statusChangedAt: at,
+        ...(write.withdrawn === null ? {} : { pendingRevisionId: null }),
+      },
+    });
+    if (count !== 1) throw new StaleAggregateError('product-certification', write.certificateId);
+    await tx.certificationProductCertificationHistory.create({
+      data: {
+        ...base,
+        id: write.historyId,
+        productCertificationId: write.certificateId,
+        fromStatus: write.fromStatus,
+        toStatus: write.toStatus,
+        revisionId: write.approvedRevisionId,
+        actorKind: write.actorAccountId === null ? 'system' : 'admin',
+        actorAccountId: write.actorAccountId,
+        reasonCode: write.reasonCode,
+        noteCiphertext: write.noteCiphertext,
+        occurredAt: at,
+      },
+      select: { id: true },
+    });
+  }
+
+  async expiryCandidates(
+    market: MarketContext,
+    horizon: Temporal.Instant,
+    after: ProductExpiryPage['last'],
+    limit: number,
+  ): Promise<ProductExpiryPage> {
+    // A9 on `product_certifications` (partial index WHERE status = 'approved'); with a cursor the
+    // redundant lower bound keeps it in the index condition, as the seller path's.
+    const window =
+      after === null
+        ? { lt: toDate(horizon) }
+        : { lt: toDate(horizon), gte: toDate(after.boundary) };
+    const rows = await this.prisma.tx(market).certificationProductCertification.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'approved',
+        approvedBoundaryAt: window,
+        ...(after === null
+          ? {}
+          : {
+              OR: [
+                { approvedBoundaryAt: { gt: toDate(after.boundary) } },
+                { approvedBoundaryAt: toDate(after.boundary), id: { gt: after.certificateId } },
+              ],
+            }),
+      },
+      select: EXPIRY_SELECT,
+      orderBy: [{ approvedBoundaryAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    const warned = await this.#warned(
+      market,
+      rows.flatMap((row) => (row.approvedRevisionId === null ? [] : [row.approvedRevisionId])),
+    );
+    const candidates: ProductExpiryCandidate[] = [];
+    for (const row of rows) {
+      const candidate = expiryCandidateOf(row, warned);
+      if (candidate !== null) candidates.push(candidate);
+    }
+    const lastRow = rows.at(-1);
+    return {
+      candidates,
+      rawCount: rows.length,
+      last:
+        lastRow === undefined || lastRow.approvedBoundaryAt === null
+          ? null
+          : {
+              boundary: toInstant(lastRow.approvedBoundaryAt),
+              certificateId: lastRow.id as Id<'ProductCertification'>,
+            },
+      inconsistent: rows.length - candidates.length,
+    };
+  }
+
+  async expiryCandidate(
+    market: MarketContext,
+    certificateId: Id<'ProductCertification'>,
+  ): Promise<ProductExpiryCandidate | null> {
+    const row = await this.prisma.tx(market).certificationProductCertification.findFirst({
+      where: { marketId: market.marketId, id: certificateId },
+      select: EXPIRY_SELECT,
+    });
+    if (row === null || row.approvedRevisionId === null) return null;
+    return expiryCandidateOf(row, await this.#warned(market, [row.approvedRevisionId]));
+  }
+
+  async recordWarning(
+    market: MarketContext,
+    write: Parameters<ProductCertificationRepository['recordWarning']>[1],
+  ): Promise<void> {
+    await this.prisma.tx(market).certificationExpiryWarning.create({
+      data: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        versionKind: PRODUCT_REVISION_KIND,
+        versionId: write.revisionId,
+        thresholdDays: write.thresholdDays,
+        createdAt: toDate(write.now),
+      },
+      select: { versionId: true },
+    });
+  }
+
+  async history(
+    market: MarketContext,
+    certificateId: Id<'ProductCertification'>,
+    limit: number,
+  ): Promise<readonly ProductHistoryRow[]> {
+    const rows = await this.prisma.tx(market).certificationProductCertificationHistory.findMany({
+      where: { marketId: market.marketId, productCertificationId: certificateId },
+      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+      select: {
+        id: true,
+        fromStatus: true,
+        toStatus: true,
+        revisionId: true,
+        actorKind: true,
+        actorAccountId: true,
+        reasonCode: true,
+        noteCiphertext: true,
+        occurredAt: true,
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      fromStatus: row.fromStatus === null ? null : statusOf(row.fromStatus),
+      toStatus: statusOf(row.toStatus),
+      revisionId: row.revisionId,
+      actorKind: row.actorKind === 'system' ? ('system' as const) : ('admin' as const),
+      actorAccountId: row.actorAccountId,
+      reasonCode: row.reasonCode,
+      noteGiven: row.noteCiphertext !== null,
+      occurredAt: toInstant(row.occurredAt),
+    }));
+  }
+
+  /** The thresholds already marked per approved revision. */
+  async #warned(
+    market: MarketContext,
+    revisionIds: readonly string[],
+  ): Promise<ReadonlyMap<string, number[]>> {
+    const warned = new Map<string, number[]>();
+    if (revisionIds.length === 0) return warned;
+    const rows = await this.prisma.tx(market).certificationExpiryWarning.findMany({
+      where: {
+        marketId: market.marketId,
+        versionKind: PRODUCT_REVISION_KIND,
+        versionId: { in: [...revisionIds] },
+      },
+      select: { versionId: true, thresholdDays: true },
+    });
+    for (const row of rows) {
+      const list = warned.get(row.versionId) ?? [];
+      list.push(row.thresholdDays);
+      warned.set(row.versionId, list);
+    }
+    return warned;
   }
 
   async shareRegistryRows(

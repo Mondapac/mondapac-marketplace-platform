@@ -168,6 +168,20 @@ export function expiryActionAt(
   if (facts.status !== 'approved') return { kind: 'none' };
   const boundary = jobBoundary(facts, zones);
   if (boundary === null) return { kind: 'none' };
+  return actionForBoundary(boundary, thresholds, facts.warnedThresholds, at);
+}
+
+/**
+ * The job's step for a live record whose boundary is known (shared by the seller and the
+ * manufacturer paths, design 8.6): past the boundary it expires; before it, the most urgent
+ * threshold whose local day has started is warned once, unless its marker exists.
+ */
+export function actionForBoundary(
+  boundary: JobBoundary,
+  thresholds: readonly number[],
+  warnedThresholds: readonly number[],
+  at: Temporal.Instant,
+): ExpiryAction {
   if (Temporal.Instant.compare(at, boundary.at) >= 0) {
     return { kind: 'expire', boundary: boundary.at };
   }
@@ -177,6 +191,6 @@ export function expiryActionAt(
       if (due === null || days < due) due = days;
     }
   }
-  if (due === null || facts.warnedThresholds.includes(due)) return { kind: 'none' };
+  if (due === null || warnedThresholds.includes(due)) return { kind: 'none' };
   return { kind: 'warn', thresholdDays: due, boundary: boundary.at };
 }

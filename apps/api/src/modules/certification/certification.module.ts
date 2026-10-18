@@ -62,6 +62,7 @@ import { sellerCertificateProviders } from './infrastructure/seller-certificate-
 import { OwnCertificateController } from './presentation/own-certificate.controller';
 import { seedCertificationTypesJob } from './presentation/jobs/seed-certification-types.job';
 import { ExpireSellerCertificates } from './application/use-cases/expire-seller-certificates.use-case';
+import { ExpireProductCertificates } from './application/use-cases/expire-product-certificates.use-case';
 import { SendExpiryMail } from './application/use-cases/send-expiry-mail.use-case';
 import { expiryProviders } from './infrastructure/expiry-providers';
 import { expiryAndWarningsJob } from './presentation/jobs/expiry-and-warnings.job';
@@ -208,11 +209,12 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     },
     registerJobsFrom(
       'certification',
-      [SeedCertificationTypes, ExpireSellerCertificates],
-      (seed: SeedCertificationTypes, expire: ExpireSellerCertificates) => [
-        seedCertificationTypesJob(seed),
-        expiryAndWarningsJob(expire),
-      ],
+      [SeedCertificationTypes, ExpireSellerCertificates, ExpireProductCertificates],
+      (
+        seed: SeedCertificationTypes,
+        expire: ExpireSellerCertificates,
+        expireProducts: ExpireProductCertificates,
+      ) => [seedCertificationTypesJob(seed), expiryAndWarningsJob(expire, expireProducts)],
     ),
     ...readerUseCases,
     ...evaluateUseCases,

@@ -52,3 +52,8 @@ export const PRODUCT_NUMBER_LABELS = Object.freeze({
 });
 
 export const PRODUCT_CONTENT_HASH_PURPOSE = hashPurpose('certification.product-revision.content');
+
+/** The note of a manufacturer certificate's suspension or revocation (history row; slice 15). */
+export const PRODUCT_HISTORY_NOTE_LABEL = fieldLabel(
+  'certification.product-certification.history-note',
+);

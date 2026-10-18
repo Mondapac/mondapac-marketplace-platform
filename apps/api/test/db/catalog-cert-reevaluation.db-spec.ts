@@ -27,6 +27,10 @@ import { PrismaProductRepository } from '../../src/modules/catalog/infrastructur
 import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infrastructure/prisma-product-revision.repository';
 import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
 import { PrismaTagSelectionReader } from '../../src/modules/catalog/infrastructure/prisma-tag-selection.reader';
+import { PrismaOfferOwnerNotices } from '../../src/modules/catalog/infrastructure/prisma-offer-owner-notices';
+import { ConfigOfferOwnerMailSettings } from '../../src/modules/catalog/infrastructure/offer-owner-notices';
+import { SendOfferOwnerNotices } from '../../src/modules/catalog/application/use-cases/send-offer-owner-notices.use-case';
+import { WarnOfferOwnersOfExpiry } from '../../src/modules/catalog/application/use-cases/warn-offer-owners-of-expiry.use-case';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import type { EventDelivery } from '../../src/platform/events/event-delivery';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
@@ -40,7 +44,12 @@ import {
   refusedDecision,
 } from '../support/catalog-tag-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
-import { createPersistence, marketOf, type Persistence } from './persistence-support';
+import {
+  createPersistence,
+  marketOf,
+  otherMarketOf,
+  type Persistence,
+} from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // Catalog slice 12 on PostgreSQL (catalog design 5.2 point 4, 5.3, 5.5, 5.6; data design 3.15,
@@ -68,6 +77,7 @@ describe.each(TEST_MARKETS)(
   'catalog re-evaluation from certification in market %s (database integration)',
   (code) => {
     const market = marketOf(code);
+    const otherMarket = marketOf(otherMarketOf(code));
     const typeCode = code === 'AU' ? 'halal' : 'zz-cert';
     const base = { market_id: market.marketId, tenant_id: market.tenantId };
     const system = () => testCallContext(market, 'system');
@@ -258,12 +268,27 @@ describe.each(TEST_MARKETS)(
      * An Offer of a new seller on the product, with an active tag on its own certificate (valid
      * until `validUntil` when given, else without an expiry).
      */
-    async function taggedOffer(productId: string, validUntil?: string, tagType = typeCode) {
+    async function taggedOffer(
+      productId: string,
+      validUntil?: string,
+      tagType = typeCode,
+      manufacturer?: ReturnType<typeof certificateOf>,
+    ) {
       const offer = await offerOn(productId);
-      const certificate = certificateOf();
+      const certificate = manufacturer ?? certificateOf();
       const evaluator = new FakeClaimEvaluator(
         (query) => {
-          const allowed = allowedDecision(query, certificate);
+          const base = allowedDecision(query, certificate);
+          // A manufacturer basis (slice 15, request C-6): the shared certificate of the product.
+          const allowed: TagDecision =
+            manufacturer === undefined
+              ? base
+              : {
+                  ...base,
+                  basis: 'MANUFACTURER',
+                  certificate: { ...base.certificate!, kind: 'manufacturer' },
+                  badge: { ...base.badge!, basis: 'MANUFACTURER', sellerClaim: false },
+                };
           return validUntil === undefined
             ? allowed
             : {
@@ -807,6 +832,205 @@ describe.each(TEST_MARKETS)(
             expect(request.state).toBe('settled');
           }
         }
+      });
+
+      it.each([
+        'product-certification-suspended',
+        'product-certification-revoked',
+        'product-certification-expired',
+      ] as const)(
+        "%s marks the certificate's own tags rechecking first, then settles them from a fresh answer (slice 15)",
+        async (cause) => {
+          const { productId } = await product();
+          const s = await taggedOffer(productId);
+          const bystander = await taggedOffer(productId);
+          const eventId = await consume(cause, s.certificate.certificateId);
+          expect((await requestOf(eventId)).map((r) => [r.cause, r.subject_id, r.state])).toEqual([
+            [cause, s.certificate.certificateId, 'pending'],
+          ]);
+          const evaluator = evaluatorFor(
+            new Map([[s.sellerId, (q) => refusedDecision(q, 'no-valid-seller-certificate')]]),
+          );
+          await job(evaluator).execute(system(), {});
+          expect((await historyOf(s.offerId)).map((h) => h.to_status)).toEqual(
+            expect.arrayContaining(['rechecking', 'suspended']),
+          );
+          expect(await tagOf(s.offerId)).toMatchObject({ status: 'suspended', has_badge: false });
+          // A tag resting on another certificate is not selected.
+          expect(await tagOf(bystander.offerId)).toMatchObject({ status: 'active' });
+          expect(evaluator.calls.flat().every((q) => q.sellerId === s.sellerId)).toBe(true);
+          expect(await requestOf(eventId)).toEqual([expect.objectContaining({ state: 'settled' })]);
+        },
+      );
+
+      it('writes one notice per Owner in the handler unit; the job sends each with its own marker and retry (Hassan M1, Mojtaba N2)', async () => {
+        const { productId } = await product();
+        const shared = certificateOf();
+        const first = await taggedOffer(productId, '2027-07-01T00:00:00Z', typeCode, shared);
+        const second = await taggedOffer(productId, '2027-07-01T00:00:00Z', typeCode, shared);
+        const notices = new PrismaOfferOwnerNotices(persistence.service);
+        const at = Temporal.Instant.from('2027-06-01T00:00:00Z');
+        const handler = new WarnOfferOwnersOfExpiry(gate, {
+          unitOfWork: withoutInbox(),
+          tagSelection: new PrismaTagSelectionReader(persistence.service),
+          notices,
+          ids,
+          clock: new FixedClock(at),
+        });
+        const eventId = uuid7();
+        const warn = () =>
+          handler.execute(system(), {
+            delivery: {
+              eventId: eventId as Id<'event'>,
+              subscriber: 'catalog.warn-offer-owners-of-expiry',
+              attempt: 1,
+            },
+            productCertificationId: shared.certificateId,
+            thresholdDays: 30,
+          });
+        expect(await warn()).toEqual({
+          ok: true,
+          value: {
+            code: 'catalog.expiry-notice.queued',
+            owners: 2,
+            queued: 2,
+            skipped: 0,
+            capped: false,
+          },
+        });
+        // The same event again (a redelivery past the inbox): the unique keeps one row per Owner.
+        expect(await warn()).toMatchObject({ ok: true, value: { queued: 0 } });
+        const rowsOf = async () =>
+          (
+            await owner.query<{
+              seller_id: string;
+              state: string;
+              outcome: string | null;
+              attempts: number;
+            }>(
+              `SELECT seller_id, state, outcome, attempts FROM catalog.offer_owner_notices
+                WHERE market_id = $1 AND source_event_id = $2 ORDER BY seller_id`,
+              [market.marketId, eventId],
+            )
+          ).rows;
+        expect((await rowsOf()).map((r) => r.state)).toEqual(['pending', 'pending']);
+        const elsewhere = await owner.query(
+          `SELECT 1 FROM catalog.offer_owner_notices WHERE market_id = $1 AND source_event_id = $2`,
+          [otherMarket.marketId, eventId],
+        );
+        expect(elsewhere.rowCount).toBe(0);
+
+        const addressOf = (sellerId: string) => `${sellerId.slice(-6)}@example.test`;
+        const sent: string[] = [];
+        let failing: string | null = addressOf(first.sellerId);
+        const clock = new FixedClock(at);
+        const sender = new SendOfferOwnerNotices(gate, {
+          unitOfWork: persistence.unitOfWork,
+          notices,
+          ownerContacts: { emailOf: (_c, sellerId) => Promise.resolve(addressOf(sellerId)) },
+          mailTransport: {
+            send: (message) => {
+              if (message.to === failing) return Promise.reject(new Error('smtp'));
+              sent.push(message.to);
+              return Promise.resolve();
+            },
+          },
+          mailSettings: new ConfigOfferOwnerMailSettings(markets),
+          clock,
+        });
+        const run = () => sender.execute(system(), {});
+        expect(await run()).toMatchObject({ ok: true, value: { sent: 1, deferred: 1 } });
+        expect(sent).toEqual([addressOf(second.sellerId)]);
+        const afterFirst = new Map((await rowsOf()).map((r) => [r.seller_id, r]));
+        expect(afterFirst.get(first.sellerId)).toMatchObject({ state: 'pending', attempts: 1 });
+        expect(afterFirst.get(second.sellerId)).toMatchObject({
+          state: 'sent',
+          outcome: null,
+          attempts: 1,
+        });
+        // Not due yet; then due with the transport back: only the deferred Owner is mailed.
+        expect(await run()).toMatchObject({ ok: true, value: { examined: 0 } });
+        failing = null;
+        clock.set(at.add({ minutes: 5 }));
+        expect(await run()).toMatchObject({ ok: true, value: { sent: 1 } });
+        expect(sent).toEqual([addressOf(second.sellerId), addressOf(first.sellerId)]);
+        expect((await rowsOf()).map((r) => [r.state, r.attempts])).toEqual([
+          ['sent', expect.any(Number)],
+          ['sent', expect.any(Number)],
+        ]);
+
+        // The CHECKs and the grant: a sent row names no outcome; the API role deletes nothing.
+        const app = new Client({ connectionString: testDatabaseUrl() });
+        await app.connect();
+        try {
+          await expect(
+            app.query(
+              `UPDATE catalog.offer_owner_notices SET outcome = 'no-address'
+                WHERE market_id = $1 AND source_event_id = $2`,
+              [market.marketId, eventId],
+            ),
+          ).rejects.toMatchObject({ code: '23514' });
+          await expect(
+            app.query(`DELETE FROM catalog.offer_owner_notices WHERE market_id = $1`, [
+              market.marketId,
+            ]),
+          ).rejects.toMatchObject({ code: '42501' });
+        } finally {
+          await app.end();
+        }
+      });
+
+      it('lists the Owners of the Offers whose live badge rests on a manufacturer certificate (request C-6)', async () => {
+        const { productId } = await product();
+        const shared = certificateOf();
+        const first = await taggedOffer(productId, '2027-07-01T00:00:00Z', typeCode, shared);
+        const second = await taggedOffer(productId, '2027-06-20T00:00:00Z', typeCode, shared);
+        // A seller-basis tag of the same id never counts: only kind `manufacturer` is selected.
+        await taggedOffer(productId, '2027-07-01T00:00:00Z');
+        const reader = new PrismaTagSelectionReader(persistence.service);
+        const owners = await persistence.unitOfWork.run(
+          market,
+          async () => ok(await reader.ownersOfCertificate(market, shared.certificateId, 10)),
+          { readOnly: true },
+        );
+        expect(owners.ok && [...owners.value]).toEqual(
+          [
+            {
+              sellerId: first.sellerId,
+              typeCode,
+              offers: 1,
+              validUntil: Temporal.Instant.from('2027-07-01T00:00:00Z'),
+            },
+            {
+              sellerId: second.sellerId,
+              typeCode,
+              offers: 1,
+              validUntil: Temporal.Instant.from('2027-06-20T00:00:00Z'),
+            },
+          ].sort((a, b) => a.sellerId.localeCompare(b.sellerId)),
+        );
+        // A suspended tag shows no badge: it is not warned. The other Market sees nothing.
+        await consume('product-certification-suspended', shared.certificateId);
+        await job(
+          evaluatorFor(
+            new Map([
+              [first.sellerId, (q) => refusedDecision(q, 'no-valid-seller-certificate')],
+              [second.sellerId, (q) => refusedDecision(q, 'no-valid-seller-certificate')],
+            ]),
+          ),
+        ).execute(system(), {});
+        const after = await persistence.unitOfWork.run(
+          market,
+          async () => ok(await reader.ownersOfCertificate(market, shared.certificateId, 10)),
+          { readOnly: true },
+        );
+        expect(after.ok && after.value).toEqual([]);
+        const elsewhere = await persistence.unitOfWork.run(
+          otherMarket,
+          async () => ok(await reader.ownersOfCertificate(otherMarket, shared.certificateId, 10)),
+          { readOnly: true },
+        );
+        expect(elsewhere.ok && elsewhere.value).toEqual([]);
       });
 
       it('settles a coverage change of a type the Market does not have without asking', async () => {

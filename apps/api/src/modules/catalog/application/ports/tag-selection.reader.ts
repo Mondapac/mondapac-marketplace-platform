@@ -29,6 +29,18 @@ export interface StaleTag {
 }
 
 /**
+ * The owners of the Offers whose live badge rests on one manufacturer certificate (request C-6;
+ * certification slice 15): per seller and type, how many `active` tags name the certificate and
+ * the earliest `valid_until` among them.
+ */
+export interface CertificateOfferOwner {
+  readonly sellerId: Id<'Seller'>;
+  readonly typeCode: string;
+  readonly offers: number;
+  readonly validUntil: Temporal.Instant | null;
+}
+
+/**
  * The reads that select tags to ask again (data design 3.15 selection and reconciliation
  * indexes). Catalog's own rows only; every statement carries `market_id`. In the caller's unit.
  */
@@ -63,6 +75,17 @@ export interface TagSelectionReader {
       readonly limit: number;
     },
   ): Promise<readonly StaleTag[]>;
+
+  /**
+   * The owners of the Offers with an `active` tag whose copy names the manufacturer certificate
+   * (kind `manufacturer`), within the selection predicate of the handlers, ordered by seller id,
+   * at most `limit` (request C-6).
+   */
+  ownersOfCertificate(
+    market: MarketContext,
+    certificateId: Id,
+    limit: number,
+  ): Promise<readonly CertificateOfferOwner[]>;
 }
 
 export const TAG_SELECTION_READER = Symbol('TAG_SELECTION_READER');

@@ -230,6 +230,43 @@
     }
   },
   {
+    "type": "certification.product-certification-expired.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.product-certification-expiry-warning-due.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "typeId": "id",
+      "thresholdDays": "integer"
+    }
+  },
+  {
+    "type": "certification.product-certification-revoked.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.product-certification-suspended.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
     "type": "certification.relaxation-proposed.v1",
     "aggregateType": "relaxation-proposal",
     "fields": {

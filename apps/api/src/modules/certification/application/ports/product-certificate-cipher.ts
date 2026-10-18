@@ -13,6 +13,11 @@ export type ProductNumberHolder = 'draft' | 'revision';
 export interface ProductCertificateCipher {
   sealNumber(market: MarketContext, holder: ProductNumberHolder, number: string): Promise<string>;
   openNumber(market: MarketContext, holder: ProductNumberHolder, sealed: string): Promise<string>;
+  /**
+   * The optional note of a suspension or revocation, sealed for its history row (data design
+   * 3.16 `product_certification_history.note_ciphertext`; slice 15).
+   */
+  sealHistoryNote(market: MarketContext, note: string): Promise<string>;
   /** `hmac-sha256:<64 hex>` of the canonical content of a revision. */
   contentHash(market: MarketContext, canonicalContent: string): Promise<string>;
 }
