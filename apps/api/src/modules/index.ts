@@ -16,6 +16,7 @@ import { ShippingModule } from './shipping';
 import { ReturnsModule } from './returns';
 import { NotificationsModule } from './notifications';
 import { SearchModule } from './search';
+import { StorefrontModule } from './storefront';
 
 export const CORE_MODULES = [
   IdentityModule,
@@ -34,4 +35,5 @@ export const CORE_MODULES = [
   ReturnsModule,
   NotificationsModule,
   SearchModule,
+  StorefrontModule,
 ];

@@ -43,7 +43,8 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
 /**
  * The Nest modules that bind their own audit writer and register their actions. A module joins
  * this list only with the audited actions its approved design names (certification: the admin review of seller certificates, slice 7; pricing: design 8; shipping: the flat-fee change, Phase 5 package 4; commission-payouts: a seller's commission rate
- * set or removed, Phase 5 package 5; tax: the admin-defined tax strategies; payments: the payout-account
+ * set or removed, Phase 5 package 5; storefront: page and navigation content changes, publishing
+ * and archiving; tax: the admin-defined tax strategies; payments: the payout-account
  * change and pause rows, Phase 5 package 3 leftovers).
  */
 const AUDITING_MODULES = [
@@ -55,6 +56,7 @@ const AUDITING_MODULES = [
   'PricingModule',
   'SellersModule',
   'ShippingModule',
+  'StorefrontModule',
   'TaxModule',
 ] as const;
 const SRC = path.join(__dirname, '../../src');
@@ -442,6 +444,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['PricingModule', 'pricing'],
       ['SellersModule', 'sellers'],
       ['ShippingModule', 'shipping'],
+      ['StorefrontModule', 'storefront'],
       ['TaxModule', 'tax'],
     ]);
   });
@@ -480,6 +483,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['SellersModule', 'writer'],
       ['ShippingModule', 'actions'],
       ['ShippingModule', 'writer'],
+      ['StorefrontModule', 'actions'],
+      ['StorefrontModule', 'writer'],
       ['TaxModule', 'actions'],
       ['TaxModule', 'writer'],
     ]);
@@ -577,6 +582,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: registerAuditActions('sellers')`,
       `${path.join('modules', 'shipping', 'shipping.module.ts')}: auditWriterFor('shipping')`,
       `${path.join('modules', 'shipping', 'shipping.module.ts')}: registerAuditActions('shipping')`,
+      `${path.join('modules', 'storefront', 'storefront.module.ts')}: auditWriterFor('storefront')`,
+      `${path.join('modules', 'storefront', 'storefront.module.ts')}: registerAuditActions('storefront')`,
       `${path.join('modules', 'tax', 'tax.module.ts')}: auditWriterFor('tax')`,
       `${path.join('modules', 'tax', 'tax.module.ts')}: registerAuditActions('tax')`,
     ]);
