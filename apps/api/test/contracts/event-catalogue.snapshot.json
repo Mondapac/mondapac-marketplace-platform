@@ -185,6 +185,15 @@
     }
   },
   {
+    "type": "certification.claim-policy-changed.v1",
+    "aggregateType": "claim-policy",
+    "fields": {
+      "policyId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
     "type": "certification.issuer-deactivated.v1",
     "aggregateType": "issuer",
     "fields": {

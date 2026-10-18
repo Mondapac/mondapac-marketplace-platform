@@ -236,6 +236,19 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Migration 7 (expiry warnings, slice 9; data design 9.1): one marker per (version, threshold), insert-only
     // (data design 3.18; reject_mutation triggers), kept.
     'certification.expiry_warnings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Migration claim_policies (slice 13; data design 3.14): the root moves its pointer
+    // under its version; revisions and rows are insert-only (reject_mutation triggers); a retired
+    // category flag is cleared once.
+    'certification.claim_basis_policies': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_revision_id', 'version'],
+    },
+    'certification.claim_policy_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.claim_policy_rows': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.retired_category_flags': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['cleared_at', 'cleared_by_account_id'],
+    },
     'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },

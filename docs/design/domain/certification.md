@@ -1096,6 +1096,45 @@ Javad has the pace of `identity` and `sellers`.
 - **Not built (open).** The catalog consumer of `issuer-deactivated.v1` and `certification-type-deactivated.v1`, and the catalog count shown before a type save (C-7); the admin mail on `relaxation-proposed.v1` (needs identity's list of key holders); proposer and decider display names (identity R-11); issuer rename and contact channels; refusing `destroyKey` for the platform subject; Persian mail text.
 - **Recorded follow-ups (PR #400 review).** Hassan L1: `type.read` and the proposal views open admin change reasons in a Login as Seller session (only the expert-reference read refuses one); to be settled with identity's acting-as, as for slice 11. Mojtaba: an index on `seller_certification_submissions(issuer_id)` for the derecognition count, which today scans the approved certificates of the Market. Lock order in the registry units: the issuer (or type) row first, then its proposal.
 
+### 14.10 Slice 13 as built, part 1 (claim basis policy; manufacturer basis in `ClaimRule`; `CatalogReferences`; 2026-10-18)
+- **Split.** Part 1 is this list. Part 2 is `assertCategoriesRetirable` and the `platformCategoriesRetired` backstop (A12, B2, C-4). It waits for `catalog`'s move, merge and archive of a platform category, which does not exist yet. Migration `20261018150000_certification_claim_policies` already holds `retired_category_flags` and the partial index of A12.
+- **Routes.** `certification/admin/claim-policies/{typeId}`:
+  - `GET`: the default basis, the published rows and reason, a pending revision with its diff and actions, and the history (50).
+  - `POST /revisions`: body `version` (0 before the first save), `rows` and `reason`.
+  - `/relaxations/{proposalId}/approve`.
+  - `/proposals/{proposalId}/reject` and `/withdraw`.
+  - Routes take closed JSON bodies, need CSRF, and write under the version read. Status codes: invalid rows 422 (`claim-policy.revision-invalid` with `details.issues`; `manufacturer-basis-on-handling`, `category-unknown`); an unchanged revision 409 (`claim-policy.revision-unchanged`).
+- **Keys.** The new `certification.claim-policy.view` is added to catalogue-moderator (seed 7) and viewer (seed 12). The protected `certification.claim-policy.edit` is in no default role.
+- **Second admin (H1).** These revisions relax and wait for a second admin as a `claim-policy-revision` proposal:
+  - a basis made less strict;
+  - a removed row that is not `SELLER_OR_MANUFACTURER`;
+  - an added row less strict than the type default.
+
+  The proposer is the revision's author. While a proposal waits, every save is refused. A tightening revision is published at once.
+- **Lock first.** Each write unit first locks the policy row under the version that was read. On the first save, creating the root is the lock. The unit then checks again: the published pointer, the type's published revision (it decided the classification) and the pending proposal.
+- **Events and audit.** `claim-policy-changed.v1` (`policyId`, `revisionId`, `typeId`) is sent on every publication; it has no consumer yet. The daily reconcile is the backstop. Audit actions: `certification.claim-policy.revised`, `.relaxation-requested` and `.relaxation-approved`. The reason is sealed per revision under `certification.registry-change.reason`.
+- **S2 as built.** S2 returns every row of the published revision of each requested type. Matching on categories and handling happens in code, so S2 binds only the type codes. This replaces the design's category and handling arrays and needs sign-off from Mojtaba and Hassan.
+- **Manufacturer basis in `ClaimRule`.** The checks run in this order:
+  1. The requirement must be `SELLER_OR_MANUFACTURER` and the type must be `THIRD_PARTY_DOCUMENT`; otherwise the seller reason.
+  2. `SEALED_ORIGINAL`; otherwise `handling-requires-seller`.
+  3. The attestation; otherwise `attestation-missing`.
+  4. A covering, valid product certificate; otherwise `not-covered`.
+
+  Coverage follows these rules:
+  - The seller basis wins when both hold.
+  - Coverage matches the product revision (M3), and an entry narrowed to a variant never matches a query with no variant (L1).
+  - The expiry is the earlier of the boundary stored at approval and the boundary in the Market's current zone.
+
+  `evaluateClaims` reads product certificates only for queries that stop at `not-covered`. The reader answers none until slice 14 adds S3, so the manufacturer basis is never allowed today.
+- **`CatalogReferences` (C-3).** Only `platformCategoriesExist` (active categories, at most 500 ids) is built. `catalog` binds it in a global module, so `certification` imports nothing of `catalog`. `publishedProductRevisions` and `variantsOf` come with slice 14.
+- **Not built (open).** Part 2 (above). A `catalog` consumer of `claim-policy-changed.v1`. A Market switch that keeps `SELLER_OR_MANUFACTURER` off in AU until the halal authority agrees (cto). Admin display names (identity R-11).
+- **Before slice 14 (PR #412 review).**
+  - A `catalog` consumer of `claim-policy-changed.v1` is a hard precondition for slice 14. Once the manufacturer basis can allow a tag, a relaxing or tightening policy must re-ask the affected tags without waiting for the daily reconcile.
+  - Slice 14 adds `typeCode` to `ProductCertificationView`, and `bestCovering` filters on it, so a certificate of another type never covers a query (Hassan L2).
+  - Decide which type revision a manufacturer decision records: today it is the type's published revision at evaluation (I1).
+- **Rows of a published or proposed revision are closed (Hassan L1).** The trigger `claim_policy_rows_revision_open` refuses a row whose revision is already a policy's published revision or a pending or decided `claim-policy-revision` proposal. `addRevision` writes the rows in the same unit before the pointer moves or the proposal is inserted.
+- **S2 bound.** The reader refuses a type that returns more than `MAX_POLICY_ROWS` (304) rows, so the whole batch is `unavailable` (fail closed). The worst case per call is 100 type codes × 304 rows, about 30k rows (data design 7.3).
+
 ### 14.3 Spikes (run, not merged)
 | # | Spike |
 |---|---|

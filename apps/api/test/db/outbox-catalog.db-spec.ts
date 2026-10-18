@@ -71,6 +71,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX issuer_requests_market_id_seller_id_type_id_open_key ON certification.issuer_requests USING btree (market_id, seller_id, type_id) WHERE (state = 'open'::text)",
   'certification.relaxation_proposals_market_id_subject_pending_key':
     "CREATE UNIQUE INDEX relaxation_proposals_market_id_subject_pending_key ON certification.relaxation_proposals USING btree (market_id, subject_kind, subject_id) WHERE (state = 'pending'::text)",
+  // docs/design/data/certification.md 9.4 (slice 13): the policy rows that name a category (A12).
+  'certification.claim_policy_rows_market_id_category_id_idx':
+    'CREATE INDEX claim_policy_rows_market_id_category_id_idx ON certification.claim_policy_rows USING btree (market_id, category_id) WHERE (category_id IS NOT NULL)',
   'certification.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON certification.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'certification.seller_certifications_market_id_approved_boundary_at_idx':

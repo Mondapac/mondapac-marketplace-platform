@@ -9,6 +9,7 @@ import {
   type CertificationTypeCode,
   type ClaimQuery,
 } from '../../src/modules/certification';
+import { CertificationClaimEvaluator } from '../../src/modules/catalog/infrastructure/certification-claim-evaluator';
 import { PrismaClaimFactsReader } from '../../src/modules/certification/infrastructure/prisma-claim-facts.reader';
 import { sellerCertificateValidAt } from '../../src/modules/certification/domain/validity';
 import { PrismaRawReadPort } from '../../src/platform/persistence/raw-reads/prisma-raw-read-port';
@@ -163,6 +164,62 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
   });
 
   const seedType = (target: MarketContext, spec: TypeSpec) => seedTypeRow(owner, target, spec);
+
+  /**
+   * A policy of the type with one revision per row set; the last one published unless `pending`
+   * (slice 13). Returns the revision ids in order.
+   */
+  async function seedPolicy(
+    target: MarketContext,
+    type: SeededType,
+    revisions: readonly (readonly { category?: string; handling?: string; basis: string }[])[],
+    options: { readonly pendingLast?: boolean } = {},
+  ): Promise<string[]> {
+    const [marketId, tenantId] = scope(target);
+    const policyId = uuid7();
+    await owner.query(
+      `INSERT INTO certification.claim_basis_policies
+         (id, market_id, tenant_id, type_id, published_revision_id, version, created_at)
+       VALUES ($1, $2, $3, $4, NULL, 1, $5)`,
+      [policyId, marketId, tenantId, type.typeId, T0],
+    );
+    const ids: string[] = [];
+    for (const [index, rows] of revisions.entries()) {
+      const revisionId = uuid7();
+      ids.push(revisionId);
+      await owner.query(
+        `INSERT INTO certification.claim_policy_revisions
+           (id, market_id, tenant_id, policy_id, revision_no, author_account_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [revisionId, marketId, tenantId, policyId, index + 1, uuid7(), T0],
+      );
+      for (const row of rows) {
+        await owner.query(
+          `INSERT INTO certification.claim_policy_rows
+             (id, market_id, tenant_id, revision_id, selector_kind, category_id, handling, basis)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            uuid7(),
+            marketId,
+            tenantId,
+            revisionId,
+            row.category === undefined ? 'handling' : 'platform-category',
+            row.category ?? null,
+            row.handling ?? null,
+            row.basis,
+          ],
+        );
+      }
+    }
+    const published = options.pendingLast === true ? ids.at(-2) : ids.at(-1);
+    if (published !== undefined) {
+      await owner.query(
+        `UPDATE certification.claim_basis_policies SET published_revision_id = $1 WHERE id = $2`,
+        [published, policyId],
+      );
+    }
+    return ids;
+  }
   const publish = (typeId: string, revisionId: string) => publishRow(owner, typeId, revisionId);
 
   async function seedCertificate(
@@ -320,17 +377,29 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
       const expected = [
         {
           typeCode: a.code,
-          type: { publishedRevisionId: a.revisionId, defaultBasis: 'SELLER_REQUIRED' },
+          type: {
+            publishedRevisionId: a.revisionId,
+            defaultBasis: 'SELLER_REQUIRED',
+            verificationMode: 'THIRD_PARTY_DOCUMENT',
+          },
           policy: null,
         },
         {
           typeCode: b.code,
-          type: { publishedRevisionId: b.revisionId, defaultBasis: 'NOT_APPLICABLE' },
+          type: {
+            publishedRevisionId: b.revisionId,
+            defaultBasis: 'NOT_APPLICABLE',
+            verificationMode: 'THIRD_PARTY_DOCUMENT',
+          },
           policy: null,
         },
         {
           typeCode: a.code,
-          type: { publishedRevisionId: a.revisionId, defaultBasis: 'SELLER_REQUIRED' },
+          type: {
+            publishedRevisionId: a.revisionId,
+            defaultBasis: 'SELLER_REQUIRED',
+            verificationMode: 'THIRD_PARTY_DOCUMENT',
+          },
           policy: null,
         },
         { typeCode: `missing-${tag}`, type: null, policy: null },
@@ -371,6 +440,81 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
       } finally {
         await publish(broken.typeId, broken.revisionId);
       }
+    });
+
+    it('answers the published policy rows matching the categories or the handling (slice 13)', async () => {
+      const type = await seedType(market, { code: `pol-${tag}` });
+      const [c1, c2, c3] = [uuid7(), uuid7(), uuid7()];
+      const [, published] = await seedPolicy(market, type, [
+        [{ category: c1, basis: 'NOT_APPLICABLE' }],
+        [
+          { category: c1, basis: 'SELLER_OR_MANUFACTURER' },
+          { category: c2, basis: 'NOT_APPLICABLE' },
+          { handling: 'REPACKED', basis: 'SELLER_REQUIRED' },
+        ],
+      ]);
+      const answers = await reader.typesAndPolicies(market, [
+        request(type.code, [c1], 'SEALED_ORIGINAL'),
+        request(type.code, [c3, c1, c2], 'SEALED_ORIGINAL'),
+        request(type.code, [c3], 'REPACKED'),
+        request(type.code, [c3], 'FRESH'),
+      ]);
+      const sorted = (rows: readonly { basis: string }[] | undefined) =>
+        (rows ?? []).map((row) => row.basis).sort();
+      expect(answers.map((a) => a.policy?.revisionId)).toEqual([
+        published,
+        published,
+        published,
+        published,
+      ]);
+      expect(answers.map((a) => sorted(a.policy?.matchedRows))).toEqual([
+        ['SELLER_OR_MANUFACTURER'],
+        ['NOT_APPLICABLE', 'SELLER_OR_MANUFACTURER'],
+        ['SELLER_REQUIRED'],
+        [],
+      ]);
+    });
+
+    it("never reads a pending revision nor the other Market's policy", async () => {
+      const type = await seedType(market, { code: `pend-${tag}` });
+      const category = uuid7();
+      const [published] = await seedPolicy(
+        market,
+        type,
+        [[{ category, basis: 'NOT_APPLICABLE' }], [{ category, basis: 'SELLER_OR_MANUFACTURER' }]],
+        { pendingLast: true },
+      );
+      const twin = await seedType(other, { code: `pend-${tag}` });
+      await seedPolicy(other, twin, [[{ category, basis: 'SELLER_REQUIRED' }]]);
+      const [mine] = await reader.typesAndPolicies(market, [
+        request(type.code, [category], 'SEALED_ORIGINAL'),
+      ]);
+      expect(mine!.policy).toEqual({
+        revisionId: published,
+        matchedRows: [{ basis: 'NOT_APPLICABLE' }],
+      });
+      const unpublished = await seedType(market, { code: `none-${tag}` });
+      await seedPolicy(market, unpublished, [[{ category, basis: 'SELLER_REQUIRED' }]], {
+        pendingLast: true,
+      });
+      const [none] = await reader.typesAndPolicies(market, [
+        request(unpublished.code, [category], 'FRESH'),
+      ]);
+      expect(none!.policy).toBeNull();
+    });
+
+    it('issues exactly one SQL statement and no BEGIN, with policy rows too', async () => {
+      const withRows = await seedType(market, { code: `onep-${tag}` });
+      await seedPolicy(market, withRows, [
+        [
+          { category: uuid7(), basis: 'SELLER_REQUIRED' },
+          { handling: 'FRESH', basis: 'NOT_APPLICABLE' },
+        ],
+      ]);
+      await driver.during(async () => {
+        await reader.typesAndPolicies(market, [request(withRows.code, [], 'FRESH')]);
+      });
+      expect(driver.statements).toHaveLength(1);
     });
 
     it('issues exactly one SQL statement and no BEGIN', async () => {
@@ -702,7 +846,11 @@ describe.each(TEST_MARKETS)(
     let app: NestExpressApplication;
     let facade: CertificationFacade;
     let owner: Client;
-    const typeCodes = { required: `${tag}-req`, notApplicable: `${tag}-na` };
+    const typeCodes = {
+      required: `${tag}-req`,
+      notApplicable: `${tag}-na`,
+      manufacturer: `${tag}-mfr`,
+    };
 
     beforeAll(async () => {
       owner = new Client({ connectionString: claimFactsOwnerTestDatabaseUrl() });
@@ -715,6 +863,36 @@ describe.each(TEST_MARKETS)(
       ] as const) {
         await seedTypeRow(owner, market, { code: type, defaultBasis: basis, phrase });
       }
+      // A type whose published policy allows the manufacturer basis on one category (slice 13).
+      const manufacturer = await seedTypeRow(owner, market, {
+        code: typeCodes.manufacturer,
+        phrase: `${code.toLowerCase()}dimfrqorvane`,
+      });
+      const policyId = uuid7();
+      policyRevisionId = uuid7();
+      const scope = [market.marketId, market.tenantId];
+      await owner.query(
+        `INSERT INTO certification.claim_basis_policies
+           (id, market_id, tenant_id, type_id, published_revision_id, version, created_at)
+         VALUES ($1, $2, $3, $4, NULL, 1, $5)`,
+        [policyId, ...scope, manufacturer.typeId, T0],
+      );
+      await owner.query(
+        `INSERT INTO certification.claim_policy_revisions
+           (id, market_id, tenant_id, policy_id, revision_no, author_account_id, created_at)
+         VALUES ($1, $2, $3, $4, 1, $5, $6)`,
+        [policyRevisionId, ...scope, policyId, uuid7(), T0],
+      );
+      await owner.query(
+        `INSERT INTO certification.claim_policy_rows
+           (id, market_id, tenant_id, revision_id, selector_kind, category_id, handling, basis)
+         VALUES ($1, $2, $3, $4, 'platform-category', $5, NULL, 'SELLER_OR_MANUFACTURER')`,
+        [uuid7(), ...scope, policyRevisionId, MANUFACTURER_CATEGORY],
+      );
+      await owner.query(
+        `UPDATE certification.claim_basis_policies SET published_revision_id = $1, version = 2 WHERE id = $2`,
+        [policyRevisionId, policyId],
+      );
     });
     afterAll(async () => {
       await app.close();
@@ -724,6 +902,8 @@ describe.each(TEST_MARKETS)(
     const context = (actor: 'anonymous' | 'system') => testCallContext(market, actor);
     const id = <T extends string>(n: number): Id<T> =>
       `0192b3c4-0000-7000-8000-${String(n).padStart(12, '0')}` as Id<T>;
+    const MANUFACTURER_CATEGORY = id<'Category'>(5);
+    let policyRevisionId: string;
     const query = (typeCode: string): ClaimQuery => ({
       sellerId: id<'Seller'>(1),
       productId: id<'Product'>(2),
@@ -777,6 +957,62 @@ describe.each(TEST_MARKETS)(
         'no-valid-seller-certificate',
       ]);
       expect(result.value.some((d) => d.allowed)).toBe(false);
+    });
+
+    // Hassan (slice 13): the manufacturer basis through the real facade and catalog's adapter.
+    // With the policy allowing it, a SEALED_ORIGINAL Offer with the attestation is still refused
+    // while no ProductCertification covers the product (slice 14 adds them): `not-covered`.
+    // Without the attestation it is `attestation-missing`, with another handling
+    // `handling-requires-seller`; a category the policy does not name keeps the type default.
+    it('evaluateClaims refuses the manufacturer basis without coverage, attestation or a sealed original (ADR-0012)', async () => {
+      const manufacturerQuery = (overrides: Partial<ClaimQuery>): ClaimQuery => ({
+        ...query(typeCodes.manufacturer),
+        // Catalog always asks for one variant.
+        variantId: id<'Variant'>(7),
+        platformCategoryPaths: [[id<'Category'>(6), MANUFACTURER_CATEGORY]],
+        ...overrides,
+      });
+      const queries = [
+        manufacturerQuery({}),
+        manufacturerQuery({ attestationRecorded: false }),
+        manufacturerQuery({ handling: 'REPACKED' }),
+        manufacturerQuery({ platformCategoryPaths: [[id<'Category'>(4)]] }),
+      ];
+      const expected = [
+        'not-covered',
+        'attestation-missing',
+        'handling-requires-seller',
+        'no-valid-seller-certificate',
+      ];
+      for (const actor of ['anonymous', 'system'] as const) {
+        const result = await facade.evaluateClaims(context(actor), queries);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.value.map((d) => [d.allowed, d.basis, d.reason])).toEqual(
+          expected.map((reason) => [false, null, reason]),
+        );
+        expect(result.value.map((d) => d.policyRevisionId)).toEqual([
+          policyRevisionId,
+          policyRevisionId,
+          policyRevisionId,
+          null,
+        ]);
+        expect(result.value.every((d) => d.badge === null && d.certificate === null)).toBe(true);
+      }
+      // Catalog's adapter over the same facade copies the refusals unchanged.
+      const evaluator = new CertificationClaimEvaluator(facade);
+      const copied = await evaluator.evaluate(
+        context('system'),
+        queries.map((q) => ({
+          ...q,
+          platformCategoryPaths: q.platformCategoryPaths.map((path) => [...path]),
+        })) as never,
+      );
+      expect(copied.ok).toBe(true);
+      if (!copied.ok) return;
+      expect(copied.value.map((d) => [d.allowed, d.reason])).toEqual(
+        expected.map((reason) => [false, reason]),
+      );
     });
   },
 );

@@ -4,7 +4,12 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 // 3.6, 7.1, 7.2, 7.6; slice 12). Instants are ISO 8601 strings in UTC; ids are UUIDs.
 
 const PROPOSAL_STATES = ['pending', 'approved', 'rejected', 'withdrawn', 'superseded'];
-const PROPOSAL_SUBJECTS = ['type-revision', 'type-reactivation', 'issuer-reactivation'];
+const PROPOSAL_SUBJECTS = [
+  'type-revision',
+  'claim-policy-revision',
+  'type-reactivation',
+  'issuer-reactivation',
+];
 const ISSUER_STATES = ['proposed', 'active', 'closed-to-new', 'derecognised'];
 
 export class VersionRequest {
@@ -46,7 +51,10 @@ class ChangeReasonView {
 }
 
 class DiffEntryView {
-  @ApiProperty({ description: 'A setting key, or locales/names/descriptions/terms.<locale>.' })
+  @ApiProperty({
+    description:
+      'A setting key, locales/names/descriptions/terms.<locale>, or row:<category id or handling>.',
+  })
   path!: string;
   @ApiProperty({ nullable: true, oneOf: [{ type: 'string' }, { type: 'boolean' }] })
   before!: string | boolean | null;
@@ -233,4 +241,101 @@ export class IssuerStateView {
   @ApiPropertyOptional({ format: 'uuid' }) proposalId?: string;
   @ApiPropertyOptional() issuerVersion?: number;
   @ApiPropertyOptional() affectedCertificates?: number;
+}
+
+// The claim basis policy admin routes (certification design 3.7, 7.6; slice 13).
+
+const BASES = ['SELLER_REQUIRED', 'SELLER_OR_MANUFACTURER', 'NOT_APPLICABLE'];
+const HANDLINGS = ['SEALED_ORIGINAL', 'REPACKED', 'PREPARED', 'FRESH'];
+
+export class PolicyRowRequest {
+  @ApiProperty({ enum: ['platform-category', 'handling'] }) selector!: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'For a platform-category row: an active platform category of the Market.',
+  })
+  categoryId?: string;
+  @ApiPropertyOptional({ enum: HANDLINGS, description: 'For a handling row.' }) handling?: string;
+  @ApiProperty({
+    enum: BASES,
+    description: 'SELLER_OR_MANUFACTURER only on a platform-category row.',
+  })
+  basis!: string;
+}
+
+export class ClaimPolicyRevisionRequest extends ReasonedVersionRequest {
+  @ApiProperty({
+    type: [PolicyRowRequest],
+    description: 'The whole row set of the new revision; at most one row per selector.',
+  })
+  rows!: PolicyRowRequest[];
+}
+
+class PublishedPolicyRevisionView {
+  @ApiProperty({ format: 'uuid' }) revisionId!: string;
+  @ApiProperty() revisionNo!: number;
+  @ApiProperty({ type: [PolicyRowRequest] }) rows!: PolicyRowRequest[];
+  @ApiProperty({ format: 'uuid' }) authorAccountId!: string;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty({ type: ChangeReasonView, nullable: true }) reason!: ChangeReasonView | null;
+}
+
+class PendingPolicyRevisionView {
+  @ApiProperty({ type: RelaxationProposalView }) proposal!: RelaxationProposalView;
+  @ApiProperty({ type: [PolicyRowRequest] }) rows!: PolicyRowRequest[];
+}
+
+class PolicyHistoryEntryView {
+  @ApiProperty({ format: 'uuid' }) revisionId!: string;
+  @ApiProperty() revisionNo!: number;
+  @ApiProperty({ format: 'uuid' }) authorAccountId!: string;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() reasonGiven!: boolean;
+  @ApiProperty() published!: boolean;
+}
+
+export class ClaimPolicyView {
+  @ApiProperty({ format: 'uuid' }) typeId!: string;
+  @ApiProperty() typeCode!: string;
+  @ApiProperty({
+    enum: ['SELLER_REQUIRED', 'NOT_APPLICABLE'],
+    description: 'What a query gets when no published row matches.',
+  })
+  defaultBasis!: string;
+  @ApiProperty({ nullable: true, type: String }) policyId!: string | null;
+  @ApiProperty({ description: 'Send it back with a save; 0 before the first save.' })
+  version!: number;
+  @ApiProperty({ type: PublishedPolicyRevisionView, nullable: true })
+  published!: PublishedPolicyRevisionView | null;
+  @ApiProperty({ type: PendingPolicyRevisionView, nullable: true })
+  pendingRevision!: PendingPolicyRevisionView | null;
+  @ApiProperty({ type: [PolicyHistoryEntryView], description: 'Newest first, at most 50.' })
+  history!: PolicyHistoryEntryView[];
+}
+
+class PolicyRowChangeView {
+  @ApiProperty({ description: 'row:<category id or handling>' }) path!: string;
+  @ApiProperty({ enum: BASES, nullable: true, type: String }) before!: string | null;
+  @ApiProperty({ enum: BASES, nullable: true, type: String }) after!: string | null;
+  @ApiProperty({ description: 'Why a second admin is needed.' }) relaxes!: boolean;
+}
+
+export class ClaimPolicyRevisionSavedView {
+  @ApiProperty({ enum: ['published', 'pending-second-admin'] }) outcome!: string;
+  @ApiProperty({ format: 'uuid' }) typeId!: string;
+  @ApiProperty({ format: 'uuid' }) policyId!: string;
+  @ApiProperty({ format: 'uuid' }) revisionId!: string;
+  @ApiProperty() revisionNo!: number;
+  @ApiProperty({ description: 'The policy version; unchanged while pending.' }) version!: number;
+  @ApiPropertyOptional({ format: 'uuid', description: 'Pending only.' }) proposalId?: string;
+  @ApiProperty({ type: [PolicyRowChangeView] }) changes!: PolicyRowChangeView[];
+}
+
+export class ClaimPolicyRelaxationApprovedView {
+  @ApiProperty({ format: 'uuid' }) typeId!: string;
+  @ApiProperty({ format: 'uuid' }) policyId!: string;
+  @ApiProperty({ format: 'uuid' }) proposalId!: string;
+  @ApiProperty({ format: 'uuid' }) revisionId!: string;
+  @ApiProperty({ enum: ['approved'] }) state!: string;
+  @ApiProperty() policyVersion!: number;
 }
