@@ -135,5 +135,20 @@
     "name": "search.search-products",
     "rule": "anonymous",
     "reason": "The public storefront search: a visitor with no session finds sellable Offers by text or category; the answer is ids, text and category ids, re-checked against catalog and sellers, and the route is rate limited per origin."
+  },
+  {
+    "name": "storefront.view-published-landing-page",
+    "rule": "anonymous",
+    "reason": "A visitor with no session reads a live landing page at /l/<slug>: only a published, unarchived page inside its live window, or the site path an old or archived slug now sends to; layout and settings only, no product data."
+  },
+  {
+    "name": "storefront.view-published-navigation",
+    "rule": "anonymous",
+    "reason": "The buyer site's left rail and Browse drawer for a visitor with no session: only the version a platform admin approved (or the empty default); labels, category ids and site paths only."
+  },
+  {
+    "name": "storefront.view-published-page",
+    "rule": "anonymous",
+    "reason": "The buyer site draws a system page (home, cart, ...) for a visitor with no session: only the published layout, or the template's code defaults; layout and settings only, no product data."
   }
 ]
