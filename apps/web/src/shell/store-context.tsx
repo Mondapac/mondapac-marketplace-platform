@@ -12,15 +12,18 @@ interface StoreState {
   readonly setBrowseOpen: (open: boolean) => void;
   readonly searchOpen: boolean;
   readonly setSearchOpen: (open: boolean) => void;
+  readonly filtersOpen: boolean;
+  readonly setFiltersOpen: (open: boolean) => void;
 }
 
 const StoreContext = createContext<StoreState | null>(null);
 
-/** Client state shared by the shell and the page: the cart and the two overlays. */
+/** Client state shared by the shell and the page: the cart and the three overlays. */
 export function StoreProvider({ children }: { readonly children: ReactNode }) {
   const [cart, setCart] = useState<Cart>({});
   const [browseOpen, setBrowseOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const add = useCallback(
     (id: string, unitPrice: Money, limit: number) =>
       setCart((current) => addOne(current, id, unitPrice, limit)),
@@ -28,8 +31,18 @@ export function StoreProvider({ children }: { readonly children: ReactNode }) {
   );
   const remove = useCallback((id: string) => setCart((current) => removeOne(current, id)), []);
   const value = useMemo(
-    () => ({ cart, add, remove, browseOpen, setBrowseOpen, searchOpen, setSearchOpen }),
-    [cart, add, remove, browseOpen, searchOpen],
+    () => ({
+      cart,
+      add,
+      remove,
+      browseOpen,
+      setBrowseOpen,
+      searchOpen,
+      setSearchOpen,
+      filtersOpen,
+      setFiltersOpen,
+    }),
+    [cart, add, remove, browseOpen, searchOpen, filtersOpen],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

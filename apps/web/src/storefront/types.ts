@@ -81,3 +81,23 @@ export interface StorefrontContent {
   readonly sellers: readonly SellerSummary[];
   readonly home: readonly HomeSection[];
 }
+
+/** The optional promotion banner above a product listing (an admin-managed content slot). */
+export interface ListingBanner {
+  readonly title: string;
+  readonly body: string;
+  readonly action: { readonly label: string; readonly href: string };
+  readonly imageUrl?: string;
+}
+
+/**
+ * A band of the Price filter. `below` and `above` are exclusive; `from` and `to` inclusive. A
+ * band has `below`, `above`, or both `from` and `to`.
+ */
+export interface PriceBand {
+  readonly id: string;
+  readonly below?: Money;
+  readonly from?: Money;
+  readonly to?: Money;
+  readonly above?: Money;
+}
