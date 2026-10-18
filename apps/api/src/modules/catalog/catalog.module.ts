@@ -115,6 +115,20 @@ import { ReconcileTags } from './application/use-cases/reconcile-tags.use-case';
 import { ReevaluateFromCertification } from './application/use-cases/reevaluate-from-certification.use-case';
 import { reconcileTagsJob } from './presentation/jobs/reconcile-tags.job';
 import { certificationSubscriptions } from './presentation/subscribers/certification.subscriptions';
+import { certificateExpiryNoticeSubscriptions } from './presentation/subscribers/certificate-expiry-notice.subscriptions';
+import { WarnOfferOwnersOfExpiry } from './application/use-cases/warn-offer-owners-of-expiry.use-case';
+import {
+  OFFER_OWNER_CONTACT,
+  OFFER_OWNER_MAIL_SETTINGS,
+  type OfferOwnerContact,
+  type OfferOwnerMailSettings,
+} from './application/ports/offer-owner-notices';
+import {
+  ConfigOfferOwnerMailSettings,
+  IdentityOfferOwnerContact,
+} from './infrastructure/offer-owner-notices';
+import { IDENTITY_FACADE, IdentityModule, type IdentityFacade } from '../identity';
+import { MAIL_TRANSPORT } from '../../platform/mail/mail-transport';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { OwnProductImageUpload } from './application/use-cases/own-product-image-upload.use-case';
 import { OwnProductImageList } from './application/use-cases/own-product-image-list.use-case';
@@ -190,6 +204,9 @@ const PORT = {
   requests: TAG_REEVALUATION_REQUESTS,
   tagSelection: TAG_SELECTION_READER,
   listingsReader: OFFER_LISTINGS_READER,
+  ownerContacts: OFFER_OWNER_CONTACT,
+  mailTransport: MAIL_TRANSPORT,
+  mailSettings: OFFER_OWNER_MAIL_SETTINGS,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -260,7 +277,7 @@ const productTypeProvider: FactoryProvider<string> = {
     ProductReviewController,
     ProductImageReviewController,
   ],
-  imports: [CertificationModule, SellersModule, CatalogReferencesModule],
+  imports: [CertificationModule, SellersModule, CatalogReferencesModule, IdentityModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
     registerEvents('catalog', CATALOG_EVENTS),
@@ -645,9 +662,34 @@ const productTypeProvider: FactoryProvider<string> = {
     // Certification events consumed (design 5.5, 9.5; slice 12).
     registerSubscriptionsFrom(
       'catalog',
-      [ReevaluateFromCertification],
-      (reevaluate: ReevaluateFromCertification) => certificationSubscriptions(reevaluate),
+      [ReevaluateFromCertification, WarnOfferOwnersOfExpiry],
+      (reevaluate: ReevaluateFromCertification, warn: WarnOfferOwnersOfExpiry) => [
+        ...certificationSubscriptions(reevaluate),
+        ...certificateExpiryNoticeSubscriptions(warn),
+      ],
     ),
+    // Certification request C-6 (slice 15): the Owners of Offers whose badge rests on an
+    // expiring manufacturer certificate are warned through identity's contact point.
+    {
+      provide: OFFER_OWNER_CONTACT,
+      inject: [IDENTITY_FACADE],
+      useFactory: (identity: IdentityFacade): OfferOwnerContact =>
+        new IdentityOfferOwnerContact(identity),
+    },
+    {
+      provide: OFFER_OWNER_MAIL_SETTINGS,
+      inject: [MarketRegistry],
+      useFactory: (markets: MarketRegistry): OfferOwnerMailSettings =>
+        new ConfigOfferOwnerMailSettings(markets),
+    },
+    useCaseProvider(WarnOfferOwnersOfExpiry, {
+      unitOfWork: true,
+      tagSelection: true,
+      ownerContacts: true,
+      mailTransport: true,
+      mailSettings: true,
+      clock: true,
+    }),
     useCaseProvider(OfferSellUnitsQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferSellUnitsSystemQuery, { unitOfWork: true, reader: true }),
     useCaseProvider(OfferNamesSystemQuery, { unitOfWork: true, namesReader: true }),

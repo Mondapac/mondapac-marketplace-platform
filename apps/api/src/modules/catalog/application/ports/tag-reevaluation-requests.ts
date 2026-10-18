@@ -20,10 +20,9 @@ export const NO_COUNTS: ReevaluationCounts = Object.freeze({
 });
 
 /**
- * The certification events catalog consumes (design 5.5; slices 12 and 14), as the cause of a
- * `certification-event` request (data design 3.18 `cause`, a closed list). The issuer events and
- * the ends of a manufacturer certificate (suspended, revoked, expired) join when certification
- * publishes them.
+ * The certification events catalog consumes (design 5.5; certification slices 12, 14 and 15), as
+ * the cause of a `certification-event` request (data design 3.18 `cause`, a closed list). The
+ * issuer events join when catalog consumes them.
  */
 export const CERTIFICATION_CAUSES = [
   'seller-certification-approved',
@@ -34,6 +33,9 @@ export const CERTIFICATION_CAUSES = [
   'product-certification-approved',
   'product-certification-coverage-changed',
   'product-certification-coverage-recheck',
+  'product-certification-suspended',
+  'product-certification-revoked',
+  'product-certification-expired',
 ] as const;
 export type CertificationCause = (typeof CERTIFICATION_CAUSES)[number];
 
@@ -52,13 +54,18 @@ export const TYPE_CAUSES = [
  * every run marks their selected `active` tags `rechecking` before any ask, however many other
  * requests are pending, so no badge outlives a revoked or expired certificate by more than a run.
  * A manufacturer certificate's coverage change (Hassan M2, slice 14) is one too for the tags
- * based on that certificate: a product it no longer covers must lose its badge as fast. Never a
- * {@link TYPE_CAUSES} cause (their selection needs a type code the pre-marking does not resolve).
+ * based on that certificate: a product it no longer covers must lose its badge as fast; so are a
+ * manufacturer certificate's suspension, revocation and expiry (certification slice 15), selected
+ * by the certificate id. Never a {@link TYPE_CAUSES} cause (their selection needs a type code the
+ * pre-marking does not resolve).
  */
 export const ENDING_CAUSES = [
   'seller-certification-expired',
   'seller-certification-revoked',
   'product-certification-coverage-recheck',
+  'product-certification-suspended',
+  'product-certification-revoked',
+  'product-certification-expired',
 ] as const satisfies readonly CertificationCause[];
 
 /** What a pending request has in common: its id, cursor, counts and age. */

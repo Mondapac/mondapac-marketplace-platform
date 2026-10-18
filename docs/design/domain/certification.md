@@ -1203,6 +1203,42 @@ Javad has the pace of `identity` and `sellers`.
   - Data design 8 now says draft editors are removed at approval. Catalog data design 3.18 lists the recheck cause and the new unique.
   - Open (Mojtaba): S3 reads the boundary as `timestamptz::text`, which assumes ISO DateStyle (as `expiry_date::text` does) because ADR-0030 allows no `to_char`. Pinning DateStyle for the API role, or an allow-list amendment, is a follow-up.
 
+### 14.12 Slice 15 as built, part 1 (manufacturer certificate lifecycle; Offer owner warnings; 2026-10-18)
+
+Slice 14 part 2 is split in two PRs. This one is the lifecycle. Documents and review checks for manufacturer certificates (reusing the seller path) follow in the next PR. Until then a type that requires documents (AU halal) still refuses a manufacturer submission.
+
+- **Key.** `certification.product-certificate.revoke` (platform, protected), registered with no default role, so the role seed version is unchanged.
+- **Suspend and revoke** (3.4 rows 6 and 8; admin routes `POST /certification/admin/product-certificates/:id/suspend` and `/revoke`, key `.revoke`). The body holds `version`, `reasonCode` and an optional `reasonText`.
+  - The reason comes from the checked-in review policy. Suspend needs a reason with the new outcome `suspended`. AU adds `under-investigation` and gives `suspended` to `not-confirmed-by-issuer` and `withdrawn-by-issuer`. ZZ mirrors this.
+  - The note is sealed under the Market subject key (field `certification.product-certification.history-note`) before the unit.
+  - Unit order: lock the record (version first), check the refusal, write the guarded transition and a history row, write the audit row (`.suspended` or `.revoked`; `noteGiven` only, never the text), then the outbox event.
+  - Revoke works from `approved` or `suspended`. It withdraws a pending revision, writing a `withdrawn` decision with no decider.
+- **Reinstate** (3.4 row 7; `POST …/:id/reinstate`, key `.approve`) is a use case of its own, recorded as `.reinstated`. It is refused:
+  - for the author or an editor of the approved revision (`approval.same-admin`);
+  - when the issuer is not active, or is `closed-to-new` for another type;
+  - after the claim boundary;
+  - when the record is not suspended.
+
+  It takes `FOR SHARE` on the type and issuer rows. It emits `product-certification-approved.v1`, so catalog re-asks by type.
+- **History read** (`GET …/:id/history`, key `.view`): newest first, at most 200 rows, `noteGiven` only. A read of the note text (audited) is not built.
+- **Expiry job.** `certification.expire-product-certificates` (system) is the second half of the existing expiry-and-warnings job, after the seller half. A failure of one half no longer skips the other; the job throws at the end.
+  - Only `approved` records expire; a suspended record is left alone.
+  - The boundary is the earlier of the one stored at approval and the date in the current Market zone (2.4 rule 3). When the Market zone is not usable, only the stored boundaries count.
+  - Warnings at the configured thresholds use `expiry_warnings` with version kind `product-revision`, then `product-certification-expiry-warning-due.v1`. The payload gains `typeId`.
+  - The output reports `marketZoneMissing`.
+- **Events** `product-certification-suspended.v1`, `-revoked.v1` and `-expired.v1` (ids and `typeId`), plus the warning above. Audit actions `.suspended`, `.reinstated`, `.revoked` and `.expired` (system).
+- **Catalog consumers.** Three subscriptions `catalog.reevaluate-on-product-certification-suspended`, `-revoked` and `-expired` write ending causes. These select the tags by `certificate_id` and mark them `rechecking` before the re-ask. The causes stay disjoint from the type causes (unit test). Migration `20261018210000_catalog_product_certification_endings` swaps the cause CHECK (`NOT VALID` then `VALIDATE`), with `down.sql`.
+- **C-6 in `catalog`** (8.3; `catalog.warn-offer-owners-of-expiry`, system). It consumes the warning event and runs a read-only unit over live manufacturer-kind tags naming the certificate. It groups them by seller and type, and counts them with the earliest `valid_until`, for at most 200 owners; a larger set is logged as `capped`.
+  - Each owner's address comes from `identity.contactEmailOf` (seller owner). One plain-text mail names the type, the number of Offers and the last valid day in the Market zone. It carries no id, number or issuer.
+  - An owner whose badge validity has passed, or who has no address, is skipped.
+  - The delivery is marked after the sends, so a retry may mail an owner twice (at least once, as the seller mails). No per-seller markers. The words are working texts for Reza.
+- **No certification migration.** History, decisions, `expiry_warnings` and their grants already exist.
+- **Open.**
+  - Sign-off from Mojtaba (migration) and Hassan (CERT path, admin routes).
+  - The CERT-45 system suspend on `productMaterialContentChanged` (8.1, request C-2) is not built.
+  - A record with an expiry date whose type does not require expiry stays in the job's selection window.
+  - Part 2: documents and review checks.
+
 ### 14.3 Spikes (run, not merged)
 | # | Spike |
 |---|---|

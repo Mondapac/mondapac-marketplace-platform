@@ -593,6 +593,9 @@ offer_id, offer_version)`; `outcome` CHECK `approved`, `changes-requested`; `rea
   `product-certification-coverage-changed` (subject: the type id), and
   `product-certification-coverage-recheck` (subject: the manufacturer certificate id; selects the
   tags by `certificate_id` and marks them `rechecking` first, an ending cause).
+  Certification slice 15 adds `product-certification-suspended`, `-revoked` and `-expired`
+  (subject: the manufacturer certificate id; ending causes, selected and marked as the recheck
+  cause; migration `20261018210000_catalog_product_certification_endings`).
 - Claim index `(market_id, created_at, id) WHERE state = 'pending'`. The job runs under its scheduler
   lock (PM8) per Market, so no `SKIP LOCKED` is needed; requests are taken in order.
 - Grants `SELECT, INSERT, UPDATE (state, cursor_offer_id, counts, settled_at)`; purge of settled rows

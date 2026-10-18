@@ -208,6 +208,17 @@
     }
   },
   {
+    "action": "certification.product-certification.expired",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "typeRevisionId": "id"
+    }
+  },
+  {
     "action": "certification.product-certification.recorded",
     "targetType": "certification.product-certification",
     "targetId": "id",
@@ -218,12 +229,48 @@
     }
   },
   {
+    "action": "certification.product-certification.reinstated",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "typeRevisionId": "id"
+    }
+  },
+  {
     "action": "certification.product-certification.rejected",
     "targetType": "certification.product-certification",
     "targetId": "id",
     "actors": ["authenticated"],
     "before": null,
     "after": {
+      "revisionId": "id",
+      "typeRevisionId": "id"
+    }
+  },
+  {
+    "action": "certification.product-certification.revoked",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "noteGiven": "boolean",
+      "revisionId": "id",
+      "typeRevisionId": "id",
+      "withdrawnRevisionId": "optional(id)"
+    }
+  },
+  {
+    "action": "certification.product-certification.suspended",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "noteGiven": "boolean",
       "revisionId": "id",
       "typeRevisionId": "id"
     }

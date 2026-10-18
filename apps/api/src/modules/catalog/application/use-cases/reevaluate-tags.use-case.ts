@@ -93,6 +93,9 @@ export function selectionOf(
     case 'seller-certification-expired':
     case 'seller-certification-revoked':
     case 'product-certification-coverage-recheck':
+    case 'product-certification-suspended':
+    case 'product-certification-revoked':
+    case 'product-certification-expired':
       return { selection: { by: 'certificate', id: subjectId }, markFirst: true };
     case 'seller-certification-issuer-confirmed':
       return { selection: { by: 'certificate-version', id: subjectId }, markFirst: false };
