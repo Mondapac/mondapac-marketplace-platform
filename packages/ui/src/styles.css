@@ -106,9 +106,12 @@ body {
 }
 
 /* Sizes made in code first (speed mode), to be back-ported to the Figma tokens: the label
- * column of Figma DataRow, shared by detail cards and the labelled lines of phone table cards. */
+ * column of Figma DataRow, shared by detail cards and the labelled lines of phone table cards;
+ * and the side sheet (the notifications drawer, plan 6c): 420 px on tablets, 480 px from 1280 px. */
 :root {
   --mp-size-data-label: 168px;
+  --mp-size-sheet: 420px;
+  --mp-size-sheet-wide: 480px;
 }
 
 /* Phones use the touch density of the tokens (panels IA 4: targets of 48 px below 760 px). */
