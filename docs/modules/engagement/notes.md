@@ -21,6 +21,17 @@ what it records through methods it will add to `ENGAGEMENT_FACADE`.
   `engagement.record-guest-event` (`anonymous`, listed in
   `test/contracts/http-reachable-anonymous-system.json`). Abuse is bounded by the global
   per-origin rate limit (`default` class).
+- Guest consent (owner decision 2026-10-18, cookie bar option A): a guest's event is recorded
+  only when the storefront sends `Engagement-Consent: granted`, which it does after the buyer
+  accepts the behaviour cookie in the cookie bar. Without it the guest is treated like
+  `Sec-GPC: 1`: nothing recorded, no cookie set, a guest cookie sent is expired. Withdrawal: the
+  storefront stops sending the header. Every guest call without the header expires a guest
+  cookie sent, a refused (400) call too, so withdrawal works even when the storefront's own
+  consent cookie is gone. Signed-in customers use the account switch instead.
+- Host: no deployment is decided yet. The API sets the guest cookie on the host that serves
+  it. If the API is served on the storefront's own host (through the storefront's server, the
+  BFF), the storefront can also delete the cookie itself; if it is a separate API host, the
+  expiry above is the only withdrawal path, and it is enough on its own.
 - Guest cookie `__Host-engagement-guest-<market>` (Secure, HttpOnly, SameSite=Lax, Path=/), 32
   random bytes, set on the first recorded guest event with `Max-Age` 30 days and never extended,
   separate from the cart cookie. Only its hash is stored. A guest's history is not merged into an
@@ -42,7 +53,7 @@ Owner decisions 4 and 5 of 2026-10-18; Australian Privacy Principles (APP 1, 3, 
 | Why | To show recently viewed items and better recommendations (package 1d). Not sold, not shared with a third party, no third-party pixel or SDK. |
 | Sensitive information | Purchases or views are never used to infer religion, diet or health (decision 5; halal is sensitive information). No code reads events to label a shopper; an explicit buyer preference or filter is the only source for that. The search text can still contain such words, so it is never logged and never leaves the module except to package 1d's own ranking. |
 | Retention | 12 months for a signed-in customer, 30 days for a guest (the guest cookie lives 30 days too), deleted by the daily purge. |
-| Choice | Off switch in the account (`PUT customers/me/personalization`); switching off deletes what was recorded and stops recording (recording and the switch run serializable, so no event survives a racing switch-off). `Sec-GPC: 1` (Global Privacy Control) records nothing for anyone, sets no cookie and expires a guest cookie sent. |
+| Choice | Off switch in the account (`PUT customers/me/personalization`); switching off deletes what was recorded and stops recording (recording and the switch run serializable, so no event survives a racing switch-off). A guest is recorded only after accepting the behaviour cookie in the cookie bar (`Engagement-Consent: granted`). `Sec-GPC: 1` (Global Privacy Control) records nothing for anyone, sets no cookie and expires a guest cookie sent. |
 | Deletion | With the account through `forgetAccount` (to be called by customers package 5). |
 | Security | Only the guest token's SHA-256 is stored; the token is only in `Set-Cookie`. Logs carry the route, outcome code, Market and correlation id only: never the body, the search text, an id of the shopper or the cookie. The app role may select, insert and delete events, never update them. |
 | Notice | The storefront privacy policy and the account page must say what is recorded, why, for how long, and how to switch it off, before the storefront goes live (storefront design thread). |

@@ -37,6 +37,7 @@ const T0 = Temporal.Instant.from('2026-10-18T09:00:00Z');
 const CHECK = '23514';
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const quiet = { globalPrivacyControl: false };
+const consented = { ...quiet, consent: true };
 
 describe.each(TEST_MARKETS)('behaviour store in market %s (database)', (code) => {
   const market = marketOf(code);
@@ -133,14 +134,14 @@ describe.each(TEST_MARKETS)('behaviour store in market %s (database)', (code) =>
     const first = await recordGuest.execute(anonymous, {
       event: { kind: 'category-viewed', categoryId: ids.next() },
       token: null,
-      ...quiet,
+      ...consented,
     });
     if (!first.ok || first.value.cookie?.action !== 'set') throw new Error('no cookie');
     const token = first.value.cookie.token;
     await recordGuest.execute(anonymous, {
       event: { kind: 'search-performed', query: 'lamb' },
       token,
-      ...quiet,
+      ...consented,
     });
     const hash = guestTokens.hashOf(token)!;
     expect(await rowsOf('guest_hash', hash)).toHaveLength(2);
@@ -214,7 +215,7 @@ describe.each(TEST_MARKETS)('behaviour store in market %s (database)', (code) =>
     const guest = await recordGuest.execute(testCallContext(market, 'anonymous'), {
       event,
       token: null,
-      ...quiet,
+      ...consented,
     });
     if (!guest.ok || guest.value.cookie?.action !== 'set') throw new Error('no cookie');
     const hash = guestTokens.hashOf(guest.value.cookie.token)!;

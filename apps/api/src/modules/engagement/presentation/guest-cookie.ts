@@ -31,3 +31,7 @@ export function engagementGuestTokenOf(
 /** Whether the browser asks not to be tracked: Global Privacy Control, `Sec-GPC: 1`. */
 export const globalPrivacyControlOf = (header: string | string[] | undefined): boolean =>
   header === '1';
+
+/** Whether the storefront says the guest accepted the behaviour cookie (`Engagement-Consent`). */
+export const engagementConsentOf = (header: string | string[] | undefined): boolean =>
+  header === 'granted';

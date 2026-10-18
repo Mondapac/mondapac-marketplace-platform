@@ -71,6 +71,7 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
   const viewed = { kind: 'product-viewed', productId: PRODUCT, offerId: OFFER };
   const quiet = { globalPrivacyControl: false };
+  const consented = { ...quiet, consent: true };
 
   let clock: FixedClock;
   let events: InMemoryBehaviourEvents;
@@ -207,7 +208,7 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
       const first = await uc.recordGuest.execute(anonymous, {
         event: viewed,
         token: null,
-        ...quiet,
+        ...consented,
       });
       expect(first.ok).toBe(true);
       if (!first.ok) return;
@@ -219,7 +220,7 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
       const second = await uc.recordGuest.execute(anonymous, {
         event: { kind: 'search-performed', query: 'dates' },
         token,
-        ...quiet,
+        ...consented,
       });
       expect(second).toEqual({ ok: true, value: { recorded: true, cookie: null } });
       expect(events.rows.map((row) => row.subject)).toEqual([
@@ -232,7 +233,7 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
       const replaced = await uc.recordGuest.execute(anonymous, {
         event: viewed,
         token: 'not-a-token',
-        ...quiet,
+        ...consented,
       });
       expect(replaced).toMatchObject({ ok: true, value: { cookie: { action: 'set' } } });
 
@@ -241,6 +242,7 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
           event: viewed,
           token: null,
           globalPrivacyControl: true,
+          consent: true,
         }),
       ).toEqual({ ok: true, value: { recorded: false, cookie: null } });
       expect(
@@ -248,14 +250,29 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
           event: viewed,
           token: 'g'.repeat(43),
           globalPrivacyControl: true,
+          consent: true,
         }),
       ).toEqual({ ok: true, value: { recorded: false, cookie: { action: 'clear' } } });
       expect(events.rows).toHaveLength(1);
     });
 
+    it("without the buyer's consent records nothing, sets no cookie and expires one sent", async () => {
+      const none = { ...quiet, consent: false };
+      expect(
+        await uc.recordGuest.execute(anonymous, { event: viewed, token: null, ...none }),
+      ).toEqual({ ok: true, value: { recorded: false, cookie: null } });
+      expect(
+        await uc.recordGuest.execute(anonymous, { event: viewed, token: 'g'.repeat(43), ...none }),
+      ).toEqual({ ok: true, value: { recorded: false, cookie: { action: 'clear' } } });
+      expect(
+        await uc.recordGuest.execute(anonymous, { event: {}, token: null, ...none }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      expect(events.rows).toEqual([]);
+    });
+
     it('refuses the system actor', async () => {
       expect(
-        await uc.recordGuest.execute(system, { event: viewed, token: null, ...quiet }),
+        await uc.recordGuest.execute(system, { event: viewed, token: null, ...consented }),
       ).toMatchObject({ ok: false });
     });
   });
@@ -277,7 +294,7 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
     ])('refuses %j', async (event, fields) => {
       const expected = { ok: false, error: { code: 'validation.failed', fields } };
       expect(await uc.record.execute(alice, { event, ...quiet })).toEqual(expected);
-      expect(await uc.recordGuest.execute(anonymous, { event, token: null, ...quiet })).toEqual(
+      expect(await uc.recordGuest.execute(anonymous, { event, token: null, ...consented })).toEqual(
         expected,
       );
       expect(events.rows).toEqual([]);
@@ -292,7 +309,7 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
   describe('retention and deletion', () => {
     it('purges account events after 12 months and guest events after 30 days, in this Market only', async () => {
       await uc.record.execute(alice, { event: viewed, ...quiet });
-      await uc.recordGuest.execute(anonymous, { event: viewed, token: null, ...quiet });
+      await uc.recordGuest.execute(anonymous, { event: viewed, token: null, ...consented });
       await events.append(other, {
         id: id<'BehaviourEvent'>(0x999),
         subject: { kind: 'guest', guestHash: 'x' },

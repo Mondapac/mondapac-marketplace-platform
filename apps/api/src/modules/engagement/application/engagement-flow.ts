@@ -12,8 +12,8 @@ import type { PersonalizationSettingRecord } from './ports/personalization-setti
 
 // Behaviour capture (personalization package 1a). The storefront reports what a shopper viewed,
 // searched for or added to the cart; a signed-in customer's event is kept under the account, a
-// guest's under the hash of the engagement guest cookie. Nothing is recorded when the browser
-// sends Global Privacy Control or the customer switched personalization off; switching it off
+// guest's under the hash of the engagement guest cookie, only after the guest accepted it in the
+// storefront's cookie bar. Nothing is recorded when the browser sends Global Privacy Control or the customer switched personalization off; switching it off
 // deletes what was recorded. Ids only: no event, log or error carries the search text, the guest
 // token or an account id.
 
@@ -34,6 +34,8 @@ export interface RecordInput {
 export interface RecordGuestInput extends RecordInput {
   /** The raw token of the engagement guest cookie; null when there is none. */
   readonly token: string | null;
+  /** Whether the buyer accepted the behaviour cookie in the storefront's cookie bar. */
+  readonly consent: boolean;
 }
 
 export interface Recorded {
@@ -123,7 +125,7 @@ export async function recordGuestEvent(
 ): Promise<Result<Recorded & { readonly cookie: GuestCookie }, RecordFailure>> {
   const read = readBehaviour(input.event);
   if (!read.ok) return err({ code: 'validation.failed', fields: read.fields });
-  if (input.globalPrivacyControl) {
+  if (input.globalPrivacyControl || !input.consent) {
     // Nothing is recorded, and a guest cookie set before is expired, so no hash stays linkable.
     return ok({ recorded: false, cookie: input.token === null ? null : { action: 'clear' } });
   }

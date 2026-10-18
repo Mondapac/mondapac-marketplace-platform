@@ -25,6 +25,7 @@ import { BehaviourEventRequest, RecordedBody } from './engagement.dto';
 import {
   clearedEngagementGuestCookie,
   engagementGuestCookie,
+  engagementConsentOf,
   engagementGuestTokenOf,
   globalPrivacyControlOf,
 } from './guest-cookie';
@@ -36,8 +37,9 @@ const ERROR = { type: Object };
  * The storefront reports shopping behaviour here (personalization package 1a): a signed-in
  * customer's under the account, a guest's under the `__Host-engagement-guest-<market>` cookie,
  * set on the first recorded event and never extended. A thin adapter: who the shopper is comes
- * from the session or the cookie, never from the body. `Sec-GPC: 1` records nothing and
- * expires a guest cookie sent. Every answer
+ * from the session or the cookie, never from the body. A guest's event is recorded only with
+ * `Engagement-Consent: granted` (the buyer accepted the cookie bar); without it, or with
+ * `Sec-GPC: 1`, nothing is recorded and a guest cookie sent is expired, on a refused call too. Every answer
  * is `no-store`; the body, the search text and the cookie are never logged.
  */
 @ApiTags('engagement')
@@ -58,7 +60,8 @@ export class BehaviourEventsController {
     summary: 'Record what the shopper viewed, searched for or added to the cart',
     description:
       'Ids only. Not recorded (recorded: false) when the browser sends Sec-GPC: 1 or the ' +
-      'signed-in customer switched personalization off. A guest gets a 30-day cookie.',
+      'signed-in customer switched personalization off, nor for a guest without ' +
+      'Engagement-Consent: granted. A consenting guest gets a 30-day cookie.',
   })
   @ApiHeader({
     name: CSRF_HEADER,
@@ -66,6 +69,14 @@ export class BehaviourEventsController {
     description: 'The CSRF token of the session; required for a signed-in customer',
   })
   @ApiHeader({ name: 'Sec-GPC', required: false, description: '1: record nothing' })
+  @ApiHeader({
+    name: 'Engagement-Consent',
+    required: false,
+    description:
+      'granted: the guest accepted the behaviour cookie in the cookie bar; without it a ' +
+      "guest's event is not recorded and a guest cookie sent is expired. Ignored for a " +
+      'signed-in customer (the account switch applies).',
+  })
   @ApiBody({ type: BehaviourEventRequest })
   @ApiOkResponse({ type: RecordedBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
@@ -91,13 +102,23 @@ export class BehaviourEventsController {
       return { recorded: result.value.recorded } satisfies RecordedBody;
     }
 
+    const consent = engagementConsentOf(request.headers['engagement-consent']);
+    const token = engagementGuestTokenOf(request.headers.cookie, context.market.marketId);
     const result = await this.recordGuest.execute(context, {
       event,
       globalPrivacyControl,
-      token: engagementGuestTokenOf(request.headers.cookie, context.market.marketId),
+      consent,
+      token,
     });
     logRoute(this.#logger, 'engagement.record-guest-event-route', context, outcomeOf(result));
-    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    if (!result.ok) {
+      // Without consent a guest cookie sent is expired on every call, a refused one too: the
+      // storefront's consent cookie can be gone while an old engagement cookie survives.
+      if (token !== null && (globalPrivacyControl || !consent)) {
+        response.append('Set-Cookie', clearedEngagementGuestCookie(context.market.marketId));
+      }
+      throw refusal(result.error, context, this.#logger);
+    }
     if (result.value.cookie !== null) {
       const cookie = result.value.cookie;
       response.append(

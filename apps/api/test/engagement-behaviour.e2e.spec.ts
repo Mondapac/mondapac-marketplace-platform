@@ -22,7 +22,8 @@ import { TEST_MARKETS } from './support/test-config';
 // Behaviour capture over HTTP (personalization 1a): the storefront's event route for a guest and
 // a signed-in customer, and the customer's personalization switch, with the real guards,
 // controllers and use cases; the stores are in memory and the guest tokens are real. Proves the
-// guest cookie (its attributes, set once, reused), Global Privacy Control, that the customer comes
+// guest cookie (its attributes, set once, reused, only with the buyer's consent), Global Privacy
+// Control, that the customer comes
 // from the session, CSRF on the customer's writes, closed bodies and `no-store`.
 
 const START = Temporal.Instant.from('2026-10-18T09:00:00Z');
@@ -37,6 +38,7 @@ const PRODUCT = id<'Product'>(0x101);
 const fakes = new IdentityFakes();
 const sessionTokens = new RandomSessionTokens();
 const VIEWED = { kind: 'product-viewed', productId: PRODUCT };
+const CONSENT = { 'engagement-consent': 'granted' };
 
 describe('engagement routes over HTTP', () => {
   let app: NestExpressApplication | undefined;
@@ -116,7 +118,7 @@ describe('engagement routes over HTTP', () => {
       await boot();
       const first = await http()
         .post('/engagement/events')
-        .set({ 'x-market-id': code })
+        .set({ 'x-market-id': code, ...CONSENT })
         .send(VIEWED);
       expect(first.status).toBe(200);
       expect(first.headers['cache-control']).toBe('no-store');
@@ -132,7 +134,7 @@ describe('engagement routes over HTTP', () => {
 
       const second = await http()
         .post('/engagement/events')
-        .set({ 'x-market-id': code, cookie })
+        .set({ 'x-market-id': code, cookie, ...CONSENT })
         .send({ kind: 'search-performed', query: 'lamb' });
       expect(second.status).toBe(200);
       expect(second.headers['set-cookie']).toBeUndefined();
@@ -148,7 +150,7 @@ describe('engagement routes over HTTP', () => {
       await boot();
       const res = await http()
         .post('/engagement/events')
-        .set({ 'x-market-id': code, 'sec-gpc': '1' })
+        .set({ 'x-market-id': code, 'sec-gpc': '1', ...CONSENT })
         .send(VIEWED);
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ recorded: false });
@@ -159,11 +161,46 @@ describe('engagement routes over HTTP', () => {
         .set({
           'x-market-id': code,
           'sec-gpc': '1',
+          ...CONSENT,
           cookie: `__Host-engagement-guest-${code}=${'g'.repeat(43)}`,
         })
         .send(VIEWED);
       expect(withCookie.body).toEqual({ recorded: false });
       expect(withCookie.headers['set-cookie']).toEqual([
+        `__Host-engagement-guest-${code}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax`,
+      ]);
+      expect(events.rows).toEqual([]);
+    });
+
+    it('records nothing for a guest without Engagement-Consent and expires a cookie sent', async () => {
+      await boot();
+      const fresh = await http()
+        .post('/engagement/events')
+        .set({ 'x-market-id': code })
+        .send(VIEWED);
+      expect(fresh.status).toBe(200);
+      expect(fresh.body).toEqual({ recorded: false });
+      expect(fresh.headers['set-cookie']).toBeUndefined();
+
+      const withdrawn = await http()
+        .post('/engagement/events')
+        .set({
+          'x-market-id': code,
+          'engagement-consent': 'denied',
+          cookie: `__Host-engagement-guest-${code}=${'g'.repeat(43)}`,
+        })
+        .send(VIEWED);
+      expect(withdrawn.body).toEqual({ recorded: false });
+      expect(withdrawn.headers['set-cookie']).toEqual([
+        `__Host-engagement-guest-${code}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax`,
+      ]);
+
+      const refused = await http()
+        .post('/engagement/events')
+        .set({ 'x-market-id': code, cookie: `__Host-engagement-guest-${code}=${'g'.repeat(43)}` })
+        .send({ kind: 'product-viewed' });
+      expect(refused.status).toBe(400);
+      expect(refused.headers['set-cookie']).toEqual([
         `__Host-engagement-guest-${code}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax`,
       ]);
       expect(events.rows).toEqual([]);
