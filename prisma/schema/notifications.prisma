@@ -37,3 +37,47 @@ model NotificationsInbox {
   @@map("inbox")
   @@schema("notifications")
 }
+
+/// One in-app notice (in-app notifications package 1). Addressed to an audience, not to each
+/// person: a `seller` notice is shown to every member of that seller who holds the permission its
+/// kind needs, checked when it is read. No text is stored: the panel renders `kind` and `params`
+/// (ids and counts only, never a name, an address or an email). Rows leave after the retention
+/// period, and the oldest leave once a seller has more than the cap. The CHECKs and the grants are
+/// hand-written in the migration.
+model NotificationsInAppNotice {
+  marketId  String   @map("market_id") @db.VarChar(8)
+  /// A UUIDv7, so the id sorts by creation time (the list's cursor).
+  id        String   @db.Uuid
+  tenantId  String   @map("tenant_id")
+  /// `seller` today; `admin` joins with the admin notices.
+  audience  String
+  /// Set if and only if the audience is `seller` (a plain id, no foreign key).
+  sellerId  String?  @map("seller_id") @db.Uuid
+  /// What happened, for example `seller.order-paid`.
+  kind      String   @db.VarChar(64)
+  params    Json     @db.JsonB
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+
+  reads NotificationsInAppNoticeRead[]
+
+  @@id([marketId, id])
+  @@index([marketId, sellerId, id(sort: Desc)])
+  @@index([marketId, createdAt])
+  @@map("in_app_notices")
+  @@schema("notifications")
+}
+
+/// That one account has read one notice. Insert-only; it goes with its notice.
+model NotificationsInAppNoticeRead {
+  marketId  String   @map("market_id") @db.VarChar(8)
+  noticeId  String   @map("notice_id") @db.Uuid
+  accountId String   @map("account_id") @db.Uuid
+  tenantId  String   @map("tenant_id")
+  readAt    DateTime @map("read_at") @db.Timestamptz(6)
+
+  notice NotificationsInAppNotice @relation(fields: [marketId, noticeId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, noticeId, accountId])
+  @@map("in_app_notice_reads")
+  @@schema("notifications")
+}
