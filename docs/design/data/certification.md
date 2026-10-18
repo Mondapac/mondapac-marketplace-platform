@@ -483,7 +483,8 @@ with type, CE4), `draft_certificate_number_ciphertext` (Enc, platform key), `dra
 `product_revision_id` (the covered product revision, ruling M3; D 16.1 item 1), `variant_id`
 (nullable). Partial uniques: `(market_id, product_certification_id, product_id) WHERE variant_id IS
 NULL` and `(market_id, product_certification_id, product_id, variant_id) WHERE variant_id IS NOT
-NULL`. Mutable (`SELECT, INSERT, UPDATE, DELETE`).
+NULL`. Mutable as built (slice 14): `SELECT, INSERT, DELETE`, no `UPDATE` (a save replaces the
+whole list: delete, then insert).
 
 `product_certification_draft_documents`: as 3.11's draft link. `product_certification_draft_editors`:
 PK `(market_id, product_certification_id, account_id)`; `first_edited_at`. Every admin who edits the
@@ -517,8 +518,11 @@ author_account_id)`. Insert-only (CE3).
   variant-narrowed entry are distinct rows (ruling L1; measured: a second whole entry is refused, a
   variant entry beside it is accepted). Whether both may coexist for one product is the aggregate's
   (Q-C7).
-- **Lookup index `(market_id, product_id, type_id, product_revision_id) INCLUDE (variant_id,
-  revision_id)`** (A3): statement S3 is an index-only scan on it (measured, 12).
+- **Lookup index `(market_id, product_id, type_id, product_revision_id, variant_id,
+  revision_id)`** (A3; as built, slice 14: `variant_id` and `revision_id` are trailing key
+  columns, not `INCLUDE`, so the index is in the Prisma schema and never read as drift): statement
+  S3 is an index-only scan on it (measured, 12). A second index `(market_id, revision_id,
+  type_id)` serves the coverage of one revision and the composite FK to the revision (Mojtaba F1).
 - Never empty for a revision ("brand alone is not coverage"): cross-row, the aggregate's (6).
 
 `product_revision_documents`: as `seller_submission_documents`. `product_revision_editors`: PK
@@ -904,28 +908,36 @@ SELECT t.id AS type_id, t.code, t.verification_mode, tr.id AS type_revision_id,
  WHERE t.market_id = $1 AND t.code = ANY ($2::text[]);
 
 -- S3: manufacturer basis, only for queries still undecided under SELLER_OR_MANUFACTURER.
-SELECT q.ord, pc.id AS product_certification_id, rv.id AS revision_id, rv.issuer_id, rv.expiry_date,
-       dd.expiry_boundary_at, i.state AS issuer_state, i.display_name AS issuer_name,
-       (pic.revision_id IS NOT NULL) AS verified_with_issuer
-  FROM unnest($2::uuid[], $3::uuid[], $4::uuid[], $5::text[])
-       WITH ORDINALITY AS q(product_id, product_revision_id, variant_id, type_code, ord)
+-- As built (slice 14): the variant is not bound (a NULL array element cannot be bound), so every
+-- coverage entry of the product revision is returned and the reader applies the variant rule
+-- (L1); the type code, status, type revision (I1), requires_expiry, the decision outcome, the
+-- stored boundary as text (Hassan L1) and the coverage columns are returned for the fold.
+SELECT q.ord::int4 AS ord, t.code AS type_code, pc.id AS product_certification_id, pc.status,
+       rv.id AS revision_id, rv.type_revision_id, tr.requires_expiry, rv.issuer_id,
+       rv.expiry_date::text AS expiry_date, dd.outcome AS decision_outcome,
+       dd.expiry_boundary_at::text AS expiry_boundary_at,
+       i.state AS issuer_state, i.display_name AS issuer_name, cv.product_id,
+       cv.product_revision_id, cv.variant_id, (pic.revision_id IS NOT NULL) AS verified_with_issuer
+  FROM unnest($2::uuid[], $3::uuid[], $4::text[])
+       WITH ORDINALITY AS q(product_id, product_revision_id, type_code, ord)
   JOIN "certification"."certification_types" t ON t.market_id = $1 AND t.code = q.type_code
   JOIN "certification"."product_revision_coverage" cv
     ON cv.market_id = $1 AND cv.product_id = q.product_id AND cv.type_id = t.id
    AND cv.product_revision_id = q.product_revision_id
-   AND (cv.variant_id IS NULL OR cv.variant_id = q.variant_id)
   JOIN "certification"."product_certification_revisions" rv ON rv.market_id = $1 AND rv.id = cv.revision_id
   JOIN "certification"."product_certifications" pc
     ON pc.market_id = $1 AND pc.id = rv.product_certification_id
    AND pc.approved_revision_id = rv.id AND pc.status = 'approved'
   JOIN "certification"."product_revision_decisions" dd ON dd.market_id = $1 AND dd.revision_id = rv.id
+  JOIN "certification"."certification_type_revisions" tr ON tr.market_id = $1 AND tr.id = rv.type_revision_id
   JOIN "certification"."issuers" i ON i.market_id = $1 AND i.id = rv.issuer_id
   LEFT JOIN "certification"."product_issuer_confirmations" pic ON pic.market_id = $1 AND pic.revision_id = rv.id;
 ```
 
 Notes:
-- A variant-narrowed entry never matches `variant_id = NULL` (`NULL = NULL` is not true), as L1
-  requires; a whole-product entry matches every variant.
+- A variant-narrowed entry never matches a query without a variant, as L1 requires; a
+  whole-product entry matches every variant. As built, S3 returns every entry of the product
+  revision and the reader applies this rule in code (the domain's `covers`).
 - S1 returns no row for a (seller, type) without a non-terminal certificate: "no valid seller
   certificate". A status of `expired`, `changes-needed` or `in-review` still returns the approved
   submission, because validity is the boundary, not the status (D 2.4 rule 4).
@@ -954,7 +966,7 @@ the expected map of the privilege test changed in the same PR. `GRANT USAGE ON S
 | `issuers` | `SELECT, INSERT`, `UPDATE (display_name, display_name_key, accreditation_number, state, expert_reference_ciphertext, state_changed_at, state_changed_by_kind, state_changed_by_account_id, version)` | Never | `type_id` immutable; never deleted (CERT-04) |
 | `issuer_contact_channels` | `SELECT, INSERT`, `UPDATE (retired_at)` | Never | 3.7 |
 | `seller_certifications` | `SELECT, INSERT, UPDATE` | 5 (never-submitted records; the FK refuses others) | Root and draft |
-| `seller_certification_draft_documents`, `product_certification_draft_documents`, `product_certification_draft_coverage` | `SELECT, INSERT, DELETE`; draft coverage also `UPDATE` | 5; 14 | Draft lists |
+| `seller_certification_draft_documents`, `product_certification_draft_documents`, `product_certification_draft_coverage` | `SELECT, INSERT, DELETE` (draft coverage has no `UPDATE`, as built in slice 14: a save replaces the list) | 5; 14 | Draft lists |
 | `product_certification_draft_editors` | `SELECT, INSERT` | 14 (removed at submission) | |
 | `product_certifications` | `SELECT, INSERT, UPDATE` | Never (a draft is rejected, not deleted: Q-C2) | |
 | `uploaded_documents` | `SELECT, INSERT, DELETE` as built (PR 382): **no UPDATE** until the scanner package, which then adds a column-level `UPDATE (state, refusal_code, media_type, page_count, clean_sha256, version)` (6.1); the full `UPDATE` of this row is not granted | 4 (draft area only; the guard trigger refuses promoted rows) | The set-once guard still protects identity columns for the owner role |

@@ -197,6 +197,10 @@ CREATE UNIQUE INDEX "product_revision_coverage_market_id_id_key" ON "certificati
 -- columns are trailing key columns, so the index is in the Prisma schema (no drift).
 CREATE INDEX "product_revision_coverage_lookup_idx" ON "certification"."product_revision_coverage"("market_id", "product_id", "type_id", "product_revision_id", "variant_id", "revision_id");
 
+-- Mojtaba F1: the coverage of one revision (the revision read) and the referencing side of the
+-- composite foreign key to the revision.
+CREATE INDEX "product_revision_coverage_market_id_revision_id_type_id_idx" ON "certification"."product_revision_coverage"("market_id", "revision_id", "type_id");
+
 -- CreateIndex
 CREATE INDEX "product_certification_history_market_id_product_certificati_idx" ON "certification"."product_certification_history"("market_id", "product_certification_id", "occurred_at");
 

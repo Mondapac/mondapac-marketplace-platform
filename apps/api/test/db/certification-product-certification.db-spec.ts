@@ -375,6 +375,7 @@ describe.each(TEST_MARKETS)('manufacturer certificates in market %s (database)',
     );
     expect(audits.map((a) => a.action).sort()).toEqual(
       [
+        'certification.product-certificate.number-viewed',
         'certification.product-certification.approved',
         'certification.product-certification.edited',
         'certification.product-certification.edited',
@@ -643,6 +644,181 @@ describe.each(TEST_MARKETS)('manufacturer certificates in market %s (database)',
     );
     expect(rejected.status).toBe('rejected');
     expect(await outboxOf(created.certificateId)).toEqual([]);
+  });
+
+  it('refuses the creator, an editor and a submitter who never saved the draft both decisions (Hassan L3)', async () => {
+    const u = useCases();
+    const type = await seedType();
+    const issuerId = await seedIssuer(type.typeId);
+    const p = product();
+    const creator = admin();
+    const editor = admin();
+    const submitter = admin();
+    const created = await unwrap(u.create.execute(creator, { typeId: type.typeId }));
+    const saved = await unwrap(
+      u.save.execute(editor, {
+        certificateId: created.certificateId,
+        version: created.version,
+        draft: draftOf(issuerId, [{ productId: p.productId }]),
+      }),
+    );
+    const sent = await unwrap(
+      u.submit.execute(submitter, { certificateId: created.certificateId, version: saved.version }),
+    );
+    const decision = { certificateId: created.certificateId, revisionId: sent.revisionId };
+    for (const actor of [creator, editor, submitter]) {
+      expect(
+        await refusal(
+          u.reject.execute(actor, {
+            ...decision,
+            version: sent.version,
+            reasonCode: 'not-genuine',
+          }),
+        ),
+      ).toEqual({ code: 'approval.same-admin' });
+    }
+    expect(
+      await refusal(u.approve.execute(submitter, { ...decision, version: sent.version })),
+    ).toEqual({ code: 'approval.same-admin' });
+    // Another person may decide.
+    expect(
+      await unwrap(
+        u.reject.execute(admin(), {
+          ...decision,
+          version: sent.version,
+          reasonCode: 'not-genuine',
+        }),
+      ),
+    ).toMatchObject({ outcome: 'rejected' });
+  });
+
+  it('audits each review read once, after the numbers are opened, naming the revisions and never the number (Hassan M1)', async () => {
+    const { u, created, sent } = await submitted();
+    const approverId = uuid7();
+    const approver = admin(approverId);
+    const viewed = async () => {
+      const { rows } = await owner.query<{ after: Record<string, unknown>; actor_id: string }>(
+        `SELECT after, actor_id FROM platform.audit_log
+          WHERE market_id = $1 AND target_id = $2
+            AND action = 'certification.product-certificate.number-viewed'
+          ORDER BY occurred_at, id`,
+        [market.marketId, created.certificateId],
+      );
+      return rows;
+    };
+    // The plain read opens nothing and writes nothing.
+    await unwrap(u.read.execute(approver, { certificateId: created.certificateId }));
+    expect(await viewed()).toEqual([]);
+
+    const pending = await unwrap(
+      u.review.execute(approver, { certificateId: created.certificateId }),
+    );
+    expect(pending.pending?.certificateNumber).toBe('MFR-12345');
+    expect(await viewed()).toEqual([
+      { after: { revisionIds: [sent.revisionId] }, actor_id: approverId },
+    ]);
+    const decided = await unwrap(
+      u.approve.execute(approver, {
+        certificateId: created.certificateId,
+        revisionId: sent.revisionId,
+        version: sent.version,
+      }),
+    );
+    expect(decided.status).toBe('approved');
+    await unwrap(u.review.execute(approver, { certificateId: created.certificateId }));
+    const rows = await viewed();
+    expect(rows.map((r) => r.after)).toEqual([
+      { revisionIds: [sent.revisionId] },
+      { revisionIds: [sent.revisionId] },
+    ]);
+    expect(JSON.stringify(rows)).not.toContain('MFR-12345');
+    // A read of another Market's id is not found and audits nothing.
+    const elsewhere = await refusal(
+      u.review.execute(
+        testCallContext(
+          other,
+          testAuthenticatedActor(other, {
+            population: 'admin',
+            accountId: uuid7() as Id<'Account'>,
+            sessionId: uuid7() as Id<'Session'>,
+            sellerId: null,
+          }),
+        ),
+        { certificateId: created.certificateId },
+      ),
+    );
+    expect(elsewhere).toEqual({ code: 'certificate.not-found' });
+    expect(await viewed()).toHaveLength(2);
+  });
+
+  it('S3 never covers through a pending revision or a superseded approved one (Hassan L3)', async () => {
+    const first = product();
+    const second = product();
+    const { u, type, issuerId, created, sent } = await submitted([first]);
+    const reader = new PrismaClaimFactsReader(
+      persistence.unitOfWork,
+      new PrismaRawReadPort(persistence.root).forModule('certification'),
+    );
+    const ask = (p: ReturnType<typeof product>) => ({
+      typeCode: type.code as CertificationTypeCode,
+      productId: p.productId,
+      productRevisionId: p.revisionId,
+      variantId: null,
+    });
+    const covered = async () =>
+      (await reader.productCertificates(market, [ask(first), ask(second)])).map((a) =>
+        a.certificates.map((c) => c.approved?.revisionId ?? null),
+      );
+    // Pending only: nothing covers.
+    expect(await covered()).toEqual([[], []]);
+    const approved = await unwrap(
+      u.approve.execute(admin(), {
+        certificateId: created.certificateId,
+        revisionId: sent.revisionId,
+        version: sent.version,
+      }),
+    );
+    expect(await covered()).toEqual([[sent.revisionId], []]);
+
+    // Revision 2 moves the coverage to the second product; while pending it covers nothing.
+    const editor = admin();
+    const saved = await unwrap(
+      u.save.execute(editor, {
+        certificateId: created.certificateId,
+        version: approved.version,
+        draft: draftOf(issuerId, [{ productId: second.productId }]),
+      }),
+    );
+    const sent2 = await unwrap(
+      u.submit.execute(editor, { certificateId: created.certificateId, version: saved.version }),
+    );
+    expect(await covered()).toEqual([[sent.revisionId], []]);
+    await unwrap(
+      u.approve.execute(admin(), {
+        certificateId: created.certificateId,
+        revisionId: sent2.revisionId,
+        version: sent2.version,
+      }),
+    );
+    // Revision 1 is superseded: its coverage of the first product no longer counts.
+    expect(await covered()).toEqual([[], [sent2.revisionId]]);
+  });
+
+  it('reads the coverage of one revision from its own index (Mojtaba F1)', async () => {
+    await owner.query('SET enable_seqscan = off');
+    try {
+      const plan = await owner.query<{ 'QUERY PLAN': string }>(
+        `EXPLAIN SELECT id, product_id, product_revision_id, variant_id
+           FROM certification.product_revision_coverage
+          WHERE market_id = $1 AND revision_id = $2 AND type_id = $3`,
+        [market.marketId, uuid7(), uuid7()],
+      );
+      expect(plan.rows.map((row) => row['QUERY PLAN']).join('\n')).toContain(
+        'product_revision_coverage_market_id_revision_id_type_id_idx',
+      );
+    } finally {
+      await owner.query('RESET enable_seqscan');
+    }
   });
 
   it('lists the Market only, and keeps revisions, coverage, editors, decisions and history insert-only', async () => {

@@ -172,42 +172,42 @@ model CertificationIssuer {
 /// One seller's certificate of one type: the root of the V1 pair with its submissions (data
 /// design 3.4). Slice-1 columns only; the draft columns arrive with the slice that writes them.
 model CertificationSellerCertification {
-  id                                 String                                       @id @db.Uuid
-  marketId                           String                                       @map("market_id") @db.VarChar(8)
-  tenantId                           String                                       @map("tenant_id")
+  id                   String                                       @id @db.Uuid
+  marketId             String                                       @map("market_id") @db.VarChar(8)
+  tenantId             String                                       @map("tenant_id")
   /// Minted by identity; also the subject of the seller's key (D 10.1). No foreign key (C4).
-  sellerId                           String                                       @map("seller_id") @db.Uuid
-  typeId                             String                                       @map("type_id") @db.Uuid
+  sellerId             String                                       @map("seller_id") @db.Uuid
+  typeId               String                                       @map("type_id") @db.Uuid
   /// draft | in-review | approved | changes-needed | declined | expired | revoked (D 3.1).
-  status                             String
+  status               String
   /// The one pending submission; a single column, so "at most one pending" holds by construction.
-  pendingSubmissionId                String?                                      @map("pending_submission_id") @db.Uuid
+  pendingSubmissionId  String?                                      @map("pending_submission_id") @db.Uuid
   /// The approved submission (V1 pointer); only a submission of this certificate.
-  approvedSubmissionId               String?                                      @map("approved_submission_id") @db.Uuid
+  approvedSubmissionId String?                                      @map("approved_submission_id") @db.Uuid
   /// Denormalised copy of the approved decision's boundary, for the expiry job's index only;
   /// evaluateClaims reads the decision row, never this column.
-  approvedBoundaryAt                 DateTime?                                    @map("approved_boundary_at") @db.Timestamptz(6)
-  statusChangedAt                    DateTime                                     @map("status_changed_at") @db.Timestamptz(6)
-  lastChangedAt                      DateTime                                     @map("last_changed_at") @db.Timestamptz(6)
+  approvedBoundaryAt   DateTime?                                    @map("approved_boundary_at") @db.Timestamptz(6)
+  statusChangedAt      DateTime                                     @map("status_changed_at") @db.Timestamptz(6)
+  lastChangedAt        DateTime                                     @map("last_changed_at") @db.Timestamptz(6)
   /// The seller's working copy (data design 3.4, draft columns). Only an issuer of the same type
   /// and Market (AC 11); its state is checked at submit.
-  draftIssuerId                      String?                                      @map("draft_issuer_id") @db.Uuid
+  draftIssuerId        String?                                      @map("draft_issuer_id") @db.Uuid
   /// Personal, encrypted under the seller's key (label certification.seller-certification.draft-certificate-number).
-  draftCertificateNumberCiphertext   String?                                      @map("draft_certificate_number_ciphertext")
-  draftIssueDate                     DateTime?                                    @map("draft_issue_date") @db.Date
-  draftExpiryDate                    DateTime?                                    @map("draft_expiry_date") @db.Date
+  draftCertificateNumberCiphertext String?                          @map("draft_certificate_number_ciphertext")
+  draftIssueDate       DateTime?                                    @map("draft_issue_date") @db.Date
+  draftExpiryDate      DateTime?                                    @map("draft_expiry_date") @db.Date
   /// The seller's own tick (R14).
-  draftSelfDeclared                  Boolean?                                     @map("draft_self_declared")
-  draftSelfDeclarationNoteCiphertext String?                                      @map("draft_self_declaration_note_ciphertext")
-  version                            Int
-  createdAt                          DateTime                                     @map("created_at") @db.Timestamptz(6)
-  draftIssuer                        CertificationIssuer?                         @relation("CertificateDraftIssuer", fields: [marketId, draftIssuerId, typeId], references: [marketId, id, typeId], onDelete: Restrict, onUpdate: Restrict)
-  draftDocuments                     CertificationSellerDraftDocument[]
-  history                            CertificationSellerCertificationHistory[]
-  type                               CertificationType                            @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  submissions                        CertificationSellerCertificationSubmission[] @relation("CertificateSubmissions")
-  pendingSubmission                  CertificationSellerCertificationSubmission?  @relation("CertificatePending", fields: [marketId, id, pendingSubmissionId], references: [marketId, sellerCertificationId, id], onDelete: Restrict, onUpdate: Restrict)
-  approvedSubmission                 CertificationSellerCertificationSubmission?  @relation("CertificateApproved", fields: [marketId, id, approvedSubmissionId], references: [marketId, sellerCertificationId, id], onDelete: Restrict, onUpdate: Restrict)
+  draftSelfDeclared    Boolean?                                     @map("draft_self_declared")
+  draftSelfDeclarationNoteCiphertext String?                        @map("draft_self_declaration_note_ciphertext")
+  version              Int
+  createdAt            DateTime                                     @map("created_at") @db.Timestamptz(6)
+  draftIssuer          CertificationIssuer?                         @relation("CertificateDraftIssuer", fields: [marketId, draftIssuerId, typeId], references: [marketId, id, typeId], onDelete: Restrict, onUpdate: Restrict)
+  draftDocuments       CertificationSellerDraftDocument[]
+  history              CertificationSellerCertificationHistory[]
+  type                 CertificationType                            @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  submissions          CertificationSellerCertificationSubmission[] @relation("CertificateSubmissions")
+  pendingSubmission    CertificationSellerCertificationSubmission?  @relation("CertificatePending", fields: [marketId, id, pendingSubmissionId], references: [marketId, sellerCertificationId, id], onDelete: Restrict, onUpdate: Restrict)
+  approvedSubmission   CertificationSellerCertificationSubmission?  @relation("CertificateApproved", fields: [marketId, id, approvedSubmissionId], references: [marketId, sellerCertificationId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([marketId, id])
   /// The target of the type foreign keys of later tables (CE4).
@@ -226,43 +226,43 @@ model CertificationSellerCertification {
 /// is derived: pending = the root's pending pointer; approved, changes-requested, declined and
 /// withdrawn = its decision row.
 model CertificationSellerCertificationSubmission {
-  id                            String                                    @id @db.Uuid
-  marketId                      String                                    @map("market_id") @db.VarChar(8)
-  tenantId                      String                                    @map("tenant_id")
-  sellerCertificationId         String                                    @map("seller_certification_id") @db.Uuid
+  id                           String                             @id @db.Uuid
+  marketId                     String                             @map("market_id") @db.VarChar(8)
+  tenantId                     String                             @map("tenant_id")
+  sellerCertificationId        String                             @map("seller_certification_id") @db.Uuid
   /// Copies bound by the foreign keys (type) and by the use case (seller).
-  sellerId                      String                                    @map("seller_id") @db.Uuid
-  typeId                        String                                    @map("type_id") @db.Uuid
+  sellerId                     String                             @map("seller_id") @db.Uuid
+  typeId                       String                             @map("type_id") @db.Uuid
   /// The type revision in force at submission (D 2.1).
-  typeRevisionId                String                                    @map("type_revision_id") @db.Uuid
-  submissionNo                  Int                                       @map("submission_no")
+  typeRevisionId               String                             @map("type_revision_id") @db.Uuid
+  submissionNo                 Int                                @map("submission_no")
   /// initial | resubmission | renewal
-  kind                          String
-  issuerId                      String?                                   @map("issuer_id") @db.Uuid
-  certificateNumberCiphertext   String?                                   @map("certificate_number_ciphertext")
-  issueDate                     DateTime?                                 @map("issue_date") @db.Date
-  expiryDate                    DateTime?                                 @map("expiry_date") @db.Date
-  selfDeclared                  Boolean?                                  @map("self_declared")
-  selfDeclarationNoteCiphertext String?                                   @map("self_declaration_note_ciphertext")
-  contentSchemaVersion          Int                                       @map("content_schema_version") @db.SmallInt
+  kind                         String
+  issuerId                     String?                            @map("issuer_id") @db.Uuid
+  certificateNumberCiphertext  String?                            @map("certificate_number_ciphertext")
+  issueDate                    DateTime?                          @map("issue_date") @db.Date
+  expiryDate                   DateTime?                          @map("expiry_date") @db.Date
+  selfDeclared                 Boolean?                           @map("self_declared")
+  selfDeclarationNoteCiphertext String?                           @map("self_declaration_note_ciphertext")
+  contentSchemaVersion         Int                                @map("content_schema_version") @db.SmallInt
   /// "hmac-sha256:<64 hex>" from SubjectKeyService.hmac (D 10.2).
-  contentHash                   String                                    @map("content_hash")
+  contentHash                  String                             @map("content_hash")
   /// The seller's IANA zone at submission (CE6).
-  submittedZone                 String                                    @map("submitted_zone")
-  submittedAt                   DateTime                                  @map("submitted_at") @db.Timestamptz(6)
-  submittedByAccountId          String                                    @map("submitted_by_account_id") @db.Uuid
-  certificate                   CertificationSellerCertification          @relation("CertificateSubmissions", fields: [marketId, sellerCertificationId, typeId, sellerId], references: [marketId, id, typeId, sellerId], onDelete: Restrict, onUpdate: Restrict)
-  typeRevision                  CertificationTypeRevision                 @relation(fields: [marketId, typeId, typeRevisionId], references: [marketId, typeId, id], onDelete: Restrict, onUpdate: Restrict)
-  issuer                        CertificationIssuer?                      @relation(fields: [marketId, issuerId, typeId], references: [marketId, id, typeId], onDelete: Restrict, onUpdate: Restrict)
-  pendingOf                     CertificationSellerCertification[]        @relation("CertificatePending")
-  approvedOf                    CertificationSellerCertification[]        @relation("CertificateApproved")
-  decision                      CertificationSellerSubmissionDecision?
-  documents                     CertificationSubmissionDocument[]
-  history                       CertificationSellerCertificationHistory[]
-  reviewChecks                  CertificationReviewCheck[]
-  scopeReadings                 CertificationScopeReading[]
-  issuerConfirmations           CertificationIssuerConfirmation[]
-  numberIndexRows               CertificationCertificateNumberIndex[]
+  submittedZone                String                             @map("submitted_zone")
+  submittedAt                  DateTime                           @map("submitted_at") @db.Timestamptz(6)
+  submittedByAccountId         String                             @map("submitted_by_account_id") @db.Uuid
+  certificate                  CertificationSellerCertification   @relation("CertificateSubmissions", fields: [marketId, sellerCertificationId, typeId, sellerId], references: [marketId, id, typeId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  typeRevision                 CertificationTypeRevision          @relation(fields: [marketId, typeId, typeRevisionId], references: [marketId, typeId, id], onDelete: Restrict, onUpdate: Restrict)
+  issuer                       CertificationIssuer?               @relation(fields: [marketId, issuerId, typeId], references: [marketId, id, typeId], onDelete: Restrict, onUpdate: Restrict)
+  pendingOf                    CertificationSellerCertification[] @relation("CertificatePending")
+  approvedOf                   CertificationSellerCertification[] @relation("CertificateApproved")
+  decision                     CertificationSellerSubmissionDecision?
+  documents                    CertificationSubmissionDocument[]
+  history                      CertificationSellerCertificationHistory[]
+  reviewChecks                 CertificationReviewCheck[]
+  scopeReadings                CertificationScopeReading[]
+  issuerConfirmations          CertificationIssuerConfirmation[]
+  numberIndexRows              CertificationCertificateNumberIndex[]
 
   @@unique([marketId, id])
   /// The target of the pointer foreign keys of the root (CE4).
@@ -413,31 +413,31 @@ model CertificationPlatformSubject {
 /// `refused` values stay in the CHECK so a scanner can be added later. A set-once trigger keeps the
 /// identity of the row fixed. The client's file name is never stored.
 model CertificationUploadedDocument {
-  id              String                               @id @db.Uuid
-  marketId        String                               @map("market_id") @db.VarChar(8)
-  tenantId        String                               @map("tenant_id")
+  id              String                             @id @db.Uuid
+  marketId        String                             @map("market_id") @db.VarChar(8)
+  tenantId        String                             @map("tenant_id")
   /// The seller for seller files; NULL for admin-recorded manufacturer files (later).
-  ownerSellerId   String?                              @map("owner_seller_id") @db.Uuid
+  ownerSellerId   String?                            @map("owner_seller_id") @db.Uuid
   /// seller-certificate | issuer-request | product-certificate
   purpose         String
-  typeId          String?                              @map("type_id") @db.Uuid
+  typeId          String?                            @map("type_id") @db.Uuid
   /// received | scanning | clean | refused
   state           String
-  refusalCode     String?                              @map("refusal_code")
+  refusalCode     String?                            @map("refusal_code")
   /// Found by inspection of the content, never the client's.
-  mediaType       String?                              @map("media_type")
+  mediaType       String?                            @map("media_type")
   /// Plaintext size in bytes.
-  byteSize        BigInt                               @map("byte_size")
-  pageCount       Int?                                 @map("page_count") @db.SmallInt
+  byteSize        BigInt                             @map("byte_size")
+  pageCount       Int?                               @map("page_count") @db.SmallInt
   /// The per-file data key wrapped under the owner's subject key (label certification.document.data-key).
-  dataKeyEnvelope String                               @map("data_key_envelope")
+  dataKeyEnvelope String                             @map("data_key_envelope")
   /// Key of the encrypted object (`certification/<sellerId>/<documentId>`).
-  objectKey       String                               @map("object_key")
+  objectKey       String                             @map("object_key")
   /// SHA-256 of the stored (encrypted) bytes, recorded when the file became clean.
-  cleanSha256     Bytes?                               @map("clean_sha256")
+  cleanSha256     Bytes?                             @map("clean_sha256")
   version         Int
-  createdAt       DateTime                             @map("created_at") @db.Timestamptz(6)
-  type            CertificationType?                   @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  createdAt       DateTime                           @map("created_at") @db.Timestamptz(6)
+  type            CertificationType?                 @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   draftLinks      CertificationSellerDraftDocument[]
   submissionLinks CertificationSubmissionDocument[]
   indexRows       CertificationDocumentIndex[]
@@ -659,27 +659,27 @@ model CertificationDocumentIndex {
 /// or a submission (AC 11). Never deleted. The open-queue and per-seller partial indexes are in the
 /// migration (invisible to Prisma).
 model CertificationIssuerRequest {
-  id                  String                               @id @db.Uuid
-  marketId            String                               @map("market_id") @db.VarChar(8)
-  tenantId            String                               @map("tenant_id")
-  sellerId            String                               @map("seller_id") @db.Uuid
-  typeId              String                               @map("type_id") @db.Uuid
+  id                   String                               @id @db.Uuid
+  marketId             String                               @map("market_id") @db.VarChar(8)
+  tenantId             String                               @map("tenant_id")
+  sellerId             String                               @map("seller_id") @db.Uuid
+  typeId               String                               @map("type_id") @db.Uuid
   /// Personal (a seller's text); a v1 envelope of the platform SubjectKeyService.
-  typedNameCiphertext String                               @map("typed_name_ciphertext")
+  typedNameCiphertext  String                               @map("typed_name_ciphertext")
   /// open | issuer-added | not-accepted
-  state               String
+  state                String
   /// A reason code of the Market's list (S8); set iff not-accepted.
-  answerReasonCode    String?                              @map("answer_reason_code")
+  answerReasonCode     String?                              @map("answer_reason_code")
   /// The issuer the admin added, of the request's type (the foreign key carries the type); set iff
   /// issuer-added.
-  issuerId            String?                              @map("issuer_id") @db.Uuid
-  answeredAt          DateTime?                            @map("answered_at") @db.Timestamptz(6)
-  answeredByAccountId String?                              @map("answered_by_account_id") @db.Uuid
-  version             Int
-  createdAt           DateTime                             @map("created_at") @db.Timestamptz(6)
-  type                CertificationType                    @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  issuer              CertificationIssuer?                 @relation(fields: [marketId, issuerId, typeId], references: [marketId, id, typeId], onDelete: Restrict, onUpdate: Restrict)
-  documents           CertificationIssuerRequestDocument[]
+  issuerId             String?                              @map("issuer_id") @db.Uuid
+  answeredAt           DateTime?                            @map("answered_at") @db.Timestamptz(6)
+  answeredByAccountId  String?                              @map("answered_by_account_id") @db.Uuid
+  version              Int
+  createdAt            DateTime                             @map("created_at") @db.Timestamptz(6)
+  type                 CertificationType                    @relation(fields: [marketId, typeId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  issuer               CertificationIssuer?                 @relation(fields: [marketId, issuerId, typeId], references: [marketId, id, typeId], onDelete: Restrict, onUpdate: Restrict)
+  documents            CertificationIssuerRequestDocument[]
 
   @@unique([marketId, id])
   /// The target of the document link's foreign key: the link names the seller and the type.
@@ -970,6 +970,9 @@ model CertificationProductRevisionCoverage {
   /// A3: statement S3 is an index-only scan on it. The design's INCLUDE (variant_id, revision_id)
   /// is written as trailing key columns, so Prisma knows the index and never drops it as drift.
   @@index([marketId, productId, typeId, productRevisionId, variantId, revisionId], map: "product_revision_coverage_lookup_idx")
+  /// Mojtaba F1: the coverage of one revision (the revision read's relation load) and the
+  /// referencing side of the composite foreign key to the revision.
+  @@index([marketId, revisionId, typeId])
   @@map("product_revision_coverage")
   @@schema("certification")
 }

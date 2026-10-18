@@ -3,6 +3,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE } from '../../contracts/permissions';
+import { ProductCertificateNumberViewedAudit } from '../../domain/audit';
 import {
   adminOf,
   certificationOut,
@@ -74,6 +75,7 @@ export class ProductCertificateReviewRead extends UseCase<
     if (read.value === null) return NOT_FOUND;
     const { root, pending, approved } = read.value;
     const out = certificationOut(root, pending, approved);
+    let result: ProductCertificationOut;
     try {
       const draftNumber =
         root.draft.certificateNumberCiphertext === null
@@ -89,21 +91,39 @@ export class ProductCertificateReviewRead extends UseCase<
               ...view,
               certificateNumber: await deps.cipher.openNumber(market, 'revision', sealed),
             };
-      const result: ProductCertificationOut = {
+      result = {
         ...out,
         draft: { ...out.draft, certificateNumber: draftNumber },
         pending: await withNumber(out.pending, pending?.certificateNumberCiphertext),
         approved: await withNumber(out.approved, approved?.certificateNumberCiphertext),
       };
-      logger.log({
-        msg: 'certification.product-certificate.review-read',
-        certificateId: certificateId as Id,
-        marketId: market.marketId,
-        correlationId: context.correlationId,
-      });
-      return ok(result);
     } catch (error) {
       return productFailure(context, 'certification.product-certificate-review-read.open', error);
     }
+    // Hassan M1: the numbers are answered only once their audit row is committed (never the
+    // number itself; the revisions whose numbers were opened).
+    const revisionIds = [pending?.id, approved?.id].filter(
+      (id, index, all): id is NonNullable<typeof id> =>
+        id !== undefined && all.indexOf(id) === index,
+    );
+    const audited = await deps.unitOfWork
+      .run<true, never>(market, async () => {
+        await deps.audit.record(
+          context,
+          ProductCertificateNumberViewedAudit.entry(certificateId, { after: { revisionIds } }),
+        );
+        return ok(true as const);
+      })
+      .catch((error: unknown) =>
+        productFailure(context, 'certification.product-certificate-review-read.audit', error),
+      );
+    if (!audited.ok) return audited;
+    logger.log({
+      msg: 'certification.product-certificate.review-read',
+      certificateId: certificateId as Id,
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return ok(result);
   }
 }

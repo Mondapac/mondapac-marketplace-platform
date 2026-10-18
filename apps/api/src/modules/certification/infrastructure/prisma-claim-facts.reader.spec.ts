@@ -244,7 +244,6 @@ describe.each(['AU', 'ZZ'] as const)('PrismaClaimFactsReader, Market %s', (marke
       productRevisionId: id(product + 1) as Id<'ProductRevision'>,
       variantId: variant === null ? null : (id(variant) as Id<'Variant'>),
     });
-    const zone = marketCode === 'AU' ? 'Australia/Brisbane' : 'Asia/Tokyo';
     const manufacturer = (overrides: Partial<Manufacturer> = {}): Manufacturer => ({
       ord: 1,
       typeCode: 'halal',
@@ -256,8 +255,8 @@ describe.each(['AU', 'ZZ'] as const)('PrismaClaimFactsReader, Market %s', (marke
       issuerId: id(83),
       expiryDate: '2027-06-30',
       decisionOutcome: 'approved',
-      boundaryZone: zone,
-      hasExpiryBoundary: true,
+      // As stored at approval: the end of 2027-06-30 in the Market zone, in UTC.
+      expiryBoundaryAt: marketCode === 'AU' ? '2027-06-30 14:00:00+00' : '2027-06-30 15:00:00+00',
       issuerState: 'active',
       issuerName: 'Issuer One',
       productId: id(70),
@@ -325,10 +324,27 @@ describe.each(['AU', 'ZZ'] as const)('PrismaClaimFactsReader, Market %s', (marke
       expect(answer!.certificates[0]!.approved).toBeNull();
     });
 
-    it('drops the date of a required expiry without a stored boundary (expiry-missing)', async () => {
+    it('uses the boundary stored at approval as stored, never recomputed from the date (Hassan L1)', async () => {
       const [answer] = await reader([
-        manufacturer({ hasExpiryBoundary: false, boundaryZone: null }),
+        manufacturer({ expiryBoundaryAt: '2027-07-02 19:30:00.25+10' }),
       ]).productCertificates(market, [triple()]);
+      expect(answer!.certificates[0]!.approved?.boundaryAtApproval?.toString()).toBe(
+        '2027-07-02T09:30:00.25Z',
+      );
+      expect(answer!.certificates[0]!.approved?.expiryDate?.toString()).toBe('2027-06-30');
+      await expect(
+        reader([manufacturer({ expiryBoundaryAt: '2027-07-02T09:30:00Z' })]).productCertificates(
+          market,
+          [triple()],
+        ),
+      ).rejects.toThrow('stored instant');
+    });
+
+    it('drops the date of a required expiry without a stored boundary (expiry-missing)', async () => {
+      const [answer] = await reader([manufacturer({ expiryBoundaryAt: null })]).productCertificates(
+        market,
+        [triple()],
+      );
       expect(answer!.certificates[0]!.approved?.expiryDate).toBeNull();
       expect(answer!.certificates[0]!.approved?.boundaryAtApproval).toBeNull();
     });

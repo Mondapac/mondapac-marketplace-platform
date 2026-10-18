@@ -407,6 +407,18 @@ export const ProductCertificationRejectedAudit = defineAuditAction({
   after: productDecisionAfter,
 });
 
+/**
+ * An approver opened the certificate numbers of a manufacturer certificate (the review read; Hassan
+ * M1, data design 3.22: each decrypting read is audited). The revisions whose numbers were shown
+ * (the pending and the approved, when present; the draft's has no revision); never the number.
+ */
+export const ProductCertificateNumberViewedAudit = defineAuditAction({
+  action: 'certification.product-certificate.number-viewed',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: { revisionIds: auditField.listOf(auditField.id(), 2) },
+});
+
 /** Every audited action of certification, for its module's registration. */
 export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   SellerCertificationApprovedAudit,
@@ -445,4 +457,5 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   ProductCertificationEditedAudit,
   ProductCertificationApprovedAudit,
   ProductCertificationRejectedAudit,
+  ProductCertificateNumberViewedAudit,
 ]);

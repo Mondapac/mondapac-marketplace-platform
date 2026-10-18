@@ -103,9 +103,12 @@ export interface ManufacturerBasisRow {
   /** The revision's expiry date as `YYYY-MM-DD`. */
   readonly expiryDate: string | null;
   readonly decisionOutcome: string;
-  /** The Market zone the boundary was stored in at approval; null without a boundary. */
-  readonly boundaryZone: string | null;
-  readonly hasExpiryBoundary: boolean;
+  /**
+   * The expiry boundary stored on the decision at approval (Hassan L1), as PostgreSQL's
+   * timestamptz text with its offset (e.g. `2027-06-30 14:00:00+00`); null without one. Read as
+   * stored, never recomputed from the date and zone.
+   */
+  readonly expiryBoundaryAt: string | null;
   readonly issuerState: string;
   readonly issuerName: string;
   readonly productId: string;
@@ -266,11 +269,14 @@ const TYPE_AND_POLICY_SQL = `SELECT t.id AS type_id, t.code, t.verification_mode
 // type for the asked product revision (M3), joined through the revision's foreign key so the plan
 // is an index-only scan of the coverage lookup (data design 7.3 note, 12). The variant is not
 // bound: a NULL element cannot be bound in an array (the binder refuses it), so every entry of
-// the product is returned and the reader applies the variant rule (`covers`, L1).
+// the product is returned and the reader applies the variant rule (`covers`, L1). The boundary is
+// the one stored at approval (Hassan L1), as timestamptz text: ISO DateStyle (as `expiry_date`)
+// with its UTC offset, so the instant reads the same in any session zone.
 const MANUFACTURER_BASIS_SQL = `SELECT q.ord::int4 AS ord, t.code AS type_code, pc.id AS product_certification_id, pc.status,
        rv.id AS revision_id, rv.type_revision_id, tr.requires_expiry, rv.issuer_id,
-       rv.expiry_date::text AS expiry_date, dd.outcome AS decision_outcome, dd.boundary_zone,
-       (dd.expiry_boundary_at IS NOT NULL) AS has_expiry_boundary, i.state AS issuer_state,
+       rv.expiry_date::text AS expiry_date, dd.outcome AS decision_outcome,
+       dd.expiry_boundary_at::text AS expiry_boundary_at,
+       i.state AS issuer_state,
        i.display_name AS issuer_name, cv.product_id, cv.product_revision_id, cv.variant_id,
        (pic.revision_id IS NOT NULL) AS verified_with_issuer
   FROM unnest($2::uuid[], $3::uuid[], $4::text[]) WITH ORDINALITY AS q(product_id, product_revision_id, type_code, ord)
@@ -405,8 +411,7 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
         issuerId: text(row['issuer_id']),
         expiryDate: textOrNull(row['expiry_date']),
         decisionOutcome: text(row['decision_outcome']),
-        boundaryZone: textOrNull(row['boundary_zone']),
-        hasExpiryBoundary: flag(row['has_expiry_boundary']),
+        expiryBoundaryAt: textOrNull(row['expiry_boundary_at']),
         issuerState: text(row['issuer_state']),
         issuerName: text(row['issuer_name']),
         productId: text(row['product_id']),

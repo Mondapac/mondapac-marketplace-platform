@@ -26,8 +26,6 @@ import {
   type VerificationMode,
 } from '../domain/type-revision';
 import {
-  expiryBoundary,
-  isUsableZone,
   type CoverageEntryView,
   type IssuerState,
   type ProductCertificationView,
@@ -270,8 +268,7 @@ function signatureOf(row: ManufacturerRow): string {
     row.issuerId,
     row.expiryDate,
     row.decisionOutcome,
-    row.boundaryZone,
-    row.hasExpiryBoundary,
+    row.expiryBoundaryAt,
     row.issuerState,
     row.issuerName,
     row.verifiedWithIssuer,
@@ -292,6 +289,18 @@ function coverageOf(row: ManufacturerRow): CoverageEntryView {
 
 function foldedOf(row: ManufacturerRow): FoldedCertificate {
   return { row, signature: signatureOf(row), coverage: [coverageOf(row)] };
+}
+
+/**
+ * A timestamptz read as text (ISO DateStyle: `2027-06-30 14:00:00+00`, fractions optional, the
+ * offset hours only or with minutes); anything else throws (a fault, so the batch is unavailable).
+ */
+function storedInstant(value: string): Temporal.Instant {
+  const match = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?)([+-]\d{2})(:\d{2})?$/.exec(
+    value,
+  );
+  if (match === null) throw new Error('expiry boundary is not a stored instant');
+  return Temporal.Instant.from(`${match[1]}T${match[2]}${match[3]}${match[4] ?? ':00'}`);
 }
 
 /** One folded S3 certificate as the validity measure needs it; anything that does not fit throws. */
@@ -316,12 +325,13 @@ function productViewOf(folded: FoldedCertificate): ProductCertificationView {
   };
   // The approved pointer needs an `approved` decision; without one there is no valid certificate.
   if (row.decisionOutcome !== 'approved') return { ...base, approved: null };
-  // A required expiry without the boundary stored at approval (or in a zone Temporal cannot
-  // resolve) reaches the measure without a date or boundary: `expiry-missing`, not valid.
+  // The boundary is the one stored at approval, read as stored (Hassan L1): never recomputed from
+  // the date and zone. A required expiry without it reaches the measure without a date or
+  // boundary: `expiry-missing`, not valid. An unreadable instant is a fault.
   let expiryDate = plainDate(row.expiryDate);
   let boundaryAtApproval: Temporal.Instant | null = null;
-  if (expiryDate !== null && row.hasExpiryBoundary && isUsableZone(row.boundaryZone)) {
-    boundaryAtApproval = expiryBoundary(expiryDate, row.boundaryZone);
+  if (expiryDate !== null && row.expiryBoundaryAt !== null) {
+    boundaryAtApproval = storedInstant(row.expiryBoundaryAt);
   } else if (row.requiresExpiry) {
     expiryDate = null;
   }

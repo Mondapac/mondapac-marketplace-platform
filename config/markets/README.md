@@ -294,3 +294,8 @@ is required; no value has a default. The review checks and reasons are table-sha
   manufacturer basis in this Market. Off, or unreadable, the row is read as `SELLER_REQUIRED`
   (fail closed) and no product certificate is read. AU stays off until the halal authority and
   legal agree.
+  Switching it off for a Market that has manufacturer-basis tags (Hassan L4): the change is a
+  configuration release, which publishes no certification event, so no tag is re-asked at once.
+  Until a re-ask of each affected type (`claim-policy-changed` cause) or the daily reconciliation
+  runs (within 24 h), those tags keep their manufacturer badge. Queue the type re-ask with the
+  release, or accept the reconciliation window.
