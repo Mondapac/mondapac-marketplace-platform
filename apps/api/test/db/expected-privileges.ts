@@ -39,7 +39,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     catalog: ['USAGE'],
     certification: ['USAGE'],
     commission_payouts: ['USAGE'],
+    customers: ['USAGE'],
     tax: ['USAGE'],
+    storefront: ['USAGE'],
     pricing: ['USAGE'],
     sellers: ['USAGE'],
     shipping: ['USAGE'],
@@ -390,11 +392,49 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['rate_bps', 'updated_at', 'updated_by'],
     },
     'commission_payouts.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Storefront: a page is created and changed (never its kind, key or template) and never
+    // deleted; a version's content and state change; a redirect is removed when its page takes the
+    // old slug back.
+    'storefront.pages': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'archived_at',
+        'archived_redirect',
+        'ends_at',
+        'linked_id',
+        'linked_type',
+        'seo',
+        'slug',
+        'starts_at',
+        'title',
+        'updated_at',
+        'updated_by',
+      ],
+    },
+    'storefront.page_versions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'placements',
+        'published_at',
+        'published_by',
+        'settings',
+        'state',
+        'updated_at',
+        'updated_by',
+      ],
+    },
+    'storefront.redirects': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // Tax: an admin-defined strategy is inserted, changed (name, parameters, active flag) and
     // removed.
     'tax.tax_strategies': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['active', 'config', 'kind', 'name', 'updated_at', 'updated_by'],
+    },
+    // Customers (package 1): a customer adds, changes (sealed content, default flag) and removes
+    // their own delivery addresses.
+    'customers.addresses': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['content_ciphertext', 'is_default', 'updated_at'],
     },
     // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
     // change, the identity never, and no row is deleted.

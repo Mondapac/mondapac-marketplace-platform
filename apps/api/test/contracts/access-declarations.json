@@ -143,6 +143,15 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "customers.create-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "customers.delete-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "customers.list-addresses", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  {
+    "name": "customers.set-default-address",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "customers.update-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
   {
@@ -382,6 +391,9 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "storefront.view-published-landing-page", "rule": "anonymous" },
+  { "name": "storefront.view-published-navigation", "rule": "anonymous" },
+  { "name": "storefront.view-published-page", "rule": "anonymous" },
   {
     "name": "tax.calculate-tax",
     "rule": "own-resources",

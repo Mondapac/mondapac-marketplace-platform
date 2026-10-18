@@ -31,6 +31,14 @@
     "anonymousIdentityPerMinute": 20,
     "defaultPerMinute": 300
   },
+  "customers": {
+    "addressBookLimit": 20,
+    "address": {
+      "countryCode": "AU",
+      "postcodePattern": "^[0-9]{4}$",
+      "regions": ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"]
+    }
+  },
   "allowedOrigins": {
     "admin": [],
     "seller": [],

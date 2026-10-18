@@ -1263,6 +1263,27 @@ const marketSchema = z
      * Without this section the Market uses `simple`.
      */
     search: z.strictObject({ textSearchConfig: z.enum(TEXT_SEARCH_CONFIGS) }).optional(),
+    /**
+     * Customers settings, owned by `customers`: the delivery address book. `addressBookLimit`:
+     * the most addresses one customer keeps (AU 20). `address`: the ISO 3166 country every
+     * address is in, the postcode pattern and the closed region list (empty for a Market whose
+     * addresses carry no region). Without this section the address book is unavailable.
+     */
+    customers: z
+      .strictObject({
+        addressBookLimit: z.number().int().min(1).max(50),
+        address: z
+          .strictObject({
+            countryCode: z.string().regex(/^[A-Z]{2}$/),
+            postcodePattern: postcodePatternSource,
+            regions: z.array(regionName).max(100),
+          })
+          .refine((address) => new Set(address.regions).size === address.regions.length, {
+            message: 'regions must be unique',
+            path: ['regions'],
+          }),
+      })
+      .optional(),
     allowedOrigins: allowedOriginsSchema,
     identity: identitySchema,
     /** Owned by `sellers`; optional until a Market is configured for sellers. */
