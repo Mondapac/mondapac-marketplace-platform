@@ -63,9 +63,12 @@ export function TabBar() {
       >
         <span className="tic cn">
           <Icon name="bag" />
-          <span className="cb num">{count}</span>
+          <span className="cb num" aria-hidden="true">
+            {count}
+          </span>
         </span>
         {t('cart')}
+        <span className="sr-only">{t('cart-count', { count })}</span>
       </Link>
       <Link
         href="/account"

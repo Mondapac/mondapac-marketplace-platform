@@ -22,9 +22,18 @@
   --sf-line: color-mix(in srgb, var(--sf-ink) 11%, var(--sf-white));
   --sf-page: color-mix(in srgb, var(--sf-mist) 40%, var(--sf-white));
   --sf-low-stock: #8f4a00;
-  --sf-certified: color-mix(in srgb, #17924f 78%, var(--sf-teal));
+  /* The verified seal keeps one colour in every palette (CERT-24). */
+  --sf-certified: #158651;
   --sf-scrim: rgb(20 33 31 / 0.5);
   --sf-shadow: rgb(20 33 31 / 0.25);
+  --sf-shadow-soft: rgb(20 33 31 / 0.06);
+  --sf-shadow-strong: rgb(20 33 31 / 0.35);
+  --sf-shadow-control: rgb(20 33 31 / 0.28);
+  --sf-shadow-panel: rgb(20 33 31 / 0.2);
+  --sf-shadow-dark: rgb(0 0 0 / 0.25);
+  --sf-shadow-accent: color-mix(in srgb, var(--sf-teal) 35%, transparent);
+  --sf-on-teal-glow: rgb(255 255 255 / 0.06);
+  --sf-on-teal-border: rgb(255 255 255 / 0.28);
   --sf-on-teal-line: rgb(255 255 255 / 0.2);
   --sf-on-teal-fill: rgb(255 255 255 / 0.14);
   --sf-on-teal-muted: rgb(255 255 255 / 0.82);
@@ -145,7 +154,8 @@ svg {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.page {
+.page,
+.frame {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -384,7 +394,7 @@ svg {
   border-top: 1px solid var(--sf-line);
   padding: 6px max(8px, env(safe-area-inset-right, 0px))
     calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
-  box-shadow: 0 -4px 16px rgb(20 33 31 / 0.06);
+  box-shadow: 0 -4px 16px var(--sf-shadow-soft);
 }
 .tabbar a,
 .tabbar button {
@@ -422,7 +432,7 @@ svg {
   background: var(--sf-teal);
   margin: -16px 4px 0;
   border-radius: 18px;
-  box-shadow: 0 6px 14px rgb(14 90 87 / 0.35);
+  box-shadow: 0 6px 14px var(--sf-shadow-accent);
   min-height: 58px;
 }
 .tabbar .browse .tic,
@@ -489,7 +499,7 @@ svg {
   padding: 8px var(--gr) 24px var(--gl);
   overflow: auto;
 }
-.sbody h3 {
+.sbody h2 {
   font-family: var(--sf-font-body);
   font-size: calc(12px * var(--fs));
   line-height: calc(16px * var(--fs));
@@ -593,7 +603,7 @@ svg {
   min-height: 50px;
   margin: 0 0 12px;
   border-radius: var(--sf-radius-tile);
-  box-shadow: 0 4px 12px rgb(14 90 87 / 0.28);
+  box-shadow: 0 4px 12px var(--sf-shadow-accent);
 }
 .rail .cta:hover,
 .rail .cta.on {
@@ -1013,7 +1023,19 @@ svg {
   position: absolute;
   inset-inline-start: 8px;
   top: 8px;
-  z-index: 1;
+  z-index: 2;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+/* A special-price badge and a seal on one tile: the badge moves to the bottom, beside the add
+   button, so neither covers the other. */
+.tile:has(.seal) .badge {
+  top: auto;
+  bottom: 8px;
+  max-width: calc(100% - 48px);
 }
 .seal {
   position: absolute;
@@ -1024,7 +1046,7 @@ svg {
   height: 61px;
   display: block;
   line-height: 0;
-  filter: drop-shadow(0 1px 2px rgb(20 33 31 / 0.35));
+  filter: drop-shadow(0 1px 2px var(--sf-shadow-strong));
 }
 .seal svg {
   width: 100%;
@@ -1050,7 +1072,7 @@ svg {
   background: var(--sf-teal);
   color: var(--sf-white);
   border: 0;
-  box-shadow: 0 1px 3px rgb(20 33 31 / 0.28);
+  box-shadow: 0 1px 3px var(--sf-shadow-control);
   overflow: hidden;
 }
 .addb.one {
@@ -1183,7 +1205,7 @@ svg {
   width: 240px;
   height: 240px;
   border-radius: 50%;
-  background: rgb(255 255 255 / 0.06);
+  background: var(--sf-on-teal-glow);
   pointer-events: none;
 }
 .ftrust {
@@ -1228,7 +1250,7 @@ svg {
   display: grid;
   place-items: center;
   background: var(--sf-on-teal-fill);
-  border: 1px solid rgb(255 255 255 / 0.28);
+  border: 1px solid var(--sf-on-teal-border);
   color: var(--sf-white);
 }
 .ftrust .fi .ico {
@@ -1246,7 +1268,7 @@ svg {
 .ftrust .fi.sealbox svg {
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.25));
+  filter: drop-shadow(0 1px 2px var(--sf-shadow-dark));
 }
 .ftrust b {
   font: 700 calc(14px * var(--fs)) / calc(18px * var(--fs)) var(--sf-font-head);
@@ -1289,8 +1311,7 @@ svg {
   color: var(--sf-slate);
   font-size: calc(13px * var(--fs));
   line-height: calc(21px * var(--fs));
-  text-align: justify;
-  hyphens: auto;
+  text-align: start;
 }
 .fsoc {
   display: flex;
@@ -1421,7 +1442,7 @@ svg {
   place-items: center;
   background: var(--sf-ink);
   color: var(--sf-white);
-  box-shadow: 0 4px 10px rgb(20 33 31 / 0.28);
+  box-shadow: 0 4px 10px var(--sf-shadow-control);
   margin-inline-start: auto;
 }
 .fbase .btt .ico {
@@ -1534,7 +1555,7 @@ svg {
   height: 100%;
   width: min(100%, 360px);
   background: var(--sf-white);
-  box-shadow: 8px 0 28px rgb(20 33 31 / 0.2);
+  box-shadow: 8px 0 28px var(--sf-shadow-panel);
   transform: translateX(-102%);
   visibility: hidden;
   transition:
@@ -1819,5 +1840,8 @@ svg {
   padding-top: 0;
 }
 .prefs .tsz > span {
+  display: none;
+}
+.tile:has(.seal):has(.addb.step) .badge {
   display: none;
 }

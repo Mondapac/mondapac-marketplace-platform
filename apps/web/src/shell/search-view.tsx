@@ -15,12 +15,16 @@ export function SearchView({ popular }: { readonly popular: readonly string[] })
 
   useEffect(() => {
     if (!searchOpen) return;
+    const opener = document.activeElement;
     input.current?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setSearchOpen(false);
     };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (opener instanceof HTMLElement) opener.focus({ preventScroll: true });
+    };
   }, [searchOpen, setSearchOpen]);
 
   return (
@@ -47,14 +51,14 @@ export function SearchView({ popular }: { readonly popular: readonly string[] })
             type="search"
             name="q"
             placeholder={placeholder}
-            aria-label={t('dialog')}
+            aria-label={t('input')}
           />
         </label>
       </form>
       <div className="sbody">
-        <h3>{t('recent')}</h3>
+        <h2>{t('recent')}</h2>
         <p className="hint">{t('no-recent')}</p>
-        <h3>{t('popular')}</h3>
+        <h2>{t('popular')}</h2>
         <div className="pchips">
           {popular.map((term) => (
             <Link

@@ -72,7 +72,9 @@ describe('home page', () => {
     fireEvent.click(within(group).getByRole('button', { name: 'Decrease' }));
     fireEvent.click(within(group).getByRole('button', { name: 'Decrease' }));
     fireEvent.click(within(group).getByRole('button', { name: 'Decrease' }));
-    expect(screen.getByRole('link', { name: 'Cart, empty' })).toBeTruthy();
+    expect(
+      within(screen.getByRole('banner')).getByRole('link', { name: 'Cart, empty' }),
+    ).toBeTruthy();
   });
 
   it('shows an empty state for a section without products or sellers', () => {
@@ -111,6 +113,8 @@ describe('browse products panel', () => {
       }),
     );
     expect(wrap.classList.contains('open')).toBe(true);
+    // The page behind the open panel takes no focus.
+    expect(container.querySelector('.frame')!.hasAttribute('inert')).toBe(true);
     const panel = screen.getByRole('dialog', { name: 'Browse products' });
     fireEvent.click(within(panel).getByRole('button', { name: 'Dairy and eggs' }));
     const dairy = screen.getByRole('dialog', { name: 'Dairy and eggs' });
@@ -119,6 +123,7 @@ describe('browse products panel', () => {
     expect(screen.getByRole('dialog', { name: 'Browse products' })).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(wrap.classList.contains('open')).toBe(false);
+    expect(container.querySelector('.frame')!.hasAttribute('inert')).toBe(false);
   });
 });
 

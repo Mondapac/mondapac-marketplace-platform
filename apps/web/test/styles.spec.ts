@@ -2,7 +2,7 @@
 // pick each define the same brand tokens.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { PALETTES } from '../src/preferences/preferences.ts';
+import { PALETTES, PALETTE_SWATCHES } from '../src/preferences/preferences.ts';
 
 const css = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8').replace(
   /\/\*[\s\S]*?\*\//g,
@@ -35,5 +35,28 @@ describe('storefront styles', () => {
       for (const token of ['--sf-teal', '--sf-lagoon', '--sf-saffron', '--sf-mist', '--sf-ink'])
         expect(body, `${code} ${token}`).toContain(`${token}:`);
     }
+  });
+
+  it('draws the picker swatches in the same colours as the palette tokens', () => {
+    for (const code of PALETTES) {
+      const body =
+        code === 'B'
+          ? rules(':root').find((b) => b.includes('--sf-teal:'))!
+          : rules(`:root[data-palette='${code}']`)[0]!;
+      const token = (name: string) =>
+        new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`).exec(body)?.[1]?.toLowerCase();
+      const [teal, lagoon, saffron] = PALETTE_SWATCHES[code].map((c) => c.toLowerCase());
+      expect([token('--sf-teal'), token('--sf-lagoon'), token('--sf-saffron')], code).toEqual([
+        teal,
+        lagoon,
+        saffron,
+      ]);
+    }
+  });
+
+  it('keeps the verified seal one colour in every palette (CERT-24)', () => {
+    for (const code of PALETTES.filter((p) => p !== 'B'))
+      expect(rules(`:root[data-palette='${code}']`)[0]).not.toContain('--sf-certified');
+    expect(css).toMatch(/--sf-certified:\s*#[0-9a-fA-F]{6};/);
   });
 });

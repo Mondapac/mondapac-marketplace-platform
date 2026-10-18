@@ -49,14 +49,16 @@
     "search": "Search",
     "browse": "Browse",
     "cart": "Cart",
-    "account": "Account"
+    "account": "Account",
+    "cart-count": "{count, plural, =0 {, empty} one {, # item} other {, # items}}"
   },
   "search": {
     "dialog": "Search",
     "close": "Close search",
     "recent": "Recent",
     "no-recent": "Your recent searches will show here.",
-    "popular": "Popular right now"
+    "popular": "Popular right now",
+    "input": "Search products, sellers and recipes"
   },
   "home": {
     "featured": "Featured",
