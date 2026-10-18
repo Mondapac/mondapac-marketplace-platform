@@ -36,8 +36,12 @@ const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 const PATH = '/notifications/admin/support-contact';
 
-it('maps every refusal code of the support contact routes to its exact status', () => {
-  expect(NOTIFICATIONS_STATUS).toEqual({ 'validation.failed': 400, 'notifications.conflict': 409 });
+it('maps every refusal code of the notifications routes to its exact status', () => {
+  expect(NOTIFICATIONS_STATUS).toEqual({
+    'validation.failed': 400,
+    'notifications.conflict': 409,
+    'notifications.notice-not-found': 404,
+  });
 });
 
 describe.each(TEST_MARKETS)('support contact over HTTP in market %s', (code) => {

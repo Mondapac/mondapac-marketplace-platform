@@ -1,4 +1,4 @@
--- Reverses 20261018090000_legal_marketing_consent: the grants first, then the tables. Every
+-- Reverses 20261018140000_legal_marketing_consent: the grants first, then the tables. Every
 -- consent and its history are lost with it. The empty schema "legal" stays, without its USAGE
 -- grant, as the leftover check of docs/design/data/platform.md 10.5 (guard 2) expects.
 REVOKE SELECT, INSERT ON TABLE "legal"."marketing_consent_changes" FROM "mondapac_app";

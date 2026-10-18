@@ -8,6 +8,10 @@ import {
   type NotificationsPolicy,
 } from '../application/ports/notifications-policy';
 import {
+  IN_APP_NOTICE_REPOSITORY,
+  type InAppNoticeRepository,
+} from '../application/ports/in-app-notice.repository';
+import {
   SUPPORT_CONTACT_REPOSITORY,
   type SupportContactRepository,
 } from '../application/ports/support-contact.repository';
@@ -18,6 +22,7 @@ import {
 } from '../application/ports/unsubscribe-tokens';
 import { ConfigNotificationsPolicy } from './config-notifications-policy';
 import { HmacUnsubscribeTokens, localNotificationsSecret } from './hmac-unsubscribe-tokens';
+import { PrismaInAppNoticeRepository } from './prisma-in-app-notice.repository';
 import { PrismaSupportContactRepository } from './prisma-support-contact.repository';
 
 /** Binds the ports of notifications. Only this layer may reach `PrismaService` and the secret. */
@@ -27,6 +32,12 @@ export const notificationsProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SupportContactRepository =>
       new PrismaSupportContactRepository(prisma),
+  },
+  {
+    provide: IN_APP_NOTICE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): InAppNoticeRepository =>
+      new PrismaInAppNoticeRepository(prisma),
   },
   {
     provide: NOTIFICATIONS_POLICY,
