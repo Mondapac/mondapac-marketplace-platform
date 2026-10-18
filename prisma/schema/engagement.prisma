@@ -1,0 +1,50 @@
+// The engagement module's tables (personalization package 1a: shopping behaviour). Every model is
+// named Engagement<Name> and mapped to its table with @@map. The CHECKs and the grants are
+// hand-written in the migration. An event names an account (identity) or a guest token's hash,
+// and products, offers, variants and categories (catalog) by plain ids with no foreign key.
+
+/// One shopping behaviour event: what a signed-in customer or a guest viewed, searched for or
+/// added to the cart, by ids (the search text is the only free text and is never logged). Kept
+/// 12 months for an account and 30 days for a guest, then deleted by the daily purge; deleted at
+/// once when the customer switches personalization off. Never updated.
+model EngagementBehaviourEvent {
+  id          String   @id @db.Uuid
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  /// The signed-in customer's account; null for a guest.
+  accountId   String?  @map("account_id") @db.Uuid
+  /// The SHA-256 (hex) of the guest's engagement cookie token; null for an account.
+  guestHash   String?  @map("guest_hash") @db.Char(64)
+  /// `product-viewed`, `category-viewed`, `search-performed` or `added-to-cart`.
+  kind        String   @db.VarChar(32)
+  productId   String?  @map("product_id") @db.Uuid
+  offerId     String?  @map("offer_id") @db.Uuid
+  variantId   String?  @map("variant_id") @db.Uuid
+  categoryId  String?  @map("category_id") @db.Uuid
+  /// The normalized search text of a `search-performed` event, 1 to 200 characters.
+  searchQuery String?  @map("search_query") @db.VarChar(200)
+  occurredAt  DateTime @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([marketId, accountId, occurredAt(sort: Desc)])
+  @@index([marketId, guestHash, occurredAt(sort: Desc)])
+  @@index([marketId, occurredAt])
+  @@map("behaviour_events")
+  @@schema("engagement")
+}
+
+/// A customer's personalization switch (owner decision 4). No row means on; `enabled` false
+/// means no behaviour is recorded for the account (what was recorded is deleted when it is
+/// switched off).
+model EngagementPersonalizationSetting {
+  id        String   @id @db.Uuid
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  accountId String   @map("account_id") @db.Uuid
+  enabled   Boolean
+  changedAt DateTime @map("changed_at") @db.Timestamptz(6)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+
+  @@unique([marketId, accountId])
+  @@map("personalization_settings")
+  @@schema("engagement")
+}
