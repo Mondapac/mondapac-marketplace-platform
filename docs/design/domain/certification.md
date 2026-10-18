@@ -1257,7 +1257,7 @@ A type that requires a document (AU halal) can now take a manufacturer submissio
 - **Checks** (3.4 row 3; `POST …/:id/checks` with `{version, revisionId, checkCode, result}`; key `.approve`). The code must be one of the Market's checks for `THIRD_PARTY_DOCUMENT`. The creator and every editor or submitter of the revision are refused (`approval.same-admin`). A new result adds a row; the latest per code counts. Lock-first, so the version moves (the seller path's checks leave the version alone). Audit `.check-recorded`.
 - **Approve** also refuses `certificate.incomplete` (no sealed file where the type requires one) and `review.checks-incomplete` (422, the open required codes in `details.fields`) until every required check is `done` or `not-applicable`. The review read lists the Market's checks (`reviewChecks`); the views list each revision's files and latest checks.
 - **Audit** `.document-added`, `.document-removed` (`deleted`), `.check-recorded` (`result`).
-- **Migration** `20261018230000_certification_product_documents` (data design 3.16 as built), with `down.sql`.
+- **Migration** `20261018230100_certification_product_documents` (data design 3.16 as built), with `down.sql`.
 - **Open.**
   - Sign-off from Mojtaba (migration) and Hassan (upload path, CERT path).
   - No per-admin upload rate limit: the key is protected, a draft holds at most 10 files and the intake queue throttles. Hassan to confirm.

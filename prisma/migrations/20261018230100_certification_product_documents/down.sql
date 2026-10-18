@@ -1,4 +1,4 @@
--- Reverses 20261018230000_certification_product_documents: grants first, then the triggers and
+-- Reverses 20261018230100_certification_product_documents: grants first, then the triggers and
 -- their function, then the tables (children of the root and revision) and the extra unique on
 -- uploaded_documents.
 SET lock_timeout = '5s';

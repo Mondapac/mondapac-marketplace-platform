@@ -545,7 +545,7 @@ root transitions and history rows (3.4 of D), not decisions of a revision.
 platform key) and `product_certification_history`: the shapes of 3.10, 3.16a and 3.13 with
 `revision_id` in place of `submission_id`. All insert-only (CE3).
 
-As built (slice 15 part 2, migration `20261018230000_certification_product_documents`):
+As built (slice 15 part 2, migration `20261018230100_certification_product_documents`):
 `product_certification_draft_documents` (PK `(market_id, product_certification_id, document_id)`;
 one draft per file and one file per place; SELECT, INSERT, DELETE) and `product_revision_documents`
 (PK `(market_id, revision_id, document_id)`; insert-only) name the file's type, with FKs to
