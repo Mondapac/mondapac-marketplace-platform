@@ -15,10 +15,11 @@ import { saveConsent } from './save-consent.ts';
 export function ConsentBar({ initial }: { readonly initial: Consent | null }) {
   const t = useTranslations('consent');
   const pathname = usePathname();
-  const [decided, setDecided] = useState(initial !== null);
+  // The layout passes the saved choice again after a save on the settings page.
+  const [decided, setDecided] = useState(false);
   const [failed, setFailed] = useState(false);
   const [pending, startTransition] = useTransition();
-  if (decided || pathname === '/cookies') return null;
+  if (decided || initial !== null || pathname === '/cookies') return null;
 
   const choose = (personalization: boolean) => {
     setFailed(false);

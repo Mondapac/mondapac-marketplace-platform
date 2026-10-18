@@ -1984,7 +1984,7 @@ svg {
   height: 24px;
   margin: 0;
   border-radius: var(--sf-radius-pill);
-  background: var(--sf-line);
+  background: var(--sf-slate);
   cursor: pointer;
 }
 .cookie-switch input::after {

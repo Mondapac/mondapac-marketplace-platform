@@ -21,6 +21,7 @@ export async function saveConsent(personalization: boolean): Promise<void> {
     maxAge: CONSENT_MAX_AGE_SECONDS,
     sameSite: 'lax',
     secure: true,
+    httpOnly: true,
   });
   if (personalization) return;
   for (const { name } of jar.getAll()) {

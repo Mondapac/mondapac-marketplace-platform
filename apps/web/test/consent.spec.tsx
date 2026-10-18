@@ -69,6 +69,7 @@ describe('saveConsent', () => {
       maxAge: 31536000,
       sameSite: 'lax',
       secure: true,
+      httpOnly: true,
     });
   });
 
@@ -135,6 +136,17 @@ describe('cookie bar', () => {
     });
     expect(screen.getByRole('alert').textContent).toBe(messages.consent.error);
     expect(screen.getByRole('region')).toBeTruthy();
+  });
+
+  it('closes when the layout passes a choice saved elsewhere', () => {
+    const view = withIntl(<ConsentBar initial={null} />);
+    expect(screen.getByRole('region')).toBeTruthy();
+    view.rerender(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <ConsentBar initial={{ personalization: true }} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.queryByRole('region')).toBeNull();
   });
 
   it('is not shown once chosen, nor on the cookie settings page', () => {
