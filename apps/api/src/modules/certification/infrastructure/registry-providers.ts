@@ -54,7 +54,7 @@ import { TypesList } from '../application/use-cases/types-list.use-case';
 import { PrismaCertificationRegistryRepository } from './prisma-certification-registry.repository';
 import { SubjectKeyRegistryCipher } from './subject-key-registry-cipher';
 
-const REGISTRY_DEPENDENCIES = Symbol('CERTIFICATION_REGISTRY_DEPENDENCIES');
+export const REGISTRY_DEPENDENCIES = Symbol('CERTIFICATION_REGISTRY_DEPENDENCIES');
 const DERECOGNITION_MAIL_DEPENDENCIES = Symbol('CERTIFICATION_DERECOGNITION_MAIL_DEPENDENCIES');
 
 /** The admin use cases behind the type and registry pages (slice 12). */

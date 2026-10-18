@@ -28,6 +28,16 @@ export interface ClaimEvaluator {
   activeTypeCodes(
     context: CallContext,
   ): Promise<Result<ReadonlySet<string>, ClaimCheckUnavailable>>;
+
+  /**
+   * The code of a certification type of the Market by its id, active or not, or null when the
+   * Market has no such type (slice 14: certification's events name a type id; tags store the
+   * code).
+   */
+  typeCodeOf(
+    context: CallContext,
+    typeId: string,
+  ): Promise<Result<string | null, ClaimCheckUnavailable>>;
 }
 
 export const CLAIM_EVALUATOR = Symbol('CLAIM_EVALUATOR');

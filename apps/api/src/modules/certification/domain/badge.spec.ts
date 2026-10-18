@@ -68,8 +68,15 @@ const factsFor = (
   zones: SellerZones = { zone: m.zone, addressZone: m.zone },
 ): ClaimFacts => ({
   // The published revision differs from the one the certificate was approved under.
-  type: { publishedRevisionId: id('trev-published'), defaultBasis: 'SELLER_REQUIRED' },
+  type: {
+    publishedRevisionId: id('trev-published'),
+    defaultBasis: 'SELLER_REQUIRED',
+    verificationMode: 'THIRD_PARTY_DOCUMENT',
+  },
   policy: null,
+  productCertificates: null,
+  marketZone: m.zone,
+  manufacturerBasisEnabled: false,
   sellerZones: zones,
   sellerCertificate: {
     certificateId: id('cert-1'),
@@ -120,7 +127,11 @@ describe.each(MARKETS)('badge data ($name)', (m) => {
     expect(decide(query, { ...factsFor(m), type: null }, now).badge).toBeNull();
     const notApplicable: ClaimFacts = {
       ...factsFor(m),
-      type: { publishedRevisionId: id('trev-published'), defaultBasis: 'NOT_APPLICABLE' },
+      type: {
+        publishedRevisionId: id('trev-published'),
+        defaultBasis: 'NOT_APPLICABLE',
+        verificationMode: 'THIRD_PARTY_DOCUMENT',
+      },
     };
     expect(decide(query, notApplicable, now).badge).toBeNull();
     expect(decide(query, factsFor(m, { issuerState: 'derecognised' }), now).badge).toBeNull();

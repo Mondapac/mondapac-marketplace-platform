@@ -187,6 +187,9 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   CatalogFacade: { noCustomerText: 'interface of methods' },
   CatalogIndexFacade: { noCustomerText: 'interface of methods' },
   CatalogValidationFailed: { noCustomerText: 'refusal code with fixed paths' },
+  CertificateExpiryNoticeMail: {
+    noCustomerText: 'mail to an Offer owner from a type code, a count and a date; never content',
+  },
   Classification: { noCustomerText: 'sensitive-change verdict: codes and flags' },
   CategoryName: { table: 'CATEGORY_NAME_FIELDS' },
   DraftText: { noCustomerText: 'a text found in a draft, already named by its checked field id' },

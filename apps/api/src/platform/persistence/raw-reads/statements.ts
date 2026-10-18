@@ -62,13 +62,60 @@ export interface SellerBasisRow {
   readonly verifiedWithIssuer: boolean;
 }
 
-/** One row of `certification.type-and-policy` (design 7.3 S2, slice-1 form). */
+/**
+ * One row of `certification.type-and-policy` (design 7.3 S2, slice 13): a type with its published
+ * revision and one row of its published policy revision; a type without a published policy, or
+ * whose published revision has no rows, gives one row with the policy row columns null.
+ */
 export interface TypeAndPolicyRow {
   readonly typeId: string;
   readonly code: string;
+  readonly verificationMode: string;
   /** Null when the type has no published revision: the caller treats that as a fault. */
   readonly typeRevisionId: string | null;
   readonly defaultBasis: string | null;
+  /** The policy's published revision; null when there is no policy or none is published. */
+  readonly policyRevisionId: string | null;
+  /** `platform-category` or `handling`; null when this row carries no policy row. */
+  readonly rowSelectorKind: string | null;
+  readonly rowCategoryId: string | null;
+  readonly rowHandling: string | null;
+  readonly rowBasis: string | null;
+}
+
+/**
+ * One row of `certification.manufacturer-basis` (design 7.3 S3, slice 14): one coverage entry of an
+ * approved, current manufacturer revision of the asked type that covers the asked product revision.
+ * The variant match is the reader's (the domain's `covers`, L1), so a certificate repeats once per
+ * coverage entry of the product.
+ */
+export interface ManufacturerBasisRow {
+  /** 1-based position of the (product, product revision, type) triple in the call's arrays. */
+  readonly ord: number;
+  readonly typeCode: string;
+  readonly productCertificationId: string;
+  readonly status: string;
+  readonly revisionId: string;
+  /** The type revision the revision was submitted under (I1). */
+  readonly typeRevisionId: string;
+  readonly requiresExpiry: boolean;
+  readonly issuerId: string;
+  /** The revision's expiry date as `YYYY-MM-DD`. */
+  readonly expiryDate: string | null;
+  readonly decisionOutcome: string;
+  /**
+   * The expiry boundary stored on the decision at approval (Hassan L1), as PostgreSQL's
+   * timestamptz text with its offset (e.g. `2027-06-30 14:00:00+00`); null without one. Read as
+   * stored, never recomputed from the date and zone.
+   */
+  readonly expiryBoundaryAt: string | null;
+  readonly issuerState: string;
+  readonly issuerName: string;
+  readonly productId: string;
+  readonly productRevisionId: string;
+  readonly variantId: string | null;
+  /** A reviewer recorded a full issuer confirmation for the revision. */
+  readonly verifiedWithIssuer: boolean;
 }
 
 /** One row of `search.offer-search` and `search.offer-browse` (a storefront result). */
@@ -95,6 +142,14 @@ export interface RawReadStatements {
   readonly 'certification.type-and-policy': {
     readonly params: { readonly typeCodes: readonly string[] };
     readonly row: TypeAndPolicyRow;
+  };
+  readonly 'certification.manufacturer-basis': {
+    readonly params: {
+      readonly productIds: readonly string[];
+      readonly productRevisionIds: readonly string[];
+      readonly typeCodes: readonly string[];
+    };
+    readonly row: ManufacturerBasisRow;
   };
   readonly 'search.offer-search': {
     readonly params: {
@@ -195,11 +250,48 @@ const SELLER_BASIS_SQL = `SELECT q.ord::int4 AS ord, t.id AS type_id, c.id AS ce
   LEFT JOIN "certification"."issuers" i ON i.market_id = $1 AND i.id = s.issuer_id
   LEFT JOIN "certification"."seller_issuer_confirmations" ic ON ic.market_id = $1 AND ic.submission_id = s.id`;
 
-const TYPE_AND_POLICY_SQL = `SELECT t.id AS type_id, t.code, tr.id AS type_revision_id, tr.default_basis
+// Every row of the published policy revision of each type: the matching against the query's
+// categories and handling is done in code (data design 7.3 note: S2 reads the rows of a published
+// revision and filters in memory), so no category-id array, and no cap on it, is bound here.
+const TYPE_AND_POLICY_SQL = `SELECT t.id AS type_id, t.code, t.verification_mode, tr.id AS type_revision_id,
+       tr.default_basis, p.published_revision_id AS policy_revision_id,
+       r.selector_kind AS row_selector_kind, r.category_id AS row_category_id,
+       r.handling AS row_handling, r.basis AS row_basis
   FROM "certification"."certification_types" t
   LEFT JOIN "certification"."certification_type_revisions" tr
     ON tr.market_id = $1 AND tr.id = t.published_revision_id AND tr.type_id = t.id
+  LEFT JOIN "certification"."claim_basis_policies" p ON p.market_id = $1 AND p.type_id = t.id
+  LEFT JOIN "certification"."claim_policy_rows" r
+    ON r.market_id = $1 AND r.revision_id = p.published_revision_id
  WHERE t.market_id = $1 AND t.code = ANY ($2::text[])`;
+
+// S3 (slice 14): the coverage entries of approved, current manufacturer revisions of the asked
+// type for the asked product revision (M3), joined through the revision's foreign key so the plan
+// is an index-only scan of the coverage lookup (data design 7.3 note, 12). The variant is not
+// bound: a NULL element cannot be bound in an array (the binder refuses it), so every entry of
+// the product is returned and the reader applies the variant rule (`covers`, L1). The boundary is
+// the one stored at approval (Hassan L1), as timestamptz text: ISO DateStyle (as `expiry_date`)
+// with its UTC offset, so the instant reads the same in any session zone.
+const MANUFACTURER_BASIS_SQL = `SELECT q.ord::int4 AS ord, t.code AS type_code, pc.id AS product_certification_id, pc.status,
+       rv.id AS revision_id, rv.type_revision_id, tr.requires_expiry, rv.issuer_id,
+       rv.expiry_date::text AS expiry_date, dd.outcome AS decision_outcome,
+       dd.expiry_boundary_at::text AS expiry_boundary_at,
+       i.state AS issuer_state,
+       i.display_name AS issuer_name, cv.product_id, cv.product_revision_id, cv.variant_id,
+       (pic.revision_id IS NOT NULL) AS verified_with_issuer
+  FROM unnest($2::uuid[], $3::uuid[], $4::text[]) WITH ORDINALITY AS q(product_id, product_revision_id, type_code, ord)
+  JOIN "certification"."certification_types" t ON t.market_id = $1 AND t.code = q.type_code
+  JOIN "certification"."product_revision_coverage" cv
+    ON cv.market_id = $1 AND cv.product_id = q.product_id AND cv.type_id = t.id
+   AND cv.product_revision_id = q.product_revision_id
+  JOIN "certification"."product_certification_revisions" rv ON rv.market_id = $1 AND rv.id = cv.revision_id
+  JOIN "certification"."product_certifications" pc
+    ON pc.market_id = $1 AND pc.id = rv.product_certification_id
+   AND pc.approved_revision_id = rv.id AND pc.status = 'approved'
+  JOIN "certification"."product_revision_decisions" dd ON dd.market_id = $1 AND dd.revision_id = rv.id
+  JOIN "certification"."certification_type_revisions" tr ON tr.market_id = $1 AND tr.id = rv.type_revision_id
+  JOIN "certification"."issuers" i ON i.market_id = $1 AND i.id = rv.issuer_id
+  LEFT JOIN "certification"."product_issuer_confirmations" pic ON pic.market_id = $1 AND pic.revision_id = rv.id`;
 
 // `$2` is a Market `textSearchConfig` (a closed list in the Market schema), `$3` the visitor's
 // text (bound, never part of the SQL), then, where there is one, exactly one category, and the page.
@@ -232,8 +324,8 @@ const OFFER_BROWSE_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, 
  LIMIT $3::text::int4 OFFSET $4::text::int4`;
 
 /**
- * The list. `certification` holds S1 (with the badge columns of slice 10) and the slice-1 form of
- * S2 (data design 7.3); S3 and the policy part of S2 arrive with their tables (slices 13 and 14).
+ * The list. `certification` holds S1 (with the badge columns of slice 10), S2 with the policy
+ * rows of slice 13 and S3 of slice 14 (data design 7.3).
  */
 export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
   {
@@ -274,8 +366,8 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
     id: 'certification.type-and-policy',
     owner: 'certification',
     reason:
-      'evaluateClaims reads the type and its published revision in one statement, one snapshot (design 4.2 rule 2); the policy rows join in with slice 13',
-    design: 'docs/design/data/certification.md 7.2, 7.3 (S2, slice-1 form)',
+      'evaluateClaims reads the type, its published revision and its published policy rows in one statement, one snapshot (design 4.2 rule 2)',
+    design: 'docs/design/data/certification.md 7.2, 7.3 (S2; rows filtered in code, slice 13)',
     sql: TYPE_AND_POLICY_SQL,
     params: [{ name: 'typeCodes', type: 'text[]', maxLength: 100 }],
     parseRow: (raw): TypeAndPolicyRow => {
@@ -283,8 +375,49 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
       return {
         typeId: text(row['type_id']),
         code: text(row['code']),
+        verificationMode: text(row['verification_mode']),
         typeRevisionId: textOrNull(row['type_revision_id']),
         defaultBasis: textOrNull(row['default_basis']),
+        policyRevisionId: textOrNull(row['policy_revision_id']),
+        rowSelectorKind: textOrNull(row['row_selector_kind']),
+        rowCategoryId: textOrNull(row['row_category_id']),
+        rowHandling: textOrNull(row['row_handling']),
+        rowBasis: textOrNull(row['row_basis']),
+      };
+    },
+  },
+  {
+    id: 'certification.manufacturer-basis',
+    owner: 'certification',
+    reason:
+      'evaluateClaims decides the manufacturer basis from one statement, one snapshot (design 4.2 rule 2, step 6); Prisma include sends one query per relation level',
+    design: 'docs/design/data/certification.md 7.2, 7.3 (S3; variant matched in code, slice 14)',
+    sql: MANUFACTURER_BASIS_SQL,
+    params: [
+      { name: 'productIds', type: 'uuid[]', maxLength: 100, group: 'triples' },
+      { name: 'productRevisionIds', type: 'uuid[]', maxLength: 100, group: 'triples' },
+      { name: 'typeCodes', type: 'text[]', maxLength: 100, group: 'triples' },
+    ],
+    parseRow: (raw): ManufacturerBasisRow => {
+      const row = asRecord(raw);
+      return {
+        ord: position(row['ord']),
+        typeCode: text(row['type_code']),
+        productCertificationId: text(row['product_certification_id']),
+        status: text(row['status']),
+        revisionId: text(row['revision_id']),
+        typeRevisionId: text(row['type_revision_id']),
+        requiresExpiry: flag(row['requires_expiry']),
+        issuerId: text(row['issuer_id']),
+        expiryDate: textOrNull(row['expiry_date']),
+        decisionOutcome: text(row['decision_outcome']),
+        expiryBoundaryAt: textOrNull(row['expiry_boundary_at']),
+        issuerState: text(row['issuer_state']),
+        issuerName: text(row['issuer_name']),
+        productId: text(row['product_id']),
+        productRevisionId: text(row['product_revision_id']),
+        variantId: textOrNull(row['variant_id']),
+        verifiedWithIssuer: flag(row['verified_with_issuer']),
       };
     },
   },

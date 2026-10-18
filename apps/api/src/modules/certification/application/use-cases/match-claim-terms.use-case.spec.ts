@@ -31,6 +31,7 @@ const VOCAB: Record<string, ClaimVocabularyEntry[]> = {
   ZZ: [{ typeCode: code('zed-pure'), terms: ['zedpure', 'зед чисто'] }],
 };
 const typeView = (c: string, status: 'active' | 'inactive'): CertificationTypeView => ({
+  typeId: ids.next(),
   code: code(c),
   status,
   publishedRevisionId: ids.next(),
@@ -211,8 +212,9 @@ describe.each(['AU', 'ZZ'])('certification facade reads, Market %s', (marketCode
     const s = await facade.certificationTypes(system(), {});
     expect(a.ok && s.ok).toBe(true);
     if (!a.ok || !s.ok) return;
-    expect(a.value.map((t) => ({ ...t, publishedRevisionId: 'x' }))).toEqual(
-      s.value.map((t) => ({ ...t, publishedRevisionId: 'x' })),
+    // The fake mints fresh ids on each read; the rest of the view is the same for both callers.
+    expect(a.value.map((t) => ({ ...t, typeId: 'x', publishedRevisionId: 'x' }))).toEqual(
+      s.value.map((t) => ({ ...t, typeId: 'x', publishedRevisionId: 'x' })),
     );
     expect(a.value[0]).toEqual(
       expect.objectContaining({

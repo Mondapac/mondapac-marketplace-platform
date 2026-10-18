@@ -1,4 +1,4 @@
-import { parseDisplayName } from './display-name';
+import { parseDisplayName, shortDisplayName } from './display-name';
 
 describe('parseDisplayName (identity design 2.1, HF13; data design 3.3)', () => {
   it.each([
@@ -40,5 +40,26 @@ describe('parseDisplayName (identity design 2.1, HF13; data design 3.3)', () => 
       ok: false,
       error: { code: 'display-name.invalid', rule },
     });
+  });
+});
+
+describe('shortDisplayName (seller order notices, john 2026-10-17)', () => {
+  it.each([
+    ['no name', null, null],
+    ['a blank name', '   ', null],
+    ['one word', 'Maryam', 'Maryam'],
+    ['two words', 'Maryam Rahimi', 'Maryam R.'],
+    ['three words, the last initial', 'Maryam Sadat Rahimi', 'Maryam R.'],
+    ['a lower-case last word', 'maryam rahimi', 'maryam R.'],
+    ['Arabic script', 'عائشة الرحمن', 'عائشة ا.'],
+    ['an accented initial', 'Zoë Ñúñez', 'Zoë Ñ.'],
+    ['initials', 'J. R. R. Smith', 'J. S.'],
+    ['a long first word, cut', `${'n'.repeat(40)} Smith`, `${'n'.repeat(30)} S.`],
+  ])('%s', (_case, name, short) => {
+    expect(shortDisplayName(name)).toBe(short);
+  });
+
+  it('keeps a whole grapheme as the initial', () => {
+    expect(shortDisplayName('Ana émile')).toBe('Ana É.');
   });
 });

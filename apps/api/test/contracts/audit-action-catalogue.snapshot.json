@@ -1,5 +1,42 @@
 [
   {
+    "action": "certification.claim-policy.relaxation-approved",
+    "targetType": "certification.claim-policy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "action": "certification.claim-policy.relaxation-requested",
+    "targetType": "certification.claim-policy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id",
+      "reasonGiven": "boolean",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "action": "certification.claim-policy.revised",
+    "targetType": "certification.claim-policy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "reasonGiven": "boolean",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
     "action": "certification.document.downloaded",
     "targetType": "certification.seller-certification",
     "targetId": "id",
@@ -134,6 +171,109 @@
     "after": {
       "proposalId": "id",
       "reasonGiven": "boolean"
+    }
+  },
+  {
+    "action": "certification.product-certificate.number-viewed",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "revisionIds": "listOf(id, max 2)"
+    }
+  },
+  {
+    "action": "certification.product-certification.approved",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "coverageChanged": "boolean",
+      "revisionId": "id",
+      "typeRevisionId": "id"
+    }
+  },
+  {
+    "action": "certification.product-certification.edited",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "coverageEntries": "integer",
+      "revisionId": "optional(id)",
+      "typeId": "id"
+    }
+  },
+  {
+    "action": "certification.product-certification.expired",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "typeRevisionId": "id"
+    }
+  },
+  {
+    "action": "certification.product-certification.recorded",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "typeId": "id"
+    }
+  },
+  {
+    "action": "certification.product-certification.reinstated",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "typeRevisionId": "id"
+    }
+  },
+  {
+    "action": "certification.product-certification.rejected",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "typeRevisionId": "id"
+    }
+  },
+  {
+    "action": "certification.product-certification.revoked",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "noteGiven": "boolean",
+      "revisionId": "id",
+      "typeRevisionId": "id",
+      "withdrawnRevisionId": "optional(id)"
+    }
+  },
+  {
+    "action": "certification.product-certification.suspended",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "noteGiven": "boolean",
+      "revisionId": "id",
+      "typeRevisionId": "id",
+      "withdrawnRevisionId": "optional(id)"
     }
   },
   {

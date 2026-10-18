@@ -39,6 +39,7 @@ import { RecordShipments } from './use-cases/record-shipments.use-case';
 import { SellerDeliverOrder } from './use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './use-cases/seller-list-orders.use-case';
 import { SellerShipOrder } from './use-cases/seller-ship-order.use-case';
+import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { ViewOrder } from './use-cases/view-order.use-case';
 
@@ -1579,6 +1580,79 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(view.value.sellerOrders.map((s) => s.tax)).toEqual([null, null]);
       expect(view.value.sellerOrders[0]!.lines[0]!.tax).toBeNull();
       expect(view.value.sellerOrders[0]!.lines[0]!.taxCategoryCode).toBeNull();
+    });
+  });
+
+  describe('seller-order-customer-names', () => {
+    const sellerOf = (sellerId: Id<'Seller'>, n: number) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: id<'Account'>(n),
+          sessionId: id<'Session'>(n + 0x100),
+          sellerId,
+        }),
+        `order-names-${n}`,
+      );
+    const names = (context: CallContext, sellerOrderIds: readonly string[]) =>
+      new SellerOrderCustomerNames(gate, deps).execute(context, { sellerOrderIds });
+    const ofSeller = (orderId: string, sellerId: Id<'Seller'>) =>
+      orders.rows.get(orderId)!.sellerOrders.find((s) => s.sellerId === sellerId)!.id;
+
+    it("answers the short name of the shop's own paid seller orders only, in one lookup", async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      labels.shortNames.set(ACCOUNT, 'Maryam R.');
+      const mine = ofSeller(order.id, SELLER_A);
+      const theirs = ofSeller(order.id, SELLER_B);
+
+      const answer = await names(sellerOf(SELLER_A, 0x81), [mine, theirs, mine, 'nope']);
+
+      expect(answer).toEqual(ok([{ sellerOrderId: mine, customerShortName: 'Maryam R.' }]));
+      expect(labels.calls.filter((c) => c.lookup === 'short-names')).toEqual([
+        { lookup: 'short-names', count: 1 },
+      ]);
+    });
+
+    it('leaves out an unpaid seller order and asks identity nothing', async () => {
+      const order = await placed();
+      labels.shortNames.set(ACCOUNT, 'Maryam R.');
+
+      const answer = await names(sellerOf(SELLER_A, 0x82), [ofSeller(order.id, SELLER_A)]);
+
+      expect(answer).toEqual(ok([]));
+      expect(labels.calls.some((c) => c.lookup === 'short-names')).toBe(false);
+    });
+
+    it('answers no names when the lookup fails or the member may not see them', async () => {
+      const order = await placed();
+      await confirm(order.id);
+      const mine = ofSeller(order.id, SELLER_A);
+      // A member without identity.customer-short-name.view: identity answers nothing.
+      expect(await names(sellerOf(SELLER_A, 0x83), [mine])).toEqual(ok([]));
+      labels.fail.add('short-names');
+      labels.shortNames.set(ACCOUNT, 'Maryam R.');
+      expect(await names(sellerOf(SELLER_A, 0x83), [mine])).toEqual(ok([]));
+    });
+
+    it('refuses a customer, the system, an acting-as session and more than 100 ids', async () => {
+      expect(await names(customer, [])).toEqual({ ok: false, error: { code: 'access.denied' } });
+      const seller = sellerOf(SELLER_A, 0x85);
+      const actingAs = {
+        ...seller,
+        actor: {
+          ...seller.actor,
+          actingAs: { accountId: id<'Account'>(0x86), sellerId: SELLER_A },
+        },
+      } as unknown as CallContext;
+      expect(await names(actingAs, [])).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(await names(system, [])).toMatchObject({ ok: false });
+      const many = Array.from({ length: 101 }, (_, n) => id<'SellerOrder'>(0x900 + n));
+      expect(await names(sellerOf(SELLER_A, 0x84), many)).toEqual({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
     });
   });
 });

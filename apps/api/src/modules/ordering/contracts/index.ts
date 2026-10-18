@@ -12,6 +12,8 @@ export {
   ORDERING_FACADE,
   type OrderNotice,
   type OrderNoticeFailure,
+  type SellerOrderCustomerName,
+  type SellerOrderCustomerNamesFailure,
   type ShipmentNotice,
   type ShipmentNoticeFailure,
   type AuthorisedPayment,

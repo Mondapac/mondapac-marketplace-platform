@@ -1,6 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
-import type { TimeZoneId } from './claim-types';
+import type { CertificationTypeCode, ClaimQuery, TimeZoneId } from './claim-types';
 import type { VerificationMode } from './type-revision';
 
 export type IssuerState = 'proposed' | 'active' | 'closed-to-new' | 'derecognised';
@@ -159,5 +159,133 @@ export function sellerCertificateValidAt(
     expiresAt: boundary,
     expiryDate: sub.expiryDate,
     expiryZone: boundaryZone,
+  };
+}
+
+export type ProductCertificationStatus =
+  'draft' | 'in-review' | 'approved' | 'rejected' | 'suspended' | 'revoked' | 'expired';
+
+/**
+ * One coverage entry of an approved manufacturer revision (design 2.1, 3.4; CERT-41): a product
+ * at the product revision it was checked against (M3), for the whole product (`variantId` null)
+ * or narrowed to one variant.
+ */
+export interface CoverageEntryView {
+  readonly productId: Id<'Product'>;
+  readonly productRevisionId: Id<'ProductRevision'>;
+  readonly variantId: Id<'Variant'> | null;
+}
+
+/** The approved revision of a manufacturer certificate as the validity measure needs it. */
+export interface ApprovedProductRevisionView {
+  readonly revisionId: Id;
+  /**
+   * The type revision the revision was submitted and approved under (I1, slice 14): it decides
+   * `requiresExpiry` and the badge texts, as the seller path's submission does, so easing a type
+   * later never upgrades an approved manufacturer certificate.
+   */
+  readonly typeRevisionId: Id;
+  /** Whether the certificate's type required an expiry when the revision was approved. */
+  readonly requiresExpiry: boolean;
+  /** The expiry date as written, a local date. */
+  readonly expiryDate: Temporal.PlainDate | null;
+  /** The boundary stored at approval, in the Market zone of that time (2.4 rule 3). */
+  readonly boundaryAtApproval: Temporal.Instant | null;
+  readonly issuerId: Id;
+  readonly issuerState: IssuerState | null;
+  /** The issuer's public registry name (badge data). */
+  readonly issuerDisplayName: string | null;
+  readonly verifiedWithIssuer: boolean;
+  /** The coverage entries of the revision for the asked product (or all of them). */
+  readonly coverage: readonly CoverageEntryView[];
+}
+
+/** A manufacturer certificate (`ProductCertification`, slice 14) as `evaluateClaims` reads it. */
+export interface ProductCertificationView {
+  readonly certificateId: Id;
+  /**
+   * The certificate's type code (Hassan L2, slice 14): a certificate of another type never covers
+   * a query, whatever the reader returned.
+   */
+  readonly typeCode: CertificationTypeCode;
+  readonly status: ProductCertificationStatus;
+  readonly approved: ApprovedProductRevisionView | null;
+}
+
+export type ProductValidity =
+  | {
+      readonly valid: true;
+      readonly revisionId: Id;
+      readonly expiresAt: Temporal.Instant | null;
+      readonly expiryDate: Temporal.PlainDate | null;
+      readonly expiryZone: TimeZoneId | null;
+    }
+  | { readonly valid: false; readonly reason: InvalidReason | 'market-zone-missing' };
+
+/**
+ * True when one coverage entry of the revision covers the query (design 2.1; 4.2 step 6): the
+ * same product at the same published product revision (M3), and either the whole product or the
+ * query's own variant. An entry narrowed to a variant never matches a query without one (L1).
+ */
+export function covers(revision: ApprovedProductRevisionView, query: ClaimQuery): boolean {
+  return revision.coverage.some(
+    (entry) =>
+      entry.productId === query.productId &&
+      entry.productRevisionId === query.productRevisionId &&
+      (entry.variantId === null ||
+        (query.variantId !== null && entry.variantId === query.variantId)),
+  );
+}
+
+/**
+ * The validity measure of a manufacturer certificate (design 2.4 rules 1 and 3), pure: valid
+ * only when `approved`, with an approved revision whose issuer is not derecognised and, when an
+ * expiry is required, before the earlier of the boundary stored at approval and the boundary in
+ * the Market's current zone. A missing boundary, date or zone is "not valid" (fail closed).
+ */
+export function productCertificateValidAt(
+  cert: ProductCertificationView,
+  marketZone: TimeZoneId | null,
+  at: Temporal.Instant,
+): ProductValidity {
+  if (cert.status !== 'approved') return { valid: false, reason: 'not-approved' };
+  const revision = cert.approved;
+  if (revision === null) return { valid: false, reason: 'no-approved-submission' };
+  if (revision.issuerState !== 'active' && revision.issuerState !== 'closed-to-new') {
+    return { valid: false, reason: 'issuer-derecognised' };
+  }
+  if (!revision.requiresExpiry) {
+    return {
+      valid: true,
+      revisionId: revision.revisionId,
+      expiresAt: null,
+      expiryDate: null,
+      expiryZone: null,
+    };
+  }
+  if (revision.expiryDate === null || revision.boundaryAtApproval === null) {
+    return { valid: false, reason: 'expiry-missing' };
+  }
+  if (marketZone === null || !isUsableZone(marketZone)) {
+    return { valid: false, reason: 'market-zone-missing' };
+  }
+  let current: Temporal.Instant;
+  try {
+    current = expiryBoundary(revision.expiryDate, marketZone);
+  } catch (error) {
+    if (error instanceof RangeError) return { valid: false, reason: 'market-zone-missing' };
+    throw error;
+  }
+  const boundary =
+    Temporal.Instant.compare(revision.boundaryAtApproval, current) < 0
+      ? revision.boundaryAtApproval
+      : current;
+  if (Temporal.Instant.compare(at, boundary) >= 0) return { valid: false, reason: 'expired' };
+  return {
+    valid: true,
+    revisionId: revision.revisionId,
+    expiresAt: boundary,
+    expiryDate: revision.expiryDate,
+    expiryZone: marketZone,
   };
 }

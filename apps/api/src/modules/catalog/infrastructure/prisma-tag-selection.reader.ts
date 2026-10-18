@@ -3,6 +3,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
+  CertificateOfferOwner,
   StaleTag,
   TagSelection,
   TagSelectionReader,
@@ -19,6 +20,8 @@ function selected(selection: TagSelection): Prisma.CatalogOfferTagWhereInput {
       return { certificateVersionId: selection.id };
     case 'seller':
       return { sellerId: selection.id };
+    case 'type':
+      return { typeCode: selection.code };
   }
 }
 
@@ -56,6 +59,38 @@ export class PrismaTagSelectionReader implements TagSelectionReader {
       take: page.limit,
     });
     return groups.map((group) => group.offerId as Id<'Offer'>);
+  }
+
+  async ownersOfCertificate(
+    market: MarketContext,
+    certificateId: Id,
+    limit: number,
+  ): Promise<readonly CertificateOfferOwner[]> {
+    // The certificate selection index (`offer_tags_market_id_certificate_id_idx`) with its
+    // partial predicate repeated literally; `active` and the kind filter inside it.
+    const groups = await this.prisma.tx(market).catalogOfferTag.groupBy({
+      by: ['sellerId', 'typeCode'],
+      where: {
+        marketId: market.marketId,
+        certificateId,
+        status: { not: 'removed' },
+        AND: [{ status: 'active' }, { certificateKind: 'manufacturer' }],
+        copyRevisionPublished: true,
+      },
+      _count: { offerId: true },
+      _min: { validUntil: true },
+      orderBy: [{ sellerId: 'asc' }, { typeCode: 'asc' }],
+      take: limit,
+    });
+    return groups.map((group) => ({
+      sellerId: group.sellerId as Id<'Seller'>,
+      typeCode: group.typeCode,
+      offers: group._count.offerId,
+      validUntil:
+        group._min.validUntil === null
+          ? null
+          : Temporal.Instant.fromEpochMilliseconds(group._min.validUntil.getTime()),
+    }));
   }
 
   async staleTags(

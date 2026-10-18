@@ -14,9 +14,15 @@ import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
 import { sellerNavItems } from '../nav.ts';
+import { SellerNotifications } from '../notifications/seller-notifications.tsx';
+import { NOTICES_PERMISSION } from '../notifications/types.ts';
 import type { SellerSession } from './session.ts';
 
-/** The panel shell around a signed-in page: sidebar, topbar with the account menu. */
+/**
+ * The panel shell around a signed-in page: sidebar, topbar with the notifications bell and the
+ * account menu. The bell is for an approved seller's members who may see orders, since order
+ * notices are the only kind yet and the API refuses notices before approval.
+ */
 export async function SellerShell({
   session,
   activeId,
@@ -35,6 +41,8 @@ export async function SellerShell({
   // Phone bottom bar (IA 4): Home and Catalogue, only when the caller may see both.
   const tabIds = ['s_home', 's_products'];
   const tabs = tabIds.map((id) => items.find((item) => item.id === id));
+  const bell =
+    session.sellerAccessState === 'approved' && session.permissionKeys.includes(NOTICES_PERMISSION);
   const bottomTabs = tabs.every((item) => item !== undefined)
     ? tabs.map((item) => ({
         id: item.id,
@@ -71,13 +79,16 @@ export async function SellerShell({
           trail={navTrail(items, activeId, title, (key) => t(key))}
           trailLabel={t('nav.breadcrumb')}
           actions={
-            <UserMenu
-              name={session.displayName}
-              email={session.email}
-              theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
-              approved={session.sellerAccessState === 'approved'}
-              csrfToken={session.csrfToken}
-            />
+            <>
+              {bell ? <SellerNotifications csrfToken={session.csrfToken} /> : null}
+              <UserMenu
+                name={session.displayName}
+                email={session.email}
+                theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
+                approved={session.sellerAccessState === 'approved'}
+                csrfToken={session.csrfToken}
+              />
+            </>
           }
         />
       }

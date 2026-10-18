@@ -1,7 +1,7 @@
 import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
 import type { ClaimFacts } from '../../domain/claim-rule';
 import type { CertificationTypeCode, Handling } from '../../domain/claim-types';
-import type { SellerCertificationView } from '../../domain/validity';
+import type { ProductCertificationView, SellerCertificationView } from '../../domain/validity';
 
 /** What the type-and-policy statement answers for one query (design 4.2 step 3). */
 export interface TypeAndPolicy {
@@ -30,8 +30,21 @@ export interface SellerCertificateRequest {
   readonly typeCode: CertificationTypeCode;
 }
 
+/** One manufacturer-basis question (design 4.2 step 6): the product revision and variant asked. */
+export interface ProductCertificateRequest {
+  readonly typeCode: CertificationTypeCode;
+  readonly productId: Id<'Product'>;
+  readonly productRevisionId: Id<'ProductRevision'>;
+  readonly variantId: Id<'Variant'> | null;
+}
+
+/** The approved manufacturer certificates covering one request, carrying the key it answers. */
+export interface ProductCertificateAnswer extends ProductCertificateRequest {
+  readonly certificates: readonly ProductCertificationView[];
+}
+
 /**
- * The two read statements behind `evaluateClaims` (design 4.2 steps 2 and 3), each one statement
+ * The read statements behind `evaluateClaims` (design 4.2 steps 2, 3 and 6), each one statement
  * in one read-only unit, so each basis is decided from one snapshot (rule 2). Both answer an
  * array aligned with the request, one entry per request, each carrying its key; a wrong length or a
  * key that differs from the request at its position is a fault (the batch answers unavailable).
@@ -49,6 +62,15 @@ export interface ClaimFactsReader {
     market: MarketContext,
     requests: readonly SellerCertificateRequest[],
   ): Promise<readonly SellerCertificateAnswer[]>;
+  /**
+   * Per request, the approved manufacturer certificates of the type whose approved revision
+   * covers the product revision and variant (S3). Asked only for queries still undecided under
+   * `SELLER_OR_MANUFACTURER`. An empty list is "not covered".
+   */
+  productCertificates(
+    market: MarketContext,
+    requests: readonly ProductCertificateRequest[],
+  ): Promise<readonly ProductCertificateAnswer[]>;
 }
 
 /** One entry per requested seller; a missing zone is `null`, never a default. */

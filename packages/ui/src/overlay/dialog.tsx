@@ -1,6 +1,20 @@
 'use client';
 
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
+
+/**
+ * Opens and closes a native `<dialog>` as a modal with `open`: the browser traps focus, makes the
+ * rest of the page inert and closes on Escape, and focus returns to the opener. Shared by the
+ * Dialog and the side sheets (the notifications drawer).
+ */
+export function useModal(ref: RefObject<HTMLDialogElement | null>, open: boolean): void {
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog === null) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [ref, open]);
+}
 
 export interface DialogProps {
   readonly open: boolean;
@@ -19,12 +33,7 @@ export interface DialogProps {
 export function Dialog({ open, title, onClose, children, actions }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  useEffect(() => {
-    const dialog = ref.current;
-    if (dialog === null) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
+  useModal(ref, open);
   return (
     <dialog
       ref={ref}

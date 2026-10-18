@@ -1,7 +1,7 @@
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { CertificationValidationFailed } from '../../contracts/certification.facade';
-import type { ClaimDecision } from '../../domain/claim-types';
+import type { ClaimDecision, TimeZoneId } from '../../domain/claim-types';
 import { evaluateClaimsFor } from '../evaluate-claims';
 import type { ClaimFactsReader, SellerZonesSource } from '../ports/claim-facts.ports';
 
@@ -28,6 +28,9 @@ export class EvaluateClaims extends UseCase<
     private readonly facts: ClaimFactsReader,
     private readonly zones: SellerZonesSource,
     private readonly clock: Clock,
+    private readonly marketZone: (context: CallContext) => TimeZoneId | null,
+    /** The Market's manufacturer-basis switch (slice 14); anything but `true` is off. */
+    private readonly manufacturerBasisEnabled: (context: CallContext) => boolean,
   ) {
     super(gate);
   }
@@ -37,7 +40,13 @@ export class EvaluateClaims extends UseCase<
     input: EvaluateClaimsInput,
   ): Promise<Result<readonly ClaimDecision[], CertificationValidationFailed>> {
     return evaluateClaimsFor(
-      { facts: this.facts, zones: this.zones, now: () => this.clock.now() },
+      {
+        facts: this.facts,
+        zones: this.zones,
+        now: () => this.clock.now(),
+        marketZone: this.marketZone,
+        manufacturerBasisEnabled: this.manufacturerBasisEnabled,
+      },
       context,
       input.queries,
     );

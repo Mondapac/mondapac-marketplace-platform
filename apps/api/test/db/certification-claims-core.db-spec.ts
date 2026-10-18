@@ -35,6 +35,16 @@ const COVERED_BY_SELLER_CERTIFICATE_SPEC = [
   // Certification slice 9: covered by certification-expiry.db-spec.ts (42501 for the
   // application, the trigger for the owner).
   'expiry_warnings',
+  // Certification slice 13: covered by certification-claim-policy.db-spec.ts.
+  'claim_policy_revisions',
+  'claim_policy_rows',
+  // Certification slice 14: covered by certification-product-certification.db-spec.ts.
+  'product_certification_revisions',
+  'product_revision_coverage',
+  'product_revision_editors',
+  'product_revision_decisions',
+  'product_issuer_confirmations',
+  'product_certification_history',
 ];
 
 function insertOnlyTables(): string[] {
@@ -82,6 +92,12 @@ it('has exactly the row and the statement trigger on every insert-only table of 
     // Guard triggers other than the pair (before-update and before-insert rules of the columns
     // that do change), listed one by one: [table, trigger, tgtype, function].
     const GUARDS = [
+      [
+        'claim_policy_rows',
+        'claim_policy_rows_revision_open',
+        7,
+        'certification.claim_policy_rows_guard_insert',
+      ],
       [
         'claim_terms',
         'claim_terms_revision_open',

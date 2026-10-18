@@ -280,11 +280,11 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
       ['platform', 'default', 'onboarding-compliance', 11],
-      ['platform', 'default', 'catalogue-moderator', 7],
+      ['platform', 'default', 'catalogue-moderator', 9],
       ['platform', 'default', 'operations-support', 6],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 14],
-      ['platform', 'default', 'certification-reviewer', 7],
+      ['platform', 'default', 'viewer', 16],
+      ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 6],
       ['seller', 'default', 'order-fulfilment', 0],
@@ -332,6 +332,8 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'catalog.platform-product.edit',
       'catalog.product.approve',
       'catalog.product.view',
+      'certification.claim-policy.view',
+      'certification.product-certificate.view',
       'certification.type.view',
       'identity.seller-access.view',
       'pricing.price-hold.view',
@@ -347,6 +349,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     ]);
     expect(keysOf('certification-reviewer')).toEqual([
       'certification.issuer.view',
+      'certification.product-certificate.view',
       'certification.seller-certificate.review',
       'certification.seller-certificate.view',
       'certification.type.view',

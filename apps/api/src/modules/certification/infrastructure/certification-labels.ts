@@ -41,3 +41,19 @@ export const EXPERT_REFERENCE_LABELS = Object.freeze({
 });
 
 export const CHANGE_REASON_LABEL = fieldLabel('certification.registry-change.reason');
+
+/**
+ * A manufacturer certificate's number (data design 3.15, 3.16; slice 14), under the Market's
+ * platform subject, one label per column; and the purpose of a revision's `content_hash`.
+ */
+export const PRODUCT_NUMBER_LABELS = Object.freeze({
+  draft: fieldLabel('certification.product-certification.draft-certificate-number'),
+  revision: fieldLabel('certification.product-certification-revision.certificate-number'),
+});
+
+export const PRODUCT_CONTENT_HASH_PURPOSE = hashPurpose('certification.product-revision.content');
+
+/** The note of a manufacturer certificate's suspension or revocation (history row; slice 15). */
+export const PRODUCT_HISTORY_NOTE_LABEL = fieldLabel(
+  'certification.product-certification.history-note',
+);

@@ -25,6 +25,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'payments/seller/payout-account',
     'ordering/seller/orders',
     'commission-payouts/seller/ledger',
+    // The topbar bell (in-app notifications package 2): the list (query: `show`, `before`) and
+    // the unread count it polls.
+    'notifications/seller/notices',
+    'notifications/seller/notices/unread-count',
   ]),
   PUT: new Set([
     // The signed-in member's own display name (profile).
@@ -66,6 +70,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // Each asks for a second-factor code in the body and answers with a one-time Stripe address.
     'payments/seller/payout-account',
     'payments/seller/payout-account/link',
+    'notifications/seller/notices/read-all',
   ]),
 };
 
@@ -93,6 +98,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'ordering/seller/orders/:id/ship',
     'ordering/seller/orders/:id/deliver',
     'pricing/seller/offers/:id/variants/:id/special-price/withdraw',
+    'notifications/seller/notices/:id/read',
   ],
   DELETE: ['catalog/seller/offers/:id', 'catalog/seller/products/:id/images/:id'],
   // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
@@ -106,6 +112,7 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   'ordering/seller/orders': { limit: null, cursor: null },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },
   'identity/seller/team': { after: UUID },
+  'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
 };
 const QUERY_VALUE_MAX = 512;
 

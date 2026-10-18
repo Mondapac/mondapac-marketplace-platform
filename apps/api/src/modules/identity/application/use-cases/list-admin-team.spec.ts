@@ -98,6 +98,8 @@ const LEAD_KEYS = [
   'identity.seller-account.reset-second-factor',
   'certification.seller-certificate.view',
   'certification.type.view',
+  'certification.claim-policy.view',
+  'certification.product-certificate.view',
   'notifications.support-contact.view',
   'ordering.order.view',
   'payments.connected-account.view',

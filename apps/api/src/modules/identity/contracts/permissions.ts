@@ -68,6 +68,12 @@ export const SELLER_ROLE_EDIT = seller('identity.seller-role.edit', true);
 export const SELLER_ROLE_DELETE = seller('identity.seller-role.delete', true);
 
 /**
+ * See the short name of the customer ("Maryam R.") on the shop's own order notices. Unprotected
+ * and in no default role: only the Seller Owner holds it until the Owner puts it in a role.
+ */
+export const CUSTOMER_SHORT_NAME_VIEW = seller('identity.customer-short-name.view', false);
+
+/**
  * Change the seller's own two-step rules per action (seller OTP policy). Protected: the Seller
  * Owner's alone, never put in a role.
  */
@@ -100,5 +106,6 @@ export const IDENTITY_PERMISSIONS = declarePermissions('identity', [
   SELLER_ROLE_CREATE,
   SELLER_ROLE_EDIT,
   SELLER_ROLE_DELETE,
+  CUSTOMER_SHORT_NAME_VIEW,
   STEP_UP_POLICY_MANAGE,
 ]);

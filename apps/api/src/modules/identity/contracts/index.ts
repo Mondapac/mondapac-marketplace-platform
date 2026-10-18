@@ -13,6 +13,7 @@ export {
   type ConfirmSecondFactorFailure,
   type ContactEmailTarget,
   type CustomerAccountSummary,
+  type CustomerShortName,
   type IdentityFacade,
   type IdentityValidationFailed,
   type SellerMembershipSummary,

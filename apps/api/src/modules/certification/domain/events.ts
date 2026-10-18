@@ -218,6 +218,112 @@ export const RelaxationProposed = defineEvent({
 });
 
 /**
+ * A claim basis policy revision was published, at its save (it only tightens) or on a second
+ * admin's approval (design 3.7, 8.3; ADR-0012 d6). Consumer: catalog, to re-ask the tags of the
+ * type (its consumer is catalog's follow-up; the daily reconciliation is the backstop).
+ */
+export const ClaimPolicyChanged = defineEvent({
+  type: 'certification.claim-policy-changed.v1',
+  aggregateType: 'claim-policy',
+  payload: {
+    policyId: eventField.id(),
+    revisionId: eventField.id(),
+    typeId: eventField.id(),
+  },
+});
+
+/**
+ * Another admin approved the pending revision of a manufacturer certificate (design 3.4, 8.3;
+ * ADR-0012 d6; slice 14): a first approval, a renewal or a re-review whose coverage equals the
+ * revision it replaces. Consumer: catalog (re-asks the tags of the type).
+ */
+export const ProductCertificationApproved = defineEvent({
+  type: 'certification.product-certification-approved.v1',
+  aggregateType: 'product-certification',
+  payload: {
+    productCertificationId: eventField.id(),
+    revisionId: eventField.id(),
+    typeId: eventField.id(),
+  },
+});
+
+/**
+ * Another admin approved a revision whose coverage differs from the approved one it replaces
+ * (design 3.4 T3, 8.3; ADR-0028 d6; slice 14). `typeId` is added to the design's payload so
+ * catalog can select the tags of the type without reading certification. Consumer: catalog.
+ */
+export const ProductCertificationCoverageChanged = defineEvent({
+  type: 'certification.product-certification-coverage-changed.v1',
+  aggregateType: 'product-certification',
+  payload: {
+    productCertificationId: eventField.id(),
+    revisionId: eventField.id(),
+    previousRevisionId: eventField.id(),
+    typeId: eventField.id(),
+  },
+});
+
+/**
+ * An admin suspended an approved manufacturer certificate with a reason (design 3.4 row 6, 8.3;
+ * ADR-0012 d6; slice 15). The claim is "no" from the commit; catalog marks the tags based on the
+ * certificate `rechecking` and re-asks them.
+ */
+export const ProductCertificationSuspended = defineEvent({
+  type: 'certification.product-certification-suspended.v1',
+  aggregateType: 'product-certification',
+  payload: {
+    productCertificationId: eventField.id(),
+    revisionId: eventField.id(),
+    typeId: eventField.id(),
+  },
+});
+
+/**
+ * An admin revoked an approved or suspended manufacturer certificate (design 3.4 row 8, 8.3;
+ * slice 15): terminal. Consumer: catalog, as for a suspension.
+ */
+export const ProductCertificationRevoked = defineEvent({
+  type: 'certification.product-certification-revoked.v1',
+  aggregateType: 'product-certification',
+  payload: {
+    productCertificationId: eventField.id(),
+    revisionId: eventField.id(),
+    typeId: eventField.id(),
+  },
+});
+
+/**
+ * The expiry job moved an approved manufacturer certificate to `expired` at its boundary in the
+ * Market zone (design 3.4 row 9, 8.6; slice 15). Consumer: catalog, as for a suspension.
+ */
+export const ProductCertificationExpired = defineEvent({
+  type: 'certification.product-certification-expired.v1',
+  aggregateType: 'product-certification',
+  payload: {
+    productCertificationId: eventField.id(),
+    revisionId: eventField.id(),
+    typeId: eventField.id(),
+  },
+});
+
+/**
+ * A warning threshold of an approved manufacturer certificate fell due in the Market zone (design
+ * 8.3, 8.6; CERT-45; slice 15): one per approved revision and threshold (marker). `typeId` is
+ * added to the design's payload as on the other manufacturer events. Consumer: catalog warns the
+ * owners of the Offers whose tags rest on the certificate (request C-6).
+ */
+export const ProductCertificationExpiryWarningDue = defineEvent({
+  type: 'certification.product-certification-expiry-warning-due.v1',
+  aggregateType: 'product-certification',
+  payload: {
+    productCertificationId: eventField.id(),
+    revisionId: eventField.id(),
+    typeId: eventField.id(),
+    thresholdDays: eventField.integer(),
+  },
+});
+
+/**
  * Every event certification publishes, for the event catalogue. Adding one adds it to the
  * snapshot (`apps/api/test/contracts/event-catalogue.snapshot.json`).
  */
@@ -237,4 +343,11 @@ export const CERTIFICATION_EVENTS: readonly EventDefinition[] = [
   CertificationTypeDeactivated,
   IssuerDeactivated,
   RelaxationProposed,
+  ClaimPolicyChanged,
+  ProductCertificationApproved,
+  ProductCertificationCoverageChanged,
+  ProductCertificationSuspended,
+  ProductCertificationRevoked,
+  ProductCertificationExpired,
+  ProductCertificationExpiryWarningDue,
 ];

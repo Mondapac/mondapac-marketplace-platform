@@ -57,6 +57,7 @@ export class PrismaPublishedTypesReader implements PublishedTypesReader {
         locales[text.locale] = { name: text.name, customerDescription: text.customerDescription };
       }
       return {
+        typeId: row.id as Id,
         code: row.code as CertificationTypeCode,
         status: row.status,
         publishedRevisionId: revision.id as Id,
@@ -96,6 +97,7 @@ export class PrismaPublishedTypesReader implements PublishedTypesReader {
         throw new Error(`certification type ${row.code} has no readable published revision`);
       }
       return {
+        id: row.id,
         code: row.code,
         status: row.status,
         verificationMode: row.verificationMode,

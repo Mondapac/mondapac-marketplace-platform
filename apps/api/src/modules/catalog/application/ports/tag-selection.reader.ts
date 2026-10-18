@@ -6,18 +6,38 @@ import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
  * `copy_revision_published`): `certificate` the copy's certificate id (expired, revoked);
  * `certificate-version` the copy's submission (issuer confirmed); `seller` the Offer's seller
  * (seller certification approved: the event names a type id, which catalog does not store, so
- * every tag of the seller is re-asked; a superset that only costs asks).
+ * every tag of the seller is re-asked; a superset that only costs asks); `type` every tag of a
+ * certification type.
  */
 export type TagSelection =
   | { readonly by: 'certificate'; readonly id: Id }
   | { readonly by: 'certificate-version'; readonly id: Id }
-  | { readonly by: 'seller'; readonly id: Id };
+  | { readonly by: 'seller'; readonly id: Id }
+  /**
+   * Every tag of a certification type (slice 14: claim policy changed, manufacturer certificate
+   * approved or its coverage changed). The events name a type id and, for a manufacturer
+   * certificate, the certificate; one request holds one subject, so every tag of the type is
+   * re-asked: a superset of the design's selection (5.5) that only costs asks.
+   */
+  | { readonly by: 'type'; readonly code: string };
 
 /** One tag of the reconciliation order (design 5.6): its Offer and the instant of its last ask. */
 export interface StaleTag {
   readonly tagId: Id<'OfferTag'>;
   readonly offerId: Id<'Offer'>;
   readonly evaluatedAt: Temporal.Instant;
+}
+
+/**
+ * The owners of the Offers whose live badge rests on one manufacturer certificate (request C-6;
+ * certification slice 15): per seller and type, how many `active` tags name the certificate and
+ * the earliest `valid_until` among them.
+ */
+export interface CertificateOfferOwner {
+  readonly sellerId: Id<'Seller'>;
+  readonly typeCode: string;
+  readonly offers: number;
+  readonly validUntil: Temporal.Instant | null;
 }
 
 /**
@@ -55,6 +75,17 @@ export interface TagSelectionReader {
       readonly limit: number;
     },
   ): Promise<readonly StaleTag[]>;
+
+  /**
+   * The owners of the Offers with an `active` tag whose copy names the manufacturer certificate
+   * (kind `manufacturer`), within the selection predicate of the handlers, ordered by seller id,
+   * at most `limit` (request C-6).
+   */
+  ownersOfCertificate(
+    market: MarketContext,
+    certificateId: Id,
+    limit: number,
+  ): Promise<readonly CertificateOfferOwner[]>;
 }
 
 export const TAG_SELECTION_READER = Symbol('TAG_SELECTION_READER');
