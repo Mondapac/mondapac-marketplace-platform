@@ -301,7 +301,7 @@ export function SellerNotifications({ csrfToken }: { readonly csrfToken: string 
   }
 
   return (
-    <div className="me-2 flex items-center gap-1">
+    <div className="me-3 flex items-center gap-1">
       {soundOn && soundBlocked ? (
         <button
           type="button"
