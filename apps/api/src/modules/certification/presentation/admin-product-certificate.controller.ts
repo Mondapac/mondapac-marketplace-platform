@@ -43,6 +43,10 @@ import { ProductCertificateReviewRead } from '../application/use-cases/product-c
 import { ProductCertificateSaveDraft } from '../application/use-cases/product-certificate-save-draft.use-case';
 import { ProductCertificateSubmit } from '../application/use-cases/product-certificate-submit.use-case';
 import { ProductCertificatesList } from '../application/use-cases/product-certificates-list.use-case';
+import { ProductCertificateHistoryRead } from '../application/use-cases/product-certificate-history-read.use-case';
+import { ProductCertificateReinstate } from '../application/use-cases/product-certificate-reinstate.use-case';
+import { ProductCertificateRevoke } from '../application/use-cases/product-certificate-revoke.use-case';
+import { ProductCertificateSuspend } from '../application/use-cases/product-certificate-suspend.use-case';
 import { CertificationErrorBody } from './own-certificate.dto';
 import {
   ProductCertificateCreatedView,
@@ -53,6 +57,11 @@ import {
   ProductDecidedView,
   ProductDecisionRequest,
   ProductDraftSavedView,
+  ProductEndedView,
+  ProductEndRequest,
+  ProductHistoryView,
+  ProductReinstatedView,
+  ProductReinstateRequest,
   ProductRejectRequest,
   ProductSubmitRequest,
   ProductSubmittedView,
@@ -62,8 +71,9 @@ import { CSRF, RegistryHttp, UNAUTHORIZED } from './registry-http';
 /**
  * The HTTP status of each refusal of the manufacturer certificate routes (slice 14): a malformed
  * request 400; a decider who created or edited the revision 403; an unknown record or type 404;
- * a moved record, a draft that may not be edited, a revision that is no longer pending and a
- * closed record 409; a submission or approval the rules refuse 422.
+ * a moved record, a draft that may not be edited, a revision that is no longer pending, a
+ * closed record and a lifecycle step from the wrong status (slice 15) 409; a submission, approval
+ * or reinstatement the rules refuse 422.
  */
 export const PRODUCT_CERTIFICATE_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
@@ -73,6 +83,11 @@ export const PRODUCT_CERTIFICATE_STATUS: Readonly<Record<string, number>> = Obje
   'conflict.stale': 409,
   'certificate.not-editable': 409,
   'certificate.closed': 409,
+  'certificate.suspended': 409,
+  'certificate.not-suspendable': 409,
+  'certificate.not-suspended': 409,
+  'certificate.revoked': 409,
+  'certificate.not-revocable': 409,
   'review.not-current-revision': 409,
   'certificate.incomplete': 422,
   'certificate.expired': 422,
@@ -88,6 +103,9 @@ const APPROVE =
   'Needs certification.product-certificate.approve (protected). Another person: not the ' +
   "record's creator, nor any admin who edited the draft of the revision or submitted it. Not in " +
   'a Login as Seller session.';
+const REVOKE =
+  'Needs certification.product-certificate.revoke (protected: no default role holds it; the ' +
+  'Platform Administrator grants it). Not in a Login as Seller session.';
 const UNAVAILABLE = { type: CertificationErrorBody, description: 'access.unavailable' };
 const BAD_REQUEST = { type: CertificationErrorBody, description: 'validation.failed' };
 const UNSUPPORTED = { type: CertificationErrorBody, description: 'request.body-unsupported' };
@@ -103,7 +121,8 @@ function numberParam(value: unknown): unknown {
 /**
  * The manufacturer certificate admin pages (certification design 3.4, 7.1, 7.2; ADR-0012 d3;
  * CERT-41; AC 20; slice 14): list, read, the review read with the number, create, save the draft
- * with its coverage, submit, and approve or reject by another person. Thin adapters over one use
+ * with its coverage, submit, and approve or reject by another person; from slice 15 the status
+ * history, suspend and revoke, and reinstate by another person. Thin adapters over one use
  * case each; the guard only authenticates (the admin population); the permission, the
  * other-person rule and the not-acting-as rule are the use cases'.
  */
@@ -125,6 +144,10 @@ export class AdminProductCertificateController {
     private readonly submit: ProductCertificateSubmit,
     private readonly approve: ProductCertificateApprove,
     private readonly reject: ProductCertificateReject,
+    private readonly suspend: ProductCertificateSuspend,
+    private readonly revoke: ProductCertificateRevoke,
+    private readonly reinstate: ProductCertificateReinstate,
+    private readonly historyRead: ProductCertificateHistoryRead,
   ) {}
 
   @Get()
@@ -473,6 +496,183 @@ export class AdminProductCertificateController {
           version: input.version,
           reasonCode: input.reasonCode,
         }),
+    );
+  }
+
+  @Get(':certificateId/history')
+  @Header('Cache-Control', 'private, no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'The status history of a manufacturer certificate',
+    description:
+      'Needs certification.product-certificate.view. Newest first, at most 200 rows: from, to, ' +
+      'the revision, the admin or the system, the reason code and whether a note was given; ' +
+      'never the note.',
+  })
+  @ApiOkResponse({ type: ProductHistoryView })
+  @ApiBadRequestResponse(BAD_REQUEST)
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: CertificationErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse(NOT_FOUND)
+  @ApiServiceUnavailableResponse(UNAVAILABLE)
+  async getHistory(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('certificateId') certificateId: string,
+  ): Promise<ProductHistoryView> {
+    const outcome = this.#http.answer(
+      await this.historyRead.execute(context, { certificateId }),
+      response,
+      context,
+    );
+    return this.#http.settle(
+      'certification.product-certificate-history-read',
+      context,
+      outcome as unknown as ProductHistoryView,
+    );
+  }
+
+  @Post(':certificateId/suspend')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Suspend an approved manufacturer certificate',
+    description:
+      `${REVOKE} Under the record version read, with a reason code of the Market's list for ` +
+      'the suspended outcome and an optional note. The claim stops at once; publishes ' +
+      'product-certification-suspended.v1.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ProductEndRequest })
+  @ApiOkResponse({ type: ProductEndedView })
+  @ApiBadRequestResponse(BAD_REQUEST)
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse(FORBIDDEN)
+  @ApiNotFoundResponse(NOT_FOUND)
+  @ApiConflictResponse({
+    type: CertificationErrorBody,
+    description:
+      'conflict.stale, certificate.suspended, certificate.not-suspendable, certificate.closed',
+  })
+  @ApiUnsupportedMediaTypeResponse(UNSUPPORTED)
+  @ApiServiceUnavailableResponse(UNAVAILABLE)
+  postSuspend(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('certificateId') certificateId: string,
+    @Body() body: unknown,
+  ): Promise<ProductEndedView> {
+    return this.#http.post(
+      'certification.product-certificate-suspend',
+      context,
+      request,
+      response,
+      body,
+      { required: ['version', 'reasonCode'], optional: ['reasonText'] },
+      (input) =>
+        this.suspend.execute(context, {
+          certificateId,
+          version: input.version,
+          reasonCode: input.reasonCode,
+          reasonText: input.reasonText,
+        }),
+    );
+  }
+
+  @Post(':certificateId/revoke')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Revoke an approved or suspended manufacturer certificate',
+    description:
+      `${REVOKE} Under the record version read, with a reason code of the Market's list for ` +
+      'the revoked outcome and an optional note. Terminal; a pending revision is withdrawn. The ' +
+      'claim stops at once; publishes product-certification-revoked.v1.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ProductEndRequest })
+  @ApiOkResponse({ type: ProductEndedView })
+  @ApiBadRequestResponse(BAD_REQUEST)
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse(FORBIDDEN)
+  @ApiNotFoundResponse(NOT_FOUND)
+  @ApiConflictResponse({
+    type: CertificationErrorBody,
+    description: 'conflict.stale, certificate.revoked, certificate.not-revocable',
+  })
+  @ApiUnsupportedMediaTypeResponse(UNSUPPORTED)
+  @ApiServiceUnavailableResponse(UNAVAILABLE)
+  postRevoke(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('certificateId') certificateId: string,
+    @Body() body: unknown,
+  ): Promise<ProductEndedView> {
+    return this.#http.post(
+      'certification.product-certificate-revoke',
+      context,
+      request,
+      response,
+      body,
+      { required: ['version', 'reasonCode'], optional: ['reasonText'] },
+      (input) =>
+        this.revoke.execute(context, {
+          certificateId,
+          version: input.version,
+          reasonCode: input.reasonCode,
+          reasonText: input.reasonText,
+        }),
+    );
+  }
+
+  @Post(':certificateId/reinstate')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Reinstate a suspended manufacturer certificate on its approved revision',
+    description:
+      'Needs certification.product-certificate.approve (protected). Another person: not the ' +
+      "record's creator, nor any admin who edited or submitted the approved revision. Not in a " +
+      'Login as Seller session. Under the record version read; the issuer still counts and the ' +
+      'expiry boundary in the Market zone is ahead. Publishes product-certification-approved.v1.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ProductReinstateRequest })
+  @ApiOkResponse({ type: ProductReinstatedView })
+  @ApiBadRequestResponse(BAD_REQUEST)
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: CertificationErrorBody,
+    description: 'approval.same-admin, access.denied, request.csrf',
+  })
+  @ApiNotFoundResponse(NOT_FOUND)
+  @ApiConflictResponse({
+    type: CertificationErrorBody,
+    description: 'conflict.stale, certificate.not-suspended, certificate.closed',
+  })
+  @ApiUnprocessableEntityResponse({
+    type: CertificationErrorBody,
+    description: 'issuer.not-active, certificate.expired',
+  })
+  @ApiUnsupportedMediaTypeResponse(UNSUPPORTED)
+  @ApiServiceUnavailableResponse(UNAVAILABLE)
+  postReinstate(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('certificateId') certificateId: string,
+    @Body() body: unknown,
+  ): Promise<ProductReinstatedView> {
+    return this.#http.post(
+      'certification.product-certificate-reinstate',
+      context,
+      request,
+      response,
+      body,
+      { required: ['version'] },
+      (input) => this.reinstate.execute(context, { certificateId, version: input.version }),
     );
   }
 }

@@ -4,7 +4,11 @@ import type {
   ProductCertificateCipher,
   ProductNumberHolder,
 } from '../application/ports/product-certificate-cipher';
-import { PRODUCT_CONTENT_HASH_PURPOSE, PRODUCT_NUMBER_LABELS } from './certification-labels';
+import {
+  PRODUCT_CONTENT_HASH_PURPOSE,
+  PRODUCT_HISTORY_NOTE_LABEL,
+  PRODUCT_NUMBER_LABELS,
+} from './certification-labels';
 import type { SubjectKeyRegistryCipher } from './subject-key-registry-cipher';
 
 /**
@@ -38,6 +42,13 @@ export class SubjectKeyProductCertificateCipher implements ProductCertificateCip
     const opened = await this.keys.decrypt(market, subject, PRODUCT_NUMBER_LABELS[holder], sealed);
     if (!opened.ok) throw new Error('certification: the platform subject key was destroyed');
     return opened.value;
+  }
+
+  async sealHistoryNote(market: MarketContext, note: string): Promise<string> {
+    const subject = await this.registryCipher.platformSubject(market);
+    const sealed = await this.keys.encrypt(market, subject, PRODUCT_HISTORY_NOTE_LABEL, note);
+    if (!sealed.ok) throw new Error('certification: the platform subject key was destroyed');
+    return sealed.value;
   }
 
   async contentHash(market: MarketContext, canonicalContent: string): Promise<string> {

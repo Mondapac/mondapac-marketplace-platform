@@ -7,6 +7,7 @@ import {
   PRODUCT_CERTIFICATION_REPOSITORY,
   type ProductCertificationRepository,
   type ProductCertificationSummary,
+  type ProductHistoryRow,
   type StoredProductCertification,
 } from '../src/modules/certification/application/ports/product-certification.repository';
 import { CERTIFICATION_REGISTRY_REPOSITORY } from '../src/modules/certification/application/ports/registry.repository';
@@ -20,6 +21,7 @@ import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { OUTBOX_WRITER } from '../src/platform/events/outbox-writer';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
+import { StaleAggregateError } from '../src/platform/unit-of-work/errors';
 import { MemoryOutbox } from './support/certification-fakes';
 import { MemoryRegistry } from './support/certification-registry-fakes';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
@@ -48,6 +50,8 @@ const EDITOR = id<'Account'>(0xa402);
 const TYPE = id<'CertificationType'>(0xc401);
 const SELF_TYPE = id<'CertificationType'>(0xc402);
 const EDITOR_ROLE = id<'Role'>(0xf411);
+const REVOKER = id<'Account'>(0xa403);
+const REVOKER_ROLE = id<'Role'>(0xf412);
 
 /** The certificate roots only: enough for create, read and list (no revisions here). */
 class MemoryProductCertificates implements ProductCertificationRepository {
@@ -114,8 +118,18 @@ class MemoryProductCertificates implements ProductCertificationRepository {
         })),
     );
   }
-  lock(): Promise<void> {
-    return Promise.reject(new Error('not in this suite'));
+  lock(
+    market: MarketContext,
+    certificateId: Id<'ProductCertification'>,
+    expectedVersion: number,
+  ): Promise<void> {
+    const root = this.roots.get(certificateId);
+    if (root === undefined || root.marketId !== market.marketId) return Promise.resolve();
+    if (root.version !== expectedVersion) {
+      return Promise.reject(new StaleAggregateError('product-certification', certificateId));
+    }
+    this.roots.set(certificateId, { ...root, version: expectedVersion + 1 });
+    return Promise.resolve();
   }
   saveDraft(): Promise<void> {
     return Promise.reject(new Error('not in this suite'));
@@ -128,6 +142,21 @@ class MemoryProductCertificates implements ProductCertificationRepository {
   }
   shareRegistryRows(): Promise<never> {
     return Promise.reject(new Error('not in this suite'));
+  }
+  transition(): Promise<void> {
+    return Promise.reject(new Error('not in this suite'));
+  }
+  expiryCandidates(): Promise<never> {
+    return Promise.reject(new Error('not in this suite'));
+  }
+  expiryCandidate(): Promise<never> {
+    return Promise.reject(new Error('not in this suite'));
+  }
+  recordWarning(): Promise<void> {
+    return Promise.reject(new Error('not in this suite'));
+  }
+  history(): Promise<readonly ProductHistoryRow[]> {
+    return Promise.resolve([]);
   }
 }
 
@@ -240,8 +269,27 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
         version: 1,
       });
     };
+    // The revoke key is protected too (slice 15): a custom role holds it with the edit key.
+    fakes.seedRole({
+      id: REVOKER_ROLE,
+      marketId,
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      name: 'Manufacturer certificate revoker',
+      permissionKeys: [
+        'certification.product-certificate.view',
+        'certification.product-certificate.edit',
+        'certification.product-certificate.revoke',
+      ],
+      version: 1,
+      createdAt: START,
+    });
     account(MODERATOR, 'moderator', roleOf('catalogue-moderator'));
     account(EDITOR, 'editor', EDITOR_ROLE);
+    account(REVOKER, 'revoker', REVOKER_ROLE);
   }
 
   function headersOf(code: string, account: Id<'Account'>, n: number) {
@@ -288,6 +336,11 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
       'approval.same-admin': 403,
       'conflict.stale': 409,
       'review.not-current-revision': 409,
+      'certificate.suspended': 409,
+      'certificate.not-suspendable': 409,
+      'certificate.not-suspended': 409,
+      'certificate.revoked': 409,
+      'certificate.not-revocable': 409,
     });
   });
 
@@ -317,6 +370,69 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
         .expect(403);
       expect((review.body as { code: string }).code).toBe('access.denied');
       expect(products.roots.size).toBe(0);
+    });
+
+    it('suspends, revokes and reinstates only with their protected keys; maps a wrong status to 409 and reads the history with the view key (slice 15)', async () => {
+      await boot();
+      seedTypes(code);
+      await seeded(code);
+      const editor = headersOf(code, EDITOR, 3);
+      const revoker = headersOf(code, REVOKER, 4);
+      const moderator = headersOf(code, MODERATOR, 5);
+      const created = await http().post(base).set(editor).send({ typeId: TYPE }).expect(201);
+      const { certificateId } = created.body as { certificateId: string };
+      const reason = { version: 1, reasonCode: 'under-investigation' };
+
+      // A default role and the edit key alone hold neither the revoke nor the approve key.
+      for (const h of [moderator, editor]) {
+        for (const action of ['suspend', 'revoke']) {
+          const refused = await http()
+            .post(`${base}/${certificateId}/${action}`)
+            .set(h)
+            .send(reason)
+            .expect(403);
+          expect((refused.body as { code: string }).code).toBe('access.denied');
+        }
+        const reinstate = await http()
+          .post(`${base}/${certificateId}/reinstate`)
+          .set(h)
+          .send({ version: 1 })
+          .expect(403);
+        expect((reinstate.body as { code: string }).code).toBe('access.denied');
+      }
+      // Closed bodies: the reason is required, unknown keys are refused, CSRF is checked.
+      await http()
+        .post(`${base}/${certificateId}/suspend`)
+        .set(revoker)
+        .send({ version: 1 })
+        .expect(400);
+      await http()
+        .post(`${base}/${certificateId}/suspend`)
+        .set(revoker)
+        .send({ ...reason, status: 'suspended' })
+        .expect(400);
+      const noCsrf: Record<string, string> = { ...revoker };
+      delete noCsrf['x-csrf-token'];
+      await http().post(`${base}/${certificateId}/suspend`).set(noCsrf).send(reason).expect(403);
+      // A draft was never approved: 409 with the domain's code, nothing written.
+      const draft = await http()
+        .post(`${base}/${certificateId}/revoke`)
+        .set(revoker)
+        .send({ version: 1, reasonCode: code === 'AU' ? 'approved-in-error' : 'forged' })
+        .expect(409);
+      expect((draft.body as { code: string }).code).toBe('certificate.not-revocable');
+      expect(products.roots.get(certificateId)!.status).toBe('draft');
+
+      const history = await http()
+        .get(`${base}/${certificateId}/history`)
+        .set(moderator)
+        .expect(200);
+      expect(history.headers['cache-control']).toContain('no-store');
+      expect(history.body).toEqual({ certificateId, entries: [] });
+      await http()
+        .get(`${base}/${id(0xe5fe)}/history`)
+        .set(moderator)
+        .expect(404);
     });
 
     it('records a draft with the edit key, then reads and lists it; refuses no CSRF, a bad body, an unknown or self-declared type', async () => {

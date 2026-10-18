@@ -15,10 +15,10 @@ export type DecisionOutcome = (typeof DECISION_OUTCOMES)[number];
 export type NegativeOutcome = Exclude<DecisionOutcome, 'approved'>;
 
 /**
- * The outcomes a Market reason can be listed under (design 5.1 `reasons`: 3.2 rows 4 and 5, and
- * the revoke of 3.1).
+ * The outcomes a Market reason can be listed under (design 5.1 `reasons`: 3.2 rows 4 and 5, the
+ * revoke of 3.1 and 3.4, and the suspension of a manufacturer certificate, 3.4 row 6, slice 15).
  */
-export const REASON_OUTCOMES = ['changes-requested', 'declined', 'revoked'] as const;
+export const REASON_OUTCOMES = ['changes-requested', 'declined', 'revoked', 'suspended'] as const;
 export type ReasonOutcome = (typeof REASON_OUTCOMES)[number];
 
 /** One review check of a Market (design 5.1 `reviewChecks`). */

@@ -1,5 +1,5 @@
 import type { FactoryProvider, Provider } from '@nestjs/common';
-import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
+import type { Clock, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
 import { AUDIT_WRITER, type AuditWriter } from '../../../platform/audit/audit-writer';
 import { USE_CASE_GATE, type UseCaseGate } from '../../../platform/authz';
 import { CLOCK } from '../../../platform/clock/clock.module';
@@ -41,6 +41,16 @@ import { ProductCertificateReviewRead } from '../application/use-cases/product-c
 import { ProductCertificateSaveDraft } from '../application/use-cases/product-certificate-save-draft.use-case';
 import { ProductCertificateSubmit } from '../application/use-cases/product-certificate-submit.use-case';
 import { ProductCertificatesList } from '../application/use-cases/product-certificates-list.use-case';
+import { ProductCertificateHistoryRead } from '../application/use-cases/product-certificate-history-read.use-case';
+import { ProductCertificateReinstate } from '../application/use-cases/product-certificate-reinstate.use-case';
+import { ProductCertificateRevoke } from '../application/use-cases/product-certificate-revoke.use-case';
+import { ProductCertificateSuspend } from '../application/use-cases/product-certificate-suspend.use-case';
+import { ExpireProductCertificates } from '../application/use-cases/expire-product-certificates.use-case';
+import {
+  EXPIRY_POLICY_PROVIDER,
+  type ExpiryPolicyProvider,
+} from '../application/ports/expiry.repository';
+import type { TimeZoneId } from '../domain/claim-types';
 import { isUsableZone } from '../domain/validity';
 import { PrismaProductCertificationRepository } from './prisma-product-certification.repository';
 import { SubjectKeyProductCertificateCipher } from './subject-key-product-certificate-cipher';
@@ -60,7 +70,23 @@ export const productCertificationUseCases = [
   ProductCertificateSubmit,
   ProductCertificateApprove,
   ProductCertificateReject,
+  ProductCertificateSuspend,
+  ProductCertificateRevoke,
+  ProductCertificateReinstate,
+  ProductCertificateHistoryRead,
 ] as const;
+
+/** The Market's configured zone when usable (2.4 rule 3), else null (fail closed). */
+function marketZoneOf(markets: MarketRegistry): (market: MarketContext) => TimeZoneId | null {
+  return (market) => {
+    try {
+      const zone = markets.get(market.marketId).timezone;
+      return isUsableZone(zone) ? zone : null;
+    } catch {
+      return null;
+    }
+  };
+}
 
 /**
  * The manufacturer certificate (certification design 3.4, 7.1, 7.2; ADR-0012 d3; slice 14): the
@@ -133,15 +159,44 @@ export const productCertificationProviders: readonly Provider[] = [
       outbox,
       clock,
       ids,
-      marketZone: (market) => {
-        try {
-          const zone = markets.get(market.marketId).timezone;
-          return isUsableZone(zone) ? zone : null;
-        } catch {
-          return null;
-        }
-      },
+      marketZone: marketZoneOf(markets),
     }),
+  },
+  {
+    // The manufacturer half of the expiry and warnings job (design 8.6; slice 15).
+    provide: ExpireProductCertificates,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      PRODUCT_CERTIFICATION_REPOSITORY,
+      EXPIRY_POLICY_PROVIDER,
+      AUDIT_WRITER,
+      OUTBOX_WRITER,
+      CLOCK,
+      ID_GENERATOR,
+      MarketRegistry,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: UnitOfWork,
+      products: ProductCertificationRepository,
+      policies: ExpiryPolicyProvider,
+      audit: AuditWriter,
+      outbox: OutboxWriter,
+      clock: Clock,
+      ids: IdGenerator,
+      markets: MarketRegistry,
+    ) =>
+      new ExpireProductCertificates(gate, {
+        unitOfWork,
+        products,
+        policies,
+        audit,
+        outbox,
+        clock,
+        ids,
+        marketZone: marketZoneOf(markets),
+      }),
   },
   ...productCertificationUseCases.map((type): FactoryProvider => ({
     provide: type,

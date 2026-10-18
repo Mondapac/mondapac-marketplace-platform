@@ -54,6 +54,8 @@ export interface StoredProductRevision {
   readonly typeId: Id<'CertificationType'>;
   /** The type revision in force at submission (I1). */
   readonly typeRevisionId: Id<'CertificationTypeRevision'>;
+  /** That type revision's `requires_expiry` (2.4 rule 5): whether the expiry counts. */
+  readonly typeRequiresExpiry: boolean;
   readonly revisionNo: number;
   readonly issuerId: Id<'Issuer'>;
   readonly manufacturerName: string;
@@ -133,6 +135,72 @@ export interface ProductDecisionWrite {
   readonly now: Temporal.Instant;
 }
 
+/**
+ * A transition of the root after its approval (design 3.4 rows 6 to 9; slice 15): suspend, revoke
+ * and reinstate by an admin, expire by the system. The approved revision stays the approved
+ * pointer; a revocation also withdraws the pending revision, if any (decision `withdrawn`, no
+ * decider). One history row names the approved revision, the actor and the reason.
+ */
+export interface ProductLifecycleWrite {
+  readonly certificateId: Id<'ProductCertification'>;
+  readonly approvedRevisionId: Id<'ProductCertificationRevision'>;
+  readonly fromStatus: ProductCertificationStatus;
+  readonly toStatus: 'suspended' | 'revoked' | 'approved' | 'expired';
+  /** The pending revision withdrawn in the same unit (a revocation only), with its author. */
+  readonly withdrawn: {
+    readonly revisionId: Id<'ProductCertificationRevision'>;
+    readonly authorAccountId: string;
+  } | null;
+  readonly reasonCode: string | null;
+  readonly noteCiphertext: string | null;
+  /** `null`: the system actor (the expiry job). */
+  readonly actorAccountId: Id<'Account'> | null;
+  readonly historyId: Id<'ProductCertificationHistory'>;
+  readonly now: Temporal.Instant;
+}
+
+/** One approved manufacturer certificate as the expiry job decides on it (design 8.6). */
+export interface ProductExpiryCandidate {
+  readonly certificateId: Id<'ProductCertification'>;
+  readonly version: number;
+  readonly typeId: Id<'CertificationType'>;
+  readonly status: ProductCertificationStatus;
+  readonly approvedRevisionId: Id<'ProductCertificationRevision'>;
+  readonly typeRevisionId: Id<'CertificationTypeRevision'>;
+  readonly requiresExpiry: boolean;
+  readonly expiryDate: Temporal.PlainDate | null;
+  /** The decision's stored boundary and the Market zone that measured it. */
+  readonly storedBoundary: Temporal.Instant | null;
+  readonly boundaryZone: string | null;
+  /** The thresholds already marked for the approved revision (data design 3.18). */
+  readonly warnedThresholds: readonly number[];
+}
+
+/** One page of the job's selection; paging comes from the raw rows (as the seller path's). */
+export interface ProductExpiryPage {
+  readonly candidates: readonly ProductExpiryCandidate[];
+  readonly rawCount: number;
+  readonly last: {
+    readonly boundary: Temporal.Instant;
+    readonly certificateId: Id<'ProductCertification'>;
+  } | null;
+  /** Rows dropped as inconsistent (approved without an approved revision and decision). */
+  readonly inconsistent: number;
+}
+
+/** One status history row (data design 3.16), clear fields only: the note stays sealed. */
+export interface ProductHistoryRow {
+  readonly id: string;
+  readonly fromStatus: ProductCertificationStatus | null;
+  readonly toStatus: ProductCertificationStatus;
+  readonly revisionId: string | null;
+  readonly actorKind: 'admin' | 'system';
+  readonly actorAccountId: string | null;
+  readonly reasonCode: string | null;
+  readonly noteGiven: boolean;
+  readonly occurredAt: Temporal.Instant;
+}
+
 export interface ProductCertificationRepository {
   /** Inserts a root in `draft` at version 1 with an empty draft. */
   create(
@@ -187,6 +255,41 @@ export interface ProductCertificationRepository {
     typeId: Id<'CertificationType'>,
     issuerId: Id<'Issuer'> | null,
   ): Promise<RegistryRowsShared>;
+  /**
+   * A transition after approval (see {@link ProductLifecycleWrite}), after `lock`: the status
+   * moves only from `fromStatus` on the named approved revision (else `StaleAggregateError`).
+   */
+  transition(market: MarketContext, write: ProductLifecycleWrite): Promise<void>;
+  /**
+   * `approved` roots whose stored boundary is before `horizon`, ordered by (boundary, id), after
+   * the cursor, at most `limit` rows (A9, the partial index on `product_certifications`).
+   */
+  expiryCandidates(
+    market: MarketContext,
+    horizon: Temporal.Instant,
+    after: ProductExpiryPage['last'],
+    limit: number,
+  ): Promise<ProductExpiryPage>;
+  /** The same read for one root, whatever its status; null without an approved revision. */
+  expiryCandidate(
+    market: MarketContext,
+    certificateId: Id<'ProductCertification'>,
+  ): Promise<ProductExpiryCandidate | null>;
+  /** Inserts the warning marker of the revision (kind `product-revision`); a repeat throws. */
+  recordWarning(
+    market: MarketContext,
+    write: {
+      readonly revisionId: Id<'ProductCertificationRevision'>;
+      readonly thresholdDays: number;
+      readonly now: Temporal.Instant;
+    },
+  ): Promise<void>;
+  /** The newest `limit` history rows of the record, newest first. */
+  history(
+    market: MarketContext,
+    certificateId: Id<'ProductCertification'>,
+    limit: number,
+  ): Promise<readonly ProductHistoryRow[]>;
   /** A page of roots, newest first, optionally of one status and type. */
   list(
     market: MarketContext,

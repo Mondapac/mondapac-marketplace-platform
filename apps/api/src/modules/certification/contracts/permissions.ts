@@ -190,6 +190,18 @@ export const CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE = definePermission('certi
   protected: true,
 });
 
+/**
+ * Suspend and revoke a manufacturer certificate, each with a reason (design 3.4 rows 6 and 8, 7.1;
+ * slice 15). Protected: ending a certificate removes the badge from every Offer that rests on it,
+ * so no default role lists it; the Platform Administrator holds it and grants it in a custom role.
+ * Reinstating a suspended certificate is the approve key's, by another person.
+ */
+export const CERTIFICATION_PRODUCT_CERTIFICATE_REVOKE = definePermission('certification', {
+  key: 'certification.product-certificate.revoke',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CERTIFICATION_PERMISSIONS = declarePermissions('certification', [
   CERTIFICATION_OWN_CERTIFICATE_VIEW,
   CERTIFICATION_OWN_CERTIFICATE_MANAGE,
@@ -207,4 +219,5 @@ export const CERTIFICATION_PERMISSIONS = declarePermissions('certification', [
   CERTIFICATION_PRODUCT_CERTIFICATE_VIEW,
   CERTIFICATION_PRODUCT_CERTIFICATE_EDIT,
   CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE,
+  CERTIFICATION_PRODUCT_CERTIFICATE_REVOKE,
 ]);
