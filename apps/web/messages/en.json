@@ -1,0 +1,165 @@
+{
+  "store": {
+    "name": "mondapac",
+    "title": "Mondapac",
+    "description": "Local food sellers in one cart. Every price includes GST."
+  },
+  "header": {
+    "categories": "Categories",
+    "deliver-to": "Deliver to",
+    "change-area": "Delivery area {area}, change",
+    "log-in": "Log in",
+    "cart": "{count, plural, =0 {Cart, empty} one {Cart, # item, {total}} other {Cart, # items, {total}}}",
+    "search": "Search",
+    "search-placeholder": "Search products, sellers and recipes"
+  },
+  "rail": {
+    "label": "Main menu",
+    "browse": "Browse products",
+    "home": "Home",
+    "offers": "Offers",
+    "express": "Express",
+    "same-day": "Same day",
+    "sellers": "Sellers",
+    "recipes": "Recipes",
+    "gift-cards": "Gift cards",
+    "sell": "Sell with us",
+    "show-more": "Show more",
+    "show-less": "Show less",
+    "you": "You",
+    "orders": "Orders",
+    "saved": "Saved lists",
+    "account": "Account"
+  },
+  "browse": {
+    "title": "Browse products",
+    "close": "Close menu",
+    "back": "Back to Browse products",
+    "popular": "Popular & Suggested",
+    "specials": "Special prices",
+    "best-sellers": "Best sellers",
+    "new": "New this week",
+    "certified": "Halal",
+    "by-category": "Shop by Category",
+    "see-all": "See all {name}"
+  },
+  "tabs": {
+    "label": "App navigation",
+    "home": "Home",
+    "search": "Search",
+    "browse": "Browse",
+    "cart": "Cart",
+    "account": "Account"
+  },
+  "search": {
+    "dialog": "Search",
+    "close": "Close search",
+    "recent": "Recent",
+    "no-recent": "Your recent searches will show here.",
+    "popular": "Popular right now"
+  },
+  "home": {
+    "featured": "Featured",
+    "categories": "Product categories",
+    "show-all": "Show all",
+    "show-all-of": "Show all: {title}",
+    "including-gst": "including GST",
+    "special-price": "Special price",
+    "regular-price": "Regular price",
+    "only-left": "Only {count} left",
+    "add": "Add {name} to cart",
+    "quantity": "Quantity of {name}",
+    "decrease": "Decrease",
+    "increase": "Increase",
+    "max-reached": "No more in stock",
+    "empty": "Nothing to show here yet. Check back soon.",
+    "no-sellers": "No sellers deliver to this area yet."
+  },
+  "footer": {
+    "trust": {
+      "certificates": "Certificates checked",
+      "certificates-body": "Halal and other labels are reviewed by our team before they show.",
+      "delivery": "Local sellers, clear delivery",
+      "delivery-body": "Delivery windows and minimum orders are shown for each seller.",
+      "gst": "Prices include GST",
+      "gst-body": "Shipping is shown for each seller before you pay.",
+      "secure": "Secure checkout",
+      "secure-body": "Card details are handled by our payment provider, not stored by us."
+    },
+    "about": "Mondapac is a Brisbane marketplace for local food sellers: halal butchers, bakers, pantry makers and more. Every product shows where it comes from, and certificates such as halal are checked by our team before a label appears. Prices include GST, and each seller shows its own delivery window and minimum order.",
+    "email": "support@mondapac.com.au",
+    "delivering": "Delivering to {area}",
+    "social": "Social media",
+    "shop": "Shop",
+    "shop-links": {
+      "browse": "Browse products",
+      "offers": "Offers",
+      "express": "Express, same day",
+      "sellers": "Sellers",
+      "certified": "Halal products",
+      "saved": "Saved lists"
+    },
+    "help": "Help",
+    "help-links": {
+      "delivery": "Delivery and minimum orders",
+      "track": "Track my order",
+      "returns": "Returns and refunds",
+      "contact": "Contact support",
+      "faq": "FAQs"
+    },
+    "sell": "Sell with us",
+    "sell-links": {
+      "become": "Become a seller",
+      "sign-in": "Seller sign in",
+      "guidelines": "Seller guidelines",
+      "labels": "Halal and certificate labels"
+    },
+    "company": "Mondapac",
+    "company-links": {
+      "about": "About us",
+      "terms": "Terms of use",
+      "privacy": "Privacy policy",
+      "cookies": "Cookie settings"
+    },
+    "copyright": "© 2026 Mondapac. ABN 00 000 000 000",
+    "terms": "Terms",
+    "privacy": "Privacy",
+    "cookies": "Cookies",
+    "payments": "Accepted payment methods",
+    "back-to-top": "Back to top",
+    "text-size": "Text size",
+    "large": "Large",
+    "small": "Small"
+  },
+  "route": {
+    "loading": "Loading",
+    "error-title": "This page did not load",
+    "error-message": "Something went wrong on our side. Try again, or go back to the home page.",
+    "retry": "Try again",
+    "home": "Go to the home page",
+    "reference": "Reference",
+    "not-found-title": "This page is not ready yet",
+    "not-found-message": "We are still building this part of the shop. The home page has everything that is ready."
+  },
+  "account": {
+    "title": "Your account",
+    "intro": "Sign in to see your orders and saved lists. These settings work now and are kept on this device.",
+    "personalization": "Personalization",
+    "personalization-body": "Shop colours and text size."
+  },
+  "personalization": {
+    "title": "Personalization",
+    "intro": "Choose how the shop looks for you. Your choice is kept on this device.",
+    "palette": "Shop colours",
+    "palette-help": "Changes the colour of buttons, links and highlights.",
+    "default": "Default",
+    "palettes": {
+      "B": "Trusted Teal",
+      "A": "Shared Table",
+      "C": "Midnight Bazaar",
+      "D": "Electric Bazaar"
+    },
+    "text-size": "Text size",
+    "back": "Back to your account"
+  }
+}
