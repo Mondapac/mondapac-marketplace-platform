@@ -135,7 +135,7 @@ describe.each(TEST_MARKETS)('behaviour store in market %s (database)', (code) =>
       token: null,
       ...quiet,
     });
-    if (!first.ok || first.value.cookie === null) throw new Error('no cookie');
+    if (!first.ok || first.value.cookie?.action !== 'set') throw new Error('no cookie');
     const token = first.value.cookie.token;
     await recordGuest.execute(anonymous, {
       event: { kind: 'search-performed', query: 'lamb' },
@@ -188,6 +188,20 @@ describe.each(TEST_MARKETS)('behaviour store in market %s (database)', (code) =>
     expect(left.rows[0]).toEqual({ events: 0, switches: 0 });
   });
 
+  it('leaves no event behind when a switch-off races with events being recorded', async () => {
+    const dana = ids.next<'Account'>();
+    const record = new RecordEvent(gate, deps());
+    const set = new SetPersonalization(gate, deps());
+    const event = { kind: 'product-viewed', productId: ids.next() };
+    const results = await Promise.all([
+      ...[1, 2, 3, 4].map(() => record.execute(customer(market, dana), { event, ...quiet })),
+      set.execute(customer(market, dana), { enabled: false }),
+      ...[5, 6, 7, 8].map(() => record.execute(customer(market, dana), { event, ...quiet })),
+    ]);
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(await rowsOf('account_id', dana)).toEqual([]);
+  });
+
   it('purges account events after 12 months and guest events after 30 days, per Market', async () => {
     const carol = ids.next<'Account'>();
     const record = new RecordEvent(gate, deps());
@@ -202,7 +216,7 @@ describe.each(TEST_MARKETS)('behaviour store in market %s (database)', (code) =>
       token: null,
       ...quiet,
     });
-    if (!guest.ok || guest.value.cookie === null) throw new Error('no cookie');
+    if (!guest.ok || guest.value.cookie?.action !== 'set') throw new Error('no cookie');
     const hash = guestTokens.hashOf(guest.value.cookie.token)!;
 
     // 30 days later: the guest's event goes, the account's stays.

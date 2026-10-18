@@ -212,8 +212,9 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
       expect(first.ok).toBe(true);
       if (!first.ok) return;
       expect(first.value.recorded).toBe(true);
-      expect(first.value.cookie?.action).toBe('set');
-      const token = first.value.cookie!.token;
+      const cookie = first.value.cookie;
+      if (cookie?.action !== 'set') throw new Error('no cookie set');
+      const token = cookie.token;
 
       const second = await uc.recordGuest.execute(anonymous, {
         event: { kind: 'search-performed', query: 'dates' },
@@ -227,7 +228,7 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
       ]);
     });
 
-    it('replaces a malformed token, and records nothing and sets no cookie under GPC', async () => {
+    it('replaces a malformed token; under GPC records nothing and expires a cookie sent', async () => {
       const replaced = await uc.recordGuest.execute(anonymous, {
         event: viewed,
         token: 'not-a-token',
@@ -242,6 +243,13 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
           globalPrivacyControl: true,
         }),
       ).toEqual({ ok: true, value: { recorded: false, cookie: null } });
+      expect(
+        await uc.recordGuest.execute(anonymous, {
+          event: viewed,
+          token: 'g'.repeat(43),
+          globalPrivacyControl: true,
+        }),
+      ).toEqual({ ok: true, value: { recorded: false, cookie: { action: 'clear' } } });
       expect(events.rows).toHaveLength(1);
     });
 

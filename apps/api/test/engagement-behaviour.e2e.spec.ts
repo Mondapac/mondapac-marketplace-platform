@@ -144,7 +144,7 @@ describe('engagement routes over HTTP', () => {
       expect(JSON.stringify(events.rows)).not.toContain(cookie.split('=')[1]);
     });
 
-    it('records nothing and sets no cookie under Sec-GPC: 1', async () => {
+    it('records nothing under Sec-GPC: 1 and expires a guest cookie sent', async () => {
       await boot();
       const res = await http()
         .post('/engagement/events')
@@ -153,6 +153,19 @@ describe('engagement routes over HTTP', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ recorded: false });
       expect(res.headers['set-cookie']).toBeUndefined();
+
+      const withCookie = await http()
+        .post('/engagement/events')
+        .set({
+          'x-market-id': code,
+          'sec-gpc': '1',
+          cookie: `__Host-engagement-guest-${code}=${'g'.repeat(43)}`,
+        })
+        .send(VIEWED);
+      expect(withCookie.body).toEqual({ recorded: false });
+      expect(withCookie.headers['set-cookie']).toEqual([
+        `__Host-engagement-guest-${code}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax`,
+      ]);
       expect(events.rows).toEqual([]);
     });
 

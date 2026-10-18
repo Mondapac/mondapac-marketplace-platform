@@ -23,6 +23,7 @@ import { RecordEvent } from '../application/use-cases/record-event.use-case';
 import { RecordGuestEvent } from '../application/use-cases/record-guest-event.use-case';
 import { BehaviourEventRequest, RecordedBody } from './engagement.dto';
 import {
+  clearedEngagementGuestCookie,
   engagementGuestCookie,
   engagementGuestTokenOf,
   globalPrivacyControlOf,
@@ -35,7 +36,8 @@ const ERROR = { type: Object };
  * The storefront reports shopping behaviour here (personalization package 1a): a signed-in
  * customer's under the account, a guest's under the `__Host-engagement-guest-<market>` cookie,
  * set on the first recorded event and never extended. A thin adapter: who the shopper is comes
- * from the session or the cookie, never from the body. `Sec-GPC: 1` records nothing. Every answer
+ * from the session or the cookie, never from the body. `Sec-GPC: 1` records nothing and
+ * expires a guest cookie sent. Every answer
  * is `no-store`; the body, the search text and the cookie are never logged.
  */
 @ApiTags('engagement')
@@ -97,9 +99,12 @@ export class BehaviourEventsController {
     logRoute(this.#logger, 'engagement.record-guest-event-route', context, outcomeOf(result));
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     if (result.value.cookie !== null) {
+      const cookie = result.value.cookie;
       response.append(
         'Set-Cookie',
-        engagementGuestCookie(context.market.marketId, result.value.cookie.token),
+        cookie.action === 'set'
+          ? engagementGuestCookie(context.market.marketId, cookie.token)
+          : clearedEngagementGuestCookie(context.market.marketId),
       );
     }
     return { recorded: result.value.recorded } satisfies RecordedBody;

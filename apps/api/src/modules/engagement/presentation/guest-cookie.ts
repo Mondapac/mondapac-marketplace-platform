@@ -16,6 +16,9 @@ const ATTRIBUTES = 'Path=/; Secure; HttpOnly; SameSite=Lax';
 export const engagementGuestCookie = (marketId: MarketId, token: string): string =>
   `${engagementGuestCookieName(marketId)}=${token}; Max-Age=${ENGAGEMENT_GUEST_COOKIE_MAX_AGE_SECONDS}; ${ATTRIBUTES}`;
 
+export const clearedEngagementGuestCookie = (marketId: MarketId): string =>
+  `${engagementGuestCookieName(marketId)}=; Max-Age=0; ${ATTRIBUTES}`;
+
 /** The raw token of the request, or null when there is none or it cannot be read (a new one is issued). */
 export function engagementGuestTokenOf(
   cookieHeader: string | string[] | undefined,

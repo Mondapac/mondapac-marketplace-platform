@@ -21,8 +21,9 @@ export type RecordFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'validation.failed'; readonly fields: readonly FieldProblem[] };
 
-/** What the guest cookie must do after a guest event: set a new token, or nothing. */
-export type GuestCookie = { readonly action: 'set'; readonly token: string } | null;
+/** What the guest cookie must do after a guest event: set a new token, clear it, or nothing. */
+export type GuestCookie =
+  { readonly action: 'set'; readonly token: string } | { readonly action: 'clear' } | null;
 
 /** The body of an event (see `readBehaviour`), and whether the browser sent `Sec-GPC: 1`. */
 export interface RecordInput {
@@ -96,18 +97,24 @@ export async function recordCustomerEvent(
   if (!read.ok) return err({ code: 'validation.failed', fields: read.fields });
   if (input.globalPrivacyControl) return ok({ recorded: false });
 
-  return deps.unitOfWork.run<Recorded, RecordFailure>(context.market, async () => {
-    const setting = await deps.settings.find(context.market, accountId);
-    if (!viewOf(setting).enabled) return ok({ recorded: false });
-    await append(deps, context, { kind: 'account', accountId }, read.facts);
-    return ok({ recorded: true });
-  });
+  // Serializable like the switch: an event read as "on" cannot commit after the switch-off
+  // deleted the account's events (Hassan M1, PR #411).
+  return deps.unitOfWork.run<Recorded, RecordFailure>(
+    context.market,
+    async () => {
+      const setting = await deps.settings.find(context.market, accountId);
+      if (!viewOf(setting).enabled) return ok({ recorded: false });
+      await append(deps, context, { kind: 'account', accountId }, read.facts);
+      return ok({ recorded: true });
+    },
+    SERIAL,
+  );
 }
 
 /**
  * A guest's event, under the hash of the engagement guest cookie. A guest without a well-formed
- * cookie gets a new token (set only on a success). Global Privacy Control records nothing and
- * sets no cookie.
+ * cookie gets a new token (set only on a success). Global Privacy Control records nothing, sets
+ * no cookie and expires one sent.
  */
 export async function recordGuestEvent(
   deps: EngagementDependencies,
@@ -116,7 +123,10 @@ export async function recordGuestEvent(
 ): Promise<Result<Recorded & { readonly cookie: GuestCookie }, RecordFailure>> {
   const read = readBehaviour(input.event);
   if (!read.ok) return err({ code: 'validation.failed', fields: read.fields });
-  if (input.globalPrivacyControl) return ok({ recorded: false, cookie: null });
+  if (input.globalPrivacyControl) {
+    // Nothing is recorded, and a guest cookie set before is expired, so no hash stays linkable.
+    return ok({ recorded: false, cookie: input.token === null ? null : { action: 'clear' } });
+  }
 
   const known = input.token === null ? null : deps.guestTokens.hashOf(input.token);
   const issued = known === null ? deps.guestTokens.issue() : null;

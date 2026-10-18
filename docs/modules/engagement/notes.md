@@ -42,7 +42,7 @@ Owner decisions 4 and 5 of 2026-10-18; Australian Privacy Principles (APP 1, 3, 
 | Why | To show recently viewed items and better recommendations (package 1d). Not sold, not shared with a third party, no third-party pixel or SDK. |
 | Sensitive information | Purchases or views are never used to infer religion, diet or health (decision 5; halal is sensitive information). No code reads events to label a shopper; an explicit buyer preference or filter is the only source for that. The search text can still contain such words, so it is never logged and never leaves the module except to package 1d's own ranking. |
 | Retention | 12 months for a signed-in customer, 30 days for a guest (the guest cookie lives 30 days too), deleted by the daily purge. |
-| Choice | Off switch in the account (`PUT customers/me/personalization`); switching off deletes what was recorded and stops recording. `Sec-GPC: 1` (Global Privacy Control) records nothing for anyone and sets no cookie. |
+| Choice | Off switch in the account (`PUT customers/me/personalization`); switching off deletes what was recorded and stops recording (recording and the switch run serializable, so no event survives a racing switch-off). `Sec-GPC: 1` (Global Privacy Control) records nothing for anyone, sets no cookie and expires a guest cookie sent. |
 | Deletion | With the account through `forgetAccount` (to be called by customers package 5). |
 | Security | Only the guest token's SHA-256 is stored; the token is only in `Set-Cookie`. Logs carry the route, outcome code, Market and correlation id only: never the body, the search text, an id of the shopper or the cookie. The app role may select, insert and delete events, never update them. |
 | Notice | The storefront privacy policy and the account page must say what is recorded, why, for how long, and how to switch it off, before the storefront goes live (storefront design thread). |
@@ -54,5 +54,25 @@ Owner decisions 4 and 5 of 2026-10-18; Australian Privacy Principles (APP 1, 3, 
 - Storefront: call the route on product, category and search pages and after a cart add; the
   account page toggle; privacy policy text (above).
 - Customers package 5 (account deletion): call `ENGAGEMENT_FACADE.forgetAccount`.
-- If event volume grows: purge in batches; consider partitioning `behaviour_events` by month.
-- Physical model doc `docs/design/data/engagement.md` (Mojtaba).
+- Physical model doc `docs/design/data/engagement.md` (Mojtaba), marking `search_query`,
+  `account_id` and `guest_hash` as personal data.
+
+## Review follow-ups (PR #411: Hassan GO with follow-ups, Mojtaba approved with follow-ups)
+
+Fixed in the PR: recording runs serializable like the switch (Hassan M1); `Sec-GPC: 1` expires a
+guest cookie sent (I1); `down.sql` sets `lock_timeout`.
+
+Open, before the storefront sends real traffic:
+- Hassan L1: the 30-day guest limit is enforced by the cookie's `Max-Age` only; store the issue
+  time of each token hash (or put it in the token) and reissue a token older than 30 days.
+- Hassan L2: a stricter rate class or a per-origin event cap for the anonymous route; every
+  request without a cookie mints a token and a row.
+- Hassan I2: after a switch-off and sign-out, browsing is recorded again under the guest cookie;
+  say so in the privacy text, or clear the guest cookie on switch-off.
+- Hassan I3: customers package 5 passes `forgetAccount` an account id from its own flow, never
+  from user input.
+- Mojtaba 1: partial indexes per subject (`WHERE account_id IS NOT NULL` / `guest_hash IS NOT
+  NULL`) instead of `(market_id, occurred_at)`, so each purge scans only its own subject.
+- Mojtaba 2: purge in batches (for example 5,000 rows a unit), per-table autovacuum tuning, and a
+  written volume threshold for partitioning (by subject, then by month, so purge drops partitions).
+- Mojtaba 5: `kind` as `text` with the CHECK (house standard), next time the table changes.
