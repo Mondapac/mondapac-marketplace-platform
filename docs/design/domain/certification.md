@@ -1128,6 +1128,12 @@ Javad has the pace of `identity` and `sellers`.
   `evaluateClaims` reads product certificates only for queries that stop at `not-covered`. The reader answers none until slice 14 adds S3, so the manufacturer basis is never allowed today.
 - **`CatalogReferences` (C-3).** Only `platformCategoriesExist` (active categories, at most 500 ids) is built. `catalog` binds it in a global module, so `certification` imports nothing of `catalog`. `publishedProductRevisions` and `variantsOf` come with slice 14.
 - **Not built (open).** Part 2 (above). A `catalog` consumer of `claim-policy-changed.v1`. A Market switch that keeps `SELLER_OR_MANUFACTURER` off in AU until the halal authority agrees (cto). Admin display names (identity R-11).
+- **Before slice 14 (PR #412 review).**
+  - A `catalog` consumer of `claim-policy-changed.v1` is a hard precondition for slice 14. Once the manufacturer basis can allow a tag, a relaxing or tightening policy must re-ask the affected tags without waiting for the daily reconcile.
+  - Slice 14 adds `typeCode` to `ProductCertificationView`, and `bestCovering` filters on it, so a certificate of another type never covers a query (Hassan L2).
+  - Decide which type revision a manufacturer decision records: today it is the type's published revision at evaluation (I1).
+- **Rows of a published or proposed revision are closed (Hassan L1).** The trigger `claim_policy_rows_revision_open` refuses a row whose revision is already a policy's published revision or a pending or decided `claim-policy-revision` proposal. `addRevision` writes the rows in the same unit before the pointer moves or the proposal is inserted.
+- **S2 bound.** The reader refuses a type that returns more than `MAX_POLICY_ROWS` (304) rows, so the whole batch is `unavailable` (fail closed). The worst case per call is 100 type codes × 304 rows, about 30k rows (data design 7.3).
 
 ### 14.3 Spikes (run, not merged)
 | # | Spike |

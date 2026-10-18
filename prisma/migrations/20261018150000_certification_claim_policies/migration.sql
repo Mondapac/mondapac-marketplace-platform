@@ -148,6 +148,32 @@ CREATE TRIGGER "claim_policy_rows_no_truncate"
   BEFORE TRUNCATE ON "certification"."claim_policy_rows"
   FOR EACH STATEMENT EXECUTE FUNCTION "certification"."reject_mutation"();
 
+-- Hassan L1 (slice 13): rows join a revision only before it is published or proposed. A
+-- revision and its rows are written in one unit before the pointer moves or the proposal is
+-- inserted; a row added afterwards would change what was published or approved. A missing
+-- revision falls through to the foreign key.
+CREATE FUNCTION "certification"."claim_policy_rows_guard_insert"() RETURNS trigger
+  LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF EXISTS (
+       SELECT 1 FROM "certification"."claim_basis_policies" p
+        WHERE p."market_id" = NEW."market_id" AND p."published_revision_id" = NEW."revision_id")
+     OR EXISTS (
+       SELECT 1 FROM "certification"."relaxation_proposals" r
+        WHERE r."market_id" = NEW."market_id" AND r."subject_kind" = 'claim-policy-revision'
+          AND r."proposed_revision_id" = NEW."revision_id") THEN
+    RAISE EXCEPTION 'certification.claim_policy_rows: the revision is published or proposed, a change is a new revision'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "claim_policy_rows_revision_open"
+  BEFORE INSERT ON "certification"."claim_policy_rows"
+  FOR EACH ROW EXECUTE FUNCTION "certification"."claim_policy_rows_guard_insert"();
+
 -- Grants (database-designer): docs/design/data/certification.md section 8.
 GRANT SELECT, INSERT, UPDATE ("published_revision_id", "version") ON TABLE "certification"."claim_basis_policies" TO "mondapac_app";
 GRANT SELECT, INSERT ON TABLE "certification"."claim_policy_revisions" TO "mondapac_app";

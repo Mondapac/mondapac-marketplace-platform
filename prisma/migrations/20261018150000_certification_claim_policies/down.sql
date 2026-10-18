@@ -7,6 +7,8 @@ REVOKE SELECT, INSERT ON TABLE "certification"."claim_policy_rows" FROM "mondapa
 REVOKE SELECT, INSERT ON TABLE "certification"."claim_policy_revisions" FROM "mondapac_app";
 REVOKE SELECT, INSERT, UPDATE ("published_revision_id", "version") ON TABLE "certification"."claim_basis_policies" FROM "mondapac_app";
 
+DROP TRIGGER "claim_policy_rows_revision_open" ON "certification"."claim_policy_rows";
+DROP FUNCTION "certification"."claim_policy_rows_guard_insert"();
 DROP TRIGGER "claim_policy_rows_no_truncate" ON "certification"."claim_policy_rows";
 DROP TRIGGER "claim_policy_rows_no_update_delete" ON "certification"."claim_policy_rows";
 DROP TRIGGER "claim_policy_revisions_no_truncate" ON "certification"."claim_policy_revisions";

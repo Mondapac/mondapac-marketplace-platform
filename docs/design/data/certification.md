@@ -861,7 +861,7 @@ by the ORM's default.
 |---|---|
 | 1 | A separate platform port, not a method of `MarketTransaction`, which stays model delegates only |
 | 2 | It takes only a statement id from the checked-in list (S1, S2, S3). Each SQL text is a static compile-time constant, `SELECT` only; no `Unsafe` form, no string building, no identifier or fragment from input |
-| 3 | `$1` is bound by the helper from the open unit's `MarketContext`, never by the caller. Array parameters are length-capped (100 queries; the category-id array at a cap set with S2's caller) and refused above it |
+| 3 | `$1` is bound by the helper from the open unit's `MarketContext`, never by the caller. Array parameters are length-capped (100 queries) and refused above it |
 | 4 | Results are parsed by a schema per statement; a row that fails validation fails the whole batch closed (`unavailable`, D 4.2 rule 1) |
 | 5 | Per statement: a two-Market `test:db` case (AU rows never answer a ZZ call and the reverse) and an assertion that one call issues exactly one SQL statement |
 | 6 | Only the helper file and the callers of S1 to S3 in `modules/certification/infrastructure/` pass the lint and boundaries rules for it. A change to the list needs my sign-off and Hassan's (CODEOWNERS) |
@@ -889,14 +889,18 @@ SELECT q.ord, t.id AS type_id, c.id AS certification_id, c.status,
   LEFT JOIN "certification"."issuers" i ON i.market_id = $1 AND i.id = s.issuer_id
   LEFT JOIN "certification"."seller_issuer_confirmations" ic ON ic.market_id = $1 AND ic.submission_id = s.id;
 
--- S2: type and policy. Inputs: distinct type codes; every category id of every path; the handlings.
-SELECT t.id AS type_id, t.code, t.status, t.verification_mode, tr.id AS type_revision_id, tr.default_basis,
-       p.published_revision_id AS policy_revision_id, r.category_id, r.handling, r.basis
+-- S2: type and policy (as built, slice 13). Input: distinct type codes only. Every row of each
+-- type's published revision is returned; matching to categories and handling is done in code.
+SELECT t.id AS type_id, t.code, t.verification_mode, tr.id AS type_revision_id,
+       tr.default_basis, p.published_revision_id AS policy_revision_id,
+       r.selector_kind AS row_selector_kind, r.category_id AS row_category_id,
+       r.handling AS row_handling, r.basis AS row_basis
   FROM "certification"."certification_types" t
-  LEFT JOIN "certification"."certification_type_revisions" tr ON tr.market_id = $1 AND tr.id = t.published_revision_id
+  LEFT JOIN "certification"."certification_type_revisions" tr
+    ON tr.market_id = $1 AND tr.id = t.published_revision_id AND tr.type_id = t.id
   LEFT JOIN "certification"."claim_basis_policies" p ON p.market_id = $1 AND p.type_id = t.id
-  LEFT JOIN "certification"."claim_policy_rows" r ON r.market_id = $1 AND r.revision_id = p.published_revision_id
-       AND (r.category_id = ANY ($3::uuid[]) OR r.handling = ANY ($4::text[]))
+  LEFT JOIN "certification"."claim_policy_rows" r
+    ON r.market_id = $1 AND r.revision_id = p.published_revision_id
  WHERE t.market_id = $1 AND t.code = ANY ($2::text[]);
 
 -- S3: manufacturer basis, only for queries still undecided under SELLER_OR_MANUFACTURER.
@@ -927,9 +931,10 @@ Notes:
   submission, because validity is the boundary, not the status (D 2.4 rule 4).
 - Seller zones come from the fixed `sellers` read of S-1 (D 16.1 item 9), before S1, outside it;
   nothing of `sellers` is joined.
-- S2 reads the 300 rows of a published revision through `(market_id, revision_id, …)` and filters
-  the OR in memory (measured 0.2 ms per type). If a revision grows past about 10³ rows, split the OR
-  into two probes of the two uniques (`UNION ALL`); not needed at the assumed size.
+- S2 reads every row of a published revision through `(market_id, revision_id, …)`; the rows are
+  filtered in code (slice 13). Bounded by `MAX_POLICY_ROWS` = 304 per revision (the reader refuses a
+  type with more, fail closed); worst case per call 100 type codes × 304 rows, about 30k rows.
+  Revisit above about 10³ rows per revision (`UNION ALL` of the two unique probes).
 - The first S3 draft joined the root by its pointer and read all 4,000 roots sequentially; joining
   through the revision's FK makes it index-only (12).
 

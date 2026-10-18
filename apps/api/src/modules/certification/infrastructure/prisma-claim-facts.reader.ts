@@ -19,6 +19,7 @@ import {
   type ClaimBasisRequirement,
   type TimeZoneId,
 } from '../domain/claim-types';
+import { MAX_POLICY_ROWS } from '../domain/claim-policy';
 import { VERIFICATION_MODES, type VerificationMode } from '../domain/type-revision';
 import type {
   IssuerState,
@@ -81,7 +82,10 @@ export class PrismaClaimFactsReader implements ClaimFactsReader {
       const known = byCode.get(row.code);
       if (known === undefined) {
         const entry = typeEntryOf(row);
-        if (policyRow !== null) entry.rows.push(policyRow);
+        if (policyRow !== null) {
+          entry.rows.push(policyRow);
+          entry.keys.add(policyRow.key);
+        }
         byCode.set(row.code, entry);
         continue;
       }
@@ -89,9 +93,15 @@ export class PrismaClaimFactsReader implements ClaimFactsReader {
       if (policyRow === null || known.rows.length === 0 || !sameType(known, row)) {
         throw new Error('type read returned a repeated type');
       }
-      if (known.rows.some((other) => other.key === policyRow.key)) {
+      if (known.keys.has(policyRow.key)) {
         throw new Error('policy revision has two rows on one selector');
       }
+      // A revision never holds more rows than a save accepts (MAX_POLICY_ROWS): more is a fault,
+      // and the whole batch answers unavailable (fail closed; data design 7.3).
+      if (known.rows.length >= MAX_POLICY_ROWS) {
+        throw new Error('policy revision has more rows than a revision may hold');
+      }
+      known.keys.add(policyRow.key);
       known.rows.push(policyRow);
     }
     return requests.map((request) => {
@@ -181,6 +191,8 @@ interface StoredTypeAndPolicy {
   readonly typeId: string;
   readonly policyRevisionId: Id | null;
   readonly rows: StoredPolicyRow[];
+  /** The selector keys of `rows`, to refuse a second row on one selector in constant time. */
+  readonly keys: Set<string>;
 }
 
 /** The type part of one S2 row; a type without a readable published revision is a fault. */
@@ -211,6 +223,7 @@ function typeEntryOf(row: TypeRow): StoredTypeAndPolicy {
     typeId: row.typeId,
     policyRevisionId,
     rows: [],
+    keys: new Set<string>(),
   };
 }
 

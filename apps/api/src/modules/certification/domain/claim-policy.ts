@@ -55,7 +55,10 @@ function rowIn(raw: unknown, path: string): Result<PolicyRow, PolicyRowProblem> 
   const allowed = SELECTOR_FIELDS[selector]!;
   for (const key of Object.keys(record)) {
     if (!allowed.includes(key)) {
-      return err({ path: `${path}.${key.slice(0, 64)}`, code: 'unknown-field' });
+      // The echoed key is cut to 64 code points and control or unassigned characters are
+      // replaced, as the closed-body check does (no split surrogate, nothing invisible).
+      const shown = Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '\uFFFD');
+      return err({ path: `${path}.${shown}`, code: 'unknown-field' });
     }
   }
   const { basis } = record;

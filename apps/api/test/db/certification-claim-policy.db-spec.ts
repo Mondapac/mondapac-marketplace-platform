@@ -204,6 +204,113 @@ describe.each(TEST_MARKETS)('claim basis policy in market %s (database)', (code)
     expect(order).toEqual(['first-locked', 'first-done']);
   });
 
+  it('makes the second of two concurrent first saves of a type stale (F2)', async () => {
+    const typeId = await type();
+    const first = inUnit(async () => {
+      await policies.addPolicy(market, {
+        id: uuid7() as Id<'ClaimBasisPolicy'>,
+        typeId,
+        createdAt: T0,
+      });
+      await delay(300);
+    });
+    await delay(50);
+    // Waits on the unique (market_id, type_id) until the first commits, then clashes.
+    const second = inUnit(() =>
+      policies.addPolicy(market, {
+        id: uuid7() as Id<'ClaimBasisPolicy'>,
+        typeId,
+        createdAt: T0,
+      }),
+    );
+    await first;
+    await expect(second).rejects.toBeInstanceOf(StaleAggregateError);
+    const { rows } = await sql.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM certification.claim_basis_policies WHERE market_id = $1 AND type_id = $2`,
+      [market.marketId, typeId],
+    );
+    expect(rows[0]!.n).toBe(1);
+  });
+
+  it('makes the second of two concurrent revisions with the same number stale (F2)', async () => {
+    const { policyId } = await policyWithRevision([]);
+    const revision = () => ({
+      id: uuid7() as Id<'ClaimPolicyRevision'>,
+      policyId,
+      rows: [],
+      authorAccountId: uuid7() as Id<'Account'>,
+      changeReasonCiphertext: null,
+      createdAt: T0,
+    });
+    const first = inUnit(async () => {
+      expect(await policies.addRevision(market, revision())).toBe(2);
+      await delay(300);
+    });
+    await delay(50);
+    // Reads the same last number (the first has not committed), then waits on the unique.
+    const second = inUnit(() => policies.addRevision(market, revision()));
+    await first;
+    await expect(second).rejects.toBeInstanceOf(StaleAggregateError);
+  });
+
+  it("refuses a pointer to another policy's revision (F4, 23503)", async () => {
+    const one = await policyWithRevision([]);
+    const two = await policyWithRevision([]);
+    expect(
+      await sqlState(
+        owner,
+        `UPDATE certification.claim_basis_policies SET published_revision_id = $1 WHERE id = $2`,
+        [two.revisionId, one.policyId],
+      ),
+    ).toBe('23503');
+  });
+
+  it('refuses a row added to a published or proposed revision, accepts one on an open revision (Hassan L1)', async () => {
+    const food = await category();
+    const drinks = await category();
+    const published = await policyWithRevision([catRow(food, 'NOT_APPLICABLE')]);
+    const addRow = (revisionId: string, categoryId: string) =>
+      sqlState(
+        sql,
+        `INSERT INTO certification.claim_policy_rows
+           (id, market_id, tenant_id, revision_id, selector_kind, category_id, handling, basis)
+         VALUES ($1, $2, $3, $4, 'platform-category', $5, NULL, 'SELLER_OR_MANUFACTURER')`,
+        [uuid7(), market.marketId, market.tenantId, revisionId, categoryId],
+      );
+    expect(await addRow(published.revisionId, drinks)).toBe('23001');
+
+    // A second revision, open until its proposal is inserted.
+    const proposed = uuid7() as Id<'ClaimPolicyRevision'>;
+    await inUnit(() =>
+      policies.addRevision(market, {
+        id: proposed,
+        policyId: published.policyId,
+        rows: [catRow(food, 'SELLER_REQUIRED')],
+        authorAccountId: published.author,
+        changeReasonCiphertext: null,
+        createdAt: T0,
+      }),
+    );
+    expect(await addRow(proposed, drinks)).toBeNull();
+    await sql.query(
+      `INSERT INTO certification.relaxation_proposals
+         (id, market_id, tenant_id, subject_kind, subject_id, based_on_revision_id,
+          proposed_revision_id, state, proposer_account_id, proposed_at, version, created_at)
+       VALUES ($1, $2, $3, 'claim-policy-revision', $4, $5, $6, 'pending', $7, $8, 1, $8)`,
+      [
+        uuid7(),
+        market.marketId,
+        market.tenantId,
+        published.policyId,
+        published.revisionId,
+        proposed,
+        published.author,
+        T0.toString(),
+      ],
+    );
+    expect(await addRow(proposed, await category())).toBe('23001');
+  });
+
   it('refuses the manufacturer basis on a handling row (M1) and a row with two selectors', async () => {
     const { policyId } = await policyWithRevision([]);
     const revisionId = uuid7();

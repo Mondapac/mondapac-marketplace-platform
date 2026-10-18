@@ -7,6 +7,7 @@ import type {
 } from '../../../platform/persistence/raw-reads/raw-read-port';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../platform/unit-of-work/unit-of-work';
 import type { CertificationTypeCode } from '../domain/claim-types';
+import { MAX_POLICY_ROWS } from '../domain/claim-policy';
 import { PrismaClaimFactsReader } from './prisma-claim-facts.reader';
 
 type Basis = RawReadRow<'certification.seller-basis'>;
@@ -221,6 +222,18 @@ describe.each(['AU', 'ZZ'] as const)('PrismaClaimFactsReader, Market %s', (marke
     ],
   ])('rejects %s', async (_name, rows) => {
     await expect(reader(rows).typesAndPolicies(market, [policy('halal')])).rejects.toThrow();
+  });
+
+  it('accepts a revision of MAX_POLICY_ROWS rows and rejects one more (fail closed; data design 7.3)', async () => {
+    const rowsOf = (n: number) =>
+      Array.from({ length: n }, (_, i) =>
+        policyRow({ categoryId: id(1000 + i) }, 'NOT_APPLICABLE'),
+      );
+    const full = await reader(rowsOf(MAX_POLICY_ROWS)).typesAndPolicies(market, [policy('halal')]);
+    expect(full[0]!.policy?.revisionId).toBe(id(50));
+    await expect(
+      reader(rowsOf(MAX_POLICY_ROWS + 1)).typesAndPolicies(market, [policy('halal')]),
+    ).rejects.toThrow('more rows');
   });
 
   it('answers no manufacturer certificate for any request until slice 14 (fail closed)', async () => {

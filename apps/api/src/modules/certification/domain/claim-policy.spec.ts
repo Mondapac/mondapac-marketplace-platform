@@ -120,6 +120,28 @@ describe('policyRowsIn (design 2.1, 3.7; M1)', () => {
   });
 });
 
+describe('the echoed unknown key (Hassan L3)', () => {
+  it('cuts it to 64 code points without splitting a surrogate pair and replaces control characters', () => {
+    const long = '\u{1F600}'.repeat(70);
+    const parsed = policyRowsIn([
+      { selector: 'handling', handling: 'FRESH', basis: 'SELLER_REQUIRED', [long]: 1 },
+      { selector: 'handling', handling: 'PREPARED', basis: 'SELLER_REQUIRED' },
+    ]);
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error[0]).toEqual({
+      path: `rows[0].${'\u{1F600}'.repeat(64)}`,
+      code: 'unknown-field',
+    });
+    const control = policyRowsIn([
+      { selector: 'handling', handling: 'FRESH', basis: 'SELLER_REQUIRED', 'a\u0000b\u202Ec': 1 },
+    ]);
+    expect(control.ok).toBe(false);
+    if (control.ok) return;
+    expect(control.error[0]).toEqual({ path: 'rows[0].a\uFFFDb\uFFFDc', code: 'unknown-field' });
+  });
+});
+
 describe('policyRevisionDiff and relaxesPolicy (design 3.7; Hassan C1; H1)', () => {
   it('finds no change between equal row sets', () => {
     const rows = [cat(CAT_A, 'SELLER_REQUIRED'), handling('REPACKED', 'NOT_APPLICABLE')];

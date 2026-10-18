@@ -86,6 +86,12 @@ it('has exactly the row and the statement trigger on every insert-only table of 
     // that do change), listed one by one: [table, trigger, tgtype, function].
     const GUARDS = [
       [
+        'claim_policy_rows',
+        'claim_policy_rows_revision_open',
+        7,
+        'certification.claim_policy_rows_guard_insert',
+      ],
+      [
         'claim_terms',
         'claim_terms_revision_open',
         7,
