@@ -36,6 +36,14 @@ export class MailpitHttpTransport implements MailTransport {
       To: [{ Email: message.to }],
       Subject: message.subject,
       Text: message.text,
+      ...(message.listUnsubscribe === undefined
+        ? {}
+        : {
+            Headers: {
+              'List-Unsubscribe': `<${message.listUnsubscribe}>`,
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            },
+          }),
     });
     let response: { readonly ok: boolean };
     try {

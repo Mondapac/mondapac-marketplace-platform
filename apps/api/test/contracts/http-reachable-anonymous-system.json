@@ -112,9 +112,19 @@
     "reason": "Admin second-factor enrolment start with the mailed enrolment link's token and the password: the admin has no session yet."
   },
   {
+    "name": "notifications.unsubscribe-marketing-email",
+    "rule": "anonymous",
+    "reason": "One-click unsubscribe of a marketing mail (RFC 8058, Spam Act): the mail client or the reader has no session; the signed token names the account and can only withdraw consent."
+  },
+  {
     "name": "notifications.view-public-support-contact",
     "rule": "anonymous",
     "reason": "The sign-in pages of both panels show the Market's support email to a visitor who has no session; the answer is the address only."
+  },
+  {
+    "name": "notifications.view-unsubscribe-link",
+    "rule": "anonymous",
+    "reason": "The storefront unsubscribe page checks the mail link before the reader confirms: no session; changes nothing."
   },
   {
     "name": "payments.receive-stripe-event",

@@ -22,7 +22,9 @@
   },
   "notifications": {
     "supportEmail": "jnamazi@gmail.com",
-    "customerOrderPage": "https://storefront.au.mondapac.test/account/orders"
+    "customerOrderPage": "https://storefront.au.mondapac.test/account/orders",
+    "unsubscribePage": "https://storefront.au.mondapac.test/email/unsubscribe",
+    "oneClickUnsubscribeUrl": "https://api.au.mondapac.test/notifications/unsubscribe/AU"
   },
   "search": {
     "textSearchConfig": "english"

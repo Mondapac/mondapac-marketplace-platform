@@ -39,6 +39,27 @@ describe('MailpitHttpTransport (identity design 9; spike 4)', () => {
     ]);
   });
 
+  it('sends the one-click unsubscribe headers of a marketing mail (RFC 8058)', async () => {
+    const bodies: unknown[] = [];
+    const fetchFn: Fetch = (_url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return Promise.resolve({ ok: true, status: 200 });
+    };
+    const url = 'https://api.au.mondapac.test/notifications/unsubscribe/AU?token=u1.abc';
+
+    await new MailpitHttpTransport('http://localhost:8025', fetchFn).send({
+      ...message,
+      listUnsubscribe: url,
+    });
+
+    expect(bodies[0]).toMatchObject({
+      Headers: {
+        'List-Unsubscribe': `<${url}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      },
+    });
+  });
+
   const refused: Fetch = () => Promise.resolve({ ok: false, status: 400 });
   const unreachable: Fetch = () =>
     Promise.reject(new TypeError('fetch failed: connect ECONNREFUSED'));

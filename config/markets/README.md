@@ -244,7 +244,7 @@ policy is the Market's `defaultCurrency`.
 
 ## `notifications` section (optional)
 
-Owned by `notifications`. Two optional keys. `customerOrderPage`: the storefront page the order
+Owned by `notifications`. Four optional keys. `customerOrderPage`: the storefront page the order
 confirmation mail links to (an absolute https URL without a fragment; http only for a loopback host);
 the order id is appended as one path segment, and a Market without it sends no customer order mail.
 `supportEmail`, the Market's support address (an email address, at
@@ -252,6 +252,10 @@ most 254 characters). It is only the default: a platform admin can change the ad
 the admin panel's Settings page (`notifications.support-contact.manage`), and the stored value then
 wins. Every change is a new row in `notifications.support_contacts` (who, when, the address before)
 and an audit row. A Market without the section shows no address until an admin sets one.
+`unsubscribePage`: the storefront page a marketing mail's unsubscribe link opens, as
+`<page>?token=<token>` (same URL rules). `oneClickUnsubscribeUrl`: the API's one-click route of this
+Market, `.../notifications/unsubscribe/<MARKET>`, sent in the `List-Unsubscribe` header (RFC 8058)
+as `<url>?token=<token>`. A Market without both sends no marketing mail (personalization 1b).
 
 ## `customers` section (optional)
 

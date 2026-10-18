@@ -1254,6 +1254,18 @@ const marketSchema = z
          * the URL. Without it the Market sends no customer order mail.
          */
         customerOrderPage: pageUrl.optional(),
+        /**
+         * The storefront page a marketing mail's unsubscribe link opens (`<page>?token=<token>`);
+         * the page asks the API and shows the result. Personalization package 1b.
+         */
+        unsubscribePage: pageUrl.optional(),
+        /**
+         * The API's one-click unsubscribe route of this Market
+         * (`.../notifications/unsubscribe/<MARKET>`), sent in the `List-Unsubscribe` header
+         * (RFC 8058) as `<url>?token=<token>`. Without it or `unsubscribePage` the Market sends no
+         * marketing mail.
+         */
+        oneClickUnsubscribeUrl: pageUrl.optional(),
       })
       .optional(),
     /**

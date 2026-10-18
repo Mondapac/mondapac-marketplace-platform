@@ -23,6 +23,16 @@ export interface NotificationsPolicy {
    * other data goes into the URL; the page needs sign-in.
    */
   customerOrderUrl(market: MarketContext, orderId: string): string | null;
+
+  /**
+   * The two unsubscribe URLs of a marketing mail for one token: the storefront page of the link
+   * in the text, and the API's one-click URL of the `List-Unsubscribe` header. Null when the
+   * Market configures either one not: then it sends no marketing mail.
+   */
+  unsubscribeUrls(
+    market: MarketContext,
+    token: string,
+  ): { readonly page: string; readonly oneClick: string } | null;
 }
 
 export const NOTIFICATIONS_POLICY = Symbol('NOTIFICATIONS_POLICY');
