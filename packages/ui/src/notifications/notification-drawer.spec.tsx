@@ -87,7 +87,7 @@ describe('NotificationDrawer', () => {
   it('opens from the end edge, full width on phones, 420 px on tablets and 480 px from 1280 px', () => {
     const html = drawer();
     expect(html).toMatch(
-      /class="[^"]*\bms-auto\b[^"]*\bw-full\b[^"]*sm:w-\[26\.25rem\][^"]*xl:w-\[30rem\]/,
+      /class="[^"]*\bms-auto\b[^"]*\bw-full\b[^"]*sm:w-\(--mp-size-sheet\)[^"]*xl:w-\(--mp-size-sheet-wide\)/,
     );
   });
 

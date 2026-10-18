@@ -1660,7 +1660,7 @@
       }
     },
     "error": "Notifications could not be loaded.",
-    "retry": "Try again",
+    "retry": "Retry",
     "loading": "Loading notifications"
   }
 }

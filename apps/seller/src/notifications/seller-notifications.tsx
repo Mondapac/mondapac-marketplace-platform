@@ -306,7 +306,7 @@ export function SellerNotifications({ csrfToken }: { readonly csrfToken: string 
         <button
           type="button"
           onClick={() => void chime.unlock().then((ready) => setSoundBlocked(!ready))}
-          className="inline-flex min-h-(--mp-size-control-sm) min-w-(--mp-size-control-sm) items-center justify-center gap-1.5 rounded-full border border-line-control px-2 text-xs font-medium text-fg-secondary hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-focus sm:px-3"
+          className="inline-flex min-h-(--mp-size-control-sm) min-w-(--mp-size-control-sm) items-center justify-center gap-1.5 rounded-full border border-transparent px-2 text-xs font-medium text-fg-secondary hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-focus sm:border-line-control sm:px-3"
         >
           <Icon name="volume-off" />
           {/* Phones show the icon alone; the name stays for screen readers. */}

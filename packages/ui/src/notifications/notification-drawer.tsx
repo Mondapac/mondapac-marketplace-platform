@@ -1,12 +1,11 @@
 'use client';
 
-import { useEffect, useId, useRef, type MouseEvent, type ReactNode } from 'react';
+import { useId, useRef, type MouseEvent, type ReactNode } from 'react';
 import { Badge, type BadgeTone } from '../form/badge.tsx';
 import { Button } from '../form/button.tsx';
 import { EmptyState } from '../form/empty-state.tsx';
-import { LoadError } from '../form/load-error.tsx';
-import { SkeletonRows } from '../data/skeleton.tsx';
 import { Icon, type IconName } from '../icon/icon.tsx';
+import { useModal } from '../overlay/dialog.tsx';
 import { initials } from '../shell/account-menu.tsx';
 import { Tabs } from '../shell/tabs.tsx';
 import { badgeCount, NOTICE_FILTERS, type NoticeFilter } from './notices.ts';
@@ -165,12 +164,7 @@ export function NotificationDrawer({
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
-  useEffect(() => {
-    const dialog = ref.current;
-    if (dialog === null) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
+  useModal(ref, open);
 
   const empty = labels.empty[filter];
   return (
@@ -186,10 +180,10 @@ export function NotificationDrawer({
         // The backdrop: the panel inside fills the dialog, so only a click outside targets it.
         if (event.target === ref.current) onClose();
       }}
-      className="m-0 ms-auto h-dvh max-h-none w-full max-w-none bg-transparent p-0 text-start text-fg backdrop:bg-scrim backdrop:backdrop-blur-sm motion-reduce:backdrop:backdrop-blur-none sm:w-[26.25rem] xl:w-[30rem]"
+      className="m-0 ms-auto h-dvh max-h-none w-full max-w-none bg-transparent p-0 text-start text-fg backdrop:bg-scrim backdrop:backdrop-blur-sm motion-reduce:backdrop:backdrop-blur-none sm:w-(--mp-size-sheet) xl:w-(--mp-size-sheet-wide)"
     >
       {open ? (
-        <div className="flex h-full flex-col border-s border-line bg-surface shadow-(--mp-shadow-elevation-floating)">
+        <div className="flex h-full flex-col border-line bg-surface sm:border-s shadow-(--mp-shadow-elevation-floating)">
           <div className="flex items-center gap-2 px-4 pt-3 sm:px-6">
             <h2 id={titleId} className="min-w-0 truncate text-lg font-semibold">
               {labels.title}
@@ -222,7 +216,8 @@ export function NotificationDrawer({
               <Icon name="x" />
             </button>
           </div>
-          <div className="px-4 sm:px-6">
+          {/* The tab line runs edge to edge, as the rows below do. */}
+          <div className="border-b border-line px-4 sm:px-6 [&>nav]:border-b-0">
             <Tabs
               label={labels.filters}
               items={NOTICE_FILTERS.map((id) => ({ id, label: labels[id] }))}
@@ -232,16 +227,34 @@ export function NotificationDrawer({
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {list.kind === 'loading' ? (
-              <div className="px-4 py-4 sm:px-6">
-                <SkeletonRows label={labels.loading} rows={4} />
+              <div role="status">
+                <span className="sr-only">{labels.loading}</span>
+                {/* Placeholder rows shaped like the notices: an avatar circle and two lines. */}
+                <ul aria-hidden="true" className="divide-y divide-line-row">
+                  {[0, 1, 2, 3].map((row) => (
+                    <li
+                      key={row}
+                      className="flex gap-3 px-4 py-3 motion-safe:animate-pulse sm:px-6"
+                    >
+                      <span className="mt-0.5 size-10 shrink-0 rounded-full bg-muted" />
+                      <span className="flex flex-1 flex-col gap-2 pt-1">
+                        <span className="h-3 w-4/5 rounded-sm bg-muted" />
+                        <span className="h-3 w-2/5 rounded-sm bg-muted" />
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : list.kind === 'error' ? (
-              <LoadError
-                message={labels.error}
-                retryLabel={labels.retry}
-                onRetry={onRetry}
-                className="flex flex-col items-start gap-3 px-4 py-6 sm:px-6"
-              />
+              <div role="alert" className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+                <span className="flex size-(--mp-size-control-lg) items-center justify-center rounded-full bg-critical-bg text-critical-fg">
+                  <Icon name="bell" />
+                </span>
+                <p className="max-w-prose text-sm text-fg-muted">{labels.error}</p>
+                <Button variant="secondary" onClick={onRetry}>
+                  {labels.retry}
+                </Button>
+              </div>
             ) : list.items.length === 0 ? (
               <EmptyState size="compact" icon="bell" title={empty.title} body={empty.body} />
             ) : (
@@ -288,7 +301,7 @@ export function NotificationDrawer({
               variant="secondary"
               block
               className="sm:w-auto"
-              disabled={unread === 0}
+              disabled={list.kind !== 'ready' || unread === 0}
               loading={markingAll}
               onClick={onMarkAll}
             >
