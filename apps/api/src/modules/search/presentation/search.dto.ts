@@ -41,3 +41,36 @@ export class SearchQueryParams {
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 1 }) page?: number;
   @ApiPropertyOptional({ minimum: 1, maximum: 48, default: 24 }) pageSize?: number;
 }
+
+// Bodies of the two shelf routes (storefront reads package).
+
+export class ShelfPageBody {
+  @ApiProperty({
+    type: [ProductSearchItemBody],
+    description: 'In shelf order. Fewer than `limit` items when not enough are sellable.',
+  })
+  items!: ProductSearchItemBody[];
+}
+
+export class MoneyBody {
+  @ApiProperty({ description: 'Minor units, as a decimal string.', example: '1299' })
+  amount!: string;
+  @ApiProperty({ description: 'ISO 4217 code.' }) currency!: string;
+}
+
+export class SpecialItemBody extends ProductSearchItemBody {
+  @ApiProperty({ format: 'uuid', description: 'The Variant the special is on.' })
+  variantId!: string;
+  @ApiProperty({ type: MoneyBody, description: 'The price a buyer pays now (the special).' })
+  price!: MoneyBody;
+  @ApiProperty({ type: MoneyBody, description: 'The regular price in force.' })
+  regularPrice!: MoneyBody;
+  @ApiProperty({ description: 'Whether both prices include tax.' }) taxInclusive!: boolean;
+  @ApiProperty({ format: 'date-time', description: 'When the special ends (UTC).' })
+  specialEndsAt!: string;
+}
+
+export class SpecialsPageBody {
+  @ApiProperty({ type: [SpecialItemBody], description: 'Newest special first.' })
+  items!: SpecialItemBody[];
+}

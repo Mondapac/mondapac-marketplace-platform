@@ -55,6 +55,9 @@ import { ReviewQueueList } from './application/use-cases/review-queue-list.use-c
 import { OFFER_SEARCH_FACTS_READER } from './application/ports/offer-search-facts.reader';
 import { OFFER_TAX_CATEGORIES_READER } from './application/ports/offer-tax-categories.reader';
 import { OfferTaxCategoriesQuery } from './application/use-cases/offer-tax-categories.use-case';
+import { CATEGORY_TREE_READER } from './application/ports/category-tree.reader';
+import { CategoryTreeQuery } from './application/use-cases/category-tree.use-case';
+import { PublicCategoryController } from './presentation/public-category.controller';
 import { SELL_UNIT_LABELS_READER } from './application/ports/sell-unit-labels.reader';
 import { SellUnitLabelsQuery } from './application/use-cases/sell-unit-labels.use-case';
 import { OFFER_NAMES_READER } from './application/ports/offer-names.reader';
@@ -174,6 +177,7 @@ const PORT = {
   namesReader: OFFER_NAMES_READER,
   labelsReader: SELL_UNIT_LABELS_READER,
   taxCategoriesReader: OFFER_TAX_CATEGORIES_READER,
+  treeReader: CATEGORY_TREE_READER,
   offers: OFFER_REPOSITORY,
   offerFinder: OWN_OFFER_FINDER,
   claims: ClaimQueryBuilder,
@@ -258,6 +262,7 @@ const productTypeProvider: FactoryProvider<string> = {
     OfferReviewController,
     ProductReviewController,
     ProductImageReviewController,
+    PublicCategoryController,
   ],
   imports: [CertificationModule, SellersModule],
   providers: [
@@ -652,6 +657,7 @@ const productTypeProvider: FactoryProvider<string> = {
     useCaseProvider(OfferNamesSystemQuery, { unitOfWork: true, namesReader: true }),
     useCaseProvider(SellUnitLabelsQuery, { unitOfWork: true, labelsReader: true }),
     useCaseProvider(OfferTaxCategoriesQuery, { unitOfWork: true, taxCategoriesReader: true }),
+    useCaseProvider(CategoryTreeQuery, { unitOfWork: true, treeReader: true, policy: true }),
     useCaseProvider(OfferListingsQuery, {
       unitOfWork: true,
       listingsReader: true,

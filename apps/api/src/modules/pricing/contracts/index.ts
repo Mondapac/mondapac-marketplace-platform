@@ -29,3 +29,9 @@ export {
   type PricingFacade,
   type PricingValidationFailed,
 } from './pricing.facade';
+export {
+  MAX_SPECIALS,
+  PRICING_SPECIALS_FACADE,
+  type PricingSpecialsFacade,
+  type SpecialInForce,
+} from './pricing-specials.facade';
