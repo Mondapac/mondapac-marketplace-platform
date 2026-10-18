@@ -585,7 +585,14 @@ offer_id, offer_version)`; `outcome` CHECK `approved`, `changes-requested`; `rea
   per product (D 5.4).
 - Unique `(market_id, product_revision_id) WHERE kind = 'revision-published'`: a request for a
   revision is written once (idempotent publish handler).
-- Unique `(market_id, source_event_id)` where not NULL: one request per consumed event.
+- Unique `(market_id, source_event_id, cause) NULLS NOT DISTINCT` where `source_event_id` is not
+  NULL: one request per consumed event and cause (certification slice 14; was one per event). A
+  manufacturer certificate's coverage change writes two from one event (Hassan M2).
+- `cause` (slices 12 and 14, closed CHECK): the four seller-certificate causes,
+  `claim-policy-changed`, `product-certification-approved` and
+  `product-certification-coverage-changed` (subject: the type id), and
+  `product-certification-coverage-recheck` (subject: the manufacturer certificate id; selects the
+  tags by `certificate_id` and marks them `rechecking` first, an ending cause).
 - Claim index `(market_id, created_at, id) WHERE state = 'pending'`. The job runs under its scheduler
   lock (PM8) per Market, so no `SKIP LOCKED` is needed; requests are taken in order.
 - Grants `SELECT, INSERT, UPDATE (state, cursor_offer_id, counts, settled_at)`; purge of settled rows

@@ -233,6 +233,37 @@ export const ClaimPolicyChanged = defineEvent({
 });
 
 /**
+ * Another admin approved the pending revision of a manufacturer certificate (design 3.4, 8.3;
+ * ADR-0012 d6; slice 14): a first approval, a renewal or a re-review whose coverage equals the
+ * revision it replaces. Consumer: catalog (re-asks the tags of the type).
+ */
+export const ProductCertificationApproved = defineEvent({
+  type: 'certification.product-certification-approved.v1',
+  aggregateType: 'product-certification',
+  payload: {
+    productCertificationId: eventField.id(),
+    revisionId: eventField.id(),
+    typeId: eventField.id(),
+  },
+});
+
+/**
+ * Another admin approved a revision whose coverage differs from the approved one it replaces
+ * (design 3.4 T3, 8.3; ADR-0028 d6; slice 14). `typeId` is added to the design's payload so
+ * catalog can select the tags of the type without reading certification. Consumer: catalog.
+ */
+export const ProductCertificationCoverageChanged = defineEvent({
+  type: 'certification.product-certification-coverage-changed.v1',
+  aggregateType: 'product-certification',
+  payload: {
+    productCertificationId: eventField.id(),
+    revisionId: eventField.id(),
+    previousRevisionId: eventField.id(),
+    typeId: eventField.id(),
+  },
+});
+
+/**
  * Every event certification publishes, for the event catalogue. Adding one adds it to the
  * snapshot (`apps/api/test/contracts/event-catalogue.snapshot.json`).
  */
@@ -253,4 +284,6 @@ export const CERTIFICATION_EVENTS: readonly EventDefinition[] = [
   IssuerDeactivated,
   RelaxationProposed,
   ClaimPolicyChanged,
+  ProductCertificationApproved,
+  ProductCertificationCoverageChanged,
 ];

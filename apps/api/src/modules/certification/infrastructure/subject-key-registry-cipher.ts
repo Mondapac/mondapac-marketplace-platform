@@ -86,7 +86,11 @@ export class SubjectKeyRegistryCipher implements RegistryCipher {
     return opened.ok ? { state: 'given', text: opened.value } : { state: 'erased' };
   }
 
-  private async platformSubject(market: MarketContext): Promise<Id> {
+  /**
+   * The Market's platform subject, created with its key on first use (also the subject of a
+   * manufacturer certificate's number, slice 14).
+   */
+  async platformSubject(market: MarketContext): Promise<Id> {
     const read = await this.unitOfWork.run(
       market,
       async () => ok(await this.registry.platformSubject(market)),

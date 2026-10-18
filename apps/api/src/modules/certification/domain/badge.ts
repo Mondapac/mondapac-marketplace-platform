@@ -69,7 +69,7 @@ export function sellerBadge(
  * only by `ClaimRule.decide`. A manufacturer certificate is always a third-party document, so it
  * is never a seller claim; the issuer and "verified with issuer" follow the same rules as the
  * seller badge; the validity date and zone are those of the boundary the decision used (2.4 rule
- * 3, the Market zone). `typeRevisionId` is the type revision the decision read.
+ * 3, the Market zone). `typeRevisionId` is the revision's own approved type revision (I1).
  */
 export function manufacturerBadge(
   typeCode: CertificationTypeCode,

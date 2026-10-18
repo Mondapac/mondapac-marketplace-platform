@@ -347,6 +347,7 @@
   },
   "certification": {
     "expiryWarningThresholdsDays": [30, 14, 1],
-    "renewalSubmitByDays": 7
+    "renewalSubmitByDays": 7,
+    "manufacturerBasisEnabled": false
   }
 }

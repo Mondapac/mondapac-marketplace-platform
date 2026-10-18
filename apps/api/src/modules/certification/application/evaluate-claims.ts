@@ -30,6 +30,11 @@ export interface EvaluateClaimsDependencies {
    * when the Market has none Temporal resolves (no manufacturer basis then: fail closed).
    */
   readonly marketZone: (context: CallContext) => TimeZoneId | null;
+  /**
+   * The Market's manufacturer-basis switch (`certification.manufacturerBasisEnabled`; cto ruling,
+   * slice 14). Read once per batch; a throw or anything but `true` is off (fail closed).
+   */
+  readonly manufacturerBasisEnabled: (context: CallContext) => boolean;
 }
 
 type Parsed = { readonly query: ClaimQuery } | { readonly invalid: true };
@@ -215,6 +220,13 @@ export async function evaluateClaimsFor(
     }
 
     const marketZone = deps.marketZone(context);
+    let manufacturerBasisEnabled = false;
+    try {
+      manufacturerBasisEnabled = deps.manufacturerBasisEnabled(context) === true;
+    } catch {
+      // An error means off (fail closed); the seller basis still answers.
+      manufacturerBasisEnabled = false;
+    }
     let u = 0;
     const factsOf: ClaimFacts[] = valid.map(({ query }, k) => {
       const typeAndPolicy: TypeAndPolicy = policies[k]!;
@@ -237,6 +249,7 @@ export async function evaluateClaimsFor(
         // Not read yet: the first pass decides everything but the manufacturer basis.
         productCertificates: null,
         marketZone,
+        manufacturerBasisEnabled,
       };
     });
     const first = valid.map(({ query }, k) => decide(query, factsOf[k]!, at));

@@ -289,3 +289,13 @@ is required; no value has a default. The review checks and reasons are table-sha
 - `renewalSubmitByDays` (required, whole, 0 to 366; AU 7, the synthetic Market 2): the warning
   names the date this many days before the expiry date by which a renewal should be submitted
   (brief s4 c 2), or "now" once that date is not ahead of the warning.
+- `manufacturerBasisEnabled` (required, boolean; AU `false`, the synthetic Market `true`;
+  ADR-0012, cto ruling): whether a claim policy row `SELLER_OR_MANUFACTURER` may open the
+  manufacturer basis in this Market. Off, or unreadable, the row is read as `SELLER_REQUIRED`
+  (fail closed) and no product certificate is read. AU stays off until the halal authority and
+  legal agree.
+  Switching it off for a Market that has manufacturer-basis tags (Hassan L4): the change is a
+  configuration release, which publishes no certification event, so no tag is re-asked at once.
+  Until a re-ask of each affected type (`claim-policy-changed` cause) or the daily reconciliation
+  runs (within 24 h), those tags keep their manufacturer badge. Queue the type re-ask with the
+  release, or accept the reconciliation window.

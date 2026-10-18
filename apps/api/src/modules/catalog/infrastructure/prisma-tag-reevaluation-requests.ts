@@ -158,6 +158,30 @@ export class PrismaTagReevaluationRequests implements TagReevaluationRequestRepo
     });
   }
 
+  async pendingUnstarted(
+    market: MarketContext,
+    request: {
+      readonly cause: CertificationCause;
+      readonly subjectId: Id;
+      readonly createdAfter: Temporal.Instant;
+    },
+  ): Promise<boolean> {
+    // Within the pending rows only (the claim index's predicate): a handful at any time.
+    const row = await this.prisma.tx(market).catalogTagReevaluationRequest.findFirst({
+      where: {
+        marketId: market.marketId,
+        state: 'pending',
+        kind: 'certification-event',
+        cause: request.cause,
+        subjectId: request.subjectId,
+        cursorOfferId: null,
+        createdAt: { gt: toDate(request.createdAfter) },
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   async listPending(market: MarketContext, limit: number): Promise<readonly PendingReevaluation[]> {
     // Served by the claim index (`state = 'pending'`). The kinds this build settles are named in
     // WHERE, before LIMIT, so a pending row of a later kind never takes a slot (Hassan I-2). The

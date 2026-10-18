@@ -1135,6 +1135,74 @@ Javad has the pace of `identity` and `sellers`.
 - **Rows of a published or proposed revision are closed (Hassan L1).** The trigger `claim_policy_rows_revision_open` refuses a row whose revision is already a policy's published revision or a pending or decided `claim-policy-revision` proposal. `addRevision` writes the rows in the same unit before the pointer moves or the proposal is inserted.
 - **S2 bound.** The reader refuses a type that returns more than `MAX_POLICY_ROWS` (304) rows, so the whole batch is `unavailable` (fail closed). The worst case per call is 100 type codes × 304 rows, about 30k rows (data design 7.3).
 
+### 14.11 Slice 14 as built, part 1 (manufacturer certificate; S3; catalog re-ask by type; 2026-10-18)
+- **Split.** Part 1 is this list. Part 2 (slice 15) adds:
+  - the protected revoke key;
+  - suspend, revoke and the expiry job, with their events;
+  - `catalog` consumers for `-suspended`, `-revoked` and `-expired`;
+  - expiry warnings;
+  - documents and review checks.
+
+  Until then a type whose revision `requiresDocument` refuses submission (`certificate.incomplete`, fail closed). The AU halal types do require documents.
+- **Market switch.** `certification.manufacturerBasisEnabled` (AU false, ZZ true; `config/markets/README.md`). Off, `SELLER_OR_MANUFACTURER` is read as `SELLER_REQUIRED` and S3 is not read.
+- **Routes.** `certification/admin/product-certificates`:
+  - `GET /` (status, typeId, limit ≤100, offset ≤10000) and `GET /{id}`: view key. Neither ever shows the number.
+  - `GET /{id}/review`: approve key, no acting-as. It opens the number.
+  - `POST /`: edit key. Takes an active `THIRD_PARTY_DOCUMENT` type.
+  - `PUT /{id}/draft`, `POST /{id}/submit`: edit key.
+  - `POST /{id}/approve`, `/reject`: approve key.
+
+  All routes need an admin session, CSRF, closed bodies and the version read.
+- **Keys.** `certification.product-certificate.view` is added to catalogue-moderator (seed 8), certification-reviewer (seed 4) and viewer (seed 13). The protected `.edit` and `.approve` keys are in no default role.
+- **Aggregate.** The root keeps the draft and its coverage. Insert-only revisions keep coverage, editors and the decision.
+  - Coverage is a product, or up to 100 of its variants.
+  - The server records the product's current published revision; the client never sends it (M3).
+  - Submit refuses a draft whose product revision or variants have since moved (`product-revision-changed`, `variant-unknown`).
+  - The certificate number is sealed under the Market's platform subject. The revision stores a keyed content hash.
+- **Another person.** Approve and reject both refuse the record's creator, every admin who edited the draft of the revision, and its submitter (`approval.same-admin`).
+  - Draft editors persist across a rejection and are cleared only on approval.
+  - A reject takes a reason from the Market's review reasons with the `declined` outcome.
+- **Lock first.** Each write first locks the root under the version read. The unit then takes `FOR SHARE` on the type and the issuer (`certification.share-type`, `certification.share-issuer`) and re-checks:
+  - the pending revision is the one reviewed;
+  - the type is active and its published revision is unchanged since submission;
+  - the issuer is active and the expiry is ahead.
+- **Validity boundary.** It is stored on the decision and on the root at approval, measured in the Market zone (no usable zone means `access.unavailable`).
+- **Events.** On approval the decision emits `product-certification-approved.v1` (first approval) or `product-certification-coverage-changed.v1`. The second carries `typeId`, an addition to the design.
+- **Audit.** Actions: `certification.product-certificate.recorded`, `.edited`, `.approved`, `.rejected`.
+- **I1.** The revision records the type revision in force at submission. A manufacturer decision and its badge name that revision, not the type's current one.
+- **S3 (`certification.manufacturer-basis`).** One statement per batch returns the approved, unexpired revisions covering (product, product revision), with their type code.
+  - Variant matching happens in code (L1): a narrowed entry never matches a query with no variant.
+  - `bestCovering` filters on `typeCode` (Hassan L2).
+  - A withdrawn revision, or one with no boundary, never covers.
+- **`CatalogReferences`.** `publishedProductRevisions` and `variantsOf` are now built, batched by product and revision. `catalog` implements them.
+- **Catalog re-ask by type.** `catalog` now consumes three events and queues a type-wide request (`claim-policy-changed`, `product-certification-approved`, `product-certification-coverage-changed`; migration `20261018171000_catalog_type_reevaluation`):
+  - `claim-policy-changed.v1`;
+  - `product-certification-approved.v1`;
+  - `product-certification-coverage-changed.v1`.
+
+  The job resolves the type code through the facade (`CertificationTypeView.typeId`, new). Unavailable leaves the request pending; an unknown type settles it. The job then re-asks every live tag of that type, using the index `offer_tags_market_id_type_code_offer_id_idx`. This is a superset of the design's selection: one request holds one subject. Narrowing it needs a second subject column (open).
+- **Migrations.** `20261018170000_certification_product_certifications` and `20261018171000_catalog_type_reevaluation`, each with `down.sql`. The draft coverage grant is SELECT, INSERT and DELETE (no UPDATE).
+- **Open.** Sign-off from Mojtaba (index, grants, S3) and from Hassan (CERT path). Part 2 above. AU's switch stays off.
+- **Fix round for PR #413 (reviews of Mojtaba and Hassan; 2026-10-18).**
+  - Number read audited (Hassan M1). Every successful review read writes one `certification.product-certificate.number-viewed` row, in its own unit after the numbers are opened. The row's `after` holds the `revisionIds` of the revisions whose numbers were shown, never a number. The read answers only once the row is committed.
+  - Coverage change (Hassan M2). Its handler writes two requests in one `runOnce` unit:
+    - the new cause `product-certification-coverage-recheck` on the certificate's own tags: an ending cause, selected by `certificate_id` and marked `rechecking` first;
+    - the type request.
+
+    The type request is skipped while an identical pending one (same cause and type) has not started; a started one does not count. The request unique becomes `(market_id, source_event_id, cause)`.
+  - S3 reads the boundary stored at approval (Hassan L1), as timestamptz text with its offset. The functions of ADR-0030 allow no `to_char`. It is no longer recomputed from the date and zone.
+  - Ending and type causes never overlap (Hassan L2), checked by a unit test.
+  - Tests (Hassan L3): reject refused for the creator, an editor and the submitter; approve refused for a submitter who never saved; S3 never covers through a pending or superseded revision.
+  - Turning `manufacturerBasisEnabled` off needs a type re-ask, or the daily reconciliation removes the tags (Hassan L4; `config/markets/README.md`).
+  - New index `(market_id, revision_id, type_id)` on `product_revision_coverage` (Mojtaba F1), with a plan test.
+  - Whitespace-only schema hunks reverted (F2). Data design 3.15, 3.16, 7.3 and 8 updated to as built (F3).
+- **Second fix round for PR #413 (2026-10-18).**
+  - Mojtaba N1: the widened unique is `NULLS NOT DISTINCT`.
+  - Hassan N1: a type request is skipped only when the identical pending, unstarted request was written strictly after the new event's `occurredAt`. An older one may already be on its first page, read from the state before the event. The handler takes `occurredAt` from the envelope.
+  - The F2 leftover (`CertificationRelaxationProposal`) is reverted.
+  - Data design 8 now says draft editors are removed at approval. Catalog data design 3.18 lists the recheck cause and the new unique.
+  - Open (Mojtaba): S3 reads the boundary as `timestamptz::text`, which assumes ISO DateStyle (as `expiry_date::text` does) because ADR-0030 allows no `to_char`. Pinning DateStyle for the API role, or an allow-list amendment, is a follow-up.
+
 ### 14.3 Spikes (run, not merged)
 | # | Spike |
 |---|---|

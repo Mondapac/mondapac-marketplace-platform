@@ -6,6 +6,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import {
   assertCertificationConfigured,
   CertificationMarketConfigError,
+  manufacturerBasisEnabledIn,
   MarketConfigExpiryPolicy,
 } from './market-config-expiry-policy';
 
@@ -52,10 +53,32 @@ describe('the certification section of the Market configuration', () => {
     const bad = new Map(configs);
     bad.set(idOf(code), {
       ...configs.get(idOf(code))!,
-      certification: { expiryWarningThresholdsDays: [14, 14], renewalSubmitByDays: 7 },
+      certification: {
+        expiryWarningThresholdsDays: [14, 14],
+        renewalSubmitByDays: 7,
+        manufacturerBasisEnabled: false,
+      },
     });
     expect(() => assertCertificationConfigured(new MarketRegistry(bad))).toThrow(
       CertificationMarketConfigError,
     );
+  });
+});
+
+describe('the manufacturer-basis switch of the Market configuration (slice 14)', () => {
+  it('is off for AU and on for the synthetic Market', () => {
+    const registry = new MarketRegistry(configs);
+    expect(manufacturerBasisEnabledIn(registry, idOf('AU'))).toBe(false);
+    expect(manufacturerBasisEnabledIn(registry, idOf('ZZ'))).toBe(true);
+  });
+
+  it.each(['AU', 'ZZ'])('is off for %s without the section (fail closed)', (code) => {
+    const without = new Map(configs);
+    without.set(idOf(code), { ...configs.get(idOf(code))!, certification: undefined });
+    expect(manufacturerBasisEnabledIn(new MarketRegistry(without), idOf(code))).toBe(false);
+  });
+
+  it('is off for a Market the Region Stack does not host', () => {
+    expect(manufacturerBasisEnabledIn(new MarketRegistry(configs), idOf('NZ'))).toBe(false);
   });
 });

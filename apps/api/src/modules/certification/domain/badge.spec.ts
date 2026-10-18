@@ -76,6 +76,7 @@ const factsFor = (
   policy: null,
   productCertificates: null,
   marketZone: m.zone,
+  manufacturerBasisEnabled: false,
   sellerZones: zones,
   sellerCertificate: {
     certificateId: id('cert-1'),

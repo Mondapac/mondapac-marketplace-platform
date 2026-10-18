@@ -258,7 +258,7 @@ describe.each(TEST_MARKETS)(
      * An Offer of a new seller on the product, with an active tag on its own certificate (valid
      * until `validUntil` when given, else without an expiry).
      */
-    async function taggedOffer(productId: string, validUntil?: string) {
+    async function taggedOffer(productId: string, validUntil?: string, tagType = typeCode) {
       const offer = await offerOn(productId);
       const certificate = certificateOf();
       const evaluator = new FakeClaimEvaluator(
@@ -279,7 +279,7 @@ describe.each(TEST_MARKETS)(
                 },
               };
         },
-        [typeCode],
+        [tagType],
       );
       const added = await new OwnOfferAddTag(gate, {
         unitOfWork: persistence.unitOfWork,
@@ -301,7 +301,7 @@ describe.each(TEST_MARKETS)(
             sellerId: offer.sellerId,
           }),
         ),
-        { offerId: offer.offerId, typeCode },
+        { offerId: offer.offerId, typeCode: tagType },
       );
       expect(added).toMatchObject({ ok: true });
       return { ...offer, certificate };
@@ -338,6 +338,8 @@ describe.each(TEST_MARKETS)(
       subjectId: string,
       eventId = uuid7(),
       at = '2026-10-17T05:00:00Z',
+      recheckCertificateId?: string,
+      occurredAt: string = at,
     ) {
       ownEvents.add(eventId);
       const handler = new ReevaluateFromCertification(gate, {
@@ -352,7 +354,15 @@ describe.each(TEST_MARKETS)(
         attempt: 1,
       };
       expect(
-        await handler.execute(system(), { delivery, cause, subjectId: subjectId as Id }),
+        await handler.execute(system(), {
+          delivery,
+          occurredAt: Temporal.Instant.from(occurredAt),
+          cause,
+          subjectId: subjectId as Id,
+          ...(recheckCertificateId === undefined
+            ? {}
+            : { recheckCertificateId: recheckCertificateId as Id }),
+        }),
       ).toEqual({ ok: true, value: { code: 'catalog.reevaluation-requested' } });
       return eventId;
     }
@@ -657,6 +667,154 @@ describe.each(TEST_MARKETS)(
             counts: expect.objectContaining({ kept: 1 }) as unknown,
           }),
         ]);
+      });
+    });
+
+    // Certification slice 14: the claim policy and manufacturer certificate events name a type
+    // id; the job resolves its code through certification and re-asks every tag of that type.
+    // Each case uses a type code of its own, so no tag of another case or file is selected.
+    describe('type causes (claim policy, manufacturer certificate; slice 14)', () => {
+      const ownType = () => `pc-${code.toLowerCase()}-${randomUUID().slice(0, 8)}`;
+
+      it('claim-policy-changed re-asks every tag of the type, and only of that type', async () => {
+        const { productId } = await product();
+        const tagType = ownType();
+        const s = await taggedOffer(productId, undefined, tagType);
+        const t = await taggedOffer(productId);
+        const typeId = uuid7();
+        const eventId = await consume('claim-policy-changed', typeId);
+        expect(await requestOf(eventId)).toEqual([
+          expect.objectContaining({ cause: 'claim-policy-changed', subject_id: typeId }),
+        ]);
+        const evaluator = evaluatorFor(
+          new Map([
+            [s.sellerId, (q) => refusedDecision(q, 'no-valid-seller-certificate')],
+            [t.sellerId, (q) => allowedDecision(q, t.certificate)],
+          ]),
+        );
+        evaluator.typeCodes.set(typeId, tagType);
+        await job(evaluator).execute(system(), {});
+        expect(evaluator.calls.flat().map((q) => q.typeCode)).toEqual([tagType]);
+        expect(await tagOf(s.offerId)).toMatchObject({ status: 'suspended', has_badge: false });
+        expect(await tagOf(t.offerId)).toMatchObject({ status: 'active', change_seq: 1 });
+        expect(await requestOf(eventId)).toEqual([
+          expect.objectContaining({
+            state: 'settled',
+            counts: expect.objectContaining({ asked: 1, suspended: 1 }) as unknown,
+          }),
+        ]);
+      });
+
+      it('product-certification-approved restores a suspended tag of the type from a fresh allowed answer', async () => {
+        const { productId } = await product();
+        const tagType = ownType();
+        const s = await taggedOffer(productId, undefined, tagType);
+        await consume('seller-certification-expired', s.certificate.certificateId);
+        await job(
+          evaluatorFor(new Map([[s.sellerId, (q) => refusedDecision(q, 'certificate-expired')]])),
+        ).execute(system(), {});
+        expect(await tagOf(s.offerId)).toMatchObject({ status: 'suspended' });
+
+        const typeId = uuid7();
+        const eventId = await consume('product-certification-approved', typeId);
+        const manufacturer = certificateOf();
+        const allow = evaluatorFor(
+          new Map([[s.sellerId, (q) => allowedDecision(q, manufacturer)]]),
+        );
+        // Certification unavailable for the type lookup: nothing is asked, the request waits.
+        allow.typesUnavailable = true;
+        await job(allow).execute(system(), {});
+        expect(allow.calls).toEqual([]);
+        expect(await requestOf(eventId)).toEqual([expect.objectContaining({ state: 'pending' })]);
+
+        allow.typesUnavailable = false;
+        allow.typeCodes.set(typeId, tagType);
+        await job(allow).execute(system(), {});
+        expect(await tagOf(s.offerId)).toMatchObject({ status: 'active', has_badge: true });
+        expect(await requestOf(eventId)).toEqual([
+          expect.objectContaining({
+            state: 'settled',
+            counts: expect.objectContaining({ restored: 1 }) as unknown,
+          }),
+        ]);
+      });
+
+      it("a coverage change rechecks the certificate's own tags first and writes one unstarted type request (Hassan M2)", async () => {
+        const { productId } = await product();
+        const tagType = ownType();
+        const s = await taggedOffer(productId, undefined, tagType);
+        const typeId = uuid7();
+        const first = await consume(
+          'product-certification-coverage-changed',
+          typeId,
+          uuid7(),
+          '2026-10-17T05:00:00Z',
+          s.certificate.certificateId,
+        );
+        // One event, two requests (one per cause; the unique is per event and cause).
+        expect(
+          (await requestOf(first)).map((r) => [r.cause, r.subject_id, r.state]).sort(),
+        ).toEqual(
+          [
+            ['product-certification-coverage-changed', typeId, 'pending'],
+            ['product-certification-coverage-recheck', s.certificate.certificateId, 'pending'],
+          ].sort(),
+        );
+        // A second change of the type that occurred before the pending request was written
+        // (delivered late, before any run): that request already reflects it, so the type
+        // request is not written again; the recheck of its own certificate is.
+        const other = uuid7();
+        const second = await consume(
+          'product-certification-coverage-changed',
+          typeId,
+          uuid7(),
+          '2026-10-17T05:01:00Z',
+          other,
+          '2026-10-17T04:59:00Z',
+        );
+        expect((await requestOf(second)).map((r) => [r.cause, r.subject_id])).toEqual([
+          ['product-certification-coverage-recheck', other],
+        ]);
+        // A third that occurred after it was written (Hassan N1): a run may already be asking
+        // its first page from the older state, so the type request is written.
+        const later = uuid7();
+        const third = await consume(
+          'product-certification-coverage-changed',
+          typeId,
+          uuid7(),
+          '2026-10-17T05:02:00Z',
+          later,
+          '2026-10-17T05:00:30Z',
+        );
+        expect((await requestOf(third)).map((r) => [r.cause, r.subject_id]).sort()).toEqual(
+          [
+            ['product-certification-coverage-changed', typeId],
+            ['product-certification-coverage-recheck', later],
+          ].sort(),
+        );
+
+        // The product left the coverage: the run marks the tag `rechecking` before any ask, then
+        // settles it from the answer.
+        const evaluator = evaluatorFor(
+          new Map([[s.sellerId, (q) => refusedDecision(q, 'no-valid-seller-certificate')]]),
+        );
+        evaluator.typeCodes.set(typeId, tagType);
+        await job(evaluator).execute(system(), {});
+        expect((await historyOf(s.offerId)).map((h) => h.to_status)).toContain('rechecking');
+        expect(await tagOf(s.offerId)).toMatchObject({ status: 'suspended', has_badge: false });
+        for (const eventId of [first, second, third]) {
+          for (const request of await requestOf(eventId)) {
+            expect(request.state).toBe('settled');
+          }
+        }
+      });
+
+      it('settles a coverage change of a type the Market does not have without asking', async () => {
+        const eventId = await consume('product-certification-coverage-changed', uuid7());
+        const evaluator = evaluatorFor(new Map());
+        await job(evaluator).execute(system(), {});
+        expect(evaluator.calls).toEqual([]);
+        expect(await requestOf(eventId)).toEqual([expect.objectContaining({ state: 'settled' })]);
       });
     });
 
@@ -1095,6 +1253,18 @@ describe.each(TEST_MARKETS)(
           expect(text).not.toContain('Sort');
         },
       );
+
+      it('pages the type selection (slice 14) from its index in Offer id order, with no Sort', async () => {
+        const text = await planOf(
+          `SELECT t.offer_id FROM catalog.offer_tags t
+            WHERE (t.market_id = $1 AND t.type_code = $2 AND t.status <> $3
+              AND t.copy_revision_published = $4 AND t.offer_id > $5)
+            GROUP BY t.offer_id ORDER BY t.offer_id ASC LIMIT $6 OFFSET $7`,
+          [market.marketId, typeCode, 'removed', true, uuid7(), 50, 0],
+        );
+        expect(text).toContain('offer_tags_market_id_type_code_offer_id_idx');
+        expect(text).not.toContain('Sort');
+      });
 
       it('reads the reconciliation order, decision join included, from the evaluated_at index', async () => {
         const text = await planOf(

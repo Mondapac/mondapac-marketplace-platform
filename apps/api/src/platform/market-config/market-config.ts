@@ -1045,6 +1045,12 @@ const certificationSchema = z.strictObject({
     .refine((days) => new Set(days).size === days.length, { message: 'a threshold repeats' }),
   /** Days before the expiry date by which a renewal should be submitted (AU 7); 0 to 366. */
   renewalSubmitByDays: z.number().int().min(0).max(366),
+  /**
+   * Whether a policy row's `SELLER_OR_MANUFACTURER` may open the manufacturer basis in this
+   * Market (certification slice 14; cto ruling). Off, `evaluateClaims` reads such a row as
+   * `SELLER_REQUIRED` (fail closed). AU false until the halal authority and legal agree (Q2).
+   */
+  manufacturerBasisEnabled: z.boolean(),
 });
 
 /**

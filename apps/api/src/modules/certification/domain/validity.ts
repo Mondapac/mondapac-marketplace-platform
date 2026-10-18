@@ -1,6 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
-import type { ClaimQuery, TimeZoneId } from './claim-types';
+import type { CertificationTypeCode, ClaimQuery, TimeZoneId } from './claim-types';
 import type { VerificationMode } from './type-revision';
 
 export type IssuerState = 'proposed' | 'active' | 'closed-to-new' | 'derecognised';
@@ -179,6 +179,12 @@ export interface CoverageEntryView {
 /** The approved revision of a manufacturer certificate as the validity measure needs it. */
 export interface ApprovedProductRevisionView {
   readonly revisionId: Id;
+  /**
+   * The type revision the revision was submitted and approved under (I1, slice 14): it decides
+   * `requiresExpiry` and the badge texts, as the seller path's submission does, so easing a type
+   * later never upgrades an approved manufacturer certificate.
+   */
+  readonly typeRevisionId: Id;
   /** Whether the certificate's type required an expiry when the revision was approved. */
   readonly requiresExpiry: boolean;
   /** The expiry date as written, a local date. */
@@ -197,6 +203,11 @@ export interface ApprovedProductRevisionView {
 /** A manufacturer certificate (`ProductCertification`, slice 14) as `evaluateClaims` reads it. */
 export interface ProductCertificationView {
   readonly certificateId: Id;
+  /**
+   * The certificate's type code (Hassan L2, slice 14): a certificate of another type never covers
+   * a query, whatever the reader returned.
+   */
+  readonly typeCode: CertificationTypeCode;
   readonly status: ProductCertificationStatus;
   readonly approved: ApprovedProductRevisionView | null;
 }

@@ -82,7 +82,11 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     const subscriptions = graphs.get('worker')!.get(SubscriptionRegistry);
 
     expect(subscriptions.names()).toEqual([
-      // Catalog slice 12: tag re-evaluation from certification events (design 5.5, 9.5).
+      // Catalog slice 12: tag re-evaluation from certification events (design 5.5, 9.5);
+      // certification slice 14 adds the type-wide causes.
+      'catalog.reevaluate-on-claim-policy-changed',
+      'catalog.reevaluate-on-product-certification-approved',
+      'catalog.reevaluate-on-product-certification-coverage-changed',
       'catalog.reevaluate-on-seller-certification-approved',
       'catalog.reevaluate-on-seller-certification-expired',
       'catalog.reevaluate-on-seller-certification-issuer-confirmed',

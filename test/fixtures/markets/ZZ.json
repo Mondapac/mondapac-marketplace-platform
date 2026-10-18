@@ -273,6 +273,7 @@
   },
   "certification": {
     "expiryWarningThresholdsDays": [30, 14, 1],
-    "renewalSubmitByDays": 2
+    "renewalSubmitByDays": 2,
+    "manufacturerBasisEnabled": true
   }
 }

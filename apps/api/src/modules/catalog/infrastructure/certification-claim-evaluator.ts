@@ -81,6 +81,32 @@ export class CertificationClaimEvaluator implements ClaimEvaluator {
     }
   }
 
+  async typeCodeOf(
+    context: CallContext,
+    typeId: string,
+  ): Promise<Result<string | null, ClaimCheckUnavailable>> {
+    try {
+      const answer = await this.certification.certificationTypes(context, {});
+      if (!answer.ok) {
+        this.#warn(context, 'catalog.claims.types-refused', answer.error.code);
+        return UNAVAILABLE;
+      }
+      let found: string | null = null;
+      for (const type of answer.value as readonly unknown[]) {
+        const { typeId: id, code } = (type ?? {}) as { typeId?: unknown; code?: unknown };
+        if (typeof id !== 'string' || !isTagTypeCode(code)) {
+          this.#warn(context, 'catalog.claims.types-malformed', 'shape');
+          return UNAVAILABLE;
+        }
+        if (id === typeId) found = code;
+      }
+      return ok(found);
+    } catch (error) {
+      this.#warn(context, 'catalog.claims.types-failed', error);
+      return UNAVAILABLE;
+    }
+  }
+
   #warn(context: CallContext, msg: string, reason: unknown): void {
     this.#logger.warn({
       msg,

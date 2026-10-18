@@ -20,26 +20,45 @@ export const NO_COUNTS: ReevaluationCounts = Object.freeze({
 });
 
 /**
- * The certification events catalog consumes (design 5.5; slice 12), as the cause of a
- * `certification-event` request (data design 3.18 `cause`, a closed list). The product
- * certification, claim-policy and issuer events join when certification publishes them.
+ * The certification events catalog consumes (design 5.5; slices 12 and 14), as the cause of a
+ * `certification-event` request (data design 3.18 `cause`, a closed list). The issuer events and
+ * the ends of a manufacturer certificate (suspended, revoked, expired) join when certification
+ * publishes them.
  */
 export const CERTIFICATION_CAUSES = [
   'seller-certification-approved',
   'seller-certification-expired',
   'seller-certification-revoked',
   'seller-certification-issuer-confirmed',
+  'claim-policy-changed',
+  'product-certification-approved',
+  'product-certification-coverage-changed',
+  'product-certification-coverage-recheck',
 ] as const;
 export type CertificationCause = (typeof CERTIFICATION_CAUSES)[number];
+
+/**
+ * The causes whose subject is a certification type id (slice 14): their requests select the tags
+ * of that type (`offer_tags.type_code`), the code resolved through certification at run time.
+ */
+export const TYPE_CAUSES = [
+  'claim-policy-changed',
+  'product-certification-approved',
+  'product-certification-coverage-changed',
+] as const satisfies readonly CertificationCause[];
 
 /**
  * The causes that end a certificate (Hassan M-1, PR #398): their requests are listed first, and
  * every run marks their selected `active` tags `rechecking` before any ask, however many other
  * requests are pending, so no badge outlives a revoked or expired certificate by more than a run.
+ * A manufacturer certificate's coverage change (Hassan M2, slice 14) is one too for the tags
+ * based on that certificate: a product it no longer covers must lose its badge as fast. Never a
+ * {@link TYPE_CAUSES} cause (their selection needs a type code the pre-marking does not resolve).
  */
 export const ENDING_CAUSES = [
   'seller-certification-expired',
   'seller-certification-revoked',
+  'product-certification-coverage-recheck',
 ] as const satisfies readonly CertificationCause[];
 
 /** What a pending request has in common: its id, cursor, counts and age. */
@@ -63,7 +82,7 @@ export interface PendingPublishReevaluation extends PendingCommon {
 export interface PendingCertificationReevaluation extends PendingCommon {
   readonly kind: 'certification-event';
   readonly cause: CertificationCause;
-  /** The seller, certificate or submission id the selection matches (by cause). */
+  /** The seller, certificate, submission or type id the selection matches (by cause). */
   readonly subjectId: Id;
   /** The consumed event; recorded on the tag history rows the request writes. */
   readonly sourceEventId: Id;
@@ -106,6 +125,23 @@ export interface TagReevaluationRequestRepository {
       readonly now: Temporal.Instant;
     },
   ): Promise<void>;
+
+  /**
+   * True when a pending `certification-event` request of this cause and subject exists that no
+   * run has started (no cursor) and that was written strictly after `createdAfter` (the new
+   * event's `occurredAt`): it already reflects the newer state, so the handler of a type cause
+   * skips writing another (Hassan M2). A started one does not count (the Offers before its cursor
+   * would miss the change); nor does an older one, which a run may already be asking on its first
+   * page from the state before the event (Hassan N1).
+   */
+  pendingUnstarted(
+    market: MarketContext,
+    request: {
+      readonly cause: CertificationCause;
+      readonly subjectId: Id;
+      readonly createdAfter: Temporal.Instant;
+    },
+  ): Promise<boolean>;
 
   /**
    * Pending requests of the kinds this build settles (`revision-published`,

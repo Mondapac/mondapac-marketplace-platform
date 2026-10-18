@@ -38,6 +38,13 @@ const COVERED_BY_SELLER_CERTIFICATE_SPEC = [
   // Certification slice 13: covered by certification-claim-policy.db-spec.ts.
   'claim_policy_revisions',
   'claim_policy_rows',
+  // Certification slice 14: covered by certification-product-certification.db-spec.ts.
+  'product_certification_revisions',
+  'product_revision_coverage',
+  'product_revision_editors',
+  'product_revision_decisions',
+  'product_issuer_confirmations',
+  'product_certification_history',
 ];
 
 function insertOnlyTables(): string[] {

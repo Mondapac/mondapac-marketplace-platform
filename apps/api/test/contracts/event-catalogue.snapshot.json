@@ -211,6 +211,25 @@
     }
   },
   {
+    "type": "certification.product-certification-approved.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.product-certification-coverage-changed.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "previousRevisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
     "type": "certification.relaxation-proposed.v1",
     "aggregateType": "relaxation-proposal",
     "fields": {

@@ -20,11 +20,17 @@ import {
   type TimeZoneId,
 } from '../domain/claim-types';
 import { MAX_POLICY_ROWS } from '../domain/claim-policy';
-import { VERIFICATION_MODES, type VerificationMode } from '../domain/type-revision';
-import type {
-  IssuerState,
-  SellerCertificationStatus,
-  SellerCertificationView,
+import {
+  isCertificationTypeCode,
+  VERIFICATION_MODES,
+  type VerificationMode,
+} from '../domain/type-revision';
+import {
+  type CoverageEntryView,
+  type IssuerState,
+  type ProductCertificationView,
+  type SellerCertificationStatus,
+  type SellerCertificationView,
 } from '../domain/validity';
 
 const STATUSES: readonly string[] = [
@@ -125,16 +131,72 @@ export class PrismaClaimFactsReader implements ClaimFactsReader {
   }
 
   /**
-   * The manufacturer basis (S3, design 4.2 step 6). `ProductCertification` and its coverage arrive
-   * with slice 14, so no manufacturer certificate exists yet: every request answers an empty list,
-   * which `ClaimRule` reads as `not-covered` (fail closed). Slice 14 replaces this with S3 in one
-   * read-only unit, keyed as the other reads.
+   * The manufacturer basis (S3, design 4.2 step 6; slice 14): one read-only unit, one statement,
+   * keyed by the distinct (product, product revision, type) triples of the requests. Each row is
+   * one coverage entry of an approved, current revision of the type covering that product
+   * revision (M3); the rows of one certificate are folded into one view whose coverage holds the
+   * entries of the asked product, and `ClaimRule` applies the variant rule (`covers`, L1) and the
+   * type filter (L2). Anything unexpected rejects (the batch answers `unavailable`): a row for a
+   * triple not asked, a certificate that is not `approved`, an unknown issuer state, two rows of
+   * one certificate that disagree, more than {@link MAX_MANUFACTURER_ROWS_PER_QUERY} rows for one
+   * triple. An approved pointer without an `approved` decision, or a required expiry without its
+   * stored boundary, is a certificate that is not valid, never a default.
    */
-  productCertificates(
-    _market: MarketContext,
+  async productCertificates(
+    market: MarketContext,
     requests: readonly ProductCertificateRequest[],
   ): Promise<readonly ProductCertificateAnswer[]> {
-    return Promise.resolve(requests.map((request) => ({ ...request, certificates: [] })));
+    if (requests.length === 0) return [];
+    const triples = new Map<string, ProductCertificateRequest>();
+    for (const request of requests) triples.set(tripleKey(request), request);
+    const distinct = [...triples.values()];
+    const rows = await this.read(market, () =>
+      this.rawReads.rawRead(market, 'certification.manufacturer-basis', {
+        productIds: distinct.map((triple) => triple.productId),
+        productRevisionIds: distinct.map((triple) => triple.productRevisionId),
+        typeCodes: distinct.map((triple) => triple.typeCode as string),
+      }),
+    );
+    const byTriple = new Map<string, Map<string, FoldedCertificate>>();
+    const counts = new Map<number, number>();
+    for (const row of rows) {
+      const triple = distinct[row.ord - 1];
+      if (triple === undefined) throw new Error('manufacturer read returned an unknown position');
+      if (
+        row.productId !== triple.productId ||
+        row.productRevisionId !== triple.productRevisionId ||
+        row.typeCode !== triple.typeCode
+      ) {
+        throw new Error('manufacturer read returned a row for another question');
+      }
+      const count = (counts.get(row.ord) ?? 0) + 1;
+      if (count > MAX_MANUFACTURER_ROWS_PER_QUERY) {
+        throw new Error('manufacturer read returned more rows than a question may hold');
+      }
+      counts.set(row.ord, count);
+      const key = tripleKey(triple);
+      const certificates = byTriple.get(key) ?? new Map<string, FoldedCertificate>();
+      byTriple.set(key, certificates);
+      const held = certificates.get(row.productCertificationId);
+      if (held === undefined) {
+        certificates.set(row.productCertificationId, foldedOf(row));
+        continue;
+      }
+      if (held.signature !== signatureOf(row)) {
+        throw new Error('manufacturer read returned two versions of one certificate');
+      }
+      held.coverage.push(coverageOf(row));
+    }
+    return requests.map((request) => {
+      const folded = byTriple.get(tripleKey(request));
+      return {
+        typeCode: request.typeCode,
+        productId: request.productId,
+        productRevisionId: request.productRevisionId,
+        variantId: request.variantId,
+        certificates: folded === undefined ? [] : [...folded.values()].map(productViewOf),
+      };
+    });
   }
 
   async sellerCertificates(
@@ -177,6 +239,118 @@ export class PrismaClaimFactsReader implements ClaimFactsReader {
 }
 
 type SellerBasisRow = RawReadRow<'certification.seller-basis'>;
+type ManufacturerRow = RawReadRow<'certification.manufacturer-basis'>;
+
+/**
+ * The most S3 rows one question may return: twenty covering certificates of a hundred variant
+ * entries each. More is a fault and the batch answers `unavailable` (fail closed), as S2's bound.
+ */
+export const MAX_MANUFACTURER_ROWS_PER_QUERY = 2000;
+
+const tripleKey = (t: ProductCertificateRequest): string =>
+  `${t.productId}|${t.productRevisionId}|${t.typeCode}`;
+
+/** One certificate folded from its rows: the shared columns once, the coverage entries listed. */
+interface FoldedCertificate {
+  readonly row: ManufacturerRow;
+  /** The columns every row of one certificate repeats; a difference is a fault. */
+  readonly signature: string;
+  readonly coverage: CoverageEntryView[];
+}
+
+function signatureOf(row: ManufacturerRow): string {
+  return JSON.stringify([
+    row.typeCode,
+    row.status,
+    row.revisionId,
+    row.typeRevisionId,
+    row.requiresExpiry,
+    row.issuerId,
+    row.expiryDate,
+    row.decisionOutcome,
+    row.expiryBoundaryAt,
+    row.issuerState,
+    row.issuerName,
+    row.verifiedWithIssuer,
+  ]);
+}
+
+function coverageOf(row: ManufacturerRow): CoverageEntryView {
+  const product = parseId<'Product'>(row.productId);
+  const revision = parseId<'ProductRevision'>(row.productRevisionId);
+  if (!product.ok || !revision.ok) throw new Error('coverage id is not an id');
+  if (row.variantId === null) {
+    return { productId: product.value, productRevisionId: revision.value, variantId: null };
+  }
+  const variant = parseId<'Variant'>(row.variantId);
+  if (!variant.ok) throw new Error('coverage variant is not an id');
+  return { productId: product.value, productRevisionId: revision.value, variantId: variant.value };
+}
+
+function foldedOf(row: ManufacturerRow): FoldedCertificate {
+  return { row, signature: signatureOf(row), coverage: [coverageOf(row)] };
+}
+
+/**
+ * A timestamptz read as text (ISO DateStyle: `2027-06-30 14:00:00+00`, fractions optional, the
+ * offset hours only or with minutes); anything else throws (a fault, so the batch is unavailable).
+ */
+function storedInstant(value: string): Temporal.Instant {
+  const match = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?)([+-]\d{2})(:\d{2})?$/.exec(
+    value,
+  );
+  if (match === null) throw new Error('expiry boundary is not a stored instant');
+  return Temporal.Instant.from(`${match[1]}T${match[2]}${match[3]}${match[4] ?? ':00'}`);
+}
+
+/** One folded S3 certificate as the validity measure needs it; anything that does not fit throws. */
+function productViewOf(folded: FoldedCertificate): ProductCertificationView {
+  const { row } = folded;
+  // S3 selects approved roots only; any other status read back is a fault.
+  if (row.status !== 'approved') throw new Error('manufacturer certificate is not approved');
+  const certificateId = parseId(row.productCertificationId);
+  const revisionId = parseId(row.revisionId);
+  const typeRevisionId = parseId(row.typeRevisionId);
+  const issuerId = parseId(row.issuerId);
+  if (!certificateId.ok || !revisionId.ok || !typeRevisionId.ok || !issuerId.ok) {
+    throw new Error('manufacturer certificate id is not an id');
+  }
+  if (!isCertificationTypeCode(row.typeCode)) throw new Error('type code is not a code');
+  if (!ISSUER_STATES.includes(row.issuerState)) throw new Error('issuer has no readable state');
+  if (row.issuerName.length === 0) throw new Error('issuer has no readable name');
+  const base = {
+    certificateId: certificateId.value,
+    typeCode: row.typeCode,
+    status: 'approved' as const,
+  };
+  // The approved pointer needs an `approved` decision; without one there is no valid certificate.
+  if (row.decisionOutcome !== 'approved') return { ...base, approved: null };
+  // The boundary is the one stored at approval, read as stored (Hassan L1): never recomputed from
+  // the date and zone. A required expiry without it reaches the measure without a date or
+  // boundary: `expiry-missing`, not valid. An unreadable instant is a fault.
+  let expiryDate = plainDate(row.expiryDate);
+  let boundaryAtApproval: Temporal.Instant | null = null;
+  if (expiryDate !== null && row.expiryBoundaryAt !== null) {
+    boundaryAtApproval = storedInstant(row.expiryBoundaryAt);
+  } else if (row.requiresExpiry) {
+    expiryDate = null;
+  }
+  return {
+    ...base,
+    approved: {
+      revisionId: revisionId.value,
+      typeRevisionId: typeRevisionId.value,
+      requiresExpiry: row.requiresExpiry,
+      expiryDate,
+      boundaryAtApproval,
+      issuerId: issuerId.value,
+      issuerState: row.issuerState as IssuerState,
+      issuerDisplayName: row.issuerName,
+      verifiedWithIssuer: row.verifiedWithIssuer,
+      coverage: folded.coverage,
+    },
+  };
+}
 type TypeRow = RawReadRow<'certification.type-and-policy'>;
 
 interface StoredPolicyRow {

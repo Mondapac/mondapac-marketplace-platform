@@ -249,6 +249,34 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['cleared_at', 'cleared_by_account_id'],
     },
+    // Migration product_certifications (slice 14; data design 3.15, 3.16): the root moves its
+    // draft, pointers, status and version; the draft's coverage is replaced whole and its editors
+    // cleared on approval (DELETE); revisions, their coverage, editors and decision, the issuer
+    // confirmation and the history are insert-only (reject_mutation triggers).
+    'certification.product_certifications': {
+      table: ['INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'certification.product_certification_draft_coverage': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'certification.product_certification_draft_editors': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'certification.product_certification_revisions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'certification.product_revision_coverage': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.product_revision_editors': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.product_revision_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.product_issuer_confirmations': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.product_certification_history': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
     'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
