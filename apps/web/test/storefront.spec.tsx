@@ -8,7 +8,10 @@ import { StoreShell } from '../src/shell/store-shell.tsx';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import type { StorefrontContent } from '../src/storefront/types.ts';
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/' }));
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 beforeEach(() => {
   window.matchMedia = (() => ({
