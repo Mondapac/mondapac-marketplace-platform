@@ -12,7 +12,7 @@ import path from 'node:path';
 import ts from 'typescript';
 
 const root = path.resolve(process.argv[2] ?? path.join(import.meta.dirname, '..'));
-const PACKAGES = ['apps/seller', 'apps/admin', 'packages/ui', 'packages/panel-server'];
+const PACKAGES = ['apps/seller', 'apps/admin', 'apps/web', 'packages/ui', 'packages/panel-server'];
 const SERVER_ONLY_KERNEL_NAMES = new Set([
   'ActorContext',
   'AnonymousActor',
@@ -85,7 +85,7 @@ for (const pkg of PACKAGES) {
       const fail = (rule) => violations.push(`${rel}: ${rule} (imports '${specifier}')`);
       if (specifier === '<computed>') fail('imports-are-static: no computed import()');
       if (/^@mondapac\/api(\/|$)/.test(specifier)) fail('panels never import apps/api');
-      if (/^@mondapac\/(seller|admin)(\/|$)/.test(specifier) && (isUi || specifier !== self))
+      if (/^@mondapac\/(seller|admin|web)(\/|$)/.test(specifier) && (isUi || specifier !== self))
         fail(isUi ? 'packages/ui imports no app' : 'an app never imports another app');
       if (isUi && /^@mondapac\/panel-server(\/|$)/.test(specifier))
         fail('packages/ui imports no server-only package');
