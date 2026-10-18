@@ -292,10 +292,24 @@
   { "name": "inventory.release-reservation", "rule": "system" },
   { "name": "inventory.reserve", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "inventory.retire-sell-units", "rule": "system" },
+  { "name": "legal.marketing-email-consent-of", "rule": "system" },
+  {
+    "name": "legal.set-email-preferences",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "legal.view-email-preferences",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "legal.withdraw-marketing-email-by-link", "rule": "anonymous" },
   { "name": "notifications.send-order-confirmation-mail", "rule": "system" },
   { "name": "notifications.send-order-shipped-mail", "rule": "system" },
   { "name": "notifications.send-seller-new-order-mail", "rule": "system" },
+  { "name": "notifications.unsubscribe-marketing-email", "rule": "anonymous" },
   { "name": "notifications.view-public-support-contact", "rule": "anonymous" },
+  { "name": "notifications.view-unsubscribe-link", "rule": "anonymous" },
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },

@@ -1,0 +1,41 @@
+// The legal module's tables (personalization package 1b: marketing consent). Every model is named
+// Legal<Name> and mapped to its table with @@map. The CHECKs and the grants are hand-written in the
+// migration. A consent is about an account (identity), held by a plain id with no foreign key.
+
+/// The current marketing consent of one customer account on one channel (only `email` so far).
+/// Express opt-in: no row, or `granted` false, means no marketing on that channel. Changed by the
+/// customer (sign-up checkbox, account page) or withdrawn by the one-click unsubscribe link.
+model LegalMarketingConsent {
+  id        String   @id @db.Uuid
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  accountId String   @map("account_id") @db.Uuid
+  /// The channel the consent covers: `email`.
+  channel   String   @db.VarChar(16)
+  granted   Boolean
+  /// Where the last change came from: `sign-up`, `account` or `unsubscribe-link`.
+  source    String   @db.VarChar(32)
+  changedAt DateTime @map("changed_at") @db.Timestamptz(6)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+
+  @@unique([marketId, accountId, channel])
+  @@map("marketing_consents")
+  @@schema("legal")
+}
+
+/// Every change of a marketing consent, append-only: the record that shows when and how a
+/// customer agreed or withdrew (Spam Act 2003, consent must be provable). Never updated.
+model LegalMarketingConsentChange {
+  id         String   @id @db.Uuid
+  marketId   String   @map("market_id") @db.VarChar(8)
+  tenantId   String   @map("tenant_id")
+  accountId  String   @map("account_id") @db.Uuid
+  channel    String   @db.VarChar(16)
+  granted    Boolean
+  source     String   @db.VarChar(32)
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([marketId, accountId, occurredAt(sort: Desc), id(sort: Desc)])
+  @@map("marketing_consent_changes")
+  @@schema("legal")
+}

@@ -9,23 +9,29 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CATALOG_FACADE, CatalogModule } from '../catalog';
 import { IDENTITY_FACADE, IdentityModule } from '../identity';
+import { LEGAL_FACADE, LegalModule } from '../legal';
 import { ORDERING_FACADE, OrderingModule } from '../ordering';
+import type { MarketingDependencies } from './application/marketing-mail-flow';
 import type { OrderMailDependencies } from './application/order-mail-flow';
 import type { NotificationsDependencies } from './application/notifications-dependencies';
 import { NOTIFICATIONS_POLICY } from './application/ports/notifications-policy';
 import { SUPPORT_CONTACT_REPOSITORY } from './application/ports/support-contact.repository';
+import { UNSUBSCRIBE_TOKENS } from './application/ports/unsubscribe-tokens';
 import { SendOrderConfirmationMail } from './application/use-cases/send-order-confirmation-mail.use-case';
 import { SendOrderShippedMail } from './application/use-cases/send-order-shipped-mail.use-case';
 import { SendSellerNewOrderMail } from './application/use-cases/send-seller-new-order-mail.use-case';
 import { SetSupportContact } from './application/use-cases/set-support-contact.use-case';
+import { UnsubscribeMarketingEmail } from './application/use-cases/unsubscribe-marketing-email.use-case';
 import { ViewPublicSupportContact } from './application/use-cases/view-public-support-contact.use-case';
 import { ViewSupportContact } from './application/use-cases/view-support-contact.use-case';
+import { ViewUnsubscribeLink } from './application/use-cases/view-unsubscribe-link.use-case';
 import { NOTIFICATIONS_PERMISSIONS } from './contracts';
 import { NOTIFICATIONS_AUDIT_ACTIONS } from './domain/audit';
 import { notificationsProviders } from './infrastructure/notifications-providers';
 import { orderMailSubscriptions } from './presentation/subscribers/order-mail.subscriptions';
 import { AdminSupportContactController } from './presentation/support-contact.controller';
 import { PublicSupportContactController } from './presentation/public-support-contact.controller';
+import { UnsubscribeController } from './presentation/unsubscribe.controller';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: NotificationsDependencies) => U;
 
@@ -78,15 +84,48 @@ function orderMailProvider<U>(
   };
 }
 
+const MARKETING_PORTS: readonly [keyof MarketingDependencies, InjectionToken][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['contacts', SUPPORT_CONTACT_REPOSITORY],
+  ['legal', LEGAL_FACADE],
+  ['identity', IDENTITY_FACADE],
+  ['transport', MAIL_TRANSPORT],
+  ['policy', NOTIFICATIONS_POLICY],
+  ['tokens', UNSUBSCRIBE_TOKENS],
+];
+
+/** The marketing use cases (unsubscribe link) share one dependency object. */
+function marketingProvider<U>(
+  type: new (gate: UseCaseGate, deps: MarketingDependencies) => U,
+): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, ...MARKETING_PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+      new type(
+        gate,
+        Object.fromEntries(
+          MARKETING_PORTS.map(([name], index) => [name, values[index]]),
+        ) as unknown as MarketingDependencies,
+      ),
+  };
+}
+
 /**
  * Notifications (speed mode). So far one setting: the Market's support email address, seeded from
  * Market configuration and changeable by the platform admin; mail and the sign-in screens read it
  * from here later. Phase 6 package 1: the order emails (Q10), sent when `ordering.order-paid.v1`
- * arrives: the customer's "Order confirmation" and the sellers' "New order".
+ * arrives: the customer's "Order confirmation" and the sellers' "New order". Personalization 1b:
+ * the marketing mail rule (consent from `legal`, sender, contact and unsubscribe link) and the
+ * one-click unsubscribe route.
  */
 @Module({
-  imports: [OrderingModule, CatalogModule, IdentityModule],
-  controllers: [AdminSupportContactController, PublicSupportContactController],
+  imports: [OrderingModule, CatalogModule, IdentityModule, LegalModule],
+  controllers: [
+    AdminSupportContactController,
+    PublicSupportContactController,
+    UnsubscribeController,
+  ],
   providers: [
     PersistenceModule.auditWriterFor('notifications'),
     registerAuditActions('notifications', NOTIFICATIONS_AUDIT_ACTIONS),
@@ -98,6 +137,8 @@ function orderMailProvider<U>(
     orderMailProvider(SendOrderConfirmationMail),
     orderMailProvider(SendSellerNewOrderMail),
     orderMailProvider(SendOrderShippedMail),
+    marketingProvider(ViewUnsubscribeLink),
+    marketingProvider(UnsubscribeMarketingEmail),
     registerSubscriptionsFrom(
       'notifications',
       [SendOrderConfirmationMail, SendSellerNewOrderMail, SendOrderShippedMail],

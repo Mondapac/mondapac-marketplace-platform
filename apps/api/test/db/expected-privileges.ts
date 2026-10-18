@@ -40,6 +40,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     certification: ['USAGE'],
     commission_payouts: ['USAGE'],
     customers: ['USAGE'],
+    legal: ['USAGE'],
     tax: ['USAGE'],
     pricing: ['USAGE'],
     sellers: ['USAGE'],
@@ -403,6 +404,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['content_ciphertext', 'is_default', 'updated_at'],
     },
+    // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
+    // and is never removed by the API; its history is append-only.
+    'legal.marketing_consents': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['changed_at', 'granted', 'source'],
+    },
+    'legal.marketing_consent_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
     // change, the identity never, and no row is deleted.
     'shipping.seller_flat_fees': {

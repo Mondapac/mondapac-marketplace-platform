@@ -16,6 +16,12 @@ export interface MailMessage {
   readonly subject: string;
   /** Plain text only: no HTML is ever sent, so nothing user-supplied can become markup (HF13). */
   readonly text: string;
+  /**
+   * The one-click unsubscribe URL of a marketing mail (https, RFC 8058): sent as the
+   * `List-Unsubscribe` header with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. Absent on
+   * every other mail. It holds a signed token; never logged.
+   */
+  readonly listUnsubscribe?: string;
 }
 
 /** Why a send failed: a code, never a server message or a value. */
