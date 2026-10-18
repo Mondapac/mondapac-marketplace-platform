@@ -38,11 +38,11 @@ import { SellerShipOrder } from '../application/use-cases/seller-ship-order.use-
 import { SellerViewOrder } from '../application/use-cases/seller-view-order.use-case';
 import { closedBody, refusal } from './http-answers';
 import {
-  SellerOrderDetailBody,
   SellerOrderPageBody,
+  SellerOrderShipBody,
   ShipSellerOrderRequest,
-  sellerOrderDetailBody,
   sellerOrderPageBody,
+  sellerOrderShipBody,
 } from './orders.dto';
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -115,7 +115,7 @@ export class SellerOrdersController {
     description: 'Needs ordering.seller-order.view.',
   })
   @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
-  @ApiOkResponse({ type: SellerOrderDetailBody })
+  @ApiOkResponse({ type: SellerOrderShipBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
@@ -129,7 +129,7 @@ export class SellerOrdersController {
     const result = await this.view.execute(context, { sellerOrderId });
     this.log('ordering.seller-view-order-route', context, result.ok ? 'read' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return sellerOrderDetailBody(result.value);
+    return sellerOrderShipBody(result.value);
   }
 
   @Post(':sellerOrderId/ship')
@@ -143,7 +143,7 @@ export class SellerOrdersController {
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
   @ApiBody({ type: ShipSellerOrderRequest })
-  @ApiOkResponse({ type: SellerOrderDetailBody })
+  @ApiOkResponse({ type: SellerOrderShipBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -167,7 +167,7 @@ export class SellerOrdersController {
       result.ok ? 'shipped' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return sellerOrderDetailBody(result.value);
+    return sellerOrderShipBody(result.value);
   }
 
   @Post(':sellerOrderId/deliver')
@@ -181,7 +181,7 @@ export class SellerOrdersController {
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
   @ApiBody({ schema: { type: 'object', additionalProperties: false } })
-  @ApiOkResponse({ type: SellerOrderDetailBody })
+  @ApiOkResponse({ type: SellerOrderShipBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -204,7 +204,7 @@ export class SellerOrdersController {
       result.ok ? 'delivered' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return sellerOrderDetailBody(result.value);
+    return sellerOrderShipBody(result.value);
   }
 
   private log(msg: string, context: CallContext, outcome: string): void {

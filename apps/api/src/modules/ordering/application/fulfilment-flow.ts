@@ -5,21 +5,28 @@ import { OrderShipped } from '../domain/events';
 import { markDelivered, markShipped, parseShipment, type Fulfilment } from '../domain/order';
 import {
   sellerOrderDetailView,
-  type LabelledSellerOrderDetailView,
   type LabelledSellerOrderPageView,
+  type LabelledSellerOrderShipView,
   type SellerOrderCounts,
   type SellerOrderDetailView,
   type SellerOrderPageView,
 } from '../domain/order-views';
 import type { OrderingDependencies } from './checkout-flow';
 import { labelSellerOrders } from './order-labels';
-import type { SellerOrderPage } from './ports/order.repository';
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from './read-flow';
+import type { SellerOrderPage, SellerOrderRecord } from './ports/order.repository';
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, openShipTo } from './read-flow';
 
 // The seller's side of an order once it is paid: see it, record the shipment (carrier and an
 // optional tracking reference, SHP-01), record the delivery. Each step happens once and in that
 // order; the seller sees only the seller orders of its own shop. Inventory learns of a shipment
-// from the worker (`recordShipments`), not from the seller's request.
+// from the worker (`recordShipments`), not from the seller's request. One seller order's page
+// (view, ship, deliver) carries the delivery address copied at checkout; the list does not.
+
+/** A seller order's detail and the sealed address it is shipped to, read in one unit. */
+interface Detailed {
+  readonly view: SellerOrderDetailView;
+  readonly record: Pick<SellerOrderRecord, 'accountId' | 'shipToSealed'>;
+}
 
 export type FulfilmentFailure =
   | { readonly code: 'access.denied' }
@@ -135,7 +142,7 @@ export async function viewSellerOrder(
   deps: OrderingDependencies,
   context: CallContext,
   input: { readonly sellerOrderId: unknown },
-): Promise<Result<LabelledSellerOrderDetailView, FulfilmentFailure>> {
+): Promise<Result<LabelledSellerOrderShipView, FulfilmentFailure>> {
   const sellerId = sellerOf(context);
   if (sellerId === null) return err({ code: 'access.denied' });
   const sellerOrderId = parseSellerOrderId(input?.sellerOrderId);
@@ -143,7 +150,7 @@ export async function viewSellerOrder(
   return labelled(
     deps,
     context,
-    await deps.unitOfWork.run<SellerOrderDetailView, FulfilmentFailure>(
+    await deps.unitOfWork.run<Detailed, FulfilmentFailure>(
       context.market,
       async () => {
         const record = await deps.orders.findForSeller(
@@ -153,7 +160,7 @@ export async function viewSellerOrder(
         );
         return record === null
           ? err({ code: 'ordering.seller-order-not-found' } as const)
-          : ok(sellerOrderDetailView(record));
+          : ok({ view: sellerOrderDetailView(record), record });
       },
       { readOnly: true },
     ),
@@ -169,7 +176,7 @@ export async function shipSellerOrder(
     readonly carrier: unknown;
     readonly trackingRef: unknown;
   },
-): Promise<Result<LabelledSellerOrderDetailView, FulfilmentFailure>> {
+): Promise<Result<LabelledSellerOrderShipView, FulfilmentFailure>> {
   const sellerId = sellerOf(context);
   if (sellerId === null) return err({ code: 'access.denied' });
   const sellerOrderId = parseSellerOrderId(input?.sellerOrderId);
@@ -180,43 +187,40 @@ export async function shipSellerOrder(
   ];
   if (!sellerOrderId.ok || !shipment.ok) return err({ code: 'validation.failed', fields });
   const now = deps.clock.now();
-  const done = await deps.unitOfWork.run<SellerOrderDetailView, FulfilmentFailure>(
-    context.market,
-    async () => {
-      const record = await deps.orders.findForSeller(context.market, sellerId, sellerOrderId.value);
-      if (record === null) return err({ code: 'ordering.seller-order-not-found' } as const);
-      const shipped = markShipped(record.sellerOrder, shipment.shipment, now);
-      if (shipped === null) return err({ code: 'ordering.fulfilment-conflict' } as const);
-      const saved = await deps.orders.saveFulfilment(
-        context.market,
-        shipped,
-        record.sellerOrder.fulfilment,
-      );
-      if (saved !== 'saved') return err({ code: 'ordering.fulfilment-conflict' } as const);
-      // Written with the shipment, once per seller order (a repeat finds it shipped and conflicts).
-      // A refused event rolls the shipment back: the seller sees a conflict and tries again.
-      try {
-        await deps.outbox.append(context, [
-          OrderShipped.record({
-            aggregateId: shipped.id,
-            aggregateVersion: 1,
-            occurredAt: now,
-            payload: {
-              orderId: record.orderId,
-              sellerOrderId: shipped.id,
-              sellerId: shipped.sellerId,
-            },
-          }),
-        ]);
-      } catch (error) {
-        if (error instanceof OutboxWriteRefusedError) {
-          return err({ code: 'ordering.fulfilment-conflict' } as const);
-        }
-        throw error;
+  const done = await deps.unitOfWork.run<Detailed, FulfilmentFailure>(context.market, async () => {
+    const record = await deps.orders.findForSeller(context.market, sellerId, sellerOrderId.value);
+    if (record === null) return err({ code: 'ordering.seller-order-not-found' } as const);
+    const shipped = markShipped(record.sellerOrder, shipment.shipment, now);
+    if (shipped === null) return err({ code: 'ordering.fulfilment-conflict' } as const);
+    const saved = await deps.orders.saveFulfilment(
+      context.market,
+      shipped,
+      record.sellerOrder.fulfilment,
+    );
+    if (saved !== 'saved') return err({ code: 'ordering.fulfilment-conflict' } as const);
+    // Written with the shipment, once per seller order (a repeat finds it shipped and conflicts).
+    // A refused event rolls the shipment back: the seller sees a conflict and tries again.
+    try {
+      await deps.outbox.append(context, [
+        OrderShipped.record({
+          aggregateId: shipped.id,
+          aggregateVersion: 1,
+          occurredAt: now,
+          payload: {
+            orderId: record.orderId,
+            sellerOrderId: shipped.id,
+            sellerId: shipped.sellerId,
+          },
+        }),
+      ]);
+    } catch (error) {
+      if (error instanceof OutboxWriteRefusedError) {
+        return err({ code: 'ordering.fulfilment-conflict' } as const);
       }
-      return ok(sellerOrderDetailView({ ...record, sellerOrder: shipped }));
-    },
-  );
+      throw error;
+    }
+    return ok({ view: sellerOrderDetailView({ ...record, sellerOrder: shipped }), record });
+  });
   return labelled(deps, context, done);
 }
 
@@ -225,41 +229,45 @@ export async function deliverSellerOrder(
   deps: OrderingDependencies,
   context: CallContext,
   input: { readonly sellerOrderId: unknown },
-): Promise<Result<LabelledSellerOrderDetailView, FulfilmentFailure>> {
+): Promise<Result<LabelledSellerOrderShipView, FulfilmentFailure>> {
   const sellerId = sellerOf(context);
   if (sellerId === null) return err({ code: 'access.denied' });
   const sellerOrderId = parseSellerOrderId(input?.sellerOrderId);
   if (!sellerOrderId.ok) return sellerOrderId;
   const now = deps.clock.now();
-  const done = await deps.unitOfWork.run<SellerOrderDetailView, FulfilmentFailure>(
-    context.market,
-    async () => {
-      const record = await deps.orders.findForSeller(context.market, sellerId, sellerOrderId.value);
-      if (record === null) return err({ code: 'ordering.seller-order-not-found' } as const);
-      const delivered = markDelivered(record.sellerOrder, now);
-      if (delivered === null) return err({ code: 'ordering.fulfilment-conflict' } as const);
-      const saved = await deps.orders.saveFulfilment(
-        context.market,
-        delivered,
-        record.sellerOrder.fulfilment,
-      );
-      return saved === 'saved'
-        ? ok(sellerOrderDetailView({ ...record, sellerOrder: delivered }))
-        : err({ code: 'ordering.fulfilment-conflict' } as const);
-    },
-  );
+  const done = await deps.unitOfWork.run<Detailed, FulfilmentFailure>(context.market, async () => {
+    const record = await deps.orders.findForSeller(context.market, sellerId, sellerOrderId.value);
+    if (record === null) return err({ code: 'ordering.seller-order-not-found' } as const);
+    const delivered = markDelivered(record.sellerOrder, now);
+    if (delivered === null) return err({ code: 'ordering.fulfilment-conflict' } as const);
+    const saved = await deps.orders.saveFulfilment(
+      context.market,
+      delivered,
+      record.sellerOrder.fulfilment,
+    );
+    return saved === 'saved'
+      ? ok({ view: sellerOrderDetailView({ ...record, sellerOrder: delivered }), record })
+      : err({ code: 'ordering.fulfilment-conflict' } as const);
+  });
   return labelled(deps, context, done);
 }
 
-/** The step's answer with the names of its lines, read after the unit has closed. */
+/**
+ * The step's answer with the names of its lines and the opened delivery address, read after the
+ * unit has closed.
+ */
 async function labelled(
   deps: OrderingDependencies,
   context: CallContext,
-  result: Result<SellerOrderDetailView, FulfilmentFailure>,
-): Promise<Result<LabelledSellerOrderDetailView, FulfilmentFailure>> {
+  result: Result<Detailed, FulfilmentFailure>,
+): Promise<Result<LabelledSellerOrderShipView, FulfilmentFailure>> {
   if (!result.ok) return result;
-  const [one] = await labelSellerOrders(deps.labels, context, [result.value]);
-  return ok(one!);
+  const { view, record } = result.value;
+  const [one] = await labelSellerOrders(deps.labels, context, [view]);
+  return ok({
+    ...one!,
+    shipTo: await openShipTo(deps, context, record.accountId, record.shipToSealed),
+  });
 }
 
 export interface ShipmentRecording {

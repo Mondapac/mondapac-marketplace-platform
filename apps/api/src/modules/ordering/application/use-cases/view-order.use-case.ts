@@ -3,11 +3,11 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { OrderingDependencies } from '../checkout-flow';
 import { customerAccountId } from '../customer-caller';
-import type { OrderView } from '../../domain/order-views';
+import type { OwnOrderView } from '../../domain/order-views';
 import { viewOwnOrder, type ReadFailure } from '../read-flow';
 
-/** One of the signed-in customer's own orders. */
-export class ViewOrder extends UseCase<{ readonly orderId: unknown }, OrderView, ReadFailure> {
+/** One of the signed-in customer's own orders, with its delivery address. */
+export class ViewOrder extends UseCase<{ readonly orderId: unknown }, OwnOrderView, ReadFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'ordering.view-order',
     rule: { kind: 'own-resources' },

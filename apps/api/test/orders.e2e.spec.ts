@@ -4,6 +4,7 @@ import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { CART_CHECKOUT_FACADE } from '../src/modules/cart';
+import { CUSTOMERS_CHECKOUT_FACADE } from '../src/modules/customers';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
@@ -11,6 +12,7 @@ import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sess
 import { INVENTORY_ORDERING_PORT } from '../src/modules/inventory/contracts/ordering-port';
 import { CHECKOUT_GATEWAY } from '../src/modules/ordering/application/ports/checkout-gateway';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
+import { SHIP_TO_CIPHER } from '../src/modules/ordering/application/ports/ship-to-cipher';
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
 import { COMMISSION_PAYOUTS_FACADE } from '../src/modules/commission-payouts';
 import { SHIPPING_FACADE } from '../src/modules/shipping';
@@ -25,13 +27,16 @@ import { UNIT_OF_WORK } from '../src/platform/unit-of-work/unit-of-work';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import {
   FakeCart,
+  FakeCustomers,
   FakeGateway,
   FakeInventory,
   FakeCommission,
   FakeTax,
   FakeTaxCategories,
   FakeShipping,
+  FakeShipToCipher,
   MemoryOrders,
+  TEST_DELIVERY_ADDRESS,
 } from './support/ordering-fakes';
 import { FakeUnitOfWork, RecordingAuditWriter, RecordingOutbox } from './support/pricing-fakes';
 import { createTestApp } from './support/test-app';
@@ -57,6 +62,7 @@ const NO_KEY_ROLE = id<'Role'>(0xc0f2);
 const SELLER = id<'Seller'>(0xb020);
 const OFFER = id<'Offer'>(0xc001);
 const VARIANT = id<'Variant'>(0xc002);
+const ADDRESS = id<'CustomerAddress'>(0xad01);
 
 interface Body {
   code: string;
@@ -72,6 +78,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
   expect(ORDERING_STATUS).toEqual({
     'validation.failed': 400,
     'ordering.order-not-found': 404,
+    'ordering.address-not-found': 422,
     'ordering.cart-empty': 422,
     'ordering.cart-not-purchasable': 422,
     'ordering.stock-insufficient': 409,
@@ -106,6 +113,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     inventory = new FakeInventory();
     cart = new FakeCart();
     shipping = new FakeShipping();
+    const customers = new FakeCustomers();
+    customers.addresses.set(ADDRESS, { accountId: CUSTOMER, address: TEST_DELIVERY_ADDRESS });
     // The seller delivers for a flat 5.00.
     shipping.fees.set(SELLER, money(500n, currency));
     cart.lines = [
@@ -140,6 +149,10 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(inventory)
           .overrideProvider(CART_CHECKOUT_FACADE)
           .useValue(cart)
+          .overrideProvider(CUSTOMERS_CHECKOUT_FACADE)
+          .useValue(customers)
+          .overrideProvider(SHIP_TO_CIPHER)
+          .useValue(new FakeShipToCipher())
           .overrideProvider(SHIPPING_FACADE)
           .useValue(shipping)
           .overrideProvider(TAX_FACADE)
@@ -196,7 +209,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     seedAccount(accountId, 'customer', `c${n}`);
     return session(accountId, 'customer', n);
   };
-  const checkout = (headers: Record<string, string>, body: unknown = {}) =>
+  const checkout = (headers: Record<string, string>, body: unknown = { addressId: ADDRESS }) =>
     http()
       .post('/orders/checkout')
       .set({ 'x-market-id': code, ...headers })
@@ -226,7 +239,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(orders.rows.size).toBe(0);
     });
 
-    it('takes JSON with an empty object only', async () => {
+    it('takes JSON with the address id only', async () => {
       const headers = customer();
 
       const form = await http()
@@ -242,6 +255,23 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         details: { fields: [{ path: 'accountId', code: 'unknown-field' }] },
       });
       expect(inventory.calls).toEqual([]);
+    });
+
+    it("refuses a missing address and one that is not the customer's own", async () => {
+      const headers = customer();
+
+      const missing = await checkout(headers, {});
+      const foreign = await checkout(headers, { addressId: id<'CustomerAddress'>(0xad02) });
+
+      expect(missing.status).toBe(400);
+      expect(missing.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'addressId', code: 'required' }] },
+      });
+      expect(foreign.status).toBe(422);
+      expect(foreign.body).toEqual({ statusCode: 422, code: 'ordering.address-not-found' });
+      expect(inventory.calls).toEqual([]);
+      expect(orders.rows.size).toBe(0);
     });
 
     it('answers the refusals with their status and details', async () => {
@@ -374,6 +404,9 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           },
         ],
       });
+      // The address chosen at checkout, as copied onto the order.
+      expect(one.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS });
+      expect(body(list).orders[0]).not.toHaveProperty('shipTo');
       // Nothing of Stripe reaches the customer.
       expect(JSON.stringify(one.body)).not.toMatch(/cs_test|pi_test|idempotency|checkout-/);
       expect(foreign.status).toBe(404);

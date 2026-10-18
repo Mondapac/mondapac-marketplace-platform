@@ -12,11 +12,14 @@ import {
   FakeGateway,
   FakeInventory,
   FakeCommission,
+  FakeCustomers,
   FakeLabels,
   FakeShipping,
+  FakeShipToCipher,
   FakeTax,
   FakeTaxCategories,
   MemoryOrders,
+  TEST_DELIVERY_ADDRESS,
 } from '../../../../test/support/ordering-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
@@ -62,6 +65,7 @@ const OFFER_1 = id<'Offer'>(0x01);
 const OFFER_2 = id<'Offer'>(0x02);
 const OFFER_3 = id<'Offer'>(0x03);
 const VARIANT = id<'Variant'>(0x10);
+const ADDRESS = id<'CustomerAddress'>(0xad);
 
 describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (code) => {
   const market = testMarketContext(code, 'default');
@@ -92,6 +96,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
   let tax: FakeTax;
   let taxCategories: FakeTaxCategories;
   let labels: FakeLabels;
+  let customers: FakeCustomers;
+  let shipToCipher: FakeShipToCipher;
   let deps: OrderingDependencies;
   let written: PendingEvent[];
 
@@ -122,6 +128,9 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     tax = new FakeTax();
     taxCategories = new FakeTaxCategories(code === 'AU' ? 'taxable' : 'zz_standard');
     labels = new FakeLabels();
+    customers = new FakeCustomers();
+    customers.addresses.set(ADDRESS, { accountId: ACCOUNT, address: TEST_DELIVERY_ADDRESS });
+    shipToCipher = new FakeShipToCipher();
     written = [];
     // Seller A charges a flat 5.00 for delivery; seller B delivers free (an explicit zero).
     shipping.fees.set(SELLER_A, money(500n, currency));
@@ -137,6 +146,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       gateway,
       policy: new ConfigOrderingPolicy(markets),
       cart,
+      customers,
+      shipTo: shipToCipher,
       inventory,
       shipping,
       commission,
@@ -154,8 +165,10 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     };
   });
 
-  const start = (context: CallContext = customer) =>
-    new StartCheckout(gate, deps).execute(context, {});
+  const start = (
+    context: CallContext = customer,
+    input: { readonly addressId: unknown } = { addressId: ADDRESS },
+  ) => new StartCheckout(gate, deps).execute(context, input);
   /** A pending order from the default cart, read back from the store. */
   const placed = async () => {
     const result = await start();
@@ -315,6 +328,73 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     it('is for a signed-in customer only', async () => {
       expect(await start(anonymous)).toMatchObject({ ok: false });
       expect(inventory.calls).toEqual([]);
+    });
+  });
+
+  describe('delivery address', () => {
+    it('copies the chosen address onto the order, sealed under the account', async () => {
+      const order = await placed();
+
+      expect(customers.calls).toEqual([ADDRESS]);
+      expect(order.shipToSealed).toBe(`sealed:${ACCOUNT}:${JSON.stringify(TEST_DELIVERY_ADDRESS)}`);
+      const view = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
+      expect(view.ok && view.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+    });
+
+    it('keeps the placed copy when the address book changes later', async () => {
+      const order = await placed();
+      customers.addresses.set(ADDRESS, {
+        accountId: ACCOUNT,
+        address: { ...TEST_DELIVERY_ADDRESS, line1: '99 Other Road' },
+      });
+
+      const view = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
+      expect(view.ok && view.value.shipTo?.line1).toBe('12 Example Street');
+    });
+
+    it('refuses a missing, malformed or foreign address before reading the cart', async () => {
+      customers.addresses.set(id<'CustomerAddress'>(0xae), {
+        accountId: OTHER,
+        address: TEST_DELIVERY_ADDRESS,
+      });
+
+      expect(await start(customer, { addressId: undefined })).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'addressId', code: 'required' }] }),
+      );
+      expect(await start(customer, { addressId: 'not-an-id' })).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'addressId', code: 'format' }] }),
+      );
+      expect(await start(customer, { addressId: id<'CustomerAddress'>(0xae) })).toEqual(
+        err({ code: 'ordering.address-not-found' }),
+      );
+      expect(await start(customer, { addressId: id<'CustomerAddress'>(0xaf) })).toEqual(
+        err({ code: 'ordering.address-not-found' }),
+      );
+      expect(inventory.calls).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+    });
+
+    it('stops when the address book cannot be read or the account was erased', async () => {
+      customers.failure = { code: 'customers.unavailable' };
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      customers.failure = null;
+      shipToCipher.destroyed.add(ACCOUNT);
+      expect(await start()).toEqual(err({ code: 'access.denied' }));
+      expect(inventory.calls).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+    });
+
+    it('shows no address on an order placed before it was recorded or after erasure', async () => {
+      const order = await placed();
+      const other = await placed();
+      orders.rows.set(order.id, { ...orders.rows.get(order.id)!, shipToSealed: null });
+      const view = new ViewOrder(gate, deps);
+
+      const older = await view.execute(customer, { orderId: order.id });
+      expect(older.ok && older.value.shipTo).toBeNull();
+      shipToCipher.destroyed.add(ACCOUNT);
+      const erased = await view.execute(customer, { orderId: other.id });
+      expect(erased.ok && erased.value.shipTo).toBeNull();
     });
   });
 
@@ -909,6 +989,23 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       }
       // Two distinct units of seller A, asked once per answer; never a store or a customer.
       expect(labels.calls).toEqual(Array(4).fill({ lookup: 'units', count: 2 }));
+    });
+
+    it('shows the seller where to send its order on the detail and each step, not the list', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+
+      const page = await list(sellerA);
+      const view = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+      const shipped = await ship(sellerA, sellerOrderId);
+      const delivered = await deliver(sellerA, sellerOrderId);
+
+      for (const answer of [view, shipped, delivered]) {
+        expect(answer.ok && answer.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+      }
+      // The list carries no address, and the seller's answer never names the customer's account.
+      expect(page.ok && 'shipTo' in page.value.sellerOrders[0]!).toBe(false);
+      expect(view.ok && 'accountId' in view.value).toBe(false);
     });
 
     it('still ships, with null names, when the name lookup fails', async () => {

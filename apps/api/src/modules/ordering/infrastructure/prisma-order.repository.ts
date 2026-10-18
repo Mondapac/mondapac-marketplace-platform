@@ -44,6 +44,7 @@ interface OrderRow {
   readonly cancelledAt: Date | null;
   readonly version: number;
   readonly taxStrategyId: string | null;
+  readonly shipToCiphertext: string | null;
   readonly sellerOrders: readonly {
     readonly id: string;
     readonly sellerId: string;
@@ -144,6 +145,7 @@ function toOrder(row: OrderRow): OrderState {
     cancelledAt: row.cancelledAt === null ? null : toInstant(row.cancelledAt),
     version: row.version,
     taxStrategyId: row.taxStrategyId as Id<'TaxStrategy'> | null,
+    shipToSealed: row.shipToCiphertext,
     sellerOrders,
     lines,
   };
@@ -192,6 +194,7 @@ export class PrismaOrderRepository implements OrderRepository {
         cancelledAt: order.cancelledAt === null ? null : toDate(order.cancelledAt),
         version: order.version,
         taxStrategyId: order.taxStrategyId,
+        shipToCiphertext: order.shipToSealed,
       },
     });
     await tx.orderingSellerOrder.createMany({
@@ -478,13 +481,20 @@ function toRecord(
   row: SellerOrderRow & {
     readonly orderId: string;
     readonly lines: readonly LineRow[];
-    readonly order: { readonly currency: string; readonly confirmedAt: Date | null };
+    readonly order: {
+      readonly accountId: string;
+      readonly currency: string;
+      readonly confirmedAt: Date | null;
+      readonly shipToCiphertext: string | null;
+    };
   },
 ): SellerOrderRecord {
   if (row.order.confirmedAt === null) throw new Error('A paid order without its payment time');
   return {
     sellerOrder: toSellerOrder(row),
     orderId: row.orderId as Id<'Order'>,
+    accountId: row.order.accountId as Id<'Account'>,
+    shipToSealed: row.order.shipToCiphertext,
     currency: row.order.currency,
     confirmedAt: toInstant(row.order.confirmedAt),
     lines: [...row.lines].sort(byOffer).map((l) => toLine(l, row.order.currency)),

@@ -18,6 +18,7 @@ import { InMemoryAddresses, ReversibleAddressCipher } from './testing/in-memory-
 import { CreateAddress } from './use-cases/create-address.use-case';
 import { DeleteAddress } from './use-cases/delete-address.use-case';
 import { ListAddresses } from './use-cases/list-addresses.use-case';
+import { ReadDeliveryAddress } from './use-cases/read-delivery-address.use-case';
 import { SetDefaultAddress } from './use-cases/set-default-address.use-case';
 import { UpdateAddress } from './use-cases/update-address.use-case';
 
@@ -240,6 +241,52 @@ describe.each([['AU'], ['ZZ']] as const)('customer address book in market %s', (
     expect(await uc.create.execute(alice, address('After erasure'))).toEqual({
       ok: false,
       error: { code: 'access.denied' },
+    });
+  });
+
+  describe('read-delivery-address (checkout)', () => {
+    const read = (context = alice, addressId: unknown = undefined) =>
+      new ReadDeliveryAddress(gate, deps).execute(context, { addressId });
+
+    it("answers one of the customer's own addresses with its country", async () => {
+      const created = await add();
+      const answer = await read(alice, created.id);
+      expect(answer).toEqual({
+        ok: true,
+        value: {
+          recipientFirstName: 'Aisha',
+          recipientLastName: 'Rahman',
+          phone: '+61412345678',
+          line1: 'One Street',
+          line2: null,
+          suburb: 'Sunnybank',
+          region: settings.address.regions[0],
+          postcode: code === 'AU' ? '4109' : '1000001',
+          deliveryNotes: null,
+          countryCode: settings.address.countryCode,
+        },
+      });
+    });
+
+    it("answers another's, an unknown and an erased address alike", async () => {
+      const created = await add();
+      const notFound = { ok: false, error: { code: 'customers.address-not-found' } };
+      expect(await read(bob, created.id)).toEqual(notFound);
+      expect(await read(alice, id<'CustomerAddress'>(0xdead))).toEqual(notFound);
+      cipher.destroyed.add(ALICE);
+      expect(await read(alice, created.id)).toEqual(notFound);
+    });
+
+    it('refuses a bad id and any account but a customer', async () => {
+      expect(await read(alice, 'not-a-uuid')).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'addressId', code: 'format' }] },
+      });
+      const created = await add();
+      expect(await read(as('seller', ALICE), created.id)).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
     });
   });
 

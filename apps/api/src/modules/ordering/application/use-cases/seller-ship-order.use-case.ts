@@ -3,12 +3,12 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { ORDERING_SELLER_ORDER_SHIP } from '../../contracts/permissions';
 import type { OrderingDependencies } from '../checkout-flow';
 import { shipSellerOrder, type FulfilmentFailure } from '../fulfilment-flow';
-import type { LabelledSellerOrderDetailView } from '../../domain/order-views';
+import type { LabelledSellerOrderShipView } from '../../domain/order-views';
 
 /** The seller records the shipment of one of its paid seller orders: carrier and an optional tracking reference (SHP-01). */
 export class SellerShipOrder extends UseCase<
   { readonly sellerOrderId: unknown; readonly carrier: unknown; readonly trackingRef: unknown },
-  LabelledSellerOrderDetailView,
+  LabelledSellerOrderShipView,
   FulfilmentFailure
 > {
   static override readonly access: AccessDeclaration = {

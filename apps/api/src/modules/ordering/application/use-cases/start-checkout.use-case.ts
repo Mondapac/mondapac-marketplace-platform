@@ -7,12 +7,16 @@ import {
   type CheckoutStarted,
   type OrderingDependencies,
   type StartCheckoutFailure,
+  type StartCheckoutInput,
 } from '../checkout-flow';
 import { customerAccountId } from '../customer-caller';
 
-/** Turns the signed-in customer's cart into a pending order and a hosted payment page. */
+/**
+ * Turns the signed-in customer's cart into a pending order, with a fixed copy of the chosen
+ * delivery address, and a hosted payment page.
+ */
 export class StartCheckout extends UseCase<
-  Record<string, never>,
+  StartCheckoutInput,
   CheckoutStarted,
   StartCheckoutFailure
 > {
@@ -31,10 +35,10 @@ export class StartCheckout extends UseCase<
     super(gate);
   }
 
-  protected async handle(context: CallContext) {
+  protected async handle(context: CallContext, input: StartCheckoutInput) {
     const accountId = customerAccountId(context);
     if (accountId === null) return err({ code: 'access.denied' } as const);
-    const result = await startCheckout(this.deps, context, accountId);
+    const result = await startCheckout(this.deps, context, accountId, input);
     if (!result.ok && result.error.code === 'ordering.shipping-unavailable') {
       // A seller has no flat shipping fee: an admin must set one before anything can be sold.
       this.#logger.warn({

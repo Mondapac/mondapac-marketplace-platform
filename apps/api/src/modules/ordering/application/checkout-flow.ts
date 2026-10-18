@@ -9,6 +9,7 @@ import type {
 } from '@mondapac/shared-kernel';
 import type { CartCheckoutFacade } from '../../cart';
 import type { CommissionPayoutsFacade } from '../../commission-payouts';
+import type { CustomersCheckoutFacade } from '../../customers';
 import type { ShippingFacade } from '../../shipping';
 import type { TaxFacade } from '../../tax';
 import type {
@@ -25,12 +26,14 @@ import {
   planOrder,
   type OrderLine,
   type OrderState,
+  type ShipTo,
 } from '../domain/order';
 import type { CheckoutGateway } from './ports/checkout-gateway';
 import type { OrderLabels } from './ports/order-labels';
 import type { OrderTaxCategories } from './ports/order-tax-categories';
 import type { OrderingPolicy } from './ports/ordering-policy';
 import type { OrderRepository } from './ports/order.repository';
+import type { ShipToCipher } from './ports/ship-to-cipher';
 
 export interface OrderingDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -38,6 +41,9 @@ export interface OrderingDependencies {
   readonly gateway: CheckoutGateway;
   readonly policy: OrderingPolicy;
   readonly cart: CartCheckoutFacade;
+  /** The customer's address book: checkout copies the chosen address onto the order. */
+  readonly customers: CustomersCheckoutFacade;
+  readonly shipTo: ShipToCipher;
   readonly inventory: InventoryOrderingPort;
   readonly shipping: ShippingFacade;
   readonly commission: CommissionPayoutsFacade;
@@ -53,6 +59,12 @@ export interface OrderingDependencies {
 
 export type StartCheckoutFailure =
   | { readonly code: 'access.denied' }
+  | {
+      readonly code: 'validation.failed';
+      readonly fields: readonly { path: string; code: string }[];
+    }
+  /** The chosen address is not one of the customer's (unknown, removed or another's). */
+  | { readonly code: 'ordering.address-not-found' }
   | { readonly code: 'ordering.cart-empty' }
   | { readonly code: 'ordering.cart-not-purchasable'; readonly lineIndexes: readonly number[] }
   | { readonly code: 'ordering.check-unavailable' }
@@ -108,9 +120,57 @@ async function reserveWithRetry(
   return last;
 }
 
+/** What the customer sends to start checkout: the id of an address of their address book. */
+export interface StartCheckoutInput {
+  readonly addressId: unknown;
+}
+
+/**
+ * Reads the chosen address from the customer's address book and seals a fixed copy of it under
+ * the account's key, before anything is reserved: no order is ever placed without an address.
+ */
+async function sealShipTo(
+  deps: OrderingDependencies,
+  context: CallContext,
+  accountId: Id<'Account'>,
+  addressId: unknown,
+): Promise<Result<string, StartCheckoutFailure>> {
+  if (addressId === undefined || addressId === null) {
+    return err({ code: 'validation.failed', fields: [{ path: 'addressId', code: 'required' }] });
+  }
+  const address = await deps.customers.deliveryAddress(context, addressId);
+  if (!address.ok) {
+    switch (address.error.code) {
+      case 'access.denied':
+        return err({ code: 'access.denied' });
+      case 'validation.failed':
+        return err({ code: 'validation.failed', fields: [{ path: 'addressId', code: 'format' }] });
+      case 'customers.address-not-found':
+        return err({ code: 'ordering.address-not-found' });
+      default:
+        return err({ code: 'ordering.check-unavailable' });
+    }
+  }
+  const a = address.value;
+  const shipTo: ShipTo = {
+    recipientFirstName: a.recipientFirstName,
+    recipientLastName: a.recipientLastName,
+    phone: a.phone,
+    line1: a.line1,
+    line2: a.line2,
+    suburb: a.suburb,
+    region: a.region,
+    postcode: a.postcode,
+    deliveryNotes: a.deliveryNotes,
+    countryCode: a.countryCode,
+  };
+  const sealed = await deps.shipTo.seal(context.market, accountId, shipTo);
+  return sealed.ok ? ok(sealed.value) : err({ code: 'access.denied' });
+}
+
 /**
  * `start-checkout`: the signed-in customer's cart becomes a pending order and a hosted payment
- * page. In order: read the cart (price and stock verdicts), plan sellers and totals, reserve the
+ * page. In order: copy the chosen delivery address (customers package 2), read the cart (price and stock verdicts), plan sellers and totals, reserve the
  * stock for the whole checkout (all lines or none), store the order and its Stripe idempotency
  * key, create the Checkout session, store its id. Nothing is captured here. Any failure after
  * the reservation releases it and cancels the order.
@@ -119,7 +179,10 @@ export async function startCheckout(
   deps: OrderingDependencies,
   context: CallContext,
   accountId: Id<'Account'>,
+  input: StartCheckoutInput,
 ): Promise<Result<CheckoutStarted, StartCheckoutFailure>> {
+  const shipToSealed = await sealShipTo(deps, context, accountId, input?.addressId);
+  if (!shipToSealed.ok) return shipToSealed;
   const read = await deps.cart.checkoutLines(context);
   if (!read.ok) {
     if (read.error.code === 'cart.not-ready') {
@@ -323,6 +386,7 @@ export async function startCheckout(
     cancelledAt: null,
     version: 1,
     taxStrategyId: taxed.value.strategyId,
+    shipToSealed: shipToSealed.value,
     sellerOrders: sellerOrders.map(({ id, seller }) => ({
       id,
       sellerId: seller.sellerId,

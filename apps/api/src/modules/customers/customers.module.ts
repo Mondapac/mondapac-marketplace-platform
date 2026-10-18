@@ -10,10 +10,13 @@ import { ADDRESS_REPOSITORY } from './application/ports/address.repository';
 import { CreateAddress } from './application/use-cases/create-address.use-case';
 import { DeleteAddress } from './application/use-cases/delete-address.use-case';
 import { ListAddresses } from './application/use-cases/list-addresses.use-case';
+import { ReadDeliveryAddress } from './application/use-cases/read-delivery-address.use-case';
 import { SetDefaultAddress } from './application/use-cases/set-default-address.use-case';
 import { UpdateAddress } from './application/use-cases/update-address.use-case';
+import { CUSTOMERS_CHECKOUT_FACADE } from './contracts';
 import { customersProviders } from './infrastructure/customers-providers';
 import { AddressBookController } from './presentation/address-book.controller';
+import { CustomersCheckoutFacadeImplementation } from './presentation/customers-checkout.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: CustomersDependencies) => U;
 
@@ -45,15 +48,27 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Customers: the buyer's own data beside the `identity` account (customers package 1: the
  * delivery address book). A signed-in customer keeps up to the Market's limit of addresses, one of
  * them the default; each address is sealed under the account's subject key. No permission key:
- * every use case is the customer's own (`own-resources`). Checkout picks an address in package 2.
+ * every use case is the customer's own (`own-resources`). Package 2: checkout reads the chosen
+ * address through `CUSTOMERS_CHECKOUT_FACADE` and copies it onto the order.
  */
 @Module({
   controllers: [AddressBookController],
   providers: [
     ...customersProviders,
-    ...[ListAddresses, CreateAddress, UpdateAddress, DeleteAddress, SetDefaultAddress].map((type) =>
-      useCaseProvider(type as UseCaseClass<unknown>),
-    ),
+    ...[
+      ListAddresses,
+      CreateAddress,
+      UpdateAddress,
+      DeleteAddress,
+      SetDefaultAddress,
+      ReadDeliveryAddress,
+    ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    {
+      provide: CUSTOMERS_CHECKOUT_FACADE,
+      inject: [ReadDeliveryAddress],
+      useFactory: (read: ReadDeliveryAddress) => new CustomersCheckoutFacadeImplementation(read),
+    },
   ],
+  exports: [CUSTOMERS_CHECKOUT_FACADE],
 })
 export class CustomersModule {}

@@ -27,10 +27,12 @@ import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox
 import {
   FakeCart,
   FakeCommission,
+  FakeCustomers,
   FakeGateway,
   FakeInventory,
   FakeLabels,
   FakeShipping,
+  FakeShipToCipher,
   FakeTax,
   FakeTaxCategories,
 } from '../support/ordering-fakes';
@@ -74,6 +76,8 @@ describe.each(TEST_MARKETS)(
         gateway: new FakeGateway(),
         policy: new ConfigOrderingPolicy(markets),
         cart: new FakeCart(),
+        customers: new FakeCustomers(),
+        shipTo: new FakeShipToCipher(),
         inventory: new FakeInventory(),
         shipping: new FakeShipping(),
         commission: new FakeCommission(),
@@ -119,6 +123,7 @@ describe.each(TEST_MARKETS)(
         cancelledAt: null,
         version: 1,
         taxStrategyId: null,
+        shipToSealed: null,
         sellerOrders: sellerOrderIds.map((id, index) => ({
           id,
           sellerId: sellerIds[index]!,

@@ -89,6 +89,25 @@ export interface SellerOrder {
   readonly ledgerState: LedgerState;
 }
 
+/**
+ * Where the order goes (customers package 2): a fixed copy of the address the customer picked at
+ * checkout, so a later change or removal in the address book never touches a placed order.
+ * PERSONAL DATA: never logged, never in an event or an error.
+ */
+export interface ShipTo {
+  readonly recipientFirstName: string;
+  readonly recipientLastName: string;
+  readonly phone: string;
+  readonly line1: string;
+  readonly line2: string | null;
+  readonly suburb: string;
+  readonly region: string | null;
+  readonly postcode: string;
+  readonly deliveryNotes: string | null;
+  /** ISO 3166 country of the address. */
+  readonly countryCode: string;
+}
+
 export interface OrderState {
   readonly id: Id<'Order'>;
   readonly marketId: MarketId;
@@ -111,6 +130,12 @@ export interface OrderState {
    * built-in one (and on orders placed before tax was recorded).
    */
   readonly taxStrategyId: Id<'TaxStrategy'> | null;
+  /**
+   * The {@link ShipTo} sealed under the customer account's subject key, written once at
+   * checkout; null on orders placed before the address was recorded. Erasing the account makes it
+   * unreadable for ever while the order's financial record stays.
+   */
+  readonly shipToSealed: string | null;
   readonly sellerOrders: readonly SellerOrder[];
   readonly lines: readonly OrderLine[];
 }

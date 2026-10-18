@@ -272,3 +272,36 @@ export async function setDefaultAddress(
     limit: settings.limit,
   });
 }
+
+/** One address as checkout copies it onto an order: the content and its country. */
+export interface DeliveryAddressView extends AddressContent {
+  readonly countryCode: string;
+}
+
+/**
+ * Checkout reads one of the customer's own addresses (customers package 2) to copy it onto the
+ * order. Unknown, foreign and erased are one answer.
+ */
+export async function readDeliveryAddress(
+  deps: CustomersDependencies,
+  context: CallContext,
+  input: { readonly addressId: unknown },
+): Promise<Result<DeliveryAddressView, AddressBookFailure>> {
+  const accountId = customerOf(context);
+  if (accountId === null) return err({ code: 'access.denied' });
+  const id = addressIdOf(input?.addressId);
+  if (id === null) return err(invalid('addressId', 'format'));
+  if (deps.policy.settings(context.market) === null) return err({ code: 'customers.unavailable' });
+  const record = await deps.unitOfWork.run<AddressRecord, AddressBookFailure>(
+    context.market,
+    async () => {
+      const found = await deps.addresses.find(context.market, accountId, id);
+      return found === null ? err({ code: 'customers.address-not-found' } as const) : ok(found);
+    },
+    { readOnly: true },
+  );
+  if (!record.ok) return record;
+  const opened = await deps.cipher.open(context.market, accountId, record.value.sealed);
+  if (!opened.ok) return err({ code: 'customers.address-not-found' });
+  return ok({ ...opened.value, countryCode: record.value.countryCode });
+}

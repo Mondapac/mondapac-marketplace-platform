@@ -25,10 +25,26 @@ This note records what is built and the rules it keeps.
 - No address value reaches a log, an event, an audit row or an error (a refused field gives its
   path and a code only). Writes run serializable (the limit and the one default span rows).
 
+## Package 2: the address at checkout and on the order
+
+- `POST /orders/checkout` takes `{ "addressId": "<uuid>" }`, one of the customer's own
+  addresses. Ordering reads it through `CUSTOMERS_CHECKOUT_FACADE` (use case
+  `customers.read-delivery-address`, `own-resources`) before the cart or the stock is touched:
+  missing is `validation.failed` (400), another customer's, unknown or erased is
+  `ordering.address-not-found` (422). Stripe Checkout still collects no address.
+- The order keeps a fixed copy in `ordering.orders.ship_to_ciphertext`: the address and its
+  country as one ciphertext under the customer account's subject key (`ordering.order.ship-to`),
+  written once at insert. A later change or removal in the address book never touches it;
+  destroying the key at account deletion erases it while the order's money stays.
+- Who sees it: the customer on `GET /orders/:id` and the seller on its own seller order page
+  (view, ship, deliver), as `shipTo` (recipient name, phone, address lines, suburb, region,
+  postcode, delivery notes, country), never the customer's email or account id. Lists and the
+  admin order page carry no address. `shipTo` is null on orders placed before this package and
+  once the account was erased.
+
 ## Next packages
 
-2. Checkout picks an address and copies it onto the order (snapshot); the seller sees ship-to on
-   its own orders only. 3. Customer profile API. 4. Marketing consent record in `legal`.
+3. Customer profile API. 4. Marketing consent record in `legal`.
 5. Customer account deletion (v1.5).
 
 ## Open follow-ups (Hassan, PR #405 review: GO, two low findings)
