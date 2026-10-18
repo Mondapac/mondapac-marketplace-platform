@@ -16,6 +16,7 @@ import { PUBLIC_VISIBILITY } from './application/ports/public-visibility';
 import { SEARCH_POLICY } from './application/ports/search-policy';
 import { SHELF_DOCUMENTS_READER } from './application/ports/shelf-documents.reader';
 import { SHELF_SOURCES } from './application/ports/shelf-sources';
+import { PUBLISHED_VARIANTS } from './application/ports/published-variants';
 import type { ShelfDependencies } from './application/shelf-dependencies';
 import { ListBestsellers } from './application/use-cases/list-bestsellers.use-case';
 import { ListSpecials } from './application/use-cases/list-specials.use-case';
@@ -63,6 +64,7 @@ const SHELF_PORTS: readonly [keyof ShelfDependencies, InjectionToken][] = [
   ['sources', SHELF_SOURCES],
   ['visibility', PUBLIC_VISIBILITY],
   ['policy', SEARCH_POLICY],
+  ['variants', PUBLISHED_VARIANTS],
 ];
 
 /** The two shelf use cases share their own dependency object. */

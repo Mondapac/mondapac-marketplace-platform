@@ -10,6 +10,7 @@ import type { OfferHit } from '../domain/offer-document';
 import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
 import type { PublicVisibility } from './ports/public-visibility';
+import type { PublishedVariants } from './ports/published-variants';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
 import type { ShelfSources, ShelfSpecial } from './ports/shelf-sources';
 import type { ShelfDependencies } from './shelf-dependencies';
@@ -93,6 +94,20 @@ class StubVisibility implements PublicVisibility {
   }
 }
 
+class StubVariants implements PublishedVariants {
+  unpublished = new Set<Id<'Variant'>>();
+  failing = false;
+  published(_context: CallContext, offerIds: readonly Id<'Offer'>[]) {
+    if (this.failing) return Promise.resolve(null);
+    const all = [...Array(0x40).keys()].map((n) => variant(n));
+    return Promise.resolve(
+      new Map(
+        offerIds.map((o) => [o, new Set(all.filter((v) => !this.unpublished.has(v)))] as const),
+      ),
+    );
+  }
+}
+
 describe.each([
   ['AU', 'AUD'],
   ['ZZ', 'JPY'],
@@ -106,6 +121,7 @@ describe.each([
   let reader: StubReader;
   let sources: StubSources;
   let visibility: StubVisibility;
+  let variants: StubVariants;
   let deps: ShelfDependencies;
 
   beforeEach(() => {
@@ -113,6 +129,7 @@ describe.each([
     reader = new StubReader();
     sources = new StubSources();
     visibility = new StubVisibility();
+    variants = new StubVariants();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       reader,
@@ -120,6 +137,7 @@ describe.each([
       sources,
       visibility,
       policy: new ConfigSearchPolicy(markets),
+      variants,
     };
   });
 
@@ -146,8 +164,8 @@ describe.each([
         ok: true,
         value: {
           items: [3, 1, 2, 4].map((n) => {
-            const { rank: _rank, ...item } = hit(n);
-            return item;
+            const { offerId, productId, sellerId, name, shortText, categoryIds } = hit(n);
+            return { offerId, productId, sellerId, name, shortText, categoryIds };
           }),
         },
       });
@@ -201,7 +219,10 @@ describe.each([
 
       expect(result).toEqual({
         ok: false,
-        error: { code: 'validation.failed', fields: [{ path, code: expect.any(String) }] },
+        error: {
+          code: 'validation.failed',
+          fields: [{ path, code: expect.any(String) as unknown }],
+        },
       });
       expect(sources.asked).toEqual([]);
     });
@@ -248,6 +269,24 @@ describe.each([
       const result = await run({ category: CATEGORY });
 
       expect(result.ok && result.value.items.map((i) => i.offerId)).toEqual([offer(1)]);
+    });
+
+    it('skips a key whose Variant is not published and uses the Offer next key', async () => {
+      shelves.documents = [hit(1)];
+      sources.specials_ = [special(1, 10), special(1, 11)];
+      variants.unpublished.add(variant(10));
+
+      const result = await run({});
+
+      expect(result.ok && result.value.items.map((i) => i.variantId)).toEqual([variant(11)]);
+    });
+
+    it('is unavailable when the published-variant check fails', async () => {
+      shelves.documents = [hit(1)];
+      sources.specials_ = [special(1)];
+      variants.failing = true;
+
+      expect(await run({})).toEqual({ ok: false, error: { code: 'search.unavailable' } });
     });
 
     it('is unavailable when pricing or the check fails', async () => {

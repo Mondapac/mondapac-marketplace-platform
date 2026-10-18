@@ -27,6 +27,11 @@ import {
 } from '../application/ports/shelf-documents.reader';
 import { SHELF_SOURCES, type ShelfSources } from '../application/ports/shelf-sources';
 import { FacadeShelfSources } from './facade-shelf-sources';
+import { FacadePublishedVariants } from './facade-published-variants';
+import {
+  PUBLISHED_VARIANTS,
+  type PublishedVariants,
+} from '../application/ports/published-variants';
 import { PrismaShelfDocumentsReader } from './prisma-shelf-documents.reader';
 import { ConfigSearchPolicy } from './config-search-policy';
 import { FacadeOfferFeed } from './facade-offer-feed';
@@ -78,5 +83,10 @@ export const searchProviders: readonly FactoryProvider[] = [
     inject: [ORDERING_RANKING_FACADE, PRICING_SPECIALS_FACADE],
     useFactory: (ordering: OrderingRankingFacade, pricing: PricingSpecialsFacade): ShelfSources =>
       new FacadeShelfSources(ordering, pricing),
+  },
+  {
+    provide: PUBLISHED_VARIANTS,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): PublishedVariants => new FacadePublishedVariants(catalog),
   },
 ];

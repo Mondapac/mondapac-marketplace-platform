@@ -51,7 +51,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { ownerTestDatabaseUrl } from './test-database';
 
 // The reads behind the storefront shelves and navigation on PostgreSQL, as the application role,
 // for both Market fixtures: the live category tree (catalog), the best sellers (ordering), the
@@ -236,7 +236,7 @@ describe.each(TEST_MARKETS)('storefront reads in market %s (database)', (code) =
     it('ranks Offers by paid order lines in the last 30 days, ties by id, Market only', async () => {
       const [top, second, tieA, tieB, unpaid, old] = Array.from({ length: 6 }, () =>
         ids.next<'Offer'>(),
-      ) as Id<'Offer'>[];
+      );
       for (let n = 0; n < 3; n += 1) await order(market, [top!], { confirmed: true });
       await order(market, [second!, tieA!], { confirmed: true });
       await order(market, [second!, tieB!], { confirmed: true });
