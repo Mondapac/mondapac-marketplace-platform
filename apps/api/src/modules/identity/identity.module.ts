@@ -148,6 +148,7 @@ import { DescribeSellerStatus } from './application/use-cases/describe-seller-st
 import { ListRegisteredSellers } from './application/use-cases/list-registered-sellers.use-case';
 import { ContactEmailOf } from './application/use-cases/contact-email-of.use-case';
 import { CustomerAccountSummaries } from './application/use-cases/customer-account-summaries.use-case';
+import { CustomerShortNames } from './application/use-cases/customer-short-names.use-case';
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
 import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
@@ -779,6 +780,12 @@ function useCaseProvider<D, U>(
       grants: true,
     }),
     useCaseProvider(CustomerAccountSummaries, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+    }),
+    useCaseProvider(CustomerShortNames, {
       unitOfWork: true,
       accounts: true,
       grants: true,
@@ -1559,6 +1566,7 @@ function useCaseProvider<D, U>(
         ContactEmailOf,
         RequireStepUp,
         CustomerAccountSummaries,
+        CustomerShortNames,
       ],
       useFactory: (
         describeActor: DescribeActor,
@@ -1568,6 +1576,7 @@ function useCaseProvider<D, U>(
         contactEmailOf: ContactEmailOf,
         requireStepUp: RequireStepUp,
         customerAccountSummaries: CustomerAccountSummaries,
+        customerShortNames: CustomerShortNames,
       ) =>
         new IdentityFacadeImplementation({
           describeActor,
@@ -1577,6 +1586,7 @@ function useCaseProvider<D, U>(
           contactEmailOf,
           requireStepUp,
           customerAccountSummaries,
+          customerShortNames,
         }),
     },
     {

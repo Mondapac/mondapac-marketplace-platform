@@ -12,7 +12,7 @@ import { orderUnitKey, type OrderLabels, type OrderUnitKey } from './ports/order
 
 const logger = new Logger('OrderLabels');
 
-type Lookup = 'unit-labels' | 'store-names' | 'customers';
+type Lookup = 'unit-labels' | 'store-names' | 'customers' | 'customer-short-names';
 
 function settled<T>(
   context: CallContext,
@@ -105,4 +105,28 @@ export async function labelSellerOrders(
   const [answer] = await Promise.allSettled([labels.unitLabelsOf(context, [...units.values()])]);
   const unitLabels = settled(context, 'unit-labels', answer);
   return orders.map((order) => ({ ...order, lines: labelLines(order.lines, unitLabels) }));
+}
+
+/**
+ * The short customer name of each seller order in `accounts` (seller order to customer account),
+ * in ONE batched call after the read unit has closed. A failed lookup is logged (never a name)
+ * and answers no names; a customer without a name, or a member without the key, is absent.
+ */
+export async function shortNamesOfSellerOrders(
+  labels: OrderLabels,
+  context: CallContext,
+  accounts: ReadonlyMap<Id<'SellerOrder'>, Id<'Account'>>,
+): Promise<ReadonlyMap<Id<'SellerOrder'>, string>> {
+  if (accounts.size === 0) return new Map();
+  const [answer] = await Promise.allSettled([
+    labels.customerShortNamesOf(context, [...new Set(accounts.values())]),
+  ]);
+  const names = settled(context, 'customer-short-names', answer);
+  const out = new Map<Id<'SellerOrder'>, string>();
+  if (names === undefined) return out;
+  for (const [sellerOrderId, accountId] of accounts) {
+    const name = names.get(accountId);
+    if (name !== undefined) out.set(sellerOrderId, name);
+  }
+  return out;
 }

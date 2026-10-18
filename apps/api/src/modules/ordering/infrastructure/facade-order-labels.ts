@@ -100,4 +100,23 @@ export class FacadeOrderLabels implements OrderLabels {
     }
     return customers;
   }
+
+  async customerShortNamesOf(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, string>> {
+    const requested = new Set(accountIds);
+    const names = new Map<Id<'Account'>, string>();
+    for (const batch of chunks([...requested], MAX_ID_BATCH)) {
+      const answer = await this.identity.customerShortNames(context, batch);
+      if (!answer.ok) {
+        if (answer.error.code === 'access.denied') return new Map();
+        throw new Error(`identity.customerShortNames: ${answer.error.code}`);
+      }
+      for (const summary of answer.value) {
+        if (requested.has(summary.accountId)) names.set(summary.accountId, summary.shortName);
+      }
+    }
+    return names;
+  }
 }

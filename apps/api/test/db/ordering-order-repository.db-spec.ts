@@ -424,6 +424,31 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(read?.lines).toHaveLength(1);
   });
 
+  it("answers the customer account of a seller's own paid seller orders only", async () => {
+    const paid = await paidOrder();
+    const unpaid = newOrder();
+    await value(market, () => repository.insert(market, unpaid));
+    const seller = paid.sellerOrders[0]!;
+    const unpaidSeller = unpaid.sellerOrders[0]!;
+
+    const own = await value(market, () =>
+      repository.customerAccountsForSeller(market, seller.sellerId, [seller.id, unpaidSeller.id]),
+    );
+    const foreign = await value(market, () =>
+      repository.customerAccountsForSeller(market, ids.next<'Seller'>(), [seller.id]),
+    );
+    const elsewhere = await value(other, () =>
+      repository.customerAccountsForSeller(other, seller.sellerId, [seller.id]),
+    );
+
+    expect([...own]).toEqual([[seller.id, paid.accountId]]);
+    expect(foreign.size).toBe(0);
+    expect(elsewhere.size).toBe(0);
+    expect(
+      await value(market, () => repository.customerAccountsForSeller(market, seller.sellerId, [])),
+    ).toEqual(new Map());
+  });
+
   it('shows a seller only its own paid seller orders, newest payment first', async () => {
     const paid = await paidOrder();
     const unpaid = newOrder();

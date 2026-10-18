@@ -58,6 +58,18 @@ export interface ShipmentNotice {
 export type ShipmentNoticeFailure = OrderNoticeFailure;
 
 /**
+ * The short customer name of one of the seller's own paid seller orders (in-app notices). PERSONAL
+ * DATA for the seller member who asked: never logged, stored on a notice, cached or put in an
+ * event; rendered as escaped text only.
+ */
+export interface SellerOrderCustomerName {
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly customerShortName: string;
+}
+
+export type SellerOrderCustomerNamesFailure = AccessDenied | { readonly code: 'validation.failed' };
+
+/**
  * What `payments` (the Stripe webhook receiver) calls. Both methods take the system actor's
  * `CallContext` unchanged and are idempotent: a repeated event changes nothing.
  */
@@ -99,6 +111,18 @@ export interface OrderingFacade {
     context: CallContext,
     request: { readonly orderId: string; readonly sellerOrderId: string },
   ): Promise<Result<ShipmentNotice, ShipmentNoticeFailure>>;
+
+  /**
+   * The short customer name of each of the seller's own paid seller orders asked for, for the
+   * seller's order notices (read at render time; a notice stores no name). Rule `permissions
+   * [ordering.seller-order.view]`, seller scope; a name shows only while the member also holds
+   * `identity.customer-short-name.view`. Another shop's, unknown, unpaid and nameless seller
+   * orders are absent. At most 100 ids.
+   */
+  sellerOrderCustomerNames(
+    context: CallContext,
+    sellerOrderIds: readonly string[],
+  ): Promise<Result<readonly SellerOrderCustomerName[], SellerOrderCustomerNamesFailure>>;
 }
 
 /** Nest token of the {@link OrderingFacade}, provided and exported by `OrderingModule`. */

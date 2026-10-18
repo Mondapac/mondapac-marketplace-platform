@@ -48,6 +48,14 @@ export interface OrderLabels {
     context: CallContext,
     accountIds: readonly Id<'Account'>[],
   ): Promise<ReadonlyMap<Id<'Account'>, OrderCustomer>>;
+  /**
+   * identity's `customerShortNames` (`identity.customer-short-name.view`), for a seller's own
+   * order notices. A seller member without the key gets an empty map, not an error.
+   */
+  customerShortNamesOf(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, string>>;
 }
 
 export const ORDER_LABELS = Symbol('ORDER_LABELS');

@@ -178,6 +178,30 @@ describe('SellerNotifications drawer', () => {
     );
   });
 
+  it("shows the customer's short name, as text, when the list carries one", async () => {
+    counts = [{ unread: 1, newest: notice(NEW) }];
+    call.mockImplementation((method, path) =>
+      Promise.resolve(
+        path.includes('?show=')
+          ? {
+              ok: true as const,
+              status: 200,
+              body: {
+                items: [{ ...notice(NEW), customerShortName: '<b>Maryam</b> R.' }],
+                next: null,
+              },
+            }
+          : answer(path, method),
+      ),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
+    const link = await screen.findByRole('link', {
+      name: /New order from <b>Maryam<\/b> R\. with 2\u00a0items is paid/,
+    });
+    expect(link.querySelector('b')).toBeNull();
+  });
+
   it('marks all as read', async () => {
     counts = [{ unread: 1, newest: notice(NEW) }];
     mount();
