@@ -40,6 +40,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     certification: ['USAGE'],
     commission_payouts: ['USAGE'],
     customers: ['USAGE'],
+    engagement: ['USAGE'],
     legal: ['USAGE'],
     tax: ['USAGE'],
     storefront: ['USAGE'],
@@ -485,6 +486,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['changed_at', 'granted', 'source'],
     },
     'legal.marketing_consent_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Engagement (personalization 1a): behaviour events are inserted and deleted (retention purge,
+    // switch off, account deletion), never changed; the switch changes and goes with the account.
+    'engagement.behaviour_events': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'engagement.personalization_settings': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['changed_at', 'enabled'],
+    },
     // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
     // change, the identity never, and no row is deleted.
     'shipping.seller_flat_fees': {
