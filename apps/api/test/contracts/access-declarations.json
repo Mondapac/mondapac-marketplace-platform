@@ -292,6 +292,23 @@
   { "name": "inventory.release-reservation", "rule": "system" },
   { "name": "inventory.reserve", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "inventory.retire-sell-units", "rule": "system" },
+  {
+    "name": "notifications.count-own-unread-notices",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "notifications.list-own-notices",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "notifications.mark-own-notices-read",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "notifications.purge-expired-notices", "rule": "system" },
+  { "name": "notifications.record-seller-order-notices", "rule": "system" },
   { "name": "notifications.send-order-confirmation-mail", "rule": "system" },
   { "name": "notifications.send-order-shipped-mail", "rule": "system" },
   { "name": "notifications.send-seller-new-order-mail", "rule": "system" },

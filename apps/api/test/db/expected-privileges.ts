@@ -448,6 +448,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'ordering.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Notifications (support contact): a change is a new version row; none is updated or deleted.
     'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // In-app notifications package 1: a notice is written once and deleted by retention (90 days,
+    // 200 per seller); a read is insert-only and leaves with its notice by the cascade.
+    'notifications.in_app_notices': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'notifications.in_app_notice_reads': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Search (Phase 6 package 2): a projection of catalog, upserted by events and the rebuild job
     // and deleted when an Offer is no longer sellable. The vector is set by a trigger, so it is
     // not an updatable column for the application.
