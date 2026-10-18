@@ -967,7 +967,7 @@ the expected map of the privilege test changed in the same PR. `GRANT USAGE ON S
 | `issuer_contact_channels` | `SELECT, INSERT`, `UPDATE (retired_at)` | Never | 3.7 |
 | `seller_certifications` | `SELECT, INSERT, UPDATE` | 5 (never-submitted records; the FK refuses others) | Root and draft |
 | `seller_certification_draft_documents`, `product_certification_draft_documents`, `product_certification_draft_coverage` | `SELECT, INSERT, DELETE` (draft coverage has no `UPDATE`, as built in slice 14: a save replaces the list) | 5; 14 | Draft lists |
-| `product_certification_draft_editors` | `SELECT, INSERT` | 14 (removed at submission) | |
+| `product_certification_draft_editors` | `SELECT, INSERT` | 14 (removed at approval, as built; they persist across a rejection) | |
 | `product_certifications` | `SELECT, INSERT, UPDATE` | Never (a draft is rejected, not deleted: Q-C2) | |
 | `uploaded_documents` | `SELECT, INSERT, DELETE` as built (PR 382): **no UPDATE** until the scanner package, which then adds a column-level `UPDATE (state, refusal_code, media_type, page_count, clean_sha256, version)` (6.1); the full `UPDATE` of this row is not granted | 4 (draft area only; the guard trigger refuses promoted rows) | The set-once guard still protects identity columns for the owner role |
 | `issuer_requests` | `SELECT, INSERT`, `UPDATE (state, answer_reason_code, issuer_id, answered_at, answered_by_account_id, version)` | Never | Typed name immutable |

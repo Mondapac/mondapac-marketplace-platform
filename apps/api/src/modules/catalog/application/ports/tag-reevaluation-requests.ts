@@ -128,13 +128,19 @@ export interface TagReevaluationRequestRepository {
 
   /**
    * True when a pending `certification-event` request of this cause and subject exists that no
-   * run has started (no cursor): a new one would re-ask the same tags, so the handler of a type
-   * cause skips it (Hassan M2). A started one does not count: the Offers before its cursor would
-   * miss the new change.
+   * run has started (no cursor) and that was written strictly after `createdAfter` (the new
+   * event's `occurredAt`): it already reflects the newer state, so the handler of a type cause
+   * skips writing another (Hassan M2). A started one does not count (the Offers before its cursor
+   * would miss the change); nor does an older one, which a run may already be asking on its first
+   * page from the state before the event (Hassan N1).
    */
   pendingUnstarted(
     market: MarketContext,
-    request: { readonly cause: CertificationCause; readonly subjectId: Id },
+    request: {
+      readonly cause: CertificationCause;
+      readonly subjectId: Id;
+      readonly createdAfter: Temporal.Instant;
+    },
   ): Promise<boolean>;
 
   /**

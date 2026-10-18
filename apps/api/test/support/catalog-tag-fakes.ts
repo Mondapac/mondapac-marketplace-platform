@@ -266,8 +266,11 @@ export class RecordingReevaluationRequests implements TagReevaluationRequestRepo
     readonly subjectId: Id;
     readonly sourceEventId: Id;
   }[] = [];
-  /** The (cause, subject) pairs a pending request no run started holds. */
-  readonly unstarted = new Set<string>();
+  /**
+   * The pending requests no run started, by `cause:subjectId`, with when each was written
+   * (Hassan M2, N1).
+   */
+  readonly unstarted = new Map<string, Temporal.Instant>();
 
   requestForEvent(
     _market: MarketContext,
@@ -283,9 +286,16 @@ export class RecordingReevaluationRequests implements TagReevaluationRequestRepo
 
   pendingUnstarted(
     _market: MarketContext,
-    request: { readonly cause: string; readonly subjectId: Id },
+    request: {
+      readonly cause: string;
+      readonly subjectId: Id;
+      readonly createdAfter: Temporal.Instant;
+    },
   ): Promise<boolean> {
-    return Promise.resolve(this.unstarted.has(`${request.cause}:${request.subjectId}`));
+    const createdAt = this.unstarted.get(`${request.cause}:${request.subjectId}`);
+    return Promise.resolve(
+      createdAt !== undefined && Temporal.Instant.compare(createdAt, request.createdAfter) > 0,
+    );
   }
 
   listPendingEnding(): Promise<readonly PendingCertificationReevaluation[]> {

@@ -367,26 +367,26 @@ model CertificationIssuerContactChannel {
 /// subject. The subject is a type, policy or issuer id: three possible parents, so no foreign key
 /// (C4). The content never changes after the insert; only the decision columns do.
 model CertificationRelaxationProposal {
-  id                                String    @id @db.Uuid
-  marketId                          String    @map("market_id") @db.VarChar(8)
-  tenantId                          String    @map("tenant_id")
+  id                                 String    @id @db.Uuid
+  marketId                           String    @map("market_id") @db.VarChar(8)
+  tenantId                           String    @map("tenant_id")
   /// type-revision | claim-policy-revision | issuer-reactivation | type-reactivation
-  subjectKind                       String    @map("subject_kind")
-  subjectId                         String    @map("subject_id") @db.Uuid
-  basedOnRevisionId                 String?   @map("based_on_revision_id") @db.Uuid
-  proposedRevisionId                String?   @map("proposed_revision_id") @db.Uuid
+  subjectKind                        String    @map("subject_kind")
+  subjectId                          String    @map("subject_id") @db.Uuid
+  basedOnRevisionId                  String?   @map("based_on_revision_id") @db.Uuid
+  proposedRevisionId                 String?   @map("proposed_revision_id") @db.Uuid
   /// Issuer reactivation only: the new expert reference, under the platform key (CE7).
-  proposedExpertReferenceCiphertext String?   @map("proposed_expert_reference_ciphertext")
+  proposedExpertReferenceCiphertext  String?   @map("proposed_expert_reference_ciphertext")
   /// pending | approved | rejected | withdrawn | superseded
-  state                             String
-  proposerAccountId                 String    @map("proposer_account_id") @db.Uuid
-  proposedAt                        DateTime  @map("proposed_at") @db.Timestamptz(6)
+  state                              String
+  proposerAccountId                  String    @map("proposer_account_id") @db.Uuid
+  proposedAt                         DateTime  @map("proposed_at") @db.Timestamptz(6)
   /// A second admin: never the proposer (H1).
-  decidedByAccountId                String?   @map("decided_by_account_id") @db.Uuid
-  decidedAt                         DateTime? @map("decided_at") @db.Timestamptz(6)
-  changeReasonCiphertext            String?   @map("change_reason_ciphertext")
-  version                           Int
-  createdAt                         DateTime  @map("created_at") @db.Timestamptz(6)
+  decidedByAccountId                 String?   @map("decided_by_account_id") @db.Uuid
+  decidedAt                          DateTime? @map("decided_at") @db.Timestamptz(6)
+  changeReasonCiphertext             String?   @map("change_reason_ciphertext")
+  version                            Int
+  createdAt                          DateTime  @map("created_at") @db.Timestamptz(6)
 
   @@unique([marketId, id])
   @@map("relaxation_proposals")

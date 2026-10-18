@@ -1196,6 +1196,12 @@ Javad has the pace of `identity` and `sellers`.
   - Turning `manufacturerBasisEnabled` off needs a type re-ask, or the daily reconciliation removes the tags (Hassan L4; `config/markets/README.md`).
   - New index `(market_id, revision_id, type_id)` on `product_revision_coverage` (Mojtaba F1), with a plan test.
   - Whitespace-only schema hunks reverted (F2). Data design 3.15, 3.16, 7.3 and 8 updated to as built (F3).
+- **Second fix round for PR #413 (2026-10-18).**
+  - Mojtaba N1: the widened unique is `NULLS NOT DISTINCT`.
+  - Hassan N1: a type request is skipped only when the identical pending, unstarted request was written strictly after the new event's `occurredAt`. An older one may already be on its first page, read from the state before the event. The handler takes `occurredAt` from the envelope.
+  - The F2 leftover (`CertificationRelaxationProposal`) is reverted.
+  - Data design 8 now says draft editors are removed at approval. Catalog data design 3.18 lists the recheck cause and the new unique.
+  - Open (Mojtaba): S3 reads the boundary as `timestamptz::text`, which assumes ISO DateStyle (as `expiry_date::text` does) because ADR-0030 allows no `to_char`. Pinning DateStyle for the API role, or an allow-list amendment, is a follow-up.
 
 ### 14.3 Spikes (run, not merged)
 | # | Spike |

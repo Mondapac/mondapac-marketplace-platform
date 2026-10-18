@@ -54,6 +54,7 @@ export function certificationSubscriptions(
       handle: (event, delivery, context) =>
         run(REEVALUATE_ON_SELLER_CERTIFICATION_APPROVED, context, {
           delivery,
+          occurredAt: event.occurredAt,
           cause: 'seller-certification-approved',
           subjectId: event.payload.sellerId,
         }),
@@ -64,6 +65,7 @@ export function certificationSubscriptions(
       handle: (event, delivery, context) =>
         run(REEVALUATE_ON_SELLER_CERTIFICATION_EXPIRED, context, {
           delivery,
+          occurredAt: event.occurredAt,
           cause: 'seller-certification-expired',
           subjectId: event.payload.sellerCertificationId,
         }),
@@ -74,6 +76,7 @@ export function certificationSubscriptions(
       handle: (event, delivery, context) =>
         run(REEVALUATE_ON_SELLER_CERTIFICATION_REVOKED, context, {
           delivery,
+          occurredAt: event.occurredAt,
           cause: 'seller-certification-revoked',
           subjectId: event.payload.sellerCertificationId,
         }),
@@ -84,6 +87,7 @@ export function certificationSubscriptions(
       handle: (event, delivery, context) =>
         run(REEVALUATE_ON_SELLER_CERTIFICATION_ISSUER_CONFIRMED, context, {
           delivery,
+          occurredAt: event.occurredAt,
           cause: 'seller-certification-issuer-confirmed',
           subjectId: event.payload.submissionId,
         }),
@@ -94,6 +98,7 @@ export function certificationSubscriptions(
       handle: (event, delivery, context) =>
         run(REEVALUATE_ON_CLAIM_POLICY_CHANGED, context, {
           delivery,
+          occurredAt: event.occurredAt,
           cause: 'claim-policy-changed',
           subjectId: event.payload.typeId,
         }),
@@ -104,6 +109,7 @@ export function certificationSubscriptions(
       handle: (event, delivery, context) =>
         run(REEVALUATE_ON_PRODUCT_CERTIFICATION_APPROVED, context, {
           delivery,
+          occurredAt: event.occurredAt,
           cause: 'product-certification-approved',
           subjectId: event.payload.typeId,
         }),
@@ -114,6 +120,7 @@ export function certificationSubscriptions(
       handle: (event, delivery, context) =>
         run(REEVALUATE_ON_PRODUCT_CERTIFICATION_COVERAGE_CHANGED, context, {
           delivery,
+          occurredAt: event.occurredAt,
           cause: 'product-certification-coverage-changed',
           subjectId: event.payload.typeId,
           recheckCertificateId: event.payload.productCertificationId,

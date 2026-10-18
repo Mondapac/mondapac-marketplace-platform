@@ -24,10 +24,12 @@ ALTER TABLE "catalog"."tag_reevaluation_requests"
   VALIDATE CONSTRAINT "tag_reevaluation_requests_cause_check";
 
 -- 3.18: one request per consumed event and cause (was: per event). Same name; the old unique
--- is implied by the inbox (one handler run per event) and the closed causes per handler.
+-- is implied by the inbox (one handler run per event) and the closed causes per handler. NULLS
+-- NOT DISTINCT (Mojtaba N1): a request with an event but no cause still counts once per event.
 DROP INDEX "catalog"."tag_reevaluation_requests_market_id_source_event_id_key";
 CREATE UNIQUE INDEX "tag_reevaluation_requests_market_id_source_event_id_key"
   ON "catalog"."tag_reevaluation_requests" ("market_id", "source_event_id", "cause")
+  NULLS NOT DISTINCT
   WHERE "source_event_id" IS NOT NULL;
 
 -- 3.15: the type-code selection index of D 5.5, partial with the literal predicate the handler

@@ -339,6 +339,7 @@ describe.each(TEST_MARKETS)(
       eventId = uuid7(),
       at = '2026-10-17T05:00:00Z',
       recheckCertificateId?: string,
+      occurredAt: string = at,
     ) {
       ownEvents.add(eventId);
       const handler = new ReevaluateFromCertification(gate, {
@@ -355,6 +356,7 @@ describe.each(TEST_MARKETS)(
       expect(
         await handler.execute(system(), {
           delivery,
+          occurredAt: Temporal.Instant.from(occurredAt),
           cause,
           subjectId: subjectId as Id,
           ...(recheckCertificateId === undefined
@@ -758,8 +760,9 @@ describe.each(TEST_MARKETS)(
             ['product-certification-coverage-recheck', s.certificate.certificateId, 'pending'],
           ].sort(),
         );
-        // A second change of the type before any run: the type request is not written again; the
-        // recheck of its own certificate is.
+        // A second change of the type that occurred before the pending request was written
+        // (delivered late, before any run): that request already reflects it, so the type
+        // request is not written again; the recheck of its own certificate is.
         const other = uuid7();
         const second = await consume(
           'product-certification-coverage-changed',
@@ -767,10 +770,28 @@ describe.each(TEST_MARKETS)(
           uuid7(),
           '2026-10-17T05:01:00Z',
           other,
+          '2026-10-17T04:59:00Z',
         );
         expect((await requestOf(second)).map((r) => [r.cause, r.subject_id])).toEqual([
           ['product-certification-coverage-recheck', other],
         ]);
+        // A third that occurred after it was written (Hassan N1): a run may already be asking
+        // its first page from the older state, so the type request is written.
+        const later = uuid7();
+        const third = await consume(
+          'product-certification-coverage-changed',
+          typeId,
+          uuid7(),
+          '2026-10-17T05:02:00Z',
+          later,
+          '2026-10-17T05:00:30Z',
+        );
+        expect((await requestOf(third)).map((r) => [r.cause, r.subject_id]).sort()).toEqual(
+          [
+            ['product-certification-coverage-changed', typeId],
+            ['product-certification-coverage-recheck', later],
+          ].sort(),
+        );
 
         // The product left the coverage: the run marks the tag `rechecking` before any ask, then
         // settles it from the answer.
@@ -781,7 +802,7 @@ describe.each(TEST_MARKETS)(
         await job(evaluator).execute(system(), {});
         expect((await historyOf(s.offerId)).map((h) => h.to_status)).toContain('rechecking');
         expect(await tagOf(s.offerId)).toMatchObject({ status: 'suspended', has_badge: false });
-        for (const eventId of [first, second]) {
+        for (const eventId of [first, second, third]) {
           for (const request of await requestOf(eventId)) {
             expect(request.state).toBe('settled');
           }

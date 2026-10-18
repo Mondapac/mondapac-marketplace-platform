@@ -160,7 +160,11 @@ export class PrismaTagReevaluationRequests implements TagReevaluationRequestRepo
 
   async pendingUnstarted(
     market: MarketContext,
-    request: { readonly cause: CertificationCause; readonly subjectId: Id },
+    request: {
+      readonly cause: CertificationCause;
+      readonly subjectId: Id;
+      readonly createdAfter: Temporal.Instant;
+    },
   ): Promise<boolean> {
     // Within the pending rows only (the claim index's predicate): a handful at any time.
     const row = await this.prisma.tx(market).catalogTagReevaluationRequest.findFirst({
@@ -171,6 +175,7 @@ export class PrismaTagReevaluationRequests implements TagReevaluationRequestRepo
         cause: request.cause,
         subjectId: request.subjectId,
         cursorOfferId: null,
+        createdAt: { gt: toDate(request.createdAfter) },
       },
       select: { id: true },
     });

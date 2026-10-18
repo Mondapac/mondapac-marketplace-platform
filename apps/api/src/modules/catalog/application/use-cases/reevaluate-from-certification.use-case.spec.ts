@@ -34,6 +34,10 @@ const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TE
 const admitAll: AuthorisationCheck = { check: () => Promise.resolve({ allowed: true }) };
 const gate = createUseCaseGate(markets, admitAll);
 const T0 = Temporal.Instant.from('2026-10-18T00:00:00Z');
+/** When the consumed events occurred, in these tests. */
+const OCCURRED = Temporal.Instant.from('2026-10-17T23:00:00Z');
+const AFTER = OCCURRED.add({ seconds: 1 });
+const BEFORE = OCCURRED.subtract({ seconds: 1 });
 const TYPE = '0192b3c4-0000-7000-8000-0000000000a1' as Id;
 const CERTIFICATE = '0192b3c4-0000-7000-8000-0000000000b1' as Id;
 
@@ -90,6 +94,7 @@ describe.each(['AU', 'ZZ'] as const)(
       const d = delivery('catalog.reevaluate-on-product-certification-coverage-changed');
       const result = await handler.execute(system(), {
         delivery: d,
+        occurredAt: OCCURRED,
         cause: 'product-certification-coverage-changed',
         subjectId: TYPE,
         recheckCertificateId: CERTIFICATE,
@@ -111,6 +116,7 @@ describe.each(['AU', 'ZZ'] as const)(
       expect(
         await handler.execute(system(), {
           delivery: d,
+          occurredAt: OCCURRED,
           cause: 'product-certification-coverage-changed',
           subjectId: TYPE,
           recheckCertificateId: CERTIFICATE,
@@ -119,25 +125,28 @@ describe.each(['AU', 'ZZ'] as const)(
       expect(requests.events).toHaveLength(2);
     });
 
-    it('skips a type request an identical unstarted pending one covers, never the recheck', async () => {
+    it('skips a type request an identical unstarted pending one written after the event covers, never the recheck', async () => {
       const { requests, handler } = rig();
-      requests.unstarted.add(`product-certification-coverage-changed:${TYPE}`);
-      requests.unstarted.add(`claim-policy-changed:${TYPE}`);
+      requests.unstarted.set(`product-certification-coverage-changed:${TYPE}`, AFTER);
+      requests.unstarted.set(`claim-policy-changed:${TYPE}`, AFTER);
       const coverage = delivery('catalog.reevaluate-on-product-certification-coverage-changed');
       await handler.execute(system(), {
         delivery: coverage,
+        occurredAt: OCCURRED,
         cause: 'product-certification-coverage-changed',
         subjectId: TYPE,
         recheckCertificateId: CERTIFICATE,
       });
       await handler.execute(system(), {
         delivery: delivery('catalog.reevaluate-on-claim-policy-changed'),
+        occurredAt: OCCURRED,
         cause: 'claim-policy-changed',
         subjectId: TYPE,
       });
       // Another cause of the same type is not identical: it is written.
       await handler.execute(system(), {
         delivery: delivery('catalog.reevaluate-on-product-certification-approved'),
+        occurredAt: OCCURRED,
         cause: 'product-certification-approved',
         subjectId: TYPE,
       });
@@ -147,11 +156,34 @@ describe.each(['AU', 'ZZ'] as const)(
       ]);
     });
 
+    it.each([
+      ['before the event', BEFORE],
+      ['at the instant of the event', OCCURRED],
+    ])(
+      'writes the type request when the identical pending one was written %s: a run may already ask its first page from the older state (Hassan N1)',
+      async (_label, createdAt) => {
+        const { requests, handler } = rig();
+        requests.unstarted.set(`product-certification-coverage-changed:${TYPE}`, createdAt);
+        await handler.execute(system(), {
+          delivery: delivery('catalog.reevaluate-on-product-certification-coverage-changed'),
+          occurredAt: OCCURRED,
+          cause: 'product-certification-coverage-changed',
+          subjectId: TYPE,
+          recheckCertificateId: CERTIFICATE,
+        });
+        expect(requests.events.map((e) => [e.cause, e.subjectId])).toEqual([
+          ['product-certification-coverage-recheck', CERTIFICATE],
+          ['product-certification-coverage-changed', TYPE],
+        ]);
+      },
+    );
+
     it('never skips a seller-certificate request, whatever is pending', async () => {
       const { requests, handler } = rig();
-      requests.unstarted.add(`seller-certification-revoked:${CERTIFICATE}`);
+      requests.unstarted.set(`seller-certification-revoked:${CERTIFICATE}`, AFTER);
       await handler.execute(system(), {
         delivery: delivery('catalog.reevaluate-on-seller-certification-revoked'),
+        occurredAt: OCCURRED,
         cause: 'seller-certification-revoked',
         subjectId: CERTIFICATE,
       });
