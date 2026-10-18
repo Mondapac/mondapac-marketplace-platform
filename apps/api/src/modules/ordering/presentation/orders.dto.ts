@@ -65,8 +65,14 @@ export class SellerOrderBody {
   @ApiProperty({
     type: MoneyView,
     nullable: true,
+    description: 'The tax on the delivery fee frozen at placement; null on older orders.',
+  })
+  shippingTax!: MoneyView | null;
+  @ApiProperty({
+    type: MoneyView,
+    nullable: true,
     description:
-      "The tax of the seller's lines; null when any line is from before tax was recorded.",
+      "The tax of the seller's lines plus the delivery tax where it was recorded; null when any line is from before tax was recorded.",
   })
   tax!: MoneyView | null;
   @ApiProperty({
@@ -205,6 +211,7 @@ const sellerOrderBody = (seller: SellerOrderLike): SellerOrderBody => ({
   sellerId: seller.sellerId,
   subtotal: moneyBody(seller.subtotal),
   shipping: moneyBody(seller.shipping),
+  shippingTax: seller.shippingTax === null ? null : moneyBody(seller.shippingTax),
   tax: seller.tax === null ? null : moneyBody(seller.tax),
   total: moneyBody(seller.total),
   fulfilment: seller.fulfilment,

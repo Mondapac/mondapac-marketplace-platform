@@ -1,6 +1,6 @@
 import { money as makeMoney } from '@mondapac/shared-kernel';
 import type { Id, Money, Temporal } from '@mondapac/shared-kernel';
-import { linesTax } from './order';
+import { linesTax, shippingTaxOf } from './order';
 import type {
   CancelReason,
   Fulfilment,
@@ -34,7 +34,12 @@ export interface SellerOrderView {
   readonly sellerId: Id<'Seller'>;
   readonly subtotal: Money;
   readonly shipping: Money;
-  /** The tax of the seller's lines; null when any of them was placed before tax was recorded. */
+  /** The tax on the delivery fee, frozen at placement; null on older orders. */
+  readonly shippingTax: Money | null;
+  /**
+   * The tax of the seller's lines plus the delivery tax where it was recorded; null when any
+   * line was placed before tax was recorded.
+   */
   readonly tax: Money | null;
   readonly total: Money;
   readonly fulfilment: Fulfilment;
@@ -143,10 +148,14 @@ const lineView = (line: OrderLine, currency: string): OrderLineView => ({
   tax: line.taxAmount === null ? null : makeMoney(line.taxAmount, currency),
 });
 
-const taxOf = (lines: readonly OrderLine[], currency: string): Money | null => {
+/** The tax of the lines plus the shipping tax that was recorded for them (`extra`). */
+const taxOf = (lines: readonly OrderLine[], currency: string, extra = 0n): Money | null => {
   const tax = linesTax(lines);
-  return tax === null ? null : makeMoney(tax, currency);
+  return tax === null ? null : makeMoney(tax + extra, currency);
 };
+
+const shippingTaxView = (seller: SellerOrder, currency: string): Money | null =>
+  seller.shippingTax === null ? null : makeMoney(seller.shippingTax, currency);
 
 /** A seller order as a seller sees it in the panel: its own part of one paid order. */
 export interface SellerOrderDetailView extends SellerOrderView {
@@ -177,7 +186,8 @@ export function sellerOrderDetailView(record: {
     sellerId: seller.sellerId,
     subtotal: makeMoney(seller.subtotal, currency),
     shipping: makeMoney(seller.shipping, currency),
-    tax: taxOf(lines, currency),
+    shippingTax: shippingTaxView(seller, currency),
+    tax: taxOf(lines, currency, shippingTaxOf(seller)),
     total: makeMoney(seller.total, currency),
     fulfilment: seller.fulfilment,
     carrier: seller.carrier,
@@ -197,7 +207,11 @@ export function orderView(order: OrderState): OrderView {
     cancelReason: order.cancelReason,
     paymentState: order.paymentState,
     total: order.total,
-    tax: taxOf(order.lines, currency),
+    tax: taxOf(
+      order.lines,
+      currency,
+      order.sellerOrders.reduce((sum, seller) => sum + shippingTaxOf(seller), 0n),
+    ),
     createdAt: order.createdAt,
     confirmedAt: order.confirmedAt,
     cancelledAt: order.cancelledAt,
@@ -208,7 +222,8 @@ export function orderView(order: OrderState): OrderView {
         sellerId: seller.sellerId,
         subtotal: money(seller.subtotal),
         shipping: money(seller.shipping),
-        tax: taxOf(lines, currency),
+        shippingTax: shippingTaxView(seller, currency),
+        tax: taxOf(lines, currency, shippingTaxOf(seller)),
         total: money(seller.total),
         fulfilment: seller.fulfilment,
         carrier: seller.carrier,
