@@ -90,6 +90,7 @@ export const ADMIN_REVIEW_STATUS: Readonly<Record<string, number>> = Object.free
   'review.scope-missing': 422,
   'certificate.incomplete': 422,
   'issuer.not-active': 422,
+  'type.inactive': 422,
   'certificate.expired': 422,
   'seller.zone-missing': 422,
 });
@@ -428,7 +429,7 @@ export class AdminCertificateReviewController {
     type: CertificationErrorBody,
     description:
       'review.checks-incomplete (details.fields), review.scope-missing, certificate.incomplete, ' +
-      'issuer.not-active, certificate.expired, seller.zone-missing',
+      'issuer.not-active, type.inactive, certificate.expired, seller.zone-missing',
   })
   @ApiUnsupportedMediaTypeResponse({
     type: CertificationErrorBody,

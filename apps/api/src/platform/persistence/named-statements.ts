@@ -31,7 +31,11 @@ export function isApprovedStatement(request: RawStatementRequest, market: Market
   const { sql, values } = args as { sql?: unknown; values?: unknown };
   if (typeof sql !== 'string' || !Array.isArray(values)) return false;
   if (operation === '$queryRaw') {
-    if (sql === SHARE_PENDING_SUBMISSION_TEXT) {
+    if (
+      sql === SHARE_PENDING_SUBMISSION_TEXT ||
+      sql === SHARE_CERTIFICATION_TYPE_TEXT ||
+      sql === SHARE_CERTIFICATION_ISSUER_TEXT
+    ) {
       return (
         values.length === 3 &&
         values[0] === market.marketId &&
@@ -88,6 +92,17 @@ export interface SharedPendingRoot {
   readonly certificateId: string;
 }
 
+/** A certification type row, share-locked (certification slice 12). */
+export interface SharedCertificationType {
+  readonly status: string;
+}
+
+/** A certification issuer row, share-locked (certification slice 12). */
+export interface SharedCertificationIssuer {
+  readonly state: string;
+  readonly typeId: string;
+}
+
 /** The checked-in list: statement name to its input and its rows. */
 export interface NamedStatements {
   /**
@@ -109,6 +124,26 @@ export interface NamedStatements {
   readonly 'certification.share-pending-submission': {
     readonly params: { readonly submissionId: string };
     readonly row: SharedPendingRoot;
+  };
+  /**
+   * Takes `FOR SHARE` on a certification type in the unit's Market and tenant and answers its
+   * status (certification slice 12). A seller certificate's approval holds it, so a deactivation,
+   * which updates the row, either commits first and is seen, or waits for the approval. No row:
+   * no such type in this Market.
+   */
+  readonly 'certification.share-type': {
+    readonly params: { readonly typeId: string };
+    readonly row: SharedCertificationType;
+  };
+  /**
+   * Takes `FOR SHARE` on a certification issuer in the unit's Market and tenant and answers its
+   * state and type (certification slice 12): an approval naming the issuer and a deactivation of
+   * the issuer (closed to new, derecognised) serialise, so no approval commits under an issuer
+   * the registry has already closed, and the derecognition count sees every approval.
+   */
+  readonly 'certification.share-issuer': {
+    readonly params: { readonly issuerId: string };
+    readonly row: SharedCertificationIssuer;
   };
 }
 
@@ -204,6 +239,70 @@ async function sharePendingSubmission(
   return rows.map((row) => ({ certificateId: row.id }));
 }
 
+/** The statement of `certification.share-type`: Market, tenant, then the type. */
+export function shareCertificationTypeStatement(market: MarketContext, typeId: string): Prisma.Sql {
+  return Prisma.sql`
+    SELECT t.status
+      FROM "certification"."certification_types" AS t
+     WHERE t.market_id = ${market.marketId}
+       AND t.tenant_id = ${market.tenantId}
+       AND t.id = ${typeId}::uuid
+       FOR SHARE OF t`;
+}
+
+/** The statement of `certification.share-issuer`: Market, tenant, then the issuer. */
+export function shareCertificationIssuerStatement(
+  market: MarketContext,
+  issuerId: string,
+): Prisma.Sql {
+  return Prisma.sql`
+    SELECT i.state, i.type_id
+      FROM "certification"."issuers" AS i
+     WHERE i.market_id = ${market.marketId}
+       AND i.tenant_id = ${market.tenantId}
+       AND i.id = ${issuerId}::uuid
+       FOR SHARE OF i`;
+}
+
+async function shareCertificationType(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'certification.share-type'>,
+): Promise<SharedCertificationType[]> {
+  if (typeof params.typeId !== 'string' || !UUID.test(params.typeId)) {
+    throw new NamedStatementRefusedError('certification.share-type', 'ids-malformed');
+  }
+  const rows = (await runner.query(shareCertificationTypeStatement(market, params.typeId))) as {
+    status: string;
+  }[];
+  return rows.map((row) => ({ status: row.status }));
+}
+
+async function shareCertificationIssuer(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'certification.share-issuer'>,
+): Promise<SharedCertificationIssuer[]> {
+  if (typeof params.issuerId !== 'string' || !UUID.test(params.issuerId)) {
+    throw new NamedStatementRefusedError('certification.share-issuer', 'ids-malformed');
+  }
+  const rows = (await runner.query(shareCertificationIssuerStatement(market, params.issuerId))) as {
+    state: string;
+    type_id: string;
+  }[];
+  return rows.map((row) => ({ state: row.state, typeId: row.type_id }));
+}
+
+const SHARE_CERTIFICATION_TYPE_TEXT = shareCertificationTypeStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+).sql;
+
+const SHARE_CERTIFICATION_ISSUER_TEXT = shareCertificationIssuerStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+).sql;
+
 const SHARE_PENDING_SUBMISSION_TEXT = sharePendingSubmissionStatement(
   { marketId: 'XX', tenantId: 'x' } as MarketContext,
   '',
@@ -234,6 +333,18 @@ export async function runNamedStatement<K extends NamedStatementName>(
         runner,
         market,
         params as NamedStatementParams<'certification.share-pending-submission'>,
+      );
+    case 'certification.share-type':
+      return await shareCertificationType(
+        runner,
+        market,
+        params as NamedStatementParams<'certification.share-type'>,
+      );
+    case 'certification.share-issuer':
+      return await shareCertificationIssuer(
+        runner,
+        market,
+        params as NamedStatementParams<'certification.share-issuer'>,
       );
     default:
       throw new Error('Unknown named statement');

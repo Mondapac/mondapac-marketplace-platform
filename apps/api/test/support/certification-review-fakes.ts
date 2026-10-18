@@ -8,6 +8,7 @@ import type {
   FullHistoryPage,
   FullHistoryRow,
   OtherSubmission,
+  RegistryRowsShared,
   ReviewQueueEntry,
   ReviewSnapshot,
   ReviewSubmission,
@@ -52,6 +53,8 @@ export class MemoryReviews implements CertificateReviewRepository {
    * a pending renewal beside an approved one sets it).
    */
   approvedTypeRevisionId: Id<'CertificationTypeRevision'> | null = null;
+  /** The record type's status as the approval's share lock reads it (slice 12). */
+  typeStatus: 'active' | 'inactive' = 'active';
   erased = 0;
   readonly marketId: string;
 
@@ -165,6 +168,21 @@ export class MemoryReviews implements CertificateReviewRepository {
     // chain, as a rollback drops the database's version move.
     lockContext.enterWith(expectedVersion);
     return Promise.resolve();
+  }
+
+  shareRegistryRows(
+    market: MarketContext,
+    _typeId: Id<'CertificationType'>,
+    issuerId: Id<'Issuer'> | null,
+  ): Promise<RegistryRowsShared> {
+    const issuer = this.submission.issuer;
+    return Promise.resolve({
+      typeStatus: this.own(market) ? this.typeStatus : null,
+      issuer:
+        issuerId === null || issuer === null || issuer.id !== issuerId
+          ? null
+          : { state: issuer.state, typeId: issuer.typeId },
+    });
   }
 
   decide(_market: MarketContext, write: DecisionWrite): Promise<void> {

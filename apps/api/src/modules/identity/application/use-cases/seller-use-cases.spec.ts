@@ -279,12 +279,12 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         .map((r) => [r.scope, r.kind, r.seedCode, r.permissionKeys.length]),
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
-      ['platform', 'default', 'onboarding-compliance', 10],
-      ['platform', 'default', 'catalogue-moderator', 6],
-      ['platform', 'default', 'operations-support', 5],
-      ['platform', 'default', 'finance', 2],
-      ['platform', 'default', 'viewer', 13],
-      ['platform', 'default', 'certification-reviewer', 6],
+      ['platform', 'default', 'onboarding-compliance', 11],
+      ['platform', 'default', 'catalogue-moderator', 7],
+      ['platform', 'default', 'operations-support', 6],
+      ['platform', 'default', 'finance', 3],
+      ['platform', 'default', 'viewer', 14],
+      ['platform', 'default', 'certification-reviewer', 7],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 6],
       ['seller', 'default', 'order-fulfilment', 0],
@@ -319,6 +319,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'certification.issuer.view',
       'certification.seller-certificate.review',
       'certification.seller-certificate.view',
+      'certification.type.view',
       'identity.seller-access.approve',
       'identity.seller-access.suspend',
       'identity.seller-access.view',
@@ -331,11 +332,13 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'catalog.platform-product.edit',
       'catalog.product.approve',
       'catalog.product.view',
+      'certification.type.view',
       'identity.seller-access.view',
       'pricing.price-hold.view',
       'sellers.seller.view',
     ]);
     expect(keysOf('operations-support')).toEqual([
+      'certification.type.view',
       'identity.customer-account.disable',
       'identity.customer-account.view',
       'identity.seller-access.view',
@@ -346,11 +349,16 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'certification.issuer.view',
       'certification.seller-certificate.review',
       'certification.seller-certificate.view',
+      'certification.type.view',
       'identity.seller-access.view',
       'sellers.business-details.view',
       'sellers.seller.view',
     ]);
-    expect(keysOf('finance')).toEqual(['identity.seller-access.view', 'sellers.seller.view']);
+    expect(keysOf('finance')).toEqual([
+      'certification.type.view',
+      'identity.seller-access.view',
+      'sellers.seller.view',
+    ]);
     expect(keysOf('store-manager')).toEqual([
       'catalog.own-product.edit',
       'catalog.own-product.view',
