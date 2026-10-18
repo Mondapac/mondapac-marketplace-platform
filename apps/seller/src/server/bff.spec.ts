@@ -768,3 +768,49 @@ describe('relay of the seller team routes', () => {
     expect((await relay(config, get(path.join('/')), path, upstream)).status).toBe(404);
   });
 });
+
+describe('relay of the seller notice routes', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const notices = ['notifications', 'seller', 'notices'];
+  const get = (path: readonly string[], query = '') =>
+    new Request(`http://seller.localhost:3001/api/${path.join('/')}${query}`, {
+      method: 'GET',
+      headers: { host: 'seller.localhost:3001' },
+    });
+
+  it('lists notices forwarding only a valid `show` and `before`, and reads the count', async () => {
+    const upstream = upstreamOk();
+    const query = `?show=read&before=${ID}&x=1`;
+    expect((await relay(config, get(notices, query), notices, upstream)).status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/notifications/seller/notices?show=read&before=${ID}`,
+    );
+    await relay(config, get(notices, '?show=everything&before=x'), notices, upstream);
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/notifications/seller/notices');
+    const count = [...notices, 'unread-count'];
+    expect((await relay(config, get(count), count, upstream)).status).toBe(200);
+  });
+
+  it('posts read-all and one read by UUID, same-origin only, and nothing near them', async () => {
+    const upstream = upstreamOk();
+    for (const path of [
+      [...notices, 'read-all'],
+      [...notices, ID, 'read'],
+    ]) {
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+      const crossSite = { ...sameOrigin, 'sec-fetch-site': 'cross-site' };
+      expect((await relay(config, post(path.join('/'), crossSite), path, upstream)).status).toBe(
+        403,
+      );
+    }
+    for (const path of [
+      [...notices, 'x', 'read'],
+      [...notices, ID, 'delete'],
+      [...notices, ID],
+      notices,
+      [...notices, 'unread-count'],
+    ]) {
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+    }
+  });
+});

@@ -1619,5 +1619,48 @@
       "keep": "Keep them signed in",
       "action": "Sign out others"
     }
+  },
+  "notifications": {
+    "bell": "Notifications",
+    "bell-unread": "Notifications, {count, plural, one {# unread} other {# unread}}",
+    "announce": "{count, plural, one {# unread notification} other {# unread notifications}}",
+    "title": "Notifications",
+    "close": "Close notifications",
+    "filters": "Show notifications",
+    "filter": {
+      "unread": "Unread",
+      "read": "Read",
+      "all": "All"
+    },
+    "unread-count": "{count} unread",
+    "sound-on": "Order sound on on this device. Turn off",
+    "sound-off": "Order sound off on this device. Turn on",
+    "enable-sound": "Enable order sound",
+    "mark-all": "Mark all as read",
+    "load-more": "Show older",
+    "unread-item": "Unread",
+    "kind": {
+      "order-paid": "<strong>New order</strong> with {items, plural, one {# item} other {# items}} is paid and ready to ship"
+    },
+    "category": {
+      "orders": "Orders"
+    },
+    "empty": {
+      "unread": {
+        "title": "You're all caught up",
+        "body": "New orders show up here."
+      },
+      "read": {
+        "title": "Nothing read yet",
+        "body": "Notifications you open or mark as read move here."
+      },
+      "all": {
+        "title": "No notifications yet",
+        "body": "New orders show up here. Notifications are kept for 90 days."
+      }
+    },
+    "error": "Notifications could not be loaded.",
+    "retry": "Try again",
+    "loading": "Loading notifications"
   }
 }
