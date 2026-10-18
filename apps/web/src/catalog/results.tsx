@@ -4,15 +4,16 @@ import type { ReactNode } from 'react';
 import { ProductCard } from '../home/product-card.tsx';
 import { Icon } from '../icons/icon.tsx';
 import type { ProductPage } from '../storefront/catalog.ts';
+import { BrowseCrumb } from './browse-crumb.tsx';
 
 // The parts the category and search pages share: breadcrumb, heading row, filter chips, the
 // product grid of v29 and the pager. The API gives `hasMore` and no total, so the pager offers
 // the previous and the next page only.
 
-export interface Crumb {
-  readonly label: string;
-  readonly href: string;
-}
+/** A link of the trail, or the "Browse products" step that opens the Browse panel. */
+export type Crumb =
+  | { readonly label: string; readonly href: string }
+  | { readonly label: string; readonly browse: true };
 
 export function Crumbs({
   trail,
@@ -26,8 +27,12 @@ export function Crumbs({
     <nav className="crumbs" aria-label={t('breadcrumb')}>
       <ol>
         {trail.map((crumb) => (
-          <li key={crumb.href}>
-            <Link href={crumb.href}>{crumb.label}</Link>
+          <li key={'href' in crumb ? crumb.href : 'browse'}>
+            {'href' in crumb ? (
+              <Link href={crumb.href}>{crumb.label}</Link>
+            ) : (
+              <BrowseCrumb label={crumb.label} />
+            )}
             <Icon name="chevr" />
           </li>
         ))}
@@ -55,15 +60,20 @@ export function ResultsHead({
   );
 }
 
-/** The product grid with its pager, or `empty` when the page holds no products. */
+/**
+ * The product grid with its pager, or `empty` when the page holds no products. Without `pager`
+ * it pages by previous and next (the search route gives no total).
+ */
 export function ProductResults({
   result,
   hrefFor,
   empty,
+  pager,
 }: {
   readonly result: ProductPage;
   readonly hrefFor: (page: number) => string;
   readonly empty: ReactNode;
+  readonly pager?: ReactNode;
 }) {
   const t = useTranslations('catalog');
   if (result.items.length === 0) {
@@ -90,7 +100,9 @@ export function ProductResults({
           <ProductCard key={p.id} product={p} />
         ))}
       </div>
-      {previous || result.hasMore ? (
+      {pager !== undefined ? (
+        pager
+      ) : previous || result.hasMore ? (
         <nav className="pager" aria-label={t('pages')}>
           {previous ? (
             <Link href={hrefFor(result.page - 1)} rel="prev">

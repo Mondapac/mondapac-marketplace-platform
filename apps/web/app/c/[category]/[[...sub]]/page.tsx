@@ -2,13 +2,33 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { FilterChips } from '../../../../src/catalog/filter-chips.tsx';
+import { ListingFilters, SortSelect } from '../../../../src/catalog/listing-controls.tsx';
+import {
+  activeFilterCount,
+  listingHref,
+  listingStateOf,
+  withoutFilters,
+  withPage,
+} from '../../../../src/catalog/listing-state.ts';
+import {
+  ActiveFilters,
+  ListingBannerView,
+  NumberedPager,
+  ResultCount,
+} from '../../../../src/catalog/listing.tsx';
 import {
   Crumbs,
   EmptyResults,
   ProductResults,
   ResultsHead,
+  type Crumb,
 } from '../../../../src/catalog/results.tsx';
-import { findProducts, pageOf } from '../../../../src/storefront/catalog.ts';
+import {
+  LISTING_PAGE_SIZE,
+  findProducts,
+  listingBanner,
+  listingFacets,
+} from '../../../../src/storefront/catalog.ts';
 import { loadStorefrontContent } from '../../../../src/storefront/source.ts';
 
 interface Props {
@@ -41,18 +61,28 @@ export default async function CategoryPage({ params, searchParams }: Props) {
   ]);
   const base = `/c/${category.code}`;
   const path = child ? `${base}/${child.code}` : base;
-  const result = await findProducts({
-    category: category.code,
-    ...(child ? { subcategory: child.code } : {}),
-    page: pageOf(query.page),
-  });
+  const state = listingStateOf(query);
+  const scope = { category: category.code, ...(child ? { subcategory: child.code } : {}) };
+  const [result, facets, banner] = await Promise.all([
+    findProducts({ ...scope, ...state, pageSize: LISTING_PAGE_SIZE }),
+    listingFacets(scope),
+    listingBanner(category.code),
+  ]);
+  const total = result.total ?? 0;
+  const pages = Math.ceil(total / LISTING_PAGE_SIZE);
+  const filtered = activeFilterCount(state.filters) > 0;
   const title = child?.name ?? category.name;
-  const trail = [{ label: t('home'), href: '/' }];
+  const trail: Crumb[] = [
+    { label: t('home'), href: '/' },
+    { label: t('browse-products'), browse: true },
+  ];
   if (child) trail.push({ label: category.name, href: base });
 
   return (
     <>
-      <ResultsHead title={title} crumbs={<Crumbs trail={trail} current={title} />}>
+      <Crumbs trail={trail} current={title} />
+      {banner ? <ListingBannerView banner={banner} /> : null}
+      <ResultsHead title={title}>
         <FilterChips
           label={t('filter-subcategory', { name: category.name })}
           chips={[
@@ -65,22 +95,38 @@ export default async function CategoryPage({ params, searchParams }: Props) {
           ]}
         />
       </ResultsHead>
+      <ListingFilters path={path} state={state} facets={facets} total={total} />
+      <ActiveFilters path={path} state={state} facets={facets} />
+      <div className="rbar">
+        <ResultCount page={state.page} pageSize={LISTING_PAGE_SIZE} total={total} />
+        <SortSelect path={path} state={state} />
+      </div>
       <ProductResults
         result={result}
-        hrefFor={(page) => (page === 1 ? path : `${path}?page=${page}`)}
+        hrefFor={(page) => listingHref(path, withPage(state, page))}
+        pager={<NumberedPager path={path} state={state} pages={pages} />}
         empty={
-          <EmptyResults message={t('category-empty', { name: title })}>
-            <div className="actions">
-              {child ? (
-                <Link className="btn" href={base}>
-                  {t('all-of', { name: category.name })}
-                </Link>
-              ) : null}
-              <Link className={child ? 'btn alt' : 'btn'} href="/">
-                {t('home-page')}
+          filtered ? (
+            <EmptyResults message={t('filters-empty')}>
+              <p className="hint">{t('filters-empty-hint')}</p>
+              <Link className="btn" href={listingHref(path, withoutFilters(state))} scroll={false}>
+                {t('clear-filters')}
               </Link>
-            </div>
-          </EmptyResults>
+            </EmptyResults>
+          ) : (
+            <EmptyResults message={t('category-empty', { name: title })}>
+              <div className="actions">
+                {child ? (
+                  <Link className="btn" href={base}>
+                    {t('all-of', { name: category.name })}
+                  </Link>
+                ) : null}
+                <Link className={child ? 'btn alt' : 'btn'} href="/">
+                  {t('home-page')}
+                </Link>
+              </div>
+            </EmptyResults>
+          )
         }
       />
     </>

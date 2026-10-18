@@ -7,8 +7,8 @@ import { FilterChips } from '../src/catalog/filter-chips.tsx';
 import { Crumbs, EmptyResults, ProductResults } from '../src/catalog/results.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 import { findProducts, pageOf, queryOf } from '../src/storefront/catalog.ts';
-import { SAMPLE_SUBCATEGORY } from '../src/storefront/sample-catalog.ts';
-import { PRODUCTS, SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
+import { SAMPLE_PRODUCTS, SAMPLE_SUBCATEGORY } from '../src/storefront/sample-catalog.ts';
+import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 
 afterEach(cleanup);
 
@@ -22,14 +22,26 @@ const withIntl = (node: React.ReactNode) =>
 describe('product source of the results pages', () => {
   it('lists a category and a subcategory', async () => {
     const meat = await findProducts({ category: 'meat', page: 1 });
-    expect(meat.items.map((p) => p.id)).toEqual(['lamb-shoulder', 'brisket']);
+    expect(meat.items.map((p) => p.id)).toEqual([
+      'lamb-shoulder',
+      'brisket',
+      'lamb-mince',
+      'beef-sausages',
+      'lamb-cutlets',
+    ]);
     const lamb = await findProducts({ category: 'meat', subcategory: 'lamb', page: 1 });
-    expect(lamb.items.map((p) => p.id)).toEqual(['lamb-shoulder']);
+    expect(lamb.items.map((p) => p.id)).toEqual(['lamb-shoulder', 'lamb-cutlets']);
   });
 
   it('matches every search word in the name, seller or category', async () => {
-    const result = await findProducts({ q: 'halal lamb', page: 1 });
+    const result = await findProducts({ q: 'lamb shoulder', page: 1 });
     expect(result.items.map((p) => p.id)).toEqual(['lamb-shoulder']);
+    const bySeller = await findProducts({ q: 'kedron lamb', page: 1 });
+    expect(bySeller.items.map((p) => p.id)).toEqual([
+      'lamb-shoulder',
+      'lamb-mince',
+      'lamb-cutlets',
+    ]);
     const none = await findProducts({ q: 'durian', page: 1 });
     expect(none.items).toEqual([]);
     expect(none.hasMore).toBe(false);
@@ -55,7 +67,7 @@ describe('product source of the results pages', () => {
 
   it('maps sample products only to subcategories of the sample tree', () => {
     for (const [id, sub] of Object.entries(SAMPLE_SUBCATEGORY)) {
-      const product = PRODUCTS.find((p) => p.id === id);
+      const product = SAMPLE_PRODUCTS.find((p) => p.id === id);
       expect(product, id).toBeDefined();
       const category = SAMPLE_CONTENT.categories.find((c) => c.code === product!.category)!;
       expect(
@@ -84,6 +96,21 @@ describe('results page parts', () => {
         .map((a) => a.textContent),
     ).toEqual(['Home', 'Meat']);
     expect(within(nav).getByText('Lamb').getAttribute('aria-current')).toBe('page');
+  });
+
+  it('opens the Browse panel from the "Browse products" step of the trail', () => {
+    withIntl(
+      <Crumbs
+        trail={[
+          { label: 'Home', href: '/' },
+          { label: 'Browse products', browse: true },
+        ]}
+        current="Meat"
+      />,
+    );
+    const step = screen.getByRole('button', { name: 'Browse products' });
+    expect(step.getAttribute('aria-controls')).toBe('browse-panel');
+    expect(step.getAttribute('aria-haspopup')).toBe('dialog');
   });
 
   it('marks the chosen filter chip as current', () => {
