@@ -1,11 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
-import {
-  EmptyResults,
-  FilterChips,
-  ProductResults,
-  ResultsHead,
-} from '../../src/catalog/results.tsx';
+import { FilterChips } from '../../src/catalog/filter-chips.tsx';
+import { Crumbs, EmptyResults, ProductResults, ResultsHead } from '../../src/catalog/results.tsx';
 import { SearchRefine } from '../../src/catalog/search-refine.tsx';
 import { QUERY_MIN, findProducts, pageOf, queryOf } from '../../src/storefront/catalog.ts';
 import { loadStorefrontContent } from '../../src/storefront/source.ts';
@@ -42,6 +38,7 @@ export default async function SearchPage({ searchParams }: Props) {
   const q = queryOf(query.q);
   const code = typeof query.category === 'string' ? query.category : undefined;
   const category = content.categories.find((c) => c.code === code);
+  const crumbs = <Crumbs trail={[{ label: t('home'), href: '/' }]} current={t('search')} />;
   const popular = (
     <div className="pchips">
       {content.popularSearches.map((term) => (
@@ -55,7 +52,7 @@ export default async function SearchPage({ searchParams }: Props) {
   if (Array.from(q).length < QUERY_MIN) {
     return (
       <>
-        <ResultsHead title={t('search')}>
+        <ResultsHead title={t('search')} crumbs={crumbs}>
           <SearchRefine value={q} />
         </ResultsHead>
         <EmptyResults message={t('search-hint', { min: QUERY_MIN })}>
@@ -73,7 +70,7 @@ export default async function SearchPage({ searchParams }: Props) {
   });
   return (
     <>
-      <ResultsHead title={t('results-for', { q })}>
+      <ResultsHead title={t('results-for', { q })} crumbs={crumbs}>
         <SearchRefine value={q} category={category?.code} />
         <FilterChips
           label={t('filter-category')}

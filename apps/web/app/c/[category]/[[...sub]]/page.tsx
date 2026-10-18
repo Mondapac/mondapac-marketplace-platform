@@ -1,10 +1,10 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { FilterChips } from '../../../../src/catalog/filter-chips.tsx';
 import {
   Crumbs,
   EmptyResults,
-  FilterChips,
   ProductResults,
   ResultsHead,
 } from '../../../../src/catalog/results.tsx';

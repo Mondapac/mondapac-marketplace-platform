@@ -183,7 +183,7 @@
     "category-empty": "There are no products in {name} yet. Check back soon.",
     "search": "Search",
     "results-for": "Results for “{q}”",
-    "search-hint": "Type at least {min} letters to search products and sellers.",
+    "search-hint": "Type at least {min} letters to search products.",
     "popular": "Popular right now",
     "no-results": "No products match “{q}”.",
     "no-results-in": "No products in {name} match “{q}”.",

@@ -27,7 +27,7 @@ export function TabBar() {
       </Link>
       <button
         type="button"
-        className={on(searchOpen)}
+        className={on(searchOpen || page('/search'))}
         aria-haspopup="dialog"
         aria-expanded={searchOpen}
         onClick={() => {
@@ -42,7 +42,7 @@ export function TabBar() {
       </button>
       <button
         type="button"
-        className={browseOpen ? 'browse on' : 'browse'}
+        className={browseOpen || page('/c/') ? 'browse on' : 'browse'}
         aria-haspopup="dialog"
         aria-expanded={browseOpen}
         aria-controls="browse-panel"

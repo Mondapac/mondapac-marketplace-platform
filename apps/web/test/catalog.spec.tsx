@@ -3,7 +3,8 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it } from 'vitest';
 import messages from '../messages/en.json';
-import { Crumbs, EmptyResults, FilterChips, ProductResults } from '../src/catalog/results.tsx';
+import { FilterChips } from '../src/catalog/filter-chips.tsx';
+import { Crumbs, EmptyResults, ProductResults } from '../src/catalog/results.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 import { findProducts, pageOf, queryOf } from '../src/storefront/catalog.ts';
 import { SAMPLE_SUBCATEGORY } from '../src/storefront/sample-catalog.ts';
@@ -108,6 +109,7 @@ describe('results page parts', () => {
       <ProductResults result={result} hrefFor={(p) => `/c/produce?page=${p}`} empty={null} />,
     );
     expect(screen.getAllByRole('article')).toHaveLength(2);
+    expect(screen.getByRole('heading', { level: 2, name: 'Products' })).toBeTruthy();
     const pager = screen.getByRole('navigation', { name: 'Pages' });
     expect(within(pager).getByRole('link', { name: 'Previous' }).getAttribute('href')).toBe(
       '/c/produce?page=1',

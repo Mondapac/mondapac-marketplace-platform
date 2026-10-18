@@ -14,12 +14,6 @@ export interface Crumb {
   readonly href: string;
 }
 
-export interface Chip {
-  readonly label: string;
-  readonly href: string;
-  readonly current: boolean;
-}
-
 export function Crumbs({
   trail,
   current,
@@ -61,30 +55,6 @@ export function ResultsHead({
   );
 }
 
-export function FilterChips({
-  label,
-  chips,
-}: {
-  readonly label: string;
-  readonly chips: readonly Chip[];
-}) {
-  if (chips.length === 0) return null;
-  return (
-    <nav className="fchips" aria-label={label}>
-      {chips.map((chip) => (
-        <Link
-          key={chip.href}
-          href={chip.href}
-          aria-current={chip.current ? 'page' : undefined}
-          scroll={false}
-        >
-          {chip.label}
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
 /** The product grid with its pager, or `empty` when the page holds no products. */
 export function ProductResults({
   result,
@@ -101,7 +71,7 @@ export function ProductResults({
     if (result.page > 1)
       return (
         <div className="empty rich">
-          <p>{t('page-empty')}</p>
+          <p role="status">{t('page-empty')}</p>
           <Link className="btn" href={hrefFor(1)}>
             {t('first-page')}
           </Link>
@@ -111,7 +81,10 @@ export function ProductResults({
   }
   const previous = result.page > 1;
   return (
-    <section aria-label={t('results')}>
+    <section aria-labelledby="results-heading">
+      <h2 id="results-heading" className="sr-only">
+        {t('results')}
+      </h2>
       <div className="grid">
         {result.items.map((p) => (
           <ProductCard key={p.id} product={p} />
@@ -151,8 +124,8 @@ export function EmptyResults({
   readonly children?: ReactNode;
 }) {
   return (
-    <div className="empty rich" role="status">
-      <p>{message}</p>
+    <div className="empty rich">
+      <p role="status">{message}</p>
       {children}
     </div>
   );

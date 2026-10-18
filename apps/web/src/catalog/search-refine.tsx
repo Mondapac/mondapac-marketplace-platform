@@ -23,7 +23,6 @@ export function SearchRefine({
           defaultValue={value}
           placeholder={t('search-placeholder')}
           aria-label={t('search')}
-          minLength={2}
           maxLength={100}
         />
       </label>
