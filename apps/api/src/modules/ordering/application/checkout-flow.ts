@@ -165,7 +165,8 @@ async function sealShipTo(
     countryCode: a.countryCode,
   };
   const sealed = await deps.shipTo.seal(context.market, accountId, shipTo);
-  return sealed.ok ? ok(sealed.value) : err({ code: 'access.denied' });
+  // The account was erased between the read and the seal: its address is gone.
+  return sealed.ok ? ok(sealed.value) : err({ code: 'ordering.address-not-found' });
 }
 
 /**

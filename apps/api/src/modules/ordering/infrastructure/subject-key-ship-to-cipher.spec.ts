@@ -73,6 +73,9 @@ describe('SubjectKeyShipToCipher', () => {
 
   it('refuses a stored address of the wrong shape instead of guessing', () => {
     expect(() => shipToFromJson('[]')).toThrow('ordering.stored-ship-to-invalid');
+    expect(() => shipToFromJson('{"line1": "12 Exa')).toThrow(
+      new Error('ordering.stored-ship-to-invalid'),
+    );
     expect(() => shipToFromJson(JSON.stringify({ ...SHIP_TO, phone: null }))).toThrow(
       'ordering.stored-ship-to-invalid',
     );

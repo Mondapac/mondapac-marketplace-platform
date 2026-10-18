@@ -28,7 +28,13 @@ export const shipToJson = (shipTo: ShipTo): string =>
 
 /** Reads back a sealed address. Only checkout writes it: a bad shape means damage, so it throws. */
 export function shipToFromJson(json: string): ShipTo {
-  const value: unknown = JSON.parse(json);
+  let value: unknown;
+  try {
+    value = JSON.parse(json);
+  } catch {
+    // A parse error quotes the text it read: never let a fragment of an address reach a log.
+    throw new Error('ordering.stored-ship-to-invalid');
+  }
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error('ordering.stored-ship-to-invalid');
   }

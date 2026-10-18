@@ -379,7 +379,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
       customers.failure = null;
       shipToCipher.destroyed.add(ACCOUNT);
-      expect(await start()).toEqual(err({ code: 'access.denied' }));
+      expect(await start()).toEqual(err({ code: 'ordering.address-not-found' }));
       expect(inventory.calls).toEqual([]);
       expect(orders.rows.size).toBe(0);
     });
@@ -395,6 +395,31 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       shipToCipher.destroyed.add(ACCOUNT);
       const erased = await view.execute(customer, { orderId: other.id });
       expect(erased.ok && erased.value.shipTo).toBeNull();
+    });
+
+    it('still answers a seller step when the copy fails its integrity check', async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      orders.rows.set(order.id, { ...orders.rows.get(order.id)!, shipToSealed: 'damaged' });
+      const sellerOrderId = order.sellerOrders[0]!.id;
+      const seller = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: id<'Account'>(0x71),
+          sessionId: id<'Session'>(0x171),
+          sellerId: order.sellerOrders[0]!.sellerId,
+        }),
+        'order-seller-damaged',
+      );
+
+      const shipped = await new SellerShipOrder(gate, deps).execute(seller, {
+        sellerOrderId,
+        carrier: 'Australia Post',
+        trackingRef: null,
+      });
+      expect(shipped.ok && shipped.value.fulfilment).toBe('shipped');
+      expect(shipped.ok && shipped.value.shipTo).toBeNull();
     });
   });
 

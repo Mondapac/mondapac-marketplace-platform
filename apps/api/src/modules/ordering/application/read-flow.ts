@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { OrderStatus, OrderState, ShipTo } from '../domain/order';
@@ -107,9 +108,13 @@ const parseOrderId = (value: unknown): Result<Id<'Order'>, ReadFailure> => {
     : err({ code: 'validation.failed', fields: [{ path: 'orderId', code: 'format' }] });
 };
 
+const logger = new Logger('OrderShipTo');
+
 /**
  * Opens an order's sealed delivery address. None recorded, or the account's key destroyed
- * (erasure), is null: the order stays readable without it.
+ * (erasure), is null: the order stays readable without it. A copy that fails its integrity check
+ * is logged as a code with the order's ids only and answered as null, so a seller's shipment that
+ * was already saved never comes back as an error.
  */
 export async function openShipTo(
   deps: OrderingDependencies,
@@ -118,8 +123,18 @@ export async function openShipTo(
   sealed: string | null,
 ): Promise<ShipTo | null> {
   if (sealed === null) return null;
-  const opened = await deps.shipTo.open(context.market, accountId, sealed);
-  return opened.ok ? opened.value : null;
+  try {
+    const opened = await deps.shipTo.open(context.market, accountId, sealed);
+    return opened.ok ? opened.value : null;
+  } catch (error) {
+    logger.error({
+      msg: 'ordering.ship-to-unreadable',
+      errorName: error instanceof Error ? error.name : 'unknown',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    return null;
+  }
 }
 
 /** The customer's own order, with its delivery address. Unknown and foreign are one answer. */
