@@ -41,3 +41,16 @@ G1/G2 brief. Package 1b of that plan includes customers package 4 (consent recor
   owner gives them; today it names the Market's mail sender and support address.
 - Account deletion (customers package 5) deletes the account's consent rows with the account; the
   history may be kept as the proof of consent for as long as the law asks (decide then).
+
+## Review follow-ups (PR #407: Hassan GO, Mojtaba approved)
+
+- Before package 1c (first sender): the footer's business name, ABN and postal address (Spam Act
+  s17); the real mail transport carries the two `List-Unsubscribe` headers under DKIM; the
+  storefront unsubscribe page sends `Referrer-Policy: no-referrer` and posts same-origin through
+  its proxy (add an HTTP test with the storefront's `Origin` and `Sec-Fetch-Site` then).
+- `source: sign-up` is what the client says. Later: accept it only shortly after sign-up (or let
+  identity record it), and store the version of the consent wording shown with each change.
+- Customers package 5 (account deletion): a migration granting DELETE on `marketing_consents` and a
+  retention decision for `marketing_consent_changes` (keep as proof for a set period, or
+  pseudonymise). Physical model doc `docs/design/data/legal.md` (Mojtaba).
+- Consider a boundary rule so only notifications calls `withdrawMarketingEmailByLink`.

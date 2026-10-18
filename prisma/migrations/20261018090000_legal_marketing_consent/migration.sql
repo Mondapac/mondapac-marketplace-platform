@@ -44,7 +44,8 @@ ALTER TABLE "legal"."marketing_consents"
   ADD CONSTRAINT "marketing_consents_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
   ADD CONSTRAINT "marketing_consents_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
   ADD CONSTRAINT "marketing_consents_channel_check" CHECK ("channel" IN ('email')),
-  ADD CONSTRAINT "marketing_consents_source_check" CHECK ("source" IN ('sign-up', 'account', 'unsubscribe-link'));
+  ADD CONSTRAINT "marketing_consents_source_check" CHECK ("source" IN ('sign-up', 'account', 'unsubscribe-link')),
+  ADD CONSTRAINT "marketing_consents_changed_at_check" CHECK ("changed_at" >= "created_at");
 
 ALTER TABLE "legal"."marketing_consent_changes"
   ADD CONSTRAINT "marketing_consent_changes_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
