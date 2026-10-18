@@ -116,6 +116,7 @@ export function certificationSubscriptions(
           delivery,
           cause: 'product-certification-coverage-changed',
           subjectId: event.payload.typeId,
+          recheckCertificateId: event.payload.productCertificationId,
         }),
     }),
   ];

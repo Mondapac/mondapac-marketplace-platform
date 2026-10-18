@@ -260,8 +260,32 @@ export class RecordingReevaluationRequests implements TagReevaluationRequestRepo
     return Promise.resolve();
   }
 
-  requestForEvent(): Promise<void> {
+  /** The certification-event requests written, in order (Hassan M2). */
+  readonly events: {
+    readonly cause: string;
+    readonly subjectId: Id;
+    readonly sourceEventId: Id;
+  }[] = [];
+  /** The (cause, subject) pairs a pending request no run started holds. */
+  readonly unstarted = new Set<string>();
+
+  requestForEvent(
+    _market: MarketContext,
+    request: { readonly cause: string; readonly subjectId: Id; readonly sourceEventId: Id },
+  ): Promise<void> {
+    this.events.push({
+      cause: request.cause,
+      subjectId: request.subjectId,
+      sourceEventId: request.sourceEventId,
+    });
     return Promise.resolve();
+  }
+
+  pendingUnstarted(
+    _market: MarketContext,
+    request: { readonly cause: string; readonly subjectId: Id },
+  ): Promise<boolean> {
+    return Promise.resolve(this.unstarted.has(`${request.cause}:${request.subjectId}`));
   }
 
   listPendingEnding(): Promise<readonly PendingCertificationReevaluation[]> {
@@ -299,6 +323,7 @@ export function ownedRequests(
   return {
     requestForPublish: (...args) => store.requestForPublish(...args),
     requestForEvent: (...args) => store.requestForEvent(...args),
+    pendingUnstarted: (...args) => store.pendingUnstarted(...args),
     listPending: async (market, limit) =>
       (await store.listPending(market, 1000)).filter(owns).slice(0, limit),
     listPendingEnding: async (market, page) =>

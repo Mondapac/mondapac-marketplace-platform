@@ -1183,6 +1183,19 @@ Javad has the pace of `identity` and `sellers`.
   The job resolves the type code through the facade (`CertificationTypeView.typeId`, new). Unavailable leaves the request pending; an unknown type settles it. The job then re-asks every live tag of that type, using the index `offer_tags_market_id_type_code_offer_id_idx`. This is a superset of the design's selection: one request holds one subject. Narrowing it needs a second subject column (open).
 - **Migrations.** `20261018170000_certification_product_certifications` and `20261018171000_catalog_type_reevaluation`, each with `down.sql`. The draft coverage grant is SELECT, INSERT and DELETE (no UPDATE).
 - **Open.** Sign-off from Mojtaba (index, grants, S3) and from Hassan (CERT path). Part 2 above. AU's switch stays off.
+- **Fix round for PR #413 (reviews of Mojtaba and Hassan; 2026-10-18).**
+  - Number read audited (Hassan M1). Every successful review read writes one `certification.product-certificate.number-viewed` row, in its own unit after the numbers are opened. The row's `after` holds the `revisionIds` of the revisions whose numbers were shown, never a number. The read answers only once the row is committed.
+  - Coverage change (Hassan M2). Its handler writes two requests in one `runOnce` unit:
+    - the new cause `product-certification-coverage-recheck` on the certificate's own tags: an ending cause, selected by `certificate_id` and marked `rechecking` first;
+    - the type request.
+
+    The type request is skipped while an identical pending one (same cause and type) has not started; a started one does not count. The request unique becomes `(market_id, source_event_id, cause)`.
+  - S3 reads the boundary stored at approval (Hassan L1), as timestamptz text with its offset. The functions of ADR-0030 allow no `to_char`. It is no longer recomputed from the date and zone.
+  - Ending and type causes never overlap (Hassan L2), checked by a unit test.
+  - Tests (Hassan L3): reject refused for the creator, an editor and the submitter; approve refused for a submitter who never saved; S3 never covers through a pending or superseded revision.
+  - Turning `manufacturerBasisEnabled` off needs a type re-ask, or the daily reconciliation removes the tags (Hassan L4; `config/markets/README.md`).
+  - New index `(market_id, revision_id, type_id)` on `product_revision_coverage` (Mojtaba F1), with a plan test.
+  - Whitespace-only schema hunks reverted (F2). Data design 3.15, 3.16, 7.3 and 8 updated to as built (F3).
 
 ### 14.3 Spikes (run, not merged)
 | # | Spike |

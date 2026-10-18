@@ -33,6 +33,7 @@ export const CERTIFICATION_CAUSES = [
   'claim-policy-changed',
   'product-certification-approved',
   'product-certification-coverage-changed',
+  'product-certification-coverage-recheck',
 ] as const;
 export type CertificationCause = (typeof CERTIFICATION_CAUSES)[number];
 
@@ -50,10 +51,14 @@ export const TYPE_CAUSES = [
  * The causes that end a certificate (Hassan M-1, PR #398): their requests are listed first, and
  * every run marks their selected `active` tags `rechecking` before any ask, however many other
  * requests are pending, so no badge outlives a revoked or expired certificate by more than a run.
+ * A manufacturer certificate's coverage change (Hassan M2, slice 14) is one too for the tags
+ * based on that certificate: a product it no longer covers must lose its badge as fast. Never a
+ * {@link TYPE_CAUSES} cause (their selection needs a type code the pre-marking does not resolve).
  */
 export const ENDING_CAUSES = [
   'seller-certification-expired',
   'seller-certification-revoked',
+  'product-certification-coverage-recheck',
 ] as const satisfies readonly CertificationCause[];
 
 /** What a pending request has in common: its id, cursor, counts and age. */
@@ -120,6 +125,17 @@ export interface TagReevaluationRequestRepository {
       readonly now: Temporal.Instant;
     },
   ): Promise<void>;
+
+  /**
+   * True when a pending `certification-event` request of this cause and subject exists that no
+   * run has started (no cursor): a new one would re-ask the same tags, so the handler of a type
+   * cause skips it (Hassan M2). A started one does not count: the Offers before its cursor would
+   * miss the new change.
+   */
+  pendingUnstarted(
+    market: MarketContext,
+    request: { readonly cause: CertificationCause; readonly subjectId: Id },
+  ): Promise<boolean>;
 
   /**
    * Pending requests of the kinds this build settles (`revision-published`,

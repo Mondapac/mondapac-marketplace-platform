@@ -279,6 +279,10 @@ describe.each([
       })[] = [];
       progressed = 0;
 
+      pendingUnstarted(): Promise<boolean> {
+        return Promise.resolve(false);
+      }
+
       requestForPublish(
         _m: MarketContext,
         request: { productId: Id<'Product'>; productRevisionId: Id<'ProductRevision'> },

@@ -55,7 +55,7 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'catalog.tag_reevaluation_requests_market_id_product_revision_id_key':
     "CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_product_revision_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, product_revision_id) WHERE (kind = 'revision-published'::text)",
   'catalog.tag_reevaluation_requests_market_id_source_event_id_key':
-    'CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_source_event_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, source_event_id) WHERE (source_event_id IS NOT NULL)',
+    'CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_source_event_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, source_event_id, cause) WHERE (source_event_id IS NOT NULL)',
   'catalog.product_variants_market_id_product_id_single_key':
     "CREATE UNIQUE INDEX product_variants_market_id_product_id_single_key ON catalog.product_variants USING btree (market_id, product_id) WHERE (variant_model = 'single'::text)",
   'catalog.products_market_id_owner_seller_id_created_at_idx':

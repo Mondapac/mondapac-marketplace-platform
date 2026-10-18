@@ -92,6 +92,7 @@ export function selectionOf(
       return { selection: { by: 'seller', id: subjectId }, markFirst: false };
     case 'seller-certification-expired':
     case 'seller-certification-revoked':
+    case 'product-certification-coverage-recheck':
       return { selection: { by: 'certificate', id: subjectId }, markFirst: true };
     case 'seller-certification-issuer-confirmed':
       return { selection: { by: 'certificate-version', id: subjectId }, markFirst: false };

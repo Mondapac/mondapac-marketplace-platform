@@ -338,6 +338,7 @@ describe.each(TEST_MARKETS)(
       subjectId: string,
       eventId = uuid7(),
       at = '2026-10-17T05:00:00Z',
+      recheckCertificateId?: string,
     ) {
       ownEvents.add(eventId);
       const handler = new ReevaluateFromCertification(gate, {
@@ -352,7 +353,14 @@ describe.each(TEST_MARKETS)(
         attempt: 1,
       };
       expect(
-        await handler.execute(system(), { delivery, cause, subjectId: subjectId as Id }),
+        await handler.execute(system(), {
+          delivery,
+          cause,
+          subjectId: subjectId as Id,
+          ...(recheckCertificateId === undefined
+            ? {}
+            : { recheckCertificateId: recheckCertificateId as Id }),
+        }),
       ).toEqual({ ok: true, value: { code: 'catalog.reevaluation-requested' } });
       return eventId;
     }
@@ -727,6 +735,57 @@ describe.each(TEST_MARKETS)(
             counts: expect.objectContaining({ restored: 1 }) as unknown,
           }),
         ]);
+      });
+
+      it("a coverage change rechecks the certificate's own tags first and writes one unstarted type request (Hassan M2)", async () => {
+        const { productId } = await product();
+        const tagType = ownType();
+        const s = await taggedOffer(productId, undefined, tagType);
+        const typeId = uuid7();
+        const first = await consume(
+          'product-certification-coverage-changed',
+          typeId,
+          uuid7(),
+          '2026-10-17T05:00:00Z',
+          s.certificate.certificateId,
+        );
+        // One event, two requests (one per cause; the unique is per event and cause).
+        expect(
+          (await requestOf(first)).map((r) => [r.cause, r.subject_id, r.state]).sort(),
+        ).toEqual(
+          [
+            ['product-certification-coverage-changed', typeId, 'pending'],
+            ['product-certification-coverage-recheck', s.certificate.certificateId, 'pending'],
+          ].sort(),
+        );
+        // A second change of the type before any run: the type request is not written again; the
+        // recheck of its own certificate is.
+        const other = uuid7();
+        const second = await consume(
+          'product-certification-coverage-changed',
+          typeId,
+          uuid7(),
+          '2026-10-17T05:01:00Z',
+          other,
+        );
+        expect((await requestOf(second)).map((r) => [r.cause, r.subject_id])).toEqual([
+          ['product-certification-coverage-recheck', other],
+        ]);
+
+        // The product left the coverage: the run marks the tag `rechecking` before any ask, then
+        // settles it from the answer.
+        const evaluator = evaluatorFor(
+          new Map([[s.sellerId, (q) => refusedDecision(q, 'no-valid-seller-certificate')]]),
+        );
+        evaluator.typeCodes.set(typeId, tagType);
+        await job(evaluator).execute(system(), {});
+        expect((await historyOf(s.offerId)).map((h) => h.to_status)).toContain('rechecking');
+        expect(await tagOf(s.offerId)).toMatchObject({ status: 'suspended', has_badge: false });
+        for (const eventId of [first, second]) {
+          for (const request of await requestOf(eventId)) {
+            expect(request.state).toBe('settled');
+          }
+        }
       });
 
       it('settles a coverage change of a type the Market does not have without asking', async () => {
