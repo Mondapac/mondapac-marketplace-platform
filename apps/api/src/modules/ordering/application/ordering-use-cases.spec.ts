@@ -815,6 +815,9 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     it('confirms against the total with delivery, and voids a payment of the goods only', async () => {
       const order = await placed();
       expect(order.total.amount).toBe(2000n + 750n + 99n + 500n);
+      expect(gateway.sessions[0]!.packages.reduce((sum, p) => sum + p.amount, 0n)).toBe(
+        order.total.amount,
+      );
 
       const short = await confirm(order.id, 2000n + 750n + 99n);
       expect(short).toEqual(ok('voided'));
@@ -1403,7 +1406,21 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(gateway.sessions[0]!.packages.map((p) => p.amount)).toEqual([2099n, 500n, 750n]);
       // One call for the whole cart, as the customer, with the category of each line's product.
       expect(tax.calls).toHaveLength(1);
-      expect(tax.calls[0]!.every((l) => l.categoryCode === category && l.taxInclusive)).toBe(true);
+      const productCalls = tax.calls[0]!.slice(0, order.lines.length);
+      expect(productCalls.every((l) => l.categoryCode === category && l.taxInclusive)).toBe(true);
+      // The delivery fee of each seller follows, with no category (the strategy's default rate)
+      // and the price basis of that seller's goods: 500 inclusive at 10% holds 45 (half-up).
+      expect(
+        tax.calls[0]!.slice(order.lines.length).map((l) => [l.amount, l.categoryCode]),
+      ).toEqual([
+        [500n, null],
+        [0n, null],
+      ]);
+      expect(order.sellerOrders.map((s) => [s.shippingTaxRateBps, s.shippingTax])).toEqual([
+        [1000, 45n],
+        [1000, 0n],
+      ]);
+      expect(order.sellerOrders.every((s) => s.shippingTaxInclusive === true)).toBe(true);
 
       // A later strategy change does not touch the placed order.
       tax.rateBps = 2500;
@@ -1422,7 +1439,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         [OFFER_3]: category,
       });
       // The tax module is asked with each line's own category, in line order.
-      expect(tax.calls[0]!.map((l) => l.categoryCode)).toEqual(
+      expect(tax.calls[0]!.slice(0, order.lines.length).map((l) => l.categoryCode)).toEqual(
         order.lines.map((l) => l.taxCategoryCode),
       );
       // One catalog lookup for the whole cart, for the offers bought.
@@ -1460,22 +1477,41 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         [OFFER_2]: [1000, 75n],
         [OFFER_3]: [1000, 10n],
       });
-      expect(order.sellerOrders.map((s) => [s.subtotal, s.shipping, s.total])).toEqual([
-        [2099n, 500n, 2099n + 500n + 210n],
-        [750n, 0n, 750n + 75n],
+      // The 500 delivery fee is taxed on top as well: 50 at 10%.
+      expect(
+        order.sellerOrders.map((s) => [s.subtotal, s.shipping, s.shippingTax, s.total]),
+      ).toEqual([
+        [2099n, 500n, 50n, 2099n + 500n + 210n + 50n],
+        [750n, 0n, 0n, 750n + 75n],
       ]);
-      expect(order.total.amount).toBe(2809n + 825n);
+      expect(order.sellerOrders.every((s) => s.shippingTaxInclusive === false)).toBe(true);
+      expect(order.total.amount).toBe(2859n + 825n);
       const session = gateway.sessions[0]!;
       expect(session.packages.map((p) => [p.label, p.amount])).toEqual([
         ['MondaPac order, package 1', 2099n],
         ['Delivery, package 1', 500n],
-        ['Tax, package 1', 210n],
+        ['Tax, package 1', 260n],
         ['MondaPac order, package 2', 750n],
         ['Tax, package 2', 75n],
       ]);
       expect(session.packages.reduce((sum, p) => sum + p.amount, 0n)).toBe(order.total.amount);
       // The payment of the full total confirms the order.
       expect((await confirm(order.id)).ok).toBe(true);
+    });
+
+    it('taxes the delivery fee as tax-exclusive when any line of the seller excludes tax', async () => {
+      cart.lines = cart.lines.map((l, i) => ({ ...l, taxInclusive: i !== 0 }));
+      const order = await placed();
+      const firstLine = order.lines.find((l) => l.offerId === cart.lines[0]!.offerId)!;
+      const first = order.sellerOrders.find((s) => s.id === firstLine.sellerOrderId)!;
+      expect(first.shippingTaxInclusive).toBe(false);
+      expect(first.shippingTax).toBe(first.shipping / 10n);
+    });
+
+    it('opens no order when the tax answer misses a delivery line (fail closed)', async () => {
+      tax.dropLast = true;
+      expect((await start()).ok).toBe(false);
+      expect(orders.rows.size).toBe(0);
     });
 
     it('opens no order when the tax cannot be worked out (fail closed)', async () => {
@@ -1504,11 +1540,16 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const view = await new AdminViewOrder(gate, deps).execute(admin, { orderId: order.id });
       if (!view.ok) throw new Error('view failed');
 
-      expect(view.value.tax).toEqual(money(182n + 68n + 9n, currency));
+      // The goods' tax plus the 45 inside the 500 delivery fee.
+      expect(view.value.tax).toEqual(money(182n + 68n + 9n + 45n, currency));
       expect(view.value.taxStrategyId).toBe(tax.strategyId);
       expect(view.value.sellerOrders.map((s) => s.tax)).toEqual([
-        money(182n + 9n, currency),
+        money(182n + 9n + 45n, currency),
         money(68n, currency),
+      ]);
+      expect(view.value.sellerOrders.map((s) => s.shippingTax)).toEqual([
+        money(45n, currency),
+        money(0n, currency),
       ]);
       expect(view.value.sellerOrders[0]!.lines.map((l) => [l.taxRateBps, l.tax])).toEqual([
         [1000, money(182n, currency)],

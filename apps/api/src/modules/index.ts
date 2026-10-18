@@ -1,6 +1,7 @@
 // Bounded-context modules of the core (ADR-0008 decision 3), each imported through its
 // public entry point only.
 import { IdentityModule } from './identity';
+import { LegalModule } from './legal';
 import { CustomersModule } from './customers';
 import { SellersModule } from './sellers';
 import { CertificationModule } from './certification';
@@ -21,6 +22,7 @@ import { StorefrontModule } from './storefront';
 export const CORE_MODULES = [
   IdentityModule,
   CustomersModule,
+  LegalModule,
   SellersModule,
   CertificationModule,
   CatalogModule,

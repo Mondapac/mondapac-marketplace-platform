@@ -510,6 +510,8 @@ export class FakeTax implements TaxFacade {
   rateBps = 1000;
   strategyId: TaxAnswer['strategyId'] = null;
   failure: TaxFailure | null = null;
+  /** Answer one line fewer than asked, as a broken tax module would. */
+  dropLast = false;
   calls: (readonly TaxLineInput[])[] = [];
   calculateTax(
     _c: CallContext,
@@ -522,7 +524,7 @@ export class FakeTax implements TaxFacade {
     return Promise.resolve(
       ok({
         strategyId: this.strategyId,
-        lines: lines.map((line) => {
+        lines: (this.dropLast ? lines.slice(0, -1) : lines).map((line) => {
           const tax = line.taxInclusive
             ? halfUp(line.amount * rate, 10_000n + rate)
             : halfUp(line.amount * rate, 10_000n);
