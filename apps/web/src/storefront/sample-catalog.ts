@@ -14,10 +14,12 @@ type Row = [
   seller: string,
   category: string,
   price: number,
-  extra?: { was?: number; low?: number; img?: string },
+  extra?: { was?: number; low?: number },
 ];
 
 // More pantry and meat products than the home page shows, so a listing has more than one page.
+// No photos: the prototype photos carry a stock watermark, so these cards use the category
+// illustration until there is a licensed photo source.
 const MORE: Row[] = [
   ['chickpeas', 'Chickpeas, 400 g can', 'Sunnybank Pantry Co', 'pantry', 220],
   ['lentils', 'Red lentils, 1 kg', 'Sunnybank Pantry Co', 'pantry', 590, { was: 690 }],
@@ -28,7 +30,7 @@ const MORE: Row[] = [
   ['rose-water', 'Rose water, 250 ml', 'Inala Spice House', 'pantry', 650, { was: 750 }],
   ['jasmine-rice', 'Jasmine rice, 5 kg', 'Sunnybank Pantry Co', 'pantry', 1790],
   ['date-syrup', 'Date syrup, 400 g', 'Inala Spice House', 'pantry', 990],
-  ['lamb-mince', 'Lamb mince, 500 g', 'Kedron Halal Butchers', 'meat', 1190, { img: 'meat' }],
+  ['lamb-mince', 'Lamb mince, 500 g', 'Kedron Halal Butchers', 'meat', 1190],
   ['beef-sausages', 'Beef sausages, 8 pack', 'Kedron Halal Butchers', 'meat', 1050, { low: 6 }],
   ['lamb-cutlets', 'Lamb cutlets, 500 g', 'Kedron Halal Butchers', 'meat', 2690, { was: 2990 }],
 ];
@@ -47,7 +49,6 @@ const MORE_PRODUCTS: ProductCard[] = MORE.map(
       ...(extra.was === undefined ? {} : { wasPrice: money(extra.was) }),
       certifications,
       ...(extra.low === undefined ? {} : { lowStock: extra.low }),
-      ...(extra.img === undefined ? {} : { imageUrl: `/placeholders/${extra.img}.jpg` }),
     };
   },
 );
@@ -118,12 +119,10 @@ export const SAMPLE_LISTING_BANNERS: Readonly<Record<string, ListingBanner>> = {
     title: 'Halal specials this week',
     body: 'Lamb, beef and chicken from Kedron Halal Butchers on special.',
     action: { label: 'Shop now', href: '/c/meat?special=1' },
-    imageUrl: '/placeholders/meat.jpg',
   },
   pantry: {
     title: 'Pantry staples for less',
     body: 'Rice, lentils and honey from Sunnybank Pantry Co, this week only.',
     action: { label: 'Shop now', href: '/c/pantry?special=1' },
-    imageUrl: '/placeholders/coconut.jpg',
   },
 };

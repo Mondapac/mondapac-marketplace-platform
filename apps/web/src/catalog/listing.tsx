@@ -39,7 +39,7 @@ export function ListingBannerView({ banner }: { readonly banner: ListingBanner }
   );
 }
 
-/** The removable chips of the filters in use, and "Clear all". Announced when they change. */
+/** The removable chips of the filters in use, and "Clear all" (the result count announces). */
 export function ActiveFilters({
   path,
   state,
@@ -78,7 +78,7 @@ export function ActiveFilters({
   });
 
   return (
-    <div className="act" aria-live="polite" aria-label={t('active-filters')} role="group">
+    <div className="act" aria-label={t('active-filters')} role="group">
       {chips.map((chip) => (
         <Link
           key={chip.key}

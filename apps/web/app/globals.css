@@ -2073,7 +2073,12 @@ svg {
   height: 120%;
   object-fit: cover;
   mix-blend-mode: multiply;
+  mask-image: linear-gradient(to right, transparent, var(--sf-black) 25%);
   pointer-events: none;
+}
+.opt:has(input:disabled) {
+  color: var(--sf-slate);
+  cursor: not-allowed;
 }
 @media (min-width: 900px) {
   .cban {

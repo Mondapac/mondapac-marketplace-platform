@@ -194,7 +194,10 @@ describe('listing page parts', () => {
     fireEvent.click(open);
     expect(dialog.hasAttribute('inert')).toBe(false);
     expect(within(dialog).getByRole('button', { name: 'Show 2 results' })).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Over A\$20/ }));
+    const box = (name: RegExp) => within(dialog).getByRole<HTMLInputElement>('checkbox', { name });
+    expect(box(/Same day delivery/).disabled).toBe(true);
+    expect(box(/Special prices/).disabled).toBe(false);
+    fireEvent.click(box(/Over A\$20/));
     expect(replace).toHaveBeenCalledWith('/c/meat?special=1&price=over-20', { scroll: false });
     act(() => {
       fireEvent.keyDown(document, { key: 'Escape' });

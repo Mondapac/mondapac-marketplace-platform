@@ -145,8 +145,14 @@ function FiltersDrawer({ path, state, facets, total }: Props) {
   const close = () => setFiltersOpen(false);
 
   const option = (key: string, label: string, count: number, on: boolean, next: ListingState) => (
+    // An option with nothing in it cannot be ticked (a dead end); a ticked one can always go.
     <label key={key} className="opt">
-      <input type="checkbox" checked={on} onChange={() => apply(next)} />
+      <input
+        type="checkbox"
+        checked={on}
+        disabled={count === 0 && !on}
+        onChange={() => apply(next)}
+      />
       <span>{label}</span>
       <small className="num">{count}</small>
     </label>
@@ -206,7 +212,7 @@ function FiltersDrawer({ path, state, facets, total }: Props) {
           >
             {t('clear-all')}
           </button>
-          <button className="btn" type="button" onClick={close}>
+          <button className="btn" type="button" onClick={close} disabled={pending}>
             {t('show-results', { count: total })}
           </button>
         </div>
