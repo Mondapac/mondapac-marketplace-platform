@@ -23,9 +23,21 @@ export class NoticeBody {
   read!: boolean;
 }
 
+export class ListedNoticeBody extends NoticeBody {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'seller.order-paid: the customer\'s short name ("Maryam R."), read now, never stored. Null ' +
+      'without identity.customer-short-name.view, when the customer gave no name, or when the ' +
+      'lookup failed. Personal data: render as text, do not cache.',
+  })
+  customerShortName!: string | null;
+}
+
 export class NoticePageBody {
-  @ApiProperty({ type: [NoticeBody], description: 'Newest first, at most 20.' })
-  items!: NoticeBody[];
+  @ApiProperty({ type: [ListedNoticeBody], description: 'Newest first, at most 20.' })
+  items!: ListedNoticeBody[];
   @ApiProperty({
     nullable: true,
     type: String,

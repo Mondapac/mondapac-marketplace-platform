@@ -14,11 +14,20 @@ import {
 } from '@mondapac/ui';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import { callApi } from '../api/client.ts';
 import {
   ORDER_PAID,
   RINGING_KINDS,
+  type ListedNotice,
   type Notice,
   type NoticePage,
   type UnreadNotices,
@@ -75,7 +84,7 @@ export function SellerNotifications({ csrfToken }: { readonly csrfToken: string 
   const [filter, setFilter] = useState<NoticeFilter>('unread');
   const [page, setPage] = useState<{
     readonly state: 'loading' | 'error' | 'ready';
-    readonly items: readonly Notice[];
+    readonly items: readonly ListedNotice[];
     readonly next: string | null;
     readonly loadingMore: boolean;
     readonly now: number;
@@ -277,22 +286,28 @@ export function SellerNotifications({ csrfToken }: { readonly csrfToken: string 
         }
       : { kind: page.state };
 
-  function toItem(notice: Notice, now: number): NoticeItem {
+  function toItem(notice: ListedNotice, now: number): NoticeItem {
     const at = new Date(notice.createdAt);
     const orderPaid = notice.kind === ORDER_PAID;
+    const customer = orderPaid ? (notice.customerShortName ?? null) : null;
+    const rich = {
+      items: notice.params.items ?? 0,
+      strong: (chunks: ReactNode) => <strong className="font-semibold">{chunks}</strong>,
+    };
     return {
       id: notice.id,
       href:
         orderPaid && notice.params.sellerOrderId
           ? `/orders/${notice.params.sellerOrderId}`
           : '/orders',
-      ownerName: null,
+      ownerName: customer,
       icon: 'clipboard',
       tone: 'success',
-      message: t.rich('kind.order-paid', {
-        items: notice.params.items ?? 0,
-        strong: (chunks) => <strong className="font-semibold">{chunks}</strong>,
-      }),
+      // The name is a text value, never markup: next-intl renders it as escaped text.
+      message:
+        customer === null
+          ? t.rich('kind.order-paid', rich)
+          : t.rich('kind.order-paid-by', { ...rich, name: customer }),
       time: format.relativeTime(at, now),
       dateTime: notice.createdAt,
       category: t('category.orders'),

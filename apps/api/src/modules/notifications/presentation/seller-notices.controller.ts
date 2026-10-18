@@ -52,7 +52,7 @@ export class SellerNoticesController {
   @ApiOperation({
     summary: 'The notices of the signed-in seller-side member, newest first',
     description:
-      'Each kind is listed only while the member holds its permission (seller.order-paid: ordering.seller-order.view). Kept 90 days.',
+      'Each kind is listed only while the member holds its permission (seller.order-paid: ordering.seller-order.view). Kept 90 days. The customer short name is shown only with identity.customer-short-name.view.',
   })
   @ApiQuery({ name: 'before', required: false, description: 'The `next` of the previous page.' })
   @ApiQuery({

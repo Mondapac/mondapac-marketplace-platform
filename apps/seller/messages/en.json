@@ -1640,7 +1640,8 @@
     "load-more": "Show older",
     "unread-item": "Unread",
     "kind": {
-      "order-paid": "<strong>New order</strong> with {items, plural, one {# item} other {# items}} is paid and ready to ship"
+      "order-paid": "<strong>New order</strong> with {items, plural, one {# item} other {# items}} is paid and ready to ship",
+      "order-paid-by": "<strong>New order</strong> from <strong>{name}</strong> with {items, plural, one {# item} other {# items}} is paid and ready to ship"
     },
     "category": {
       "orders": "Orders"
