@@ -64,7 +64,7 @@ export function Rail() {
       <button
         type="button"
         id="browse"
-        className={browseOpen ? 'cta on' : 'cta'}
+        className={browseOpen || path.startsWith('/c/') ? 'cta on' : 'cta'}
         aria-haspopup="dialog"
         aria-expanded={browseOpen}
         aria-controls="browse-panel"

@@ -2,6 +2,7 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { summarise } from '../cart/cart.ts';
 import { formatMoney } from '../format/money.ts';
@@ -18,6 +19,9 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
   const { count, total } = summarise(cart);
   const totalText = total ? formatMoney(total, locale) : '';
   const ref = useRef<HTMLElement>(null);
+  // On the results page the box keeps the words searched for.
+  const searched = useSearchParams()?.get('q') ?? '';
+  const query = usePathname() === '/search' ? searched : '';
 
   // The header's height drives the sticky offset of the side rail.
   useEffect(() => {
@@ -40,8 +44,10 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
         <form className="search" role="search" action="/search">
           <Icon name="search" />
           <input
+            key={query}
             type="search"
             name="q"
+            defaultValue={query}
             aria-label={t('search')}
             placeholder={t('search-placeholder')}
           />

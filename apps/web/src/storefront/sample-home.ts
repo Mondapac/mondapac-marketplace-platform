@@ -106,17 +106,19 @@ const ROWS: Row[] = [
   ['coconut-milk', 'Coconut milk, 1 L', 'Sunnybank Pantry Co', 'pantry', 590, { img: 'coconut' }],
 ];
 
-const PRODUCTS: ProductCard[] = ROWS.map(([id, name, sellerName, category, price, extra = {}]) => ({
-  id,
-  name,
-  sellerName,
-  category,
-  price: money(price),
-  ...(extra.was === undefined ? {} : { wasPrice: money(extra.was) }),
-  certifications: extra.certified ? [certified] : [],
-  ...(extra.low === undefined ? {} : { lowStock: extra.low }),
-  ...(extra.img === undefined ? {} : { imageUrl: `/placeholders/${extra.img}.jpg` }),
-}));
+export const PRODUCTS: ProductCard[] = ROWS.map(
+  ([id, name, sellerName, category, price, extra = {}]) => ({
+    id,
+    name,
+    sellerName,
+    category,
+    price: money(price),
+    ...(extra.was === undefined ? {} : { wasPrice: money(extra.was) }),
+    certifications: extra.certified ? [certified] : [],
+    ...(extra.low === undefined ? {} : { lowStock: extra.low }),
+    ...(extra.img === undefined ? {} : { imageUrl: `/placeholders/${extra.img}.jpg` }),
+  }),
+);
 
 export const SAMPLE_CONTENT: StorefrontContent = {
   delivery: { label: 'Brisbane 4000' },
