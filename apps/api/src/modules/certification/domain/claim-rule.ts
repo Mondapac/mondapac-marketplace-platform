@@ -47,6 +47,12 @@ export interface ClaimFacts {
   readonly productCertificates: readonly ProductCertificationView[] | null;
   /** The Market's configured zone, which measures manufacturer expiry (2.4 rule 3). */
   readonly marketZone: TimeZoneId | null;
+  /**
+   * The Market's switch of the manufacturer basis (`certification.manufacturerBasisEnabled` of
+   * the Market file; cto ruling, slice 14). Anything but `true` reads `SELLER_OR_MANUFACTURER`
+   * as `SELLER_REQUIRED`, so the basis stays shut until the Market enables it (fail closed).
+   */
+  readonly manufacturerBasisEnabled: boolean;
 }
 
 // Strictness: NOT_APPLICABLE > SELLER_REQUIRED > SELLER_OR_MANUFACTURER (design 4.2 step 3, M1).
@@ -116,6 +122,8 @@ function bestCovering(
 ): Covering | null {
   let best: Covering | null = null;
   for (const cert of certificates) {
+    // A certificate of another type never covers the query (Hassan L2).
+    if (cert.typeCode !== query.typeCode) continue;
     const revision = cert.approved;
     if (revision === null || !covers(revision, query)) continue;
     const validity = productCertificateValidAt(cert, marketZone, at);
@@ -142,13 +150,22 @@ function bestCovering(
  * `SEALED_ORIGINAL` (else `handling-requires-seller`), the per-Offer attestation (else
  * `attestation-missing`) and an approved, valid manufacturer certificate covering the product
  * revision and variant (else `not-covered`). No manufacturer certificate, or none read, is
- * `not-covered`: the basis never opens without one (fail closed). Callers handle input
+ * `not-covered`: the basis never opens without one (fail closed). A certificate of another type
+ * never covers (L2). While the Market's switch is off, `SELLER_OR_MANUFACTURER` is read as
+ * `SELLER_REQUIRED`. The manufacturer decision names the certificate's own approved type
+ * revision (I1). Callers handle input
  * validation (step 0) and turn any exception into `unavailable` (rule 1).
  */
 export function decide(query: ClaimQuery, facts: ClaimFacts, at: Temporal.Instant): ClaimDecision {
   if (facts.type === null) return deny(query, 'type-unknown', at);
 
-  const requirement = resolveRequirement(facts.type.defaultBasis, facts.policy?.matchedRows ?? []);
+  const resolved = resolveRequirement(facts.type.defaultBasis, facts.policy?.matchedRows ?? []);
+  // The Market switch: off (or anything but an explicit true), the manufacturer basis is shut and
+  // the requirement is the seller's (cto ruling, slice 14).
+  const requirement: ClaimBasisRequirement =
+    resolved === 'SELLER_OR_MANUFACTURER' && facts.manufacturerBasisEnabled !== true
+      ? 'SELLER_REQUIRED'
+      : resolved;
   const policyRevisionId =
     facts.policy !== null && facts.policy.matchedRows.length > 0 ? facts.policy.revisionId : null;
 
@@ -209,11 +226,12 @@ export function decide(query: ClaimQuery, facts: ClaimFacts, at: Temporal.Instan
       certificateId: product.certificateId,
       versionId: validity.revisionId,
       issuerId: revision.issuerId,
-      typeRevisionId: facts.type.publishedRevisionId,
+      // I1: the type revision the certificate was approved under, as on the seller path.
+      typeRevisionId: revision.typeRevisionId,
       validUntil: validity.expiresAt,
     },
     policyRevisionId,
-    badge: manufacturerBadge(query.typeCode, facts.type.publishedRevisionId, revision, validity),
+    badge: manufacturerBadge(query.typeCode, revision.typeRevisionId, revision, validity),
     inputs: query,
     evaluatedAt: at,
   };

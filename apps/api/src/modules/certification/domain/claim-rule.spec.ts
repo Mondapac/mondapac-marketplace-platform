@@ -27,6 +27,7 @@ const facts = (over: Partial<ClaimFacts> = {}): ClaimFacts => ({
   policy: null,
   productCertificates: null,
   marketZone: 'Australia/Brisbane' as TimeZoneId,
+  manufacturerBasisEnabled: true,
   sellerZones: {
     zone: 'Australia/Sydney' as TimeZoneId,
     addressZone: 'Australia/Sydney' as TimeZoneId,
@@ -265,9 +266,12 @@ describe('ClaimRule.decide, manufacturer basis (design 4.2 step 6; ADR-0012; AC 
     status: ProductCertificationView['status'] = 'approved',
   ): ProductCertificationView => ({
     certificateId: id('pc1'),
+    typeCode: query.typeCode,
     status,
     approved: {
       revisionId: id('pr1'),
+      // The type revision the manufacturer revision was submitted and approved under (I1).
+      typeRevisionId: id('tr-own'),
       requiresExpiry: true,
       expiryDate: Temporal.PlainDate.from('2027-06-30'),
       boundaryAtApproval: Temporal.Instant.from('2027-06-30T14:00:00Z'),
@@ -296,7 +300,8 @@ describe('ClaimRule.decide, manufacturer basis (design 4.2 step 6; ADR-0012; AC 
         certificateId: 'pc1',
         versionId: 'pr1',
         issuerId: 'i9',
-        typeRevisionId: 'tr1',
+        // I1: the certificate's own approved type revision, as on the seller path.
+        typeRevisionId: 'tr-own',
       },
     });
     expect(d.badge).toMatchObject({
@@ -306,6 +311,7 @@ describe('ClaimRule.decide, manufacturer basis (design 4.2 step 6; ADR-0012; AC 
       issuer: { id: 'i9', displayName: 'Manufacturer Issuer' },
       validUntilLocalDate: Temporal.PlainDate.from('2027-06-30'),
       validUntilZone: 'Australia/Brisbane',
+      typeRevisionId: 'tr-own',
     });
     // The manufacturer badge holds the allow-listed fields only, like the seller badge.
     expect(Object.keys(d.badge!).sort()).toEqual([...BADGE_FIELDS].sort());
@@ -482,5 +488,84 @@ describe('ClaimRule.decide, manufacturer basis (design 4.2 step 6; ADR-0012; AC 
     const d = decide(query, zz, now);
     expect(d).toMatchObject({ allowed: true, basis: 'MANUFACTURER' });
     expect(d.badge?.validUntilZone).toBe('Asia/Tokyo');
+  });
+
+  it('never lets a certificate of another type cover the query (Hassan L2)', () => {
+    const other = { ...productCert(), typeCode: 'kosher' as CertificationTypeCode };
+    expect(decide(query, manufacturer({ productCertificates: [other] }), now)).toMatchObject({
+      allowed: false,
+      reason: 'not-covered',
+    });
+    // With both, the certificate of the asked type wins even when the other ends later.
+    const otherLater: ProductCertificationView = {
+      ...productCert({
+        revisionId: id('pr-other'),
+        expiryDate: Temporal.PlainDate.from('2029-06-30'),
+        boundaryAtApproval: Temporal.Instant.from('2029-06-30T14:00:00Z'),
+      }),
+      certificateId: id('pc-other'),
+      typeCode: 'kosher' as CertificationTypeCode,
+    };
+    const d = decide(
+      query,
+      manufacturer({ productCertificates: [otherLater, productCert()] }),
+      now,
+    );
+    expect(d).toMatchObject({ allowed: true, certificate: { certificateId: 'pc1' } });
+  });
+
+  it('reads SELLER_OR_MANUFACTURER as SELLER_REQUIRED while the Market switch is off (fail closed)', () => {
+    const off = manufacturer({ manufacturerBasisEnabled: false });
+    expect(decide(query, off, now)).toMatchObject({
+      allowed: false,
+      basis: null,
+      reason: 'no-valid-seller-certificate',
+      policyRevisionId: 'p1',
+    });
+    // The seller basis is unchanged.
+    const seller = manufacturer({
+      manufacturerBasisEnabled: false,
+      sellerCertificate: facts().sellerCertificate,
+    });
+    expect(decide(query, seller, now)).toMatchObject({ allowed: true, basis: 'SELLER' });
+    // Off, a missing seller zone still says so (the seller reason, never a manufacturer one).
+    const noZone = manufacturer({
+      manufacturerBasisEnabled: false,
+      sellerCertificate: facts().sellerCertificate,
+      sellerZones: null,
+    });
+    expect(decide(query, noZone, now).reason).toBe('seller-zone-missing');
+  });
+
+  it('treats anything but an explicit true switch as off', () => {
+    for (const bogus of [undefined, null, 'true', 1]) {
+      const f = manufacturer({ manufacturerBasisEnabled: bogus as never });
+      expect(decide(query, f, now)).toMatchObject({ allowed: false });
+    }
+  });
+
+  it('keeps NOT_APPLICABLE the strictest while the switch is off', () => {
+    const f = manufacturer({
+      manufacturerBasisEnabled: false,
+      sellerCertificate: facts().sellerCertificate,
+      policy: {
+        revisionId: id('p1'),
+        matchedRows: [{ basis: 'SELLER_OR_MANUFACTURER' }, { basis: 'NOT_APPLICABLE' }],
+      },
+    });
+    expect(decide(query, f, now).reason).toBe('policy-not-applicable');
+  });
+
+  it('runs the switch per Market: off on AU, on for the synthetic Market (ZZ)', () => {
+    const au = manufacturer({ manufacturerBasisEnabled: false });
+    const zz = manufacturer({
+      manufacturerBasisEnabled: true,
+      marketZone: 'Asia/Tokyo' as TimeZoneId,
+      productCertificates: [
+        productCert({ boundaryAtApproval: Temporal.Instant.from('2027-06-30T15:00:00Z') }),
+      ],
+    });
+    expect(decide(query, au, now).allowed).toBe(false);
+    expect(decide(query, zz, now)).toMatchObject({ allowed: true, basis: 'MANUFACTURER' });
   });
 });

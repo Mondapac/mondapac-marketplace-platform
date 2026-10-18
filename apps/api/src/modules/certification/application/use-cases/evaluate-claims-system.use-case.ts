@@ -29,6 +29,8 @@ export class EvaluateClaimsSystem extends UseCase<
     private readonly zones: SellerZonesSource,
     private readonly clock: Clock,
     private readonly marketZone: (context: CallContext) => TimeZoneId | null,
+    /** The Market's manufacturer-basis switch (slice 14); anything but `true` is off. */
+    private readonly manufacturerBasisEnabled: (context: CallContext) => boolean,
   ) {
     super(gate);
   }
@@ -43,6 +45,7 @@ export class EvaluateClaimsSystem extends UseCase<
         zones: this.zones,
         now: () => this.clock.now(),
         marketZone: this.marketZone,
+        manufacturerBasisEnabled: this.manufacturerBasisEnabled,
       },
       context,
       input.queries,

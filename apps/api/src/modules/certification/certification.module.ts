@@ -31,6 +31,7 @@ import { MatchClaimTermsSystem } from './application/use-cases/match-claim-terms
 import { MatchClaimTerms } from './application/use-cases/match-claim-terms.use-case';
 import { CERTIFICATION_FACADE } from './contracts/certification.facade';
 import { isUsableZone } from './domain/validity';
+import { manufacturerBasisEnabledIn } from './infrastructure/market-config-expiry-policy';
 import { claimFactsReaderProvider } from './infrastructure/claim-facts-reader.provider';
 import { publishedTypesReaderProvider } from './infrastructure/published-types-reader.provider';
 import { SellersZonesSource } from './infrastructure/sellers-zones.source';
@@ -99,10 +100,17 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     clock: Clock,
     markets: MarketRegistry,
   ) =>
-    new type(gate, facts, zones, clock, (context) => {
-      const zone = markets.get(context.market.marketId).timezone;
-      return isUsableZone(zone) ? zone : null;
-    }),
+    new type(
+      gate,
+      facts,
+      zones,
+      clock,
+      (context) => {
+        const zone = markets.get(context.market.marketId).timezone;
+        return isUsableZone(zone) ? zone : null;
+      },
+      (context) => manufacturerBasisEnabledIn(markets, context.market.marketId),
+    ),
 }));
 
 /**

@@ -153,8 +153,14 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
   const anonymous = () => testCallContext(market(), 'anonymous');
   const system = () => testCallContext(market(), 'system');
   const marketZone = () => zoneId(fx.market);
-  const request = new EvaluateClaims(gate, facts, zones, clock, marketZone);
-  const jobs = new EvaluateClaimsSystem(gate, facts, zones, clock, marketZone);
+  // The Market switch of the manufacturer basis (slice 14); a test turns it off or makes it throw.
+  let switchState: 'on' | 'off' | 'throws' = 'on';
+  const manufacturerBasis = (): boolean => {
+    if (switchState === 'throws') throw new Error('config unreadable');
+    return switchState === 'on';
+  };
+  const request = new EvaluateClaims(gate, facts, zones, clock, marketZone, manufacturerBasis);
+  const jobs = new EvaluateClaimsSystem(gate, facts, zones, clock, marketZone, manufacturerBasis);
   const facade = new CertificationFacadeImplementation({
     evaluateClaims: request,
     evaluateClaimsSystem: jobs,
@@ -691,9 +697,11 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
   describe('manufacturer basis (design 4.2 step 6; ADR-0012; Hassan: attestation on the real path)', () => {
     const covering = (q: ClaimQuery, expiry = '2027-03-31'): ProductCertificationView => ({
       certificateId: ids.next(),
+      typeCode: q.typeCode,
       status: 'approved',
       approved: {
         revisionId: ids.next(),
+        typeRevisionId: ids.next(),
         requiresExpiry: true,
         expiryDate: Temporal.PlainDate.from(expiry),
         boundaryAtApproval: Temporal.PlainDate.from(expiry)
@@ -712,6 +720,35 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     beforeEach(() => {
       world.rows = [{ basis: 'SELLER_OR_MANUFACTURER' }];
       world.certificate = null;
+      switchState = 'on';
+    });
+
+    it('keeps the basis shut while the Market switch is off or unreadable: no manufacturer read', async () => {
+      for (const state of ['off', 'throws'] as const) {
+        switchState = state;
+        calls.products = 0;
+        const q = query();
+        world.productCertificates = [covering(q)];
+        const r = await facade.evaluateClaims(anonymous(), [q]);
+        expect(r.ok && r.value[0]).toMatchObject({
+          allowed: false,
+          basis: null,
+          reason: 'no-valid-seller-certificate',
+        });
+        expect(calls.products).toBe(0);
+      }
+      // The seller basis still answers while it is off.
+      switchState = 'off';
+      world.certificate = approved('2027-01-31');
+      const s = await facade.evaluateClaims(anonymous(), [query()]);
+      expect(s.ok && s.value[0]).toMatchObject({ allowed: true, basis: 'SELLER' });
+    });
+
+    it('ignores a covering certificate of another type (Hassan L2)', async () => {
+      const q = query();
+      world.productCertificates = [{ ...covering(q), typeCode: code('another-type') }];
+      const r = await facade.evaluateClaims(anonymous(), [q]);
+      expect(r.ok && r.value[0]).toMatchObject({ allowed: false, reason: 'not-covered' });
     });
 
     it('fails closed with no manufacturer certificate: not-covered after one manufacturer read', async () => {
