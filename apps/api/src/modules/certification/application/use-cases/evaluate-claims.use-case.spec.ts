@@ -13,7 +13,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { CertificationFacadeImplementation } from '../../presentation/certification.facade';
 import type { ClaimQuery, CertificationTypeCode, TimeZoneId } from '../../domain/claim-types';
-import type { SellerCertificationView } from '../../domain/validity';
+import type { ProductCertificationView, SellerCertificationView } from '../../domain/validity';
 import type {
   ClaimFactsReader,
   SellerZoneAnswer,
@@ -32,8 +32,18 @@ const zoneId = (s: string): TimeZoneId => s as TimeZoneId;
 
 // Per Market: a different type, zone and expiry, so a test that passes only for AU would fail.
 const MARKET_FIXTURE = {
-  AU: { type: 'halal', zone: 'Australia/Sydney', other: 'Australia/Brisbane' },
-  ZZ: { type: 'zed-pure', zone: 'Pacific/Auckland', other: 'Pacific/Honolulu' },
+  AU: {
+    type: 'halal',
+    zone: 'Australia/Sydney',
+    other: 'Australia/Brisbane',
+    market: 'Australia/Brisbane',
+  },
+  ZZ: {
+    type: 'zed-pure',
+    zone: 'Pacific/Auckland',
+    other: 'Pacific/Honolulu',
+    market: 'Asia/Tokyo',
+  },
 } as const;
 
 interface World {
@@ -55,14 +65,28 @@ interface World {
   shuffledAnswers: boolean;
   wrongSellerCertificates: boolean;
   wrongTypeCertificates: boolean;
+  /** The manufacturer certificates every product request answers (slice 13: none by default). */
+  productCertificates: ProductCertificationView[];
+  failProducts: boolean;
+  misalignedProducts: boolean;
 }
 const POLICY_REVISION = '0197f2a0-0000-7000-8000-0000000000aa' as Id;
 let world: World;
-const calls = { policies: 0, certificates: 0, zones: 0 };
+const calls = { policies: 0, certificates: 0, zones: 0, products: 0 };
+let productRequests: { productId: string; variantId: string | null }[] = [];
 let zoneRequests: string[][] = [];
 let policyRequests: { typeCode: string; categoryIds: readonly string[]; handling: string }[] = [];
 
 const facts: ClaimFactsReader = {
+  productCertificates: (_m, requests) => {
+    calls.products += 1;
+    productRequests.push(
+      ...requests.map((r) => ({ productId: r.productId, variantId: r.variantId })),
+    );
+    if (world.failProducts) return Promise.reject(new Error('db down'));
+    const list = requests.map((r) => ({ ...r, certificates: world.productCertificates }));
+    return Promise.resolve(world.misalignedProducts ? list.slice(1) : list);
+  },
   typesAndPolicies: (_m, requests) => {
     calls.policies += 1;
     policyRequests = requests.map((r) => ({ ...r }));
@@ -128,8 +152,9 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
   const market = () => testMarketContext(marketCode, 'default');
   const anonymous = () => testCallContext(market(), 'anonymous');
   const system = () => testCallContext(market(), 'system');
-  const request = new EvaluateClaims(gate, facts, zones, clock);
-  const jobs = new EvaluateClaimsSystem(gate, facts, zones, clock);
+  const marketZone = () => zoneId(fx.market);
+  const request = new EvaluateClaims(gate, facts, zones, clock, marketZone);
+  const jobs = new EvaluateClaimsSystem(gate, facts, zones, clock, marketZone);
   const facade = new CertificationFacadeImplementation({
     evaluateClaims: request,
     evaluateClaimsSystem: jobs,
@@ -170,7 +195,11 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
 
   beforeEach(() => {
     world = {
-      type: { publishedRevisionId: ids.next(), defaultBasis: 'SELLER_REQUIRED' },
+      type: {
+        publishedRevisionId: ids.next(),
+        defaultBasis: 'SELLER_REQUIRED',
+        verificationMode: 'THIRD_PARTY_DOCUMENT',
+      },
       rows: [],
       certificate: approved('2027-01-31'),
       zones: { zone: fx.zone, addressZone: fx.zone },
@@ -186,10 +215,14 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
       shuffledAnswers: false,
       wrongSellerCertificates: false,
       wrongTypeCertificates: false,
+      productCertificates: [],
+      failProducts: false,
+      misalignedProducts: false,
     };
     zoneRequests = [];
     policyRequests = [];
-    calls.policies = calls.certificates = calls.zones = 0;
+    productRequests = [];
+    calls.policies = calls.certificates = calls.zones = calls.products = 0;
   });
 
   it('allows a valid seller certificate, echoes the inputs and gives both callers the same answer', async () => {
@@ -345,7 +378,7 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
   it('asks for certificates and zones only when a query has a seller basis to decide', async () => {
     world.type = null;
     await facade.evaluateClaims(anonymous(), [query(), query()]);
-    expect(calls).toEqual({ policies: 1, certificates: 0, zones: 0 });
+    expect(calls).toEqual({ policies: 1, certificates: 0, zones: 0, products: 0 });
   });
 
   it('refuses an empty batch, 101 queries and a non-array, and accepts exactly 100', async () => {
@@ -371,6 +404,7 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     world.typeOf.set('na-type', {
       publishedRevisionId: ids.next(),
       defaultBasis: 'NOT_APPLICABLE',
+      verificationMode: 'THIRD_PARTY_DOCUMENT',
     });
     world.zonesOf.set(noZoneQ.sellerId, { zone: null, addressZone: fx.zone });
     const r = await facade.evaluateClaims(anonymous(), [
@@ -411,11 +445,11 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
   it('makes no certificate or zone call when nothing needs a seller basis', async () => {
     world.rows = [{ basis: 'NOT_APPLICABLE' }];
     await facade.evaluateClaims(anonymous(), [query(), query()]);
-    expect(calls).toEqual({ policies: 1, certificates: 0, zones: 0 });
+    expect(calls).toEqual({ policies: 1, certificates: 0, zones: 0, products: 0 });
     calls.policies = 0;
     const invalid = await facade.evaluateClaims(anonymous(), [null as never, 'x' as never]);
     expect(invalid.ok && invalid.value.every((d) => d.reason === 'input-invalid')).toBe(true);
-    expect(calls).toEqual({ policies: 0, certificates: 0, zones: 0 });
+    expect(calls).toEqual({ policies: 0, certificates: 0, zones: 0, products: 0 });
   });
 
   it.each([
@@ -513,12 +547,12 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     );
   });
 
-  it('keeps a SELLER_OR_MANUFACTURER policy on the seller path until the manufacturer step lands', async () => {
+  it('denies a SELLER_OR_MANUFACTURER policy without any certificate (not-covered, never allowed)', async () => {
     world.rows = [{ basis: 'SELLER_OR_MANUFACTURER' }];
     world.certificate = null;
     const r = await facade.evaluateClaims(anonymous(), [query()]);
     expect(r.ok && r.value[0]).toEqual(
-      expect.objectContaining({ allowed: false, reason: 'no-valid-seller-certificate' }),
+      expect.objectContaining({ allowed: false, reason: 'not-covered', badge: null }),
     );
   });
 
@@ -581,7 +615,11 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
       }),
     );
     // The default is used only when no row matches: a lenient row never beats a stricter default.
-    world.type = { publishedRevisionId: ids.next(), defaultBasis: 'NOT_APPLICABLE' };
+    world.type = {
+      publishedRevisionId: ids.next(),
+      defaultBasis: 'NOT_APPLICABLE',
+      verificationMode: 'THIRD_PARTY_DOCUMENT',
+    };
     world.rows = [{ basis: 'SELLER_REQUIRED' }];
     const eased = await facade.evaluateClaims(anonymous(), [query()]);
     expect(eased.ok && eased.value[0]).toEqual(
@@ -647,6 +685,84 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     expect(await jobs.execute(anonymous(), { queries: [q] })).toEqual({
       ok: false,
       error: { code: 'access.denied' },
+    });
+  });
+
+  describe('manufacturer basis (design 4.2 step 6; ADR-0012; Hassan: attestation on the real path)', () => {
+    const covering = (q: ClaimQuery, expiry = '2027-03-31'): ProductCertificationView => ({
+      certificateId: ids.next(),
+      status: 'approved',
+      approved: {
+        revisionId: ids.next(),
+        requiresExpiry: true,
+        expiryDate: Temporal.PlainDate.from(expiry),
+        boundaryAtApproval: Temporal.PlainDate.from(expiry)
+          .add({ days: 1 })
+          .toZonedDateTime(fx.market)
+          .toInstant(),
+        issuerId: ids.next(),
+        issuerState: 'active',
+        issuerDisplayName: 'Maker Issuer',
+        verifiedWithIssuer: false,
+        coverage: [
+          { productId: q.productId, productRevisionId: q.productRevisionId, variantId: null },
+        ],
+      },
+    });
+    beforeEach(() => {
+      world.rows = [{ basis: 'SELLER_OR_MANUFACTURER' }];
+      world.certificate = null;
+    });
+
+    it('fails closed with no manufacturer certificate: not-covered after one manufacturer read', async () => {
+      const r = await facade.evaluateClaims(anonymous(), [query(), query()]);
+      expect(r.ok && r.value.map((d) => d.reason)).toEqual(['not-covered', 'not-covered']);
+      expect(r.ok && r.value.every((d) => !d.allowed && d.badge === null)).toBe(true);
+      expect(calls.products).toBe(1);
+      expect(productRequests).toHaveLength(2);
+    });
+
+    it('allows SEALED_ORIGINAL with the attestation on a covering certificate, in the Market zone', async () => {
+      const q = query();
+      world.productCertificates = [covering(q)];
+      const r = await facade.evaluateClaims(anonymous(), [q]);
+      const d = r.ok ? r.value[0]! : null;
+      expect(d).toMatchObject({ allowed: true, basis: 'MANUFACTURER', reason: 'allowed' });
+      expect(d?.badge).toMatchObject({ basis: 'MANUFACTURER', validUntilZone: fx.market });
+    });
+
+    it('refuses a missing attestation and every other handling without a manufacturer read', async () => {
+      world.productCertificates = [];
+      const r = await facade.evaluateClaims(anonymous(), [
+        query({ attestationRecorded: false }),
+        query({ handling: 'REPACKED' }),
+        query({ handling: 'PREPARED', attestationRecorded: false }),
+        query({ handling: 'FRESH' }),
+      ]);
+      expect(r.ok && r.value.map((d) => d.reason)).toEqual([
+        'attestation-missing',
+        'handling-requires-seller',
+        'handling-requires-seller',
+        'handling-requires-seller',
+      ]);
+      expect(calls.products).toBe(0);
+    });
+
+    it('prefers a valid seller certificate and asks no manufacturer read for it', async () => {
+      world.certificate = approved('2027-01-31');
+      const r = await facade.evaluateClaims(anonymous(), [query()]);
+      expect(r.ok && r.value[0]).toMatchObject({ allowed: true, basis: 'SELLER' });
+      expect(calls.products).toBe(0);
+    });
+
+    it('answers unavailable for the whole batch when the manufacturer read fails or is misaligned', async () => {
+      world.failProducts = true;
+      const a = await facade.evaluateClaims(anonymous(), [query(), query({ handling: 'FRESH' })]);
+      expect(a.ok && a.value.map((d) => d.reason)).toEqual(['unavailable', 'unavailable']);
+      world.failProducts = false;
+      world.misalignedProducts = true;
+      const b = await facade.evaluateClaims(anonymous(), [query(), query()]);
+      expect(b.ok && b.value.every((d) => d.reason === 'unavailable')).toBe(true);
     });
   });
 });

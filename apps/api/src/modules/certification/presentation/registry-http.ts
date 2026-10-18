@@ -27,6 +27,7 @@ export const ADMIN_REGISTRY_STATUS: Readonly<Record<string, number>> = Object.fr
   'type.already-inactive': 409,
   'type.already-active': 409,
   'type.revision-unchanged': 409,
+  'claim-policy.revision-unchanged': 409,
   'issuer.transition-forbidden': 409,
   'issuer.reactivation-pending': 409,
   'issuer.reactivation-not-requested': 409,
@@ -34,6 +35,7 @@ export const ADMIN_REGISTRY_STATUS: Readonly<Record<string, number>> = Object.fr
   'issuer.name-taken': 409,
   'issuer.accreditation-taken': 409,
   'type.revision-invalid': 422,
+  'claim-policy.revision-invalid': 422,
   'issuer.expert-approval-required': 422,
   'issuer.expert-approval-not-new': 422,
 });

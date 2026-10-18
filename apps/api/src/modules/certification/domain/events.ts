@@ -218,6 +218,21 @@ export const RelaxationProposed = defineEvent({
 });
 
 /**
+ * A claim basis policy revision was published, at its save (it only tightens) or on a second
+ * admin's approval (design 3.7, 8.3; ADR-0012 d6). Consumer: catalog, to re-ask the tags of the
+ * type (its consumer is catalog's follow-up; the daily reconciliation is the backstop).
+ */
+export const ClaimPolicyChanged = defineEvent({
+  type: 'certification.claim-policy-changed.v1',
+  aggregateType: 'claim-policy',
+  payload: {
+    policyId: eventField.id(),
+    revisionId: eventField.id(),
+    typeId: eventField.id(),
+  },
+});
+
+/**
  * Every event certification publishes, for the event catalogue. Adding one adds it to the
  * snapshot (`apps/api/test/contracts/event-catalogue.snapshot.json`).
  */
@@ -237,4 +252,5 @@ export const CERTIFICATION_EVENTS: readonly EventDefinition[] = [
   CertificationTypeDeactivated,
   IssuerDeactivated,
   RelaxationProposed,
+  ClaimPolicyChanged,
 ];

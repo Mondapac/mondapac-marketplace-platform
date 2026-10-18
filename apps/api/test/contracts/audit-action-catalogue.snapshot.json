@@ -1,5 +1,42 @@
 [
   {
+    "action": "certification.claim-policy.relaxation-approved",
+    "targetType": "certification.claim-policy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "action": "certification.claim-policy.relaxation-requested",
+    "targetType": "certification.claim-policy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id",
+      "reasonGiven": "boolean",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "action": "certification.claim-policy.revised",
+    "targetType": "certification.claim-policy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "reasonGiven": "boolean",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
     "action": "certification.document.downloaded",
     "targetType": "certification.seller-certification",
     "targetId": "id",

@@ -1,4 +1,5 @@
 import { CertificationModule } from '../certification';
+import { CatalogReferencesModule } from './infrastructure/catalog-references.module';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import {
   registerPermissions,
@@ -259,7 +260,7 @@ const productTypeProvider: FactoryProvider<string> = {
     ProductReviewController,
     ProductImageReviewController,
   ],
-  imports: [CertificationModule, SellersModule],
+  imports: [CertificationModule, SellersModule, CatalogReferencesModule],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
     registerEvents('catalog', CATALOG_EVENTS),

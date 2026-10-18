@@ -30,6 +30,7 @@ import { EvaluateClaims } from './application/use-cases/evaluate-claims.use-case
 import { MatchClaimTermsSystem } from './application/use-cases/match-claim-terms-system.use-case';
 import { MatchClaimTerms } from './application/use-cases/match-claim-terms.use-case';
 import { CERTIFICATION_FACADE } from './contracts/certification.facade';
+import { isUsableZone } from './domain/validity';
 import { claimFactsReaderProvider } from './infrastructure/claim-facts-reader.provider';
 import { publishedTypesReaderProvider } from './infrastructure/published-types-reader.provider';
 import { SellersZonesSource } from './infrastructure/sellers-zones.source';
@@ -66,6 +67,8 @@ import { expiryAndWarningsJob } from './presentation/jobs/expiry-and-warnings.jo
 import { expiryMailSubscriptions } from './presentation/subscribers/expiry-mail.subscriptions';
 import { SendDerecognitionMail } from './application/use-cases/send-derecognition-mail.use-case';
 import { registryProviders } from './infrastructure/registry-providers';
+import { claimPolicyProviders } from './infrastructure/claim-policy-providers';
+import { AdminClaimPolicyController } from './presentation/admin-claim-policy.controller';
 import { AdminCertificationTypeController } from './presentation/admin-certification-type.controller';
 import { AdminIssuerRegistryController } from './presentation/admin-issuer-registry.controller';
 import { derecognitionMailSubscriptions } from './presentation/subscribers/derecognition-mail.subscriptions';
@@ -82,16 +85,24 @@ const readerUseCases = [
   useFactory: (gate: UseCaseGate, reader: PublishedTypesReader) => new type(gate, reader),
 }));
 
-/** `evaluateClaims` and its pair: the gate, the claim facts, the seller zones and the clock. */
+/**
+ * `evaluateClaims` and its pair: the gate, the claim facts, the seller zones, the clock and the
+ * Market's configured zone (manufacturer expiry, design 2.4 rule 3; an unusable zone is none).
+ */
 const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): FactoryProvider => ({
   provide: type,
-  inject: [USE_CASE_GATE, CLAIM_FACTS_READER, SELLER_ZONES_SOURCE, CLOCK],
+  inject: [USE_CASE_GATE, CLAIM_FACTS_READER, SELLER_ZONES_SOURCE, CLOCK, MarketRegistry],
   useFactory: (
     gate: UseCaseGate,
     facts: ClaimFactsReader,
     zones: SellerZonesSource,
     clock: Clock,
-  ) => new type(gate, facts, zones, clock),
+    markets: MarketRegistry,
+  ) =>
+    new type(gate, facts, zones, clock, (context) => {
+      const zone = markets.get(context.market.marketId).timezone;
+      return isUsableZone(zone) ? zone : null;
+    }),
 }));
 
 /**
@@ -99,7 +110,8 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
  * slice by slice. Today it binds the read side of the facade: the published types reader (each
  * call in a read-only unit of its own) behind `matchClaimTerms` and `certificationTypes`, and
  * `evaluateClaims` over the claim-facts reader on the module's own raw read port (ADR-0030):
- * the seller basis and the type default; policy rows arrive with slice 13.
+ * the seller basis, the policy rows and the type default, and the manufacturer basis (slice 13;
+ * no manufacturer certificate exists before slice 14, so it never allows yet).
  */
 @Module({
   imports: [PersistenceModule, SellersModule, IdentityModule],
@@ -110,6 +122,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     AdminIssuerRequestController,
     AdminCertificationTypeController,
     AdminIssuerRegistryController,
+    AdminClaimPolicyController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('certification'),
@@ -137,6 +150,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     ...issuerRequestProviders,
     ...expiryProviders,
     ...registryProviders,
+    ...claimPolicyProviders,
     PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
     claimFactsReaderProvider,

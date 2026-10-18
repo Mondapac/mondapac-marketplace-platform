@@ -27,3 +27,9 @@ export {
   SellerCertificationIssuerConfirmed,
   SellerCertificationRevoked,
 } from '../domain/events';
+// The port `catalog` implements for certification (design 8.2, request C-3).
+export {
+  CATALOG_REFERENCES,
+  MAX_CATALOG_REFERENCE_IDS,
+  type CatalogReferences,
+} from './catalog-references';

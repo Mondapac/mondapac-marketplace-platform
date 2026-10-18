@@ -79,6 +79,7 @@ model CertificationType {
   certificates        CertificationSellerCertification[]
   documents           CertificationUploadedDocument[]
   issuerRequests      CertificationIssuerRequest[]
+  claimBasisPolicy    CertificationClaimBasisPolicy?
 
   /// The target of composite foreign keys (C3).
   @@unique([marketId, id])
@@ -718,5 +719,92 @@ model CertificationExpiryWarning {
 
   @@id([marketId, versionKind, versionId, thresholdDays])
   @@map("expiry_warnings")
+  @@schema("certification")
+}
+
+/// The claim basis policy of one type in one Market (data design 3.14; D 2.1, 3.7; slice 13): the
+/// root of the V1 pair with its revisions. `published_revision_id` is null until a first revision
+/// is published (a first relaxing revision waits for a second admin): no published revision means
+/// every query gets the type's default basis.
+model CertificationClaimBasisPolicy {
+  id                  String                             @id @db.Uuid
+  marketId            String                             @map("market_id") @db.VarChar(8)
+  tenantId            String                             @map("tenant_id")
+  typeId              String                             @map("type_id") @db.Uuid
+  publishedRevisionId String?                            @map("published_revision_id") @db.Uuid
+  /// Optimistic version of the aggregate (CE1); 1 at insert.
+  version             Int
+  createdAt           DateTime                           @map("created_at") @db.Timestamptz(6)
+  type                CertificationType                  @relation(fields: [marketId, typeId], references: [marketId, id], map: "claim_basis_policies_type_fkey", onDelete: Restrict, onUpdate: Restrict)
+  revisions           CertificationClaimPolicyRevision[] @relation("PolicyRevisions")
+  publishedRevision   CertificationClaimPolicyRevision?  @relation("PolicyPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, policyId, id], map: "claim_basis_policies_published_revision_fkey", onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  /// One policy per Market and type (D 2.1).
+  @@unique([marketId, typeId])
+  @@map("claim_basis_policies")
+  @@schema("certification")
+}
+
+/// One revision of a policy (data design 3.14): its rows are in `claim_policy_rows`. Insert-only
+/// (CE3); a revision that is never published is simply never pointed at.
+model CertificationClaimPolicyRevision {
+  id                     String                          @id @db.Uuid
+  marketId               String                          @map("market_id") @db.VarChar(8)
+  tenantId               String                          @map("tenant_id")
+  policyId               String                          @map("policy_id") @db.Uuid
+  /// 1, 2, ...; unique per policy.
+  revisionNo             Int                             @map("revision_no")
+  /// Optional admin text, a ciphertext under its own destroyable subject key (CE8).
+  changeReasonCiphertext String?                         @map("change_reason_ciphertext")
+  authorAccountId        String                          @map("author_account_id") @db.Uuid
+  createdAt              DateTime                        @map("created_at") @db.Timestamptz(6)
+  policy                 CertificationClaimBasisPolicy   @relation("PolicyRevisions", fields: [marketId, policyId], references: [marketId, id], map: "claim_policy_revisions_policy_fkey", onDelete: Restrict, onUpdate: Restrict)
+  publishedOf            CertificationClaimBasisPolicy[] @relation("PolicyPublished")
+  rows                   CertificationClaimPolicyRow[]
+
+  @@unique([marketId, id])
+  /// The target of the published pointer (CE4).
+  @@unique([marketId, policyId, id])
+  @@unique([marketId, policyId, revisionNo])
+  @@map("claim_policy_revisions")
+  @@schema("certification")
+}
+
+/// One row `{ selector, basis }` of a policy revision (data design 3.14). Insert-only (CE3). At
+/// most one row per selector in a revision; `SELLER_OR_MANUFACTURER` only on a category (M1).
+model CertificationClaimPolicyRow {
+  id           String                           @id @db.Uuid
+  marketId     String                           @map("market_id") @db.VarChar(8)
+  tenantId     String                           @map("tenant_id")
+  revisionId   String                           @map("revision_id") @db.Uuid
+  /// platform-category | handling
+  selectorKind String                           @map("selector_kind")
+  /// A catalog platform category id (C4: no foreign key).
+  categoryId   String?                          @map("category_id") @db.Uuid
+  /// SEALED_ORIGINAL | REPACKED | PREPARED | FRESH
+  handling     String?
+  /// SELLER_REQUIRED | SELLER_OR_MANUFACTURER | NOT_APPLICABLE
+  basis        String
+  revision     CertificationClaimPolicyRevision @relation(fields: [marketId, revisionId], references: [marketId, id], map: "claim_policy_rows_revision_fkey", onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, revisionId, categoryId])
+  @@unique([marketId, revisionId, handling])
+  @@map("claim_policy_rows")
+  @@schema("certification")
+}
+
+/// A platform category `catalog` retired while a policy row may name it (data design 3.14; D 3.7
+/// backstop, B2): written by `platformCategoriesRetired`, cleared by an admin.
+model CertificationRetiredCategoryFlag {
+  marketId           String    @map("market_id") @db.VarChar(8)
+  tenantId           String    @map("tenant_id")
+  categoryId         String    @map("category_id") @db.Uuid
+  reportedAt         DateTime  @map("reported_at") @db.Timestamptz(6)
+  clearedAt          DateTime? @map("cleared_at") @db.Timestamptz(6)
+  clearedByAccountId String?   @map("cleared_by_account_id") @db.Uuid
+
+  @@id([marketId, categoryId])
+  @@map("retired_category_flags")
   @@schema("certification")
 }

@@ -64,10 +64,31 @@ const basis = (overrides: Partial<Basis> = {}): Basis => ({
 const typeRow = (overrides: Partial<TypeRow> = {}): TypeRow => ({
   typeId: id(1),
   code: 'halal',
+  verificationMode: 'THIRD_PARTY_DOCUMENT',
   typeRevisionId: id(4),
   defaultBasis: 'SELLER_REQUIRED',
+  policyRevisionId: null,
+  rowSelectorKind: null,
+  rowCategoryId: null,
+  rowHandling: null,
+  rowBasis: null,
   ...overrides,
 });
+
+/** One S2 row carrying a policy row of the published revision `id(50)`. */
+const policyRow = (
+  selector: { categoryId: string } | { handling: string },
+  basis: string,
+  overrides: Partial<TypeRow> = {},
+): TypeRow =>
+  typeRow({
+    policyRevisionId: id(50),
+    rowSelectorKind: 'categoryId' in selector ? 'platform-category' : 'handling',
+    rowCategoryId: 'categoryId' in selector ? selector.categoryId : null,
+    rowHandling: 'handling' in selector ? selector.handling : null,
+    rowBasis: basis,
+    ...overrides,
+  });
 
 const pair = (seller: number, type = 'halal') => ({
   sellerId: id(seller) as Id<'Seller'>,
@@ -112,8 +133,109 @@ describe.each(['AU', 'ZZ'] as const)('PrismaClaimFactsReader, Market %s', (marke
     ['an invalid default basis', typeRow({ defaultBasis: 'SELLER_OR_MANUFACTURER' })],
     ['a revision id that is not an id', typeRow({ typeRevisionId: 'not-an-id' })],
     ['a type nobody asked for', typeRow({ code: 'other' })],
+    ['an invalid verification mode', typeRow({ verificationMode: 'BOGUS' })],
+    ['a policy row with an unknown basis', policyRow({ categoryId: id(60) }, 'SELLER')],
+    [
+      'SELLER_OR_MANUFACTURER on handling (M1)',
+      policyRow({ handling: 'SEALED_ORIGINAL' }, 'SELLER_OR_MANUFACTURER'),
+    ],
+    ['an unknown handling', policyRow({ handling: 'FROZEN' }, 'SELLER_REQUIRED')],
+    [
+      'a row whose selector does not fit',
+      policyRow({ handling: 'FRESH' }, 'SELLER_REQUIRED', { rowCategoryId: id(60) }),
+    ],
+    ['a category that is not an id', policyRow({ categoryId: 'nope' }, 'SELLER_REQUIRED')],
+    [
+      'a policy row without a published revision',
+      policyRow({ categoryId: id(60) }, 'SELLER_REQUIRED', { policyRevisionId: null }),
+    ],
   ])('rejects on %s', async (_name, row) => {
     await expect(reader([row]).typesAndPolicies(market, [policy('halal')])).rejects.toThrow();
+  });
+
+  it('picks the published rows matching the categories or the handling, per request', async () => {
+    const r = reader([
+      policyRow({ categoryId: id(60) }, 'SELLER_OR_MANUFACTURER'),
+      policyRow({ categoryId: id(61) }, 'NOT_APPLICABLE'),
+      policyRow({ handling: 'REPACKED' }, 'SELLER_REQUIRED'),
+      typeRow({ typeId: id(2), code: 'zed' }),
+    ]);
+    const ask = (typeCode: string, categoryIds: string[], handling: string) =>
+      ({ typeCode: code(typeCode), categoryIds, handling }) as never;
+    const answers = await r.typesAndPolicies(market, [
+      ask('halal', [id(60)], 'SEALED_ORIGINAL'),
+      ask('halal', [id(60), id(61)], 'SEALED_ORIGINAL'),
+      ask('halal', [id(62)], 'REPACKED'),
+      ask('halal', [id(62)], 'FRESH'),
+      ask('zed', [id(60)], 'REPACKED'),
+    ]);
+    expect(answers.map((a) => a.policy)).toEqual([
+      { revisionId: id(50), matchedRows: [{ basis: 'SELLER_OR_MANUFACTURER' }] },
+      {
+        revisionId: id(50),
+        matchedRows: [{ basis: 'SELLER_OR_MANUFACTURER' }, { basis: 'NOT_APPLICABLE' }],
+      },
+      { revisionId: id(50), matchedRows: [{ basis: 'SELLER_REQUIRED' }] },
+      { revisionId: id(50), matchedRows: [] },
+      null,
+    ]);
+    expect(answers[0]!.type).toEqual({
+      publishedRevisionId: id(4),
+      defaultBasis: 'SELLER_REQUIRED',
+      verificationMode: 'THIRD_PARTY_DOCUMENT',
+    });
+  });
+
+  it('answers a published revision without rows as a policy with no matched rows', async () => {
+    const answers = await reader([typeRow({ policyRevisionId: id(50) })]).typesAndPolicies(market, [
+      policy('halal'),
+    ]);
+    expect(answers[0]!.policy).toEqual({ revisionId: id(50), matchedRows: [] });
+  });
+
+  it.each([
+    [
+      'two rows on one selector',
+      [
+        policyRow({ categoryId: id(60) }, 'SELLER_REQUIRED'),
+        policyRow({ categoryId: id(60) }, 'NOT_APPLICABLE'),
+      ],
+    ],
+    [
+      'a type row beside its policy rows',
+      [policyRow({ categoryId: id(60) }, 'SELLER_REQUIRED'), typeRow()],
+    ],
+    [
+      'a policy row of another type revision',
+      [
+        policyRow({ categoryId: id(60) }, 'SELLER_REQUIRED'),
+        policyRow({ categoryId: id(61) }, 'SELLER_REQUIRED', { typeRevisionId: id(5) }),
+      ],
+    ],
+    [
+      'a policy row of another policy revision',
+      [
+        policyRow({ categoryId: id(60) }, 'SELLER_REQUIRED'),
+        policyRow({ categoryId: id(61) }, 'SELLER_REQUIRED', { policyRevisionId: id(51) }),
+      ],
+    ],
+  ])('rejects %s', async (_name, rows) => {
+    await expect(reader(rows).typesAndPolicies(market, [policy('halal')])).rejects.toThrow();
+  });
+
+  it('answers no manufacturer certificate for any request until slice 14 (fail closed)', async () => {
+    const runs: Run[] = [];
+    const calls: unknown[] = [];
+    const request = {
+      typeCode: code('halal'),
+      productId: id(70) as Id<'Product'>,
+      productRevisionId: id(71) as Id<'ProductRevision'>,
+      variantId: null,
+    };
+    await expect(reader([], runs, calls).productCertificates(market, [request])).resolves.toEqual([
+      { ...request, certificates: [] },
+    ]);
+    expect(calls).toEqual([]);
   });
 
   it('rejects on a repeated type row', async () => {

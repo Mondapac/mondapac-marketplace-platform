@@ -8,11 +8,17 @@ import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type {
   ClaimFactsReader,
   PolicyRequest,
+  ProductCertificateAnswer,
+  ProductCertificateRequest,
   SellerCertificateAnswer,
   SellerCertificateRequest,
   TypeAndPolicy,
 } from '../application/ports/claim-facts.ports';
-import type { TimeZoneId } from '../domain/claim-types';
+import {
+  HANDLING_VALUES,
+  type ClaimBasisRequirement,
+  type TimeZoneId,
+} from '../domain/claim-types';
 import { VERIFICATION_MODES, type VerificationMode } from '../domain/type-revision';
 import type {
   IssuerState,
@@ -31,6 +37,11 @@ const STATUSES: readonly string[] = [
 ];
 const ISSUER_STATES: readonly string[] = ['proposed', 'active', 'closed-to-new', 'derecognised'];
 const BASES: readonly string[] = ['SELLER_REQUIRED', 'NOT_APPLICABLE'];
+const ROW_BASES: readonly string[] = [
+  'SELLER_REQUIRED',
+  'SELLER_OR_MANUFACTURER',
+  'NOT_APPLICABLE',
+];
 const DATE = /^\d{4}-\d{2}-\d{2}$/u;
 
 /**
@@ -43,8 +54,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/u;
  * - a type whose published revision is NULL or unreadable is a fault, not an absent type;
  * - an approved pointer without an `approved` decision (no approved zone), or a type that
  *   requires an expiry whose decision has no boundary, is a certificate that is not valid;
- * - the policy tables do not exist yet (slice 13), so `policy` is `null` and the type's default
- *   basis applies; categories and handling of a request are not read yet.
+ * - S2 reads every row of the type's published policy revision; the rows matching a request's
+ *   categories or handling are picked here. No published revision is `policy: null` (the type's
+ *   default applies); a row that breaks the policy's rules (two rows on one selector,
+ *   `SELLER_OR_MANUFACTURER` on handling, an unknown value) is a fault, never skipped.
  */
 export class PrismaClaimFactsReader implements ClaimFactsReader {
   constructor(
@@ -61,30 +74,57 @@ export class PrismaClaimFactsReader implements ClaimFactsReader {
     const rows = await this.read(market, () =>
       this.rawReads.rawRead(market, 'certification.type-and-policy', { typeCodes: codes }),
     );
-    const byCode = new Map<string, TypeAndPolicy['type']>();
+    const byCode = new Map<string, StoredTypeAndPolicy>();
     for (const row of rows) {
-      if (!codes.includes(row.code) || byCode.has(row.code)) {
-        throw new Error('type read returned an unexpected or repeated type');
+      if (!codes.includes(row.code)) throw new Error('type read returned an unexpected type');
+      const policyRow = policyRowOf(row);
+      const known = byCode.get(row.code);
+      if (known === undefined) {
+        const entry = typeEntryOf(row);
+        if (policyRow !== null) entry.rows.push(policyRow);
+        byCode.set(row.code, entry);
+        continue;
       }
-      // A type without a readable published revision is a fault, never "type unknown".
-      if (row.typeRevisionId === null || row.defaultBasis === null) {
-        throw new Error('certification type has no readable published revision');
+      // A type repeats only once per policy row, with the same type columns every time.
+      if (policyRow === null || known.rows.length === 0 || !sameType(known, row)) {
+        throw new Error('type read returned a repeated type');
       }
-      if (!BASES.includes(row.defaultBasis)) {
-        throw new Error('certification type has an invalid default basis');
+      if (known.rows.some((other) => other.key === policyRow.key)) {
+        throw new Error('policy revision has two rows on one selector');
       }
-      const revision = parseId(row.typeRevisionId);
-      if (!revision.ok) throw new Error('published revision id is not an id');
-      byCode.set(row.code, {
-        publishedRevisionId: revision.value,
-        defaultBasis: row.defaultBasis as 'SELLER_REQUIRED' | 'NOT_APPLICABLE',
-      });
+      known.rows.push(policyRow);
     }
-    return requests.map((request) => ({
-      typeCode: request.typeCode,
-      type: byCode.get(request.typeCode) ?? null,
-      policy: null,
-    }));
+    return requests.map((request) => {
+      const entry = byCode.get(request.typeCode);
+      if (entry === undefined) return { typeCode: request.typeCode, type: null, policy: null };
+      if (entry.policyRevisionId === null) {
+        return { typeCode: request.typeCode, type: entry.type, policy: null };
+      }
+      const categories = new Set<string>(request.categoryIds);
+      const matchedRows = entry.rows
+        .filter((row) =>
+          row.kind === 'handling' ? row.key === request.handling : categories.has(row.key),
+        )
+        .map((row) => ({ basis: row.basis }));
+      return {
+        typeCode: request.typeCode,
+        type: entry.type,
+        policy: { revisionId: entry.policyRevisionId, matchedRows },
+      };
+    });
+  }
+
+  /**
+   * The manufacturer basis (S3, design 4.2 step 6). `ProductCertification` and its coverage arrive
+   * with slice 14, so no manufacturer certificate exists yet: every request answers an empty list,
+   * which `ClaimRule` reads as `not-covered` (fail closed). Slice 14 replaces this with S3 in one
+   * read-only unit, keyed as the other reads.
+   */
+  productCertificates(
+    _market: MarketContext,
+    requests: readonly ProductCertificateRequest[],
+  ): Promise<readonly ProductCertificateAnswer[]> {
+    return Promise.resolve(requests.map((request) => ({ ...request, certificates: [] })));
   }
 
   async sellerCertificates(
@@ -127,6 +167,91 @@ export class PrismaClaimFactsReader implements ClaimFactsReader {
 }
 
 type SellerBasisRow = RawReadRow<'certification.seller-basis'>;
+type TypeRow = RawReadRow<'certification.type-and-policy'>;
+
+interface StoredPolicyRow {
+  readonly kind: 'platform-category' | 'handling';
+  /** The category id or the handling value. */
+  readonly key: string;
+  readonly basis: ClaimBasisRequirement;
+}
+
+interface StoredTypeAndPolicy {
+  readonly type: NonNullable<TypeAndPolicy['type']>;
+  readonly typeId: string;
+  readonly policyRevisionId: Id | null;
+  readonly rows: StoredPolicyRow[];
+}
+
+/** The type part of one S2 row; a type without a readable published revision is a fault. */
+function typeEntryOf(row: TypeRow): StoredTypeAndPolicy {
+  if (row.typeRevisionId === null || row.defaultBasis === null) {
+    throw new Error('certification type has no readable published revision');
+  }
+  if (!BASES.includes(row.defaultBasis)) {
+    throw new Error('certification type has an invalid default basis');
+  }
+  if (!(VERIFICATION_MODES as readonly string[]).includes(row.verificationMode)) {
+    throw new Error('certification type has an invalid verification mode');
+  }
+  const revision = parseId(row.typeRevisionId);
+  if (!revision.ok) throw new Error('published revision id is not an id');
+  let policyRevisionId: Id | null = null;
+  if (row.policyRevisionId !== null) {
+    const policy = parseId(row.policyRevisionId);
+    if (!policy.ok) throw new Error('policy revision id is not an id');
+    policyRevisionId = policy.value;
+  }
+  return {
+    type: {
+      publishedRevisionId: revision.value,
+      defaultBasis: row.defaultBasis as 'SELLER_REQUIRED' | 'NOT_APPLICABLE',
+      verificationMode: row.verificationMode as VerificationMode,
+    },
+    typeId: row.typeId,
+    policyRevisionId,
+    rows: [],
+  };
+}
+
+/** Rows of one type repeat the type's columns; any difference is a fault. */
+function sameType(entry: StoredTypeAndPolicy, row: TypeRow): boolean {
+  return (
+    entry.typeId === row.typeId &&
+    entry.type.publishedRevisionId === row.typeRevisionId &&
+    entry.type.defaultBasis === row.defaultBasis &&
+    entry.type.verificationMode === row.verificationMode &&
+    entry.policyRevisionId === row.policyRevisionId
+  );
+}
+
+/** The policy row of one S2 row, or null when the row carries none. Anything off throws. */
+function policyRowOf(row: TypeRow): StoredPolicyRow | null {
+  const { rowSelectorKind: kind, rowCategoryId, rowHandling, rowBasis } = row;
+  if (kind === null && rowCategoryId === null && rowHandling === null && rowBasis === null) {
+    return null;
+  }
+  if (row.policyRevisionId === null) throw new Error('policy row without a published revision');
+  if (rowBasis === null || !ROW_BASES.includes(rowBasis)) {
+    throw new Error('policy row has an invalid basis');
+  }
+  const basis = rowBasis as ClaimBasisRequirement;
+  if (kind === 'platform-category' && rowCategoryId !== null && rowHandling === null) {
+    if (!parseId(rowCategoryId).ok) throw new Error('policy row category is not an id');
+    return { kind, key: rowCategoryId, basis };
+  }
+  if (
+    kind === 'handling' &&
+    rowHandling !== null &&
+    rowCategoryId === null &&
+    (HANDLING_VALUES as readonly string[]).includes(rowHandling)
+  ) {
+    // M1: a handling row never opens the manufacturer basis.
+    if (basis === 'SELLER_OR_MANUFACTURER') throw new Error('manufacturer basis on handling');
+    return { kind, key: rowHandling, basis };
+  }
+  throw new Error('policy row has an invalid selector');
+}
 
 const pairKey = (pair: SellerCertificateRequest): string => `${pair.sellerId}|${pair.typeCode}`;
 

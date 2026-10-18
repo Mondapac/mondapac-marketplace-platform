@@ -4,7 +4,7 @@ import { declarePermissions, definePermission } from '../../../platform/authz';
 // A key is declared with the first use case that names it, together with identity's seed of the
 // default roles that receive it. The platform keys of the review package are view, review and
 // approve; the issuer keys come with the issuer requests (slice 6); revoke and the document key
-// with slice 11; the type keys with slice 12; the policy keys come with their slice.
+// with slice 11; the type keys with slice 12; the claim-policy keys with slice 13.
 
 /**
  * Read the seller's own certificates, their status codes and reasons, and their own documents
@@ -131,6 +131,29 @@ export const CERTIFICATION_TYPE_EDIT = definePermission('certification', {
   protected: true,
 });
 
+/**
+ * The claim basis policies of the Market: published rows, revisions with their change reasons and
+ * any pending relaxation (design 3.7, 7.1; CERT-42; slice 13). No personal data. Platform scope;
+ * Catalogue Moderator and Viewer by identity's seed.
+ */
+export const CERTIFICATION_CLAIM_POLICY_VIEW = definePermission('certification', {
+  key: 'certification.claim-policy.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Save a policy revision, and approve, reject or withdraw a policy relaxation (design 3.7, 7.1;
+ * slice 13). A relaxing revision needs a second holder who is not its author (H1). Protected: it
+ * decides where the manufacturer basis may apply (ADR-0012), so no default role lists it; the
+ * Platform Administrator holds it and grants it in a custom role.
+ */
+export const CERTIFICATION_CLAIM_POLICY_EDIT = definePermission('certification', {
+  key: 'certification.claim-policy.edit',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CERTIFICATION_PERMISSIONS = declarePermissions('certification', [
   CERTIFICATION_OWN_CERTIFICATE_VIEW,
   CERTIFICATION_OWN_CERTIFICATE_MANAGE,
@@ -143,4 +166,6 @@ export const CERTIFICATION_PERMISSIONS = declarePermissions('certification', [
   CERTIFICATION_ISSUER_EDIT,
   CERTIFICATION_TYPE_VIEW,
   CERTIFICATION_TYPE_EDIT,
+  CERTIFICATION_CLAIM_POLICY_VIEW,
+  CERTIFICATION_CLAIM_POLICY_EDIT,
 ]);

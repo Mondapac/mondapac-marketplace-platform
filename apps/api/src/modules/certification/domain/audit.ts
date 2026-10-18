@@ -321,6 +321,45 @@ export const RelaxationProposalWithdrawnAudit = defineAuditAction({
   after: { subject: auditField.enumOf(RELAXATION_SUBJECTS), subjectId: auditField.id() },
 });
 
+/** The audit target type of a claim basis policy (one per Market and type; design 3.7). */
+export const CLAIM_POLICY_TARGET = 'certification.claim-policy';
+
+/**
+ * A policy revision that only tightens was saved and published (design 3.7, 11; CERT-42). Names
+ * the revision and the type; the optional change reason stays on the revision (`reasonGiven`).
+ */
+export const ClaimPolicyRevisedAudit = defineAuditAction({
+  action: 'certification.claim-policy.revised',
+  targetType: CLAIM_POLICY_TARGET,
+  actors: ['authenticated'],
+  after: {
+    typeId: auditField.id(),
+    revisionId: auditField.id(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/** A relaxing policy revision saved `pending`, waiting for a second admin (design 3.7; H1). */
+export const ClaimPolicyRelaxationRequestedAudit = defineAuditAction({
+  action: 'certification.claim-policy.relaxation-requested',
+  targetType: CLAIM_POLICY_TARGET,
+  actors: ['authenticated'],
+  after: {
+    typeId: auditField.id(),
+    proposalId: auditField.id(),
+    revisionId: auditField.id(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/** A second admin approved a relaxing policy revision; it is published (design 3.7; H1). */
+export const ClaimPolicyRelaxationApprovedAudit = defineAuditAction({
+  action: 'certification.claim-policy.relaxation-approved',
+  targetType: CLAIM_POLICY_TARGET,
+  actors: ['authenticated'],
+  after: { typeId: auditField.id(), proposalId: auditField.id(), revisionId: auditField.id() },
+});
+
 /** Every audited action of certification, for its module's registration. */
 export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   SellerCertificationApprovedAudit,
@@ -352,4 +391,7 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   IssuerExpertReferenceViewedAudit,
   RelaxationProposalRejectedAudit,
   RelaxationProposalWithdrawnAudit,
+  ClaimPolicyRevisedAudit,
+  ClaimPolicyRelaxationRequestedAudit,
+  ClaimPolicyRelaxationApprovedAudit,
 ]);
