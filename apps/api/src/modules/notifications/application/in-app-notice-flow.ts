@@ -37,6 +37,16 @@ export interface NoticeView {
   readonly read: boolean;
 }
 
+/**
+ * One notice of the list: the view and, for a seller order notice, the customer's short name
+ * ("Maryam R."), read at list time through ordering and identity, never stored on the notice.
+ * Null when the member lacks `identity.customer-short-name.view`, the customer gave no name or
+ * the lookup failed. PERSONAL DATA: never logged.
+ */
+export interface ListedNoticeView extends NoticeView {
+  readonly customerShortName: string | null;
+}
+
 export type OwnNoticesFailure =
   | { readonly code: 'access.denied' }
   | {
@@ -112,4 +122,51 @@ export function viewOf(row: StoredNotice): NoticeView | null {
     createdAt: row.createdAt.toString(),
     read: row.read,
   };
+}
+
+/**
+ * Adds the customer's short name to each seller order notice of a page, with ONE ordering call
+ * for the page, after the read unit has closed. Advisory: a refusal or a failure is logged
+ * (counts and codes only, never a name) and leaves every name null; it never fails the list.
+ */
+export async function withCustomerNames(
+  deps: InAppNoticeDependencies,
+  context: CallContext,
+  views: readonly NoticeView[],
+): Promise<readonly ListedNoticeView[]> {
+  const sellerOrderIds = [
+    ...new Set(
+      views
+        .filter((view) => view.kind === SELLER_ORDER_PAID)
+        .map((view) => view.params.sellerOrderId),
+    ),
+  ];
+  let names: ReadonlyMap<string, string> = new Map();
+  if (sellerOrderIds.length > 0) {
+    try {
+      const answer = await deps.ordering.sellerOrderCustomerNames(context, sellerOrderIds);
+      if (answer.ok) {
+        names = new Map(answer.value.map((row) => [row.sellerOrderId, row.customerShortName]));
+      } else {
+        logger.warn({
+          msg: 'notifications.customer-names-refused',
+          code: answer.error.code,
+          marketId: context.market.marketId,
+          correlationId: context.correlationId,
+        });
+      }
+    } catch (error) {
+      logger.error({
+        msg: 'notifications.customer-names-failed',
+        error: error instanceof Error ? error.name : 'unknown',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+    }
+  }
+  return views.map((view) => ({
+    ...view,
+    customerShortName:
+      view.kind === SELLER_ORDER_PAID ? (names.get(view.params.sellerOrderId) ?? null) : null,
+  }));
 }

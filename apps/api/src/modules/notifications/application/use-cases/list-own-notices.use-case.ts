@@ -9,7 +9,9 @@ const NOTICE_FILTERS: readonly NoticeFilter[] = ['unread', 'read', 'all'];
 import {
   sellerReaderScope,
   viewOf,
+  withCustomerNames,
   type InAppNoticeDependencies,
+  type ListedNoticeView,
   type NoticeView,
   type OwnNoticesFailure,
 } from '../in-app-notice-flow';
@@ -22,8 +24,8 @@ export interface ListOwnNoticesInput {
 }
 
 export interface ListOwnNoticesOutput {
-  /** Newest first. */
-  readonly items: readonly NoticeView[];
+  /** Newest first, each order notice with the customer's short name when the member may see it. */
+  readonly items: readonly ListedNoticeView[];
   /** The `before` of the next page; null on the last page. */
   readonly next: Id<'InAppNotice'> | null;
 }
@@ -33,7 +35,8 @@ export interface ListOwnNoticesOutput {
  * seller-side member may see, newest first, a page at a time, each with whether this member has
  * read it, filtered by this member's read state (unread by default, read, or all). Rule `own-resources`: the seller and the account are the actor's own, so nobody reads
  * another seller's notices, and each kind is shown only while the member holds its permission.
- * One read-only unit.
+ * One read-only unit; then, outside it, one ordering call adds the customers' short names (shown
+ * only to a member holding `identity.customer-short-name.view`; never stored).
  */
 export class ListOwnNotices extends UseCase<
   ListOwnNoticesInput,
@@ -89,7 +92,8 @@ export class ListOwnNotices extends UseCase<
     );
     if (!read.ok) return err({ code: 'access.denied' });
     const rows = read.value;
-    const items = rows.map(viewOf).filter((item): item is NoticeView => item !== null);
+    const views = rows.map(viewOf).filter((item): item is NoticeView => item !== null);
+    const items = await withCustomerNames(this.deps, context, views);
     return ok({ items, next: rows.length === NOTICE_PAGE_SIZE ? rows.at(-1)!.id : null });
   }
 }

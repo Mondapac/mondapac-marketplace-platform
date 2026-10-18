@@ -56,6 +56,16 @@ export interface CustomerAccountSummary {
   readonly email: string;
 }
 
+/**
+ * One customer of {@link IdentityFacade.customerShortNames}: the short name only ("Maryam R.").
+ * PERSONAL DATA for the seller who asked: no module logs it or puts it in an event, an audit row,
+ * a cache, an outbox, a stored notice or an error body, and it is rendered as escaped text only.
+ */
+export interface CustomerShortName {
+  readonly accountId: Id<'Account'>;
+  readonly shortName: string;
+}
+
 /** A request the facade refused before any read: a code and the field, never its value. */
 export interface IdentityValidationFailed {
   readonly code: 'validation.failed';
@@ -128,6 +138,19 @@ export interface IdentityFacade {
     context: CallContext,
     accountIds: readonly Id<'Account'>[],
   ): Promise<Result<readonly CustomerAccountSummary[], AccessDenied | IdentityValidationFailed>>;
+
+  /**
+   * The short name ("Maryam R.") of each requested customer account, for the seller's own order
+   * notices. Rule `permissions [identity.customer-short-name.view]`, seller scope, denied while
+   * the seller is not approved; checked by the gate and again in the read. The system actor, an
+   * admin, a customer and an acting-as session are refused. The caller passes only customers of
+   * the shop's own paid seller orders (`ordering` checks that). At most 100 ids; an unknown id,
+   * another Market's, a non-customer and a nameless account are absent. Not exposed over HTTP.
+   */
+  customerShortNames(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<Result<readonly CustomerShortName[], AccessDenied | IdentityValidationFailed>>;
 }
 
 /** Nest token of the {@link IdentityFacade}, provided and exported by `IdentityModule`. */

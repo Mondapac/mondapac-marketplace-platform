@@ -106,6 +106,16 @@ export interface OrderRepository {
   ): Promise<SellerOrderRecord | null>;
 
   /**
+   * The customer account behind each of the seller's own paid seller orders among `sellerOrderIds`
+   * (the order notices' short customer name). Unknown, foreign and unpaid ids are absent.
+   */
+  customerAccountsForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    sellerOrderIds: readonly Id<'SellerOrder'>[],
+  ): Promise<ReadonlyMap<Id<'SellerOrder'>, Id<'Account'>>>;
+
+  /**
    * Writes the fulfilment fields of one seller order only if it still stands at `from`; `stale`
    * writes nothing (a double click or a second tab).
    */

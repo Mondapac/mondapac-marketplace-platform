@@ -180,6 +180,10 @@ export class FakeOrderingFacade implements OrderingFacade {
   shipmentNotice(): ReturnType<OrderingFacade['shipmentNotice']> {
     return Promise.resolve(err({ code: 'ordering.order-not-found' }));
   }
+
+  sellerOrderCustomerNames(): ReturnType<OrderingFacade['sellerOrderCustomerNames']> {
+    return Promise.resolve(ok([]));
+  }
 }
 
 /** A connected-account event body, as the Connect endpoint receives it. */

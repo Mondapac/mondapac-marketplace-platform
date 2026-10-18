@@ -186,6 +186,23 @@ export class MemoryOrders implements OrderRepository {
       this.paid(sellerId).find((record) => record.sellerOrder.id === sellerOrderId) ?? null,
     );
   }
+  customerAccountsForSeller(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    sellerOrderIds: readonly Id<'SellerOrder'>[],
+  ) {
+    const wanted = new Set(sellerOrderIds);
+    const accounts = new Map<Id<'SellerOrder'>, Id<'Account'>>();
+    for (const order of this.rows.values()) {
+      if (order.status !== 'confirmed') continue;
+      for (const sellerOrder of order.sellerOrders) {
+        if (sellerOrder.sellerId === sellerId && wanted.has(sellerOrder.id)) {
+          accounts.set(sellerOrder.id, order.accountId);
+        }
+      }
+    }
+    return Promise.resolve(accounts);
+  }
   saveFulfilment(_m: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {
     for (const [orderId, order] of this.rows) {
       const index = order.sellerOrders.findIndex((seller) => seller.id === sellerOrder.id);
@@ -437,7 +454,8 @@ export class FakeLabels implements OrderLabels {
   readonly units = new Map<string, OrderUnitLabel>();
   readonly stores = new Map<Id<'Seller'>, string>();
   readonly customers = new Map<Id<'Account'>, OrderCustomer>();
-  readonly fail = new Set<'units' | 'stores' | 'customers'>();
+  readonly shortNames = new Map<Id<'Account'>, string>();
+  readonly fail = new Set<'units' | 'stores' | 'customers' | 'short-names'>();
   readonly calls: { readonly lookup: string; readonly count: number }[] = [];
 
   unitLabelsOf(
@@ -465,6 +483,15 @@ export class FakeLabels implements OrderLabels {
     this.calls.push({ lookup: 'customers', count: accountIds.length });
     if (this.fail.has('customers')) return Promise.reject(new Error('customers'));
     return Promise.resolve(this.customers);
+  }
+
+  customerShortNamesOf(
+    _context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, string>> {
+    this.calls.push({ lookup: 'short-names', count: accountIds.length });
+    if (this.fail.has('short-names')) return Promise.reject(new Error('short-names'));
+    return Promise.resolve(this.shortNames);
   }
 
   /** Sets the label of one (Offer, Variant). */

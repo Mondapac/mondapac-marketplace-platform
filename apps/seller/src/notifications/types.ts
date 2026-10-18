@@ -18,8 +18,14 @@ export interface Notice {
   readonly read: boolean;
 }
 
+/** A notice of the list: seller.order-paid adds the customer's short name ("Maryam R."). */
+export interface ListedNotice extends Notice {
+  /** Null without identity.customer-short-name.view, or when the customer gave no name. */
+  readonly customerShortName?: string | null;
+}
+
 export interface NoticePage {
-  readonly items: readonly Notice[];
+  readonly items: readonly ListedNotice[];
   readonly next: string | null;
 }
 

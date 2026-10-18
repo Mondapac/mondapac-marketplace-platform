@@ -1,4 +1,5 @@
-import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
+import { Logger } from '@nestjs/common';
+import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -202,6 +203,9 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
   let unitOfWork: FakeUnitOfWork;
   let clock: FixedClock;
   let orderNotice: ReturnType<OrderingFacade['orderNotice']>;
+  /** What ordering answers for the customer names; the asked ids are kept. */
+  let customerNames: () => ReturnType<OrderingFacade['sellerOrderCustomerNames']>;
+  let namesAsked: (readonly string[])[];
   /** The accounts that do NOT hold ordering.seller-order.view. */
   let withoutOrders: Set<string>;
   let checks: string[];
@@ -245,6 +249,8 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
     unitOfWork = new FakeUnitOfWork();
     clock = new FixedClock(T0);
     orderNotice = Promise.resolve(ok(NOTICE));
+    customerNames = () => Promise.resolve(ok([]));
+    namesAsked = [];
     withoutOrders = new Set();
     checks = [];
     nextEvent = 1;
@@ -265,7 +271,13 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
     deps = {
       unitOfWork,
       notices,
-      ordering: { orderNotice: () => orderNotice } as unknown as OrderingFacade,
+      ordering: {
+        orderNotice: () => orderNotice,
+        sellerOrderCustomerNames: (_context: CallContext, ids: readonly string[]) => {
+          namesAsked.push(ids);
+          return customerNames();
+        },
+      } as unknown as OrderingFacade,
       authorisation,
       ids: new CountingIds(),
       clock,
@@ -365,6 +377,53 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
       expect(checks).toEqual(['notifications.see-seller-order-notices']);
       // No customer data reaches the notice.
       expect(JSON.stringify(result)).not.toContain(NOTICE.accountId);
+    });
+
+    it("adds the customer's short name at read time, with one ordering call per page", async () => {
+      customerNames = () =>
+        Promise.resolve(
+          ok([{ sellerOrderId: id<'SellerOrder'>(0x21), customerShortName: 'Maryam R.' }]),
+        );
+
+      const result = await list(member(MEMBER_1, SELLER_A));
+
+      expect(result.ok && result.value.items.map((item) => item.customerShortName)).toEqual([
+        'Maryam R.',
+        'Maryam R.',
+      ]);
+      expect(namesAsked).toEqual([[id(0x21)]]);
+      // Nothing about the customer is written back to the notice.
+      expect(JSON.stringify(notices.rows)).not.toContain('Maryam');
+    });
+
+    it('shows no name, and still lists, when ordering refuses or fails', async () => {
+      const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      for (const answer of [
+        () => Promise.resolve(err({ code: 'access.denied' as const })),
+        () => Promise.reject(new Error('down')),
+      ]) {
+        customerNames = answer;
+        const result = await list(member(MEMBER_1, SELLER_A));
+        expect(result.ok && result.value.items.map((item) => item.customerShortName)).toEqual([
+          null,
+          null,
+        ]);
+      }
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({ msg: 'notifications.customer-names-refused' }),
+      );
+      expect(error).toHaveBeenCalledWith(
+        expect.objectContaining({ msg: 'notifications.customer-names-failed' }),
+      );
+      error.mockRestore();
+      warn.mockRestore();
+    });
+
+    it('asks ordering nothing for an empty page', async () => {
+      withoutOrders.add(MEMBER_1);
+      expect(await list(member(MEMBER_1, SELLER_A))).toEqual(ok({ items: [], next: null }));
+      expect(namesAsked).toEqual([]);
     });
 
     it('never shows another seller, or the same seller in another Market', async () => {
