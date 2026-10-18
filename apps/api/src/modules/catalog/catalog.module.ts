@@ -117,6 +117,9 @@ import { reconcileTagsJob } from './presentation/jobs/reconcile-tags.job';
 import { certificationSubscriptions } from './presentation/subscribers/certification.subscriptions';
 import { certificateExpiryNoticeSubscriptions } from './presentation/subscribers/certificate-expiry-notice.subscriptions';
 import { WarnOfferOwnersOfExpiry } from './application/use-cases/warn-offer-owners-of-expiry.use-case';
+import { SendOfferOwnerNotices } from './application/use-cases/send-offer-owner-notices.use-case';
+import { OFFER_OWNER_NOTICES } from './application/ports/offer-owner-notice.repository';
+import { sendOfferOwnerNoticesJob } from './presentation/jobs/send-offer-owner-notices.job';
 import {
   OFFER_OWNER_CONTACT,
   OFFER_OWNER_MAIL_SETTINGS,
@@ -207,6 +210,7 @@ const PORT = {
   ownerContacts: OFFER_OWNER_CONTACT,
   mailTransport: MAIL_TRANSPORT,
   mailSettings: OFFER_OWNER_MAIL_SETTINGS,
+  notices: OFFER_OWNER_NOTICES,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -644,19 +648,28 @@ const productTypeProvider: FactoryProvider<string> = {
     }),
     registerJobsFrom(
       'catalog',
-      [SeedCategoryTree, SeedAttributes, SweepOrphanImages, ReevaluateTags, ReconcileTags],
+      [
+        SeedCategoryTree,
+        SeedAttributes,
+        SweepOrphanImages,
+        ReevaluateTags,
+        ReconcileTags,
+        SendOfferOwnerNotices,
+      ],
       (
         categories: SeedCategoryTree,
         attributes: SeedAttributes,
         sweep: SweepOrphanImages,
         reevaluate: ReevaluateTags,
         reconcile: ReconcileTags,
+        notices: SendOfferOwnerNotices,
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
         sweepOrphanImagesJob(sweep),
         reevaluateTagsJob(reevaluate),
         reconcileTagsJob(reconcile),
+        sendOfferOwnerNoticesJob(notices),
       ],
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).
@@ -682,9 +695,17 @@ const productTypeProvider: FactoryProvider<string> = {
       useFactory: (markets: MarketRegistry): OfferOwnerMailSettings =>
         new ConfigOfferOwnerMailSettings(markets),
     },
+    // Hassan M1, Mojtaba N2: the handler writes one notice per Owner; the job sends each.
     useCaseProvider(WarnOfferOwnersOfExpiry, {
       unitOfWork: true,
       tagSelection: true,
+      notices: true,
+      ids: true,
+      clock: true,
+    }),
+    useCaseProvider(SendOfferOwnerNotices, {
+      unitOfWork: true,
+      notices: true,
       ownerContacts: true,
       mailTransport: true,
       mailSettings: true,

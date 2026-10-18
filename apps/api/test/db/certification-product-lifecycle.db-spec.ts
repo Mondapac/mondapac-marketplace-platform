@@ -215,7 +215,7 @@ describe.each(TEST_MARKETS)(
     const accountOf = (context: CallContext): string =>
       context.actor.kind === 'authenticated' ? context.actor.accountId : '';
 
-    async function seedType(): Promise<{ typeId: string; code: string }> {
+    async function seedType(requiresExpiry = true): Promise<{ typeId: string; code: string }> {
       const typeId = uuid7();
       const revisionId = uuid7();
       const typeCode = `pl${typeId.slice(-10)}`;
@@ -232,9 +232,9 @@ describe.each(TEST_MARKETS)(
          (id, market_id, tenant_id, type_id, revision_no, verification_mode, requires_issuer_registry,
           requires_document, requires_expiry, default_basis, auto_approve_self_declaration,
           badge_icon_key, author_account_id, created_at)
-       VALUES ($1, $2, $3, $4, 1, 'THIRD_PARTY_DOCUMENT', true, false, true, 'SELLER_REQUIRED',
+       VALUES ($1, $2, $3, $4, 1, 'THIRD_PARTY_DOCUMENT', true, false, $7, 'SELLER_REQUIRED',
                false, 'halal', $5, $6)`,
-        [revisionId, ...scope, typeId, uuid7(), T0.toString()],
+        [revisionId, ...scope, typeId, uuid7(), T0.toString(), requiresExpiry],
       );
       await sql.query(
         `INSERT INTO certification.type_revision_texts
@@ -279,9 +279,9 @@ describe.each(TEST_MARKETS)(
      * An approved certificate expiring on `expiryDate`: recorded by the creator, edited and
      * submitted by the editor, approved by the approver, all at the clock's instant.
      */
-    async function approved(expiryDate = '2027-06-30') {
+    async function approved(expiryDate = '2027-06-30', requiresExpiry = true) {
       const u = useCases();
-      const type = await seedType();
+      const type = await seedType(requiresExpiry);
       const issuerId = await seedIssuer(type.typeId);
       const productId = uuid7() as Id<'Product'>;
       const productRevisionId = uuid7() as Id<'ProductRevision'>;
@@ -625,6 +625,119 @@ describe.each(TEST_MARKETS)(
         ),
       ).toEqual({ code: 'certificate.closed' });
       expect(await covering(c)).toEqual([]);
+    });
+
+    it('suspending withdraws a pending revision; no approval while suspended, only reinstate (Hassan L1)', async () => {
+      const c = await approved();
+      const draftEditor = admin();
+      const renew = async (version: number, expiryDate: string) => {
+        const saved = await unwrap(
+          c.u.save.execute(draftEditor, {
+            certificateId: c.certificateId,
+            version,
+            draft: {
+              manufacturerName: 'Maker Foods Pty Ltd',
+              issuerId: c.issuerId,
+              issueDate: null,
+              expiryDate,
+              coverage: [{ productId: c.productId, variantIds: null }],
+            },
+          }),
+        );
+        return unwrap(
+          c.u.submit.execute(draftEditor, {
+            certificateId: c.certificateId,
+            version: saved.version,
+          }),
+        );
+      };
+      const first = await renew(c.version, '2028-06-30');
+      const suspended = await unwrap(
+        c.u.suspend.execute(admin(), {
+          certificateId: c.certificateId,
+          version: first.version,
+          reasonCode: reasonFor('suspended'),
+        }),
+      );
+      expect(suspended).toMatchObject({
+        status: 'suspended',
+        withdrawnRevisionId: first.revisionId,
+      });
+      const { rows: decisions } = await owner.query<{ outcome: string; decided_by: string | null }>(
+        `SELECT outcome, decided_by_account_id AS decided_by FROM certification.product_revision_decisions
+        WHERE market_id = $1 AND revision_id = $2`,
+        [market.marketId, first.revisionId],
+      );
+      expect(decisions).toEqual([{ outcome: 'withdrawn', decided_by: null }]);
+      expect(
+        (await auditsOf(c.certificateId)).find((a) => a.action.endsWith('.suspended')),
+      ).toMatchObject({ after: { withdrawnRevisionId: first.revisionId, noteGiven: false } });
+      expect(
+        await unwrap(c.u.read.execute(admin(), { certificateId: c.certificateId })),
+      ).toMatchObject({ status: 'suspended', pending: null });
+
+      // A revision submitted while suspended cannot be approved: the suspension ends only through
+      // reinstate, with its guards.
+      const second = await renew(suspended.version, '2028-06-30');
+      const approver = admin();
+      expect(
+        await refusal(
+          c.u.approve.execute(approver, {
+            certificateId: c.certificateId,
+            revisionId: second.revisionId,
+            version: second.version,
+          }),
+        ),
+      ).toEqual({ code: 'certificate.suspended' });
+      expect(await covering(c)).toEqual([]);
+      const reinstated = await unwrap(
+        c.u.reinstate.execute(admin(), { certificateId: c.certificateId, version: second.version }),
+      );
+      expect(reinstated.status).toBe('approved');
+      const approvedAgain = await unwrap(
+        c.u.approve.execute(approver, {
+          certificateId: c.certificateId,
+          revisionId: second.revisionId,
+          version: reinstated.version,
+        }),
+      );
+      expect(approvedAgain).toMatchObject({ status: 'approved' });
+    });
+
+    it('stores the root boundary only for a type that requires an expiry; the view reads the decision (Hassan L2)', async () => {
+      const rootAndDecision = async (certificateId: string, revisionId: string) => {
+        const { rows } = await owner.query<{ root: Date | null; decision: Date | null }>(
+          `SELECT pc.approved_boundary_at AS root, d.expiry_boundary_at AS decision
+             FROM certification.product_certifications pc
+             JOIN certification.product_revision_decisions d
+               ON d.market_id = pc.market_id AND d.revision_id = $2
+            WHERE pc.market_id = $1 AND pc.id = $3`,
+          [market.marketId, revisionId, certificateId],
+        );
+        return rows[0]!;
+      };
+      const boundary = Temporal.PlainDate.from('2027-07-01')
+        .toZonedDateTime(zone)
+        .toInstant()
+        .toString();
+
+      const optional = await approved('2027-06-30', false);
+      const stored = await rootAndDecision(optional.certificateId, optional.revisionId);
+      expect(stored.root).toBeNull();
+      expect(stored.decision?.toISOString()).toBe(new Date(boundary).toISOString());
+      const view = await unwrap(
+        optional.u.read.execute(admin(), { certificateId: optional.certificateId }),
+      );
+      expect(view.approvedBoundaryAt).toBe(boundary);
+
+      const required = await approved('2027-06-30', true);
+      const kept = await rootAndDecision(required.certificateId, required.revisionId);
+      expect(kept.root?.toISOString()).toBe(new Date(boundary).toISOString());
+      expect(kept.decision?.toISOString()).toBe(new Date(boundary).toISOString());
+      expect(
+        (await unwrap(required.u.read.execute(admin(), { certificateId: required.certificateId })))
+          .approvedBoundaryAt,
+      ).toBe(boundary);
     });
 
     it('refuses to suspend or revoke a record never approved, and to reinstate past the boundary', async () => {

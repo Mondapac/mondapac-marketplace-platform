@@ -172,7 +172,31 @@ describe.each(['AU', 'ZZ'] as const)('manufacturer certificate use cases in mark
     ] as const;
 
   // The acting-as refusal of every write is `reviewerOf` (write: true), tested in
-  // review/review.shared.spec.ts: a minted actor cannot carry acting-as outside identity.
+  // review/review.shared.spec.ts; the lifecycle writes are checked here too (Hassan L3, slice 15).
+  it('refuses an acting-as session on suspend, revoke and reinstate, before any store', async () => {
+    const d = deps();
+    const actor = testAuthenticatedActor(market, {
+      population: 'admin',
+      accountId: ID as Id<'Account'>,
+      sessionId: ID as Id<'Session'>,
+      sellerId: null,
+    });
+    // As review/review.shared.spec.ts: a minted actor carries acting-as only by this spread.
+    const marked = { ...actor, actingAs: { accountId: ID, sellerId: ID } };
+    const actingAs: CallContext = { ...testCallContext(market, actor), actor: marked };
+    for (const [useCase, input] of [
+      [new ProductCertificateSuspend(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
+      [new ProductCertificateRevoke(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
+      [new ProductCertificateReinstate(gate, d), { certificateId: ID, version: 1 }],
+    ] as const) {
+      const result = await (
+        useCase as { execute: (c: CallContext, i: unknown) => Promise<unknown> }
+      ).execute(actingAs, input);
+      expect(result).toEqual({ ok: false, error: { code: 'access.denied' } });
+    }
+    expect(touched).toEqual([]);
+  });
+
   it('refuses a seller on every route, before any store', async () => {
     const d = deps();
     for (const [useCase, input] of writes(d)) {

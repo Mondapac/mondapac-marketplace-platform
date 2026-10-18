@@ -1,7 +1,10 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import {
+  MAX_NOTICE_ATTEMPTS,
   certificateExpiryNoticeMail,
+  isUsableNoticeZone,
   lastValidDay,
+  noticeRetryAt,
   shouldNoticeOwner,
 } from './certificate-expiry-notice';
 
@@ -45,5 +48,26 @@ describe.each(MARKETS)('certificate expiry notice in market $code', ({ zone, bou
       zone,
     });
     expect(one.text).toContain('1 of your offers shows the halal badge');
+  });
+});
+
+describe('notice zone and retry', () => {
+  it.each(['Australia/Brisbane', 'Asia/Tokyo', 'UTC'])('accepts the IANA zone %s', (zone) => {
+    expect(isUsableNoticeZone(zone)).toBe(true);
+  });
+
+  it.each(['', '+10:00', '2026-01-01T00:00:00+10:00[Australia/Brisbane]', 'Mars/Base', null, 7])(
+    'refuses %p as a notice zone',
+    (zone) => {
+      expect(isUsableNoticeZone(zone)).toBe(false);
+    },
+  );
+
+  it('retries a failed send later, doubling, then gives up', () => {
+    const now = Temporal.Instant.from('2027-06-01T00:00:00Z');
+    expect(noticeRetryAt(0, now)?.toString()).toBe('2027-06-01T00:05:00Z');
+    expect(noticeRetryAt(1, now)?.toString()).toBe('2027-06-01T00:10:00Z');
+    expect(noticeRetryAt(3, now)?.toString()).toBe('2027-06-01T00:40:00Z');
+    expect(noticeRetryAt(MAX_NOTICE_ATTEMPTS - 1, now)).toBeNull();
   });
 });

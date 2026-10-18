@@ -794,6 +794,25 @@ module's rate-counter key, fixed window, `count >= 0`, reserve before the work, 
 `reviewer-mail.market.hour`. The bulk-approve cap of 50 (D 17.1 item 11) and the facade batch
 limits are request validation: **no storage**.
 
+### 3.27 `offer_owner_notices` (certification slice 15; request C-6; Hassan M1, Mojtaba N2)
+
+One pending warning to the Owner of Offers whose badge rests on an expiring manufacturer
+certificate. The handler of `product-certification-expiry-warning-due.v1` writes one row per Owner
+in its inbox unit. The job `catalog.send-offer-owner-notices` sends each row and marks it in its
+own unit. No address is stored; it is read from `identity` at send time.
+
+- Columns: `id`, `market_id`, `tenant_id`, `source_event_id`, `product_certification_id`,
+  `threshold_days` (1 to 366), `seller_id`, `type_code` (the tag CHECK), `offers` (> 0),
+  `valid_until`, `state` (`pending`, `sent`, `skipped`, `failed`), `outcome` (`no-address`,
+  `past-validity`, `send-failed`; set exactly for `skipped` and `failed`), `attempts` (>= 0),
+  `next_attempt_at`, `created_at`, `settled_at` (set exactly when not `pending`).
+- Unique `(market_id, source_event_id, seller_id, type_code)`: one row per event and Owner; a second
+  write is `ON CONFLICT DO NOTHING`.
+- Claim index `(market_id, next_attempt_at, id) WHERE state = 'pending'`.
+- Grants `SELECT, INSERT, UPDATE (state, outcome, attempts, next_attempt_at, settled_at)`; no DELETE
+  until a purge of settled rows lands (as 3.18).
+- Migration `20261018220000_catalog_offer_owner_notices`, with `down.sql`.
+
 ## 4. What is never stored
 
 | Never | Instead |
@@ -1096,6 +1115,7 @@ No sequence; no function gets a grant.
 | `offers` | `SELECT, INSERT`, `UPDATE (product_id, seller_sku, condition_code, description, handling, attestation_recorded_at, attestation_account_id, shelf_category_id, status, off_sale_*, listed, submitted_at, first_published_at, deleted_at, version)` | Never (a discarded draft's Offer becomes `deleted`) | `seller_id` never changes (PRC 2.3) |
 | `offer_tags` | `SELECT, INSERT`, `UPDATE` on every column except `id, offer_id, seller_id, type_code, created_at` | Never | |
 | `tag_reevaluation_requests` | `SELECT, INSERT`, `UPDATE (state, cursor_offer_id, counts, settled_at)` | Purge (10.3) | |
+| `offer_owner_notices` | `SELECT, INSERT`, `UPDATE (state, outcome, attempts, next_attempt_at, settled_at)` | Purge (open) | Certification slice 15 (3.27) |
 | `product_images` | `SELECT, INSERT, DELETE`, `UPDATE (state, refusal_code, raw_object_key, master_object_key, master_sha256, media_type, pixel_width, pixel_height, taken_down_at, taken_down_by_account_id, takedown_reason_code, version)` | 13 (draft images of a discarded draft; master retention); the delete guard limits it to `received`, `scanning`, `clean`, `refused` | Hassan L3 |
 | `claim_text_rescans` | `SELECT, INSERT, UPDATE` | Never | |
 | `seller_categories`, `category_proposals` | `SELECT, INSERT, UPDATE` | Never | |

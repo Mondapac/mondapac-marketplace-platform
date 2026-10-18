@@ -43,7 +43,7 @@ export interface ProductEndOutput {
   readonly status: 'suspended' | 'revoked';
   /** The approved revision the record holds. */
   readonly revisionId: string;
-  /** The pending revision withdrawn in the same unit (a revocation only), or null. */
+  /** The pending revision withdrawn in the same unit, or null. */
   readonly withdrawnRevisionId: string | null;
   readonly version: number;
   readonly changedAt: string;
@@ -66,8 +66,8 @@ const logger = new Logger('ProductCertificationEnd');
  * the admin read (slice 15). The note is sealed outside the unit. One unit locks the root first
  * (the version guard), re-reads it, checks the guards, then writes the status, one history row
  * (reason code, sealed note, the approved revision), the audit row and the event
- * (`product-certification-suspended.v1` or `-revoked.v1`) through the outbox. A revocation also
- * withdraws a pending revision (decision `withdrawn`). `evaluateClaims` grants only an `approved`
+ * (`product-certification-suspended.v1` or `-revoked.v1`) through the outbox. Both also withdraw
+ * a pending revision (decision `withdrawn`; Hassan L1: a suspension ends only through reinstate). `evaluateClaims` grants only an `approved`
  * record, so the claim is "no" from the commit; catalog marks the certificate's tags `rechecking`
  * on the event. No type or issuer row is read, so none is share-locked. No model is called.
  */
@@ -125,8 +125,9 @@ export async function endProduct(
       const refusal =
         action === 'suspend' ? productSuspensionRefusal(state) : productRevocationRefusal(state);
       if (refusal !== null) return err(refusal);
+      // Both withdraw a pending revision (Hassan L1): a suspended record has none to approve.
       const withdrawn =
-        action === 'revoke' && pending !== null
+        pending !== null
           ? { revisionId: pending.id, authorAccountId: pending.authorAccountId }
           : null;
       await deps.products.transition(market, {
@@ -146,7 +147,11 @@ export async function endProduct(
         context,
         action === 'suspend'
           ? ProductCertificationSuspendedAudit.entry(certificateId, {
-              after: { ...after, noteGiven: noteCiphertext !== null },
+              after: {
+                ...after,
+                withdrawnRevisionId: withdrawn?.revisionId ?? null,
+                noteGiven: noteCiphertext !== null,
+              },
             })
           : ProductCertificationRevokedAudit.entry(certificateId, {
               after: {

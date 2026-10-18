@@ -159,12 +159,24 @@ export class ExpireProductCertificates extends UseCase<
       marketZoneMissing: marketZone === null,
       capped,
     };
-    this.#logger.log({
+    const done = {
       msg: 'certification.expiry-and-warnings.products-done',
       ...output,
       marketId: market.marketId,
       correlationId: context.correlationId,
-    });
+    };
+    // A capped run left due records for the next run (Hassan L2): an operator alert, not only a
+    // count, so a backlog that grows faster than the runs drain it is seen.
+    if (capped) {
+      this.#logger.warn({
+        msg: 'certification.expiry-and-warnings.products-capped',
+        pages: MAX_EXPIRY_PAGES_PER_RUN,
+        batchSize: EXPIRY_BATCH_SIZE,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+    }
+    this.#logger.log(done);
     return ok(output);
   }
 

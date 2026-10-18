@@ -464,7 +464,7 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
           ? {
               approvedRevisionId: write.revisionId,
               approvedBoundaryAt:
-                write.expiryBoundaryAt === null ? null : toDate(write.expiryBoundaryAt),
+                write.rootBoundaryAt === null ? null : toDate(write.rootBoundaryAt),
             }
           : {}),
       },

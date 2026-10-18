@@ -27,6 +27,41 @@ export function lastValidDay(validUntil: Temporal.Instant, zone: string): Tempor
   return validUntil.subtract({ nanoseconds: 1 }).toZonedDateTimeISO(zone).toPlainDate();
 }
 
+/**
+ * True for a zone Temporal resolves that is an IANA id (ADR-0005 decision 1): a non-empty string,
+ * not a UTC offset. The mail names a day in this zone, so anything else sends no mail (Hassan I2).
+ * Catalog's own check, as certification's `isUsableZone` (no import across modules).
+ */
+export function isUsableNoticeZone(zone: unknown): zone is string {
+  if (typeof zone !== 'string' || zone.length === 0 || zone.length > 64) return false;
+  if (/^[+-]/u.test(zone)) return false;
+  try {
+    // Temporal's parser also takes ISO date-times and offsets and keeps only the zone part,
+    // which must not count as an IANA id: compare what it resolved with the input.
+    const resolved =
+      Temporal.Instant.from('2026-01-01T00:00:00Z').toZonedDateTimeISO(zone).timeZoneId;
+    return !/^[+-]/u.test(resolved) && resolved.toLowerCase() === zone.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/** The sends of one notice before it is given up as `failed` (and logged as an error). */
+export const MAX_NOTICE_ATTEMPTS = 5;
+
+/**
+ * When a notice whose send failed is tried again: 5 minutes after the first failure, doubling
+ * each time (5, 10, 20, 40 minutes). `null` once the attempts are used up: the notice fails.
+ */
+export function noticeRetryAt(
+  attemptsSoFar: number,
+  now: Temporal.Instant,
+): Temporal.Instant | null {
+  const attempts = attemptsSoFar + 1;
+  if (attempts >= MAX_NOTICE_ATTEMPTS) return null;
+  return now.add({ minutes: 5 * 2 ** (attempts - 1) });
+}
+
 /** A warning delivered at or after the boundary would say the wrong thing: none is sent. */
 export function shouldNoticeOwner(
   validUntil: Temporal.Instant | null,

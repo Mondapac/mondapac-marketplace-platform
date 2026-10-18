@@ -418,7 +418,8 @@ export class AdminProductCertificateController {
   @ApiNotFoundResponse(NOT_FOUND)
   @ApiConflictResponse({
     type: CertificationErrorBody,
-    description: 'conflict.stale, review.not-current-revision, certificate.closed',
+    description:
+      'conflict.stale, review.not-current-revision, certificate.closed, certificate.suspended',
   })
   @ApiUnprocessableEntityResponse({
     type: CertificationErrorBody,

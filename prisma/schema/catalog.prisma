@@ -868,3 +868,37 @@ model CatalogTagReevaluationRequest {
   @@map("tag_reevaluation_requests")
   @@schema("catalog")
 }
+
+/// One pending warning to the Owner of Offers whose badge rests on an expiring manufacturer
+/// certificate (certification request C-6; CERT-45; certification slice 15; data design 3.27).
+/// The handler of `product-certification-expiry-warning-due.v1` writes one row per Owner in its
+/// inbox unit; the job `catalog.send-offer-owner-notices` sends each with its own marker and
+/// retry. No address is stored. The CHECKs, the claim index and the column grant are hand-written.
+model CatalogOfferOwnerNotice {
+  id                     String    @id @db.Uuid
+  marketId               String    @map("market_id") @db.VarChar(8)
+  tenantId               String    @map("tenant_id")
+  /// The consumed warning event.
+  sourceEventId          String    @map("source_event_id") @db.Uuid
+  productCertificationId String    @map("product_certification_id") @db.Uuid
+  thresholdDays          Int       @map("threshold_days")
+  sellerId               String    @map("seller_id") @db.Uuid
+  typeCode               String    @map("type_code")
+  /// The Owner's Offers whose badge rests on the certificate, when the row was written.
+  offers                 Int
+  /// The earliest badge validity of those Offers.
+  validUntil             DateTime  @map("valid_until") @db.Timestamptz(6)
+  /// pending | sent | skipped | failed.
+  state                  String
+  /// no-address | past-validity | send-failed; NULL while pending and when sent.
+  outcome                String?
+  attempts               Int
+  nextAttemptAt          DateTime  @map("next_attempt_at") @db.Timestamptz(6)
+  createdAt              DateTime  @map("created_at") @db.Timestamptz(6)
+  settledAt              DateTime? @map("settled_at") @db.Timestamptz(6)
+
+  @@unique([marketId, id])
+  @@unique([marketId, sourceEventId, sellerId, typeCode])
+  @@map("offer_owner_notices")
+  @@schema("catalog")
+}

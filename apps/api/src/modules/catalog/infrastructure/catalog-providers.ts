@@ -112,6 +112,11 @@ import {
 } from '../application/ports/tag-reevaluation-requests';
 import { PrismaTagReevaluationRequests } from './prisma-tag-reevaluation-requests';
 import {
+  OFFER_OWNER_NOTICES,
+  type OfferOwnerNoticeRepository,
+} from '../application/ports/offer-owner-notice.repository';
+import { PrismaOfferOwnerNotices } from './prisma-offer-owner-notices';
+import {
   TAG_SELECTION_READER,
   type TagSelectionReader,
 } from '../application/ports/tag-selection.reader';
@@ -165,6 +170,13 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): TagReevaluationRequestRepository =>
       new PrismaTagReevaluationRequests(prisma),
+  },
+  // The pending warnings to Offer owners (certification request C-6; data design 3.27).
+  {
+    provide: OFFER_OWNER_NOTICES,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferOwnerNoticeRepository =>
+      new PrismaOfferOwnerNotices(prisma),
   },
   // The tag selections of the certification-event re-ask and the reconciliation (design 5.5, 5.6).
   {

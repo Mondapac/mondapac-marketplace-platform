@@ -1212,10 +1212,11 @@ Slice 14 part 2 is split in two PRs. This one is the lifecycle. Documents and re
   - The reason comes from the checked-in review policy. Suspend needs a reason with the new outcome `suspended`. AU adds `under-investigation` and gives `suspended` to `not-confirmed-by-issuer` and `withdrawn-by-issuer`. ZZ mirrors this.
   - The note is sealed under the Market subject key (field `certification.product-certification.history-note`) before the unit.
   - Unit order: lock the record (version first), check the refusal, write the guarded transition and a history row, write the audit row (`.suspended` or `.revoked`; `noteGiven` only, never the text), then the outbox event.
-  - Revoke works from `approved` or `suspended`. It withdraws a pending revision, writing a `withdrawn` decision with no decider.
+  - Revoke works from `approved` or `suspended`. Suspend and revoke both withdraw a pending revision, writing a `withdrawn` decision with no decider (Hassan L1); the audit row names it as `withdrawnRevisionId`.
+  - An approval is refused while the record is suspended (`certificate.suspended`, 409; Hassan L1). A suspension ends only through reinstate, with its guards; a revision submitted while suspended waits for that.
 - **Reinstate** (3.4 row 7; `POST …/:id/reinstate`, key `.approve`) is a use case of its own, recorded as `.reinstated`. It is refused:
   - for the author or an editor of the approved revision (`approval.same-admin`);
-  - when the issuer is not active, or is `closed-to-new` for another type;
+  - when the issuer is neither `active` nor `closed-to-new`, or is of another type (`issuer.not-active`). An issuer `closed-to-new` for the same type is accepted, as S3 accepts it (Hassan I1);
   - after the claim boundary;
   - when the record is not suspended.
 
@@ -1225,18 +1226,21 @@ Slice 14 part 2 is split in two PRs. This one is the lifecycle. Documents and re
   - Only `approved` records expire; a suspended record is left alone.
   - The boundary is the earlier of the one stored at approval and the date in the current Market zone (2.4 rule 3). When the Market zone is not usable, only the stored boundaries count.
   - Warnings at the configured thresholds use `expiry_warnings` with version kind `product-revision`, then `product-certification-expiry-warning-due.v1`. The payload gains `typeId`.
-  - The output reports `marketZoneMissing`.
+  - The output reports `marketZoneMissing`. A run that stops at its page cap logs `certification.expiry-and-warnings.products-capped` as a warning (Hassan L2).
+  - The root's `approved_boundary_at` is written at approval only when the approved revision's type revision requires an expiry; the decision row keeps its boundary either way (Hassan L2, Mojtaba F1 option A). A record whose type has no expiry is never in the job's window. The admin view's `approvedBoundaryAt` reads the approved revision's decision.
 - **Events** `product-certification-suspended.v1`, `-revoked.v1` and `-expired.v1` (ids and `typeId`), plus the warning above. Audit actions `.suspended`, `.reinstated`, `.revoked` and `.expired` (system).
 - **Catalog consumers.** Three subscriptions `catalog.reevaluate-on-product-certification-suspended`, `-revoked` and `-expired` write ending causes. These select the tags by `certificate_id` and mark them `rechecking` before the re-ask. The causes stay disjoint from the type causes (unit test). Migration `20261018210000_catalog_product_certification_endings` swaps the cause CHECK (`NOT VALID` then `VALIDATE`), with `down.sql`.
-- **C-6 in `catalog`** (8.3; `catalog.warn-offer-owners-of-expiry`, system). It consumes the warning event and runs a read-only unit over live manufacturer-kind tags naming the certificate. It groups them by seller and type, and counts them with the earliest `valid_until`, for at most 200 owners; a larger set is logged as `capped`.
-  - Each owner's address comes from `identity.contactEmailOf` (seller owner). One plain-text mail names the type, the number of Offers and the last valid day in the Market zone. It carries no id, number or issuer.
-  - An owner whose badge validity has passed, or who has no address, is skipped.
-  - The delivery is marked after the sends, so a retry may mail an owner twice (at least once, as the seller mails). No per-seller markers. The words are working texts for Reza.
+- **C-6 in `catalog`** (8.3). The handler sends nothing (Hassan M1, Mojtaba N2).
+  - `catalog.warn-offer-owners-of-expiry` (system) consumes the warning event. In its `runOnce` unit it reads the live manufacturer-kind tags naming the certificate, grouped by seller and type, with the count and the earliest `valid_until`, for at most 200 owners (a larger set is logged as `capped`, a warning). It writes one pending row per owner whose badge is still valid into `catalog.offer_owner_notices` (data design 3.27; migration `20261018220000_catalog_offer_owner_notices`).
+  - The job `catalog.send-offer-owner-notices` (system, every minute, at most 20 notices and 90 s per run) checks the Market zone first: one that is not a usable IANA id sends nothing and fails the run (Hassan I2). Each notice is then handled alone: the address from `identity.contactEmailOf` (seller owner), one plain-text mail outside any unit, then a unit marks that row `sent`.
+  - A badge past its validity, or an owner with no address, is `skipped` with the outcome. A failed address read or send defers only that row (5, 10, 20, 40 minutes); the fifth failure marks it `failed` (an error log). The next owners go on. Only a crash between a send and its marker mails that one owner again.
+  - The mail names the type, the number of Offers and the last valid day in the Market zone; no id, number or issuer. The words are working texts for Reza.
 - **No certification migration.** History, decisions, `expiry_warnings` and their grants already exist.
 - **Open.**
   - Sign-off from Mojtaba (migration) and Hassan (CERT path, admin routes).
   - The CERT-45 system suspend on `productMaterialContentChanged` (8.1, request C-2) is not built.
-  - A record with an expiry date whose type does not require expiry stays in the job's selection window.
+  - The same root-boundary fix for `seller_certifications` (a seller certificate whose type does not require an expiry still stores the root boundary) is a follow-up; the seller path is unchanged here.
+  - Purge of settled `offer_owner_notices` rows (as 3.18, no DELETE grant yet).
   - Part 2: documents and review checks.
 
 ### 14.3 Spikes (run, not merged)

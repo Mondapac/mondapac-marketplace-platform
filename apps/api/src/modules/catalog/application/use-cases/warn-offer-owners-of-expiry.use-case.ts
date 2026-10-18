@@ -1,21 +1,19 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { EventDelivery } from '../../../../platform/events/event-delivery';
-import type { MailTransport } from '../../../../platform/mail/mail-transport';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import {
-  certificateExpiryNoticeMail,
-  lastValidDay,
-  shouldNoticeOwner,
-} from '../../domain/certificate-expiry-notice';
-import type { OfferOwnerContact, OfferOwnerMailSettings } from '../ports/offer-owner-notices';
-import type { CertificateOfferOwner, TagSelectionReader } from '../ports/tag-selection.reader';
+import { shouldNoticeOwner } from '../../domain/certificate-expiry-notice';
+import type {
+  OfferOwnerNoticeDraft,
+  OfferOwnerNoticeRepository,
+} from '../ports/offer-owner-notice.repository';
+import type { TagSelectionReader } from '../ports/tag-selection.reader';
 
 /**
- * The most owners one warning reaches (each send may take up to 5 s, so one delivery stays
- * bounded); more are logged as `capped` for operators.
+ * The most owners one warning reaches; more are logged as `capped` (a warning, for operators).
+ * One page of the certificate selection index; the rows are written in the inbox unit.
  */
 export const MAX_OWNERS_PER_WARNING = 200;
 
@@ -28,9 +26,9 @@ export interface WarnOfferOwnersInput {
 
 export type WarnOfferOwnersOutput =
   | {
-      readonly code: 'catalog.expiry-notice.sent';
+      readonly code: 'catalog.expiry-notice.queued';
       readonly owners: number;
-      readonly sent: number;
+      readonly queued: number;
       readonly skipped: number;
       readonly capped: boolean;
     }
@@ -41,23 +39,21 @@ export type WarnOfferOwnersFailure = { readonly code: 'access.denied' };
 export interface WarnOfferOwnersDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly tagSelection: TagSelectionReader;
-  readonly ownerContacts: OfferOwnerContact;
-  readonly mailTransport: MailTransport;
-  readonly mailSettings: OfferOwnerMailSettings;
+  readonly notices: OfferOwnerNoticeRepository;
+  readonly ids: IdGenerator;
   readonly clock: Clock;
 }
 
 /**
  * The handler `catalog.warn-offer-owners-of-expiry` (certification design 8.3 and request C-6;
  * CERT-45; certification slice 15): rule `system`, from the subscription on certification's
- * `product-certification-expiry-warning-due.v1`; the Market is the envelope's. A read-only unit
- * finds the sellers whose Offers show a badge resting on that manufacturer certificate (`active`
- * tags whose copy names it, kind `manufacturer`), with the number of such Offers and the earliest
- * `valid_until`; outside any unit, each Owner's address comes through `identity` and one plain
- * text mail names the type, the number of Offers and the last valid day in the Market zone. A
- * seller whose badge validity has already passed is skipped (the badge goes with the expiry
- * event). Then `runOnce` marks the delivery: a retry after a partial send may mail an Owner twice
- * (at least once, as certification's mails). Nothing in the log but ids, codes and counts.
+ * `product-certification-expiry-warning-due.v1`; the Market is the envelope's. It sends nothing
+ * (Hassan M1, Mojtaba N2: a handler stays within its budget and a retry never mails twice): in
+ * its `runOnce` unit it finds the sellers whose Offers show a badge resting on that manufacturer
+ * certificate (`active` tags whose copy names it, kind `manufacturer`), with the number of such
+ * Offers and the earliest `valid_until`, and writes one pending notice per Owner whose badge is
+ * still valid. The job `catalog.send-offer-owner-notices` sends them. Nothing in the log but ids,
+ * codes and counts.
  */
 export class WarnOfferOwnersOfExpiry extends UseCase<
   WarnOfferOwnersInput,
@@ -87,63 +83,52 @@ export class WarnOfferOwnersOfExpiry extends UseCase<
     const { market } = context;
     const certificate = parseId(input.productCertificationId);
     if (!certificate.ok) throw new Error('expiry-notice: the event holds a bad id');
-
-    const read = await deps.unitOfWork.run(
-      market,
-      async () =>
-        ok(
-          await deps.tagSelection.ownersOfCertificate(
-            market,
-            certificate.value as Id,
-            MAX_OWNERS_PER_WARNING + 1,
-          ),
-        ),
-      { readOnly: true },
-    );
-    if (!read.ok) throw new Error('expiry-notice: the read unit failed');
-    const capped = read.value.length > MAX_OWNERS_PER_WARNING;
-    const owners: readonly CertificateOfferOwner[] = read.value.slice(0, MAX_OWNERS_PER_WARNING);
+    const sourceEvent = parseId(input.delivery.eventId);
+    if (!sourceEvent.ok) throw new Error('expiry-notice: the delivery holds a bad event id');
 
     const now = deps.clock.now();
-    const zone = deps.mailSettings.zone(market);
-    let sent = 0;
-    let skipped = 0;
-    for (const owner of owners) {
-      if (owner.validUntil === null || !shouldNoticeOwner(owner.validUntil, now)) {
-        skipped += 1;
-        continue;
+    const marked = await deps.unitOfWork.runOnce(market, input.delivery, async () => {
+      const found = await deps.tagSelection.ownersOfCertificate(
+        market,
+        certificate.value,
+        MAX_OWNERS_PER_WARNING + 1,
+      );
+      const capped = found.length > MAX_OWNERS_PER_WARNING;
+      const owners = found.slice(0, MAX_OWNERS_PER_WARNING);
+      const notices: OfferOwnerNoticeDraft[] = [];
+      for (const owner of owners) {
+        // A badge already past its validity goes with the expiry event: no warning.
+        if (owner.validUntil === null || !shouldNoticeOwner(owner.validUntil, now)) continue;
+        notices.push({
+          id: deps.ids.next<'OfferOwnerNotice'>(),
+          sellerId: owner.sellerId,
+          typeCode: owner.typeCode,
+          offers: owner.offers,
+          validUntil: owner.validUntil,
+        });
       }
-      const to = await deps.ownerContacts.emailOf(context, owner.sellerId);
-      if (to === null) {
-        skipped += 1;
-        continue;
-      }
-      const mail = certificateExpiryNoticeMail({
-        typeCode: owner.typeCode,
-        offers: owner.offers,
-        lastDay: lastValidDay(owner.validUntil, zone),
-        zone,
+      const queued = await deps.notices.enqueue(market, {
+        sourceEventId: sourceEvent.value,
+        productCertificationId: certificate.value,
+        thresholdDays: input.thresholdDays,
+        notices,
+        now,
       });
-      await deps.mailTransport.send({
-        to,
-        from: deps.mailSettings.sender(market),
-        subject: mail.subject,
-        text: mail.text,
-      });
-      sent += 1;
-    }
-
-    const marked = await deps.unitOfWork.runOnce(market, input.delivery, () =>
-      Promise.resolve(ok(undefined)),
-    );
+      return ok({ owners: owners.length, queued, skipped: owners.length - notices.length, capped });
+    });
     if (!marked.ok) throw new Error('expiry-notice: the inbox unit failed');
     const output: WarnOfferOwnersOutput = marked.value.handled
-      ? { code: 'catalog.expiry-notice.sent', owners: owners.length, sent, skipped, capped }
+      ? { code: 'catalog.expiry-notice.queued', ...marked.value.value }
       : { code: 'catalog.expiry-notice.already-handled' };
     const log = {
       msg: output.code,
-      ...(output.code === 'catalog.expiry-notice.sent'
-        ? { owners: output.owners, sent, skipped, capped }
+      ...(output.code === 'catalog.expiry-notice.queued'
+        ? {
+            owners: output.owners,
+            queued: output.queued,
+            skipped: output.skipped,
+            capped: output.capped,
+          }
         : {}),
       productCertificationId: input.productCertificationId,
       thresholdDays: input.thresholdDays,
@@ -152,7 +137,7 @@ export class WarnOfferOwnersOfExpiry extends UseCase<
       marketId: market.marketId,
       correlationId: context.correlationId,
     };
-    if (capped) this.#logger.warn(log);
+    if (output.code === 'catalog.expiry-notice.queued' && output.capped) this.#logger.warn(log);
     else this.#logger.log(log);
     return ok(output);
   }

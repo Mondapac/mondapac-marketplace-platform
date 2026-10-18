@@ -417,6 +417,7 @@ export interface ProductApprovalInput {
 export type ProductApprovalRefusal =
   | { readonly code: 'approval.same-admin' }
   | { readonly code: 'certificate.closed' }
+  | { readonly code: 'certificate.suspended' }
   | { readonly code: 'issuer.not-active' }
   | { readonly code: 'type.inactive' }
   | { readonly code: 'certificate.expired' };
@@ -424,7 +425,7 @@ export type ProductApprovalRefusal =
 /**
  * The guards of an approval of the pending revision (design 3.4 row 3; Q3, AC 20): the approver is
  * another person (not the record's creator and not any admin who edited the revision under
- * review); the record is not closed; the issuer is `active` and of the type; the type is active for
+ * review); the record is not closed or suspended; the issuer is `active` and of the type; the type is active for
  * a record never approved (CERT-03); the boundary in the Market zone is after now. `null` allows it.
  */
 export function approvalRefusal(input: ProductApprovalInput): ProductApprovalRefusal | null {
@@ -437,6 +438,9 @@ export function approvalRefusal(input: ProductApprovalInput): ProductApprovalRef
   if (input.status === 'rejected' || input.status === 'revoked') {
     return { code: 'certificate.closed' };
   }
+  // A suspension is lifted only through reinstate (design 3.4 row 7; Hassan L1, slice 15): an
+  // approval of a revision submitted while suspended would end it without the reinstate guards.
+  if (input.status === 'suspended') return { code: 'certificate.suspended' };
   if (input.issuer === null || input.issuer.state !== 'active' || !input.issuer.typeMatches) {
     return { code: 'issuer.not-active' };
   }

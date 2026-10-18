@@ -428,7 +428,11 @@ export const ProductCertificationSuspendedAudit = defineAuditAction({
   action: 'certification.product-certification.suspended',
   targetType: PRODUCT_CERTIFICATION_TARGET,
   actors: ['authenticated'],
-  after: { ...productDecisionAfter, noteGiven: auditField.boolean() },
+  after: {
+    ...productDecisionAfter,
+    withdrawnRevisionId: auditField.optional(auditField.id()),
+    noteGiven: auditField.boolean(),
+  },
 });
 
 /** Another person reinstated a suspended certificate on its approved revision (3.4 row 7). */

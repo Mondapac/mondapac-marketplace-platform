@@ -126,6 +126,13 @@ export interface ProductDecisionWrite {
   readonly outcome: 'approved' | 'rejected';
   readonly expiryBoundaryAt: Temporal.Instant | null;
   readonly boundaryZone: string | null;
+  /**
+   * The root's `approved_boundary_at` on an approval (Hassan L2, Mojtaba F1 option A): the
+   * decision's boundary only when the approved revision's type revision requires an expiry, else
+   * null, so the expiry job never selects a record whose type has no expiry. The decision row
+   * keeps its boundary either way.
+   */
+  readonly rootBoundaryAt: Temporal.Instant | null;
   readonly reasonCode: string | null;
   readonly authorAccountId: string;
   readonly deciderAccountId: Id<'Account'>;
@@ -138,15 +145,15 @@ export interface ProductDecisionWrite {
 /**
  * A transition of the root after its approval (design 3.4 rows 6 to 9; slice 15): suspend, revoke
  * and reinstate by an admin, expire by the system. The approved revision stays the approved
- * pointer; a revocation also withdraws the pending revision, if any (decision `withdrawn`, no
- * decider). One history row names the approved revision, the actor and the reason.
+ * pointer; a suspension or revocation also withdraws the pending revision, if any (decision
+ * `withdrawn`, no decider). One history row names the approved revision, the actor and the reason.
  */
 export interface ProductLifecycleWrite {
   readonly certificateId: Id<'ProductCertification'>;
   readonly approvedRevisionId: Id<'ProductCertificationRevision'>;
   readonly fromStatus: ProductCertificationStatus;
   readonly toStatus: 'suspended' | 'revoked' | 'approved' | 'expired';
-  /** The pending revision withdrawn in the same unit (a revocation only), with its author. */
+  /** The pending revision withdrawn in the same unit (suspend or revoke), with its author. */
   readonly withdrawn: {
     readonly revisionId: Id<'ProductCertificationRevision'>;
     readonly authorAccountId: string;

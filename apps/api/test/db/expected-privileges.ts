@@ -689,6 +689,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['counts', 'cursor_offer_id', 'settled_at', 'state'],
     },
+    // docs/design/data/catalog.md 3.27 (certification slice 15, request C-6): a warning to an Offer
+    // owner moves its state, outcome, attempts and next try; what it names never changes. No
+    // DELETE until a purge lands.
+    'catalog.offer_owner_notices': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'settled_at', 'state'],
+    },
     // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller
     // and currency never change; a regular record's content never changes (only its status,

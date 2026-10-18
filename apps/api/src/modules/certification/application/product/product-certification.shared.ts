@@ -169,7 +169,9 @@ export function certificationOut(
     author: { accountId: root.authorAccountId },
     createdAt: root.createdAt.toString(),
     lastChangedAt: root.lastChangedAt.toString(),
-    approvedBoundaryAt: root.approvedBoundaryAt?.toString() ?? null,
+    // The approval decision's boundary (Hassan L2): the root keeps one only for a type that
+    // requires an expiry, the job's selection.
+    approvedBoundaryAt: approved?.decision?.expiryBoundaryAt?.toString() ?? null,
     draft: {
       manufacturerName: draft.manufacturerName,
       issuerId: draft.issuerId,

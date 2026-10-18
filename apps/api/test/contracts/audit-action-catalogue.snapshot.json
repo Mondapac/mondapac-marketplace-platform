@@ -272,7 +272,8 @@
     "after": {
       "noteGiven": "boolean",
       "revisionId": "id",
-      "typeRevisionId": "id"
+      "typeRevisionId": "id",
+      "withdrawnRevisionId": "optional(id)"
     }
   },
   {
