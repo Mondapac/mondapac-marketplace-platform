@@ -32,6 +32,7 @@ import {
   FakeLabels,
   FakeShipping,
   FakeTax,
+  FakeTaxCategories,
 } from '../support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, modelMap, type Persistence } from './persistence-support';
@@ -77,6 +78,7 @@ describe.each(TEST_MARKETS)(
         shipping: new FakeShipping(),
         commission: new FakeCommission(),
         tax: new FakeTax(),
+        taxCategories: new FakeTaxCategories('taxable'),
         outbox: new PrismaOutboxWriterFactory(
           modelMap,
           db.service,
@@ -144,6 +146,7 @@ describe.each(TEST_MARKETS)(
           commissionRateBps: 1500,
           taxRateBps: 1000,
           taxAmount: 114n,
+          taxCategoryCode: 'taxable',
         })),
       };
       const stored = await db.unitOfWork.run(market, async () => {

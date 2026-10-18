@@ -19,6 +19,7 @@ import { TAX_FACADE, TaxModule } from '../tax';
 import type { OrderingDependencies } from './application/checkout-flow';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { ORDER_LABELS } from './application/ports/order-labels';
+import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
 import { ORDERING_POLICY } from './application/ports/ordering-policy';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
@@ -58,6 +59,7 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['shipping', SHIPPING_FACADE],
   ['commission', COMMISSION_PAYOUTS_FACADE],
   ['tax', TAX_FACADE],
+  ['taxCategories', ORDER_TAX_CATEGORIES],
   ['outbox', OUTBOX_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],

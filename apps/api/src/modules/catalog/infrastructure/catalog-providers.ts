@@ -84,6 +84,11 @@ import {
   SELL_UNIT_LABELS_READER,
   type SellUnitLabelsReader,
 } from '../application/ports/sell-unit-labels.reader';
+import {
+  OFFER_TAX_CATEGORIES_READER,
+  type OfferTaxCategoriesReader,
+} from '../application/ports/offer-tax-categories.reader';
+import { PrismaOfferTaxCategoriesReader } from './prisma-offer-tax-categories.reader';
 import { PrismaSellUnitLabelsReader } from './prisma-sell-unit-labels.reader';
 import { PrismaOfferNamesReader } from './prisma-offer-names.reader';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
@@ -209,6 +214,12 @@ export const catalogProviders: readonly Provider[] = [
     provide: OFFER_NAMES_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferNamesReader => new PrismaOfferNamesReader(prisma),
+  },
+  {
+    provide: OFFER_TAX_CATEGORIES_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferTaxCategoriesReader =>
+      new PrismaOfferTaxCategoriesReader(prisma),
   },
   {
     provide: SELL_UNIT_LABELS_READER,

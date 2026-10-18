@@ -71,6 +71,7 @@ interface OrderRow {
     readonly commissionRateBps: number | null;
     readonly taxRateBps: number | null;
     readonly taxAmount: bigint | null;
+    readonly taxCategoryCode: string | null;
   }[];
 }
 
@@ -108,6 +109,7 @@ const toLine = (l: LineRow, currency: string): OrderLine => ({
   commissionRateBps: l.commissionRateBps,
   taxRateBps: l.taxRateBps,
   taxAmount: l.taxAmount,
+  taxCategoryCode: l.taxCategoryCode,
 });
 
 const byOffer = (a: { offerId: string; variantId: string }, b: typeof a): number =>
@@ -215,6 +217,7 @@ export class PrismaOrderRepository implements OrderRepository {
         commissionRateBps: l.commissionRateBps,
         taxRateBps: l.taxRateBps,
         taxAmount: l.taxAmount,
+        taxCategoryCode: l.taxCategoryCode,
       })),
     });
   }

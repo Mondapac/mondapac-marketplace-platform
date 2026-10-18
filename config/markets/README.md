@@ -253,6 +253,15 @@ the admin panel's Settings page (`notifications.support-contact.manage`), and th
 wins. Every change is a new row in `notifications.support_contacts` (who, when, the address before)
 and an audit row. A Market without the section shows no address until an admin sets one.
 
+## `customers` section (optional)
+
+Owned by `customers` (the buyer's delivery address book). `addressBookLimit` (required, whole, 1 to
+50): the most addresses one customer keeps (AU 20). `address` (required): `countryCode`, the ISO
+3166 country every address of the Market is in (AU `AU`); `postcodePattern`, the anchored pattern a
+postcode must match (same grammar as the `sellers` address format; AU four digits); `regions`, the
+closed list of regions (AU states and territories), or an empty list for a Market whose addresses
+carry no region. Without the section the address book routes answer `customers.unavailable` (503).
+
 ## `search` section (optional)
 
 Owned by `search`. One key: `textSearchConfig`, the built-in PostgreSQL text search configuration

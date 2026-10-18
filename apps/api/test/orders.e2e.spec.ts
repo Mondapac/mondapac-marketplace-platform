@@ -14,6 +14,7 @@ import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/orde
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
 import { COMMISSION_PAYOUTS_FACADE } from '../src/modules/commission-payouts';
 import { SHIPPING_FACADE } from '../src/modules/shipping';
+import { ORDER_TAX_CATEGORIES } from '../src/modules/ordering/application/ports/order-tax-categories';
 import { TAX_FACADE } from '../src/modules/tax';
 import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -28,6 +29,7 @@ import {
   FakeInventory,
   FakeCommission,
   FakeTax,
+  FakeTaxCategories,
   FakeShipping,
   MemoryOrders,
 } from './support/ordering-fakes';
@@ -142,6 +144,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(shipping)
           .overrideProvider(TAX_FACADE)
           .useValue(new FakeTax())
+          .overrideProvider(ORDER_TAX_CATEGORIES)
+          .useValue(new FakeTaxCategories(code === 'AU' ? 'taxable' : 'zz_standard'))
           .overrideProvider(COMMISSION_PAYOUTS_FACADE)
           .useValue(new FakeCommission()),
     }));

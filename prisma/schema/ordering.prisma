@@ -109,6 +109,9 @@ model OrderingOrderLine {
   /// was placed (ADR-0039); both null only on lines placed before tax was recorded (CHECK).
   taxRateBps        Int?                @map("tax_rate_bps")
   taxAmount         BigInt?             @map("tax_amount")
+  /// The tax category code of the product at placement (catalog's published revision), frozen
+  /// beside the rate; null only on lines placed before it was recorded (CHECK with the rate).
+  taxCategoryCode   String?             @map("tax_category_code") @db.VarChar(64)
   order             OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   sellerOrder       OrderingSellerOrder @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 

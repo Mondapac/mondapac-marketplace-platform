@@ -992,6 +992,63 @@
     }
   },
   {
+    "action": "storefront.draft.change",
+    "targetType": "storefront.page",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "module": "optional(enumOf(banner|category-circles|sellers-near-you|product-shelf|info-strip|text-block|image-text|faq|brand-header|product-spotlight|nav-link|nav-category))",
+      "operation": "enumOf(add|update|remove|reorder|restore|replace)",
+      "placementCount": "integer",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.page.archive",
+    "targetType": "storefront.page",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "redirected": "boolean"
+    }
+  },
+  {
+    "action": "storefront.page.create",
+    "targetType": "storefront.page",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "linkedType": "optional(enumOf(category|product|seller))",
+      "template": "enumOf(campaign-landing|brand-page|product-spotlight|info-page|system.home|system.offers|system.express|system.category|system.search|system.product|system.sellers|system.seller|system.cart|system.locked|system.navigation)"
+    }
+  },
+  {
+    "action": "storefront.page.publish",
+    "targetType": "storefront.page",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "navigation": "boolean",
+      "placementCount": "integer",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.page.update",
+    "targetType": "storefront.page",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "slugChanged": "boolean",
+      "windowSet": "boolean"
+    }
+  },
+  {
     "action": "tax.strategy.activate",
     "targetType": "tax.strategy",
     "targetId": "id",
