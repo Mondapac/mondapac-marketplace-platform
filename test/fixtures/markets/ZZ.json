@@ -30,6 +30,14 @@
   "notifications": {
     "customerOrderPage": "https://storefront.zz.test/account/orders"
   },
+  "customers": {
+    "addressBookLimit": 5,
+    "address": {
+      "countryCode": "JP",
+      "postcodePattern": "^[0-9]{7}$",
+      "regions": ["ZA", "ZB"]
+    }
+  },
   "allowedOrigins": {
     "admin": ["https://admin.zz.test"],
     "seller": ["https://seller.zz.test"],

@@ -79,6 +79,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX seller_certifications_market_id_pending_idx ON certification.seller_certifications USING btree (market_id, status_changed_at, id) WHERE (pending_submission_id IS NOT NULL)',
   'certification.seller_certifications_market_id_seller_id_type_id_open_key':
     "CREATE UNIQUE INDEX seller_certifications_market_id_seller_id_type_id_open_key ON certification.seller_certifications USING btree (market_id, seller_id, type_id) WHERE (status <> ALL (ARRAY['declined'::text, 'revoked'::text]))",
+  'customers.addresses_one_default_key':
+    'CREATE UNIQUE INDEX addresses_one_default_key ON customers.addresses USING btree (market_id, account_id) WHERE is_default',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.invitations_market_id_email_pending_platform_key':
@@ -180,6 +182,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX shop_slugs_market_id_seller_id_held_key ON sellers.shop_slugs USING btree (market_id, seller_id) WHERE (state = 'held'::text)",
   'platform.event_delivery_market_id_next_attempt_at_pending_idx':
     "CREATE INDEX event_delivery_market_id_next_attempt_at_pending_idx ON platform.event_delivery USING btree (market_id, next_attempt_at) WHERE (status = 'pending'::text)",
+  // Storefront: at most one draft and one published version per page.
+  'storefront.page_versions_one_draft_key':
+    "CREATE UNIQUE INDEX page_versions_one_draft_key ON storefront.page_versions USING btree (market_id, page_id) WHERE (state = 'draft'::text)",
+  'storefront.page_versions_one_published_key':
+    "CREATE UNIQUE INDEX page_versions_one_published_key ON storefront.page_versions USING btree (market_id, page_id) WHERE (state = 'published'::text)",
   // Tax: at most one active strategy per Market.
   'tax.tax_strategies_one_active_key':
     'CREATE UNIQUE INDEX tax_strategies_one_active_key ON tax.tax_strategies USING btree (market_id) WHERE active',
