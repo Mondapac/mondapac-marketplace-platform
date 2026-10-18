@@ -5,7 +5,9 @@ import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type {
   ProductCertificationRepository,
   ProductCertificationSummary,
+  ProductCheckWrite,
   ProductDecisionWrite,
+  ProductDocumentWrite,
   ProductDraftWrite,
   ProductExpiryCandidate,
   ProductExpiryPage,
@@ -13,10 +15,13 @@ import type {
   ProductLifecycleWrite,
   ProductSubmitWrite,
   StoredProductCertification,
+  StoredProductCheck,
   StoredProductDecision,
+  StoredProductDocument,
   StoredProductRevision,
 } from '../application/ports/product-certification.repository';
 import type { RegistryRowsShared } from '../application/ports/review.repository';
+import { CHECK_RESULTS } from '../domain/review';
 import {
   PRODUCT_CERTIFICATION_STATUSES,
   type CoverageEntry,
@@ -58,6 +63,65 @@ const coverageOf = (rows: readonly CoverageRow[]): CoverageEntry[] =>
     );
 
 const COVERAGE_SELECT = { productId: true, productRevisionId: true, variantId: true } as const;
+
+/** A linked file with the count of revisions that hold it (slice 15 part 2). */
+const DOCUMENT_SELECT = {
+  id: true,
+  mediaType: true,
+  byteSize: true,
+  pageCount: true,
+  createdAt: true,
+  objectKey: true,
+  cleanSha256: true,
+  _count: { select: { productRevisionLinks: true } },
+} as const;
+
+interface DocumentRow {
+  id: string;
+  mediaType: string | null;
+  byteSize: bigint;
+  pageCount: number | null;
+  createdAt: Date;
+  objectKey: string;
+  cleanSha256: Uint8Array | null;
+  _count: { productRevisionLinks: number };
+}
+
+const MEDIA_TYPES: readonly string[] = ['image/jpeg', 'image/png', 'application/pdf'];
+
+function documentOf(row: DocumentRow, position: number): StoredProductDocument {
+  if (row.cleanSha256 === null || row.mediaType === null || !MEDIA_TYPES.includes(row.mediaType)) {
+    // Only clean files are ever linked (the link trigger): anything else is a fault.
+    throw new Error('certification document: a linked manufacturer file is not clean');
+  }
+  return {
+    id: row.id as Id<'UploadedDocument'>,
+    position,
+    mediaType: row.mediaType as StoredProductDocument['mediaType'],
+    byteSize: Number(row.byteSize),
+    pageCount: row.pageCount,
+    createdAt: toInstant(row.createdAt),
+    objectKey: row.objectKey,
+    cleanSha256: Buffer.from(row.cleanSha256),
+  };
+}
+
+function checkOf(row: {
+  checkCode: string;
+  result: string;
+  recordedByAccountId: string;
+  recordedAt: Date;
+}): StoredProductCheck {
+  if (!(CHECK_RESULTS as readonly string[]).includes(row.result)) {
+    throw new Error('product review check has an invalid result');
+  }
+  return {
+    code: row.checkCode,
+    result: row.result as StoredProductCheck['result'],
+    recordedByAccountId: row.recordedByAccountId,
+    recordedAt: toInstant(row.recordedAt),
+  };
+}
 
 /** The marker kind of a manufacturer revision (data design 3.18). */
 const PRODUCT_REVISION_KIND = 'product-revision';
@@ -199,6 +263,10 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
         createdAt: true,
         draftCoverage: { select: COVERAGE_SELECT },
         draftEditors: { select: { accountId: true }, orderBy: { firstEditedAt: 'asc' } },
+        draftDocuments: {
+          select: { position: true, document: { select: DOCUMENT_SELECT } },
+          orderBy: { position: 'asc' },
+        },
       },
     });
     if (row === null) return null;
@@ -219,6 +287,10 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
         expiryDate: fromDay(row.draftExpiryDate),
         coverage: coverageOf(row.draftCoverage),
       },
+      draftDocuments: row.draftDocuments.map((link) => ({
+        ...documentOf(link.document, link.position),
+        submitted: link.document._count.productRevisionLinks > 0,
+      })),
       draftEditorAccountIds: row.draftEditors.map((editor) => editor.accountId),
       statusChangedAt: toInstant(row.statusChangedAt),
       lastChangedAt: toInstant(row.lastChangedAt),
@@ -239,7 +311,7 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
         productCertificationId: true,
         typeId: true,
         typeRevisionId: true,
-        typeRevision: { select: { requiresExpiry: true } },
+        typeRevision: { select: { requiresExpiry: true, requiresDocument: true } },
         revisionNo: true,
         issuerId: true,
         manufacturerName: true,
@@ -251,6 +323,14 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
         submittedAt: true,
         coverage: { select: COVERAGE_SELECT },
         editors: { select: { accountId: true }, orderBy: { accountId: 'asc' } },
+        documents: {
+          select: { position: true, document: { select: DOCUMENT_SELECT } },
+          orderBy: { position: 'asc' },
+        },
+        reviewChecks: {
+          select: { checkCode: true, result: true, recordedByAccountId: true, recordedAt: true },
+          orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }],
+        },
         decisions: {
           select: {
             outcome: true,
@@ -286,6 +366,7 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
       typeId: row.typeId as Id<'CertificationType'>,
       typeRevisionId: row.typeRevisionId as Id<'CertificationTypeRevision'>,
       typeRequiresExpiry: row.typeRevision.requiresExpiry,
+      typeRequiresDocument: row.typeRevision.requiresDocument,
       revisionNo: row.revisionNo,
       issuerId: row.issuerId as Id<'Issuer'>,
       manufacturerName: row.manufacturerName,
@@ -298,6 +379,8 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
       coverage: coverageOf(row.coverage),
       editorAccountIds: row.editors.map((editor) => editor.accountId),
       decision,
+      documents: row.documents.map((link) => documentOf(link.document, link.position)),
+      checks: row.reviewChecks.map(checkOf),
     };
   }
 
@@ -332,16 +415,102 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
         })),
       });
     }
-    await tx.certificationProductDraftEditor.createMany({
+    await this.#recordEditor(market, write.certificateId, write.editorAccountId, write.now);
+  }
+
+  /** Every admin who edits the record, a file or the coverage, once (AC 20). */
+  async #recordEditor(
+    market: MarketContext,
+    certificateId: Id<'ProductCertification'>,
+    accountId: Id<'Account'>,
+    now: Temporal.Instant,
+  ): Promise<void> {
+    await this.prisma.tx(market).certificationProductDraftEditor.createMany({
       data: [
         {
-          ...base,
-          productCertificationId: write.certificateId,
-          accountId: write.editorAccountId,
-          firstEditedAt: toDate(write.now),
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          productCertificationId: certificateId,
+          accountId,
+          firstEditedAt: toDate(now),
         },
       ],
       skipDuplicates: true,
+    });
+  }
+
+  async addDocument(market: MarketContext, write: ProductDocumentWrite): Promise<void> {
+    const tx = this.prisma.tx(market);
+    const base = { marketId: market.marketId, tenantId: market.tenantId };
+    await tx.certificationUploadedDocument.create({
+      data: {
+        ...base,
+        id: write.documentId,
+        ownerSellerId: null,
+        purpose: 'product-certificate',
+        typeId: write.typeId,
+        state: 'clean',
+        mediaType: write.mediaType,
+        byteSize: BigInt(write.byteSize),
+        pageCount: write.pageCount,
+        dataKeyEnvelope: write.dataKeyEnvelope,
+        objectKey: write.objectKey,
+        cleanSha256: Uint8Array.from(write.cleanSha256),
+        version: 1,
+        createdAt: toDate(write.now),
+      },
+      select: { id: true },
+    });
+    await tx.certificationProductDraftDocument.create({
+      data: {
+        ...base,
+        productCertificationId: write.certificateId,
+        typeId: write.typeId,
+        documentId: write.documentId,
+        position: write.position,
+      },
+      select: { documentId: true },
+    });
+    await this.#recordEditor(market, write.certificateId, write.editorAccountId, write.now);
+  }
+
+  async removeDocument(
+    market: MarketContext,
+    write: Parameters<ProductCertificationRepository['removeDocument']>[1],
+  ): Promise<'deleted' | 'unlinked' | 'missing'> {
+    const tx = this.prisma.tx(market);
+    const { count } = await tx.certificationProductDraftDocument.deleteMany({
+      where: {
+        marketId: market.marketId,
+        productCertificationId: write.certificateId,
+        documentId: write.documentId,
+      },
+    });
+    if (count === 0) return 'missing';
+    await this.#recordEditor(market, write.certificateId, write.editorAccountId, write.now);
+    const held = await tx.certificationProductRevisionDocument.count({
+      where: { marketId: market.marketId, documentId: write.documentId },
+    });
+    if (held > 0) return 'unlinked';
+    await tx.certificationUploadedDocument.deleteMany({
+      where: { marketId: market.marketId, id: write.documentId, purpose: 'product-certificate' },
+    });
+    return 'deleted';
+  }
+
+  async recordCheck(market: MarketContext, write: ProductCheckWrite): Promise<void> {
+    await this.prisma.tx(market).certificationProductRevisionReviewCheck.create({
+      data: {
+        id: write.id,
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        revisionId: write.revisionId,
+        checkCode: write.code,
+        result: write.result,
+        recordedByAccountId: write.accountId,
+        recordedAt: toDate(write.now),
+      },
+      select: { id: true },
     });
   }
 
@@ -398,6 +567,17 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
         accountId,
       })),
     });
+    if (write.documentIds.length > 0) {
+      await tx.certificationProductRevisionDocument.createMany({
+        data: write.documentIds.map((documentId, i) => ({
+          ...base,
+          revisionId: write.revisionId,
+          documentId,
+          typeId: write.typeId,
+          position: i + 1,
+        })),
+      });
+    }
     const statusMoves = write.toStatus !== write.fromStatus;
     const { count } = await tx.certificationProductCertification.updateMany({
       where: {

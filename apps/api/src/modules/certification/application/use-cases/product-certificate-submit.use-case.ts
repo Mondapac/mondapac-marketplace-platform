@@ -48,7 +48,7 @@ export type ProductCertificateSubmitFailure =
   | ValidationFailure;
 
 /** The canonical content of a revision, the input of its keyed hash (data design 3.16). */
-const PRODUCT_CONTENT_SCHEMA_VERSION = 1;
+const PRODUCT_CONTENT_SCHEMA_VERSION = 2;
 
 const logger = new Logger('ProductCertification');
 
@@ -77,11 +77,11 @@ function staleCoverage(
  * `product-certificate.submit` (certification design 3.4 row 2, T3; slice 14): the draft becomes
  * revision N+1, `pending`, for another person to approve. Guards (`submitRefusal`): a third-party
  * document type, active unless the record was approved before, a complete draft (a document when
- * the type requires one: none can be attached before the documents part of the slice, so such a
- * type fails closed), the issuer `active` and of the type, the expiry boundary in the Market zone
+ * the type requires one; every file is clean by construction of the draft link), the issuer `active` and of the type, the expiry boundary in the Market zone
  * after now; and every coverage entry still at its product's current published revision (M3,
  * `CatalogReferences` before the unit). The revision records the type revision in force (I1),
- * the draft's editors and the submitter, and a keyed hash of its content. The write unit locks
+ * the draft's editors and the submitter, its files (sealed: never changed afterwards) and a keyed
+ * hash of its content, files included. The write unit locks
  * the root first, then share-locks the type and the issuer and checks again. No event: nothing is
  * claimable before an approval. Rule: key `certification.product-certificate.edit`, not acting-as.
  */
@@ -172,7 +172,7 @@ export class ProductCertificateSubmit extends UseCase<
       type: settings,
       issuer: { state: 'active', typeMatches: true },
       hasApproval: root.approvedRevisionId !== null,
-      documentCount: 0,
+      documentCount: root.draftDocuments.length,
       marketZone,
       now: deps.clock.now(),
     });
@@ -216,6 +216,8 @@ export class ProductCertificateSubmit extends UseCase<
         coverage: [...draft.coverage]
           .map((e) => `${e.productId}|${e.productRevisionId}|${e.variantId ?? '*'}`)
           .sort(),
+        // The files in order, by the hash of their stored bytes (as a seller submission's).
+        documents: root.draftDocuments.map((d) => d.cleanSha256.toString('hex')),
       });
       if (!canonical.ok) return err({ code: 'access.unavailable' });
       contentHash = await deps.cipher.contentHash(market, canonical.value);
@@ -257,7 +259,7 @@ export class ProductCertificateSubmit extends UseCase<
                   typeMatches: shared.issuer.typeId === current.typeId,
                 },
           hasApproval: current.approvedRevisionId !== null,
-          documentCount: 0,
+          documentCount: current.draftDocuments.length,
           marketZone,
           now,
         });
@@ -279,6 +281,7 @@ export class ProductCertificateSubmit extends UseCase<
           submitterAccountId: admin.accountId,
           coverage: draft.coverage,
           editorAccountIds: editors,
+          documentIds: current.draftDocuments.map((d) => d.id),
           fromStatus: current.status,
           toStatus,
           historyId,

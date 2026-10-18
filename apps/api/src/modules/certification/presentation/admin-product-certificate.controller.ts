@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
@@ -21,9 +22,11 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
   ApiUnsupportedMediaTypeResponse,
@@ -47,15 +50,24 @@ import { ProductCertificateHistoryRead } from '../application/use-cases/product-
 import { ProductCertificateReinstate } from '../application/use-cases/product-certificate-reinstate.use-case';
 import { ProductCertificateRevoke } from '../application/use-cases/product-certificate-revoke.use-case';
 import { ProductCertificateSuspend } from '../application/use-cases/product-certificate-suspend.use-case';
+import { ProductCertificateRecordCheck } from '../application/use-cases/product-certificate-record-check.use-case';
+import { ProductCertificateRemoveDocument } from '../application/use-cases/product-certificate-remove-document.use-case';
+import { ProductCertificateUploadDocument } from '../application/use-cases/product-certificate-upload-document.use-case';
 import { CertificationErrorBody } from './own-certificate.dto';
 import {
   ProductCertificateCreatedView,
   ProductCertificateCreateRequest,
   ProductCertificateDraftRequest,
   ProductCertificateListView,
+  ProductCertificateReviewView,
   ProductCertificateView,
+  ProductCheckRecordedView,
+  ProductCheckRequest,
   ProductDecidedView,
   ProductDecisionRequest,
+  ProductDocumentRemovedView,
+  ProductDocumentUploadedView,
+  ProductDocumentUploadRequest,
   ProductDraftSavedView,
   ProductEndedView,
   ProductEndRequest,
@@ -73,7 +85,9 @@ import { CSRF, RegistryHttp, UNAUTHORIZED } from './registry-http';
  * request 400; a decider who created or edited the revision 403; an unknown record or type 404;
  * a moved record, a draft that may not be edited, a revision that is no longer pending, a
  * closed record and a lifecycle step from the wrong status (slice 15) 409; a submission, approval
- * or reinstatement the rules refuse 422.
+ * or reinstatement the rules refuse 422. The files (slice 15 part 2): an unknown file 404, a full
+ * draft 409, the intake's refusals as on the seller route (413, 415, 422) and a full intake
+ * queue 429.
  */
 export const PRODUCT_CERTIFICATE_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
@@ -89,6 +103,18 @@ export const PRODUCT_CERTIFICATE_STATUS: Readonly<Record<string, number>> = Obje
   'certificate.revoked': 409,
   'certificate.not-revocable': 409,
   'review.not-current-revision': 409,
+  'document.not-found': 404,
+  'document.limit-reached': 409,
+  'file.too-large': 413,
+  'file.unsupported-type': 415,
+  'file.unreadable': 422,
+  'file.too-many-pages': 422,
+  'file.encrypted': 422,
+  'file.active-content': 422,
+  'file.too-complex': 422,
+  'file.inspection-timeout': 422,
+  'request.throttled': 429,
+  'review.checks-incomplete': 422,
   'certificate.incomplete': 422,
   'certificate.expired': 422,
   'issuer.not-active': 422,
@@ -112,6 +138,19 @@ const UNSUPPORTED = { type: CertificationErrorBody, description: 'request.body-u
 const FORBIDDEN = { type: CertificationErrorBody, description: 'access.denied, request.csrf' };
 const NOT_FOUND = { type: CertificationErrorBody, description: 'certificate.not-found' };
 
+/**
+ * The file upload arrives as bytes (its body parser takes a larger limit than the JSON one, as the
+ * seller's); anything that is not a JSON object stays as it is and `closedBody` refuses it.
+ */
+function jsonOf(body: unknown): unknown {
+  if (!Buffer.isBuffer(body)) return body;
+  try {
+    return JSON.parse(body.toString('utf8')) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 /** A whole number of a query string, or -1 (refused by the use case). */
 function numberParam(value: unknown): unknown {
   if (value === undefined) return undefined;
@@ -124,7 +163,8 @@ function numberParam(value: unknown): unknown {
  * with its coverage, submit, and approve or reject by another person; from slice 15 the status
  * history, suspend and revoke, and reinstate by another person. Thin adapters over one use
  * case each; the guard only authenticates (the admin population); the permission, the
- * other-person rule and the not-acting-as rule are the use cases'.
+ * other-person rule and the not-acting-as rule are the use cases'. From slice 15 part 2 the
+ * draft's files (upload, remove; reviewer download stays off) and the reviewer's checks.
  */
 @ApiTags('certification')
 @RoutePopulation('admin')
@@ -148,6 +188,9 @@ export class AdminProductCertificateController {
     private readonly revoke: ProductCertificateRevoke,
     private readonly reinstate: ProductCertificateReinstate,
     private readonly historyRead: ProductCertificateHistoryRead,
+    private readonly uploadDocument: ProductCertificateUploadDocument,
+    private readonly removeDocument: ProductCertificateRemoveDocument,
+    private readonly recordCheck: ProductCertificateRecordCheck,
   ) {}
 
   @Get()
@@ -229,10 +272,10 @@ export class AdminProductCertificateController {
     summary: 'One manufacturer certificate with its numbers, for the approver',
     description:
       'Needs certification.product-certificate.approve (protected). As the read, with the ' +
-      'certificate number of the draft and of each revision decrypted. Not in a Login as ' +
-      'Seller session.',
+      'certificate number of the draft and of each revision decrypted, and the Market\'s ' +
+      'review checks (which are required). Not in a Login as Seller session.',
   })
-  @ApiOkResponse({ type: ProductCertificateView })
+  @ApiOkResponse({ type: ProductCertificateReviewView })
   @ApiBadRequestResponse(BAD_REQUEST)
   @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: CertificationErrorBody, description: 'access.denied' })
@@ -242,7 +285,7 @@ export class AdminProductCertificateController {
     @Call() context: CallContext,
     @Res({ passthrough: true }) response: Response,
     @Param('certificateId') certificateId: string,
-  ): Promise<ProductCertificateView> {
+  ): Promise<ProductCertificateReviewView> {
     const outcome = this.#http.answer(
       await this.reviewRead.execute(context, { certificateId }),
       response,
@@ -251,7 +294,7 @@ export class AdminProductCertificateController {
     return this.#http.settle(
       'certification.product-certificate-review-read',
       context,
-      outcome as unknown as ProductCertificateView,
+      outcome as unknown as ProductCertificateReviewView,
     );
   }
 
@@ -356,7 +399,7 @@ export class AdminProductCertificateController {
       `${EDIT} Under the record version read. A complete draft (manufacturer, issuer, number, ` +
       'the expiry date and a document where the type requires them, coverage), the issuer ' +
       'active, the expiry not passed in the Market zone, and every covered product still at the ' +
-      'recorded published revision.',
+      "recorded published revision. The draft's files are sealed into the revision.",
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: ProductSubmitRequest })
@@ -403,8 +446,10 @@ export class AdminProductCertificateController {
     description:
       `${APPROVE} Under the record version read, naming the pending revision. The issuer ` +
       'active, the type active for a record never approved, the expiry boundary in the Market ' +
-      'zone after now. Publishes product-certification-approved.v1, or ' +
-      '-coverage-changed.v1 when it replaces an approved revision of other coverage.',
+      'zone after now; a document where the type requires one; every required check of the ' +
+      "Market's list recorded by another person as done or not applicable. Publishes " +
+      'product-certification-approved.v1, or -coverage-changed.v1 when it replaces an approved ' +
+      'revision of other coverage.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: ProductDecisionRequest })
@@ -423,7 +468,9 @@ export class AdminProductCertificateController {
   })
   @ApiUnprocessableEntityResponse({
     type: CertificationErrorBody,
-    description: 'issuer.not-active, type.inactive, certificate.expired',
+    description:
+      'issuer.not-active, type.inactive, certificate.expired, certificate.incomplete, ' +
+      'review.checks-incomplete (details.fields)',
   })
   @ApiUnsupportedMediaTypeResponse(UNSUPPORTED)
   @ApiServiceUnavailableResponse(UNAVAILABLE)
@@ -674,6 +721,158 @@ export class AdminProductCertificateController {
       body,
       { required: ['version'] },
       (input) => this.reinstate.execute(context, { certificateId, version: input.version }),
+    );
+  }
+
+  @Post(':certificateId/documents')
+  @HttpCode(201)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Add a file to the draft of a manufacturer certificate',
+    description:
+      `${EDIT} Under the record version read; the draft open for edit (no pending revision). ` +
+      'At most 10 MiB and 10 files a draft. The type comes from the content (JPEG, PNG, PDF); ' +
+      'images are written again without metadata; a PDF with encryption or active content is ' +
+      "refused. Stored encrypted under the Market's platform key. The uploading admin may not " +
+      'approve the revision this draft becomes.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ProductDocumentUploadRequest })
+  @ApiCreatedResponse({ type: ProductDocumentUploadedView })
+  @ApiBadRequestResponse(BAD_REQUEST)
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse(FORBIDDEN)
+  @ApiNotFoundResponse(NOT_FOUND)
+  @ApiConflictResponse({
+    type: CertificationErrorBody,
+    description: 'conflict.stale, certificate.not-editable, document.limit-reached',
+  })
+  @ApiPayloadTooLargeResponse({ type: CertificationErrorBody, description: 'file.too-large' })
+  @ApiUnprocessableEntityResponse({
+    type: CertificationErrorBody,
+    description:
+      'file.unreadable, file.too-many-pages, file.encrypted, file.active-content, ' +
+      'file.too-complex or file.inspection-timeout',
+  })
+  @ApiUnsupportedMediaTypeResponse({
+    type: CertificationErrorBody,
+    description: 'file.unsupported-type, request.body-unsupported',
+  })
+  @ApiTooManyRequestsResponse({ type: CertificationErrorBody, description: 'request.throttled' })
+  @ApiServiceUnavailableResponse(UNAVAILABLE)
+  postDocument(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('certificateId') certificateId: string,
+    @Body() body: unknown,
+  ): Promise<ProductDocumentUploadedView> {
+    return this.#http.post(
+      'certification.product-certificate-upload-document',
+      context,
+      request,
+      response,
+      jsonOf(body),
+      { required: ['version', 'data'] },
+      (input) =>
+        this.uploadDocument.execute(context, {
+          certificateId,
+          version: input.version,
+          data: input.data,
+        }),
+    );
+  }
+
+  @Delete(':certificateId/documents/:documentId')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Take a file off the draft of a manufacturer certificate',
+    description:
+      `${EDIT} Under the record version read (query version); the draft open for edit. A file ` +
+      'no revision holds is deleted; one a revision holds only leaves the draft.',
+  })
+  @ApiHeader(CSRF)
+  @ApiQuery({ name: 'version', required: true, description: 'The record version as it was read.' })
+  @ApiOkResponse({ type: ProductDocumentRemovedView })
+  @ApiBadRequestResponse(BAD_REQUEST)
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse(FORBIDDEN)
+  @ApiNotFoundResponse({
+    type: CertificationErrorBody,
+    description: 'certificate.not-found, document.not-found',
+  })
+  @ApiConflictResponse({
+    type: CertificationErrorBody,
+    description: 'conflict.stale, certificate.not-editable',
+  })
+  @ApiServiceUnavailableResponse(UNAVAILABLE)
+  async deleteDocument(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('certificateId') certificateId: string,
+    @Param('documentId') documentId: string,
+    @Query('version') version: unknown,
+  ): Promise<ProductDocumentRemovedView> {
+    const outcome = this.#http.answer(
+      await this.removeDocument.execute(context, {
+        certificateId,
+        documentId,
+        version: numberParam(version),
+      }),
+      response,
+      context,
+    );
+    return this.#http.settle('certification.product-certificate-remove-document', context, outcome);
+  }
+
+  @Post(':certificateId/checks')
+  @HttpCode(201)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Record the result of one review check of the pending revision',
+    description:
+      `${APPROVE} Under the record version read, naming the pending revision and a check code ` +
+      "of the Market's list for a third-party document type. A new result for the same code " +
+      'adds a row; the latest counts.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ProductCheckRequest })
+  @ApiCreatedResponse({ type: ProductCheckRecordedView })
+  @ApiBadRequestResponse(BAD_REQUEST)
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: CertificationErrorBody,
+    description: 'approval.same-admin, access.denied, request.csrf',
+  })
+  @ApiNotFoundResponse(NOT_FOUND)
+  @ApiConflictResponse({
+    type: CertificationErrorBody,
+    description: 'conflict.stale, review.not-current-revision',
+  })
+  @ApiUnsupportedMediaTypeResponse(UNSUPPORTED)
+  @ApiServiceUnavailableResponse(UNAVAILABLE)
+  postCheck(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('certificateId') certificateId: string,
+    @Body() body: unknown,
+  ): Promise<ProductCheckRecordedView> {
+    return this.#http.post(
+      'certification.product-certificate-record-check',
+      context,
+      request,
+      response,
+      body,
+      { required: ['version', 'revisionId', 'checkCode', 'result'] },
+      (input) =>
+        this.recordCheck.execute(context, {
+          certificateId,
+          revisionId: input.revisionId,
+          version: input.version,
+          checkCode: input.checkCode,
+          result: input.result,
+        }),
     );
   }
 }

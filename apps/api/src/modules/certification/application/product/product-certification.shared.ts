@@ -7,10 +7,12 @@ import type { TimeZoneId } from '../../domain/claim-types';
 import type { CoverageEntry } from '../../domain/product-certification';
 import type { ProductCertificationStatus } from '../../domain/validity';
 import type { CatalogReferences } from '../ports/catalog-references';
+import type { DocumentIntake, PlatformDocumentVault } from '../ports/document-ports';
 import type { ProductCertificateCipher } from '../ports/product-certificate-cipher';
 import type {
   ProductCertificationRepository,
   StoredProductCertification,
+  StoredProductDocument,
   StoredProductRevision,
 } from '../ports/product-certification.repository';
 import type { CertificationRegistryRepository } from '../ports/registry.repository';
@@ -27,7 +29,11 @@ export interface ProductCertificationDependencies {
   readonly registry: CertificationRegistryRepository;
   readonly catalog: CatalogReferences;
   readonly cipher: ProductCertificateCipher;
-  /** The Market's review reasons; a rejection names one of the `declined` outcome. */
+  /** The seller path's file intake (type from content, size cap, PDF checks; slice 15 part 2). */
+  readonly intake: DocumentIntake;
+  /** Encrypted storage of the admin's files under the Market's platform subject. */
+  readonly documents: PlatformDocumentVault;
+  /** The Market's review reasons and checks; a rejection names a reason of `declined`. */
   readonly reviewPolicies: ReviewPolicyProvider;
   readonly audit: AuditWriter;
   readonly outbox: OutboxWriter;
@@ -40,6 +46,12 @@ export interface ProductCertificationDependencies {
 export function parseProductCertificationId(raw: unknown): Id<'ProductCertification'> | null {
   if (typeof raw !== 'string') return null;
   const parsed = parseId<'ProductCertification'>(raw);
+  return parsed.ok ? parsed.value : null;
+}
+
+export function parseDocumentId(raw: unknown): Id<'UploadedDocument'> | null {
+  if (typeof raw !== 'string') return null;
+  const parsed = parseId<'UploadedDocument'>(raw);
   return parsed.ok ? parsed.value : null;
 }
 
@@ -75,6 +87,46 @@ const coverageOut = (entries: readonly CoverageEntry[]): CoverageEntryOut[] =>
     variantId: e.variantId,
   }));
 
+/** One file as a read shows it: no object key, no hash (reviewer download stays off). */
+export interface ProductDocumentOut {
+  readonly documentId: string;
+  readonly position: number;
+  readonly mediaType: string;
+  readonly byteSize: number;
+  readonly pageCount: number | null;
+  readonly createdAt: string;
+}
+
+const documentsOut = (documents: readonly StoredProductDocument[]): ProductDocumentOut[] =>
+  documents.map((d) => ({
+    documentId: d.id,
+    position: d.position,
+    mediaType: d.mediaType,
+    byteSize: d.byteSize,
+    pageCount: d.pageCount,
+    createdAt: d.createdAt.toString(),
+  }));
+
+/** The latest recorded result of one check code (design 3.2 rule 3). */
+export interface ProductCheckOut {
+  readonly checkCode: string;
+  readonly result: string;
+  readonly recordedBy: { readonly accountId: string };
+  readonly recordedAt: string;
+}
+
+function checksOut(revision: StoredProductRevision): ProductCheckOut[] {
+  // Rows come oldest first, so the last row of a code is its latest (as `latestChecks`).
+  const latest = new Map<string, StoredProductRevision['checks'][number]>();
+  for (const row of revision.checks) latest.set(row.code, row);
+  return [...latest.values()].map((row) => ({
+    checkCode: row.code,
+    result: row.result,
+    recordedBy: { accountId: row.recordedByAccountId },
+    recordedAt: row.recordedAt.toString(),
+  }));
+}
+
 export interface ProductRevisionOut {
   readonly id: string;
   readonly revisionNo: number;
@@ -87,6 +139,10 @@ export interface ProductRevisionOut {
   readonly submittedAt: string;
   readonly editors: readonly { readonly accountId: string }[];
   readonly coverage: readonly CoverageEntryOut[];
+  /** The files sealed at submission. */
+  readonly documents: readonly ProductDocumentOut[];
+  /** The latest result per recorded check code. */
+  readonly checks: readonly ProductCheckOut[];
   readonly decision: {
     readonly outcome: string;
     readonly decidedBy: { readonly accountId: string } | null;
@@ -116,6 +172,7 @@ export interface ProductCertificationOut {
     readonly issueDate: string | null;
     readonly expiryDate: string | null;
     readonly coverage: readonly CoverageEntryOut[];
+    readonly documents: readonly ProductDocumentOut[];
     readonly editors: readonly { readonly accountId: string }[];
     /** Only on the review read. */
     readonly certificateNumber?: string | null;
@@ -138,6 +195,8 @@ export function revisionOut(revision: StoredProductRevision): ProductRevisionOut
     submittedAt: revision.submittedAt.toString(),
     editors: revision.editorAccountIds.map((accountId) => ({ accountId })),
     coverage: coverageOut(revision.coverage),
+    documents: documentsOut(revision.documents),
+    checks: checksOut(revision),
     decision:
       decision === null
         ? null
@@ -179,6 +238,7 @@ export function certificationOut(
       issueDate: draft.issueDate?.toString() ?? null,
       expiryDate: draft.expiryDate?.toString() ?? null,
       coverage: coverageOut(draft.coverage),
+      documents: documentsOut(root.draftDocuments),
       editors: root.draftEditorAccountIds.map((accountId) => ({ accountId })),
     },
     pending: pending === null ? null : revisionOut(pending),

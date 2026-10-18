@@ -347,7 +347,7 @@ export interface ProductSubmitInput {
   readonly issuer: { readonly state: IssuerState; readonly typeMatches: boolean } | null;
   /** The record already has an approved revision. */
   readonly hasApproval: boolean;
-  /** Files of the draft; none can be attached before the documents part of the slice. */
+  /** Files of the draft (all clean: only a clean file is linked). */
   readonly documentCount: number;
   readonly marketZone: TimeZoneId;
   readonly now: Temporal.Instant;
@@ -412,6 +412,13 @@ export interface ProductApprovalInput {
   /** The boundary in the Market's current zone; null without an expiry date. */
   readonly boundary: Temporal.Instant | null;
   readonly now: Temporal.Instant;
+  /**
+   * The required checks of the Market whose latest result on the revision is neither `done` nor
+   * `not-applicable`, in Market order (`missingChecks`; slice 15 part 2).
+   */
+  readonly missingChecks: readonly string[];
+  /** The revision's type revision requires a document and the revision holds none. */
+  readonly documentMissing: boolean;
 }
 
 export type ProductApprovalRefusal =
@@ -420,13 +427,17 @@ export type ProductApprovalRefusal =
   | { readonly code: 'certificate.suspended' }
   | { readonly code: 'issuer.not-active' }
   | { readonly code: 'type.inactive' }
-  | { readonly code: 'certificate.expired' };
+  | { readonly code: 'certificate.expired' }
+  | { readonly code: 'certificate.incomplete' }
+  | { readonly code: 'review.checks-incomplete'; readonly checks: readonly string[] };
 
 /**
  * The guards of an approval of the pending revision (design 3.4 row 3; Q3, AC 20): the approver is
  * another person (not the record's creator and not any admin who edited the revision under
  * review); the record is not closed or suspended; the issuer is `active` and of the type; the type is active for
- * a record never approved (CERT-03); the boundary in the Market zone is after now. `null` allows it.
+ * a record never approved (CERT-03); the boundary in the Market zone is after now; the revision
+ * holds a document when its type revision requires one, and every required review check of the
+ * Market is recorded `done` or `not-applicable` (slice 15 part 2). `null` allows it.
  */
 export function approvalRefusal(input: ProductApprovalInput): ProductApprovalRefusal | null {
   if (
@@ -447,6 +458,11 @@ export function approvalRefusal(input: ProductApprovalInput): ProductApprovalRef
   if (!input.typeActive && !input.hasApproval) return { code: 'type.inactive' };
   if (input.boundary !== null && Temporal.Instant.compare(input.boundary, input.now) <= 0) {
     return { code: 'certificate.expired' };
+  }
+  // Fail closed: a revision of a type that requires a document holds one (sealed at submission).
+  if (input.documentMissing) return { code: 'certificate.incomplete' };
+  if (input.missingChecks.length > 0) {
+    return { code: 'review.checks-incomplete', checks: input.missingChecks };
   }
   return null;
 }

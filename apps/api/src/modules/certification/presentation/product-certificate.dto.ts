@@ -76,6 +76,22 @@ class CoverageEntryView {
   variantId!: string | null;
 }
 
+class ProductDocumentView {
+  @ApiProperty({ format: 'uuid' }) documentId!: string;
+  @ApiProperty({ description: 'Its place in the list, from 1.' }) position!: number;
+  @ApiProperty({ enum: ['image/jpeg', 'image/png', 'application/pdf'] }) mediaType!: string;
+  @ApiProperty() byteSize!: number;
+  @ApiProperty({ nullable: true, description: 'PDF only.' }) pageCount!: number | null;
+  @ApiProperty() createdAt!: string;
+}
+
+class ProductCheckView {
+  @ApiProperty() checkCode!: string;
+  @ApiProperty({ enum: ['done', 'problem', 'not-applicable'] }) result!: string;
+  @ApiProperty({ type: AccountRef }) recordedBy!: AccountRef;
+  @ApiProperty() recordedAt!: string;
+}
+
 class ProductDecisionView {
   @ApiProperty({ enum: ['approved', 'rejected', 'withdrawn'] }) outcome!: string;
   @ApiProperty({ type: AccountRef, nullable: true }) decidedBy!: AccountRef | null;
@@ -100,6 +116,10 @@ class ProductRevisionView {
   @ApiProperty({ type: [AccountRef], description: 'Who edited the draft, and the submitter.' })
   editors!: AccountRef[];
   @ApiProperty({ type: [CoverageEntryView] }) coverage!: CoverageEntryView[];
+  @ApiProperty({ type: [ProductDocumentView], description: 'Sealed at submission.' })
+  documents!: ProductDocumentView[];
+  @ApiProperty({ type: [ProductCheckView], description: 'The latest result per check code.' })
+  checks!: ProductCheckView[];
   @ApiProperty({ type: ProductDecisionView, nullable: true }) decision!: ProductDecisionView | null;
   @ApiPropertyOptional({ description: 'Only on the review read.' }) certificateNumber?: string;
 }
@@ -112,8 +132,14 @@ class ProductDraftView {
   @ApiProperty({ nullable: true, format: 'date' }) expiryDate!: string | null;
   @ApiProperty({ type: [CoverageEntryView] }) coverage!: CoverageEntryView[];
   @ApiProperty({ type: [AccountRef] }) editors!: AccountRef[];
+  @ApiProperty({ type: [ProductDocumentView] }) documents!: ProductDocumentView[];
   @ApiPropertyOptional({ nullable: true, description: 'Only on the review read.' })
   certificateNumber?: string | null;
+}
+
+class ReviewCheckListItem {
+  @ApiProperty() checkCode!: string;
+  @ApiProperty() required!: boolean;
 }
 
 export class ProductCertificateView {
@@ -236,4 +262,51 @@ export class ProductHistoryView {
   @ApiProperty({ format: 'uuid' }) certificateId!: string;
   @ApiProperty({ type: [ProductHistoryEntryView], description: 'Newest first, at most 200.' })
   entries!: ProductHistoryEntryView[];
+}
+
+export class ProductCertificateReviewView extends ProductCertificateView {
+  @ApiProperty({
+    type: [ReviewCheckListItem],
+    description: "The Market's checks for a third-party document type.",
+  })
+  reviewChecks!: ReviewCheckListItem[];
+}
+
+export class ProductDocumentUploadRequest {
+  @ApiProperty({ description: 'The record version as it was read.' }) version!: number;
+  @ApiProperty({
+    description: 'The file as standard base64 text, at most 10 MiB decoded (JPEG, PNG or PDF).',
+  })
+  data!: string;
+}
+
+export class ProductDocumentUploadedView extends ProductDocumentView {
+  @ApiProperty({ format: 'uuid' }) certificateId!: string;
+  @ApiProperty({ description: 'The new record version.' }) version!: number;
+}
+
+export class ProductDocumentRemovedView {
+  @ApiProperty({ format: 'uuid' }) certificateId!: string;
+  @ApiProperty({ format: 'uuid' }) documentId!: string;
+  @ApiProperty({ description: 'False: a revision holds the file, so it only left the draft.' })
+  deleted!: boolean;
+  @ApiProperty({ description: 'The new record version.' }) version!: number;
+}
+
+export class ProductCheckRequest {
+  @ApiProperty({ description: 'The record version as it was read.' }) version!: number;
+  @ApiProperty({ format: 'uuid', description: 'The pending revision being checked.' })
+  revisionId!: string;
+  @ApiProperty({ description: "A code of the Market's review checks." }) checkCode!: string;
+  @ApiProperty({ enum: ['done', 'problem', 'not-applicable'] }) result!: string;
+}
+
+export class ProductCheckRecordedView {
+  @ApiProperty({ format: 'uuid' }) certificateId!: string;
+  @ApiProperty({ format: 'uuid' }) revisionId!: string;
+  @ApiProperty({ format: 'uuid' }) checkId!: string;
+  @ApiProperty() checkCode!: string;
+  @ApiProperty({ enum: ['done', 'problem', 'not-applicable'] }) result!: string;
+  @ApiProperty() recordedAt!: string;
+  @ApiProperty({ description: 'The new record version.' }) version!: number;
 }

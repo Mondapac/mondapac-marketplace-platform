@@ -36,6 +36,9 @@ import { ProductCertificateReinstate } from './product-certificate-reinstate.use
 import { ProductCertificateRevoke } from './product-certificate-revoke.use-case';
 import { ProductCertificateSuspend } from './product-certificate-suspend.use-case';
 import { ExpireProductCertificates } from './expire-product-certificates.use-case';
+import { ProductCertificateRecordCheck } from './product-certificate-record-check.use-case';
+import { ProductCertificateRemoveDocument } from './product-certificate-remove-document.use-case';
+import { ProductCertificateUploadDocument } from './product-certificate-upload-document.use-case';
 
 // The manufacturer certificate use cases without a database (certification design 3.4, 7.1, 7.2;
 // slice 14), on both Market fixtures: the access rules (protected edit and approve keys, the view
@@ -56,6 +59,9 @@ describe('manufacturer certificate access declarations', () => {
       ProductCertificateCreate,
       ProductCertificateSaveDraft,
       ProductCertificateSubmit,
+      // Slice 15 part 2: a file on the draft is an edit.
+      ProductCertificateUploadDocument,
+      ProductCertificateRemoveDocument,
     ]) {
       expect(type.access.rule).toEqual({
         kind: 'permissions',
@@ -66,6 +72,8 @@ describe('manufacturer certificate access declarations', () => {
       ProductCertificateApprove,
       ProductCertificateReject,
       ProductCertificateReviewRead,
+      // Slice 15 part 2: a review check is the approver's.
+      ProductCertificateRecordCheck,
     ]) {
       expect(type.access.rule).toEqual({
         kind: 'permissions',
@@ -121,6 +129,8 @@ describe.each(['AU', 'ZZ'] as const)('manufacturer certificate use cases in mark
       registry: untouchable('registry'),
       catalog: new FakeCatalogReferences(),
       cipher: untouchable('cipher'),
+      intake: untouchable('intake'),
+      documents: untouchable('documents'),
       reviewPolicies: untouchable('reviewPolicies'),
       audit: new RecordingAudit(),
       outbox: new MemoryOutbox(),
@@ -169,11 +179,20 @@ describe.each(['AU', 'ZZ'] as const)('manufacturer certificate use cases in mark
       [new ProductCertificateSuspend(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
       [new ProductCertificateRevoke(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
       [new ProductCertificateReinstate(gate, d), { certificateId: ID, version: 1 }],
+      [new ProductCertificateUploadDocument(gate, d), { certificateId: ID, version: 1, data: 'AA==' }],
+      [
+        new ProductCertificateRemoveDocument(gate, d),
+        { certificateId: ID, documentId: ID, version: 1 },
+      ],
+      [
+        new ProductCertificateRecordCheck(gate, d),
+        { certificateId: ID, revisionId: ID, version: 1, checkCode: 'x', result: 'done' },
+      ],
     ] as const;
 
   // The acting-as refusal of every write is `reviewerOf` (write: true), tested in
   // review/review.shared.spec.ts; the lifecycle writes are checked here too (Hassan L3, slice 15).
-  it('refuses an acting-as session on suspend, revoke and reinstate, before any store', async () => {
+  it('refuses an acting-as session on suspend, revoke, reinstate and the file and check writes, before any store', async () => {
     const d = deps();
     const actor = testAuthenticatedActor(market, {
       population: 'admin',
@@ -188,6 +207,15 @@ describe.each(['AU', 'ZZ'] as const)('manufacturer certificate use cases in mark
       [new ProductCertificateSuspend(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
       [new ProductCertificateRevoke(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
       [new ProductCertificateReinstate(gate, d), { certificateId: ID, version: 1 }],
+      [new ProductCertificateUploadDocument(gate, d), { certificateId: ID, version: 1, data: 'AA==' }],
+      [
+        new ProductCertificateRemoveDocument(gate, d),
+        { certificateId: ID, documentId: ID, version: 1 },
+      ],
+      [
+        new ProductCertificateRecordCheck(gate, d),
+        { certificateId: ID, revisionId: ID, version: 1, checkCode: 'x', result: 'done' },
+      ],
     ] as const) {
       const result = await (
         useCase as { execute: (c: CallContext, i: unknown) => Promise<unknown> }
@@ -267,6 +295,42 @@ describe.each(['AU', 'ZZ'] as const)('manufacturer certificate use cases in mark
       () => new ProductCertificateReinstate(gate, deps()),
       { certificateId: ID, version: 'one' },
       'version',
+    ],
+    [
+      'upload without data',
+      () => new ProductCertificateUploadDocument(gate, deps()),
+      { certificateId: ID, version: 1, data: '' },
+      'data',
+    ],
+    [
+      'upload with data that is not base64',
+      () => new ProductCertificateUploadDocument(gate, deps()),
+      { certificateId: ID, version: 1, data: 'not base64!' },
+      'data',
+    ],
+    [
+      'upload with a bad version',
+      () => new ProductCertificateUploadDocument(gate, deps()),
+      { certificateId: ID, version: 0, data: 'AA==' },
+      'version',
+    ],
+    [
+      'remove with a bad document id',
+      () => new ProductCertificateRemoveDocument(gate, deps()),
+      { certificateId: ID, documentId: 'nope', version: 1 },
+      'documentId',
+    ],
+    [
+      'record a check with an unknown result',
+      () => new ProductCertificateRecordCheck(gate, deps()),
+      { certificateId: ID, revisionId: ID, version: 1, checkCode: 'seal-read', result: 'ok' },
+      'result',
+    ],
+    [
+      'record a check with a bad revision id',
+      () => new ProductCertificateRecordCheck(gate, deps()),
+      { certificateId: ID, revisionId: 'nope', version: 1, checkCode: 'seal-read', result: 'done' },
+      'revisionId',
     ],
     [
       'history with a bad id',

@@ -196,6 +196,42 @@
     }
   },
   {
+    "action": "certification.product-certification.check-recorded",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "checkId": "id",
+      "result": "enumOf(done|problem|not-applicable)",
+      "revisionId": "id"
+    }
+  },
+  {
+    "action": "certification.product-certification.document-added",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "documentId": "id",
+      "documents": "integer",
+      "typeId": "id"
+    }
+  },
+  {
+    "action": "certification.product-certification.document-removed",
+    "targetType": "certification.product-certification",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "deleted": "boolean",
+      "documentId": "id",
+      "typeId": "id"
+    }
+  },
+  {
     "action": "certification.product-certification.edited",
     "targetType": "certification.product-certification",
     "targetId": "id",

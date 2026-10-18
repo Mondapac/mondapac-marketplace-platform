@@ -4,6 +4,7 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE } from '../../contracts/permissions';
 import { ProductCertificateNumberViewedAudit } from '../../domain/audit';
+import { checkCodesFor } from '../../domain/review';
 import {
   adminOf,
   certificationOut,
@@ -21,6 +22,12 @@ export interface ProductCertificateReviewReadInput {
   readonly certificateId: unknown;
 }
 
+/** The review read: the record with its numbers and the Market's checks of a manufacturer basis. */
+export interface ProductCertificateReviewOut extends ProductCertificationOut {
+  /** The checks a revision carries, in Market order; `required` ones gate the approval. */
+  readonly reviewChecks: readonly { readonly checkCode: string; readonly required: boolean }[];
+}
+
 export type ProductCertificateReviewReadFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'access.unavailable' }
@@ -34,12 +41,13 @@ const logger = new Logger('ProductCertification');
  * `product-certificate.review-read` (certification design 3.4, 7.1; slice 14): the read an approver
  * works from, with the certificate number of the draft, the pending and the approved revision
  * decrypted (outside the unit, under the Market's platform subject). Refused in an acting-as
- * session like every decrypting admin read. Rule: key `certification.product-certificate.approve`
+ * session like every decrypting admin read. It also lists the Market's review checks of a
+ * manufacturer basis (slice 15 part 2), whose latest results each revision carries. Rule: key `certification.product-certificate.approve`
  * (protected), the admin population; the answer is `no-store`.
  */
 export class ProductCertificateReviewRead extends UseCase<
   ProductCertificateReviewReadInput,
-  ProductCertificationOut,
+  ProductCertificateReviewOut,
   ProductCertificateReviewReadFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -57,13 +65,23 @@ export class ProductCertificateReviewRead extends UseCase<
   protected async handle(
     context: CallContext,
     input: ProductCertificateReviewReadInput,
-  ): Promise<Result<ProductCertificationOut, ProductCertificateReviewReadFailure>> {
+  ): Promise<Result<ProductCertificateReviewOut, ProductCertificateReviewReadFailure>> {
     if (adminOf(context, { write: true }) === null) return err({ code: 'access.denied' });
     if (typeof input !== 'object' || input === null) return invalid('body', 'type');
     const certificateId = parseProductCertificationId(input.certificateId);
     if (certificateId === null) return invalid('certificateId', 'format');
     const { deps } = this;
     const { market } = context;
+    let reviewChecks: ProductCertificateReviewOut['reviewChecks'];
+    try {
+      // A manufacturer basis is always a third-party document type (submitRefusal).
+      reviewChecks = checkCodesFor(
+        deps.reviewPolicies.policyFor(market),
+        'THIRD_PARTY_DOCUMENT',
+      ).map(({ code, required }) => ({ checkCode: code, required }));
+    } catch {
+      return err({ code: 'access.unavailable' });
+    }
     const read = await deps.unitOfWork
       .run(market, async () => ok(await snapshotOf(deps, market, certificateId)), {
         readOnly: true,
@@ -124,6 +142,6 @@ export class ProductCertificateReviewRead extends UseCase<
       marketId: market.marketId,
       correlationId: context.correlationId,
     });
-    return ok(result);
+    return ok({ ...result, reviewChecks });
   }
 }

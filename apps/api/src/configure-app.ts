@@ -46,6 +46,9 @@ export function isProductImageUploadRequest(
 const CERTIFICATE_DOCUMENT_BODY_LIMIT = '14500kb';
 const CERTIFICATE_DOCUMENT_PATH =
   /^\/certification\/seller\/certificates\/[0-9a-fA-F-]{36}\/documents\/?(?:\?.*)?$/;
+/** An admin adds a file to a manufacturer certificate's draft (certification slice 15 part 2). */
+const PRODUCT_CERTIFICATE_DOCUMENT_PATH =
+  /^\/certification\/admin\/product-certificates\/[0-9a-fA-F-]{36}\/documents\/?(?:\?.*)?$/;
 /** "My issuer is not listed" carries one certificate file too (certification slice 6). */
 const ISSUER_REQUEST_PATH = /^\/certification\/seller\/issuer-requests\/?(?:\?.*)?$/;
 
@@ -56,7 +59,9 @@ export function isCertificateDocumentUploadRequest(
   return (
     method === 'POST' &&
     url !== undefined &&
-    (CERTIFICATE_DOCUMENT_PATH.test(url) || ISSUER_REQUEST_PATH.test(url))
+    (CERTIFICATE_DOCUMENT_PATH.test(url) ||
+      PRODUCT_CERTIFICATE_DOCUMENT_PATH.test(url) ||
+      ISSUER_REQUEST_PATH.test(url))
   );
 }
 
@@ -101,9 +106,9 @@ export function configureApp(app: NestExpressApplication): void {
     limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });
-  // The certificate file route and the issuer request route alone take a still larger body (a
-  // base64 file of at most 10 MiB, certification slices 4 and 6), read as bytes; their controllers
-  // parse the JSON themselves.
+  // The certificate file routes (seller and admin) and the issuer request route alone take a still
+  // larger body (a base64 file of at most 10 MiB, certification slices 4, 6 and 15), read as bytes;
+  // their controllers parse the JSON themselves.
   app.useBodyParser('raw', {
     type: (request) => isCertificateDocumentUploadRequest(request.method, request.url),
     limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,

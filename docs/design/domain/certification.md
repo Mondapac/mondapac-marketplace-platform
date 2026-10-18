@@ -1241,7 +1241,28 @@ Slice 14 part 2 is split in two PRs. This one is the lifecycle. Documents and re
   - The CERT-45 system suspend on `productMaterialContentChanged` (8.1, request C-2) is not built.
   - The same root-boundary fix for `seller_certifications` (a seller certificate whose type does not require an expiry still stores the root boundary) is a follow-up; the seller path is unchanged here.
   - Purge of settled `offer_owner_notices` rows (as 3.18, no DELETE grant yet).
-  - Part 2: documents and review checks.
+  - Part 2: documents and review checks (14.13).
+
+### 14.13 Slice 15 as built, part 2 (manufacturer certificate files and review checks; 2026-10-18)
+
+A type that requires a document (AU halal) can now take a manufacturer submission. The seller path's intake, storage and check shape are reused; no new upload handling.
+
+- **Files** (3.4 row 1; `POST /certification/admin/product-certificates/:id/documents` with `{version, data}`, and `DELETE …/:id/documents/:documentId?version=N`; key `.edit`, not acting-as).
+  - The intake is `SharpDocumentIntake` (JPEG, PNG, PDF; 10 MiB; 10 files a draft; `request.throttled` when its queue is full). The route gets the larger raw body limit of the seller file route.
+  - A file is an `uploaded_documents` row of purpose `product-certificate` with no owner, `clean` at once (no scanner yet), encrypted with its own data key wrapped under the Market's platform subject (`PlatformSubjectDocumentVault`).
+  - Each upload or removal locks the root under the version read (the version moves) and records the admin as an editor of the draft, so an uploader never approves that revision (AC 20).
+  - Removing a file no revision holds deletes the row and, after the commit, its object; a file a revision holds only leaves the draft.
+  - Reviewer download stays off: there is no route that returns the bytes.
+- **Submit** refuses `certificate.incomplete` while the type requires a document and the draft has none. The draft's files are copied into `product_revision_documents` (sealed); the content hash gains the files' SHA-256 (`PRODUCT_CONTENT_SCHEMA_VERSION` 2). A pending revision blocks every file change.
+- **Checks** (3.4 row 3; `POST …/:id/checks` with `{version, revisionId, checkCode, result}`; key `.approve`). The code must be one of the Market's checks for `THIRD_PARTY_DOCUMENT`. The creator and every editor or submitter of the revision are refused (`approval.same-admin`). A new result adds a row; the latest per code counts. Lock-first, so the version moves (the seller path's checks leave the version alone). Audit `.check-recorded`.
+- **Approve** also refuses `certificate.incomplete` (no sealed file where the type requires one) and `review.checks-incomplete` (422, the open required codes in `details.fields`) until every required check is `done` or `not-applicable`. The review read lists the Market's checks (`reviewChecks`); the views list each revision's files and latest checks.
+- **Audit** `.document-added`, `.document-removed` (`deleted`), `.check-recorded` (`result`).
+- **Migration** `20261018230000_certification_product_documents` (data design 3.16 as built), with `down.sql`.
+- **Open.**
+  - Sign-off from Mojtaba (migration) and Hassan (upload path, CERT path).
+  - No per-admin upload rate limit: the key is protected, a draft holds at most 10 files and the intake queue throttles. Hassan to confirm.
+  - Issuer confirmation and scope reading for a manufacturer revision are not required at approval; only the Market's review checks are.
+  - The certificate type move before the retirement of slice 13 part 2 is unchanged.
 
 ### 14.3 Spikes (run, not merged)
 | # | Spike |

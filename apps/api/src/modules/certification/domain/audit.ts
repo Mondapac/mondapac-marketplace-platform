@@ -386,6 +386,37 @@ export const ProductCertificationEditedAudit = defineAuditAction({
   },
 });
 
+/**
+ * An admin added a file to the draft (slice 15 part 2): the file's id and the draft's file count
+ * after it, never a file name or content.
+ */
+export const ProductCertificationDocumentAddedAudit = defineAuditAction({
+  action: 'certification.product-certification.document-added',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: { typeId: auditField.id(), documentId: auditField.id(), documents: auditField.integer() },
+});
+
+/** An admin took a file off the draft; `deleted` when no revision held it (slice 15 part 2). */
+export const ProductCertificationDocumentRemovedAudit = defineAuditAction({
+  action: 'certification.product-certification.document-removed',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: { typeId: auditField.id(), documentId: auditField.id(), deleted: auditField.boolean() },
+});
+
+/** A reviewer recorded one review check of the pending revision (slice 15 part 2; M6). */
+export const ProductCertificationCheckRecordedAudit = defineAuditAction({
+  action: 'certification.product-certification.check-recorded',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    revisionId: auditField.id(),
+    checkId: auditField.id(),
+    result: auditField.enumOf(REVIEW_CHECK_RESULT_VALUES),
+  },
+});
+
 const productDecisionAfter = {
   revisionId: auditField.id(),
   typeRevisionId: auditField.id(),
@@ -502,6 +533,9 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   ClaimPolicyRelaxationApprovedAudit,
   ProductCertificationRecordedAudit,
   ProductCertificationEditedAudit,
+  ProductCertificationDocumentAddedAudit,
+  ProductCertificationDocumentRemovedAudit,
+  ProductCertificationCheckRecordedAudit,
   ProductCertificationApprovedAudit,
   ProductCertificationRejectedAudit,
   ProductCertificateNumberViewedAudit,

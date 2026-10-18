@@ -3,10 +3,12 @@ import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import sharp from 'sharp';
 import {
   PRODUCT_CERTIFICATION_REPOSITORY,
   type ProductCertificationRepository,
   type ProductCertificationSummary,
+  type ProductDocumentWrite,
   type ProductHistoryRow,
   type StoredProductCertification,
 } from '../src/modules/certification/application/ports/product-certification.repository';
@@ -22,7 +24,8 @@ import { CLOCK } from '../src/platform/clock/clock.module';
 import { OUTBOX_WRITER } from '../src/platform/events/outbox-writer';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { StaleAggregateError } from '../src/platform/unit-of-work/errors';
-import { MemoryOutbox } from './support/certification-fakes';
+import { PLATFORM_DOCUMENT_VAULT } from '../src/modules/certification/application/ports/document-ports';
+import { MemoryOutbox, MemoryPlatformVault } from './support/certification-fakes';
 import { MemoryRegistry } from './support/certification-registry-fakes';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp } from './support/test-app';
@@ -84,6 +87,7 @@ class MemoryProductCertificates implements ProductCertificationRepository {
         coverage: [],
       },
       draftEditorAccountIds: [],
+      draftDocuments: [],
       statusChangedAt: root.now,
       lastChangedAt: root.now,
       version: 1,
@@ -158,6 +162,41 @@ class MemoryProductCertificates implements ProductCertificationRepository {
   history(): Promise<readonly ProductHistoryRow[]> {
     return Promise.resolve([]);
   }
+  addDocument(market: MarketContext, write: ProductDocumentWrite): Promise<void> {
+    const root = this.roots.get(write.certificateId)!;
+    this.roots.set(write.certificateId, {
+      ...root,
+      draftDocuments: [
+        ...root.draftDocuments,
+        {
+          id: write.documentId,
+          position: write.position,
+          mediaType: write.mediaType,
+          byteSize: write.byteSize,
+          pageCount: write.pageCount,
+          createdAt: write.now,
+          objectKey: write.objectKey,
+          cleanSha256: write.cleanSha256,
+          submitted: false,
+        },
+      ],
+      draftEditorAccountIds: [...new Set([...root.draftEditorAccountIds, write.editorAccountId])],
+    });
+    return Promise.resolve();
+  }
+  removeDocument(
+    market: MarketContext,
+    write: { certificateId: Id<'ProductCertification'>; documentId: Id<'UploadedDocument'> },
+  ): Promise<'deleted' | 'missing'> {
+    const root = this.roots.get(write.certificateId)!;
+    const kept = root.draftDocuments.filter((d) => d.id !== write.documentId);
+    if (kept.length === root.draftDocuments.length) return Promise.resolve('missing');
+    this.roots.set(write.certificateId, { ...root, draftDocuments: kept });
+    return Promise.resolve('deleted');
+  }
+  recordCheck(): Promise<void> {
+    return Promise.reject(new Error('not in this suite'));
+  }
 }
 
 const fakes = new IdentityFakes();
@@ -170,6 +209,7 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
   let clock: FixedClock;
   let registry: MemoryRegistry;
   let products: MemoryProductCertificates;
+  let vault: MemoryPlatformVault;
   const http = () => request(app.getHttpServer());
   const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
 
@@ -186,7 +226,9 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
           .overrideProvider(CERTIFICATION_REGISTRY_REPOSITORY)
           .useValue(registry)
           .overrideProvider(PRODUCT_CERTIFICATION_REPOSITORY)
-          .useValue(products),
+          .useValue(products)
+          .overrideProvider(PLATFORM_DOCUMENT_VAULT)
+          .useValue(vault),
     }));
   }
 
@@ -323,6 +365,7 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
     clock = new FixedClock(START);
     registry = new MemoryRegistry();
     products = new MemoryProductCertificates();
+    vault = new MemoryPlatformVault();
   });
   afterEach(async () => {
     await app?.close();
@@ -341,6 +384,12 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
       'certificate.not-suspended': 409,
       'certificate.revoked': 409,
       'certificate.not-revocable': 409,
+      'document.not-found': 404,
+      'document.limit-reached': 409,
+      'file.too-large': 413,
+      'file.unsupported-type': 415,
+      'request.throttled': 429,
+      'review.checks-incomplete': 422,
     });
   });
 
@@ -433,6 +482,93 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
         .get(`${base}/${id(0xe5fe)}/history`)
         .set(moderator)
         .expect(404);
+    });
+
+    it('adds and removes a draft file with the edit key only, sealed under the platform vault; records no check without the approve key (slice 15 part 2)', async () => {
+      await boot();
+      seedTypes(code);
+      await seeded(code);
+      const editor = headersOf(code, EDITOR, 6);
+      const moderator = headersOf(code, MODERATOR, 7);
+      const created = await http().post(base).set(editor).send({ typeId: TYPE }).expect(201);
+      const { certificateId } = created.body as { certificateId: string };
+      const png = await sharp({
+        create: { width: 8, height: 8, channels: 3, background: '#00aa00' },
+      })
+        .png()
+        .toBuffer();
+      const data = png.toString('base64');
+      const documents = `${base}/${certificateId}/documents`;
+
+      // The view key alone, no CSRF, a closed body, a stale version, a file of no known type.
+      const denied = await http().post(documents).set(moderator).send({ version: 1, data });
+      expect(denied.status).toBe(403);
+      expect((denied.body as { code: string }).code).toBe('access.denied');
+      const noCsrf: Record<string, string> = { ...editor };
+      delete noCsrf['x-csrf-token'];
+      await http().post(documents).set(noCsrf).send({ version: 1, data }).expect(403);
+      await http()
+        .post(documents)
+        .set(editor)
+        .send({ version: 1, data, name: 'a.png' })
+        .expect(400);
+      const stale = await http().post(documents).set(editor).send({ version: 9, data }).expect(409);
+      expect((stale.body as { code: string }).code).toBe('conflict.stale');
+      const text = Buffer.from('plain text, not a certificate').toString('base64');
+      const unsupported = await http()
+        .post(documents)
+        .set(editor)
+        .send({ version: 1, data: text.padEnd(Math.ceil(text.length / 4) * 4, '=') })
+        .expect(415);
+      expect((unsupported.body as { code: string }).code).toBe('file.unsupported-type');
+      expect(vault.objects.size).toBe(0);
+
+      const added = await http().post(documents).set(editor).send({ version: 1, data }).expect(201);
+      const file = added.body as { documentId: string; version: number; mediaType: string };
+      expect(file).toMatchObject({
+        certificateId,
+        version: 2,
+        position: 1,
+        mediaType: 'image/png',
+      });
+      expect([...vault.objects.keys()]).toEqual([`certification/platform/${file.documentId}`]);
+      const one = await http().get(`${base}/${certificateId}`).set(moderator).expect(200);
+      expect(one.body).toMatchObject({
+        version: 2,
+        draft: { documents: [{ documentId: file.documentId, position: 1 }] },
+      });
+      expect(JSON.stringify(one.body)).not.toContain('objectKey');
+      expect(JSON.stringify(one.body)).not.toContain('Sha256');
+
+      // No reviewer download route: the file is only listed.
+      await http().get(`${documents}/${file.documentId}`).set(editor).expect(404);
+
+      // The checks need the approve key.
+      const check = await http()
+        .post(`${base}/${certificateId}/checks`)
+        .set(editor)
+        .send({ version: 2, revisionId: id(0xe777), checkCode: 'document-legible', result: 'done' })
+        .expect(403);
+      expect((check.body as { code: string }).code).toBe('access.denied');
+
+      await http().delete(`${documents}/${file.documentId}?version=2`).set(moderator).expect(403);
+      await http().delete(`${documents}/${file.documentId}?version=x`).set(editor).expect(400);
+      const removed = await http()
+        .delete(`${documents}/${file.documentId}?version=2`)
+        .set(editor)
+        .expect(200);
+      expect(removed.body).toEqual({
+        certificateId,
+        documentId: file.documentId,
+        deleted: true,
+        version: 3,
+      });
+      expect(vault.objects.size).toBe(0);
+      const gone = await http()
+        .delete(`${documents}/${file.documentId}?version=3`)
+        .set(editor)
+        .expect(404);
+      expect((gone.body as { code: string }).code).toBe('document.not-found');
     });
 
     it('records a draft with the edit key, then reads and lists it; refuses no CSRF, a bad body, an unknown or self-declared type', async () => {
