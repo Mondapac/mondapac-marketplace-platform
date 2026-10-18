@@ -22,7 +22,7 @@ afterEach(cleanup);
 function renderStore(content: StorefrontContent = SAMPLE_CONTENT) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
-      <StoreShell content={content} textSize="auto">
+      <StoreShell content={content} textSize="auto" consent={{ personalization: false }}>
         <HomeSections
           sections={content.home}
           categories={content.categories}

@@ -9,6 +9,7 @@ import {
   paletteOf,
   textSizeOf,
 } from '../src/preferences/preferences.ts';
+import { CONSENT_COOKIE, consentOf } from '../src/consent/consent.ts';
 import { StoreShell } from '../src/shell/store-shell.tsx';
 import { loadStorefrontContent } from '../src/storefront/source.ts';
 import './globals.css';
@@ -47,7 +48,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </head>
       <body>
         <NextIntlClientProvider messages={messages}>
-          <StoreShell content={content} textSize={textSize}>
+          <StoreShell
+            content={content}
+            textSize={textSize}
+            consent={consentOf(jar.get(CONSENT_COOKIE)?.value)}
+          >
             {children}
           </StoreShell>
         </NextIntlClientProvider>
