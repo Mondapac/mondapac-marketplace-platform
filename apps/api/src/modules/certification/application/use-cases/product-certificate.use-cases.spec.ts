@@ -179,7 +179,10 @@ describe.each(['AU', 'ZZ'] as const)('manufacturer certificate use cases in mark
       [new ProductCertificateSuspend(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
       [new ProductCertificateRevoke(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
       [new ProductCertificateReinstate(gate, d), { certificateId: ID, version: 1 }],
-      [new ProductCertificateUploadDocument(gate, d), { certificateId: ID, version: 1, data: 'AA==' }],
+      [
+        new ProductCertificateUploadDocument(gate, d),
+        { certificateId: ID, version: 1, data: 'AA==' },
+      ],
       [
         new ProductCertificateRemoveDocument(gate, d),
         { certificateId: ID, documentId: ID, version: 1 },
@@ -207,7 +210,10 @@ describe.each(['AU', 'ZZ'] as const)('manufacturer certificate use cases in mark
       [new ProductCertificateSuspend(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
       [new ProductCertificateRevoke(gate, d), { certificateId: ID, version: 1, reasonCode: 'x' }],
       [new ProductCertificateReinstate(gate, d), { certificateId: ID, version: 1 }],
-      [new ProductCertificateUploadDocument(gate, d), { certificateId: ID, version: 1, data: 'AA==' }],
+      [
+        new ProductCertificateUploadDocument(gate, d),
+        { certificateId: ID, version: 1, data: 'AA==' },
+      ],
       [
         new ProductCertificateRemoveDocument(gate, d),
         { certificateId: ID, documentId: ID, version: 1 },

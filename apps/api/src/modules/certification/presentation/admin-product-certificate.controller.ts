@@ -272,7 +272,7 @@ export class AdminProductCertificateController {
     summary: 'One manufacturer certificate with its numbers, for the approver',
     description:
       'Needs certification.product-certificate.approve (protected). As the read, with the ' +
-      'certificate number of the draft and of each revision decrypted, and the Market\'s ' +
+      "certificate number of the draft and of each revision decrypted, and the Market's " +
       'review checks (which are required). Not in a Login as Seller session.',
   })
   @ApiOkResponse({ type: ProductCertificateReviewView })

@@ -164,7 +164,8 @@ export class ProductCertificateUploadDocument extends UseCase<
           const again = roomIn(current);
           if ('refusal' in again) {
             return err({
-              code: again.refusal === 'full' ? 'document.limit-reached' : 'certificate.not-editable',
+              code:
+                again.refusal === 'full' ? 'document.limit-reached' : 'certificate.not-editable',
             } as const);
           }
           const position =
