@@ -26,6 +26,8 @@ may-sell contract in `sellers`; platform amendments). Phase 3 adds ADR-0024
 (from catalog's G1: `pricing` is its own module, tier B or A by its gate's scope, and owns
 the price-jump hold; wider penetration-test scope). From identity spike 6, ADR-0025 (read-only
 units open no transaction; READ COMMITTED checked at start-up).
+Phase 3 frontend: ADR-0033 (panel UI base: Next.js, Tailwind on the exported tokens, Base UI) and
+ADR-0034 (panel apps: `apps/seller`, `apps/admin`, `packages/ui`; the panel server is the BFF).
 Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
@@ -138,9 +140,13 @@ strategy implementation, not in core logic.
 - `APP_ROLE` (api | worker) is required, no default (P 8; `.env.example` has `api`). `pnpm dev` runs the
   api role; `pnpm dev:worker` builds once and runs the built app as the worker (no watcher; restart it
   after a change).
+- `pnpm dev:seller` / `pnpm dev:admin` run a panel (Next.js, ports 3001 and 3002; ADR-0033, ADR-0034).
+  Open them at `seller.localhost:3001` and `admin.localhost:3002` (cookies ignore ports, so never
+  two ports of one host). Panel code lives in `apps/seller`, `apps/admin` and `packages/ui`.
 - `pnpm test` (unit + HTTP tests, no database) / `pnpm test:db` (needs Postgres; creates
   and drops its own throwaway database)
-- `pnpm boundaries` checks module and persistence boundaries (ADR-0008 decision 6).
+- `pnpm boundaries` checks module and persistence boundaries (ADR-0008 decision 6) and the panel
+  boundaries (`scripts/check-panel-boundaries.mjs`, ADR-0034 decision 9).
 - `pnpm db:migrate` applies migrations; `pnpm db:migrate:dev --name <name>` creates one
   and regenerates the Prisma client (always pass `--name`; then add its `down.sql`); `pnpm db:generate` regenerates the client; `pnpm db:check-reversible` runs up -> down -> up on a throwaway database.
 - Database roles (docs/design/data/platform.md section 10): the API uses `DATABASE_URL`
