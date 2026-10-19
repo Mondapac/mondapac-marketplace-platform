@@ -3,18 +3,29 @@ import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, IdGenerator, Result } from '@mondapac/shared-kernel';
 import type { AccessDeclaration, AuthorisationCheck } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import { CATALOG_PRODUCT_APPROVE, type CatalogFacade } from '../../catalog';
+import { CERTIFICATION_SELLER_CERTIFICATE_REVIEW } from '../../certification';
 import { ORDERING_SELLER_ORDER_VIEW, type OrderingFacade } from '../../ordering';
+import { PRICING_PRICE_HOLD_DECIDE } from '../../pricing';
+import { SELLERS_SELLER_FILE_REVIEW } from '../../sellers';
 import {
+  ADMIN_NOTICE_KINDS,
+  ADMIN_PRICE_HOLD_OPENED,
+  ADMIN_PRODUCT_REVISION_SUBMITTED,
+  ADMIN_SELLER_CERTIFICATE_SUBMITTED,
+  ADMIN_SELLER_FILE_SUBMITTED,
   NOTICE_RETENTION_DAYS,
+  type AdminNoticeKind,
   parseNoticeParams,
   SELLER_NOTICE_KINDS,
   SELLER_ORDER_PAID,
   type NoticeParams,
   type SellerNoticeKind,
+  type SellerOrderPaidParams,
 } from '../domain/in-app-notice';
 import type {
   InAppNoticeRepository,
-  SellerNoticeScope,
+  NoticeScope,
   StoredNotice,
 } from './ports/in-app-notice.repository';
 
@@ -22,6 +33,7 @@ export interface InAppNoticeDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly notices: InAppNoticeRepository;
   readonly ordering: OrderingFacade;
+  readonly catalog: CatalogFacade;
   readonly authorisation: AuthorisationCheck;
   readonly ids: IdGenerator;
   readonly clock: Clock;
@@ -67,26 +79,43 @@ const SELLER_KIND_ACCESS: Readonly<Record<SellerNoticeKind, AccessDeclaration>> 
   },
 };
 
+/**
+ * The permission an admin must hold to see each admin kind (package 3): the one that works the
+ * queue the notice points at. Checked on every read, as {@link SELLER_KIND_ACCESS}.
+ */
+const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = {
+  [ADMIN_SELLER_CERTIFICATE_SUBMITTED]: {
+    name: 'notifications.see-admin-certificate-notices',
+    rule: { kind: 'permissions', allOf: [CERTIFICATION_SELLER_CERTIFICATE_REVIEW.key] },
+  },
+  [ADMIN_PRODUCT_REVISION_SUBMITTED]: {
+    name: 'notifications.see-admin-product-revision-notices',
+    rule: { kind: 'permissions', allOf: [CATALOG_PRODUCT_APPROVE.key] },
+  },
+  [ADMIN_SELLER_FILE_SUBMITTED]: {
+    name: 'notifications.see-admin-seller-file-notices',
+    rule: { kind: 'permissions', allOf: [SELLERS_SELLER_FILE_REVIEW.key] },
+  },
+  // Only the platform admin approves a held price (decision of 2026-10-17).
+  [ADMIN_PRICE_HOLD_OPENED]: {
+    name: 'notifications.see-admin-price-hold-notices',
+    rule: { kind: 'permissions', allOf: [PRICING_PRICE_HOLD_DECIDE.key] },
+  },
+};
+
 const logger = new Logger('InAppNotices');
 
-/**
- * The scope of a seller-side reader: the actor's own seller and account, and only the kinds whose
- * permission the actor holds now. Refused for anyone but an authenticated seller-side member.
- */
-export async function sellerReaderScope(
+/** The kinds, among `kinds`, whose permission the actor holds now. Fails closed per kind. */
+async function permittedKinds<K extends string>(
   deps: InAppNoticeDependencies,
   context: CallContext,
-): Promise<Result<SellerNoticeScope, { readonly code: 'access.denied' }>> {
-  const { actor } = context;
-  if (actor.kind !== 'authenticated' || actor.population !== 'seller' || actor.sellerId === null) {
-    return err({ code: 'access.denied' });
-  }
-  const kinds: SellerNoticeKind[] = [];
-  for (const kind of SELLER_NOTICE_KINDS) {
+  kinds: readonly K[],
+  access: Readonly<Record<K, AccessDeclaration>>,
+): Promise<K[]> {
+  const permitted: K[] = [];
+  for (const kind of kinds) {
     try {
-      if ((await deps.authorisation.check(context, SELLER_KIND_ACCESS[kind])).allowed) {
-        kinds.push(kind);
-      }
+      if ((await deps.authorisation.check(context, access[kind])).allowed) permitted.push(kind);
     } catch (error) {
       // Fail closed: a kind whose permission cannot be checked is not shown.
       logger.error({
@@ -98,12 +127,38 @@ export async function sellerReaderScope(
       });
     }
   }
-  return ok({
-    sellerId: actor.sellerId,
-    accountId: actor.accountId,
-    kinds,
-    since: retentionEdge(deps.clock),
-  });
+  return permitted;
+}
+
+/**
+ * The scope of a reader: a seller-side member sees their own seller's notices, an admin the
+ * Market's admin notices, each only of the kinds whose permission they hold now. Refused for
+ * anyone else (a customer, the system actor, an anonymous caller).
+ */
+export async function readerScope(
+  deps: InAppNoticeDependencies,
+  context: CallContext,
+): Promise<Result<NoticeScope, { readonly code: 'access.denied' }>> {
+  const { actor } = context;
+  if (actor.kind !== 'authenticated') return err({ code: 'access.denied' });
+  const since = retentionEdge(deps.clock);
+  if (actor.population === 'seller' && actor.sellerId !== null) {
+    return ok({
+      owner: { audience: 'seller', sellerId: actor.sellerId },
+      accountId: actor.accountId,
+      kinds: await permittedKinds(deps, context, SELLER_NOTICE_KINDS, SELLER_KIND_ACCESS),
+      since,
+    });
+  }
+  if (actor.population === 'admin') {
+    return ok({
+      owner: { audience: 'admin' },
+      accountId: actor.accountId,
+      kinds: await permittedKinds(deps, context, ADMIN_NOTICE_KINDS, ADMIN_KIND_ACCESS),
+      since,
+    });
+  }
+  return err({ code: 'access.denied' });
 }
 
 /** The oldest instant still shown and kept. */
@@ -138,7 +193,7 @@ export async function withCustomerNames(
     ...new Set(
       views
         .filter((view) => view.kind === SELLER_ORDER_PAID)
-        .map((view) => view.params.sellerOrderId),
+        .map((view) => (view.params as SellerOrderPaidParams).sellerOrderId),
     ),
   ];
   let names: ReadonlyMap<string, string> = new Map();
@@ -167,6 +222,8 @@ export async function withCustomerNames(
   return views.map((view) => ({
     ...view,
     customerShortName:
-      view.kind === SELLER_ORDER_PAID ? (names.get(view.params.sellerOrderId) ?? null) : null,
+      view.kind === SELLER_ORDER_PAID
+        ? (names.get((view.params as SellerOrderPaidParams).sellerOrderId) ?? null)
+        : null,
   }));
 }

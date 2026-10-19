@@ -2,7 +2,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import {
-  sellerReaderScope,
+  readerScope,
   viewOf,
   type InAppNoticeDependencies,
   type NoticeView,
@@ -20,8 +20,8 @@ export interface CountOwnUnreadNoticesOutput {
 
 /**
  * `notifications.count-own-unread-notices` (in-app notifications package 1): what the bell
- * polls. The number of notices the signed-in seller-side member may see and has not read, and the
- * newest of them. Rule `own-resources`, scoped as {@link ListOwnNotices}. One read-only unit.
+ * polls. The number of notices the signed-in seller-side member (or admin, package 3) may see and
+ * has not read, and the newest of them. Rule `own-resources`, scoped as {@link ListOwnNotices}. One read-only unit.
  */
 export class CountOwnUnreadNotices extends UseCase<
   Record<string, never>,
@@ -44,12 +44,12 @@ export class CountOwnUnreadNotices extends UseCase<
   protected async handle(
     context: CallContext,
   ): Promise<Result<CountOwnUnreadNoticesOutput, OwnNoticesFailure>> {
-    const scope = await sellerReaderScope(this.deps, context);
+    const scope = await readerScope(this.deps, context);
     if (!scope.ok) return scope;
     if (scope.value.kinds.length === 0) return ok({ unread: 0, newest: null });
     const read = await this.deps.unitOfWork.run(
       context.market,
-      async () => ok(await this.deps.notices.unreadForSeller(context.market, scope.value)),
+      async () => ok(await this.deps.notices.unread(context.market, scope.value)),
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.denied' });

@@ -1456,5 +1456,57 @@
       "keep": "Keep them signed in",
       "action": "Sign out others"
     }
+  },
+  "notifications": {
+    "bell": "Notifications",
+    "bell-unread": "Notifications, {count, plural, one {# unread} other {# unread}}",
+    "announce": "{count, plural, one {# unread notification} other {# unread notifications}}",
+    "title": "Notifications",
+    "close": "Close notifications",
+    "filters": "Show notifications",
+    "filter": {
+      "unread": "Unread",
+      "read": "Read",
+      "all": "All"
+    },
+    "unread-count": "{count} unread",
+    "sound-on": "Notification sound on on this device. Turn off",
+    "sound-off": "Notification sound off on this device. Turn on",
+    "enable-sound": "Enable notification sound",
+    "mark-all": "Mark all as read",
+    "load-more": "Show older",
+    "unread-item": "Unread",
+    "kind": {
+      "certificate-submitted": "{submission, select, resubmission {A seller resubmitted a <strong>certificate</strong> for review} renewal {A seller submitted a <strong>certificate renewal</strong> for review} other {A seller submitted a <strong>certificate</strong> for review}}",
+      "product-revision-submitted": "A <strong>product version</strong> is waiting for review",
+      "seller-application-submitted": "A <strong>new seller application</strong> is waiting for review",
+      "seller-identity-changed": "A seller changed their <strong>business details</strong>",
+      "price-hold-opened": "{direction, select, up {A <strong>price increase</strong> is held for approval} down {A <strong>price drop</strong> is held for approval} other {A <strong>price change</strong> is held for approval}}",
+      "other": "Something is waiting for your review"
+    },
+    "category": {
+      "certificates": "Certificates",
+      "products": "Products",
+      "sellers": "Sellers",
+      "prices": "Prices",
+      "other": "Reviews"
+    },
+    "empty": {
+      "unread": {
+        "title": "You're all caught up",
+        "body": "New items waiting for your review show up here."
+      },
+      "read": {
+        "title": "Nothing read yet",
+        "body": "Notifications you open or mark as read move here."
+      },
+      "all": {
+        "title": "No notifications yet",
+        "body": "New items waiting for your review show up here."
+      }
+    },
+    "error": "Notifications could not be loaded.",
+    "retry": "Retry",
+    "loading": "Loading notifications"
   }
 }
