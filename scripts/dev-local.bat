@@ -4,7 +4,7 @@ rem and the buyer site.
 rem Run from anywhere: double-click this file or run scripts\dev-local.bat.
 rem Needs: Docker Desktop (running), Node.js 24.20+ and pnpm 10 (npm i -g pnpm@10).
 rem Then open http://seller.localhost:3001 (seller), http://admin.localhost:3002 (admin) or
-rem http://storefront.localhost:3003 (buyer site, port 3003). Mail arrives in Mailpit at http://localhost:8025 .
+rem http://storefront.localhost:3003 (buyer site, port 3003; http://localhost:3003 also works). Mail arrives in Mailpit at http://localhost:8025 .
 rem Optional argument "seed": also fills the database with the sample Brisbane marketplace (four
 rem sellers, 14 products, prices, stock, a buyer) once the services are up; the sample logins are
 rem written to .local\demo-credentials.txt. Without it nothing is added. Run "scripts\demo-local.bat"
@@ -19,7 +19,7 @@ set "SEED=0"
 if /i "%~1"=="seed" set "SEED=1"
 rem The buyer site's slot in the local demo: its origin is allowed for customer requests.
 set "STOREFRONT_ORIGIN=http://storefront.localhost:3003"
-echo Buyer site (when started): %STOREFRONT_ORIGIN%
+echo Buyer site (when started): %STOREFRONT_ORIGIN%  (or http://localhost:3003)
 
 where node >nul 2>nul || (echo Node.js is not installed. Install Node 24.20 or newer from https://nodejs.org & goto :fail)
 where pnpm >nul 2>nul || (echo pnpm is not installed. Run: npm i -g pnpm@10 & goto :fail)
@@ -113,7 +113,7 @@ echo.
 echo Started. Open:
 echo   Seller panel : http://seller.localhost:3001
 echo   Admin panel  : http://admin.localhost:3002
-echo   Buyer site   : %STOREFRONT_ORIGIN%
+echo   Buyer site   : %STOREFRONT_ORIGIN%  (or http://localhost:3003 if that name does not open)
 echo   Mail (Mailpit): http://localhost:8025
 if "%SEED%"=="1" echo   Sample logins : .local\demo-credentials.txt  (written when the demo data window says Done)
 echo To stop: close the windows, then run "docker compose down" (add -v to wipe the demo data).
