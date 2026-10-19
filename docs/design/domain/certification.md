@@ -1263,6 +1263,7 @@ A type that requires a document (AU halal) can now take a manufacturer submissio
   - No per-admin upload rate limit: the key is protected, a draft holds at most 10 files and the intake queue throttles. Hassan to confirm.
   - Issuer confirmation and scope reading for a manufacturer revision are not required at approval; only the Market's review checks are.
   - The certificate type move before the retirement of slice 13 part 2 is unchanged.
+  - Follow-ups from the PR #420 review: a per-account upload limit, so remove-and-upload cannot keep the intake queue full for sellers (Hassan L1); a database trigger refusing a check by the root's author or a revision editor (Hassan L2).
 
 ### 14.3 Spikes (run, not merged)
 | # | Spike |

@@ -64,7 +64,8 @@ CREATE INDEX "product_revision_review_checks_lookup_idx" ON "certification"."pro
 -- CreateIndex
 CREATE UNIQUE INDEX "product_revision_review_checks_market_id_id_key" ON "certification"."product_revision_review_checks"("market_id", "id");
 
--- CreateIndex
+-- CreateIndex (plain, not CONCURRENTLY: no deployed environment yet, data design 9.2; after the
+-- first deployment an index like this goes alone in its own file, CONCURRENTLY)
 CREATE UNIQUE INDEX "uploaded_documents_market_id_id_type_id_key" ON "certification"."uploaded_documents"("market_id", "id", "type_id");
 
 -- AddForeignKey

@@ -554,7 +554,9 @@ id, type_id)` and to `uploaded_documents (market_id, id, type_id)` (a new unique
 another type cannot be linked. A BEFORE INSERT trigger on both admits only a `clean` file of
 purpose `product-certificate`. `product_revision_review_checks` is built as 3.10 with the lookup
 index `(market_id, revision_id, check_code, recorded_at DESC)`; `product_issuer_confirmations` is
-not built yet.
+not built yet. A revision's file is bound to the certificate's type only; that it came from the same
+certificate's draft is held by the domain (submit copies the draft's links), not by a key (Mojtaba,
+PR #420 review).
 
 ### 3.16a `seller_issuer_confirmations` (slice 7)
 
