@@ -207,6 +207,22 @@ export interface CatalogFacade {
   ): Promise<
     Result<OfferListingsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
   >;
+
+  /**
+   * Which of the requested product revisions still waits for review (it is its product's pending
+   * revision now), at most 200 ids, refused whole above. Rule `system`: for the admins' review
+   * notice (in-app notifications package 3). An unknown id, another Market's, a published or a
+   * replaced revision is absent. Ids only. In-process only.
+   */
+  pendingProductRevisions(
+    context: CallContext,
+    revisionIds: readonly Id<'ProductRevision'>[],
+  ): Promise<
+    Result<
+      ReadonlySet<Id<'ProductRevision'>>,
+      AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
+    >
+  >;
 }
 
 /** Nest token of the {@link CatalogFacade}, provided and exported by `CatalogModule`. */

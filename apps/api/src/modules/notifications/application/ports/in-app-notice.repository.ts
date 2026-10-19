@@ -1,9 +1,13 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 
-/** A new seller notice, as the writer adds it. */
-export interface NewSellerNotice {
+/** Whom a notice is for: one seller's members, or the admins of the Market. */
+export type NoticeOwner =
+  { readonly audience: 'seller'; readonly sellerId: Id<'Seller'> } | { readonly audience: 'admin' };
+
+/** A new notice, as the writer adds it. */
+export interface NewNotice {
   readonly id: Id<'InAppNotice'>;
-  readonly sellerId: Id<'Seller'>;
+  readonly owner: NoticeOwner;
   readonly kind: string;
   readonly params: Readonly<Record<string, string | number>>;
   readonly createdAt: Temporal.Instant;
@@ -21,9 +25,12 @@ export interface StoredNotice {
   readonly read: boolean;
 }
 
-/** Which notices one seller-side reader may see: the seller's, of these kinds, since then. */
-export interface SellerNoticeScope {
-  readonly sellerId: Id<'Seller'>;
+/**
+ * Which notices one reader may see: the owner's (the reader's own seller, or the Market's admin
+ * notices), of these kinds, since then.
+ */
+export interface NoticeScope {
+  readonly owner: NoticeOwner;
   readonly accountId: Id<'Account'>;
   readonly kinds: readonly string[];
   /** The retention edge: older notices are not shown even before the purge removes them. */
@@ -35,15 +42,15 @@ export interface SellerNoticeScope {
  * Every method runs inside the caller's unit of work and is scoped by the Market.
  */
 export interface InAppNoticeRepository {
-  addForSellers(market: MarketContext, notices: readonly NewSellerNotice[]): Promise<void>;
+  add(market: MarketContext, notices: readonly NewNotice[]): Promise<void>;
 
-  /** Deletes the seller's notices beyond the newest `keep`; returns how many left. */
-  trimSeller(market: MarketContext, sellerId: Id<'Seller'>, keep: number): Promise<number>;
+  /** Deletes the owner's notices beyond the newest `keep`; returns how many left. */
+  trim(market: MarketContext, owner: NoticeOwner, keep: number): Promise<number>;
 
   /** Newest first; `before` is the last id of the previous page; `show` filters by read state. */
-  listForSeller(
+  list(
     market: MarketContext,
-    scope: SellerNoticeScope,
+    scope: NoticeScope,
     page: {
       readonly before: Id<'InAppNotice'> | null;
       readonly limit: number;
@@ -52,22 +59,18 @@ export interface InAppNoticeRepository {
   ): Promise<readonly StoredNotice[]>;
 
   /** The number of unread notices in scope, and the newest of them. */
-  unreadForSeller(
+  unread(
     market: MarketContext,
-    scope: SellerNoticeScope,
+    scope: NoticeScope,
   ): Promise<{ readonly count: number; readonly newest: StoredNotice | null }>;
 
   /** Whether the notice is in scope (read or not). */
-  existsForSeller(
-    market: MarketContext,
-    scope: SellerNoticeScope,
-    id: Id<'InAppNotice'>,
-  ): Promise<boolean>;
+  exists(market: MarketContext, scope: NoticeScope, id: Id<'InAppNotice'>): Promise<boolean>;
 
   /** The ids, among `ids`, that are in scope and not yet read by the reader. */
-  unreadIdsForSeller(
+  unreadIds(
     market: MarketContext,
-    scope: SellerNoticeScope,
+    scope: NoticeScope,
     ids: readonly Id<'InAppNotice'>[] | 'all',
   ): Promise<readonly Id<'InAppNotice'>[]>;
 

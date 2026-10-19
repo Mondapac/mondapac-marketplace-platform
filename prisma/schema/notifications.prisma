@@ -49,7 +49,7 @@ model NotificationsInAppNotice {
   /// A UUIDv7, so the id sorts by creation time (the list's cursor).
   id        String   @db.Uuid
   tenantId  String   @map("tenant_id")
-  /// `seller` today; `admin` joins with the admin notices.
+  /// `seller` or `admin` (package 3: the Market's admins, no seller).
   audience  String
   /// Set if and only if the audience is `seller` (a plain id, no foreign key).
   sellerId  String?  @map("seller_id") @db.Uuid

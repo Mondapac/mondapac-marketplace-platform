@@ -13,6 +13,9 @@ export function badgeCount(count: number): string {
 /** How often the seller panel asks for the unread count while its tab is visible. */
 export const SELLER_POLL_MILLISECONDS = 30_000;
 
+/** How often the admin panel asks, also only while its tab is visible (package 3). */
+export const ADMIN_POLL_MILLISECONDS = 60_000;
+
 /**
  * Whether a poll's newest unread notice should ring. Notice ids are UUID v7, so a later notice
  * has a greater id: only a notice of a ringing kind newer than the last one heard rings. A burst

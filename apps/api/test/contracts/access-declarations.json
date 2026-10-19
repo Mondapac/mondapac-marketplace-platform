@@ -54,6 +54,7 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "catalog.pending-product-revisions", "rule": "system" },
   { "name": "catalog.published-offer-ids", "rule": "system" },
   { "name": "catalog.reconcile-tags", "rule": "system" },
   { "name": "catalog.reevaluate-from-certification", "rule": "system" },
@@ -344,6 +345,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "notifications.purge-expired-notices", "rule": "system" },
+  { "name": "notifications.record-admin-review-notice", "rule": "system" },
   { "name": "notifications.record-seller-order-notices", "rule": "system" },
   { "name": "notifications.send-order-confirmation-mail", "rule": "system" },
   { "name": "notifications.send-order-shipped-mail", "rule": "system" },
