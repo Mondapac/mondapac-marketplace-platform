@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import type { RefundView } from '../application/refund-flow';
+import type { RefundView } from '../application/use-cases/admin-refund-order.use-case';
 import { REFUND_REASONS } from '../domain/refund';
 import { moneyBody } from './http-answers';
 import { MoneyView } from './orders.dto';

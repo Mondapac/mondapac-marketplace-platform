@@ -4,6 +4,8 @@ import { ORDERING_ORDER_REFUND } from '../../contracts/permissions';
 import type { OrderingDependencies } from '../checkout-flow';
 import { adminRefund, type RefundFailure, type RefundInput, type RefundView } from '../refund-flow';
 
+export type { RefundView };
+
 /**
  * An admin refunds part or all of one seller order of a paid order (tax step 3; rule
  * `permissions [ordering.order.refund]`, a protected key). Off while `tax.refundCredit.enabled` is.
