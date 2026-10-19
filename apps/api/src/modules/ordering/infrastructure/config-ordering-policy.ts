@@ -37,4 +37,8 @@ export class ConfigOrderingPolicy implements OrderingPolicy {
   refundsEnabled(market: MarketContext): boolean {
     return this.markets.get(market.marketId).tax?.refundCredit?.enabled === true;
   }
+
+  invoicesEnabled(market: MarketContext): boolean {
+    return this.markets.get(market.marketId).tax?.invoice?.enabled === true;
+  }
 }

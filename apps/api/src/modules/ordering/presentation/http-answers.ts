@@ -30,6 +30,8 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.refund-exceeds': 422,
   'ordering.refund-rejected': 422,
   'ordering.refund-tax-unavailable': 503,
+  'ordering.document-not-available': 409,
+  'ordering.invoice-numbering-unavailable': 503,
   'access.unavailable': 503,
 });
 

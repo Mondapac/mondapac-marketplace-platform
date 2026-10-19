@@ -31,6 +31,7 @@ import { AdminRefundOrder } from './application/use-cases/admin-refund-order.use
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
+import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case';
 import { SellerOrderCustomerNames } from './application/use-cases/seller-order-customer-names.use-case';
@@ -43,8 +44,10 @@ import { SellerDeliverOrder } from './application/use-cases/seller-deliver-order
 import { SellerListOrders } from './application/use-cases/seller-list-orders.use-case';
 import { SellerShipOrder } from './application/use-cases/seller-ship-order.use-case';
 import { SellerViewOrder } from './application/use-cases/seller-view-order.use-case';
+import { SellerViewOrderDocument } from './application/use-cases/seller-view-order-document.use-case';
 import { StartCheckout } from './application/use-cases/start-checkout.use-case';
 import { ViewOrder } from './application/use-cases/view-order.use-case';
+import { ViewOrderDocument } from './application/use-cases/view-order-document.use-case';
 import { ORDERING_FACADE, ORDERING_PERMISSIONS, ORDERING_RANKING_FACADE } from './contracts';
 import { SALES_RANKING_READER } from './application/ports/sales-ranking.reader';
 import {
@@ -118,6 +121,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * admin refunds part or all of a paid seller order, with the tax reversed by `tax` and a credit
  * note, behind the Market switch `tax.refundCredit.enabled` (off), Stripe test mode only, each
  * request and outcome audited; a worker job settles refunds whose Stripe answer is not final.
+ * Tax step 4: the customer, the seller and an admin read the order document of a paid order,
+ * built from frozen values: an order confirmation while `tax.invoice.enabled` is off.
  */
 @Module({
   imports: [
@@ -142,13 +147,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ...[
       StartCheckout,
       ViewOrder,
+      ViewOrderDocument,
       ListOrders,
       AdminViewOrder,
+      AdminViewOrderDocument,
       AdminListOrders,
       ConfirmPayment,
       CancelPayment,
       SellerListOrders,
       SellerViewOrder,
+      SellerViewOrderDocument,
       SellerShipOrder,
       SellerDeliverOrder,
       RecordShipments,

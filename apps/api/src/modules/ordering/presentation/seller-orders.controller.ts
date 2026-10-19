@@ -21,6 +21,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiQuery,
+  ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -35,7 +36,9 @@ import {
 import { SellerDeliverOrder } from '../application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from '../application/use-cases/seller-list-orders.use-case';
 import { SellerShipOrder } from '../application/use-cases/seller-ship-order.use-case';
+import { SellerViewOrderDocument } from '../application/use-cases/seller-view-order-document.use-case';
 import { SellerViewOrder } from '../application/use-cases/seller-view-order.use-case';
+import { OrderDocumentBody, orderDocumentBody } from './documents.dto';
 import { closedBody, refusal } from './http-answers';
 import {
   SellerOrderPageBody,
@@ -73,6 +76,7 @@ export class SellerOrdersController {
     private readonly view: SellerViewOrder,
     private readonly ship: SellerShipOrder,
     private readonly deliver: SellerDeliverOrder,
+    private readonly documentOf: SellerViewOrderDocument,
   ) {}
 
   @Get()
@@ -130,6 +134,41 @@ export class SellerOrdersController {
     this.log('ordering.seller-view-order-route', context, result.ok ? 'read' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return sellerOrderShipBody(result.value);
+  }
+
+  @Get(':sellerOrderId/document')
+  @ApiOperation({
+    summary: "The document of one of the shop's paid orders (its part only)",
+    description:
+      'Needs ordering.seller-order.view. ' +
+      'Built from the values frozen at placement. An order confirmation (no number) while ' +
+      'tax.invoice.enabled is off; on, 503 ordering.invoice-numbering-unavailable (numbering ' +
+      'not built).',
+  })
+  @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
+  @ApiOkResponse({ type: OrderDocumentBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found' })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'ordering.invoice-numbering-unavailable or access.unavailable',
+  })
+  async document(
+    @Call() context: CallContext,
+    @Param('sellerOrderId') sellerOrderId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.documentOf.execute(context, { sellerOrderId });
+    this.log(
+      'ordering.seller-view-order-document-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return orderDocumentBody(result.value);
   }
 
   @Post(':sellerOrderId/ship')

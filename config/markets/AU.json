@@ -19,7 +19,8 @@
   },
   "tax": {
     "defaultRateBps": 1000,
-    "refundCredit": { "enabled": false }
+    "refundCredit": { "enabled": false },
+    "invoice": { "enabled": false }
   },
   "notifications": {
     "supportEmail": "jnamazi@gmail.com",
