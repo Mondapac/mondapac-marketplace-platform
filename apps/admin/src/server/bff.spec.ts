@@ -697,3 +697,54 @@ describe('relay of the sellers without an owner', () => {
     expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
   });
 });
+
+describe('relay of the admin notice routes', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const notices = ['notifications', 'admin', 'notices'];
+  const get = (path: readonly string[], query = '') =>
+    new Request(`http://admin.localhost:3002/api/${path.join('/')}${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+
+  it('lists notices forwarding only a valid `show` and `before`, and reads the count', async () => {
+    const upstream = upstreamOk();
+    const query = `?show=read&before=${ID}&x=1`;
+    expect((await relay(config, get(notices, query), notices, upstream)).status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/notifications/admin/notices?show=read&before=${ID}`,
+    );
+    await relay(config, get(notices, '?show=everything&before=x'), notices, upstream);
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/notifications/admin/notices');
+    const count = [...notices, 'unread-count'];
+    expect((await relay(config, get(count, '?show=all'), count, upstream)).status).toBe(200);
+    expect(upstream.mock.calls[2]?.[0]).toBe(
+      'http://api.test/notifications/admin/notices/unread-count',
+    );
+  });
+
+  it('posts read-all and one read by UUID, same-origin only, and nothing near them', async () => {
+    const upstream = upstreamOk();
+    for (const path of [
+      [...notices, 'read-all'],
+      [...notices, ID, 'read'],
+    ]) {
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+      const crossSite = { ...sameOrigin, 'sec-fetch-site': 'cross-site' };
+      expect((await relay(config, post(path.join('/'), crossSite), path, upstream)).status).toBe(
+        403,
+      );
+    }
+    for (const path of [
+      [...notices, 'x', 'read'],
+      [...notices, ID, 'delete'],
+      [...notices, ID],
+      notices,
+      [...notices, 'unread-count'],
+    ]) {
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+    }
+    const read = [...notices, ID, 'read'];
+    expect((await relay(config, get(read), read, upstream)).status).toBe(404);
+  });
+});

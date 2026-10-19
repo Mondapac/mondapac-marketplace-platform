@@ -9,6 +9,8 @@ export {
   OfferMoved,
   OfferPublished,
   ProductRevisionPublished,
+  // Consumed by notifications' admin review notice (package 3).
+  ProductRevisionSubmitted,
   VariantAdded,
   VariantRemoved,
 } from '../domain/events';

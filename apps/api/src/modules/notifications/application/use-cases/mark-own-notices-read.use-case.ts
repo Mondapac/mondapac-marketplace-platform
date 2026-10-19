@@ -2,7 +2,7 @@ import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import {
-  sellerReaderScope,
+  readerScope,
   type InAppNoticeDependencies,
   type OwnNoticesFailure,
 } from '../in-app-notice-flow';
@@ -22,7 +22,7 @@ export type MarkOwnNoticesReadFailure =
 
 /**
  * `notifications.mark-own-notices-read` (in-app notifications package 1): the signed-in
- * seller-side member marks one notice, or every notice they may see, as read for themselves; the
+ * seller-side member (or admin, package 3) marks one notice, or every notice they may see, as read for themselves; the
  * other members' read state is their own. Rule `own-resources`: a notice outside the member's
  * scope (another seller's, a kind they may not see, past retention) is `notice-not-found`, the
  * same answer as an unknown id. Marking a read notice again changes nothing.
@@ -59,7 +59,7 @@ export class MarkOwnNoticesRead extends UseCase<
       }
       target = parsed.value as Id<'InAppNotice'>;
     }
-    const scope = await sellerReaderScope(this.deps, context);
+    const scope = await readerScope(this.deps, context);
     if (!scope.ok) return scope;
     if (scope.value.kinds.length === 0) {
       return target === 'all' ? ok({ marked: 0 }) : err({ code: 'notifications.notice-not-found' });
@@ -68,11 +68,11 @@ export class MarkOwnNoticesRead extends UseCase<
     const done = await this.deps.unitOfWork.run(context.market, async () => {
       if (
         target !== 'all' &&
-        !(await this.deps.notices.existsForSeller(context.market, scope.value, target))
+        !(await this.deps.notices.exists(context.market, scope.value, target))
       ) {
         return err({ code: 'notifications.notice-not-found' as const });
       }
-      const ids = await this.deps.notices.unreadIdsForSeller(
+      const ids = await this.deps.notices.unreadIds(
         context.market,
         scope.value,
         target === 'all' ? 'all' : [target],

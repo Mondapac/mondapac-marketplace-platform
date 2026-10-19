@@ -79,6 +79,7 @@ export {
   type NotificationDrawerProps,
 } from './notifications/notification-drawer.tsx';
 export {
+  ADMIN_POLL_MILLISECONDS,
   badgeCount,
   HEARD_NONE,
   laterNotice,
@@ -88,3 +89,12 @@ export {
   type NoticeFilter,
 } from './notifications/notices.ts';
 export { createChime, type Chime } from './notifications/chime.ts';
+export {
+  useNoticeFeed,
+  type FeedNotice,
+  type NoticeCall,
+  type NoticeFeed,
+  type NoticeFeedOptions,
+  type NoticeFeedPage,
+} from './notifications/use-notice-feed.ts';
+export { NoticeCenter, type NoticeCenterProps } from './notifications/notice-center.tsx';

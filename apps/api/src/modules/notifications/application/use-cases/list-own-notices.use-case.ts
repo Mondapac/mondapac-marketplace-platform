@@ -7,7 +7,7 @@ import type { NoticeFilter } from '../ports/in-app-notice.repository';
 /** The list's filters (john 2026-10-17): unread, read, all; unread first. */
 const NOTICE_FILTERS: readonly NoticeFilter[] = ['unread', 'read', 'all'];
 import {
-  sellerReaderScope,
+  readerScope,
   viewOf,
   withCustomerNames,
   type InAppNoticeDependencies,
@@ -34,7 +34,8 @@ export interface ListOwnNoticesOutput {
  * `notifications.list-own-notices` (in-app notifications package 1): the notices the signed-in
  * seller-side member may see, newest first, a page at a time, each with whether this member has
  * read it, filtered by this member's read state (unread by default, read, or all). Rule `own-resources`: the seller and the account are the actor's own, so nobody reads
- * another seller's notices, and each kind is shown only while the member holds its permission.
+ * another seller's notices, and each kind is shown only while the member holds its permission. An
+ * admin (package 3) reads the Market's admin notices the same way, each kind under its permission.
  * One read-only unit; then, outside it, one ordering call adds the customers' short names (shown
  * only to a member holding `identity.customer-short-name.view`; never stored).
  */
@@ -75,14 +76,14 @@ export class ListOwnNotices extends UseCase<
       }
       show = input.show as NoticeFilter;
     }
-    const scope = await sellerReaderScope(this.deps, context);
+    const scope = await readerScope(this.deps, context);
     if (!scope.ok) return scope;
     if (scope.value.kinds.length === 0) return ok({ items: [], next: null });
     const read = await this.deps.unitOfWork.run(
       context.market,
       async () =>
         ok(
-          await this.deps.notices.listForSeller(context.market, scope.value, {
+          await this.deps.notices.list(context.market, scope.value, {
             before,
             limit: NOTICE_PAGE_SIZE,
             show,
