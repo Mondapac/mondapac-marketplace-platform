@@ -5304,7 +5304,7 @@ button.login {
   line-height: calc(24px * var(--fs));
   font-weight: 800;
 }
-.ac-card p {
+.ac-card p:not(.ac-note) {
   text-align: justify;
   hyphens: auto;
 }
