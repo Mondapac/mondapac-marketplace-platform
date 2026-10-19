@@ -20,19 +20,20 @@ export interface CreditNoteRecord {
  */
 export interface RefundRepository {
   /**
-   * A paid or unpaid seller order with what earlier refunds gave back, or null. `owner` narrows
-   * it: the seller's own seller order, or the seller order of that order (an admin route names
-   * both). Unknown and foreign are one answer.
+   * A paid or unpaid seller order of that order with what earlier refunds gave back, or null
+   * (the admin route names both ids; unknown and foreign are one answer).
    */
   findTarget(
     market: MarketContext,
     sellerOrderId: Id<'SellerOrder'>,
-    owner: { readonly sellerId: Id<'Seller'> } | { readonly orderId: Id<'Order'> },
+    orderId: Id<'Order'>,
   ): Promise<RefundTarget | null>;
 
   /**
    * Raises the seller order's refunded sum by the refund's gross only if it still is
-   * `expectedRefunded`, then inserts the refund with its lines. `stale` writes nothing.
+   * `expectedRefunded` and the order is still confirmed and captured (Hassan L4), then inserts
+   * the refund with its lines. `stale` writes nothing, also when another refund of the seller
+   * order became pending meanwhile (the one-pending index; Hassan L3).
    */
   reserve(
     market: MarketContext,
@@ -52,15 +53,26 @@ export interface RefundRepository {
   ): Promise<boolean>;
 
   /**
-   * Marks a pending refund failed and lowers the seller order's refunded sum by its gross. False
-   * when it was no longer pending.
+   * Marks a pending refund failed (with Stripe's refund id when Stripe made one that failed) and
+   * lowers the seller order's refunded sum by its gross. False when it was no longer pending.
    */
-  markFailed(market: MarketContext, refund: Refund, at: Temporal.Instant): Promise<boolean>;
+  markFailed(
+    market: MarketContext,
+    refund: Refund,
+    at: Temporal.Instant,
+    stripeRefundId: string | null,
+  ): Promise<boolean>;
 
-  /** Counts one more Stripe call that answered nothing known. */
-  countAttempt(market: MarketContext, refundId: Id<'Refund'>): Promise<void>;
+  /**
+   * Counts one more Stripe call whose answer was not final, and keeps Stripe's refund id when
+   * Stripe made one that is still pending (it is then read back by id, never made again).
+   */
+  countAttempt(market: MarketContext, refund: Refund, stripeRefundId: string | null): Promise<void>;
 
-  /** Pending refunds asked for after `window.after` and before `window.before`, oldest first. */
+  /**
+   * Pending refunds asked for before `window.before`, oldest first: those Stripe made (read back
+   * by id) at any age, the others only after `window.after` (while Stripe keeps their key).
+   */
   findPending(
     market: MarketContext,
     window: { readonly after: Temporal.Instant; readonly before: Temporal.Instant },

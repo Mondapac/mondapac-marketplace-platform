@@ -133,7 +133,16 @@ describe('planRefund and priceRefund', () => {
       gross: 1100n + 275n,
       tax: 125n,
       shipping: { gross: 275n, tax: 25n, taxRateBps: 1000, taxInclusive: true },
-      lines: [{ orderLineId: LINE_A, quantity: 1, unitsBefore: 0, gross: 1100n, tax: 100n }],
+      lines: [
+        {
+          orderLineId: LINE_A,
+          quantity: 1,
+          lineQuantity: 3,
+          unitsBefore: 0,
+          gross: 1100n,
+          tax: 100n,
+        },
+      ],
       state: 'pending',
     });
   });

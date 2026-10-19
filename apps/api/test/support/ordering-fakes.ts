@@ -13,9 +13,11 @@ import type {
   CommissionRateMap,
   PaidSellerOrder,
 } from '../../src/modules/commission-payouts';
+import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import type {
   CheckoutGateway,
   GatewayFailure,
+  RefundAnswer,
 } from '../../src/modules/ordering/application/ports/checkout-gateway';
 import {
   orderUnitKey,
@@ -68,6 +70,11 @@ const id = <T extends string>(n: number): Id<T> => {
 export const NO_REFUNDS: RefundRepository = new Proxy({} as RefundRepository, {
   get: (_target, name) => () => Promise.reject(new Error(`refunds.${String(name)} not expected`)),
 });
+
+/** The audit writer of tests that write no refund: ordering audits only refunds. */
+export const NO_AUDIT: AuditWriter = {
+  record: () => Promise.reject(new Error('audit.record not expected')),
+};
 
 export class MemoryOrders implements OrderRepository {
   readonly rows = new Map<string, OrderState>();
@@ -390,13 +397,26 @@ export class FakeGateway implements CheckoutGateway {
   }
   refunds: Parameters<CheckoutGateway['refund']>[0][] = [];
   refundFails: GatewayFailure | null = null;
+  /** Where a refund Stripe makes stands (`succeeded` unless a test says otherwise). */
+  refundAnswers: RefundAnswer['status'] = 'succeeded';
+  /** The refund ids read back, and where each now stands. */
+  statusReads: string[] = [];
+  readAnswers: RefundAnswer['status'] = 'succeeded';
   refund(request: Parameters<CheckoutGateway['refund']>[0]) {
     this.refunds.push(request);
     if (this.refundFails !== null) return Promise.resolve(err(this.refundFails));
     // Stripe answers a repeated key with the same refund.
     return Promise.resolve(
-      ok({ refundId: `re_test_${request.idempotencyKey.replace(/[^A-Za-z0-9]/g, '')}` }),
+      ok({
+        refundId: `re_test_${request.idempotencyKey.replace(/[^A-Za-z0-9]/g, '')}`,
+        status: this.refundAnswers,
+      }),
     );
+  }
+  refundStatus(stripeRefundId: string) {
+    this.statusReads.push(stripeRefundId);
+    if (this.refundFails !== null) return Promise.resolve(err(this.refundFails));
+    return Promise.resolve(ok({ refundId: stripeRefundId, status: this.readAnswers }));
   }
 }
 

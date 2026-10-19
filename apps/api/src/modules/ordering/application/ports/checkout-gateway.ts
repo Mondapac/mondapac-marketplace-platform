@@ -43,11 +43,20 @@ export interface CheckoutGateway {
 
   /**
    * Gives `amount` (minor units) of the captured money back to the card (tax step 3). Test mode
-   * only: with a live key the adapter refuses without calling Stripe. Answers Stripe's refund id.
+   * only: with a live key the adapter refuses without calling Stripe. Answers Stripe's refund id
+   * and where it stands: only `succeeded` is final money back (Hassan M1); `pending` is read
+   * again later with {@link refundStatus}; `failed` gave nothing back.
    */
-  refund(
-    request: RefundCallRequest,
-  ): Promise<Result<{ readonly refundId: string }, GatewayFailure>>;
+  refund(request: RefundCallRequest): Promise<Result<RefundAnswer, GatewayFailure>>;
+
+  /** Reads a refund Stripe already made, by its id (test mode only, as `refund`). */
+  refundStatus(stripeRefundId: string): Promise<Result<RefundAnswer, GatewayFailure>>;
+}
+
+/** Stripe's refund and its state: `pending` covers Stripe's `pending` and `requires_action`. */
+export interface RefundAnswer {
+  readonly refundId: string;
+  readonly status: 'succeeded' | 'pending' | 'failed';
 }
 
 export interface RefundCallRequest {

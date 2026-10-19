@@ -52,6 +52,7 @@ const AUDITING_MODULES = [
   'CommissionPayoutsModule',
   'IdentityModule',
   'NotificationsModule',
+  'OrderingModule',
   'PaymentsModule',
   'PricingModule',
   'SellersModule',
@@ -144,6 +145,8 @@ const isAmountKind = (kind: AuditFieldKind): boolean =>
  * never enters an audit row (ADR-0024), which `costLeakProblems` checks apart from this list.
  */
 const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
+  'ordering.refund.requested.after.amount',
+  'ordering.refund.requested.after.tax',
   'pricing.price-hold.approved.after.amount',
   'pricing.price-hold.approved.after.anchorAmount',
   'pricing.price-hold.rejected.after.amount',
@@ -440,6 +443,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['CommissionPayoutsModule', 'commission-payouts'],
       ['IdentityModule', 'identity'],
       ['NotificationsModule', 'notifications'],
+      ['OrderingModule', 'ordering'],
       ['PaymentsModule', 'payments'],
       ['PricingModule', 'pricing'],
       ['SellersModule', 'sellers'],
@@ -475,6 +479,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['IdentityModule', 'writer'],
       ['NotificationsModule', 'actions'],
       ['NotificationsModule', 'writer'],
+      ['OrderingModule', 'actions'],
+      ['OrderingModule', 'writer'],
       ['PaymentsModule', 'actions'],
       ['PaymentsModule', 'writer'],
       ['PricingModule', 'actions'],
@@ -574,6 +580,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'identity', 'identity.module.ts')}: registerAuditActions('identity')`,
       `${path.join('modules', 'notifications', 'notifications.module.ts')}: auditWriterFor('notifications')`,
       `${path.join('modules', 'notifications', 'notifications.module.ts')}: registerAuditActions('notifications')`,
+      `${path.join('modules', 'ordering', 'ordering.module.ts')}: auditWriterFor('ordering')`,
+      `${path.join('modules', 'ordering', 'ordering.module.ts')}: registerAuditActions('ordering')`,
       `${path.join('modules', 'payments', 'payments.module.ts')}: auditWriterFor('payments')`,
       `${path.join('modules', 'payments', 'payments.module.ts')}: registerAuditActions('payments')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: auditWriterFor('pricing')`,

@@ -909,6 +909,31 @@
     }
   },
   {
+    "action": "ordering.refund.requested",
+    "targetType": "ordering.refund",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "lineCount": "integer",
+      "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other)",
+      "sellerOrderId": "id",
+      "tax": "optional(money)"
+    }
+  },
+  {
+    "action": "ordering.refund.settled",
+    "targetType": "ordering.refund",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "creditNoteId": "optional(id)",
+      "outcome": "enumOf(succeeded|failed)"
+    }
+  },
+  {
     "action": "payments.payout-change.recorded",
     "targetType": "payments.connected-account",
     "targetId": "id",

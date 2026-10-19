@@ -4,6 +4,7 @@ import type {
   CheckoutGateway,
   CreateSessionRequest,
   GatewayFailure,
+  RefundAnswer,
   RefundCallRequest,
 } from '../application/ports/checkout-gateway';
 
@@ -14,13 +15,38 @@ const STRIPE_API = 'https://api.stripe.com';
 /** `fetch`, narrowed to what the adapter uses, so tests can pass a fake. */
 export type StripeFetch = (
   url: string,
-  init: { method: 'POST'; headers: Record<string, string>; body: string; signal: AbortSignal },
+  init: {
+    method: 'POST' | 'GET';
+    headers: Record<string, string>;
+    body?: string;
+    signal: AbortSignal;
+  },
 ) => Promise<{ readonly status: number; json(): Promise<unknown> }>;
 
 const UNAVAILABLE: GatewayFailure = Object.freeze({
   code: 'payment.provider-unavailable' as const,
 });
 const REJECTED: GatewayFailure = Object.freeze({ code: 'payment.provider-rejected' as const });
+const REFUND_ID = /^re_[A-Za-z0-9_]{1,200}$/;
+
+/**
+ * Stripe's refund object as {@link RefundAnswer}. Only `succeeded` is money back (Hassan M1);
+ * `pending` and `requires_action` are read again later; `failed` and `canceled` gave nothing
+ * back. Anything else, or no refund id, is not an answer.
+ */
+function refundAnswer(
+  answer: Result<Record<string, unknown>, GatewayFailure>,
+): Result<RefundAnswer, GatewayFailure> {
+  if (!answer.ok) return answer;
+  const { id, status } = answer.value;
+  if (typeof id !== 'string' || !REFUND_ID.test(id)) return err(UNAVAILABLE);
+  if (status === 'succeeded') return ok({ refundId: id, status: 'succeeded' });
+  if (status === 'pending' || status === 'requires_action') {
+    return ok({ refundId: id, status: 'pending' });
+  }
+  if (status === 'failed' || status === 'canceled') return ok({ refundId: id, status: 'failed' });
+  return err(UNAVAILABLE);
+}
 
 /**
  * Stripe Checkout over its REST API with `fetch` (no SDK). One request per call, never retried
@@ -99,14 +125,16 @@ export class StripeCheckoutGateway implements CheckoutGateway {
     form.set('metadata[order_id]', request.orderId);
     form.set('metadata[refund_id]', request.refundId);
     form.set('metadata[market_id]', request.marketId);
-    const answer = await this.post('/v1/refunds', form, request.idempotencyKey);
-    if (!answer.ok) return answer;
-    const id = answer.value.id;
-    const status = answer.value.status;
-    if (typeof id !== 'string' || !/^re_[A-Za-z0-9_]{1,200}$/.test(id)) return err(UNAVAILABLE);
-    // A refund Stripe already marked failed or canceled gave nothing back.
-    if (status === 'failed' || status === 'canceled') return err(REJECTED);
-    return ok({ refundId: id });
+    return refundAnswer(await this.post('/v1/refunds', form, request.idempotencyKey));
+  }
+
+  async refundStatus(stripeRefundId: string) {
+    if (this.secretKey === null || !this.secretKey.startsWith('sk_test_')) return err(REJECTED);
+    if (!REFUND_ID.test(stripeRefundId)) return err(REJECTED);
+    const answer = await this.post(`/v1/refunds/${stripeRefundId}`, null, null);
+    // Another refund than the one asked for is not an answer.
+    if (answer.ok && answer.value.id !== stripeRefundId) return err(UNAVAILABLE);
+    return refundAnswer(answer);
   }
 
   private async intentCall(
@@ -123,10 +151,13 @@ export class StripeCheckoutGateway implements CheckoutGateway {
     return answer.ok ? ok(true as const) : answer;
   }
 
-  /** One POST. 5xx, a timeout and a network error are `unavailable`; a 4xx is `rejected`. */
+  /**
+   * One POST, or a GET without a form. 5xx, a timeout and a network error are `unavailable`; a
+   * 4xx is `rejected`.
+   */
   private async post(
     path: string,
-    form: URLSearchParams,
+    form: URLSearchParams | null,
     idempotencyKey: string | null,
   ): Promise<Result<Record<string, unknown>, GatewayFailure>> {
     if (this.secretKey === null) return err(UNAVAILABLE);
@@ -139,9 +170,9 @@ export class StripeCheckoutGateway implements CheckoutGateway {
     const timer = setTimeout(() => timeout.abort(), this.timeoutMs);
     try {
       const response = await this.fetchFn(`${STRIPE_API}${path}`, {
-        method: 'POST',
+        method: form === null ? 'GET' : 'POST',
         headers,
-        body: form.toString(),
+        ...(form === null ? {} : { body: form.toString() }),
         signal: timeout.signal,
       });
       if (response.status >= 500 || response.status === 429 || response.status === 409) {

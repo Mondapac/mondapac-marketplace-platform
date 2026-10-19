@@ -1,5 +1,7 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerEvents } from '../../platform/events/event-catalogue';
+import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
+import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
@@ -26,7 +28,6 @@ import { REFUND_REPOSITORY } from './application/ports/refund.repository';
 import { ORDERING_POLICY } from './application/ports/ordering-policy';
 import { SHIP_TO_CIPHER } from './application/ports/ship-to-cipher';
 import { AdminRefundOrder } from './application/use-cases/admin-refund-order.use-case';
-import { SellerRefundOrder } from './application/use-cases/seller-refund-order.use-case';
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
@@ -51,6 +52,7 @@ import {
   type BestSellingOffersDependencies,
 } from './application/use-cases/best-selling-offers.use-case';
 import { OrderingRankingFacadeImplementation } from './presentation/ordering-ranking.facade';
+import { ORDERING_AUDIT_ACTIONS } from './domain/audit';
 import { ORDERING_EVENTS } from './domain/events';
 import { orderingProviders } from './infrastructure/ordering-providers';
 import { AdminOrdersController } from './presentation/admin-orders.controller';
@@ -78,6 +80,7 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['tax', TAX_FACADE],
   ['taxCategories', ORDER_TAX_CATEGORIES],
   ['outbox', OUTBOX_WRITER],
+  ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
   ['labels', ORDER_LABELS],
@@ -112,9 +115,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * an address of their address book at checkout; a fixed copy, sealed under the account's key, is
  * stored on the order and shown to the customer and to each seller of the order. Storefront
  * reads: the best-selling Offers (ids only) through `ORDERING_RANKING_FACADE`. Tax step 3: an
- * admin or the seller refunds part or all of a paid seller order, with the tax reversed by `tax`
- * and a credit note, behind the Market switch `tax.refundCredit.enabled` (off), Stripe test mode
- * only; a worker job retries refunds whose Stripe answer is unknown.
+ * admin refunds part or all of a paid seller order, with the tax reversed by `tax` and a credit
+ * note, behind the Market switch `tax.refundCredit.enabled` (off), Stripe test mode only, each
+ * request and outcome audited; a worker job settles refunds whose Stripe answer is not final.
  */
 @Module({
   imports: [
@@ -131,6 +134,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   controllers: [OrdersController, AdminOrdersController, SellerOrdersController],
   providers: [
     PersistenceModule.outboxWriterFor('ordering'),
+    PersistenceModule.auditWriterFor('ordering'),
+    registerAuditActions('ordering', ORDERING_AUDIT_ACTIONS),
     registerEvents('ordering', ORDERING_EVENTS),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
     ...orderingProviders,
@@ -152,7 +157,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
       AdminRefundOrder,
-      SellerRefundOrder,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {

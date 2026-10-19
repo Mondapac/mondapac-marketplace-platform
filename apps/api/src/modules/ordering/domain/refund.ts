@@ -2,16 +2,19 @@ import { parseId } from '@mondapac/shared-kernel';
 import type { Id, Temporal } from '@mondapac/shared-kernel';
 import type { OrderStatus, PaymentState } from './order';
 
-// Refunds of a paid seller order (tax step 3; ADR-0007 decision 11): whole lines, some units of a
+// Refunds of a paid seller order by an admin (tax step 3; ADR-0007 decision 11; no seller path,
+// ordering design 97): whole lines, some units of a
 // line, or part or all of the flat shipping fee. Every amount comes from the values frozen on the
 // order (unit price, line tax, shipping tax); the tax reversed comes from `tax`, never from a
 // current price or rate. A refund never gives back more than the seller order took.
 
+/** Hadi's list (ordering data design O6a). */
 export const REFUND_REASONS = [
-  'customer-request',
+  'not-received',
   'damaged',
-  'not-delivered',
   'wrong-item',
+  'not-as-described',
+  'seller-cancelled',
   'other',
 ] as const;
 export type RefundReason = (typeof REFUND_REASONS)[number];
@@ -21,6 +24,8 @@ export type RefundState = 'pending' | 'succeeded' | 'failed';
 export interface RefundLine {
   readonly orderLineId: Id<'OrderLine'>;
   readonly quantity: number;
+  /** The order line's own quantity: the database refuses units past it. */
+  readonly lineQuantity: number;
   /** Units of the line refunded by earlier refunds that had not failed. */
   readonly unitsBefore: number;
   readonly gross: bigint;
@@ -46,7 +51,7 @@ export interface Refund {
     readonly taxInclusive: boolean;
   } | null;
   readonly reason: RefundReason;
-  readonly actor: { readonly population: 'admin' | 'seller'; readonly accountId: Id<'Account'> };
+  readonly actor: { readonly population: 'admin'; readonly accountId: Id<'Account'> };
   readonly state: RefundState;
   readonly stripeIdempotencyKey: string;
   readonly stripeRefundId: string | null;
@@ -266,6 +271,7 @@ export function priceRefund(
     return {
       orderLineId: line.id,
       quantity: units,
+      lineQuantity: line.quantity,
       unitsBefore,
       gross: line.taxInclusive ? goods : goods + tax,
       tax,

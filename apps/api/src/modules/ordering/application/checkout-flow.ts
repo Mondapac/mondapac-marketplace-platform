@@ -18,6 +18,7 @@ import type {
   ReserveFailure,
   ReserveResult,
 } from '../../inventory/contracts/ordering-port';
+import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
@@ -54,6 +55,8 @@ export interface OrderingDependencies {
   /** The product's tax category of each Offer bought (catalog's published revision). */
   readonly taxCategories: OrderTaxCategories;
   readonly outbox: OutboxWriter;
+  /** The audit of refunds (tax step 3). */
+  readonly audit: AuditWriter;
   readonly ids: IdGenerator;
   readonly clock: Clock;
   /** Display names for the panel order pages (advisory; never inside a unit). */

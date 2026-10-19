@@ -40,18 +40,10 @@ export const ORDERING_ORDER_REFUND = definePermission('ordering', {
   protected: true,
 });
 
-/** Refund part or all of the shop's own paid seller order (tax step 3). */
-export const ORDERING_SELLER_ORDER_REFUND = definePermission('ordering', {
-  key: 'ordering.seller-order.refund',
-  scope: 'seller',
-  protected: true,
-});
-
 export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
   ORDERING_ORDER_REFUND,
   ORDERING_ORDER_VIEW,
   ORDERING_SELLER_ORDER_MARK_DELIVERED,
-  ORDERING_SELLER_ORDER_REFUND,
   ORDERING_SELLER_ORDER_SHIP,
   ORDERING_SELLER_ORDER_VIEW,
 ]);

@@ -55,44 +55,46 @@ model OrderingOrder {
 /// The part of an order that belongs to one seller (the sub-order). `shippingAmount` is the
 /// seller's flat fee at placement (SHP-01). The seller records the shipment and then the delivery.
 model OrderingSellerOrder {
-  id                  String              @id @db.Uuid
-  marketId            String              @map("market_id") @db.VarChar(8)
-  tenantId            String              @map("tenant_id")
-  orderId             String              @map("order_id") @db.Uuid
-  sellerId            String              @map("seller_id") @db.Uuid
-  subtotalAmount      BigInt              @map("subtotal_amount")
-  shippingAmount      BigInt              @map("shipping_amount")
+  id                   String              @id @db.Uuid
+  marketId             String              @map("market_id") @db.VarChar(8)
+  tenantId             String              @map("tenant_id")
+  orderId              String              @map("order_id") @db.Uuid
+  sellerId             String              @map("seller_id") @db.Uuid
+  subtotalAmount       BigInt              @map("subtotal_amount")
+  shippingAmount       BigInt              @map("shipping_amount")
   /// The tax on the flat shipping fee, frozen at placement beside the rate and the price basis
   /// (ADR-0039 decision 4). All three are null on orders placed before it was recorded (CHECK).
-  shippingTaxRateBps  Int?                @map("shipping_tax_rate_bps")
-  shippingTaxAmount   BigInt?             @map("shipping_tax_amount")
-  shippingTaxInclusive Boolean?           @map("shipping_tax_inclusive")
-  totalAmount         BigInt              @map("total_amount")
+  shippingTaxRateBps   Int?                @map("shipping_tax_rate_bps")
+  shippingTaxAmount    BigInt?             @map("shipping_tax_amount")
+  shippingTaxInclusive Boolean?            @map("shipping_tax_inclusive")
+  totalAmount          BigInt              @map("total_amount")
   /// to-ship, shipped or delivered (CHECK). Moves only forward.
-  fulfilment          String
+  fulfilment           String
   /// The carrier the seller named when shipping (1 to 60 characters, CHECK).
-  carrier             String?
+  carrier              String?
   /// The tracking reference, if the seller had one (1 to 80 characters, CHECK).
-  trackingRef         String?             @map("tracking_ref")
-  shippedAt           DateTime?           @map("shipped_at") @db.Timestamptz(6)
-  deliveredAt         DateTime?           @map("delivered_at") @db.Timestamptz(6)
+  trackingRef          String?             @map("tracking_ref")
+  shippedAt            DateTime?           @map("shipped_at") @db.Timestamptz(6)
+  deliveredAt          DateTime?           @map("delivered_at") @db.Timestamptz(6)
   /// Set by the worker once inventory has recorded the lines as shipped.
-  inventoryRecordedAt DateTime?           @map("inventory_recorded_at") @db.Timestamptz(6)
+  inventoryRecordedAt  DateTime?           @map("inventory_recorded_at") @db.Timestamptz(6)
   /// pending, recorded or not-applicable (CHECK): whether the worker has written the seller
   /// order into the seller ledger (commission-payouts). Orders placed before the commission rate
   /// was frozen on their lines are not-applicable.
-  ledgerState         String              @map("ledger_state")
+  ledgerState          String              @map("ledger_state")
   /// How many times the ledger refused this seller order; the worker takes the fewest first.
-  ledgerAttempts      Int                 @default(0) @map("ledger_attempts")
+  ledgerAttempts       Int                 @default(0) @map("ledger_attempts")
   /// The gross of the refunds not failed (pending or succeeded); never above the total (CHECK).
   /// Raised under the value read, so two refunds of one seller order cannot both pass (tax step 3).
-  refundedAmount      BigInt              @default(0) @map("refunded_amount")
-  order               OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  lines               OrderingOrderLine[]
-  refunds             OrderingRefund[]
+  refundedAmount       BigInt              @default(0) @map("refunded_amount")
+  order                OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  lines                OrderingOrderLine[]
+  refunds              OrderingRefund[]
 
   @@unique([marketId, id])
   @@unique([marketId, orderId, sellerId])
+  /// The foreign-key target of the refunds: a refund's order and seller are its seller order's.
+  @@unique([marketId, id, orderId, sellerId])
   @@index([marketId, sellerId, orderId])
   @@map("seller_orders")
   @@schema("ordering")
@@ -100,36 +102,37 @@ model OrderingSellerOrder {
 
 /// One line of an order: a sell unit, a quantity and the unit price the customer was shown.
 model OrderingOrderLine {
-  id                String              @id @db.Uuid
-  marketId          String              @map("market_id") @db.VarChar(8)
-  tenantId          String              @map("tenant_id")
-  orderId           String              @map("order_id") @db.Uuid
-  sellerOrderId     String              @map("seller_order_id") @db.Uuid
-  offerId           String              @map("offer_id") @db.Uuid
-  variantId         String              @map("variant_id") @db.Uuid
+  id                String               @id @db.Uuid
+  marketId          String               @map("market_id") @db.VarChar(8)
+  tenantId          String               @map("tenant_id")
+  orderId           String               @map("order_id") @db.Uuid
+  sellerOrderId     String               @map("seller_order_id") @db.Uuid
+  offerId           String               @map("offer_id") @db.Uuid
+  variantId         String               @map("variant_id") @db.Uuid
   quantity          Int
-  unitAmount        BigInt              @map("unit_amount")
-  lineAmount        BigInt              @map("line_amount")
+  unitAmount        BigInt               @map("unit_amount")
+  lineAmount        BigInt               @map("line_amount")
   /// True when the unit price already includes GST (AU).
-  taxInclusive      Boolean             @map("tax_inclusive")
+  taxInclusive      Boolean              @map("tax_inclusive")
   /// The reservation line this order line commits.
-  reservationLineId String              @map("reservation_line_id") @db.Uuid
+  reservationLineId String               @map("reservation_line_id") @db.Uuid
   /// The commission rate in basis points, frozen when the order was placed (COM-04); null only
   /// on lines placed before the rate was frozen.
-  commissionRateBps Int?                @map("commission_rate_bps")
+  commissionRateBps Int?                 @map("commission_rate_bps")
   /// The tax rate in basis points and the tax of the line in minor units, frozen when the order
   /// was placed (ADR-0039); both null only on lines placed before tax was recorded (CHECK).
-  taxRateBps        Int?                @map("tax_rate_bps")
-  taxAmount         BigInt?             @map("tax_amount")
+  taxRateBps        Int?                 @map("tax_rate_bps")
+  taxAmount         BigInt?              @map("tax_amount")
   /// The tax category code of the product at placement (catalog's published revision), frozen
   /// beside the rate; null only on lines placed before it was recorded (CHECK with the rate).
-  taxCategoryCode   String?             @map("tax_category_code") @db.VarChar(64)
-  order             OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  sellerOrder       OrderingSellerOrder @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  taxCategoryCode   String?              @map("tax_category_code") @db.VarChar(64)
+  order             OrderingOrder        @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  sellerOrder       OrderingSellerOrder  @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   refundLines       OrderingRefundLine[]
 
-  /// The foreign-key target of the refund lines.
-  @@unique([marketId, id])
+  /// The foreign-key target of the refund lines: a refund line names a line of its own seller
+  /// order and copies the line's quantity, which caps the units it refunds (CHECK).
+  @@unique([marketId, id, sellerOrderId, quantity])
   @@unique([marketId, orderId, offerId, variantId])
   @@index([marketId, orderId])
   @@map("order_lines")
@@ -158,28 +161,30 @@ model OrderingRefund {
   /// The shipping tax rate and price basis frozen on the seller order; null when no shipping.
   shippingTaxRateBps   Int?                 @map("shipping_tax_rate_bps")
   shippingTaxInclusive Boolean?             @map("shipping_tax_inclusive")
-  /// customer-request, damaged, not-delivered, wrong-item or other (CHECK).
+  /// not-received, damaged, wrong-item, not-as-described, seller-cancelled or other (CHECK).
   reason               String
-  /// admin or seller (CHECK): who asked for the refund, with their account (a plain id).
+  /// Always admin (CHECK; no seller refund path): who asked for the refund, with their account.
   actorPopulation      String               @map("actor_population")
   actorAccountId       String               @map("actor_account_id") @db.Uuid
-  /// pending, succeeded or failed (CHECK). Moves only from pending.
+  /// pending, succeeded or failed (CHECK). Moves only from pending (trigger).
   state                String
   /// Stored before Stripe is called; the same key on every retry.
   stripeIdempotencyKey String               @map("stripe_idempotency_key")
+  /// Kept once Stripe made the refund (also while it is pending there); never changes after.
   stripeRefundId       String?              @map("stripe_refund_id")
-  /// How many Stripe calls answered nothing known; the worker retries the same key.
+  /// How many Stripe answers were not final; only grows (trigger).
   attempts             Int                  @default(0)
   requestedAt          DateTime             @map("requested_at") @db.Timestamptz(6)
   settledAt            DateTime?            @map("settled_at") @db.Timestamptz(6)
-  sellerOrder          OrderingSellerOrder  @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  sellerOrder          OrderingSellerOrder  @relation(fields: [marketId, sellerOrderId, orderId, sellerId], references: [marketId, id, orderId, sellerId], onDelete: Restrict, onUpdate: Restrict)
   lines                OrderingRefundLine[]
   creditNote           OrderingCreditNote?
 
   @@unique([marketId, id])
+  /// The foreign-key target of the refund lines and the credit note.
+  @@unique([marketId, id, sellerOrderId])
   @@unique([marketId, stripeIdempotencyKey])
   @@index([marketId, sellerOrderId])
-  @@index([marketId, state, requestedAt])
   @@map("refunds")
   @@schema("ordering")
 }
@@ -187,22 +192,26 @@ model OrderingRefund {
 /// The units of one order line a refund gives back, with the tax they reverse (the line's frozen
 /// per-unit shares at positions `[units_before, units_before + quantity)`). Written once.
 model OrderingRefundLine {
-  marketId     String            @map("market_id") @db.VarChar(8)
-  tenantId     String            @map("tenant_id")
-  refundId     String            @map("refund_id") @db.Uuid
-  orderLineId  String            @map("order_line_id") @db.Uuid
-  quantity     Int
+  marketId      String            @map("market_id") @db.VarChar(8)
+  tenantId      String            @map("tenant_id")
+  refundId      String            @map("refund_id") @db.Uuid
+  sellerOrderId String            @map("seller_order_id") @db.Uuid
+  orderLineId   String            @map("order_line_id") @db.Uuid
+  quantity      Int
+  /// The order line's quantity (proven by the foreign key): units never pass it (CHECK).
+  lineQuantity  Int               @map("line_quantity")
   /// Units of the line refunded by earlier refunds that had not failed.
-  unitsBefore  Int               @map("units_before")
-  grossAmount  BigInt            @map("gross_amount")
-  taxAmount    BigInt            @map("tax_amount")
+  unitsBefore   Int               @map("units_before")
+  grossAmount   BigInt            @map("gross_amount")
+  taxAmount     BigInt            @map("tax_amount")
   /// The rate and the price basis frozen on the order line.
-  taxRateBps   Int               @map("tax_rate_bps")
-  taxInclusive Boolean           @map("tax_inclusive")
-  refund       OrderingRefund    @relation(fields: [marketId, refundId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  orderLine    OrderingOrderLine @relation(fields: [marketId, orderLineId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  taxRateBps    Int               @map("tax_rate_bps")
+  taxInclusive  Boolean           @map("tax_inclusive")
+  refund        OrderingRefund    @relation(fields: [marketId, refundId, sellerOrderId], references: [marketId, id, sellerOrderId], onDelete: Restrict, onUpdate: Restrict)
+  orderLine     OrderingOrderLine @relation(fields: [marketId, orderLineId, sellerOrderId, lineQuantity], references: [marketId, id, sellerOrderId, quantity], onDelete: Restrict, onUpdate: Restrict)
 
-  @@id([refundId, orderLineId])
+  @@id([marketId, refundId, orderLineId])
+  /// Serves no query: it only keeps the order-line foreign key cheap to check.
   @@index([marketId, orderLineId])
   @@map("refund_lines")
   @@schema("ordering")
@@ -223,9 +232,11 @@ model OrderingCreditNote {
   grossAmount   BigInt         @map("gross_amount")
   taxAmount     BigInt         @map("tax_amount")
   issuedAt      DateTime       @map("issued_at") @db.Timestamptz(6)
-  refund        OrderingRefund @relation(fields: [marketId, refundId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  refund        OrderingRefund @relation(fields: [marketId, refundId, sellerOrderId], references: [marketId, id, sellerOrderId], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([marketId, refundId])
+  /// The key of the one-to-one refund relation (the pair above is already unique).
+  @@unique([marketId, refundId, sellerOrderId])
   @@index([marketId, sellerOrderId])
   @@map("credit_notes")
   @@schema("ordering")

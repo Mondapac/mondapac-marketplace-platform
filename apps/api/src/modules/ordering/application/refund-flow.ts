@@ -10,17 +10,20 @@ import {
   type RefundState,
   type RefundTarget,
 } from '../domain/refund';
+import { RefundRequested, RefundSettled } from '../domain/audit';
+import { isActingAsSession } from './acting-as';
 import type { OrderingDependencies } from './checkout-flow';
-import type { GatewayFailure } from './ports/checkout-gateway';
+import type { GatewayFailure, RefundAnswer } from './ports/checkout-gateway';
 
 // Refunds of a paid seller order (tax step 3; ADR-0007 decision 11), asked for by an admin
-// (`ordering.order.refund`) or by the seller of that seller order (`ordering.seller-order.refund`).
-// Built behind the Market switch `tax.refundCredit.enabled`, off: while it is off nothing is read,
+// (`ordering.order.refund`). There is no seller refund path (ordering design 97; Hassan H1): a
+// seller's own action never moves money while the seller ledger is not reversed. Built behind the Market switch `tax.refundCredit.enabled`, off: while it is off nothing is read,
 // written or sent to Stripe. The amounts come from the values frozen on the order; `tax` works out
 // the tax reversed. The refund is written (and the seller order's refunded sum raised) before
 // Stripe is called with the stored key; then it settles: succeeded with a credit note, failed
-// (the sum goes back down), or still pending when Stripe's answer is unknown, for the worker to
-// retry with the same key. Commission and the seller ledger are not touched yet (out of scope;
+// (the sum goes back down), or still pending when Stripe's answer is not final: the worker reads
+// a refund Stripe made back by its id, and retries one Stripe never answered with the same key.
+// The request and each outcome are audited (Hassan M3). Commission and the seller ledger are not touched yet (out of scope;
 // GST on commission waits for the tax agent, Q1).
 
 export type RefundFailure =
@@ -114,48 +117,18 @@ export async function adminRefund(
   input: RefundInput & { readonly orderId: unknown },
 ): Promise<Result<RefundView, RefundFailure>> {
   const actor = context.actor;
-  if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
+  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAsSession(actor)) {
     return err({ code: 'access.denied' });
   }
   const orderId = parseIdField<'Order'>(input?.orderId, 'orderId');
-  return refund(deps, context, input, typeof orderId === 'string' ? { orderId } : orderId, {
-    population: 'admin',
-    accountId: actor.accountId,
-  });
-}
-
-/** The seller refunds part or all of one of its own paid seller orders. */
-export async function sellerRefund(
-  deps: OrderingDependencies,
-  context: CallContext,
-  input: RefundInput,
-): Promise<Result<RefundView, RefundFailure>> {
-  const actor = context.actor;
-  if (actor.kind !== 'authenticated' || actor.population !== 'seller') {
-    return err({ code: 'access.denied' });
-  }
-  const sellerId = parseIdField<'Seller'>(actor.sellerId, 'sellerId');
-  if (typeof sellerId !== 'string') return err({ code: 'access.denied' });
-  return refund(
-    deps,
-    context,
-    input,
-    { sellerId },
-    {
-      population: 'seller',
-      accountId: actor.accountId,
-    },
-  );
+  return refund(deps, context, input, orderId, { population: 'admin', accountId: actor.accountId });
 }
 
 async function refund(
   deps: OrderingDependencies,
   context: CallContext,
   input: RefundInput,
-  owner:
-    | { readonly sellerId: Id<'Seller'> }
-    | { readonly orderId: Id<'Order'> }
-    | { readonly path: string; readonly code: string },
+  orderId: Id<'Order'> | { readonly path: string; readonly code: string },
   actor: Refund['actor'],
 ): Promise<Result<RefundView, RefundFailure>> {
   // Off: nothing is read, written or sent (fail closed).
@@ -167,18 +140,23 @@ async function refund(
     reason: input?.reason,
   });
   const fields = [
-    ...('path' in owner ? [owner] : []),
+    ...(typeof orderId === 'string' ? [] : [orderId]),
     ...(typeof sellerOrderId === 'string' ? [] : [sellerOrderId]),
     ...(parsed.ok ? [] : parsed.fields),
   ];
-  if (fields.length > 0 || typeof sellerOrderId !== 'string' || !parsed.ok || 'path' in owner) {
+  if (
+    fields.length > 0 ||
+    typeof sellerOrderId !== 'string' ||
+    typeof orderId !== 'string' ||
+    !parsed.ok
+  ) {
     return err({ code: 'validation.failed', fields });
   }
 
   const read = await deps.unitOfWork.run<RefundTarget, RefundFailure>(
     context.market,
     async () => {
-      const target = await deps.refunds.findTarget(context.market, sellerOrderId, owner);
+      const target = await deps.refunds.findTarget(context.market, sellerOrderId, orderId);
       return target === null
         ? err({ code: 'ordering.seller-order-not-found' } as const)
         : ok(target);
@@ -216,11 +194,24 @@ async function refund(
 
   // The refund and the raised sum are written before Stripe is called: a crash after the call
   // leaves a pending refund the worker retries with the same key, never a second refund.
-  const reserved = await deps.unitOfWork.run<true, RefundFailure>(context.market, async () =>
-    (await deps.refunds.reserve(context.market, priced, target.refunded)) === 'saved'
-      ? ok(true as const)
-      : err({ code: 'conflict.retry' } as const),
-  );
+  const reserved = await deps.unitOfWork.run<true, RefundFailure>(context.market, async () => {
+    if ((await deps.refunds.reserve(context.market, priced, target.refunded)) === 'stale') {
+      return err({ code: 'conflict.retry' } as const);
+    }
+    await deps.audit.record(
+      context,
+      RefundRequested.entry(priced.id, {
+        after: {
+          sellerOrderId: priced.sellerOrderId,
+          amount: money(priced.gross, priced.currency),
+          tax: priced.tax === 0n ? null : money(priced.tax, priced.currency),
+          reason: priced.reason,
+          lineCount: priced.lines.length,
+        },
+      }),
+    );
+    return ok(true as const);
+  });
   if (!reserved.ok) return reserved;
 
   const settled = await settle(deps, context, priced, target.paymentIntentId!);
@@ -235,9 +226,11 @@ interface Settled {
 }
 
 /**
- * One Stripe call for a pending refund, then its outcome in a unit of its own: succeeded with its
- * credit note, failed with the refunded sum lowered, or still pending (attempt counted) when
- * nothing is known. Settling twice is harmless: only a pending refund changes.
+ * One Stripe call for a pending refund, then its outcome in a unit of its own. A refund Stripe
+ * already made is read back by its id; one it never answered is asked for again with its stored
+ * key. Only Stripe's `succeeded` writes the credit note (Hassan M1); `failed` (or a refusal)
+ * lowers the refunded sum; anything else keeps it pending (attempt counted, Stripe's id kept).
+ * Settling twice is harmless: only a pending refund changes.
  */
 async function settle(
   deps: OrderingDependencies,
@@ -245,25 +238,39 @@ async function settle(
   refund: Refund,
   paymentIntentId: string,
 ): Promise<Settled> {
-  const answer = await deps.gateway.refund({
-    paymentIntentId,
-    amount: refund.gross,
-    orderId: refund.orderId,
-    refundId: refund.id,
-    marketId: context.market.marketId,
-    idempotencyKey: refund.stripeIdempotencyKey,
-  });
+  const answer: Result<RefundAnswer, GatewayFailure> =
+    refund.stripeRefundId === null
+      ? await deps.gateway.refund({
+          paymentIntentId,
+          amount: refund.gross,
+          orderId: refund.orderId,
+          refundId: refund.id,
+          marketId: context.market.marketId,
+          idempotencyKey: refund.stripeIdempotencyKey,
+        })
+      : await deps.gateway.refundStatus(refund.stripeRefundId);
   const at = deps.clock.now();
-  if (answer.ok) {
+  const stripeRefundId = answer.ok ? answer.value.refundId : refund.stripeRefundId;
+  if (answer.ok && answer.value.status === 'succeeded') {
     const creditNoteId = deps.ids.next<'CreditNote'>();
-    const done = await deps.unitOfWork.run<boolean, never>(context.market, async () =>
-      ok(
-        await deps.refunds.markSucceeded(context.market, refund, answer.value.refundId, {
+    const done = await deps.unitOfWork.run<boolean, never>(context.market, async () => {
+      const marked = await deps.refunds.markSucceeded(
+        context.market,
+        refund,
+        answer.value.refundId,
+        {
           id: creditNoteId,
           issuedAt: at,
-        }),
-      ),
-    );
+        },
+      );
+      if (marked) {
+        await deps.audit.record(
+          context,
+          RefundSettled.entry(refund.id, { after: { outcome: 'succeeded', creditNoteId } }),
+        );
+      }
+      return ok(marked);
+    });
     return done.ok && done.value
       ? {
           state: 'succeeded',
@@ -277,23 +284,32 @@ async function settle(
         }
       : { state: 'pending', refund, creditNoteId: null };
   }
-  if (isRejected(answer.error)) {
-    await deps.unitOfWork.run<boolean, never>(context.market, async () =>
-      ok(await deps.refunds.markFailed(context.market, refund, at)),
-    );
-    return {
-      state: 'failed',
-      refund: { ...refund, state: 'failed', settledAt: at },
-      creditNoteId: null,
-    };
+  if ((answer.ok && answer.value.status === 'failed') || (!answer.ok && isRejected(answer.error))) {
+    const done = await deps.unitOfWork.run<boolean, never>(context.market, async () => {
+      const marked = await deps.refunds.markFailed(context.market, refund, at, stripeRefundId);
+      if (marked) {
+        await deps.audit.record(
+          context,
+          RefundSettled.entry(refund.id, { after: { outcome: 'failed', creditNoteId: null } }),
+        );
+      }
+      return ok(marked);
+    });
+    return done.ok && done.value
+      ? {
+          state: 'failed',
+          refund: { ...refund, state: 'failed', stripeRefundId, settledAt: at },
+          creditNoteId: null,
+        }
+      : { state: 'pending', refund, creditNoteId: null };
   }
   await deps.unitOfWork.run<true, never>(context.market, async () => {
-    await deps.refunds.countAttempt(context.market, refund.id);
+    await deps.refunds.countAttempt(context.market, refund, answer.ok ? stripeRefundId : null);
     return ok(true as const);
   });
   return {
     state: 'pending',
-    refund: { ...refund, attempts: refund.attempts + 1 },
+    refund: { ...refund, stripeRefundId, attempts: refund.attempts + 1 },
     creditNoteId: null,
   };
 }
@@ -311,16 +327,21 @@ export interface RefundSettling {
 const SETTLE_BATCH = 20;
 /** A refund younger than this may still be in its own request's call. */
 const SETTLE_AFTER = Temporal.Duration.from({ minutes: 1 });
-/** Stripe forgets an idempotency key after 24 hours: past that a retry could refund twice. */
+/**
+ * Stripe forgets an idempotency key after 24 hours: past that, a refund Stripe never answered is
+ * not asked for again (it could refund twice). One Stripe made is read back by id at any age.
+ */
 const RETRY_WINDOW = Temporal.Duration.from({ hours: 23 });
 /** The unknown answers after which a refund is reported as stuck (once, at exactly this count). */
 export const REFUND_STUCK_ATTEMPTS = 10;
 
 /**
- * The worker's side (`ordering.settle-refunds`): retries each pending refund with its stored key
- * while Stripe still remembers the key (asked for between 23 hours and a minute ago). An older one
- * is never retried: it stays pending for a person to check in the Stripe dashboard, and is
- * reported once when its unknown answers reach the threshold. Off: does nothing.
+ * The worker's side (`ordering.settle-refunds`): reads each pending refund Stripe made back by its
+ * id, and retries one Stripe never answered with its stored key while Stripe still remembers the
+ * key (asked for between 23 hours and a minute ago). An older unanswered one is never retried: it
+ * stays pending for a person to check in the Stripe dashboard (an admin resolve use case is a
+ * follow-up, Hassan L1), and is reported once when its attempts reach the threshold. Off: does
+ * nothing.
  */
 export async function settleRefunds(
   deps: OrderingDependencies,

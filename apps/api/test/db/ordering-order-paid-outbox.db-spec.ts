@@ -35,6 +35,7 @@ import {
   FakeShipToCipher,
   FakeTax,
   FakeTaxCategories,
+  NO_AUDIT,
   NO_REFUNDS,
 } from '../support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
@@ -75,6 +76,7 @@ describe.each(TEST_MARKETS)(
         unitOfWork: db.unitOfWork,
         orders,
         refunds: NO_REFUNDS,
+        audit: NO_AUDIT,
         gateway: new FakeGateway(),
         policy: new ConfigOrderingPolicy(markets),
         cart: new FakeCart(),

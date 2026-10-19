@@ -37,6 +37,7 @@ interface RefundRow {
   readonly lines: readonly {
     readonly orderLineId: string;
     readonly quantity: number;
+    readonly lineQuantity: number;
     readonly unitsBefore: number;
     readonly grossAmount: bigint;
     readonly taxAmount: bigint;
@@ -65,7 +66,7 @@ function toRefund(row: RefundRow): Refund {
           },
     reason: row.reason as RefundReason,
     actor: {
-      population: row.actorPopulation as 'admin' | 'seller',
+      population: row.actorPopulation as 'admin',
       accountId: row.actorAccountId as Id<'Account'>,
     },
     state: row.state as RefundState,
@@ -79,6 +80,7 @@ function toRefund(row: RefundRow): Refund {
       .map((l) => ({
         orderLineId: l.orderLineId as Id<'OrderLine'>,
         quantity: l.quantity,
+        lineQuantity: l.lineQuantity,
         unitsBefore: l.unitsBefore,
         gross: l.grossAmount,
         tax: l.taxAmount,
@@ -99,15 +101,11 @@ export class PrismaRefundRepository implements RefundRepository {
   async findTarget(
     market: MarketContext,
     sellerOrderId: Id<'SellerOrder'>,
-    owner: { readonly sellerId: Id<'Seller'> } | { readonly orderId: Id<'Order'> },
+    orderId: Id<'Order'>,
   ): Promise<RefundTarget | null> {
     const tx = this.prisma.tx(market);
     const row = await tx.orderingSellerOrder.findFirst({
-      where: {
-        marketId: market.marketId,
-        id: sellerOrderId,
-        ...('sellerId' in owner ? { sellerId: owner.sellerId } : { orderId: owner.orderId }),
-      },
+      where: { marketId: market.marketId, id: sellerOrderId, orderId },
       include: {
         order: true,
         lines: true,
@@ -165,10 +163,18 @@ export class PrismaRefundRepository implements RefundRepository {
         marketId: market.marketId,
         id: refund.sellerOrderId,
         refundedAmount: expectedRefunded,
+        order: { is: { status: 'confirmed', paymentState: 'captured' } },
       },
       data: { refundedAmount: expectedRefunded + refund.gross },
     });
     if (raised.count === 0) return 'stale';
+    // The raise holds the seller order's row lock, so this read sees every refund that became
+    // pending before it; `stale` rolls the raise back with the unit (never a unique-index 500).
+    const pending = await tx.orderingRefund.findFirst({
+      where: { marketId: market.marketId, sellerOrderId: refund.sellerOrderId, state: 'pending' },
+      select: { id: true },
+    });
+    if (pending !== null) return 'stale';
     const scope = { marketId: market.marketId, tenantId: market.tenantId };
     await tx.orderingRefund.create({
       data: {
@@ -200,8 +206,10 @@ export class PrismaRefundRepository implements RefundRepository {
         data: refund.lines.map((l) => ({
           ...scope,
           refundId: refund.id,
+          sellerOrderId: refund.sellerOrderId,
           orderLineId: l.orderLineId,
           quantity: l.quantity,
+          lineQuantity: l.lineQuantity,
           unitsBefore: l.unitsBefore,
           grossAmount: l.gross,
           taxAmount: l.tax,
@@ -243,11 +251,20 @@ export class PrismaRefundRepository implements RefundRepository {
     return true;
   }
 
-  async markFailed(market: MarketContext, refund: Refund, at: Temporal.Instant): Promise<boolean> {
+  async markFailed(
+    market: MarketContext,
+    refund: Refund,
+    at: Temporal.Instant,
+    stripeRefundId: string | null,
+  ): Promise<boolean> {
     const tx = this.prisma.tx(market);
     const settled = await tx.orderingRefund.updateMany({
       where: { marketId: market.marketId, id: refund.id, state: 'pending' },
-      data: { state: 'failed', settledAt: toDate(at) },
+      data: {
+        state: 'failed',
+        settledAt: toDate(at),
+        ...(stripeRefundId === null ? {} : { stripeRefundId }),
+      },
     });
     if (settled.count === 0) return false;
     await tx.orderingSellerOrder.updateMany({
@@ -257,10 +274,17 @@ export class PrismaRefundRepository implements RefundRepository {
     return true;
   }
 
-  async countAttempt(market: MarketContext, refundId: Id<'Refund'>): Promise<void> {
+  async countAttempt(
+    market: MarketContext,
+    refund: Refund,
+    stripeRefundId: string | null,
+  ): Promise<void> {
     await this.prisma.tx(market).orderingRefund.updateMany({
-      where: { marketId: market.marketId, id: refundId, state: 'pending' },
-      data: { attempts: { increment: 1 } },
+      where: { marketId: market.marketId, id: refund.id, state: 'pending' },
+      data: {
+        attempts: { increment: 1 },
+        ...(stripeRefundId === null ? {} : { stripeRefundId }),
+      },
     });
   }
 
@@ -274,7 +298,8 @@ export class PrismaRefundRepository implements RefundRepository {
       where: {
         marketId: market.marketId,
         state: 'pending',
-        requestedAt: { gt: toDate(window.after), lt: toDate(window.before) },
+        requestedAt: { lt: toDate(window.before) },
+        OR: [{ stripeRefundId: { not: null } }, { requestedAt: { gt: toDate(window.after) } }],
       },
       include: { lines: true, sellerOrder: { include: { order: true } } },
       orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],

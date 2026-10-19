@@ -1,5 +1,5 @@
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
+import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   testAuthenticatedActor,
@@ -9,16 +9,20 @@ import { Client } from 'pg';
 import type { OrderingDependencies } from '../../src/modules/ordering/application/checkout-flow';
 import { AdminRefundOrder } from '../../src/modules/ordering/application/use-cases/admin-refund-order.use-case';
 import { ConfirmPayment } from '../../src/modules/ordering/application/use-cases/confirm-payment.use-case';
-import { SellerRefundOrder } from '../../src/modules/ordering/application/use-cases/seller-refund-order.use-case';
 import { SettleRefunds } from '../../src/modules/ordering/application/use-cases/settle-refunds.use-case';
+import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
 import type { OrderState } from '../../src/modules/ordering/domain/order';
 import { ConfigOrderingPolicy } from '../../src/modules/ordering/infrastructure/config-ordering-policy';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
 import { PrismaRefundRepository } from '../../src/modules/ordering/infrastructure/prisma-refund.repository';
+import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
+import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
+import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
+import { PersistenceModule } from '../../src/platform/persistence/persistence.module';
 import {
   FakeCart,
   FakeCommission,
@@ -35,12 +39,14 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../suppo
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
-// Refunds of a paid seller order on PostgreSQL, as the application role, for both Market fixtures
-// (tax step 3): off by the Market switch until it is turned on; the refund is written before
-// Stripe is called and settles succeeded (with a credit note), failed (the refunded sum goes back
-// down) or pending (the worker retries the same key); the tax reversed sums exactly to the frozen
-// tax; nothing is ever refunded past what was taken; and the app role cannot change a refund's
-// amounts or touch a credit note.
+// Refunds of a paid seller order by an admin on PostgreSQL, as the application role, for both
+// Market fixtures (tax step 3): off by the Market switch until it is turned on; the refund is
+// written (and audited) before Stripe is called and settles succeeded (with a credit note) only on
+// Stripe's `succeeded`, failed (the refunded sum goes back down), or pending (the worker reads a
+// refund Stripe made back by id, and retries an unanswered one with the same key); the tax
+// reversed sums exactly to the frozen tax; nothing is ever refunded past what was taken; and the
+// database refuses what the app must never do: change amounts, touch a credit note, re-open a
+// settled refund, or move the refunded sum away from its refunds.
 
 const T0 = Temporal.Instant.from('2026-10-19T10:00:00Z');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
@@ -65,6 +71,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
   let deps: OrderingDependencies;
   let admin: CallContext;
   let system: CallContext;
+  let audit: AuditWriter;
 
   beforeAll(async () => {
     db = createPersistence();
@@ -80,6 +87,15 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       }),
     );
     system = testCallContext(market, 'system');
+    const catalogue = new AuditActionCatalogue();
+    catalogue.register('ordering', ORDERING_AUDIT_ACTIONS);
+    catalogue.seal();
+    audit = PersistenceModule.auditWriterFor('ordering').useFactory(
+      catalogue,
+      ids,
+      clock,
+      NO_PERMISSION_KEYS,
+    ) as AuditWriter;
   });
   afterAll(async () => {
     await db.close();
@@ -102,6 +118,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       tax: new FakeTax(),
       taxCategories: new FakeTaxCategories('taxable'),
       outbox: { append: () => Promise.resolve() },
+      audit,
       ids,
       clock,
       labels: new FakeLabels(),
@@ -216,8 +233,14 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       )
     ).rows[0]?.refunded_amount,
     refunds: (
-      await sql.query<{ state: string; gross_amount: string; tax_amount: string }>(
-        `SELECT state, gross_amount, tax_amount FROM ordering.refunds
+      await sql.query<{
+        id: string;
+        state: string;
+        gross_amount: string;
+        tax_amount: string;
+        stripe_refund_id: string | null;
+      }>(
+        `SELECT id, state, gross_amount, tax_amount, stripe_refund_id FROM ordering.refunds
           WHERE market_id = $1 AND seller_order_id = $2 ORDER BY requested_at, id`,
         [market.marketId, sellerOrderId],
       )
@@ -326,37 +349,81 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     expect((await rowsOf(o.sellerOrderId)).notes).toHaveLength(1);
   });
 
-  it('lets a seller refund only its own seller order', async () => {
+  it('finds nothing when an admin names another order, and audits each request and outcome', async () => {
     const o = await paidOrder();
-    const seller = (sellerId: Id<'Seller'>) =>
-      testCallContext(
-        market,
-        testAuthenticatedActor(market, {
-          population: 'seller',
-          accountId: ids.next<'Account'>(),
-          sessionId: ids.next<'Session'>(),
-          sellerId,
-        }),
-      );
-    const input = {
-      sellerOrderId: o.sellerOrderId,
-      lines: [{ orderLineId: o.lineId, quantity: 1 }],
-      shippingAmount: undefined,
-      reason: 'customer-request',
-    };
-
-    expect(
-      await new SellerRefundOrder(gate, deps).execute(seller(ids.next<'Seller'>()), input),
-    ).toEqual({ ok: false, error: { code: 'ordering.seller-order-not-found' } });
-    const own = await new SellerRefundOrder(gate, deps).execute(seller(o.sellerId), input);
-    expect(own.ok && own.value.state).toBe('succeeded');
-    // An admin naming another order's id finds nothing either.
     expect(
       await new AdminRefundOrder(gate, deps).execute(admin, {
-        ...input,
         orderId: ids.next<'Order'>(),
+        sellerOrderId: o.sellerOrderId,
+        lines: [{ orderLineId: o.lineId, quantity: 1 }],
+        shippingAmount: undefined,
+        reason: 'not-received',
       }),
     ).toEqual({ ok: false, error: { code: 'ordering.seller-order-not-found' } });
+
+    const done = await refund(o, 1);
+    if (!done.ok) throw new Error('refund');
+    const rows = await sql.query<{ action: string; actor_type: string; after: unknown }>(
+      `SELECT action, actor_type, after FROM platform.audit_log
+        WHERE market_id = $1 AND target_type = 'ordering.refund' AND target_id = $2
+        ORDER BY occurred_at, action`,
+      [market.marketId, done.value.refundId],
+    );
+    expect(rows.rows.map((r) => [r.action, r.actor_type])).toEqual([
+      ['ordering.refund.requested', 'USER'],
+      ['ordering.refund.settled', 'USER'],
+    ]);
+    expect(rows.rows[0]!.after).toMatchObject({
+      sellerOrderId: o.sellerOrderId,
+      amount: { amount: done.value.amount.amount.toString(), currency },
+      reason: 'damaged',
+      lineCount: 1,
+    });
+    expect(rows.rows[1]!.after).toEqual({
+      outcome: 'succeeded',
+      creditNoteId: done.value.creditNoteId,
+    });
+  });
+
+  it('keeps a refund Stripe made but has not finished pending, then reads it back by id', async () => {
+    const o = await paidOrder();
+    gateway.refundAnswers = 'pending';
+
+    const pending = await refund(o, 1);
+    expect(pending.ok && pending.value.state).toBe('pending');
+    const before = await rowsOf(o.sellerOrderId);
+    expect(before.notes).toEqual([]);
+    expect(before.refunds[0]?.stripe_refund_id).toMatch(/^re_test_/);
+
+    // Still pending at Stripe: nothing changes; then it succeeds and the credit note is written.
+    const later = { ...deps, clock: new FixedClock(T0.add({ minutes: 2 })) };
+    gateway.readAnswers = 'pending';
+    expect(await new SettleRefunds(gate, later).execute(system, {})).toEqual(
+      ok({ succeeded: 0, failed: 0, stuck: [] }),
+    );
+    gateway.readAnswers = 'succeeded';
+    const settled = await new SettleRefunds(gate, later).execute(system, {});
+    expect(settled.ok && settled.value.succeeded).toBeGreaterThanOrEqual(1);
+    // Read back by id, never asked for a second time.
+    expect(gateway.refunds).toHaveLength(1);
+    expect(gateway.statusReads).toContain(before.refunds[0]!.stripe_refund_id);
+    const after = await rowsOf(o.sellerOrderId);
+    expect(after.refunds.map((r) => r.state)).toEqual(['succeeded']);
+    expect(after.notes).toHaveLength(1);
+  });
+
+  it('records a refund Stripe made that then failed as failed, keeping its Stripe id', async () => {
+    const o = await paidOrder();
+    gateway.refundAnswers = 'failed';
+
+    expect(await refund(o, 2)).toEqual({ ok: false, error: { code: 'ordering.refund-rejected' } });
+
+    const rows = await rowsOf(o.sellerOrderId);
+    expect(rows.refunded).toBe('0');
+    expect(rows.refunds.map((r) => [r.state, r.stripe_refund_id !== null])).toEqual([
+      ['failed', true],
+    ]);
+    expect(rows.notes).toEqual([]);
   });
 
   it('writes nothing when the refunded sum moved since it was read (stale)', async () => {
@@ -364,7 +431,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     const repository = new PrismaRefundRepository(db.service);
     const first = await refund(o, 1);
     if (!first.ok) throw new Error('refund');
-    const reserved = await db.unitOfWork.run(market as MarketContext, async () =>
+    const reserved = await db.unitOfWork.run(market, async () =>
       ok(
         await repository.reserve(
           market,
@@ -406,5 +473,65 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     ]) {
       await expect(sql.query(statement)).rejects.toThrow(/permission denied/);
     }
+  });
+
+  it('refuses re-opening a settled refund, lowering attempts or moving the refunded sum alone', async () => {
+    const o = await paidOrder();
+    const done = await refund(o, 1);
+    if (!done.ok) throw new Error('refund');
+    const scope = [market.marketId, done.value.refundId];
+    for (const statement of [
+      `UPDATE ordering.refunds SET state = 'pending', settled_at = NULL WHERE market_id = $1 AND id = $2`,
+      `UPDATE ordering.refunds SET attempts = attempts + 1 WHERE market_id = $1 AND id = $2`,
+    ]) {
+      await expect(sql.query(statement, scope)).rejects.toThrow(/settled refund never changes/);
+    }
+    await expect(
+      sql.query(
+        'UPDATE ordering.seller_orders SET refunded_amount = 0 WHERE market_id = $1 AND id = $2',
+        [market.marketId, o.sellerOrderId],
+      ),
+    ).rejects.toThrow(/refunded_amount differs from its refunds/);
+    expect((await rowsOf(o.sellerOrderId)).refunded).toBe(done.value.amount.amount.toString());
+  });
+
+  it('refuses more units on a refund line than its order line has, and pending attempts going down', async () => {
+    const o = await paidOrder();
+    gateway.refundFails = { code: 'payment.provider-unavailable' };
+    const pending = await refund(o, 1);
+    if (!pending.ok) throw new Error('refund');
+    const scope = [market.marketId, pending.value.refundId];
+    await sql.query(
+      'UPDATE ordering.refunds SET attempts = 3 WHERE market_id = $1 AND id = $2',
+      scope,
+    );
+    await expect(
+      sql.query('UPDATE ordering.refunds SET attempts = 2 WHERE market_id = $1 AND id = $2', scope),
+    ).rejects.toThrow(/attempts only grow/);
+    await expect(
+      sql.query(
+        `INSERT INTO ordering.refund_lines (market_id, tenant_id, refund_id, seller_order_id,
+           order_line_id, quantity, line_quantity, units_before, gross_amount, tax_amount,
+           tax_rate_bps, tax_inclusive)
+         VALUES ($1, $2, $3, $4, $5, 2, 3, 2, 100, 0, 0, true)`,
+        [market.marketId, market.tenantId, pending.value.refundId, o.sellerOrderId, ids.next()],
+      ),
+    ).rejects.toThrow(/refund_lines_quantity_check/);
+  });
+
+  it("writes every credit note with its own refund's amounts, currency and ids", async () => {
+    const mismatched = await sql.query(
+      `SELECT c.id FROM ordering.credit_notes c
+         JOIN ordering.refunds r ON r.market_id = c.market_id AND r.id = c.refund_id
+        WHERE c.market_id = $1 AND (r.state <> 'succeeded' OR c.gross_amount <> r.gross_amount
+          OR c.tax_amount <> r.tax_amount OR c.currency <> r.currency
+          OR c.order_id <> r.order_id OR c.seller_id <> r.seller_id)`,
+      [market.marketId],
+    );
+    const notes = await sql.query('SELECT 1 FROM ordering.credit_notes WHERE market_id = $1', [
+      market.marketId,
+    ]);
+    expect(notes.rowCount).toBeGreaterThan(0);
+    expect(mismatched.rows).toEqual([]);
   });
 });
