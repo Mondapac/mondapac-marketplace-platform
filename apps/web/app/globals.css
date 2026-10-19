@@ -30,6 +30,9 @@
   --sf-shadow-strong: rgb(20 33 31 / 0.35);
   --sf-shadow-control: rgb(20 33 31 / 0.28);
   --sf-shadow-panel: rgb(20 33 31 / 0.2);
+  --sf-shadow-pop: rgb(20 33 31 / 0.18);
+  --sf-shadow-bar: rgb(20 33 31 / 0.14);
+  --sf-shadow-modal: rgb(20 33 31 / 0.3);
   --sf-shadow-dark: rgb(0 0 0 / 0.25);
   --sf-shadow-accent: color-mix(in srgb, var(--sf-teal) 35%, transparent);
   --sf-on-teal-glow: rgb(255 255 255 / 0.06);
@@ -2553,4 +2556,741 @@ svg {
 }
 .cookie-status {
   color: var(--sf-slate);
+}
+
+/* Product page (approved design v8): gallery, buy box (sticky right column from 1000px), seller
+   card, certificates, details, other sellers, similar products and the phone and tablet buy bar. */
+.pc .nm a {
+  color: inherit;
+  text-decoration: none;
+}
+.pc .nm a:hover {
+  color: var(--sf-teal);
+  text-decoration: underline;
+}
+.pdp {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+}
+.pdp > * {
+  min-width: 0;
+}
+.pl1 {
+  display: grid;
+  gap: 16px;
+}
+.ptit h1 {
+  font-size: calc(22px * var(--fs));
+  line-height: calc(28px * var(--fs));
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.pby {
+  color: var(--sf-slate);
+  margin-top: 4px;
+}
+.pby a {
+  color: var(--sf-teal);
+  font-weight: 700;
+}
+.gal {
+  display: grid;
+  gap: 12px;
+}
+.gmain {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  max-height: 520px;
+  width: 100%;
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-surface);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.gmain > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: multiply;
+}
+.gmain > .vec {
+  width: 60%;
+  height: 60%;
+}
+.gmain > .ico {
+  width: 30%;
+  height: 30%;
+  color: var(--sf-teal);
+}
+.gmain .badge {
+  position: absolute;
+  inset-inline-start: 12px;
+  top: 12px;
+}
+.gmain .seal {
+  inset-inline-end: 12px;
+  top: 12px;
+  width: 66px;
+  height: 75px;
+}
+.gth {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px;
+}
+.gth button {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  border: 1.5px solid var(--sf-line);
+  background: var(--sf-surface);
+  padding: 0;
+  overflow: hidden;
+}
+.gth button[aria-current='true'] {
+  border-color: var(--sf-teal);
+  box-shadow: 0 0 0 1px var(--sf-teal);
+}
+.gth img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: multiply;
+}
+.bb {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  padding: 16px;
+  background: var(--sf-white);
+}
+.bprice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.bprice b {
+  font: 800 calc(28px * var(--fs)) / calc(34px * var(--fs)) var(--sf-font-head);
+}
+.bprice b.sp {
+  color: var(--sf-teal);
+}
+.bprice s {
+  color: var(--sf-slate);
+}
+.bb .gst {
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+  margin-top: -6px;
+}
+.bb .low {
+  font-weight: 700;
+  color: var(--sf-low-stock);
+}
+.btn.wide {
+  width: 100%;
+}
+.btn.small {
+  min-height: 40px;
+  padding: 0 16px;
+}
+.qrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.qrow.bar,
+.qrow.small {
+  gap: 8px;
+}
+.qstep {
+  display: inline-flex;
+  align-items: center;
+  border: 1.5px solid var(--sf-teal);
+  border-radius: var(--sf-radius-pill);
+  overflow: hidden;
+  background: var(--sf-white);
+}
+.qstep button {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: none;
+  color: var(--sf-teal);
+  display: grid;
+  place-items: center;
+}
+.qstep button:hover:not(:disabled) {
+  background: var(--sf-mist-soft);
+}
+.qstep button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.qstep output {
+  min-width: 32px;
+  text-align: center;
+  font-weight: 800;
+  font-size: calc(16px * var(--fs));
+}
+.incart {
+  color: var(--sf-teal);
+  font-weight: 700;
+}
+.bfacts {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--sf-line);
+  display: grid;
+  gap: 12px;
+}
+.bfacts li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.bfacts .ico {
+  color: var(--sf-teal);
+  margin-top: 2px;
+}
+.bfacts b {
+  display: block;
+  font-weight: 700;
+}
+.bfacts small {
+  display: block;
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+  line-height: calc(16px * var(--fs));
+}
+.others {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--sf-teal);
+  font-weight: 700;
+  text-decoration: none;
+  border-top: 1px solid var(--sf-line);
+  padding-top: 6px;
+}
+.others:hover {
+  text-decoration: underline;
+}
+.pl2 {
+  display: grid;
+  gap: 28px;
+}
+.sec {
+  scroll-margin-top: calc(var(--sf-header-height) + 16px);
+}
+.sec h2,
+.sec .sech h2 {
+  font-size: calc(20px * var(--fs));
+  line-height: calc(26px * var(--fs));
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+.sec .sech h2 {
+  margin-bottom: 0;
+}
+.sec h3 {
+  font-size: calc(16px * var(--fs));
+  line-height: calc(22px * var(--fs));
+  margin: 20px 0 8px;
+}
+.desc {
+  color: var(--sf-slate);
+  text-align: justify;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+.desc.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+.desc.fade {
+  mask-image: linear-gradient(to bottom, var(--sf-black) calc(100% - 1.7em), transparent);
+}
+.dmore {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sf-teal);
+  font: 700 calc(14px * var(--fs)) / calc(20px * var(--fs)) var(--sf-font-body);
+}
+.dmore .ico {
+  width: 16px;
+  height: 16px;
+  transform: rotate(90deg);
+}
+.dmore[aria-expanded='true'] .ico {
+  transform: rotate(-90deg);
+}
+.spec {
+  margin: 0;
+  display: grid;
+  border: 1px solid var(--sf-line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.spec > div {
+  display: grid;
+  grid-template-columns: minmax(0, 40%) minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 16px;
+}
+.spec > div:nth-child(odd) {
+  background: var(--sf-surface);
+}
+.spec dt {
+  color: var(--sf-slate);
+  overflow-wrap: anywhere;
+}
+.spec dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.certs {
+  display: grid;
+  gap: 8px;
+}
+.certbox {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid var(--sf-line);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--sf-mist-soft);
+}
+.certbox .cl {
+  flex: none;
+  width: 54px;
+  height: 61px;
+}
+.certbox .cl svg {
+  width: 100%;
+  height: 100%;
+}
+.certbox p {
+  color: var(--sf-slate);
+}
+.offs {
+  display: grid;
+  gap: 8px;
+  container: offers / inline-size;
+}
+.off {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 16px;
+  align-items: center;
+  border: 1px solid var(--sf-line);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+.osl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  min-width: 0;
+}
+.badge.hl {
+  background: var(--sf-mist);
+  color: var(--sf-teal);
+}
+.ofa {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+  line-height: calc(18px * var(--fs));
+  min-width: 0;
+}
+.ofa span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ofa .ico {
+  width: 16px;
+  height: 16px;
+  color: var(--sf-teal);
+}
+.opr {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+.opr b {
+  font: 800 calc(18px * var(--fs)) / calc(24px * var(--fs)) var(--sf-font-head);
+}
+.opr small {
+  color: var(--sf-slate);
+  font-size: calc(11px * var(--fs));
+  margin-top: -6px;
+}
+.off > .btn,
+.off > .qrow {
+  grid-column: 1 / -1;
+}
+.srow2 {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.srow2 .pc {
+  width: auto;
+  min-width: 0;
+}
+.buybar {
+  display: none;
+}
+
+/* Seller block and card */
+.sw {
+  position: relative;
+}
+.sline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sw .lg {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex: none;
+}
+.sw.row .sline .lg {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+.lgv {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.sname {
+  min-width: 0;
+}
+.sline small {
+  display: block;
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+  line-height: calc(14px * var(--fs));
+}
+.strig {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sf-ink);
+  font-weight: 700;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.strig:hover {
+  color: var(--sf-teal);
+  text-decoration: underline;
+}
+.sinfo {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sf-teal);
+  font: 600 calc(13px * var(--fs)) / calc(18px * var(--fs)) var(--sf-font-body);
+  text-decoration: underline;
+}
+.sinfo .ico {
+  width: 14px;
+  height: 14px;
+}
+.spop {
+  position: absolute;
+  z-index: 40;
+  width: 320px;
+  background: var(--sf-white);
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  box-shadow: 0 12px 32px var(--sf-shadow-pop);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+.spop[hidden] {
+  display: none;
+}
+/* Buy box: left of the box over the product image, top aligned with the box, 15px gap. */
+.sw.box .spop {
+  inset-inline-end: calc(100% + 32px);
+  top: -17px;
+}
+/* Other sellers row: right of the logo, which stays visible. */
+.sw.row .spop {
+  inset-inline-start: 48px;
+  top: -8px;
+}
+.sph {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.sph b {
+  overflow-wrap: anywhere;
+}
+.sph small {
+  display: block;
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+  line-height: calc(16px * var(--fs));
+}
+.sph .lg {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex: none;
+}
+.sat {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  text-align: center;
+  padding: 12px 0;
+  border-block: 1px solid var(--sf-line);
+}
+.sat b {
+  font: 800 calc(32px * var(--fs)) / calc(38px * var(--fs)) var(--sf-font-head);
+  color: var(--sf-teal);
+}
+.sat small {
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+}
+.spop .bar {
+  display: block;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--sf-surface);
+  overflow: hidden;
+  margin-top: 6px;
+}
+.spop .bar u {
+  display: block;
+  height: 100%;
+  background: var(--sf-teal);
+  border-radius: 4px;
+}
+.mrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+}
+.mrow span {
+  color: var(--sf-slate);
+}
+.mrow .bar {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  height: 6px;
+}
+.sp3 {
+  list-style: none;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+  padding: 4px 0 0;
+}
+.sp3 li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: calc(13px * var(--fs));
+  line-height: calc(18px * var(--fs));
+}
+.sp3 .ico {
+  width: 16px;
+  height: 16px;
+  color: var(--sf-teal);
+}
+.spl {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  color: var(--sf-teal);
+  font-weight: 700;
+  text-decoration: none;
+  border-top: 1px solid var(--sf-line);
+  padding-top: 4px;
+}
+.spl:hover {
+  text-decoration: underline;
+}
+/* Phone and tablet: the card as a centred modal with the logo, never wider than the screen. */
+.smodal {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+}
+.sscrim {
+  position: absolute;
+  inset: 0;
+  background: var(--sf-scrim);
+}
+.spop.asmodal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  box-shadow: 0 20px 48px var(--sf-shadow-modal);
+}
+.spop.asmodal .sph {
+  padding-inline-end: 40px;
+}
+.smx {
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 8px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sf-mist);
+  color: var(--sf-ink);
+}
+.skel.gphoto {
+  aspect-ratio: 1 / 1;
+  max-height: 520px;
+}
+.skel.bbox {
+  min-height: 320px;
+}
+
+@media (min-width: 700px) {
+  .srow2 {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+/* An offer row goes to one line when the rows are wide enough, not when the screen is: the
+   column is narrow beside the buy box from 1000px. */
+@container offers (min-width: 600px) {
+  .off {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.4fr) auto auto;
+  }
+  .ofa {
+    grid-column: 2;
+  }
+  .opr {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .off > .btn,
+  .off > .qrow {
+    grid-column: 4;
+    grid-row: 1;
+  }
+}
+@media (min-width: 1000px) {
+  .pdp {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-areas: 'l r' 'b r';
+    column-gap: 32px;
+    align-items: start;
+  }
+  .pl1 {
+    grid-area: l;
+  }
+  /* Sticky under the header, never above it. */
+  .pr1 {
+    grid-area: r;
+    position: sticky;
+    z-index: 2;
+    top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px) + 16px);
+  }
+  .pl2 {
+    grid-area: b;
+  }
+  .sline {
+    cursor: pointer;
+  }
+}
+@media (max-width: 999.98px) {
+  .sinfo {
+    display: flex;
+  }
+  .spop:not(.asmodal) {
+    display: none;
+  }
+  /* Above the tab bar until the end of the product section; below the header. */
+  .buybar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    position: sticky;
+    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+    z-index: 4;
+    background: var(--sf-white);
+    border: 1px solid var(--sf-line);
+    border-radius: var(--sf-radius-tile);
+    padding: 10px 12px 10px 16px;
+    box-shadow: 0 4px 14px var(--sf-shadow-bar);
+  }
+  .buybar b {
+    display: block;
+    font: 800 calc(20px * var(--fs)) / calc(24px * var(--fs)) var(--sf-font-head);
+  }
+  .buybar small {
+    color: var(--sf-slate);
+    font-size: calc(11px * var(--fs));
+  }
+  .pr1 .bctl {
+    display: none;
+  }
+}
+@media (min-width: 900px) and (max-width: 999.98px) {
+  .buybar {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
 }

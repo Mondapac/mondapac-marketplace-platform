@@ -1,4 +1,5 @@
 import { useLocale, useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { CertificationSeal } from '../certification/certification-seal.tsx';
 import { formatMoney } from '../format/money.ts';
 import { CategoryArt } from '../icons/category-icon.tsx';
@@ -35,7 +36,9 @@ export function ProductCard({ product }: { readonly product: Product }) {
         ) : null}
       </div>
       <div className="gst">{t('including-gst')}</div>
-      <h3 className="nm">{product.name}</h3>
+      <h3 className="nm">
+        <Link href={`/p/${product.id}`}>{product.name}</Link>
+      </h3>
       <div className="by">{product.sellerName}</div>
       {product.lowStock !== undefined ? (
         <div className="low">{t('only-left', { count: product.lowStock })}</div>
