@@ -128,10 +128,15 @@ export class StripeCheckoutGateway implements CheckoutGateway {
     return refundAnswer(await this.post('/v1/refunds', form, request.idempotencyKey));
   }
 
+  /**
+   * Never `rejected` (Hassan M1-R): Stripe already made this refund, so a refusal here (a live or
+   * rotated key, a 401 or 404) says nothing about the money and must keep the refund pending.
+   */
   async refundStatus(stripeRefundId: string) {
-    if (this.secretKey === null || !this.secretKey.startsWith('sk_test_')) return err(REJECTED);
-    if (!REFUND_ID.test(stripeRefundId)) return err(REJECTED);
-    const answer = await this.post(`/v1/refunds/${stripeRefundId}`, null, null);
+    if (this.secretKey === null || !this.secretKey.startsWith('sk_test_')) return err(UNAVAILABLE);
+    if (!REFUND_ID.test(stripeRefundId)) return err(UNAVAILABLE);
+    const read = await this.post(`/v1/refunds/${stripeRefundId}`, null, null);
+    const answer = read.ok ? read : err(UNAVAILABLE);
     // Another refund than the one asked for is not an answer.
     if (answer.ok && answer.value.id !== stripeRefundId) return err(UNAVAILABLE);
     return refundAnswer(answer);

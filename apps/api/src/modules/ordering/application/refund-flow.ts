@@ -284,7 +284,15 @@ async function settle(
         }
       : { state: 'pending', refund, creditNoteId: null };
   }
-  if ((answer.ok && answer.value.status === 'failed') || (!answer.ok && isRejected(answer.error))) {
+  // A refusal is final only on the first call of a refund Stripe never answered: after an
+  // unknown answer Stripe may have made it, so a later refusal (a rotated key) keeps it pending
+  // and never frees its units for a second refund (Hassan M1-R).
+  const refused =
+    !answer.ok &&
+    isRejected(answer.error) &&
+    refund.stripeRefundId === null &&
+    refund.attempts === 0;
+  if ((answer.ok && answer.value.status === 'failed') || refused) {
     const done = await deps.unitOfWork.run<boolean, never>(context.market, async () => {
       const marked = await deps.refunds.markFailed(context.market, refund, at, stripeRefundId);
       if (marked) {

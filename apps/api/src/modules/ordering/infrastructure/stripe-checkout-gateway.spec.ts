@@ -222,6 +222,7 @@ describe('StripeCheckoutGateway', () => {
       expect(
         (await new StripeCheckoutGateway(KEY, other.fetchFn).refundStatus('re_test_9')).ok,
       ).toBe(false);
+      // A refund Stripe already made: no refusal may read as `failed` (Hassan M1-R).
       for (const [key, id] of [
         ['sk_live_real_money_1234567890', 're_test_9'],
         [KEY, '../charges'],
@@ -229,9 +230,14 @@ describe('StripeCheckoutGateway', () => {
         const none = fake(200, { id, status: 'succeeded' });
         expect(await new StripeCheckoutGateway(key, none.fetchFn).refundStatus(id)).toEqual({
           ok: false,
-          error: { code: 'payment.provider-rejected' },
+          error: { code: 'payment.provider-unavailable' },
         });
         expect(none.calls).toHaveLength(0);
+      }
+      for (const status of [401, 404]) {
+        expect(
+          await new StripeCheckoutGateway(KEY, fake(status).fetchFn).refundStatus('re_test_9'),
+        ).toEqual({ ok: false, error: { code: 'payment.provider-unavailable' } });
       }
     });
 

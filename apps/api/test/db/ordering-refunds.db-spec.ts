@@ -7,6 +7,7 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import type { OrderingDependencies } from '../../src/modules/ordering/application/checkout-flow';
+import { adminRefund } from '../../src/modules/ordering/application/refund-flow';
 import { AdminRefundOrder } from '../../src/modules/ordering/application/use-cases/admin-refund-order.use-case';
 import { ConfirmPayment } from '../../src/modules/ordering/application/use-cases/confirm-payment.use-case';
 import { SettleRefunds } from '../../src/modules/ordering/application/use-cases/settle-refunds.use-case';
@@ -533,5 +534,70 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     ]);
     expect(notes.rowCount).toBeGreaterThan(0);
     expect(mismatched.rows).toEqual([]);
+  });
+
+  it('keeps a refund Stripe may have made pending when a later call is refused (rotated key)', async () => {
+    const made = await paidOrder();
+    gateway.refundAnswers = 'pending';
+    const first = await refund(made, 1);
+    if (!first.ok) throw new Error('refund');
+    const unknown = await paidOrder();
+    gateway.refundFails = { code: 'payment.provider-unavailable' };
+    const second = await refund(unknown, 1);
+    if (!second.ok) throw new Error('refund');
+
+    // The worker's read-back and retry are refused: neither refund fails or frees its units.
+    gateway.refundFails = { code: 'payment.provider-rejected' };
+    const later = { ...deps, clock: new FixedClock(T0.add({ minutes: 2 })) };
+    expect(await new SettleRefunds(gate, later).execute(system, {})).toEqual(
+      ok({ succeeded: 0, failed: 0, stuck: [] }),
+    );
+    for (const o of [made, unknown]) {
+      const rows = await rowsOf(o.sellerOrderId);
+      expect(rows.refunds.map((r) => r.state)).toEqual(['pending']);
+      expect(rows.refunded).toBe(rows.refunds[0]!.gross_amount);
+    }
+    gateway.refundFails = null;
+    expect((await new SettleRefunds(gate, later).execute(system, {})).ok).toBe(true);
+  });
+
+  it('refuses a refund in an acting-as session', async () => {
+    const o = await paidOrder();
+    const actingAs = {
+      ...admin,
+      actor: { ...admin.actor, actingAs: { accountId: ids.next<'Account'>(), sellerId: null } },
+    } as unknown as CallContext;
+
+    // The flow itself, past the gate: the refusal is the acting-as check, not the context.
+    const result = await adminRefund(deps, actingAs, {
+      orderId: o.orderId,
+      sellerOrderId: o.sellerOrderId,
+      lines: [{ orderLineId: o.lineId, quantity: 1 }],
+      shippingAmount: undefined,
+      reason: 'damaged',
+    });
+
+    expect(result).toEqual({ ok: false, error: { code: 'access.denied' } });
+    expect(gateway.refunds).toHaveLength(0);
+  });
+
+  it('refuses changing a kept Stripe id, or failing a refund without lowering the sum', async () => {
+    const o = await paidOrder();
+    gateway.refundAnswers = 'pending';
+    const pending = await refund(o, 1);
+    if (!pending.ok) throw new Error('refund');
+    const scope = [market.marketId, pending.value.refundId];
+    await expect(
+      sql.query(
+        `UPDATE ordering.refunds SET stripe_refund_id = 're_test_other' WHERE market_id = $1 AND id = $2`,
+        scope,
+      ),
+    ).rejects.toThrow(/Stripe refund id never changes/);
+    await expect(
+      sql.query(
+        `UPDATE ordering.refunds SET state = 'failed', settled_at = now() WHERE market_id = $1 AND id = $2`,
+        scope,
+      ),
+    ).rejects.toThrow(/refunded_amount differs from its refunds/);
   });
 });
