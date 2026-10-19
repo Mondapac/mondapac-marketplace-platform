@@ -19,6 +19,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'payments/admin/connected-accounts',
     // The Market's orders (ordering), read-only: the list; one order is read by the page server.
     'ordering/admin/orders',
+    // The Market's buyer assistant settings, read again after another admin saved first.
+    'assistant/admin/settings',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -27,6 +29,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/profile/display-name',
     // The signed-in admin's own time zone and language (profile).
     'identity/admin/profile/preferences',
+    // The Market's buyer assistant settings (assistant): every field with `expectedVersion`.
+    'assistant/admin/settings',
   ]),
   DELETE: new Set([]),
   POST: new Set([

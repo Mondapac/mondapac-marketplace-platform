@@ -961,6 +961,138 @@
         "unavailable": "The support email is not available right now. Try again shortly.",
         "unknown": "Something went wrong. Try again."
       }
+    },
+    "tabs": {
+      "label": "Settings sections",
+      "general": "General",
+      "assistant": "Smart assistant"
+    },
+    "assistant": {
+      "title": "Smart assistant settings",
+      "no-access": "You don't have access to the smart assistant settings.",
+      "unavailable": "The smart assistant settings could not be loaded. Try again later.",
+      "read-only": "Only the Platform Administrator can change these settings.",
+      "optional": "optional",
+      "unavailable-option": "{option} (not available yet)",
+      "version": "Version {version}",
+      "save": "Save settings",
+      "saved": "Settings saved. They apply on the storefront from now on.",
+      "reloaded": "Another admin saved changes first. The page now shows their settings. Make your change again and save.",
+      "status": {
+        "title": "Status",
+        "switch": "Assistant",
+        "on": "On",
+        "off": "Off",
+        "key": "Model API key",
+        "key-set": "Set",
+        "key-not-set": "Not set",
+        "model": "Model in use",
+        "spend-today": "Spend today",
+        "spend-month": "Spend this month",
+        "not-measured": "Measured once buyers can chat",
+        "not-configured": "The assistant is switched on, but the server has no model API key or no model for the chosen tier, so buyers do not see it yet."
+      },
+      "summary": {
+        "title": "Settings in force"
+      },
+      "section": {
+        "rollout": "Switch and rollout",
+        "answers": "Answers",
+        "users": "Visitors and message limits",
+        "spend": "Spend caps",
+        "data": "Conversations and support"
+      },
+      "enabled": {
+        "label": "Assistant switched on",
+        "help": "Off hides the assistant on the storefront at once, without a release."
+      },
+      "audience": {
+        "label": "Show to",
+        "help": "Start small and widen the rollout step by step.",
+        "internal": "Internal team only",
+        "percent": "A share of visitors",
+        "all": "All visitors",
+        "percent-of": "{percent}% of visitors"
+      },
+      "audience-percent": {
+        "label": "Share of visitors (%)",
+        "help": "A whole number from {min} to {max}."
+      },
+      "scope": {
+        "label": "What it can do",
+        "help": "Cart suggestions wait for the real cart connection and a security review.",
+        "read-only": "Answer questions only",
+        "cart-suggestions": "Answer and suggest cart actions"
+      },
+      "model": {
+        "label": "Model",
+        "fast": "Fast",
+        "balanced": "Balanced",
+        "none": "Not configured",
+        "configured": "{tier}: {model}"
+      },
+      "language": {
+        "label": "Reply language",
+        "buyer": "The buyer's language",
+        "english": "English only"
+      },
+      "welcome": {
+        "label": "Welcome message",
+        "help": "Up to {max} characters. Leave it empty to use the storefront's default text.",
+        "default": "The storefront's default text"
+      },
+      "users": {
+        "label": "Who can chat",
+        "guests-and-customers": "Guests and signed-in customers",
+        "customers-only": "Signed-in customers only"
+      },
+      "guest-limit": {
+        "label": "Messages per guest"
+      },
+      "customer-limit": {
+        "label": "Messages per signed-in customer"
+      },
+      "limit-help": "Per 10 minutes, from {min} to {max}.",
+      "spend": {
+        "intro": "The model provider bills in US dollars. When a cap is reached, the assistant switches itself off and admins are told.",
+        "daily": "Daily cap",
+        "daily-help": "From {min, number} to {max, number}, and no more than the monthly cap.",
+        "monthly": "Monthly cap",
+        "monthly-help": "From {min, number} to {max, number}."
+      },
+      "retention": {
+        "label": "Keep conversations",
+        "help": "For signed-in customers. A guest's conversation is kept 30 days at most. A shorter period applies at the next clean-up.",
+        "none": "Do not keep",
+        "30-days": "30 days",
+        "12-months": "12 months"
+      },
+      "support": {
+        "label": "Hand-off to support",
+        "help": "The in-window form waits for its own package.",
+        "email-link": "Link to the support email",
+        "in-panel-form": "Form inside the chat window"
+      },
+      "invalid": {
+        "audiencePercent": "Enter a whole number from 1 to 100.",
+        "scope": "This option is not available yet. Choose another.",
+        "guestMessageLimit": "Enter a whole number from 5 to 60.",
+        "customerMessageLimit": "Enter a whole number from 5 to 120.",
+        "dailySpendCapUsdCents": "Enter an amount from 1 to 1,000, with at most two decimals, and no more than the monthly cap.",
+        "monthlySpendCapUsdCents": "Enter an amount from 1 to 20,000, with at most two decimals.",
+        "supportHandoff": "This option is not available yet. Choose another.",
+        "welcomeText": "Use up to 200 characters, without < or > or hidden control characters."
+      },
+      "error": {
+        "fix": "Some fields need a fix. Check the messages under them.",
+        "invalid": "Some settings were refused. Check the fields and try again.",
+        "conflict": "Another admin saved changes first. Reload the page and try again.",
+        "throttled": "Too many attempts. Wait a moment and try again.",
+        "csrf": "Your session needs a refresh. Reload the page and try again.",
+        "denied": "Your role cannot change the smart assistant settings.",
+        "unavailable": "The settings are not available right now. Try again shortly.",
+        "unknown": "Something went wrong. Try again."
+      }
     }
   },
   "shipping": {

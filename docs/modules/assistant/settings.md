@@ -50,3 +50,12 @@ random `visitor` key (no key: left out); `internal` reaches no storefront visito
 internal team tries it on the storefront (a preview route) is decided with the chat endpoint
 (package 4). The spend counters, the automatic switch-off at a cap and the rate limits that use
 these numbers are built in package 4.
+
+## Admin panel
+
+Settings > Smart assistant (`/settings/assistant`, package 3). A holder of the view key sees the
+status card and a read-only summary; the Platform Administrator gets the form. The page shows
+only whether the model key is set, and the model of each tier as the server reports it. Saving
+sends `expectedVersion`; on a 409 the page reads the settings again and asks the admin to make
+the change again. Spend today and this month show "measured once buyers can chat" until the
+package 4 counters exist.
