@@ -302,6 +302,10 @@
     "as-described": "Orders sent as described",
     "certificate-checked": "{name} certificate checked",
     "seller-page": "View seller page",
-    "loading": "Loading product"
+    "loading": "Loading product",
+    "buy-options": "Buy options",
+    "not-found-title": "We can't find this product",
+    "not-found-message": "It may have been removed, or the link is wrong.",
+    "not-found-home": "Go to the home page"
   }
 }

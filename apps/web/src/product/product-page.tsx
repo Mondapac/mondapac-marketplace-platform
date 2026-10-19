@@ -56,7 +56,7 @@ export function ProductPage({
             special={offer.wasPrice !== undefined}
           />
         </div>
-        <aside className="pr1" aria-label={t('sold-by')}>
+        <aside className="pr1" aria-label={t('buy-options')}>
           <BuyBox offer={offer} others={others} />
         </aside>
         <div className="pl2">

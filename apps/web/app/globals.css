@@ -3057,10 +3057,11 @@ svg {
   inset-inline-end: calc(100% + 32px);
   top: -17px;
 }
-/* Other sellers row: right of the logo, which stays visible. */
+/* Other sellers row: right of the logo, which stays visible; below the header (z-index 5). */
 .sw.row .spop {
   inset-inline-start: 48px;
   top: -8px;
+  z-index: 4;
 }
 .sph {
   display: flex;

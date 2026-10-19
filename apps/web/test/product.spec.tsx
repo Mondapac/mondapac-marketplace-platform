@@ -70,7 +70,7 @@ describe('product page', () => {
     expect(within(trail).getByRole('link', { name: 'Poultry' }).getAttribute('href')).toBe(
       '/c/poultry',
     );
-    const box = screen.getByRole('complementary', { name: 'Sold by' });
+    const box = screen.getByRole('complementary', { name: 'Buy options' });
     expect(within(box).getByText('A$22.90')).toBeTruthy();
     expect(within(box).getByText('Only 3 left')).toBeTruthy();
     expect(within(box).getByRole('link', { name: /2 other sellers from A\$21\.90/ })).toBeTruthy();
@@ -97,7 +97,7 @@ describe('product page', () => {
   it('adds to the cart up to the units left, in the buy box and the buy bar alike', async () => {
     layout(true);
     await renderPage();
-    const box = screen.getByRole('complementary', { name: 'Sold by' });
+    const box = screen.getByRole('complementary', { name: 'Buy options' });
     fireEvent.click(within(box).getByRole('button', { name: 'Add to cart' }));
     const increase = within(box).getByRole('button', { name: 'Increase' });
     fireEvent.click(increase);
@@ -117,7 +117,7 @@ describe('product page', () => {
       within(others).getByRole('button', { name: 'Add to cart from Logan Road Meats' }),
     );
     expect(within(others).getByRole('group', { name: 'Quantity' })).toBeTruthy();
-    const box = screen.getByRole('complementary', { name: 'Sold by' });
+    const box = screen.getByRole('complementary', { name: 'Buy options' });
     expect(within(box).getByRole('button', { name: 'Add to cart' })).toBeTruthy();
   });
 
@@ -125,7 +125,7 @@ describe('product page', () => {
     layout(true);
     vi.useFakeTimers();
     await renderPage();
-    const box = screen.getByRole('complementary', { name: 'Sold by' });
+    const box = screen.getByRole('complementary', { name: 'Buy options' });
     const name = within(box).getByRole('button', { name: 'Kedron Halal Butchers' });
     const card = document.getElementById(name.getAttribute('aria-controls')!)!;
     expect(card.hidden).toBe(true);
@@ -145,7 +145,7 @@ describe('product page', () => {
   it('keeps one card open and closes it on Esc and on an outside click', async () => {
     layout(true);
     await renderPage();
-    const box = screen.getByRole('complementary', { name: 'Sold by' });
+    const box = screen.getByRole('complementary', { name: 'Buy options' });
     const first = within(box).getByRole('button', { name: 'Kedron Halal Butchers' });
     const second = screen.getByRole('button', { name: 'Logan Road Meats' });
     fireEvent.click(first);

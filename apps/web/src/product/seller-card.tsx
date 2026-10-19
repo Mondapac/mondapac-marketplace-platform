@@ -156,7 +156,6 @@ export function SellerBlock({
             type="button"
             aria-expanded={isOpen && !modal}
             aria-controls={cardId}
-            onClick={() => (wide() ? show() : showModal())}
           >
             {name}
           </button>
