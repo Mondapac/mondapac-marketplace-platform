@@ -476,6 +476,17 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${path}/extra`)).status).toBe(404);
   });
 
+  it('relays the assistant settings read and write on their exact path only', async () => {
+    const path = 'assistant/admin/settings';
+    const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, path.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('PUT', path)).status).toBe(200);
+    expect((await call('POST', path)).status).toBe(404);
+    expect((await call('DELETE', path)).status).toBe(404);
+    expect((await call('PUT', `${path}/extra`)).status).toBe(404);
+  });
+
   it('relays the own display name (PUT) and password change (POST) on their exact paths only', async () => {
     const name = 'identity/admin/profile/display-name';
     expect((await call('PUT', name)).status).toBe(200);

@@ -238,6 +238,36 @@ export const ICON_PATHS = {
       <path d="M4 5h16v11H9l-5 4z" />
     </>
   ),
+  dash: (
+    <>
+      <rect x="4" y="4" width="7" height="7" rx="1.6" />
+      <rect x="13" y="4" width="7" height="7" rx="1.6" />
+      <rect x="4" y="13" width="7" height="7" rx="1.6" />
+      <rect x="13" y="13" width="7" height="7" rx="1.6" />
+    </>
+  ),
+  gear: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />
+    </>
+  ),
+  out: (
+    <>
+      <path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  'eye-off': (
+    <>
+      <path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17 17 0 0 1-3.2 4M6.5 7.3C3.9 9 2 12 2 12s3.6 6.5 10 6.5c1.5 0 2.9-.4 4.1-.9M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICON_PATHS;

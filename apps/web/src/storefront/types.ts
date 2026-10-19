@@ -221,9 +221,10 @@ export interface SavedAddress {
   readonly isDefault: boolean;
 }
 
-/** The signed-in customer at checkout. */
+/** The signed-in customer (checkout, the account menu). */
 export interface CheckoutCustomer {
   readonly firstName: string;
+  readonly fullName: string;
   readonly email: string;
   readonly addresses: readonly SavedAddress[];
 }
@@ -233,6 +234,8 @@ export interface ServiceArea {
   readonly name: string;
   /** The state or region every address in the area has (read-only on the form). */
   readonly region: string;
+  /** The region's short form in a one-line address ("QLD"). */
+  readonly regionCode: string;
   readonly postcodes: readonly { readonly from: string; readonly to: string }[];
 }
 
@@ -297,4 +300,75 @@ export interface SellerShop {
   readonly categories: readonly { readonly code: string; readonly name: string }[];
   /** In popularity order. */
   readonly products: readonly SellerProduct[];
+}
+
+/** Where one seller's part of an order is. */
+export type OrderPartStatus =
+  'waiting' | 'confirmed' | 'out-for-delivery' | 'delivered' | 'cancelled';
+
+/** The whole order's state, as the Orders filter groups it. */
+export type OrderStatus = 'in-progress' | 'delivered' | 'cancelled';
+
+/** One line of a placed order, with the name and price it had when it was ordered. */
+export interface OrderLine {
+  /** The offer bought; Buy again adds it to the cart when it is still sold. */
+  readonly offerId: string;
+  readonly name: string;
+  readonly category: string;
+  readonly quantity: number;
+  readonly unitPrice: Money;
+  readonly imageUrl?: string;
+}
+
+/** One seller's part of an order: each seller prepares and delivers its own part. */
+export interface OrderPart {
+  readonly sellerId: string;
+  readonly sellerName: string;
+  readonly status: OrderPartStatus;
+  /** The delivery window promised, as the seller wrote it. */
+  readonly deliveryWindow: string;
+  /** The day the part was delivered (ISO date), once it is. */
+  readonly deliveredOn?: string;
+  readonly deliveryFee: Money;
+  /** The buyer's note to this seller at checkout. */
+  readonly note?: string;
+  readonly lines: readonly OrderLine[];
+}
+
+/** A placed order as the buyer's account shows it. */
+export interface AccountOrder {
+  readonly reference: string;
+  /** The day it was placed (ISO date). */
+  readonly placedOn: string;
+  readonly status: OrderStatus;
+  /** The delivery address, as one line with its label. */
+  readonly deliveredTo: string;
+  readonly parts: readonly [OrderPart, ...OrderPart[]];
+  /** The GST included in the total, as the order's tax record gives it. */
+  readonly includedTax: Money;
+}
+
+/** A list the buyer named (Saved lists), holding offer ids. */
+export interface NamedList {
+  readonly id: string;
+  readonly name: string;
+  readonly offerIds: readonly string[];
+}
+
+/** The optional emails a buyer can switch off; order updates are always sent. */
+export interface EmailChoices {
+  readonly offers: boolean;
+  readonly recommendations: boolean;
+  readonly sellerMessages: boolean;
+}
+
+/** The signed-in buyer's account: profile, orders, address book, lists and email choices. */
+export interface AccountSource {
+  readonly customer: CheckoutCustomer;
+  readonly mobile: string;
+  /** Newest first. */
+  readonly orders: readonly AccountOrder[];
+  readonly lists: readonly NamedList[];
+  readonly emails: EmailChoices;
+  readonly serviceArea: ServiceArea;
 }

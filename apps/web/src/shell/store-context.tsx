@@ -67,6 +67,12 @@ interface StoreState {
   /** A page's own modal dialog (the seller card on phone and tablet) is open. */
   readonly dialogOpen: boolean;
   readonly setDialogOpen: (open: boolean) => void;
+  /** The log-in dialog (header Log in, the rail's My Account, the Account tab when signed out). */
+  readonly loginOpen: boolean;
+  readonly setLoginOpen: (open: boolean) => void;
+  /** The account menu panel of the phone and tablet layout (the Account tab when signed in). */
+  readonly accountOpen: boolean;
+  readonly setAccountOpen: (open: boolean) => void;
 }
 
 const StoreContext = createContext<StoreState | null>(null);
@@ -75,16 +81,19 @@ const StoreContext = createContext<StoreState | null>(null);
 export function StoreProvider({
   cartSource = NO_SOURCE,
   initialCart = {},
+  initialCustomer = null,
   children,
 }: {
   readonly cartSource?: CartSource;
   /** The lines to start with (the server cart once it is read; tests). */
   readonly initialCart?: Cart;
+  /** The signed-in customer to start with (tests; the session once it is read). */
+  readonly initialCustomer?: CheckoutCustomer | null;
   readonly children: ReactNode;
 }) {
   const [cart, setCart] = useState<Cart>(initialCart);
   const [cartOpen, setCartOpen] = useState(false);
-  const [customer, setCustomer] = useState<CheckoutCustomer | null>(null);
+  const [customer, setCustomer] = useState<CheckoutCustomer | null>(initialCustomer);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [saved, setSaved] = useState<readonly string[]>([]);
   const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
@@ -94,6 +103,8 @@ export function StoreProvider({
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const add = useCallback(
     (id: string, unitPrice: Money, limit: number) =>
       setCart((current) => addOne(current, id, unitPrice, limit)),
@@ -159,6 +170,10 @@ export function StoreProvider({
       setFiltersOpen,
       dialogOpen,
       setDialogOpen,
+      loginOpen,
+      setLoginOpen,
+      accountOpen,
+      setAccountOpen,
     }),
     [
       cart,
@@ -182,6 +197,8 @@ export function StoreProvider({
       searchOpen,
       filtersOpen,
       dialogOpen,
+      loginOpen,
+      accountOpen,
     ],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
