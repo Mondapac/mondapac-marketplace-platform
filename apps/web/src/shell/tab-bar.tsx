@@ -5,15 +5,18 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { summarise } from '../cart/cart.ts';
 import { Icon } from '../icons/icon.tsx';
+import { useCartButton } from './header.tsx';
 import { useStore } from './store-context.tsx';
 
 /** The bottom bar of the phone and tablet layout: Home, Search, Browse, Cart, Account. */
 export function TabBar() {
   const t = useTranslations('tabs');
   const path = usePathname();
-  const { cart, browseOpen, setBrowseOpen, searchOpen, setSearchOpen } = useStore();
+  const { cart, browseOpen, setBrowseOpen, searchOpen, setSearchOpen, cartOpen, setCartOpen } =
+    useStore();
   const { count } = summarise(cart);
-  const overlay = browseOpen || searchOpen;
+  const cartButton = useCartButton();
+  const overlay = browseOpen || searchOpen || cartOpen;
   const on = (active: boolean) => (active ? 'on' : undefined);
   const page = (href: string) => !overlay && (href === '/' ? path === '/' : path.startsWith(href));
 
@@ -32,6 +35,7 @@ export function TabBar() {
         aria-expanded={searchOpen}
         onClick={() => {
           setBrowseOpen(false);
+          setCartOpen(false);
           setSearchOpen(true);
         }}
       >
@@ -48,6 +52,7 @@ export function TabBar() {
         aria-controls="browse-panel"
         onClick={() => {
           setSearchOpen(false);
+          setCartOpen(false);
           setBrowseOpen(!browseOpen);
         }}
       >
@@ -56,11 +61,7 @@ export function TabBar() {
         </span>
         {t('browse')}
       </button>
-      <Link
-        href="/cart"
-        className={on(page('/cart'))}
-        aria-current={page('/cart') ? 'page' : undefined}
-      >
+      <button type="button" className={on(cartOpen || page('/cart'))} {...cartButton}>
         <span className="tic cn">
           <Icon name="bag" />
           <span className="cb num" aria-hidden="true">
@@ -69,7 +70,7 @@ export function TabBar() {
         </span>
         {t('cart')}
         <span className="sr-only">{t('cart-count', { count })}</span>
-      </Link>
+      </button>
       <Link
         href="/account"
         className={on(page('/account'))}

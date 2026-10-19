@@ -155,3 +155,80 @@ export interface ProductDetail {
   readonly offers: readonly [ProductOffer, ...ProductOffer[]];
   readonly similar: readonly ProductCard[];
 }
+
+/** What the cart shows of one line's offer (the cart read returns it with each line). */
+export interface CartItem {
+  readonly name: string;
+  readonly sellerId: string;
+  /** Category code, for the fallback illustration when there is no photo. */
+  readonly category: string;
+  readonly price: Money;
+  readonly lowStock?: number;
+  readonly imageUrl?: string;
+  /** The price when the buyer added the line, when it has changed since (the price-changed flag). */
+  readonly addedAt?: Money;
+}
+
+/** A seller's delivery terms as the cart and checkout show them. */
+export interface SellerTerms {
+  readonly id: string;
+  readonly name: string;
+  /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
+  readonly logo?: string;
+  /** Set by the seller; the buyer does not choose it. */
+  readonly deliveryWindow: string;
+  /** The seller's minimum order; absent when it has none. */
+  readonly minimumOrder?: Money;
+  /** The seller's flat delivery fee for one order. */
+  readonly deliveryFee: Money;
+}
+
+/**
+ * How the cart shows the tax a GST-inclusive total holds ("Includes A$x GST"). A PLACEHOLDER
+ * until the tax module gives the figure: whether tax applies to delivery fees, and tax-exclusive
+ * prices, are not settled (tax adviser, 19 Oct 2026), so nothing here is a rule.
+ */
+export interface IncludedTaxPreview {
+  /** Share of a tax-inclusive amount that is tax, as a fraction. */
+  readonly share: { readonly numerator: number; readonly denominator: number };
+  readonly includesDelivery: boolean;
+}
+
+/** Everything the cart drawer and the cart page need beside the lines themselves. */
+export interface CartSource {
+  readonly items: Readonly<Record<string, CartItem>>;
+  readonly sellers: Readonly<Record<string, SellerTerms>>;
+  readonly tax: IncludedTaxPreview;
+}
+
+export interface SavedAddress {
+  readonly id: string;
+  readonly label: string;
+  readonly name: string;
+  readonly line: string;
+  readonly phone: string;
+  readonly isDefault: boolean;
+}
+
+/** The signed-in customer at checkout. */
+export interface CheckoutCustomer {
+  readonly firstName: string;
+  readonly email: string;
+  readonly addresses: readonly SavedAddress[];
+}
+
+/** The area the platform delivers to; a new address outside it is refused at checkout. */
+export interface ServiceArea {
+  readonly name: string;
+  /** The state or region every address in the area has (read-only on the form). */
+  readonly region: string;
+  readonly postcodes: readonly { readonly from: string; readonly to: string }[];
+}
+
+export interface CheckoutSource {
+  /** The account a sample log-in signs in to; the session gives it when checkout is wired. */
+  readonly customer: CheckoutCustomer;
+  readonly serviceArea: ServiceArea;
+  /** Sample only: the order Pay creates gives its reference when checkout is wired. */
+  readonly orderReference: string;
+}

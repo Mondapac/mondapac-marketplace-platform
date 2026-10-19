@@ -1,4 +1,4 @@
-import type { Money } from '../storefront/types.ts';
+import type { CartItem, CartSource, Money, SellerTerms } from '../storefront/types.ts';
 
 // The client cart of the home page: a line per product with its unit price and the most a buyer
 // can add. The server cart (guest cart API) replaces this state when checkout is wired; the
@@ -48,4 +48,88 @@ export function summarise(cart: Cart): { count: number; total: Money | null } {
     amount += line.quantity * line.unitPrice.amount;
   }
   return { count, total: { amount, currency } };
+}
+
+/** Removes a line whatever its quantity (the Remove link). */
+export function removeLine(cart: Cart, id: string): Cart {
+  if (!(id in cart)) return cart;
+  return Object.fromEntries(Object.entries(cart).filter(([key]) => key !== id));
+}
+
+export interface CartGroupLine {
+  readonly id: string;
+  readonly item: CartItem;
+  readonly quantity: number;
+  readonly limit: number;
+  readonly total: Money;
+}
+
+/** One seller's part of the cart: its lines, subtotal and how far it is from its minimum. */
+export interface CartGroup {
+  readonly seller: SellerTerms;
+  readonly lines: readonly CartGroupLine[];
+  readonly count: number;
+  readonly subtotal: Money;
+  /** What is still needed to reach the seller's minimum order; zero when reached or none. */
+  readonly shortfall: Money;
+}
+
+export interface CartView {
+  readonly groups: readonly CartGroup[];
+  readonly count: number;
+  readonly items: Money;
+  readonly delivery: Money;
+  readonly total: Money;
+  /** The tax the total includes, from the source's preview (a placeholder, not a rule). */
+  readonly includedTax: Money;
+  /** Sellers below their minimum order: checkout is blocked while there is one. */
+  readonly blocked: readonly CartGroup[];
+}
+
+/**
+ * The cart by seller, in the order the sellers were first added, with each seller's delivery fee
+ * and minimum order. Lines whose offer the source does not know are left out. Null when empty.
+ */
+export function viewCart(cart: Cart, source: CartSource): CartView | null {
+  const bySeller = new Map<string, CartGroupLine[]>();
+  for (const [id, line] of Object.entries(cart)) {
+    const item = source.items[id];
+    if (!item || !source.sellers[item.sellerId]) continue;
+    const lines = bySeller.get(item.sellerId) ?? [];
+    lines.push({
+      id,
+      item,
+      quantity: line.quantity,
+      limit: line.limit,
+      total: { amount: line.quantity * item.price.amount, currency: item.price.currency },
+    });
+    bySeller.set(item.sellerId, lines);
+  }
+  if (bySeller.size === 0) return null;
+  const currency = [...bySeller.values()][0]![0]!.total.currency;
+  const groups = [...bySeller].map(([sellerId, lines]): CartGroup => {
+    const seller = source.sellers[sellerId]!;
+    const subtotal = lines.reduce((sum, l) => sum + l.total.amount, 0);
+    const minimum = seller.minimumOrder?.amount ?? 0;
+    return {
+      seller,
+      lines,
+      count: lines.reduce((sum, l) => sum + l.quantity, 0),
+      subtotal: { amount: subtotal, currency },
+      shortfall: { amount: Math.max(0, minimum - subtotal), currency },
+    };
+  });
+  const items = groups.reduce((sum, g) => sum + g.subtotal.amount, 0);
+  const delivery = groups.reduce((sum, g) => sum + g.seller.deliveryFee.amount, 0);
+  const { share, includesDelivery } = source.tax;
+  const taxed = includesDelivery ? items + delivery : items;
+  return {
+    groups,
+    count: groups.reduce((sum, g) => sum + g.count, 0),
+    items: { amount: items, currency },
+    delivery: { amount: delivery, currency },
+    total: { amount: items + delivery, currency },
+    includedTax: { amount: Math.round((taxed * share.numerator) / share.denominator), currency },
+    blocked: groups.filter((g) => g.shortfall.amount > 0),
+  };
 }
