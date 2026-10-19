@@ -22,6 +22,7 @@ const marketCode = z.string().transform((value, context) => {
 
 const WEBHOOK_SECRET = 'whsec_[A-Za-z0-9+/=_]{8,200}';
 const MARKET_SECRET = `[A-Z][A-Z0-9_]{1,7}=${WEBHOOK_SECRET}`;
+const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}$/;
 
 const hostedMarkets = z
   .string({ error: 'HOSTED_MARKETS is required; there is no default market (ADR-0003)' })
@@ -98,6 +99,23 @@ const envSchema = z.object({
   // and checked by parseClientAddressTrust below; a secret is never echoed.
   TRUSTED_BFF_CIDRS: z.string().optional(),
   CLIENT_ADDRESS_KEYS: z.string().optional(),
+  // Buyer assistant: the model provider's API key, a server secret. Unset: the assistant stays
+  // off whatever its settings say. The value is never echoed; the admin screen learns only
+  // whether it is set.
+  ASSISTANT_MODEL_API_KEY: z
+    .string()
+    .regex(/^[\x21-\x7e]{20,500}$/, 'must be 20 to 500 printable ASCII characters')
+    .optional(),
+  // Buyer assistant: the provider model id of each tier the admin may choose (configuration, not
+  // code). Unset: that tier is not configured and the assistant stays off while it is chosen.
+  ASSISTANT_MODEL_FAST: z
+    .string()
+    .regex(MODEL_ID, 'must be a provider model id (letters, digits, . _ : / @ -)')
+    .optional(),
+  ASSISTANT_MODEL_BALANCED: z
+    .string()
+    .regex(MODEL_ID, 'must be a provider model id (letters, digits, . _ : / @ -)')
+    .optional(),
 });
 
 /** The migration role's URL: read by the prisma CLI, the scripts and test setup only. */
@@ -171,6 +189,13 @@ export interface AppConfig {
    * socket's. Holds secrets, which print as a marker only; read by `configureApp` alone.
    */
   readonly clientAddressTrust: ClientAddressTrust | null;
+  /**
+   * The buyer assistant's model API key (`ASSISTANT_MODEL_API_KEY`), or null: then the assistant
+   * stays off. Holds a secret: never log this object whole; the settings report only set or not.
+   */
+  readonly assistantModelApiKey: string | null;
+  /** The provider model id of each assistant tier (`ASSISTANT_MODEL_FAST`, `_BALANCED`), or null. */
+  readonly assistantModels: Readonly<{ fast: string | null; balanced: string | null }>;
 }
 
 /** The log levels a worker may run at: every one that still writes info lines. */
@@ -291,5 +316,10 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     stripeWebhookSecrets: webhookSecrets.secrets,
     stripeConnectWebhookSecrets: connectSecrets.secrets,
     clientAddressTrust: clientAddress.trust,
+    assistantModelApiKey: parsed.data.ASSISTANT_MODEL_API_KEY ?? null,
+    assistantModels: Object.freeze({
+      fast: parsed.data.ASSISTANT_MODEL_FAST ?? null,
+      balanced: parsed.data.ASSISTANT_MODEL_BALANCED ?? null,
+    }),
   });
 }

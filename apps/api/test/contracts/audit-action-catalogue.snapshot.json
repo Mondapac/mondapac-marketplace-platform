@@ -1,5 +1,27 @@
 [
   {
+    "action": "assistant.settings.changed",
+    "targetType": "assistant.settings",
+    "targetId": "enumOf(assistant-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "dailySpendCapUsdCents": "integer",
+      "enabled": "boolean",
+      "monthlySpendCapUsdCents": "integer",
+      "retentionDays": "integer",
+      "users": "enumOf(guests-and-customers|customers-only)",
+      "version": "integer"
+    },
+    "after": {
+      "dailySpendCapUsdCents": "integer",
+      "enabled": "boolean",
+      "monthlySpendCapUsdCents": "integer",
+      "retentionDays": "integer",
+      "users": "enumOf(guests-and-customers|customers-only)",
+      "version": "integer"
+    }
+  },
+  {
     "action": "certification.claim-policy.relaxation-approved",
     "targetType": "certification.claim-policy",
     "targetId": "id",

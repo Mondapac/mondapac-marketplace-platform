@@ -19,6 +19,7 @@ import { NotificationsModule } from './notifications';
 import { SearchModule } from './search';
 import { StorefrontModule } from './storefront';
 import { EngagementModule } from './engagement';
+import { AssistantModule } from './assistant';
 
 export const CORE_MODULES = [
   IdentityModule,
@@ -40,4 +41,5 @@ export const CORE_MODULES = [
   SearchModule,
   StorefrontModule,
   EngagementModule,
+  AssistantModule,
 ];
