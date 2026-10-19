@@ -18,7 +18,8 @@
     "provisionalTaxRateBps": 1500
   },
   "tax": {
-    "defaultRateBps": 1500
+    "defaultRateBps": 1500,
+    "refundCredit": { "enabled": false }
   },
   "search": {
     "textSearchConfig": "simple"

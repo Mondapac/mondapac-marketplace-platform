@@ -1240,10 +1240,14 @@ const marketSchema = z
      * Tax settings, owned by `tax`. `defaultRateBps`: the tax rate of the built-in strategy used
      * while an admin has not activated a strategy of their own (AU GST 1000 = 10 %). Without this
      * section the Market has no built-in strategy and tax calculation fails closed.
+     * `refundCredit.enabled`: refunds with their tax reversal and credit note (tax step 3); off
+     * (false or absent) until the registered tax agent confirms in writing and the owner turns it
+     * on, so nothing reaches real money before.
      */
     tax: z
       .strictObject({
         defaultRateBps: z.number().int().min(0).max(5000),
+        refundCredit: z.strictObject({ enabled: z.boolean() }).optional(),
       })
       .optional(),
     /**

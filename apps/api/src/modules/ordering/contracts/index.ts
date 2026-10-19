@@ -1,6 +1,7 @@
 // Public contracts of the ordering module (ADR-0008): the permission catalogue and the facade
 // interface. Other modules may import only what this file exports, through ../index.ts.
 export {
+  ORDERING_ORDER_REFUND,
   ORDERING_ORDER_VIEW,
   ORDERING_PERMISSIONS,
   ORDERING_SELLER_ORDER_MARK_DELIVERED,

@@ -13,6 +13,7 @@ import { ActivateTaxStrategy } from './application/use-cases/activate-tax-strate
 import { CalculateTax } from './application/use-cases/calculate-tax.use-case';
 import { CreateTaxStrategy } from './application/use-cases/create-tax-strategy.use-case';
 import { DeleteTaxStrategy } from './application/use-cases/delete-tax-strategy.use-case';
+import { ReverseRefundTax } from './application/use-cases/reverse-refund-tax.use-case';
 import { ListTaxStrategies } from './application/use-cases/list-tax-strategies.use-case';
 import { UpdateTaxStrategy } from './application/use-cases/update-tax-strategy.use-case';
 import { TAX_FACADE, TAX_PERMISSIONS } from './contracts';
@@ -51,7 +52,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Tax: how the tax of an order line is worked out. The Market has a built-in flat strategy (Market
  * config, AU GST 10 %); an admin may define other strategies (a flat rate, or a rate per tax
  * category) and pick the one in force. `ordering` asks for the tax of a cart through `TAX_FACADE`
- * and freezes the answer on the order. No official invoice and no GST refund yet: those wait for
+ * and freezes the answer on the order, and for the tax a refund reverses (from the frozen values,
+ * built behind the Market switch `tax.refundCredit.enabled`, off). Nothing reaches real money until
  * the registered tax agent's written confirmation.
  */
 @Module({
@@ -70,9 +72,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ActivateTaxStrategy,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
+      provide: ReverseRefundTax,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new ReverseRefundTax(gate),
+    },
+    {
       provide: TAX_FACADE,
-      inject: [CalculateTax],
-      useFactory: (calculate: CalculateTax) => new TaxFacadeImplementation(calculate),
+      inject: [CalculateTax, ReverseRefundTax],
+      useFactory: (calculate: CalculateTax, reverse: ReverseRefundTax) =>
+        new TaxFacadeImplementation(calculate, reverse),
     },
   ],
   exports: [TAX_FACADE],

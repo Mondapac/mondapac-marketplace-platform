@@ -1,8 +1,9 @@
 import { declarePermissions, definePermission } from '../../../platform/authz';
 
 // The permission catalogue of ordering. The admin read key, and the three seller keys for the
-// paid seller orders (Phase 5 package 4, SHP-01); the keys for refunds and cancellations join with
-// the use cases that name them. The seller keys are not protected, as in the ordering design 6.1.
+// paid seller orders (Phase 5 package 4, SHP-01); the seller keys are not protected, as in the
+// ordering design 6.1. Tax step 3 adds the two refund keys, both protected: they give money back,
+// so no default role lists them (R11); the Platform Administrator and the Seller Owner hold them.
 
 /** See any order of the Market and its sub-orders (support and oversight). */
 export const ORDERING_ORDER_VIEW = definePermission('ordering', {
@@ -32,7 +33,15 @@ export const ORDERING_SELLER_ORDER_MARK_DELIVERED = definePermission('ordering',
   protected: false,
 });
 
+/** Refund part or all of a paid seller order of any order of the Market (tax step 3). */
+export const ORDERING_ORDER_REFUND = definePermission('ordering', {
+  key: 'ordering.order.refund',
+  scope: 'platform',
+  protected: true,
+});
+
 export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
+  ORDERING_ORDER_REFUND,
   ORDERING_ORDER_VIEW,
   ORDERING_SELLER_ORDER_MARK_DELIVERED,
   ORDERING_SELLER_ORDER_SHIP,

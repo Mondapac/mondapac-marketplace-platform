@@ -21,9 +21,19 @@ const REQUEST = {
 };
 
 function fake(status: number, body: unknown = {}) {
-  const calls: { url: string; headers: Record<string, string>; body: URLSearchParams }[] = [];
+  const calls: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body: URLSearchParams;
+  }[] = [];
   const fetchFn: StripeFetch = (url, init) => {
-    calls.push({ url, headers: init.headers, body: new URLSearchParams(init.body) });
+    calls.push({
+      url,
+      method: init.method,
+      headers: init.headers,
+      body: new URLSearchParams(init.body),
+    });
     return Promise.resolve({ status, json: () => Promise.resolve(body) });
   };
   return { calls, fetchFn };
@@ -151,5 +161,112 @@ describe('StripeCheckoutGateway', () => {
     expect(calls.map((c) => c.url)).toEqual([
       'https://api.stripe.com/v1/checkout/sessions/cs_test_1/expire',
     ]);
+  });
+  describe('refund', () => {
+    const REFUND = {
+      paymentIntentId: 'pi_test_1',
+      amount: 550n,
+      orderId: REQUEST.orderId,
+      refundId: '01990000-0000-7000-8000-0000000000bb',
+      marketId: 'AU',
+      idempotencyKey: 'refund-01990000-0000-7000-8000-0000000000bb',
+    };
+
+    it('refunds part of the PaymentIntent with the stored key and answers the refund id', async () => {
+      const { calls, fetchFn } = fake(200, { id: 're_test_1', status: 'succeeded' });
+      const answer = await new StripeCheckoutGateway(KEY, fetchFn).refund(REFUND);
+
+      expect(answer).toEqual({ ok: true, value: { refundId: 're_test_1', status: 'succeeded' } });
+      expect(calls[0]?.url).toBe('https://api.stripe.com/v1/refunds');
+      expect(calls[0]?.headers['Idempotency-Key']).toBe(REFUND.idempotencyKey);
+      expect(calls[0]?.body.get('payment_intent')).toBe('pi_test_1');
+      expect(calls[0]?.body.get('amount')).toBe('550');
+      expect(calls[0]?.body.get('metadata[refund_id]')).toBe(REFUND.refundId);
+    });
+
+    it.each([
+      ['succeeded', 'succeeded'],
+      ['pending', 'pending'],
+      ['requires_action', 'pending'],
+      ['failed', 'failed'],
+      ['canceled', 'failed'],
+    ] as const)(
+      'answers a Stripe refund %s as %s: only succeeded is money back',
+      async (stripe, status) => {
+        const { fetchFn } = fake(200, { id: 're_test_2', status: stripe });
+        expect(await new StripeCheckoutGateway(KEY, fetchFn).refund(REFUND)).toEqual({
+          ok: true,
+          value: { refundId: 're_test_2', status },
+        });
+      },
+    );
+
+    it('treats an unknown status or a missing refund id as no answer', async () => {
+      for (const body of [{ id: 're_test_2', status: 'weird' }, { status: 'succeeded' }]) {
+        expect(
+          await new StripeCheckoutGateway(KEY, fake(200, body).fetchFn).refund(REFUND),
+        ).toEqual({ ok: false, error: { code: 'payment.provider-unavailable' } });
+      }
+    });
+
+    it('reads a refund back by its id with a GET, test mode only', async () => {
+      const { calls, fetchFn } = fake(200, { id: 're_test_9', status: 'succeeded' });
+      expect(await new StripeCheckoutGateway(KEY, fetchFn).refundStatus('re_test_9')).toEqual({
+        ok: true,
+        value: { refundId: 're_test_9', status: 'succeeded' },
+      });
+      expect(calls.map((c) => [c.method, c.url])).toEqual([
+        ['GET', 'https://api.stripe.com/v1/refunds/re_test_9'],
+      ]);
+      const other = fake(200, { id: 're_test_other', status: 'succeeded' });
+      expect(
+        (await new StripeCheckoutGateway(KEY, other.fetchFn).refundStatus('re_test_9')).ok,
+      ).toBe(false);
+      // A refund Stripe already made: no refusal may read as `failed` (Hassan M1-R).
+      for (const [key, id] of [
+        ['sk_live_real_money_1234567890', 're_test_9'],
+        [KEY, '../charges'],
+      ] as const) {
+        const none = fake(200, { id, status: 'succeeded' });
+        expect(await new StripeCheckoutGateway(key, none.fetchFn).refundStatus(id)).toEqual({
+          ok: false,
+          error: { code: 'payment.provider-unavailable' },
+        });
+        expect(none.calls).toHaveLength(0);
+      }
+      for (const status of [401, 404]) {
+        expect(
+          await new StripeCheckoutGateway(KEY, fake(status).fetchFn).refundStatus('re_test_9'),
+        ).toEqual({ ok: false, error: { code: 'payment.provider-unavailable' } });
+      }
+    });
+
+    it('refuses a live key, a missing key and a bad PaymentIntent without calling Stripe', async () => {
+      for (const [key, request] of [
+        ['sk_live_real_money_1234567890', REFUND],
+        [null, REFUND],
+        [KEY, { ...REFUND, paymentIntentId: 'not-an-intent' }],
+        [KEY, { ...REFUND, amount: 0n }],
+      ] as const) {
+        const { calls, fetchFn } = fake(200, { id: 're_test_1', status: 'succeeded' });
+        const answer = await new StripeCheckoutGateway(key, fetchFn).refund(request);
+        expect(answer).toEqual({ ok: false, error: { code: 'payment.provider-rejected' } });
+        expect(calls).toHaveLength(0);
+      }
+    });
+
+    it('answers unavailable on a server error and rejected on a client error', async () => {
+      expect((await new StripeCheckoutGateway(KEY, fake(500).fetchFn).refund(REFUND)).ok).toBe(
+        false,
+      );
+      expect(await new StripeCheckoutGateway(KEY, fake(503).fetchFn).refund(REFUND)).toEqual({
+        ok: false,
+        error: { code: 'payment.provider-unavailable' },
+      });
+      expect(await new StripeCheckoutGateway(KEY, fake(400).fetchFn).refund(REFUND)).toEqual({
+        ok: false,
+        error: { code: 'payment.provider-rejected' },
+      });
+    });
   });
 });

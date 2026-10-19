@@ -1,7 +1,22 @@
-import { Controller, Get, Logger, Param, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Logger,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiBody,
+  ApiConflictResponse,
   ApiForbiddenResponse,
+  ApiHeader,
+  ApiUnprocessableEntityResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -12,15 +27,18 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { Call } from '../../../platform/call-context/call-context.decorator';
+import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { AdminListOrders } from '../application/use-cases/admin-list-orders.use-case';
+import { AdminRefundOrder } from '../application/use-cases/admin-refund-order.use-case';
 import { AdminViewOrder } from '../application/use-cases/admin-view-order.use-case';
-import { refusal } from './http-answers';
+import { closedBody, refusal } from './http-answers';
+import { REFUND_BODY_KEYS, RefundBody, RefundRequestBody, refundBody } from './refunds.dto';
 import {
   AdminOrderBody,
   AdminOrderPageBody,
@@ -29,6 +47,7 @@ import {
 } from './orders.dto';
 
 const ERROR = { type: Object };
+const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 
 const parseLimit = (value: unknown): number | undefined =>
   value === undefined
@@ -38,8 +57,9 @@ const parseLimit = (value: unknown): number | undefined =>
       : -1;
 
 /**
- * The admin order reads over HTTP: the Market's orders and one order, for support and oversight.
- * The controller authenticates only; each use case's gate needs `ordering.order.view`. A
+ * The admin order reads over HTTP: the Market's orders and one order, for support and oversight,
+ * and (tax step 3, switched off) a refund of a seller order. The controller authenticates only;
+ * each use case's gate needs `ordering.order.view`, the refund `ordering.order.refund`. A
  * customer's or another Market's order answers exactly as an unknown id. Every response is
  * `Cache-Control: no-store`.
  */
@@ -53,6 +73,7 @@ export class AdminOrdersController {
   constructor(
     private readonly list: AdminListOrders,
     private readonly view: AdminViewOrder,
+    private readonly refund: AdminRefundOrder,
   ) {}
 
   @Get()
@@ -120,6 +141,67 @@ export class AdminOrdersController {
     this.log('ordering.admin-view-order-route', context, result.ok ? 'read' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return adminOrderBody(result.value);
+  }
+
+  @Post(':orderId/seller-orders/:sellerOrderId/refunds')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Refund part or all of a seller order of a paid order (admin; Stripe test mode only)',
+    description:
+      'Needs ordering.order.refund (protected). Off until the Market switch ' +
+      'tax.refundCredit.enabled is on: 409 ordering.refund-disabled. Lines (units) and part or ' +
+      'all of the shipping fee; the tax reversed comes from the tax frozen on the order. One ' +
+      'refund at a time per seller order (409 ordering.refund-in-progress while one is pending).',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'orderId', format: 'uuid' })
+  @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
+  @ApiBody({ type: RefundRequestBody })
+  @ApiOkResponse({ type: RefundBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description:
+      'ordering.refund-disabled, ordering.refund-not-allowed, ordering.refund-in-progress or conflict.retry',
+  })
+  @ApiUnprocessableEntityResponse({
+    ...ERROR,
+    description:
+      'ordering.refund-exceeds (details.fields), ordering.refund-tax-unknown or ordering.refund-rejected',
+  })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'ordering.refund-tax-unavailable or access.unavailable',
+  })
+  async refundSellerOrder(
+    @Call() context: CallContext,
+    @Param('orderId') orderId: string,
+    @Param('sellerOrderId') sellerOrderId: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, REFUND_BODY_KEYS);
+    if (invalid !== null) throw invalid;
+    const { lines, shippingAmount, reason } = body as Record<string, unknown>;
+    const result = await this.refund.execute(context, {
+      orderId,
+      sellerOrderId,
+      lines,
+      shippingAmount,
+      reason,
+    });
+    this.log(
+      'ordering.admin-refund-order-route',
+      context,
+      result.ok ? `refund-${result.value.state}` : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return refundBody(result.value);
   }
 
   private log(msg: string, context: CallContext, outcome: string): void {

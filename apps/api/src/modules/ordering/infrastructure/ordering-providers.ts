@@ -18,11 +18,13 @@ import {
 } from '../application/ports/order-tax-categories';
 import { ORDER_REPOSITORY, type OrderRepository } from '../application/ports/order.repository';
 import { ORDERING_POLICY, type OrderingPolicy } from '../application/ports/ordering-policy';
+import { REFUND_REPOSITORY, type RefundRepository } from '../application/ports/refund.repository';
 import { SHIP_TO_CIPHER, type ShipToCipher } from '../application/ports/ship-to-cipher';
 import { ConfigOrderingPolicy } from './config-ordering-policy';
 import { FacadeOrderLabels } from './facade-order-labels';
 import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
 import { PrismaOrderRepository } from './prisma-order.repository';
+import { PrismaRefundRepository } from './prisma-refund.repository';
 import {
   SALES_RANKING_READER,
   type SalesRankingReader,
@@ -40,6 +42,11 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: ORDER_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OrderRepository => new PrismaOrderRepository(prisma),
+  },
+  {
+    provide: REFUND_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): RefundRepository => new PrismaRefundRepository(prisma),
   },
   {
     provide: SHIP_TO_CIPHER,

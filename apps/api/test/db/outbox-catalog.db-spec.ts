@@ -157,6 +157,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX orders_stripe_session_id_key ON ordering.orders USING btree (stripe_session_id) WHERE (stripe_session_id IS NOT NULL)',
   'ordering.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON ordering.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // docs/design/data/ordering.md 3.12a: one pending refund per seller order, one Stripe refund
+  // per refund, and the worker's read of pending refunds.
+  'ordering.refunds_one_pending_key':
+    "CREATE UNIQUE INDEX refunds_one_pending_key ON ordering.refunds USING btree (market_id, seller_order_id) WHERE (state = 'pending'::text)",
+  'ordering.refunds_pending_requested_at_idx':
+    "CREATE INDEX refunds_pending_requested_at_idx ON ordering.refunds USING btree (market_id, requested_at, id) WHERE (state = 'pending'::text)",
+  'ordering.refunds_stripe_refund_id_key':
+    'CREATE UNIQUE INDEX refunds_stripe_refund_id_key ON ordering.refunds USING btree (stripe_refund_id) WHERE (stripe_refund_id IS NOT NULL)',
   // docs/design/data/pricing.md 3.1 and 3.3: the relay's claim, one pending regular record per
   // series, and the partial GiST index behind the no-overlap exclusion constraint (below).
   'pricing.outbox_market_id_event_id_unpublished_idx':

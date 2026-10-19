@@ -18,6 +18,7 @@ import type {
   ReserveFailure,
   ReserveResult,
 } from '../../inventory/contracts/ordering-port';
+import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
@@ -33,11 +34,14 @@ import type { OrderLabels } from './ports/order-labels';
 import type { OrderTaxCategories } from './ports/order-tax-categories';
 import type { OrderingPolicy } from './ports/ordering-policy';
 import type { OrderRepository } from './ports/order.repository';
+import type { RefundRepository } from './ports/refund.repository';
 import type { ShipToCipher } from './ports/ship-to-cipher';
 
 export interface OrderingDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly orders: OrderRepository;
+  /** Refunds of seller orders and their credit notes (tax step 3). */
+  readonly refunds: RefundRepository;
   readonly gateway: CheckoutGateway;
   readonly policy: OrderingPolicy;
   readonly cart: CartCheckoutFacade;
@@ -51,6 +55,8 @@ export interface OrderingDependencies {
   /** The product's tax category of each Offer bought (catalog's published revision). */
   readonly taxCategories: OrderTaxCategories;
   readonly outbox: OutboxWriter;
+  /** The audit of refunds (tax step 3). */
+  readonly audit: AuditWriter;
   readonly ids: IdGenerator;
   readonly clock: Clock;
   /** Display names for the panel order pages (advisory; never inside a unit). */

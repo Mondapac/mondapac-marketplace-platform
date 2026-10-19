@@ -18,7 +18,8 @@
     "provisionalTaxRateBps": 1000
   },
   "tax": {
-    "defaultRateBps": 1000
+    "defaultRateBps": 1000,
+    "refundCredit": { "enabled": false }
   },
   "notifications": {
     "supportEmail": "jnamazi@gmail.com",
