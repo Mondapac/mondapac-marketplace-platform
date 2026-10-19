@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { summarise } from '../cart/cart.ts';
+import { deliverToLabel } from '../delivery/deliver-to.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import type { DeliveryArea } from '../storefront/types.ts';
@@ -15,7 +16,16 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
   const t = useTranslations('header');
   const name = useTranslations('store')('name');
   const locale = useLocale();
-  const { cart } = useStore();
+  const {
+    cart,
+    deliverTo,
+    deliverOpen,
+    setDeliverOpen,
+    setBrowseOpen,
+    setSearchOpen,
+    setCartOpen,
+  } = useStore();
+  const area = deliverTo ? deliverToLabel(deliverTo) : delivery.label;
   const cartButton = useCartButton();
   const { count, total } = summarise(cart);
   const totalText = total ? formatMoney(total, locale) : '';
@@ -60,12 +70,20 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
           <button
             className="deliver"
             type="button"
-            aria-label={t('change-area', { area: delivery.label })}
+            aria-label={t('change-area', { area })}
+            aria-haspopup="dialog"
+            aria-expanded={deliverOpen}
+            onClick={() => {
+              setBrowseOpen(false);
+              setSearchOpen(false);
+              setCartOpen(false);
+              setDeliverOpen(true);
+            }}
           >
             <Icon name="pin" />
             <span className="dt">
               <small>{t('deliver-to')}</small>
-              <b>{delivery.label}</b>
+              <b>{area}</b>
             </span>
             <span className="dc">
               <Icon name="chevd" />

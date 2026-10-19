@@ -9,6 +9,7 @@ import {
   type Cart,
   type CartView,
 } from '../cart/cart.ts';
+import type { DeliverTo } from '../delivery/deliver-to.ts';
 import type { AppliedDiscount, CartSource, CheckoutCustomer, Money } from '../storefront/types.ts';
 
 /** What the confirmation shows of the order just placed. */
@@ -67,6 +68,12 @@ interface StoreState {
   /** A page's own modal dialog (the seller card on phone and tablet) is open. */
   readonly dialogOpen: boolean;
   readonly setDialogOpen: (open: boolean) => void;
+  /** The Deliver to modal of the header button. */
+  readonly deliverOpen: boolean;
+  readonly setDeliverOpen: (open: boolean) => void;
+  /** The confirmed delivery location; null shows the storefront's default area. */
+  readonly deliverTo: DeliverTo | null;
+  readonly setDeliverTo: (to: DeliverTo) => void;
 }
 
 const StoreContext = createContext<StoreState | null>(null);
@@ -75,11 +82,14 @@ const StoreContext = createContext<StoreState | null>(null);
 export function StoreProvider({
   cartSource = NO_SOURCE,
   initialCart = {},
+  initialDeliverTo = null,
   children,
 }: {
   readonly cartSource?: CartSource;
   /** The lines to start with (the server cart once it is read; tests). */
   readonly initialCart?: Cart;
+  /** The location kept in this browser (the delivery cookie). */
+  readonly initialDeliverTo?: DeliverTo | null;
   readonly children: ReactNode;
 }) {
   const [cart, setCart] = useState<Cart>(initialCart);
@@ -94,6 +104,8 @@ export function StoreProvider({
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deliverOpen, setDeliverOpen] = useState(false);
+  const [deliverTo, setDeliverTo] = useState<DeliverTo | null>(initialDeliverTo);
   const add = useCallback(
     (id: string, unitPrice: Money, limit: number) =>
       setCart((current) => addOne(current, id, unitPrice, limit)),
@@ -159,6 +171,10 @@ export function StoreProvider({
       setFiltersOpen,
       dialogOpen,
       setDialogOpen,
+      deliverOpen,
+      setDeliverOpen,
+      deliverTo,
+      setDeliverTo,
     }),
     [
       cart,
@@ -182,6 +198,8 @@ export function StoreProvider({
       searchOpen,
       filtersOpen,
       dialogOpen,
+      deliverOpen,
+      deliverTo,
     ],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

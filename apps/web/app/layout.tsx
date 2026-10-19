@@ -10,8 +10,13 @@ import {
   textSizeOf,
 } from '../src/preferences/preferences.ts';
 import { CONSENT_COOKIE, consentOf } from '../src/consent/consent.ts';
+import { DELIVER_TO_COOKIE, deliverToOf } from '../src/delivery/deliver-to.ts';
 import { StoreShell } from '../src/shell/store-shell.tsx';
-import { loadCartSource, loadStorefrontContent } from '../src/storefront/source.ts';
+import {
+  loadCartSource,
+  loadDeliveryLocator,
+  loadStorefrontContent,
+} from '../src/storefront/source.ts';
 import './globals.css';
 
 export async function generateMetadata() {
@@ -22,12 +27,13 @@ export async function generateMetadata() {
 export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const [messages, locale, jar, content, cartSource] = await Promise.all([
+  const [messages, locale, jar, content, cartSource, locator] = await Promise.all([
     getMessages(),
     getLocale(),
     cookies(),
     loadStorefrontContent(),
     loadCartSource(),
+    loadDeliveryLocator(),
   ]);
   const palette = paletteOf(jar.get(PALETTE_COOKIE)?.value);
   const textSize = textSizeOf(jar.get(TEXT_SIZE_COOKIE)?.value);
@@ -52,6 +58,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <StoreShell
             content={content}
             cartSource={cartSource}
+            locator={locator}
+            deliverTo={deliverToOf(jar.get(DELIVER_TO_COOKIE)?.value)}
             textSize={textSize}
             consent={consentOf(jar.get(CONSENT_COOKIE)?.value)}
           >

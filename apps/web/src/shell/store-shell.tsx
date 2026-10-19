@@ -2,8 +2,10 @@ import type { ReactNode } from 'react';
 import { CartDrawer } from '../cart/cart-drawer.tsx';
 import { ConsentBar } from '../consent/consent-bar.tsx';
 import type { Consent } from '../consent/consent.ts';
+import { DeliverModal } from '../delivery/deliver-modal.tsx';
+import type { DeliverTo } from '../delivery/deliver-to.ts';
 import type { TextSize } from '../preferences/preferences.ts';
-import type { CartSource, StorefrontContent } from '../storefront/types.ts';
+import type { CartSource, DeliveryLocatorSource, StorefrontContent } from '../storefront/types.ts';
 import { BrowsePanel } from './browse-panel.tsx';
 import { Footer } from './footer.tsx';
 import { Header } from './header.tsx';
@@ -17,21 +19,26 @@ import { TabBar } from './tab-bar.tsx';
 export function StoreShell({
   content,
   cartSource,
+  locator,
+  deliverTo,
   textSize,
   consent,
   children,
 }: {
   readonly content: StorefrontContent;
   readonly cartSource: CartSource;
+  readonly locator: DeliveryLocatorSource;
+  readonly deliverTo: DeliverTo | null;
   readonly textSize: TextSize;
   readonly consent: Consent | null;
   readonly children: ReactNode;
 }) {
   return (
-    <StoreProvider cartSource={cartSource}>
+    <StoreProvider cartSource={cartSource} initialDeliverTo={deliverTo}>
       <div className="page">
         <BrowsePanel categories={content.categories} />
         <CartDrawer />
+        <DeliverModal source={locator} />
         <SearchView popular={content.popularSearches} />
         <PageFrame>
           <Header delivery={content.delivery} />

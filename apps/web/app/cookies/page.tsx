@@ -8,7 +8,7 @@ export async function generateMetadata() {
   return { title: t('title') };
 }
 
-const NECESSARY = ['session', 'cart', 'palette', 'text-size', 'consent'] as const;
+const NECESSARY = ['session', 'cart', 'palette', 'text-size', 'delivery', 'consent'] as const;
 
 export default async function CookiesPage() {
   const t = await getTranslations('cookies');

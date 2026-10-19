@@ -1,8 +1,15 @@
 import 'server-only';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
+import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleProduct } from './sample-product.ts';
-import type { CartSource, CheckoutSource, ProductDetail, StorefrontContent } from './types.ts';
+import type {
+  CartSource,
+  CheckoutSource,
+  DeliveryLocatorSource,
+  ProductDetail,
+  StorefrontContent,
+} from './types.ts';
 
 /**
  * The storefront's one read of the home content. Sample data for now; it calls the
@@ -31,4 +38,12 @@ export async function loadCartSource(): Promise<CartSource> {
 /** The checkout's customer, address book and service area. Sample data until checkout is wired. */
 export async function loadCheckout(): Promise<CheckoutSource> {
   return Promise.resolve(SAMPLE_CHECKOUT);
+}
+
+/**
+ * The Deliver to modal's service area and, until the map and address-lookup provider is chosen,
+ * the sample places of its stubbed lookup (handoffs/deliver-to-modal.md).
+ */
+export async function loadDeliveryLocator(): Promise<DeliveryLocatorSource> {
+  return Promise.resolve(SAMPLE_DELIVERY_LOCATOR);
 }
