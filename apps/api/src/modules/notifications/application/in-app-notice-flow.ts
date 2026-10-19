@@ -1,12 +1,21 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, IdGenerator, Result } from '@mondapac/shared-kernel';
-import type { AccessDeclaration, AuthorisationCheck } from '../../../platform/authz';
+import type { AccessDeclaration, AuthorisationCheck, PermissionKey } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
-import { CATALOG_PRODUCT_APPROVE, type CatalogFacade } from '../../catalog';
-import { CERTIFICATION_SELLER_CERTIFICATE_REVIEW } from '../../certification';
+import {
+  CATALOG_OWN_PRODUCT_VIEW,
+  CATALOG_PRODUCT_APPROVE,
+  type CatalogFacade,
+} from '../../catalog';
+import {
+  CERTIFICATION_OWN_CERTIFICATE_VIEW,
+  CERTIFICATION_SELLER_CERTIFICATE_REVIEW,
+} from '../../certification';
+import { TEAM_MEMBER_INVITE } from '../../identity';
+import { INVENTORY_STOCK_VIEW } from '../../inventory';
 import { ORDERING_SELLER_ORDER_VIEW, type OrderingFacade } from '../../ordering';
-import { PRICING_PRICE_HOLD_DECIDE } from '../../pricing';
+import { PRICING_PRICE_HOLD_DECIDE, PRICING_PRICE_VIEW } from '../../pricing';
 import { SELLERS_SELLER_FILE_REVIEW } from '../../sellers';
 import {
   ADMIN_NOTICE_KINDS,
@@ -17,8 +26,22 @@ import {
   NOTICE_RETENTION_DAYS,
   type AdminNoticeKind,
   parseNoticeParams,
+  SELLER_ACCESS_CHANGED,
+  SELLER_CERTIFICATE_DECIDED,
+  SELLER_CERTIFICATE_ENDED,
+  SELLER_CERTIFICATE_EXPIRING,
+  SELLER_IMAGE_TAKEN_DOWN,
+  SELLER_ISSUER_REQUEST_ANSWERED,
+  SELLER_LOW_STOCK,
   SELLER_NOTICE_KINDS,
+  SELLER_OFFER_CHANGES_REQUESTED,
+  SELLER_OFFER_PUBLISHED,
+  SELLER_OFFER_TAG_CHANGED,
   SELLER_ORDER_PAID,
+  SELLER_PRICE_HOLD_DECIDED,
+  SELLER_PRODUCT_CHANGES_REQUESTED,
+  SELLER_PRODUCT_PUBLISHED,
+  SELLER_RINGING_KINDS,
   type NoticeParams,
   type SellerNoticeKind,
   type SellerOrderPaidParams,
@@ -72,12 +95,33 @@ export type OwnNoticesFailure =
  * ones already there. These declarations are never executed as use cases; they are only asked of
  * the AuthorisationCheck, as `sellers.list-status` is.
  */
-const SELLER_KIND_ACCESS: Readonly<Record<SellerNoticeKind, AccessDeclaration>> = {
-  [SELLER_ORDER_PAID]: {
-    name: 'notifications.see-seller-order-notices',
-    rule: { kind: 'permissions', allOf: [ORDERING_SELLER_ORDER_VIEW.key] },
-  },
-};
+const SELLER_KIND_ACCESS: Readonly<Record<SellerNoticeKind, AccessDeclaration>> = (() => {
+  const seeing = (name: string, key: PermissionKey): AccessDeclaration => ({
+    name: `notifications.see-seller-${name}-notices`,
+    rule: { kind: 'permissions', allOf: [key] },
+  });
+  const stock = seeing('stock', INVENTORY_STOCK_VIEW.key);
+  const certificate = seeing('certificate', CERTIFICATION_OWN_CERTIFICATE_VIEW.key);
+  const catalog = seeing('catalog', CATALOG_OWN_PRODUCT_VIEW.key);
+  return {
+    [SELLER_ORDER_PAID]: seeing('order', ORDERING_SELLER_ORDER_VIEW.key),
+    [SELLER_LOW_STOCK]: stock,
+    [SELLER_CERTIFICATE_DECIDED]: certificate,
+    [SELLER_CERTIFICATE_EXPIRING]: certificate,
+    [SELLER_CERTIFICATE_ENDED]: certificate,
+    [SELLER_ISSUER_REQUEST_ANSWERED]: certificate,
+    [SELLER_OFFER_PUBLISHED]: catalog,
+    [SELLER_OFFER_CHANGES_REQUESTED]: catalog,
+    [SELLER_PRODUCT_PUBLISHED]: catalog,
+    [SELLER_PRODUCT_CHANGES_REQUESTED]: catalog,
+    [SELLER_OFFER_TAG_CHANGED]: catalog,
+    [SELLER_IMAGE_TAKEN_DOWN]: catalog,
+    [SELLER_PRICE_HOLD_DECIDED]: seeing('price', PRICING_PRICE_VIEW.key),
+    // The plan's "owner of the seller account": in Phase 2 only the Seller Owner holds this
+    // protected key (no default role may list one), so it stands for the owner.
+    [SELLER_ACCESS_CHANGED]: seeing('access', TEAM_MEMBER_INVITE.key),
+  };
+})();
 
 /**
  * The permission an admin must hold to see each admin kind (package 3): the one that works the
@@ -113,9 +157,17 @@ async function permittedKinds<K extends string>(
   access: Readonly<Record<K, AccessDeclaration>>,
 ): Promise<K[]> {
   const permitted: K[] = [];
+  // Kinds that share a declaration share its answer: one check per permission.
+  const answers = new Map<AccessDeclaration, boolean>();
   for (const kind of kinds) {
     try {
-      if ((await deps.authorisation.check(context, access[kind])).allowed) permitted.push(kind);
+      const declaration = access[kind];
+      let allowed = answers.get(declaration);
+      if (allowed === undefined) {
+        allowed = (await deps.authorisation.check(context, declaration)).allowed;
+        answers.set(declaration, allowed);
+      }
+      if (allowed) permitted.push(kind);
     } catch (error) {
       // Fail closed: a kind whose permission cannot be checked is not shown.
       logger.error({
@@ -159,6 +211,15 @@ export async function readerScope(
     });
   }
   return err({ code: 'access.denied' });
+}
+
+/**
+ * The kinds of a scope whose newest unread notice the bell's count carries (to ring): a seller's
+ * orders only (plan 6b), every admin kind.
+ */
+export function ringingKinds(scope: NoticeScope): readonly string[] {
+  if (scope.owner.audience === 'admin') return scope.kinds;
+  return scope.kinds.filter((kind) => (SELLER_RINGING_KINDS as readonly string[]).includes(kind));
 }
 
 /** The oldest instant still shown and kept. */

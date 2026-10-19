@@ -26,7 +26,13 @@ import {
   NOTICE_PAGE_SIZE,
   NOTICES_PER_SELLER,
   parseNoticeParams,
+  SELLER_ACCESS_CHANGED,
+  SELLER_CERTIFICATE_DECIDED,
+  SELLER_IMAGE_TAKEN_DOWN,
+  SELLER_LOW_STOCK,
+  SELLER_OFFER_TAG_CHANGED,
   SELLER_ORDER_PAID,
+  SELLER_PRICE_HOLD_DECIDED,
   type SellerOrderPaidParams,
 } from '../domain/in-app-notice';
 import type { InAppNoticeDependencies } from './in-app-notice-flow';
@@ -46,6 +52,10 @@ import {
   RecordAdminReviewNotice,
   type AdminReviewItem,
 } from './use-cases/record-admin-review-notice.use-case';
+import {
+  RecordSellerNotice,
+  type SellerNoticeItem,
+} from './use-cases/record-seller-notice.use-case';
 import { RecordSellerOrderNotices } from './use-cases/record-seller-order-notices.use-case';
 
 // The in-app notices in memory on both Market fixtures: a paid order becomes one "New order"
@@ -158,11 +168,12 @@ class MemoryNotices implements InAppNoticeRepository {
         .map((row) => this.stored(row, scope.accountId)),
     );
   }
-  unread(market: MarketContext, scope: NoticeScope) {
+  unread(market: MarketContext, scope: NoticeScope, newestOf: readonly string[]) {
     const unread = this.inScope(market, scope)
       .map((row) => this.stored(row, scope.accountId))
       .filter((row) => !row.read);
-    return Promise.resolve({ count: unread.length, newest: unread[0] ?? null });
+    const newest = unread.find((row) => newestOf.includes(row.kind)) ?? null;
+    return Promise.resolve({ count: unread.length, newest });
   }
   exists(market: MarketContext, scope: NoticeScope, noticeId: Id<'InAppNotice'>) {
     return Promise.resolve(this.inScope(market, scope).some((row) => row.id === noticeId));
@@ -452,7 +463,15 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
       ]);
       expect(result.ok && result.value.items[0]!.createdAt).toBe('2026-10-17T10:05:00Z');
       expect(result.ok && result.value.next).toBeNull();
-      expect(checks).toEqual(['notifications.see-seller-order-notices']);
+      // One check per permission behind the seller kinds, never one per kind.
+      expect(checks).toEqual([
+        'notifications.see-seller-order-notices',
+        'notifications.see-seller-stock-notices',
+        'notifications.see-seller-certificate-notices',
+        'notifications.see-seller-catalog-notices',
+        'notifications.see-seller-price-notices',
+        'notifications.see-seller-access-notices',
+      ]);
       // No customer data reaches the notice.
       expect(JSON.stringify(result)).not.toContain(NOTICE.accountId);
     });
@@ -845,6 +864,328 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
         });
         expect(await mark(admin(ADMIN_ALL), { id: certificate })).toEqual(ok({ marked: 1 }));
       });
+    });
+  });
+});
+
+describe('parseNoticeParams of seller kinds (package 4)', () => {
+  it('keeps the known ids, enums and counts only', () => {
+    expect(
+      parseNoticeParams(SELLER_LOW_STOCK, {
+        offerId: id(1) as string,
+        variantId: id(2) as string,
+        onlyLeft: 3,
+        productName: 'leaked',
+      }),
+    ).toEqual({ offerId: id(1), variantId: id(2), onlyLeft: 3 });
+    expect(parseNoticeParams(SELLER_ACCESS_CHANGED, { change: 'reinstated' })).toEqual({
+      change: 'reinstated',
+    });
+  });
+
+  it.each([
+    ['a negative count', SELLER_LOW_STOCK, { offerId: id(1), variantId: id(2), onlyLeft: -1 }],
+    ['a count as text', SELLER_LOW_STOCK, { offerId: id(1), variantId: id(2), onlyLeft: '3' }],
+    [
+      'an unknown outcome',
+      SELLER_CERTIFICATE_DECIDED,
+      { sellerCertificationId: id(1), outcome: 'x' },
+    ],
+    ['a missing id', SELLER_IMAGE_TAKEN_DOWN, { productId: id(1), reason: 'rights' }],
+    [
+      'a superseded hold',
+      SELLER_PRICE_HOLD_DECIDED,
+      {
+        offerId: id(1),
+        variantId: id(2),
+        recordId: id(3),
+        outcome: 'superseded',
+        priceKind: 'regular',
+      },
+    ],
+  ])('refuses %s', (_label, kind, raw) => {
+    expect(parseNoticeParams(kind, raw)).toBeNull();
+  });
+});
+
+describe.each([['AU'], ['ZZ']] as const)('seller notices (package 4) in market %s', (code) => {
+  const market = testMarketContext(code, 'default');
+  const system = testCallContext(market, 'system', 'notice-sys-0004');
+  const OFFER = id<'Offer'>(0x31);
+  const PRODUCT = id<'Product'>(0x71);
+  const OWNER = id<'Account'>(0xa0);
+
+  let notices: MemoryNotices;
+  let unitOfWork: FakeUnitOfWork;
+  let offerOwners: Map<string, Id<'Seller'>>;
+  let productOwners: Map<string, Id<'Seller'>>;
+  let catalogAnswer: 'ok' | 'denied' | 'fault';
+  /** The permission keys each seller-side account holds. */
+  let keys: Map<string, readonly string[]>;
+  let deps: InAppNoticeDependencies;
+  let nextEvent: number;
+
+  const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
+  const member = (accountId: Id<'Account'>, sellerId: Id<'Seller'> = SELLER_A) =>
+    testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'seller',
+        accountId,
+        sessionId: id<'Session'>(0x61),
+        sellerId,
+      }),
+      'notice-member-0004',
+    );
+  const record = (item: SellerNoticeItem, eventNo = nextEvent++) =>
+    new RecordSellerNotice(gate, deps).execute(system, {
+      delivery: {
+        eventId: id<'event'>(0xf00 + eventNo),
+        subscriber: 'notifications.seller-low-stock-notice',
+        attempt: 1,
+      },
+      item,
+    });
+  const lowStock = (sellerId: string = SELLER_A): SellerNoticeItem => ({
+    kind: SELLER_LOW_STOCK,
+    owner: { by: 'seller', sellerId },
+    params: { offerId: OFFER, variantId: id(0x41), onlyLeft: 2 },
+  });
+  const tagSuspended: SellerNoticeItem = {
+    kind: SELLER_OFFER_TAG_CHANGED,
+    owner: { by: 'offer', offerId: OFFER },
+    params: { offerId: OFFER, tagId: id(0x51), change: 'suspended' },
+  };
+  const imageDown: SellerNoticeItem = {
+    kind: SELLER_IMAGE_TAKEN_DOWN,
+    owner: { by: 'product', productId: PRODUCT },
+    params: { productId: PRODUCT, imageId: id(0x52), reason: 'rights' },
+  };
+  const list = (context: CallContext) =>
+    new ListOwnNotices(gate, deps).execute(context, { show: 'all' });
+  const count = (context: CallContext) =>
+    new CountOwnUnreadNotices(gate, deps).execute(context, {});
+  const kindsSeenBy = async (context: CallContext) => {
+    const result = await list(context);
+    return result.ok ? result.value.items.map((item) => item.kind) : result;
+  };
+
+  beforeEach(() => {
+    notices = new MemoryNotices();
+    unitOfWork = new FakeUnitOfWork();
+    offerOwners = new Map([[OFFER, SELLER_A]]);
+    productOwners = new Map([[PRODUCT, SELLER_A]]);
+    catalogAnswer = 'ok';
+    keys = new Map();
+    nextEvent = 1;
+    const answer = <T>(value: T) => {
+      if (catalogAnswer === 'denied') return Promise.resolve(err({ code: 'access.denied' }));
+      if (catalogAnswer === 'fault') return Promise.resolve(err({ code: 'batch.too-large' }));
+      return Promise.resolve(ok(value));
+    };
+    const authorisation: AuthorisationCheck = {
+      check: (context: CallContext, declaration: AccessDeclaration) => {
+        const actor = context.actor;
+        const held = actor.kind === 'authenticated' ? (keys.get(actor.accountId) ?? []) : [];
+        const needed = declaration.rule.kind === 'permissions' ? declaration.rule.allOf : [];
+        return Promise.resolve(
+          needed.length > 0 && needed.every((key) => held.includes(key))
+            ? { allowed: true }
+            : { allowed: false, denial: { code: 'access.denied' } },
+        );
+      },
+    };
+    deps = {
+      unitOfWork,
+      notices,
+      ordering: {
+        sellerOrderCustomerNames: () => Promise.resolve(ok([])),
+      } as unknown as OrderingFacade,
+      catalog: {
+        offerSellUnits: (_context: CallContext, ids: readonly string[]) =>
+          answer(
+            new Map(
+              ids
+                .filter((offerId) => offerOwners.has(offerId))
+                .map((offerId) => [offerId, { sellerId: offerOwners.get(offerId) }]),
+            ),
+          ),
+        sellerProductOwners: (_context: CallContext, ids: readonly string[]) =>
+          answer(
+            new Map(
+              ids
+                .filter((productId) => productOwners.has(productId))
+                .map((productId) => [productId, productOwners.get(productId)]),
+            ),
+          ),
+      } as unknown as CatalogFacade,
+      authorisation,
+      ids: new CountingIds(),
+      clock: new FixedClock(T0),
+    };
+  });
+
+  describe('recording', () => {
+    it("writes one notice for the event's seller, once per delivery", async () => {
+      expect(await record(lowStock(), 9)).toEqual(ok({ code: 'notices.recorded', notices: 1 }));
+      expect(await record(lowStock(), 9)).toEqual(ok({ code: 'notices.already-handled' }));
+      expect(
+        notices.rows.map(({ sellerId, kind, params, market: m }) => ({
+          sellerId,
+          kind,
+          params,
+          m,
+        })),
+      ).toEqual([
+        {
+          sellerId: SELLER_A,
+          kind: SELLER_LOW_STOCK,
+          params: { offerId: OFFER, variantId: id(0x41), onlyLeft: 2 },
+          m: code,
+        },
+      ]);
+    });
+
+    it("reads an Offer's or a product's owner through catalog", async () => {
+      offerOwners.set(OFFER, SELLER_B);
+      expect(await record(tagSuspended)).toEqual(ok({ code: 'notices.recorded', notices: 1 }));
+      expect(await record(imageDown)).toEqual(ok({ code: 'notices.recorded', notices: 1 }));
+      expect(notices.rows.map((row) => [row.kind, row.sellerId])).toEqual([
+        [SELLER_OFFER_TAG_CHANGED, SELLER_B],
+        [SELLER_IMAGE_TAKEN_DOWN, SELLER_A],
+      ]);
+    });
+
+    it('marks the delivery and writes nothing when catalog knows no seller owner', async () => {
+      offerOwners.clear();
+      productOwners.clear();
+      expect(await record(tagSuspended)).toEqual(
+        ok({ code: 'notices.skipped', reason: 'owner.unknown' }),
+      );
+      expect(await record(imageDown)).toEqual(
+        ok({ code: 'notices.skipped', reason: 'owner.unknown' }),
+      );
+      expect(notices.rows).toEqual([]);
+      expect(unitOfWork.handled.size).toBe(2);
+    });
+
+    it('passes a refusal on, and throws a read fault back to the delivery', async () => {
+      catalogAnswer = 'denied';
+      expect(await record(tagSuspended)).toEqual({ ok: false, error: { code: 'access.denied' } });
+      catalogAnswer = 'fault';
+      await expect(record(imageDown)).rejects.toThrow('the owner could not be read');
+      expect(unitOfWork.handled.size).toBe(0);
+    });
+
+    it('refuses params that do not fit the kind', async () => {
+      await expect(
+        record({ ...lowStock(), params: { offerId: OFFER, name: 'leaked' } }),
+      ).rejects.toThrow('the params do not fit');
+      expect(notices.rows).toEqual([]);
+    });
+
+    it(`caps each kind at ${NOTICES_PER_SELLER}, so a flood of low stock keeps the orders`, async () => {
+      notices.rows.push({
+        id: id<'InAppNotice'>(0x10),
+        owner: { audience: 'seller', sellerId: SELLER_A },
+        kind: SELLER_ORDER_PAID,
+        params: { sellerOrderId: id(0x21), items: 1 },
+        createdAt: T0,
+        market: code,
+        audience: 'seller',
+        sellerId: SELLER_A,
+      });
+      for (let n = 0; n <= NOTICES_PER_SELLER; n += 1) await record(lowStock());
+      expect(notices.rows.filter((row) => row.kind === SELLER_LOW_STOCK)).toHaveLength(
+        NOTICES_PER_SELLER,
+      );
+      expect(notices.rows.filter((row) => row.kind === SELLER_ORDER_PAID)).toHaveLength(1);
+    });
+
+    it('is system-only', async () => {
+      await expectSystemOnly(code, (context) =>
+        new RecordSellerNotice(gate, deps).execute(context, {
+          delivery: { eventId: id<'event'>(1), subscriber: 's', attempt: 1 },
+          item: lowStock(),
+        }),
+      );
+    });
+  });
+
+  describe('reading', () => {
+    beforeEach(async () => {
+      await record(lowStock());
+      await record(tagSuspended);
+      await record({
+        kind: SELLER_CERTIFICATE_DECIDED,
+        owner: { by: 'seller', sellerId: SELLER_A },
+        params: { sellerCertificationId: id(0x61), outcome: 'approved' },
+      });
+      await record({
+        kind: SELLER_PRICE_HOLD_DECIDED,
+        owner: { by: 'offer', offerId: OFFER },
+        params: {
+          offerId: OFFER,
+          variantId: id(0x41),
+          recordId: id(0x62),
+          outcome: 'rejected',
+          priceKind: 'regular',
+        },
+      });
+      await record({
+        kind: SELLER_ACCESS_CHANGED,
+        owner: { by: 'seller', sellerId: SELLER_A },
+        params: { change: 'approved' },
+      });
+      await record(lowStock(SELLER_B));
+    });
+
+    it('shows each member only the kinds whose permission they hold, of their own seller', async () => {
+      keys.set(MEMBER_1, ['catalog.own-product.view', 'certification.own-certificate.view']);
+      keys.set(MEMBER_2, ['inventory.stock.view', 'pricing.price.view']);
+      keys.set(OWNER, [
+        'inventory.stock.view',
+        'catalog.own-product.view',
+        'certification.own-certificate.view',
+        'pricing.price.view',
+        'identity.team-member.invite',
+      ]);
+      expect(await kindsSeenBy(member(MEMBER_1))).toEqual([
+        SELLER_CERTIFICATE_DECIDED,
+        SELLER_OFFER_TAG_CHANGED,
+      ]);
+      expect(await kindsSeenBy(member(MEMBER_2))).toEqual([
+        SELLER_PRICE_HOLD_DECIDED,
+        SELLER_LOW_STOCK,
+      ]);
+      expect(await kindsSeenBy(member(OWNER))).toEqual([
+        SELLER_ACCESS_CHANGED,
+        SELLER_PRICE_HOLD_DECIDED,
+        SELLER_CERTIFICATE_DECIDED,
+        SELLER_OFFER_TAG_CHANGED,
+        SELLER_LOW_STOCK,
+      ]);
+      expect(await kindsSeenBy(member(MEMBER_B, SELLER_B))).toEqual([]);
+    });
+
+    it('carries the newest unread order for the sound, never a newer notice of another kind', async () => {
+      keys.set(OWNER, ['ordering.seller-order.view', 'inventory.stock.view']);
+      const before = await count(member(OWNER));
+      expect(before).toEqual(ok({ unread: 1, newest: null }));
+      notices.rows.unshift({
+        id: id<'InAppNotice'>(0x10),
+        owner: { audience: 'seller', sellerId: SELLER_A },
+        kind: SELLER_ORDER_PAID,
+        params: { sellerOrderId: id(0x21), items: 1 },
+        createdAt: T0,
+        market: code,
+        audience: 'seller',
+        sellerId: SELLER_A,
+      });
+      await record(lowStock());
+      const after = await count(member(OWNER));
+      expect(after.ok && after.value.unread).toBe(3);
+      expect(after.ok && after.value.newest?.kind).toBe(SELLER_ORDER_PAID);
     });
   });
 });

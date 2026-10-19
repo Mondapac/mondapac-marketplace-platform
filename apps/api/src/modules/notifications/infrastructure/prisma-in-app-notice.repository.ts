@@ -109,7 +109,7 @@ export class PrismaInAppNoticeRepository implements InAppNoticeRepository {
     }));
   }
 
-  async unread(market: MarketContext, scope: NoticeScope) {
+  async unread(market: MarketContext, scope: NoticeScope, newestOf: readonly string[]) {
     const tx = this.prisma.tx(market);
     const where = {
       marketId: market.marketId,
@@ -118,11 +118,13 @@ export class PrismaInAppNoticeRepository implements InAppNoticeRepository {
     };
     const [count, newest] = await Promise.all([
       tx.notificationsInAppNotice.count({ where }),
-      tx.notificationsInAppNotice.findFirst({
-        where,
-        orderBy: { id: 'desc' },
-        select: { id: true, kind: true, params: true, createdAt: true },
-      }),
+      newestOf.length === 0
+        ? Promise.resolve(null)
+        : tx.notificationsInAppNotice.findFirst({
+            where: { ...where, kind: { in: [...newestOf] } },
+            orderBy: { id: 'desc' },
+            select: { id: true, kind: true, params: true, createdAt: true },
+          }),
     ]);
     return {
       count,

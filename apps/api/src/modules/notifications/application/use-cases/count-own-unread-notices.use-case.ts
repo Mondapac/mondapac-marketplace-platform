@@ -3,6 +3,7 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import {
   readerScope,
+  ringingKinds,
   viewOf,
   type InAppNoticeDependencies,
   type NoticeView,
@@ -12,8 +13,9 @@ import {
 export interface CountOwnUnreadNoticesOutput {
   readonly unread: number;
   /**
-   * The newest unread notice, so the panel can tell that something new arrived since its last
-   * poll (the order sound) without loading the list; null when nothing is unread.
+   * The newest unread notice of a ringing kind (a seller's orders, every admin kind), so the
+   * panel can tell that something new arrived since its last poll (the sound) without loading the
+   * list; null when none is unread. A newer notice of another kind never hides a new order.
    */
   readonly newest: NoticeView | null;
 }
@@ -49,7 +51,8 @@ export class CountOwnUnreadNotices extends UseCase<
     if (scope.value.kinds.length === 0) return ok({ unread: 0, newest: null });
     const read = await this.deps.unitOfWork.run(
       context.market,
-      async () => ok(await this.deps.notices.unread(context.market, scope.value)),
+      async () =>
+        ok(await this.deps.notices.unread(context.market, scope.value, ringingKinds(scope.value))),
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.denied' });
