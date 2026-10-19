@@ -24,7 +24,7 @@ describe('reverseRefundTax', () => {
       { lines: 'all', charges: [] },
       { lines: [], charges: new Array(11).fill({ tax: 0n, gross: 0n, before: 0n, after: 0n }) },
     ]) {
-      const answer = reverseRefundTax(input as Parameters<typeof reverseRefundTax>[0]);
+      const answer = reverseRefundTax(input);
       expect(answer.ok ? 'ok' : answer.error.code).toBe('validation.failed');
     }
   });
