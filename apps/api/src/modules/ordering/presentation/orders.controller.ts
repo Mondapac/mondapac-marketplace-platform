@@ -40,7 +40,15 @@ import { ListOrders } from '../application/use-cases/list-orders.use-case';
 import { StartCheckout } from '../application/use-cases/start-checkout.use-case';
 import { ViewOrder } from '../application/use-cases/view-order.use-case';
 import { closedBody, moneyBody, refusal } from './http-answers';
-import { CheckoutStartedView, OrderBody, OrderPageBody, orderBody, pageBody } from './orders.dto';
+import {
+  CheckoutRequest,
+  CheckoutStartedView,
+  OrderPageBody,
+  OwnOrderBody,
+  orderBody,
+  ownOrderBody,
+  pageBody,
+} from './orders.dto';
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const ERROR = { type: Object };
@@ -76,14 +84,18 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Start checkout: the cart becomes a pending order and a hosted payment page',
     description:
-      'Reserves the stock for the whole cart, stores the order with its seller split and opens a ' +
-      'Stripe Checkout page. Nothing is charged here. Send the customer to checkoutUrl. The body ' +
-      'is an empty JSON object.',
+      "Copies the chosen address of the customer's address book onto the order (a later change " +
+      'of the address book never touches it), reserves the stock for the whole cart, stores the ' +
+      'order with its seller split and opens a Stripe Checkout page. Nothing is charged here. ' +
+      'Send the customer to checkoutUrl.',
   })
   @ApiHeader(CSRF)
-  @ApiBody({ schema: { type: 'object', additionalProperties: false } })
+  @ApiBody({ type: CheckoutRequest })
   @ApiOkResponse({ type: CheckoutStartedView })
-  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiBadRequestResponse({
+    ...ERROR,
+    description: 'validation.failed (details.fields: addressId required or format)',
+  })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
   @ApiConflictResponse({
@@ -94,7 +106,9 @@ export class OrdersController {
   })
   @ApiUnprocessableEntityResponse({
     ...ERROR,
-    description: 'ordering.cart-empty or ordering.cart-not-purchasable (details.lineIndexes)',
+    description:
+      "ordering.address-not-found (not one of the customer's addresses), ordering.cart-empty or " +
+      'ordering.cart-not-purchasable (details.lineIndexes)',
   })
   @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
   @ApiServiceUnavailableResponse({
@@ -109,9 +123,10 @@ export class OrdersController {
     @Body() body: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, body);
+    const invalid = closedBody(request, body, ['addressId']);
     if (invalid !== null) throw this.refused(invalid, context);
-    const result = await this.start.execute(context, {});
+    const { addressId } = body as { addressId?: unknown };
+    const result = await this.start.execute(context, { addressId });
     this.log('ordering.start-checkout-route', context, result.ok ? 'started' : result.error.code);
     if (!result.ok) {
       if (result.error.code === 'request.throttled') {
@@ -155,7 +170,7 @@ export class OrdersController {
   @Get(':orderId')
   @ApiOperation({ summary: "One of the customer's own orders" })
   @ApiParam({ name: 'orderId', format: 'uuid' })
-  @ApiOkResponse({ type: OrderBody })
+  @ApiOkResponse({ type: OwnOrderBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiNotFoundResponse({
@@ -172,7 +187,7 @@ export class OrdersController {
     const result = await this.view.execute(context, { orderId });
     this.log('ordering.view-order-route', context, result.ok ? 'read' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return orderBody(result.value);
+    return ownOrderBody(result.value);
   }
 
   private refused(error: HttpException, context: CallContext): HttpException {

@@ -75,6 +75,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       cancelledAt: null,
       version: 1,
       taxStrategyId: ids.next<'TaxStrategy'>(),
+      shipToSealed: `v1.ship-to-of-${orderId}`,
       sellerOrders: [
         {
           id: sellerOrderId,
@@ -422,6 +423,9 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     });
     expect(read?.orderId).toBe(paid.id);
     expect(read?.lines).toHaveLength(1);
+    // The seller's page opens the order's sealed address under the customer's account.
+    expect(read?.accountId).toBe(paid.accountId);
+    expect(read?.shipToSealed).toBe(paid.shipToSealed);
   });
 
   it("answers the customer account of a seller's own paid seller orders only", async () => {

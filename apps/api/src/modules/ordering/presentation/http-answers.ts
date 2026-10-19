@@ -11,6 +11,7 @@ import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'ordering.order-not-found': 404,
+  'ordering.address-not-found': 422,
   'ordering.cart-empty': 422,
   'ordering.cart-not-purchasable': 422,
   'ordering.stock-insufficient': 409,

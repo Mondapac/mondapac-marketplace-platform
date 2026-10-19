@@ -188,6 +188,7 @@ describe.each(TEST_MARKETS)('storefront reads in market %s (database)', (code) =
         cancelledAt: null,
         version: 1,
         taxStrategyId: null,
+        shipToSealed: null,
         sellerOrders: [
           {
             id: sellerOrderId,

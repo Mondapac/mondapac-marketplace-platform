@@ -3,6 +3,11 @@ import type { CallContext, Id, MarketContext, Money, Result } from '@mondapac/sh
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CartCheckoutFacade, CartCheckoutFailure, CheckoutLine } from '../../src/modules/cart';
 import type {
+  CustomersCheckoutFacade,
+  DeliveryAddress,
+  DeliveryAddressFailure,
+} from '../../src/modules/customers';
+import type {
   CommissionPayoutsFacade,
   CommissionPayoutsFailure,
   CommissionRateMap,
@@ -27,7 +32,16 @@ import type {
   SellerOrderPage,
   SellerOrderRecord,
 } from '../../src/modules/ordering/application/ports/order.repository';
-import type { Fulfilment, OrderState, SellerOrder } from '../../src/modules/ordering/domain/order';
+import type {
+  Fulfilment,
+  OrderState,
+  SellerOrder,
+  ShipTo,
+} from '../../src/modules/ordering/domain/order';
+import type {
+  ShipToCipher,
+  ShipToKeyDestroyed,
+} from '../../src/modules/ordering/application/ports/ship-to-cipher';
 import type { OrderTaxCategories } from '../../src/modules/ordering/application/ports/order-tax-categories';
 import type { TaxAnswer, TaxFacade, TaxFailure, TaxLineInput } from '../../src/modules/tax';
 import type { FlatFeeMap, ShippingFacade, ShippingFailure } from '../../src/modules/shipping';
@@ -132,6 +146,8 @@ export class MemoryOrders implements OrderRepository {
     return {
       sellerOrder,
       orderId: order.id,
+      accountId: order.accountId,
+      shipToSealed: order.shipToSealed,
       currency: order.total.currency,
       confirmedAt: order.confirmedAt!,
       lines: order.lines.filter((line) => line.sellerOrderId === sellerOrder.id),
@@ -561,5 +577,69 @@ export class FakeTax implements TaxFacade {
         }),
       }),
     );
+  }
+}
+
+/** A delivery address of the test customer's address book (personal-looking test data only). */
+export const TEST_DELIVERY_ADDRESS: DeliveryAddress = {
+  recipientFirstName: 'Aisha',
+  recipientLastName: 'Rahman',
+  phone: '0412345678',
+  line1: '12 Example Street',
+  line2: null,
+  suburb: 'Sunnybank',
+  region: 'QLD',
+  postcode: '4109',
+  deliveryNotes: 'Leave at the door',
+  countryCode: 'AU',
+};
+
+/** The address books: each address belongs to one account; the caller must own it. */
+export class FakeCustomers implements CustomersCheckoutFacade {
+  readonly addresses = new Map<string, { accountId: string; address: DeliveryAddress }>();
+  failure: DeliveryAddressFailure | null = null;
+  readonly calls: unknown[] = [];
+
+  deliveryAddress(
+    context: CallContext,
+    addressId: unknown,
+  ): Promise<Result<DeliveryAddress, DeliveryAddressFailure>> {
+    this.calls.push(addressId);
+    if (this.failure !== null) return Promise.resolve(err(this.failure));
+    const actor = context.actor;
+    if (actor.kind !== 'authenticated' || actor.population !== 'customer') {
+      return Promise.resolve(err({ code: 'access.denied' }));
+    }
+    if (typeof addressId !== 'string' || parseId(addressId).ok !== true) {
+      return Promise.resolve(err({ code: 'validation.failed' }));
+    }
+    const found = this.addresses.get(addressId);
+    return Promise.resolve(
+      found === undefined || found.accountId !== actor.accountId
+        ? err({ code: 'customers.address-not-found' })
+        : ok(found.address),
+    );
+  }
+}
+
+/** Seals as readable JSON bound to the account; an erased account's key is destroyed. */
+export class FakeShipToCipher implements ShipToCipher {
+  readonly destroyed = new Set<string>();
+
+  seal(_m: MarketContext, accountId: Id<'Account'>, shipTo: ShipTo) {
+    return Promise.resolve(
+      this.destroyed.has(accountId)
+        ? err<ShipToKeyDestroyed>({ code: 'subject-key.destroyed' })
+        : ok(`sealed:${accountId}:${JSON.stringify(shipTo)}`),
+    );
+  }
+
+  open(_m: MarketContext, accountId: Id<'Account'>, sealed: string) {
+    const prefix = `sealed:${accountId}:`;
+    if (this.destroyed.has(accountId)) {
+      return Promise.resolve(err<ShipToKeyDestroyed>({ code: 'subject-key.destroyed' }));
+    }
+    if (!sealed.startsWith(prefix)) throw new Error('sealed under another account');
+    return Promise.resolve(ok(JSON.parse(sealed.slice(prefix.length)) as ShipTo));
   }
 }

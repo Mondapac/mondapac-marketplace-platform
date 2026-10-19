@@ -180,7 +180,7 @@ The identity tables with the module name changed (ID-data 3.1, 3.8): `outbox_typ
 | `fees_gross_total_minor` | `bigint` | no | Σ charge `tax_gross_minor` |
 | `tax_total_minor` | `bigint` | no | Σ line and charge `tax_minor` (display) |
 | `payable_total_minor` | `bigint` | no | CHECK `payable_total_minor = items_gross_total_minor + fees_gross_total_minor AND payable_total_minor >= 1 AND tax_total_minor <= payable_total_minor` |
-| `delivery_address_ciphertext` | `text` | no | **Personal, encrypted** (5): recipient name, address lines, postcode, region, phone as one JSON value, under the customer's subject key. CHECK O7 with bound 16384 (SL-data 4.5 rule) |
+| `delivery_address_ciphertext` | `text` | no | **Personal, encrypted** (5): recipient name, address lines, postcode, region, phone as one JSON value, under the customer's subject key. CHECK O7 with bound 16384 (SL-data 4.5 rule). As built (customers package 2, PR #406): column `ship_to_ciphertext`, nullable for orders placed before it, field label `ordering.order.ship-to`; the recipient-view permission and audit row are not built yet |
 | `delivery_zone` | `text` | no | O9. The address's zone from the Market's region → zone map (PL-2) |
 | `service_area_code` | `text` | no | The ServiceArea that accepted the postcode (D 4.3 step 8). CHECK `^[a-z0-9][a-z0-9-]{0,63}$` (codes from `config/service-areas/`). Region and postcode are **not** stored in clear: TX-1 no longer takes the region (Ali G2-3), and nothing else filters on it |
 | `locale` | `text` | no | BCP 47; CHECK `^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$` |

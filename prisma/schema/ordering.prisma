@@ -36,6 +36,9 @@ model OrderingOrder {
   /// The tax strategy the order's tax was worked out under (a plain id, no foreign key); null for
   /// the Market's built-in strategy and on orders placed before tax was recorded (ADR-0039).
   taxStrategyId         String?               @map("tax_strategy_id") @db.Uuid
+  /// Personal; the canonical JSON of the delivery address chosen at checkout, sealed under the
+  /// customer account's subject key (customers package 2). Written once; null on older orders.
+  shipToCiphertext      String?               @map("ship_to_ciphertext")
   sellerOrders          OrderingSellerOrder[]
   lines                 OrderingOrderLine[]
 

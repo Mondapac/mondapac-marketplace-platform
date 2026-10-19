@@ -1,6 +1,7 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import type { OrderStatus } from '../domain/order';
+import type { OrderStatus, OrderState, ShipTo } from '../domain/order';
 import {
   adminOrderView,
   orderView,
@@ -10,6 +11,7 @@ import {
   type OrderStatusCounts,
   type OrderPageView,
   type OrderView,
+  type OwnOrderView,
 } from '../domain/order-views';
 import type { OrderingDependencies } from './checkout-flow';
 import { labelAdminOrders } from './order-labels';
@@ -106,25 +108,57 @@ const parseOrderId = (value: unknown): Result<Id<'Order'>, ReadFailure> => {
     : err({ code: 'validation.failed', fields: [{ path: 'orderId', code: 'format' }] });
 };
 
-/** The customer's own order. Unknown and foreign are one answer. */
+const logger = new Logger('OrderShipTo');
+
+/**
+ * Opens an order's sealed delivery address. None recorded, or the account's key destroyed
+ * (erasure), is null: the order stays readable without it. A copy that fails its integrity check
+ * is logged as a code with the order's ids only and answered as null, so a seller's shipment that
+ * was already saved never comes back as an error.
+ */
+export async function openShipTo(
+  deps: OrderingDependencies,
+  context: CallContext,
+  accountId: Id<'Account'>,
+  sealed: string | null,
+): Promise<ShipTo | null> {
+  if (sealed === null) return null;
+  try {
+    const opened = await deps.shipTo.open(context.market, accountId, sealed);
+    return opened.ok ? opened.value : null;
+  } catch (error) {
+    logger.error({
+      msg: 'ordering.ship-to-unreadable',
+      errorName: error instanceof Error ? error.name : 'unknown',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    return null;
+  }
+}
+
+/** The customer's own order, with its delivery address. Unknown and foreign are one answer. */
 export async function viewOwnOrder(
   deps: OrderingDependencies,
   context: CallContext,
   accountId: Id<'Account'>,
   input: { readonly orderId: unknown },
-): Promise<Result<OrderView, ReadFailure>> {
+): Promise<Result<OwnOrderView, ReadFailure>> {
   const orderId = parseOrderId(input?.orderId);
   if (!orderId.ok) return orderId;
-  return deps.unitOfWork.run<OrderView, ReadFailure>(
+  const read = await deps.unitOfWork.run<OrderState, ReadFailure>(
     context.market,
     async () => {
       const order = await deps.orders.findOwn(context.market, orderId.value, accountId);
-      return order === null
-        ? err({ code: 'ordering.order-not-found' } as const)
-        : ok(orderView(order));
+      return order === null ? err({ code: 'ordering.order-not-found' } as const) : ok(order);
     },
     { readOnly: true },
   );
+  if (!read.ok) return read;
+  return ok({
+    ...orderView(read.value),
+    shipTo: await openShipTo(deps, context, accountId, read.value.shipToSealed),
+  });
 }
 
 export async function listOwnOrders(

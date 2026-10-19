@@ -10,6 +10,7 @@ import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CART_CHECKOUT_FACADE, CartModule } from '../cart';
 import { CatalogModule } from '../catalog';
 import { COMMISSION_PAYOUTS_FACADE, CommissionPayoutsModule } from '../commission-payouts';
+import { CUSTOMERS_CHECKOUT_FACADE, CustomersModule } from '../customers';
 import { IdentityModule } from '../identity';
 import { InventoryModule } from '../inventory';
 import { INVENTORY_ORDERING_PORT } from '../inventory/contracts/ordering-port';
@@ -22,6 +23,7 @@ import { ORDER_LABELS } from './application/ports/order-labels';
 import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
 import { ORDERING_POLICY } from './application/ports/ordering-policy';
+import { SHIP_TO_CIPHER } from './application/ports/ship-to-cipher';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
@@ -62,6 +64,8 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['gateway', CHECKOUT_GATEWAY],
   ['policy', ORDERING_POLICY],
   ['cart', CART_CHECKOUT_FACADE],
+  ['customers', CUSTOMERS_CHECKOUT_FACADE],
+  ['shipTo', SHIP_TO_CIPHER],
   ['inventory', INVENTORY_ORDERING_PORT],
   ['shipping', SHIPPING_FACADE],
   ['commission', COMMISSION_PAYOUTS_FACADE],
@@ -98,13 +102,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Package 5: the commission rate (from `commission-payouts`) is frozen on each order line at
  * checkout, and a worker job writes each paid seller order into the seller ledger. Tax: the tax
  * of each line (from `tax`, ADR-0039) is frozen on it at checkout, added to the charge when the
- * price excludes it, and shown on the admin order page. Storefront reads: the best-selling Offers
- * (ids only) through `ORDERING_RANKING_FACADE`.
+ * price excludes it, and shown on the admin order page. Customers package 2: the customer picks
+ * an address of their address book at checkout; a fixed copy, sealed under the account's key, is
+ * stored on the order and shown to the customer and to each seller of the order. Storefront
+ * reads: the best-selling Offers (ids only) through `ORDERING_RANKING_FACADE`.
  */
 @Module({
   imports: [
     CartModule,
     CatalogModule,
+    CustomersModule,
     IdentityModule,
     InventoryModule,
     SellersModule,

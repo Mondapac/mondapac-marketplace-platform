@@ -152,6 +152,11 @@
   { "name": "customers.delete-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.list-addresses", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
+    "name": "customers.read-delivery-address",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
     "name": "customers.set-default-address",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"

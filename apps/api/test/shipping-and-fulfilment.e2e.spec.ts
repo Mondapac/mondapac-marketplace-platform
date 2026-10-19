@@ -20,6 +20,7 @@ import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import { TEST_DELIVERY_ADDRESS } from './support/ordering-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -72,6 +73,7 @@ const detail = (currency: string, patch: object = {}) => ({
       tax: money(273n, currency),
     },
   ],
+  shipTo: TEST_DELIVERY_ADDRESS,
   ...patch,
 });
 
@@ -264,6 +266,8 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
 
       const one = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}`, session);
       expect(one.status).toBe(200);
+      // One order's page tells the seller where to send it; the list does not.
+      expect(one.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS });
       expect(calls[0]).toEqual({ name: 'view', input: { sellerOrderId: SELLER_ORDER } });
 
       next = err({ code: 'ordering.seller-order-not-found' });

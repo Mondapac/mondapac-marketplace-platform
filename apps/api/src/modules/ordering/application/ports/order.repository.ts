@@ -36,6 +36,10 @@ export interface SellerOrderPage {
 export interface SellerOrderRecord {
   readonly sellerOrder: SellerOrder;
   readonly orderId: Id<'Order'>;
+  /** The customer's account, whose key seals {@link shipToSealed}. */
+  readonly accountId: Id<'Account'>;
+  /** The order's sealed delivery address; null on orders placed before it was recorded. */
+  readonly shipToSealed: string | null;
   readonly currency: string;
   readonly confirmedAt: Temporal.Instant;
   readonly lines: readonly OrderLine[];

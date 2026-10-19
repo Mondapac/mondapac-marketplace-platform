@@ -6,7 +6,10 @@ import type {
   OrderView,
   LabelledSellerOrderDetailView,
   LabelledSellerOrderPageView,
+  LabelledSellerOrderShipView,
+  OwnOrderView,
 } from '../domain/order-views';
+import type { ShipTo } from '../domain/order';
 import { moneyBody } from './http-answers';
 
 // Bodies and answers of the ordering routes. Ids, codes, minor-unit strings and instants only.
@@ -111,6 +114,39 @@ export class OrderBody {
   @ApiProperty({ format: 'date-time', nullable: true, description: 'Set while payment is open.' })
   payBy!: string | null;
   @ApiProperty({ type: [SellerOrderBody] }) sellerOrders!: SellerOrderBody[];
+}
+
+/** The delivery address copied onto the order at checkout. Personal data: never logged. */
+export class ShipToBody {
+  @ApiProperty() recipientFirstName!: string;
+  @ApiProperty() recipientLastName!: string;
+  @ApiProperty({ description: 'An optional leading + and digits.' }) phone!: string;
+  @ApiProperty() line1!: string;
+  @ApiProperty({ type: String, nullable: true }) line2!: string | null;
+  @ApiProperty() suburb!: string;
+  @ApiProperty({ type: String, nullable: true, description: "One of the Market's regions." })
+  region!: string | null;
+  @ApiProperty() postcode!: string;
+  @ApiProperty({ type: String, nullable: true, description: 'A note for the courier.' })
+  deliveryNotes!: string | null;
+  @ApiProperty({ description: 'ISO 3166 country of the address.' }) countryCode!: string;
+}
+
+const SHIP_TO_DESCRIPTION =
+  'The delivery address chosen at checkout, fixed on the order; null on orders placed before ' +
+  'it was recorded and once the account was erased.';
+
+export class OwnOrderBody extends OrderBody {
+  @ApiProperty({ type: ShipToBody, nullable: true, description: SHIP_TO_DESCRIPTION })
+  shipTo!: ShipToBody | null;
+}
+
+export class CheckoutRequest {
+  @ApiProperty({
+    format: 'uuid',
+    description: "The id of one of the customer's own addresses (GET /customers/me/addresses).",
+  })
+  addressId!: string;
 }
 
 export class LabelledOrderLineBody extends OrderLineBody {
@@ -229,6 +265,15 @@ export class SellerOrderDetailBody extends SellerOrderBody {
   @ApiProperty({ format: 'date-time', description: 'When the customer paid.' }) paidAt!: string;
 }
 
+export class SellerOrderShipBody extends SellerOrderDetailBody {
+  @ApiProperty({
+    type: ShipToBody,
+    nullable: true,
+    description: `${SHIP_TO_DESCRIPTION} Recipient name, phone and address only.`,
+  })
+  shipTo!: ShipToBody | null;
+}
+
 export class SellerOrderCountsBody {
   @ApiProperty() toShip!: number;
   @ApiProperty() shipped!: number;
@@ -265,6 +310,27 @@ export const sellerOrderDetailBody = (
   paidAt: order.paidAt.toString(),
 });
 
+const shipToBody = (shipTo: ShipTo | null): ShipToBody | null =>
+  shipTo === null
+    ? null
+    : {
+        recipientFirstName: shipTo.recipientFirstName,
+        recipientLastName: shipTo.recipientLastName,
+        phone: shipTo.phone,
+        line1: shipTo.line1,
+        line2: shipTo.line2,
+        suburb: shipTo.suburb,
+        region: shipTo.region,
+        postcode: shipTo.postcode,
+        deliveryNotes: shipTo.deliveryNotes,
+        countryCode: shipTo.countryCode,
+      };
+
+export const sellerOrderShipBody = (order: LabelledSellerOrderShipView): SellerOrderShipBody => ({
+  ...sellerOrderDetailBody(order),
+  shipTo: shipToBody(order.shipTo),
+});
+
 export const sellerOrderPageBody = (page: LabelledSellerOrderPageView): SellerOrderPageBody => ({
   sellerOrders: page.sellerOrders.map(sellerOrderDetailBody),
   nextCursor: page.nextCursor,
@@ -283,6 +349,11 @@ export const orderBody = (order: OrderView): OrderBody => ({
   cancelledAt: order.cancelledAt?.toString() ?? null,
   payBy: order.payBy?.toString() ?? null,
   sellerOrders: order.sellerOrders.map(sellerOrderBody),
+});
+
+export const ownOrderBody = (order: OwnOrderView): OwnOrderBody => ({
+  ...orderBody(order),
+  shipTo: shipToBody(order.shipTo),
 });
 
 export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody => ({

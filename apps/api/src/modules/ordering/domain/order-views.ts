@@ -9,6 +9,7 @@ import type {
   OrderStatus,
   PaymentState,
   SellerOrder,
+  ShipTo,
 } from './order';
 
 // What the read use cases answer: ids, codes, minor-unit money and instants. Never a Stripe
@@ -66,6 +67,14 @@ export interface OrderView {
   readonly sellerOrders: readonly SellerOrderView[];
 }
 
+/**
+ * One of the customer's own orders, with the delivery address copied at checkout. `shipTo` is
+ * null on orders placed before the address was recorded and once the account was erased.
+ */
+export interface OwnOrderView extends OrderView {
+  readonly shipTo: ShipTo | null;
+}
+
 export interface AdminOrderView extends OrderView {
   readonly accountId: Id<'Account'>;
   readonly paymentIntentId: string | null;
@@ -101,6 +110,14 @@ export interface LabelledAdminOrderView extends Omit<AdminOrderView, 'sellerOrde
 /** A seller order as the seller panel shows it, with the published names of its lines. */
 export interface LabelledSellerOrderDetailView extends Omit<SellerOrderDetailView, 'lines'> {
   readonly lines: readonly LabelledLineView[];
+}
+
+/**
+ * One seller order as its seller handles it: the detail plus where to send it (recipient name,
+ * phone and address only; never the customer's email). Null as in {@link OwnOrderView}.
+ */
+export interface LabelledSellerOrderShipView extends LabelledSellerOrderDetailView {
+  readonly shipTo: ShipTo | null;
 }
 
 /** The seller's paid seller orders per fulfilment step, whatever the page or filter. */
