@@ -52,7 +52,7 @@ export const adminNav: NavConfig = {
       icon: 'sliders',
       labelKey: 'nav.settings',
       href: '/settings',
-      anyOf: ['notifications.support-contact.view'],
+      anyOf: ['notifications.support-contact.view', 'assistant.settings.view'],
     },
     {
       id: 'team',

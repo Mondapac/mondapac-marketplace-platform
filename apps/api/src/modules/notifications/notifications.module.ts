@@ -30,6 +30,7 @@ import { CountOwnUnreadNotices } from './application/use-cases/count-own-unread-
 import { ListOwnNotices } from './application/use-cases/list-own-notices.use-case';
 import { MarkOwnNoticesRead } from './application/use-cases/mark-own-notices-read.use-case';
 import { PurgeExpiredNotices } from './application/use-cases/purge-expired-notices.use-case';
+import { RecordAdminReviewNotice } from './application/use-cases/record-admin-review-notice.use-case';
 import { RecordSellerOrderNotices } from './application/use-cases/record-seller-order-notices.use-case';
 import { SendOrderConfirmationMail } from './application/use-cases/send-order-confirmation-mail.use-case';
 import { SendOrderShippedMail } from './application/use-cases/send-order-shipped-mail.use-case';
@@ -44,6 +45,7 @@ import { ViewUnsubscribeLink } from './application/use-cases/view-unsubscribe-li
 import { NOTIFICATIONS_PERMISSIONS } from './contracts';
 import { NOTIFICATIONS_AUDIT_ACTIONS } from './domain/audit';
 import { notificationsProviders } from './infrastructure/notifications-providers';
+import { AdminNoticesController } from './presentation/admin-notices.controller';
 import { purgeExpiredNoticesJob } from './presentation/jobs/purge-expired-notices.job';
 import { SellerNoticesController } from './presentation/seller-notices.controller';
 import { inAppNoticeSubscriptions } from './presentation/subscribers/in-app-notice.subscriptions';
@@ -134,6 +136,7 @@ const IN_APP_NOTICE_PORTS: readonly [keyof InAppNoticeDependencies, InjectionTok
   ['unitOfWork', UNIT_OF_WORK],
   ['notices', IN_APP_NOTICE_REPOSITORY],
   ['ordering', ORDERING_FACADE],
+  ['catalog', CATALOG_FACADE],
   ['authorisation', AUTHORISATION_CHECK],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -161,13 +164,15 @@ function inAppNoticeProvider<U>(
  * Market configuration and changeable by the platform admin; mail and the sign-in screens read it
  * from here later. Phase 6 package 1: the order emails (Q10), sent when `ordering.order-paid.v1`
  * arrives: the customer's "Order confirmation" and the sellers' "New order". In-app notices
- * (package 1): the sellers' "New order" notice under the panel bell, read per member, kept 90 days.
+ * (package 1): the sellers' "New order" notice under the panel bell, read per member, kept 90 days;
+ * (package 3) the admins' review notices (certificate, product revision, seller file, held price).
  * Personalization 1b: the marketing mail rule (consent from `legal`, sender, contact and
  * unsubscribe link) and the one-click unsubscribe route.
  */
 @Module({
   imports: [OrderingModule, CatalogModule, IdentityModule, LegalModule],
   controllers: [
+    AdminNoticesController,
     AdminSupportContactController,
     PublicSupportContactController,
     SellerNoticesController,
@@ -188,6 +193,7 @@ function inAppNoticeProvider<U>(
     marketingProvider(UnsubscribeMarketingEmail),
     ...[
       RecordSellerOrderNotices,
+      RecordAdminReviewNotice,
       ListOwnNotices,
       CountOwnUnreadNotices,
       MarkOwnNoticesRead,
@@ -208,8 +214,9 @@ function inAppNoticeProvider<U>(
     ),
     registerSubscriptionsFrom(
       'notifications',
-      [RecordSellerOrderNotices],
-      (sellerOrders: RecordSellerOrderNotices) => inAppNoticeSubscriptions(sellerOrders),
+      [RecordSellerOrderNotices, RecordAdminReviewNotice],
+      (sellerOrders: RecordSellerOrderNotices, adminReviews: RecordAdminReviewNotice) =>
+        inAppNoticeSubscriptions(sellerOrders, adminReviews),
     ),
     registerJobsFrom('notifications', [PurgeExpiredNotices], (purge: PurgeExpiredNotices) => [
       purgeExpiredNoticesJob(purge),

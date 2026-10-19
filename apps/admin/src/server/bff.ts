@@ -19,6 +19,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'payments/admin/connected-accounts',
     // The Market's orders (ordering), read-only: the list; one order is read by the page server.
     'ordering/admin/orders',
+    // The Market's buyer assistant settings, read again after another admin saved first.
+    'assistant/admin/settings',
+    // The topbar bell (in-app notifications package 3): the list (query: `show`, `before`) and
+    // the unread count with the newest unread notice.
+    'notifications/admin/notices',
+    'notifications/admin/notices/unread-count',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -27,6 +33,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/profile/display-name',
     // The signed-in admin's own time zone and language (profile).
     'identity/admin/profile/preferences',
+    // The Market's buyer assistant settings (assistant): every field with `expectedVersion`.
+    'assistant/admin/settings',
   ]),
   DELETE: new Set([]),
   POST: new Set([
@@ -47,6 +55,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/customers/lookup',
     // A read with the search term in the body, so a POST (sellers design 7.8).
     'sellers/admin/list',
+    'notifications/admin/notices/read-all',
   ]),
 };
 
@@ -72,6 +81,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/admin/price-holds/:id/reject',
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
+    'notifications/admin/notices/:id/read',
   ],
   PUT: [
     'identity/admin/roles/:id',
@@ -89,13 +99,18 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'identity/admin/sellers': ['state', 'limit', 'after'],
   'payments/admin/connected-accounts': ['status', 'cursor'],
   'ordering/admin/orders': ['status', 'cursor'],
+  'notifications/admin/notices': ['show', 'before'],
 };
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Query values that must have a shape to cross; a value of another shape is dropped. */
+const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },
+};
 /** GET templates with a resource id whose query crosses, and the keys that may cross. */
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
@@ -113,10 +128,12 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
   const keys = method === 'GET' ? (QUERY_KEYS[target] ?? QUERY_KEYS_WITH_ID[template]) : undefined;
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
+  const shapes = QUERY_SHAPES[target];
   const kept = new URLSearchParams();
   for (const key of keys) {
     const value = source.get(key);
-    if (value !== null && value.length <= QUERY_VALUE_MAX) kept.set(key, value);
+    if (value === null || value.length > QUERY_VALUE_MAX) continue;
+    if (shapes?.[key]?.test(value) !== false) kept.set(key, value);
   }
   const text = kept.toString();
   return text === '' ? '' : `?${text}`;

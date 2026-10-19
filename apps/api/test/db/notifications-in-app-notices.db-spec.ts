@@ -2,8 +2,11 @@ import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
-import type { SellerNoticeScope } from '../../src/modules/notifications/application/ports/in-app-notice.repository';
-import { SELLER_ORDER_PAID } from '../../src/modules/notifications/domain/in-app-notice';
+import type { NoticeScope } from '../../src/modules/notifications/application/ports/in-app-notice.repository';
+import {
+  ADMIN_PRICE_HOLD_OPENED,
+  SELLER_ORDER_PAID,
+} from '../../src/modules/notifications/domain/in-app-notice';
 import { PrismaInAppNoticeRepository } from '../../src/modules/notifications/infrastructure/prisma-in-app-notice.repository';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { TEST_MARKETS } from '../support/test-config';
@@ -51,7 +54,12 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
     sellerId: Id<'Seller'>,
     accountId: Id<'Account'>,
     since = T0.subtract({ hours: 1 }),
-  ): SellerNoticeScope => ({ sellerId, accountId, kinds: [SELLER_ORDER_PAID], since });
+  ): NoticeScope => ({
+    owner: { audience: 'seller', sellerId },
+    accountId,
+    kinds: [SELLER_ORDER_PAID],
+    since,
+  });
   /** Notices one millisecond apart, so their ids sort by creation. */
   async function addNotices(target: MarketContext, sellerId: Id<'Seller'>, count: number) {
     const added: Id<'InAppNotice'>[] = [];
@@ -60,10 +68,10 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
       const noticeId = ids.next<'InAppNotice'>();
       added.push(noticeId);
       await value(target, () =>
-        repository.addForSellers(target, [
+        repository.add(target, [
           {
             id: noticeId,
-            sellerId,
+            owner: { audience: 'seller', sellerId },
             kind: SELLER_ORDER_PAID,
             params: { sellerOrderId: ids.next<'SellerOrder'>(), items: n + 1 },
             createdAt: clock.now(),
@@ -81,7 +89,7 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
     const added = await addNotices(market, sellerId, 3);
 
     const page = await value(market, () =>
-      repository.listForSeller(market, scopeOf(sellerId, one), {
+      repository.list(market, scopeOf(sellerId, one), {
         before: null,
         limit: 2,
         show: 'all',
@@ -90,7 +98,7 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
     expect(page.map((row) => row.id)).toEqual([added[2], added[1]]);
     expect(page[0]!.params).toEqual(expect.objectContaining({ items: 3 }));
     const rest = await value(market, () =>
-      repository.listForSeller(market, scopeOf(sellerId, one), {
+      repository.list(market, scopeOf(sellerId, one), {
         before: added[1]!,
         limit: 2,
         show: 'all',
@@ -107,25 +115,17 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
       await value(market, () => repository.markRead(market, one, [added[2]!], clock.now())),
     ).toBe(0);
 
-    const mine = await value(market, () =>
-      repository.unreadForSeller(market, scopeOf(sellerId, one)),
-    );
+    const mine = await value(market, () => repository.unread(market, scopeOf(sellerId, one)));
     expect(mine.count).toBe(1);
     expect(mine.newest?.id).toBe(added[0]);
-    const theirs = await value(market, () =>
-      repository.unreadForSeller(market, scopeOf(sellerId, two)),
-    );
+    const theirs = await value(market, () => repository.unread(market, scopeOf(sellerId, two)));
     expect(theirs.count).toBe(3);
     expect(theirs.newest?.id).toBe(added[2]);
     expect(
-      await value(market, () =>
-        repository.unreadIdsForSeller(market, scopeOf(sellerId, one), 'all'),
-      ),
+      await value(market, () => repository.unreadIds(market, scopeOf(sellerId, one), 'all')),
     ).toEqual([added[0]]);
     expect(
-      await value(market, () =>
-        repository.existsForSeller(market, scopeOf(sellerId, one), added[2]!),
-      ),
+      await value(market, () => repository.exists(market, scopeOf(sellerId, one), added[2]!)),
     ).toBe(true);
   });
 
@@ -137,18 +137,18 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
     await addNotices(other, sellerId, 1);
 
     const none = { ...scopeOf(sellerId, reader), kinds: ['seller.other'] };
-    expect(await value(market, () => repository.unreadForSeller(market, none))).toEqual({
+    expect(await value(market, () => repository.unread(market, none))).toEqual({
       count: 0,
       newest: null,
     });
     const later = scopeOf(sellerId, reader, clock.now().add({ seconds: 1 }));
     expect(
       await value(market, () =>
-        repository.listForSeller(market, later, { before: null, limit: 20, show: 'all' }),
+        repository.list(market, later, { before: null, limit: 20, show: 'all' }),
       ),
     ).toEqual([]);
     const listed = await value(market, () =>
-      repository.listForSeller(market, scopeOf(sellerId, reader), {
+      repository.list(market, scopeOf(sellerId, reader), {
         before: null,
         limit: 20,
         show: 'all',
@@ -161,16 +161,93 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
     const sellerId = ids.next<'Seller'>();
     const added = await addNotices(market, sellerId, 5);
 
-    expect(await value(market, () => repository.trimSeller(market, sellerId, 3))).toBe(2);
-    expect(await value(market, () => repository.trimSeller(market, sellerId, 3))).toBe(0);
+    expect(
+      await value(market, () => repository.trim(market, { audience: 'seller', sellerId }, 3)),
+    ).toBe(2);
+    expect(
+      await value(market, () => repository.trim(market, { audience: 'seller', sellerId }, 3)),
+    ).toBe(0);
     const left = await value(market, () =>
-      repository.listForSeller(market, scopeOf(sellerId, ids.next()), {
+      repository.list(market, scopeOf(sellerId, ids.next()), {
         before: null,
         limit: 20,
         show: 'all',
       }),
     );
     expect(left.map((row) => row.id)).toEqual([added[4], added[3], added[2]]);
+  });
+
+  it('keeps admin notices apart from seller notices, per Market, up to the cap', async () => {
+    clock.advance(Temporal.Duration.from({ seconds: 1 }));
+    const since = clock.now();
+    const reader = ids.next<'Account'>();
+    const sellerId = ids.next<'Seller'>();
+    await addNotices(market, sellerId, 1);
+    const addAdmin = async (target: MarketContext) => {
+      clock.advance(Temporal.Duration.from({ milliseconds: 1 }));
+      const noticeId = ids.next<'InAppNotice'>();
+      await value(target, () =>
+        repository.add(target, [
+          {
+            id: noticeId,
+            owner: { audience: 'admin' },
+            kind: ADMIN_PRICE_HOLD_OPENED,
+            params: { recordId: ids.next(), offerId: ids.next(), direction: 'up' },
+            createdAt: clock.now(),
+          },
+        ]),
+      );
+      return noticeId;
+    };
+    const first = await addAdmin(market);
+    const second = await addAdmin(market);
+    const third = await addAdmin(market);
+    const elsewhereId = await addAdmin(other);
+    const mine = new Set([first, second, third]);
+    const admin: NoticeScope = {
+      owner: { audience: 'admin' },
+      accountId: reader,
+      kinds: [ADMIN_PRICE_HOLD_OPENED, SELLER_ORDER_PAID],
+      since,
+    };
+
+    const listed = await value(market, () =>
+      repository.list(market, admin, { before: null, limit: 20, show: 'all' }),
+    );
+    // Both Market fixtures share the database: only this test's rows are asserted.
+    expect(listed.map((row) => row.id).filter((id) => mine.has(id))).toEqual([
+      third,
+      second,
+      first,
+    ]);
+    expect(
+      (await value(market, () => repository.unread(market, admin))).count,
+    ).toBeGreaterThanOrEqual(3);
+    const sellerSide = await value(market, () =>
+      repository.list(
+        market,
+        {
+          ...scopeOf(sellerId, reader, since),
+          kinds: [ADMIN_PRICE_HOLD_OPENED, SELLER_ORDER_PAID],
+        },
+        { before: null, limit: 20, show: 'all' },
+      ),
+    );
+    expect(sellerSide.every((row) => row.kind === SELLER_ORDER_PAID)).toBe(true);
+
+    expect(
+      await value(market, () => repository.trim(market, { audience: 'admin' }, 2)),
+    ).toBeGreaterThanOrEqual(1);
+    const left = await value(market, () =>
+      repository.list(market, admin, { before: null, limit: 20, show: 'all' }),
+    );
+    expect(left.map((row) => row.id)).toContain(third);
+    expect(left.map((row) => row.id)).not.toContain(first);
+    const elsewhere = await value(other, () =>
+      repository.list(other, admin, { before: null, limit: 20, show: 'all' }),
+    );
+    expect(elsewhere.map((row) => row.id)).toContain(elsewhereId);
+    expect(elsewhere.map((row) => row.id).some((id) => mine.has(id))).toBe(false);
   });
 
   it('purges old notices of this Market only, and their reads go with them', async () => {
@@ -210,6 +287,7 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
     for (const [audience, sellerId, kind, params] of [
       ['admin', seller, SELLER_ORDER_PAID, '{}'],
       ['seller', null, SELLER_ORDER_PAID, '{}'],
+      ['customer', null, SELLER_ORDER_PAID, '{}'],
       ['seller', seller, 'Seller Order', '{}'],
       ['seller', seller, SELLER_ORDER_PAID, '[]'],
       ['seller', seller, SELLER_ORDER_PAID, JSON.stringify({ x: 'y'.repeat(1100) })],

@@ -54,3 +54,14 @@ internal team tries it on the storefront (a preview route) is designed in
 [conversation.md](conversation.md) and not built. The spend counters, the automatic pause at a cap
 and the message limits that use these numbers are built in package 4 (conversation.md); the admin
 read also answers `spend` (today, this month, conversations today, the last automatic pause).
+
+## Admin panel
+
+Settings > Smart assistant (`/settings/assistant`, package 3). A holder of the view key sees the
+status card and a read-only summary; the Platform Administrator gets the form. The page shows
+only whether the model key is set, and the model of each tier as the server reports it. Saving
+sends `expectedVersion`; on a 409 the page reads the settings again and asks the admin to make
+the change again. A tier whose model the server does not configure is offered disabled.
+Spend today and this month (against the caps), conversations today and the last automatic
+switch-off are now in the read's `spend` (package 4); wiring them into the status card is a
+follow-up of the admin tab. The cost estimate per conversation is not computed by the server.

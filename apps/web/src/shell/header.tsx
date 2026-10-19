@@ -1,9 +1,9 @@
 'use client';
 
 import { useLocale, useTranslations } from 'next-intl';
-import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useRef } from 'react';
+import { useLogOut } from '../account/account-nav.ts';
 import { summarise } from '../cart/cart.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
@@ -15,7 +15,8 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
   const t = useTranslations('header');
   const name = useTranslations('store')('name');
   const locale = useLocale();
-  const { cart } = useStore();
+  const { cart, customer, setLoginOpen } = useStore();
+  const logOut = useLogOut();
   const cartButton = useCartButton();
   const { count, total } = summarise(cart);
   const totalText = total ? formatMoney(total, locale) : '';
@@ -71,10 +72,23 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
               <Icon name="chevd" />
             </span>
           </button>
-          <Link className="login" href="/account" aria-label={t('log-in')}>
-            <Icon name="user" />
-            <span className="lt">{t('log-in')}</span>
-          </Link>
+          {customer ? (
+            <button className="login" type="button" aria-label={t('log-out')} onClick={logOut}>
+              <Icon name="out" />
+              <span className="lt">{t('log-out')}</span>
+            </button>
+          ) : (
+            <button
+              className="login"
+              type="button"
+              aria-label={t('log-in')}
+              aria-haspopup="dialog"
+              onClick={() => setLoginOpen(true)}
+            >
+              <Icon name="user" />
+              <span className="lt">{t('log-in')}</span>
+            </button>
+          )}
           <button
             className="cartpill"
             type="button"

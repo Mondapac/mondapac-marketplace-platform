@@ -111,6 +111,19 @@ describe('NotificationDrawer', () => {
     expect(html).toMatch(/class="sr-only">Unread</);
   });
 
+  it('shows a notice without a page as a button, not a link', () => {
+    const html = drawer({
+      list: {
+        kind: 'ready',
+        items: [{ ...item, href: null }],
+        hasMore: false,
+        loadingMore: false,
+      },
+    });
+    expect(html).not.toContain('<a ');
+    expect(html).toMatch(/<button type="button" class="flex[^"]*w-full text-start/);
+  });
+
   it('shows the owner initials with the type icon on the corner when the owner is named', () => {
     const html = drawer({
       list: {

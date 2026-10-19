@@ -961,6 +961,144 @@
         "unavailable": "The support email is not available right now. Try again shortly.",
         "unknown": "Something went wrong. Try again."
       }
+    },
+    "tabs": {
+      "label": "Settings sections",
+      "general": "General",
+      "assistant": "Smart assistant"
+    },
+    "assistant": {
+      "title": "Smart assistant settings",
+      "no-access": "You don't have access to the smart assistant settings.",
+      "unavailable": "The smart assistant settings could not be loaded. Try again later.",
+      "read-only": "Only the Platform Administrator can change these settings.",
+      "optional": "optional",
+      "unavailable-option": "{option} (not available yet)",
+      "version": "Saved version {version}",
+      "save": "Save settings",
+      "saved": "Settings saved. They apply on the storefront from now on.",
+      "reloaded": "Another admin saved changes first. The page now shows their settings. Make your change again and save.",
+      "status": {
+        "title": "Status",
+        "switch": "Assistant",
+        "on": "On",
+        "off": "Off",
+        "key": "Model API key",
+        "key-set": "Set",
+        "key-not-set": "Not set",
+        "model": "Configured model",
+        "spend-today": "Spend today",
+        "spend-month": "Spend this month",
+        "not-measured": "Recorded once buyers can chat",
+        "not-configured": "The assistant is switched on, but buyers do not see it yet: the server is missing the model API key or a model for the chosen tier. See the rows below.",
+        "conversations-today": "Conversations today",
+        "last-auto-off": "Last automatic switch-off"
+      },
+      "summary": {
+        "title": "Settings in force"
+      },
+      "section": {
+        "rollout": "Switch and rollout",
+        "answers": "Answers",
+        "users": "Visitors and message limits",
+        "spend": "Spend caps",
+        "data": "Conversations and support"
+      },
+      "enabled": {
+        "label": "Assistant switched on",
+        "help": "Off hides the assistant on the storefront at once, without a release."
+      },
+      "audience": {
+        "label": "Show to",
+        "help": "Start small and widen the rollout step by step.",
+        "internal": "Internal team only",
+        "percent": "A share of visitors",
+        "all": "All visitors",
+        "percent-of": "{percent}% of visitors"
+      },
+      "audience-percent": {
+        "label": "Share of visitors (%)",
+        "help": "A whole number from {min} to {max}."
+      },
+      "scope": {
+        "label": "What it can do",
+        "help": "Cart suggestions wait for the real cart connection and a security review.",
+        "read-only": "Answer questions only",
+        "cart-suggestions": "Answer and suggest cart actions"
+      },
+      "model": {
+        "label": "Model",
+        "fast": "Fast",
+        "balanced": "Balanced",
+        "none": "Not configured",
+        "configured": "{tier}: {model}",
+        "help": "A tier without a model on the server cannot be chosen. The cost per conversation is shown once buyers can chat."
+      },
+      "language": {
+        "label": "Reply language",
+        "buyer": "The buyer's language",
+        "english": "English only"
+      },
+      "welcome": {
+        "label": "Welcome message",
+        "help": "Up to {max} characters. Leave it empty to use the storefront's default text.",
+        "default": "The storefront's default text"
+      },
+      "users": {
+        "label": "Who can chat",
+        "guests-and-customers": "Guests and signed-in customers",
+        "customers-only": "Signed-in customers only"
+      },
+      "guest-limit": {
+        "label": "Messages per guest"
+      },
+      "customer-limit": {
+        "label": "Messages per customer"
+      },
+      "limit-help": "Per 10 minutes, from {min} to {max}.",
+      "spend": {
+        "intro": "The model provider bills in US dollars. When a cap is reached, the assistant switches itself off and admins are told.",
+        "daily": "Daily cap",
+        "daily-help": "From {min, number} to {max, number}, and no more than the monthly cap.",
+        "monthly": "Monthly cap",
+        "monthly-help": "From {min, number} to {max, number}.",
+        "amount": "{amount, number, ::currency/USD}"
+      },
+      "retention": {
+        "label": "Keep conversations",
+        "help": "For signed-in customers. A guest's conversation is kept 30 days at most. A shorter period applies at the next clean-up.",
+        "none": "Do not keep",
+        "30-days": "30 days",
+        "12-months": "12 months"
+      },
+      "support": {
+        "label": "Hand-off to support",
+        "help": "The in-window form waits for its own package.",
+        "email-link": "Link to the support email",
+        "in-panel-form": "Form inside the chat window"
+      },
+      "invalid": {
+        "audiencePercent": "Enter a whole number from 1 to 100.",
+        "scope": "This option is not available yet. Choose another.",
+        "guestMessageLimit": "Enter a whole number from 5 to 60.",
+        "customerMessageLimit": "Enter a whole number from 5 to 120.",
+        "dailySpendCapUsdCents": "Enter an amount from 1 to 1,000, with at most two decimals, and no more than the monthly cap.",
+        "monthlySpendCapUsdCents": "Enter an amount from 1 to 20,000, with at most two decimals.",
+        "supportHandoff": "This option is not available yet. Choose another.",
+        "welcomeText": "Use up to 200 characters, without < or > or hidden control characters."
+      },
+      "error": {
+        "fix": "Some fields need a fix. Check the messages under them.",
+        "invalid": "Some settings were refused. Check the fields and try again.",
+        "conflict": "Another admin saved changes first. Reload the page and try again.",
+        "throttled": "Too many attempts. Wait a moment and try again.",
+        "csrf": "Your session needs a refresh. Reload the page and try again.",
+        "denied": "Your role cannot change the smart assistant settings.",
+        "unavailable": "The settings are not available right now. Try again shortly.",
+        "unknown": "Something went wrong. Try again."
+      },
+      "not-configured-option": "{option} (not configured on the server)",
+      "version-defaults": "Built-in defaults, never saved"
     }
   },
   "shipping": {
@@ -1456,5 +1594,57 @@
       "keep": "Keep them signed in",
       "action": "Sign out others"
     }
+  },
+  "notifications": {
+    "bell": "Notifications",
+    "bell-unread": "Notifications, {count, plural, one {# unread} other {# unread}}",
+    "announce": "{count, plural, one {# unread notification} other {# unread notifications}}",
+    "title": "Notifications",
+    "close": "Close notifications",
+    "filters": "Show notifications",
+    "filter": {
+      "unread": "Unread",
+      "read": "Read",
+      "all": "All"
+    },
+    "unread-count": "{count} unread",
+    "sound-on": "Notification sound on on this device. Turn off",
+    "sound-off": "Notification sound off on this device. Turn on",
+    "enable-sound": "Enable notification sound",
+    "mark-all": "Mark all as read",
+    "load-more": "Show older",
+    "unread-item": "Unread",
+    "kind": {
+      "certificate-submitted": "{submission, select, resubmission {A seller resubmitted a <strong>certificate</strong> for review} renewal {A seller submitted a <strong>certificate renewal</strong> for review} other {A seller submitted a <strong>certificate</strong> for review}}",
+      "product-revision-submitted": "A <strong>product version</strong> is waiting for review",
+      "seller-application-submitted": "A <strong>new seller application</strong> is waiting for review",
+      "seller-identity-changed": "A seller changed their <strong>business details</strong>",
+      "price-hold-opened": "{direction, select, up {A <strong>price increase</strong> is held for approval} down {A <strong>price drop</strong> is held for approval} other {A <strong>price change</strong> is held for approval}}",
+      "other": "Something is waiting for your review"
+    },
+    "category": {
+      "certificates": "Certificates",
+      "products": "Products",
+      "sellers": "Sellers",
+      "prices": "Prices",
+      "other": "Reviews"
+    },
+    "empty": {
+      "unread": {
+        "title": "You're all caught up",
+        "body": "New items waiting for your review show up here."
+      },
+      "read": {
+        "title": "Nothing read yet",
+        "body": "Notifications you open or mark as read move here."
+      },
+      "all": {
+        "title": "No notifications yet",
+        "body": "New items waiting for your review show up here."
+      }
+    },
+    "error": "Notifications could not be loaded.",
+    "retry": "Retry",
+    "loading": "Loading notifications"
   }
 }

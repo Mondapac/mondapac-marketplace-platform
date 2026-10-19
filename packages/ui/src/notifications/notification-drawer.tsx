@@ -23,8 +23,11 @@ const AVATAR: Record<NoticeTone, string> = {
 /** One notice as the drawer shows it; the panel builds the text and the link from its kind. */
 export interface NoticeItem {
   readonly id: string;
-  /** The page of the item the notice is about (for example the seller order). */
-  readonly href: string;
+  /**
+   * The page of the item the notice is about (for example the seller order); null where the
+   * panel has no such page yet, so the row is a button that only marks the notice read.
+   */
+  readonly href: string | null;
   /** Whose notice it is, shown as initials; null shows the type icon alone. */
   readonly ownerName: string | null;
   readonly icon: IconName;
@@ -89,13 +92,13 @@ export interface NotificationDrawerProps {
   readonly filter: NoticeFilter;
   readonly onFilter: (filter: NoticeFilter) => void;
   readonly list: NoticeListState;
-  /** A click on a notice row; the panel marks it read and opens its page. */
-  readonly onOpenItem: (item: NoticeItem, event: MouseEvent<HTMLAnchorElement>) => void;
+  /** A click on a notice row; the panel marks it read and opens its page, if it has one. */
+  readonly onOpenItem: (item: NoticeItem, event: MouseEvent<HTMLElement>) => void;
   readonly onMarkAll: () => void;
   readonly markingAll: boolean;
   readonly onLoadMore: () => void;
   readonly onRetry: () => void;
-  /** The per-device sound switch (seller panel); absent where the panel has no sound. */
+  /** The per-device sound switch; absent where the panel has no sound. */
   readonly sound?: { readonly on: boolean; readonly onToggle: () => void };
   readonly labels: {
     readonly title: string;
@@ -137,6 +140,38 @@ function NoticeAvatar({ item }: { readonly item: NoticeItem }) {
         </span>
       )}
     </span>
+  );
+}
+
+const ROW =
+  'flex gap-3 px-4 py-3 hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus sm:px-6';
+
+/** The inside of a notice row: avatar, sentence, time and group, and the unread mark. */
+function NoticeRow({
+  item,
+  unreadLabel,
+}: {
+  readonly item: NoticeItem;
+  readonly unreadLabel: string;
+}) {
+  return (
+    <>
+      <NoticeAvatar item={item} />
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="break-words text-sm text-fg">{item.message}</span>
+        <span className="text-xs text-fg-muted">
+          <time dateTime={item.dateTime}>{item.time}</time>
+          <span aria-hidden="true"> · </span>
+          {item.category}
+        </span>
+      </span>
+      {item.read ? null : (
+        <span className="mt-2 flex shrink-0 items-start">
+          <span aria-hidden="true" className="size-2 rounded-full bg-accent" />
+          <span className="sr-only">{unreadLabel}</span>
+        </span>
+      )}
+    </>
   );
 }
 
@@ -262,27 +297,23 @@ export function NotificationDrawer({
                 <ul className="divide-y divide-line-row">
                   {list.items.map((item) => (
                     <li key={item.id}>
-                      <a
-                        href={item.href}
-                        onClick={(event) => onOpenItem(item, event)}
-                        className={`flex gap-3 px-4 py-3 hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus sm:px-6 ${item.read ? '' : 'bg-subtle'}`}
-                      >
-                        <NoticeAvatar item={item} />
-                        <span className="flex min-w-0 flex-1 flex-col gap-1">
-                          <span className="break-words text-sm text-fg">{item.message}</span>
-                          <span className="text-xs text-fg-muted">
-                            <time dateTime={item.dateTime}>{item.time}</time>
-                            <span aria-hidden="true"> · </span>
-                            {item.category}
-                          </span>
-                        </span>
-                        {item.read ? null : (
-                          <span className="mt-2 flex shrink-0 items-start">
-                            <span aria-hidden="true" className="size-2 rounded-full bg-accent" />
-                            <span className="sr-only">{labels.unreadItem}</span>
-                          </span>
-                        )}
-                      </a>
+                      {item.href === null ? (
+                        <button
+                          type="button"
+                          onClick={(event) => onOpenItem(item, event)}
+                          className={`${ROW} w-full text-start ${item.read ? '' : 'bg-subtle'}`}
+                        >
+                          <NoticeRow item={item} unreadLabel={labels.unreadItem} />
+                        </button>
+                      ) : (
+                        <a
+                          href={item.href}
+                          onClick={(event) => onOpenItem(item, event)}
+                          className={`${ROW} ${item.read ? '' : 'bg-subtle'}`}
+                        >
+                          <NoticeRow item={item} unreadLabel={labels.unreadItem} />
+                        </a>
+                      )}
                     </li>
                   ))}
                 </ul>
