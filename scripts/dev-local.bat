@@ -1,13 +1,15 @@
 @echo off
-rem Starts MondaPac locally on Windows: Docker services, database, API, worker and the seller and admin panels.
+rem Starts MondaPac locally on Windows: Docker services, database, API, worker, the seller and admin panels
+rem and the buyer site.
 rem Run from anywhere: double-click this file or run scripts\dev-local.bat.
 rem Needs: Docker Desktop (running), Node.js 24.20+ and pnpm 10 (npm i -g pnpm@10).
-rem Then open http://seller.localhost:3001 (seller) or http://admin.localhost:3002 (admin). Mail arrives in Mailpit at http://localhost:8025 .
+rem Then open http://seller.localhost:3001 (seller), http://admin.localhost:3002 (admin) or
+rem http://storefront.localhost:3003 (buyer site, port 3003; http://localhost:3003 also works). Mail arrives in Mailpit at http://localhost:8025 .
 rem Optional argument "seed": also fills the database with the sample Brisbane marketplace (four
 rem sellers, 14 products, prices, stock, a buyer) once the services are up; the sample logins are
 rem written to .local\demo-credentials.txt. Without it nothing is added. Run "scripts\demo-local.bat"
-rem for the same thing by double-click. The buyer site (not built yet) joins the demo at
-rem http://storefront.localhost:3003 (STOREFRONT_ORIGIN below).
+rem for the same thing by double-click. The buyer site runs at http://storefront.localhost:3003
+rem (STOREFRONT_ORIGIN below; port 3003 is fixed in apps\web\package.json). It shows sample data only.
 rem The Market is AU, the first Market (HOSTED_MARKETS in .env.example and PANEL_HOSTS in
 rem apps\seller\.env.example name it too; change all three together for another Market).
 setlocal
@@ -17,6 +19,7 @@ set "SEED=0"
 if /i "%~1"=="seed" set "SEED=1"
 rem The buyer site's slot in the local demo: its origin is allowed for customer requests.
 set "STOREFRONT_ORIGIN=http://storefront.localhost:3003"
+echo Buyer site (when started): %STOREFRONT_ORIGIN%  (or http://localhost:3003)
 
 where node >nul 2>nul || (echo Node.js is not installed. Install Node 24.20 or newer from https://nodejs.org & goto :fail)
 where pnpm >nul 2>nul || (echo pnpm is not installed. Run: npm i -g pnpm@10 & goto :fail)
@@ -77,9 +80,10 @@ start "MondaPac API" /d "%CD%" cmd /k "pnpm dev"
 rem The worker builds the API once; wait so it does not race the API watcher that cleans dist.
 start "MondaPac worker" /d "%CD%" cmd /k "timeout /t 60 /nobreak && pnpm dev:worker"
 
-echo [5/5] Starting the seller and admin panels in their own windows
+echo [5/5] Starting the seller and admin panels and the buyer site in their own windows
 start "MondaPac seller panel" /d "%CD%" cmd /k "pnpm dev:seller"
 start "MondaPac admin panel" /d "%CD%" cmd /k "pnpm dev:admin"
+start "MondaPac buyer site" /d "%CD%" cmd /k "pnpm dev:web"
 
 if "%SEED%"=="1" (
   echo Starting the demo data in its own window; it waits for the API and the worker.
@@ -109,6 +113,7 @@ echo.
 echo Started. Open:
 echo   Seller panel : http://seller.localhost:3001
 echo   Admin panel  : http://admin.localhost:3002
+echo   Buyer site   : %STOREFRONT_ORIGIN%  (or http://localhost:3003 if that name does not open)
 echo   Mail (Mailpit): http://localhost:8025
 if "%SEED%"=="1" echo   Sample logins : .local\demo-credentials.txt  (written when the demo data window says Done)
 echo To stop: close the windows, then run "docker compose down" (add -v to wipe the demo data).
