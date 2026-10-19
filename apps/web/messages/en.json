@@ -367,7 +367,7 @@
     "discount-empty": "Enter your discount code.",
     "discount-invalid": "This code is not valid or has expired.",
     "discount-applied": "{percent}% off items",
-    "discount-remove": "Remove discount code",
+    "discount-remove": "Remove discount code {code}",
     "summary-discount": "Discount ({code})"
   },
   "checkout": {
@@ -439,6 +439,7 @@
     "note-count": "{count} / {max}",
     "note-help": "For delivery or packing requests only. The seller may not be able to follow every note. Do not enter card or health details.",
     "your-note": "Your note:",
+    "paid-summary": "Payment summary",
     "placed-discount": "Order {reference} · {total} paid (includes {discount} discount, code {code}). A confirmation was sent to {email}."
   }
 }

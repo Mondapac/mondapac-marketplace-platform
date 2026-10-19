@@ -291,7 +291,7 @@ describe('discount code, save for later and seller note (sample data)', () => {
     expect(screen.getByText('Discount (HALAL10)')).toBeTruthy();
     expect(screen.getByText('−A$5.54')).toBeTruthy();
     expect(screen.getAllByText('A$62.36').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Remove discount code' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove discount code HALAL10' }));
     expect(screen.queryByText('Discount (HALAL10)')).toBeNull();
     expect(screen.getByRole('button', { name: 'Have a discount code?' })).toBeTruthy();
   });
@@ -334,5 +334,6 @@ describe('discount code, save for later and seller note (sample data)', () => {
     const part = screen.getByRole('heading', { name: 'Kedron Halal Butchers' }).closest('article')!;
     expect(within(part).getByText('<b>Ring the bell</b>')).toBeTruthy();
     expect(part.querySelector('p b b')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Payment summary' })).toBeTruthy();
   });
 });

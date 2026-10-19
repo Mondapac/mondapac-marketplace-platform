@@ -4,6 +4,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
+import { SummaryTotals } from '../cart/cart-parts.tsx';
 import { viewCart } from '../cart/cart.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
@@ -165,12 +166,16 @@ export function Confirmation() {
               ))}
             </ul>
             {order.notes[g.seller.id] ? (
-              <p className="legal">
+              <p className="legal dnt">
                 <b>{t('your-note')}</b> {order.notes[g.seller.id]}
               </p>
             ) : null}
           </article>
         ))}
+        <div className="cs">
+          <h2>{t('paid-summary')}</h2>
+          <SummaryTotals view={order.view} discountCode={order.discountCode} />
+        </div>
         <div className="dord">
           <h2>{t('delivering-to')}</h2>
           <span>{order.address}</span>

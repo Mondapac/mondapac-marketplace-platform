@@ -73,11 +73,21 @@ export function RemoveLine({ line }: { readonly line: CartGroupLine }) {
   );
 }
 
-/** Items, delivery and total, with the tax the total includes. */
-export function SummaryTotals({ view }: { readonly view: CartView }) {
+/**
+ * Items, delivery and total, with the tax the total includes. `discountCode` names the code of a
+ * placed order; otherwise the applied code is read from the store.
+ */
+export function SummaryTotals({
+  view,
+  discountCode,
+}: {
+  readonly view: CartView;
+  readonly discountCode?: string | null;
+}) {
   const t = useTranslations('cart');
   const locale = useLocale();
   const { discount } = useStore();
+  const code = discountCode === undefined ? discount?.code : discountCode;
   const money = (m: CartView['total']) => formatMoney(m, locale);
   return (
     <>
@@ -86,9 +96,9 @@ export function SummaryTotals({ view }: { readonly view: CartView }) {
           <dt>{t('summary-items', { count: view.count })}</dt>
           <dd className="num">{money(view.items)}</dd>
         </div>
-        {view.discount.amount > 0 && discount ? (
+        {view.discount.amount > 0 && code ? (
           <div className="dsc">
-            <dt>{t('summary-discount', { code: discount.code })}</dt>
+            <dt>{t('summary-discount', { code })}</dt>
             <dd className="num">−{money(view.discount)}</dd>
           </div>
         ) : null}
@@ -133,7 +143,7 @@ export function DiscountBox() {
         <button
           className="lnk"
           type="button"
-          aria-label={t('discount-remove')}
+          aria-label={t('discount-remove', { code: discount.code })}
           onClick={() => {
             setDiscount(null);
             setCode('');
