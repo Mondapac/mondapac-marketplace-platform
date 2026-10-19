@@ -15,10 +15,10 @@ export type DecisionOutcome = (typeof DECISION_OUTCOMES)[number];
 export type NegativeOutcome = Exclude<DecisionOutcome, 'approved'>;
 
 /**
- * The outcomes a Market reason can be listed under (design 5.1 `reasons`: 3.2 rows 4 and 5, and
- * the revoke of 3.1).
+ * The outcomes a Market reason can be listed under (design 5.1 `reasons`: 3.2 rows 4 and 5, the
+ * revoke of 3.1 and 3.4, and the suspension of a manufacturer certificate, 3.4 row 6, slice 15).
  */
-export const REASON_OUTCOMES = ['changes-requested', 'declined', 'revoked'] as const;
+export const REASON_OUTCOMES = ['changes-requested', 'declined', 'revoked', 'suspended'] as const;
 export type ReasonOutcome = (typeof REASON_OUTCOMES)[number];
 
 /** One review check of a Market (design 5.1 `reviewChecks`). */
@@ -134,6 +134,7 @@ export type ApprovalRefusal =
   | { readonly code: 'review.checks-incomplete'; readonly checks: readonly string[] }
   | { readonly code: 'review.scope-missing' }
   | { readonly code: 'issuer.not-active' }
+  | { readonly code: 'type.inactive' }
   | { readonly code: 'certificate.expired' }
   | { readonly code: 'certificate.incomplete' };
 
@@ -145,6 +146,10 @@ export interface ApprovalInput {
   readonly requiresIssuerRegistry: boolean;
   /** The submission's issuer: its state and whether it is of the submission's type. */
   readonly issuer: { readonly state: IssuerState; readonly typeMatches: boolean } | null;
+  /** The type's status, share-locked in the decision unit (slice 12). */
+  readonly typeActive: boolean;
+  /** The record already has an approved submission (a renewal or a correction of one). */
+  readonly hasApproval: boolean;
   /** The boundary of `approvalBoundary`; null without an expiry date. */
   readonly boundary: Temporal.Instant | null;
   readonly now: Temporal.Instant;
@@ -155,7 +160,8 @@ export interface ApprovalInput {
 /**
  * The guards of design 3.2 row 3 that depend on the submission and the clock (the named
  * submission and the version are the use case's): required checks recorded, the location and
- * scope read for a third-party type, the issuer active and of the type, a boundary after now.
+ * scope read for a third-party type, the issuer active and of the type, a type that is active (or a
+ * record that already has an approval), a boundary after now.
  * `null` allows the approval.
  */
 export function approvalRefusal(input: ApprovalInput): ApprovalRefusal | null {
@@ -171,6 +177,9 @@ export function approvalRefusal(input: ApprovalInput): ApprovalRefusal | null {
       return { code: 'issuer.not-active' };
     }
   }
+  // An inactive type takes no new certificate (AC 19, CERT-03); a record approved before the
+  // deactivation keeps its renewals, as its approved certificate keeps counting.
+  if (!input.typeActive && !input.hasApproval) return { code: 'type.inactive' };
   if (input.boundary !== null && Temporal.Instant.compare(input.boundary, input.now) <= 0) {
     return { code: 'certificate.expired' };
   }

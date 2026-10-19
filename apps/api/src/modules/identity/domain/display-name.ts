@@ -44,3 +44,28 @@ export function parseDisplayName(raw: unknown): Result<string, DisplayNameInvali
   }
   return ok(name);
 }
+
+/** The first word of a short name keeps at most this many characters. */
+const SHORT_FIRST_WORD_MAX = 30;
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+/**
+ * The short form of a customer's display name that a seller sees on an order notice (john
+ * 2026-10-17: "Maryam R."): the first word and the first letter of the last word with a dot; a
+ * one-word name is that word. Null when there is no name. Still personal data, as the full name.
+ */
+export function shortDisplayName(displayName: string | null): string | null {
+  if (displayName === null) return null;
+  const words = displayName
+    .trim()
+    .split(/\s+/u)
+    .filter((word) => word.length > 0);
+  if (words.length === 0) return null;
+  const first = [...GRAPHEMES.segment(words[0]!)]
+    .slice(0, SHORT_FIRST_WORD_MAX)
+    .map((part) => part.segment)
+    .join('');
+  if (words.length === 1) return first;
+  const initial = GRAPHEMES.segment(words.at(-1)!)[Symbol.iterator]().next().value!.segment;
+  return `${first} ${initial.toUpperCase()}.`;
+}

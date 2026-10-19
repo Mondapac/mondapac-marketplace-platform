@@ -4,7 +4,8 @@
 // picks the language (exact locale, then its language part, then English), so a new language is
 // a new entry here and no change to the flows. Plain text only: no template carries markup.
 
-export type TemplateId = 'order-confirmation' | 'seller-new-order' | 'order-shipped';
+export type TemplateId =
+  'order-confirmation' | 'seller-new-order' | 'order-shipped' | 'marketing-footer';
 
 export interface TemplateText {
   /** Absent for a channel without a subject. */
@@ -69,6 +70,19 @@ const TEMPLATES: Readonly<Record<TemplateId, TemplateSet>> = {
         'View your order (you will be asked to sign in):',
         '{orderUrl}',
         '',
+      ),
+    },
+  },
+  // Below every marketing mail (Spam Act 2003): who sends it, how to reach them, and a working
+  // unsubscribe link. No subject: it is appended to the mail's own text.
+  'marketing-footer': {
+    en: {
+      body: lines(
+        '',
+        '--',
+        'You receive this email because you agreed to marketing email from {senderName}.',
+        'Unsubscribe at any time: {unsubscribeUrl}',
+        'Contact us: {contactEmail}',
       ),
     },
   },

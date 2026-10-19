@@ -50,6 +50,7 @@ const detail = (currency: string, patch: object = {}) => ({
   sellerId: SELLER,
   subtotal: money(3000n, currency),
   shipping: money(500n, currency),
+  shippingTax: money(45n, currency),
   tax: money(273n, currency),
   total: money(3500n, currency),
   fulfilment: 'to-ship',

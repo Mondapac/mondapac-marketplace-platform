@@ -209,6 +209,113 @@ export function classifyTypeRevision(
   return { relaxations, claimTermsChanged: changed };
 }
 
+/** One line of the diff a second admin reads before approving (design 7.6). */
+export interface TypeRevisionDiffEntry {
+  /** A setting key, `locales.<locale>`, `names.<locale>`, `descriptions.<locale>`, `terms.<locale>`. */
+  readonly path: string;
+  readonly before: string | boolean | null;
+  readonly after: string | boolean | null;
+  /** Why the second admin is needed (the rule of {@link classifyTypeRevision}). */
+  readonly relaxes: boolean;
+}
+
+const SETTING_KEYS = [
+  'requiresIssuerRegistry',
+  'requiresDocument',
+  'requiresExpiry',
+  'defaultBasis',
+  'autoApproveSelfDeclaration',
+  'badgeIconKey',
+] as const;
+
+function settingRelaxes(
+  key: (typeof SETTING_KEYS)[number],
+  before: TypeRevisionContent,
+  after: TypeRevisionContent,
+): boolean {
+  switch (key) {
+    case 'autoApproveSelfDeclaration':
+      return !before.autoApproveSelfDeclaration && after.autoApproveSelfDeclaration;
+    case 'requiresDocument':
+    case 'requiresIssuerRegistry':
+    case 'requiresExpiry':
+      return before[key] && !after[key];
+    case 'defaultBasis':
+      return before.defaultBasis === 'NOT_APPLICABLE' && after.defaultBasis === 'SELLER_REQUIRED';
+    case 'badgeIconKey':
+      return false;
+  }
+}
+
+/**
+ * The differences between the published revision and a proposed one, computed from the two
+ * revisions (data design 3.20: the diff is never stored). Settings first, then dropped and added
+ * locales, then per locale its name, description and terms (removed, then added). Terms compare
+ * after the matcher's normalisation, as {@link classifyTypeRevision} does; `relaxes` is that same
+ * rule per line. `verificationMode` never differs (H1).
+ */
+export function typeRevisionDiff(
+  before: TypeRevisionContent,
+  after: TypeRevisionContent,
+): readonly TypeRevisionDiffEntry[] {
+  const entries: TypeRevisionDiffEntry[] = [];
+  for (const key of SETTING_KEYS) {
+    if (before[key] !== after[key]) {
+      entries.push({
+        path: key,
+        before: before[key],
+        after: after[key],
+        relaxes: settingRelaxes(key, before, after),
+      });
+    }
+  }
+  const beforeLocales = Object.keys(before.locales).sort();
+  const afterLocales = Object.keys(after.locales).sort();
+  for (const locale of beforeLocales) {
+    if (!Object.hasOwn(after.locales, locale)) {
+      entries.push({ path: `locales.${locale}`, before: true, after: false, relaxes: true });
+    }
+  }
+  for (const locale of afterLocales) {
+    if (!Object.hasOwn(before.locales, locale)) {
+      entries.push({ path: `locales.${locale}`, before: false, after: true, relaxes: false });
+    }
+  }
+  for (const locale of afterLocales) {
+    const next = after.locales[locale]!;
+    const previous = Object.hasOwn(before.locales, locale) ? before.locales[locale]! : null;
+    if (previous?.name !== next.name) {
+      entries.push({
+        path: `names.${locale}`,
+        before: previous?.name ?? null,
+        after: next.name,
+        relaxes: false,
+      });
+    }
+    if (previous?.customerDescription !== next.customerDescription) {
+      entries.push({
+        path: `descriptions.${locale}`,
+        before: previous?.customerDescription ?? null,
+        after: next.customerDescription,
+        relaxes: false,
+      });
+    }
+    const beforeKeys = new Set((previous?.claimTerms ?? []).map(termKey));
+    const afterKeys = new Set(next.claimTerms.map(termKey));
+    for (const term of previous?.claimTerms ?? []) {
+      if (!afterKeys.has(termKey(term))) {
+        entries.push({ path: `terms.${locale}`, before: term, after: null, relaxes: true });
+      }
+    }
+    for (const term of next.claimTerms) {
+      if (!beforeKeys.has(termKey(term))) {
+        entries.push({ path: `terms.${locale}`, before: null, after: term, relaxes: false });
+      }
+    }
+  }
+  return entries;
+}
+
 export type Publication = 'publish-now' | 'pending-second-admin';
 
 export const publicationOf = (c: TypeRevisionClassification): Publication =>

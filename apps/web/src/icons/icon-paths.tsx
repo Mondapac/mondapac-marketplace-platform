@@ -1,0 +1,207 @@
+import type { ReactNode } from 'react';
+
+// Line icons of the approved storefront design (v29), drawn on a 24 x 24 grid with currentColor.
+export const ICON_PATHS = {
+  menu: (
+    <>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-4-4" />
+    </>
+  ),
+  pin: (
+    <>
+      <path d="M12 21s-7-6.2-7-11a7 7 0 1 1 14 0c0 4.8-7 11-7 11z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </>
+  ),
+  user: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+    </>
+  ),
+  bag: (
+    <>
+      <path d="M6 8h12l-1 12H7L6 8z" />
+      <path d="M9 8V7a3 3 0 0 1 6 0v1" />
+    </>
+  ),
+  plus: (
+    <>
+      <path d="M12 5v14M5 12h14" />
+    </>
+  ),
+  minus: (
+    <>
+      <path d="M5 12h14" />
+    </>
+  ),
+  chevd: (
+    <>
+      <path d="M6 9l6 6 6-6" />
+    </>
+  ),
+  chevr: (
+    <>
+      <path d="M9 6l6 6-6 6" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
+  home: (
+    <>
+      <path d="M4 11l8-7 8 7v9H4z" />
+      <path d="M10 20v-6h4v6" />
+    </>
+  ),
+  leaf: (
+    <>
+      <path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15" />
+      <path d="M5 19c3-5 6-8 10-10" />
+    </>
+  ),
+  meat: (
+    <>
+      <path d="M5 12c0-4 4-7 8-6 4 1 6 4 5 8-1 4-5 5-8 4-3-1-5-3-5-6z" />
+      <circle cx="12" cy="12" r="2.2" />
+    </>
+  ),
+  poultry: (
+    <>
+      <circle cx="15" cy="9" r="5" />
+      <path d="M11.5 12.5L6 18" />
+      <circle cx="5" cy="19" r="1.6" />
+    </>
+  ),
+  bakery: (
+    <>
+      <path d="M4 11a4 4 0 0 1 3-6h10a4 4 0 0 1 3 6v8H4z" />
+      <path d="M9 10l1.5 2M13 10l1.5 2" />
+    </>
+  ),
+  pantry: (
+    <>
+      <rect x="6" y="8" width="12" height="13" rx="2" />
+      <rect x="8" y="4" width="8" height="4" rx="1" />
+    </>
+  ),
+  dairy: (
+    <>
+      <path d="M8 3h8l2 5v13H6V8z" />
+      <path d="M6 8h12" />
+    </>
+  ),
+  produce: (
+    <>
+      <path d="M12 7c-3-2-8 0-8 6 0 4 3 8 5 8 1 0 2-1 3-1s2 1 3 1c2 0 5-4 5-8 0-6-5-8-8-6z" />
+      <path d="M12 7c0-2 1-3 3-4" />
+    </>
+  ),
+  spices: (
+    <>
+      <path d="M9 3h6v3H9z" />
+      <path d="M8 6h8l1 15H7z" />
+    </>
+  ),
+  tag: (
+    <>
+      <path d="M3 12V4h8l9 9-8 8z" />
+      <circle cx="7.5" cy="8.5" r="1.2" />
+    </>
+  ),
+  grid: (
+    <>
+      <rect x="4" y="4" width="7" height="7" rx="1.5" />
+      <rect x="13" y="4" width="7" height="7" rx="1.5" />
+      <rect x="4" y="13" width="7" height="7" rx="1.5" />
+      <rect x="13" y="13" width="7" height="7" rx="1.5" />
+    </>
+  ),
+  bolt: (
+    <>
+      <path d="M13 3L5 14h6l-1 7 8-11h-6z" />
+    </>
+  ),
+  store: (
+    <>
+      <path d="M5 9v11h14V9" />
+      <path d="M3 9l1.5-5h15L21 9a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z" />
+      <path d="M10 20v-5h4v5" />
+    </>
+  ),
+  heart: (
+    <>
+      <path d="M12 20s-8-5-8-11a4.5 4.5 0 0 1 8-2.5A4.5 4.5 0 0 1 20 9c0 6-8 11-8 11z" />
+    </>
+  ),
+  gift: (
+    <>
+      <rect x="4" y="9" width="16" height="4" />
+      <path d="M5 13v7h14v-7M12 9v11" />
+      <path d="M12 9C10 5 6 6 7 9c.5 1.5 3 1 5 0zM12 9c2-4 6-3 5 0-.5 1.5-3 1-5 0z" />
+    </>
+  ),
+  book: (
+    <>
+      <path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" />
+      <path d="M5 17a3 3 0 0 1 3-3h10" />
+    </>
+  ),
+  close: (
+    <>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </>
+  ),
+  chevl: (
+    <>
+      <path d="M15 6l-6 6 6 6" />
+    </>
+  ),
+  meals: (
+    <>
+      <path d="M3 11h18a9 9 0 0 1-18 0z" />
+      <path d="M8 7c0-2 2-2 2-4M13 7c0-2 2-2 2-4" />
+    </>
+  ),
+  truck: (
+    <>
+      <path d="M3 6h11v10H3zM14 9h4l3 3v4h-7z" />
+      <circle cx="7.5" cy="17.5" r="1.8" />
+      <circle cx="17" cy="17.5" r="1.8" />
+    </>
+  ),
+  receipt: (
+    <>
+      <path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" />
+      <path d="M9 8h6M9 12h6" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 018 0v3" />
+    </>
+  ),
+  mail: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 7l9 6 9-6" />
+    </>
+  ),
+  up: (
+    <>
+      <path d="M6 14l6-6 6 6" />
+    </>
+  ),
+} satisfies Record<string, ReactNode>;
+
+export type IconName = keyof typeof ICON_PATHS;

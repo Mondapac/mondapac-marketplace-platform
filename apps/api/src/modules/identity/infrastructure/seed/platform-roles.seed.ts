@@ -37,8 +37,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // request changes, decline) need the protected `.approve`, which is not listed: a default role
     // never lists a protected key (R11), the Platform Administrator grants it. Version 6 adds
     // `certification.issuer.view` (certification slice 6: the issuer request queue and the typed
-    // name); answering needs the protected `certification.issuer.edit`, not listed.
-    seedVersion: 6,
+    // name); answering needs the protected `certification.issuer.edit`, not listed. Version 7
+    // adds `certification.type.view` (certification slice 12: every default admin role reads the
+    // types; the protected `certification.type.edit` is not listed).
+    seedVersion: 7,
     nameKey: 'identity.role.onboarding-compliance',
     permissionKeys: [
       'identity.seller-access.view',
@@ -51,6 +53,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'certification.seller-certificate.view',
       'certification.seller-certificate.review',
       'certification.issuer.view',
+      'certification.type.view',
     ],
   },
   {
@@ -65,8 +68,12 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // `pricing.price-hold.decide` is not listed: a default role never lists a protected key (R11),
     // the Platform Administrator grants it (pricing H4). Version 5 adds `catalog.product.view` and
     // `catalog.product.approve` (catalog design 8.1: the Offer review queue, approve and request
-    // changes; both unprotected).
-    seedVersion: 5,
+    // changes; both unprotected). Version 6 adds `certification.type.view` (certification slice 12).
+    // Version 7 adds `certification.claim-policy.view` (certification slice 13: the claim basis
+    // policies; the protected `certification.claim-policy.edit` is not listed). Version 8 adds
+    // `certification.product-certificate.view` (certification slice 14: manufacturer certificates
+    // and their coverage; the protected `.edit` and `.approve` are not listed).
+    seedVersion: 8,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
@@ -75,6 +82,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.product.approve',
       'sellers.seller.view',
       'pricing.price-hold.view',
+      'certification.type.view',
+      'certification.claim-policy.view',
+      'certification.product-certificate.view',
     ],
   },
   {
@@ -82,8 +92,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     scope: 'platform',
     kind: 'default',
     seedCode: 'operations-support',
-    // Version 2 adds `sellers.seller.view` (the admin seller list, sellers slice 6).
-    seedVersion: 2,
+    // Version 2 adds `sellers.seller.view` (the admin seller list, sellers slice 6). Version 3
+    // adds `certification.type.view` (certification slice 12).
+    seedVersion: 3,
     nameKey: 'identity.role.operations-support',
     permissionKeys: [
       'identity.seller-access.view',
@@ -91,6 +102,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'identity.customer-account.disable',
       'identity.seller-account.reset-second-factor',
       'sellers.seller.view',
+      'certification.type.view',
     ],
   },
   {
@@ -98,10 +110,15 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     scope: 'platform',
     kind: 'default',
     seedCode: 'finance',
-    // Version 2 adds `sellers.seller.view` (the admin seller list, sellers slice 6).
-    seedVersion: 2,
+    // Version 2 adds `sellers.seller.view` (the admin seller list, sellers slice 6). Version 3
+    // adds `certification.type.view` (certification slice 12).
+    seedVersion: 3,
     nameKey: 'identity.role.finance',
-    permissionKeys: ['identity.seller-access.view', 'sellers.seller.view'],
+    permissionKeys: [
+      'identity.seller-access.view',
+      'sellers.seller.view',
+      'certification.type.view',
+    ],
   },
   {
     // Read-only access for oversight: every unprotected `view` key of the platform scope.
@@ -119,7 +136,11 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 9 adds `notifications.support-contact.view`, likewise unprotected (support contact).
     // Version 10 adds `certification.seller-certificate.view`, likewise unprotected (certification
     // slice 7). The review key reads decrypted certificate fields and is not a viewer key.
-    seedVersion: 10,
+    // Version 11 adds `certification.type.view`, likewise unprotected (certification slice 12).
+    // Version 12 adds `certification.claim-policy.view`, likewise unprotected (certification
+    // slice 13). Version 13 adds `certification.product-certificate.view`, likewise unprotected
+    // (certification slice 14; it never reads the number).
+    seedVersion: 13,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -135,6 +156,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'payments.connected-account.view',
       'notifications.support-contact.view',
       'certification.seller-certificate.view',
+      'certification.type.view',
+      'certification.claim-policy.view',
+      'certification.product-certificate.view',
     ],
   },
   {
@@ -144,10 +168,13 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // `certification.seller-certificate.approve`, which the Platform Administrator grants in a
     // custom role (do not add it here). Version 2 adds `certification.issuer.view` (certification
     // slice 6: the issuer request queue); the protected `certification.issuer.edit` is not listed.
+    // Version 3 adds `certification.type.view` (certification slice 12); `.type.edit` is protected.
     scope: 'platform',
     kind: 'default',
     seedCode: 'certification-reviewer',
-    seedVersion: 2,
+    // Version 4 adds `certification.product-certificate.view` (certification slice 14); the
+    // protected `.approve` of manufacturer certificates is granted in a custom role.
+    seedVersion: 4,
     nameKey: 'identity.role.certification-reviewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -156,6 +183,8 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'certification.seller-certificate.view',
       'certification.seller-certificate.review',
       'certification.issuer.view',
+      'certification.type.view',
+      'certification.product-certificate.view',
     ],
   },
 ];

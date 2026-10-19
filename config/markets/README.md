@@ -244,7 +244,7 @@ policy is the Market's `defaultCurrency`.
 
 ## `notifications` section (optional)
 
-Owned by `notifications`. Two optional keys. `customerOrderPage`: the storefront page the order
+Owned by `notifications`. Four optional keys. `customerOrderPage`: the storefront page the order
 confirmation mail links to (an absolute https URL without a fragment; http only for a loopback host);
 the order id is appended as one path segment, and a Market without it sends no customer order mail.
 `supportEmail`, the Market's support address (an email address, at
@@ -252,6 +252,10 @@ most 254 characters). It is only the default: a platform admin can change the ad
 the admin panel's Settings page (`notifications.support-contact.manage`), and the stored value then
 wins. Every change is a new row in `notifications.support_contacts` (who, when, the address before)
 and an audit row. A Market without the section shows no address until an admin sets one.
+`unsubscribePage`: the storefront page a marketing mail's unsubscribe link opens, as
+`<page>?token=<token>` (same URL rules). `oneClickUnsubscribeUrl`: the API's one-click route of this
+Market, `.../notifications/unsubscribe/<MARKET>`, sent in the `List-Unsubscribe` header (RFC 8058)
+as `<url>?token=<token>`. A Market without both sends no marketing mail (personalization 1b).
 
 ## `customers` section (optional)
 
@@ -285,3 +289,13 @@ is required; no value has a default. The review checks and reasons are table-sha
 - `renewalSubmitByDays` (required, whole, 0 to 366; AU 7, the synthetic Market 2): the warning
   names the date this many days before the expiry date by which a renewal should be submitted
   (brief s4 c 2), or "now" once that date is not ahead of the warning.
+- `manufacturerBasisEnabled` (required, boolean; AU `false`, the synthetic Market `true`;
+  ADR-0012, cto ruling): whether a claim policy row `SELLER_OR_MANUFACTURER` may open the
+  manufacturer basis in this Market. Off, or unreadable, the row is read as `SELLER_REQUIRED`
+  (fail closed) and no product certificate is read. AU stays off until the halal authority and
+  legal agree.
+  Switching it off for a Market that has manufacturer-basis tags (Hassan L4): the change is a
+  configuration release, which publishes no certification event, so no tag is re-asked at once.
+  Until a re-ask of each affected type (`claim-policy-changed` cause) or the daily reconciliation
+  runs (within 24 h), those tags keep their manufacturer badge. Queue the type re-ask with the
+  release, or accept the reconciliation window.

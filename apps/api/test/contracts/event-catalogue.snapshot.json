@@ -162,12 +162,116 @@
     }
   },
   {
+    "type": "certification.certification-type-activated.v1",
+    "aggregateType": "certification-type",
+    "fields": {
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.certification-type-deactivated.v1",
+    "aggregateType": "certification-type",
+    "fields": {
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.certification-type-revised.v1",
+    "aggregateType": "certification-type",
+    "fields": {
+      "typeId": "id",
+      "revisionId": "id",
+      "claimTermsChanged": "boolean"
+    }
+  },
+  {
+    "type": "certification.claim-policy-changed.v1",
+    "aggregateType": "claim-policy",
+    "fields": {
+      "policyId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.issuer-deactivated.v1",
+    "aggregateType": "issuer",
+    "fields": {
+      "issuerId": "id",
+      "form": "enumOf(closed-to-new|derecognised)"
+    }
+  },
+  {
     "type": "certification.issuer-request-answered.v1",
     "aggregateType": "issuer-request",
     "fields": {
       "issuerRequestId": "id",
       "outcome": "enumOf(issuer-added|not-accepted)",
       "sellerId": "id"
+    }
+  },
+  {
+    "type": "certification.product-certification-approved.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.product-certification-coverage-changed.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "previousRevisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.product-certification-expired.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.product-certification-expiry-warning-due.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "typeId": "id",
+      "thresholdDays": "integer"
+    }
+  },
+  {
+    "type": "certification.product-certification-revoked.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.product-certification-suspended.v1",
+    "aggregateType": "product-certification",
+    "fields": {
+      "productCertificationId": "id",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
+    "type": "certification.relaxation-proposed.v1",
+    "aggregateType": "relaxation-proposal",
+    "fields": {
+      "proposalId": "id",
+      "subject": "enumOf(type-revision|claim-policy-revision|issuer-reactivation|type-reactivation)"
     }
   },
   {

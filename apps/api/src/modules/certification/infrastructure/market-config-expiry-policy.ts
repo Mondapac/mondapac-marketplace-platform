@@ -60,3 +60,17 @@ export class MarketConfigExpiryPolicy implements ExpiryPolicyProvider {
     return policy;
   }
 }
+
+/**
+ * The Market's manufacturer-basis switch (`certification.manufacturerBasisEnabled`; cto ruling,
+ * slice 14). Only an explicit `true` opens the basis; a Market without the section, an unknown
+ * Market or any failure reads as off (fail closed), so `SELLER_OR_MANUFACTURER` is then read as
+ * `SELLER_REQUIRED` by `ClaimRule.decide`.
+ */
+export function manufacturerBasisEnabledIn(markets: MarketRegistry, marketId: MarketId): boolean {
+  try {
+    return markets.get(marketId).certification?.manufacturerBasisEnabled === true;
+  } catch {
+    return false;
+  }
+}

@@ -179,3 +179,28 @@ export function expiredMail(input: {
     ].join('\n'),
   };
 }
+
+/**
+ * The mail of deactivation form 2 (design 3.5, 12; Q6): the issuer of an approved certificate is
+ * no longer recognised. Why and what to do: the certificate stopped counting at once, and a
+ * certificate from a recognised issuer brings the certification back. The issuer's public name
+ * is registry data (the badge shows it); nothing else about the issuer or the decision is told.
+ */
+export function issuerDerecognisedMail(input: {
+  readonly typeCode: string;
+  readonly issuerName: string;
+}): DecisionMail {
+  const type = line(input.typeCode);
+  const issuer = line(input.issuerName);
+  return {
+    subject: 'Your certificate no longer counts',
+    text: [
+      'Your certificate no longer counts',
+      '',
+      `We no longer recognise ${issuer} as an issuer of ${type} certificates. Your ${type} certificate from this issuer stopped counting at once.`,
+      '',
+      `Your offers no longer show the ${type} certification. To show it again, add a certificate from an issuer we recognise in your seller panel and submit it for review.`,
+      '',
+    ].join('\n'),
+  };
+}

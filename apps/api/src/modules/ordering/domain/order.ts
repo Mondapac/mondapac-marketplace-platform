@@ -71,6 +71,13 @@ export interface SellerOrder {
   readonly sellerId: Id<'Seller'>;
   readonly subtotal: bigint;
   readonly shipping: bigint;
+  /**
+   * The tax on the shipping fee, frozen at placement with its rate and price basis. All three
+   * are null on seller orders placed before it was recorded (unknown, never zero).
+   */
+  readonly shippingTaxRateBps: number | null;
+  readonly shippingTax: bigint | null;
+  readonly shippingTaxInclusive: boolean | null;
   readonly total: bigint;
   readonly fulfilment: Fulfilment;
   readonly carrier: string | null;
@@ -106,6 +113,14 @@ export interface OrderState {
   readonly taxStrategyId: Id<'TaxStrategy'> | null;
   readonly sellerOrders: readonly SellerOrder[];
   readonly lines: readonly OrderLine[];
+}
+
+/**
+ * What a seller order's shipping tax adds to the order tax: the recorded tax, or nothing for a
+ * seller order placed before it was recorded.
+ */
+export function shippingTaxOf(seller: SellerOrder): bigint {
+  return seller.shippingTax ?? 0n;
 }
 
 /**

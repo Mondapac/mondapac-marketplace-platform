@@ -158,6 +158,7 @@ for (const phase of ['happy', 'faults'] as const) {
           expect(all.map((t) => t.status)).toEqual(['active', 'active', 'active', 'inactive']);
           const middle = all[1]!;
           expect(middle).toEqual({
+            typeId: expect.stringMatching(/^[0-9a-f-]{36}$/) as unknown,
             code: 'mm-middle',
             status: 'active',
             publishedRevisionId: mid,
@@ -174,6 +175,8 @@ for (const phase of ['happy', 'faults'] as const) {
             },
           });
           expect(all[3]!.publishedRevisionId).toBe(zRevision);
+          // Each type answers its own id (slice 14: catalog maps an event's type id to the code).
+          expect(new Set(all.map((t) => t.typeId)).size).toBe(all.length);
           expect(Object.keys(all[3]!.locales)).toEqual(['ar', 'en']);
 
           expect(

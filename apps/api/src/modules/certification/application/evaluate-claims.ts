@@ -8,6 +8,7 @@ import {
   type ClaimDecision,
   type ClaimQuery,
   type Handling,
+  type TimeZoneId,
 } from '../domain/claim-types';
 import { isCertificationTypeCode } from '../domain/type-revision';
 import type { SellerZones } from '../domain/validity';
@@ -24,6 +25,16 @@ export interface EvaluateClaimsDependencies {
   readonly facts: ClaimFactsReader;
   readonly zones: SellerZonesSource;
   readonly now: () => Temporal.Instant;
+  /**
+   * The Market's configured zone, which measures manufacturer expiry (design 2.4 rule 3); null
+   * when the Market has none Temporal resolves (no manufacturer basis then: fail closed).
+   */
+  readonly marketZone: (context: CallContext) => TimeZoneId | null;
+  /**
+   * The Market's manufacturer-basis switch (`certification.manufacturerBasisEnabled`; cto ruling,
+   * slice 14). Read once per batch; a throw or anything but `true` is off (fail closed).
+   */
+  readonly manufacturerBasisEnabled: (context: CallContext) => boolean;
 }
 
 type Parsed = { readonly query: ClaimQuery } | { readonly invalid: true };
@@ -208,8 +219,16 @@ export async function evaluateClaimsFor(
       if (!sellerIds.includes(key)) throw new Error('unexpected zone key');
     }
 
+    const marketZone = deps.marketZone(context);
+    let manufacturerBasisEnabled = false;
+    try {
+      manufacturerBasisEnabled = deps.manufacturerBasisEnabled(context) === true;
+    } catch {
+      // An error means off (fail closed); the seller basis still answers.
+      manufacturerBasisEnabled = false;
+    }
     let u = 0;
-    valid.forEach(({ index, query }, k) => {
+    const factsOf: ClaimFacts[] = valid.map(({ query }, k) => {
       const typeAndPolicy: TypeAndPolicy = policies[k]!;
       const seller = needsSeller[k] === true;
       const certificate = seller ? (certificates[u]?.certificate ?? null) : null;
@@ -222,14 +241,51 @@ export async function evaluateClaimsFor(
               addressZone: zone.addressZone as SellerZones['addressZone'],
             }
           : null;
-      const facts: ClaimFacts = {
+      return {
         type: typeAndPolicy.type,
         policy: typeAndPolicy.policy,
         sellerCertificate: certificate,
         sellerZones,
+        // Not read yet: the first pass decides everything but the manufacturer basis.
+        productCertificates: null,
+        marketZone,
+        manufacturerBasisEnabled,
       };
-      decisions.set(index, decide(query, facts, at));
     });
+    const first = valid.map(({ query }, k) => decide(query, factsOf[k]!, at));
+
+    // Step 6, one read, only for the queries the manufacturer basis could still allow: the first
+    // pass stopped at `not-covered`, so the requirement is SELLER_OR_MANUFACTURER, the type is a
+    // third-party document type, the handling is SEALED_ORIGINAL and the attestation is recorded.
+    const pending = valid.flatMap(({ query }, k) =>
+      first[k]!.reason === 'not-covered' ? [{ k, query }] : [],
+    );
+    const products =
+      pending.length === 0
+        ? []
+        : await deps.facts.productCertificates(
+            context.market,
+            pending.map(({ query }) => ({
+              typeCode: query.typeCode,
+              productId: query.productId,
+              productRevisionId: query.productRevisionId,
+              variantId: query.variantId,
+            })),
+          );
+    if (products.length !== pending.length) throw new Error('manufacturer read misaligned');
+    pending.forEach(({ k, query }, j) => {
+      const answer = products[j]!;
+      if (
+        answer.typeCode !== query.typeCode ||
+        answer.productId !== query.productId ||
+        answer.productRevisionId !== query.productRevisionId ||
+        answer.variantId !== query.variantId
+      ) {
+        throw new Error('manufacturer answer out of order');
+      }
+      first[k] = decide(query, { ...factsOf[k]!, productCertificates: answer.certificates }, at);
+    });
+    valid.forEach(({ index }, k) => decisions.set(index, first[k]!));
   } catch (error) {
     // The class of the failure only; never ids or values.
     logger.error(`evaluateClaims failed: ${error instanceof Error ? error.name : 'unknown'}`);

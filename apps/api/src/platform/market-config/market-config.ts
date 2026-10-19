@@ -1045,6 +1045,12 @@ const certificationSchema = z.strictObject({
     .refine((days) => new Set(days).size === days.length, { message: 'a threshold repeats' }),
   /** Days before the expiry date by which a renewal should be submitted (AU 7); 0 to 366. */
   renewalSubmitByDays: z.number().int().min(0).max(366),
+  /**
+   * Whether a policy row's `SELLER_OR_MANUFACTURER` may open the manufacturer basis in this
+   * Market (certification slice 14; cto ruling). Off, `evaluateClaims` reads such a row as
+   * `SELLER_REQUIRED` (fail closed). AU false until the halal authority and legal agree (Q2).
+   */
+  manufacturerBasisEnabled: z.boolean(),
 });
 
 /**
@@ -1254,6 +1260,18 @@ const marketSchema = z
          * the URL. Without it the Market sends no customer order mail.
          */
         customerOrderPage: pageUrl.optional(),
+        /**
+         * The storefront page a marketing mail's unsubscribe link opens (`<page>?token=<token>`);
+         * the page asks the API and shows the result. Personalization package 1b.
+         */
+        unsubscribePage: pageUrl.optional(),
+        /**
+         * The API's one-click unsubscribe route of this Market
+         * (`.../notifications/unsubscribe/<MARKET>`), sent in the `List-Unsubscribe` header
+         * (RFC 8058) as `<url>?token=<token>`. Without it or `unsubscribePage` the Market sends no
+         * marketing mail.
+         */
+        oneClickUnsubscribeUrl: pageUrl.optional(),
       })
       .optional(),
     /**

@@ -51,6 +51,7 @@ export type OwnCertificateSubmitFailure =
       readonly fields: readonly { path: string; code: string }[];
     }
   | { readonly code: 'issuer.not-active' }
+  | { readonly code: 'type.inactive' }
   | { readonly code: 'certificate.expired' }
   | { readonly code: 'seller.zone-missing' }
   | { readonly code: 'conflict.stale' }
@@ -147,6 +148,11 @@ export class OwnCertificateSubmit extends UseCase<
     }
     const kind = submissionKindFor(stored.status, stored.pendingSubmissionId);
     if (kind === null) return err({ code: 'certificate.not-submittable' });
+    // An inactive type takes no new certificate (AC 19, CERT-03); a record approved before the
+    // deactivation may still be renewed or corrected. The approval checks it again under a lock.
+    if (type.status !== 'active' && stored.approvedSubmissionId === null) {
+      return err({ code: 'type.inactive' });
+    }
 
     // 2. The draft in clear, and whether it is complete for the type revision in force.
     const number =

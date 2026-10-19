@@ -38,7 +38,14 @@ export const ZZ_REVIEW_POLICY: ReviewPolicy = {
       check: null,
       nextStep: 'ask-support',
       label: 'The body took the certificate back.',
-      outcomes: ['revoked'],
+      outcomes: ['revoked', 'suspended'],
+    },
+    {
+      code: 'being-rechecked',
+      check: null,
+      nextStep: 'ask-support',
+      label: 'The certificate is looked at again.',
+      outcomes: ['suspended'],
     },
   ],
   issuerRequestReasons: [

@@ -73,7 +73,7 @@
       "check": "issuer-enquiry",
       "nextStep": "contact-support",
       "label": "The issuer did not confirm the certificate.",
-      "outcomes": ["declined", "revoked"]
+      "outcomes": ["declined", "revoked", "suspended"]
     },
     {
       "code": "declaration-not-accepted",
@@ -87,7 +87,7 @@
       "check": null,
       "nextStep": "add-new-certificate",
       "label": "The issuer has withdrawn or suspended this certificate.",
-      "outcomes": ["revoked"]
+      "outcomes": ["revoked", "suspended"]
     },
     {
       "code": "approved-in-error",
@@ -95,6 +95,13 @@
       "nextStep": "contact-support",
       "label": "The certificate was approved in error and no longer counts.",
       "outcomes": ["revoked"]
+    },
+    {
+      "code": "under-investigation",
+      "check": null,
+      "nextStep": "contact-support",
+      "label": "The certificate is being checked again and does not count until the check ends.",
+      "outcomes": ["suspended"]
     }
   ],
   "issuerRequestReasons": [

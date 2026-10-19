@@ -3,6 +3,7 @@ import {
   classifyTypeRevision,
   isCertificationTypeCode,
   publicationOf,
+  typeRevisionDiff,
   validateTypeRevision,
   type TypeRevisionContent,
 } from './type-revision';
@@ -415,5 +416,52 @@ describe('assertSecondAdmin', () => {
     expect(assertSecondAdmin('', 'a2').ok).toBe(false);
     expect(assertSecondAdmin('a1', ' ').ok).toBe(false);
     expect(assertSecondAdmin('a1', 'A1 ').ok).toBe(false);
+  });
+});
+
+describe('typeRevisionDiff (the read shape of a pending relaxation, design 7.6)', () => {
+  it('lists each changed setting, text and term, and marks the relaxing ones', () => {
+    const before = base();
+    const after = base({
+      requiresDocument: false,
+      requiresExpiry: true,
+      badgeIconKey: 'seal-2',
+      locales: {
+        en: {
+          name: 'Halal food',
+          customerDescription: 'Certified.',
+          claimTerms: ['halal', 'zabiha'],
+        },
+      },
+    });
+    expect(typeRevisionDiff(before, after)).toEqual([
+      { path: 'requiresDocument', before: true, after: false, relaxes: true },
+      { path: 'badgeIconKey', before: 'seal', after: 'seal-2', relaxes: false },
+      { path: 'locales.ar', before: true, after: false, relaxes: true },
+      { path: 'names.en', before: 'Halal', after: 'Halal food', relaxes: false },
+      { path: 'terms.en', before: 'halal certified', after: null, relaxes: true },
+      { path: 'terms.en', before: null, after: 'zabiha', relaxes: false },
+    ]);
+  });
+
+  it('is empty for the same content and marks a tightening as not relaxing (ZZ)', () => {
+    expect(typeRevisionDiff(zz(), zz())).toEqual([]);
+    expect(typeRevisionDiff(zz(), zz({ autoApproveSelfDeclaration: false }))).toEqual([
+      { path: 'autoApproveSelfDeclaration', before: true, after: false, relaxes: false },
+    ]);
+    expect(typeRevisionDiff(zz({ autoApproveSelfDeclaration: false }), zz())).toEqual([
+      { path: 'autoApproveSelfDeclaration', before: false, after: true, relaxes: true },
+    ]);
+  });
+
+  it('treats a case-only term edit as no change, as the classification does', () => {
+    const after = base({
+      locales: {
+        ...base().locales,
+        en: { ...base().locales.en!, claimTerms: ['HALAL', 'halal certified'] },
+      },
+    });
+    expect(typeRevisionDiff(base(), after)).toEqual([]);
+    expect(classifyTypeRevision(base(), after).relaxations).toEqual([]);
   });
 });

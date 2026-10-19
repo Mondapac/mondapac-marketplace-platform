@@ -33,6 +33,8 @@ export interface ClaimTextInput {
 
 /** What `certificationTypes` answers per type (design 8.1). No claim terms. */
 export interface CertificationTypeView {
+  /** The type's id (slice 14: catalog maps the `typeId` of an event payload to a code). */
+  readonly typeId: Id;
   readonly code: CertificationTypeCode;
   readonly status: 'active' | 'inactive';
   readonly publishedRevisionId: Id;

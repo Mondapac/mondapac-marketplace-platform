@@ -103,6 +103,18 @@ export class FakeClaimEvaluator implements ClaimEvaluator {
     if (this.activeUnavailable) return Promise.resolve(err({ code: 'claim.check-unavailable' }));
     return Promise.resolve(ok(new Set(this.active)));
   }
+
+  /** Type ids to codes for `typeCodeOf` (slice 14); `typesUnavailable` makes it unavailable. */
+  readonly typeCodes = new Map<string, string>();
+  typesUnavailable = false;
+
+  typeCodeOf(
+    _context: CallContext,
+    typeId: string,
+  ): Promise<Result<string | null, ClaimCheckUnavailable>> {
+    if (this.typesUnavailable) return Promise.resolve(err({ code: 'claim.check-unavailable' }));
+    return Promise.resolve(ok(this.typeCodes.get(typeId) ?? null));
+  }
 }
 
 /**
@@ -248,8 +260,42 @@ export class RecordingReevaluationRequests implements TagReevaluationRequestRepo
     return Promise.resolve();
   }
 
-  requestForEvent(): Promise<void> {
+  /** The certification-event requests written, in order (Hassan M2). */
+  readonly events: {
+    readonly cause: string;
+    readonly subjectId: Id;
+    readonly sourceEventId: Id;
+  }[] = [];
+  /**
+   * The pending requests no run started, by `cause:subjectId`, with when each was written
+   * (Hassan M2, N1).
+   */
+  readonly unstarted = new Map<string, Temporal.Instant>();
+
+  requestForEvent(
+    _market: MarketContext,
+    request: { readonly cause: string; readonly subjectId: Id; readonly sourceEventId: Id },
+  ): Promise<void> {
+    this.events.push({
+      cause: request.cause,
+      subjectId: request.subjectId,
+      sourceEventId: request.sourceEventId,
+    });
     return Promise.resolve();
+  }
+
+  pendingUnstarted(
+    _market: MarketContext,
+    request: {
+      readonly cause: string;
+      readonly subjectId: Id;
+      readonly createdAfter: Temporal.Instant;
+    },
+  ): Promise<boolean> {
+    const createdAt = this.unstarted.get(`${request.cause}:${request.subjectId}`);
+    return Promise.resolve(
+      createdAt !== undefined && Temporal.Instant.compare(createdAt, request.createdAfter) > 0,
+    );
   }
 
   listPendingEnding(): Promise<readonly PendingCertificationReevaluation[]> {
@@ -287,6 +333,7 @@ export function ownedRequests(
   return {
     requestForPublish: (...args) => store.requestForPublish(...args),
     requestForEvent: (...args) => store.requestForEvent(...args),
+    pendingUnstarted: (...args) => store.pendingUnstarted(...args),
     listPending: async (market, limit) =>
       (await store.listPending(market, 1000)).filter(owns).slice(0, limit),
     listPendingEnding: async (market, page) =>

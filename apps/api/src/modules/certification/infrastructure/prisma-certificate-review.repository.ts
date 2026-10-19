@@ -19,6 +19,7 @@ import type {
   ReviewSnapshot,
   ReviewSubmission,
   RevocationNotice,
+  RegistryRowsShared,
   RevocationView,
   RevokeWrite,
   ScopeWrite,
@@ -32,6 +33,7 @@ import type { CheckResult, DecisionOutcome } from '../domain/review';
 import type { SubmissionKind } from '../domain/seller-certificate';
 import type { VerificationMode } from '../domain/type-revision';
 import type { IssuerState, SellerCertificationStatus } from '../domain/validity';
+
 import {
   CERTIFICATE_INCLUDE,
   DOCUMENT_INCLUDE,
@@ -44,6 +46,8 @@ import {
   toDocument,
   toInstant,
 } from './prisma-seller-certificate.repository';
+
+const ISSUER_STATES: readonly string[] = ['proposed', 'active', 'closed-to-new', 'derecognised'];
 
 const MAX_HINTS = 10;
 const HISTORY_ROWS = 20;
@@ -492,6 +496,32 @@ export class PrismaCertificateReviewRepository implements CertificateReviewRepos
     now: Temporal.Instant,
   ): Promise<void> {
     await this.#moveVersion(market, certificateId, expectedVersion, now);
+  }
+
+  async shareRegistryRows(
+    market: MarketContext,
+    typeId: Id<'CertificationType'>,
+    issuerId: Id<'Issuer'> | null,
+  ): Promise<RegistryRowsShared> {
+    const [type] = await this.prisma.namedQuery(market, 'certification.share-type', { typeId });
+    const issuer =
+      issuerId === null
+        ? undefined
+        : (await this.prisma.namedQuery(market, 'certification.share-issuer', { issuerId }))[0];
+    const typeStatus = type === undefined ? null : type.status === 'active' ? 'active' : 'inactive';
+    if (issuer !== undefined && !ISSUER_STATES.includes(issuer.state)) {
+      throw new Error('certification issuer has an invalid state');
+    }
+    return {
+      typeStatus,
+      issuer:
+        issuer === undefined
+          ? null
+          : {
+              state: issuer.state as IssuerState,
+              typeId: issuer.typeId as Id<'CertificationType'>,
+            },
+    };
   }
 
   async decide(market: MarketContext, write: DecisionWrite): Promise<void> {

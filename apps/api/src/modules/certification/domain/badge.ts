@@ -1,5 +1,10 @@
 import type { BadgeData, CertificationTypeCode } from './claim-types';
-import type { ApprovedSubmissionView, Validity } from './validity';
+import type {
+  ApprovedProductRevisionView,
+  ApprovedSubmissionView,
+  ProductValidity,
+  Validity,
+} from './validity';
 
 /**
  * Every field of {@link BadgeData}, the allow-list of design 4.5 (brief s5: type, basis, issuer,
@@ -55,6 +60,37 @@ export function sellerBadge(
     validUntilZone: dated ? validity.expiryZone : null,
     // Only with a shown issuer: "verified with issuer" never stands without the issuer named.
     verifiedWithIssuer: !sellerClaim && issuer !== null && submission.verifiedWithIssuer === true,
+    reviewedByPlatform: true,
+  };
+}
+
+/**
+ * Badge data of an allowed manufacturer-basis decision (design 4.5; ADR-0012 d4), pure and called
+ * only by `ClaimRule.decide`. A manufacturer certificate is always a third-party document, so it
+ * is never a seller claim; the issuer and "verified with issuer" follow the same rules as the
+ * seller badge; the validity date and zone are those of the boundary the decision used (2.4 rule
+ * 3, the Market zone). `typeRevisionId` is the revision's own approved type revision (I1).
+ */
+export function manufacturerBadge(
+  typeCode: CertificationTypeCode,
+  typeRevisionId: BadgeData['typeRevisionId'],
+  revision: ApprovedProductRevisionView,
+  validity: Extract<ProductValidity, { valid: true }>,
+): BadgeData {
+  const issuer =
+    typeof revision.issuerDisplayName === 'string' && revision.issuerDisplayName.length > 0
+      ? { id: revision.issuerId, displayName: revision.issuerDisplayName }
+      : null;
+  const dated = validity.expiresAt !== null;
+  return {
+    typeCode,
+    typeRevisionId,
+    basis: 'MANUFACTURER',
+    sellerClaim: false,
+    issuer,
+    validUntilLocalDate: dated ? validity.expiryDate : null,
+    validUntilZone: dated ? validity.expiryZone : null,
+    verifiedWithIssuer: issuer !== null && revision.verifiedWithIssuer === true,
     reviewedByPlatform: true,
   };
 }

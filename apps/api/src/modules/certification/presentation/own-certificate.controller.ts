@@ -427,7 +427,9 @@ export class OwnCertificateController {
   @ApiNotFoundResponse({ type: CertificationErrorBody, description: 'certificate.not-found' })
   @ApiConflictResponse({
     type: CertificationErrorBody,
-    description: 'certificate.has-pending-submission, certificate.not-submittable, conflict.stale',
+    description:
+      'certificate.has-pending-submission, certificate.not-submittable, conflict.stale, ' +
+      'type.inactive (a new certificate of an inactive type; a renewal goes on)',
   })
   @ApiUnprocessableEntityResponse({
     type: CertificationErrorBody,

@@ -3,8 +3,9 @@ import type { ReactNode } from 'react';
 // The panels' one icon set (Figma library "Icons", docs/design/figma/plugin/icons.py): 24 px
 // grid, 1.75 stroke, lucide-like shapes. The size is the `size/icon` token (18 px, 20 px in the
 // touch density) and the colour is inherited, so a caller sets it with a text colour token.
-// Add an icon here, never inline an SVG in a page; `tag`, `receipt`, `user` and `log-out` are new in code and
-// wait to be back-ported to the Figma library (speed mode).
+// Add an icon here, never inline an SVG in a page; `tag`, `receipt`, `user`, `log-out`, `bell`,
+// `volume` and `volume-off` are new in code and wait to be back-ported to the Figma library
+// (speed mode).
 const ICONS = {
   home: <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
   inbox: (
@@ -185,6 +186,26 @@ const ICONS = {
     <>
       <circle cx="12" cy="8" r="4" />
       <path d="M20 21a8 8 0 0 0-16 0" />
+    </>
+  ),
+  bell: (
+    <>
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </>
+  ),
+  volume: (
+    <>
+      <path d="M11 5 6 9H2v6h4l5 4z" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </>
+  ),
+  'volume-off': (
+    <>
+      <path d="M11 5 6 9H2v6h4l5 4z" />
+      <path d="m22 9-6 6" />
+      <path d="m16 9 6 6" />
     </>
   ),
   'log-out': (

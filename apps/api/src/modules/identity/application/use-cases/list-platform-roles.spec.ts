@@ -95,6 +95,8 @@ const LEAD_KEYS = [
   'identity.platform-role.view',
   'identity.seller-access.view',
   'identity.seller-account.reset-second-factor',
+  'certification.type.view',
+  'certification.claim-policy.view',
   'pricing.price-hold.view',
   'sellers.seller.view',
 ];
@@ -337,11 +339,11 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       roleId: roleOf('viewer'),
       kind: 'default',
       seedCode: 'viewer',
-      permissionCount: 13,
+      permissionCount: 16,
       grantable: true,
     });
     expect(byId(items, roleOf('viewer')).name).toBeNull();
-    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(13);
+    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(16);
     expect(byId(items, LEAD_ROLE)).toMatchObject({
       kind: 'custom',
       seedCode: null,

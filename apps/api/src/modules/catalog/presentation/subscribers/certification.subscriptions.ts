@@ -1,4 +1,10 @@
 import {
+  ClaimPolicyChanged,
+  ProductCertificationApproved,
+  ProductCertificationCoverageChanged,
+  ProductCertificationExpired,
+  ProductCertificationRevoked,
+  ProductCertificationSuspended,
   SellerCertificationApproved,
   SellerCertificationExpired,
   SellerCertificationIssuerConfirmed,
@@ -19,10 +25,24 @@ export const REEVALUATE_ON_SELLER_CERTIFICATION_REVOKED =
   'catalog.reevaluate-on-seller-certification-revoked';
 export const REEVALUATE_ON_SELLER_CERTIFICATION_ISSUER_CONFIRMED =
   'catalog.reevaluate-on-seller-certification-issuer-confirmed';
+export const REEVALUATE_ON_CLAIM_POLICY_CHANGED = 'catalog.reevaluate-on-claim-policy-changed';
+export const REEVALUATE_ON_PRODUCT_CERTIFICATION_APPROVED =
+  'catalog.reevaluate-on-product-certification-approved';
+export const REEVALUATE_ON_PRODUCT_CERTIFICATION_COVERAGE_CHANGED =
+  'catalog.reevaluate-on-product-certification-coverage-changed';
+export const REEVALUATE_ON_PRODUCT_CERTIFICATION_SUSPENDED =
+  'catalog.reevaluate-on-product-certification-suspended';
+export const REEVALUATE_ON_PRODUCT_CERTIFICATION_REVOKED =
+  'catalog.reevaluate-on-product-certification-revoked';
+export const REEVALUATE_ON_PRODUCT_CERTIFICATION_EXPIRED =
+  'catalog.reevaluate-on-product-certification-expired';
 
 /**
  * Catalog's subscriptions to certification's seller-certificate events (catalog design 5.5, 9.5;
- * slice 12). Entry adapters only: the delivery and the Market's system-actor context (the Market
+ * slice 12) and, from certification slice 14, to the claim policy and manufacturer certificate
+ * events, which select by the type id of their payload; from slice 15, to the ends of a
+ * manufacturer certificate (suspended, revoked, expired), which select the tags based on that
+ * certificate by its id and mark them `rechecking` first. Entry adapters only: the delivery and the Market's system-actor context (the Market
  * from the envelope) go unchanged to the one `system` use case, with the cause and the id the
  * cause selects by, both taken from the payload of a definition certification publishes. A
  * refusal throws, so the delivery is retried and, after its last attempt, dead-lettered with an
@@ -45,6 +65,7 @@ export function certificationSubscriptions(
       handle: (event, delivery, context) =>
         run(REEVALUATE_ON_SELLER_CERTIFICATION_APPROVED, context, {
           delivery,
+          occurredAt: event.occurredAt,
           cause: 'seller-certification-approved',
           subjectId: event.payload.sellerId,
         }),
@@ -55,6 +76,7 @@ export function certificationSubscriptions(
       handle: (event, delivery, context) =>
         run(REEVALUATE_ON_SELLER_CERTIFICATION_EXPIRED, context, {
           delivery,
+          occurredAt: event.occurredAt,
           cause: 'seller-certification-expired',
           subjectId: event.payload.sellerCertificationId,
         }),
@@ -65,6 +87,7 @@ export function certificationSubscriptions(
       handle: (event, delivery, context) =>
         run(REEVALUATE_ON_SELLER_CERTIFICATION_REVOKED, context, {
           delivery,
+          occurredAt: event.occurredAt,
           cause: 'seller-certification-revoked',
           subjectId: event.payload.sellerCertificationId,
         }),
@@ -75,9 +98,75 @@ export function certificationSubscriptions(
       handle: (event, delivery, context) =>
         run(REEVALUATE_ON_SELLER_CERTIFICATION_ISSUER_CONFIRMED, context, {
           delivery,
+          occurredAt: event.occurredAt,
           cause: 'seller-certification-issuer-confirmed',
           subjectId: event.payload.submissionId,
         }),
     }),
+    subscription({
+      name: REEVALUATE_ON_CLAIM_POLICY_CHANGED,
+      event: ClaimPolicyChanged,
+      handle: (event, delivery, context) =>
+        run(REEVALUATE_ON_CLAIM_POLICY_CHANGED, context, {
+          delivery,
+          occurredAt: event.occurredAt,
+          cause: 'claim-policy-changed',
+          subjectId: event.payload.typeId,
+        }),
+    }),
+    subscription({
+      name: REEVALUATE_ON_PRODUCT_CERTIFICATION_APPROVED,
+      event: ProductCertificationApproved,
+      handle: (event, delivery, context) =>
+        run(REEVALUATE_ON_PRODUCT_CERTIFICATION_APPROVED, context, {
+          delivery,
+          occurredAt: event.occurredAt,
+          cause: 'product-certification-approved',
+          subjectId: event.payload.typeId,
+        }),
+    }),
+    subscription({
+      name: REEVALUATE_ON_PRODUCT_CERTIFICATION_COVERAGE_CHANGED,
+      event: ProductCertificationCoverageChanged,
+      handle: (event, delivery, context) =>
+        run(REEVALUATE_ON_PRODUCT_CERTIFICATION_COVERAGE_CHANGED, context, {
+          delivery,
+          occurredAt: event.occurredAt,
+          cause: 'product-certification-coverage-changed',
+          subjectId: event.payload.typeId,
+          recheckCertificateId: event.payload.productCertificationId,
+        }),
+    }),
+    ...(
+      [
+        [
+          REEVALUATE_ON_PRODUCT_CERTIFICATION_SUSPENDED,
+          ProductCertificationSuspended,
+          'product-certification-suspended',
+        ],
+        [
+          REEVALUATE_ON_PRODUCT_CERTIFICATION_REVOKED,
+          ProductCertificationRevoked,
+          'product-certification-revoked',
+        ],
+        [
+          REEVALUATE_ON_PRODUCT_CERTIFICATION_EXPIRED,
+          ProductCertificationExpired,
+          'product-certification-expired',
+        ],
+      ] as const
+    ).map(([name, event, cause]) =>
+      subscription({
+        name,
+        event,
+        handle: (delivered, delivery, context) =>
+          run(name, context, {
+            delivery,
+            occurredAt: delivered.occurredAt,
+            cause,
+            subjectId: delivered.payload.productCertificationId,
+          }),
+      }),
+    ),
   ];
 }

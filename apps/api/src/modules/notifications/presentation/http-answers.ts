@@ -9,6 +9,7 @@ import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 export const NOTIFICATIONS_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'notifications.conflict': 409,
+  'notifications.notice-not-found': 404,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {

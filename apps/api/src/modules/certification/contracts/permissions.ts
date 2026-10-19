@@ -4,7 +4,8 @@ import { declarePermissions, definePermission } from '../../../platform/authz';
 // A key is declared with the first use case that names it, together with identity's seed of the
 // default roles that receive it. The platform keys of the review package are view, review and
 // approve; the issuer keys come with the issuer requests (slice 6); revoke and the document key
-// with slice 11; the type and policy keys come with their slices.
+// with slice 11; the type keys with slice 12; the claim-policy keys with slice 13; the
+// product-certificate view, edit and approve keys with slice 14 (`.revoke` with slice 15).
 
 /**
  * Read the seller's own certificates, their status codes and reasons, and their own documents
@@ -96,11 +97,107 @@ export const CERTIFICATION_ISSUER_VIEW = definePermission('certification', {
 });
 
 /**
- * Change the issuer registry and answer issuer requests (design 7.1; CERT-04). Protected: no
- * default role lists it; the Platform Administrator holds it and grants it in a custom role.
+ * Change the issuer registry (create, activate with an expert reference, the two deactivation
+ * forms, propose and approve a reactivation, read the expert references) and answer issuer
+ * requests (design 3.5, 7.1; CERT-04). A reactivation needs a second holder who is not the
+ * proposer (H1). Protected: no default role lists it; the Platform Administrator holds it and
+ * grants it in a custom role.
  */
 export const CERTIFICATION_ISSUER_EDIT = definePermission('certification', {
   key: 'certification.issuer.edit',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * The certification types of the Market: their published revisions, claim terms, status and any
+ * pending proposal (design 7.1; CERT-01, CERT-03; slice 12). No personal data: every default admin
+ * role holds it by identity's seed.
+ */
+export const CERTIFICATION_TYPE_VIEW = definePermission('certification', {
+  key: 'certification.type.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Save a type revision, deactivate a type, propose its reactivation, and approve, reject or
+ * withdraw a type proposal (design 3.6, 7.1; slice 12). A relaxing revision and a reactivation
+ * need a second holder who is not the proposer (H1). Protected (accepted at G2, 19.2 item 7): no
+ * default role lists it; the Platform Administrator holds it and grants it in a custom role.
+ */
+export const CERTIFICATION_TYPE_EDIT = definePermission('certification', {
+  key: 'certification.type.edit',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * The claim basis policies of the Market: published rows, revisions with their change reasons and
+ * any pending relaxation (design 3.7, 7.1; CERT-42; slice 13). No personal data. Platform scope;
+ * Catalogue Moderator and Viewer by identity's seed.
+ */
+export const CERTIFICATION_CLAIM_POLICY_VIEW = definePermission('certification', {
+  key: 'certification.claim-policy.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Save a policy revision, and approve, reject or withdraw a policy relaxation (design 3.7, 7.1;
+ * slice 13). A relaxing revision needs a second holder who is not its author (H1). Protected: it
+ * decides where the manufacturer basis may apply (ADR-0012), so no default role lists it; the
+ * Platform Administrator holds it and grants it in a custom role.
+ */
+export const CERTIFICATION_CLAIM_POLICY_EDIT = definePermission('certification', {
+  key: 'certification.claim-policy.edit',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * The manufacturer certificates of the Market and their coverage, with clear fields only (design
+ * 3.4, 7.1; slice 14): no certificate number, no document. Platform scope; Catalogue Moderator and
+ * Certification Reviewer by identity's seed.
+ */
+export const CERTIFICATION_PRODUCT_CERTIFICATE_VIEW = definePermission('certification', {
+  key: 'certification.product-certificate.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Record and edit a manufacturer certificate, its fields and its coverage, and submit a revision
+ * for review (design 3.4, 7.1; slice 14). Protected: it decides what the manufacturer basis may
+ * cover (ADR-0012), so no default role lists it; the Platform Administrator holds it and grants it
+ * in a custom role.
+ */
+export const CERTIFICATION_PRODUCT_CERTIFICATE_EDIT = definePermission('certification', {
+  key: 'certification.product-certificate.edit',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Read a pending revision with its certificate number, and approve or reject it, as another person
+ * than its creator and editors (design 3.4, 7.1; Q3, AC 20; slice 14). Protected (accepted at G2,
+ * 19.2 item 7): no default role lists it; the Platform Administrator holds it and grants it in a
+ * custom role (the design's Certification Reviewer default cannot hold a protected key, R11).
+ */
+export const CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE = definePermission('certification', {
+  key: 'certification.product-certificate.approve',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Suspend and revoke a manufacturer certificate, each with a reason (design 3.4 rows 6 and 8, 7.1;
+ * slice 15). Protected: ending a certificate removes the badge from every Offer that rests on it,
+ * so no default role lists it; the Platform Administrator holds it and grants it in a custom role.
+ * Reinstating a suspended certificate is the approve key's, by another person.
+ */
+export const CERTIFICATION_PRODUCT_CERTIFICATE_REVOKE = definePermission('certification', {
+  key: 'certification.product-certificate.revoke',
   scope: 'platform',
   protected: true,
 });
@@ -115,4 +212,12 @@ export const CERTIFICATION_PERMISSIONS = declarePermissions('certification', [
   CERTIFICATION_DOCUMENT_VIEW,
   CERTIFICATION_ISSUER_VIEW,
   CERTIFICATION_ISSUER_EDIT,
+  CERTIFICATION_TYPE_VIEW,
+  CERTIFICATION_TYPE_EDIT,
+  CERTIFICATION_CLAIM_POLICY_VIEW,
+  CERTIFICATION_CLAIM_POLICY_EDIT,
+  CERTIFICATION_PRODUCT_CERTIFICATE_VIEW,
+  CERTIFICATION_PRODUCT_CERTIFICATE_EDIT,
+  CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE,
+  CERTIFICATION_PRODUCT_CERTIFICATE_REVOKE,
 ]);

@@ -61,11 +61,14 @@
   { "name": "catalog.seed-attributes", "rule": "system" },
   { "name": "catalog.seed-category-tree", "rule": "system" },
   { "name": "catalog.sell-unit-labels", "rule": "anonymous" },
+  { "name": "catalog.send-offer-owner-notices", "rule": "system" },
   { "name": "catalog.sweep-orphan-images", "rule": "system" },
+  { "name": "catalog.warn-offer-owners-of-expiry", "rule": "system" },
   { "name": "certification.certification-types", "rule": "anonymous" },
   { "name": "certification.certification-types-system", "rule": "system" },
   { "name": "certification.evaluate-claims", "rule": "anonymous" },
   { "name": "certification.evaluate-claims-system", "rule": "system" },
+  { "name": "certification.expire-product-certificates", "rule": "system" },
   { "name": "certification.expire-seller-certificates", "rule": "system" },
   { "name": "certification.match-claim-terms", "rule": "anonymous" },
   { "name": "certification.match-claim-terms-system", "rule": "system" },
@@ -131,6 +134,7 @@
   },
   { "name": "certification.seed-certification-types", "rule": "system" },
   { "name": "certification.send-decision-mail", "rule": "system" },
+  { "name": "certification.send-derecognition-mail", "rule": "system" },
   { "name": "certification.send-expiry-mail", "rule": "system" },
   { "name": "certification.send-issuer-request-mail", "rule": "system" },
   {
@@ -153,6 +157,20 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "customers.update-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "engagement.forget-account", "rule": "system" },
+  { "name": "engagement.purge-expired-events", "rule": "system" },
+  { "name": "engagement.record-event", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "engagement.record-guest-event", "rule": "anonymous" },
+  {
+    "name": "engagement.set-personalization",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "engagement.view-personalization",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
   {
@@ -293,10 +311,41 @@
   { "name": "inventory.release-reservation", "rule": "system" },
   { "name": "inventory.reserve", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "inventory.retire-sell-units", "rule": "system" },
+  { "name": "legal.marketing-email-consent-of", "rule": "system" },
+  {
+    "name": "legal.set-email-preferences",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "legal.view-email-preferences",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "legal.withdraw-marketing-email-by-link", "rule": "anonymous" },
+  {
+    "name": "notifications.count-own-unread-notices",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "notifications.list-own-notices",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "notifications.mark-own-notices-read",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "notifications.purge-expired-notices", "rule": "system" },
+  { "name": "notifications.record-seller-order-notices", "rule": "system" },
   { "name": "notifications.send-order-confirmation-mail", "rule": "system" },
   { "name": "notifications.send-order-shipped-mail", "rule": "system" },
   { "name": "notifications.send-seller-new-order-mail", "rule": "system" },
+  { "name": "notifications.unsubscribe-marketing-email", "rule": "anonymous" },
   { "name": "notifications.view-public-support-contact", "rule": "anonymous" },
+  { "name": "notifications.view-unsubscribe-link", "rule": "anonymous" },
   { "name": "ordering.best-selling-offers", "rule": "anonymous" },
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },

@@ -9,6 +9,7 @@ import {
   type CertificationTypeCode,
   type ClaimQuery,
 } from '../../src/modules/certification';
+import { CertificationClaimEvaluator } from '../../src/modules/catalog/infrastructure/certification-claim-evaluator';
 import { PrismaClaimFactsReader } from '../../src/modules/certification/infrastructure/prisma-claim-facts.reader';
 import { sellerCertificateValidAt } from '../../src/modules/certification/domain/validity';
 import { PrismaRawReadPort } from '../../src/platform/persistence/raw-reads/prisma-raw-read-port';
@@ -133,6 +134,123 @@ const publishRow = (owner: Client, typeId: string, revisionId: string) =>
     [revisionId, typeId],
   );
 
+interface CoverageSpec {
+  readonly productId: string;
+  readonly productRevisionId: string;
+  readonly variantId?: string | null;
+}
+
+interface ProductCertificateSpec {
+  readonly coverage: readonly CoverageSpec[];
+  readonly decision?: 'approved' | 'withdrawn';
+  readonly boundary?: boolean;
+  readonly expiryDate?: string;
+}
+
+/**
+ * An approved manufacturer certificate (slice 14) of `type` with one revision, its coverage, an
+ * active issuer and (unless `withdrawn`) an approved decision with the boundary in `zone`.
+ */
+async function seedProductCertificateRow(
+  owner: Client,
+  target: MarketContext,
+  type: SeededType,
+  spec: ProductCertificateSpec,
+  zone: string,
+): Promise<{ readonly certificateId: string; readonly revisionId: string }> {
+  const scope = [target.marketId, target.tenantId];
+  const certificateId = uuid7();
+  const revisionId = uuid7();
+  const issuerId = uuid7();
+  const author = uuid7();
+  await owner.query(
+    `INSERT INTO certification.issuers
+       (id, market_id, tenant_id, type_id, display_name, display_name_key, state,
+        expert_reference_ciphertext, state_changed_at, state_changed_by_kind, version, created_at)
+     VALUES ($1, $2, $3, $4, $5, $5, 'active', $6, $7, 'seed', 1, $7)`,
+    [issuerId, ...scope, type.typeId, `Issuer ${issuerId}`, `v1.${'A'.repeat(40)}`, T0],
+  );
+  await owner.query(
+    `INSERT INTO certification.product_certifications
+       (id, market_id, tenant_id, type_id, status, author_account_id, status_changed_at,
+        last_changed_at, version, created_at)
+     VALUES ($1, $2, $3, $4, 'approved', $5, $6, $6, 1, $6)`,
+    [certificateId, ...scope, type.typeId, author, T0],
+  );
+  const expiryDate = spec.expiryDate ?? '2027-06-30';
+  await owner.query(
+    `INSERT INTO certification.product_certification_revisions
+       (id, market_id, tenant_id, product_certification_id, type_id, type_revision_id, revision_no,
+        issuer_id, manufacturer_name, certificate_number_ciphertext, expiry_date, author_account_id,
+        content_hash, submitted_by_account_id, submitted_at)
+     VALUES ($1, $2, $3, $4, $5, $6, 1, $7, 'Maker Pty', $8, $9, $10, $11, $10, $12)`,
+    [
+      revisionId,
+      ...scope,
+      certificateId,
+      type.typeId,
+      type.revisionId,
+      issuerId,
+      `v1.${'B'.repeat(40)}`,
+      expiryDate,
+      author,
+      `hmac-sha256:${'0'.repeat(64)}`,
+      T0,
+    ],
+  );
+  for (const entry of spec.coverage) {
+    await owner.query(
+      `INSERT INTO certification.product_revision_coverage
+         (id, market_id, tenant_id, revision_id, type_id, product_id, product_revision_id, variant_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        uuid7(),
+        ...scope,
+        revisionId,
+        type.typeId,
+        entry.productId,
+        entry.productRevisionId,
+        entry.variantId ?? null,
+      ],
+    );
+  }
+  if ((spec.decision ?? 'approved') === 'approved') {
+    const withBoundary = spec.boundary !== false;
+    const boundary = Temporal.PlainDate.from(expiryDate)
+      .add({ days: 1 })
+      .toZonedDateTime({ timeZone: zone })
+      .toInstant()
+      .toString();
+    await owner.query(
+      `INSERT INTO certification.product_revision_decisions
+         (market_id, tenant_id, revision_id, outcome, expiry_boundary_at, boundary_zone,
+          author_account_id, decided_by_account_id, decided_at)
+       VALUES ($1, $2, $3, 'approved', $4, $5, $6, $7, $8)`,
+      [
+        ...scope,
+        revisionId,
+        withBoundary ? boundary : null,
+        withBoundary ? zone : null,
+        author,
+        uuid7(),
+        T0,
+      ],
+    );
+  } else {
+    await owner.query(
+      `INSERT INTO certification.product_revision_decisions
+         (market_id, tenant_id, revision_id, outcome, author_account_id, decided_at)
+       VALUES ($1, $2, $3, 'withdrawn', $4, $5)`,
+      [...scope, revisionId, author, T0],
+    );
+  }
+  await owner.query(
+    `UPDATE certification.product_certifications SET approved_revision_id = $1 WHERE id = $2`,
+    [revisionId, certificateId],
+  );
+  return { certificateId, revisionId };
+}
+
 describe.each(TEST_MARKETS)('certification claim facts reader, market %s (database)', (code) => {
   const market: MarketContext = marketOf(code);
   const other: MarketContext = marketOf(otherMarketOf(code));
@@ -163,6 +281,62 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
   });
 
   const seedType = (target: MarketContext, spec: TypeSpec) => seedTypeRow(owner, target, spec);
+
+  /**
+   * A policy of the type with one revision per row set; the last one published unless `pending`
+   * (slice 13). Returns the revision ids in order.
+   */
+  async function seedPolicy(
+    target: MarketContext,
+    type: SeededType,
+    revisions: readonly (readonly { category?: string; handling?: string; basis: string }[])[],
+    options: { readonly pendingLast?: boolean } = {},
+  ): Promise<string[]> {
+    const [marketId, tenantId] = scope(target);
+    const policyId = uuid7();
+    await owner.query(
+      `INSERT INTO certification.claim_basis_policies
+         (id, market_id, tenant_id, type_id, published_revision_id, version, created_at)
+       VALUES ($1, $2, $3, $4, NULL, 1, $5)`,
+      [policyId, marketId, tenantId, type.typeId, T0],
+    );
+    const ids: string[] = [];
+    for (const [index, rows] of revisions.entries()) {
+      const revisionId = uuid7();
+      ids.push(revisionId);
+      await owner.query(
+        `INSERT INTO certification.claim_policy_revisions
+           (id, market_id, tenant_id, policy_id, revision_no, author_account_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [revisionId, marketId, tenantId, policyId, index + 1, uuid7(), T0],
+      );
+      for (const row of rows) {
+        await owner.query(
+          `INSERT INTO certification.claim_policy_rows
+             (id, market_id, tenant_id, revision_id, selector_kind, category_id, handling, basis)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            uuid7(),
+            marketId,
+            tenantId,
+            revisionId,
+            row.category === undefined ? 'handling' : 'platform-category',
+            row.category ?? null,
+            row.handling ?? null,
+            row.basis,
+          ],
+        );
+      }
+    }
+    const published = options.pendingLast === true ? ids.at(-2) : ids.at(-1);
+    if (published !== undefined) {
+      await owner.query(
+        `UPDATE certification.claim_basis_policies SET published_revision_id = $1 WHERE id = $2`,
+        [published, policyId],
+      );
+    }
+    return ids;
+  }
   const publish = (typeId: string, revisionId: string) => publishRow(owner, typeId, revisionId);
 
   async function seedCertificate(
@@ -320,17 +494,29 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
       const expected = [
         {
           typeCode: a.code,
-          type: { publishedRevisionId: a.revisionId, defaultBasis: 'SELLER_REQUIRED' },
+          type: {
+            publishedRevisionId: a.revisionId,
+            defaultBasis: 'SELLER_REQUIRED',
+            verificationMode: 'THIRD_PARTY_DOCUMENT',
+          },
           policy: null,
         },
         {
           typeCode: b.code,
-          type: { publishedRevisionId: b.revisionId, defaultBasis: 'NOT_APPLICABLE' },
+          type: {
+            publishedRevisionId: b.revisionId,
+            defaultBasis: 'NOT_APPLICABLE',
+            verificationMode: 'THIRD_PARTY_DOCUMENT',
+          },
           policy: null,
         },
         {
           typeCode: a.code,
-          type: { publishedRevisionId: a.revisionId, defaultBasis: 'SELLER_REQUIRED' },
+          type: {
+            publishedRevisionId: a.revisionId,
+            defaultBasis: 'SELLER_REQUIRED',
+            verificationMode: 'THIRD_PARTY_DOCUMENT',
+          },
           policy: null,
         },
         { typeCode: `missing-${tag}`, type: null, policy: null },
@@ -371,6 +557,81 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
       } finally {
         await publish(broken.typeId, broken.revisionId);
       }
+    });
+
+    it('answers the published policy rows matching the categories or the handling (slice 13)', async () => {
+      const type = await seedType(market, { code: `pol-${tag}` });
+      const [c1, c2, c3] = [uuid7(), uuid7(), uuid7()];
+      const [, published] = await seedPolicy(market, type, [
+        [{ category: c1, basis: 'NOT_APPLICABLE' }],
+        [
+          { category: c1, basis: 'SELLER_OR_MANUFACTURER' },
+          { category: c2, basis: 'NOT_APPLICABLE' },
+          { handling: 'REPACKED', basis: 'SELLER_REQUIRED' },
+        ],
+      ]);
+      const answers = await reader.typesAndPolicies(market, [
+        request(type.code, [c1], 'SEALED_ORIGINAL'),
+        request(type.code, [c3, c1, c2], 'SEALED_ORIGINAL'),
+        request(type.code, [c3], 'REPACKED'),
+        request(type.code, [c3], 'FRESH'),
+      ]);
+      const sorted = (rows: readonly { basis: string }[] | undefined) =>
+        (rows ?? []).map((row) => row.basis).sort();
+      expect(answers.map((a) => a.policy?.revisionId)).toEqual([
+        published,
+        published,
+        published,
+        published,
+      ]);
+      expect(answers.map((a) => sorted(a.policy?.matchedRows))).toEqual([
+        ['SELLER_OR_MANUFACTURER'],
+        ['NOT_APPLICABLE', 'SELLER_OR_MANUFACTURER'],
+        ['SELLER_REQUIRED'],
+        [],
+      ]);
+    });
+
+    it("never reads a pending revision nor the other Market's policy", async () => {
+      const type = await seedType(market, { code: `pend-${tag}` });
+      const category = uuid7();
+      const [published] = await seedPolicy(
+        market,
+        type,
+        [[{ category, basis: 'NOT_APPLICABLE' }], [{ category, basis: 'SELLER_OR_MANUFACTURER' }]],
+        { pendingLast: true },
+      );
+      const twin = await seedType(other, { code: `pend-${tag}` });
+      await seedPolicy(other, twin, [[{ category, basis: 'SELLER_REQUIRED' }]]);
+      const [mine] = await reader.typesAndPolicies(market, [
+        request(type.code, [category], 'SEALED_ORIGINAL'),
+      ]);
+      expect(mine!.policy).toEqual({
+        revisionId: published,
+        matchedRows: [{ basis: 'NOT_APPLICABLE' }],
+      });
+      const unpublished = await seedType(market, { code: `none-${tag}` });
+      await seedPolicy(market, unpublished, [[{ category, basis: 'SELLER_REQUIRED' }]], {
+        pendingLast: true,
+      });
+      const [none] = await reader.typesAndPolicies(market, [
+        request(unpublished.code, [category], 'FRESH'),
+      ]);
+      expect(none!.policy).toBeNull();
+    });
+
+    it('issues exactly one SQL statement and no BEGIN, with policy rows too', async () => {
+      const withRows = await seedType(market, { code: `onep-${tag}` });
+      await seedPolicy(market, withRows, [
+        [
+          { category: uuid7(), basis: 'SELLER_REQUIRED' },
+          { handling: 'FRESH', basis: 'NOT_APPLICABLE' },
+        ],
+      ]);
+      await driver.during(async () => {
+        await reader.typesAndPolicies(market, [request(withRows.code, [], 'FRESH')]);
+      });
+      expect(driver.statements).toHaveLength(1);
     });
 
     it('issues exactly one SQL statement and no BEGIN', async () => {
@@ -665,6 +926,144 @@ describe.each(TEST_MARKETS)('certification claim facts reader, market %s (databa
     });
   });
 
+  describe('productCertificates (S3, slice 14)', () => {
+    const zone = code === 'AU' ? 'Australia/Brisbane' : 'Asia/Tokyo';
+    const ask = (
+      type: SeededType,
+      productId: string,
+      productRevisionId: string,
+      variantId: string | null = null,
+    ) => ({
+      typeCode: type.code as CertificationTypeCode,
+      productId: productId as Id<'Product'>,
+      productRevisionId: productRevisionId as Id<'ProductRevision'>,
+      variantId: variantId as Id<'Variant'> | null,
+    });
+
+    it('answers two types on one product apart, each with its own type revision (L2, I1)', async () => {
+      const halal = await seedType(market, { code: `pc-a-${tag}` });
+      const kosher = await seedType(market, { code: `pc-b-${tag}` });
+      const [product, revision] = [uuid7(), uuid7()];
+      const first = await seedProductCertificateRow(
+        owner,
+        market,
+        halal,
+        { coverage: [{ productId: product, productRevisionId: revision }] },
+        zone,
+      );
+      const second = await seedProductCertificateRow(
+        owner,
+        market,
+        kosher,
+        { coverage: [{ productId: product, productRevisionId: revision }] },
+        zone,
+      );
+      const answers = await reader.productCertificates(market, [
+        ask(halal, product, revision),
+        ask(kosher, product, revision),
+      ]);
+      expect(
+        answers.map((a) =>
+          a.certificates.map((c) => [c.typeCode, c.certificateId, c.approved?.typeRevisionId]),
+        ),
+      ).toEqual([
+        [[halal.code, first.certificateId, halal.revisionId]],
+        [[kosher.code, second.certificateId, kosher.revisionId]],
+      ]);
+      const view = answers[0]!.certificates[0]!.approved!;
+      expect(view.boundaryAtApproval?.toString()).toBe(
+        code === 'AU' ? '2027-06-30T14:00:00Z' : '2027-06-30T15:00:00Z',
+      );
+      expect(view.issuerState).toBe('active');
+      expect(view.coverage).toEqual([
+        { productId: product, productRevisionId: revision, variantId: null },
+      ]);
+    });
+
+    it('answers nothing for another product revision (M3) or another Market', async () => {
+      const type = await seedType(market, { code: `pc-m3-${tag}` });
+      const [product, revision] = [uuid7(), uuid7()];
+      await seedProductCertificateRow(
+        owner,
+        market,
+        type,
+        { coverage: [{ productId: product, productRevisionId: revision }] },
+        zone,
+      );
+      const [stale] = await reader.productCertificates(market, [ask(type, product, uuid7())]);
+      expect(stale!.certificates).toEqual([]);
+      const [elsewhere] = await reader.productCertificates(other, [ask(type, product, revision)]);
+      expect(elsewhere!.certificates).toEqual([]);
+    });
+
+    it('reads variant-narrowed coverage for a null and a named variant alike (L1)', async () => {
+      const type = await seedType(market, { code: `pc-l1-${tag}` });
+      const [product, revision, v1, v2] = [uuid7(), uuid7(), uuid7(), uuid7()];
+      await seedProductCertificateRow(
+        owner,
+        market,
+        type,
+        {
+          coverage: [
+            { productId: product, productRevisionId: revision, variantId: v1 },
+            { productId: product, productRevisionId: revision, variantId: v2 },
+          ],
+        },
+        zone,
+      );
+      const answers = await reader.productCertificates(market, [
+        ask(type, product, revision, null),
+        ask(type, product, revision, v1),
+      ]);
+      for (const answer of answers) {
+        expect(answer.certificates[0]!.approved!.coverage.map((c) => c.variantId).sort()).toEqual(
+          [v1, v2].sort(),
+        );
+      }
+    });
+
+    it('answers no valid approval for a withdrawn decision and no date without a boundary', async () => {
+      const type = await seedType(market, { code: `pc-nd-${tag}` });
+      const [product, revision] = [uuid7(), uuid7()];
+      await seedProductCertificateRow(
+        owner,
+        market,
+        type,
+        { coverage: [{ productId: product, productRevisionId: revision }], decision: 'withdrawn' },
+        zone,
+      );
+      const [withdrawn] = await reader.productCertificates(market, [ask(type, product, revision)]);
+      expect(withdrawn!.certificates.map((c) => c.approved)).toEqual([null]);
+      const other2 = await seedType(market, { code: `pc-nb-${tag}` });
+      await seedProductCertificateRow(
+        owner,
+        market,
+        other2,
+        { coverage: [{ productId: product, productRevisionId: revision }], boundary: false },
+        zone,
+      );
+      const [noBoundary] = await reader.productCertificates(market, [
+        ask(other2, product, revision),
+      ]);
+      expect(noBoundary!.certificates[0]!.approved).toMatchObject({
+        expiryDate: null,
+        boundaryAtApproval: null,
+      });
+    });
+
+    it('issues exactly one SQL statement and no BEGIN', async () => {
+      const type = await seedType(market, { code: `pc-st-${tag}` });
+      await driver.during(async () => {
+        await reader.productCertificates(market, [
+          ask(type, uuid7(), uuid7()),
+          ask(type, uuid7(), uuid7(), uuid7()),
+        ]);
+      });
+      expect(driver.statements).toHaveLength(1);
+      expect(driver.statements.join(' ')).not.toMatch(/BEGIN|COMMIT|SET TRANSACTION/i);
+    });
+  });
+
   describe('the module-bound port with the real list', () => {
     const call = (port: ReturnType<PrismaRawReadPort['forModule']>) =>
       persistence.unitOfWork.run(
@@ -702,7 +1101,11 @@ describe.each(TEST_MARKETS)(
     let app: NestExpressApplication;
     let facade: CertificationFacade;
     let owner: Client;
-    const typeCodes = { required: `${tag}-req`, notApplicable: `${tag}-na` };
+    const typeCodes = {
+      required: `${tag}-req`,
+      notApplicable: `${tag}-na`,
+      manufacturer: `${tag}-mfr`,
+    };
 
     beforeAll(async () => {
       owner = new Client({ connectionString: claimFactsOwnerTestDatabaseUrl() });
@@ -715,6 +1118,36 @@ describe.each(TEST_MARKETS)(
       ] as const) {
         await seedTypeRow(owner, market, { code: type, defaultBasis: basis, phrase });
       }
+      // A type whose published policy allows the manufacturer basis on one category (slice 13).
+      const manufacturer = await seedTypeRow(owner, market, {
+        code: typeCodes.manufacturer,
+        phrase: `${code.toLowerCase()}dimfrqorvane`,
+      });
+      const policyId = uuid7();
+      policyRevisionId = uuid7();
+      const scope = [market.marketId, market.tenantId];
+      await owner.query(
+        `INSERT INTO certification.claim_basis_policies
+           (id, market_id, tenant_id, type_id, published_revision_id, version, created_at)
+         VALUES ($1, $2, $3, $4, NULL, 1, $5)`,
+        [policyId, ...scope, manufacturer.typeId, T0],
+      );
+      await owner.query(
+        `INSERT INTO certification.claim_policy_revisions
+           (id, market_id, tenant_id, policy_id, revision_no, author_account_id, created_at)
+         VALUES ($1, $2, $3, $4, 1, $5, $6)`,
+        [policyRevisionId, ...scope, policyId, uuid7(), T0],
+      );
+      await owner.query(
+        `INSERT INTO certification.claim_policy_rows
+           (id, market_id, tenant_id, revision_id, selector_kind, category_id, handling, basis)
+         VALUES ($1, $2, $3, $4, 'platform-category', $5, NULL, 'SELLER_OR_MANUFACTURER')`,
+        [uuid7(), ...scope, policyRevisionId, MANUFACTURER_CATEGORY],
+      );
+      await owner.query(
+        `UPDATE certification.claim_basis_policies SET published_revision_id = $1, version = 2 WHERE id = $2`,
+        [policyRevisionId, policyId],
+      );
     });
     afterAll(async () => {
       await app.close();
@@ -724,6 +1157,8 @@ describe.each(TEST_MARKETS)(
     const context = (actor: 'anonymous' | 'system') => testCallContext(market, actor);
     const id = <T extends string>(n: number): Id<T> =>
       `0192b3c4-0000-7000-8000-${String(n).padStart(12, '0')}` as Id<T>;
+    const MANUFACTURER_CATEGORY = id<'Category'>(5);
+    let policyRevisionId: string;
     const query = (typeCode: string): ClaimQuery => ({
       sellerId: id<'Seller'>(1),
       productId: id<'Product'>(2),
@@ -777,6 +1212,134 @@ describe.each(TEST_MARKETS)(
         'no-valid-seller-certificate',
       ]);
       expect(result.value.some((d) => d.allowed)).toBe(false);
+    });
+
+    // Hassan (slice 13): the manufacturer basis through the real facade and catalog's adapter.
+    // With the policy allowing it, a SEALED_ORIGINAL Offer with the attestation is still refused
+    // while no ProductCertification covers the product: `not-covered`. Without the attestation it
+    // is `attestation-missing`, with another handling `handling-requires-seller`; a category the
+    // policy does not name keeps the type default. Slice 14: AU keeps the Market switch off, so
+    // every manufacturer route reads as SELLER_REQUIRED there (fail closed); ZZ has it on.
+    it('evaluateClaims refuses the manufacturer basis without coverage, attestation or a sealed original (ADR-0012)', async () => {
+      const manufacturerQuery = (overrides: Partial<ClaimQuery>): ClaimQuery => ({
+        ...query(typeCodes.manufacturer),
+        // Catalog always asks for one variant.
+        variantId: id<'Variant'>(7),
+        platformCategoryPaths: [[id<'Category'>(6), MANUFACTURER_CATEGORY]],
+        ...overrides,
+      });
+      const queries = [
+        manufacturerQuery({}),
+        manufacturerQuery({ attestationRecorded: false }),
+        manufacturerQuery({ handling: 'REPACKED' }),
+        manufacturerQuery({ platformCategoryPaths: [[id<'Category'>(4)]] }),
+      ];
+      const expected =
+        code === 'AU'
+          ? [
+              'no-valid-seller-certificate',
+              'no-valid-seller-certificate',
+              'no-valid-seller-certificate',
+              'no-valid-seller-certificate',
+            ]
+          : [
+              'not-covered',
+              'attestation-missing',
+              'handling-requires-seller',
+              'no-valid-seller-certificate',
+            ];
+      for (const actor of ['anonymous', 'system'] as const) {
+        const result = await facade.evaluateClaims(context(actor), queries);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.value.map((d) => [d.allowed, d.basis, d.reason])).toEqual(
+          expected.map((reason) => [false, null, reason]),
+        );
+        expect(result.value.map((d) => d.policyRevisionId)).toEqual([
+          policyRevisionId,
+          policyRevisionId,
+          policyRevisionId,
+          null,
+        ]);
+        expect(result.value.every((d) => d.badge === null && d.certificate === null)).toBe(true);
+      }
+      // Catalog's adapter over the same facade copies the refusals unchanged.
+      const evaluator = new CertificationClaimEvaluator(facade);
+      const copied = await evaluator.evaluate(
+        context('system'),
+        queries.map((q) => ({
+          ...q,
+          platformCategoryPaths: q.platformCategoryPaths.map((path) => [...path]),
+        })) as never,
+      );
+      expect(copied.ok).toBe(true);
+      if (!copied.ok) return;
+      expect(copied.value.map((d) => [d.allowed, d.reason])).toEqual(
+        expected.map((reason) => [false, reason]),
+      );
+    });
+
+    // Slice 14: an approved ProductCertification covering the product revision lets a sealed,
+    // attested Offer carry the tag in ZZ (switch on); AU refuses it (switch off, fail closed).
+    it('evaluateClaims grants the manufacturer basis on coverage only where the Market switch is on', async () => {
+      const type = await owner.query<{ id: string; published_revision_id: string }>(
+        `SELECT id, published_revision_id FROM certification.certification_types
+          WHERE market_id = $1 AND code = $2`,
+        [market.marketId, typeCodes.manufacturer],
+      );
+      const seeded: SeededType = {
+        code: typeCodes.manufacturer,
+        typeId: type.rows[0]!.id,
+        revisionId: type.rows[0]!.published_revision_id,
+      };
+      const product = uuid7();
+      const revision = uuid7();
+      const zone = code === 'AU' ? 'Australia/Brisbane' : 'Asia/Tokyo';
+      const certificate = await seedProductCertificateRow(
+        owner,
+        market,
+        seeded,
+        { coverage: [{ productId: product, productRevisionId: revision }] },
+        zone,
+      );
+      const covered: ClaimQuery = {
+        ...query(typeCodes.manufacturer),
+        productId: product as Id<'Product'>,
+        productRevisionId: revision as Id<'ProductRevision'>,
+        variantId: id<'Variant'>(7),
+        platformCategoryPaths: [[MANUFACTURER_CATEGORY]],
+      };
+      // Catalog's adapter maps the type id of an event to its code (slice 14 consumers).
+      const evaluator = new CertificationClaimEvaluator(facade);
+      expect(await evaluator.typeCodeOf(context('system'), seeded.typeId)).toEqual({
+        ok: true,
+        value: typeCodes.manufacturer,
+      });
+      expect(await evaluator.typeCodeOf(context('system'), uuid7())).toEqual({
+        ok: true,
+        value: null,
+      });
+      const stale: ClaimQuery = { ...covered, productRevisionId: uuid7() as Id<'ProductRevision'> };
+      const result = await facade.evaluateClaims(context('system'), [covered, stale]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      if (code === 'AU') {
+        expect(result.value.map((d) => [d.allowed, d.reason])).toEqual([
+          [false, 'no-valid-seller-certificate'],
+          [false, 'no-valid-seller-certificate'],
+        ]);
+        return;
+      }
+      expect(result.value.map((d) => [d.allowed, d.basis, d.reason])).toEqual([
+        [true, 'MANUFACTURER', 'allowed'],
+        [false, null, 'not-covered'],
+      ]);
+      expect(result.value[0]!.certificate).toMatchObject({
+        kind: 'manufacturer',
+        certificateId: certificate.certificateId,
+        versionId: certificate.revisionId,
+        typeRevisionId: seeded.revisionId,
+      });
     });
   },
 );

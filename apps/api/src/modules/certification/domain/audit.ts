@@ -1,6 +1,6 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import type { AuditActionDefinition } from '@mondapac/shared-kernel';
-import { ISSUER_REQUEST_OUTCOME_VALUES, SUBMISSION_KINDS } from './events';
+import { ISSUER_REQUEST_OUTCOME_VALUES, RELAXATION_SUBJECTS, SUBMISSION_KINDS } from './events';
 
 // The audited actions of certification's admin review (design 11; AC 22), registered at boot with
 // `registerAuditActions('certification', CERTIFICATION_AUDIT_ACTIONS)` and written through the
@@ -172,6 +172,300 @@ export const IssuerRequestDocumentDownloaded = defineAuditAction({
   after: { documentId: auditField.id() },
 });
 
+// The registry actions of slice 12 (design 3.5, 3.6, 7.6, 11; H1). No row holds a name, an
+// expert reference, a claim term or a change reason: a revision or proposal id and `reasonGiven`
+// stand for the reason, which is stored only on its revision or proposal (design 3.7).
+
+/** The audit target type of a certification type. */
+export const CERTIFICATION_TYPE_TARGET = 'certification.type';
+/** The audit target type of an issuer of the registry. */
+export const ISSUER_TARGET = 'certification.issuer';
+/** The audit target type of a relaxation proposal. */
+export const RELAXATION_PROPOSAL_TARGET = 'certification.relaxation-proposal';
+
+/** A type revision that relaxes nothing, published at its save (design 3.6). */
+export const TypeRevisedAudit = defineAuditAction({
+  action: 'certification.type.revised',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    revisionId: auditField.id(),
+    claimTermsChanged: auditField.boolean(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/** A relaxing type revision saved `pending`, waiting for a second admin (design 3.6; H1). */
+export const TypeRelaxationRequestedAudit = defineAuditAction({
+  action: 'certification.type.relaxation-requested',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    proposalId: auditField.id(),
+    revisionId: auditField.id(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/** A second admin approved a relaxing type revision; it is published (design 3.6; H1). */
+export const TypeRelaxationApprovedAudit = defineAuditAction({
+  action: 'certification.type.relaxation-approved',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: { proposalId: auditField.id(), revisionId: auditField.id() },
+});
+
+/** A type was deactivated (design 3.6; CERT-03). */
+export const TypeDeactivatedAudit = defineAuditAction({
+  action: 'certification.type.deactivated',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: { publishedRevisionId: auditField.id() },
+});
+
+/** The reactivation of an inactive type was proposed (design 3.6; H1). */
+export const TypeReactivationRequestedAudit = defineAuditAction({
+  action: 'certification.type.reactivation-requested',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: { proposalId: auditField.id(), reasonGiven: auditField.boolean() },
+});
+
+/** A second admin approved the reactivation; the type is active again (design 3.6; H1). */
+export const TypeReactivationApprovedAudit = defineAuditAction({
+  action: 'certification.type.reactivation-approved',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: { proposalId: auditField.id() },
+});
+
+/** An issuer was added to the registry, `proposed` (design 3.5). */
+export const IssuerCreatedAudit = defineAuditAction({
+  action: 'certification.issuer.created',
+  targetType: ISSUER_TARGET,
+  actors: ['authenticated'],
+  after: { typeId: auditField.id(), accreditationNumberGiven: auditField.boolean() },
+});
+
+/** `proposed` → `active` with an expert approval reference (design 3.5; AC 19). */
+export const IssuerActivatedAudit = defineAuditAction({
+  action: 'certification.issuer.activated',
+  targetType: ISSUER_TARGET,
+  actors: ['authenticated'],
+  after: { typeId: auditField.id() },
+});
+
+/** Q6 form 1: closed to new certificates (design 3.5). */
+export const IssuerClosedToNewAudit = defineAuditAction({
+  action: 'certification.issuer.closed-to-new',
+  targetType: ISSUER_TARGET,
+  actors: ['authenticated'],
+  after: { typeId: auditField.id() },
+});
+
+/**
+ * Q6 form 2: derecognised (design 3.5), naming the number of approved certificates the admin
+ * confirmed and the pending reactivation it cleared, if any.
+ */
+export const IssuerDerecognisedAudit = defineAuditAction({
+  action: 'certification.issuer.derecognised',
+  targetType: ISSUER_TARGET,
+  actors: ['authenticated'],
+  after: {
+    typeId: auditField.id(),
+    affectedCertificates: auditField.integer(),
+    supersededProposalId: auditField.optional(auditField.id()),
+  },
+});
+
+/** The reactivation of a `closed-to-new` issuer was proposed with a new reference (H1). */
+export const IssuerReactivationRequestedAudit = defineAuditAction({
+  action: 'certification.issuer.reactivation-requested',
+  targetType: ISSUER_TARGET,
+  actors: ['authenticated'],
+  after: { proposalId: auditField.id(), reasonGiven: auditField.boolean() },
+});
+
+/** A second admin approved the reactivation; the issuer is `active` again (H1). */
+export const IssuerReactivationApprovedAudit = defineAuditAction({
+  action: 'certification.issuer.reactivation-approved',
+  targetType: ISSUER_TARGET,
+  actors: ['authenticated'],
+  after: { proposalId: auditField.id() },
+});
+
+/**
+ * An admin read the expert approval references of an issuer, which decrypts under the Market's
+ * platform key (data design 3.22: each such read is audited); the pending proposal's when shown.
+ */
+export const IssuerExpertReferenceViewedAudit = defineAuditAction({
+  action: 'certification.issuer.expert-reference-viewed',
+  targetType: ISSUER_TARGET,
+  actors: ['authenticated'],
+  after: { proposalId: auditField.optional(auditField.id()) },
+});
+
+/** Another admin rejected a pending proposal (design 7.6). */
+export const RelaxationProposalRejectedAudit = defineAuditAction({
+  action: 'certification.relaxation-proposal.rejected',
+  targetType: RELAXATION_PROPOSAL_TARGET,
+  actors: ['authenticated'],
+  after: { subject: auditField.enumOf(RELAXATION_SUBJECTS), subjectId: auditField.id() },
+});
+
+/** The proposer withdrew a pending proposal (design 7.6). */
+export const RelaxationProposalWithdrawnAudit = defineAuditAction({
+  action: 'certification.relaxation-proposal.withdrawn',
+  targetType: RELAXATION_PROPOSAL_TARGET,
+  actors: ['authenticated'],
+  after: { subject: auditField.enumOf(RELAXATION_SUBJECTS), subjectId: auditField.id() },
+});
+
+/** The audit target type of a claim basis policy (one per Market and type; design 3.7). */
+export const CLAIM_POLICY_TARGET = 'certification.claim-policy';
+
+/**
+ * A policy revision that only tightens was saved and published (design 3.7, 11; CERT-42). Names
+ * the revision and the type; the optional change reason stays on the revision (`reasonGiven`).
+ */
+export const ClaimPolicyRevisedAudit = defineAuditAction({
+  action: 'certification.claim-policy.revised',
+  targetType: CLAIM_POLICY_TARGET,
+  actors: ['authenticated'],
+  after: {
+    typeId: auditField.id(),
+    revisionId: auditField.id(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/** A relaxing policy revision saved `pending`, waiting for a second admin (design 3.7; H1). */
+export const ClaimPolicyRelaxationRequestedAudit = defineAuditAction({
+  action: 'certification.claim-policy.relaxation-requested',
+  targetType: CLAIM_POLICY_TARGET,
+  actors: ['authenticated'],
+  after: {
+    typeId: auditField.id(),
+    proposalId: auditField.id(),
+    revisionId: auditField.id(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/** A second admin approved a relaxing policy revision; it is published (design 3.7; H1). */
+export const ClaimPolicyRelaxationApprovedAudit = defineAuditAction({
+  action: 'certification.claim-policy.relaxation-approved',
+  targetType: CLAIM_POLICY_TARGET,
+  actors: ['authenticated'],
+  after: { typeId: auditField.id(), proposalId: auditField.id(), revisionId: auditField.id() },
+});
+
+/** The audit target type of a manufacturer certificate (design 11; slice 14). */
+export const PRODUCT_CERTIFICATION_TARGET = 'certification.product-certification';
+
+/** An admin recorded a manufacturer certificate (its draft root; design 3.4 row 1, 11). */
+export const ProductCertificationRecordedAudit = defineAuditAction({
+  action: 'certification.product-certification.recorded',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: { typeId: auditField.id() },
+});
+
+/**
+ * An admin edited the draft (fields or coverage), or submitted it as a new pending revision
+ * (`revisionId` set exactly then). Counts of coverage entries only, never the number.
+ */
+export const ProductCertificationEditedAudit = defineAuditAction({
+  action: 'certification.product-certification.edited',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    typeId: auditField.id(),
+    revisionId: auditField.optional(auditField.id()),
+    coverageEntries: auditField.integer(),
+  },
+});
+
+const productDecisionAfter = {
+  revisionId: auditField.id(),
+  typeRevisionId: auditField.id(),
+} as const;
+
+/** Another admin approved the pending revision (design 3.4 row 3; AC 20). */
+export const ProductCertificationApprovedAudit = defineAuditAction({
+  action: 'certification.product-certification.approved',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: { ...productDecisionAfter, coverageChanged: auditField.boolean() },
+});
+
+/** Another admin rejected the pending revision; the reason code stays on the decision row. */
+export const ProductCertificationRejectedAudit = defineAuditAction({
+  action: 'certification.product-certification.rejected',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: productDecisionAfter,
+});
+
+/**
+ * An approver opened the certificate numbers of a manufacturer certificate (the review read; Hassan
+ * M1, data design 3.22: each decrypting read is audited). The revisions whose numbers were shown
+ * (the pending and the approved, when present; the draft's has no revision); never the number.
+ */
+export const ProductCertificateNumberViewedAudit = defineAuditAction({
+  action: 'certification.product-certificate.number-viewed',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: { revisionIds: auditField.listOf(auditField.id(), 2) },
+});
+
+/**
+ * An admin suspended the certificate (design 3.4 row 6, 11; slice 15): the approved revision and
+ * its type revision, and whether a note was given. Never the reason code or the note (they are on
+ * the history row).
+ */
+export const ProductCertificationSuspendedAudit = defineAuditAction({
+  action: 'certification.product-certification.suspended',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    ...productDecisionAfter,
+    withdrawnRevisionId: auditField.optional(auditField.id()),
+    noteGiven: auditField.boolean(),
+  },
+});
+
+/** Another person reinstated a suspended certificate on its approved revision (3.4 row 7). */
+export const ProductCertificationReinstatedAudit = defineAuditAction({
+  action: 'certification.product-certification.reinstated',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: productDecisionAfter,
+});
+
+/**
+ * An admin revoked the certificate (design 3.4 row 8, 11): the approved revision, the pending
+ * revision withdrawn in the same unit when there was one, and whether a note was given.
+ */
+export const ProductCertificationRevokedAudit = defineAuditAction({
+  action: 'certification.product-certification.revoked',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['authenticated'],
+  after: {
+    ...productDecisionAfter,
+    withdrawnRevisionId: auditField.optional(auditField.id()),
+    noteGiven: auditField.boolean(),
+  },
+});
+
+/** The expiry job moved the certificate to `expired` at its boundary (3.4 row 9; system actor). */
+export const ProductCertificationExpiredAudit = defineAuditAction({
+  action: 'certification.product-certification.expired',
+  targetType: PRODUCT_CERTIFICATION_TARGET,
+  actors: ['system'],
+  after: productDecisionAfter,
+});
+
 /** Every audited action of certification, for its module's registration. */
 export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   SellerCertificationApprovedAudit,
@@ -188,4 +482,31 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   IssuerRequestAnsweredAudit,
   IssuerRequestViewed,
   IssuerRequestDocumentDownloaded,
+  TypeRevisedAudit,
+  TypeRelaxationRequestedAudit,
+  TypeRelaxationApprovedAudit,
+  TypeDeactivatedAudit,
+  TypeReactivationRequestedAudit,
+  TypeReactivationApprovedAudit,
+  IssuerCreatedAudit,
+  IssuerActivatedAudit,
+  IssuerClosedToNewAudit,
+  IssuerDerecognisedAudit,
+  IssuerReactivationRequestedAudit,
+  IssuerReactivationApprovedAudit,
+  IssuerExpertReferenceViewedAudit,
+  RelaxationProposalRejectedAudit,
+  RelaxationProposalWithdrawnAudit,
+  ClaimPolicyRevisedAudit,
+  ClaimPolicyRelaxationRequestedAudit,
+  ClaimPolicyRelaxationApprovedAudit,
+  ProductCertificationRecordedAudit,
+  ProductCertificationEditedAudit,
+  ProductCertificationApprovedAudit,
+  ProductCertificationRejectedAudit,
+  ProductCertificateNumberViewedAudit,
+  ProductCertificationSuspendedAudit,
+  ProductCertificationReinstatedAudit,
+  ProductCertificationRevokedAudit,
+  ProductCertificationExpiredAudit,
 ]);

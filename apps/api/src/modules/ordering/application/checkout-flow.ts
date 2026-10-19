@@ -179,15 +179,29 @@ export async function startCheckout(
   if (planLines.some((line) => !categories.has(line.offerId))) {
     return err({ code: 'ordering.check-unavailable' });
   }
-  const taxed = await deps.tax.calculateTax(
-    context,
-    planLines.map((line) => ({
+  // The flat shipping fee of each seller is taxed in the same answer, after the product lines.
+  // It takes the price basis of that seller's goods (inclusive only when every line is) and the
+  // strategy's default rate (no category); a working assumption until the tax agent confirms
+  // (brief s40, Q1).
+  const shippingInclusive = new Map(
+    plan.sellers.map((seller) => [
+      seller.sellerId,
+      seller.lines.every((line) => line.taxInclusive),
+    ]),
+  );
+  const taxed = await deps.tax.calculateTax(context, [
+    ...planLines.map((line) => ({
       amount: line.unitPrice.amount * BigInt(line.quantity),
       taxInclusive: line.taxInclusive,
       categoryCode: categories.get(line.offerId)!,
     })),
-  );
-  if (!taxed.ok || taxed.value.lines.length !== planLines.length) {
+    ...plan.sellers.map((seller) => ({
+      amount: seller.shipping,
+      taxInclusive: shippingInclusive.get(seller.sellerId)!,
+      categoryCode: null,
+    })),
+  ]);
+  if (!taxed.ok || taxed.value.lines.length !== planLines.length + plan.sellers.length) {
     return err(
       !taxed.ok && taxed.error.code === 'access.denied'
         ? { code: 'access.denied' }
@@ -200,7 +214,13 @@ export async function startCheckout(
       taxed.value.lines[index]!,
     ]),
   );
-  // Tax on a price that excludes it is charged on top of the goods, per seller.
+  const shippingTax = new Map(
+    plan.sellers.map((seller, index) => [
+      seller.sellerId,
+      taxed.value.lines[planLines.length + index]!,
+    ]),
+  );
+  // Tax on a price that excludes it is charged on top of the goods and the shipping, per seller.
   const addedTax = new Map(
     plan.sellers.map((seller) => [
       seller.sellerId,
@@ -208,7 +228,7 @@ export async function startCheckout(
         (sum, line) =>
           line.taxInclusive ? sum : sum + lineTax.get(`${line.offerId}/${line.variantId}`)!.tax,
         0n,
-      ),
+      ) + (shippingInclusive.get(seller.sellerId)! ? 0n : shippingTax.get(seller.sellerId)!.tax),
     ]),
   );
   const sellerTotal = (seller: (typeof plan.sellers)[number]): bigint =>
@@ -308,6 +328,9 @@ export async function startCheckout(
       sellerId: seller.sellerId,
       subtotal: seller.subtotal,
       shipping: seller.shipping,
+      shippingTaxRateBps: shippingTax.get(seller.sellerId)!.rateBps,
+      shippingTax: shippingTax.get(seller.sellerId)!.tax,
+      shippingTaxInclusive: shippingInclusive.get(seller.sellerId)!,
       total: sellerTotal(seller),
       fulfilment: 'to-ship' as const,
       carrier: null,

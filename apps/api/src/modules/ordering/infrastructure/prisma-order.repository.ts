@@ -49,6 +49,9 @@ interface OrderRow {
     readonly sellerId: string;
     readonly subtotalAmount: bigint;
     readonly shippingAmount: bigint;
+    readonly shippingTaxRateBps: number | null;
+    readonly shippingTaxAmount: bigint | null;
+    readonly shippingTaxInclusive: boolean | null;
     readonly totalAmount: bigint;
     readonly fulfilment: string;
     readonly carrier: string | null;
@@ -86,6 +89,9 @@ const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
   sellerId: s.sellerId as Id<'Seller'>,
   subtotal: s.subtotalAmount,
   shipping: s.shippingAmount,
+  shippingTaxRateBps: s.shippingTaxRateBps,
+  shippingTax: s.shippingTaxAmount,
+  shippingTaxInclusive: s.shippingTaxInclusive,
   total: s.totalAmount,
   fulfilment: s.fulfilment as Fulfilment,
   carrier: s.carrier,
@@ -196,6 +202,9 @@ export class PrismaOrderRepository implements OrderRepository {
         sellerId: s.sellerId,
         subtotalAmount: s.subtotal,
         shippingAmount: s.shipping,
+        shippingTaxRateBps: s.shippingTaxRateBps,
+        shippingTaxAmount: s.shippingTax,
+        shippingTaxInclusive: s.shippingTaxInclusive,
         totalAmount: s.total,
         fulfilment: s.fulfilment,
         ledgerState: s.ledgerState,
@@ -356,6 +365,28 @@ export class PrismaOrderRepository implements OrderRepository {
       include: SELLER_INCLUDE,
     });
     return row === null ? null : toRecord(row);
+  }
+
+  async customerAccountsForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    sellerOrderIds: readonly Id<'SellerOrder'>[],
+  ) {
+    const accounts = new Map<Id<'SellerOrder'>, Id<'Account'>>();
+    if (sellerOrderIds.length === 0) return accounts;
+    const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        id: { in: [...sellerOrderIds] },
+        sellerId,
+        order: { status: 'confirmed' },
+      },
+      select: { id: true, order: { select: { accountId: true } } },
+    });
+    for (const row of rows) {
+      accounts.set(row.id as Id<'SellerOrder'>, row.order.accountId as Id<'Account'>);
+    }
+    return accounts;
   }
 
   async saveFulfilment(market: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {

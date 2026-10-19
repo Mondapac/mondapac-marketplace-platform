@@ -69,3 +69,22 @@ export { Dialog, type DialogProps } from './overlay/dialog.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
 export { THEME_COOKIE, THEME_SCRIPT, themeChoice, type ThemeChoice } from './theme/theme.ts';
 export { ThemeMenu, applyThemeChoice, type ThemeMenuProps } from './theme/theme-menu.tsx';
+export {
+  NotificationBell,
+  NotificationDrawer,
+  type NoticeItem,
+  type NoticeListState,
+  type NoticeTone,
+  type NotificationBellProps,
+  type NotificationDrawerProps,
+} from './notifications/notification-drawer.tsx';
+export {
+  badgeCount,
+  HEARD_NONE,
+  laterNotice,
+  NOTICE_FILTERS,
+  SELLER_POLL_MILLISECONDS,
+  shouldRing,
+  type NoticeFilter,
+} from './notifications/notices.ts';
+export { createChime, type Chime } from './notifications/chime.ts';

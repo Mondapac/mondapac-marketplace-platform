@@ -23,4 +23,17 @@ export class ConfigNotificationsPolicy implements NotificationsPolicy {
     const page = this.markets.get(market.marketId).notifications?.customerOrderPage;
     return page === undefined ? null : `${page.replace(/\/+$/, '')}/${encodeURIComponent(orderId)}`;
   }
+
+  unsubscribeUrls(market: MarketContext, token: string) {
+    const settings = this.markets.get(market.marketId).notifications;
+    const page = settings?.unsubscribePage;
+    const oneClick = settings?.oneClickUnsubscribeUrl;
+    if (page === undefined || oneClick === undefined) return null;
+    const withToken = (url: string): string => {
+      const built = new URL(url);
+      built.searchParams.set('token', token);
+      return built.toString();
+    };
+    return { page: withToken(page), oneClick: withToken(oneClick) };
+  }
 }

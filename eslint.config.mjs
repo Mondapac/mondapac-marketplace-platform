@@ -66,8 +66,14 @@ const noDateConversion = [
 // boundaries.spec.ts checks that apps/api/src and the kernel's src hold no other kind.
 const TS = '{ts,mts,cts}';
 const SPEC_FILES = [`**/*.spec.${TS}`];
-// The panel apps and the shared UI package also hold .tsx (ADR-0033, ADR-0034).
-const PANEL_TSX = ['apps/seller/**/*.tsx', 'apps/admin/**/*.tsx', 'packages/ui/**/*.tsx'];
+// The panel apps, the shared UI package and the storefront also hold .tsx (ADR-0033, ADR-0034,
+// ADR-0008).
+const PANEL_TSX = [
+  'apps/seller/**/*.tsx',
+  'apps/admin/**/*.tsx',
+  'packages/ui/**/*.tsx',
+  'apps/web/**/*.tsx',
+];
 // The fixture tree is outside the globs below, so each block names its fixture files too.
 const FIXTURES = 'apps/api/test/boundary-fixtures';
 
@@ -539,6 +545,19 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.browser } },
     rules: {
       'no-restricted-syntax': ['error', ...panelSyntaxRules],
+    },
+  },
+  {
+    // The storefront (apps/web): browser code with its own token sheet (app/globals.css), so the
+    // panel colour and utility rules do not apply; its SVG artwork carries brand colours. No raw
+    // HTML injection, as in the panels.
+    files: ['apps/web/**/*.{ts,tsx}'],
+    languageOptions: { globals: { ...globals.browser } },
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...panelSyntaxRules.filter((rule) => rule.selector.startsWith('JSXAttribute')),
+      ],
     },
   },
   {

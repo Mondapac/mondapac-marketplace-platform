@@ -28,7 +28,9 @@
     "defaultPerMinute": 200
   },
   "notifications": {
-    "customerOrderPage": "https://storefront.zz.test/account/orders"
+    "customerOrderPage": "https://storefront.zz.test/account/orders",
+    "unsubscribePage": "https://storefront.zz.test/email/unsubscribe",
+    "oneClickUnsubscribeUrl": "https://api.zz.test/notifications/unsubscribe/ZZ"
   },
   "customers": {
     "addressBookLimit": 5,
@@ -271,6 +273,7 @@
   },
   "certification": {
     "expiryWarningThresholdsDays": [30, 14, 1],
-    "renewalSubmitByDays": 2
+    "renewalSubmitByDays": 2,
+    "manufacturerBasisEnabled": true
   }
 }

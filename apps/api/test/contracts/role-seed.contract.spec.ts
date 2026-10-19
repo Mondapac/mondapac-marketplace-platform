@@ -135,6 +135,38 @@ const PINNED: readonly (readonly [string, string])[] = [
     'platform:certification-reviewer@2',
     '6a6bf309ae88e3327c9da8e4e76f47da656ff1df3ffff581199462d637b770ec',
   ],
+  [
+    'platform:onboarding-compliance@7',
+    '7b907740bc9ed5d1f0bde0b71df384be916bf1da3614fd7953db533c548b1868',
+  ],
+  [
+    'platform:catalogue-moderator@6',
+    '86633175365c6fcb19e180ac062994cf647dae34af2fec4aadb54f1dc8718910',
+  ],
+  [
+    'platform:operations-support@3',
+    '148b62b870c79eaa1e65539e48a76bd59f9e6c83dafa95c4e84ae340639b413c',
+  ],
+  ['platform:finance@3', '6e38187d3dc4e7eb85d38dd368c24895a3894dd896d389834a95df8cbc165c8b'],
+  ['platform:viewer@11', '8a49ee934f3f3e817970663fa8d44f90c3427295c4ffef98fe1a104669eb7f1b'],
+  [
+    'platform:certification-reviewer@3',
+    '23ad1252a41636a685a467836527af4237972729f5778710dbbed877eca37c33',
+  ],
+  [
+    'platform:catalogue-moderator@7',
+    '6cdefacc18465529aa59996ca2cdefdd781e486ca5fbaf8232b5096cce2d164a',
+  ],
+  ['platform:viewer@12', 'b61f6f769262b15cc86c1cc809354d8932c1401749075e1bd2e2bb8504ed3ccf'],
+  [
+    'platform:catalogue-moderator@8',
+    '2f3ccce2fff21942dd30707d6f77e84bca13b9c0841b1754da42988ff1f365c3',
+  ],
+  [
+    'platform:certification-reviewer@4',
+    '9afc4b1c28d9855c6dab6ca7e9521ae05a6f62b9363051bbae53d4e03a213d74',
+  ],
+  ['platform:viewer@13', 'f2770e828e038aca9fec2dafa82a93b6f75c3de48fcdce583fdf576f9e753e4a'],
 ];
 
 const ENTRY = /^(platform|seller):([a-z][a-z0-9-]*)@([1-9][0-9]*)$/;

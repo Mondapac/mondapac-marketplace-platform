@@ -40,6 +40,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     certification: ['USAGE'],
     commission_payouts: ['USAGE'],
     customers: ['USAGE'],
+    engagement: ['USAGE'],
+    legal: ['USAGE'],
     tax: ['USAGE'],
     storefront: ['USAGE'],
     pricing: ['USAGE'],
@@ -235,6 +237,47 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Migration 7 (expiry warnings, slice 9; data design 9.1): one marker per (version, threshold), insert-only
     // (data design 3.18; reject_mutation triggers), kept.
     'certification.expiry_warnings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Migration claim_policies (slice 13; data design 3.14): the root moves its pointer
+    // under its version; revisions and rows are insert-only (reject_mutation triggers); a retired
+    // category flag is cleared once.
+    'certification.claim_basis_policies': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['published_revision_id', 'version'],
+    },
+    'certification.claim_policy_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.claim_policy_rows': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.retired_category_flags': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['cleared_at', 'cleared_by_account_id'],
+    },
+    // Migration product_certifications (slice 14; data design 3.15, 3.16): the root moves its
+    // draft, pointers, status and version; the draft's coverage is replaced whole and its editors
+    // cleared on approval (DELETE); revisions, their coverage, editors and decision, the issuer
+    // confirmation and the history are insert-only (reject_mutation triggers).
+    'certification.product_certifications': {
+      table: ['INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'certification.product_certification_draft_coverage': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'certification.product_certification_draft_editors': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'certification.product_certification_revisions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'certification.product_revision_coverage': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.product_revision_editors': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.product_revision_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.product_issuer_confirmations': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.product_certification_history': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
     'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
@@ -436,6 +479,20 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['content_ciphertext', 'is_default', 'updated_at'],
     },
+    // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
+    // and is never removed by the API; its history is append-only.
+    'legal.marketing_consents': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['changed_at', 'granted', 'source'],
+    },
+    'legal.marketing_consent_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Engagement (personalization 1a): behaviour events are inserted and deleted (retention purge,
+    // switch off, account deletion), never changed; the switch changes and goes with the account.
+    'engagement.behaviour_events': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'engagement.personalization_settings': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['changed_at', 'enabled'],
+    },
     // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
     // change, the identity never, and no row is deleted.
     'shipping.seller_flat_fees': {
@@ -448,6 +505,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'ordering.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Notifications (support contact): a change is a new version row; none is updated or deleted.
     'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // In-app notifications package 1: a notice is written once and deleted by retention (90 days,
+    // 200 per seller); a read is insert-only and leaves with its notice by the cascade.
+    'notifications.in_app_notices': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'notifications.in_app_notice_reads': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Search (Phase 6 package 2): a projection of catalog, upserted by events and the rebuild job
     // and deleted when an Offer is no longer sellable. The vector is set by a trigger, so it is
     // not an updatable column for the application.
@@ -635,6 +696,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.tag_reevaluation_requests': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['counts', 'cursor_offer_id', 'settled_at', 'state'],
+    },
+    // docs/design/data/catalog.md 3.27 (certification slice 15, request C-6): a warning to an Offer
+    // owner moves its state, outcome, attempts and next try; what it names never changes. No
+    // DELETE until a purge lands.
+    'catalog.offer_owner_notices': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'settled_at', 'state'],
     },
     // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller

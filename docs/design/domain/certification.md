@@ -1084,6 +1084,165 @@ Javad has the pace of `identity` and `sellers`.
 - **Not built here.** The seller panel's own read still shows no reason text or label for any decision (3.3 code only); the reviewer document download still uses `.review` behind its switch (14.4), not `document.view`.
 - **Open (tracked elsewhere).** Hassan L1: the admin reads that decrypt (review page, history) do not yet refuse an acting-as session; to be settled with identity's acting-as (SEL-08). Hassan M1: `catalog` does not yet consume `seller-certification-revoked.v1` or `-expired.v1` to re-evaluate tags; until it does, tags stay listed but `evaluateClaims` already answers "no" at every check.
 
+### 14.9 Slice 12 as built (type and issuer registry; deactivation forms; reactivation by a second admin; 2026-10-17)
+- **Routes.** `certification/admin/types`: `GET` list, `GET {typeId}`, `POST {typeId}/revisions`, `/deactivate`, `/reactivation`, `/relaxations/{proposalId}/approve`, `/reactivations/{proposalId}/approve`, `/proposals/{proposalId}/reject` and `/withdraw`. `certification/admin/issuers`: `GET` list (`typeId`, `state`, `afterId`, `limit`), `GET {issuerId}` (with the approved-certificate count the derecognition form confirms), `GET {issuerId}/expert-reference` (`private, no-store`; audited; refused in a Login as Seller session), `POST` create, `/activate`, `/close-to-new` (form 1), `/derecognise` (form 2, body `affectedCertificates`), `/reactivation`, `/reactivations/{proposalId}/approve`, `/proposals/{proposalId}/reject` and `/withdraw`. Closed JSON bodies, CSRF, writes under the version read. A proposer approving or rejecting, or another admin withdrawing, is 403 (`review.second-admin-required`, `review.proposer-cannot-reject`, `review.not-proposer`).
+- **Keys.** New `certification.type.view` (every default admin role; seeds raised: onboarding-compliance 7, catalogue-moderator 6, operations-support 3, finance 3, viewer 11, certification-reviewer 3) and the protected `certification.type.edit` (no default role, as `issuer.edit`).
+- **Second admin (H1).** Type relaxation, type reactivation and issuer reactivation are rows of `relaxation_proposals`; the use case refuses the requester and the table's CHECK refuses a decider equal to the proposer. Any type save is refused (`review.proposal-pending`) while a type-revision proposal waits, so `superseded` is used only when form 2 clears a pending issuer reactivation.
+- **Forms.** Form 1 (`closed-to-new`) and form 2 (`derecognised`, terminal) publish `issuer-deactivated.v1` (`issuerId`, `form`); form 2 counts the approved certificates before and after taking the row (version guard) and refuses a changed count (`issuer.confirmation-count-mismatch`, 409). Type deactivation publishes `certification-type-deactivated.v1`, approval of a reactivation `certification-type-activated.v1`, a published revision `certification-type-revised.v1`, a new proposal `relaxation-proposed.v1` (no consumer yet).
+- **Inactive type, inactive issuer and the approval.** The approval share-locks the type and issuer rows (named statements `certification.share-type`, `certification.share-issuer`) and refuses a first approval on an inactive type (`type.inactive`); a seller's first submit of an inactive type is refused too. Renewals of an approved certificate continue.
+- **Mail.** `certification.derecognition-mail` (rule `system`) mails each affected seller Owner once per delivery (English text; Persian open), pages of 100; at least once, so a retried delivery can repeat a mail.
+- **Encryption.** Expert references sealed under the Market's platform subject (labels `certification.issuer.expert-reference`, `certification.relaxation-proposal.expert-reference`); the subject row and key are created on first use, not by the seed (data design 3.22 amended). Change reasons under a key per revision or proposal (`certification.registry-change.reason`).
+- **Audit actions added beyond section 11.** `type.reactivation-requested`, `issuer.expert-reference-viewed`, `relaxation-proposal.rejected`, `relaxation-proposal.withdrawn`.
+- **Not built (open).** The catalog consumer of `issuer-deactivated.v1` and `certification-type-deactivated.v1`, and the catalog count shown before a type save (C-7); the admin mail on `relaxation-proposed.v1` (needs identity's list of key holders); proposer and decider display names (identity R-11); issuer rename and contact channels; refusing `destroyKey` for the platform subject; Persian mail text.
+- **Recorded follow-ups (PR #400 review).** Hassan L1: `type.read` and the proposal views open admin change reasons in a Login as Seller session (only the expert-reference read refuses one); to be settled with identity's acting-as, as for slice 11. Mojtaba: an index on `seller_certification_submissions(issuer_id)` for the derecognition count, which today scans the approved certificates of the Market. Lock order in the registry units: the issuer (or type) row first, then its proposal.
+
+### 14.10 Slice 13 as built, part 1 (claim basis policy; manufacturer basis in `ClaimRule`; `CatalogReferences`; 2026-10-18)
+- **Split.** Part 1 is this list. Part 2 is `assertCategoriesRetirable` and the `platformCategoriesRetired` backstop (A12, B2, C-4). It waits for `catalog`'s move, merge and archive of a platform category, which does not exist yet. Migration `20261018150000_certification_claim_policies` already holds `retired_category_flags` and the partial index of A12.
+- **Routes.** `certification/admin/claim-policies/{typeId}`:
+  - `GET`: the default basis, the published rows and reason, a pending revision with its diff and actions, and the history (50).
+  - `POST /revisions`: body `version` (0 before the first save), `rows` and `reason`.
+  - `/relaxations/{proposalId}/approve`.
+  - `/proposals/{proposalId}/reject` and `/withdraw`.
+  - Routes take closed JSON bodies, need CSRF, and write under the version read. Status codes: invalid rows 422 (`claim-policy.revision-invalid` with `details.issues`; `manufacturer-basis-on-handling`, `category-unknown`); an unchanged revision 409 (`claim-policy.revision-unchanged`).
+- **Keys.** The new `certification.claim-policy.view` is added to catalogue-moderator (seed 7) and viewer (seed 12). The protected `certification.claim-policy.edit` is in no default role.
+- **Second admin (H1).** These revisions relax and wait for a second admin as a `claim-policy-revision` proposal:
+  - a basis made less strict;
+  - a removed row that is not `SELLER_OR_MANUFACTURER`;
+  - an added row less strict than the type default.
+
+  The proposer is the revision's author. While a proposal waits, every save is refused. A tightening revision is published at once.
+- **Lock first.** Each write unit first locks the policy row under the version that was read. On the first save, creating the root is the lock. The unit then checks again: the published pointer, the type's published revision (it decided the classification) and the pending proposal.
+- **Events and audit.** `claim-policy-changed.v1` (`policyId`, `revisionId`, `typeId`) is sent on every publication; it has no consumer yet. The daily reconcile is the backstop. Audit actions: `certification.claim-policy.revised`, `.relaxation-requested` and `.relaxation-approved`. The reason is sealed per revision under `certification.registry-change.reason`.
+- **S2 as built.** S2 returns every row of the published revision of each requested type. Matching on categories and handling happens in code, so S2 binds only the type codes. This replaces the design's category and handling arrays and needs sign-off from Mojtaba and Hassan.
+- **Manufacturer basis in `ClaimRule`.** The checks run in this order:
+  1. The requirement must be `SELLER_OR_MANUFACTURER` and the type must be `THIRD_PARTY_DOCUMENT`; otherwise the seller reason.
+  2. `SEALED_ORIGINAL`; otherwise `handling-requires-seller`.
+  3. The attestation; otherwise `attestation-missing`.
+  4. A covering, valid product certificate; otherwise `not-covered`.
+
+  Coverage follows these rules:
+  - The seller basis wins when both hold.
+  - Coverage matches the product revision (M3), and an entry narrowed to a variant never matches a query with no variant (L1).
+  - The expiry is the earlier of the boundary stored at approval and the boundary in the Market's current zone.
+
+  `evaluateClaims` reads product certificates only for queries that stop at `not-covered`. The reader answers none until slice 14 adds S3, so the manufacturer basis is never allowed today.
+- **`CatalogReferences` (C-3).** Only `platformCategoriesExist` (active categories, at most 500 ids) is built. `catalog` binds it in a global module, so `certification` imports nothing of `catalog`. `publishedProductRevisions` and `variantsOf` come with slice 14.
+- **Not built (open).** Part 2 (above). A `catalog` consumer of `claim-policy-changed.v1`. A Market switch that keeps `SELLER_OR_MANUFACTURER` off in AU until the halal authority agrees (cto). Admin display names (identity R-11).
+- **Before slice 14 (PR #412 review).**
+  - A `catalog` consumer of `claim-policy-changed.v1` is a hard precondition for slice 14. Once the manufacturer basis can allow a tag, a relaxing or tightening policy must re-ask the affected tags without waiting for the daily reconcile.
+  - Slice 14 adds `typeCode` to `ProductCertificationView`, and `bestCovering` filters on it, so a certificate of another type never covers a query (Hassan L2).
+  - Decide which type revision a manufacturer decision records: today it is the type's published revision at evaluation (I1).
+- **Rows of a published or proposed revision are closed (Hassan L1).** The trigger `claim_policy_rows_revision_open` refuses a row whose revision is already a policy's published revision or a pending or decided `claim-policy-revision` proposal. `addRevision` writes the rows in the same unit before the pointer moves or the proposal is inserted.
+- **S2 bound.** The reader refuses a type that returns more than `MAX_POLICY_ROWS` (304) rows, so the whole batch is `unavailable` (fail closed). The worst case per call is 100 type codes × 304 rows, about 30k rows (data design 7.3).
+
+### 14.11 Slice 14 as built, part 1 (manufacturer certificate; S3; catalog re-ask by type; 2026-10-18)
+- **Split.** Part 1 is this list. Part 2 (slice 15) adds:
+  - the protected revoke key;
+  - suspend, revoke and the expiry job, with their events;
+  - `catalog` consumers for `-suspended`, `-revoked` and `-expired`;
+  - expiry warnings;
+  - documents and review checks.
+
+  Until then a type whose revision `requiresDocument` refuses submission (`certificate.incomplete`, fail closed). The AU halal types do require documents.
+- **Market switch.** `certification.manufacturerBasisEnabled` (AU false, ZZ true; `config/markets/README.md`). Off, `SELLER_OR_MANUFACTURER` is read as `SELLER_REQUIRED` and S3 is not read.
+- **Routes.** `certification/admin/product-certificates`:
+  - `GET /` (status, typeId, limit ≤100, offset ≤10000) and `GET /{id}`: view key. Neither ever shows the number.
+  - `GET /{id}/review`: approve key, no acting-as. It opens the number.
+  - `POST /`: edit key. Takes an active `THIRD_PARTY_DOCUMENT` type.
+  - `PUT /{id}/draft`, `POST /{id}/submit`: edit key.
+  - `POST /{id}/approve`, `/reject`: approve key.
+
+  All routes need an admin session, CSRF, closed bodies and the version read.
+- **Keys.** `certification.product-certificate.view` is added to catalogue-moderator (seed 8), certification-reviewer (seed 4) and viewer (seed 13). The protected `.edit` and `.approve` keys are in no default role.
+- **Aggregate.** The root keeps the draft and its coverage. Insert-only revisions keep coverage, editors and the decision.
+  - Coverage is a product, or up to 100 of its variants.
+  - The server records the product's current published revision; the client never sends it (M3).
+  - Submit refuses a draft whose product revision or variants have since moved (`product-revision-changed`, `variant-unknown`).
+  - The certificate number is sealed under the Market's platform subject. The revision stores a keyed content hash.
+- **Another person.** Approve and reject both refuse the record's creator, every admin who edited the draft of the revision, and its submitter (`approval.same-admin`).
+  - Draft editors persist across a rejection and are cleared only on approval.
+  - A reject takes a reason from the Market's review reasons with the `declined` outcome.
+- **Lock first.** Each write first locks the root under the version read. The unit then takes `FOR SHARE` on the type and the issuer (`certification.share-type`, `certification.share-issuer`) and re-checks:
+  - the pending revision is the one reviewed;
+  - the type is active and its published revision is unchanged since submission;
+  - the issuer is active and the expiry is ahead.
+- **Validity boundary.** It is stored on the decision and on the root at approval, measured in the Market zone (no usable zone means `access.unavailable`).
+- **Events.** On approval the decision emits `product-certification-approved.v1` (first approval) or `product-certification-coverage-changed.v1`. The second carries `typeId`, an addition to the design.
+- **Audit.** Actions: `certification.product-certificate.recorded`, `.edited`, `.approved`, `.rejected`.
+- **I1.** The revision records the type revision in force at submission. A manufacturer decision and its badge name that revision, not the type's current one.
+- **S3 (`certification.manufacturer-basis`).** One statement per batch returns the approved, unexpired revisions covering (product, product revision), with their type code.
+  - Variant matching happens in code (L1): a narrowed entry never matches a query with no variant.
+  - `bestCovering` filters on `typeCode` (Hassan L2).
+  - A withdrawn revision, or one with no boundary, never covers.
+- **`CatalogReferences`.** `publishedProductRevisions` and `variantsOf` are now built, batched by product and revision. `catalog` implements them.
+- **Catalog re-ask by type.** `catalog` now consumes three events and queues a type-wide request (`claim-policy-changed`, `product-certification-approved`, `product-certification-coverage-changed`; migration `20261018171000_catalog_type_reevaluation`):
+  - `claim-policy-changed.v1`;
+  - `product-certification-approved.v1`;
+  - `product-certification-coverage-changed.v1`.
+
+  The job resolves the type code through the facade (`CertificationTypeView.typeId`, new). Unavailable leaves the request pending; an unknown type settles it. The job then re-asks every live tag of that type, using the index `offer_tags_market_id_type_code_offer_id_idx`. This is a superset of the design's selection: one request holds one subject. Narrowing it needs a second subject column (open).
+- **Migrations.** `20261018170000_certification_product_certifications` and `20261018171000_catalog_type_reevaluation`, each with `down.sql`. The draft coverage grant is SELECT, INSERT and DELETE (no UPDATE).
+- **Open.** Sign-off from Mojtaba (index, grants, S3) and from Hassan (CERT path). Part 2 above. AU's switch stays off.
+- **Fix round for PR #413 (reviews of Mojtaba and Hassan; 2026-10-18).**
+  - Number read audited (Hassan M1). Every successful review read writes one `certification.product-certificate.number-viewed` row, in its own unit after the numbers are opened. The row's `after` holds the `revisionIds` of the revisions whose numbers were shown, never a number. The read answers only once the row is committed.
+  - Coverage change (Hassan M2). Its handler writes two requests in one `runOnce` unit:
+    - the new cause `product-certification-coverage-recheck` on the certificate's own tags: an ending cause, selected by `certificate_id` and marked `rechecking` first;
+    - the type request.
+
+    The type request is skipped while an identical pending one (same cause and type) has not started; a started one does not count. The request unique becomes `(market_id, source_event_id, cause)`.
+  - S3 reads the boundary stored at approval (Hassan L1), as timestamptz text with its offset. The functions of ADR-0030 allow no `to_char`. It is no longer recomputed from the date and zone.
+  - Ending and type causes never overlap (Hassan L2), checked by a unit test.
+  - Tests (Hassan L3): reject refused for the creator, an editor and the submitter; approve refused for a submitter who never saved; S3 never covers through a pending or superseded revision.
+  - Turning `manufacturerBasisEnabled` off needs a type re-ask, or the daily reconciliation removes the tags (Hassan L4; `config/markets/README.md`).
+  - New index `(market_id, revision_id, type_id)` on `product_revision_coverage` (Mojtaba F1), with a plan test.
+  - Whitespace-only schema hunks reverted (F2). Data design 3.15, 3.16, 7.3 and 8 updated to as built (F3).
+- **Second fix round for PR #413 (2026-10-18).**
+  - Mojtaba N1: the widened unique is `NULLS NOT DISTINCT`.
+  - Hassan N1: a type request is skipped only when the identical pending, unstarted request was written strictly after the new event's `occurredAt`. An older one may already be on its first page, read from the state before the event. The handler takes `occurredAt` from the envelope.
+  - The F2 leftover (`CertificationRelaxationProposal`) is reverted.
+  - Data design 8 now says draft editors are removed at approval. Catalog data design 3.18 lists the recheck cause and the new unique.
+  - Open (Mojtaba): S3 reads the boundary as `timestamptz::text`, which assumes ISO DateStyle (as `expiry_date::text` does) because ADR-0030 allows no `to_char`. Pinning DateStyle for the API role, or an allow-list amendment, is a follow-up.
+
+### 14.12 Slice 15 as built, part 1 (manufacturer certificate lifecycle; Offer owner warnings; 2026-10-18)
+
+Slice 14 part 2 is split in two PRs. This one is the lifecycle. Documents and review checks for manufacturer certificates (reusing the seller path) follow in the next PR. Until then a type that requires documents (AU halal) still refuses a manufacturer submission.
+
+- **Key.** `certification.product-certificate.revoke` (platform, protected), registered with no default role, so the role seed version is unchanged.
+- **Suspend and revoke** (3.4 rows 6 and 8; admin routes `POST /certification/admin/product-certificates/:id/suspend` and `/revoke`, key `.revoke`). The body holds `version`, `reasonCode` and an optional `reasonText`.
+  - The reason comes from the checked-in review policy. Suspend needs a reason with the new outcome `suspended`. AU adds `under-investigation` and gives `suspended` to `not-confirmed-by-issuer` and `withdrawn-by-issuer`. ZZ mirrors this.
+  - The note is sealed under the Market subject key (field `certification.product-certification.history-note`) before the unit.
+  - Unit order: lock the record (version first), check the refusal, write the guarded transition and a history row, write the audit row (`.suspended` or `.revoked`; `noteGiven` only, never the text), then the outbox event.
+  - Revoke works from `approved` or `suspended`. Suspend and revoke both withdraw a pending revision, writing a `withdrawn` decision with no decider (Hassan L1); the audit row names it as `withdrawnRevisionId`.
+  - An approval is refused while the record is suspended (`certificate.suspended`, 409; Hassan L1). A suspension ends only through reinstate, with its guards; a revision submitted while suspended waits for that.
+- **Reinstate** (3.4 row 7; `POST …/:id/reinstate`, key `.approve`) is a use case of its own, recorded as `.reinstated`. It is refused:
+  - for the author or an editor of the approved revision (`approval.same-admin`);
+  - when the issuer is neither `active` nor `closed-to-new`, or is of another type (`issuer.not-active`). An issuer `closed-to-new` for the same type is accepted, as S3 accepts it (Hassan I1);
+  - after the claim boundary;
+  - when the record is not suspended.
+
+  It takes `FOR SHARE` on the type and issuer rows. It emits `product-certification-approved.v1`, so catalog re-asks by type.
+- **History read** (`GET …/:id/history`, key `.view`): newest first, at most 200 rows, `noteGiven` only. A read of the note text (audited) is not built.
+- **Expiry job.** `certification.expire-product-certificates` (system) is the second half of the existing expiry-and-warnings job, after the seller half. A failure of one half no longer skips the other; the job throws at the end.
+  - Only `approved` records expire; a suspended record is left alone.
+  - The boundary is the earlier of the one stored at approval and the date in the current Market zone (2.4 rule 3). When the Market zone is not usable, only the stored boundaries count.
+  - Warnings at the configured thresholds use `expiry_warnings` with version kind `product-revision`, then `product-certification-expiry-warning-due.v1`. The payload gains `typeId`.
+  - The output reports `marketZoneMissing`. A run that stops at its page cap logs `certification.expiry-and-warnings.products-capped` as a warning (Hassan L2).
+  - The root's `approved_boundary_at` is written at approval only when the approved revision's type revision requires an expiry; the decision row keeps its boundary either way (Hassan L2, Mojtaba F1 option A). A record whose type has no expiry is never in the job's window. The admin view's `approvedBoundaryAt` reads the approved revision's decision.
+- **Events** `product-certification-suspended.v1`, `-revoked.v1` and `-expired.v1` (ids and `typeId`), plus the warning above. Audit actions `.suspended`, `.reinstated`, `.revoked` and `.expired` (system).
+- **Catalog consumers.** Three subscriptions `catalog.reevaluate-on-product-certification-suspended`, `-revoked` and `-expired` write ending causes. These select the tags by `certificate_id` and mark them `rechecking` before the re-ask. The causes stay disjoint from the type causes (unit test). Migration `20261018210000_catalog_product_certification_endings` swaps the cause CHECK (`NOT VALID` then `VALIDATE`), with `down.sql`.
+- **C-6 in `catalog`** (8.3). The handler sends nothing (Hassan M1, Mojtaba N2).
+  - `catalog.warn-offer-owners-of-expiry` (system) consumes the warning event. In its `runOnce` unit it reads the live manufacturer-kind tags naming the certificate, grouped by seller and type, with the count and the earliest `valid_until`, for at most 200 owners (a larger set is logged as `capped`, a warning). It writes one pending row per owner whose badge is still valid into `catalog.offer_owner_notices` (data design 3.27; migration `20261018220000_catalog_offer_owner_notices`).
+  - The job `catalog.send-offer-owner-notices` (system, every minute, at most 20 notices and 90 s per run) checks the Market zone first: one that is not a usable IANA id sends nothing and fails the run (Hassan I2). Each notice is then handled alone: the address from `identity.contactEmailOf` (seller owner), one plain-text mail outside any unit, then a unit marks that row `sent`.
+  - A badge past its validity, or an owner with no address, is `skipped` with the outcome. A failed address read or send defers only that row (5, 10, 20, 40 minutes); the fifth failure marks it `failed` (an error log). The next owners go on. Only a crash between a send and its marker mails that one owner again.
+  - The mail names the type, the number of Offers and the last valid day in the Market zone; no id, number or issuer. The words are working texts for Reza.
+- **No certification migration.** History, decisions, `expiry_warnings` and their grants already exist.
+- **Open.**
+  - Sign-off from Mojtaba (migration) and Hassan (CERT path, admin routes).
+  - The CERT-45 system suspend on `productMaterialContentChanged` (8.1, request C-2) is not built.
+  - The same root-boundary fix for `seller_certifications` (a seller certificate whose type does not require an expiry still stores the root boundary) is a follow-up; the seller path is unchanged here.
+  - Purge of settled `offer_owner_notices` rows (as 3.18, no DELETE grant yet).
+  - Part 2: documents and review checks.
+
 ### 14.3 Spikes (run, not merged)
 | # | Spike |
 |---|---|
