@@ -41,6 +41,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     commission_payouts: ['USAGE'],
     customers: ['USAGE'],
     engagement: ['USAGE'],
+    assistant: ['USAGE'],
     legal: ['USAGE'],
     tax: ['USAGE'],
     storefront: ['USAGE'],
@@ -515,6 +516,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // it published); notifications records each event it handled, once per handler.
     'notifications.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    // Buyer assistant settings: insert-only versions, like the support contact.
+    'assistant.settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Notifications (support contact): a change is a new version row; none is updated or deleted.
     'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // In-app notifications package 1: a notice is written once and deleted by retention (90 days,

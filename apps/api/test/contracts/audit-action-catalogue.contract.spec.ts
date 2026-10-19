@@ -45,9 +45,11 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * this list only with the audited actions its approved design names (certification: the admin review of seller certificates, slice 7; pricing: design 8; shipping: the flat-fee change, Phase 5 package 4; commission-payouts: a seller's commission rate
  * set or removed, Phase 5 package 5; storefront: page and navigation content changes, publishing
  * and archiving; tax: the admin-defined tax strategies; payments: the payout-account
- * change and pause rows, Phase 5 package 3 leftovers).
+ * change and pause rows, Phase 5 package 3 leftovers; assistant: the buyer assistant settings
+ * change, plan section 11).
  */
 const AUDITING_MODULES = [
+  'AssistantModule',
   'CertificationModule',
   'CommissionPayoutsModule',
   'IdentityModule',
@@ -439,6 +441,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
     await moduleRef.close();
 
     expect(binders.sort()).toEqual([
+      ['AssistantModule', 'assistant'],
       ['CertificationModule', 'certification'],
       ['CommissionPayoutsModule', 'commission-payouts'],
       ['IdentityModule', 'identity'],
@@ -471,6 +474,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
     await moduleRef.close();
 
     expect(found.map((entry) => [entry.module, entry.kind]).sort()).toEqual([
+      ['AssistantModule', 'actions'],
+      ['AssistantModule', 'writer'],
       ['CertificationModule', 'actions'],
       ['CertificationModule', 'writer'],
       ['CommissionPayoutsModule', 'actions'],
@@ -572,6 +577,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
 
     expect(offenders).toEqual([]);
     expect(calls.sort()).toEqual([
+      `${path.join('modules', 'assistant', 'assistant.module.ts')}: auditWriterFor('assistant')`,
+      `${path.join('modules', 'assistant', 'assistant.module.ts')}: registerAuditActions('assistant')`,
       `${path.join('modules', 'certification', 'certification.module.ts')}: auditWriterFor('certification')`,
       `${path.join('modules', 'certification', 'certification.module.ts')}: registerAuditActions('certification')`,
       `${path.join('modules', 'commission-payouts', 'commission-payouts.module.ts')}: auditWriterFor('commission-payouts')`,

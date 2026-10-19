@@ -1,4 +1,5 @@
 [
+  { "name": "assistant.view-storefront-assistant", "rule": "anonymous" },
   { "name": "cart.add-guest-item", "rule": "anonymous" },
   { "name": "cart.add-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.clear-ordered-lines", "rule": "system" },

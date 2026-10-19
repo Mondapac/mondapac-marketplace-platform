@@ -1,5 +1,19 @@
 [
   {
+    "action": "assistant.settings.changed",
+    "targetType": "assistant.settings",
+    "targetId": "enumOf(assistant-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "boolean",
+      "version": "integer"
+    },
+    "after": {
+      "enabled": "boolean",
+      "version": "integer"
+    }
+  },
+  {
     "action": "certification.claim-policy.relaxation-approved",
     "targetType": "certification.claim-policy",
     "targetId": "id",

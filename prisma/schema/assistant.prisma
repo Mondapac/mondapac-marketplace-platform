@@ -1,0 +1,43 @@
+// The assistant module's tables (buyer assistant settings, package 2). Every model is named
+// Assistant<Name> and mapped to its table with @@map. The CHECKs and the grants are hand-written
+// in the migration.
+
+/// One version of a Market's buyer assistant settings. Insert-only: the settings in force are the
+/// row with the highest version, and the rows before it are the change history (who, when, what).
+model AssistantSettings {
+  marketId                String   @map("market_id") @db.VarChar(8)
+  /// 1 for the first admin change, +1 for each later one. The primary key refuses two admins
+  /// saving from the same version: the second one is told to reload.
+  version                 Int
+  tenantId                String   @map("tenant_id")
+  enabled                 Boolean
+  /// internal | percent | all
+  audience                String   @db.VarChar(16)
+  /// 1 to 100, set if and only if audience is percent.
+  audiencePercent         Int?     @map("audience_percent") @db.SmallInt
+  /// read-only | cart-suggestions
+  scope                   String   @db.VarChar(32)
+  /// fast | balanced; the provider model of each tier is server configuration.
+  modelTier               String   @map("model_tier") @db.VarChar(16)
+  /// guests-and-customers | customers-only
+  users                   String   @db.VarChar(32)
+  guestMessageLimit       Int      @map("guest_message_limit") @db.SmallInt
+  customerMessageLimit    Int      @map("customer_message_limit") @db.SmallInt
+  /// none | 30-days | 12-months
+  retention               String   @db.VarChar(16)
+  /// buyer | english
+  replyLanguage           String   @map("reply_language") @db.VarChar(16)
+  dailySpendCapUsdCents   Int      @map("daily_spend_cap_usd_cents")
+  monthlySpendCapUsdCents Int      @map("monthly_spend_cap_usd_cents")
+  /// email-link | in-panel-form
+  supportHandoff          String   @map("support_handoff") @db.VarChar(16)
+  /// null: the storefront's default welcome text.
+  welcomeText             String?  @map("welcome_text") @db.VarChar(200)
+  changedAt               DateTime @map("changed_at") @db.Timestamptz(6)
+  /// The admin account that made the change (a plain id, no foreign key).
+  changedBy               String   @map("changed_by") @db.Uuid
+
+  @@id([marketId, version])
+  @@map("settings")
+  @@schema("assistant")
+}
