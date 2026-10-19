@@ -2,7 +2,14 @@ import 'server-only';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleProduct } from './sample-product.ts';
-import type { CartSource, CheckoutSource, ProductDetail, StorefrontContent } from './types.ts';
+import { sampleSeller } from './sample-seller.ts';
+import type {
+  CartSource,
+  CheckoutSource,
+  ProductDetail,
+  SellerShop,
+  StorefrontContent,
+} from './types.ts';
 
 /**
  * The storefront's one read of the home content. Sample data for now; it calls the
@@ -31,4 +38,12 @@ export async function loadCartSource(): Promise<CartSource> {
 /** The checkout's customer, address book and service area. Sample data until checkout is wired. */
 export async function loadCheckout(): Promise<CheckoutSource> {
   return Promise.resolve(SAMPLE_CHECKOUT);
+}
+
+/**
+ * The seller page's read: profile, terms, certificates and products, or undefined when there is
+ * no such seller. Sample data until the backend has the seller public read.
+ */
+export async function loadSeller(slug: string): Promise<SellerShop | undefined> {
+  return Promise.resolve(sampleSeller(slug));
 }
