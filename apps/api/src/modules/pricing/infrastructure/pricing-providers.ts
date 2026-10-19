@@ -41,6 +41,11 @@ import { PrismaPriceSeriesRepository } from './prisma-price-series.repository';
 import { PrismaRetirementTombstoneRepository } from './prisma-retirement-tombstone.repository';
 import { PrismaWriteRateCounterRepository } from './prisma-write-rate-counter.repository';
 import { PrismaWriteRefusalThrottleRepository } from './prisma-write-refusal-throttle.repository';
+import {
+  SPECIALS_IN_FORCE_READER,
+  type SpecialsInForceReader,
+} from '../application/ports/specials-in-force.reader';
+import { PrismaSpecialsInForceReader } from './prisma-specials-in-force.reader';
 
 /**
  * Binds the ports of slice 1: persistence (part 2; in `infrastructure/` because only this layer
@@ -49,6 +54,12 @@ import { PrismaWriteRefusalThrottleRepository } from './prisma-write-refusal-thr
  * production binding is its fail-closed placeholder until catalog slice 7, ADR-0031 decision 6).
  */
 export const pricingProviders: readonly FactoryProvider[] = [
+  {
+    provide: SPECIALS_IN_FORCE_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SpecialsInForceReader =>
+      new PrismaSpecialsInForceReader(prisma),
+  },
   {
     provide: PRICE_SERIES_REPOSITORY,
     inject: [PrismaService],

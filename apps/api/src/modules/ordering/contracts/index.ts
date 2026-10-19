@@ -20,3 +20,10 @@ export {
   type OrderingFacade,
   type PaymentFailure,
 } from './ordering.facade';
+export {
+  BESTSELLER_WINDOW_DAYS,
+  MAX_RANKED_OFFERS,
+  ORDERING_RANKING_FACADE,
+  type OrderingRankingFacade,
+  type RankingFailure,
+} from './ordering-ranking.facade';

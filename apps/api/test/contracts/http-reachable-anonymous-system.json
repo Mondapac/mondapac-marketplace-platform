@@ -20,6 +20,11 @@
     "reason": "The guest cart is read with the cart cookie of the browser: a guest has no account or session."
   },
   {
+    "name": "catalog.category-tree",
+    "rule": "anonymous",
+    "reason": "The buyer site's left menu and Browse drawer for a visitor with no session: the live platform category tree (ids, slugs, names, order); no seller category, no count, nothing unpublished."
+  },
+  {
     "name": "engagement.record-guest-event",
     "rule": "anonymous",
     "reason": "The storefront records what a guest viewed, searched for or added to the cart under the engagement guest cookie (30 days): a guest has no account or session; ids only, and Sec-GPC records nothing."
@@ -135,6 +140,16 @@
     "name": "payments.receive-stripe-event",
     "rule": "anonymous",
     "reason": "Stripe calls the webhook without a session: the Stripe-Signature over the raw body, checked first in the use case, authenticates the event; it only stores the event for the worker."
+  },
+  {
+    "name": "search.list-bestsellers",
+    "rule": "anonymous",
+    "reason": "The storefront best-sellers shelf for a visitor with no session: Offer ids, text and category ids in rank order (no sales figure), each re-checked against catalog and sellers; rate limited per origin."
+  },
+  {
+    "name": "search.list-specials",
+    "rule": "anonymous",
+    "reason": "The storefront specials shelf for a visitor with no session: Offers on special now with the special and regular buyer price (never Cost), each re-checked against catalog and sellers; rate limited per origin."
   },
   {
     "name": "search.search-products",

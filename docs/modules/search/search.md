@@ -35,3 +35,22 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   certification badges are not part of this package.
 - **Follow-ups (Hassan L-3):** a dedicated rate-limit class for this anonymous route (it uses `default`
   now), and a cap on the number of OR terms in `q`.
+
+## Storefront shelves (storefront reads package, 18 Oct 2026)
+
+- **Routes:** `GET /search/bestsellers?category=&limit=` and `GET /search/specials?category=&limit=`
+  (anonymous, `@RoutePopulation('customer')`, default rate-limit class, `no-store`). `limit` 1 to 24
+  (storefront's `MAX_SHELF_PRODUCTS`, default 12); `category` is a platform category id; unknown
+  parameters are 400.
+- **Best sellers:** ordering's `OrderingRankingFacade.bestSellingOffers` (rule anonymous) ranks Offers
+  by order lines on orders confirmed in the last 30 days (ids only, no count leaves ordering); search
+  takes the top 100, keeps the indexed ones (in the category when asked) in rank order, and fills a
+  short shelf from browse order (the category's `search.offer-browse`, else the Market by name).
+- **Specials:** pricing's `PricingSpecialsFacade.specialsInForce` (rule anonymous) answers the (Offer,
+  Variant) keys whose effective price is a special at its Clock's now, newest first, with the regular
+  price in force; an Offer appears once. Items add `variantId`, `price`, `regularPrice` (Money as
+  `{ amount: string, currency }`), `taxInclusive` and `specialEndsAt`. Never Cost.
+- **Visibility:** the same re-check as the search route (catalog published and listed, seller may
+  sell); a failed source or check is 503 `search.unavailable`. No badge, no stock filter (as search).
+- **Known gaps:** the Market-wide fill reads `offer_documents` ordered by name without an index on
+  `(market_id, name)`; add one if the read model grows large.

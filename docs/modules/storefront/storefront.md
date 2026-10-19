@@ -72,9 +72,18 @@ Public (`@RoutePopulation('customer')`, no session, `no-store`): `GET storefront
 archived slug; an archived page never sends buyers to an archived page or to itself), `GET
 storefront/navigation`.
 
+## Buyer reads (package 2, 18 Oct 2026)
+
+The data the shelves and navigation draw lives in the module that owns it; storefront stores only
+the source definition. `GET catalog/categories`: the live platform category tree (active
+categories under their nearest live ancestor; id, parentId, slug, name in the Market default
+locale, depth, position by name). `GET search/bestsellers` and `GET search/specials`: the
+`bestsellers` and `specials` shelf sources (docs/modules/search/search.md). All anonymous,
+`no-store`, default rate-limit class.
+
 ## Not in v1 (follow-ups)
 
-Read routes the shelves and navigation need (public category tree, product detail, seller page
-and list, best-sellers and special-price lists), brands (no brand in catalog yet, so no brand
+Read routes for product detail, seller page and list, and the `category`, `seller`, `tag` and
+`manual` shelf sources; brands (no brand in catalog yet, so no brand
 source or link), uploaded images (catalog media slice), CDN caching of published layouts,
 preview links, per-city layouts, scheduled publishing of a future draft.

@@ -14,16 +14,20 @@ interface StoreState {
   readonly setSearchOpen: (open: boolean) => void;
   readonly filtersOpen: boolean;
   readonly setFiltersOpen: (open: boolean) => void;
+  /** A page's own modal dialog (the seller card on phone and tablet) is open. */
+  readonly dialogOpen: boolean;
+  readonly setDialogOpen: (open: boolean) => void;
 }
 
 const StoreContext = createContext<StoreState | null>(null);
 
-/** Client state shared by the shell and the page: the cart and the three overlays. */
+/** Client state shared by the shell and the page: the cart and the overlays. */
 export function StoreProvider({ children }: { readonly children: ReactNode }) {
   const [cart, setCart] = useState<Cart>({});
   const [browseOpen, setBrowseOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const add = useCallback(
     (id: string, unitPrice: Money, limit: number) =>
       setCart((current) => addOne(current, id, unitPrice, limit)),
@@ -41,8 +45,10 @@ export function StoreProvider({ children }: { readonly children: ReactNode }) {
       setSearchOpen,
       filtersOpen,
       setFiltersOpen,
+      dialogOpen,
+      setDialogOpen,
     }),
-    [cart, add, remove, browseOpen, searchOpen, filtersOpen],
+    [cart, add, remove, browseOpen, searchOpen, filtersOpen, dialogOpen],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

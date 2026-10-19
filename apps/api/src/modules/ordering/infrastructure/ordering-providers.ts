@@ -23,6 +23,11 @@ import { ConfigOrderingPolicy } from './config-ordering-policy';
 import { FacadeOrderLabels } from './facade-order-labels';
 import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
 import { PrismaOrderRepository } from './prisma-order.repository';
+import {
+  SALES_RANKING_READER,
+  type SalesRankingReader,
+} from '../application/ports/sales-ranking.reader';
+import { PrismaSalesRankingReader } from './prisma-sales-ranking.reader';
 import { StripeCheckoutGateway } from './stripe-checkout-gateway';
 import { SubjectKeyShipToCipher } from './subject-key-ship-to-cipher';
 
@@ -40,6 +45,11 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: SHIP_TO_CIPHER,
     inject: [SUBJECT_KEY_SERVICE],
     useFactory: (keys: SubjectKeyService): ShipToCipher => new SubjectKeyShipToCipher(keys),
+  },
+  {
+    provide: SALES_RANKING_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SalesRankingReader => new PrismaSalesRankingReader(prisma),
   },
   {
     provide: CHECKOUT_GATEWAY,

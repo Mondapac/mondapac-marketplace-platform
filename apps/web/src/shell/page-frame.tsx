@@ -4,13 +4,14 @@ import { useEffect, type ReactNode } from 'react';
 import { useStore } from './store-context.tsx';
 
 /**
- * The page behind the overlays. While Browse products, the search view or a listing's filters
- * drawer is open the page is inert (Tab stays in the overlay) and does not scroll; the search
- * view, a phone and tablet layout, closes when the screen grows to the desktop layout.
+ * The page behind the overlays. While Browse products, the search view, a listing's filters
+ * drawer or a page's modal dialog is open the page is inert (Tab stays in the overlay) and does
+ * not scroll; the search view, a phone and tablet layout, closes when the screen grows to the
+ * desktop layout.
  */
 export function PageFrame({ children }: { readonly children: ReactNode }) {
-  const { browseOpen, searchOpen, setSearchOpen, filtersOpen } = useStore();
-  const overlay = browseOpen || searchOpen || filtersOpen;
+  const { browseOpen, searchOpen, setSearchOpen, filtersOpen, dialogOpen } = useStore();
+  const overlay = browseOpen || searchOpen || filtersOpen || dialogOpen;
 
   useEffect(() => {
     if (!overlay) return;

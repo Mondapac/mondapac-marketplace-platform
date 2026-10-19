@@ -101,3 +101,57 @@ export interface PriceBand {
   readonly to?: Money;
   readonly above?: Money;
 }
+
+/** What a buyer sees of a seller before ordering: the seller card on the product page. */
+export interface SellerProfile {
+  readonly id: string;
+  readonly name: string;
+  /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
+  readonly logo?: string;
+  readonly city: string;
+  readonly sellingSince: number;
+  /** Certificates the platform checked, named for the card line ("Halal certificate checked"). */
+  readonly certificates: readonly { readonly type: string; readonly name: string }[];
+  /**
+   * Ratings from orders and reviews. Sample data until those exist; v1 may show the static
+   * facts only (open question to john), so the card works without them.
+   */
+  readonly ratings?: {
+    /** Whole percent. */
+    readonly satisfaction: number;
+    readonly count: number;
+    readonly onTime: number;
+    readonly asDescribed: number;
+  };
+}
+
+/** One seller's offer of a product; `id` is the cart line key. */
+export interface ProductOffer {
+  readonly id: string;
+  readonly seller: SellerProfile;
+  readonly price: Money;
+  readonly wasPrice?: Money;
+  /** Badges built by certification from evaluateClaim for this offer. */
+  readonly certifications: readonly CertificationBadge[];
+  readonly lowStock?: number;
+  readonly deliveryWindow: string;
+  readonly minimumOrder: string;
+}
+
+export interface ProductSpecification {
+  readonly label: string;
+  readonly value: string;
+}
+
+/** The product page: the product, its offers (the featured one first) and similar products. */
+export interface ProductDetail {
+  readonly id: string;
+  readonly name: string;
+  readonly category: string;
+  readonly description: string;
+  readonly specifications: readonly ProductSpecification[];
+  readonly photos: readonly string[];
+  /** Never empty: a product without a sellable offer is not shown. */
+  readonly offers: readonly [ProductOffer, ...ProductOffer[]];
+  readonly similar: readonly ProductCard[];
+}
