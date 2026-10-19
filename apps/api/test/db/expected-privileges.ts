@@ -122,6 +122,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // INSERT moves to a worker-only group before the hardening trigger (11.6, PA 13).
     'platform.audit_log_seal': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'platform.audit_chain_checkpoint': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Buyer assistant package 1 (identity design 13): the shared rate-limit counters, counted
+    // and purged by the PostgreSQL store of rate-limiter-flexible.
+    'platform.rate_limit_counters': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     // docs/design/data/identity.md section 7 (slice 3; PM3): the envelope copy is immutable to
     // the application; DELETE arrives with the prune job.
     'platform.event_delivery': {
