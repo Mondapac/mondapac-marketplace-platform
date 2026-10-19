@@ -31,6 +31,8 @@ interface Pick {
   readonly place: Place | null;
   /** The saved address chosen, when the pick came from the address book. */
   readonly savedId?: string;
+  /** The lookup has not yet answered for this point; `place` is still the one before. */
+  readonly pending?: boolean;
 }
 
 type Locating = 'idle' | 'busy' | 'blocked' | 'failed';
@@ -106,7 +108,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   }, [open]);
 
   const inside = insideArea(pick.point, source.area.boundary);
-  const ready = inside && pick.place !== null;
+  const ready = inside && pick.place !== null && !pick.pending;
   const area = source.area.name;
 
   const close = () => setDeliverOpen(false);
@@ -119,7 +121,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   const pinAt = (point: GeoPoint, origin: Origin) => {
     const ticket = ++placeTicket.current;
     // The place found before stays until the lookup answers, so the summary does not flicker.
-    setPick((before) => ({ point, origin, place: before.place }));
+    setPick((before) => ({ point, origin, place: before.place, pending: true }));
     void lookup.suburbAt(point).then((place) => {
       if (ticket === placeTicket.current) setPick({ point, origin, place });
     });
