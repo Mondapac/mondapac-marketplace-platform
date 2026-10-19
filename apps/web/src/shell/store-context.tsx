@@ -1,13 +1,63 @@
 'use client';
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { addOne, removeOne, type Cart } from '../cart/cart.ts';
-import type { Money } from '../storefront/types.ts';
+import {
+  addOne,
+  lineLimit,
+  removeLine,
+  removeOne,
+  type Cart,
+  type CartView,
+} from '../cart/cart.ts';
+import type { AppliedDiscount, CartSource, CheckoutCustomer, Money } from '../storefront/types.ts';
+
+/** What the confirmation shows of the order just placed. */
+export interface PlacedOrder {
+  readonly reference: string;
+  readonly view: CartView;
+  readonly address: string;
+  readonly discountCode: string | null;
+  /** The buyer's note to each seller, by seller id. */
+  readonly notes: Readonly<Record<string, string>>;
+}
+
+const NO_SOURCE: CartSource = {
+  items: {},
+  sellers: {},
+  tax: { share: { numerator: 0, denominator: 1 }, includesDelivery: false },
+  sampleDiscounts: {},
+};
 
 interface StoreState {
   readonly cart: Cart;
   readonly add: (id: string, unitPrice: Money, limit: number) => void;
   readonly remove: (id: string) => void;
+  /** Removes a whole line (the Remove link). */
+  readonly removeLine: (id: string) => void;
+  readonly clearCart: () => void;
+  readonly cartSource: CartSource;
+  /** Saved-for-later offer ids, newest last; not in the cart or its totals. */
+  readonly saved: readonly string[];
+  readonly saveForLater: (id: string) => void;
+  /** Moves a saved item back to the cart (one unit). */
+  readonly moveToCart: (id: string) => void;
+  readonly removeSaved: (id: string) => void;
+  readonly discount: AppliedDiscount | null;
+  readonly setDiscount: (discount: AppliedDiscount | null) => void;
+  /** Checkout notes to sellers, by seller id. */
+  readonly notes: Readonly<Record<string, string>>;
+  readonly setNote: (sellerId: string, note: string) => void;
+  /** The cart drawer of the header's cart button. */
+  readonly cartOpen: boolean;
+  readonly setCartOpen: (open: boolean) => void;
+  /** The signed-in customer at checkout; a sample log-in sets it until sessions are wired. */
+  readonly customer: CheckoutCustomer | null;
+  readonly setCustomer: (customer: CheckoutCustomer | null) => void;
+  /** The delivery address chosen at checkout, as one line. */
+  readonly deliveryAddress: string;
+  readonly setDeliveryAddress: (address: string) => void;
+  readonly placedOrder: PlacedOrder | null;
+  readonly setPlacedOrder: (order: PlacedOrder | null) => void;
   readonly browseOpen: boolean;
   readonly setBrowseOpen: (open: boolean) => void;
   readonly searchOpen: boolean;
@@ -22,8 +72,24 @@ interface StoreState {
 const StoreContext = createContext<StoreState | null>(null);
 
 /** Client state shared by the shell and the page: the cart and the overlays. */
-export function StoreProvider({ children }: { readonly children: ReactNode }) {
-  const [cart, setCart] = useState<Cart>({});
+export function StoreProvider({
+  cartSource = NO_SOURCE,
+  initialCart = {},
+  children,
+}: {
+  readonly cartSource?: CartSource;
+  /** The lines to start with (the server cart once it is read; tests). */
+  readonly initialCart?: Cart;
+  readonly children: ReactNode;
+}) {
+  const [cart, setCart] = useState<Cart>(initialCart);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [customer, setCustomer] = useState<CheckoutCustomer | null>(null);
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [saved, setSaved] = useState<readonly string[]>([]);
+  const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
+  const [notes, setNotes] = useState<Readonly<Record<string, string>>>({});
+  const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
   const [browseOpen, setBrowseOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -34,11 +100,57 @@ export function StoreProvider({ children }: { readonly children: ReactNode }) {
     [],
   );
   const remove = useCallback((id: string) => setCart((current) => removeOne(current, id)), []);
+  const dropLine = useCallback((id: string) => setCart((current) => removeLine(current, id)), []);
+  const clearCart = useCallback(() => {
+    setCart({});
+    setDiscount(null);
+    setNotes({});
+  }, []);
+  const saveForLater = useCallback((id: string) => {
+    setCart((current) => removeLine(current, id));
+    setSaved((current) => (current.includes(id) ? current : [...current, id]));
+  }, []);
+  const removeSaved = useCallback(
+    (id: string) => setSaved((current) => current.filter((s) => s !== id)),
+    [],
+  );
+  const moveToCart = useCallback(
+    (id: string) => {
+      const item = cartSource.items[id];
+      if (!item) return;
+      setSaved((current) => current.filter((s) => s !== id));
+      setCart((current) => addOne(current, id, item.price, lineLimit(item.lowStock)));
+    },
+    [cartSource],
+  );
+  const setNote = useCallback(
+    (sellerId: string, note: string) => setNotes((current) => ({ ...current, [sellerId]: note })),
+    [],
+  );
   const value = useMemo(
     () => ({
       cart,
       add,
       remove,
+      removeLine: dropLine,
+      clearCart,
+      cartSource,
+      saved,
+      saveForLater,
+      moveToCart,
+      removeSaved,
+      discount,
+      setDiscount,
+      notes,
+      setNote,
+      cartOpen,
+      setCartOpen,
+      customer,
+      setCustomer,
+      deliveryAddress,
+      setDeliveryAddress,
+      placedOrder,
+      setPlacedOrder,
       browseOpen,
       setBrowseOpen,
       searchOpen,
@@ -48,7 +160,29 @@ export function StoreProvider({ children }: { readonly children: ReactNode }) {
       dialogOpen,
       setDialogOpen,
     }),
-    [cart, add, remove, browseOpen, searchOpen, filtersOpen, dialogOpen],
+    [
+      cart,
+      add,
+      remove,
+      dropLine,
+      clearCart,
+      cartSource,
+      saved,
+      saveForLater,
+      moveToCart,
+      removeSaved,
+      discount,
+      notes,
+      setNote,
+      cartOpen,
+      customer,
+      deliveryAddress,
+      placedOrder,
+      browseOpen,
+      searchOpen,
+      filtersOpen,
+      dialogOpen,
+    ],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

@@ -16,6 +16,7 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
   const name = useTranslations('store')('name');
   const locale = useLocale();
   const { cart } = useStore();
+  const cartButton = useCartButton();
   const { count, total } = summarise(cart);
   const totalText = total ? formatMoney(total, locale) : '';
   const ref = useRef<HTMLElement>(null);
@@ -74,10 +75,11 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
             <Icon name="user" />
             <span className="lt">{t('log-in')}</span>
           </Link>
-          <Link
+          <button
             className="cartpill"
-            href="/cart"
+            type="button"
             aria-label={t('cart', { count, total: totalText })}
+            {...cartButton}
           >
             <span className="cn">
               <Icon name="bag" />
@@ -88,11 +90,31 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
             <span className="ct num" aria-hidden="true">
               {total ? totalText : formatMoney({ amount: 0, currency: currencyOf(cart) }, locale)}
             </span>
-          </Link>
+          </button>
         </div>
       </div>
     </header>
   );
+}
+
+/**
+ * The props of a cart button (header pill, Cart tab): it opens the cart drawer, and does nothing
+ * on the cart page itself.
+ */
+export function useCartButton() {
+  const { cartOpen, setCartOpen, setBrowseOpen, setSearchOpen } = useStore();
+  const onCartPage = usePathname() === '/cart';
+  if (onCartPage) return { 'aria-current': 'page' as const };
+  return {
+    'aria-haspopup': 'dialog' as const,
+    'aria-expanded': cartOpen,
+    'aria-controls': 'cart-drawer',
+    onClick: () => {
+      setBrowseOpen(false);
+      setSearchOpen(false);
+      setCartOpen(!cartOpen);
+    },
+  };
 }
 
 function currencyOf(cart: ReturnType<typeof useStore>['cart']): string {

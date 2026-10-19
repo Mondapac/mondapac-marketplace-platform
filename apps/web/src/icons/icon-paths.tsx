@@ -202,6 +202,23 @@ export const ICON_PATHS = {
       <path d="M6 14l6-6 6 6" />
     </>
   ),
+  note: (
+    <>
+      <path d="M5 4h14v12l-4 4H5z" />
+      <path d="M9 9h6M9 13h4" />
+    </>
+  ),
+  check: (
+    <>
+      <path d="M5 12.5l4.5 4.5L19 7" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v6M12 7.5v.5" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICON_PATHS;

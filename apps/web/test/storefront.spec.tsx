@@ -5,12 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { HomeSections } from '../src/home/home-sections.tsx';
 import { StoreShell } from '../src/shell/store-shell.tsx';
+import { SAMPLE_CART_SOURCE } from '../src/storefront/sample-cart.ts';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import type { StorefrontContent } from '../src/storefront/types.ts';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
   useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: () => undefined, replace: () => undefined }),
 }));
 
 beforeEach(() => {
@@ -25,7 +27,12 @@ afterEach(cleanup);
 function renderStore(content: StorefrontContent = SAMPLE_CONTENT) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
-      <StoreShell content={content} textSize="auto" consent={{ personalization: false }}>
+      <StoreShell
+        content={content}
+        cartSource={SAMPLE_CART_SOURCE}
+        textSize="auto"
+        consent={{ personalization: false }}
+      >
         <HomeSections
           sections={content.home}
           categories={content.categories}
@@ -60,7 +67,7 @@ describe('home page', () => {
       name: 'Add Free-range chicken, whole to cart',
     })[0]!;
     fireEvent.click(add);
-    expect(screen.getByRole('link', { name: 'Cart, 1 item, A$22.90' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cart, 1 item, A$22.90' })).toBeTruthy();
     const group = screen.getAllByRole('group', {
       name: 'Quantity of Free-range chicken, whole',
     })[0]!;
@@ -71,12 +78,12 @@ describe('home page', () => {
       'disabled',
       true,
     );
-    expect(screen.getByRole('link', { name: 'Cart, 3 items, A$68.70' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cart, 3 items, A$68.70' })).toBeTruthy();
     fireEvent.click(within(group).getByRole('button', { name: 'Decrease' }));
     fireEvent.click(within(group).getByRole('button', { name: 'Decrease' }));
     fireEvent.click(within(group).getByRole('button', { name: 'Decrease' }));
     expect(
-      within(screen.getByRole('banner')).getByRole('link', { name: 'Cart, empty' }),
+      within(screen.getByRole('banner')).getByRole('button', { name: 'Cart, empty' }),
     ).toBeTruthy();
   });
 
