@@ -22,6 +22,9 @@ const call = vi.mocked(callApi);
 const OLD = '0190a000-0000-7000-8000-000000000001';
 const NEW = '0190a000-0000-7000-8000-000000000002';
 const ORDER = '0190a000-0000-7000-8000-0000000000a1';
+const OFFER = '0190a000-0000-7000-8000-0000000000b1';
+const PRODUCT = '0190a000-0000-7000-8000-0000000000c1';
+const VARIANT = '0190a000-0000-7000-8000-0000000000d1';
 const notice = (id: string, over: Partial<Notice> = {}): Notice => ({
   id,
   kind: 'seller.order-paid',
@@ -216,5 +219,118 @@ describe('SellerNotifications drawer', () => {
       ),
     );
     await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications' })));
+  });
+
+  it.each([
+    [
+      'low stock',
+      { kind: 'seller.low-stock', params: { offerId: OFFER, variantId: VARIANT, onlyLeft: 2 } },
+      /Low stock: 2\u00a0units left of an offer/,
+      `/offers/${OFFER}/stock`,
+    ],
+    [
+      'a rejected held price',
+      {
+        kind: 'seller.price-hold-decided',
+        params: {
+          offerId: OFFER,
+          variantId: VARIANT,
+          recordId: VARIANT,
+          outcome: 'rejected',
+          priceKind: 'special',
+        },
+      },
+      /Your special price change was rejected/,
+      `/offers/${OFFER}/prices`,
+    ],
+    [
+      'an Offer that needs changes',
+      {
+        kind: 'seller.offer-changes-requested',
+        params: { offerId: OFFER, productId: PRODUCT, reason: 'description-claim' },
+      },
+      /Your offer needs changes: the description makes a claim/,
+      `/offers/${OFFER}`,
+    ],
+    [
+      'an image taken down',
+      {
+        kind: 'seller.image-taken-down',
+        params: { productId: PRODUCT, imageId: VARIANT, reason: 'rights' },
+      },
+      /A product image was taken down after a rights claim/,
+      `/products/${PRODUCT}`,
+    ],
+    [
+      'a tag suspended',
+      {
+        kind: 'seller.offer-tag-changed',
+        params: { offerId: OFFER, tagId: VARIANT, change: 'suspended' },
+      },
+      /A certification tag was suspended and the offer is off sale/,
+      `/offers/${OFFER}`,
+    ],
+    [
+      'the store approved',
+      { kind: 'seller.access-changed', params: { change: 'approved' } },
+      /Your store is approved/,
+      '/',
+    ],
+  ])('opens %s on its page', async (_label, over, text, href) => {
+    counts = [{ unread: 1, newest: null }];
+    call.mockImplementation((method, path) =>
+      Promise.resolve(
+        path.includes('?show=')
+          ? {
+              ok: true as const,
+              status: 200,
+              body: { items: [notice(NEW, over as Partial<Notice>)], next: null },
+            }
+          : answer(path, method),
+      ),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
+    const link = await screen.findByRole('link', { name: text });
+    expect(link.getAttribute('href')).toBe(href);
+  });
+
+  it('shows a certificate notice, which has no seller page yet, as a row that only marks it read', async () => {
+    counts = [{ unread: 1, newest: null }];
+    call.mockImplementation((method, path) =>
+      Promise.resolve(
+        path.includes('?show=')
+          ? {
+              ok: true as const,
+              status: 200,
+              body: {
+                items: [
+                  notice(NEW, {
+                    kind: 'seller.certificate-expiring',
+                    params: { sellerCertificationId: VARIANT, days: 14 },
+                  }),
+                ],
+                next: null,
+              },
+            }
+          : answer(path, method),
+      ),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
+    expect(
+      await screen.findByRole('button', { name: /Your certificate expires in 14\u00a0days/ }),
+    ).toBeTruthy();
+    const row = screen.getByRole('button', { name: /Your certificate expires in 14/ });
+    fireEvent.click(row);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        `notifications/seller/notices/${NEW}/read`,
+        {},
+        'csrf-1',
+      ),
+    );
+    expect(push).not.toHaveBeenCalled();
   });
 });
