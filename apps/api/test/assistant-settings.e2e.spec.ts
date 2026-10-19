@@ -56,7 +56,17 @@ const STOREFRONT = {
 };
 
 it('maps every refusal code of the assistant routes to its exact status', () => {
-  expect(ASSISTANT_STATUS).toEqual({ 'validation.failed': 400, 'assistant.conflict': 409 });
+  expect(ASSISTANT_STATUS).toEqual({
+    'validation.failed': 400,
+    'assistant.conflict': 409,
+    'assistant.off': 403,
+    'assistant.sign-in-required': 403,
+    'assistant.conversation-not-found': 404,
+    'assistant.conversation-full': 409,
+    'request.throttled': 429,
+    'assistant.paused': 503,
+    'assistant.unavailable': 503,
+  });
 });
 
 describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) => {

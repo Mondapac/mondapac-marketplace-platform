@@ -37,6 +37,8 @@ import { SendSellerNewOrderMail } from './application/use-cases/send-seller-new-
 import { SetSupportContact } from './application/use-cases/set-support-contact.use-case';
 import { UnsubscribeMarketingEmail } from './application/use-cases/unsubscribe-marketing-email.use-case';
 import { ViewPublicSupportContact } from './application/use-cases/view-public-support-contact.use-case';
+import { SUPPORT_CONTACT_FACADE } from './contracts/support-contact.facade';
+import { SupportContactFacadeImplementation } from './presentation/support-contact.facade';
 import { ViewSupportContact } from './application/use-cases/view-support-contact.use-case';
 import { ViewUnsubscribeLink } from './application/use-cases/view-unsubscribe-link.use-case';
 import { NOTIFICATIONS_PERMISSIONS } from './contracts';
@@ -212,6 +214,12 @@ function inAppNoticeProvider<U>(
     registerJobsFrom('notifications', [PurgeExpiredNotices], (purge: PurgeExpiredNotices) => [
       purgeExpiredNoticesJob(purge),
     ]),
+    {
+      provide: SUPPORT_CONTACT_FACADE,
+      inject: [ViewPublicSupportContact],
+      useFactory: (view: ViewPublicSupportContact) => new SupportContactFacadeImplementation(view),
+    },
   ],
+  exports: [SUPPORT_CONTACT_FACADE],
 })
 export class NotificationsModule {}

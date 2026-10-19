@@ -6,3 +6,4 @@ export {
   NOTIFICATIONS_SUPPORT_CONTACT_MANAGE,
   NOTIFICATIONS_SUPPORT_CONTACT_VIEW,
 } from './permissions';
+export { SUPPORT_CONTACT_FACADE, type SupportContactFacade } from './support-contact.facade';

@@ -39,14 +39,18 @@ The database CHECKs repeat these bounds.
 
 The guardrails of plan section 5 (numbers only from server cards, certification only from
 `evaluateClaim`, no mutating tool, never payment, refunds, orders, addresses, accounts, discount
-codes or Cost) and the model API key. The key is `ASSISTANT_MODEL_API_KEY`, a server secret; the
-provider model of each tier is `ASSISTANT_MODEL_FAST` / `ASSISTANT_MODEL_BALANCED`. Without the
-key, or without a model for the chosen tier, the storefront read answers `enabled: false`.
+codes or Cost) and the model configuration. Since package 4 that configuration is per Market,
+as `MARKET=value` pairs: `ASSISTANT_MODEL_API_KEY` (a server secret; the admin read shows only
+`set` / `not-set`), `ASSISTANT_MODEL_FAST` / `ASSISTANT_MODEL_BALANCED` (the provider model of
+each tier) and `ASSISTANT_MODEL_PRICE_FAST` / `_BALANCED` (US dollars per million input/output
+tokens, so the spend caps can be counted). Without the key, the model or the price for the chosen
+tier, the storefront read answers `enabled: false` and no message reaches a model.
 
 ## Rollout
 
 `all` shows it to every visitor; `percent` uses a stable bucket of the Market and the widget's
 random `visitor` key (no key: left out); `internal` reaches no storefront visitor yet. How the
-internal team tries it on the storefront (a preview route) is decided with the chat endpoint
-(package 4). The spend counters, the automatic switch-off at a cap and the rate limits that use
-these numbers are built in package 4.
+internal team tries it on the storefront (a preview route) is designed in
+[conversation.md](conversation.md) and not built. The spend counters, the automatic pause at a cap
+and the message limits that use these numbers are built in package 4 (conversation.md); the admin
+read also answers `spend` (today, this month, conversations today, the last automatic pause).

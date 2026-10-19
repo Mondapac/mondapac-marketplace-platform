@@ -2,6 +2,7 @@
 // Other modules may import only what this file exports, through ../index.ts.
 export * from './catalog.facade';
 export * from './catalog-index.facade';
+export * from './catalog-assistant.facade';
 export {
   OfferCreated,
   OfferChangesRequested,

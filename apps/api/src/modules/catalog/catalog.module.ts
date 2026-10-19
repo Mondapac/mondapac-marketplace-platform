@@ -87,7 +87,9 @@ import { PublishedOfferIdsQuery } from './application/use-cases/published-offer-
 import { OfferSellUnitsSystemQuery } from './application/use-cases/offer-sell-units-system.use-case';
 import { OfferSellUnitsQuery } from './application/use-cases/offer-sell-units.use-case';
 import { SeedCategoryTree } from './application/use-cases/seed-category-tree.use-case';
+import { CATALOG_ASSISTANT_FACADE } from './contracts/catalog-assistant.facade';
 import { CATALOG_FACADE } from './contracts/catalog.facade';
+import { CatalogAssistantFacadeImplementation } from './presentation/catalog-assistant.facade';
 import { CATALOG_INDEX_FACADE } from './contracts/catalog-index.facade';
 import { CATALOG_EVENTS } from './domain/events';
 import {
@@ -772,7 +774,12 @@ const productTypeProvider: FactoryProvider<string> = {
       useFactory: (facts: OfferSearchFactsQuery, published: PublishedOfferIdsQuery) =>
         new CatalogIndexFacadeImplementation(facts, published),
     },
+    {
+      provide: CATALOG_ASSISTANT_FACADE,
+      inject: [CategoryTreeQuery],
+      useFactory: (tree: CategoryTreeQuery) => new CatalogAssistantFacadeImplementation(tree),
+    },
   ],
-  exports: [CATALOG_FACADE, CATALOG_INDEX_FACADE],
+  exports: [CATALOG_FACADE, CATALOG_INDEX_FACADE, CATALOG_ASSISTANT_FACADE],
 })
 export class CatalogModule {}

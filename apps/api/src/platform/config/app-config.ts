@@ -22,7 +22,10 @@ const marketCode = z.string().transform((value, context) => {
 
 const WEBHOOK_SECRET = 'whsec_[A-Za-z0-9+/=_]{8,200}';
 const MARKET_SECRET = `[A-Z][A-Z0-9_]{1,7}=${WEBHOOK_SECRET}`;
-const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}$/;
+const MODEL_ID = '[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}';
+const API_KEY = '[A-Za-z0-9_-]{20,500}';
+const PRICE = '\\d{1,4}(?:\\.\\d{1,6})?/\\d{1,4}(?:\\.\\d{1,6})?';
+const MARKET_VALUE = (value: string): string => `[A-Z][A-Z0-9_]{1,7}=${value}`;
 
 const hostedMarkets = z
   .string({ error: 'HOSTED_MARKETS is required; there is no default market (ADR-0003)' })
@@ -99,24 +102,64 @@ const envSchema = z.object({
   // and checked by parseClientAddressTrust below; a secret is never echoed.
   TRUSTED_BFF_CIDRS: z.string().optional(),
   CLIENT_ADDRESS_KEYS: z.string().optional(),
-  // Buyer assistant: the model provider's API key, a server secret. Unset: the assistant stays
-  // off whatever its settings say. The value is never echoed; the admin screen learns only
-  // whether it is set.
+  // Buyer assistant (ADR-0019 R7: provider and model are Market configuration, no default):
+  // MARKET=value pairs separated by commas, each Market at most once and only hosted ones. A
+  // Market without its key, the chosen tier's model or that model's price stays off whatever its
+  // settings say. The key is a server secret, never echoed; the admin screen learns only whether
+  // it is set. Checked in parseMarketValues below.
   ASSISTANT_MODEL_API_KEY: z
     .string()
-    .regex(/^[\x21-\x7e]{20,500}$/, 'must be 20 to 500 printable ASCII characters')
+    .regex(
+      new RegExp(`^${MARKET_VALUE(API_KEY)}(,${MARKET_VALUE(API_KEY)})*$`),
+      'must be MARKET=key pairs separated by commas (a key is 20 to 500 of A-Z a-z 0-9 _ -)',
+    )
     .optional(),
-  // Buyer assistant: the provider model id of each tier the admin may choose (configuration, not
-  // code). Unset: that tier is not configured and the assistant stays off while it is chosen.
+  // The provider model id of each tier the admin may choose, per Market (configuration, not code).
   ASSISTANT_MODEL_FAST: z
     .string()
-    .regex(MODEL_ID, 'must be a provider model id (letters, digits, . _ : / @ -)')
+    .regex(
+      new RegExp(`^${MARKET_VALUE(MODEL_ID)}(,${MARKET_VALUE(MODEL_ID)})*$`),
+      'must be MARKET=model pairs separated by commas (a model id is letters, digits, . _ : / @ -)',
+    )
     .optional(),
   ASSISTANT_MODEL_BALANCED: z
     .string()
-    .regex(MODEL_ID, 'must be a provider model id (letters, digits, . _ : / @ -)')
+    .regex(
+      new RegExp(`^${MARKET_VALUE(MODEL_ID)}(,${MARKET_VALUE(MODEL_ID)})*$`),
+      'must be MARKET=model pairs separated by commas (a model id is letters, digits, . _ : / @ -)',
+    )
+    .optional(),
+  // The list price of each tier's model, per Market, as "input/output" US dollars per million
+  // tokens (for example AU=0.1/0.5). The spend caps are counted with it, so a tier without a
+  // price is off.
+  ASSISTANT_MODEL_PRICE_FAST: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(PRICE)}(,${MARKET_VALUE(PRICE)})*$`),
+      'must be MARKET=input/output pairs separated by commas (US dollars per million tokens)',
+    )
+    .optional(),
+  ASSISTANT_MODEL_PRICE_BALANCED: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(PRICE)}(,${MARKET_VALUE(PRICE)})*$`),
+      'must be MARKET=input/output pairs separated by commas (US dollars per million tokens)',
+    )
     .optional(),
 });
+
+/** The model price of a tier in one Market: pico US dollars per token (1e-12 USD). */
+export interface ModelTokenPrice {
+  readonly inputPicoUsd: number;
+  readonly outputPicoUsd: number;
+}
+
+/** `ASSISTANT_MODEL_*` by Market; a Market missing from a record has no value for it. */
+export interface AssistantModelConfig {
+  readonly apiKeys: Readonly<Record<string, string>>;
+  readonly models: Readonly<Record<'fast' | 'balanced', Readonly<Record<string, string>>>>;
+  readonly prices: Readonly<Record<'fast' | 'balanced', Readonly<Record<string, ModelTokenPrice>>>>;
+}
 
 /** The migration role's URL: read by the prisma CLI, the scripts and test setup only. */
 export const MIGRATION_DATABASE_URL = 'MIGRATION_DATABASE_URL';
@@ -190,12 +233,10 @@ export interface AppConfig {
    */
   readonly clientAddressTrust: ClientAddressTrust | null;
   /**
-   * The buyer assistant's model API key (`ASSISTANT_MODEL_API_KEY`), or null: then the assistant
-   * stays off. Holds a secret: never log this object whole; the settings report only set or not.
+   * The buyer assistant's model configuration per Market (ADR-0019 R7), read by `platform/ai`
+   * only. Holds secrets: never log this object whole; the settings report only set or not.
    */
-  readonly assistantModelApiKey: string | null;
-  /** The provider model id of each assistant tier (`ASSISTANT_MODEL_FAST`, `_BALANCED`), or null. */
-  readonly assistantModels: Readonly<{ fast: string | null; balanced: string | null }>;
+  readonly assistantModels: AssistantModelConfig;
 }
 
 /** The log levels a worker may run at: every one that still writes info lines. */
@@ -237,6 +278,59 @@ export function parseStripeWebhookSecrets(
     secrets[market] = pair.slice(at + 1);
   }
   return { secrets: Object.freeze(secrets), issues };
+}
+
+/**
+ * A `MARKET=value` list (already pattern-checked) as one value per Market: each Market at most
+ * once and only hosted ones. Issues name the variable and the Market, never a value.
+ */
+export function parseMarketValues(
+  value: string | undefined,
+  hosted: readonly string[],
+  variable: string,
+): { values: Readonly<Record<string, string>>; issues: string[] } {
+  if (value === undefined) return { values: Object.freeze({}), issues: [] };
+  const values: Record<string, string> = {};
+  const issues: string[] = [];
+  for (const pair of value.split(',')) {
+    const at = pair.indexOf('=');
+    const market = pair.slice(0, at);
+    if (market in values) issues.push(`${variable}: ${market} is named twice`);
+    else if (!hosted.includes(market)) issues.push(`${variable}: ${market} is not in HOSTED_MARKETS`);
+    values[market] = pair.slice(at + 1);
+  }
+  return { values: Object.freeze(values), issues };
+}
+
+/** "input/output" US dollars per million tokens as pico US dollars per token (exact: 6 decimals). */
+function tokenPriceOf(value: string): ModelTokenPrice {
+  const [input, output] = value.split('/').map((part) => Math.round(Number(part) * 1_000_000));
+  return Object.freeze({ inputPicoUsd: input!, outputPicoUsd: output! });
+}
+
+function assistantModelConfig(
+  env: z.infer<typeof envSchema>,
+): { config: AssistantModelConfig; issues: string[] } {
+  const hosted = env.HOSTED_MARKETS;
+  const read = (variable: keyof z.infer<typeof envSchema>) =>
+    parseMarketValues(env[variable] as string | undefined, hosted, variable);
+  const keys = read('ASSISTANT_MODEL_API_KEY');
+  const fast = read('ASSISTANT_MODEL_FAST');
+  const balanced = read('ASSISTANT_MODEL_BALANCED');
+  const fastPrice = read('ASSISTANT_MODEL_PRICE_FAST');
+  const balancedPrice = read('ASSISTANT_MODEL_PRICE_BALANCED');
+  const prices = (values: Readonly<Record<string, string>>) =>
+    Object.freeze(
+      Object.fromEntries(Object.entries(values).map(([market, v]) => [market, tokenPriceOf(v)])),
+    );
+  return {
+    config: Object.freeze({
+      apiKeys: keys.values,
+      models: Object.freeze({ fast: fast.values, balanced: balanced.values }),
+      prices: Object.freeze({ fast: prices(fastPrice.values), balanced: prices(balancedPrice.values) }),
+    }),
+    issues: [keys, fast, balanced, fastPrice, balancedPrice].flatMap((read) => read.issues),
+  };
 }
 
 /**
@@ -291,7 +385,13 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       );
     }
   }
-  if (!parsed.success || issues.length > 0) throw new InvalidConfigError(issues);
+  const assistant = parsed.success
+    ? assistantModelConfig(parsed.data)
+    : { config: null, issues: [] };
+  issues.push(...assistant.issues);
+  if (!parsed.success || issues.length > 0 || assistant.config === null) {
+    throw new InvalidConfigError(issues);
+  }
   return Object.freeze({
     appRole: parsed.data.APP_ROLE,
     nodeEnv: parsed.data.NODE_ENV,
@@ -316,10 +416,6 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     stripeWebhookSecrets: webhookSecrets.secrets,
     stripeConnectWebhookSecrets: connectSecrets.secrets,
     clientAddressTrust: clientAddress.trust,
-    assistantModelApiKey: parsed.data.ASSISTANT_MODEL_API_KEY ?? null,
-    assistantModels: Object.freeze({
-      fast: parsed.data.ASSISTANT_MODEL_FAST ?? null,
-      balanced: parsed.data.ASSISTANT_MODEL_BALANCED ?? null,
-    }),
+    assistantModels: assistant.config,
   });
 }

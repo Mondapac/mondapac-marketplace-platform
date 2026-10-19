@@ -23,7 +23,15 @@ import {
 } from '../domain/assistant-settings';
 import { AssistantSettingsChanged } from '../domain/audit';
 import type { AssistantDependencies } from './assistant-dependencies';
-import type { AssistantRuntime } from './ports/assistant-runtime';
+import {
+  FakeRuntime,
+  FakeTools,
+  MemoryConversations,
+  MemoryLimits,
+  MemorySpend,
+  SequenceGuestTokens,
+  UtcCalendar,
+} from './testing/assistant-fakes';
 import type {
   AssistantSettingsRecord,
   AssistantSettingsRepository,
@@ -65,17 +73,6 @@ class MemorySettings implements AssistantSettingsRepository {
     if (this.taken) return Promise.resolve(false);
     this.rows.push(record);
     return Promise.resolve(true);
-  }
-}
-
-class FakeRuntime implements AssistantRuntime {
-  key = true;
-  models: Record<ModelTier, string | null> = { fast: 'model-fast', balanced: null };
-  apiKeyConfigured() {
-    return this.key;
-  }
-  modelOf(tier: ModelTier) {
-    return this.models[tier];
   }
 }
 
@@ -260,6 +257,12 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       runtime,
       audit,
       clock: new FixedClock(T0),
+      conversations: new MemoryConversations(),
+      spend: new MemorySpend(),
+      tools: new FakeTools(),
+      limits: new MemoryLimits(),
+      guestTokens: new SequenceGuestTokens(),
+      calendar: new UtcCalendar(),
     };
   });
 
@@ -281,6 +284,7 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
           { tier: 'balanced', modelId: null },
         ],
         unavailableOptions: { scope: ['cart-suggestions'], supportHandoff: ['in-panel-form'] },
+        spend: { todayMicroUsd: 0, monthMicroUsd: 0, conversationsToday: 0, lastAutoOff: null },
       }),
     );
     runtime.key = false;
