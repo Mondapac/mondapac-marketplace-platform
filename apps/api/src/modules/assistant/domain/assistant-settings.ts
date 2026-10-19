@@ -106,9 +106,10 @@ export interface FieldError {
   readonly code: 'type' | 'range' | 'format' | 'unavailable';
 }
 
-// Controls, bidirectional overrides and isolates (a visual spoof), and markup characters. A
-// zero-width non-joiner stays allowed: Persian text needs it.
-const FORBIDDEN_TEXT = /[\p{Cc}‪-‮⁦-⁩<>]/u;
+// Controls, invisible format characters (bidirectional marks, overrides and isolates: a visual
+// spoof), line and paragraph separators, and markup characters. The zero-width non-joiner
+// (U+200C) stays allowed: Persian text needs it. The database CHECK repeats this list.
+const FORBIDDEN_TEXT = /(?!\u200C)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}<>]/u;
 
 function oneOf<T extends string>(
   value: unknown,

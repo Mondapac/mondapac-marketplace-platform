@@ -218,13 +218,18 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
       ['an untrimmed welcome text', { welcome_text: ' Hi' }],
       ['a welcome text with a control character', { welcome_text: 'Hi\nthere' }],
       ['a welcome text with markup', { welcome_text: '<b>Hi</b>' }],
+      ['a welcome text with a bidi override', { welcome_text: 'Hi \u202Eereht' }],
+      ['a welcome text with a direction mark', { welcome_text: 'Hi\u200Fthere' }],
+      ['a welcome text with a zero-width space', { welcome_text: 'Hi\u200Bthere' }],
+      ['a welcome text with a line separator', { welcome_text: 'Hi\u2028there' }],
       ['version 0', { version: 0 }],
     ])('refuses %s', async (_label, overrides) => {
       await expect(insert(overrides)).rejects.toMatchObject({ code: CHECK });
     });
 
-    it('accepts a valid row', async () => {
+    it('accepts a valid row, Persian with its zero-width non-joiner included', async () => {
       await expect(insert({})).resolves.toBeDefined();
+      await expect(insert({ welcome_text: 'می\u200Cتوانم کمک کنم؟' })).resolves.toBeDefined();
     });
   });
 });

@@ -55,7 +55,8 @@ ALTER TABLE "assistant"."settings"
   ADD CONSTRAINT "settings_welcome_text_check" CHECK (
     "welcome_text" IS NULL
     OR ("welcome_text" = btrim("welcome_text") AND length("welcome_text") >= 1
-        AND "welcome_text" !~ '[[:cntrl:]<>]')
+        -- Controls, format characters except U+200C (Persian), separators and markup, as the API.
+        AND "welcome_text" !~ E'[\\u0001-\\u001F\\u007F-\\u009F\\u00AD\\u0600-\\u0605\\u061C\\u06DD\\u070F\\u08E2\\u180E\\u200B\\u200D-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFEFF\\uFFF9-\\uFFFB<>]')
   );
 
 -- Grants. Insert-only: a change is a new version, nothing is updated or deleted.

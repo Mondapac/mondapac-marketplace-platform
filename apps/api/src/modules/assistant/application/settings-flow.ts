@@ -54,6 +54,19 @@ const OFF: StorefrontAssistantView = Object.freeze({
 // The key a storefront visitor sends to keep one rollout bucket (the widget's random id).
 const VISITOR_KEY = /^[A-Za-z0-9_-]{16,64}$/;
 
+const RETENTION_DAYS = { none: 0, '30-days': 30, '12-months': 365 } as const;
+
+function auditSnapshot(version: number, settings: AssistantSettings) {
+  return {
+    version,
+    enabled: settings.enabled,
+    users: settings.users,
+    retentionDays: RETENTION_DAYS[settings.retention],
+    dailySpendCapUsdCents: settings.dailySpendCapUsdCents,
+    monthlySpendCapUsdCents: settings.monthlySpendCapUsdCents,
+  };
+}
+
 const isAdmin = (context: CallContext): boolean =>
   context.actor.kind === 'authenticated' && context.actor.population === 'admin';
 
@@ -138,8 +151,8 @@ export async function setAssistantSettings(
       await deps.audit.record(
         context,
         AssistantSettingsChanged.entry('assistant-settings', {
-          before: { version: currentVersion, enabled: before.enabled },
-          after: { version, enabled: next.enabled },
+          before: auditSnapshot(currentVersion, before),
+          after: auditSnapshot(version, next),
         }),
       );
       return ok(viewOf(deps, version, next));

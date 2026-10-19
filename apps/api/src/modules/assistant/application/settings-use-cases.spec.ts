@@ -296,8 +296,22 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
     ]);
     expect(audit.entries).toEqual([
       AssistantSettingsChanged.entry('assistant-settings', {
-        before: { version: 0, enabled: false },
-        after: { version: 1, enabled: true },
+        before: {
+          version: 0,
+          enabled: false,
+          users: 'guests-and-customers' as const,
+          retentionDays: 30,
+          dailySpendCapUsdCents: 1_000,
+          monthlySpendCapUsdCents: 20_000,
+        },
+        after: {
+          version: 1,
+          enabled: true,
+          users: 'guests-and-customers' as const,
+          retentionDays: 30,
+          dailySpendCapUsdCents: 1_000,
+          monthlySpendCapUsdCents: 20_000,
+        },
       }),
     ]);
 
@@ -310,8 +324,22 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
     expect(off.ok && off.value.version).toBe(2);
     expect(audit.entries[1]).toEqual(
       AssistantSettingsChanged.entry('assistant-settings', {
-        before: { version: 1, enabled: true },
-        after: { version: 2, enabled: false },
+        before: {
+          version: 1,
+          enabled: true,
+          users: 'guests-and-customers' as const,
+          retentionDays: 30,
+          dailySpendCapUsdCents: 1_000,
+          monthlySpendCapUsdCents: 20_000,
+        },
+        after: {
+          version: 2,
+          enabled: false,
+          users: 'guests-and-customers' as const,
+          retentionDays: 30,
+          dailySpendCapUsdCents: 1_000,
+          monthlySpendCapUsdCents: 20_000,
+        },
       }),
     );
   });
