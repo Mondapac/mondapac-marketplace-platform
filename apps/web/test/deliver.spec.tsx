@@ -178,9 +178,15 @@ describe('Deliver to modal', () => {
     renderHeader();
     const dialog = await openModal();
     await type('zzz');
-    expect(within(dialog).getByRole('option').textContent).toContain(
-      'No match. Try the street and suburb.',
-    );
+    const status = within(dialog).getByRole('status');
+    expect(status.textContent).toBe('No match. Try the street and suburb.');
+    expect(within(dialog).queryByRole('listbox')).toBeNull();
+    expect(within(dialog).getByRole('combobox').getAttribute('aria-expanded')).toBe('false');
+    fireEvent.keyDown(within(dialog).getByRole('combobox'), { key: 'Escape' });
+    expect(status.textContent).toBe('');
+    expect(screen.getByRole('dialog')).not.toBeNull();
+    await type('kedron');
+    expect(within(dialog).getByRole('listbox')).not.toBeNull();
     fireEvent.keyDown(within(dialog).getByRole('combobox'), { key: 'Escape' });
     expect(within(dialog).queryByRole('listbox')).toBeNull();
     expect(screen.getByRole('dialog')).not.toBeNull();

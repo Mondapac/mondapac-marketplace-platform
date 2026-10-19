@@ -72,6 +72,8 @@ export function StubMap({
   const view = useRef<PlanePoint>({ x: 0, y: 0 });
   const recentre = useRef(true);
   const dragging = useRef(false);
+  /** Where the pin was grabbed, from its tip (plane units), so a grab does not make it jump. */
+  const grab = useRef<PlanePoint>({ x: 0, y: 0 });
 
   useEffect(() => {
     const el = box.current;
@@ -99,21 +101,29 @@ export function StubMap({
   view.current = { x: vx, y: vy };
   if (size.w) recentre.current = false;
 
-  const fromEvent = (event: PointerEvent): GeoPoint => {
+  const atPointer = (event: PointerEvent): PlanePoint => {
     const rect = box.current!.getBoundingClientRect();
-    return fromPlane(
-      clampToPlane({
-        x: vx + (event.clientX - rect.left) / scale,
-        y: vy + (event.clientY - rect.top) / scale,
-      }),
-      bounds,
-    );
+    return {
+      x: vx + (event.clientX - rect.left) / scale,
+      y: vy + (event.clientY - rect.top) / scale,
+    };
+  };
+  const fromEvent = (event: PointerEvent): GeoPoint => {
+    const at = atPointer(event);
+    return fromPlane(clampToPlane({ x: at.x - grab.current.x, y: at.y - grab.current.y }), bounds);
   };
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if ((event.target as Element).closest('.lmzoom, .lmx')) return;
+    const target = event.target as Element;
+    if (target.closest('.lmzoom, .lmx')) return;
     event.preventDefault();
     dragging.current = true;
     box.current?.setPointerCapture?.(event.pointerId);
+    if (target.closest('.lmpin')) {
+      const at = atPointer(event);
+      grab.current = { x: at.x - pin.x, y: at.y - pin.y };
+      return;
+    }
+    grab.current = { x: 0, y: 0 };
     onMove(fromEvent(event));
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {

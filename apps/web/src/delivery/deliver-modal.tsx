@@ -118,7 +118,8 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   };
   const pinAt = (point: GeoPoint, origin: Origin) => {
     const ticket = ++placeTicket.current;
-    setPick({ point, origin, place: null });
+    // The place found before stays until the lookup answers, so the summary does not flicker.
+    setPick((before) => ({ point, origin, place: before.place }));
     void lookup.suburbAt(point).then((place) => {
       if (ticket === placeTicket.current) setPick({ point, origin, place });
     });
@@ -239,7 +240,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     summary = t(pick.origin === 'device' ? 'device-near' : 'dropped-near', {
       place: pick.place ? locality(pick.place) : area,
     });
-  const listOpen = results !== null;
+  const listOpen = results !== null && results.length > 0;
 
   return createPortal(
     <div className="lmw">
@@ -287,30 +288,27 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                 </div>
                 {listOpen ? (
                   <ul className="lmlist" id={listId} role="listbox" aria-label={t('suggestions')}>
-                    {results.length > 0 ? (
-                      results.map((place, i) => (
-                        <li
-                          key={place.id}
-                          id={optionId(i)}
-                          role="option"
-                          aria-selected={i === active}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => pickResult(place)}
-                        >
-                          <Icon name="pin" />
-                          <span>
-                            <b>{place.street || place.suburb}</b>
-                            <small>{locality(place)}</small>
-                          </span>
-                        </li>
-                      ))
-                    ) : (
-                      <li className="none" role="option" aria-disabled="true" aria-selected={false}>
-                        {t('no-match')}
+                    {results.map((place, i) => (
+                      <li
+                        key={place.id}
+                        id={optionId(i)}
+                        role="option"
+                        aria-selected={i === active}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => pickResult(place)}
+                      >
+                        <Icon name="pin" />
+                        <span>
+                          <b>{place.street || place.suburb}</b>
+                          <small>{locality(place)}</small>
+                        </span>
                       </li>
-                    )}
+                    ))}
                   </ul>
                 ) : null}
+                <p className="lmnone" role="status">
+                  {results?.length === 0 ? t('no-match') : null}
+                </p>
               </div>
               <button
                 className="lmgps"
