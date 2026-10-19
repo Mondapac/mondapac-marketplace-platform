@@ -184,3 +184,23 @@ model EventDelivery {
   @@map("event_delivery")
   @@schema("platform")
 }
+
+/// @market-scope none: the generic per-origin rate limiter counts across Markets (PF I11).
+/// One fixed window per limit class and origin of the generic rate limiter (identity design 6.8
+/// and 13; buyer scale-out item (a)), shared by every API instance. Written only by the
+/// PostgreSQL store of `rate-limiter-flexible` through platform/persistence/, whose statements
+/// fix the column names, their order and the key shape ("<limit class>:<origin key>"). The key
+/// holds the keyed hash of the origin, never an address (identity data design HF3). Transient:
+/// the store deletes windows that ended over an hour ago. CHECKs and grants are hand-written in
+/// the migration.
+model RateLimitCounter {
+  /// "<limit class>:<64 lowercase hex of HMAC-SHA-256 of the origin>".
+  key    String @id @db.VarChar(255)
+  /// Requests counted in the window.
+  points Int
+  /// End of the window, epoch milliseconds (the package's clock).
+  expire BigInt
+
+  @@map("rate_limit_counters")
+  @@schema("platform")
+}

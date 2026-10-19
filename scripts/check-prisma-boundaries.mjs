@@ -66,6 +66,8 @@ const RAW_SQL_FILES = new Set([
   'platform/persistence/outbox/in-process-event-bus.ts',
   'platform/persistence/outbox/prisma-event-dispatcher.ts',
   'platform/persistence/outbox/prisma-outbox-relay.ts',
+  // The PostgreSQL store of rate-limiter-flexible sends its own fixed statements (identity design 13).
+  'platform/persistence/postgres-rate-limit-counters.ts',
   'platform/persistence/prisma-root.ts',
   'platform/persistence/prisma-unit-of-work.ts',
   'platform/persistence/raw-reads/prisma-raw-read-port.ts',
