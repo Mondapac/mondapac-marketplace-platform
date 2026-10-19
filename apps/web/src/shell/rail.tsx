@@ -6,22 +6,13 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { Icon } from '../icons/icon.tsx';
 import type { IconName } from '../icons/icon-paths.tsx';
+import { ACCOUNT_NAV, useAccountCurrent, useLogOut } from '../account/account-nav.ts';
 import { useStore } from './store-context.tsx';
 
 interface RailLink {
   readonly href: string;
   readonly icon: IconName;
-  readonly label:
-    | 'home'
-    | 'offers'
-    | 'express'
-    | 'sellers'
-    | 'recipes'
-    | 'gift-cards'
-    | 'sell'
-    | 'orders'
-    | 'saved'
-    | 'account';
+  readonly label: 'home' | 'offers' | 'express' | 'sellers' | 'recipes' | 'gift-cards' | 'sell';
 }
 
 const SHOP: readonly RailLink[] = [
@@ -34,11 +25,6 @@ const MORE: readonly RailLink[] = [
   { href: '/recipes', icon: 'book', label: 'recipes' },
   { href: '/gift-cards', icon: 'gift', label: 'gift-cards' },
   { href: '/sell', icon: 'store', label: 'sell' },
-];
-const YOU: readonly RailLink[] = [
-  { href: '/account/orders', icon: 'bag', label: 'orders' },
-  { href: '/account/lists', icon: 'heart', label: 'saved' },
-  { href: '/account', icon: 'user', label: 'account' },
 ];
 
 /** The fixed side menu of the desktop layout (from 900px). */
@@ -90,8 +76,54 @@ export function Rail() {
         {more ? t('show-less') : t('show-more')}
       </button>
       <hr />
-      <h3>{t('you')}</h3>
-      {YOU.map(item)}
+      <RailAccount />
     </nav>
+  );
+}
+
+/**
+ * The account part of the rail, the only account navigation on the desktop layout. Signed out:
+ * one "My Account" row that opens the log-in dialog. Signed in: the "My Account" heading with
+ * the ringed avatar, the account pages and Log out.
+ */
+function RailAccount() {
+  const t = useTranslations('account');
+  const { customer, setLoginOpen } = useStore();
+  const current = useAccountCurrent();
+  const logOut = useLogOut();
+  if (!customer)
+    return (
+      <button type="button" aria-haspopup="dialog" onClick={() => setLoginOpen(true)}>
+        <Icon name="user" />
+        {t('my-account')}
+      </button>
+    );
+  return (
+    <>
+      <h3 className="rah">
+        <span className="rau in" aria-hidden="true">
+          <Icon name="user" />
+        </span>
+        <span>
+          {t('my-account')}
+          <span className="sr-only"> ({t('signed-in-as', { name: customer.fullName })})</span>
+        </span>
+      </h3>
+      {ACCOUNT_NAV.map((link) => (
+        <Link
+          key={link.key}
+          href={link.href}
+          className={current === link.href ? 'cur' : undefined}
+          aria-current={current === link.href ? 'page' : undefined}
+        >
+          <Icon name={link.icon} />
+          {t(`nav.${link.key}`)}
+        </Link>
+      ))}
+      <button type="button" className="rout" onClick={logOut}>
+        <Icon name="out" />
+        {t('log-out')}
+      </button>
+    </>
   );
 }
