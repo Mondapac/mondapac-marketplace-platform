@@ -58,6 +58,7 @@ const CUSTOMER = id<'Account'>(0xa101);
 const OTHER_CUSTOMER = id<'Account'>(0xa102);
 const VIEWER = id<'Account'>(0xa001);
 const NO_KEY = id<'Account'>(0xa003);
+const REFUNDER = id<'Account'>(0xa009);
 const NO_KEY_ROLE = id<'Role'>(0xc0f2);
 const SELLER = id<'Seller'>(0xb020);
 const OFFER = id<'Offer'>(0xc001);
@@ -90,6 +91,13 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.seller-order-not-found': 404,
     'ordering.fulfilment-conflict': 409,
     'ordering.payment-unavailable': 503,
+    'ordering.refund-disabled': 409,
+    'ordering.refund-not-allowed': 409,
+    'ordering.refund-in-progress': 409,
+    'ordering.refund-tax-unknown': 422,
+    'ordering.refund-exceeds': 422,
+    'ordering.refund-rejected': 422,
+    'ordering.refund-tax-unavailable': 503,
     'access.unavailable': 503,
   });
 });
@@ -508,6 +516,52 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(customerTries.status).toBeLessThanOrEqual(403);
       expect(unknown.status).toBe(404);
       expect(badFilter.status).toBe(400);
+    });
+
+    it('refunds only for an admin with ordering.order.refund, and not while the Market switch is off', async () => {
+      await seedAdmins();
+      const rootRole = [...fakes.roles.values()].find(
+        (r) => r.marketId === code && r.seedCode === 'platform-administrator',
+      )!.id;
+      seedAccount(REFUNDER, 'admin', 'admin9');
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xe009),
+        marketId: code as AccountState['marketId'],
+        accountId: REFUNDER,
+        roleId: rootRole,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+      const orderId = id<'Order'>(0xbe01);
+      const route = `/ordering/admin/orders/${orderId}/seller-orders/${id<'SellerOrder'>(0xbe02)}/refunds`;
+      const refundBody = {
+        lines: [{ orderLineId: id<'OrderLine'>(0xbe03), quantity: 1 }],
+        reason: 'damaged',
+      };
+
+      // A write: the session's CSRF token too.
+      const writer = (accountId: Id<'Account'>, n: number) => ({
+        'x-market-id': code,
+        ...panelHeaders(code, 'admin'),
+        ...session(accountId, 'admin', n),
+      });
+      const off = await http().post(route).set(writer(REFUNDER, 21)).send(refundBody);
+      const noKey = await http().post(route).set(writer(VIEWER, 22)).send(refundBody);
+      const noCsrf = await http().post(route).set(adminHeaders(REFUNDER, 24)).send(refundBody);
+      const unknownField = await http()
+        .post(route)
+        .set(writer(REFUNDER, 23))
+        .send({ ...refundBody, amount: '1' });
+
+      // The fixtures keep tax.refundCredit.enabled off: nothing is read or sent to Stripe.
+      expect(off.status).toBe(409);
+      expect(off.body).toEqual({ statusCode: 409, code: 'ordering.refund-disabled' });
+      expect(off.headers['cache-control']).toBe('no-store');
+      expect(gateway.refunds).toHaveLength(0);
+      expect(noKey.status).toBe(403);
+      expect(noCsrf.body).toMatchObject({ code: 'request.csrf' });
+      expect(unknownField.status).toBe(400);
     });
   });
 });
