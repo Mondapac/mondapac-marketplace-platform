@@ -3317,6 +3317,11 @@ svg {
   gap: 4px 12px;
 }
 .ctitle h1,
+.dtitle,
+.okc h1 {
+  outline: 0;
+}
+.ctitle h1,
 .dtitle {
   font-size: calc(24px * var(--fs));
   line-height: calc(30px * var(--fs));
@@ -3344,6 +3349,10 @@ svg {
 .cnote p {
   flex: 1;
   min-width: 0;
+}
+.cnote button {
+  align-self: center;
+  margin-block: -12px;
 }
 .cnote button,
 .lnk {
@@ -3662,6 +3671,7 @@ svg {
   min-width: 24px;
 }
 .cpr {
+  min-width: 9ch;
   text-align: end;
 }
 .cpr b {
@@ -3843,6 +3853,7 @@ svg {
   height: 18px;
 }
 .sth h2 {
+  outline: 0;
   flex: 1;
   min-width: 0;
   font-size: calc(17px * var(--fs));
@@ -3979,7 +3990,7 @@ svg {
   font: inherit;
   font-weight: 700;
 }
-.tabs2 button[aria-selected='true'] {
+.tabs2 button[aria-pressed='true'] {
   color: var(--sf-teal);
   border-bottom-color: var(--sf-teal);
 }
@@ -4319,4 +4330,141 @@ svg {
   .cs.stick.alt {
     display: none;
   }
+}
+
+/* Cart v4: save for later, discount code, seller note. */
+.cact {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 16px;
+}
+.svd {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  background: var(--sf-white);
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  padding: 16px;
+}
+.svd h2 {
+  font-size: calc(18px * var(--fs));
+  font-weight: 800;
+}
+.svd h2 span {
+  color: var(--sf-slate);
+  font-weight: 700;
+}
+.svd .cqp {
+  flex-wrap: wrap;
+}
+.dcl {
+  gap: 6px;
+  justify-self: start;
+}
+.dcl .ico,
+.dchip .ico,
+.nbt .ico {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.dcb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  background: var(--sf-mist-soft);
+  color: var(--sf-teal);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: calc(13px * var(--fs));
+  overflow-wrap: anywhere;
+}
+.dcf {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.dcf label {
+  font-weight: 700;
+  font-size: calc(14px * var(--fs));
+}
+.dcrow {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+}
+.dcrow input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  border: 1px solid color-mix(in srgb, var(--sf-ink) 30%, var(--sf-white));
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--sf-white);
+  color: var(--sf-ink);
+  font: inherit;
+  text-transform: uppercase;
+}
+.dcrow input[aria-invalid='true'] {
+  border-color: var(--sf-error);
+}
+.dcrow .btn {
+  flex: none;
+  min-height: 44px;
+}
+.dcf .err {
+  color: var(--sf-error);
+  font-weight: 600;
+  font-size: calc(13px * var(--fs));
+}
+.cs .dsc dt,
+.cs .dsc dd {
+  color: var(--sf-teal);
+}
+.dnote {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.nbt {
+  gap: 6px;
+  font-size: calc(13px * var(--fs));
+  font-weight: 600;
+}
+.nbox {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.nbox label {
+  font-weight: 700;
+  font-size: calc(14px * var(--fs));
+}
+.nbox textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 72px;
+  border: 1px solid color-mix(in srgb, var(--sf-ink) 30%, var(--sf-white));
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--sf-white);
+  color: var(--sf-ink);
+  font: inherit;
+  resize: vertical;
+}
+.nbox small {
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+}
+.nbox .ncnt {
+  justify-self: end;
 }

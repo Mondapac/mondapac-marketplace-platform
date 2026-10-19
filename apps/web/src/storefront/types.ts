@@ -194,11 +194,22 @@ export interface IncludedTaxPreview {
   readonly includesDelivery: boolean;
 }
 
+/** A discount code applied to the cart: a share off the items, never off delivery. */
+export interface AppliedDiscount {
+  readonly code: string;
+  readonly percentOff: number;
+}
+
 /** Everything the cart drawer and the cart page need beside the lines themselves. */
 export interface CartSource {
   readonly items: Readonly<Record<string, CartItem>>;
   readonly sellers: Readonly<Record<string, SellerTerms>>;
   readonly tax: IncludedTaxPreview;
+  /**
+   * SAMPLE ONLY: the codes the sample accepts, by code. The backend's validate endpoint replaces
+   * this list; who funds a discount and its GST treatment are not settled.
+   */
+  readonly sampleDiscounts: Readonly<Record<string, AppliedDiscount>>;
 }
 
 export interface SavedAddress {

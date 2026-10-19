@@ -3,10 +3,28 @@
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 import { viewCart } from '../cart/cart.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
+
+/** A page heading that takes the focus when the page opens (after the redirect back). */
+function PageTitle({
+  className,
+  children,
+}: {
+  readonly className?: string;
+  readonly children: string;
+}) {
+  const ref = useRef<HTMLHeadingElement>(null);
+  useEffect(() => ref.current?.focus(), []);
+  return (
+    <h1 ref={ref} className={className} tabIndex={-1}>
+      {children}
+    </h1>
+  );
+}
 
 // The pages around Stripe's hosted payment page: the sample stand-in for it, "Payment not
 // completed" (Stripe's cancel URL) and the confirmation (its success URL).
@@ -18,8 +36,9 @@ import { useStore } from '../shell/store-context.tsx';
 export function SamplePayment({ reference }: { readonly reference: string }) {
   const t = useTranslations('checkout');
   const router = useRouter();
-  const { cart, cartSource, clearCart, deliveryAddress, setPlacedOrder } = useStore();
-  const view = viewCart(cart, cartSource);
+  const { cart, cartSource, discount, notes, clearCart, deliveryAddress, setPlacedOrder } =
+    useStore();
+  const view = viewCart(cart, cartSource, discount);
   return (
     <div className="cwrap">
       <div className="done">
@@ -35,7 +54,13 @@ export function SamplePayment({ reference }: { readonly reference: string }) {
               className="btn"
               type="button"
               onClick={() => {
-                setPlacedOrder({ reference, view, address: deliveryAddress });
+                setPlacedOrder({
+                  reference,
+                  view,
+                  address: deliveryAddress,
+                  discountCode: discount?.code ?? null,
+                  notes,
+                });
                 clearCart();
                 router.push('/checkout/confirmation');
               }}
@@ -61,7 +86,7 @@ export function PaymentNotCompleted() {
           <Icon name="info" />
           <p>{t.rich('not-paid', { b: (chunks) => <b>{chunks}</b> })}</p>
         </div>
-        <h1 className="dtitle">{t('try-again')}</h1>
+        <PageTitle className="dtitle">{t('try-again')}</PageTitle>
         <p className="legal">{t('not-paid-body')}</p>
         <div className="dact">
           <Link className="btn" href="/checkout/payment">
@@ -84,7 +109,7 @@ export function Confirmation() {
     return (
       <div className="cwrap">
         <div className="done">
-          <h1 className="dtitle">{t('title')}</h1>
+          <PageTitle className="dtitle">{t('title')}</PageTitle>
           <p>{t('no-order')}</p>
           <div className="dact">
             <Link className="btn" href="/">
@@ -101,13 +126,21 @@ export function Confirmation() {
           <span className="tk">
             <Icon name="check" />
           </span>
-          <h1>{t('thanks', { name: customer.firstName })}</h1>
+          <PageTitle>{t('thanks', { name: customer.firstName })}</PageTitle>
           <p>
-            {t('placed', {
-              reference: order.reference,
-              total: formatMoney(order.view.total, locale),
-              email: customer.email,
-            })}
+            {order.discountCode && order.view.discount.amount > 0
+              ? t('placed-discount', {
+                  reference: order.reference,
+                  total: formatMoney(order.view.total, locale),
+                  discount: formatMoney(order.view.discount, locale),
+                  code: order.discountCode,
+                  email: customer.email,
+                })
+              : t('placed', {
+                  reference: order.reference,
+                  total: formatMoney(order.view.total, locale),
+                  email: customer.email,
+                })}
           </p>
         </div>
         <div className="infob">
@@ -131,6 +164,11 @@ export function Confirmation() {
                 <li key={l.id}>{t('line', { quantity: l.quantity, name: l.item.name })}</li>
               ))}
             </ul>
+            {order.notes[g.seller.id] ? (
+              <p className="legal">
+                <b>{t('your-note')}</b> {order.notes[g.seller.id]}
+              </p>
+            ) : null}
           </article>
         ))}
         <div className="dord">

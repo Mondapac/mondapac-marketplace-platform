@@ -1,20 +1,31 @@
 'use client';
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { addOne, removeLine, removeOne, type Cart, type CartView } from '../cart/cart.ts';
-import type { CartSource, CheckoutCustomer, Money } from '../storefront/types.ts';
+import {
+  addOne,
+  lineLimit,
+  removeLine,
+  removeOne,
+  type Cart,
+  type CartView,
+} from '../cart/cart.ts';
+import type { AppliedDiscount, CartSource, CheckoutCustomer, Money } from '../storefront/types.ts';
 
 /** What the confirmation shows of the order just placed. */
 export interface PlacedOrder {
   readonly reference: string;
   readonly view: CartView;
   readonly address: string;
+  readonly discountCode: string | null;
+  /** The buyer's note to each seller, by seller id. */
+  readonly notes: Readonly<Record<string, string>>;
 }
 
 const NO_SOURCE: CartSource = {
   items: {},
   sellers: {},
   tax: { share: { numerator: 0, denominator: 1 }, includesDelivery: false },
+  sampleDiscounts: {},
 };
 
 interface StoreState {
@@ -25,6 +36,17 @@ interface StoreState {
   readonly removeLine: (id: string) => void;
   readonly clearCart: () => void;
   readonly cartSource: CartSource;
+  /** Saved-for-later offer ids, newest last; not in the cart or its totals. */
+  readonly saved: readonly string[];
+  readonly saveForLater: (id: string) => void;
+  /** Moves a saved item back to the cart (one unit). */
+  readonly moveToCart: (id: string) => void;
+  readonly removeSaved: (id: string) => void;
+  readonly discount: AppliedDiscount | null;
+  readonly setDiscount: (discount: AppliedDiscount | null) => void;
+  /** Checkout notes to sellers, by seller id. */
+  readonly notes: Readonly<Record<string, string>>;
+  readonly setNote: (sellerId: string, note: string) => void;
   /** The cart drawer of the header's cart button. */
   readonly cartOpen: boolean;
   readonly setCartOpen: (open: boolean) => void;
@@ -64,6 +86,9 @@ export function StoreProvider({
   const [cartOpen, setCartOpen] = useState(false);
   const [customer, setCustomer] = useState<CheckoutCustomer | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [saved, setSaved] = useState<readonly string[]>([]);
+  const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
+  const [notes, setNotes] = useState<Readonly<Record<string, string>>>({});
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
   const [browseOpen, setBrowseOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -76,7 +101,32 @@ export function StoreProvider({
   );
   const remove = useCallback((id: string) => setCart((current) => removeOne(current, id)), []);
   const dropLine = useCallback((id: string) => setCart((current) => removeLine(current, id)), []);
-  const clearCart = useCallback(() => setCart({}), []);
+  const clearCart = useCallback(() => {
+    setCart({});
+    setDiscount(null);
+    setNotes({});
+  }, []);
+  const saveForLater = useCallback((id: string) => {
+    setCart((current) => removeLine(current, id));
+    setSaved((current) => (current.includes(id) ? current : [...current, id]));
+  }, []);
+  const removeSaved = useCallback(
+    (id: string) => setSaved((current) => current.filter((s) => s !== id)),
+    [],
+  );
+  const moveToCart = useCallback(
+    (id: string) => {
+      const item = cartSource.items[id];
+      if (!item) return;
+      setSaved((current) => current.filter((s) => s !== id));
+      setCart((current) => addOne(current, id, item.price, lineLimit(item.lowStock)));
+    },
+    [cartSource],
+  );
+  const setNote = useCallback(
+    (sellerId: string, note: string) => setNotes((current) => ({ ...current, [sellerId]: note })),
+    [],
+  );
   const value = useMemo(
     () => ({
       cart,
@@ -85,6 +135,14 @@ export function StoreProvider({
       removeLine: dropLine,
       clearCart,
       cartSource,
+      saved,
+      saveForLater,
+      moveToCart,
+      removeSaved,
+      discount,
+      setDiscount,
+      notes,
+      setNote,
       cartOpen,
       setCartOpen,
       customer,
@@ -109,6 +167,13 @@ export function StoreProvider({
       dropLine,
       clearCart,
       cartSource,
+      saved,
+      saveForLater,
+      moveToCart,
+      removeSaved,
+      discount,
+      notes,
+      setNote,
       cartOpen,
       customer,
       deliveryAddress,

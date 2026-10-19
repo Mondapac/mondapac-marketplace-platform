@@ -351,7 +351,24 @@
     "view-cart": "View cart",
     "guest-note": "You will log in or create an account in the next step. Your cart is kept.",
     "trust-card": "Card details are entered on Stripe's secure page, not on Mondapac.",
-    "trust-split": "Each seller delivers its own part of the order."
+    "trust-split": "Each seller delivers its own part of the order.",
+    "save-for-later": "Save for later",
+    "save-item": "Save {name} for later",
+    "saved-title": "Saved for later",
+    "saved-account": "Saved items are kept in your account. They are not in your order and their price and stock can change.",
+    "saved-guest": "Saved items stay in this browser. Log in to keep them on all your devices. They are not in your order.",
+    "move-to-cart": "Move to cart",
+    "move-item": "Move {name} to cart",
+    "remove-saved": "Remove {name} from saved items",
+    "discount-open": "Have a discount code?",
+    "discount-label": "Discount code",
+    "discount-apply": "Apply",
+    "discount-hint": "Applies to items only, not delivery.",
+    "discount-empty": "Enter your discount code.",
+    "discount-invalid": "This code is not valid or has expired.",
+    "discount-applied": "{percent}% off items",
+    "discount-remove": "Remove discount code",
+    "summary-discount": "Discount ({code})"
   },
   "checkout": {
     "title": "Checkout",
@@ -415,6 +432,13 @@
     "view-orders": "View my orders",
     "continue-shopping": "Continue shopping",
     "no-order": "There is no recent order to show.",
-    "summary-toggle": "Order summary"
+    "summary-toggle": "Order summary",
+    "note-open": "Add a note for this seller",
+    "note-label": "Note for {seller} (optional)",
+    "note-placeholder": "For example: please ring the bell",
+    "note-count": "{count} / {max}",
+    "note-help": "For delivery or packing requests only. The seller may not be able to follow every note. Do not enter card or health details.",
+    "your-note": "Your note:",
+    "placed-discount": "Order {reference} · {total} paid (includes {discount} discount, code {code}). A confirmation was sent to {email}."
   }
 }

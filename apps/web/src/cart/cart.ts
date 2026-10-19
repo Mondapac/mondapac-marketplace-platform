@@ -1,4 +1,10 @@
-import type { CartItem, CartSource, Money, SellerTerms } from '../storefront/types.ts';
+import type {
+  AppliedDiscount,
+  CartItem,
+  CartSource,
+  Money,
+  SellerTerms,
+} from '../storefront/types.ts';
 
 // The client cart of the home page: a line per product with its unit price and the most a buyer
 // can add. The server cart (guest cart API) replaces this state when checkout is wired; the
@@ -78,6 +84,8 @@ export interface CartView {
   readonly groups: readonly CartGroup[];
   readonly count: number;
   readonly items: Money;
+  /** Off the items only, never off delivery; zero without a code. */
+  readonly discount: Money;
   readonly delivery: Money;
   readonly total: Money;
   /** The tax the total includes, from the source's preview (a placeholder, not a rule). */
@@ -89,8 +97,13 @@ export interface CartView {
 /**
  * The cart by seller, in the order the sellers were first added, with each seller's delivery fee
  * and minimum order. Lines whose offer the source does not know are left out. Null when empty.
+ * A discount comes off the items; minimum orders are checked on the items before it.
  */
-export function viewCart(cart: Cart, source: CartSource): CartView | null {
+export function viewCart(
+  cart: Cart,
+  source: CartSource,
+  discount: AppliedDiscount | null = null,
+): CartView | null {
   const bySeller = new Map<string, CartGroupLine[]>();
   for (const [id, line] of Object.entries(cart)) {
     const item = source.items[id];
@@ -121,14 +134,17 @@ export function viewCart(cart: Cart, source: CartSource): CartView | null {
   });
   const items = groups.reduce((sum, g) => sum + g.subtotal.amount, 0);
   const delivery = groups.reduce((sum, g) => sum + g.seller.deliveryFee.amount, 0);
+  const off = discount ? Math.round((items * discount.percentOff) / 100) : 0;
   const { share, includesDelivery } = source.tax;
-  const taxed = includesDelivery ? items + delivery : items;
+  // Placeholder: the discount's GST treatment is not settled; the preview shares the total.
+  const taxed = items - off + (includesDelivery ? delivery : 0);
   return {
     groups,
     count: groups.reduce((sum, g) => sum + g.count, 0),
     items: { amount: items, currency },
+    discount: { amount: off, currency },
     delivery: { amount: delivery, currency },
-    total: { amount: items + delivery, currency },
+    total: { amount: items - off + delivery, currency },
     includedTax: { amount: Math.round((taxed * share.numerator) / share.denominator), currency },
     blocked: groups.filter((g) => g.shortfall.amount > 0),
   };

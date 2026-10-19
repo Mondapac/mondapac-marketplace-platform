@@ -23,11 +23,11 @@ export function CartDrawer() {
   const locale = useLocale();
   const router = useRouter();
   const path = usePathname();
-  const { cart, cartSource, cartOpen: open, setCartOpen } = useStore();
+  const { cart, cartSource, discount, cartOpen: open, setCartOpen } = useStore();
   const [mounted, setMounted] = useState(false);
   const panel = useRef<HTMLElement>(null);
   const opener = useRef<Element | null>(null);
-  const view = viewCart(cart, cartSource);
+  const view = viewCart(cart, cartSource, discount);
 
   useEffect(() => setMounted(true), []);
   // A new page closes the drawer.

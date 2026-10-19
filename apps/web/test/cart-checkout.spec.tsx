@@ -8,6 +8,7 @@ import { CartDrawer } from '../src/cart/cart-drawer.tsx';
 import { CartPage } from '../src/cart/cart-page.tsx';
 import { viewCart, type Cart } from '../src/cart/cart.ts';
 import { CheckoutPage, inServiceArea } from '../src/checkout/checkout-page.tsx';
+import { Confirmation, SamplePayment } from '../src/checkout/payment-result.tsx';
 import { Header } from '../src/shell/header.tsx';
 import { StoreProvider, useStore } from '../src/shell/store-context.tsx';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from '../src/storefront/sample-cart.ts';
@@ -93,6 +94,7 @@ describe('cart view', () => {
         s: { id: 's', name: 'Seller', deliveryWindow: 'Today', deliveryFee: nzd(400) },
       },
       tax: { share: { numerator: 3, denominator: 23 }, includesDelivery: true },
+      sampleDiscounts: {},
     };
     const view = viewCart({ a: { quantity: 2, unitPrice: nzd(900), limit: 12 } }, source)!;
     expect(view.total).toEqual(nzd(2200));
@@ -157,8 +159,7 @@ describe('cart page', () => {
       within(kedron).getByText("Add A$17.10 more to reach this seller's A$40.00 minimum order."),
     ).toBeTruthy();
     expect(within(kedron).getByText('Only 3 left')).toBeTruthy();
-    const alert = screen.getByRole('alert');
-    expect(within(alert).getByText('Minimum order not reached')).toBeTruthy();
+    expect(screen.getByText('Minimum order not reached').closest('[role=status]')).toBeTruthy();
     for (const button of screen.getAllByRole('button', { name: 'Checkout' })) {
       expect(button.getAttribute('aria-disabled')).toBe('true');
       fireEvent.click(button);
@@ -169,7 +170,7 @@ describe('cart page', () => {
 
   it('goes to checkout once every seller meets its minimum, with the GST line', () => {
     renderWith(<CartPage />, MET);
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText('Minimum order not reached')).toBeNull();
     expect(screen.getByText('Prices include GST. Includes A$6.17 GST.')).toBeTruthy();
     expect(screen.getByText('Minimum order of A$40.00 reached.')).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: 'Checkout' })[0]!);
@@ -194,12 +195,16 @@ describe('checkout', () => {
   it('asks a guest to log in or create an account, keeping the cart', () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET);
     expect(screen.getByText('Step 1 of 4')).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Log in' }).getAttribute('aria-selected')).toBe('true');
-    fireEvent.click(screen.getByRole('tab', { name: 'Create account' }));
+    expect(screen.getByRole('button', { name: 'Log in' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
     expect(screen.getByLabelText('Full name')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Create account and continue' }));
     expect(screen.getByText('Signed in as alex.nguyen@example.com')).toBeTruthy();
     expect(screen.getByText('Step 2 of 4')).toBeTruthy();
+    // The new step takes the focus: the button that moved on is gone.
+    expect(document.activeElement?.textContent).toBe('Delivery address');
   });
 
   it('refuses a new address outside the service area, then walks to payment', () => {
@@ -212,6 +217,10 @@ describe('checkout', () => {
     expect(screen.getByRole('alert').textContent).toBe(
       'We do not deliver to 4210 yet. We currently deliver to Greater Brisbane.',
     );
+    fireEvent.change(screen.getByLabelText('Postcode'), { target: { value: '42' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.blur(screen.getByLabelText('Postcode'));
+    expect(screen.getByRole('alert').textContent).toContain('We do not deliver to 42 yet.');
     fireEvent.click(screen.getByRole('radio', { name: /Home/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Deliver to this address' }));
     expect(screen.getByText('Home: 12 Example Street, Kedron QLD 4031')).toBeTruthy();
@@ -239,5 +248,91 @@ describe('checkout', () => {
     cleanup();
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, {}, true);
     expect(replace).toHaveBeenCalledWith('/cart');
+  });
+});
+
+describe('discount code, save for later and seller note (sample data)', () => {
+  it('takes the discount off items only and checks minimums before it', () => {
+    const view = viewCart(MET, SAMPLE_CART_SOURCE, { code: 'HALAL10', percentOff: 10 })!;
+    expect(view.discount).toEqual(aud(554));
+    expect(view.delivery).toEqual(aud(1250));
+    expect(view.total).toEqual(aud(5540 - 554 + 1250));
+    const source: CartSource = {
+      items: { a: { name: 'Lamb', sellerId: 's', category: 'meat', price: aud(1000) } },
+      sellers: {
+        s: {
+          id: 's',
+          name: 'Seller',
+          deliveryWindow: 'Today',
+          minimumOrder: aud(1000),
+          deliveryFee: aud(400),
+        },
+      },
+      tax: { share: { numerator: 1, denominator: 11 }, includesDelivery: true },
+      sampleDiscounts: {},
+    };
+    const minimum = viewCart({ a: { quantity: 1, unitPrice: aud(1000), limit: 12 } }, source, {
+      code: 'X',
+      percentOff: 10,
+    })!;
+    expect(minimum.blocked).toEqual([]);
+    expect(minimum.total).toEqual(aud(900 + 400));
+  });
+
+  it('applies a sample code on the cart page and refuses an unknown one', () => {
+    renderWith(<CartPage />, MET);
+    fireEvent.click(screen.getByRole('button', { name: 'Have a discount code?' }));
+    const input = screen.getByLabelText('Discount code');
+    fireEvent.change(input, { target: { value: 'NOPE' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(screen.getByRole('alert').textContent).toBe('This code is not valid or has expired.');
+    fireEvent.change(input, { target: { value: 'halal10' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(screen.getByText('Discount (HALAL10)')).toBeTruthy();
+    expect(screen.getByText('−A$5.54')).toBeTruthy();
+    expect(screen.getAllByText('A$62.36').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove discount code' }));
+    expect(screen.queryByText('Discount (HALAL10)')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Have a discount code?' })).toBeTruthy();
+  });
+
+  it('saves a line for later outside the totals, then moves it back', () => {
+    renderWith(<CartPage />, MET);
+    const name = SAMPLE_CART_SOURCE.items.sourdough!.name;
+    fireEvent.click(screen.getByRole('button', { name: `Save ${name} for later` }));
+    const saved = screen.getByRole('region', { name: 'Saved for later (1)' });
+    expect(within(saved).getByText(name)).toBeTruthy();
+    expect(within(saved).getByText(/Saved items stay in this browser/)).toBeTruthy();
+    expect(screen.getAllByText('A$54.40').length).toBeGreaterThan(0);
+    fireEvent.click(within(saved).getByRole('button', { name: `Move ${name} to cart` }));
+    expect(screen.queryByRole('region', { name: /Saved for later/ })).toBeNull();
+    expect(screen.getAllByText('A$67.90').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: `Save ${name} for later` }));
+    fireEvent.click(screen.getByRole('button', { name: `Remove ${name} from saved items` }));
+    expect(screen.queryByRole('region', { name: /Saved for later/ })).toBeNull();
+  });
+
+  it('keeps a seller note as plain text up to the confirmation', () => {
+    renderWith(
+      <>
+        <CheckoutPage source={SAMPLE_CHECKOUT} />
+        <SamplePayment reference="MP-1" />
+        <Confirmation />
+      </>,
+      MET,
+      true,
+    );
+    fireEvent.click(screen.getByRole('radio', { name: /Home/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Deliver to this address' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a note for this seller' })[0]!);
+    const note = screen.getByLabelText(/^Note for Kedron Halal Butchers/);
+    expect(note.getAttribute('maxlength')).toBe('200');
+    expect(document.activeElement).toBe(note);
+    fireEvent.change(note, { target: { value: '<b>Ring the bell</b>' } });
+    expect(screen.getByText('20 / 200')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Complete the sample payment' }));
+    const part = screen.getByRole('heading', { name: 'Kedron Halal Butchers' }).closest('article')!;
+    expect(within(part).getByText('<b>Ring the bell</b>')).toBeTruthy();
+    expect(part.querySelector('p b b')).toBeNull();
   });
 });

@@ -3,9 +3,9 @@
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { viewCart, type CartView } from '../cart/cart.ts';
-import { SummaryTotals, TrustLines } from '../cart/cart-parts.tsx';
+import { DiscountBox, SummaryTotals, TrustLines } from '../cart/cart-parts.tsx';
 import { Crumbs } from '../catalog/results.tsx';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
@@ -48,8 +48,8 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const tcart = useTranslations('cart');
   const locale = useLocale();
   const router = useRouter();
-  const { cart, cartSource, customer, setCustomer, setDeliveryAddress } = useStore();
-  const view = viewCart(cart, cartSource);
+  const { cart, cartSource, discount, customer, setCustomer, setDeliveryAddress } = useStore();
+  const view = viewCart(cart, cartSource, discount);
   const [step, setStep] = useState<Step>(customer ? 2 : 1);
   const [choice, setChoice] = useState<string>(
     () => source.customer.addresses.find((a) => a.isDefault)?.id ?? 'new',
@@ -213,6 +213,9 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
                     </small>
                   </div>
                   <span className="fee num">{money(g.seller.deliveryFee)}</span>
+                  <div className="dnote">
+                    <SellerNote sellerId={g.seller.id} sellerName={g.seller.name} />
+                  </div>
                 </div>
               ))}
               <div>
@@ -262,6 +265,7 @@ function OrderSummary({ view }: { readonly view: CartView }) {
   return (
     <>
       <h2>{t('summary')}</h2>
+      <DiscountBox />
       <ul className="cmini">
         {view.groups.map((g) => (
           <li key={g.seller.id}>
@@ -302,6 +306,13 @@ function StepCard({
   const t = useTranslations('checkout');
   const current = step === n;
   const finished = step > n || (n === 1 && done !== undefined);
+  // The step that becomes current takes the focus: the button that moved on is gone.
+  const heading = useRef<HTMLHeadingElement>(null);
+  const was = useRef(current);
+  useEffect(() => {
+    if (current && !was.current) heading.current?.focus();
+    was.current = current;
+  }, [current]);
   return (
     <section
       className={current ? 'stp cur' : finished ? 'stp dn' : 'stp'}
@@ -311,7 +322,7 @@ function StepCard({
         <span className="stn" aria-hidden="true">
           {finished ? <Icon name="check" /> : n}
         </span>
-        <h2>
+        <h2 ref={heading} tabIndex={-1}>
           {title}
           {finished && done ? <span className="sum">{done}</span> : null}
         </h2>
@@ -338,21 +349,19 @@ function AccountStep({ onSignedIn }: { readonly onSignedIn: () => void }) {
   const id = useId();
   return (
     <div className="stb">
-      <div className="tabs2" role="tablist">
+      <div className="tabs2" role="group" aria-label={t('account')}>
         <button
           type="button"
-          role="tab"
-          aria-selected={login}
-          aria-controls={`${id}-panel`}
+          aria-pressed={login}
+          aria-controls={`${id}-form`}
           onClick={() => setTab('login')}
         >
           {t('log-in')}
         </button>
         <button
           type="button"
-          role="tab"
-          aria-selected={!login}
-          aria-controls={`${id}-panel`}
+          aria-pressed={!login}
+          aria-controls={`${id}-form`}
           onClick={() => setTab('new')}
         >
           {t('create-account')}
@@ -360,8 +369,7 @@ function AccountStep({ onSignedIn }: { readonly onSignedIn: () => void }) {
       </div>
       <form
         className="stb flush"
-        id={`${id}-panel`}
-        role="tabpanel"
+        id={`${id}-form`}
         onSubmit={(event) => {
           event.preventDefault();
           onSignedIn();
@@ -413,9 +421,11 @@ function AddressForm({
 }) {
   const t = useTranslations('checkout');
   const set = (key: keyof NewAddress) => (text: string) => onChange({ ...value, [key]: text });
-  // The postcode error shows once four digits are typed (or another length is left).
+  // The postcode error shows once four digits are typed, or when the field is left too short.
+  const [left, setLeft] = useState(false);
   const outside =
-    value.postcode.length >= 4 && !inServiceArea(area, value.postcode)
+    (value.postcode.length >= 4 || (left && value.postcode !== '')) &&
+    !inServiceArea(area, value.postcode)
       ? t('outside-area', { postcode: value.postcode, area: area.name })
       : undefined;
   const noteId = useId();
@@ -452,7 +462,11 @@ function AddressForm({
           autoComplete="postal-code"
           inputMode="numeric"
           value={value.postcode}
-          onText={set('postcode')}
+          onText={(text) => {
+            setLeft(false);
+            set('postcode')(text);
+          }}
+          onLeave={() => setLeft(true)}
           error={outside}
         />
       </div>
@@ -479,6 +493,7 @@ function Field({
   error,
   value,
   onText,
+  onLeave,
   readOnly = false,
   type = 'text',
   autoComplete,
@@ -489,6 +504,7 @@ function Field({
   readonly error?: string | undefined;
   readonly value?: string;
   readonly onText?: (text: string) => void;
+  readonly onLeave?: () => void;
   readonly readOnly?: boolean;
   readonly type?: string;
   readonly autoComplete?: string;
@@ -506,6 +522,7 @@ function Field({
         inputMode={inputMode}
         readOnly={readOnly}
         aria-invalid={error ? true : undefined}
+        onBlur={onLeave}
         aria-describedby={help ? `${id}-help` : undefined}
         {...(onText
           ? { value: value ?? '', onChange: (event) => onText(event.target.value) }
@@ -520,6 +537,54 @@ function Field({
       ) : hint ? (
         <small id={`${id}-help`}>{hint}</small>
       ) : null}
+    </div>
+  );
+}
+
+const NOTE_MAX = 200;
+
+/** "Add a note for this seller": plain text for delivery or packing, 200 characters at most. */
+function SellerNote({
+  sellerId,
+  sellerName,
+}: {
+  readonly sellerId: string;
+  readonly sellerName: string;
+}) {
+  const t = useTranslations('checkout');
+  const { notes, setNote } = useStore();
+  const value = notes[sellerId] ?? '';
+  const [open, setOpen] = useState(value !== '');
+  const area = useRef<HTMLTextAreaElement>(null);
+  const id = useId();
+  useEffect(() => {
+    // Focus the empty box the link just opened; a note being typed is already focused.
+    if (open && value === '') area.current?.focus();
+  }, [open, value]);
+  if (!open)
+    return (
+      <button className="lnk nbt" type="button" onClick={() => setOpen(true)}>
+        <Icon name="note" />
+        {t('note-open')}
+      </button>
+    );
+  return (
+    <div className="nbox">
+      <label htmlFor={id}>{t('note-label', { seller: sellerName })}</label>
+      <textarea
+        id={id}
+        ref={area}
+        rows={2}
+        maxLength={NOTE_MAX}
+        placeholder={t('note-placeholder')}
+        aria-describedby={`${id}-count ${id}-help`}
+        value={value}
+        onChange={(event) => setNote(sellerId, event.target.value.slice(0, NOTE_MAX))}
+      />
+      <small className="ncnt num" id={`${id}-count`}>
+        {t('note-count', { count: value.length, max: NOTE_MAX })}
+      </small>
+      <small id={`${id}-help`}>{t('note-help')}</small>
     </div>
   );
 }

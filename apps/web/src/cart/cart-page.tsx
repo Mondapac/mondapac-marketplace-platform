@@ -9,8 +9,9 @@ import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
 import { useStore } from '../shell/store-context.tsx';
-import { viewCart, type CartGroup, type CartView } from './cart.ts';
+import { viewCart, type CartGroup, type CartGroupLine, type CartView } from './cart.ts';
 import {
+  DiscountBox,
   ItemThumb,
   LineStepper,
   RemoveLine,
@@ -36,8 +37,8 @@ export function CartPage() {
   const tc = useTranslations('catalog');
   const locale = useLocale();
   const router = useRouter();
-  const { cart, cartSource, customer } = useStore();
-  const view = viewCart(cart, cartSource);
+  const { cart, cartSource, discount, customer } = useStore();
+  const view = viewCart(cart, cartSource, discount);
   const [notice, setNotice] = useState(true);
 
   // The drawer's Checkout of a blocked cart lands here with the seller's anchor.
@@ -71,6 +72,7 @@ export function CartPage() {
             {t('browse')}
           </Link>
         </div>
+        <SavedForLater />
       </div>
     );
 
@@ -102,9 +104,11 @@ export function CartPage() {
           {view.groups.map((group) => (
             <SellerGroup key={group.seller.id} group={group} notice={notice} />
           ))}
+          <SavedForLater />
         </div>
         <div className="cs stick">
           <h2>{t('summary')}</h2>
+          <DiscountBox />
           <SummaryTotals view={view} />
           <CheckoutAction view={view} onCheckout={checkout} />
           {customer ? null : <small>{t('guest-note')}</small>}
@@ -143,7 +147,7 @@ function CheckoutAction({
   return (
     <>
       {first ? (
-        <div className="cblock" role="alert">
+        <div className="cblock" role="status">
           <b>{t('blocked-title')}</b>
           {view.blocked.map((g) => (
             <span key={g.seller.id}>
@@ -223,7 +227,10 @@ function SellerGroup({ group, notice }: { readonly group: CartGroup; readonly no
               {notice && line.item.addedAt ? (
                 <span className="pn">{t('line-price-updated')}</span>
               ) : null}
-              <RemoveLine line={line} />
+              <span className="cact">
+                <RemoveLine line={line} />
+                <SaveLine line={line} />
+              </span>
             </div>
             <div className="cqp">
               <LineStepper line={line} />
@@ -242,6 +249,76 @@ function SellerGroup({ group, notice }: { readonly group: CartGroup; readonly no
         </span>
         <b className="num">{money(seller.deliveryFee)}</b>
       </div>
+    </section>
+  );
+}
+
+function SaveLine({ line }: { readonly line: CartGroupLine }) {
+  const t = useTranslations('cart');
+  const { saveForLater } = useStore();
+  return (
+    <button
+      className="lnk"
+      type="button"
+      aria-label={t('save-item', { name: line.item.name })}
+      onClick={() => saveForLater(line.id)}
+    >
+      {t('save-for-later')}
+    </button>
+  );
+}
+
+/**
+ * Items saved for later, under the sellers (and under the empty cart): not in the order or its
+ * totals. Signed in they are kept in the account; a guest's stay in this browser.
+ */
+function SavedForLater() {
+  const t = useTranslations('cart');
+  const locale = useLocale();
+  const { saved, cartSource, customer, moveToCart, removeSaved } = useStore();
+  const items = saved.flatMap((id) => {
+    const item = cartSource.items[id];
+    return item ? [{ id, item }] : [];
+  });
+  if (items.length === 0) return null;
+  return (
+    <section className="svd" aria-labelledby="saved-title">
+      <h2 id="saved-title">
+        {t('saved-title')} <span>({items.length})</span>
+      </h2>
+      <p className="legal">{customer ? t('saved-account') : t('saved-guest')}</p>
+      <ul className="cli">
+        {items.map(({ id, item }) => (
+          <li className="ci" key={id}>
+            <ItemThumb item={item} />
+            <div className="cin">
+              <b>{item.name}</b>
+              <span className="legal">{cartSource.sellers[item.sellerId]?.name}</span>
+              <button
+                className="lnk"
+                type="button"
+                aria-label={t('remove-saved', { name: item.name })}
+                onClick={() => removeSaved(id)}
+              >
+                {t('remove')}
+              </button>
+            </div>
+            <div className="cqp">
+              <div className="cpr num">
+                <b>{formatMoney(item.price, locale)}</b>
+              </div>
+              <button
+                className="btn ghost small"
+                type="button"
+                aria-label={t('move-item', { name: item.name })}
+                onClick={() => moveToCart(id)}
+              >
+                {t('move-to-cart')}
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

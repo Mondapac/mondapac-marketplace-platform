@@ -80,6 +80,7 @@ function build(): CartSource {
     // PLACEHOLDER (not a rule): the prototype's "Includes A$x GST" on the whole total. The tax
     // module gives this figure when the cart is wired; tax on delivery fees is not settled.
     tax: { share: { numerator: 1, denominator: 11 }, includesDelivery: true },
+    sampleDiscounts: { HALAL10: { code: 'HALAL10', percentOff: 10 } },
   };
 }
 
