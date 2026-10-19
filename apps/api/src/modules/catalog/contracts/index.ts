@@ -11,7 +11,9 @@ export {
   ProductRevisionPublished,
   // Consumed by notifications' admin review notice (package 3).
   ProductRevisionSubmitted,
-  // Consumed by notifications' seller notices (package 4).
+  // Consumed by notifications' seller notices (package 4), with their reason vocabularies.
+  IMAGE_TAKEDOWN_REASONS,
+  OFFER_CHANGE_REASONS,
   OfferTagRemoved,
   OfferTagRestored,
   OfferTagSuspended,

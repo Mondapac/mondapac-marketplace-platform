@@ -27,7 +27,9 @@ export interface SellerOrderPaidParams {
 
 // The other seller notices (package 4): what happened to the seller's stock, certificates,
 // catalog, prices and access. Each holds the ids of its item (the panel builds the link) and
-// enums or counts; never a name, a reason text or an amount.
+// enums or counts; never a name, a reason text or an amount. The enum lists copy the publishing
+// module's event vocabulary; a contract test fails when one drifts, since a value missing here
+// would dead-letter the event.
 
 /** A sell unit's stock fell to low. */
 export const SELLER_LOW_STOCK = 'seller.low-stock';
@@ -67,7 +69,13 @@ export const CHANGE_REASONS = [
   'other',
 ] as const;
 export const TAG_CHANGES = ['suspended', 'removed', 'restored'] as const;
-export const IMAGE_TAKEDOWN_REASONS = ['certification-mark', 'misleading', 'rights'] as const;
+export const IMAGE_TAKEDOWN_REASONS = [
+  'certification-mark',
+  'misleading',
+  'rights',
+  'unsafe-or-illegal',
+  'other',
+] as const;
 export const HOLD_OUTCOMES = ['approved', 'rejected'] as const;
 export const PRICE_KINDS = ['regular', 'special'] as const;
 export const ACCESS_CHANGES = ['approved', 'reinstated'] as const;

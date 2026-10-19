@@ -41,6 +41,7 @@ export {
   // Consumed by notifications' admin review notice (package 3).
   SellerCertificationSubmitted,
   // Consumed by notifications' seller notices (package 4).
+  ISSUER_REQUEST_OUTCOME_VALUES,
   IssuerRequestAnswered,
   SellerCertificationChangesRequested,
   SellerCertificationDeclined,

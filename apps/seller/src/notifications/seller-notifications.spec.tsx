@@ -240,7 +240,7 @@ describe('SellerNotifications drawer', () => {
           priceKind: 'special',
         },
       },
-      /Your held special price was rejected/,
+      /Your special price change was rejected/,
       `/offers/${OFFER}/prices`,
     ],
     [
@@ -258,7 +258,7 @@ describe('SellerNotifications drawer', () => {
         kind: 'seller.image-taken-down',
         params: { productId: PRODUCT, imageId: VARIANT, reason: 'rights' },
       },
-      /A product image was taken down: after a rights claim/,
+      /A product image was taken down after a rights claim/,
       `/products/${PRODUCT}`,
     ],
     [

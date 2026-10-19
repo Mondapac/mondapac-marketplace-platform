@@ -131,6 +131,8 @@ export class RecordSellerNotice extends UseCase<
     ref: SellerNoticeOwnerRef,
   ): Promise<Result<Id<'Seller'> | null, RecordSellerNoticeFailure>> {
     if (ref.by === 'seller') return ok(ref.sellerId as Id<'Seller'>);
+    // The owner now, not at the event: Offers and SELLER products never change owner today. A
+    // future ownership transfer must carry the seller on its events instead.
     // Read before the unit (P 3.1 row 5): Offers and products are catalog's, through its facade.
     const answer =
       ref.by === 'offer'
