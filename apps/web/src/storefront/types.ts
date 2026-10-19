@@ -243,3 +243,58 @@ export interface CheckoutSource {
   /** Sample only: the order Pay creates gives its reference when checkout is wired. */
   readonly orderReference: string;
 }
+
+/**
+ * A certificate the platform approved for a seller, as the seller page's Certificates tab shows it.
+ * Contract of the seller read: it returns only certificates that are approved and in date today, so
+ * the page shows each one as "Approved and in date" without its own date check (CERT-*).
+ */
+export interface SellerCertificate {
+  /** The certification type's code (CERT-*); the label it allows comes from evaluateClaim only. */
+  readonly type: string;
+  /** Display name of the type, e.g. "Halal". */
+  readonly name: string;
+  readonly certifier: string;
+  readonly number: string;
+  /** ISO dates (YYYY-MM-DD). */
+  readonly validUntil: string;
+  readonly checkedOn: string;
+}
+
+/** A product on the seller page; `listedAt` (an ISO date) orders the Newest sort. */
+export interface SellerProduct extends ProductCard {
+  readonly listedAt: string;
+}
+
+/** The public seller page (`/s/<slug>`): profile, terms, certificates and products. */
+export interface SellerShop {
+  /** The URL slug. */
+  readonly id: string;
+  readonly name: string;
+  /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
+  readonly logo?: string;
+  /** Suburb and city only; the seller's address is never shown. */
+  readonly location: string;
+  readonly sellingSince: number;
+  readonly about: string;
+  /** What the platform checked of the business, e.g. "ABN checked by Mondapac". */
+  readonly businessCheck: string;
+  readonly deliveryWindow: string;
+  readonly deliveryFee: Money;
+  /** Absent when the seller has no minimum order. */
+  readonly minimumOrder?: Money;
+  /** The area the seller delivers to. */
+  readonly deliversTo: string;
+  readonly certificates: readonly SellerCertificate[];
+  /** Absent for a new seller without ratings; shown only behind the seller-ratings feature. */
+  readonly ratings?: {
+    readonly satisfaction: number;
+    readonly onTime: number;
+    readonly asDescribed: number;
+    readonly count: number;
+  };
+  /** The categories of its products, in display order. */
+  readonly categories: readonly { readonly code: string; readonly name: string }[];
+  /** In popularity order. */
+  readonly products: readonly SellerProduct[];
+}

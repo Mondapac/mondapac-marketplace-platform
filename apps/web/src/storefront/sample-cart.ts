@@ -13,7 +13,7 @@ import type { CartItem, CartSource, CheckoutSource, Money, SellerTerms } from '.
 const money = (amount: number): Money => ({ amount, currency: 'AUD' });
 
 /** Minimum order and delivery fee per seller (sample values of the prototype). */
-const TERMS: Readonly<Record<string, { minimum?: number; fee: number }>> = {
+export const SAMPLE_TERMS: Readonly<Record<string, { minimum?: number; fee: number }>> = {
   kedron: { minimum: 4000, fee: 750 },
   paddington: { fee: 500 },
   sunnybank: { minimum: 3000, fee: 600 },
@@ -27,7 +27,7 @@ const TERMS: Readonly<Record<string, { minimum?: number; fee: number }>> = {
 const ADDED_AT: Readonly<Record<string, number>> = { brisket: 4890 };
 
 function terms(id: string, name: string, deliveryWindow: string, logo?: string): SellerTerms {
-  const { minimum, fee } = TERMS[id] ?? { fee: 500 };
+  const { minimum, fee } = SAMPLE_TERMS[id] ?? { fee: 500 };
   return {
     id,
     name,
