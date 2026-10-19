@@ -185,7 +185,6 @@ export function OrderDetails({
             <button
               className="btn ghost ac-danger"
               type="button"
-              autoFocus
               onClick={() => {
                 cancelOrder(order.reference);
                 setAsking(false);
@@ -193,7 +192,7 @@ export function OrderDetails({
             >
               {t('order.cancel-yes')}
             </button>
-            <button className="btn" type="button" onClick={() => setAsking(false)}>
+            <button className="btn" type="button" autoFocus onClick={() => setAsking(false)}>
               {t('order.cancel-no')}
             </button>
           </div>

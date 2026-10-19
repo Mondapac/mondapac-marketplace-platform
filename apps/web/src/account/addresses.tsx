@@ -126,7 +126,6 @@ export function AccountAddresses() {
                     <button
                       className="btn ghost ac-danger"
                       type="button"
-                      autoFocus
                       onClick={() => {
                         const next = addresses[i + 1] ?? addresses[i - 1];
                         deleteAddress(a.id);
@@ -139,6 +138,7 @@ export function AccountAddresses() {
                     <button
                       className="btn"
                       type="button"
+                      autoFocus
                       onClick={() => {
                         setDeleting(null);
                         setFocusTo(`address-delete-${a.id}`);
