@@ -18,7 +18,13 @@ export type { ModelTokenPrice };
 /** The answer of one call: the turn and the price it is counted at, or why there is none. */
 export type ModelCall =
   | { readonly ok: true; readonly turn: ModelTurn; readonly price: ModelTokenPrice }
-  | { readonly ok: false; readonly failure: 'not-configured' | 'timeout' | 'unavailable' };
+  | { readonly ok: false; readonly failure: 'not-configured' }
+  /** A call was sent; `price` lets the caller count what the provider may still bill. */
+  | {
+      readonly ok: false;
+      readonly failure: 'timeout' | 'unavailable';
+      readonly price: ModelTokenPrice;
+    };
 
 /**
  * The one model entry point (ADR-0019 decision 6, R7): only files on the allow-list of the
@@ -86,12 +92,15 @@ export class ModelGateway {
       }, timeoutMs);
     });
     try {
-      const turn = await Promise.race([this.provider.call(credentials, request, abort.signal), cut]);
+      const turn = await Promise.race([
+        this.provider.call(credentials, request, abort.signal),
+        cut,
+      ]);
       return { ok: true, turn, price };
     } catch {
       const failure = abort.signal.aborted ? 'timeout' : 'unavailable';
       this.#logger.warn({ msg: 'ai.model-call.failed', marketId, tier, failure });
-      return { ok: false, failure };
+      return { ok: false, failure, price };
     } finally {
       clearTimeout(timer);
     }

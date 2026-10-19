@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
-import type { AuditEntry, CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import type { AssistantSettingsRepository } from '../../src/modules/assistant/application/ports/assistant-settings.repository';
@@ -56,7 +56,7 @@ const id = <T extends string>(n: number): Id<T> => {
 const hashOf = (token: string) => createHash('sha256').update(token).digest('hex');
 
 class NoAudit implements AuditWriter {
-  record(_context: CallContext, _entry: AuditEntry) {
+  record() {
     return Promise.resolve();
   }
 }
@@ -387,6 +387,13 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
         DENIED,
       );
       await expect(failure(sql.query('DELETE FROM assistant.spend_days'))).resolves.toBe(DENIED);
+      await expect(failure(sql.query('DELETE FROM assistant.messages'))).resolves.toBe(DENIED);
+      await expect(
+        failure(sql.query('UPDATE assistant.conversations SET retention_days = retention_days')),
+      ).resolves.toBe(DENIED);
+      await expect(
+        failure(sql.query('UPDATE assistant.conversations SET account_id = account_id')),
+      ).resolves.toBe(DENIED);
     });
 
     it('accepts the assistant message class in the shared rate-limit counters, and no other', async () => {

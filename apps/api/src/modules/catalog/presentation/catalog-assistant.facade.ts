@@ -8,7 +8,8 @@ export class CatalogAssistantFacadeImplementation implements CatalogAssistantFac
 
   async categories(context: CallContext) {
     const result = await this.tree.execute(context, {});
-    if (!result.ok) return { ok: false, error: { code: 'catalog.categories-unavailable' } } as const;
+    if (!result.ok)
+      return { ok: false, error: { code: 'catalog.categories-unavailable' } } as const;
     return {
       ok: true,
       value: result.value.categories.map(({ id, parentId, slug, name, depth }) => ({

@@ -1,3 +1,4 @@
+import { EVALUATION_SET, EVALUATION_VERSION } from './evaluation-set';
 import { maskPersonalData, MASKED } from './personal-data';
 import { guardReply, MAX_REPLY_CHARACTERS } from './reply-guard';
 import { parseToolCall, TOOL_DECLARATIONS } from './tools';
@@ -132,4 +133,14 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
       }),
     ).toEqual({ tool: 'search_products', text: 'dates', categoryId: null });
   });
+});
+
+describe(`evaluation set ${EVALUATION_VERSION} against the reply guard (decision 9)`, () => {
+  it.each(EVALUATION_SET.map((item) => [item.id, item] as const))(
+    '%s: no claim reaches the buyer',
+    (_id, item) => {
+      const shown = guardReply(item.reply).sentences.join(' ').toLowerCase();
+      for (const text of item.mustNotShow) expect(shown).not.toContain(text.toLowerCase());
+    },
+  );
 });

@@ -1,3 +1,5 @@
+import { MASKED, maskPersonalData } from './personal-data';
+
 /**
  * Why the guard removed part of a reply; the storefront shows its own fixed text for each:
  * - `see-cards`: a price, stock, delivery or minimum-order claim. Those are shown only on the
@@ -41,13 +43,13 @@ const LOGISTICS = new RegExp(
 // Certification claims of any type (CERT-01 types are data; these are the words a model uses).
 const CERTIFICATION = new RegExp(
   [
-    String.raw`\bhalal\b`,
+    String.raw`\bhala+l\b`,
     String.raw`\bharam\b`,
     String.raw`\bkosher\b`,
     String.raw`\bvegan\b`,
     String.raw`\borganic\b`,
     String.raw`\bcertif(?:ied|icate|ication)s?\b`,
-    String.raw`\bzabiha\b`,
+    String.raw`\bzabihah?\b`,
     'حلال',
     'حرام',
     'ذبح',
@@ -57,6 +59,37 @@ const CERTIFICATION = new RegExp(
   'iu',
 );
 
+// Letters that look like Latin ones, folded before the certification words are tested (L3).
+const LOOK_ALIKES: Readonly<Record<string, string>> = {
+  а: 'a',
+  е: 'e',
+  о: 'o',
+  р: 'p',
+  с: 'c',
+  х: 'x',
+  у: 'y',
+  і: 'i',
+  ӏ: 'l',
+  ⅼ: 'l',
+  ı: 'i',
+  α: 'a',
+  ο: 'o',
+  ε: 'e',
+  κ: 'k',
+  ν: 'v',
+  ѕ: 's',
+  һ: 'h',
+  ԁ: 'd',
+  ɡ: 'g',
+  ᴢ: 'z',
+  ʜ: 'h',
+};
+const LOOK_ALIKE = new RegExp(`[${Object.keys(LOOK_ALIKES).join('')}]`, 'giu');
+const folded = (sentence: string): string =>
+  sentence
+    .normalize('NFKC')
+    .replace(LOOK_ALIKE, (letter) => LOOK_ALIKES[letter.toLowerCase()] ?? letter);
+
 // Inert rendering (R9): no markup, links or images reach the buyer from a model.
 const MARKDOWN_IMAGE = /!\[[^\]]*\]\([^)]*\)/g;
 const MARKDOWN_LINK = /\[([^\]]*)\]\([^)]*\)/g;
@@ -64,6 +97,8 @@ const TAG = /<[^>]*>/g;
 const URL_LIKE = /\b(?:https?:\/\/|www\.)\S+/giu;
 const EMAIL_LIKE = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
 const MARKUP_CHARACTERS = /[*_`#>|~]/g;
+// A bare domain (an off-platform address without a scheme), with any path (Hassan, M1).
+const BARE_DOMAIN = /\b[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.\p{L}{2,}\b(?:\/\S*)?/gu;
 // Controls and format characters, except the Persian zero-width non-joiner and line breaks.
 const INVISIBLE = /(?![\n‌])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 
@@ -74,12 +109,15 @@ const SENTENCE_BREAK = /(?<=[.!?؟])\s+|\n+/u;
 export const MAX_REPLY_CHARACTERS = 1200;
 
 function inert(text: string): string {
-  return text
+  // Phone numbers and other runs of 8 or more digits go too: no off-platform contact (M1).
+  return maskPersonalData(text)
+    .replaceAll(MASKED, ' ')
     .replace(MARKDOWN_IMAGE, ' ')
     .replace(MARKDOWN_LINK, '$1')
     .replace(TAG, ' ')
     .replace(URL_LIKE, ' ')
     .replace(EMAIL_LIKE, ' ')
+    .replace(BARE_DOMAIN, ' ')
     .replace(MARKUP_CHARACTERS, ' ')
     .replace(INVISIBLE, '');
 }
@@ -99,7 +137,7 @@ export function guardReply(text: string): GuardedReply {
   for (const part of inert(text).split(SENTENCE_BREAK)) {
     const sentence = part.replace(/\s+/gu, ' ').trim();
     if (sentence.length === 0 || !/[\p{L}\p{N}]/u.test(sentence)) continue;
-    if (CERTIFICATION.test(sentence)) {
+    if (CERTIFICATION.test(folded(sentence))) {
       notices.add('see-certification');
       continue;
     }

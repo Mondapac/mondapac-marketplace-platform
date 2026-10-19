@@ -23,7 +23,10 @@ export class FakeModelProvider implements ModelProvider {
 }
 
 /** A final text turn. */
-export function textTurn(text: string, usage = { inputTokens: 1000, outputTokens: 100 }): ModelTurn {
+export function textTurn(
+  text: string,
+  usage = { inputTokens: 1000, outputTokens: 100 },
+): ModelTurn {
   return { blocks: [{ type: 'text', text }], stop: 'end', usage };
 }
 

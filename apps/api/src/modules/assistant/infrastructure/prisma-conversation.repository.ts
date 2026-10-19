@@ -1,5 +1,4 @@
-import { Temporal } from '@mondapac/shared-kernel';
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { fieldLabel } from '../../../platform/subject-keys/labels';
 import type { SubjectKeyService } from '../../../platform/subject-keys/subject-key-service';
@@ -156,22 +155,32 @@ export class PrismaConversationRepository implements ConversationRepository {
       for (const stored of STORED_RETENTIONS) {
         if (purged >= limit) return purged;
         const days = Math.max(1, Math.min(stored, currentDays[kind]));
+        const expired = {
+          marketId: market.marketId,
+          retentionDays: stored,
+          ...(kind === 'customer' ? { accountId: { not: null } } : { accountId: null }),
+          lastMessageAt: { lt: new Date(now.epochMilliseconds - days * DAY_MS) },
+        };
         const rows = await tx.assistantConversation.findMany({
-          where: {
-            marketId: market.marketId,
-            retentionDays: stored,
-            ...(kind === 'customer' ? { accountId: { not: null } } : { accountId: null }),
-            lastMessageAt: { lt: new Date(now.epochMilliseconds - days * DAY_MS) },
-          },
+          where: expired,
           select: { id: true },
           orderBy: { lastMessageAt: 'asc' },
           take: limit - purged,
         });
         if (rows.length === 0) continue;
-        const ids = rows.map((row) => row.id);
-        await tx.assistantConversation.deleteMany({
-          where: { marketId: market.marketId, id: { in: ids } },
-        });
+        const found = rows.map((row) => row.id);
+        // The cut-off is checked again by the delete: a message that landed in between keeps
+        // its conversation (and its key).
+        await tx.assistantConversation.deleteMany({ where: { ...expired, id: { in: found } } });
+        const kept = new Set(
+          (
+            await tx.assistantConversation.findMany({
+              where: { marketId: market.marketId, id: { in: found } },
+              select: { id: true },
+            })
+          ).map((row) => row.id),
+        );
+        const ids = found.filter((id) => !kept.has(id));
         if (stored > 0) {
           for (const id of ids) await this.keys.destroyKey(market, id as Id<'Conversation'>);
         }

@@ -2,7 +2,7 @@ import type { MarketId } from '@mondapac/shared-kernel';
 import type { ModelGateway } from '../../../platform/ai/model-gateway';
 import type { ModelRequest } from '../../../platform/ai/model-provider';
 import type { AssistantRuntime, ModelAnswer } from '../application/ports/assistant-runtime';
-import { costMicroUsd } from '../domain/conversation';
+import { costMicroUsd, timeoutUsageOf } from '../domain/conversation';
 import type { ModelTier } from '../domain/assistant-settings';
 
 /**
@@ -32,7 +32,12 @@ export class GatewayAssistantRuntime implements AssistantRuntime {
     timeoutMs: number,
   ): Promise<ModelAnswer> {
     const call = await this.gateway.complete(marketId, tier, request, timeoutMs);
-    if (!call.ok) return call;
+    if (!call.ok) {
+      // A cut call may still be billed in full: count the most it can cost (Hassan, L1).
+      const cost =
+        call.failure === 'timeout' ? costMicroUsd(timeoutUsageOf(request), call.price) : 0;
+      return { ok: false, failure: call.failure, costMicroUsd: cost };
+    }
     return { ok: true, turn: call.turn, costMicroUsd: costMicroUsd(call.turn.usage, call.price) };
   }
 }

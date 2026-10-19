@@ -51,7 +51,12 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
   certification sentences are dropped with a notice; markup, links, addresses and invisible
   characters are removed. Tool calls are schema-checked; at most 4 model rounds and 25 s a turn,
   15 s a call, 600 output tokens.
-- Emails and runs of 8 or more digits in the buyer's text are masked before it is stored or sent.
+- Emails and runs of 8 or more digits in the buyer's text are masked before it is stored or sent;
+  the reply guard also removes them, and bare domains, from what the model writes.
+- At most 3 tool calls a round (more are answered as refused) and 24 cards a turn; the support
+  card always fits. The turn and its spend commit in their own unit, before the text is stored,
+  so a storage failure never loses the count. A call cut at its timeout is counted at the most it
+  can cost. A guest request with no client origin is refused (`assistant.unavailable`).
 
 ## Limits, spend and storage
 
@@ -75,6 +80,14 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
   need the owner's approval; the real-model evaluation must be recorded as passed for the
   provider, model and prompt version.
 - Privacy note: conversations are personal data (masked, encrypted, purged as above).
+- R7 (Hassan, L2): the adapter calls the provider's global endpoint and one provider is bound for
+  every Market. Before a Market is switched on, either the owner approves that endpoint for the
+  Market's data residency, or provider and region become Market configuration.
+- Open question for Ali (cto): ADR-0019 decision 7 lets a seller switch AI off (SEL-25). Should
+  that seller's product names and short texts then stay out of the assistant's model input?
+- Evaluation: `domain/evaluation-set.ts` (version = prompt version) runs offline against the reply
+  guard in `pnpm verify` (claim leakage 0); the real-model run of the same set is recorded before
+  the switch. The "injection carried by a file" sample does not apply: this surface takes no files.
 
 ## Preview for `internal` (designed, not built)
 
@@ -87,7 +100,11 @@ storefront sends it with each message and the use case treats that visitor as in
 
 Migration `20261019224946_assistant_conversations`. `conversations`: one owner (account, or a
 32-byte guest token hash), `turns` 0 to 30, `retention_days` 0 or 30 (365 for an account only),
-index on (`market_id`, `last_message_at`) for the purge. `messages`: PK (Market, conversation,
+index on (`market_id`, `retention_days`, `last_message_at`) for the purge; the application role
+updates only `turns` and `last_message_at`. `messages`: PK (Market, conversation,
 position 1 to 60), `text_cipher`, card refs (ids only, at most 40), cascade delete with the
-conversation; the application role cannot UPDATE them. `spend_days`: PK (Market, day), counts
+conversation; the application role can neither UPDATE nor DELETE them. `spend_days`: PK (Market, day), counts
 never negative, one auto-off record per day; never deleted by the application role.
+
+One `spend_days` row per Market and day is updated by every turn: watch its lock waits; split
+it into slots per day if they grow.

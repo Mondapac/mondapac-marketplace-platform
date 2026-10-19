@@ -296,7 +296,8 @@ export function parseMarketValues(
     const at = pair.indexOf('=');
     const market = pair.slice(0, at);
     if (market in values) issues.push(`${variable}: ${market} is named twice`);
-    else if (!hosted.includes(market)) issues.push(`${variable}: ${market} is not in HOSTED_MARKETS`);
+    else if (!hosted.includes(market))
+      issues.push(`${variable}: ${market} is not in HOSTED_MARKETS`);
     values[market] = pair.slice(at + 1);
   }
   return { values: Object.freeze(values), issues };
@@ -308,9 +309,10 @@ function tokenPriceOf(value: string): ModelTokenPrice {
   return Object.freeze({ inputPicoUsd: input!, outputPicoUsd: output! });
 }
 
-function assistantModelConfig(
-  env: z.infer<typeof envSchema>,
-): { config: AssistantModelConfig; issues: string[] } {
+function assistantModelConfig(env: z.infer<typeof envSchema>): {
+  config: AssistantModelConfig;
+  issues: string[];
+} {
   const hosted = env.HOSTED_MARKETS;
   const read = (variable: keyof z.infer<typeof envSchema>) =>
     parseMarketValues(env[variable] as string | undefined, hosted, variable);
@@ -327,7 +329,10 @@ function assistantModelConfig(
     config: Object.freeze({
       apiKeys: keys.values,
       models: Object.freeze({ fast: fast.values, balanced: balanced.values }),
-      prices: Object.freeze({ fast: prices(fastPrice.values), balanced: prices(balancedPrice.values) }),
+      prices: Object.freeze({
+        fast: prices(fastPrice.values),
+        balanced: prices(balancedPrice.values),
+      }),
     }),
     issues: [keys, fast, balanced, fastPrice, balancedPrice].flatMap((read) => read.issues),
   };

@@ -5,7 +5,12 @@ import type { ModelTier } from '../../domain/assistant-settings';
 /** The answer of one model call: the turn and what it cost, or why there is none. */
 export type ModelAnswer =
   | { readonly ok: true; readonly turn: ModelTurn; readonly costMicroUsd: number }
-  | { readonly ok: false; readonly failure: 'not-configured' | 'timeout' | 'unavailable' };
+  | {
+      readonly ok: false;
+      readonly failure: 'not-configured' | 'timeout' | 'unavailable';
+      /** What the failed call may still be billed: an estimate on a timeout, else 0. */
+      readonly costMicroUsd: number;
+    };
 
 /**
  * The model, as `platform/ai` configures it per Market (ADR-0019 R7; Hassan's R7 note on

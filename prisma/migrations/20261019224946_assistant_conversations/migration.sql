@@ -46,7 +46,7 @@ CREATE TABLE "assistant"."spend_days" (
 );
 
 -- CreateIndex
-CREATE INDEX "conversations_market_id_last_message_at_idx" ON "assistant"."conversations"("market_id", "last_message_at");
+CREATE INDEX "conversations_market_id_retention_days_last_message_at_idx" ON "assistant"."conversations"("market_id", "retention_days", "last_message_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "conversations_market_id_id_key" ON "assistant"."conversations"("market_id", "id");
@@ -92,9 +92,10 @@ ALTER TABLE "assistant"."spend_days"
     OR ("auto_off_cap" IN ('daily', 'monthly') AND "auto_off_at" IS NOT NULL)
   );
 
--- Grants. Conversations: created, counted and purged. Messages: written once, read, purged with
--- their conversation (the cascade runs as the deleting role, so DELETE is granted). Spend days:
--- counted up and read; never deleted.
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "assistant"."conversations" TO "mondapac_app";
-GRANT SELECT, INSERT, DELETE ON TABLE "assistant"."messages" TO "mondapac_app";
+-- Grants. Conversations: created, purged, and only their turn count and last message time
+-- updated. Messages: written once and read; the cascade from a purged conversation does not need
+-- DELETE on them. Spend days: counted up and read; never deleted.
+GRANT SELECT, INSERT, DELETE ON TABLE "assistant"."conversations" TO "mondapac_app";
+GRANT UPDATE ("turns", "last_message_at") ON TABLE "assistant"."conversations" TO "mondapac_app";
+GRANT SELECT, INSERT ON TABLE "assistant"."messages" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ON TABLE "assistant"."spend_days" TO "mondapac_app";

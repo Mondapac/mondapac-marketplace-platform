@@ -3,7 +3,7 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { ModelRequest, ModelTurn } from '../../../../platform/ai/model-provider';
 import type { ModelTier } from '../../domain/assistant-settings';
-import type { AssistantCard, AssistantNotice } from '../../domain/cards';
+import type { AssistantCard } from '../../domain/cards';
 import type { ToolRequest } from '../../domain/tools';
 import type { AssistantRuntime, ModelAnswer } from '../ports/assistant-runtime';
 import type { AssistantTools, ToolOutcome } from '../ports/assistant-tools';
@@ -28,7 +28,7 @@ export class FakeRuntime implements AssistantRuntime {
   readonly requests: ModelRequest[] = [];
   readonly script: (ModelAnswer | ((request: ModelRequest) => ModelAnswer))[] = [];
 
-  apiKeyConfigured(_marketId: MarketId) {
+  apiKeyConfigured() {
     return this.key;
   }
   modelOf(_marketId: MarketId, tier: ModelTier) {
@@ -79,7 +79,7 @@ export class FakeTools implements AssistantTools {
         forModel: '{"error":"x"}',
         isError: true,
         cards: [],
-        notices: ['tool-failed' as AssistantNotice],
+        notices: ['tool-failed'],
       });
     }
     switch (request.tool) {

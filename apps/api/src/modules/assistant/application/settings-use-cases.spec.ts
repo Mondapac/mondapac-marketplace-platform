@@ -19,7 +19,6 @@ import {
   parseWelcomeText,
   rolloutBucket,
   type AssistantSettings,
-  type ModelTier,
 } from '../domain/assistant-settings';
 import { AssistantSettingsChanged } from '../domain/audit';
 import type { AssistantDependencies } from './assistant-dependencies';

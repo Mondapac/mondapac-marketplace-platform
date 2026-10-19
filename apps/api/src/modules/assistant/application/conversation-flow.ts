@@ -8,8 +8,10 @@ import { cardRefOf, type AssistantCard, type AssistantNotice } from '../domain/c
 import {
   capReached,
   HISTORY_MESSAGES,
+  MAX_CARDS_PER_TURN,
   MAX_MODEL_ROUNDS,
   MAX_OUTPUT_TOKENS,
+  MAX_TOOL_CALLS_PER_ROUND,
   MAX_TURNS,
   MODEL_TIMEOUT_MS,
   parseConversationId,
@@ -82,15 +84,19 @@ const sameOwner = (a: ConversationOwner, b: ConversationOwner): boolean =>
     ? b.kind === 'account' && a.accountId === b.accountId
     : b.kind === 'guest' && a.tokenHash === b.tokenHash;
 
-/** The message limits of plan section 8: per guest token and per origin, or per account. */
+/**
+ * The message limits of plan section 8: per guest token and per origin, or per account. null
+ * when a guest has no client origin to count: refused, never one shared bucket.
+ */
 function limitSubjects(
   context: CallContext,
   caller: ChatCaller,
   guestHash: string | null,
-): string[] {
+): string[] | null {
   const market = context.market.marketId;
   if (caller.kind === 'customer') return [`account:${market}:${caller.accountId}`];
-  const subjects = [`origin:${market}:${caller.origin ?? 'unknown'}`];
+  if (caller.origin === null) return null;
+  const subjects = [`origin:${market}:${caller.origin}`];
   if (guestHash !== null) subjects.push(`guest:${market}:${guestHash}`);
   return subjects;
 }
@@ -155,6 +161,10 @@ async function runModel(
     const outcome = await deps.tools.run(context, { tool: 'support_contact' });
     turn.cards.push(...outcome.cards);
   };
+  // Tool cards stop one short of the cap, so the support card always fits (Hassan, H1).
+  const showCards = (cards: readonly AssistantCard[]) => {
+    turn.cards.push(...cards.slice(0, Math.max(0, MAX_CARDS_PER_TURN - 1 - turn.cards.length)));
+  };
 
   for (let round = 0; round < MAX_MODEL_ROUNDS; round++) {
     const spent = started.until(deps.clock.now()).total({ unit: 'milliseconds' });
@@ -175,6 +185,7 @@ async function runModel(
       Math.min(MODEL_TIMEOUT_MS, left),
     );
     if (!answer.ok) {
+      turn.costMicroUsd += answer.costMicroUsd;
       turn.notices.add('unavailable');
       await supportCard();
       return turn;
@@ -198,8 +209,9 @@ async function runModel(
 
     // Run each requested tool; the model reads the results as data in its next call.
     const results: ModelBlock[] = [];
-    for (const call of calls) {
-      const request = parseToolCall(call.name, call.input);
+    for (const [index, call] of calls.entries()) {
+      const request =
+        index < MAX_TOOL_CALLS_PER_ROUND ? parseToolCall(call.name, call.input) : null;
       if (request === null) {
         results.push({
           type: 'tool-result',
@@ -210,7 +222,7 @@ async function runModel(
         continue;
       }
       const outcome = await deps.tools.run(context, request);
-      turn.cards.push(...outcome.cards);
+      showCards(outcome.cards);
       for (const notice of outcome.notices) turn.notices.add(notice);
       results.push({
         type: 'tool-result',
@@ -235,9 +247,9 @@ async function runModel(
  * 3. The message limits (per guest token and origin, or per account), outside the unit.
  * 4. The model loop, outside any unit, on the masked text and the stored history.
  * 5. The reply guard: no price, stock, delivery or certification claim, inert text only.
- * 6. One read-write unit: the conversation (created on its first message), the turn, the masked
- *    buyer text and the reply (encrypted, only when the retention keeps text), the spend, and
- *    the auto-off record when this turn reached a cap.
+ * 6. One read-write unit: the conversation (created on its first message), the turn, the spend,
+ *    and the auto-off record when this turn reached a cap; then another for the masked buyer
+ *    text and the reply (encrypted, only when the retention keeps text).
  */
 export async function sendMessage(
   deps: AssistantDependencies,
@@ -310,11 +322,9 @@ export async function sendMessage(
 
   const limit =
     caller.kind === 'customer' ? settings.customerMessageLimit : settings.guestMessageLimit;
-  const throttled = await checkLimits(
-    deps,
-    limitSubjects(context, caller, issuedToken === null ? guestHash : null),
-    limit,
-  );
+  const subjects = limitSubjects(context, caller, issuedToken === null ? guestHash : null);
+  if (subjects === null) return err({ code: 'assistant.unavailable' });
+  const throttled = await checkLimits(deps, subjects, limit);
   if (throttled !== null) return err(throttled);
 
   const masked = maskPersonalData(text.value);
@@ -327,49 +337,54 @@ export async function sendMessage(
   const retentionDays =
     conversation?.retentionDays ??
     retentionDaysOf(settings.retention, caller.kind === 'customer' ? 'customer' : 'guest');
-  const written = await deps.unitOfWork.run<{ autoOff: 'daily' | 'monthly' | null }, never>(
-    market,
-    async () => {
-      let counted = true;
-      if (conversation === null) {
-        counted = await deps.conversations.create(market, {
-          id: conversationId,
-          owner,
-          turns: 0,
-          retentionDays,
-          startedAt: now,
-        });
-      }
-      counted =
-        counted &&
-        (await deps.conversations.countTurn(market, conversationId, conversation?.turns ?? 0, now));
-      // A turn another request took first is answered but not stored (the cap still holds).
-      if (counted && retentionDays > 0) {
-        await deps.conversations.append(market, conversationId, {
-          role: 'buyer',
-          text: masked,
-          cards: [],
-          at: now,
-        });
-        await deps.conversations.append(market, conversationId, {
-          role: 'assistant',
-          text: replyText,
-          cards: turn.cards.map(cardRefOf),
-          at: now,
-        });
-      }
-      await deps.spend.add(market, today, {
-        microUsd: turn.costMicroUsd,
-        inputTokens: turn.inputTokens,
-        outputTokens: turn.outputTokens,
-        conversations: conversation === null && counted ? 1 : 0,
+  // First unit: the turn and the spend, of a size the buyer cannot grow, so the caps always
+  // count what the model cost (Hassan, H1). The text is stored in a second unit.
+  const written = await deps.unitOfWork.run<
+    { counted: boolean; autoOff: 'daily' | 'monthly' | null },
+    never
+  >(market, async () => {
+    let counted = true;
+    if (conversation === null) {
+      counted = await deps.conversations.create(market, {
+        id: conversationId,
+        owner,
+        turns: 0,
+        retentionDays,
+        startedAt: now,
       });
-      const cap = capReached(settings, await deps.spend.totals(market, today));
-      const autoOff =
-        cap !== null && (await deps.spend.markAutoOff(market, today, cap, now)) ? cap : null;
-      return ok({ autoOff });
-    },
-  );
+    }
+    counted =
+      counted &&
+      (await deps.conversations.countTurn(market, conversationId, conversation?.turns ?? 0, now));
+    await deps.spend.add(market, today, {
+      microUsd: turn.costMicroUsd,
+      inputTokens: turn.inputTokens,
+      outputTokens: turn.outputTokens,
+      conversations: conversation === null && counted ? 1 : 0,
+    });
+    const cap = capReached(settings, await deps.spend.totals(market, today));
+    const autoOff =
+      cap !== null && (await deps.spend.markAutoOff(market, today, cap, now)) ? cap : null;
+    return ok({ counted, autoOff });
+  });
+  // A turn another request took first is answered but not stored (the cap still holds).
+  if (written.ok && written.value.counted && retentionDays > 0) {
+    await deps.unitOfWork.run<null, never>(market, async () => {
+      await deps.conversations.append(market, conversationId, {
+        role: 'buyer',
+        text: masked,
+        cards: [],
+        at: now,
+      });
+      await deps.conversations.append(market, conversationId, {
+        role: 'assistant',
+        text: replyText,
+        cards: turn.cards.map(cardRefOf),
+        at: now,
+      });
+      return ok(null);
+    });
+  }
   if (written.ok && written.value.autoOff !== null) {
     // The admin notice: the settings screen shows the last auto-off, and this line is the alert.
     logger.warn({

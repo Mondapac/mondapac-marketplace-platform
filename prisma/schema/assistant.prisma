@@ -63,7 +63,7 @@ model AssistantConversation {
   /// The foreign-key target of the messages.
   @@unique([marketId, id])
   /// The purge reads the conversations of a Market by the age of their last message.
-  @@index([marketId, lastMessageAt])
+  @@index([marketId, retentionDays, lastMessageAt])
   @@map("conversations")
   @@schema("assistant")
 }

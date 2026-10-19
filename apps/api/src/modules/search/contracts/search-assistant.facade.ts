@@ -27,7 +27,11 @@ export type AssistantSearchFailure = { readonly code: 'validation.failed' | 'sea
 export interface SearchAssistantFacade {
   searchProducts(
     context: CallContext,
-    query: { readonly text: string | null; readonly categoryId: string | null; readonly limit: number },
+    query: {
+      readonly text: string | null;
+      readonly categoryId: string | null;
+      readonly limit: number;
+    },
   ): Promise<Result<readonly AssistantProduct[], AssistantSearchFailure>>;
   bestsellers(
     context: CallContext,

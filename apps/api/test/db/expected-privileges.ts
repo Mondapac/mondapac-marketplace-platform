@@ -524,14 +524,14 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'ordering.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Buyer assistant settings: insert-only versions, like the support contact.
     'assistant.settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
-    // Buyer assistant package 4: conversations are created, counted and purged; messages are
-    // written once and purged with their conversation (the cascade needs DELETE); spend days are
-    // counted up and never deleted.
+    // Buyer assistant package 4: conversations are created, counted (turns and last message time
+    // only) and purged; messages are written once and go with their conversation (the cascade
+    // needs no DELETE on them); spend days are counted up and never deleted.
     'assistant.conversations': {
-      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
-      columnUpdate: [],
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['last_message_at', 'turns'],
     },
-    'assistant.messages': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'assistant.messages': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'assistant.spend_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // Notifications (support contact): a change is a new version row; none is updated or deleted.
     'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },

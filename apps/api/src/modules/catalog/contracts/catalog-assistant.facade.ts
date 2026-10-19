@@ -17,7 +17,9 @@ export interface AssistantCategory {
 export interface CatalogAssistantFacade {
   categories(
     context: CallContext,
-  ): Promise<Result<readonly AssistantCategory[], { readonly code: 'catalog.categories-unavailable' }>>;
+  ): Promise<
+    Result<readonly AssistantCategory[], { readonly code: 'catalog.categories-unavailable' }>
+  >;
 }
 
 export const CATALOG_ASSISTANT_FACADE = Symbol('CATALOG_ASSISTANT_FACADE');

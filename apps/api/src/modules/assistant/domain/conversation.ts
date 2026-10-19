@@ -9,6 +9,10 @@ export const MAX_TURNS = 30;
 /** Earlier messages sent with a new one, at most; older ones are left out of the model's view. */
 export const HISTORY_MESSAGES = 12;
 /** Model calls in one buyer turn: the answer and up to three rounds of tool results. */
+/** Tool calls the server runs in one model round; more are answered as refused. */
+export const MAX_TOOL_CALLS_PER_ROUND = 3;
+/** Cards one turn shows (the stored card refs allow 40); the support card always fits. */
+export const MAX_CARDS_PER_TURN = 24;
 export const MAX_MODEL_ROUNDS = 4;
 /** Output tokens of one model call. */
 export const MAX_OUTPUT_TOKENS = 600;
@@ -71,6 +75,23 @@ export function costMicroUsd(
 ): number {
   const pico = usage.inputTokens * price.inputPicoUsd + usage.outputTokens * price.outputPicoUsd;
   return Math.ceil(pico / 1_000_000);
+}
+
+/**
+ * The usage counted for a call cut at its timeout: every character of the request as a token
+ * (more than any tokenizer counts) and the whole output allowance.
+ */
+export function timeoutUsageOf(request: {
+  readonly system: string;
+  readonly messages: readonly unknown[];
+  readonly tools: readonly unknown[];
+  readonly maxOutputTokens: number;
+}): { readonly inputTokens: number; readonly outputTokens: number } {
+  const characters =
+    request.system.length +
+    JSON.stringify(request.messages).length +
+    JSON.stringify(request.tools).length;
+  return { inputTokens: characters, outputTokens: request.maxOutputTokens };
 }
 
 /** Which cap the Market's spend has reached, if any; the daily one is checked first. */

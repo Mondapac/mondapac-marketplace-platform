@@ -69,7 +69,11 @@ export interface ModelCredentials {
  * that into `unavailable` without its text, which could carry provider details.
  */
 export interface ModelProvider {
-  call(credentials: ModelCredentials, request: ModelRequest, signal: AbortSignal): Promise<ModelTurn>;
+  call(
+    credentials: ModelCredentials,
+    request: ModelRequest,
+    signal: AbortSignal,
+  ): Promise<ModelTurn>;
 }
 
 /** Nest token of the {@link ModelProvider}; tests bind a fake, so CI never calls a model. */

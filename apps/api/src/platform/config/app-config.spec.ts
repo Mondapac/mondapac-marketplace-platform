@@ -79,7 +79,11 @@ describe('loadAppConfig', () => {
     });
 
     it.each([
-      ['a Market that is not hosted', 'NZ=test-key-0123456789abcdef', 'NZ is not in HOSTED_MARKETS'],
+      [
+        'a Market that is not hosted',
+        'NZ=test-key-0123456789abcdef',
+        'NZ is not in HOSTED_MARKETS',
+      ],
       [
         'a Market named twice',
         'AU=test-key-0123456789abcdef,AU=test-key-0123456789abcdeg',

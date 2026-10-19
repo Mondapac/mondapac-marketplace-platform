@@ -27,7 +27,7 @@ const AU_ONLY = configOf({
   apiKeys: { AU: KEY },
   models: { fast: { AU: 'model-fast' }, balanced: { AU: 'model-balanced' } },
   prices: { fast: { AU: PRICE }, balanced: {} },
-} as unknown as AppConfig['assistantModels']);
+});
 
 class ScriptedProvider implements ModelProvider {
   readonly calls: { apiKey: string; model: string }[] = [];
