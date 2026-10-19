@@ -53,7 +53,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <StoreShell
             content={content}
             cartSource={cartSource}
-            textSize={textSize}
             consent={consentOf(jar.get(CONSENT_COOKIE)?.value)}
             signIn={checkout.customer}
           >
