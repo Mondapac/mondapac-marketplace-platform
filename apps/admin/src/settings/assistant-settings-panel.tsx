@@ -18,7 +18,6 @@ import { callApi } from '../api/client.ts';
 import {
   BOUNDS,
   assistantProblemOf,
-  dollarsOf,
   formOf,
   refusedFields,
   settingsOf,
@@ -125,13 +124,14 @@ export function AssistantSettingsPanel({
     values: readonly T[],
     group: string,
     unavailable: readonly string[] = [],
+    reason = 'unavailable-option',
   ) =>
     values.map((value) => {
       const name = t(`${P}.${group}.${value as string}`);
       const off = unavailable.includes(value);
       return {
         value,
-        label: off ? t(`${P}.unavailable-option`, { option: name }) : name,
+        label: off ? t(`${P}.${reason}`, { option: name }) : name,
         disabled: off,
       };
     });
@@ -155,7 +155,9 @@ export function AssistantSettingsPanel({
       tier: t(`${P}.model.${tier}`),
       model: modelOf(answer, tier) ?? t(`${P}.model.none`),
     }),
-  ).join(' · ');
+  )
+    .concat(t(`${P}.model.help`))
+    .join(' · ');
 
   return (
     <div className="flex flex-col gap-6">
@@ -206,7 +208,12 @@ export function AssistantSettingsPanel({
             name="modelTier"
             label={t(`${P}.model.label`)}
             help={tierHelp}
-            options={options(MODEL_TIERS, 'model')}
+            options={options(
+              MODEL_TIERS,
+              'model',
+              MODEL_TIERS.filter((tier) => modelOf(answer, tier) === null),
+              'not-configured-option',
+            )}
             value={form.modelTier}
             onChange={(event) => set('modelTier', event.target.value as AssistantForm['modelTier'])}
           />
@@ -324,7 +331,13 @@ export function AssistantSettingsPanel({
           {notice === 'saved' ? <Banner tone="success">{t(`${P}.saved`)}</Banner> : null}
           {notice === 'reloaded' ? <Banner tone="attention">{t(`${P}.reloaded`)}</Banner> : null}
           {problem === null ? null : <Banner tone="critical">{t(`${P}.error.${problem}`)}</Banner>}
-          <FormActionBar status={t(`${P}.version`, { version: answer.version })}>
+          <FormActionBar
+            status={
+              answer.version === 0
+                ? t(`${P}.version-defaults`)
+                : t(`${P}.version`, { version: answer.version })
+            }
+          >
             <Button type="submit" loading={pending}>
               {t(`${P}.save`)}
             </Button>
@@ -364,6 +377,8 @@ function StatusCard({ answer }: { readonly answer: AssistantSettingsAnswer }) {
     },
     { label: t(`${P}.status.spend-today`), value: muted(t(`${P}.status.not-measured`)) },
     { label: t(`${P}.status.spend-month`), value: muted(t(`${P}.status.not-measured`)) },
+    { label: t(`${P}.status.conversations-today`), value: muted(t(`${P}.status.not-measured`)) },
+    { label: t(`${P}.status.last-auto-off`), value: muted(t(`${P}.status.not-measured`)) },
   ];
   return (
     <Card title={t(`${P}.status.title`)}>
@@ -397,11 +412,11 @@ function summaryRows(
     { label: t(`${P}.customer-limit.label`), value: String(settings.customerMessageLimit) },
     {
       label: t(`${P}.spend.daily`),
-      value: `US$${dollarsOf(settings.dailySpendCapUsdCents)}`,
+      value: t(`${P}.spend.amount`, { amount: settings.dailySpendCapUsdCents / 100 }),
     },
     {
       label: t(`${P}.spend.monthly`),
-      value: `US$${dollarsOf(settings.monthlySpendCapUsdCents)}`,
+      value: t(`${P}.spend.amount`, { amount: settings.monthlySpendCapUsdCents / 100 }),
     },
     { label: t(`${P}.retention.label`), value: t(`${P}.retention.${settings.retention}`) },
     { label: t(`${P}.support.label`), value: t(`${P}.support.${settings.supportHandoff}`) },

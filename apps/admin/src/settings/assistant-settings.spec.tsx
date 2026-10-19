@@ -85,6 +85,32 @@ describe('AssistantSettingsPanel', () => {
     expect(form.disabled).toBe(true);
   });
 
+  it('offers a tier without a server model disabled', () => {
+    mount(answer());
+    const balanced = screen.getByRole<HTMLOptionElement>('option', {
+      name: 'Balanced (not configured on the server)',
+    });
+    expect(balanced.disabled).toBe(true);
+  });
+
+  it('renders server text inert', () => {
+    const markup = '<img src=x onerror="alert(1)">';
+    const { container } = mount(
+      answer(
+        { welcomeText: markup },
+        {
+          models: [
+            { tier: 'fast', modelId: markup },
+            { tier: 'balanced', modelId: null },
+          ],
+        },
+      ),
+      false,
+    );
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.getAllByText(markup).length).toBe(2);
+  });
+
   it('warns when switched on without a key or model', () => {
     mount(answer({ enabled: true }));
     expect(screen.getByText(/buyers do not see it yet/)).toBeTruthy();
@@ -132,7 +158,7 @@ describe('AssistantSettingsPanel', () => {
       'csrf',
     );
     expect(await screen.findByText(/Settings saved/)).toBeTruthy();
-    expect(screen.getByText('Version 1')).toBeTruthy();
+    expect(screen.getByText('Saved version 1')).toBeTruthy();
   });
 
   it('names bad fields before calling the API', () => {
@@ -162,7 +188,7 @@ describe('AssistantSettingsPanel', () => {
     ).toBeTruthy();
     expect(call).toHaveBeenLastCalledWith('GET', 'assistant/admin/settings');
     expect(screen.getByLabelText<HTMLInputElement>('Messages per guest').value).toBe('30');
-    expect(screen.getByText('Version 4')).toBeTruthy();
+    expect(screen.getByText('Saved version 4')).toBeTruthy();
   });
 
   it('marks the fields the API refused', async () => {

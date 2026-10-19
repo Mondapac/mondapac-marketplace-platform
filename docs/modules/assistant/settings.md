@@ -57,5 +57,7 @@ Settings > Smart assistant (`/settings/assistant`, package 3). A holder of the v
 status card and a read-only summary; the Platform Administrator gets the form. The page shows
 only whether the model key is set, and the model of each tier as the server reports it. Saving
 sends `expectedVersion`; on a 409 the page reads the settings again and asks the admin to make
-the change again. Spend today and this month show "measured once buyers can chat" until the
-package 4 counters exist.
+the change again. A tier whose model the server does not configure is offered disabled.
+Spend today and this month (against the caps), conversations today, the reason of the last
+automatic switch-off and the cost estimate per conversation (plan section 11) need the package 4
+counters; until then the status card shows "Recorded once buyers can chat".
