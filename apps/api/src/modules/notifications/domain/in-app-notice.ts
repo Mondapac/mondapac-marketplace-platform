@@ -9,7 +9,7 @@ import type { Id } from '@mondapac/shared-kernel';
 export const NOTICE_RETENTION_DAYS = 90;
 /** At most this many notices per seller; the oldest beyond it are deleted. */
 export const NOTICES_PER_SELLER = 200;
-/** At most this many admin notices per Market; the oldest beyond it are deleted. */
+/** At most this many admin notices per Market and kind; the oldest beyond it are deleted. */
 export const ADMIN_NOTICES_PER_MARKET = 200;
 /** One page of the list. */
 export const NOTICE_PAGE_SIZE = 20;

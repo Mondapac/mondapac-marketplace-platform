@@ -131,9 +131,14 @@ class MemoryNotices implements InAppNoticeRepository {
     );
     return Promise.resolve();
   }
-  trim(market: MarketContext, owner: NoticeOwner, keep: number) {
+  trim(market: MarketContext, owner: NoticeOwner, keep: number, kind?: string) {
     const mine = this.rows
-      .filter((row) => row.market === market.marketId && ownedBy(row, owner))
+      .filter(
+        (row) =>
+          row.market === market.marketId &&
+          ownedBy(row, owner) &&
+          (kind === undefined || row.kind === kind),
+      )
       .sort((a, b) => (a.id < b.id ? 1 : -1));
     const gone = new Set(mine.slice(keep).map((row) => row.id));
     this.rows = this.rows.filter((row) => !gone.has(row.id));
@@ -257,7 +262,7 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
   let checks: string[];
   /** What catalog answers for the pending revisions; the asked ids are kept. */
   let pendingRevisions: () => ReturnType<CatalogFacade['pendingProductRevisions']>;
-  let revisionsAsked: (readonly string[])[];
+  let revisionsAsked: (readonly { productId: string; revisionId: string }[])[];
   /** The permission keys each admin account holds (admins only). */
   let adminKeys: Map<string, readonly string[]>;
   let deps: InAppNoticeDependencies;
@@ -343,8 +348,11 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
         },
       } as unknown as OrderingFacade,
       catalog: {
-        pendingProductRevisions: (_context: CallContext, ids: readonly string[]) => {
-          revisionsAsked.push(ids);
+        pendingProductRevisions: (
+          _context: CallContext,
+          refs: readonly { productId: string; revisionId: string }[],
+        ) => {
+          revisionsAsked.push(refs);
           return pendingRevisions();
         },
       } as unknown as CatalogFacade,
@@ -735,7 +743,7 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
           m: code,
         },
       ]);
-      expect(revisionsAsked).toEqual([[id(0x72)]]);
+      expect(revisionsAsked).toEqual([[{ productId: id(0x73), revisionId: id(0x72) }]]);
     });
 
     it('adds nothing for a repeated delivery', async () => {
@@ -764,9 +772,16 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
       expect(unitOfWork.handled.size).toBe(0);
     });
 
-    it(`keeps the newest ${ADMIN_NOTICES_PER_MARKET} admin notices of the Market`, async () => {
+    it(`keeps the newest ${ADMIN_NOTICES_PER_MARKET} admin notices of each kind`, async () => {
+      await review(ITEMS.certificate!);
       for (let n = 0; n <= ADMIN_NOTICES_PER_MARKET; n += 1) await review(ITEMS.priceHold!);
-      expect(notices.rows).toHaveLength(ADMIN_NOTICES_PER_MARKET);
+      expect(notices.rows.filter((row) => row.kind === ADMIN_PRICE_HOLD_OPENED)).toHaveLength(
+        ADMIN_NOTICES_PER_MARKET,
+      );
+      // A flood of one queue never pushes another queue's notice out.
+      expect(notices.rows.some((row) => row.kind === ADMIN_SELLER_CERTIFICATE_SUBMITTED)).toBe(
+        true,
+      );
     });
 
     it('is system-only', async () => {

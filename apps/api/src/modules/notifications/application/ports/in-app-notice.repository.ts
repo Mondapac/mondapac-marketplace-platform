@@ -44,8 +44,11 @@ export interface NoticeScope {
 export interface InAppNoticeRepository {
   add(market: MarketContext, notices: readonly NewNotice[]): Promise<void>;
 
-  /** Deletes the owner's notices beyond the newest `keep`; returns how many left. */
-  trim(market: MarketContext, owner: NoticeOwner, keep: number): Promise<number>;
+  /**
+   * Deletes the owner's notices beyond the newest `keep` (of one kind when `kind` is given);
+   * returns how many left.
+   */
+  trim(market: MarketContext, owner: NoticeOwner, keep: number, kind?: string): Promise<number>;
 
   /** Newest first; `before` is the last id of the previous page; `show` filters by read state. */
   list(

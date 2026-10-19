@@ -103,13 +103,16 @@ export class CatalogFacadeImplementation implements CatalogFacade {
 
   pendingProductRevisions(
     context: CallContext,
-    revisionIds: readonly Id<'ProductRevision'>[],
+    revisions: readonly {
+      readonly productId: Id<'Product'>;
+      readonly revisionId: Id<'ProductRevision'>;
+    }[],
   ): Promise<
     Result<
       ReadonlySet<Id<'ProductRevision'>>,
       AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
     >
   > {
-    return this.useCases.pendingProductRevisions.execute(context, { revisionIds });
+    return this.useCases.pendingProductRevisions.execute(context, { revisions });
   }
 }

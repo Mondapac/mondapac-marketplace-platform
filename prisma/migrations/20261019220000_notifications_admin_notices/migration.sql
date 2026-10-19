@@ -2,7 +2,7 @@
 -- Market's admins (`audience = 'admin'`, no seller); the permission its kind needs is checked when
 -- it is read, as for seller notices. The list and count use the existing
 -- (market_id, seller_id, id DESC) index with `seller_id IS NULL`. Retention 90 days, at most 200
--- admin notices per Market (the purge job and the writer delete the rest).
+-- admin notices per Market and kind (the purge job and the writer delete the rest).
 
 -- Safety: a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';

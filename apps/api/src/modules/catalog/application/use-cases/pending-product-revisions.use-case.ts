@@ -4,10 +4,13 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { MAX_FACADE_BATCH } from '../../contracts/catalog.facade';
 import type { OfferSellUnitsFailure } from '../offers/offer-sell-units-request';
-import type { PendingProductRevisionsReader } from '../ports/pending-product-revisions.reader';
+import type {
+  PendingProductRevisionsReader,
+  ProductRevisionRef,
+} from '../ports/pending-product-revisions.reader';
 
 export interface PendingProductRevisionsInput {
-  readonly revisionIds: readonly string[];
+  readonly revisions: readonly { readonly productId: string; readonly revisionId: string }[];
 }
 
 export interface PendingProductRevisionsDependencies {
@@ -16,8 +19,8 @@ export interface PendingProductRevisionsDependencies {
 }
 
 /**
- * `pendingProductRevisions`: which of the requested revisions still waits for review, at most 200
- * ids, duplicates collapsed. Rule `system`: for the admins' review notice (in-app notifications
+ * `pendingProductRevisions`: which of the requested revisions (each with its product) still waits
+ * for review, at most 200. Rule `system`: for the admins' review notice (in-app notifications
  * package 3), which `catalog.product-revision-submitted.v1` alone cannot tell, since a revision
  * may publish at once. Ids only. The request is checked whole before any read.
  */
@@ -42,23 +45,23 @@ export class PendingProductRevisionsQuery extends UseCase<
     context: CallContext,
     input: PendingProductRevisionsInput,
   ): Promise<Result<ReadonlySet<Id<'ProductRevision'>>, OfferSellUnitsFailure>> {
-    if (!Array.isArray(input.revisionIds)) {
-      return err({ code: 'validation.failed', fields: [{ path: 'revisionIds', code: 'type' }] });
+    if (!Array.isArray(input.revisions)) {
+      return err({ code: 'validation.failed', fields: [{ path: 'revisions', code: 'type' }] });
     }
-    if (input.revisionIds.length > MAX_FACADE_BATCH) return err({ code: 'batch.too-large' });
-    const ids = new Set<Id<'ProductRevision'>>();
-    for (const value of input.revisionIds as readonly unknown[]) {
-      const parsed = typeof value === 'string' ? parseId<'ProductRevision'>(value) : null;
-      if (parsed === null || !parsed.ok) {
-        return err({
-          code: 'validation.failed',
-          fields: [{ path: 'revisionIds', code: 'format' }],
-        });
+    if (input.revisions.length > MAX_FACADE_BATCH) return err({ code: 'batch.too-large' });
+    const requested: ProductRevisionRef[] = [];
+    for (const value of input.revisions as readonly unknown[]) {
+      const ref = value as { productId?: unknown; revisionId?: unknown } | null;
+      const productId =
+        typeof ref?.productId === 'string' ? parseId<'Product'>(ref.productId) : null;
+      const revisionId =
+        typeof ref?.revisionId === 'string' ? parseId<'ProductRevision'>(ref.revisionId) : null;
+      if (productId === null || !productId.ok || revisionId === null || !revisionId.ok) {
+        return err({ code: 'validation.failed', fields: [{ path: 'revisions', code: 'format' }] });
       }
-      ids.add(parsed.value);
+      requested.push({ productId: productId.value, revisionId: revisionId.value });
     }
-    if (ids.size === 0) return ok(new Set());
-    const requested = [...ids];
+    if (requested.length === 0) return ok(new Set());
     return this.deps.unitOfWork.run<ReadonlySet<Id<'ProductRevision'>>, OfferSellUnitsFailure>(
       context.market,
       async () => ok(await this.deps.pendingRevisionsReader.read(context.market, requested)),

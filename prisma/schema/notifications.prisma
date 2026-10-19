@@ -42,8 +42,8 @@ model NotificationsInbox {
 /// person: a `seller` notice is shown to every member of that seller who holds the permission its
 /// kind needs, checked when it is read. No text is stored: the panel renders `kind` and `params`
 /// (ids and counts only, never a name, an address or an email). Rows leave after the retention
-/// period, and the oldest leave once a seller has more than the cap. The CHECKs and the grants are
-/// hand-written in the migration.
+/// period, and the oldest leave once a seller (or, for `admin` notices, a Market per kind) has more
+/// than the cap. The CHECKs and the grants are hand-written in the migration.
 model NotificationsInAppNotice {
   marketId  String   @map("market_id") @db.VarChar(8)
   /// A UUIDv7, so the id sorts by creation time (the list's cursor).

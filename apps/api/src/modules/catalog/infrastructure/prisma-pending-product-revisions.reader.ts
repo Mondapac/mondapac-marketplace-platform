@@ -1,27 +1,35 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { PendingProductRevisionsReader } from '../application/ports/pending-product-revisions.reader';
+import type {
+  PendingProductRevisionsReader,
+  ProductRevisionRef,
+} from '../application/ports/pending-product-revisions.reader';
 
 /**
- * {@link PendingProductRevisionsReader}: the products of the Market whose `pending_revision_id`
- * is one of the requested ids. One statement, scoped by `market_id`.
+ * {@link PendingProductRevisionsReader}: the requested products of the Market by `(market_id, id)`
+ * (the unique key, so no scan), then their `pending_revision_id` compared with the requested
+ * revision. One statement, scoped by `market_id`.
  */
 export class PrismaPendingProductRevisionsReader implements PendingProductRevisionsReader {
   constructor(private readonly prisma: PrismaService) {}
 
   async read(
     market: MarketContext,
-    revisionIds: readonly Id<'ProductRevision'>[],
+    revisions: readonly ProductRevisionRef[],
   ): Promise<ReadonlySet<Id<'ProductRevision'>>> {
-    if (revisionIds.length === 0) return new Set();
+    if (revisions.length === 0) return new Set();
     const rows = await this.prisma.tx(market).catalogProduct.findMany({
-      where: { marketId: market.marketId, pendingRevisionId: { in: [...revisionIds] } },
-      select: { pendingRevisionId: true },
+      where: {
+        marketId: market.marketId,
+        id: { in: [...new Set(revisions.map((ref) => ref.productId))] },
+      },
+      select: { id: true, pendingRevisionId: true },
     });
+    const pendingOf = new Map(rows.map((row) => [row.id, row.pendingRevisionId] as const));
     return new Set(
-      rows
-        .map((row) => row.pendingRevisionId)
-        .filter((id): id is string => id !== null) as Id<'ProductRevision'>[],
+      revisions
+        .filter((ref) => pendingOf.get(ref.productId) === ref.revisionId)
+        .map((ref) => ref.revisionId),
     );
   }
 }

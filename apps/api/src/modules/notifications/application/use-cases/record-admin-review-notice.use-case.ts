@@ -79,7 +79,8 @@ function paramsOf(item: AdminReviewItem): Readonly<Record<string, string>> {
  * `pricing.price-hold-opened.v1`. A product revision makes a notice only while it is still
  * pending (a seller revision may publish at once, and a platform one is the admins' own); this is
  * read through catalog before the unit. Written in the inbox unit, so a repeated delivery adds
- * nothing; the Market's oldest admin notices beyond the cap leave in the same unit. Rule `system`.
+ * nothing; the Market's oldest admin notices of the same kind beyond the cap leave in the same
+ * unit (a cap per kind, so a flood of one queue never pushes another queue's notices out). Rule `system`.
  */
 export class RecordAdminReviewNotice extends UseCase<
   RecordAdminReviewNoticeInput,
@@ -111,7 +112,9 @@ export class RecordAdminReviewNotice extends UseCase<
       else {
         // Read before the unit (P 3.1 row 5): the product is catalog's, through its facade.
         const revisionId = item.revisionId as Id<'ProductRevision'>;
-        const answer = await this.deps.catalog.pendingProductRevisions(context, [revisionId]);
+        const answer = await this.deps.catalog.pendingProductRevisions(context, [
+          { productId: item.productId as Id<'Product'>, revisionId },
+        ]);
         if (!answer.ok) {
           if (answer.error.code === 'access.denied') return err({ code: 'access.denied' });
           throw new Error(
@@ -147,6 +150,7 @@ export class RecordAdminReviewNotice extends UseCase<
             context.market,
             { audience: 'admin' },
             ADMIN_NOTICES_PER_MARKET,
+            notice.kind,
           );
           return ok(1);
         },

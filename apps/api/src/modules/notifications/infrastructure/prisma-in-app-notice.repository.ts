@@ -52,17 +52,22 @@ export class PrismaInAppNoticeRepository implements InAppNoticeRepository {
     });
   }
 
-  async trim(market: MarketContext, owner: NoticeOwner, keep: number) {
+  async trim(market: MarketContext, owner: NoticeOwner, keep: number, kind?: string) {
     const tx = this.prisma.tx(market);
+    const rows = {
+      marketId: market.marketId,
+      ...ownerRows(owner),
+      ...(kind === undefined ? {} : { kind }),
+    };
     const edge = await tx.notificationsInAppNotice.findFirst({
-      where: { marketId: market.marketId, ...ownerRows(owner) },
+      where: rows,
       orderBy: { id: 'desc' },
       skip: keep - 1,
       select: { id: true },
     });
     if (edge === null) return 0;
     const deleted = await tx.notificationsInAppNotice.deleteMany({
-      where: { marketId: market.marketId, ...ownerRows(owner), id: { lt: edge.id } },
+      where: { ...rows, id: { lt: edge.id } },
     });
     return deleted.count;
   }
