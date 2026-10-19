@@ -52,6 +52,10 @@ import { SellerSpecialPriceController } from './presentation/seller-special-pric
 import { pricingProviders } from './infrastructure/pricing-providers';
 import { publishSpecialPriceBoundariesJob } from './presentation/jobs/publish-special-price-boundaries.job';
 import { purgeWriteRefusalThrottlesJob } from './presentation/jobs/purge-write-refusal-throttles.job';
+import { SPECIALS_IN_FORCE_READER } from './application/ports/specials-in-force.reader';
+import { SpecialsInForceQuery } from './application/use-cases/specials-in-force.use-case';
+import { PRICING_SPECIALS_FACADE } from './contracts/pricing-specials.facade';
+import { PricingSpecialsFacadeImplementation } from './presentation/pricing-specials.facade';
 
 /**
  * The Nest token of each dependency name the use cases of pricing share: a use case's dependency
@@ -71,6 +75,7 @@ const PORT = {
   outbox: OUTBOX_WRITER,
   clock: CLOCK,
   ids: ID_GENERATOR,
+  specials: SPECIALS_IN_FORCE_READER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -165,6 +170,18 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(EffectivePricesQuery, { unitOfWork: true, series: true, clock: true }),
     useCaseProvider(EffectivePricesSystemQuery, { unitOfWork: true, series: true, clock: true }),
+    useCaseProvider(SpecialsInForceQuery, {
+      unitOfWork: true,
+      specials: true,
+      series: true,
+      clock: true,
+    }),
+    {
+      provide: PRICING_SPECIALS_FACADE,
+      inject: [SpecialsInForceQuery],
+      useFactory: (specials: SpecialsInForceQuery) =>
+        new PricingSpecialsFacadeImplementation(specials),
+    },
     {
       provide: PRICING_FACADE,
       inject: [EffectivePricesQuery, EffectivePricesSystemQuery],
@@ -243,6 +260,6 @@ function useCaseProvider<D, U>(
       ],
     ),
   ],
-  exports: [PRICING_FACADE],
+  exports: [PRICING_FACADE, PRICING_SPECIALS_FACADE],
 })
 export class PricingModule {}

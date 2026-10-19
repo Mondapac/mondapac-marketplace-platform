@@ -231,6 +231,15 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       "display copy of certification's badge data, written only by certification and never entered here (ADR-0028 d3)",
   },
   PlatformCategoryState: { table: 'PLATFORM_CATEGORY_FIELDS' },
+  StoredCategoryNode: {
+    noCustomerText:
+      'read copy of stored category rows: ids, status, slug and the published CategoryName rows, already claim-checked when written',
+  },
+  LiveCategory: {
+    noCustomerText:
+      'public tree view: ids, slug and one published category name, already claim-checked when written, with numbers',
+  },
+  CategoryTreeUnavailableError: { noCustomerText: 'error with a fixed reason' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },
   ProductTypeHandler: { noCustomerText: 'interface of methods' },
   RateReservation: { noCustomerText: 'numbers and times' },

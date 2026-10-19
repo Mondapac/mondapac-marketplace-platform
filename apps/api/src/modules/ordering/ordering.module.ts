@@ -38,7 +38,13 @@ import { SellerShipOrder } from './application/use-cases/seller-ship-order.use-c
 import { SellerViewOrder } from './application/use-cases/seller-view-order.use-case';
 import { StartCheckout } from './application/use-cases/start-checkout.use-case';
 import { ViewOrder } from './application/use-cases/view-order.use-case';
-import { ORDERING_FACADE, ORDERING_PERMISSIONS } from './contracts';
+import { ORDERING_FACADE, ORDERING_PERMISSIONS, ORDERING_RANKING_FACADE } from './contracts';
+import { SALES_RANKING_READER } from './application/ports/sales-ranking.reader';
+import {
+  BestSellingOffersQuery,
+  type BestSellingOffersDependencies,
+} from './application/use-cases/best-selling-offers.use-case';
+import { OrderingRankingFacadeImplementation } from './presentation/ordering-ranking.facade';
 import { ORDERING_EVENTS } from './domain/events';
 import { orderingProviders } from './infrastructure/ordering-providers';
 import { AdminOrdersController } from './presentation/admin-orders.controller';
@@ -92,7 +98,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Package 5: the commission rate (from `commission-payouts`) is frozen on each order line at
  * checkout, and a worker job writes each paid seller order into the seller ledger. Tax: the tax
  * of each line (from `tax`, ADR-0039) is frozen on it at checkout, added to the charge when the
- * price excludes it, and shown on the admin order page.
+ * price excludes it, and shown on the admin order page. Storefront reads: the best-selling Offers
+ * (ids only) through `ORDERING_RANKING_FACADE`.
  */
 @Module({
   imports: [
@@ -146,6 +153,22 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         customerNames: SellerOrderCustomerNames,
       ) => new OrderingFacadeImplementation(confirm, cancel, notice, shipment, customerNames),
     },
+    {
+      provide: BestSellingOffersQuery,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, SALES_RANKING_READER, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: BestSellingOffersDependencies['unitOfWork'],
+        ranking: BestSellingOffersDependencies['ranking'],
+        clock: BestSellingOffersDependencies['clock'],
+      ) => new BestSellingOffersQuery(gate, { unitOfWork, ranking, clock }),
+    },
+    {
+      provide: ORDERING_RANKING_FACADE,
+      inject: [BestSellingOffersQuery],
+      useFactory: (bestSelling: BestSellingOffersQuery) =>
+        new OrderingRankingFacadeImplementation(bestSelling),
+    },
     registerJobsFrom(
       'ordering',
       [RecordShipments, RecordLedger],
@@ -155,6 +178,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ],
     ),
   ],
-  exports: [ORDERING_FACADE],
+  exports: [ORDERING_FACADE, ORDERING_RANKING_FACADE],
 })
 export class OrderingModule {}

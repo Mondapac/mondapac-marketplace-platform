@@ -6,12 +6,20 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CatalogModule } from '../catalog';
+import { OrderingModule } from '../ordering';
+import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
 import { OFFER_DOCUMENT_REPOSITORY } from './application/ports/offer-document.repository';
 import { OFFER_FEED } from './application/ports/offer-feed';
 import { OFFER_SEARCH_READER } from './application/ports/offer-search.reader';
 import { PUBLIC_VISIBILITY } from './application/ports/public-visibility';
 import { SEARCH_POLICY } from './application/ports/search-policy';
+import { SHELF_DOCUMENTS_READER } from './application/ports/shelf-documents.reader';
+import { SHELF_SOURCES } from './application/ports/shelf-sources';
+import { PUBLISHED_VARIANTS } from './application/ports/published-variants';
+import type { ShelfDependencies } from './application/shelf-dependencies';
+import { ListBestsellers } from './application/use-cases/list-bestsellers.use-case';
+import { ListSpecials } from './application/use-cases/list-specials.use-case';
 import type { SearchDependencies } from './application/search-dependencies';
 import { RebuildOfferIndex } from './application/use-cases/rebuild-offer-index.use-case';
 import { SearchProducts } from './application/use-cases/search-products.use-case';
@@ -19,6 +27,7 @@ import { SyncOfferDocuments } from './application/use-cases/sync-offer-documents
 import { searchProviders } from './infrastructure/search-providers';
 import { rebuildIndexJob } from './presentation/jobs/rebuild-offer-index.job';
 import { SearchController } from './presentation/search.controller';
+import { ShelfController } from './presentation/shelf.controller';
 import { catalogIndexSubscriptions } from './presentation/subscribers/catalog-index.subscriptions';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: SearchDependencies) => U;
@@ -48,20 +57,51 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   };
 }
 
+const SHELF_PORTS: readonly [keyof ShelfDependencies, InjectionToken][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['reader', OFFER_SEARCH_READER],
+  ['shelves', SHELF_DOCUMENTS_READER],
+  ['sources', SHELF_SOURCES],
+  ['visibility', PUBLIC_VISIBILITY],
+  ['policy', SEARCH_POLICY],
+  ['variants', PUBLISHED_VARIANTS],
+];
+
+/** The two shelf use cases share their own dependency object. */
+function shelfProvider<U>(
+  type: new (gate: UseCaseGate, deps: ShelfDependencies) => U,
+): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, ...SHELF_PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+      new type(
+        gate,
+        Object.fromEntries(
+          SHELF_PORTS.map(([name], index) => [name, values[index]]),
+        ) as unknown as ShelfDependencies,
+      ),
+  };
+}
+
 /**
  * Product search (speed mode, Phase 6 package 2; docs/modules/search/search.md): a read model
  * `search.offer_documents` kept fresh from catalog's events and rebuilt by a job, and the public
- * `GET /search/products` over PostgreSQL full-text search (ADR-0004).
+ * `GET /search/products` over PostgreSQL full-text search (ADR-0004). Storefront reads: the
+ * best-sellers and specials shelves (`GET /search/bestsellers`, `GET /search/specials`) over the
+ * same read model, ordered by ordering's ranking and pricing's specials.
  */
 @Module({
-  imports: [CatalogModule, SellersModule],
-  controllers: [SearchController],
+  imports: [CatalogModule, SellersModule, OrderingModule, PricingModule],
+  controllers: [SearchController, ShelfController],
   providers: [
     PersistenceModule.rawReadFor('search'),
     ...searchProviders,
     ...[SearchProducts, SyncOfferDocuments, RebuildOfferIndex].map((type) =>
       useCaseProvider(type as UseCaseClass<unknown>),
     ),
+    shelfProvider(ListBestsellers),
+    shelfProvider(ListSpecials),
     registerSubscriptionsFrom('search', [SyncOfferDocuments], (sync: SyncOfferDocuments) =>
       catalogIndexSubscriptions(sync),
     ),

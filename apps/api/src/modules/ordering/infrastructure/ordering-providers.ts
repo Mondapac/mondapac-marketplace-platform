@@ -18,6 +18,11 @@ import { ConfigOrderingPolicy } from './config-ordering-policy';
 import { FacadeOrderLabels } from './facade-order-labels';
 import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
 import { PrismaOrderRepository } from './prisma-order.repository';
+import {
+  SALES_RANKING_READER,
+  type SalesRankingReader,
+} from '../application/ports/sales-ranking.reader';
+import { PrismaSalesRankingReader } from './prisma-sales-ranking.reader';
 import { StripeCheckoutGateway } from './stripe-checkout-gateway';
 
 /** Binds the ports of ordering. Only this layer may reach `PrismaService` and the Stripe key. */
@@ -26,6 +31,11 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: ORDER_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OrderRepository => new PrismaOrderRepository(prisma),
+  },
+  {
+    provide: SALES_RANKING_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SalesRankingReader => new PrismaSalesRankingReader(prisma),
   },
   {
     provide: CHECKOUT_GATEWAY,

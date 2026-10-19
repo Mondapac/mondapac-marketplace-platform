@@ -7,6 +7,8 @@ import {
 } from '../../../platform/persistence/raw-reads/raw-read-port';
 import { CATALOG_FACADE, CATALOG_INDEX_FACADE } from '../../catalog';
 import type { CatalogFacade, CatalogIndexFacade } from '../../catalog';
+import { ORDERING_RANKING_FACADE, type OrderingRankingFacade } from '../../ordering';
+import { PRICING_SPECIALS_FACADE, type PricingSpecialsFacade } from '../../pricing';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import {
   OFFER_DOCUMENT_REPOSITORY,
@@ -19,6 +21,18 @@ import {
 } from '../application/ports/offer-search.reader';
 import { PUBLIC_VISIBILITY, type PublicVisibility } from '../application/ports/public-visibility';
 import { SEARCH_POLICY, type SearchPolicy } from '../application/ports/search-policy';
+import {
+  SHELF_DOCUMENTS_READER,
+  type ShelfDocumentsReader,
+} from '../application/ports/shelf-documents.reader';
+import { SHELF_SOURCES, type ShelfSources } from '../application/ports/shelf-sources';
+import { FacadeShelfSources } from './facade-shelf-sources';
+import { FacadePublishedVariants } from './facade-published-variants';
+import {
+  PUBLISHED_VARIANTS,
+  type PublishedVariants,
+} from '../application/ports/published-variants';
+import { PrismaShelfDocumentsReader } from './prisma-shelf-documents.reader';
 import { ConfigSearchPolicy } from './config-search-policy';
 import { FacadeOfferFeed } from './facade-offer-feed';
 import { FacadePublicVisibility } from './facade-public-visibility';
@@ -57,5 +71,22 @@ export const searchProviders: readonly FactoryProvider[] = [
     inject: [CATALOG_FACADE, SELLERS_FACADE],
     useFactory: (catalog: CatalogFacade, sellers: SellersFacade): PublicVisibility =>
       new FacadePublicVisibility(catalog, sellers),
+  },
+  {
+    provide: SHELF_DOCUMENTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ShelfDocumentsReader =>
+      new PrismaShelfDocumentsReader(prisma),
+  },
+  {
+    provide: SHELF_SOURCES,
+    inject: [ORDERING_RANKING_FACADE, PRICING_SPECIALS_FACADE],
+    useFactory: (ordering: OrderingRankingFacade, pricing: PricingSpecialsFacade): ShelfSources =>
+      new FacadeShelfSources(ordering, pricing),
+  },
+  {
+    provide: PUBLISHED_VARIANTS,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): PublishedVariants => new FacadePublishedVariants(catalog),
   },
 ];
