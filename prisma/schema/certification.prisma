@@ -442,8 +442,13 @@ model CertificationUploadedDocument {
   submissionLinks CertificationSubmissionDocument[]
   indexRows       CertificationDocumentIndex[]
   requestLinks    CertificationIssuerRequestDocument[]
+  productDraftLinks    CertificationProductDraftDocument[]
+  productRevisionLinks CertificationProductRevisionDocument[]
 
   @@unique([marketId, id])
+  /// The target of the manufacturer links' foreign keys (slice 15 part 2): an admin file has no
+  /// owner, so the link names the type only.
+  @@unique([marketId, id, typeId], map: "uploaded_documents_market_id_id_type_id_key")
   /// The target of the document index's foreign key (slice 7): a row names its file's owner.
   @@unique([marketId, id, ownerSellerId], map: "uploaded_documents_market_id_id_owner_seller_id_key")
   /// The target of the draft link's foreign key: the link names the owner and the type.
@@ -854,6 +859,7 @@ model CertificationProductCertification {
   approvedRevision                 CertificationProductCertificationRevision?  @relation("ProductCertificateApproved", fields: [marketId, id, approvedRevisionId], references: [marketId, productCertificationId, id], map: "product_certifications_approved_revision_fkey", onDelete: Restrict, onUpdate: Restrict)
   draftCoverage                    CertificationProductDraftCoverage[]
   draftEditors                     CertificationProductDraftEditor[]
+  draftDocuments                   CertificationProductDraftDocument[]
   history                          CertificationProductCertificationHistory[]
 
   @@unique([marketId, id])
@@ -936,6 +942,8 @@ model CertificationProductCertificationRevision {
   decisions                   CertificationProductRevisionDecision[]
   issuerConfirmations         CertificationProductIssuerConfirmation[]
   history                     CertificationProductCertificationHistory[]
+  documents                   CertificationProductRevisionDocument[]
+  reviewChecks                CertificationProductRevisionReviewCheck[]
 
   @@unique([marketId, id])
   /// The target of the root's pointer foreign keys (CE4).
@@ -974,6 +982,69 @@ model CertificationProductRevisionCoverage {
   /// referencing side of the composite foreign key to the revision.
   @@index([marketId, revisionId, typeId])
   @@map("product_revision_coverage")
+  @@schema("certification")
+}
+
+/// The files of a manufacturer certificate's draft (data design 3.15, as 3.11's draft link; slice
+/// 15 part 2). Mutable: the admin adds and removes files. The foreign keys bind the file's type to
+/// the certificate's; the link trigger admits only a clean `product-certificate` file.
+model CertificationProductDraftDocument {
+  marketId               String                            @map("market_id") @db.VarChar(8)
+  tenantId               String                            @map("tenant_id")
+  productCertificationId String                            @map("product_certification_id") @db.Uuid
+  typeId                 String                            @map("type_id") @db.Uuid
+  documentId             String                            @map("document_id") @db.Uuid
+  position               Int                               @db.SmallInt
+  certificate            CertificationProductCertification @relation(fields: [marketId, productCertificationId, typeId], references: [marketId, id, typeId], map: "product_certification_draft_documents_certificate_fkey", onDelete: Restrict, onUpdate: Restrict)
+  document               CertificationUploadedDocument     @relation(fields: [marketId, documentId, typeId], references: [marketId, id, typeId], map: "product_certification_draft_documents_document_fkey", onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, productCertificationId, documentId])
+  /// A file belongs to at most one draft.
+  @@unique([marketId, documentId], map: "product_certification_draft_documents_document_key")
+  /// A backstop for the draft order: no two files at one position.
+  @@unique([marketId, productCertificationId, position], map: "product_certification_draft_documents_position_key")
+  @@map("product_certification_draft_documents")
+  @@schema("certification")
+}
+
+/// The files a revision holds (data design 3.16, as `seller_submission_documents`). Insert-only
+/// (CE3): sealed at submission. A later revision that keeps a file links the same document row.
+model CertificationProductRevisionDocument {
+  marketId   String                                    @map("market_id") @db.VarChar(8)
+  tenantId   String                                    @map("tenant_id")
+  revisionId String                                    @map("revision_id") @db.Uuid
+  documentId String                                    @map("document_id") @db.Uuid
+  typeId     String                                    @map("type_id") @db.Uuid
+  position   Int                                       @db.SmallInt
+  revision   CertificationProductCertificationRevision @relation(fields: [marketId, revisionId, typeId], references: [marketId, id, typeId], map: "product_revision_documents_revision_fkey", onDelete: Restrict, onUpdate: Restrict)
+  document   CertificationUploadedDocument             @relation(fields: [marketId, documentId, typeId], references: [marketId, id, typeId], map: "product_revision_documents_document_fkey", onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, revisionId, documentId])
+  @@unique([marketId, revisionId, position])
+  @@index([marketId, documentId])
+  @@map("product_revision_documents")
+  @@schema("certification")
+}
+
+/// One recorded review check of a manufacturer revision (data design 3.16, the shape of 3.10).
+/// Insert-only (CE3): a re-recording is a new row and the latest row per (revision, check code)
+/// counts. `check_code` is a code of the Market's `reviewChecks` (checked by the use case).
+model CertificationProductRevisionReviewCheck {
+  id                  String                                    @id @db.Uuid
+  marketId            String                                    @map("market_id") @db.VarChar(8)
+  tenantId            String                                    @map("tenant_id")
+  revisionId          String                                    @map("revision_id") @db.Uuid
+  checkCode           String                                    @map("check_code")
+  /// done | problem | not-applicable
+  result              String
+  recordedByAccountId String                                    @map("recorded_by_account_id") @db.Uuid
+  recordedAt          DateTime                                  @map("recorded_at") @db.Timestamptz(6)
+  revision            CertificationProductCertificationRevision @relation(fields: [marketId, revisionId], references: [marketId, id], map: "product_revision_review_checks_revision_fkey", onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  /// The approval guard reads the latest row per code over this index.
+  @@index([marketId, revisionId, checkCode, recordedAt(sort: Desc)], map: "product_revision_review_checks_lookup_idx")
+  @@map("product_revision_review_checks")
   @@schema("certification")
 }
 

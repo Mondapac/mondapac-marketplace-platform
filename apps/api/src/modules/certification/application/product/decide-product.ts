@@ -16,7 +16,7 @@ import {
   statusAfterProductDecision,
   type ProductApprovalRefusal,
 } from '../../domain/product-certification';
-import { reasonFor } from '../../domain/review';
+import { latestChecks, missingChecks, reasonFor, type ReviewPolicy } from '../../domain/review';
 import {
   adminOf,
   invalid,
@@ -55,7 +55,11 @@ export type ProductDecisionFailure =
   | { readonly code: 'certificate.not-found' }
   | { readonly code: 'review.not-current-revision' }
   | { readonly code: 'conflict.stale' }
-  | ProductApprovalRefusal
+  | Exclude<ProductApprovalRefusal, { readonly code: 'review.checks-incomplete' }>
+  | {
+      readonly code: 'review.checks-incomplete';
+      readonly fields: readonly { readonly path: string; readonly code: string }[];
+    }
   | ValidationFailure;
 
 const logger = new Logger('ProductCertificationDecision');
@@ -66,7 +70,9 @@ const logger = new Logger('ProductCertificationDecision');
  * decider is another person: not the record's creator, not any admin who edited the draft the
  * revision came from, not its submitter (`approval.same-admin`, and the database CHECK against the
  * author). An approval also needs the record open, the issuer `active` and of the type, the type
- * active for a record never approved, and the boundary in the Market's configured zone after now;
+ * active for a record never approved, the boundary in the Market's configured zone after now, a
+ * file when the revision's type requires one, and every required review check of the Market
+ * recorded `done` or `not-applicable` on the revision (slice 15 part 2);
  * it stores the boundary, moves the approved pointer (the previous revision is superseded) and
  * publishes `product-certification-approved.v1`, or `-coverage-changed.v1` when it replaces an
  * approved revision of other coverage (T3). A rejection needs a reason of the Market's list; a
@@ -109,6 +115,15 @@ export async function decideProduct(
   }
   const marketZone = deps.marketZone(market);
   if (marketZone === null) return err({ code: 'access.unavailable' });
+  // The Market's checks gate an approval (slice 15 part 2); a rejection needs none.
+  let checkPolicy: ReviewPolicy | null = null;
+  if (outcome === 'approved') {
+    try {
+      checkPolicy = deps.reviewPolicies.policyFor(market);
+    } catch {
+      return err({ code: 'access.unavailable' });
+    }
+  }
 
   const now = deps.clock.now();
   const historyId = deps.ids.next<'ProductCertificationHistory'>();
@@ -138,10 +153,22 @@ export async function decideProduct(
         hasApproval: root.approvedRevisionId !== null,
         boundary: boundary.at,
         now,
+        // A manufacturer basis is always a third-party document type (submitRefusal).
+        missingChecks:
+          checkPolicy === null
+            ? []
+            : missingChecks(checkPolicy, 'THIRD_PARTY_DOCUMENT', latestChecks(pending.checks)),
+        documentMissing: pending.typeRequiresDocument && pending.documents.length < 1,
       });
       // A rejection is by another person too (design 7.1: approve, reject, reinstate); the other
       // guards are an approval's.
       if (refusal !== null && (outcome === 'approved' || refusal.code === 'approval.same-admin')) {
+        if (refusal.code === 'review.checks-incomplete') {
+          return err({
+            code: 'review.checks-incomplete',
+            fields: refusal.checks.map((path) => ({ path, code: 'not-done' })),
+          } as const);
+        }
         return err(refusal);
       }
       const toStatus = statusAfterProductDecision(

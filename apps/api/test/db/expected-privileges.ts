@@ -278,6 +278,17 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [],
     },
+    // Migration product_documents (slice 15 part 2; data design 3.15, 3.16): the draft's files are
+    // added and removed; a revision's files and its review checks are insert-only.
+    'certification.product_certification_draft_documents': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'certification.product_revision_documents': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'certification.product_revision_review_checks': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
     'sellers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'sellers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'sellers.seller_files': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },

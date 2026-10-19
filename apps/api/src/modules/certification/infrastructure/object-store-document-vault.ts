@@ -5,21 +5,23 @@ import type { ObjectStore } from '../../../platform/storage/object-store';
 import type { SubjectKeyService } from '../../../platform/subject-keys/subject-key-service';
 import type {
   DocumentVault,
+  PlatformDocumentVault,
   SellerKeyDestroyed,
   VaultedDocument,
 } from '../application/ports/document-ports';
 import { DOCUMENT_DATA_KEY_LABEL } from './certification-labels';
+import type { SubjectKeyRegistryCipher } from './subject-key-registry-cipher';
 
 const KEY_BYTES = 32;
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
-/** The key of a file's object: `certification/<sellerId>/<documentId>` (design 9.1). */
-export function documentObjectKey(
-  sellerId: Id<'Seller'>,
-  documentId: Id<'UploadedDocument'>,
-): string {
-  return `certification/${sellerId}/${documentId}`;
+/**
+ * The key of a file's object: `certification/<subjectId>/<documentId>` (design 9.1), where the
+ * subject is the seller, or the Market's platform subject for an admin's file (slice 15 part 2).
+ */
+export function documentObjectKey(subjectId: Id, documentId: Id<'UploadedDocument'>): string {
+  return `certification/${subjectId}/${documentId}`;
 }
 
 /**
@@ -37,9 +39,19 @@ export class ObjectStoreDocumentVault implements DocumentVault {
     private readonly keys: SubjectKeyService,
   ) {}
 
-  async seal(
+  seal(
     market: MarketContext,
     sellerId: Id<'Seller'>,
+    documentId: Id<'UploadedDocument'>,
+    plain: Buffer,
+  ): Promise<Result<VaultedDocument, SellerKeyDestroyed>> {
+    return this.sealUnder(market, sellerId, documentId, plain);
+  }
+
+  /** {@link seal} under any subject's key: the seller's, or the Market's platform subject. */
+  async sealUnder(
+    market: MarketContext,
+    subjectId: Id,
     documentId: Id<'UploadedDocument'>,
     plain: Buffer,
   ): Promise<Result<VaultedDocument, SellerKeyDestroyed>> {
@@ -47,12 +59,12 @@ export class ObjectStoreDocumentVault implements DocumentVault {
     try {
       const wrapped = await this.keys.encrypt(
         market,
-        sellerId,
+        subjectId,
         DOCUMENT_DATA_KEY_LABEL,
         dataKey.toString('base64'),
       );
       if (!wrapped.ok) return err(wrapped.error);
-      const objectKey = documentObjectKey(sellerId, documentId);
+      const objectKey = documentObjectKey(subjectId, documentId);
       const iv = randomBytes(IV_BYTES);
       const cipher = createCipheriv('aes-256-gcm', dataKey, iv);
       cipher.setAAD(Buffer.from(objectKey, 'utf8'));
@@ -102,5 +114,32 @@ export class ObjectStoreDocumentVault implements DocumentVault {
 
   async discard(objectKey: string): Promise<void> {
     await this.store.delete(objectKey);
+  }
+}
+
+/**
+ * {@link PlatformDocumentVault} on {@link ObjectStoreDocumentVault} under the Market's platform
+ * subject (slice 15 part 2), which the registry cipher creates on first use. The platform key is
+ * never destroyed, so a destroyed key is a fault here, never an erasure: it throws.
+ */
+export class PlatformSubjectDocumentVault implements PlatformDocumentVault {
+  constructor(
+    private readonly vault: ObjectStoreDocumentVault,
+    private readonly registryCipher: SubjectKeyRegistryCipher,
+  ) {}
+
+  async seal(
+    market: MarketContext,
+    documentId: Id<'UploadedDocument'>,
+    plain: Buffer,
+  ): Promise<VaultedDocument> {
+    const subject = await this.registryCipher.platformSubject(market);
+    const sealed = await this.vault.sealUnder(market, subject, documentId, plain);
+    if (!sealed.ok) throw new Error('certification: the platform subject key was destroyed');
+    return sealed.value;
+  }
+
+  discard(objectKey: string): Promise<void> {
+    return this.vault.discard(objectKey);
   }
 }

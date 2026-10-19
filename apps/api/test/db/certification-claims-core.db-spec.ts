@@ -45,6 +45,9 @@ const COVERED_BY_SELLER_CERTIFICATE_SPEC = [
   'product_revision_decisions',
   'product_issuer_confirmations',
   'product_certification_history',
+  // Certification slice 15 part 2: covered by certification-product-documents.db-spec.ts.
+  'product_revision_documents',
+  'product_revision_review_checks',
 ];
 
 function insertOnlyTables(): string[] {
@@ -127,6 +130,18 @@ it('has exactly the row and the statement trigger on every insert-only table of 
         'issuer_requests_insert_open',
         7,
         'certification.issuer_requests_guard_insert',
+      ],
+      [
+        'product_certification_draft_documents',
+        'product_certification_draft_documents_clean',
+        7,
+        'certification.product_document_link_clean',
+      ],
+      [
+        'product_revision_documents',
+        'product_revision_documents_clean',
+        7,
+        'certification.product_document_link_clean',
       ],
       [
         'relaxation_proposals',

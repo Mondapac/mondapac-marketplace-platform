@@ -12,6 +12,7 @@ import type {
   CertificateField,
   CertificateFieldCipher,
   DocumentVault,
+  PlatformDocumentVault,
   SellerKeyDestroyed,
   VaultedDocument,
 } from '../../src/modules/certification/application/ports/document-ports';
@@ -513,6 +514,28 @@ export class MemoryVault implements DocumentVault {
   ): Promise<Result<Buffer | null, SellerKeyDestroyed>> {
     if (this.destroyed.has(seller)) return Promise.resolve(err({ code: 'subject-key.destroyed' }));
     return Promise.resolve(ok(this.objects.get(document.objectKey) ?? null));
+  }
+  discard(objectKey: string): Promise<void> {
+    this.objects.delete(objectKey);
+    return Promise.resolve();
+  }
+}
+
+/** The admin side's vault: files sealed under the Market's platform subject. */
+export class MemoryPlatformVault implements PlatformDocumentVault {
+  readonly objects = new Map<string, Buffer>();
+  seal(
+    _m: MarketContext,
+    documentId: Id<'UploadedDocument'>,
+    plain: Buffer,
+  ): Promise<VaultedDocument> {
+    const objectKey = `certification/platform/${documentId}`;
+    this.objects.set(objectKey, plain);
+    return Promise.resolve({
+      objectKey,
+      dataKeyEnvelope: `v1.${Buffer.from(documentId).toString('base64url')}`,
+      cleanSha256: createHash('sha256').update(plain).digest(),
+    });
   }
   discard(objectKey: string): Promise<void> {
     this.objects.delete(objectKey);

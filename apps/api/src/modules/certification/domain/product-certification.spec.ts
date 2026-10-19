@@ -342,6 +342,8 @@ describe.each(MARKETS)('Market $code', ({ zone, boundary }) => {
       hasApproval: false,
       boundary: Temporal.Instant.from(boundary),
       now,
+      missingChecks: [] as readonly string[],
+      documentMissing: false,
       ...over,
     });
 
@@ -372,6 +374,20 @@ describe.each(MARKETS)('Market $code', ({ zone, boundary }) => {
       });
       expect(approvalRefusal(input({ typeActive: false }))).toEqual({ code: 'type.inactive' });
       expect(approvalRefusal(input({ typeActive: false, hasApproval: true }))).toBeNull();
+    });
+
+    it('refuses a revision without its required document or with a required check open', () => {
+      expect(approvalRefusal(input({ documentMissing: true }))).toEqual({
+        code: 'certificate.incomplete',
+      });
+      expect(approvalRefusal(input({ missingChecks: ['seal-read', 'validity-read'] }))).toEqual({
+        code: 'review.checks-incomplete',
+        checks: ['seal-read', 'validity-read'],
+      });
+      // Another person comes first: an editor learns nothing about the checks.
+      expect(
+        approvalRefusal(input({ actorAccountId: 'editor-1', missingChecks: ['seal-read'] })),
+      ).toEqual({ code: 'approval.same-admin' });
     });
   });
 });

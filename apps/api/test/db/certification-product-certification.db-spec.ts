@@ -49,6 +49,8 @@ import {
   type Persistence,
 } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { SharpDocumentIntake } from '../../src/modules/certification/infrastructure/sharp-document-intake';
+import { MemoryPlatformVault } from '../support/certification-fakes';
 
 // The manufacturer certificate of certification slice 14 on PostgreSQL, for both Market fixtures
 // (design 3.4; data design 3.15, 3.16; ADR-0012 d3; AC 20; CERT-41; M3): the admin use cases over
@@ -162,6 +164,8 @@ describe.each(TEST_MARKETS)('manufacturer certificates in market %s (database)',
       clock: new FixedClock(T0),
       ids,
       marketZone: (m: MarketContext) => markets.get(m.marketId).timezone as TimeZoneId,
+      intake: new SharpDocumentIntake(),
+      documents: new MemoryPlatformVault(),
     };
   });
   afterAll(async () => {

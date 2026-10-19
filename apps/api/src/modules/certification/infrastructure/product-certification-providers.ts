@@ -7,6 +7,7 @@ import { OUTBOX_WRITER, type OutboxWriter } from '../../../platform/events/outbo
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
+import { OBJECT_STORE, type ObjectStore } from '../../../platform/storage/object-store';
 import {
   SUBJECT_KEY_SERVICE,
   type SubjectKeyService,
@@ -16,6 +17,12 @@ import {
   CATALOG_REFERENCES,
   type CatalogReferences,
 } from '../application/ports/catalog-references';
+import {
+  DOCUMENT_INTAKE,
+  PLATFORM_DOCUMENT_VAULT,
+  type DocumentIntake,
+  type PlatformDocumentVault,
+} from '../application/ports/document-ports';
 import {
   PRODUCT_CERTIFICATE_CIPHER,
   type ProductCertificateCipher,
@@ -45,6 +52,9 @@ import { ProductCertificateHistoryRead } from '../application/use-cases/product-
 import { ProductCertificateReinstate } from '../application/use-cases/product-certificate-reinstate.use-case';
 import { ProductCertificateRevoke } from '../application/use-cases/product-certificate-revoke.use-case';
 import { ProductCertificateSuspend } from '../application/use-cases/product-certificate-suspend.use-case';
+import { ProductCertificateUploadDocument } from '../application/use-cases/product-certificate-upload-document.use-case';
+import { ProductCertificateRemoveDocument } from '../application/use-cases/product-certificate-remove-document.use-case';
+import { ProductCertificateRecordCheck } from '../application/use-cases/product-certificate-record-check.use-case';
 import { ExpireProductCertificates } from '../application/use-cases/expire-product-certificates.use-case';
 import {
   EXPIRY_POLICY_PROVIDER,
@@ -52,6 +62,10 @@ import {
 } from '../application/ports/expiry.repository';
 import type { TimeZoneId } from '../domain/claim-types';
 import { isUsableZone } from '../domain/validity';
+import {
+  ObjectStoreDocumentVault,
+  PlatformSubjectDocumentVault,
+} from './object-store-document-vault';
 import { PrismaProductCertificationRepository } from './prisma-product-certification.repository';
 import { SubjectKeyProductCertificateCipher } from './subject-key-product-certificate-cipher';
 import { SubjectKeyRegistryCipher } from './subject-key-registry-cipher';
@@ -74,6 +88,9 @@ export const productCertificationUseCases = [
   ProductCertificateRevoke,
   ProductCertificateReinstate,
   ProductCertificateHistoryRead,
+  ProductCertificateUploadDocument,
+  ProductCertificateRemoveDocument,
+  ProductCertificateRecordCheck,
 ] as const;
 
 /** The Market's configured zone when usable (2.4 rule 3), else null (fail closed). */
@@ -122,6 +139,30 @@ export const productCertificationProviders: readonly Provider[] = [
       ),
   },
   {
+    // The admin's files under the Market's platform subject (slice 15 part 2).
+    provide: PLATFORM_DOCUMENT_VAULT,
+    inject: [
+      OBJECT_STORE,
+      SUBJECT_KEY_SERVICE,
+      UNIT_OF_WORK,
+      CERTIFICATION_REGISTRY_REPOSITORY,
+      ID_GENERATOR,
+      CLOCK,
+    ],
+    useFactory: (
+      store: ObjectStore,
+      keys: SubjectKeyService,
+      unitOfWork: UnitOfWork,
+      registry: CertificationRegistryRepository,
+      ids: IdGenerator,
+      clock: Clock,
+    ): PlatformDocumentVault =>
+      new PlatformSubjectDocumentVault(
+        new ObjectStoreDocumentVault(store, keys),
+        new SubjectKeyRegistryCipher(keys, unitOfWork, registry, ids, clock),
+      ),
+  },
+  {
     provide: PRODUCT_CERTIFICATION_DEPENDENCIES,
     inject: [
       UNIT_OF_WORK,
@@ -129,6 +170,8 @@ export const productCertificationProviders: readonly Provider[] = [
       CERTIFICATION_REGISTRY_REPOSITORY,
       CATALOG_REFERENCES,
       PRODUCT_CERTIFICATE_CIPHER,
+      DOCUMENT_INTAKE,
+      PLATFORM_DOCUMENT_VAULT,
       REVIEW_POLICY_PROVIDER,
       AUDIT_WRITER,
       OUTBOX_WRITER,
@@ -142,6 +185,8 @@ export const productCertificationProviders: readonly Provider[] = [
       registry: CertificationRegistryRepository,
       catalog: CatalogReferences,
       cipher: ProductCertificateCipher,
+      intake: DocumentIntake,
+      documents: PlatformDocumentVault,
       reviewPolicies: ReviewPolicyProvider,
       audit: AuditWriter,
       outbox: OutboxWriter,
@@ -154,6 +199,8 @@ export const productCertificationProviders: readonly Provider[] = [
       registry,
       catalog,
       cipher,
+      intake,
+      documents,
       reviewPolicies,
       audit,
       outbox,

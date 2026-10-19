@@ -1,5 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { CoverageEntry } from '../../domain/product-certification';
+import type { CheckResult } from '../../domain/review';
 import type { ProductCertificationStatus } from '../../domain/validity';
 import type { RegistryRowsShared } from './review.repository';
 
@@ -19,6 +20,35 @@ export interface StoredProductDraftRow {
   readonly coverage: readonly CoverageEntry[];
 }
 
+/**
+ * One file of a manufacturer draft or revision (data design 3.9; slice 15 part 2). Clean by
+ * construction: the link trigger admits only a clean `product-certificate` file.
+ */
+export interface StoredProductDocument {
+  readonly id: Id<'UploadedDocument'>;
+  readonly position: number;
+  readonly mediaType: 'image/jpeg' | 'image/png' | 'application/pdf';
+  readonly byteSize: number;
+  readonly pageCount: number | null;
+  readonly createdAt: Temporal.Instant;
+  readonly objectKey: string;
+  /** SHA-256 of the stored (encrypted) bytes: part of the revision's content hash. */
+  readonly cleanSha256: Buffer;
+}
+
+/** A file of the draft, and whether a revision already holds it (then it is never deleted). */
+export interface StoredProductDraftDocument extends StoredProductDocument {
+  readonly submitted: boolean;
+}
+
+/** One recorded review check of a revision (data design 3.16, the shape of 3.10). */
+export interface StoredProductCheck {
+  readonly code: string;
+  readonly result: CheckResult;
+  readonly recordedByAccountId: string;
+  readonly recordedAt: Temporal.Instant;
+}
+
 /** A root (data design 3.15) with its draft and the admins who edited the draft. */
 export interface StoredProductCertification {
   readonly id: Id<'ProductCertification'>;
@@ -30,6 +60,8 @@ export interface StoredProductCertification {
   /** The admin who created the record; never its approver (AC 20). */
   readonly authorAccountId: string;
   readonly draft: StoredProductDraftRow;
+  /** The draft's files in order (slice 15 part 2). */
+  readonly draftDocuments: readonly StoredProductDraftDocument[];
   /** Every admin who saved the draft since its last approval (design 3.4 row 1). */
   readonly draftEditorAccountIds: readonly string[];
   readonly statusChangedAt: Temporal.Instant;
@@ -56,6 +88,8 @@ export interface StoredProductRevision {
   readonly typeRevisionId: Id<'CertificationTypeRevision'>;
   /** That type revision's `requires_expiry` (2.4 rule 5): whether the expiry counts. */
   readonly typeRequiresExpiry: boolean;
+  /** That type revision's `requires_document`: an approval refuses a revision without a file. */
+  readonly typeRequiresDocument: boolean;
   readonly revisionNo: number;
   readonly issuerId: Id<'Issuer'>;
   readonly manufacturerName: string;
@@ -69,6 +103,10 @@ export interface StoredProductRevision {
   /** Every admin who edited the draft this revision came from, and its submitter. */
   readonly editorAccountIds: readonly string[];
   readonly decision: StoredProductDecision | null;
+  /** The files sealed at submission, in order. */
+  readonly documents: readonly StoredProductDocument[];
+  /** Every recorded check, oldest first; the latest row per code counts. */
+  readonly checks: readonly StoredProductCheck[];
 }
 
 /** One row of the admin list: clear fields only (no number). */
@@ -114,9 +152,37 @@ export interface ProductSubmitWrite {
   readonly coverage: readonly CoverageEntry[];
   /** The draft's editors and the submitter, copied onto the revision. */
   readonly editorAccountIds: readonly string[];
+  /** The draft's files in order, linked to the revision (sealed: never changed afterwards). */
+  readonly documentIds: readonly Id<'UploadedDocument'>[];
   readonly fromStatus: ProductCertificationStatus;
   readonly toStatus: ProductCertificationStatus;
   readonly historyId: Id<'ProductCertificationHistory'>;
+  readonly now: Temporal.Instant;
+}
+
+/** A clean file added to the draft (slice 15 part 2), with the admin recorded as an editor. */
+export interface ProductDocumentWrite {
+  readonly certificateId: Id<'ProductCertification'>;
+  readonly typeId: Id<'CertificationType'>;
+  readonly documentId: Id<'UploadedDocument'>;
+  readonly position: number;
+  readonly mediaType: StoredProductDocument['mediaType'];
+  readonly byteSize: number;
+  readonly pageCount: number | null;
+  readonly objectKey: string;
+  readonly dataKeyEnvelope: string;
+  readonly cleanSha256: Buffer;
+  readonly editorAccountId: Id<'Account'>;
+  readonly now: Temporal.Instant;
+}
+
+/** One recorded review check of the pending revision (slice 15 part 2). */
+export interface ProductCheckWrite {
+  readonly id: Id<'ReviewCheck'>;
+  readonly revisionId: Id<'ProductCertificationRevision'>;
+  readonly code: string;
+  readonly result: CheckResult;
+  readonly accountId: Id<'Account'>;
   readonly now: Temporal.Instant;
 }
 
@@ -242,6 +308,24 @@ export interface ProductCertificationRepository {
   ): Promise<StoredProductRevision | null>;
   /** The draft fields, its whole coverage and the editor (recorded once). */
   saveDraft(market: MarketContext, write: ProductDraftWrite): Promise<void>;
+  /** The file row (`clean`, no owner), its draft link and the editor (recorded once). */
+  addDocument(market: MarketContext, write: ProductDocumentWrite): Promise<void>;
+  /**
+   * Takes the file off the draft and records the editor. A file no revision holds is deleted
+   * (`deleted`: the caller discards its object); one a revision holds only leaves the draft
+   * (`unlinked`). `missing`: the file is not on this draft, nothing is written.
+   */
+  removeDocument(
+    market: MarketContext,
+    write: {
+      readonly certificateId: Id<'ProductCertification'>;
+      readonly documentId: Id<'UploadedDocument'>;
+      readonly editorAccountId: Id<'Account'>;
+      readonly now: Temporal.Instant;
+    },
+  ): Promise<'deleted' | 'unlinked' | 'missing'>;
+  /** Inserts one review check row (insert-only; the latest row per code counts). */
+  recordCheck(market: MarketContext, write: ProductCheckWrite): Promise<void>;
   /**
    * Revision N+1 from the draft: the revision, its coverage and editors, the pending pointer, the
    * status and a history row. Answers the revision number.

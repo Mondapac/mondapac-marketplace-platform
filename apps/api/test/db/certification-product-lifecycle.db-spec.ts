@@ -11,6 +11,8 @@ import type { ProductCertificateCipher } from '../../src/modules/certification/a
 import type { ProductCertificationDependencies } from '../../src/modules/certification/application/product/product-certification.shared';
 import { ExpireProductCertificates } from '../../src/modules/certification/application/use-cases/expire-product-certificates.use-case';
 import { ProductCertificateApprove } from '../../src/modules/certification/application/use-cases/product-certificate-approve.use-case';
+import { checkCodesFor } from '../../src/modules/certification/domain/review';
+import { ProductCertificateRecordCheck } from '../../src/modules/certification/application/use-cases/product-certificate-record-check.use-case';
 import { ProductCertificateCreate } from '../../src/modules/certification/application/use-cases/product-certificate-create.use-case';
 import { ProductCertificateHistoryRead } from '../../src/modules/certification/application/use-cases/product-certificate-history-read.use-case';
 import { ProductCertificateRead } from '../../src/modules/certification/application/use-cases/product-certificate-read.use-case';
@@ -53,6 +55,8 @@ import {
   type Persistence,
 } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { SharpDocumentIntake } from '../../src/modules/certification/infrastructure/sharp-document-intake';
+import { MemoryPlatformVault } from '../support/certification-fakes';
 
 // Certification slice 15 on PostgreSQL, for both Market fixtures (design 3.4 rows 6 to 9, 8.6, 11;
 // data design 3.15, 3.16, 3.18; ADR-0012 d3): a manufacturer certificate after its approval.
@@ -167,6 +171,8 @@ describe.each(TEST_MARKETS)(
         clock,
         ids,
         marketZone: (m: MarketContext) => markets.get(m.marketId).timezone as TimeZoneId,
+        intake: new SharpDocumentIntake(),
+        documents: new MemoryPlatformVault(),
       };
     });
     afterAll(async () => {
@@ -181,12 +187,39 @@ describe.each(TEST_MARKETS)(
       save: new ProductCertificateSaveDraft(gate, deps),
       submit: new ProductCertificateSubmit(gate, deps),
       approve: new ProductCertificateApprove(gate, deps),
+      check: new ProductCertificateRecordCheck(gate, deps),
       suspend: new ProductCertificateSuspend(gate, deps),
       revoke: new ProductCertificateRevoke(gate, deps),
       reinstate: new ProductCertificateReinstate(gate, deps),
       history: new ProductCertificateHistoryRead(gate, deps),
       read: new ProductCertificateRead(gate, deps),
     });
+
+    /** The approver records every required check of the Market as done (slice 15 part 2). */
+    async function checked(
+      u: ReturnType<typeof useCases>,
+      actor: CallContext,
+      certificateId: string,
+      revisionId: string,
+      version: number,
+    ): Promise<number> {
+      let v = version;
+      for (const check of checkCodesFor(policies.policyFor(market), 'THIRD_PARTY_DOCUMENT')) {
+        if (!check.required) continue;
+        v = (
+          await unwrap(
+            u.check.execute(actor, {
+              certificateId,
+              revisionId,
+              version: v,
+              checkCode: check.code,
+              result: 'done',
+            }),
+          )
+        ).version;
+      }
+      return v;
+    }
 
     const job = () =>
       new ExpireProductCertificates(gate, {
@@ -311,7 +344,7 @@ describe.each(TEST_MARKETS)(
         u.approve.execute(approver, {
           certificateId: created.certificateId,
           revisionId: sent.revisionId,
-          version: sent.version,
+          version: await checked(u, approver, created.certificateId, sent.revisionId, sent.version),
         }),
       );
       return {
@@ -698,7 +731,13 @@ describe.each(TEST_MARKETS)(
         c.u.approve.execute(approver, {
           certificateId: c.certificateId,
           revisionId: second.revisionId,
-          version: reinstated.version,
+          version: await checked(
+            c.u,
+            approver,
+            c.certificateId,
+            second.revisionId,
+            reinstated.version,
+          ),
         }),
       );
       expect(approvedAgain).toMatchObject({ status: 'approved' });

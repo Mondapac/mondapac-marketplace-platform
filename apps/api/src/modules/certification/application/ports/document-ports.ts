@@ -57,6 +57,23 @@ export interface DocumentVault {
 
 export const DOCUMENT_VAULT = Symbol('CERTIFICATION_DOCUMENT_VAULT');
 
+/**
+ * The same encrypted storage for an admin's manufacturer certificate files (slice 15 part 2): no
+ * seller owns them, so each data key is wrapped under the Market's platform subject (created on
+ * first use, never destroyed). There is no `open`: no route reads these files back yet (reviewer
+ * download stays off, as for seller files). Runs outside any unit; any failure throws.
+ */
+export interface PlatformDocumentVault {
+  seal(
+    market: MarketContext,
+    documentId: Id<'UploadedDocument'>,
+    plain: Buffer,
+  ): Promise<VaultedDocument>;
+  discard(objectKey: string): Promise<void>;
+}
+
+export const PLATFORM_DOCUMENT_VAULT = Symbol('CERTIFICATION_PLATFORM_DOCUMENT_VAULT');
+
 /** The encrypted text fields of a certificate (data design 4.2 labels). */
 export type CertificateField =
   | 'draft-certificate-number'

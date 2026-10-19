@@ -545,6 +545,19 @@ root transitions and history rows (3.4 of D), not decisions of a revision.
 platform key) and `product_certification_history`: the shapes of 3.10, 3.16a and 3.13 with
 `revision_id` in place of `submission_id`. All insert-only (CE3).
 
+As built (slice 15 part 2, migration `20261018230100_certification_product_documents`):
+`product_certification_draft_documents` (PK `(market_id, product_certification_id, document_id)`;
+one draft per file and one file per place; SELECT, INSERT, DELETE) and `product_revision_documents`
+(PK `(market_id, revision_id, document_id)`; insert-only) name the file's type, with FKs to
+`product_certifications (market_id, id, type_id)` or `product_certification_revisions (market_id,
+id, type_id)` and to `uploaded_documents (market_id, id, type_id)` (a new unique key), so a file of
+another type cannot be linked. A BEFORE INSERT trigger on both admits only a `clean` file of
+purpose `product-certificate`. `product_revision_review_checks` is built as 3.10 with the lookup
+index `(market_id, revision_id, check_code, recorded_at DESC)`; `product_issuer_confirmations` is
+not built yet. A revision's file is bound to the certificate's type only; that it came from the same
+certificate's draft is held by the domain (submit copies the draft's links), not by a key (Mojtaba,
+PR #420 review).
+
 ### 3.16a `seller_issuer_confirmations` (slice 7)
 
 PK `(market_id, submission_id)` (0..1 per submission); `issuer_id`, `channel_id`; FK `(market_id,
