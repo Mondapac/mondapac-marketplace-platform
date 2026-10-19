@@ -168,11 +168,13 @@ describe('sellers page', () => {
     expect(more.getAttribute('href')).toBe('/sellers?page=2');
   });
 
-  it('shows the rest after Show more and no button at the end', () => {
+  it('shows the rest after Show more, focuses the first new store, and has no button at the end', () => {
     const state = withSellersPage(START, 2);
     renderPage(read(state), state);
     expect(cardNames()).toHaveLength(18);
     expect(screen.queryByRole('link', { name: /Show more/ })).toBeNull();
+    const links = document.querySelectorAll('.sl-grid .slc h3 a');
+    expect(document.activeElement).toBe(links[12]);
   });
 
   it('draws a store card: link to the seller page, city and year, chips, terms and products', () => {

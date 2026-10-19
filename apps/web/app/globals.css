@@ -1970,7 +1970,8 @@ svg {
   color: var(--sf-slate);
   font-weight: 400;
 }
-.empty.rich h2 {
+.empty.rich h2,
+.empty.rich h3 {
   margin-top: 8px;
   font-size: calc(15px * var(--fs));
   line-height: calc(20px * var(--fs));
@@ -6021,7 +6022,7 @@ button.login {
   padding: 4px 10px;
   border-radius: var(--sf-radius-pill);
   background: var(--sf-mist-soft);
-  font-size: calc(12.5px * var(--fs));
+  font-size: calc(12px * var(--fs));
   font-weight: 600;
 }
 .slc-chips li.new {

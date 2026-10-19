@@ -65,7 +65,7 @@ export function SellersFilters({ path, state, facets, total }: Props) {
   const { filtersOpen, setFiltersOpen } = useStore();
   const { current, apply } = useApply(path, state);
   const count = sellerFilterCount(current.filters);
-  const quick = (on: boolean, next: SellersState, icon: 'store' | 'bolt', label: string) => (
+  const quick = (on: boolean, next: SellersState, icon: 'check' | 'bolt', label: string) => (
     <button
       key={label}
       className="chip"
@@ -84,7 +84,7 @@ export function SellersFilters({ path, state, facets, total }: Props) {
         <span className="lbl">{t('filter-by')}</span>
         {facets.certifications.map((c) => {
           const on = current.filters.certifications.includes(c.id);
-          return quick(on, withSellerValue(current, 'certifications', c.id, !on), 'store', c.name);
+          return quick(on, withSellerValue(current, 'certifications', c.id, !on), 'check', c.name);
         })}
         {quick(
           current.filters.sameDay,

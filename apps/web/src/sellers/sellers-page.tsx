@@ -15,6 +15,7 @@ import {
   type SellerGroup,
   type SellersState,
 } from './sellers-state.ts';
+import { FocusNewStores } from './focus-new.tsx';
 import { StoreCard, StoreCardSkeleton } from './store-card.tsx';
 
 // The sellers page (approved design sellers-a-teal v4). There is no visible title: the page opens
@@ -68,7 +69,7 @@ export function SellersPage({
         </div>
         {total === 0 ? (
           <div className="empty rich">
-            <h2>{t('filters-empty')}</h2>
+            <h3>{t('filters-empty')}</h3>
             <p className="hint">{t('filters-empty-hint')}</p>
             <Link
               className="btn"
@@ -90,6 +91,7 @@ export function SellersPage({
                 />
               ))}
             </div>
+            <FocusNewStores first={(state.page - 1) * SELLERS_PAGE_SIZE} />
             {rest > 0 ? (
               <Link
                 className="btn ghost sl-more"
@@ -177,9 +179,16 @@ function ActiveSellerFilters({
 }
 
 /** The route's loading state: the heading row and six grey store cards. */
-export function SellersLoading({ label }: { readonly label: string }) {
+export function SellersLoading({
+  title,
+  label,
+}: {
+  readonly title: string;
+  readonly label: string;
+}) {
   return (
     <div className="sl" role="status" aria-label={label} aria-busy="true">
+      <h1 className="sr-only">{title}</h1>
       <div className="skel title" aria-hidden="true" />
       <div className="sl-grid">
         {Array.from({ length: 6 }, (_, i) => (
