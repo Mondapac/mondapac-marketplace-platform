@@ -13,8 +13,8 @@ import { useAccount, type Profile } from './account-state.tsx';
 import { AcField, PasswordField } from './fields.tsx';
 
 /**
- * Settings: Profile, Password (always open), Appearance (kept per browser until the
- * personalization module saves it), Emails and Privacy. There is no Delete account (john).
+ * Settings: Profile, Password (always open), Appearance (saved to the account, john 19 Oct; the
+ * browser keeps a copy for first paint), Emails and Privacy. There is no Delete account (john).
  * Sample: saving changes this tab's state only until the account backend exists.
  */
 export function AccountSettings({
@@ -24,24 +24,53 @@ export function AccountSettings({
   readonly palette: Palette;
   readonly textSize: TextSize;
 }) {
-  const t = useTranslations('account.settings');
   const title = useTranslations('account.titles')('settings');
   return (
     <AccountFrame title={title}>
       <ProfileCard />
       <PasswordCard />
-      <section className="ac-card ac-look" aria-labelledby="settings-look">
-        <h2 id="settings-look">{t('appearance')}</h2>
-        <PalettePicker initial={palette} />
-        <TextSizeToggle initial={textSize} />
-        <p className="ac-note">
-          <Icon name="info" />
-          <span>{t('appearance-note')}</span>
-        </p>
-      </section>
+      <AppearanceCard palette={palette} textSize={textSize} />
       <EmailsCard />
       <PrivacyCard />
     </AccountFrame>
+  );
+}
+
+function AppearanceCard({
+  palette,
+  textSize,
+}: {
+  readonly palette: Palette;
+  readonly textSize: TextSize;
+}) {
+  const t = useTranslations('account.settings');
+  const { saveAppearance } = useAccount();
+  const [saved, setSaved] = useState(false);
+  return (
+    <section className="ac-card ac-look" aria-labelledby="settings-look">
+      <h2 id="settings-look">{t('appearance')}</h2>
+      <PalettePicker
+        initial={palette}
+        onChoose={(choice) => {
+          saveAppearance({ palette: choice });
+          setSaved(true);
+        }}
+      />
+      <TextSizeToggle
+        initial={textSize}
+        onChoose={(choice) => {
+          saveAppearance({ textSize: choice });
+          setSaved(true);
+        }}
+      />
+      <p className="ac-note">
+        <Icon name="info" />
+        <span>{t('appearance-note')}</span>
+      </p>
+      <span className="sr-only" role="status">
+        {saved ? t('appearance-saved') : ''}
+      </span>
+    </section>
   );
 }
 

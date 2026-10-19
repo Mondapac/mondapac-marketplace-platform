@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { AccountDrawer } from '../src/account/account-drawer.tsx';
 import { AccountArea } from '../src/account/account-area.tsx';
+import { AuthForms } from '../src/account/auth-forms.tsx';
 import { AccountAddresses } from '../src/account/addresses.tsx';
 import { AccountLists } from '../src/account/lists.tsx';
 import { LoginModal } from '../src/account/login-modal.tsx';
@@ -19,7 +20,7 @@ import { Rail } from '../src/shell/rail.tsx';
 import { StoreProvider, useStore } from '../src/shell/store-context.tsx';
 import { TabBar } from '../src/shell/tab-bar.tsx';
 import { SAMPLE_CART_SOURCE } from '../src/storefront/sample-cart.ts';
-import { TAX_INVOICE_SHOWN } from '../src/storefront/features.ts';
+import { SOCIAL_SIGN_IN_SHOWN, TAX_INVOICE_SHOWN } from '../src/storefront/features.ts';
 import { loadAccount } from '../src/storefront/source.ts';
 
 const nav = vi.hoisted(() => ({ path: '/', push: vi.fn() }));
@@ -181,6 +182,64 @@ describe('log in', () => {
   });
 });
 
+describe('social sign-in', () => {
+  function renderForms(start: () => Promise<'signed-in' | 'failed' | 'cancelled'>) {
+    const signedIn = vi.fn();
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <AuthForms
+          heading={(title) => <h1>{title}</h1>}
+          onSignedIn={signedIn}
+          social
+          startSocial={start}
+        />
+      </NextIntlClientProvider>,
+    );
+    return signedIn;
+  }
+
+  it('stays hidden until the server side ships', () => {
+    expect(SOCIAL_SIGN_IN_SHOWN).toBe(false);
+    renderStore(<AccountOverview />, false);
+    expect(screen.queryByRole('button', { name: /Continue with/ })).toBeNull();
+  });
+
+  it('waits on the pressed provider, then signs in', async () => {
+    let finish: (result: 'signed-in') => void = () => undefined;
+    const signedIn = renderForms(() => new Promise((resolve) => (finish = resolve)));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Google' }));
+    const busy = screen.getByRole('button', { name: 'Connecting to Google…' });
+    expect(busy.getAttribute('aria-busy')).toBe('true');
+    expect(
+      screen.getByRole('button', { name: 'Continue with Apple' }).getAttribute('aria-disabled'),
+    ).toBe('true');
+    await act(async () => {
+      finish('signed-in');
+      await Promise.resolve();
+    });
+    expect(signedIn).toHaveBeenCalledOnce();
+  });
+
+  it('says a failure and keeps the email form; a cancel says nothing', async () => {
+    const signedIn = renderForms(() => Promise.resolve('failed'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Continue with Apple' }));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('alert').textContent).toContain('could not log you in with Apple');
+    expect(screen.getByLabelText('Email')).toBeTruthy();
+    expect(signedIn).not.toHaveBeenCalled();
+    cleanup();
+    renderForms(() => Promise.resolve('cancelled'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Continue with Google' }));
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeTruthy();
+  });
+});
+
 describe('overview', () => {
   it('greets, shows the latest order and the quick tiles, without a Log out button', () => {
     renderStore(<AccountOverview />);
@@ -317,6 +376,18 @@ describe('settings', () => {
       'disabled',
       true,
     );
+  });
+
+  it('saves a look change to the account and says so', () => {
+    renderStore(<AccountSettings palette="B" textSize="auto" />);
+    const page = main();
+    expect(within(page).getByText(/Saved to your account/)).toBeTruthy();
+    fireEvent.click(within(page).getByRole('button', { name: 'Large' }));
+    expect(
+      within(page)
+        .getAllByRole('status')
+        .some((s) => s.textContent === 'Appearance saved to your account'),
+    ).toBe(true);
   });
 
   it('checks the new password before it says it was updated', () => {
