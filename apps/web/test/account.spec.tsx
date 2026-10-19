@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -378,16 +378,18 @@ describe('settings', () => {
     );
   });
 
-  it('saves a look change to the account and says so', () => {
+  it('saves a look change to the account and says so', async () => {
     renderStore(<AccountSettings palette="B" textSize="auto" />);
     const page = main();
     expect(within(page).getByText(/Saved to your account/)).toBeTruthy();
     fireEvent.click(within(page).getByRole('button', { name: 'Large' }));
-    expect(
-      within(page)
-        .getAllByRole('status')
-        .some((s) => s.textContent === 'Appearance saved to your account'),
-    ).toBe(true);
+    await waitFor(() =>
+      expect(
+        within(page)
+          .getAllByRole('status')
+          .some((s) => s.textContent === 'Appearance saved to your account'),
+      ).toBe(true),
+    );
   });
 
   it('checks the new password before it says it was updated', () => {

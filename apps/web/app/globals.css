@@ -5892,6 +5892,9 @@ button.login {
   width: 20px;
   height: 20px;
 }
+.ac-sbtn.google {
+  border-color: var(--sf-slate);
+}
 .ac-sbtn.apple {
   border-color: var(--sf-black);
   background: var(--sf-black);

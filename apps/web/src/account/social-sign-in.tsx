@@ -73,6 +73,9 @@ export function SocialSignIn({
           </span>
         </button>
       ))}
+      <span className="sr-only" role="status">
+        {busy ? t('connecting', { provider: name(busy) }) : ''}
+      </span>
       {legal ? <p className="legal">{t.rich('social-agree', legalLinks)}</p> : null}
       {failed ? (
         <p className="ac-note ac-warn" role="alert">

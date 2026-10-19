@@ -46,6 +46,11 @@ function AppearanceCard({
   const t = useTranslations('account.settings');
   const { saveAppearance } = useAccount();
   const [saved, setSaved] = useState(false);
+  // Cleared first, so a second choice is read out again.
+  const announce = () => {
+    setSaved(false);
+    requestAnimationFrame(() => setSaved(true));
+  };
   return (
     <section className="ac-card ac-look" aria-labelledby="settings-look">
       <h2 id="settings-look">{t('appearance')}</h2>
@@ -53,14 +58,14 @@ function AppearanceCard({
         initial={palette}
         onChoose={(choice) => {
           saveAppearance({ palette: choice });
-          setSaved(true);
+          announce();
         }}
       />
       <TextSizeToggle
         initial={textSize}
         onChoose={(choice) => {
           saveAppearance({ textSize: choice });
-          setSaved(true);
+          announce();
         }}
       />
       <p className="ac-note">
