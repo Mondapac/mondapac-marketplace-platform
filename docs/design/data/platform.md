@@ -1145,3 +1145,25 @@ design:
 | Version | The parameter exists only from PostgreSQL 17. Compose and CI run 17; a native PostgreSQL 16 cluster refuses `ALTER ROLE ... SET` of an unknown parameter, so the bootstrap guards that statement on `server_version_num >= 170000` |
 | Checked | The role-settings test (10.4) and the self-check `role_timeouts` (10.8) gain `transaction_timeout`: present, non-zero, at most the ceiling, on PostgreSQL 17 and later |
 | Owners | Kazem (bootstrap and Phase 7 logins), Mojtaba (10.4, 10.8 and this section), Hossein (the job lock) |
+
+## 12. Table `platform.rate_limit_counters` (buyer assistant package 1, 2026-10-19)
+
+The counters of the generic per-origin rate limiter (identity design 6.8 and 13; buyer
+scale-out item (a)) move from each process's memory to PostgreSQL, so every API instance counts
+one window. Limits, keys, windows and answers are unchanged. Migration
+`20261019211148_platform_rate_limit_counters`. Needs Mojtaba's sign-off before merge.
+
+| Point | Decision |
+|---|---|
+| Shape | Fixed by the PostgreSQL store of `rate-limiter-flexible` 11.2.1 (its `INSERT` lists no columns): `key varchar(255)` PK, `points integer`, `expire bigint` (epoch ms, end of the window). `points` and `expire` NOT NULL: every window has a 60 s end |
+| Key | `<limit class>:<64 hex>`, the HMAC-SHA-256 of the origin (IPv4, or IPv6 /64) under a key derived with HKDF from the stack secret (`platform/rate-limit/origin-keys.ts`; local stand-in until K1, like catalog's). No address in clear (identity data design HF3); CHECK `rate_limit_counters_key_check` enforces the shape |
+| Market | None (`@market-scope none`): the limiter is the cross-Market control (PF I11) |
+| Writes | One `INSERT ... ON CONFLICT (key) DO UPDATE ... RETURNING` per request through the base client, outside a unit (autocommit), with no statement name (10.9). The row lock serialises concurrent requests of every instance |
+| Personal data | The keyed HMAC of an address is pseudonymous personal data (INTL-52). Retention: the end of the window plus 1 h, then deleted by the purge (at most 5 minutes later) |
+| Physical | `fillfactor = 70` and `autovacuum_vacuum_scale_factor = 0.01`: one UPDATE per API request, kept HOT; add a bloat watch to the operations baseline (Kazem). No index on `expire`: it would stop HOT updates at every window reset |
+| Limit classes | The key CHECK lists the classes of `RATE_LIMIT_CLASSES`; a new class needs a migration that widens it, or its requests fail closed with 503 |
+| Clocks | The package sets `expire` from each instance's wall clock, so window edges move by the clock skew between instances (NTP keeps it small). The purge cut-off comes from the injected Clock, which is the wall clock in production; a fixed test clock only moves when rows are purged |
+| Purge | Each process deletes windows that ended over an hour ago every 5 minutes (`DELETE ... WHERE expire < $1`), the package's own pace. Rows: one per active origin and class; no index beyond the PK until the table grows past what a 5-minute scan handles |
+| Privileges | `mondapac_app`: `SELECT, INSERT, UPDATE, DELETE` (no CREATE: the package's `CREATE TABLE` is off, `tableCreated`) |
+| Failure | A counter that cannot be read or written answers 503 `access.unavailable` (fail closed, identity design 5.2), as before |
+| Tests | `test/db/rate-limit-counters.db-spec.ts`: two applications on one database see one count, sequentially and concurrently, in both Market fixtures; the key CHECK; the purge. Suites without a database count in memory (`createTestApp`, `rateLimitStore`) |

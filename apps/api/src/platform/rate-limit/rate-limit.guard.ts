@@ -1,17 +1,19 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { HttpException, Injectable, Logger } from '@nestjs/common';
+import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { RateLimiterMemory } from 'rate-limiter-flexible';
+import type { AppConfig } from '../config/app-config';
+import { APP_CONFIG } from '../config/config.module';
 import { MarketRegistry } from '../market-config/market-registry';
 import { isMarketContextExempt } from '../market-context/market-context.guard';
 import { marketContextOf } from '../market-context/market.decorator';
 import { clientAddressFrom } from '../http/client-address';
 import { clientOriginOf } from './client-origin';
-import { RATE_LIMIT_CLASS, RATE_LIMIT_CLASSES, type RateLimitClass } from './rate-limit.decorator';
+import { localRateLimitSecret, RateLimitOriginKeys } from './origin-keys';
+import { RATE_LIMIT_COUNTERS, type RateLimitCounters } from './rate-limit-counters';
+import { RATE_LIMIT_CLASS, type RateLimitClass } from './rate-limit.decorator';
 
-/** The fixed window of every limit (identity design 6.8, M11: fixed windows). */
-export const RATE_LIMIT_WINDOW_SECONDS = 60;
+export { RATE_LIMIT_WINDOW_SECONDS } from './rate-limit-counters';
 
 /** The answer to a throttled request (identity design 5.2): 429, a code, never library text. */
 export const THROTTLED_CODE = 'request.throttled';
@@ -28,9 +30,11 @@ export const UNAVAILABLE_CODE = 'access.unavailable';
  * - **Key:** the resolved client address (`platform/http/client-address.ts`, ADR-0037: the
  *   socket's, or the one a BFF proved), as the IPv4 address or the IPv6 /64
  *   ({@link clientOriginOf}). Forwarded headers are never read.
- * - **Counters:** in this process's memory, one per limit class and origin, not split by Market
- *   (PF I11): the limiter is the cross-Market control. One API process may count in memory; a
- *   second instance needs the package's PostgreSQL store (identity design 13).
+ * - **Counters:** in PostgreSQL ({@link RateLimitCounters}, the package's PostgreSQL store), so
+ *   every API instance counts the same window (identity design 13; buyer scale-out item (a)).
+ *   One per limit class and origin, not split by Market (PF I11): the limiter is the
+ *   cross-Market control. The stored key is the keyed hash of the origin
+ *   ({@link RateLimitOriginKeys}), never the address.
  * - **Limits:** the request Market's `requestLimits` (Market configuration); the class comes
  *   from `@RateLimit()`, `default` otherwise. Fixed windows of 60 seconds.
  * - **Answers:** over the limit, 429 `{ statusCode, code: 'request.throttled', details: {
@@ -42,23 +46,15 @@ export const UNAVAILABLE_CODE = 'access.unavailable';
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   readonly #logger = new Logger('RateLimitGuard');
-  readonly #counters: Readonly<Record<RateLimitClass, RateLimiterMemory>>;
+  readonly #originKeys: RateLimitOriginKeys;
 
   constructor(
     private readonly reflector: Reflector,
     private readonly markets: MarketRegistry,
+    @Inject(RATE_LIMIT_COUNTERS) private readonly counters: RateLimitCounters,
+    @Inject(APP_CONFIG) config: AppConfig,
   ) {
-    const counters = {} as Record<RateLimitClass, RateLimiterMemory>;
-    for (const limitClass of RATE_LIMIT_CLASSES) {
-      // The library never refuses (the limit is the Market's, compared below), so one counter
-      // serves every Market: `points` is only the ceiling of the count it keeps.
-      counters[limitClass] = new RateLimiterMemory({
-        keyPrefix: limitClass,
-        points: Number.MAX_SAFE_INTEGER,
-        duration: RATE_LIMIT_WINDOW_SECONDS,
-      });
-    }
-    this.#counters = Object.freeze(counters);
+    this.#originKeys = new RateLimitOriginKeys(localRateLimitSecret(config));
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -85,9 +81,9 @@ export class RateLimitGuard implements CanActivate {
           : limits.defaultPerMinute;
       const origin = clientOriginOf(clientAddressFrom(request));
       if (origin === null) throw new Error('no client origin');
-      const counted = await this.#counters[limitClass].consume(origin);
+      const counted = await this.counters.consume(limitClass, this.#originKeys.keyOf(origin));
       retryAfterSeconds =
-        counted.consumedPoints > limit ? Math.max(1, Math.ceil(counted.msBeforeNext / 1000)) : null;
+        counted.count > limit ? Math.max(1, Math.ceil(counted.msBeforeNext / 1000)) : null;
     } catch {
       // Fail closed: nothing behind the limiter runs when it cannot decide.
       this.log('rate-limit.unavailable', request, limitClass);

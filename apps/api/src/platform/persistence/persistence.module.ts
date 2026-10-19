@@ -20,6 +20,7 @@ import {
 import { ID_GENERATOR } from '../ids/ids.module';
 import { MarketRegistry } from '../market-config/market-registry';
 import { MarketContextFactory } from '../market-context/market-context.factory';
+import { RATE_LIMIT_COUNTERS } from '../rate-limit/rate-limit-counters';
 import { JOB_LOCK } from '../scheduler/job-lock';
 import { SUBJECT_KEY_STORE, type SubjectKeyStore } from '../subject-keys/subject-key-store';
 import { UNIT_OF_WORK, type UnitOfWork } from '../unit-of-work/unit-of-work';
@@ -39,6 +40,7 @@ import { BIND_RAW_READ, RAW_READ_BASE, type RawReadBinder } from './raw-reads/pr
 import { createRawReadPort } from './raw-reads/create-raw-read-port';
 import { RAW_READ_PORT, type RawReadPort } from './raw-reads/raw-read-port';
 import { RAW_READ_STATEMENTS } from './raw-reads/statements';
+import { PostgresRateLimitCounters } from './postgres-rate-limit-counters';
 import { PrismaService } from './prisma.service';
 import { PrismaSubjectKeyStore } from './prisma-subject-key-store';
 import { PrismaUnitOfWork } from './prisma-unit-of-work';
@@ -49,7 +51,7 @@ const modelMap: ModelMap = MODEL_MAP;
 /**
  * Persistence (platform persistence design, "P", 3.3, 5 to 7). Exports the guarded door for
  * modules (`PrismaService`), the `UnitOfWork` port, `DatabaseProbe`, and the implementations
- * of the event and scheduler ports (relay, bus, job lock); never the base client
+ * of the event, scheduler and rate-limit ports (relay, bus, job lock, rate-limit counters); never the base client
  * (`PrismaRoot`) or the guarded client, so Nest cannot inject them elsewhere. The outbox writer
  * factory is not a provider at all: a module reaches only its own writer, through
  * {@link PersistenceModule.outboxWriterFor}. A static method, not a named export, so this file
@@ -127,6 +129,11 @@ const modelMap: ModelMap = MODEL_MAP;
       inject: [PrismaRoot],
       useFactory: (root: PrismaRoot) => new AdvisoryJobLock(root),
     },
+    {
+      provide: RATE_LIMIT_COUNTERS,
+      inject: [PrismaRoot, CLOCK],
+      useFactory: (root: PrismaRoot, clock: Clock) => new PostgresRateLimitCounters(root, clock),
+    },
   ],
   exports: [
     PrismaService,
@@ -137,6 +144,7 @@ const modelMap: ModelMap = MODEL_MAP;
     OUTBOX_RELAY,
     EVENT_DISPATCHER,
     JOB_LOCK,
+    RATE_LIMIT_COUNTERS,
   ],
 })
 export class PersistenceModule {
