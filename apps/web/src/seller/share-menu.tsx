@@ -6,7 +6,7 @@ import { Icon } from '../icons/icon.tsx';
 
 // The Share pill on the seller banner and its menu: Copy link, WhatsApp, Email and, where the
 // browser has a share sheet, More options. Esc and an outside click close it; focus returns to the
-// pill on Esc. Arrow keys, Home and End move between the items.
+// pill on Esc and after a channel is chosen. Arrow keys, Home and End move between the items.
 
 export function ShareMenu({ name, path }: { readonly name: string; readonly path: string }) {
   const t = useTranslations('seller');
@@ -29,9 +29,7 @@ export function ShareMenu({ name, path }: { readonly name: string; readonly path
     if (!open) return;
     menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus({ preventScroll: true });
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setOpen(false);
-      pill.current?.focus({ preventScroll: true });
+      if (event.key === 'Escape') close();
     };
     const onClick = (event: MouseEvent) => {
       if (!wrap.current?.contains(event.target as Node)) setOpen(false);
@@ -45,6 +43,11 @@ export function ShareMenu({ name, path }: { readonly name: string; readonly path
   }, [open]);
 
   const url = `${origin}${path}`;
+  /** Closes the menu and returns focus to the pill (after Esc or a chosen channel). */
+  function close() {
+    setOpen(false);
+    pill.current?.focus({ preventScroll: true });
+  }
   const text = `${t('share-text', { name })} ${url}`;
 
   const toggle = () => {
@@ -58,7 +61,7 @@ export function ShareMenu({ name, path }: { readonly name: string; readonly path
     );
   };
   const more = () => {
-    setOpen(false);
+    close();
     navigator.share({ title: name, text: t('share-text', { name }), url }).catch(() => undefined);
   };
   const move = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -105,7 +108,7 @@ export function ShareMenu({ name, path }: { readonly name: string; readonly path
         hidden={!open}
         onKeyDown={move}
       >
-        <div className="shop-share-url">
+        <div className="shop-share-url" role="none">
           <Icon name="pin" />
           <span>{url.replace(/^https?:\/\//, '')}</span>
         </div>
@@ -118,7 +121,7 @@ export function ShareMenu({ name, path }: { readonly name: string; readonly path
           href={`https://wa.me/?text=${encodeURIComponent(text)}`}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => setOpen(false)}
+          onClick={close}
         >
           <Icon name="chat" />
           {t('whatsapp')}
@@ -126,7 +129,7 @@ export function ShareMenu({ name, path }: { readonly name: string; readonly path
         <a
           role="menuitem"
           href={`mailto:?subject=${encodeURIComponent(t('share-subject', { name }))}&body=${encodeURIComponent(text)}`}
-          onClick={() => setOpen(false)}
+          onClick={close}
         >
           <Icon name="mail" />
           {t('email')}

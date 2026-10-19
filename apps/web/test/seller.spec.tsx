@@ -160,6 +160,15 @@ describe('share menu', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('returns focus to the pill after a channel is chosen', async () => {
+    await renderPage();
+    const pill = screen.getByRole('button', { name: 'Share' });
+    fireEvent.click(pill);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Email' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(pill);
+  });
+
   it('closes on an outside click', async () => {
     await renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Share' }));

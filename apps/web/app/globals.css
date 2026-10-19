@@ -4764,6 +4764,13 @@ svg {
 .shop-search:focus-within {
   border-color: var(--sf-teal);
 }
+.shop-search:has(input:focus-visible) {
+  outline: 2px solid var(--sf-teal);
+  outline-offset: 2px;
+}
+.shop-search input::-webkit-search-cancel-button {
+  display: none;
+}
 .shop-search .ico {
   flex: none;
   width: 18px;
@@ -4821,6 +4828,7 @@ svg {
 .shop-count {
   color: var(--sf-slate);
 }
+/* Row gap 20px as the shell's product grids (.grid), so card text does not crowd the next row. */
 .shop-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

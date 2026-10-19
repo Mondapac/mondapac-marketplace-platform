@@ -244,7 +244,11 @@ export interface CheckoutSource {
   readonly orderReference: string;
 }
 
-/** A certificate the platform approved for a seller, as the seller page's Certificates tab shows it. */
+/**
+ * A certificate the platform approved for a seller, as the seller page's Certificates tab shows it.
+ * Contract of the seller read: it returns only certificates that are approved and in date today, so
+ * the page shows each one as "Approved and in date" without its own date check (CERT-*).
+ */
 export interface SellerCertificate {
   /** The certification type's code (CERT-*); the label it allows comes from evaluateClaim only. */
   readonly type: string;
