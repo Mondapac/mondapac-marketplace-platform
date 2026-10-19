@@ -120,23 +120,30 @@ export function BuyAgain({
   const t = useTranslations('account.orders');
   const { add, cartSource } = useStore();
   const [done, setDone] = useState(false);
+  // aria-disabled, not disabled: the button keeps focus after the press.
   return (
-    <button
-      className={ghost ? 'btn ghost' : 'btn'}
-      type="button"
-      disabled={done}
-      onClick={() => {
-        for (const part of order.parts)
-          for (const line of part.lines) {
-            const item = cartSource.items[line.offerId];
-            if (!item) continue;
-            for (let n = 0; n < line.quantity; n++)
-              add(line.offerId, item.price, lineLimit(item.lowStock));
-          }
-        setDone(true);
-      }}
-    >
-      <span aria-live="polite">{done ? t('added') : t('buy-again')}</span>
-    </button>
+    <>
+      <button
+        className={ghost ? 'btn ghost' : 'btn'}
+        type="button"
+        aria-disabled={done || undefined}
+        onClick={() => {
+          if (done) return;
+          for (const part of order.parts)
+            for (const line of part.lines) {
+              const item = cartSource.items[line.offerId];
+              if (!item) continue;
+              for (let n = 0; n < line.quantity; n++)
+                add(line.offerId, item.price, lineLimit(item.lowStock));
+            }
+          setDone(true);
+        }}
+      >
+        {done ? t('added') : t('buy-again')}
+      </button>
+      <span className="sr-only" role="status">
+        {done ? t('added') : ''}
+      </span>
+    </>
   );
 }

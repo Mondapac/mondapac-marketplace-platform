@@ -51,6 +51,13 @@ export function AccountAddresses() {
   const area = source.serviceArea;
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // After the delete question closes, focus goes to this control (by id) instead of the page.
+  const [focusTo, setFocusTo] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusTo) return;
+    document.getElementById(focusTo)?.focus({ preventScroll: true });
+    setFocusTo(null);
+  }, [focusTo]);
   const addButton = useRef<HTMLButtonElement>(null);
   const back = useRef(false);
   useEffect(() => {
@@ -76,7 +83,13 @@ export function AccountAddresses() {
           <Icon name="info" />
           <span>{t('addresses.area-note', { area: area.name })}</span>
         </p>
-        <button ref={addButton} className="btn" type="button" onClick={() => setEditing('new')}>
+        <button
+          ref={addButton}
+          id="address-add"
+          className="btn"
+          type="button"
+          onClick={() => setEditing('new')}
+        >
           {t('addresses.add')}
         </button>
       </div>
@@ -86,7 +99,7 @@ export function AccountAddresses() {
         </AccountEmpty>
       ) : (
         <div className="ac-addr">
-          {addresses.map((a) => (
+          {addresses.map((a, i) => (
             <article
               className={a.isDefault ? 'ac-ad def' : 'ac-ad'}
               key={a.id}
@@ -111,17 +124,26 @@ export function AccountAddresses() {
                   <b>{t('addresses.delete-title')}</b>
                   <div className="ac-acts">
                     <button
-                      className="btn"
+                      className="btn ghost ac-danger"
                       type="button"
                       autoFocus
                       onClick={() => {
+                        const next = addresses[i + 1] ?? addresses[i - 1];
                         deleteAddress(a.id);
                         setDeleting(null);
+                        setFocusTo(next ? `address-delete-${next.id}` : 'address-add');
                       }}
                     >
                       {t('addresses.delete')}
                     </button>
-                    <button className="btn ghost" type="button" onClick={() => setDeleting(null)}>
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => {
+                        setDeleting(null);
+                        setFocusTo(`address-delete-${a.id}`);
+                      }}
+                    >
                       {t('addresses.keep')}
                     </button>
                   </div>
@@ -147,6 +169,7 @@ export function AccountAddresses() {
                     </button>
                   )}
                   <button
+                    id={`address-delete-${a.id}`}
                     className="lnk"
                     type="button"
                     aria-label={t('addresses.delete-label', { label: a.label })}
@@ -176,10 +199,16 @@ function AddressForm({
   const t = useTranslations('account.addresses');
   const { saveAddress } = useAccount();
   const [draft, setDraft] = useState<Draft>(() => draftOf(address));
-  const [tried, setTried] = useState(false);
+  const [tries, setTries] = useState(0);
+  const tried = tries > 0;
+  const form = useRef<HTMLFormElement>(null);
+  // A refused save takes the keyboard to the first field to fix.
+  useEffect(() => {
+    if (tries > 0) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [tries]);
   const set = (key: keyof Draft) => (text: string) => setDraft({ ...draft, [key]: text });
-  const missing = (key: keyof Draft) =>
-    tried && draft[key].trim() === '' ? t('required') : undefined;
+  const missing = (key: 'name' | 'street' | 'suburb' | 'phone') =>
+    tried && draft[key].trim() === '' ? t(`missing.${key}`) : undefined;
   const postcode = draft.postcode.trim();
   const postcodeError = tried && !/^\d{4}$/.test(postcode) ? t('postcode-bad') : undefined;
   const outside = /^\d{4}$/.test(postcode) && !inServiceArea(area, postcode);
@@ -189,17 +218,20 @@ function AddressForm({
       <h2 id="address-form">{address ? t('edit-title') : t('add')}</h2>
       <form
         className="ac-f"
+        ref={form}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          setTried(true);
           const required: (keyof Draft)[] = ['name', 'street', 'suburb', 'phone'];
-          if (required.some((k) => draft[k].trim() === '') || !/^\d{4}$/.test(postcode)) return;
+          if (required.some((k) => draft[k].trim() === '') || !/^\d{4}$/.test(postcode)) {
+            setTries(tries + 1);
+            return;
+          }
           saveAddress({
             id: address?.id ?? `address-${Date.now()}`,
             label: draft.label.trim() || t('fallback-label'),
             name: draft.name.trim(),
-            line: `${draft.street.trim()}, ${draft.suburb.trim()} ${area.region} ${postcode}`,
+            line: `${draft.street.trim()}, ${draft.suburb.trim()} ${area.regionCode} ${postcode}`,
             phone: draft.phone.trim(),
             isDefault: address?.isDefault ?? false,
           });

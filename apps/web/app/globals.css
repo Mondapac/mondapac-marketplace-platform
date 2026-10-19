@@ -5304,8 +5304,7 @@ button.login {
   line-height: calc(24px * var(--fs));
   font-weight: 800;
 }
-.ac-card p,
-.ac-note {
+.ac-card p {
   text-align: justify;
   hyphens: auto;
 }
@@ -5774,9 +5773,7 @@ button.login {
 }
 .ac-sw2 input {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: -6px -2px;
   margin: 0;
   opacity: 0;
   cursor: pointer;

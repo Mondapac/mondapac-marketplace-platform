@@ -179,7 +179,7 @@ function ListRow({
   );
 }
 
-/** A button that says it is done after one press (Add to cart, Add all to cart). */
+/** A button that says it is done after one press (Add to cart, Add all to cart), and announces it. */
 function DoneButton({
   label,
   done,
@@ -192,18 +192,25 @@ function DoneButton({
   readonly onClick: () => void;
 }) {
   const [pressed, setPressed] = useState(false);
+  // aria-disabled, not disabled: the button keeps focus after the press.
   return (
-    <button
-      className="btn ghost"
-      type="button"
-      aria-label={pressed ? undefined : aria}
-      disabled={pressed}
-      onClick={() => {
-        onClick();
-        setPressed(true);
-      }}
-    >
-      <span aria-live="polite">{pressed ? done : label}</span>
-    </button>
+    <>
+      <button
+        className="btn ghost"
+        type="button"
+        aria-label={pressed ? undefined : aria}
+        aria-disabled={pressed || undefined}
+        onClick={() => {
+          if (pressed) return;
+          onClick();
+          setPressed(true);
+        }}
+      >
+        {pressed ? done : label}
+      </button>
+      <span className="sr-only" role="status">
+        {pressed ? done : ''}
+      </span>
+    </>
   );
 }

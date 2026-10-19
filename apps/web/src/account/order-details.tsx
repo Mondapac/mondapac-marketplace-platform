@@ -39,7 +39,9 @@ export function OrderDetails({
   const wasAsking = useRef(false);
   // "Keep order" gives focus back to Cancel order.
   useEffect(() => {
-    if (wasAsking.current && !asking) cancelButton.current?.focus();
+    // After "Yes, cancel order" the button is gone: focus goes to the order's heading.
+    if (wasAsking.current && !asking)
+      (cancelButton.current ?? document.getElementById('order-title'))?.focus();
     wasAsking.current = asking;
   }, [asking]);
   const order = orders.find((o) => o.reference === reference);
@@ -57,7 +59,9 @@ export function OrderDetails({
       <section className="ac-card">
         <div className="ac-row">
           <div>
-            <h2>{t('order.title', { reference: order.reference })}</h2>
+            <h2 id="order-title" tabIndex={-1}>
+              {t('order.title', { reference: order.reference })}
+            </h2>
             <small className="ac-sub">{t('order.placed', { date: day(order.placedOn) })}</small>
           </div>
           <OrderBadge status={order.status} />
@@ -179,7 +183,7 @@ export function OrderDetails({
           <span id="cancel-body">{t('order.cancel-body')}</span>
           <div className="ac-acts">
             <button
-              className="btn"
+              className="btn ghost ac-danger"
               type="button"
               autoFocus
               onClick={() => {
@@ -189,7 +193,7 @@ export function OrderDetails({
             >
               {t('order.cancel-yes')}
             </button>
-            <button className="btn ghost" type="button" onClick={() => setAsking(false)}>
+            <button className="btn" type="button" onClick={() => setAsking(false)}>
               {t('order.cancel-no')}
             </button>
           </div>

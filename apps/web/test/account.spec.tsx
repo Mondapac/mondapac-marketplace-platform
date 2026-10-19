@@ -210,10 +210,10 @@ describe('orders', () => {
     const first = within(main()).getAllByRole('article')[0]!;
     fireEvent.click(within(first).getByRole('button', { name: 'Buy again' }));
     expect(cartCount()).toBe(4);
-    expect(within(first).getByRole('button', { name: 'Added to cart' })).toHaveProperty(
-      'disabled',
-      true,
-    );
+    const done = within(first).getByRole('button', { name: 'Added to cart' });
+    expect(done.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(done);
+    expect(cartCount()).toBe(4);
   });
 });
 
@@ -259,11 +259,12 @@ describe('addresses', () => {
     type('Mobile number', '0400 000 000');
     fireEvent.click(within(page).getByRole('button', { name: 'Save address' }));
     expect(within(page).getByText('Enter a 4-digit postcode.')).toBeTruthy();
+    expect(document.activeElement).toBe(within(page).getByLabelText('Postcode'));
     type('Postcode', '4217');
     expect(within(page).getByRole('status').textContent).toContain('We do not deliver to 4217');
     fireEvent.click(within(page).getByRole('button', { name: 'Save address' }));
     const card = within(page).getByRole('article', { name: 'Gold Coast' });
-    expect(card.textContent).toContain('1 Beach Road, Surfers Paradise Queensland 4217');
+    expect(card.textContent).toContain('1 Beach Road, Surfers Paradise QLD 4217');
     expect(within(card).getByText('Outside our delivery area')).toBeTruthy();
   });
 
@@ -273,8 +274,12 @@ describe('addresses', () => {
     fireEvent.click(within(page).getByRole('button', { name: 'Make Work the default' }));
     expect(within(page).getByRole('article', { name: 'Work' }).className).toContain('def');
     fireEvent.click(within(page).getByRole('button', { name: 'Delete Work' }));
+    fireEvent.click(within(page).getByRole('button', { name: 'Keep' }));
+    expect(document.activeElement).toBe(within(page).getByRole('button', { name: 'Delete Work' }));
+    fireEvent.click(within(page).getByRole('button', { name: 'Delete Work' }));
     fireEvent.click(within(page).getByRole('button', { name: 'Delete' }));
     expect(within(page).queryByRole('article', { name: 'Work' })).toBeNull();
+    expect(document.activeElement).toBe(within(page).getByRole('button', { name: 'Delete Home' }));
     expect(within(page).getByRole('article', { name: 'Home' }).className).toContain('def');
   });
 });

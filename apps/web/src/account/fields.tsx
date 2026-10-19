@@ -126,7 +126,7 @@ function FieldHelp({
 }) {
   if (error)
     return (
-      <small id={`${id}-help`} className="err" role="alert">
+      <small id={`${id}-help`} className="err">
         {error}
       </small>
     );

@@ -114,6 +114,7 @@ export const SAMPLE_CHECKOUT: CheckoutSource = {
   serviceArea: {
     name: 'Greater Brisbane',
     region: 'Queensland',
+    regionCode: 'QLD',
     postcodes: [{ from: '4000', to: '4199' }],
   },
   orderReference: 'MP-20481',

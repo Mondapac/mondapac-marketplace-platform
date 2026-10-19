@@ -234,6 +234,8 @@ export interface ServiceArea {
   readonly name: string;
   /** The state or region every address in the area has (read-only on the form). */
   readonly region: string;
+  /** The region's short form in a one-line address ("QLD"). */
+  readonly regionCode: string;
   readonly postcodes: readonly { readonly from: string; readonly to: string }[];
 }
 

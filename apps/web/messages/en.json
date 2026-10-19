@@ -286,7 +286,12 @@
       "fallback-label": "Address",
       "postcode-bad": "Enter a 4-digit postcode.",
       "postcode-outside": "We do not deliver to {postcode} yet. We currently deliver to {area}. You can still save this address.",
-      "required": "Fill in this field."
+      "missing": {
+        "name": "Enter the full name.",
+        "street": "Enter the street address.",
+        "suburb": "Enter the suburb.",
+        "phone": "Enter a mobile number."
+      }
     },
     "lists": {
       "saved": "Saved for later ({count})",
