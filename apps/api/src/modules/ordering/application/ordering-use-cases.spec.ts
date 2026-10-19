@@ -33,6 +33,7 @@ import type { CheckoutLine } from '../../cart';
 import { ConfigOrderingPolicy } from '../infrastructure/config-ordering-policy';
 import type { OrderingDependencies } from './checkout-flow';
 import { AdminListOrders } from './use-cases/admin-list-orders.use-case';
+import { AdminViewOrderDocument } from './use-cases/admin-view-order-document.use-case';
 import { AdminViewOrder } from './use-cases/admin-view-order.use-case';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
@@ -45,7 +46,9 @@ import { SellerDeliverOrder } from './use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './use-cases/seller-list-orders.use-case';
 import { SellerShipOrder } from './use-cases/seller-ship-order.use-case';
 import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
+import { SellerViewOrderDocument } from './use-cases/seller-view-order-document.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
+import { ViewOrderDocument } from './use-cases/view-order-document.use-case';
 import { ViewOrder } from './use-cases/view-order.use-case';
 
 // Checkout, payment confirmation and the order reads in memory on both Market fixtures (AU in
@@ -1779,6 +1782,133 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         ok: false,
         error: { code: 'validation.failed' },
       });
+    });
+  });
+  describe('order documents', () => {
+    const adminContext = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'admin',
+        accountId: id<'Account'>(0xad),
+        sessionId: id<'Session'>(0x62),
+        sellerId: null,
+      }),
+      'order-doc-admin',
+    );
+    const sellerA = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'seller',
+        accountId: id<'Account'>(0x71),
+        sessionId: id<'Session'>(0x171),
+        sellerId: SELLER_A,
+      }),
+      'order-doc-seller-a',
+    );
+    const sellerB = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'seller',
+        accountId: id<'Account'>(0x72),
+        sessionId: id<'Session'>(0x172),
+        sellerId: SELLER_B,
+      }),
+      'order-doc-seller-b',
+    );
+    const own = (context: CallContext, orderId: unknown) =>
+      new ViewOrderDocument(gate, deps).execute(context, { orderId });
+    const any = (orderId: unknown) =>
+      new AdminViewOrderDocument(gate, deps).execute(adminContext, { orderId });
+    const ofSeller = (context: CallContext, sellerOrderId: unknown) =>
+      new SellerViewOrderDocument(gate, deps).execute(context, { sellerOrderId });
+    const sellerOrderOf = (orderId: string, sellerId: Id<'Seller'>) =>
+      orders.rows.get(orderId)!.sellerOrders.find((s) => s.sellerId === sellerId)!.id;
+
+    it('gives the customer an order confirmation of their own paid order, from the frozen values', async () => {
+      const order = await placed();
+      expect(await own(customer, order.id)).toEqual(
+        err({ code: 'ordering.document-not-available' }),
+      );
+      await confirm(order.id);
+      const document = await own(customer, order.id);
+      if (!document.ok) throw new Error(document.error.code);
+      const stored = orders.rows.get(order.id)!;
+      expect(document.value).toMatchObject({
+        kind: 'order-confirmation',
+        documentNumber: null,
+        orderId: order.id,
+        sellerOrderId: null,
+        paidAt: stored.confirmedAt,
+        total: money(stored.total.amount, currency),
+      });
+      expect(document.value.parts.map((p) => p.sellerId).sort()).toEqual(
+        [SELLER_A, SELLER_B].sort(),
+      );
+      expect(document.value.total.currency).toBe(currency);
+      // Ids, money and instants only: no address, name or email.
+      const text = JSON.stringify(document.value, (_k, v: unknown) =>
+        typeof v === 'bigint' ? v.toString() : v,
+      );
+      expect(text).not.toContain(TEST_DELIVERY_ADDRESS.line1);
+      expect(text).not.toContain(TEST_DELIVERY_ADDRESS.recipientLastName);
+      expect(document.value).not.toHaveProperty('shipTo');
+    });
+
+    it("answers another customer's order, an unknown one and a bad id as the order page does", async () => {
+      const order = await placed();
+      await confirm(order.id);
+      const foreign = await own(customerOf(OTHER), order.id);
+      expect(foreign).toEqual(err({ code: 'ordering.order-not-found' }));
+      expect(await own(customer, id<'Order'>(0xbeef))).toEqual(foreign);
+      expect(await own(customer, 'not-an-id')).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect((await own(anonymous, order.id)).ok).toBe(false);
+    });
+
+    it("gives an admin any paid order's document and a seller only its own part", async () => {
+      const order = await placed();
+      const sellerOrderA = sellerOrderOf(order.id, SELLER_A);
+      expect(await any(order.id)).toEqual(err({ code: 'ordering.document-not-available' }));
+      expect(await ofSeller(sellerA, sellerOrderA)).toEqual(
+        err({ code: 'ordering.seller-order-not-found' }),
+      );
+      await confirm(order.id);
+
+      const admin = await any(order.id);
+      expect(admin.ok && admin.value.parts).toHaveLength(2);
+      const mine = await ofSeller(sellerA, sellerOrderA);
+      if (!mine.ok) throw new Error(mine.error.code);
+      const part = orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === sellerOrderA)!;
+      expect(mine.value).toMatchObject({
+        kind: 'order-confirmation',
+        documentNumber: null,
+        orderId: order.id,
+        sellerOrderId: sellerOrderA,
+        total: money(part.total, currency),
+      });
+      expect(mine.value.parts.map((p) => p.sellerId)).toEqual([SELLER_A]);
+      expect(mine.value).not.toHaveProperty('shipTo');
+      expect(await ofSeller(sellerB, sellerOrderA)).toEqual(
+        err({ code: 'ordering.seller-order-not-found' }),
+      );
+      expect((await ofSeller(customer, sellerOrderA)).ok).toBe(false);
+    });
+
+    it('fails closed while numbered tax invoices are switched on but not built', async () => {
+      const order = await placed();
+      await confirm(order.id);
+      class InvoicesOn extends ConfigOrderingPolicy {
+        override invoicesEnabled(): boolean {
+          return true;
+        }
+      }
+      deps = { ...deps, policy: new InvoicesOn(markets) };
+      const numbering = err({ code: 'ordering.invoice-numbering-unavailable' });
+      expect(await own(customer, order.id)).toEqual(numbering);
+      expect(await any(order.id)).toEqual(numbering);
+      expect(await ofSeller(sellerA, sellerOrderOf(order.id, SELLER_A))).toEqual(numbering);
     });
   });
 });

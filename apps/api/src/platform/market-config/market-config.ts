@@ -1243,11 +1243,15 @@ const marketSchema = z
      * `refundCredit.enabled`: refunds with their tax reversal and credit note (tax step 3); off
      * (false or absent) until the registered tax agent confirms in writing and the owner turns it
      * on, so nothing reaches real money before.
+     * `invoice.enabled`: the order document is a numbered tax invoice (tax step 4); off (false or
+     * absent) it is an order confirmation without a number. Gap-free numbering is not built yet
+     * (AG-11), so switched on the document fails closed.
      */
     tax: z
       .strictObject({
         defaultRateBps: z.number().int().min(0).max(5000),
         refundCredit: z.strictObject({ enabled: z.boolean() }).optional(),
+        invoice: z.strictObject({ enabled: z.boolean() }).optional(),
       })
       .optional(),
     /**

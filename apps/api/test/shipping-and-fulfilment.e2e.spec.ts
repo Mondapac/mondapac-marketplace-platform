@@ -10,7 +10,10 @@ import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sess
 import { SellerDeliverOrder } from '../src/modules/ordering/application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from '../src/modules/ordering/application/use-cases/seller-list-orders.use-case';
 import { SellerShipOrder } from '../src/modules/ordering/application/use-cases/seller-ship-order.use-case';
+import { SellerViewOrderDocument } from '../src/modules/ordering/application/use-cases/seller-view-order-document.use-case';
 import { SellerViewOrder } from '../src/modules/ordering/application/use-cases/seller-view-order.use-case';
+import { sellerOrderDocument } from '../src/modules/ordering/domain/order-document';
+import type { SellerOrderDetailView } from '../src/modules/ordering/domain/order-views';
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
 import { SetFlatFee } from '../src/modules/shipping/application/use-cases/set-flat-fee.use-case';
 import { ViewFlatFee } from '../src/modules/shipping/application/use-cases/view-flat-fee.use-case';
@@ -117,6 +120,8 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
           .useValue(stub('list'))
           .overrideProvider(SellerViewOrder)
           .useValue(stub('view'))
+          .overrideProvider(SellerViewOrderDocument)
+          .useValue(stub('document'))
           .overrideProvider(SellerShipOrder)
           .useValue(stub('ship'))
           .overrideProvider(SellerDeliverOrder)
@@ -281,6 +286,60 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
       expect((await call('get', 'seller', `${ORDERS}/nope`, session)).status).toBe(400);
       next = err({ code: 'access.denied' });
       expect((await call('get', 'seller', ORDERS, session)).status).toBe(403);
+    });
+
+    it('answers the document of one order without the address, and maps its refusals', async () => {
+      await boot();
+      const session = seller();
+      next = ok(sellerOrderDocument(detail(currency) as unknown as SellerOrderDetailView));
+
+      const one = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}/document`, session);
+      expect(one.status).toBe(200);
+      expect(one.headers['cache-control']).toBe('no-store');
+      expect(calls[0]).toEqual({ name: 'document', input: { sellerOrderId: SELLER_ORDER } });
+      expect(one.body).toEqual({
+        kind: 'order-confirmation',
+        documentNumber: null,
+        orderId: ORDER,
+        sellerOrderId: SELLER_ORDER,
+        paidAt: START.toString(),
+        parts: [
+          {
+            sellerId: SELLER,
+            lines: [
+              {
+                lineId: id<'OrderLine'>(0xc030),
+                offerId: id<'Offer'>(0xc001),
+                variantId: id<'Variant'>(0xc002),
+                quantity: 2,
+                unitPrice: { amount: '1500', currency },
+                lineAmount: { amount: '3000', currency },
+                taxInclusive: true,
+                taxRateBps: 1000,
+                tax: { amount: '273', currency },
+              },
+            ],
+            subtotal: { amount: '3000', currency },
+            shipping: { amount: '500', currency },
+            shippingTax: { amount: '45', currency },
+            tax: { amount: '273', currency },
+            total: { amount: '3500', currency },
+          },
+        ],
+        total: { amount: '3500', currency },
+        tax: { amount: '273', currency },
+      });
+
+      next = err({ code: 'ordering.seller-order-not-found' });
+      const missing = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}/document`, session);
+      expect(missing.status).toBe(404);
+      next = err({ code: 'ordering.invoice-numbering-unavailable' });
+      const numbering = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}/document`, session);
+      expect(numbering.status).toBe(503);
+      expect(numbering.body).toMatchObject({ code: 'ordering.invoice-numbering-unavailable' });
+      next = err({ code: 'access.denied' });
+      const denied = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}/document`, session);
+      expect(denied.status).toBe(403);
     });
 
     it('records the shipment from a closed JSON body and answers the new state', async () => {

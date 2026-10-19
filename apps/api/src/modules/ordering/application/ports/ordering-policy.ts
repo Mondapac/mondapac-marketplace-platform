@@ -18,6 +18,11 @@ export interface OrderingPolicy {
    * `tax.refundCredit.enabled`, off unless set to true (tax step 3).
    */
   refundsEnabled(market: MarketContext): boolean;
+  /**
+   * Whether the order document is a numbered tax invoice: `tax.invoice.enabled`, off unless set
+   * to true (tax step 4). Off, it is an order confirmation without a number.
+   */
+  invoicesEnabled(market: MarketContext): boolean;
 }
 
 export const ORDERING_POLICY = Symbol('ORDERING_POLICY');

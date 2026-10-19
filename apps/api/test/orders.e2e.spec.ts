@@ -98,6 +98,8 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.refund-exceeds': 422,
     'ordering.refund-rejected': 422,
     'ordering.refund-tax-unavailable': 503,
+    'ordering.document-not-available': 409,
+    'ordering.invoice-numbering-unavailable': 503,
     'access.unavailable': 503,
   });
 });
@@ -423,8 +425,51 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(bad.status).toBe(400);
     });
 
+    it('gives a customer the document of their own paid order only, with no address', async () => {
+      const mine = customer();
+      const theirs = customer(OTHER_CUSTOMER, 2);
+      const orderId = body(await checkout(mine)).orderId;
+      const get = (headers: Record<string, string>) =>
+        http()
+          .get(`/orders/${orderId}/document`)
+          .set({ 'x-market-id': code, cookie: headers.cookie! });
+
+      const unpaid = await get(mine);
+      const stored = orders.rows.get(orderId)!;
+      orders.rows.set(orderId, { ...stored, status: 'confirmed', confirmedAt: START });
+      const paid = await get(mine);
+      const foreign = await get(theirs);
+
+      expect(unpaid.status).toBe(409);
+      expect(unpaid.body).toEqual({ statusCode: 409, code: 'ordering.document-not-available' });
+      expect(paid.status).toBe(200);
+      expect(paid.headers['cache-control']).toBe('no-store');
+      expect(paid.body).toMatchObject({
+        kind: 'order-confirmation',
+        documentNumber: null,
+        orderId,
+        sellerOrderId: null,
+        paidAt: START.toString(),
+        total: { amount: '3500', currency },
+        parts: [
+          {
+            sellerId: SELLER,
+            shipping: { amount: '500', currency },
+            lines: [{ quantity: 2, unitPrice: { amount: '1500', currency } }],
+          },
+        ],
+      });
+      expect(JSON.stringify(paid.body)).not.toMatch(/Rahman|Example Street|pi_test|cs_test/);
+      expect(foreign.status).toBe(404);
+      expect(foreign.body).toMatchObject({ code: 'ordering.order-not-found' });
+    });
+
     it('needs a session', async () => {
       expect((await http().get('/orders').set({ 'x-market-id': code })).status).toBe(401);
+      const document = await http()
+        .get(`/orders/${id<'Order'>(0xbeef)}/document`)
+        .set({ 'x-market-id': code });
+      expect(document.status).toBe(401);
     });
   });
 
@@ -516,6 +561,29 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(customerTries.status).toBeLessThanOrEqual(403);
       expect(unknown.status).toBe(404);
       expect(badFilter.status).toBe(400);
+    });
+
+    it('gives a role with ordering.order.view the document of a paid order, and no other role', async () => {
+      await seedAdmins();
+      const orderId = body(await checkout(customer())).orderId;
+      const route = `/ordering/admin/orders/${orderId}/document`;
+      const unpaid = await http().get(route).set(adminHeaders(VIEWER, 31));
+      const stored = orders.rows.get(orderId)!;
+      orders.rows.set(orderId, { ...stored, status: 'confirmed', confirmedAt: START });
+      const paid = await http().get(route).set(adminHeaders(VIEWER, 32));
+      const noKey = await http().get(route).set(adminHeaders(NO_KEY, 33));
+
+      expect(unpaid.status).toBe(409);
+      expect(paid.status).toBe(200);
+      expect(paid.headers['cache-control']).toBe('no-store');
+      expect(paid.body).toMatchObject({
+        kind: 'order-confirmation',
+        documentNumber: null,
+        orderId,
+        tax: { amount: '318', currency },
+      });
+      expect(JSON.stringify(paid.body)).not.toMatch(/Rahman|Example Street/);
+      expect(noKey.status).toBe(403);
     });
 
     it('refunds only for an admin with ordering.order.refund, and not while the Market switch is off', async () => {

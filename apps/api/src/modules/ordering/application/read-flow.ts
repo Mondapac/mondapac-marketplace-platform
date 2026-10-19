@@ -101,7 +101,7 @@ function cut<T extends { orderId: Id<'Order'>; createdAt: Temporal.Instant }>(
   };
 }
 
-const parseOrderId = (value: unknown): Result<Id<'Order'>, ReadFailure> => {
+export const parseOrderId = (value: unknown): Result<Id<'Order'>, ReadFailure> => {
   const parsed = typeof value === 'string' ? parseId<'Order'>(value) : null;
   return parsed !== null && parsed.ok
     ? ok(parsed.value)

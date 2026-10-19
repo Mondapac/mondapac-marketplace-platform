@@ -36,7 +36,9 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { AdminListOrders } from '../application/use-cases/admin-list-orders.use-case';
 import { AdminRefundOrder } from '../application/use-cases/admin-refund-order.use-case';
+import { AdminViewOrderDocument } from '../application/use-cases/admin-view-order-document.use-case';
 import { AdminViewOrder } from '../application/use-cases/admin-view-order.use-case';
+import { OrderDocumentBody, orderDocumentBody } from './documents.dto';
 import { closedBody, refusal } from './http-answers';
 import { REFUND_BODY_KEYS, RefundBody, RefundRequestBody, refundBody } from './refunds.dto';
 import {
@@ -74,6 +76,7 @@ export class AdminOrdersController {
     private readonly list: AdminListOrders,
     private readonly view: AdminViewOrder,
     private readonly refund: AdminRefundOrder,
+    private readonly documentOf: AdminViewOrderDocument,
   ) {}
 
   @Get()
@@ -141,6 +144,42 @@ export class AdminOrdersController {
     this.log('ordering.admin-view-order-route', context, result.ok ? 'read' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return adminOrderBody(result.value);
+  }
+
+  @Get(':orderId/document')
+  @ApiOperation({
+    summary: 'The document of an order (admin)',
+    description:
+      'Needs ordering.order.view. ' +
+      'Built from the values frozen at placement. An order confirmation (no number) while ' +
+      'tax.invoice.enabled is off; on, 503 ordering.invoice-numbering-unavailable (numbering ' +
+      'not built).',
+  })
+  @ApiParam({ name: 'orderId', format: 'uuid' })
+  @ApiOkResponse({ type: OrderDocumentBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.order-not-found' })
+  @ApiConflictResponse({ ...ERROR, description: 'ordering.document-not-available (not paid)' })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'ordering.invoice-numbering-unavailable or access.unavailable',
+  })
+  async document(
+    @Call() context: CallContext,
+    @Param('orderId') orderId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.documentOf.execute(context, { orderId });
+    this.log(
+      'ordering.admin-view-order-document-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return orderDocumentBody(result.value);
   }
 
   @Post(':orderId/seller-orders/:sellerOrderId/refunds')

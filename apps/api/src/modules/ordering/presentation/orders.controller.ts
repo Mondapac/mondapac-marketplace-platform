@@ -39,6 +39,8 @@ import {
 import { ListOrders } from '../application/use-cases/list-orders.use-case';
 import { StartCheckout } from '../application/use-cases/start-checkout.use-case';
 import { ViewOrder } from '../application/use-cases/view-order.use-case';
+import { ViewOrderDocument } from '../application/use-cases/view-order-document.use-case';
+import { OrderDocumentBody, orderDocumentBody } from './documents.dto';
 import { closedBody, moneyBody, refusal } from './http-answers';
 import {
   CheckoutRequest,
@@ -77,6 +79,7 @@ export class OrdersController {
     private readonly start: StartCheckout,
     private readonly view: ViewOrder,
     private readonly list: ListOrders,
+    private readonly documentOf: ViewOrderDocument,
   ) {}
 
   @Post('checkout')
@@ -188,6 +191,39 @@ export class OrdersController {
     this.log('ordering.view-order-route', context, result.ok ? 'read' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return ownOrderBody(result.value);
+  }
+
+  @Get(':orderId/document')
+  @ApiOperation({
+    summary: "The document of one of the customer's own paid orders",
+    description:
+      'Own orders only. Built from the values frozen at placement. An order confirmation (no number) ' +
+      'while tax.invoice.enabled is off; on, 503 ordering.invoice-numbering-unavailable ' +
+      '(numbering not built).',
+  })
+  @ApiParam({ name: 'orderId', format: 'uuid' })
+  @ApiOkResponse({ type: OrderDocumentBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiNotFoundResponse({
+    ...ERROR,
+    description: "ordering.order-not-found (also another customer's order)",
+  })
+  @ApiConflictResponse({ ...ERROR, description: 'ordering.document-not-available (not paid)' })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'ordering.invoice-numbering-unavailable or access.unavailable',
+  })
+  async document(
+    @Call() context: CallContext,
+    @Param('orderId') orderId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.documentOf.execute(context, { orderId });
+    this.log('ordering.view-order-document-route', context, result.ok ? 'read' : result.error.code);
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return orderDocumentBody(result.value);
   }
 
   private refused(error: HttpException, context: CallContext): HttpException {
