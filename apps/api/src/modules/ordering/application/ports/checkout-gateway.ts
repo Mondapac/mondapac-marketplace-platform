@@ -40,6 +40,24 @@ export interface CheckoutGateway {
     paymentIntentId: string,
     idempotencyKey: string,
   ): Promise<Result<true, GatewayFailure>>;
+
+  /**
+   * Gives `amount` (minor units) of the captured money back to the card (tax step 3). Test mode
+   * only: with a live key the adapter refuses without calling Stripe. Answers Stripe's refund id.
+   */
+  refund(
+    request: RefundCallRequest,
+  ): Promise<Result<{ readonly refundId: string }, GatewayFailure>>;
+}
+
+export interface RefundCallRequest {
+  readonly paymentIntentId: string;
+  readonly amount: bigint;
+  readonly orderId: string;
+  readonly refundId: string;
+  readonly marketId: string;
+  /** Stored on the refund before this call; the same key on every retry. */
+  readonly idempotencyKey: string;
 }
 
 export const CHECKOUT_GATEWAY = Symbol('CHECKOUT_GATEWAY');

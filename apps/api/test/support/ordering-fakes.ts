@@ -43,6 +43,7 @@ import type {
   ShipToKeyDestroyed,
 } from '../../src/modules/ordering/application/ports/ship-to-cipher';
 import type { OrderTaxCategories } from '../../src/modules/ordering/application/ports/order-tax-categories';
+import type { RefundRepository } from '../../src/modules/ordering/application/ports/refund.repository';
 import type { TaxAnswer, TaxFacade, TaxFailure, TaxLineInput } from '../../src/modules/tax';
 import type { FlatFeeMap, ShippingFacade, ShippingFailure } from '../../src/modules/shipping';
 import type {
@@ -62,6 +63,11 @@ const id = <T extends string>(n: number): Id<T> => {
   if (!parsed.ok) throw new Error('bad id');
   return parsed.value as Id<T>;
 };
+
+/** The refund store for specs that never refund (the refund specs use the database). */
+export const NO_REFUNDS: RefundRepository = new Proxy({} as RefundRepository, {
+  get: (_target, name) => () => Promise.reject(new Error(`refunds.${String(name)} not expected`)),
+});
 
 export class MemoryOrders implements OrderRepository {
   readonly rows = new Map<string, OrderState>();
@@ -382,6 +388,16 @@ export class FakeGateway implements CheckoutGateway {
     this.voided.push([paymentIntentId, key]);
     return Promise.resolve(ok(true as const));
   }
+  refunds: Parameters<CheckoutGateway['refund']>[0][] = [];
+  refundFails: GatewayFailure | null = null;
+  refund(request: Parameters<CheckoutGateway['refund']>[0]) {
+    this.refunds.push(request);
+    if (this.refundFails !== null) return Promise.resolve(err(this.refundFails));
+    // Stripe answers a repeated key with the same refund.
+    return Promise.resolve(
+      ok({ refundId: `re_test_${request.idempotencyKey.replace(/[^A-Za-z0-9]/g, '')}` }),
+    );
+  }
 }
 
 export class FakeInventory implements InventoryOrderingPort {
@@ -556,6 +572,27 @@ export class FakeTax implements TaxFacade {
   /** Answer one line fewer than asked, as a broken tax module would. */
   dropLast = false;
   calls: (readonly TaxLineInput[])[] = [];
+  /** The tax module's reversal arithmetic: per-unit shares, then cumulative half-up shares. */
+  reverseRefundTax(
+    _c: CallContext,
+    input: Parameters<TaxFacade['reverseRefundTax']>[1],
+  ): ReturnType<TaxFacade['reverseRefundTax']> {
+    if (this.failure !== null) return Promise.resolve(err(this.failure));
+    const halfUp = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
+    return Promise.resolve(
+      ok({
+        lines: input.lines.map(({ tax, quantity, unitsBefore, units }) => {
+          const base = tax / BigInt(quantity);
+          const remainder = Number(tax % BigInt(quantity));
+          const extra = Math.max(0, Math.min(unitsBefore + units, remainder) - unitsBefore);
+          return base * BigInt(units) + BigInt(extra);
+        }),
+        charges: input.charges.map(({ tax, gross, before, after }) =>
+          gross === 0n ? 0n : halfUp(tax * after, gross) - halfUp(tax * before, gross),
+        ),
+      }),
+    );
+  }
   calculateTax(
     _c: CallContext,
     lines: readonly TaxLineInput[],

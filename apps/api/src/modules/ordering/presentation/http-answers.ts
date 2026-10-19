@@ -23,6 +23,13 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.seller-order-not-found': 404,
   'ordering.fulfilment-conflict': 409,
   'ordering.payment-unavailable': 503,
+  'ordering.refund-disabled': 409,
+  'ordering.refund-not-allowed': 409,
+  'ordering.refund-in-progress': 409,
+  'ordering.refund-tax-unknown': 422,
+  'ordering.refund-exceeds': 422,
+  'ordering.refund-rejected': 422,
+  'ordering.refund-tax-unavailable': 503,
   'access.unavailable': 503,
 });
 

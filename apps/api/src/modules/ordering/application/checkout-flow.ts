@@ -33,11 +33,14 @@ import type { OrderLabels } from './ports/order-labels';
 import type { OrderTaxCategories } from './ports/order-tax-categories';
 import type { OrderingPolicy } from './ports/ordering-policy';
 import type { OrderRepository } from './ports/order.repository';
+import type { RefundRepository } from './ports/refund.repository';
 import type { ShipToCipher } from './ports/ship-to-cipher';
 
 export interface OrderingDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly orders: OrderRepository;
+  /** Refunds of seller orders and their credit notes (tax step 3). */
+  readonly refunds: RefundRepository;
   readonly gateway: CheckoutGateway;
   readonly policy: OrderingPolicy;
   readonly cart: CartCheckoutFacade;

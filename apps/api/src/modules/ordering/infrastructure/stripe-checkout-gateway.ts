@@ -4,6 +4,7 @@ import type {
   CheckoutGateway,
   CreateSessionRequest,
   GatewayFailure,
+  RefundCallRequest,
 } from '../application/ports/checkout-gateway';
 
 /** How long one Stripe call may take before it counts as failed. */
@@ -80,6 +81,32 @@ export class StripeCheckoutGateway implements CheckoutGateway {
 
   async voidAuthorisation(paymentIntentId: string, idempotencyKey: string) {
     return this.intentCall(paymentIntentId, 'cancel', idempotencyKey);
+  }
+
+  /**
+   * `POST /v1/refunds` for part of the captured PaymentIntent. Refused here, without a call, unless
+   * the key is a test-mode key (`sk_test_`): no real money moves until the tax agent has confirmed
+   * in writing and the owner decides to go live (tax step 3).
+   */
+  async refund(request: RefundCallRequest) {
+    if (this.secretKey === null || !this.secretKey.startsWith('sk_test_')) return err(REJECTED);
+    if (!/^pi_[A-Za-z0-9_]{1,200}$/.test(request.paymentIntentId) || request.amount <= 0n) {
+      return err(REJECTED);
+    }
+    const form = new URLSearchParams();
+    form.set('payment_intent', request.paymentIntentId);
+    form.set('amount', request.amount.toString());
+    form.set('metadata[order_id]', request.orderId);
+    form.set('metadata[refund_id]', request.refundId);
+    form.set('metadata[market_id]', request.marketId);
+    const answer = await this.post('/v1/refunds', form, request.idempotencyKey);
+    if (!answer.ok) return answer;
+    const id = answer.value.id;
+    const status = answer.value.status;
+    if (typeof id !== 'string' || !/^re_[A-Za-z0-9_]{1,200}$/.test(id)) return err(UNAVAILABLE);
+    // A refund Stripe already marked failed or canceled gave nothing back.
+    if (status === 'failed' || status === 'canceled') return err(REJECTED);
+    return ok({ refundId: id });
   }
 
   private async intentCall(

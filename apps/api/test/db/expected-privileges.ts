@@ -434,6 +434,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'inventory_recorded_at',
         'ledger_attempts',
         'ledger_state',
+        'refunded_amount',
         'shipped_at',
         'tracking_ref',
       ],
@@ -537,6 +538,14 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Tax step 3: a refund is written once and only settles (state, Stripe refund id, attempts,
+    // settled time); its lines and its credit note are insert-only. No row is deleted.
+    'ordering.refunds': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['attempts', 'settled_at', 'state', 'stripe_refund_id'],
+    },
+    'ordering.refund_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'ordering.credit_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.
     // Payments (Phase 5 package 3): one connected account row per seller and Market; the state

@@ -15,6 +15,8 @@ import {
   ApiBody,
   ApiConflictResponse,
   ApiForbiddenResponse,
+  ApiServiceUnavailableResponse,
+  ApiUnprocessableEntityResponse,
   ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -34,9 +36,11 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { SellerDeliverOrder } from '../application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from '../application/use-cases/seller-list-orders.use-case';
+import { SellerRefundOrder } from '../application/use-cases/seller-refund-order.use-case';
 import { SellerShipOrder } from '../application/use-cases/seller-ship-order.use-case';
 import { SellerViewOrder } from '../application/use-cases/seller-view-order.use-case';
 import { closedBody, refusal } from './http-answers';
+import { REFUND_BODY_KEYS, RefundBody, RefundRequestBody, refundBody } from './refunds.dto';
 import {
   SellerOrderPageBody,
   SellerOrderShipBody,
@@ -73,6 +77,7 @@ export class SellerOrdersController {
     private readonly view: SellerViewOrder,
     private readonly ship: SellerShipOrder,
     private readonly deliver: SellerDeliverOrder,
+    private readonly refund: SellerRefundOrder,
   ) {}
 
   @Get()
@@ -205,6 +210,61 @@ export class SellerOrdersController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return sellerOrderShipBody(result.value);
+  }
+
+  @Post(':sellerOrderId/refunds')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Refund part or all of a paid order (Stripe test mode only)',
+    description:
+      'Needs ordering.seller-order.refund (protected). Off until the Market switch ' +
+      'tax.refundCredit.enabled is on: 409 ordering.refund-disabled. Lines (units) and part or ' +
+      'all of the shipping fee; the tax reversed comes from the tax frozen on the order. One ' +
+      'refund at a time per order (409 ordering.refund-in-progress while one is pending).',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
+  @ApiBody({ type: RefundRequestBody })
+  @ApiOkResponse({ type: RefundBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description:
+      'ordering.refund-disabled, ordering.refund-not-allowed, ordering.refund-in-progress or conflict.retry',
+  })
+  @ApiUnprocessableEntityResponse({
+    ...ERROR,
+    description:
+      'ordering.refund-exceeds (details.fields), ordering.refund-tax-unknown or ordering.refund-rejected',
+  })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'ordering.refund-tax-unavailable' })
+  async refundOrder(
+    @Call() context: CallContext,
+    @Param('sellerOrderId') sellerOrderId: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, REFUND_BODY_KEYS);
+    if (invalid !== null) throw invalid;
+    const { lines, shippingAmount, reason } = body as Record<string, unknown>;
+    const result = await this.refund.execute(context, {
+      sellerOrderId,
+      lines,
+      shippingAmount,
+      reason,
+    });
+    this.log(
+      'ordering.seller-refund-order-route',
+      context,
+      result.ok ? `refund-${result.value.state}` : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return refundBody(result.value);
   }
 
   private log(msg: string, context: CallContext, outcome: string): void {

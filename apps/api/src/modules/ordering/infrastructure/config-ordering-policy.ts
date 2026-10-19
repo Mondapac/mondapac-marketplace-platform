@@ -33,4 +33,8 @@ export class ConfigOrderingPolicy implements OrderingPolicy {
   maxLines(): number {
     return MAX_LINES;
   }
+
+  refundsEnabled(market: MarketContext): boolean {
+    return this.markets.get(market.marketId).tax?.refundCredit?.enabled === true;
+  }
 }

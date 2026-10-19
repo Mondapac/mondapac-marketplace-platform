@@ -84,8 +84,12 @@ model OrderingSellerOrder {
   ledgerState         String              @map("ledger_state")
   /// How many times the ledger refused this seller order; the worker takes the fewest first.
   ledgerAttempts      Int                 @default(0) @map("ledger_attempts")
+  /// The gross of the refunds not failed (pending or succeeded); never above the total (CHECK).
+  /// Raised under the value read, so two refunds of one seller order cannot both pass (tax step 3).
+  refundedAmount      BigInt              @default(0) @map("refunded_amount")
   order               OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   lines               OrderingOrderLine[]
+  refunds             OrderingRefund[]
 
   @@unique([marketId, id])
   @@unique([marketId, orderId, sellerId])
@@ -122,10 +126,108 @@ model OrderingOrderLine {
   taxCategoryCode   String?             @map("tax_category_code") @db.VarChar(64)
   order             OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   sellerOrder       OrderingSellerOrder @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  refundLines       OrderingRefundLine[]
 
+  /// The foreign-key target of the refund lines.
+  @@unique([marketId, id])
   @@unique([marketId, orderId, offerId, variantId])
   @@index([marketId, orderId])
   @@map("order_lines")
+  @@schema("ordering")
+}
+
+/// One refund of part or all of a seller order (tax step 3; ADR-0007 decision 11). The amounts are
+/// worked out from the values frozen on the order, never from a current price or rate, and the
+/// rows are written once: only the state, the Stripe refund id, the attempts and the settled time
+/// change. At most one refund of a seller order is pending (partial unique index).
+model OrderingRefund {
+  id                   String               @id @db.Uuid
+  marketId             String               @map("market_id") @db.VarChar(8)
+  tenantId             String               @map("tenant_id")
+  orderId              String               @map("order_id") @db.Uuid
+  sellerOrderId        String               @map("seller_order_id") @db.Uuid
+  sellerId             String               @map("seller_id") @db.Uuid
+  currency             String               @db.VarChar(3)
+  /// What goes back to the customer, tax included (lines plus shipping); above zero.
+  grossAmount          BigInt               @map("gross_amount")
+  /// The tax inside `grossAmount` (lines plus shipping).
+  taxAmount            BigInt               @map("tax_amount")
+  /// The part of the shipping charge refunded (gross) and its tax; zero when none.
+  shippingGrossAmount  BigInt               @map("shipping_gross_amount")
+  shippingTaxAmount    BigInt               @map("shipping_tax_amount")
+  /// The shipping tax rate and price basis frozen on the seller order; null when no shipping.
+  shippingTaxRateBps   Int?                 @map("shipping_tax_rate_bps")
+  shippingTaxInclusive Boolean?             @map("shipping_tax_inclusive")
+  /// customer-request, damaged, not-delivered, wrong-item or other (CHECK).
+  reason               String
+  /// admin or seller (CHECK): who asked for the refund, with their account (a plain id).
+  actorPopulation      String               @map("actor_population")
+  actorAccountId       String               @map("actor_account_id") @db.Uuid
+  /// pending, succeeded or failed (CHECK). Moves only from pending.
+  state                String
+  /// Stored before Stripe is called; the same key on every retry.
+  stripeIdempotencyKey String               @map("stripe_idempotency_key")
+  stripeRefundId       String?              @map("stripe_refund_id")
+  /// How many Stripe calls answered nothing known; the worker retries the same key.
+  attempts             Int                  @default(0)
+  requestedAt          DateTime             @map("requested_at") @db.Timestamptz(6)
+  settledAt            DateTime?            @map("settled_at") @db.Timestamptz(6)
+  sellerOrder          OrderingSellerOrder  @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  lines                OrderingRefundLine[]
+  creditNote           OrderingCreditNote?
+
+  @@unique([marketId, id])
+  @@unique([marketId, stripeIdempotencyKey])
+  @@index([marketId, sellerOrderId])
+  @@index([marketId, state, requestedAt])
+  @@map("refunds")
+  @@schema("ordering")
+}
+
+/// The units of one order line a refund gives back, with the tax they reverse (the line's frozen
+/// per-unit shares at positions `[units_before, units_before + quantity)`). Written once.
+model OrderingRefundLine {
+  marketId     String            @map("market_id") @db.VarChar(8)
+  tenantId     String            @map("tenant_id")
+  refundId     String            @map("refund_id") @db.Uuid
+  orderLineId  String            @map("order_line_id") @db.Uuid
+  quantity     Int
+  /// Units of the line refunded by earlier refunds that had not failed.
+  unitsBefore  Int               @map("units_before")
+  grossAmount  BigInt            @map("gross_amount")
+  taxAmount    BigInt            @map("tax_amount")
+  /// The rate and the price basis frozen on the order line.
+  taxRateBps   Int               @map("tax_rate_bps")
+  taxInclusive Boolean           @map("tax_inclusive")
+  refund       OrderingRefund    @relation(fields: [marketId, refundId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  orderLine    OrderingOrderLine @relation(fields: [marketId, orderLineId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([refundId, orderLineId])
+  @@index([marketId, orderLineId])
+  @@map("refund_lines")
+  @@schema("ordering")
+}
+
+/// The credit note of a refund Stripe made (ADR-0007 decision 11): written once, when the refund
+/// succeeds; never changed or deleted. Its lines are the refund's lines. Not yet a numbered
+/// adjustment note: gap-free numbering and the wording wait for the tax agent (AG-3, AG-11).
+model OrderingCreditNote {
+  id            String         @id @db.Uuid
+  marketId      String         @map("market_id") @db.VarChar(8)
+  tenantId      String         @map("tenant_id")
+  refundId      String         @map("refund_id") @db.Uuid
+  orderId       String         @map("order_id") @db.Uuid
+  sellerOrderId String         @map("seller_order_id") @db.Uuid
+  sellerId      String         @map("seller_id") @db.Uuid
+  currency      String         @db.VarChar(3)
+  grossAmount   BigInt         @map("gross_amount")
+  taxAmount     BigInt         @map("tax_amount")
+  issuedAt      DateTime       @map("issued_at") @db.Timestamptz(6)
+  refund        OrderingRefund @relation(fields: [marketId, refundId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, refundId])
+  @@index([marketId, sellerOrderId])
+  @@map("credit_notes")
   @@schema("ordering")
 }
 

@@ -22,8 +22,12 @@ import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { ORDER_LABELS } from './application/ports/order-labels';
 import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
+import { REFUND_REPOSITORY } from './application/ports/refund.repository';
 import { ORDERING_POLICY } from './application/ports/ordering-policy';
 import { SHIP_TO_CIPHER } from './application/ports/ship-to-cipher';
+import { AdminRefundOrder } from './application/use-cases/admin-refund-order.use-case';
+import { SellerRefundOrder } from './application/use-cases/seller-refund-order.use-case';
+import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
@@ -52,6 +56,7 @@ import { orderingProviders } from './infrastructure/ordering-providers';
 import { AdminOrdersController } from './presentation/admin-orders.controller';
 import { recordLedgerJob } from './presentation/jobs/record-ledger.job';
 import { recordShipmentsJob } from './presentation/jobs/record-shipments.job';
+import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
 import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
 import { OrderingFacadeImplementation } from './presentation/ordering.facade';
@@ -61,6 +66,7 @@ type UseCaseClass<U> = new (gate: UseCaseGate, deps: OrderingDependencies) => U;
 const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['orders', ORDER_REPOSITORY],
+  ['refunds', REFUND_REPOSITORY],
   ['gateway', CHECKOUT_GATEWAY],
   ['policy', ORDERING_POLICY],
   ['cart', CART_CHECKOUT_FACADE],
@@ -105,7 +111,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * price excludes it, and shown on the admin order page. Customers package 2: the customer picks
  * an address of their address book at checkout; a fixed copy, sealed under the account's key, is
  * stored on the order and shown to the customer and to each seller of the order. Storefront
- * reads: the best-selling Offers (ids only) through `ORDERING_RANKING_FACADE`.
+ * reads: the best-selling Offers (ids only) through `ORDERING_RANKING_FACADE`. Tax step 3: an
+ * admin or the seller refunds part or all of a paid seller order, with the tax reversed by `tax`
+ * and a credit note, behind the Market switch `tax.refundCredit.enabled` (off), Stripe test mode
+ * only; a worker job retries refunds whose Stripe answer is unknown.
  */
 @Module({
   imports: [
@@ -142,6 +151,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OrderNoticeQuery,
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
+      AdminRefundOrder,
+      SellerRefundOrder,
+      SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: ORDERING_FACADE,
@@ -178,10 +190,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     },
     registerJobsFrom(
       'ordering',
-      [RecordShipments, RecordLedger],
-      (shipments: RecordShipments, ledger: RecordLedger) => [
+      [RecordShipments, RecordLedger, SettleRefunds],
+      (shipments: RecordShipments, ledger: RecordLedger, refunds: SettleRefunds) => [
         recordShipmentsJob(shipments),
         recordLedgerJob(ledger),
+        settleRefundsJob(refunds),
       ],
     ),
   ],

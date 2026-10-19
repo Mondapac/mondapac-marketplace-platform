@@ -19,6 +19,7 @@ import {
   FakeTax,
   FakeTaxCategories,
   MemoryOrders,
+  NO_REFUNDS,
   TEST_DELIVERY_ADDRESS,
 } from '../../../../test/support/ordering-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
@@ -143,6 +144,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       orders,
+      refunds: NO_REFUNDS,
       gateway,
       policy: new ConfigOrderingPolicy(markets),
       cart,

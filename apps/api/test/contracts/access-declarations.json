@@ -358,6 +358,7 @@
   { "name": "ordering.order-notice", "rule": "system" },
   { "name": "ordering.record-ledger", "rule": "system" },
   { "name": "ordering.record-shipments", "rule": "system" },
+  { "name": "ordering.settle-refunds", "rule": "system" },
   { "name": "ordering.shipment-notice", "rule": "system" },
   { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.view-order", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -440,5 +441,6 @@
     "name": "tax.calculate-tax",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
-  }
+  },
+  { "name": "tax.reverse-refund-tax", "rule": "anonymous" }
 ]
