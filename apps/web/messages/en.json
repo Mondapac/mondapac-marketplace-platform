@@ -758,5 +758,80 @@
     "browse-products": "Browse products",
     "filters-empty": "No stores match these filters",
     "filters-empty-hint": "Try removing a filter to see more stores."
+  },
+  "sell": {
+    "title": "Sell on MondaPac",
+    "heading": "Sell your products to local shoppers",
+    "lead": "Open a seller account, add your products and reach customers in {area} who look for verified halal and local food.",
+    "benefits": {
+      "halal-title": "Verified halal badge",
+      "halal-body": "Upload your halal certificate. Once our team checks it, shoppers see the verified badge on your products.",
+      "delivery-title": "You set your own delivery",
+      "delivery-body": "Choose your delivery windows, delivery fee and minimum order.",
+      "store-title": "Your own store page",
+      "store-body": "Your name, your products and your story, in front of shoppers who prefer small local sellers."
+    },
+    "questions": "Questions",
+    "faq": {
+      "start-q": "What do I need to start?",
+      "start-a": "An email address to create the account. Later you will need your {identifier}, business name and address, and a halal certificate if you want the halal badge on your products.",
+      "account-q": "Can I use my shopping account?",
+      "account-a": "No. Seller accounts are separate from shopping accounts and have their own email and password.",
+      "review-q": "How long does the review take?",
+      "review-a": "We review each seller by hand. We email you as soon as there is a result, and you can see the status when you sign in.",
+      "certificate-q": "Do I need a halal certificate to sell?",
+      "certificate-a": "No. You can sell without one. The verified halal badge is shown only when we have checked a valid certificate."
+    },
+    "how": "How it works",
+    "steps": {
+      "account-title": "Create your account",
+      "account-body": "Your name, email and a password.",
+      "confirm-title": "Confirm your email",
+      "confirm-body": "Open the link we send you.",
+      "details-title": "Add your business details",
+      "details-body": "Your {identifier}, business name, address and, if you sell halal-labelled products, your halal certificate.",
+      "review-title": "We review, then you sell",
+      "review-body": "We email you the result. Then add your products and open for orders."
+    },
+    "form": {
+      "title": "Create a seller account",
+      "sub": "It takes a minute. You add your business details after you confirm your email.",
+      "name": "Your name",
+      "email": "Email",
+      "email-hint": "We send a link to confirm it.",
+      "password": "Password",
+      "password-hint": "{min} to {max} characters.",
+      "privacy-notice": "We collect these details to create and protect your account. Read how we handle them in our <privacy>privacy policy</privacy>.",
+      "submit": "Create account",
+      "sending": "Creating your account…",
+      "have-account": "Already have a seller account? <link>Sign in</link>",
+      "separate": "Seller and customer accounts are separate. Each has its own password.",
+      "throttled": "Too many attempts. Please wait {minutes, plural, one {# minute} other {# minutes}} and try again.",
+      "failed": "We could not create your account just now. Nothing was saved. Please try again."
+    },
+    "errors": {
+      "name-required": "Enter your name.",
+      "name-length": "Use at most 100 characters.",
+      "name-characters": "Your name cannot contain a web address or hidden formatting characters.",
+      "email-required": "Enter your email.",
+      "email-format": "Enter an email address like name@example.com.",
+      "password-required": "Enter a password.",
+      "password-short": "Use at least {min} characters. A few short words in a row work well.",
+      "password-long": "Use at most {max} characters.",
+      "password-common": "That password is too easy to guess. Choose a different one.",
+      "password-identity": "Do not use your email or name in your password."
+    },
+    "mail": {
+      "title": "Check your email",
+      "body": "We have sent an email to <b>{email}</b>. Open it and follow the link to confirm your address.",
+      "wait": "It can take a few minutes. Look in your spam folder if you cannot see it.",
+      "again": "Send it again",
+      "sending": "Sending…",
+      "sent-again": "We sent it again.",
+      "again-throttled": "Too many attempts. Please wait {minutes, plural, one {# minute} other {# minutes}} and try again.",
+      "again-failed": "We could not send it just now. Please try again.",
+      "wrong": "Wrong address? Sign up again",
+      "back": "Back to sign in"
+    }
   }
 }

@@ -447,3 +447,45 @@ export interface SellerResults {
   readonly location: BuyerLocation;
   readonly facets: SellerFacets;
 }
+
+/**
+ * What the sell page needs from the Market: the password rule, the area and business identifier
+ * its copy names, and the seller panel's sign-in page. Never a default Market's values in code.
+ */
+export interface SellerSignUpSetup {
+  readonly passwordMinLength: number;
+  readonly passwordMaxLength: number;
+  /** Where the Market sells now, for example "Greater Brisbane". */
+  readonly serviceArea: string;
+  /** The business identifier's short name, for example "ABN". */
+  readonly businessIdentifier: string;
+  /** The seller panel's sign-in page (another host: seller and customer accounts are separate). */
+  readonly sellerSignInUrl: string;
+}
+
+/** The fields of the seller sign-up form. */
+export type SellerSignUpField = 'name' | 'email' | 'password';
+
+/** Why a field was refused; the form shows one message per code. */
+export type SellerSignUpFieldError =
+  | 'required'
+  | 'name-length'
+  | 'name-characters'
+  | 'email-format'
+  | 'password-short'
+  | 'password-long'
+  | 'password-common'
+  | 'password-identity';
+
+/**
+ * The answer to a seller sign-up or a "send it again". `accepted` is the same for every address,
+ * new or already registered (identity AC 21): the page never says whether an account exists.
+ */
+export type SellerSignUpAnswer =
+  | { readonly kind: 'accepted' }
+  | {
+      readonly kind: 'invalid';
+      readonly fields: Readonly<Partial<Record<SellerSignUpField, SellerSignUpFieldError>>>;
+    }
+  | { readonly kind: 'throttled'; readonly retryAfterSeconds: number }
+  | { readonly kind: 'failed' };
