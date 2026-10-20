@@ -42,9 +42,9 @@ const STREAM =
   frame('conversation', { id: '0192f000-0000-7000-8000-000000000001' }) +
   frame('card', {
     kind: 'product',
-    offerId: 'o1',
-    productId: 'p1',
-    sellerId: 's1',
+    offerId: '0192f000-0000-7000-8000-0000000000a1',
+    productId: '0192f000-0000-7000-8000-0000000000b1',
+    sellerId: '0192f000-0000-7000-8000-0000000000c1',
     name: 'Free-range chicken',
     shortText: 'Whole bird',
     price: { amount: '1299', currency: 'AUD' },
@@ -117,9 +117,9 @@ describe('assistant stream', () => {
       products: [
         {
           kind: 'product',
-          offerId: 'o1',
-          productId: 'p1',
-          sellerId: 's1',
+          offerId: '0192f000-0000-7000-8000-0000000000a1',
+          productId: '0192f000-0000-7000-8000-0000000000b1',
+          sellerId: '0192f000-0000-7000-8000-0000000000c1',
           name: 'Free-range chicken',
           shortText: 'Whole bird',
         },
@@ -128,6 +128,23 @@ describe('assistant stream', () => {
       support: false,
       notices: ['see-cards'],
     });
+  });
+
+  it('drops cards whose ids are not UUIDs, so no id can bend a link', () => {
+    const bent = replyOf(
+      frame('conversation', { id: 'c' }) +
+        frame('card', {
+          kind: 'product',
+          offerId: '..',
+          productId: '..',
+          sellerId: 's',
+          name: 'X',
+        }) +
+        frame('card', { kind: 'page', page: 'category', categoryId: '../account' }) +
+        frame('done', {}),
+    );
+    expect(bent?.products).toEqual([]);
+    expect(bent?.pages).toEqual([]);
   });
 
   it('treats a stream without done, or with broken JSON, as no answer', () => {
@@ -288,10 +305,12 @@ describe('assistant widget', () => {
     expect((send.mock.calls[0] as unknown[])[2]).toBe('Show halal meat');
     const log = screen.getByRole('log');
     const link = within(log).getByRole('link', { name: 'Free-range chicken' });
-    expect(link.getAttribute('href')).toBe('/p/p1');
+    expect(link.getAttribute('href')).toBe('/p/0192f000-0000-7000-8000-0000000000b1');
     expect(log.textContent).not.toMatch(/\$|12\.99|1299/);
     expect(within(log).getByText('Here are two products.')).toBeTruthy();
-    expect(within(log).getByText(messages.assistant['notice-see-cards'])).toBeTruthy();
+    // The product note already says it; the notice is not repeated.
+    expect(within(log).queryByText(messages.assistant['notice-see-cards'])).toBeNull();
+    expect(within(log).getByText(messages.assistant['product-note'])).toBeTruthy();
     fireEvent.click(within(log).getByRole('button', { name: 'See all results' }));
     expect(push).toHaveBeenCalledWith('/search?q=Show%20halal%20meat');
     fireEvent.click(within(log).getByRole('button', { name: 'View cart' }));
@@ -418,6 +437,21 @@ describe('assistant widget', () => {
     expect(bad.getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByText(messages.assistant.sorry)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Email support' })).toBeTruthy();
+  });
+
+  it('drops a pending answer when a new chat starts', async () => {
+    let answer: (result: SendResult) => void = () => undefined;
+    renderWidget(() => new Promise((resolve) => (answer = resolve)));
+    fireEvent.click(launcher());
+    await say('old question');
+    fireEvent.click(screen.getByRole('button', { name: 'Start a new chat' }));
+    await act(async () => {
+      answer(ok(['Late answer.']));
+      await Promise.resolve();
+    });
+    expect(screen.queryByText('Late answer.')).toBeNull();
+    expect(screen.queryByText(messages.assistant.stopped)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();
   });
 
   it('starts a new chat from the welcome again', async () => {

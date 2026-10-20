@@ -6238,7 +6238,7 @@ button.login {
 .aslaunch {
   position: fixed;
   z-index: 22;
-  right: max(20px, env(safe-area-inset-right, 0px));
+  right: var(--as-right, max(20px, env(safe-area-inset-right, 0px)));
   bottom: var(--as-lift);
   display: grid;
   place-items: center;
@@ -6261,10 +6261,12 @@ button.login {
 .aspanel textarea:focus-visible,
 .aspanel input:focus-visible,
 .aspanel a:focus-visible {
-  outline: 3px solid var(--sf-saffron);
+  outline: 3px solid var(--sf-teal);
   outline-offset: 2px;
 }
-.asw[data-open='true'] .aslaunch {
+/* Switched off: the launcher would only open the off state again. */
+.asw[data-open='true'] .aslaunch,
+.asw[data-off='true'] .aslaunch {
   display: none;
 }
 .aspanel {
@@ -6273,7 +6275,8 @@ button.login {
   right: max(20px, env(safe-area-inset-right, 0px));
   bottom: calc(var(--as-dock) + 20px);
   width: min(400px, calc(100vw - 40px));
-  height: min(640px, calc(100dvh - var(--as-dock) - 40px));
+  /* Never over the header: 20px clear of it and of the dock. */
+  height: min(640px, calc(100dvh - var(--as-dock) - var(--sf-header-height) - 40px));
   background: var(--sf-white);
   border: 1px solid color-mix(in srgb, var(--sf-saffron) 55%, var(--sf-line));
   border-radius: 18px;
@@ -6288,7 +6291,7 @@ button.login {
 }
 @media (max-width: 700px) {
   .aslaunch {
-    right: max(16px, env(safe-area-inset-right, 0px));
+    right: var(--as-right, max(16px, env(safe-area-inset-right, 0px)));
   }
   .aspanel {
     z-index: 30;
@@ -6546,7 +6549,7 @@ button.login {
 }
 .asact .btn {
   margin: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 44px;
 }
 .asact .btn.ghost {

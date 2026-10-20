@@ -103,14 +103,19 @@ export type SendResult =
 const text = (value: unknown, max: number): string | null =>
   typeof value === 'string' && value.length > 0 ? value.slice(0, max) : null;
 
+/** Ids on cards are UUIDs; anything else is dropped, so no id can bend a path (`..`, `/`). */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const id = (value: unknown): string | null =>
+  typeof value === 'string' && UUID.test(value) ? value : null;
+
 /** A card from the stream, or null when it is not one the widget knows. Prices are dropped. */
 export function cardOf(data: unknown): AssistantCard | null {
   if (typeof data !== 'object' || data === null) return null;
   const card = data as Record<string, unknown>;
   if (card.kind === 'product') {
-    const offerId = text(card.offerId, 64);
-    const productId = text(card.productId, 64);
-    const sellerId = text(card.sellerId, 64);
+    const offerId = id(card.offerId);
+    const productId = id(card.productId);
+    const sellerId = id(card.sellerId);
     const name = text(card.name, 200);
     if (!offerId || !productId || !sellerId || !name) return null;
     return {
@@ -123,7 +128,11 @@ export function cardOf(data: unknown): AssistantCard | null {
     };
   }
   if (card.kind === 'page' && PAGES.includes(card.page as SitePage)) {
-    return { kind: 'page', page: card.page as SitePage, categoryId: text(card.categoryId, 64) };
+    const categoryId =
+      card.categoryId === null || card.categoryId === undefined ? null : id(card.categoryId);
+    if (card.categoryId !== null && card.categoryId !== undefined && categoryId === null)
+      return null;
+    return { kind: 'page', page: card.page as SitePage, categoryId };
   }
   if (card.kind === 'support') return { kind: 'support', email: text(card.email, 254) };
   return null;

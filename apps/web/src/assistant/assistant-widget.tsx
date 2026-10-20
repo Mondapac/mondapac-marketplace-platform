@@ -87,15 +87,20 @@ function useLift(root: HTMLElement | null) {
         if (rect.height > 0 && rect.top < height) dock = height - rect.top;
       }
       let lift = Math.max(20, dock + 12);
+      let right: string | null = null;
       const top = document.querySelector('.fbase .btt');
       if (top) {
         const rect = top.getBoundingClientRect();
         if (rect.height > 0 && rect.top < height - dock && rect.bottom > 0) {
           lift = Math.max(lift, height - rect.top + 12);
+          // Lifted above back-to-top, the launcher lines up with it.
+          right = `${Math.round(document.documentElement.clientWidth - rect.right)}px`;
         }
       }
       root.style.setProperty('--as-dock', `${dock}px`);
       root.style.setProperty('--as-lift', `${lift}px`);
+      if (right === null) root.style.removeProperty('--as-right');
+      else root.style.setProperty('--as-right', right);
     };
     place();
     window.addEventListener('scroll', place, { passive: true });
@@ -151,6 +156,8 @@ export function AssistantWidget({
   const box = useRef<HTMLTextAreaElement>(null);
   const visitor = useRef<string | null>(null);
   const limitWait = useRef(60);
+  /** Bumped by New chat, so an answer to the old chat never lands in the new one. */
+  const generation = useRef(0);
 
   useEffect(() => {
     setMounted(true);
@@ -200,7 +207,7 @@ export function AssistantWidget({
   useEffect(() => {
     const el = log.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [entries, busy, slow, open]);
+  }, [entries, busy, slow, open, rating]);
   // The limit banner clears itself once the server's wait is over.
   useEffect(() => {
     if (banner !== 'limit') return;
@@ -268,6 +275,7 @@ export function AssistantWidget({
     setSlow(false);
     const controller = new AbortController();
     abort.current = controller;
+    const started = generation.current;
     const timer = window.setTimeout(() => setSlow(true), SLOW_AFTER_MS);
     let result: SendResult;
     try {
@@ -276,6 +284,7 @@ export function AssistantWidget({
       result = { ok: false, refusal: { kind: 'error' } };
     }
     window.clearTimeout(timer);
+    if (generation.current !== started) return;
     abort.current = null;
     setBusy(false);
     setSlow(false);
@@ -289,7 +298,11 @@ export function AssistantWidget({
   const stop = () => abort.current?.abort();
 
   const restart = () => {
+    generation.current += 1;
     abort.current?.abort();
+    abort.current = null;
+    setBusy(false);
+    setSlow(false);
     conversation.current = newConversationId();
     misses.current = 0;
     setEntries([welcome()]);
@@ -424,11 +437,17 @@ export function AssistantWidget({
           </div>
         ) : null}
         {reply.products.length > 0 ? <div className="asnote">{t('product-note')}</div> : null}
-        {reply.notices.map((code) => (
-          <div className="asnote" key={code}>
-            {t(`notice-${code}`)}
-          </div>
-        ))}
+        {reply.notices
+          // The product note already says where prices and certificates are.
+          .filter(
+            (code) =>
+              reply.products.length === 0 || (code !== 'see-cards' && code !== 'see-certification'),
+          )
+          .map((code) => (
+            <div className="asnote" key={code}>
+              {t(`notice-${code}`)}
+            </div>
+          ))}
         {reply.notices.includes('unavailable') ? (
           <div className="aslinks">
             <button className="aslk" type="button" onClick={() => go(searchPath(entry.query))}>
@@ -580,7 +599,7 @@ export function AssistantWidget({
 
   if (!mounted) return null;
   return createPortal(
-    <div className="asw" ref={setRoot} data-open={open} data-sheet={sheet}>
+    <div className="asw" ref={setRoot} data-open={open} data-off={status === 'off'}>
       <button
         className="aslaunch"
         type="button"
