@@ -9,7 +9,7 @@ export default function SearchError({ reset }: { readonly reset: () => void }) {
   return (
     <div className="sr">
       <h1>{t('error-heading')}</h1>
-      <SearchMessage icon="info" title={t('error-title')} body={t('error-body')} alert>
+      <SearchMessage icon="warn" title={t('error-title')} body={t('error-body')} live="alert">
         <button className="btn" type="button" onClick={reset}>
           {t('retry')}
         </button>

@@ -85,7 +85,12 @@ export function SearchPrompt({
     <div className="sr">
       <ResultsHeading query={query} />
       <FocusResultsHeading />
-      <SearchMessage icon="info" title={t('short-title', { min })} body={t('short-body')} />
+      <SearchMessage
+        icon="info"
+        title={t('short-title', { min })}
+        body={t('short-body')}
+        live="status"
+      />
     </div>
   );
 }
@@ -189,7 +194,6 @@ function ProductsPanel({
 
   return (
     <>
-      <h2 className="sr-only">{t('products')}</h2>
       {!category && shown.length >= 2 ? (
         <div className="sr-cats" role="group" aria-labelledby="sr-cats-label">
           <span className="lbl" id="sr-cats-label">
@@ -213,7 +217,7 @@ function ProductsPanel({
                 {
                   key: 'category',
                   label: t('category-filter', { name: category.shortName }),
-                  href: listingHref(searchHref(query), state),
+                  href: listingHref(searchHref(query), { ...state, page: 1 }),
                 },
               ]
             : []

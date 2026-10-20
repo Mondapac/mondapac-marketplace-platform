@@ -70,13 +70,21 @@ async function Results({
   const category = content.categories.find((c) => c.code === code);
   const asked = listingStateOf(query);
   // Search offers fewer orders than a category; any other falls back to Best match.
-  const state = SEARCH_SORTS.includes(asked.sort)
+  const sorted = SEARCH_SORTS.includes(asked.sort)
     ? asked
     : { ...asked, sort: 'recommended' as const };
   const scope = { q, ...(category ? { category: category.code } : {}) };
-  const [products, facets, counts, stores] = await Promise.all([
-    findProducts({ ...scope, ...state, pageSize: LISTING_PAGE_SIZE }),
-    listingFacets(scope),
+  const facets = await listingFacets(scope);
+  // A store filter left over from another search would only show as a bare id: drop it.
+  const shown = {
+    ...sorted,
+    filters: {
+      ...sorted.filters,
+      sellers: sorted.filters.sellers.filter((id) => facets.sellers.some((s) => s.id === id)),
+    },
+  };
+  const [products, counts, stores] = await Promise.all([
+    findProducts({ ...scope, ...shown, pageSize: LISTING_PAGE_SIZE }),
     searchCategories(q),
     findStores(q),
   ]);
@@ -86,7 +94,7 @@ async function Results({
       {...(category ? { category } : {})}
       categories={content.categories}
       counts={counts}
-      state={state}
+      state={shown}
       products={products}
       pageSize={LISTING_PAGE_SIZE}
       facets={facets}

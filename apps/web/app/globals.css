@@ -6243,7 +6243,7 @@ button.login {
 .sr-cats a {
   display: inline-flex;
   align-items: center;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 12px;
   border-radius: var(--sf-radius-pill);
   background: var(--sf-mist);
@@ -6299,7 +6299,7 @@ button.login {
 .sr-empty .row a {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-radius-pill);

@@ -6,17 +6,18 @@ export function SearchMessage({
   icon,
   title,
   body,
-  alert,
+  live,
   children,
 }: {
-  readonly icon: 'search' | 'info';
+  readonly icon: 'search' | 'info' | 'warn';
   readonly title: string;
   readonly body?: string;
-  readonly alert?: boolean;
+  /** `status` for a short note that replaces the results, `alert` for the error. */
+  readonly live?: 'status' | 'alert';
   readonly children?: ReactNode;
 }) {
   return (
-    <div className="sr-empty" role={alert ? 'alert' : 'status'}>
+    <div className="sr-empty" role={live}>
       <Icon name={icon} />
       <h2>{title}</h2>
       {body ? <p>{body}</p> : null}
