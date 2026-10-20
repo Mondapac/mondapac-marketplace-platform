@@ -39,7 +39,7 @@ export function ProductCard({ product }: { readonly product: Product }) {
       <h3 className="nm">
         <Link href={`/p/${product.id}`}>{product.name}</Link>
       </h3>
-      <div className="by">{product.sellerName}</div>
+      {product.sellerName === '' ? null : <div className="by">{product.sellerName}</div>}
       {product.lowStock !== undefined ? (
         <div className="low">{t('only-left', { count: product.lowStock })}</div>
       ) : null}

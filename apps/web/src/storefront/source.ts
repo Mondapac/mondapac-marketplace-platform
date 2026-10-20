@@ -1,5 +1,6 @@
 import 'server-only';
 import type { AssistantSetup } from '../assistant/assistant.ts';
+import { loadHome, type HomeContent } from './home-source.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
@@ -23,11 +24,21 @@ import type {
 } from './types.ts';
 
 /**
- * The storefront's one read of the home content. Sample data for now; it calls the
- * pages-and-content and catalog APIs once PR #401 and storefront package 2 are on main.
+ * The shell's content: delivery area, popular searches, the rail and drawer categories and the
+ * sample sellers. Sample data; the shell moves to the navigation and category reads in its own
+ * package.
  */
 export async function loadStorefrontContent(): Promise<StorefrontContent> {
   return Promise.resolve(SAMPLE_CONTENT);
+}
+
+/**
+ * The home page middle: the published home layout, the live category tree and the product
+ * shelves when API_BASE_URL is set, with sample data where they answer nothing (unless
+ * STOREFRONT_SAMPLE_DATA is off). Sample only without the URL. See ./home-source.ts.
+ */
+export async function loadHomeContent(): Promise<HomeContent> {
+  return loadHome();
 }
 
 /**

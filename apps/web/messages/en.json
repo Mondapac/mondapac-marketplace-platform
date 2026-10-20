@@ -59,6 +59,7 @@
     "input": "Search products, sellers and recipes"
   },
   "home": {
+    "title": "Local food sellers in one cart",
     "featured": "Featured",
     "categories": "Product categories",
     "show-all": "Show all",

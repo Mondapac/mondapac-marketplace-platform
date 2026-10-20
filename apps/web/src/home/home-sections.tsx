@@ -22,8 +22,10 @@ export function HomeSections({
   readonly categories: readonly Category[];
   readonly sellers: readonly SellerSummary[];
 }) {
-  // The first promo banner holds the page's one h1.
-  return sections.map((section, index) => {
+  const t = useTranslations('home');
+  // The first promo banner holds the page's one h1; a layout without a banner gets a hidden one.
+  const hasBanner = sections.some((s) => s.kind === 'promos' && s.banners.length > 0);
+  const body = sections.map((section, index) => {
     switch (section.kind) {
       case 'promos':
         return <Promos key={index} banners={section.banners} />;
@@ -42,6 +44,14 @@ export function HomeSections({
         );
     }
   });
+  return hasBanner ? (
+    body
+  ) : (
+    <>
+      <h1 className="sr-only">{t('title')}</h1>
+      {body}
+    </>
+  );
 }
 
 function Promos({ banners }: { readonly banners: readonly PromoBanner[] }) {
@@ -60,12 +70,14 @@ function Promos({ banners }: { readonly banners: readonly PromoBanner[] }) {
             </div>
             <Heading>{banner.title}</Heading>
             <p>{banner.body}</p>
-            <Link
-              className={banner.variant === 'primary' ? 'btn' : 'btn alt'}
-              href={banner.action.href}
-            >
-              {banner.action.label}
-            </Link>
+            {banner.action ? (
+              <Link
+                className={banner.variant === 'primary' ? 'btn' : 'btn alt'}
+                href={banner.action.href}
+              >
+                {banner.action.label}
+              </Link>
+            ) : null}
           </div>
         );
       })}

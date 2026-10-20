@@ -22,6 +22,7 @@ export interface CertificationBadge {
 export interface ProductCard {
   readonly id: string;
   readonly name: string;
+  /** Empty when the read does not carry it (the shelf routes give only a seller id). */
   readonly sellerName: string;
   /** Category code, used for the fallback illustration when there is no photo. */
   readonly category: string;
@@ -56,7 +57,8 @@ export interface PromoBanner {
   readonly variant: 'primary' | 'secondary';
   readonly title: string;
   readonly body: string;
-  readonly action: { readonly label: string; readonly href: string };
+  /** Absent when the layout gives no link or no button label. */
+  readonly action?: { readonly label: string; readonly href: string };
   readonly images: readonly string[];
 }
 
