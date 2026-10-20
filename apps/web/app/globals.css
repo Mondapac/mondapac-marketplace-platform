@@ -6228,6 +6228,338 @@ button.login {
   }
 }
 
+/* Sell page: public seller sign-up (handoffs/seller-signup.md, design signup-a-teal v4). */
+.sg {
+  display: grid;
+  gap: 32px;
+  padding: 8px 0 24px;
+  min-width: 0;
+}
+.sg-hero {
+  display: grid;
+  gap: 24px;
+  align-items: start;
+  min-width: 0;
+}
+.sg-copy {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+.sg-copy h1 {
+  font-size: calc(28px * var(--fs));
+  line-height: calc(34px * var(--fs));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.sg-copy p {
+  max-width: 56ch;
+  color: var(--sf-slate);
+}
+.sg-pts {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sg-pts li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.sg-pts .ic {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--sf-mist);
+  color: var(--sf-teal);
+}
+.sg-pts .ic .ico {
+  width: 20px;
+  height: 20px;
+}
+.sg-pts b {
+  display: block;
+}
+.sg-pts .d {
+  color: var(--sf-slate);
+}
+.sg-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--sf-line);
+  border-radius: 16px;
+  background: var(--sf-white);
+  box-shadow: 0 6px 24px var(--sf-shadow-soft);
+}
+.sg-form {
+  display: grid;
+  gap: 14px;
+}
+.sg-card h2 {
+  font-size: calc(22px * var(--fs));
+  line-height: calc(28px * var(--fs));
+  font-weight: 800;
+}
+.sg-card .sub {
+  color: var(--sf-slate);
+}
+.sg-card .ac-fld label {
+  font-size: inherit;
+  font-weight: 600;
+}
+.sg-card .ac-fld input {
+  height: 48px;
+}
+.sg-card .ac-fld small {
+  font-size: calc(13px * var(--fs));
+}
+.sg-card .ac-fld.bad input:focus-visible {
+  outline-color: var(--sf-error);
+}
+.sg-card .btn {
+  width: 100%;
+  min-height: 48px;
+}
+.sg-note {
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+  line-height: calc(19px * var(--fs));
+}
+.sg-card a:not(.btn) {
+  color: var(--sf-teal);
+  font-weight: 600;
+}
+.sg-center {
+  text-align: center;
+}
+.sg-sep {
+  margin: 2px 0;
+  border: 0;
+  border-top: 1px solid var(--sf-line);
+}
+.sg-ban {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--sf-saffron);
+  border-radius: 10px;
+  background: var(--sf-saffron-soft);
+  color: var(--sf-warn-ink);
+}
+.sg-ban .ico {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+}
+.sg-ban.err {
+  border-color: var(--sf-error-line);
+  background: var(--sf-error-soft);
+  color: var(--sf-error-ink);
+}
+.sg-mail {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  text-align: center;
+}
+.sg-mail h2:focus {
+  outline: 0;
+}
+.sg-mail h2:focus-visible {
+  outline: 2px solid var(--sf-teal);
+  outline-offset: 2px;
+}
+.sg-mail .big {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--sf-mist);
+  color: var(--sf-teal);
+}
+.sg-mail .big .ico {
+  width: 34px;
+  height: 34px;
+}
+.sg-mail b {
+  overflow-wrap: anywhere;
+}
+.sg-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+}
+.sg-lk {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sf-teal);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.sg-lk:disabled {
+  color: var(--sf-slate);
+  cursor: default;
+}
+.sg-st {
+  min-height: 20px;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+}
+.sg-sec h2 {
+  margin-bottom: 16px;
+  font-size: calc(24px * var(--fs));
+  line-height: calc(30px * var(--fs));
+  font-weight: 800;
+}
+.sg-steps {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: sg-step;
+}
+.sg-steps li {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--sf-line);
+  border-radius: 14px;
+  background: var(--sf-white);
+  counter-increment: sg-step;
+}
+.sg-steps li::before {
+  content: counter(sg-step);
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--sf-teal);
+  color: var(--sf-white);
+  font-weight: 800;
+}
+.sg-steps b {
+  font-size: calc(16px * var(--fs));
+}
+.sg-steps span {
+  color: var(--sf-slate);
+}
+.sg-faqs h2 {
+  margin-bottom: 12px;
+  font-size: calc(20px * var(--fs));
+  line-height: calc(26px * var(--fs));
+  font-weight: 800;
+}
+.sg-faq {
+  display: grid;
+  gap: 8px;
+  max-width: 820px;
+}
+.sg-faq details {
+  border: 1px solid var(--sf-line);
+  border-radius: 12px;
+  background: var(--sf-white);
+}
+.sg-faq summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 16px;
+  font-weight: 700;
+  list-style: none;
+  cursor: pointer;
+}
+.sg-faq summary::-webkit-details-marker {
+  display: none;
+}
+.sg-faq summary .ico {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+.sg-faq details[open] summary .ico {
+  transform: rotate(180deg);
+}
+.sg-faq details p {
+  padding: 0 16px 14px;
+  color: var(--sf-slate);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sg-faq summary .ico {
+    transition: transform 0.15s;
+  }
+}
+@media (min-width: 701px) {
+  .sg {
+    gap: 40px;
+  }
+  .sg-copy h1 {
+    font-size: calc(34px * var(--fs));
+    line-height: calc(40px * var(--fs));
+  }
+  .sg-card {
+    padding: 20px;
+  }
+  .sg-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* The design's breakpoints are of the page area; from 900px the 240px rail takes its share. */
+@media (min-width: 1140px) {
+  .sg-hero {
+    grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      'copy card'
+      'pts card'
+      'faq card';
+    gap: 24px 48px;
+  }
+  .sg-copy {
+    grid-area: copy;
+  }
+  .sg-hero > .sg-card {
+    grid-area: card;
+  }
+  .sg-pts {
+    grid-area: pts;
+    align-content: start;
+  }
+  .sg-faqs {
+    grid-area: faq;
+  }
+  .sg-copy h1 {
+    font-size: calc(40px * var(--fs));
+    line-height: calc(46px * var(--fs));
+  }
+}
+@media (min-width: 1340px) {
+  .sg-steps {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 /* ---- Buyer assistant (package 5; handoffs/assistant-widget.md) ---- */
 /* Chat text grows with the text size at about 40 percent of the page's step. */
 .asw {
