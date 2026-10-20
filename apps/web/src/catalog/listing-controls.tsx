@@ -9,6 +9,7 @@ import type { ListingFacets } from '../storefront/catalog.ts';
 import { priceBandLabel } from './filter-labels.ts';
 import { FilterGroupView, FilterOption, FiltersDrawerFrame } from './filters-drawer.tsx';
 import {
+  SEARCH_SORTS,
   SORTS,
   activeFilterCount,
   listingHref,
@@ -22,7 +23,11 @@ import {
   type Sort,
 } from './listing-state.ts';
 
+/** The category listing, or the Products tab of the search results (a smaller set of filters). */
+export type ListingKind = 'category' | 'search';
+
 interface Props {
+  readonly kind?: ListingKind;
   readonly path: string;
   readonly state: ListingState;
   readonly facets: ListingFacets;
@@ -49,7 +54,7 @@ function useApply(path: string, state: ListingState) {
  * button). A change applies at once; the drawer's footer button shows how many products the
  * filters leave.
  */
-export function ListingFilters({ path, state, facets, total }: Props) {
+export function ListingFilters({ kind = 'category', path, state, facets, total }: Props) {
   const t = useTranslations('catalog');
   const { filtersOpen, setFiltersOpen } = useStore();
   const { current, apply } = useApply(path, state);
@@ -71,26 +76,37 @@ export function ListingFilters({ path, state, facets, total }: Props) {
       {label}
     </button>
   );
+  const special = quick(
+    current.filters.special,
+    withFlag(current, 'special', !current.filters.special),
+    'tag',
+    t('special-prices'),
+  );
+  const certifications = facets.certifications.map((c) => {
+    const on = current.filters.certifications.includes(c.id);
+    return quick(on, withValue(current, 'certifications', c.id, !on), 'store', c.name);
+  });
 
   return (
     <>
       <div className="tools" role="group" aria-label={t('quick-filters')}>
         <span className="lbl">{t('filter-by')}</span>
-        {quick(
-          current.filters.special,
-          withFlag(current, 'special', !current.filters.special),
-          'tag',
-          t('special-prices'),
-        )}
-        {facets.certifications.map((c) => {
-          const on = current.filters.certifications.includes(c.id);
-          return quick(on, withValue(current, 'certifications', c.id, !on), 'store', c.name);
-        })}
-        {quick(
-          current.filters.sameDay,
-          withFlag(current, 'sameDay', !current.filters.sameDay),
-          'bolt',
-          t('same-day'),
+        {kind === 'search' ? (
+          <>
+            {certifications}
+            {special}
+          </>
+        ) : (
+          <>
+            {special}
+            {certifications}
+            {quick(
+              current.filters.sameDay,
+              withFlag(current, 'sameDay', !current.filters.sameDay),
+              'bolt',
+              t('same-day'),
+            )}
+          </>
         )}
         <button
           className="chip all"
@@ -110,12 +126,12 @@ export function ListingFilters({ path, state, facets, total }: Props) {
           ) : null}
         </button>
       </div>
-      <FiltersDrawer path={path} state={state} facets={facets} total={total} />
+      <FiltersDrawer kind={kind} path={path} state={state} facets={facets} total={total} />
     </>
   );
 }
 
-function FiltersDrawer({ path, state, facets, total }: Props) {
+function FiltersDrawer({ kind, path, state, facets, total }: Props) {
   const t = useTranslations('catalog');
   const locale = useLocale();
   const { setFiltersOpen } = useStore();
@@ -130,6 +146,13 @@ function FiltersDrawer({ path, state, facets, total }: Props) {
     const on = current.filters[group].includes(id);
     return option(`${group}:${id}`, label, count, on, withValue(current, group, id, !on));
   };
+
+  const sellers = facets.sellers.map((s) => value('sellers', s.id, s.name, s.count));
+  const prices = (open: boolean) => (
+    <FilterGroupView title={t('group-price')} open={open}>
+      {facets.prices.map((p) => value('prices', p.id, priceBandLabel(p.band, t, locale), p.count))}
+    </FilterGroupView>
+  );
 
   return (
     <FiltersDrawerFrame
@@ -155,30 +178,41 @@ function FiltersDrawer({ path, state, facets, total }: Props) {
         </>
       }
     >
-      <FilterGroupView title={t('group-offers')} open>
-        {flag('special', t('special-prices'), facets.special)}
-        {facets.certifications.map((c) =>
-          value('certifications', c.id, t('certified', { name: c.name }), c.count),
-        )}
-        {flag('lowStock', t('low-stock'), facets.lowStock)}
-      </FilterGroupView>
-      <FilterGroupView title={t('group-delivery')} open>
-        {flag('sameDay', t('same-day-delivery'), facets.sameDay)}
-      </FilterGroupView>
-      <FilterGroupView title={t('group-seller')}>
-        {facets.sellers.map((s) => value('sellers', s.id, s.name, s.count))}
-      </FilterGroupView>
-      <FilterGroupView title={t('group-price')}>
-        {facets.prices.map((p) =>
-          value('prices', p.id, priceBandLabel(p.band, t, locale), p.count),
-        )}
-      </FilterGroupView>
+      {kind === 'search' ? (
+        <>
+          <FilterGroupView title={t('group-labels')} open>
+            {facets.certifications.map((c) => value('certifications', c.id, c.name, c.count))}
+            {flag('special', t('special-prices'), facets.special)}
+          </FilterGroupView>
+          {prices(true)}
+          <FilterGroupView title={t('group-store')}>{sellers}</FilterGroupView>
+        </>
+      ) : (
+        <>
+          <FilterGroupView title={t('group-offers')} open>
+            {flag('special', t('special-prices'), facets.special)}
+            {facets.certifications.map((c) =>
+              value('certifications', c.id, t('certified', { name: c.name }), c.count),
+            )}
+            {flag('lowStock', t('low-stock'), facets.lowStock)}
+          </FilterGroupView>
+          <FilterGroupView title={t('group-delivery')} open>
+            {flag('sameDay', t('same-day-delivery'), facets.sameDay)}
+          </FilterGroupView>
+          <FilterGroupView title={t('group-seller')}>{sellers}</FilterGroupView>
+          {prices(false)}
+        </>
+      )}
     </FiltersDrawerFrame>
   );
 }
 
 /** "Sort by" as a compact select; a change loads the listing in that order from page 1. */
-export function SortSelect({ path, state }: Pick<Props, 'path' | 'state'>) {
+export function SortSelect({
+  kind = 'category',
+  path,
+  state,
+}: Pick<Props, 'kind' | 'path' | 'state'>) {
   const t = useTranslations('catalog');
   const { current, apply } = useApply(path, state);
   return (
@@ -189,9 +223,11 @@ export function SortSelect({ path, state }: Pick<Props, 'path' | 'state'>) {
           value={current.sort}
           onChange={(event) => apply(withSort(current, event.target.value as Sort))}
         >
-          {SORTS.map((sort) => (
+          {(kind === 'search' ? SEARCH_SORTS : SORTS).map((sort) => (
             <option key={sort} value={sort}>
-              {t(`sort-${sort}`)}
+              {kind === 'search' && sort === 'recommended'
+                ? t('sort-best-match')
+                : t(`sort-${sort}`)}
             </option>
           ))}
         </select>

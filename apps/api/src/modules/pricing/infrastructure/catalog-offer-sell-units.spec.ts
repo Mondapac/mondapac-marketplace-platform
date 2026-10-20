@@ -32,6 +32,7 @@ describe.each(['AU', 'ZZ'])('CatalogOfferSellUnits in market %s', (code) => {
       sellUnitLabels: () => Promise.resolve(ok(new Map())),
       offerTaxCategories: () => Promise.resolve(ok(new Map())),
       offerListings: () => Promise.resolve(ok(new Map())),
+      publishedProduct: () => Promise.resolve(ok(null)),
       pendingProductRevisions: () => Promise.resolve(ok(new Set())),
       sellerProductOwners: () => Promise.resolve(ok(new Map())),
     };
