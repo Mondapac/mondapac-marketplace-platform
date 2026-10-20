@@ -911,5 +911,28 @@
     "sign-in": "Log in",
     "search-label": "Search products",
     "search": "Search"
+  },
+  "coming-soon": {
+    "message": "We are still building this page. It will be here soon; until then, the home page and the product range are ready.",
+    "home": "Go to the home page",
+    "browse": "Browse products",
+    "pages": {
+      "browse": "Browse products",
+      "offers": "Offers",
+      "express": "Express, same day",
+      "certified": "Halal products",
+      "recipes": "Recipes",
+      "gift-cards": "Gift cards",
+      "help": "Help and FAQs",
+      "help-delivery": "Delivery and minimum orders",
+      "help-returns": "Returns and refunds",
+      "help-contact": "Contact support",
+      "help-certificates": "Halal and certificate labels",
+      "delivery-area": "Delivery area",
+      "about": "About us",
+      "terms": "Terms of use",
+      "privacy": "Privacy policy",
+      "sell-guidelines": "Seller guidelines"
+    }
   }
 }
