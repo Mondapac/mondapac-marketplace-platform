@@ -11,7 +11,7 @@ import {
 } from '../contracts/catalog.facade';
 
 /** The text for the requested locale, else the fallback, else the first locale in code order. */
-function pick(
+export function pick(
   texts: Readonly<Record<string, string>>,
   locales: { readonly requested: string; readonly fallback: string },
 ): string | null {
@@ -21,7 +21,7 @@ function pick(
   return first === undefined ? null : texts[first]!;
 }
 
-const asTexts = (value: unknown): Record<string, string> | null =>
+export const asTexts = (value: unknown): Record<string, string> | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, string>)
     : null;
