@@ -10,8 +10,14 @@ import {
   type Palette,
 } from './preferences.ts';
 
-/** The customer's choice of shop colours (Personalization). */
-export function PalettePicker({ initial }: { readonly initial: Palette }) {
+/** The customer's choice of shop colours (Personalization). `onChoose` also hears each choice. */
+export function PalettePicker({
+  initial,
+  onChoose,
+}: {
+  readonly initial: Palette;
+  readonly onChoose?: (palette: Palette) => void;
+}) {
   const t = useTranslations('personalization');
   const [palette, setPalette] = useState<Palette>(initial);
   return (
@@ -29,6 +35,7 @@ export function PalettePicker({ initial }: { readonly initial: Palette }) {
               onChange={() => {
                 setPalette(code);
                 savePreference(PALETTE_COOKIE, 'palette', code);
+                onChoose?.(code);
               }}
             />
             <span className="swatches" aria-hidden="true">

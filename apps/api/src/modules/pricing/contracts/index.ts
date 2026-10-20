@@ -5,6 +5,9 @@
 // reachable from this file (pricing design 6.5). The facade (effective prices) is in pricing.facade.ts.
 export {
   EffectivePriceChanged,
+  // The enum vocabulary of PriceHoldDecided, checked by notifications' seller notices.
+  HOLD_OUTCOMES,
+  PRICE_RECORD_KINDS,
   PriceHoldDecided,
   PriceHoldOpened,
   PRICING_EVENTS,

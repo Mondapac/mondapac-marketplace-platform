@@ -221,15 +221,6 @@ export interface SavedAddress {
   readonly isDefault: boolean;
 }
 
-/**
- * A sign-in provider the Market offers (social sign-in): the button's provider and the identity
- * API's start route the browser navigates to.
- */
-export interface SignInProvider {
-  readonly id: 'google';
-  readonly startUrl: string;
-}
-
 /** The signed-in customer (checkout, the account menu). */
 export interface CheckoutCustomer {
   readonly firstName: string;

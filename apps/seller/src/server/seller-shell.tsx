@@ -15,7 +15,7 @@ import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
 import { sellerNavItems } from '../nav.ts';
 import { SellerNotifications } from '../notifications/seller-notifications.tsx';
-import { NOTICES_PERMISSION } from '../notifications/types.ts';
+import { showsNoticeBell } from '../notifications/types.ts';
 import type { SellerSession } from './session.ts';
 
 /**
@@ -41,8 +41,7 @@ export async function SellerShell({
   // Phone bottom bar (IA 4): Home and Catalogue, only when the caller may see both.
   const tabIds = ['s_home', 's_products'];
   const tabs = tabIds.map((id) => items.find((item) => item.id === id));
-  const bell =
-    session.sellerAccessState === 'approved' && session.permissionKeys.includes(NOTICES_PERMISSION);
+  const bell = session.sellerAccessState === 'approved' && showsNoticeBell(session.permissionKeys);
   const bottomTabs = tabs.every((item) => item !== undefined)
     ? tabs.map((item) => ({
         id: item.id,

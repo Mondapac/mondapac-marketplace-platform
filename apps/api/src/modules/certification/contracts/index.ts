@@ -17,7 +17,11 @@ export {
   type ClaimTextInput,
   type SellerCertificateOverviewRow,
 } from './certification.facade';
-export { CERTIFICATION_PERMISSIONS, CERTIFICATION_SELLER_CERTIFICATE_REVIEW } from './permissions';
+export {
+  CERTIFICATION_OWN_CERTIFICATE_VIEW,
+  CERTIFICATION_PERMISSIONS,
+  CERTIFICATION_SELLER_CERTIFICATE_REVIEW,
+} from './permissions';
 export { CERTIFICATION_AUDIT_ACTIONS } from '../domain/audit';
 export {
   CERTIFICATION_EVENTS,
@@ -36,6 +40,12 @@ export {
   SellerCertificationRevoked,
   // Consumed by notifications' admin review notice (package 3).
   SellerCertificationSubmitted,
+  // Consumed by notifications' seller notices (package 4).
+  ISSUER_REQUEST_OUTCOME_VALUES,
+  IssuerRequestAnswered,
+  SellerCertificationChangesRequested,
+  SellerCertificationDeclined,
+  SellerCertificationExpiryWarningDue,
 } from '../domain/events';
 // The port `catalog` implements for certification (design 8.2, request C-3).
 export {

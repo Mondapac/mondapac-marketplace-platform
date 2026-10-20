@@ -182,8 +182,15 @@
       "close": "Close",
       "show-password": "Show password",
       "hide-password": "Hide password",
-      "continue-with-google": "Continue with Google",
-      "or": "or"
+      "providers": {
+        "google": "Google",
+        "apple": "Apple"
+      },
+      "continue-with": "Continue with {provider}",
+      "connecting": "Connecting to {provider}…",
+      "social-failed": "We could not log you in with {provider}. Try again, or use your email below.",
+      "social-agree": "If you are new, continuing creates your account and you agree to the <terms>Terms of use</terms> and <privacy>Privacy policy</privacy>.",
+      "or": "or use your email"
     },
     "overview": {
       "hello": "Hello, {name}",
@@ -336,7 +343,8 @@
       "too-short": "Use at least 10 characters.",
       "mismatch": "The passwords do not match.",
       "appearance": "Appearance",
-      "appearance-note": "Your choice is kept on this device for now.",
+      "appearance-note": "Saved to your account, so your look follows you when you log in on another device.",
+      "appearance-saved": "Appearance saved to your account",
       "emails": "Emails",
       "email-order": "Order updates",
       "email-order-body": "Confirmation, delivery and problems with your orders. Always on.",

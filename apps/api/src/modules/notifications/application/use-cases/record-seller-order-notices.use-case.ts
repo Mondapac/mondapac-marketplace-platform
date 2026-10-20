@@ -87,6 +87,7 @@ export class RecordSellerOrderNotices extends UseCase<
               context.market,
               { audience: 'seller', sellerId },
               NOTICES_PER_SELLER,
+              SELLER_ORDER_PAID,
             );
           }
           return ok(notices.length);

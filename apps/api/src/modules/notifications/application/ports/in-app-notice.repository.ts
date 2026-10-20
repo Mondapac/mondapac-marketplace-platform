@@ -61,10 +61,14 @@ export interface InAppNoticeRepository {
     },
   ): Promise<readonly StoredNotice[]>;
 
-  /** The number of unread notices in scope, and the newest of them. */
+  /**
+   * The number of unread notices in scope, and the newest of them among `newestOf` (kinds of the
+   * scope); null when none of those is unread.
+   */
   unread(
     market: MarketContext,
     scope: NoticeScope,
+    newestOf: readonly string[],
   ): Promise<{ readonly count: number; readonly newest: StoredNotice | null }>;
 
   /** Whether the notice is in scope (read or not). */
