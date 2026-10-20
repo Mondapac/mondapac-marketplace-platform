@@ -268,6 +268,19 @@ export const ICON_PATHS = {
       <path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17 17 0 0 1-3.2 4M6.5 7.3C3.9 9 2 12 2 12s3.6 6.5 10 6.5c1.5 0 2.9-.4 4.1-.9M9.9 9.9a3 3 0 0 0 4.2 4.2" />
     </>
   ),
+  box: (
+    <>
+      <path d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5z" />
+      <path d="M3.5 7.5L12 12l8.5-4.5M12 12v9" />
+    </>
+  ),
+  'wifi-off': (
+    <>
+      <path d="M2.5 9a15 15 0 0 1 4-2.6M21.5 9A15 15 0 0 0 13 5.3M5.5 12.5a10 10 0 0 1 3-1.8M18.5 12.5a10 10 0 0 0-3-1.8M8.8 16a5 5 0 0 1 6.4 0" />
+      <circle cx="12" cy="19.5" r=".8" />
+      <path d="M3 3l18 18" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICON_PATHS;

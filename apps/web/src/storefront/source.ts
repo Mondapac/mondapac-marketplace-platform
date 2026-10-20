@@ -5,15 +5,18 @@ import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { sampleSellers } from './sample-sellers.ts';
+import { sampleClosedStore, sampleUnavailableProduct } from './sample-unavailable.ts';
 import type {
   AccountSource,
   CartSource,
   CheckoutSource,
+  ClosedStore,
   ProductDetail,
   SellerQuery,
   SellerResults,
   SellerShop,
   StorefrontContent,
+  UnavailableProduct,
 } from './types.ts';
 
 /**
@@ -67,4 +70,22 @@ export async function loadAccount(): Promise<AccountSource> {
  */
 export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
   return Promise.resolve(sampleSellers(query));
+}
+
+/**
+ * A product id the product read did not find: a removed product (its page says so and shows
+ * similar ones), or undefined for an id that never existed (the 404 page). Sample data until the
+ * product detail read tells them apart.
+ */
+export async function loadUnavailableProduct(id: string): Promise<UnavailableProduct | undefined> {
+  return Promise.resolve(sampleUnavailableProduct(id));
+}
+
+/**
+ * A seller slug the seller read did not find: a store that is not taking orders (paused,
+ * suspended or not live; the reason never reaches the buyer), or undefined for an unknown slug.
+ * Sample data until the seller public read tells them apart.
+ */
+export async function loadClosedStore(slug: string): Promise<ClosedStore | undefined> {
+  return Promise.resolve(sampleClosedStore(slug));
 }

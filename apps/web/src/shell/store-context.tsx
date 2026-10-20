@@ -1,6 +1,15 @@
 'use client';
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   addOne,
   lineLimit,
@@ -10,6 +19,7 @@ import {
   type CartView,
 } from '../cart/cart.ts';
 import type { AppliedDiscount, CartSource, CheckoutCustomer, Money } from '../storefront/types.ts';
+import { checkReachable, reachable } from './connection.ts';
 
 /** What the confirmation shows of the order just placed. */
 export interface PlacedOrder {
@@ -73,6 +83,10 @@ interface StoreState {
   /** The account menu panel of the phone and tablet layout (the Account tab when signed in). */
   readonly accountOpen: boolean;
   readonly setAccountOpen: (open: boolean) => void;
+  /** Whether the marketplace answers; offline, the cart cannot change and checkout is blocked. */
+  readonly online: boolean;
+  /** Try again: checks the connection and updates `online`; resolves to the result. */
+  readonly checkConnection: () => Promise<boolean>;
 }
 
 const StoreContext = createContext<StoreState | null>(null);
@@ -105,19 +119,46 @@ export function StoreProvider({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const add = useCallback(
-    (id: string, unitPrice: Money, limit: number) =>
-      setCart((current) => addOne(current, id, unitPrice, limit)),
-    [],
-  );
-  const remove = useCallback((id: string) => setCart((current) => removeOne(current, id)), []);
-  const dropLine = useCallback((id: string) => setCart((current) => removeLine(current, id)), []);
+  const [online, setOnlineState] = useState(true);
+  // Offline the cart does not change; read by the cart changes, which stay stable callbacks.
+  const onlineRef = useRef(true);
+  const setOnline = useCallback((value: boolean) => {
+    onlineRef.current = value;
+    setOnlineState(value);
+  }, []);
+  useEffect(() => {
+    setOnline(navigator.onLine);
+    // The online event comes as soon as a network is up; check that the marketplace answers.
+    const back = () => void reachable().then(setOnline);
+    const lost = () => setOnline(false);
+    window.addEventListener('online', back);
+    window.addEventListener('offline', lost);
+    return () => {
+      window.removeEventListener('online', back);
+      window.removeEventListener('offline', lost);
+    };
+  }, [setOnline]);
+  const checkConnection = useCallback(async () => {
+    const ok = await checkReachable();
+    setOnline(ok);
+    return ok;
+  }, [setOnline]);
+  const add = useCallback((id: string, unitPrice: Money, limit: number) => {
+    if (onlineRef.current) setCart((current) => addOne(current, id, unitPrice, limit));
+  }, []);
+  const remove = useCallback((id: string) => {
+    if (onlineRef.current) setCart((current) => removeOne(current, id));
+  }, []);
+  const dropLine = useCallback((id: string) => {
+    if (onlineRef.current) setCart((current) => removeLine(current, id));
+  }, []);
   const clearCart = useCallback(() => {
     setCart({});
     setDiscount(null);
     setNotes({});
   }, []);
   const saveForLater = useCallback((id: string) => {
+    if (!onlineRef.current) return;
     setCart((current) => removeLine(current, id));
     setSaved((current) => (current.includes(id) ? current : [...current, id]));
   }, []);
@@ -128,7 +169,7 @@ export function StoreProvider({
   const moveToCart = useCallback(
     (id: string) => {
       const item = cartSource.items[id];
-      if (!item) return;
+      if (!item || !onlineRef.current) return;
       setSaved((current) => current.filter((s) => s !== id));
       setCart((current) => addOne(current, id, item.price, lineLimit(item.lowStock)));
     },
@@ -174,6 +215,8 @@ export function StoreProvider({
       setLoginOpen,
       accountOpen,
       setAccountOpen,
+      online,
+      checkConnection,
     }),
     [
       cart,
@@ -199,6 +242,8 @@ export function StoreProvider({
       dialogOpen,
       loginOpen,
       accountOpen,
+      online,
+      checkConnection,
     ],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

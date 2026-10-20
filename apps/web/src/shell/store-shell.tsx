@@ -4,6 +4,7 @@ import { LoginModal } from '../account/login-modal.tsx';
 import { CartDrawer } from '../cart/cart-drawer.tsx';
 import { ConsentBar } from '../consent/consent-bar.tsx';
 import type { Consent } from '../consent/consent.ts';
+import { OfflineBanner } from '../errors/offline-banner.tsx';
 import type { CartSource, CheckoutCustomer, StorefrontContent } from '../storefront/types.ts';
 import { BrowsePanel } from './browse-panel.tsx';
 import { Footer } from './footer.tsx';
@@ -42,6 +43,7 @@ export function StoreShell({
           <div className="body">
             <Rail />
             <main className="main" id="main">
+              <OfflineBanner />
               {children}
             </main>
           </div>

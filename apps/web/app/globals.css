@@ -24,6 +24,9 @@
   --sf-low-stock: #8f4a00;
   /* Cart and checkout: warnings (minimum order, price changed) and errors (blocked, invalid). */
   --sf-warn-ink: #7a4a00;
+  /* The offline banner (error pages). */
+  --sf-warn-soft: #fff6e2;
+  --sf-warn-line: #e0b15a;
   --sf-error: #b3261e;
   --sf-error-ink: #7a1f17;
   --sf-error-soft: #fbeae8;
@@ -6226,4 +6229,273 @@ button.login {
   50% {
     opacity: 0.5;
   }
+}
+
+/* Error and unavailable pages (approved design errors-a-teal v1): 404, a removed product, a
+   closed store, the offline page and the offline banner. */
+.er {
+  display: grid;
+  gap: 28px;
+  min-width: 0;
+  padding: 8px 0 16px;
+}
+.er-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 0 32px;
+  text-align: center;
+}
+.er-ic {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--sf-mist);
+  color: var(--sf-teal);
+}
+.er-ic .ico {
+  width: 40px;
+  height: 40px;
+}
+.er-code {
+  font-family: var(--sf-font-head);
+  font-size: calc(56px * var(--fs));
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--sf-teal);
+}
+.er-box h1 {
+  font-family: var(--sf-font-head);
+  font-size: calc(26px * var(--fs));
+  line-height: calc(32px * var(--fs));
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.er-box h1:focus {
+  outline: none;
+}
+.er-box > p {
+  max-width: 52ch;
+  color: var(--sf-slate);
+}
+.er-act {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.er-act .btn.ghost {
+  border: 1.5px solid var(--sf-teal);
+  background: var(--sf-white);
+  color: var(--sf-teal);
+}
+.er-act .btn.ghost:hover {
+  background: var(--sf-mist-soft);
+}
+.er-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.er-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-white);
+  color: var(--sf-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+.er-links a:hover {
+  border-color: var(--sf-teal);
+  color: var(--sf-teal);
+}
+.er-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 440px;
+  min-height: 48px;
+  padding: 0 6px 0 16px;
+  border: 1.5px solid transparent;
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-surface);
+  color: var(--sf-slate);
+}
+.er-search:focus-within {
+  border-color: var(--sf-teal);
+  background: var(--sf-white);
+}
+.er-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: var(--sf-ink);
+  font: inherit;
+  outline: 0;
+}
+.er-search .go {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-teal);
+  color: var(--sf-white);
+}
+.er-search .go:hover {
+  background: var(--sf-teal-hover);
+}
+.er-pr,
+.er-st {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 460px;
+  padding: 12px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-white);
+  text-align: start;
+}
+.er-st {
+  gap: 14px;
+}
+.er-pr > div,
+.er-st > div {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  min-width: 0;
+}
+.er-pr b,
+.er-st b {
+  overflow-wrap: anywhere;
+}
+.er-pr span,
+.er-st span {
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+}
+.er-pr .t {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--sf-surface);
+  color: var(--sf-teal);
+}
+.er-pr .t img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+.er-pr .tag {
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--sf-surface);
+  font-size: calc(12px * var(--fs));
+  font-weight: 700;
+}
+.er-st .lg {
+  display: block;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  filter: grayscale(0.6);
+}
+.er-st .lgv {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.er-sec {
+  min-width: 0;
+}
+.er-sec:focus {
+  outline: none;
+}
+.er-sec h2 {
+  margin-bottom: 12px;
+  font-size: calc(20px * var(--fs));
+  font-weight: 800;
+}
+.er-st2 {
+  min-height: 22px;
+  color: var(--sf-slate);
+}
+.er-ban {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--sf-warn-line);
+  border-radius: 12px;
+  background: var(--sf-warn-soft);
+  color: var(--sf-warn-ink);
+}
+.er-ban > .ico {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+.er-ban > div {
+  flex: 1;
+  min-width: 200px;
+}
+.er-ban b {
+  display: block;
+}
+.er-ban .er-st2 {
+  display: block;
+  min-height: 0;
+  margin-top: 4px;
+  color: inherit;
+  font-weight: 600;
+}
+.er-ban .btn {
+  min-height: 40px;
+  border: 1.5px solid var(--sf-teal);
+  background: var(--sf-white);
+  color: var(--sf-teal);
+}
+/* Offline: the cart cannot change and checkout is blocked (the store's handlers check too). */
+.frame[data-offline] .ctl {
+  opacity: 0.35;
+  pointer-events: none;
 }

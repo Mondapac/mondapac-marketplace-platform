@@ -137,9 +137,7 @@
     "error-message": "Something went wrong on our side. Try again, or go back to the home page.",
     "retry": "Try again",
     "home": "Go to the home page",
-    "reference": "Reference",
-    "not-found-title": "This page is not ready yet",
-    "not-found-message": "We are still building this part of the shop. The home page has everything that is ready."
+    "reference": "Reference"
   },
   "account": {
     "my-account": "My Account",
@@ -515,10 +513,7 @@
     "certificate-checked": "{name} certificate checked",
     "seller-page": "View seller page",
     "loading": "Loading product",
-    "buy-options": "Buy options",
-    "not-found-title": "We can't find this product",
-    "not-found-message": "It may have been removed, or the link is wrong.",
-    "not-found-home": "Go to the home page"
+    "buy-options": "Buy options"
   },
   "cart": {
     "title": "Cart",
@@ -716,10 +711,7 @@
     "how-we-check": "How we check",
     "how-we-check-body": "Our team reviews each certificate before a seller can use the halal label. A product shows the halal label only while the certificate is approved and has not expired. If it expires or is withdrawn, the label is removed automatically.",
     "no-rulings": "Mondapac does not give religious rulings. We show what the certifier has issued.",
-    "loading": "Loading seller",
-    "not-found-title": "We can't find this seller",
-    "not-found-message": "The shop may have closed, or the link is wrong.",
-    "not-found-home": "Go to the home page"
+    "loading": "Loading seller"
   },
   "sellers": {
     "title": "Sellers",
@@ -758,5 +750,34 @@
     "browse-products": "Browse products",
     "filters-empty": "No stores match these filters",
     "filters-empty-hint": "Try removing a filter to see more stores."
+  },
+  "errors": {
+    "not-found-title": "We cannot find that page",
+    "not-found-message": "The link may be old or the page may have moved. Try searching, or go to one of these pages.",
+    "search-label": "Search",
+    "search-placeholder": "Search products and stores",
+    "search-go": "Search",
+    "home": "Go to home",
+    "browse": "Browse products",
+    "quick-links": "Popular pages",
+    "offers": "Offers",
+    "sellers": "Sellers",
+    "express": "Express",
+    "product-title": "This product is no longer available",
+    "product-message": "The seller has stopped selling it, or it has been removed. Here are some similar products.",
+    "not-available": "Not available",
+    "see-similar": "See similar products",
+    "visit-seller": "Visit {seller}",
+    "similar": "Similar products",
+    "store-title": "This store is not taking orders right now",
+    "store-message": "Its products are hidden while it is closed. Please check back later, or shop from other stores.",
+    "all-stores": "Browse all stores",
+    "other-stores": "Other stores that deliver to you",
+    "offline-title": "You are offline",
+    "offline-message": "We could not reach the marketplace. Check your connection and try again. Pages you opened recently may still be available.",
+    "offline-banner": "You are viewing saved pages. Prices, stock and delivery may be out of date. Cart and checkout need a connection.",
+    "retry": "Try again",
+    "checking": "Checking...",
+    "still-offline": "Still offline. We will try again when your connection is back."
   }
 }

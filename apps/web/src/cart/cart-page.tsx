@@ -37,7 +37,7 @@ export function CartPage() {
   const tc = useTranslations('catalog');
   const locale = useLocale();
   const router = useRouter();
-  const { cart, cartSource, discount, customer } = useStore();
+  const { cart, cartSource, discount, customer, online } = useStore();
   const view = viewCart(cart, cartSource, discount);
   const [notice, setNotice] = useState(true);
 
@@ -48,7 +48,7 @@ export function CartPage() {
   }, []);
 
   const checkout = () => {
-    if (!view) return;
+    if (!view || !online) return;
     const [first] = view.blocked;
     if (first) scrollToSeller(first.seller.id);
     else router.push('/checkout');
@@ -121,9 +121,9 @@ export function CartPage() {
           <small>{t('total-incl-bar')}</small>
         </div>
         <button
-          className="btn"
+          className="btn ctl"
           type="button"
-          aria-disabled={view.blocked.length > 0 || undefined}
+          aria-disabled={view.blocked.length > 0 || !online || undefined}
           onClick={checkout}
         >
           {t('checkout')}
@@ -143,6 +143,7 @@ function CheckoutAction({
 }) {
   const t = useTranslations('cart');
   const locale = useLocale();
+  const { online } = useStore();
   const [first] = view.blocked;
   return (
     <>
@@ -169,9 +170,9 @@ function CheckoutAction({
         </div>
       ) : null}
       <button
-        className="btn wide"
+        className="btn wide ctl"
         type="button"
-        aria-disabled={first ? true : undefined}
+        aria-disabled={first || !online ? true : undefined}
         onClick={onCheckout}
       >
         {t('checkout')}
