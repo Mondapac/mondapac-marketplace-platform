@@ -1,4 +1,8 @@
 import 'server-only';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { apiGet } from './api.ts';
+import { storefrontApiConfig } from './config.ts';
+import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
 import type { AssistantSetup } from '../assistant/assistant.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
@@ -42,10 +46,26 @@ export async function loadStorefrontContent(): Promise<StorefrontContent> {
 
 /**
  * The product page's read: the product, its sellable offers and similar products, or undefined
- * when there is no such product. Sample data until the backend has the product detail read.
+ * when there is no such product. With the API on it asks `search/product-detail/:id` (a path id
+ * that is not a product id is no product); with it off, the sample. An outage throws, so the
+ * page shows the error page rather than "not found".
  */
 export async function loadProduct(id: string): Promise<ProductDetail | undefined> {
-  return Promise.resolve(sampleProduct(id));
+  // Only the sample has paths that are not product ids; with the API on they are no product.
+  if (!isProductId(id)) return storefrontApiConfig() === null ? sampleProduct(id) : undefined;
+  const read = await apiGet<ProductDetailBody>(
+    `search/product-detail/${encodeURIComponent(id.toLowerCase())}`,
+  );
+  if (read.kind === 'off') return sampleProduct(id);
+  if (read.kind === 'failed') {
+    if (read.status === 404) return undefined;
+    throw new Error('product detail unavailable');
+  }
+  const [locale, t] = await Promise.all([getLocale(), getTranslations('seller')]);
+  return productDetailOf(read.body, locale, {
+    minimum: (amount) => t('minimum', { amount }),
+    noMinimum: t('no-minimum'),
+  });
 }
 
 /**

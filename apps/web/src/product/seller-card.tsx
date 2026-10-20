@@ -246,7 +246,9 @@ function CardBody({
         {logo ? <SellerLogo logo={seller.logo} /> : null}
         <div>
           <b id={titleId}>{seller.name}</b>
-          <small>{t('since', { city: seller.city, year: String(seller.sellingSince) })}</small>
+          {seller.city === undefined || seller.sellingSince === undefined ? null : (
+            <small>{t('since', { city: seller.city, year: String(seller.sellingSince) })}</small>
+          )}
         </div>
       </div>
       {seller.ratings ? (
@@ -270,14 +272,18 @@ function CardBody({
             {t('certificate-checked', { name: c.name })}
           </li>
         ))}
-        <li>
-          <Icon name="truck" />
-          {offer.deliveryWindow}
-        </li>
-        <li>
-          <Icon name="receipt" />
-          {offer.minimumOrder}
-        </li>
+        {offer.deliveryWindow === undefined ? null : (
+          <li>
+            <Icon name="truck" />
+            {offer.deliveryWindow}
+          </li>
+        )}
+        {offer.minimumOrder === undefined ? null : (
+          <li>
+            <Icon name="receipt" />
+            {offer.minimumOrder}
+          </li>
+        )}
       </ul>
       <Link className="spl" href={`/s/${seller.id}`}>
         {t('seller-page')}

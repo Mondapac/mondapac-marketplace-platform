@@ -93,11 +93,13 @@ export function ProductPage({
                       ))}
                     </div>
                     <div className="ofa">
-                      <span>
-                        <Icon name="clock" />
-                        {o.deliveryWindow}
-                      </span>
-                      <span>{o.minimumOrder}</span>
+                      {o.deliveryWindow === undefined ? null : (
+                        <span>
+                          <Icon name="clock" />
+                          {o.deliveryWindow}
+                        </span>
+                      )}
+                      {o.minimumOrder === undefined ? null : <span>{o.minimumOrder}</span>}
                     </div>
                     <div className="opr num">
                       <b>{formatMoney(o.price, locale)}</b>
@@ -177,22 +179,28 @@ function BuyBox({
       <div className="bctl">
         <BuyControl offer={offer} variant="wide" />
       </div>
-      <ul className="bfacts">
-        <li>
-          <Icon name="truck" />
-          <span>
-            <b>{offer.deliveryWindow}</b>
-            <small>{t('delivery-from')}</small>
-          </span>
-        </li>
-        <li>
-          <Icon name="receipt" />
-          <span>
-            <b>{offer.minimumOrder}</b>
-            <small>{t('shipping-note')}</small>
-          </span>
-        </li>
-      </ul>
+      {offer.deliveryWindow === undefined && offer.minimumOrder === undefined ? null : (
+        <ul className="bfacts">
+          {offer.deliveryWindow === undefined ? null : (
+            <li>
+              <Icon name="truck" />
+              <span>
+                <b>{offer.deliveryWindow}</b>
+                <small>{t('delivery-from')}</small>
+              </span>
+            </li>
+          )}
+          {offer.minimumOrder === undefined ? null : (
+            <li>
+              <Icon name="receipt" />
+              <span>
+                <b>{offer.minimumOrder}</b>
+                <small>{t('shipping-note')}</small>
+              </span>
+            </li>
+          )}
+        </ul>
+      )}
       {lowest ? (
         <a className="others" href="#others">
           {t('other-sellers-link', {
