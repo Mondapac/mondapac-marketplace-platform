@@ -22,9 +22,7 @@ export function UnavailableProductView({ product }: { readonly product: Unavaila
         <div className="er-pr">
           <span className="t" aria-hidden="true">
             <Icon name={categoryIcon(product.category)} />
-            {product.imageUrl ? (
-              <img src={product.imageUrl} alt="" decoding="async" />
-            ) : null}
+            {product.imageUrl ? <img src={product.imageUrl} alt="" decoding="async" /> : null}
           </span>
           <div>
             <b>{product.name}</b>
