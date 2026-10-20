@@ -957,6 +957,10 @@ svg {
   overflow-wrap: anywhere;
   line-height: calc(18px * var(--fs));
 }
+/* A store with no delivery or minimum-order line: centre its name beside the avatar. */
+.seller b:last-child {
+  grid-row: span 3;
+}
 .seller .eta {
   font-size: calc(12px * var(--fs));
   line-height: calc(16px * var(--fs));
