@@ -28,7 +28,7 @@ export function Gallery({
   const photo = photos[index];
   return (
     <div className="gal">
-      <div className="gmain">
+      <div className={photos.length === 0 ? 'gmain nophoto' : 'gmain'}>
         {photo ? (
           // Placeholder photos are local files; seller media moves to next/image with the media API.
           <img src={photo} alt={name} decoding="async" />

@@ -2634,6 +2634,11 @@ svg {
   display: grid;
   place-items: center;
 }
+/* No photo yet (real data before catalog media): a shorter, calmer art tile. */
+.gmain.nophoto {
+  aspect-ratio: 16 / 9;
+  max-height: 280px;
+}
 .gmain > img {
   width: 100%;
   height: 100%;

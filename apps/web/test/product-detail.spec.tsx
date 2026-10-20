@@ -75,7 +75,7 @@ describe('product detail mapping', () => {
       ['01990000-0000-7000-8000-000000001002', 'Logan Road Meats', 2100],
     ]);
     expect(detail.offers[0].lowStock).toBe(2);
-    expect(detail.offers[0].minimumOrder).toBe('A$30.00 minimum order');
+    expect(detail.offers[0].minimumOrder).toBe('A$30 minimum order');
     expect(detail.offers[0].variantId).toBe('01990000-0000-7000-8000-000000002001');
     expect(detail.offers[1]?.lowStock).toBeUndefined();
     expect(detail.offers[1]?.minimumOrder).toBe('No minimum order');
@@ -144,11 +144,29 @@ describe('product page on API data', () => {
     const box = screen.getByRole('complementary', { name: 'Buy options' });
     expect(within(box).getByText('A$18.90')).toBeTruthy();
     expect(within(box).getByText('Only 2 left')).toBeTruthy();
-    expect(within(box).getAllByText('A$30.00 minimum order').length).toBeGreaterThan(0);
+    expect(within(box).getAllByText('A$30 minimum order').length).toBeGreaterThan(0);
     expect(within(box).queryByText(/delivery/i)).toBeNull();
     expect(screen.queryByText(/selling since/)).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Similar products' })).toBeNull();
     const others = screen.getByRole('region', { name: 'Other sellers' });
     expect(within(others).getAllByText('No minimum order').length).toBeGreaterThan(0);
+  });
+
+  it('leaves out an empty Details section', () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider>
+          <ProductPage
+            product={productDetailOf(
+              { ...TWO_SELLERS, description: null, shortDescription: null },
+              'en',
+              labels,
+            )!}
+            category={undefined}
+          />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+    expect(screen.queryByRole('heading', { name: 'Details' })).toBeNull();
   });
 });

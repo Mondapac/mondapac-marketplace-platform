@@ -265,26 +265,30 @@ function CardBody({
           <Meter label={t('as-described')} value={seller.ratings.asDescribed} />
         </>
       ) : null}
-      <ul className="sp3">
-        {seller.certificates.map((c) => (
-          <li key={c.type}>
-            <Icon name="store" />
-            {t('certificate-checked', { name: c.name })}
-          </li>
-        ))}
-        {offer.deliveryWindow === undefined ? null : (
-          <li>
-            <Icon name="truck" />
-            {offer.deliveryWindow}
-          </li>
-        )}
-        {offer.minimumOrder === undefined ? null : (
-          <li>
-            <Icon name="receipt" />
-            {offer.minimumOrder}
-          </li>
-        )}
-      </ul>
+      {seller.certificates.length === 0 &&
+      offer.deliveryWindow === undefined &&
+      offer.minimumOrder === undefined ? null : (
+        <ul className="sp3">
+          {seller.certificates.map((c) => (
+            <li key={c.type}>
+              <Icon name="store" />
+              {t('certificate-checked', { name: c.name })}
+            </li>
+          ))}
+          {offer.deliveryWindow === undefined ? null : (
+            <li>
+              <Icon name="truck" />
+              {offer.deliveryWindow}
+            </li>
+          )}
+          {offer.minimumOrder === undefined ? null : (
+            <li>
+              <Icon name="receipt" />
+              {offer.minimumOrder}
+            </li>
+          )}
+        </ul>
+      )}
       <Link className="spl" href={`/s/${seller.id}`}>
         {t('seller-page')}
         <Icon name="chevr" />

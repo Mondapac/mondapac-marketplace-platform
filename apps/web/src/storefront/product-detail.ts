@@ -91,7 +91,7 @@ export function productDetailOf(
           ? { minimumOrder: labels.noMinimum }
           : minimumMoney === null
             ? {}
-            : { minimumOrder: labels.minimum(formatMoney(minimumMoney, locale)) }),
+            : { minimumOrder: labels.minimum(formatMoney(minimumMoney, locale, { whole: true })) }),
       },
     ];
   });
