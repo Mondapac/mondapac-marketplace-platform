@@ -61,23 +61,25 @@ export function ProductPage({
         </aside>
         <div className="pl2">
           <Certificates offer={offer} />
-          <section className="sec">
-            <h2>{t('details')}</h2>
-            {product.description ? <Description text={product.description} /> : null}
-            {product.specifications.length > 0 ? (
-              <>
-                <h3>{t('specifications')}</h3>
-                <dl className="spec">
-                  {product.specifications.map((s) => (
-                    <div key={s.label}>
-                      <dt>{s.label}</dt>
-                      <dd>{s.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </>
-            ) : null}
-          </section>
+          {product.description || product.specifications.length > 0 ? (
+            <section className="sec">
+              <h2>{t('details')}</h2>
+              {product.description ? <Description text={product.description} /> : null}
+              {product.specifications.length > 0 ? (
+                <>
+                  <h3>{t('specifications')}</h3>
+                  <dl className="spec">
+                    {product.specifications.map((s) => (
+                      <div key={s.label}>
+                        <dt>{s.label}</dt>
+                        <dd>{s.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </>
+              ) : null}
+            </section>
+          ) : null}
           {others.length > 0 ? (
             <section className="sec" id="others" aria-labelledby="others-title">
               <h2 id="others-title">{t('other-sellers')}</h2>
@@ -92,13 +94,17 @@ export function ProductPage({
                         </span>
                       ))}
                     </div>
-                    <div className="ofa">
-                      <span>
-                        <Icon name="clock" />
-                        {o.deliveryWindow}
-                      </span>
-                      <span>{o.minimumOrder}</span>
-                    </div>
+                    {o.deliveryWindow === undefined && o.minimumOrder === undefined ? null : (
+                      <div className="ofa">
+                        {o.deliveryWindow === undefined ? null : (
+                          <span>
+                            <Icon name="clock" />
+                            {o.deliveryWindow}
+                          </span>
+                        )}
+                        {o.minimumOrder === undefined ? null : <span>{o.minimumOrder}</span>}
+                      </div>
+                    )}
                     <div className="opr num">
                       <b>{formatMoney(o.price, locale)}</b>
                       <small>{t('including-gst')}</small>
@@ -177,22 +183,28 @@ function BuyBox({
       <div className="bctl">
         <BuyControl offer={offer} variant="wide" />
       </div>
-      <ul className="bfacts">
-        <li>
-          <Icon name="truck" />
-          <span>
-            <b>{offer.deliveryWindow}</b>
-            <small>{t('delivery-from')}</small>
-          </span>
-        </li>
-        <li>
-          <Icon name="receipt" />
-          <span>
-            <b>{offer.minimumOrder}</b>
-            <small>{t('shipping-note')}</small>
-          </span>
-        </li>
-      </ul>
+      {offer.deliveryWindow === undefined && offer.minimumOrder === undefined ? null : (
+        <ul className="bfacts">
+          {offer.deliveryWindow === undefined ? null : (
+            <li>
+              <Icon name="truck" />
+              <span>
+                <b>{offer.deliveryWindow}</b>
+                <small>{t('delivery-from')}</small>
+              </span>
+            </li>
+          )}
+          {offer.minimumOrder === undefined ? null : (
+            <li>
+              <Icon name="receipt" />
+              <span>
+                <b>{offer.minimumOrder}</b>
+                <small>{t('shipping-note')}</small>
+              </span>
+            </li>
+          )}
+        </ul>
+      )}
       {lowest ? (
         <a className="others" href="#others">
           {t('other-sellers-link', {

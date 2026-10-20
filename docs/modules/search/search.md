@@ -52,5 +52,15 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   `{ amount: string, currency }`), `taxInclusive` and `specialEndsAt`. Never Cost.
 - **Visibility:** the same re-check as the search route (catalog published and listed, seller may
   sell); a failed source or check is 503 `search.unavailable`. No badge, no stock filter (as search).
+- **Product page:** `GET /search/product-detail/:productId` (anonymous, `no-store`, no query string)
+  composes the buyer product page. The product's indexed Offers (first 20 by id) are re-checked as
+  above; catalog's `publishedProduct` (rule anonymous) gives the published name, texts, categories
+  and published Variants in the Market default locale; pricing's `effectivePrices`, inventory's
+  `availability` and sellers' `sellerSummaries` give each priced sell unit its buyer price (Money, the
+  Market currency only, never Cost), its public stock state (`status` and `onlyLeft`, never the exact
+  count) and the seller's public store name and minimum order. Units without a price and Offers
+  without a priced unit are left out, Offers come lowest unit price first (ties by Offer id), and at
+  most 200 (Offer, Variant) keys are asked. 404 `search.product-not-found` when nothing is left; a
+  failed source or check is 503 `search.unavailable`. No image, attribute, tag or badge yet.
 - **Known gaps:** the Market-wide fill reads `offer_documents` ordered by name without an index on
   `(market_id, name)`; add one if the read model grows large.

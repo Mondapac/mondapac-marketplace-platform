@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 import { Icon } from '../icons/icon.tsx';
+import { useSearchSubmit } from '../search/search-focus.tsx';
 import { useStore } from './store-context.tsx';
 
 /** The full-screen search of the phone and tablet layout. */
@@ -12,6 +13,8 @@ export function SearchView({ popular }: { readonly popular: readonly string[] })
   const placeholder = useTranslations('header')('search-placeholder');
   const { searchOpen, setSearchOpen } = useStore();
   const input = useRef<HTMLInputElement>(null);
+  // Enter or the keyboard's Search key: the panel closes and focus lands on the results heading.
+  const onSearch = useSearchSubmit(() => setSearchOpen(false));
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -35,7 +38,7 @@ export function SearchView({ popular }: { readonly popular: readonly string[] })
       aria-label={t('dialog')}
       hidden={!searchOpen}
     >
-      <form className="sform" role="search" action="/search">
+      <form className="sform" role="search" action="/search" onSubmit={onSearch}>
         <button
           className="iconbtn"
           type="button"
@@ -52,6 +55,8 @@ export function SearchView({ popular }: { readonly popular: readonly string[] })
             name="q"
             placeholder={placeholder}
             aria-label={t('input')}
+            maxLength={100}
+            enterKeyHint="search"
           />
         </label>
       </form>
