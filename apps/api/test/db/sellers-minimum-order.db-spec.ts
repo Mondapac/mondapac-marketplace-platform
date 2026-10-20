@@ -533,7 +533,12 @@ describe.each(TEST_MARKETS)('the seller minimum order in market %s', (code) => {
         ok: true,
         value: {
           items: [
-            { changedAt: expect.anything(), changedBy: owner, before: null, after: at(1000) },
+            {
+              changedAt: expect.anything() as unknown,
+              changedBy: owner,
+              before: null,
+              after: at(1000),
+            },
           ],
           next: null,
         },

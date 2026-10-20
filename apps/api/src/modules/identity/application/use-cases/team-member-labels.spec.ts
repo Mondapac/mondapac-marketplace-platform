@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, Result } from '@mondapac/shared-kernel';
@@ -213,12 +215,20 @@ describe.each(TEST_MARKETS)('TeamMemberLabels in market %s', (code) => {
         {
           accountId: OWNER,
           displayName: 'Member 1',
-          role: expect.objectContaining({ kind: 'system', seedCode: 'seller-owner', name: null }),
+          role: expect.objectContaining({
+            kind: 'system',
+            seedCode: 'seller-owner',
+            name: null,
+          }) as unknown,
         },
         {
           accountId: MANAGER,
           displayName: 'Member 2',
-          role: expect.objectContaining({ kind: 'default', seedCode: 'store-manager', name: null }),
+          role: expect.objectContaining({
+            kind: 'default',
+            seedCode: 'store-manager',
+            name: null,
+          }) as unknown,
         },
       ],
     });
@@ -259,6 +269,29 @@ describe.each(TEST_MARKETS)('TeamMemberLabels in market %s', (code) => {
       error: { code: 'access.denied' },
     });
     expect(membershipReads).toEqual([]);
+  });
+
+  it('refuses an actor removed from the team after the gate admitted the call', async () => {
+    const membership = await fakes.membershipRepository.findActiveByAccount(market, MANAGER);
+    fakes.seedMembership({ ...membership!.state, state: 'removed', removedAt: START });
+
+    expect(await open.execute(as(MANAGER), { accountIds: [OWNER] })).toEqual({
+      ok: false,
+      error: { code: 'access.denied' },
+    });
+    expect(membershipReads).toEqual([MANAGER]);
+  });
+
+  it('is called from sellers only: no other module reaches it until it is reviewed (Hassan L2)', () => {
+    const root = join(__dirname, '../../../..');
+    const callers = readdirSync(root, { recursive: true, encoding: 'utf8' })
+      .filter((file) => file.endsWith('.ts') && !file.endsWith('.spec.ts'))
+      .filter((file) => !file.startsWith(join('modules', 'identity')))
+      .filter((file) => readFileSync(join(root, file), 'utf8').includes('.teamMemberLabels('));
+
+    expect(callers).toEqual([
+      join('modules', 'sellers', 'infrastructure', 'identity-team-member-labels.ts'),
+    ]);
   });
 
   it('skips malformed ids, logs only counts, and refuses more than 100 ids', async () => {

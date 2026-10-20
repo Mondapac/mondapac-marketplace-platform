@@ -131,10 +131,13 @@ export class TeamMemberLabels extends UseCase<
     return this.deps.unitOfWork.run(
       market,
       async (): Promise<Result<readonly TeamMemberLabelView[], TeamMemberLabelsFailure>> => {
-        // The actor again, in this read, before any other account is loaded.
+        // The actor again, in this read, before any other account is loaded: an active, verified
+        // account that is still an active member of its seller (Hassan L1).
         if ((await readActingGrants(this.deps, market, self, [], [])) === null) {
           return err({ code: 'access.denied' });
         }
+        const own = await this.deps.memberships.findActiveByAccount(market, actor.accountId);
+        if (own === null || own.state.sellerId !== sellerId) return err({ code: 'access.denied' });
         const members: Id<'Account'>[] = [];
         for (const accountId of ids) {
           const membership = await this.deps.memberships.findActiveByAccount(market, accountId);
