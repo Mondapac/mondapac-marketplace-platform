@@ -30,7 +30,6 @@ function renderStore(content: StorefrontContent = SAMPLE_CONTENT) {
       <StoreShell
         content={content}
         cartSource={SAMPLE_CART_SOURCE}
-        textSize="auto"
         consent={{ personalization: false }}
         signIn={SAMPLE_CHECKOUT.customer}
       >
@@ -52,6 +51,12 @@ describe('home page', () => {
     expect(titles).toEqual(
       expect.arrayContaining(['Sellers near you', 'Best sellers', 'Special prices this week']),
     );
+  });
+
+  it('keeps the text size control out of the footer (it lives in the account settings)', () => {
+    renderStore();
+    const footer = screen.getByRole('contentinfo');
+    expect(within(footer).queryByRole('group', { name: 'Text size' })).toBeNull();
   });
 
   it('shows the price with its currency and GST note, and the seal from the badge', () => {

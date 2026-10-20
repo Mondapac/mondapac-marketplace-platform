@@ -4,7 +4,6 @@ import { LoginModal } from '../account/login-modal.tsx';
 import { CartDrawer } from '../cart/cart-drawer.tsx';
 import { ConsentBar } from '../consent/consent-bar.tsx';
 import type { Consent } from '../consent/consent.ts';
-import type { TextSize } from '../preferences/preferences.ts';
 import type { CartSource, CheckoutCustomer, StorefrontContent } from '../storefront/types.ts';
 import { BrowsePanel } from './browse-panel.tsx';
 import { Footer } from './footer.tsx';
@@ -19,14 +18,12 @@ import { TabBar } from './tab-bar.tsx';
 export function StoreShell({
   content,
   cartSource,
-  textSize,
   consent,
   signIn,
   children,
 }: {
   readonly content: StorefrontContent;
   readonly cartSource: CartSource;
-  readonly textSize: TextSize;
   readonly consent: Consent | null;
   /** The account the sample log-in signs in to, until customer sessions are wired. */
   readonly signIn: CheckoutCustomer;
@@ -48,7 +45,7 @@ export function StoreShell({
               {children}
             </main>
           </div>
-          <Footer area={content.delivery.label} textSize={textSize} />
+          <Footer area={content.delivery.label} />
           <div className="dock">
             <ConsentBar initial={consent} />
             <TabBar />
