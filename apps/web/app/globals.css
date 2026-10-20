@@ -618,9 +618,13 @@ svg {
   white-space: nowrap;
 }
 .rail .cta {
+  gap: 8px;
+  padding: 0 10px;
   background: var(--sf-teal);
   color: var(--sf-white);
+  font-size: 15px;
   font-weight: 700;
+  white-space: nowrap;
   min-height: 50px;
   margin: 0 0 12px;
   border-radius: var(--sf-radius-tile);
@@ -631,7 +635,12 @@ svg {
   background: var(--sf-teal-hover);
 }
 .rail .cta .ico {
+  flex: none;
   color: var(--sf-white);
+}
+.rail .cta .rt .ico {
+  width: 16px;
+  height: 16px;
 }
 .rail hr {
   border: 0;
@@ -650,6 +659,10 @@ svg {
     top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px));
     height: calc(100dvh - var(--sf-header-height) - env(safe-area-inset-top, 0px));
     overflow-y: auto;
+    /* A classic scrollbar must not narrow the rail and wrap Browse products. */
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+    padding-inline-end: 8px;
   }
 }
 .main {
