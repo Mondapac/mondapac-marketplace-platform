@@ -152,6 +152,25 @@ export class Account {
   }
 
   /**
+   * Customer sign-up through a sign-in provider (social sign-in): an active customer account
+   * with no display name, verified now because the provider vouched for the mailbox (only a
+   * provider-verified email reaches this factory). `passwordHash` is the hash of a random secret
+   * nobody holds, so the account has no usable password until its holder sets one through the
+   * reset link. The same event as a password sign-up.
+   */
+  static registerCustomerWithProvider(input: {
+    readonly id: Id<'Account'>;
+    readonly marketId: MarketId;
+    readonly email: EmailAddress;
+    readonly passwordHash: string;
+    readonly now: Temporal.Instant;
+  }): Account {
+    const account = Account.registerCustomer(input);
+    account.#state = Object.freeze({ ...account.#state, emailVerifiedAt: input.now });
+    return account;
+  }
+
+  /**
    * Seller sign-up (identity design 3.1; slice 5): an active, unverified seller account with
    * the display name the caller parsed (`parseDisplayName`, HF13). No event: 8.2 has none for a
    * seller account; the seller is published by its `SellerAccess` at the email verification.

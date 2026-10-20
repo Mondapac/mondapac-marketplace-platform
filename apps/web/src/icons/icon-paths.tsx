@@ -213,6 +213,13 @@ export const ICON_PATHS = {
       <path d="M5 12.5l4.5 4.5L19 7" />
     </>
   ),
+  gps: (
+    <>
+      <circle cx="12" cy="12" r="3.5" />
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+    </>
+  ),
   info: (
     <>
       <circle cx="12" cy="12" r="9" />

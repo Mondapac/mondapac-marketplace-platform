@@ -34,3 +34,27 @@ export function ReadsSession(): ClassDecorator & MethodDecorator {
 export function routePopulationOf(controller: object): Population | undefined {
   return Reflect.getOwnMetadata(ROUTE_POPULATION, controller) as Population | undefined;
 }
+
+/** The metadata key of {@link AcceptsStorefrontOrigin}. */
+export const STOREFRONT_ORIGIN = 'mondapac:storefront-origin';
+
+/**
+ * The only routes that may carry {@link AcceptsStorefrontOrigin}, as `METHOD path` (john's
+ * decision of 2026-10-20 on PR #442, Hassan's conditions): the seller sign-up form and its
+ * "send it again" live on the storefront. The start-up check refuses the decorator anywhere else.
+ */
+export const STOREFRONT_ORIGIN_ROUTES: ReadonlySet<string> = new Set([
+  'POST identity/seller/sign-up',
+  'POST identity/seller/verification-email',
+]);
+
+/**
+ * Lets one anonymous seller route also accept an unsafe request from the storefront (the
+ * Market's `customer` origins), without adding the storefront to the seller list: the request
+ * must carry `Sec-Fetch-Site: same-origin`, an `Origin` on the customer list, and a client
+ * address proved by a BFF (ADR-0037). On a method only, of a `seller` controller, on a route of
+ * {@link STOREFRONT_ORIGIN_ROUTES}, never with {@link ReadsSession} (start-up check).
+ */
+export function AcceptsStorefrontOrigin(): MethodDecorator {
+  return SetMetadata(STOREFRONT_ORIGIN, true);
+}

@@ -249,6 +249,47 @@ export interface CheckoutSource {
   readonly orderReference: string;
 }
 
+/** A point on the map (WGS 84 degrees). */
+export interface GeoPoint {
+  readonly lat: number;
+  readonly lng: number;
+}
+
+/** An address or a suburb the address lookup knows. */
+export interface Place {
+  readonly id: string;
+  /** The street part ("12 Example Street"); empty for a suburb. */
+  readonly street: string;
+  readonly suburb: string;
+  /** The state or region as written in an address ("QLD"). */
+  readonly region: string;
+  readonly postcode: string;
+  readonly point: GeoPoint;
+}
+
+/** The map's extent: the stubbed map draws this box. */
+export interface MapBounds {
+  readonly north: number;
+  readonly south: number;
+  readonly west: number;
+  readonly east: number;
+}
+
+/**
+ * What the Deliver to modal needs: the service area (ServiceArea config) and, while the map and
+ * address-lookup provider is not chosen, the sample places its stubbed lookup knows.
+ */
+export interface DeliveryLocatorSource {
+  readonly area: { readonly name: string; readonly boundary: readonly GeoPoint[] };
+  readonly bounds: MapBounds;
+  /** Where the pin starts when the buyer has not chosen a place the lookup can find. */
+  readonly start: Place;
+  /** Sample only: the addresses the stubbed search finds. */
+  readonly addresses: readonly Place[];
+  /** Sample only: the suburbs the stubbed reverse lookup and the map labels use. */
+  readonly suburbs: readonly Place[];
+}
+
 /**
  * A certificate the platform approved for a seller, as the seller page's Certificates tab shows it.
  * Contract of the seller read: it returns only certificates that are approved and in date today, so
