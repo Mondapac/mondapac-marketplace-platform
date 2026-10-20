@@ -22,6 +22,7 @@ import {
   UnmintedMarketContextError,
 } from '../../src/platform/unit-of-work/errors';
 import {
+  CONNECTION_WAIT_MS,
   UNIT_OF_WORK,
   type UnitOfWork,
   type UnitOfWorkOptions,
@@ -413,7 +414,11 @@ describe('UnitOfWork (database integration)', () => {
       it.each([{ readOnly: false }, { readOnly: true }])(
         'fails within about 2 s when the pool is exhausted (%j)',
         async (options) => {
-          const small = onLockingDatabase({ env: { DATABASE_POOL_MAX: '1' } });
+          // The application's own wait, not the harness's longer one.
+          const small = onLockingDatabase({
+            env: { DATABASE_POOL_MAX: '1' },
+            connectionWaitMs: CONNECTION_WAIT_MS,
+          });
           const holding = gate();
           const held = gate();
           const holder = small.unitOfWork.run(market, async () => {

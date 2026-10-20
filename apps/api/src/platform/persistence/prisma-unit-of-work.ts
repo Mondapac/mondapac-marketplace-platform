@@ -112,6 +112,8 @@ export class PrismaUnitOfWork implements UnitOfWork {
     private readonly client: GuardedClient,
     private readonly map: ModelMap,
     private readonly pause: RetryPause = randomPause,
+    // How long a unit waits to start its transaction; only the database test harness passes it.
+    private readonly connectionWaitMs: number = CONNECTION_WAIT_MS,
   ) {
     this.readOnlyView = modelDelegatesOf(client, map);
     this.readOnlyAuditView = auditDelegatesOf(client, map);
@@ -188,7 +190,7 @@ export class PrismaUnitOfWork implements UnitOfWork {
     options: UnitOfWorkOptions,
   ): Promise<Result<T, E>> {
     const transactionOptions = {
-      maxWait: CONNECTION_WAIT_MS,
+      maxWait: this.connectionWaitMs,
       timeout: options.timeoutMs ?? DEFAULT_UNIT_TIMEOUT_MS,
       ...(options.isolation === 'serializable'
         ? { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
