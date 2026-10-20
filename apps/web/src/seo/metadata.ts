@@ -9,8 +9,8 @@ import {
   DEFAULT_IMAGE,
   DESCRIPTION_KEYS,
   cutDescription,
+  cutTitle,
   pageTitle,
-  plainText,
   type DescriptionKey,
 } from './defaults.ts';
 import { indexingOn } from './indexing.ts';
@@ -62,16 +62,34 @@ async function requestOrigin(): Promise<string | undefined> {
   return storefrontHostFor(config, (await headers()).get('host'))?.origin;
 }
 
-/** Only a site path or an https URL; anything else (a logo key, another scheme) is no image. */
+/**
+ * Only a path on this site or an https URL; anything else (a logo key, another scheme) is no
+ * image. A path is checked after parsing, since the parser reads `\` as `/` and drops tabs and
+ * newlines (`/\evil.example` would leave the site).
+ */
 function imageUrl(value: string | undefined, origin: string): string | undefined {
   if (value === undefined) return undefined;
-  if (value.startsWith('/') && !value.startsWith('//')) return new URL(value, origin).href;
   try {
+    if (value.startsWith('/')) {
+      const url = new URL(value, origin);
+      return url.origin === origin ? url.href : undefined;
+    }
     const url = new URL(value);
     return url.protocol === 'https:' ? url.href : undefined;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The absolute canonical, or none when parsing changed the path: a `.` or `..` segment from a
+ * path param would collapse into another page's address.
+ */
+function canonicalOf(seo: PageSeo, origin: string): string | undefined {
+  const url = new URL(seo.path, origin);
+  if (url.origin !== origin || url.pathname !== seo.path.split('?', 1)[0]) return undefined;
+  if (seo.page !== undefined && seo.page > 1) url.searchParams.set('page', String(seo.page));
+  return url.href;
 }
 
 /**
@@ -103,7 +121,7 @@ export async function accountMetadata(page: AccountPage, path: string): Promise<
 export async function pageMetadata(seo: PageSeo): Promise<Metadata> {
   const [store, origin] = await Promise.all([getTranslations('store'), requestOrigin()]);
   const storeTitle = store('title');
-  const title = seo.name === undefined ? storeTitle : pageTitle(plainText(seo.name), storeTitle);
+  const title = seo.name === undefined ? storeTitle : pageTitle(cutTitle(seo.name), storeTitle);
   const description = cutDescription(seo.description);
   const robots = robotsOf(seo.noindex === true);
   // Without a known host there is no absolute URL to give, so no canonical, og:url or image.
@@ -116,21 +134,20 @@ export async function pageMetadata(seo: PageSeo): Promise<Metadata> {
       twitter: { card: 'summary', title, description },
     };
   }
-  const canonical = new URL(seo.path, origin);
-  if (seo.page !== undefined && seo.page > 1) canonical.searchParams.set('page', String(seo.page));
+  const canonical = canonicalOf(seo, origin);
   const image = imageUrl(seo.image ?? DEFAULT_IMAGE, origin);
   return {
     metadataBase: new URL(origin),
     title: { absolute: title },
     description,
-    alternates: { canonical: canonical.href },
+    ...(canonical === undefined ? {} : { alternates: { canonical } }),
     ...robots,
     openGraph: {
       type: 'website',
       siteName: storeTitle,
       title,
       description,
-      url: canonical.href,
+      ...(canonical === undefined ? {} : { url: canonical }),
       ...(image === undefined ? {} : { images: [{ url: image }] }),
     },
     twitter: {

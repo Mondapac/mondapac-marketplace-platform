@@ -342,6 +342,9 @@ describe('head text', () => {
     ['//evil.example/x.jpg', undefined],
     ['http://cdn.example/x.jpg', undefined],
     ['KH', undefined],
+    ['/\\evil.example/x.jpg', undefined],
+    ['/\t/evil.example/x.jpg', undefined],
+    ['/\n/evil.example/x.jpg', undefined],
     ['https://cdn.example/x.jpg', 'https://cdn.example/x.jpg'],
     ['/placeholders/meat.jpg', 'https://shop.example/placeholders/meat.jpg'],
   ])('shares %j as image %j', async (image, shared) => {
@@ -349,6 +352,25 @@ describe('head text', () => {
     expect(metadata.openGraph?.images).toEqual(
       shared === undefined ? undefined : [{ url: shared }],
     );
+  });
+});
+
+describe('canonical of a path param', () => {
+  it.each(['/p/..', '/s/.', '/account/orders/..'])('%s gets no canonical', async (path) => {
+    const metadata = await pageMetadata({ name: 'A', description: 'B', path });
+    expect(metadata.alternates).toBeUndefined();
+    expect(metadata.openGraph).not.toHaveProperty('url');
+  });
+
+  it('cuts a long name in the title', async () => {
+    const metadata = await pageMetadata({
+      name: `Results for ${'lamb '.repeat(40)}`,
+      description: 'B',
+      path: '/search',
+    });
+    const { absolute } = metadata.title as { absolute: string };
+    expect(absolute.endsWith('lamb… | Mondapac')).toBe(true);
+    expect(Array.from(absolute).length).toBeLessThanOrEqual(61 + ' | Mondapac'.length);
   });
 });
 

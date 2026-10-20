@@ -5,6 +5,9 @@
 /** `%s` is the page's own name, `{store}` the store title. */
 export const TITLE_TEMPLATE = '%s | {store}';
 
+/** A page's own name in the title is cut at a word boundary to about this many characters. */
+export const TITLE_NAME_MAX = 60;
+
 /** Descriptions are cut at a word boundary to about this many characters. */
 export const DESCRIPTION_MAX = 155;
 
@@ -78,4 +81,9 @@ export function cutDescription(text: string, max = DESCRIPTION_MAX): string {
   // One long word: cut it rather than leave the description empty.
   const cut = space > max / 2 ? head.slice(0, space) : chars.slice(0, max).join('');
   return `${cut.replace(/[\s,;:.–—-]+$/u, '')}…`;
+}
+
+/** A page's own name for its title: plain text, cut like a description to TITLE_NAME_MAX. */
+export function cutTitle(name: string): string {
+  return cutDescription(name, TITLE_NAME_MAX);
 }
