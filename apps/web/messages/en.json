@@ -458,6 +458,8 @@
       "palette-body": "Remembers the colours you chose in Personalization.",
       "text-size": "Text size",
       "text-size-body": "Remembers the text size you chose.",
+      "delivery": "Delivery location",
+      "delivery-body": "Remembers the suburb and postcode you deliver to, not your exact address.",
       "consent": "Your cookie choice",
       "consent-body": "Remembers the choice you make on this page."
     },
@@ -649,6 +651,40 @@
     "paid-summary": "Payment summary",
     "placed-discount": "Order {reference} · {total} paid (includes {discount} discount, code {code}). A confirmation was sent to {email}."
   },
+  "deliver": {
+    "title": "Choose where to deliver",
+    "close": "Close",
+    "search-label": "Search your address",
+    "search-placeholder": "Street address or suburb",
+    "clear": "Clear search",
+    "suggestions": "Address suggestions",
+    "no-match": "No match. Try the street and suburb.",
+    "use-location": "Use my current location",
+    "finding": "Finding your location",
+    "blocked": "Location access is blocked for this site. Allow it in your browser settings, or search for your address above.",
+    "failed": "We could not find your location. Search for your address or move the pin on the map.",
+    "delivering-to": "Delivering to",
+    "in-area": "We deliver to this area",
+    "out-of-area": "We do not deliver here yet. We currently deliver to {area}.",
+    "device-note": "Based on your device location. Move the pin if it is not exactly right.",
+    "dropped-near": "Dropped pin near {place}",
+    "dropped-outside": "Dropped pin outside {area}",
+    "device-near": "Near {place}",
+    "device-outside": "Your location is outside {area}",
+    "saved": "Your saved addresses",
+    "log-in": "<login>Log in</login> to choose one of your saved addresses.",
+    "privacy-guest": "We use your device location only when you tap the button, and only to find your address. Without an account we keep only your suburb and postcode in this browser, not exact coordinates. The delivery location decides which sellers and delivery times you see.",
+    "privacy-account": "We use your device location only when you tap the button, and only to find your address. Your delivery location is saved to your account. The delivery location decides which sellers and delivery times you see.",
+    "cancel": "Cancel",
+    "confirm": "Confirm location",
+    "map": "Map of {area} showing your delivery pin",
+    "pin": "Delivery pin. Use arrow keys to move it.",
+    "hint": "Tap the map or drag the pin to set the exact spot.",
+    "zoom-in": "Zoom in",
+    "zoom-out": "Zoom out",
+    "legend": "Delivery area",
+    "attribution": "Map provider and data to be chosen"
+  },
   "seller": {
     "share": "Share",
     "share-menu": "Share this shop",
@@ -785,6 +821,81 @@
     "error-body": "Check your connection and try again. Nothing was changed.",
     "retry": "Try again"
   },
+  "sell": {
+    "title": "Sell on MondaPac",
+    "heading": "Sell your products to local shoppers",
+    "lead": "Open a seller account, add your products and reach customers in {area} who look for verified halal and local food.",
+    "benefits": {
+      "halal-title": "Verified halal badge",
+      "halal-body": "Upload your halal certificate. Once our team checks it, shoppers see the verified badge on your products.",
+      "delivery-title": "You set your own delivery",
+      "delivery-body": "Choose your delivery windows, delivery fee and minimum order.",
+      "store-title": "Your own store page",
+      "store-body": "Your name, your products and your story, in front of shoppers who prefer small local sellers."
+    },
+    "questions": "Questions",
+    "faq": {
+      "start-q": "What do I need to start?",
+      "start-a": "An email address to create the account. Later you will need your {identifier}, business name and address, and a halal certificate if you want the halal badge on your products.",
+      "account-q": "Can I use my shopping account?",
+      "account-a": "No. Seller accounts are separate from shopping accounts and have their own email and password.",
+      "review-q": "How long does the review take?",
+      "review-a": "We review each seller by hand. We email you as soon as there is a result, and you can see the status when you sign in.",
+      "certificate-q": "Do I need a halal certificate to sell?",
+      "certificate-a": "No. You can sell without one. The verified halal badge is shown only when we have checked a valid certificate."
+    },
+    "how": "How it works",
+    "steps": {
+      "account-title": "Create your account",
+      "account-body": "Your name, email and a password.",
+      "confirm-title": "Confirm your email",
+      "confirm-body": "Open the link we send you.",
+      "details-title": "Add your business details",
+      "details-body": "Your {identifier}, business name, address and, if you sell halal-labelled products, your halal certificate.",
+      "review-title": "We review, then you sell",
+      "review-body": "We email you the result. Then add your products and open for orders."
+    },
+    "form": {
+      "title": "Create a seller account",
+      "sub": "It takes a minute. You add your business details after you confirm your email.",
+      "name": "Your name",
+      "email": "Email",
+      "email-hint": "We send a link to confirm it.",
+      "password": "Password",
+      "password-hint": "{min} to {max} characters.",
+      "privacy-notice": "We collect these details to create and protect your account. Read how we handle them in our <privacy>privacy policy</privacy>.",
+      "submit": "Create account",
+      "sending": "Creating your account…",
+      "have-account": "Already have a seller account? <link>Sign in</link>",
+      "separate": "Seller and customer accounts are separate. Each has its own password.",
+      "throttled": "Too many attempts. Please wait {minutes, plural, one {# minute} other {# minutes}} and try again.",
+      "failed": "We could not create your account just now. Nothing was saved. Please try again."
+    },
+    "errors": {
+      "name-required": "Enter your name.",
+      "name-length": "Use at most 100 characters.",
+      "name-characters": "Your name cannot contain a web address or hidden formatting characters.",
+      "email-required": "Enter your email.",
+      "email-format": "Enter an email address like name@example.com.",
+      "password-required": "Enter a password.",
+      "password-short": "Use at least {min} characters. A few short words in a row work well.",
+      "password-long": "Use at most {max} characters.",
+      "password-common": "That password is too easy to guess. Choose a different one.",
+      "password-identity": "Do not use your email or name in your password."
+    },
+    "mail": {
+      "title": "Check your email",
+      "body": "We have sent an email to <b>{email}</b>. Open it and follow the link to confirm your address.",
+      "wait": "It can take a few minutes. Look in your spam folder if you cannot see it.",
+      "again": "Send it again",
+      "sending": "Sending…",
+      "sent-again": "We sent it again.",
+      "again-throttled": "Too many attempts. Please wait {minutes, plural, one {# minute} other {# minutes}} and try again.",
+      "again-failed": "We could not send it just now. Please try again.",
+      "wrong": "Wrong address? Sign up again",
+      "back": "Back to sign in"
+    }
+  },
   "assistant": {
     "launch": "Ask the assistant",
     "title": "Shopping assistant",
@@ -862,5 +973,28 @@
     "sign-in": "Log in",
     "search-label": "Search products",
     "search": "Search"
+  },
+  "coming-soon": {
+    "message": "We are still building this page. In the meantime, the home page and the product range are ready.",
+    "home": "Go to the home page",
+    "browse": "Browse products",
+    "pages": {
+      "browse": "Browse products",
+      "offers": "Offers",
+      "express": "Express, same day",
+      "certified": "Halal products",
+      "recipes": "Recipes",
+      "gift-cards": "Gift cards",
+      "help": "Help and FAQs",
+      "help-delivery": "Delivery and minimum orders",
+      "help-returns": "Returns and refunds",
+      "help-contact": "Contact support",
+      "help-certificates": "Halal and certificate labels",
+      "delivery-area": "Delivery area",
+      "about": "About us",
+      "terms": "Terms of use",
+      "privacy": "Privacy policy",
+      "sell-guidelines": "Seller guidelines"
+    }
   }
 }

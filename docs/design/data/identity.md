@@ -629,6 +629,16 @@ subject key (D 11.3); `basis_id uuid` nullable (C4; the submission id of `seller
   Hassan C7): the domain guard and `sellers`' "more than one decision for a pair = alert" rule
   stand in for it.
 
+### 3.12 `identity.external_identities` (social sign-in, 19 Oct 2026)
+
+A customer account's identity at a sign-in provider (Google first). Columns: `market_id`,
+`tenant_id`, `provider` (`google`; CHECK), `subject` (the provider's `sub`, printable ASCII, at most
+255; personal data), `account_id`, `created_at`. Primary key `(market_id, provider, subject)`: the
+sign-in lookup. Unique `(market_id, account_id, provider)`: one identity per account and provider.
+Foreign key `(market_id, account_id)` to `accounts` with `ON DELETE CASCADE`: the rows go with
+their account (purge, erasure). Written once, never updated; no email is stored here (the account
+holds it). Only verified customer accounts get a row.
+
 ## 4. What is never stored
 
 | Never in the database | Instead |
@@ -664,6 +674,7 @@ subject key (D 11.3); `basis_id uuid` nullable (C4; the submission id of `seller
 | `invitations.role_id` points at an existing role; the inviter may still grant it | Dangling by design (R12) | Acceptance guards (D 3.4) |
 | A `seller_id` is known to `sellers`; a `basis_id` is a submission | No cross-module foreign key | Events and the facade (D 8.3) |
 | Non-ASCII case folding of emails and role names; URL-like text in names (HF13); non-empty reason text; no personal data in a payload | Not expressible | Application normalisation; the domain; `defineEvent` (P 5.3) |
+| Only a customer account with a verified email holds a row, and its provider email equals the account email when linked (3.12) | Cross-table | `SignInWithProvider` and `LinkSignInProvider` |
 
 ### 5.1 Serializable writers (HF8)
 
@@ -749,6 +760,7 @@ function and gets no grant.
 | `identity.inbox` | `SELECT, INSERT` | `DELETE` arrives with the prune job |
 | `identity.sign_in_records` | `SELECT, INSERT, DELETE` | Append-only with retention |
 | `identity.access_decisions` | `SELECT, INSERT` | Append-only |
+| `identity.external_identities` | `SELECT, INSERT` | Written once; removed only by the cascade from its account |
 | `identity.role_permissions` | `SELECT, INSERT, DELETE` | A key row is never edited |
 | `identity.password_credentials`, `identity.recovery_codes` | `SELECT, INSERT, UPDATE`; `recovery_codes` also `DELETE` (regeneration) | A credential is removed only by the cascade from its account: measured, the cascade needs no `DELETE` grant on the child |
 | `identity.accounts`, `sessions`, `sign_in_throttles`, `one_time_links`, `seller_access`, `seller_memberships`, `roles`, `role_assignments`, `second_factors`, `sign_in_challenges`, `invitations` | `SELECT, INSERT, UPDATE, DELETE` | Ordinary tables; `DELETE` is used by the purge jobs, by erasure and by the use cases that remove a row (voided challenges, a reset factor, a cleared counter). On `accounts`, only the purge job in Phase 2 (A2, H5) |

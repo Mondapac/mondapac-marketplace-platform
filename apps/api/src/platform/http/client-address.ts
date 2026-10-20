@@ -73,6 +73,9 @@ export function clientAddressMessage(
  */
 const resolved = new WeakMap<IncomingMessage, string | undefined>();
 
+/** The keyId that proved each request's address (every check of decision 3 passed). */
+const provenBy = new WeakMap<IncomingMessage, string>();
+
 /**
  * The client address the middleware resolved for this request, as text: the socket's, or the
  * one a BFF proved. `undefined` when there is none (no socket address, or the request did not
@@ -81,6 +84,15 @@ const resolved = new WeakMap<IncomingMessage, string | undefined>();
  */
 export function clientAddressFrom(request: IncomingMessage): string | undefined {
   return resolved.get(request);
+}
+
+/**
+ * The keyId of the BFF proof that gave this request's client address, or `undefined` when the
+ * address is the socket's. The actor guard requires a storefront key of the storefront's seller
+ * sign-up calls (`@AcceptsStorefrontOrigin`), which only the storefront's BFF may send.
+ */
+export function clientAddressKeyIdOf(request: IncomingMessage): string | undefined {
+  return provenBy.get(request);
 }
 
 /** How many header lines named `name` the request carried (Node joins repeated ones). */
@@ -191,6 +203,7 @@ export function clientAddressResolver(options: ClientAddressOptions): RequestHan
     }
 
     resolved.set(request, address);
+    provenBy.set(request, keyId);
     next();
   };
 }

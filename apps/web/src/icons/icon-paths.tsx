@@ -213,6 +213,13 @@ export const ICON_PATHS = {
       <path d="M5 12.5l4.5 4.5L19 7" />
     </>
   ),
+  gps: (
+    <>
+      <circle cx="12" cy="12" r="3.5" />
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+    </>
+  ),
   info: (
     <>
       <circle cx="12" cy="12" r="9" />
@@ -266,6 +273,13 @@ export const ICON_PATHS = {
   'eye-off': (
     <>
       <path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17 17 0 0 1-3.2 4M6.5 7.3C3.9 9 2 12 2 12s3.6 6.5 10 6.5c1.5 0 2.9-.4 4.1-.9M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </>
+  ),
+  // A rosette with a tick: the verified-badge benefit on the sell page (not a certification badge).
+  seal: (
+    <>
+      <path d="M12 3l2.2 1.6 2.7-.1.9 2.6 2.2 1.6-.8 2.6.8 2.6-2.2 1.6-.9 2.6-2.7-.1L12 21l-2.2-1.6-2.7.1-.9-2.6-2.2-1.6.8-2.6-.8-2.6 2.2-1.6.9-2.6 2.7.1z" />
+      <path d="M8.8 12.2l2.2 2.2 4.2-4.4" />
     </>
   ),
   spark: (

@@ -168,6 +168,17 @@ import { SendOtherSessionsSignedOutMail } from './application/use-cases/send-oth
 import { SendPasswordChangedMail } from './application/use-cases/send-password-changed-mail.use-case';
 import { SendWelcomeMail } from './application/use-cases/send-welcome-mail.use-case';
 import { SignInCustomer } from './application/use-cases/sign-in-customer.use-case';
+import { DescribeSocialSignIn } from './application/use-cases/describe-social-sign-in.use-case';
+import { LinkSignInProvider } from './application/use-cases/link-sign-in-provider.use-case';
+import { SignInWithProvider } from './application/use-cases/sign-in-with-provider.use-case';
+import { StartSocialSignIn } from './application/use-cases/start-social-sign-in.use-case';
+import { EXTERNAL_IDENTITY_REPOSITORY } from './application/ports/external-identity.repository';
+import {
+  SIGN_IN_PROVIDER_FLOW_SECRETS,
+  SIGN_IN_PROVIDERS_PORT,
+} from './application/ports/sign-in-providers';
+import { socialSignInProviders } from './infrastructure/social/social-sign-in-providers';
+import { CustomerSocialSignInController } from './presentation/customer-social-sign-in.controller';
 import { SignInSeller } from './application/use-cases/sign-in-seller.use-case';
 import { SignOut } from './application/use-cases/sign-out.use-case';
 import { TeamMembershipOf } from './application/use-cases/team-membership-of.use-case';
@@ -263,6 +274,9 @@ const PORT = {
   enrolmentTags: ENROLMENT_SECRET_TAGS,
   stepUp: STEP_UP_REPOSITORY,
   stepUpActions: StepUpActionRegistry,
+  signInProviders: SIGN_IN_PROVIDERS_PORT,
+  flowSecrets: SIGN_IN_PROVIDER_FLOW_SECRETS,
+  externalIdentities: EXTERNAL_IDENTITY_REPOSITORY,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -389,6 +403,7 @@ function useCaseProvider<D, U>(
   controllers: [
     CustomerSignUpController,
     CustomerSessionController,
+    CustomerSocialSignInController,
     CustomerEmailVerificationController,
     SellerSignUpController,
     SellerSessionController,
@@ -427,6 +442,7 @@ function useCaseProvider<D, U>(
     ...reviewerProviders,
     ...roleProviders,
     ...secondFactorProviders,
+    ...socialSignInProviders,
     adminAccountReaderProvider,
     sellerAccountReaderProvider,
     {
@@ -491,6 +507,31 @@ function useCaseProvider<D, U>(
       policy: true,
       clock: true,
       ids: true,
+    }),
+    useCaseProvider(DescribeSocialSignIn, { signInProviders: true, targets: true }),
+    useCaseProvider(StartSocialSignIn, { signInProviders: true, flowSecrets: true, targets: true }),
+    useCaseProvider(SignInWithProvider, {
+      unitOfWork: true,
+      accounts: true,
+      externalIdentities: true,
+      sessions: true,
+      records: true,
+      hasher: true,
+      tokens: true,
+      outbox: true,
+      signInProviders: true,
+      flowSecrets: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(LinkSignInProvider, {
+      unitOfWork: true,
+      accounts: true,
+      externalIdentities: true,
+      signInProviders: true,
+      flowSecrets: true,
+      clock: true,
     }),
     useCaseProvider(SignOut, { unitOfWork: true, sessions: true, clock: true }),
     useCaseProvider(DescribeActor, {
