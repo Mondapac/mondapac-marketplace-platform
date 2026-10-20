@@ -37,6 +37,39 @@ describe('loadAppConfig', () => {
         models: { fast: {}, balanced: {} },
         prices: { fast: {}, balanced: {} },
       },
+      googleSignIn: null,
+    });
+  });
+
+  describe('the Google sign-in client', () => {
+    const CLIENT = {
+      GOOGLE_SIGN_IN_CLIENT_ID: 'client-123.apps.googleusercontent.com',
+      GOOGLE_SIGN_IN_CLIENT_SECRET: 'secret-xyz-123',
+    };
+
+    it('reads the client id and secret together', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU', ...CLIENT }).googleSignIn).toEqual({
+        clientId: CLIENT.GOOGLE_SIGN_IN_CLIENT_ID,
+        clientSecret: CLIENT.GOOGLE_SIGN_IN_CLIENT_SECRET,
+      });
+    });
+
+    it('refuses one without the other, and a malformed value without echoing it', () => {
+      expect(() =>
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          GOOGLE_SIGN_IN_CLIENT_ID: CLIENT.GOOGLE_SIGN_IN_CLIENT_ID,
+        }),
+      ).toThrow(/set both or neither/);
+      const secret = 'has a space 0123456789';
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', ...CLIENT, GOOGLE_SIGN_IN_CLIENT_SECRET: secret }),
+      ).toThrow(/GOOGLE_SIGN_IN_CLIENT_SECRET/);
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', ...CLIENT, GOOGLE_SIGN_IN_CLIENT_SECRET: secret });
+      } catch (error) {
+        expect(String((error as Error).message)).not.toContain(secret);
+      }
     });
   });
 

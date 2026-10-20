@@ -84,6 +84,11 @@
     "rule": "anonymous",
     "reason": "The Seller Owner confirms, with the single-use 24-hour link of E15, a second-factor reset an admin started: the link binds the account, the owner may not be signed in (A11)."
   },
+  {
+    "name": "identity.describe-social-sign-in",
+    "rule": "anonymous",
+    "reason": "The storefront asks which sign-in providers the Market offers, to show their buttons to a visitor who has no session; configuration only."
+  },
   { "name": "identity.register-customer", "rule": "anonymous", "reason": "Customer sign-up form." },
   { "name": "identity.register-seller", "rule": "anonymous", "reason": "Seller sign-up form." },
   {
@@ -122,6 +127,11 @@
     "reason": "Seller sign-in: the caller has no session yet."
   },
   {
+    "name": "identity.sign-in-with-provider",
+    "rule": "anonymous",
+    "reason": "Customer sign-in or sign-up through a sign-in provider's redirect: the caller has no session yet."
+  },
+  {
     "name": "identity.start-admin-invitation-acceptance",
     "rule": "anonymous",
     "reason": "Start of admin invitation acceptance with the mailed token: the invitee has no session yet."
@@ -130,6 +140,11 @@
     "name": "identity.start-second-factor-enrolment",
     "rule": "anonymous",
     "reason": "Admin second-factor enrolment start with the mailed enrolment link's token and the password: the admin has no session yet."
+  },
+  {
+    "name": "identity.start-social-sign-in",
+    "rule": "anonymous",
+    "reason": "The first step of signing in with a provider: the caller has no session yet; nothing is stored."
   },
   {
     "name": "notifications.unsubscribe-marketing-email",
