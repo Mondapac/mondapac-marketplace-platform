@@ -43,6 +43,11 @@ import {
   type StoreProfileRepository,
 } from '../application/ports/store-profile.repository';
 import {
+  PUBLISHED_STORE_REPOSITORY,
+  type PublishedStoreRepository,
+} from '../application/ports/published-store.repository';
+import { PrismaPublishedStoreRepository } from './prisma-published-store.repository';
+import {
   SELLING_FACTS_REPOSITORY,
   type SellingFactsRepository,
 } from '../application/ports/selling-facts.repository';
@@ -351,6 +356,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellingFactsRepository =>
       new PrismaSellingFactsRepository(prisma),
+  },
+  {
+    provide: PUBLISHED_STORE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PublishedStoreRepository =>
+      new PrismaPublishedStoreRepository(prisma),
   },
   {
     provide: STORE_PROFILE_REPOSITORY,
