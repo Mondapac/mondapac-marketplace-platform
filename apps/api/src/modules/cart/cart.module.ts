@@ -33,9 +33,11 @@ import { ViewGuestCart } from './application/use-cases/view-guest-cart.use-case'
 import { ClearOrderedLines } from './application/use-cases/clear-ordered-lines.use-case';
 import { PurgeInactiveCarts } from './application/use-cases/purge-inactive-carts.use-case';
 import { ReadCheckoutLines } from './application/use-cases/read-checkout-lines.use-case';
-import { CART_CHECKOUT_FACADE } from './contracts';
+import { ListIdleAccountCarts } from './application/use-cases/list-idle-account-carts.use-case';
+import { CART_CHECKOUT_FACADE, CART_REMINDER_FACADE } from './contracts';
 import { cartProviders } from './infrastructure/cart-providers';
 import { CartCheckoutFacadeImplementation } from './presentation/cart-checkout.facade';
+import { CartReminderFacadeImplementation } from './presentation/cart-reminder.facade';
 import { CartController } from './presentation/cart.controller';
 import { purgeInactiveCartsJob } from './presentation/jobs/purge-inactive-carts.job';
 
@@ -96,6 +98,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SaveForLater,
       MoveSavedToCart,
       RemoveSaved,
+      ListIdleAccountCarts,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: PurgeInactiveCarts,
@@ -127,7 +130,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (read: ReadCheckoutLines, clear: ClearOrderedLines) =>
         new CartCheckoutFacadeImplementation(read, clear),
     },
+    {
+      provide: CART_REMINDER_FACADE,
+      inject: [ListIdleAccountCarts],
+      useFactory: (list: ListIdleAccountCarts) => new CartReminderFacadeImplementation(list),
+    },
   ],
-  exports: [CART_CHECKOUT_FACADE],
+  exports: [CART_CHECKOUT_FACADE, CART_REMINDER_FACADE],
 })
 export class CartModule {}

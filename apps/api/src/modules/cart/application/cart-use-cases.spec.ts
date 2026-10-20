@@ -87,6 +87,14 @@ class MemoryCarts implements CartRepository {
     this.rows.set(cart.id, { ...cart, version: cart.version + 1 });
     return Promise.resolve('saved' as const);
   }
+  readonly ordered = new Map<string, Temporal.Instant>();
+  markOrdered(_m: MarketContext, cartId: Id<'Cart'>, at: Temporal.Instant) {
+    this.ordered.set(cartId, at);
+    return Promise.resolve();
+  }
+  idleAccountCarts() {
+    return Promise.resolve([]);
+  }
   purgeInactive(
     _m: MarketContext,
     guestBefore: Temporal.Instant,
@@ -835,6 +843,8 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     expect(again.ok && again.value.removed).toBe(0);
     expect(nobody.ok && nobody.value.removed).toBe(0);
     expect([...carts.rows.values()][0]?.lines.map((l) => l.offerId)).toEqual([OFFER_B]);
+    // Only the clear that removed a line marks the cart as ordered from (personalization 1c).
+    expect([...carts.ordered.values()]).toEqual([[...carts.rows.values()][0]?.lastChangedAt]);
     expect(await clear.execute(customerCtx, { accountId: ACCOUNT, units: [line] })).toMatchObject({
       ok: false,
     });

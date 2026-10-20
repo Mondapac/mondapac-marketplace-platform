@@ -39,7 +39,16 @@ export interface PersistenceOptions {
   readonly pause?: RetryPause;
   /** The database's application URL; the run database by default. */
   readonly databaseUrl?: string;
+  /** The wait for a connection; {@link TEST_CONNECTION_WAIT_MS} by default. */
+  readonly connectionWaitMs?: number;
 }
+
+/**
+ * How long a test unit waits for a connection and to start its transaction. Longer than the
+ * application's 2 s because parallel spec files load the runner's CPU (owner decision
+ * 2026-10-20); the application's own wait is unchanged.
+ */
+export const TEST_CONNECTION_WAIT_MS = 10_000;
 
 /** A pool of the application role on the run's throwaway database. */
 export function createPersistence(options: PersistenceOptions = {}): Persistence {
@@ -48,13 +57,14 @@ export function createPersistence(options: PersistenceOptions = {}): Persistence
     url.searchParams.set(name, value);
   }
   const config = testAppConfig({ DATABASE_URL: url.toString(), ...options.env });
-  const root = new PrismaRoot(config);
+  const connectionWaitMs = options.connectionWaitMs ?? TEST_CONNECTION_WAIT_MS;
+  const root = new PrismaRoot(config, { connectionWaitMs });
   const client = createGuardedClient(root, modelMap);
   return {
     root,
     client,
     service: new PrismaService(),
-    unitOfWork: new PrismaUnitOfWork(client, modelMap, options.pause),
+    unitOfWork: new PrismaUnitOfWork(client, modelMap, options.pause, connectionWaitMs),
     close: () => root.$disconnect(),
   };
 }

@@ -25,8 +25,8 @@ G1/G2 brief. Package 1b of that plan includes customers package 4 (consent recor
   name, the support address and the unsubscribe page link, plus `List-Unsubscribe` and
   `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058). A Market without
   `notifications.unsubscribePage` and `notifications.oneClickUnsubscribeUrl`, or without a support
-  address, sends no marketing mail. Nothing calls it yet: package 1c (abandoned cart) is its
-  first sender.
+  address, sends no marketing mail. Its first sender is package 1c (abandoned cart,
+  docs/modules/notifications/cart-reminders.md).
 - Route `notifications/unsubscribe/:market?token=` (public, Market from the path because a mail
   client cannot send `x-market-id`): GET checks the link and changes nothing (link scanners), POST
   unsubscribes with any body. The token is `u1.<account id>.<HMAC-SHA-256>` under a key derived

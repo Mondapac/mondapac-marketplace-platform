@@ -765,12 +765,16 @@ export async function clearOrdered(
     const kept = cart.lines.filter((line) => !wanted.has(verdictKey(line)));
     const removed = cart.lines.length - kept.length;
     if (removed === 0) return ok({ removed });
+    const now = deps.clock.now();
     const saved = await deps.carts.save(context.market, {
       ...cart,
       lines: kept,
-      lastChangedAt: deps.clock.now(),
+      lastChangedAt: now,
     });
     if (saved === 'stale') return err({ code: 'conflict.stale' } as const);
+    // Personalization 1c: the lines left after an order get no cart reminder until the buyer
+    // changes the cart again.
+    await deps.carts.markOrdered(context.market, cart.id, now);
     return ok({ removed });
   });
 }

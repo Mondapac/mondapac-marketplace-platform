@@ -75,6 +75,14 @@ class MemoryCarts implements CartRepository {
     this.rows.set(cart.id, { ...cart, version: cart.version + 1 });
     return Promise.resolve('saved' as const);
   }
+  readonly ordered = new Map<string, Temporal.Instant>();
+  markOrdered(_m: unknown, cartId: Id<'Cart'>, at: Temporal.Instant) {
+    this.ordered.set(cartId, at);
+    return Promise.resolve();
+  }
+  idleAccountCarts() {
+    return Promise.resolve([]);
+  }
   purgeInactive(
     _m: unknown,
     guestBefore: Temporal.Instant,

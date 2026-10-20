@@ -81,3 +81,26 @@ model NotificationsInAppNoticeRead {
   @@map("in_app_notice_reads")
   @@schema("notifications")
 }
+
+/// One cart reminder taken for sending (personalization 1c): this account's cart, as last changed
+/// at `cartChangedAt`, has had its stage-1 (about 4 h idle) or stage-2 (about 24 h) reminder. The
+/// row is inserted before the send, so a stage goes out at most once per cart change, even when
+/// two job runs overlap. A new cart change starts new stages. No address and no cart content is
+/// stored. Insert-only; rows leave after 30 days. The CHECKs and the grants are hand-written in the
+/// migration.
+model NotificationsCartReminder {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  /// The customer's account (a plain id, no foreign key).
+  accountId     String   @map("account_id") @db.Uuid
+  cartChangedAt DateTime @map("cart_changed_at") @db.Timestamptz(6)
+  /// 1 or 2 (CHECK).
+  stage         Int      @db.SmallInt
+  tenantId      String   @map("tenant_id")
+  takenAt       DateTime @map("taken_at") @db.Timestamptz(6)
+
+  @@id([marketId, accountId, cartChangedAt, stage])
+  /// The retention purge.
+  @@index([marketId, takenAt])
+  @@map("cart_reminders")
+  @@schema("notifications")
+}
