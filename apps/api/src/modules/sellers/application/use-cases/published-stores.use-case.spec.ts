@@ -54,6 +54,8 @@ describe.each([
   let minimums: Map<string, Money | null>;
   let failStores: boolean;
   let identityCalls: number;
+  let identityDown: boolean;
+  let clock: FixedClock;
   let list: PublishedStoreList;
   let read: PublishedStoreRead;
 
@@ -85,6 +87,8 @@ describe.each([
     minimums = new Map();
     failStores = false;
     identityCalls = 0;
+    identityDown = false;
+    clock = new FixedClock(Temporal.Instant.from('2026-10-20T00:00:00Z'));
     const publishedStores: PublishedStoreRepository = {
       approvedStores: (_market, limit) =>
         failStores ? Promise.reject(new Error('down')) : Promise.resolve(stores.slice(0, limit)),
@@ -106,6 +110,7 @@ describe.each([
     const accessReader = {
       accessOfMany: (_context: CallContext, sellerIds: readonly Id<'Seller'>[]) => {
         identityCalls += 1;
+        if (identityDown) return Promise.reject(new Error('identity down'));
         return Promise.resolve(
           new Map(
             sellerIds.flatMap((id) => {
@@ -137,6 +142,7 @@ describe.each([
       publishedStores,
       storeProfiles,
       minimumOrderPolicy,
+      clock,
     };
     list = new PublishedStoreList(gate, deps);
     read = new PublishedStoreRead(gate, deps);
@@ -245,6 +251,31 @@ describe.each([
     expect(await list.execute(anonymous(), {})).toEqual({
       ok: false,
       error: { code: 'sellers.unavailable' },
+    });
+  });
+
+  it("reuses the Market's set of selling stores for 30 seconds, then asks again", async () => {
+    addStore('a-store', 'A', '2026-01-01T00:00:00Z');
+    await page();
+    addStore('b-store', 'B', '2026-01-01T00:00:00Z');
+
+    expect((await page()).total).toBe(1);
+    expect(identityCalls).toBe(1);
+
+    clock.advance(Temporal.Duration.from({ seconds: 30 }));
+
+    expect((await page()).total).toBe(2);
+    expect(identityCalls).toBe(2);
+  });
+
+  it('shows no store while identity is down: the may-sell contract answers no (fail closed)', async () => {
+    addStore('a-store', 'A', '2026-01-01T00:00:00Z');
+    identityDown = true;
+
+    expect((await page()).total).toBe(0);
+    expect(await read.execute(anonymous(), { slug: 'a-store' })).toEqual({
+      ok: false,
+      error: { code: 'sellers.store-not-found' },
     });
   });
 

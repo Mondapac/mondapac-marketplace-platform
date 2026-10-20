@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, Money, Result } from '@mondapac/shared-kernel';
 import {
   sellingSinceOf,
   type ApprovedStoreFacts,
@@ -26,6 +26,7 @@ export interface PublishedStoresDependencies extends SellingEligibilityDependenc
   readonly publishedStores: PublishedStoreRepository;
   readonly storeProfiles: StoreProfileRepository;
   readonly minimumOrderPolicy: MinimumOrderPolicy;
+  readonly clock: Clock;
 }
 
 export type PublishedStoresUnavailable = { readonly code: 'sellers.unavailable' };
@@ -57,7 +58,8 @@ export async function readApproved<T>(
 
 /**
  * The stores that may sell now (the may-sell contract, sellers design 7.2), in the given order.
- * The contract fails closed: a store it does not answer yes for is left out.
+ * A store the contract does not answer yes for is left out. A refused batch throws, so the caller
+ * answers a logged `sellers.unavailable` rather than a silently shorter list (Hassan, #449 L3).
  */
 export async function eligibleOnly(
   deps: PublishedStoresDependencies,
@@ -71,7 +73,7 @@ export async function eligibleOnly(
       context,
       batch.map((store) => store.sellerId),
     );
-    if (!answer.ok) continue;
+    if (!answer.ok) throw new Error('the may-sell contract refused the batch');
     for (const [sellerId, { eligible }] of answer.value) if (eligible) yes.add(sellerId);
   }
   return stores.filter((store) => yes.has(store.sellerId));

@@ -190,6 +190,7 @@ const PUBLISHED_STORE_PORTS = {
   publishedStores: true,
   storeProfiles: true,
   minimumOrderPolicy: true,
+  clock: true,
 } as const;
 
 /** The ports of the reviewer's approve and reject (slice 7a-decide). */
