@@ -1683,5 +1683,67 @@
     "error": "Notifications could not be loaded.",
     "retry": "Retry",
     "loading": "Loading notifications"
+  },
+  "step-up": {
+    "title": "Enter your 6-digit code",
+    "title-backup": "Enter a backup code",
+    "body": "{action} needs a fresh code. Open your authenticator app and enter the code for MondaPac.",
+    "body-backup": "{action} needs a fresh code. Each backup code works once.",
+    "action": {
+      "identity": {
+        "team": {
+          "invite-remove": "Inviting or removing a team member",
+          "change-role": "Changing a team member's role"
+        },
+        "second-factor": {
+          "manage": "Changing two-step verification"
+        }
+      },
+      "catalog": {
+        "offer": {
+          "delete": "Deleting an offer"
+        }
+      },
+      "pricing": {
+        "price": {
+          "change": "Changing a price"
+        }
+      },
+      "sellers": {
+        "store-terms": {
+          "change": "Changing your store details"
+        }
+      },
+      "payments": {
+        "payout-account": {
+          "change": "Changing your payout account"
+        }
+      },
+      "fallback": "This action"
+    },
+    "label": {
+      "code": "6-digit code",
+      "backup-code": "Backup code",
+      "digit": "Digit {position} of {total}"
+    },
+    "verify": "Verify",
+    "checking": "Checking…",
+    "cancel": "Cancel",
+    "use-backup": "Use a backup code instead",
+    "use-app": "Use your authenticator app instead",
+    "error": {
+      "required": "Enter the code.",
+      "incomplete": "Enter all {length} digits.",
+      "invalid": "That code didn't work. Enter the newest code from your app.",
+      "throttled": "Too many tries. You can try again in about {minutes, plural, one {# minute} other {# minutes}}.",
+      "throttled-clock": "({clock} left)",
+      "network": "You're offline or the connection dropped. Check it and try again.",
+      "unknown": "Something went wrong on our side. Try again."
+    },
+    "enrol": {
+      "title": "Set up two-step first",
+      "body": "{action} needs a code from an authenticator app, and two-step verification isn't set up on your account yet. Set it up in Security, then try again.",
+      "action": "Go to Security"
+    }
   }
 }

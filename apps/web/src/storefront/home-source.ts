@@ -1,4 +1,5 @@
 import 'server-only';
+import { formatMoney } from '../format/money.ts';
 import { apiGet, type ApiRead } from './api.ts';
 import { PRODUCTS, SAMPLE_CONTENT } from './sample-home.ts';
 import type {
@@ -8,7 +9,7 @@ import type {
   ProductCard,
   ShelfCard,
   PromoBanner,
-  SellerSummary,
+  HomeSeller,
 } from './types.ts';
 
 // The home page's read of the published layout (`GET storefront/pages/home`, PR #401), the live
@@ -19,15 +20,14 @@ import type {
 // fallback is on (STOREFRONT_SAMPLE_DATA, below); with it off the section is left out.
 //
 // Not in the API yet, so left off the cards: seller names, prices of best sellers and category
-// shelves (no add button either), photos, certification seals. The sellers near you section is
-// left out until the seller public read merges.
+// shelves (no add button either), photos, certification seals, store delivery windows and logos.
 // The info strip, text block and image-text modules have no design on the buyer site yet and are
 // skipped.
 
 export interface HomeContent {
   readonly sections: readonly HomeSection[];
   readonly categories: readonly Category[];
-  readonly sellers: readonly SellerSummary[];
+  readonly sellers: readonly HomeSeller[];
 }
 
 /** The ready-made banner images the buyer app holds, by their layout key. */
@@ -64,6 +64,7 @@ const SAMPLE_SHELVES: Readonly<Record<'bestsellers' | 'specials', readonly Produ
 const DEFAULT_TITLE = {
   bestsellers: 'Best sellers',
   specials: 'Special prices this week',
+  sellers: 'Sellers near you',
 } as const;
 
 type Json = Readonly<Record<string, unknown>>;
@@ -268,17 +269,66 @@ function shelfPlan(config: Json, categories: ReturnType<typeof categoriesOf>): S
 export interface HomeReads {
   readonly page: ApiRead<unknown>;
   readonly tree: ApiRead<unknown>;
-  /** By the shelf path, as {@link shelfPaths} lists them. */
+  /** Shelf and store-list answers by their path, as {@link shelfPaths} lists them. */
   readonly shelves: ReadonlyMap<string, ApiRead<unknown>>;
 }
 
-/** The shelf reads a published home page needs. */
+const SELLERS_LIMIT_MAX = 12;
+
+/** The store-list read of a sellers-near-you module (`GET sellers/stores`, PR #449). */
+const storesPath = (config: Json): string =>
+  `sellers/stores?pageSize=${limitOf(config.limit, 8, SELLERS_LIMIT_MAX)}`;
+
+/** The locale minimum-order lines are formatted in (one English catalogue, src/i18n). */
+const LOCALE = 'en';
+
+/**
+ * The store list as the home page's seller tiles: slug, name and the minimum-order line. The API
+ * gives no delivery window or logo yet, so the tile shows the initials and no window. A minimum
+ * that cannot be told now (absent) shows no line, never "No minimum order".
+ */
+export function storesOf(body: unknown): HomeSeller[] {
+  if (!isObject(body) || !Array.isArray(body.items)) return [];
+  const stores: HomeSeller[] = [];
+  for (const item of body.items as unknown[]) {
+    if (!isObject(item) || typeof item.slug !== 'string' || !/^[a-z0-9-]{1,80}$/u.test(item.slug)) {
+      continue;
+    }
+    const name = textOf(item.name, 80);
+    if (name === undefined || stores.some((s) => s.id === item.slug)) continue;
+    const minimum = item.minimumOrder === null ? null : moneyOf(item.minimumOrder);
+    const initials = name
+      .split(/\s+/u)
+      .slice(0, 2)
+      .map((word) => Array.from(word)[0] ?? '')
+      .join('')
+      .toUpperCase();
+    stores.push({
+      id: item.slug,
+      name,
+      initials,
+      ...(item.minimumOrder === null
+        ? { minimumOrder: 'No minimum order' }
+        : minimum === undefined || minimum === null
+          ? {}
+          : { minimumOrder: `${formatMoney(minimum, LOCALE, { whole: true })} minimum order` }),
+    });
+  }
+  return stores;
+}
+
+/** The shelf and store-list reads a published home page needs. */
 export function shelfPaths(page: ApiRead<unknown>, tree: ApiRead<unknown>): string[] {
   const placed = page.kind === 'ok' ? placedModules(page.body) : null;
   const categories = categoriesOf(tree.kind === 'ok' ? tree.body : null);
   const paths = (placed ?? [])
-    .filter((m) => m.module === 'product-shelf')
-    .map((m) => shelfPlan(m.config, categories)?.path)
+    .map((m) =>
+      m.module === 'product-shelf'
+        ? shelfPlan(m.config, categories)?.path
+        : m.module === 'sellers-near-you'
+          ? storesPath(m.config)
+          : undefined,
+    )
     .filter((path) => path !== undefined);
   return [...new Set(paths)];
 }
@@ -290,6 +340,7 @@ export function homeFrom(reads: HomeReads, fallback: boolean): HomeContent {
   const categories = categoriesOf(reads.tree.kind === 'ok' ? reads.tree.body : null);
   const sections: HomeSection[] = [];
   let shownCategories: readonly Category[] = [];
+  let sellers: readonly HomeSeller[] = [];
   let bannerCount = 0;
   for (const m of placed) {
     switch (m.module) {
@@ -330,16 +381,23 @@ export function homeFrom(reads: HomeReads, fallback: boolean): HomeContent {
         }
         break;
       }
-      case 'sellers-near-you':
-        // Left out until the seller public read merges: sample stores beside real products would
-        // send buyers to shops that do not exist.
+      case 'sellers-near-you': {
+        // Real stores only: sample stores beside real products would send buyers to shops that
+        // do not exist, so an empty or failed list leaves the section out.
+        const read = reads.shelves.get(storesPath(m.config));
+        const stores = read?.kind === 'ok' ? storesOf(read.body) : [];
+        if (stores.length === 0) break;
+        sellers = stores;
+        const title = textOf(m.config.title, 80) ?? DEFAULT_TITLE.sellers;
+        sections.push({ kind: 'sellers', title, href: '/sellers' });
         break;
+      }
       default:
         break;
     }
   }
   if (sections.length === 0 && fallback) return SAMPLE_HOME;
-  return { sections, categories: shownCategories, sellers: [] };
+  return { sections, categories: shownCategories, sellers };
 }
 
 /** A read of one public route, as `apiGet` answers it. */

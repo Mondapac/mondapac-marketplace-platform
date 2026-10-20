@@ -13,18 +13,24 @@ export const POOL_IDLE_TIMEOUT_MS = 30_000;
  * at most 2 s to obtain a connection for every statement, so pool exhaustion fails fast in a
  * read-only unit too, and an explicit maximum (`DATABASE_POOL_MAX`). No statement name
  * generator: the application never uses named prepared statements (data platform.md 10.9).
+ * `connectionWaitMs` is for the database test harness alone; the application keeps 2 s.
  */
-export function poolConfigOf(config: AppConfig): PoolConfig {
+export function poolConfigOf(
+  config: AppConfig,
+  connectionWaitMs: number = CONNECTION_WAIT_MS,
+): PoolConfig {
   return {
     connectionString: config.databaseUrl,
     max: config.databasePoolMax,
-    connectionTimeoutMillis: CONNECTION_WAIT_MS,
+    connectionTimeoutMillis: connectionWaitMs,
     idleTimeoutMillis: POOL_IDLE_TIMEOUT_MS,
   };
 }
 
-/** Client options a test may add (query events); never the adapter. */
-export type PrismaRootOptions = Omit<Prisma.PrismaClientOptions, 'adapter' | 'accelerateUrl'>;
+/** Client options a test may add (query events, a longer connection wait); never the adapter. */
+export type PrismaRootOptions = Omit<Prisma.PrismaClientOptions, 'adapter' | 'accelerateUrl'> & {
+  readonly connectionWaitMs?: number;
+};
 
 /**
  * The base client, without the market guard (P 3.3). Visible inside `platform/persistence/`
@@ -33,8 +39,8 @@ export type PrismaRootOptions = Omit<Prisma.PrismaClientOptions, 'adapter' | 'ac
  * later the relay and the scheduler lock, each in short transactions of their own.
  */
 export class PrismaRoot extends PrismaClient implements OnModuleDestroy {
-  constructor(config: AppConfig, options: PrismaRootOptions = {}) {
-    super({ ...options, adapter: new PrismaPg(poolConfigOf(config)) });
+  constructor(config: AppConfig, { connectionWaitMs, ...options }: PrismaRootOptions = {}) {
+    super({ ...options, adapter: new PrismaPg(poolConfigOf(config, connectionWaitMs)) });
   }
 
   async onModuleDestroy(): Promise<void> {

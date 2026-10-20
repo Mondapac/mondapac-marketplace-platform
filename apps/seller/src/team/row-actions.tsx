@@ -4,7 +4,7 @@ import { Banner, Button, Dialog, Menu, type MenuItem } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
-import { callApi } from '../api/client.ts';
+import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { useNotice } from './notice.tsx';
 import { ChangeRoleDialog } from './role-dialog.tsx';
 import type { ActionHint, SellerRole } from './types.ts';
@@ -91,6 +91,7 @@ export function RowActions({
   const router = useRouter();
   const notify = useNotice();
   const messageFor = useFailureMessage();
+  const callGuarded = useGuardedCall();
   const [asking, setAsking] = useState<ActionDef | null>(null);
   const [changingRole, setChangingRole] = useState(false);
   const [pending, setPending] = useState(false);
@@ -103,9 +104,10 @@ export function RowActions({
     inFlight.current = true;
     setPending(true);
     setProblem(null);
-    const result = await callApi('POST', action.path, {}, csrfToken);
+    const result = await callGuarded('POST', action.path, {}, csrfToken);
     inFlight.current = false;
     setPending(false);
+    if (isStepUpCancelled(result)) return;
     if (result.ok) {
       setAsking(null);
       notify({ tone: 'success', text: t(`toast.${action.id}`, { name: target.name }) });
