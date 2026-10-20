@@ -104,8 +104,9 @@ describe('seller sign-up rules', () => {
 });
 
 describe('seller sign-up server actions', () => {
-  it('checks the input again and answers the same for every valid address', async () => {
-    await expect(signUpSeller(GOOD)).resolves.toEqual({ kind: 'accepted' });
+  it('checks the input again before any call; not connected to the API, a valid form fails', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    await expect(signUpSeller(GOOD)).resolves.toEqual({ kind: 'failed' });
     await expect(signUpSeller({ ...GOOD, password: 'short' })).resolves.toEqual({
       kind: 'invalid',
       fields: { password: 'password-short' },
@@ -114,7 +115,17 @@ describe('seller sign-up server actions', () => {
       kind: 'failed',
     });
     await expect(signUpSeller(null)).resolves.toEqual({ kind: 'failed' });
-    await expect(resendSellerEmail(GOOD.email)).resolves.toEqual({ kind: 'accepted' });
+    await expect(resendSellerEmail(GOOD.email)).resolves.toEqual({ kind: 'failed' });
+    // Nothing personal is logged: only the message and the route.
+    expect(log.mock.calls.map(([line]) => JSON.parse(String(line)) as unknown)).toEqual([
+      { msg: 'storefront.seller-sign-up.off', route: 'sign-up', reason: 'not-connected' },
+      {
+        msg: 'storefront.seller-sign-up.off',
+        route: 'verification-email',
+        reason: 'not-connected',
+      },
+    ]);
+    log.mockRestore();
     await expect(resendSellerEmail(42)).resolves.toEqual({ kind: 'failed' });
     await expect(resendSellerEmail('not-an-address')).resolves.toEqual({ kind: 'failed' });
     await expect(resendSellerEmail(`${'a'.repeat(250)}@b.co`)).resolves.toEqual({
