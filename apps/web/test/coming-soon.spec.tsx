@@ -103,7 +103,10 @@ describe('coming soon pages', () => {
       expect(
         within(main).getByRole('link', { name: 'Go to the home page' }).getAttribute('href'),
       ).toBe('/');
-      expect(within(main).getByRole('button', { name: 'Browse products' })).toBeTruthy();
+      // The Browse products page does not offer a button to itself.
+      expect(within(main).queryAllByRole('button', { name: 'Browse products' })).toHaveLength(
+        page === 'browse' ? 0 : 1,
+      );
     },
   );
 

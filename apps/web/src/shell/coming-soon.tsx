@@ -47,7 +47,7 @@ export async function ComingSoon({ page }: { readonly page: ComingSoonPage }) {
         <Link className="btn" href="/">
           {t('home')}
         </Link>
-        <BrowseCrumb className="btn ghost" label={t('browse')} />
+        {page === 'browse' ? null : <BrowseCrumb className="btn ghost" label={t('browse')} />}
       </div>
     </div>
   );
