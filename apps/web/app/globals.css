@@ -629,6 +629,20 @@ svg {
 .rail .cta .ico {
   color: var(--sf-white);
 }
+/* One line at 50px whatever the text size and scrollbar (john, 20 Oct 2026). */
+.rail .cta {
+  gap: 8px;
+  padding: 0 10px;
+  font-size: 15px;
+  white-space: nowrap;
+}
+.rail .cta .ico {
+  flex: none;
+}
+.rail .cta .rt .ico {
+  width: 16px;
+  height: 16px;
+}
 .rail hr {
   border: 0;
   border-top: 1px solid var(--sf-line);
@@ -646,6 +660,9 @@ svg {
     top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px));
     height: calc(100dvh - var(--sf-header-height) - env(safe-area-inset-top, 0px));
     overflow-y: auto;
+    padding-inline-end: 8px;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
   }
 }
 .main {
