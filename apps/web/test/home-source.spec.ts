@@ -6,6 +6,7 @@ import {
   moneyOf,
   safeHref,
   sampleFallback,
+  storesOf,
 } from '../src/storefront/home-source.ts';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import type { HomeSection } from '../src/storefront/types.ts';
@@ -155,6 +156,7 @@ describe('home source: real data', () => {
       'catalog/categories',
       'search/bestsellers?limit=12',
       'search/specials?limit=12',
+      'sellers/stores?pageSize=8',
       'storefront/pages/home',
     ]);
 
@@ -219,7 +221,7 @@ describe('home source: real data', () => {
         },
       ],
     });
-    // No sellers near you until the seller public read merges.
+    // The store list failed (no answer here): no sellers section, never sample stores.
     expect(home.sellers).toEqual([]);
   });
 
@@ -351,5 +353,82 @@ describe('home source: checks on each answer', () => {
       kind: 'promos',
       banners: [{ id: 'b1', variant: 'primary', title: 'Hello', body: '', images: [] }],
     });
+  });
+});
+
+describe('home source: sellers near you', () => {
+  const STORES = {
+    items: [
+      {
+        slug: 'kedron-halal',
+        name: 'Kedron halal butchers',
+        serviceAreaCode: 'greater-brisbane',
+        sellingSince: 2026,
+        minimumOrder: { amount: '4000', currency: 'AUD' },
+      },
+      {
+        slug: 'nz-bakery',
+        name: 'Ponsonby Bakery',
+        serviceAreaCode: 'auckland',
+        sellingSince: 2025,
+        minimumOrder: null,
+      },
+      {
+        slug: 'no-minimum-told',
+        name: 'Inala Spice House',
+        serviceAreaCode: 'x',
+        sellingSince: 2026,
+      },
+      { slug: 'Bad Slug', name: 'Dropped', serviceAreaCode: 'x', sellingSince: 2026 },
+      { slug: 'kedron-halal', name: 'Duplicate', serviceAreaCode: 'x', sellingSince: 2026 },
+    ],
+    total: 5,
+    page: 1,
+    pageSize: 8,
+  };
+
+  it('shows the stores of the public store list, with their minimum-order line', async () => {
+    serve({ ...REAL, 'sellers/stores': STORES });
+    const home = await loadWith(NO_SAMPLE);
+    expect(home.sections.map((s) => s.kind)).toContain('sellers');
+    expect(calls).toContain('sellers/stores?pageSize=8');
+    expect(home.sellers).toEqual([
+      {
+        id: 'kedron-halal',
+        name: 'Kedron halal butchers',
+        initials: 'KH',
+        minimumOrder: 'A$40 minimum order',
+      },
+      {
+        id: 'nz-bakery',
+        name: 'Ponsonby Bakery',
+        initials: 'PB',
+        minimumOrder: 'No minimum order',
+      },
+      // A minimum that cannot be told shows no line, never "No minimum order".
+      { id: 'no-minimum-told', name: 'Inala Spice House', initials: 'IS' },
+    ]);
+  });
+
+  it('formats a minimum in its own currency', () => {
+    const [store] = storesOf({
+      items: [
+        {
+          slug: 'nz',
+          name: 'Ponsonby',
+          minimumOrder: { amount: '2500', currency: 'NZD' },
+        },
+      ],
+    });
+    expect(store?.minimumOrder).toBe('NZ$25 minimum order');
+  });
+
+  it('leaves the section out when the list is empty or fails, whatever the fallback says', async () => {
+    serve({ ...REAL, 'sellers/stores': { items: [], total: 0, page: 1, pageSize: 8 } });
+    expect((await loadWith(ENV)).sections.map((s) => s.kind)).not.toContain('sellers');
+    serve({ ...REAL, 'sellers/stores': 503 });
+    const failed = await loadWith(ENV);
+    expect(failed.sections.map((s) => s.kind)).not.toContain('sellers');
+    expect(failed.sellers).toEqual([]);
   });
 });

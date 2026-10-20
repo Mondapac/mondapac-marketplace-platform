@@ -71,6 +71,13 @@ describe('poolConfigOf (3.1 row 8; data platform.md 10.9)', () => {
     });
   });
 
+  it('takes a longer connection wait only when one is passed (database test harness)', () => {
+    const config = testAppConfig();
+
+    expect(poolConfigOf(config, 10_000).connectionTimeoutMillis).toBe(10_000);
+    expect(poolConfigOf(config).connectionTimeoutMillis).toBe(2000);
+  });
+
   it('defaults the maximum to 10 and never names prepared statements', () => {
     const pool = poolConfigOf(testAppConfig());
 

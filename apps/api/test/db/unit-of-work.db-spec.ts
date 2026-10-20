@@ -22,6 +22,7 @@ import {
   UnmintedMarketContextError,
 } from '../../src/platform/unit-of-work/errors';
 import {
+  CONNECTION_WAIT_MS,
   UNIT_OF_WORK,
   type UnitOfWork,
   type UnitOfWorkOptions,
@@ -32,6 +33,7 @@ import {
   auditRow,
   createPersistence,
   gate,
+  holdRetriesUntil,
   marketOf,
   modelMap,
   otherMarketOf,
@@ -288,8 +290,11 @@ describe('UnitOfWork (database integration)', () => {
 
     describe('retry (P 3.1 row 7)', () => {
       it('runs two serialisable units in conflict to success, one of them retried once', async () => {
-        // A fixed pause, longer than the winner's commit, so the retry reads the committed row.
-        const retrying = onLockingDatabase({ pause: () => sleep(150) });
+        // The loser retries only once the winner has settled, so the retry reads the committed
+        // row. A fixed pause raced a slow commit on a busy runner and cost a fourth attempt.
+        const retrying = onLockingDatabase();
+        const oneSettled = gate();
+        const restorePause = holdRetriesUntil(retrying.unitOfWork, oneSettled.opened);
         const targetId = `write-skew-${randomUUID()}`;
         const bothRead = gate();
         let reads = 0;
@@ -313,7 +318,11 @@ describe('UnitOfWork (database integration)', () => {
             { isolation: 'serializable' },
           );
 
-        const results = await Promise.all([unit(), unit()]).finally(() => retrying.close());
+        const settles = () => unit().finally(() => oneSettled.open());
+        const results = await Promise.all([settles(), settles()]).finally(() => {
+          restorePause();
+          return retrying.close();
+        });
 
         expect(results.map((r) => r.ok && r.value).sort()).toEqual([0, 1]);
         expect(attempts).toBe(3);
@@ -413,7 +422,11 @@ describe('UnitOfWork (database integration)', () => {
       it.each([{ readOnly: false }, { readOnly: true }])(
         'fails within about 2 s when the pool is exhausted (%j)',
         async (options) => {
-          const small = onLockingDatabase({ env: { DATABASE_POOL_MAX: '1' } });
+          // The application's own wait, not the harness's longer one.
+          const small = onLockingDatabase({
+            env: { DATABASE_POOL_MAX: '1' },
+            connectionWaitMs: CONNECTION_WAIT_MS,
+          });
           const holding = gate();
           const held = gate();
           const holder = small.unitOfWork.run(market, async () => {

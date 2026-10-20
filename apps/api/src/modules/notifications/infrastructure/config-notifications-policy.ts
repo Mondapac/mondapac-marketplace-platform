@@ -1,6 +1,10 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { MarketRegistry } from '../../../platform/market-config/market-registry';
-import type { MailSender, NotificationsPolicy } from '../application/ports/notifications-policy';
+import type {
+  CartReminderSettings,
+  MailSender,
+  NotificationsPolicy,
+} from '../application/ports/notifications-policy';
 
 /** The Market's notifications settings, read from its configuration. */
 export class ConfigNotificationsPolicy implements NotificationsPolicy {
@@ -35,5 +39,15 @@ export class ConfigNotificationsPolicy implements NotificationsPolicy {
       return built.toString();
     };
     return { page: withToken(page), oneClick: withToken(oneClick) };
+  }
+
+  cartReminders(market: MarketContext): CartReminderSettings | null {
+    const settings = this.markets.get(market.marketId).notifications?.cartReminders;
+    if (settings === undefined) return null;
+    return {
+      mode: settings.mode,
+      cartPage: settings.cartPage,
+      testAccountIds: settings.testAccountIds ?? [],
+    };
   }
 }
