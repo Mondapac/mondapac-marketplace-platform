@@ -190,7 +190,15 @@
       "connecting": "Connecting to {provider}…",
       "social-failed": "We could not log you in with {provider}. Try again, or use your email below.",
       "social-agree": "If you are new, continuing creates your account and you agree to the <terms>Terms of use</terms> and <privacy>Privacy policy</privacy>.",
-      "or": "or use your email"
+      "or": "or use your email",
+      "problem": {
+        "wrong": "The email or password is not right. Check them and try again.",
+        "unverified": "Confirm your email first. We sent a link to your address when you signed up.",
+        "disabled": "This account is not available. Contact support if you think this is a mistake.",
+        "throttled": "Too many attempts. Wait a few minutes and try again.",
+        "failed": "We could not log you in. Try again in a moment.",
+        "sign-up": "Creating an account here is coming soon."
+      }
     },
     "overview": {
       "hello": "Hello, {name}",
@@ -273,17 +281,16 @@
       "none-body": "Add one to check out faster.",
       "default": "Default",
       "edit": "Edit",
-      "edit-label": "Edit {label}",
+      "edit-label": "Edit {name}",
       "make-default": "Make default",
-      "make-default-label": "Make {label} the default",
+      "make-default-label": "Make {name} the default",
       "delete": "Delete",
-      "delete-label": "Delete {label}",
+      "delete-label": "Delete {name}",
       "delete-title": "Delete this address?",
       "keep": "Keep",
       "outside": "Outside our delivery area",
-      "label": "Label",
-      "label-hint": "Home, Work",
-      "full-name": "Full name",
+      "first-name": "First name",
+      "last-name": "Last name",
       "street": "Street address and unit",
       "suburb": "Suburb",
       "state": "State",
@@ -292,15 +299,18 @@
       "mobile-hint": "The seller or driver may call this number.",
       "save": "Save address",
       "cancel": "Cancel",
-      "fallback-label": "Address",
       "postcode-bad": "Enter a 4-digit postcode.",
       "postcode-outside": "We do not deliver to {postcode} yet. We currently deliver to {area}. You can still save this address.",
       "missing": {
-        "name": "Enter the full name.",
+        "firstName": "Enter the first name.",
+        "lastName": "Enter the last name.",
         "street": "Enter the street address.",
         "suburb": "Enter the suburb.",
         "phone": "Enter a mobile number."
-      }
+      },
+      "field-bad": "Check this field.",
+      "limit": "You have reached the most addresses you can save. Delete one to add another.",
+      "failed": "We could not save that. Try again in a moment."
     },
     "lists": {
       "saved": "Saved for later ({count})",
@@ -358,7 +368,17 @@
       "privacy": "Privacy and data",
       "cookies": "Cookie settings",
       "download": "Download my data",
-      "download-sent": "We will email a copy of your data to {email}."
+      "download-sent": "We will email a copy of your data to {email}.",
+      "name-hint": "Sellers you order from see your first name and last initial.",
+      "name-length": "Use between 1 and 100 characters.",
+      "name-characters": "Use letters, numbers and common punctuation only.",
+      "save-failed": "We could not save your changes. Try again in a moment.",
+      "email-later": "You cannot change your email here yet. This is coming later.",
+      "current-incorrect": "That is not your current password.",
+      "rejected": "That password is not allowed. Choose a different one.",
+      "password-invalid": "Check the passwords and try again.",
+      "password-throttled": "Too many attempts. Wait a few minutes and try again.",
+      "password-failed": "We could not update your password. Try again in a moment."
     }
   },
   "personalization": {

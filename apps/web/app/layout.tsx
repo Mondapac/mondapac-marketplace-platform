@@ -18,6 +18,7 @@ import {
   loadCheckout,
   loadDeliveryLocator,
   loadStorefrontContent,
+  storefrontIsLive,
 } from '../src/storefront/source.ts';
 import './globals.css';
 
@@ -67,6 +68,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             deliverTo={deliverToOf(jar.get(DELIVER_TO_COOKIE)?.value)}
             consent={consentOf(jar.get(CONSENT_COOKIE)?.value)}
             signIn={checkout.customer}
+            live={storefrontIsLive()}
             assistant={assistant}
           >
             {children}

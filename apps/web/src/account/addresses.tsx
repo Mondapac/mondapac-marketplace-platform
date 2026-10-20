@@ -6,40 +6,39 @@ import { inServiceArea } from '../checkout/checkout-page.tsx';
 import { Icon } from '../icons/icon.tsx';
 import type { SavedAddress, ServiceArea } from '../storefront/types.ts';
 import { AccountEmpty, AccountFrame } from './account-area.tsx';
-import { useAccount } from './account-state.tsx';
+import { addressLine, recipientName } from './address-line.ts';
+import { useAccount, type SaveOutcome } from './account-state.tsx';
 import { AcField } from './fields.tsx';
 
 interface Draft {
-  readonly label: string;
-  readonly name: string;
+  readonly firstName: string;
+  readonly lastName: string;
   readonly street: string;
   readonly suburb: string;
   readonly postcode: string;
   readonly phone: string;
 }
 
-/** Splits a saved one-line address ("12 Example Street, Kedron QLD 4031") into form fields. */
 function draftOf(address: SavedAddress | null): Draft {
-  if (!address) return { label: '', name: '', street: '', suburb: '', postcode: '', phone: '' };
-  const cut = address.line.lastIndexOf(', ');
-  const street = cut < 0 ? address.line : address.line.slice(0, cut);
-  const words = cut < 0 ? [] : address.line.slice(cut + 2).split(' ');
-  const postcode = /^\d+$/.test(words.at(-1) ?? '') ? (words.pop() ?? '') : '';
-  words.pop(); // the state
   return {
-    label: address.label,
-    name: address.name,
-    street,
-    suburb: words.join(' '),
-    postcode,
-    phone: address.phone,
+    firstName: address?.firstName ?? '',
+    lastName: address?.lastName ?? '',
+    street: address?.street ?? '',
+    suburb: address?.suburb ?? '',
+    postcode: address?.postcode ?? '',
+    phone: address?.phone ?? '',
   };
 }
 
-/** The postcode at the end of a saved line, for the outside-area mark. */
-function postcodeOf(line: string): string {
-  return /(\d{4})$/.exec(line)?.[1] ?? '';
-}
+/** The body field the API names in a refusal, as the form's field. */
+const DRAFT_OF_PATH: Readonly<Record<string, keyof Draft>> = {
+  recipientFirstName: 'firstName',
+  recipientLastName: 'lastName',
+  line1: 'street',
+  suburb: 'suburb',
+  postcode: 'postcode',
+  phone: 'phone',
+};
 
 /**
  * Addresses: the address book with Add, Edit, Make default and Delete (asked first). An address
@@ -51,6 +50,15 @@ export function AccountAddresses() {
   const area = source.serviceArea;
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // A delete or make-default the API could not do.
+  const [failed, setFailed] = useState(false);
+  const change = (outcome: Promise<SaveOutcome>, done?: () => void) => {
+    setFailed(false);
+    void outcome.then((result) => {
+      if (result.ok) done?.();
+      else setFailed(true);
+    });
+  };
   // After the delete question closes, focus goes to this control (by id) instead of the page.
   const [focusTo, setFocusTo] = useState<string | null>(null);
   useEffect(() => {
@@ -93,6 +101,12 @@ export function AccountAddresses() {
           {t('addresses.add')}
         </button>
       </div>
+      {failed ? (
+        <p className="ac-note ac-warn" role="alert">
+          <Icon name="info" />
+          <span>{t('addresses.failed')}</span>
+        </p>
+      ) : null}
       {addresses.length === 0 ? (
         <AccountEmpty icon="pin" title={t('addresses.none')}>
           <p>{t('addresses.none-body')}</p>
@@ -103,16 +117,15 @@ export function AccountAddresses() {
             <article
               className={a.isDefault ? 'ac-ad def' : 'ac-ad'}
               key={a.id}
-              aria-label={a.label}
+              aria-label={recipientName(a)}
             >
               <div className="ac-row">
-                <b>{a.label}</b>
+                <b>{recipientName(a)}</b>
                 {a.isDefault ? <span className="ac-badge ok">{t('addresses.default')}</span> : null}
               </div>
-              <span>{a.name}</span>
-              <span>{a.line}</span>
+              <span>{addressLine(a, area.regionCode)}</span>
               <span>{a.phone}</span>
-              {inServiceArea(area, postcodeOf(a.line)) ? null : (
+              {inServiceArea(area, a.postcode) ? null : (
                 <span className="ac-badge wait ac-start">{t('addresses.outside')}</span>
               )}
               {deleting === a.id ? (
@@ -128,9 +141,10 @@ export function AccountAddresses() {
                       type="button"
                       onClick={() => {
                         const next = addresses[i + 1] ?? addresses[i - 1];
-                        deleteAddress(a.id);
-                        setDeleting(null);
-                        setFocusTo(next ? `address-delete-${next.id}` : 'address-add');
+                        change(deleteAddress(a.id), () => {
+                          setDeleting(null);
+                          setFocusTo(next ? `address-delete-${next.id}` : 'address-add');
+                        });
                       }}
                     >
                       {t('addresses.delete')}
@@ -153,7 +167,7 @@ export function AccountAddresses() {
                   <button
                     className="lnk"
                     type="button"
-                    aria-label={t('addresses.edit-label', { label: a.label })}
+                    aria-label={t('addresses.edit-label', { name: recipientName(a) })}
                     onClick={() => setEditing(a.id)}
                   >
                     {t('addresses.edit')}
@@ -162,8 +176,8 @@ export function AccountAddresses() {
                     <button
                       className="lnk"
                       type="button"
-                      aria-label={t('addresses.make-default-label', { label: a.label })}
-                      onClick={() => makeDefault(a.id)}
+                      aria-label={t('addresses.make-default-label', { name: recipientName(a) })}
+                      onClick={() => change(makeDefault(a.id))}
                     >
                       {t('addresses.make-default')}
                     </button>
@@ -172,7 +186,7 @@ export function AccountAddresses() {
                     id={`address-delete-${a.id}`}
                     className="lnk"
                     type="button"
-                    aria-label={t('addresses.delete-label', { label: a.label })}
+                    aria-label={t('addresses.delete-label', { name: recipientName(a) })}
                     onClick={() => setDeleting(a.id)}
                   >
                     {t('addresses.delete')}
@@ -206,11 +220,19 @@ function AddressForm({
   useEffect(() => {
     if (tries > 0) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [tries]);
+  const [problem, setProblem] = useState<SaveOutcome | null>(null);
+  const [pending, setPending] = useState(false);
   const set = (key: keyof Draft) => (text: string) => setDraft({ ...draft, [key]: text });
-  const missing = (key: 'name' | 'street' | 'suburb' | 'phone') =>
+  const missing = (key: 'firstName' | 'lastName' | 'street' | 'suburb' | 'phone') =>
     tried && draft[key].trim() === '' ? t(`missing.${key}`) : undefined;
+  // Fields the API refused (live), by form field.
+  const refused = (key: keyof Draft) =>
+    problem && !problem.ok && problem.fields.some((f) => DRAFT_OF_PATH[f.path] === key)
+      ? t('field-bad')
+      : undefined;
   const postcode = draft.postcode.trim();
-  const postcodeError = tried && !/^\d{4}$/.test(postcode) ? t('postcode-bad') : undefined;
+  const postcodeError =
+    tried && !/^\d{4}$/.test(postcode) ? t('postcode-bad') : refused('postcode');
   const outside = /^\d{4}$/.test(postcode) && !inServiceArea(area, postcode);
 
   return (
@@ -222,36 +244,50 @@ function AddressForm({
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          const required: (keyof Draft)[] = ['name', 'street', 'suburb', 'phone'];
+          const required: (keyof Draft)[] = ['firstName', 'lastName', 'street', 'suburb', 'phone'];
           if (required.some((k) => draft[k].trim() === '') || !/^\d{4}$/.test(postcode)) {
             setTries(tries + 1);
             return;
           }
-          saveAddress({
-            id: address?.id ?? `address-${Date.now()}`,
-            label: draft.label.trim() || t('fallback-label'),
-            name: draft.name.trim(),
-            line: `${draft.street.trim()}, ${draft.suburb.trim()} ${area.regionCode} ${postcode}`,
+          setPending(true);
+          setProblem(null);
+          void saveAddress({
+            id: address?.id ?? '',
+            firstName: draft.firstName.trim(),
+            lastName: draft.lastName.trim(),
+            street: draft.street.trim(),
+            line2: address?.line2 ?? null,
+            suburb: draft.suburb.trim(),
+            postcode,
             phone: draft.phone.trim(),
+            deliveryNotes: address?.deliveryNotes ?? null,
             isDefault: address?.isDefault ?? false,
+          }).then((result) => {
+            setPending(false);
+            if (result.ok) onDone();
+            else {
+              setProblem(result);
+              // The fields the API refused take the keyboard, as a refused local check does.
+              setTries((n) => n + 1);
+            }
           });
-          onDone();
         }}
       >
         <div className="ac-f2">
           <AcField
-            label={t('label')}
-            placeholder={t('label-hint')}
-            value={draft.label}
-            onText={set('label')}
+            label={t('first-name')}
+            autoComplete="given-name"
+            value={draft.firstName}
+            onText={set('firstName')}
+            error={missing('firstName') ?? refused('firstName')}
             autoFocus
           />
           <AcField
-            label={t('full-name')}
-            autoComplete="name"
-            value={draft.name}
-            onText={set('name')}
-            error={missing('name')}
+            label={t('last-name')}
+            autoComplete="family-name"
+            value={draft.lastName}
+            onText={set('lastName')}
+            error={missing('lastName') ?? refused('lastName')}
           />
         </div>
         <AcField
@@ -259,7 +295,7 @@ function AddressForm({
           autoComplete="address-line1"
           value={draft.street}
           onText={set('street')}
-          error={missing('street')}
+          error={missing('street') ?? refused('street')}
         />
         <div className="ac-f2">
           <AcField
@@ -267,7 +303,7 @@ function AddressForm({
             autoComplete="address-level2"
             value={draft.suburb}
             onText={set('suburb')}
-            error={missing('suburb')}
+            error={missing('suburb') ?? refused('suburb')}
           />
           <AcField label={t('state')} value={area.region} readOnly />
           <AcField
@@ -293,10 +329,16 @@ function AddressForm({
           value={draft.phone}
           onText={set('phone')}
           hint={t('mobile-hint')}
-          error={missing('phone')}
+          error={missing('phone') ?? refused('phone')}
         />
+        {problem && !problem.ok ? (
+          <p className="ac-note ac-warn" role="alert">
+            <Icon name="info" />
+            <span>{t(problem.reason === 'limit' ? 'limit' : 'failed')}</span>
+          </p>
+        ) : null}
         <div className="ac-acts">
-          <button className="btn" type="submit">
+          <button className="btn" type="submit" disabled={pending}>
             {t('save')}
           </button>
           <button className="btn ghost" type="button" onClick={onDone}>

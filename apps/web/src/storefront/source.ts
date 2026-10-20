@@ -1,5 +1,6 @@
 import 'server-only';
 import type { AssistantSetup } from '../assistant/assistant.ts';
+import { storefrontApiConfig } from './config.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
@@ -69,10 +70,20 @@ export async function loadSeller(slug: string): Promise<SellerShop | undefined> 
 
 /**
  * The signed-in buyer's account: profile, orders, address book, saved lists and email choices.
- * Sample data until the account backend (orders read, profile, password, saved lists) exists.
+ * Orders, saved lists and email choices are sample data until their backends exist; the profile,
+ * session and address book come from the API in live mode (see `live`).
  */
 export async function loadAccount(): Promise<AccountSource> {
-  return Promise.resolve(SAMPLE_ACCOUNT);
+  return Promise.resolve({ ...SAMPLE_ACCOUNT, live: storefrontIsLive() });
+}
+
+/**
+ * Whether the storefront talks to the API (`API_BASE_URL` is set). The account pages and the
+ * shell's sign-in then use the customer routes through the same-origin relay; otherwise they run
+ * on sample data.
+ */
+export function storefrontIsLive(): boolean {
+  return storefrontApiConfig() !== null;
 }
 
 /**

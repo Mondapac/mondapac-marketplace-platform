@@ -221,9 +221,9 @@ describe('checkout', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     fireEvent.blur(screen.getByLabelText('Postcode'));
     expect(screen.getByRole('alert').textContent).toContain('We do not deliver to 42 yet.');
-    fireEvent.click(screen.getByRole('radio', { name: /Home/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /Alex Nguyen/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Deliver to this address' }));
-    expect(screen.getByText('Home: 12 Example Street, Kedron QLD 4031')).toBeTruthy();
+    expect(screen.getByText('Alex Nguyen: 12 Example Street, Kedron QLD 4031')).toBeTruthy();
     expect(
       screen.getByText(
         'Each seller prepares and delivers its own part of your order, so you may receive more than one delivery.',
@@ -322,7 +322,7 @@ describe('discount code, save for later and seller note (sample data)', () => {
       MET,
       true,
     );
-    fireEvent.click(screen.getByRole('radio', { name: /Home/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /Alex Nguyen/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Deliver to this address' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Add a note for this seller' })[0]!);
     const note = screen.getByLabelText(/^Note for Kedron Halal Butchers/);
