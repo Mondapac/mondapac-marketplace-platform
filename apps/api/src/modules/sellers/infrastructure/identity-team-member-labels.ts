@@ -1,5 +1,5 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
-import type { IdentityFacade } from '../../identity/contracts/identity.facade';
+import type { IdentityFacade } from '../../identity';
 import { SellerAccountAccessRefused } from '../application/ports/seller-account-directory';
 import type {
   TeamMemberLabel,
