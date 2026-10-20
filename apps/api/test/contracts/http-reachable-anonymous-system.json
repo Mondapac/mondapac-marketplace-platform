@@ -1,5 +1,10 @@
 [
   {
+    "name": "assistant.send-guest-message",
+    "rule": "anonymous",
+    "reason": "A guest's message to the buyer assistant: a guest has no account or session. The conversation answers only the assistant's own guest cookie that started it; Market settings decide whether guests may chat (off by default), and per-origin and per-guest message limits apply."
+  },
+  {
     "name": "assistant.view-storefront-assistant",
     "rule": "anonymous",
     "reason": "The storefront asks whether to show the buyer assistant to a visitor who may have no session; the answer is the safe subset only (on for this visitor, guests allowed, reply language, welcome text) and changes nothing."

@@ -1,12 +1,12 @@
 import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { RATE_LIMIT_CLASSES } from '../../src/platform/rate-limit/rate-limit.decorator';
 import {
-  RATE_LIMIT_CLASSES,
-  type RateLimitClass,
-} from '../../src/platform/rate-limit/rate-limit.decorator';
-import {
-  RATE_LIMIT_WINDOW_SECONDS,
+  SUBJECT_LIMIT_WINDOWS,
+  windowSecondsOf,
+  type CountedClass,
   type RateLimitCount,
   type RateLimitCounters,
+  type SubjectLimitClass,
 } from '../../src/platform/rate-limit/rate-limit-counters';
 
 /**
@@ -15,22 +15,26 @@ import {
  * instance per application, so each test application starts with empty counters.
  */
 export class MemoryRateLimitCounters implements RateLimitCounters {
-  readonly #limiters: Readonly<Record<RateLimitClass, RateLimiterMemory>>;
+  readonly #limiters: Readonly<Record<CountedClass, RateLimiterMemory>>;
 
   constructor() {
-    const limiters = {} as Record<RateLimitClass, RateLimiterMemory>;
-    for (const limitClass of RATE_LIMIT_CLASSES) {
+    const limiters = {} as Record<CountedClass, RateLimiterMemory>;
+    const counted: readonly CountedClass[] = [
+      ...RATE_LIMIT_CLASSES,
+      ...(Object.keys(SUBJECT_LIMIT_WINDOWS) as SubjectLimitClass[]),
+    ];
+    for (const limitClass of counted) {
       limiters[limitClass] = new RateLimiterMemory({
         keyPrefix: limitClass,
         points: Number.MAX_SAFE_INTEGER,
-        duration: RATE_LIMIT_WINDOW_SECONDS,
+        duration: windowSecondsOf(limitClass),
       });
     }
     this.#limiters = Object.freeze(limiters);
   }
 
-  async consume(limitClass: RateLimitClass, originKey: string): Promise<RateLimitCount> {
-    const counted = await this.#limiters[limitClass].consume(originKey);
+  async consume(limitClass: CountedClass, key: string): Promise<RateLimitCount> {
+    const counted = await this.#limiters[limitClass].consume(key);
     return { count: counted.consumedPoints, msBeforeNext: counted.msBeforeNext };
   }
 }

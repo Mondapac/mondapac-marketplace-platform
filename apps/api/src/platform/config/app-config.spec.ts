@@ -32,8 +32,11 @@ describe('loadAppConfig', () => {
       stripeWebhookSecrets: {},
       stripeConnectWebhookSecrets: {},
       clientAddressTrust: null,
-      assistantModelApiKey: null,
-      assistantModels: { fast: null, balanced: null },
+      assistantModels: {
+        apiKeys: {},
+        models: { fast: {}, balanced: {} },
+        prices: { fast: {}, balanced: {} },
+      },
       googleSignIn: null,
     });
   });
@@ -70,29 +73,59 @@ describe('loadAppConfig', () => {
     });
   });
 
-  describe('the buyer assistant model (key and tiers)', () => {
-    it('reads the key and the model id of each tier', () => {
+  describe('the buyer assistant model (per Market: key, tiers, prices)', () => {
+    it('reads each value per hosted Market, and the price in pico dollars per token', () => {
       const config = loadAppConfig({
-        HOSTED_MARKETS: 'AU',
-        ASSISTANT_MODEL_API_KEY: 'test-key-0123456789abcdef',
-        ASSISTANT_MODEL_FAST: 'provider-model-fast-1',
+        HOSTED_MARKETS: 'AU,NZ',
+        ASSISTANT_MODEL_API_KEY: 'AU=test-key-0123456789abcdef,NZ=test-key-nz-0123456789abc',
+        ASSISTANT_MODEL_FAST: 'AU=provider-model-fast-1',
+        ASSISTANT_MODEL_PRICE_FAST: 'AU=0.1/0.5,NZ=2/10.25',
       });
-      expect(config.assistantModelApiKey).toBe('test-key-0123456789abcdef');
-      expect(config.assistantModels).toEqual({ fast: 'provider-model-fast-1', balanced: null });
+      expect(config.assistantModels).toEqual({
+        apiKeys: { AU: 'test-key-0123456789abcdef', NZ: 'test-key-nz-0123456789abc' },
+        models: { fast: { AU: 'provider-model-fast-1' }, balanced: {} },
+        prices: {
+          fast: {
+            AU: { inputPicoUsd: 100_000, outputPicoUsd: 500_000 },
+            NZ: { inputPicoUsd: 2_000_000, outputPicoUsd: 10_250_000 },
+          },
+          balanced: {},
+        },
+      });
     });
 
     it.each([
-      ['ASSISTANT_MODEL_API_KEY', 'short'],
-      ['ASSISTANT_MODEL_API_KEY', 'has a space in it 0123456789'],
-      ['ASSISTANT_MODEL_FAST', 'bad model id'],
-      ['ASSISTANT_MODEL_BALANCED', '-leading-dash'],
+      ['ASSISTANT_MODEL_API_KEY', 'AU=short'],
+      ['ASSISTANT_MODEL_API_KEY', 'test-key-0123456789abcdef'],
+      ['ASSISTANT_MODEL_API_KEY', 'AU=has a space in it 0123456789'],
+      ['ASSISTANT_MODEL_FAST', 'AU=bad model id'],
+      ['ASSISTANT_MODEL_BALANCED', 'AU=-leading-dash'],
+      ['ASSISTANT_MODEL_PRICE_FAST', 'AU=0.1'],
+      ['ASSISTANT_MODEL_PRICE_BALANCED', 'AU=-1/2'],
     ])('refuses %s=%j without echoing it', (name, value) => {
       expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', [name]: value })).toThrow(name);
       try {
         loadAppConfig({ HOSTED_MARKETS: 'AU', [name]: value });
       } catch (error) {
-        expect(String((error as Error).message)).not.toContain(value);
+        expect(String((error as Error).message)).not.toContain(value.slice(3));
       }
+    });
+
+    it.each([
+      [
+        'a Market that is not hosted',
+        'NZ=test-key-0123456789abcdef',
+        'NZ is not in HOSTED_MARKETS',
+      ],
+      [
+        'a Market named twice',
+        'AU=test-key-0123456789abcdef,AU=test-key-0123456789abcdeg',
+        'AU is named twice',
+      ],
+    ])('refuses %s', (_label, value, issue) => {
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', ASSISTANT_MODEL_API_KEY: value })).toThrow(
+        issue,
+      );
     });
   });
 

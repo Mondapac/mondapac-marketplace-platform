@@ -31,6 +31,17 @@ export interface AssistantSettingsView {
   readonly models: readonly { readonly tier: ModelTier; readonly modelId: string | null }[];
   /** Options the screen shows disabled, with a reason, because they are not built yet. */
   readonly unavailableOptions: typeof UNAVAILABLE_OPTIONS;
+  /**
+   * Read-only figures for the tab (plan section 11): spend today and this month in micro US
+   * dollars (the caps are in cents), conversations started today, and the last time a cap
+   * switched the assistant off. Days are the Market's own calendar.
+   */
+  readonly spend: {
+    readonly todayMicroUsd: number;
+    readonly monthMicroUsd: number;
+    readonly conversationsToday: number;
+    readonly lastAutoOff: { readonly at: string; readonly cap: 'daily' | 'monthly' } | null;
+  };
 }
 
 /** What the storefront may read without a session: the safe subset only. */
@@ -70,17 +81,32 @@ function auditSnapshot(version: number, settings: AssistantSettings) {
 const isAdmin = (context: CallContext): boolean =>
   context.actor.kind === 'authenticated' && context.actor.population === 'admin';
 
-function viewOf(
+async function viewOf(
   deps: AssistantDependencies,
+  context: CallContext,
   version: number,
   settings: AssistantSettings,
-): AssistantSettingsView {
+): Promise<AssistantSettingsView> {
+  const { marketId } = context.market;
+  const totals = await deps.spend.totals(
+    context.market,
+    deps.calendar.dayOf(context.market, deps.clock.now()),
+  );
   return {
     version,
     settings,
-    apiKey: deps.runtime.apiKeyConfigured() ? 'set' : 'not-set',
-    models: MODEL_TIERS.map((tier) => ({ tier, modelId: deps.runtime.modelOf(tier) })),
+    apiKey: deps.runtime.apiKeyConfigured(marketId) ? 'set' : 'not-set',
+    models: MODEL_TIERS.map((tier) => ({ tier, modelId: deps.runtime.modelOf(marketId, tier) })),
     unavailableOptions: UNAVAILABLE_OPTIONS,
+    spend: {
+      todayMicroUsd: totals.todayMicroUsd,
+      monthMicroUsd: totals.monthMicroUsd,
+      conversationsToday: totals.conversationsToday,
+      lastAutoOff:
+        totals.lastAutoOff === null
+          ? null
+          : { at: totals.lastAutoOff.at.toString(), cap: totals.lastAutoOff.cap },
+    },
   };
 }
 
@@ -104,7 +130,7 @@ export async function viewAssistantSettings(
     context.market,
     async () => {
       const { version, settings } = await current(deps, context);
-      return ok(viewOf(deps, version, settings));
+      return ok(await viewOf(deps, context, version, settings));
     },
     { readOnly: true },
   );
@@ -138,7 +164,8 @@ export async function setAssistantSettings(
       // The screen saved from an older version: another admin changed the settings meanwhile.
       if (expected !== currentVersion) return err({ code: 'assistant.conflict' } as const);
       // The same settings again change nothing: no new version, no audit row.
-      if (sameSettings(before, next)) return ok(viewOf(deps, currentVersion, before));
+      if (sameSettings(before, next))
+        return ok(await viewOf(deps, context, currentVersion, before));
 
       const version = currentVersion + 1;
       const written = await deps.settings.append(context.market, {
@@ -155,7 +182,7 @@ export async function setAssistantSettings(
           after: auditSnapshot(version, next),
         }),
       );
-      return ok(viewOf(deps, version, next));
+      return ok(await viewOf(deps, context, version, next));
     },
   );
 }
@@ -176,8 +203,7 @@ export async function viewStorefrontAssistant(
     context.market,
     async () => {
       const { settings } = await current(deps, context);
-      const configured =
-        deps.runtime.apiKeyConfigured() && deps.runtime.modelOf(settings.modelTier) !== null;
+      const configured = deps.runtime.configured(context.market.marketId, settings.modelTier);
       if (!configured || !inRollout(settings, context.market.marketId, visitorKey)) return ok(OFF);
       return ok({
         enabled: true,

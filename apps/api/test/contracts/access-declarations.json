@@ -1,4 +1,7 @@
 [
+  { "name": "assistant.purge-conversations", "rule": "system" },
+  { "name": "assistant.send-guest-message", "rule": "anonymous" },
+  { "name": "assistant.send-message", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "assistant.view-storefront-assistant", "rule": "anonymous" },
   { "name": "cart.add-guest-item", "rule": "anonymous" },
   { "name": "cart.add-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },

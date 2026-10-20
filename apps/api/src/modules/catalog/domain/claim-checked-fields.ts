@@ -240,6 +240,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'public tree view: ids, slug and one published category name, already claim-checked when written, with numbers',
   },
   CategoryTreeUnavailableError: { noCustomerText: 'error with a fixed reason' },
+  AssistantCategory: {
+    noCustomerText:
+      'the public tree view for the buyer assistant: ids, slug, depth and one published category name, already claim-checked when written',
+  },
+  CatalogAssistantFacade: { noCustomerText: 'interface of methods' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },
   ProductTypeHandler: { noCustomerText: 'interface of methods' },
   RateReservation: { noCustomerText: 'numbers and times' },

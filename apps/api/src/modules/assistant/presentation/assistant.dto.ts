@@ -88,6 +88,24 @@ export class UnavailableOptionsBody {
   supportHandoff!: string[];
 }
 
+export class AutoOffBody {
+  @ApiProperty({ description: 'When a cap switched the assistant off (ISO instant).' })
+  at!: string;
+  @ApiProperty({ enum: ['daily', 'monthly'] })
+  cap!: string;
+}
+
+export class AssistantSpendBody {
+  @ApiProperty({ description: 'Spend today, micro US dollars (the Market calendar).' })
+  todayMicroUsd!: number;
+  @ApiProperty({ description: 'Spend this month, micro US dollars.' })
+  monthMicroUsd!: number;
+  @ApiProperty({ description: 'Conversations started today.' })
+  conversationsToday!: number;
+  @ApiProperty({ type: AutoOffBody, nullable: true })
+  lastAutoOff!: AutoOffBody | null;
+}
+
 export class AssistantSettingsBody {
   @ApiProperty({
     description: '0 while the built-in defaults are in force, then 1, 2, ... per change.',
@@ -99,6 +117,8 @@ export class AssistantSettingsBody {
   apiKey!: string;
   @ApiProperty({ type: AssistantModelBody, isArray: true })
   models!: AssistantModelBody[];
+  @ApiProperty({ type: AssistantSpendBody })
+  spend!: AssistantSpendBody;
   @ApiProperty({ type: UnavailableOptionsBody })
   unavailableOptions!: UnavailableOptionsBody;
 }
@@ -122,4 +142,15 @@ export class StorefrontAssistantBody {
   replyLanguage!: string;
   @ApiProperty({ nullable: true, type: String, description: 'null: the storefront default text.' })
   welcomeText!: string | null;
+}
+
+export class SendMessageRequest {
+  @ApiProperty({ description: "The buyer's message: 1 to 1000 characters." })
+  text!: string;
+  @ApiProperty({
+    required: false,
+    type: String,
+    description: "The widget's random visitor id (16 to 64 of A-Z a-z 0-9 _ -), for a rollout.",
+  })
+  visitor?: string;
 }

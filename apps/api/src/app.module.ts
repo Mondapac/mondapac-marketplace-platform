@@ -1,3 +1,4 @@
+import { AiModule } from './platform/ai/ai.module';
 import { Module, type DynamicModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import type { DestinationStream } from 'pino';
@@ -77,6 +78,8 @@ export class AppModule {
         MailModule,
         StorageModule,
         SchedulerModule,
+        // The one model entry point (ADR-0019 decision 6); no model is called unless configured.
+        AiModule,
         WorkerModule,
         HealthModule,
         ...CORE_MODULES,

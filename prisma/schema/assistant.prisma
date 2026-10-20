@@ -41,3 +41,71 @@ model AssistantSettings {
   @@map("settings")
   @@schema("assistant")
 }
+
+/// One buyer conversation (package 4): owned by exactly one account or one guest token hash
+/// (CHECK). Its message text is encrypted under its own subject key (ADR-0019 R5), so the purge
+/// deletes the rows and destroys the key. `turns` counts buyer messages (at most 30).
+model AssistantConversation {
+  id             String             @id @db.Uuid
+  marketId       String             @map("market_id") @db.VarChar(8)
+  tenantId       String             @map("tenant_id")
+  /// The customer's account id (a plain id, no foreign key); null for a guest's.
+  accountId      String?            @map("account_id") @db.Uuid
+  /// SHA-256 of the assistant guest token (32 bytes); null for an account's. Never the token.
+  guestTokenHash Bytes?             @map("guest_token_hash")
+  turns          Int                @db.SmallInt
+  /// 0 (no text kept), 30 or 365, fixed when the conversation starts.
+  retentionDays  Int                @map("retention_days") @db.SmallInt
+  startedAt      DateTime           @map("started_at") @db.Timestamptz(6)
+  lastMessageAt  DateTime           @map("last_message_at") @db.Timestamptz(6)
+  messages       AssistantMessage[]
+
+  /// The foreign-key target of the messages.
+  @@unique([marketId, id])
+  /// The purge reads the conversations of a Market by the age of their last message.
+  @@index([marketId, retentionDays, lastMessageAt])
+  @@map("conversations")
+  @@schema("assistant")
+}
+
+/// One message of a conversation, kept only when the retention keeps text. The buyer's text was
+/// masked before it was stored; the text is ciphertext under the conversation's subject key.
+model AssistantMessage {
+  marketId       String                @map("market_id") @db.VarChar(8)
+  tenantId       String                @map("tenant_id")
+  conversationId String                @map("conversation_id") @db.Uuid
+  /// 1, 2, 3 ... in the order written.
+  position       Int                   @db.SmallInt
+  /// buyer | assistant
+  role           String                @db.VarChar(16)
+  textCipher     String                @map("text_cipher")
+  /// The cards shown with a reply, by kind and id only (product:<offer id>, page:<page>, support).
+  cards          String[]              @db.VarChar(64)
+  createdAt      DateTime              @map("created_at") @db.Timestamptz(6)
+  conversation   AssistantConversation @relation(fields: [marketId, conversationId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, conversationId, position])
+  @@map("messages")
+  @@schema("assistant")
+}
+
+/// A Market's assistant spend for one day of its own calendar (time zone of the Market): counted
+/// up by every model call, read against the daily and monthly caps. The auto-off columns record
+/// the first cap reached that day (the admin screen's "last auto-off").
+model AssistantSpendDay {
+  marketId      String    @map("market_id") @db.VarChar(8)
+  day           DateTime  @db.Date
+  tenantId      String    @map("tenant_id")
+  /// Micro US dollars (1e-6 USD), at the configured list price.
+  spendMicroUsd BigInt    @map("spend_micro_usd")
+  inputTokens   BigInt    @map("input_tokens")
+  outputTokens  BigInt    @map("output_tokens")
+  conversations Int
+  /// daily | monthly; null while no cap was reached that day.
+  autoOffCap    String?   @map("auto_off_cap") @db.VarChar(8)
+  autoOffAt     DateTime? @map("auto_off_at") @db.Timestamptz(6)
+
+  @@id([marketId, day])
+  @@map("spend_days")
+  @@schema("assistant")
+}

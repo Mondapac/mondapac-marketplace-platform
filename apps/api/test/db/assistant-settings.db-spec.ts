@@ -1,18 +1,30 @@
 import { parseId, Temporal } from '@mondapac/shared-kernel';
-import type { AuditEntry, CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   testAuthenticatedActor,
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
-import type { AssistantRuntime } from '../../src/modules/assistant/application/ports/assistant-runtime';
+import {
+  FakeRuntime,
+  FakeTools,
+  MemoryConversations,
+  MemoryLimits,
+  SequenceGuestTokens,
+} from '../../src/modules/assistant/application/testing/assistant-fakes';
 import { SetAssistantSettings } from '../../src/modules/assistant/application/use-cases/set-assistant-settings.use-case';
 import { ViewAssistantSettings } from '../../src/modules/assistant/application/use-cases/view-assistant-settings.use-case';
 import { ViewStorefrontAssistant } from '../../src/modules/assistant/application/use-cases/view-storefront-assistant.use-case';
 import { DEFAULT_ASSISTANT_SETTINGS } from '../../src/modules/assistant/domain/assistant-settings';
+import { ASSISTANT_AUDIT_ACTIONS } from '../../src/modules/assistant/domain/audit';
 import { PrismaAssistantSettingsRepository } from '../../src/modules/assistant/infrastructure/prisma-assistant-settings.repository';
+import { PrismaSpendRepository } from '../../src/modules/assistant/infrastructure/prisma-spend.repository';
+import { RegistryMarketCalendar } from '../../src/modules/assistant/infrastructure/registry-market-calendar';
+import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
+import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
+import { PersistenceModule } from '../../src/platform/persistence/persistence.module';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
@@ -23,6 +35,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
+import { ids } from './outbox-support';
 import { testDatabaseUrl } from './test-database';
 
 // The assistant settings history as the application role, in both Market fixtures: the real use
@@ -41,18 +54,7 @@ const id = <T extends string>(n: number): Id<T> => {
 };
 const ADMIN = id<'Account'>(0xad);
 
-class NoAudit implements AuditWriter {
-  readonly entries: AuditEntry[] = [];
-  record(_context: CallContext, entry: AuditEntry): Promise<void> {
-    this.entries.push(entry);
-    return Promise.resolve();
-  }
-}
-
-const runtime: AssistantRuntime = {
-  apiKeyConfigured: () => true,
-  modelOf: (tier) => (tier === 'fast' ? 'model-fast' : null),
-};
+const runtime = new FakeRuntime();
 
 describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', (code) => {
   const market = marketOf(code);
@@ -61,11 +63,24 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
   let db: Persistence;
   let settings: PrismaAssistantSettingsRepository;
+  let spend: PrismaSpendRepository;
+  let audit: AuditWriter;
   let sql: Client;
 
   beforeAll(async () => {
     db = createPersistence();
     settings = new PrismaAssistantSettingsRepository(db.service);
+    spend = new PrismaSpendRepository(db.service);
+    // The real audit writer (Hassan, package 2 review): the audit row commits with the version.
+    const catalogue = new AuditActionCatalogue();
+    catalogue.register('assistant', ASSISTANT_AUDIT_ACTIONS);
+    catalogue.seal();
+    audit = PersistenceModule.auditWriterFor('assistant').useFactory(
+      catalogue,
+      ids,
+      { now: () => Temporal.Now.instant() },
+      NO_PERMISSION_KEYS,
+    ) as AuditWriter;
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
   });
@@ -78,9 +93,23 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     unitOfWork: db.unitOfWork,
     settings,
     runtime,
-    audit: new NoAudit(),
+    audit,
     clock,
+    conversations: new MemoryConversations(),
+    spend,
+    tools: new FakeTools(),
+    limits: new MemoryLimits(),
+    guestTokens: new SequenceGuestTokens(),
+    calendar: new RegistryMarketCalendar(markets),
   });
+  const auditRows = async (target: MarketContext) =>
+    (
+      await sql.query<{ after: { version: number } }>(
+        `SELECT after FROM platform.audit_log
+          WHERE market_id = $1 AND action = 'assistant.settings.changed'`,
+        [target.marketId],
+      )
+    ).rows.map((row) => row.after.version);
   const admin = (target: MarketContext) =>
     testCallContext(
       target,
@@ -116,11 +145,14 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
       monthlySpendCapUsdCents: 50_000,
       welcomeText: 'سلام! می‌توانم کمک کنم؟',
     };
+    const auditedBefore = await auditRows(market);
     const saved = await new SetAssistantSettings(gate, deps()).execute(admin(market), {
       settings: next,
       expectedVersion: from,
     });
     expect(saved.ok && saved.value.version).toBe(from + 1);
+    // One audit row per version, written in the same unit as the version.
+    expect(await auditRows(market)).toEqual([...auditedBefore, from + 1]);
 
     const read = await new ViewAssistantSettings(gate, deps()).execute(admin(market), {});
     expect(read.ok && read.value).toMatchObject({ version: from + 1, settings: next });
@@ -131,6 +163,8 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
       expectedVersion: from,
     });
     expect(stale).toEqual({ ok: false, error: { code: 'assistant.conflict' } });
+    // The refused save wrote no audit row.
+    expect(await auditRows(market)).toEqual([...auditedBefore, from + 1]);
   });
 
   it('reads the storefront subset through the real unit of work', async () => {
