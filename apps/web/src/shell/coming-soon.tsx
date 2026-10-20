@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { BrowseCrumb } from '../catalog/browse-crumb.tsx';
+import { pageMetadata, seoDescription } from '../seo/metadata.ts';
 
 /**
  * Shell links whose pages are not built yet (SEO plan, package 2). Each route answers 200 with a
@@ -30,11 +31,15 @@ export const COMING_SOON = {
 export type ComingSoonPage = (typeof COMING_SOON)[keyof typeof COMING_SOON];
 
 export async function comingSoonMetadata(page: ComingSoonPage): Promise<Metadata> {
-  const [store, t] = await Promise.all([getTranslations('store'), getTranslations('coming-soon')]);
-  return {
-    title: `${t(`pages.${page}`)} | ${store('title')}`,
-    robots: { index: false, follow: true },
-  };
+  const t = await getTranslations('coming-soon');
+  const name = t(`pages.${page}`);
+  const path = Object.entries(COMING_SOON).find(([, key]) => key === page)![0];
+  return pageMetadata({
+    name,
+    description: await seoDescription('coming-soon', { name }),
+    path,
+    noindex: true,
+  });
 }
 
 export async function ComingSoon({ page }: { readonly page: ComingSoonPage }) {
