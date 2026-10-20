@@ -5,6 +5,7 @@ import { Client } from 'pg';
 import type { NoticeScope } from '../../src/modules/notifications/application/ports/in-app-notice.repository';
 import {
   ADMIN_PRICE_HOLD_OPENED,
+  SELLER_LOW_STOCK,
   SELLER_ORDER_PAID,
 } from '../../src/modules/notifications/domain/in-app-notice';
 import { PrismaInAppNoticeRepository } from '../../src/modules/notifications/infrastructure/prisma-in-app-notice.repository';
@@ -115,10 +116,14 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
       await value(market, () => repository.markRead(market, one, [added[2]!], clock.now())),
     ).toBe(0);
 
-    const mine = await value(market, () => repository.unread(market, scopeOf(sellerId, one)));
+    const mine = await value(market, () =>
+      repository.unread(market, scopeOf(sellerId, one), [SELLER_ORDER_PAID]),
+    );
     expect(mine.count).toBe(1);
     expect(mine.newest?.id).toBe(added[0]);
-    const theirs = await value(market, () => repository.unread(market, scopeOf(sellerId, two)));
+    const theirs = await value(market, () =>
+      repository.unread(market, scopeOf(sellerId, two), [SELLER_ORDER_PAID]),
+    );
     expect(theirs.count).toBe(3);
     expect(theirs.newest?.id).toBe(added[2]);
     expect(
@@ -137,7 +142,7 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
     await addNotices(other, sellerId, 1);
 
     const none = { ...scopeOf(sellerId, reader), kinds: ['seller.other'] };
-    expect(await value(market, () => repository.unread(market, none))).toEqual({
+    expect(await value(market, () => repository.unread(market, none, none.kinds))).toEqual({
       count: 0,
       newest: null,
     });
@@ -221,7 +226,7 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
       first,
     ]);
     expect(
-      (await value(market, () => repository.unread(market, admin))).count,
+      (await value(market, () => repository.unread(market, admin, admin.kinds))).count,
     ).toBeGreaterThanOrEqual(3);
     const sellerSide = await value(market, () =>
       repository.list(
@@ -248,6 +253,47 @@ describe.each(TEST_MARKETS)('in-app notice repository in market %s (database)', 
     );
     expect(elsewhere.map((row) => row.id)).toContain(elsewhereId);
     expect(elsewhere.map((row) => row.id).some((id) => mine.has(id))).toBe(false);
+  });
+
+  it('names the newest unread of the ringing kinds only, and caps each kind on its own', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const reader = ids.next<'Account'>();
+    const [order] = await addNotices(market, sellerId, 1);
+    const addLowStock = async () => {
+      clock.advance(Temporal.Duration.from({ milliseconds: 1 }));
+      const noticeId = ids.next<'InAppNotice'>();
+      await value(market, () =>
+        repository.add(market, [
+          {
+            id: noticeId,
+            owner: { audience: 'seller', sellerId },
+            kind: SELLER_LOW_STOCK,
+            params: { offerId: ids.next(), variantId: ids.next(), onlyLeft: 2 },
+            createdAt: clock.now(),
+          },
+        ]),
+      );
+      return noticeId;
+    };
+    await addLowStock();
+    const newestStock = await addLowStock();
+    const both = { ...scopeOf(sellerId, reader), kinds: [SELLER_ORDER_PAID, SELLER_LOW_STOCK] };
+
+    const unread = await value(market, () => repository.unread(market, both, [SELLER_ORDER_PAID]));
+    expect(unread.count).toBe(3);
+    expect(unread.newest?.id).toBe(order);
+    expect((await value(market, () => repository.unread(market, both, []))).newest).toBeNull();
+
+    expect(
+      await value(market, () =>
+        repository.trim(market, { audience: 'seller', sellerId }, 1, SELLER_LOW_STOCK),
+      ),
+    ).toBe(1);
+    const left = await value(market, () =>
+      repository.list(market, both, { before: null, limit: 20, show: 'all' }),
+    );
+    expect(left.map((row) => row.id)).toEqual([newestStock, order]);
+    expect(left[0]!.params).toEqual(expect.objectContaining({ onlyLeft: 2 }));
   });
 
   it('purges old notices of this Market only, and their reads go with them', async () => {
