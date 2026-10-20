@@ -178,6 +178,7 @@ describe('storefront API read', () => {
     serve(503);
     expect(await apiGetWith(config(LOCAL), host, 'search/bestsellers')).toEqual({
       kind: 'failed',
+      status: 503,
     });
     vi.stubGlobal(
       'fetch',
