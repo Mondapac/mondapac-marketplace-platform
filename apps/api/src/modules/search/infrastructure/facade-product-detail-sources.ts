@@ -89,7 +89,11 @@ export class FacadeProductDetailSources implements ProductDetailSources {
       for (const key of keys) {
         const found = result.value.get(`${key.offerId}/${key.variantId}`);
         if (found === undefined) continue;
-        stock.set(detailKeyOf(key), { status: found.status, onlyLeft: found.onlyLeft });
+        // "Only N left" is public only in the low band (Hassan L2): never a count otherwise.
+        stock.set(detailKeyOf(key), {
+          status: found.status,
+          onlyLeft: found.status === 'low' ? found.onlyLeft : null,
+        });
       }
       return stock;
     } catch {
