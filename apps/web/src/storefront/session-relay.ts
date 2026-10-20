@@ -58,6 +58,13 @@ export function isSessionPathAllowed(method: string, path: readonly string[]): b
 const MAX_BODY_BYTES = 16 * 1024;
 /** How long the API may take to answer before the relay gives up. */
 export const RELAY_TIMEOUT_MS = 5000;
+/**
+ * The guest-cart merge's own, shorter limit: the sign-in answer and its session cookie wait for
+ * it (Hassan, PR #461 finding 1).
+ */
+export const MERGE_TIMEOUT_MS = 2000;
+/** A read (GET) may come from the site itself, a typed address or bookmark, or an old browser. */
+const READ_FETCH_SITES: ReadonlySet<string | null> = new Set(['same-origin', 'none', null]);
 
 /** Request headers that cross to the API besides the cookie. Everything else is dropped. */
 const FORWARDED_REQUEST_HEADERS = [
@@ -251,7 +258,7 @@ async function mergeGuestCart(
       headers,
       redirect: 'manual',
       cache: 'no-store',
-      signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
+      signal: AbortSignal.timeout(MERGE_TIMEOUT_MS),
     });
     if (!merged.ok) {
       log({
@@ -286,7 +293,12 @@ export async function relaySession(
   const target = path.join('/');
   if (!isSessionPathAllowed(request.method, path)) return notFound();
   if (request.headers.has('authorization')) return jsonError(401, 'session.invalid');
-  if (request.method !== 'GET') {
+  if (request.method === 'GET') {
+    // A read can still set or clear the guest cookie, so another site never reaches it (Hassan,
+    // PR #461 finding 2).
+    if (!READ_FETCH_SITES.has(request.headers.get('sec-fetch-site')))
+      return jsonError(403, 'request.csrf');
+  } else {
     // Unsafe method: same-origin only, whatever the API would do with a missing header.
     if (request.headers.get('sec-fetch-site') !== 'same-origin')
       return jsonError(403, 'request.csrf');

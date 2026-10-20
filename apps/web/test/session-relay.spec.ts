@@ -166,6 +166,33 @@ describe('storefront session relay: what may cross', () => {
     expect(upstreamCookie(null, 'AU')).toBeNull();
   });
 
+  it('drops a pair without a name or an equals sign, and keeps a repeated name repeated', () => {
+    expect(upstreamCookie('__Host-cart-guest-AU; =__Host-cart-guest-AU=x', 'AU')).toBeNull();
+    expect(upstreamCookie('__Host-cart-guest-AU=a; __Host-cart-guest-AU=b', 'AU')).toBe(
+      '__Host-cart-guest-AU=a; __Host-cart-guest-AU=b',
+    );
+  });
+
+  it.each([
+    ['same-origin', 200],
+    ['none', 200],
+    [undefined, 200],
+    ['same-site', 403],
+    ['cross-site', 403],
+  ])('a read with Sec-Fetch-Site %s answers %i', async (site, status) => {
+    const { fetchImpl } = api({ 'GET cart': () => Response.json({ lineCount: 0 }) });
+    const response = await relaySession(
+      CONFIG,
+      browser(MARKETS[0], 'GET', 'cart', {
+        headers: site === undefined ? {} : { 'sec-fetch-site': site },
+      }),
+      ['cart'],
+      fetchImpl,
+      silent,
+    );
+    expect(response.status).toBe(status);
+  });
+
   it.each(MARKETS)(
     'passes back only the Set-Cookie of the two cookies, never cached ($marketId)',
     async (market) => {
