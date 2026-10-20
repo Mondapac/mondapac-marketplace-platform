@@ -10,6 +10,7 @@ import messages from '../messages/en.json';
 import { COMING_SOON } from '../src/shell/coming-soon.tsx';
 import { StoreShell } from '../src/shell/store-shell.tsx';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from '../src/storefront/sample-cart.ts';
+import { SAMPLE_DELIVERY_LOCATOR } from '../src/storefront/sample-delivery.ts';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 
 vi.mock('next/navigation', () => ({
@@ -91,6 +92,8 @@ describe('coming soon pages', () => {
           <StoreShell
             content={SAMPLE_CONTENT}
             cartSource={SAMPLE_CART_SOURCE}
+            locator={SAMPLE_DELIVERY_LOCATOR}
+            deliverTo={null}
             consent={{ personalization: false }}
             signIn={SAMPLE_CHECKOUT.customer}
           >

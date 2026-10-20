@@ -5,13 +5,14 @@
   "description": "MondaPac buyer storefront (ADR-0008: apps/web is the first vertical storefront and its BFF).",
   "license": "UNLICENSED",
   "scripts": {
-    "dev": "next dev --port 3003",
+    "dev": "node server.mjs --dev",
     "build": "next build",
-    "start": "next start --port 3003",
+    "start": "node server.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@mondapac/panel-server": "workspace:*",
     "next": "16.4.0",
     "next-intl": "4.14.9",
     "react": "19.3.0",

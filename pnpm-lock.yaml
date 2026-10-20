@@ -258,6 +258,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@mondapac/panel-server':
+        specifier: workspace:*
+        version: link:../../packages/panel-server
       next:
         specifier: 16.4.0
         version: 16.4.0(@types/node@24.19.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
