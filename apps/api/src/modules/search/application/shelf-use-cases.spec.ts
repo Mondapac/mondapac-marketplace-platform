@@ -52,6 +52,14 @@ class MemoryShelves implements ShelfDocumentsReader {
   byOfferIds(_market: MarketContext, offerIds: readonly Id<'Offer'>[]) {
     return Promise.resolve(this.documents.filter((d) => offerIds.includes(d.offerId)));
   }
+  byProductId(_market: MarketContext, productId: Id<'Product'>, limit: number) {
+    return Promise.resolve(
+      this.documents
+        .filter((d) => d.productId === productId)
+        .sort((a, b) => (a.offerId < b.offerId ? -1 : 1))
+        .slice(0, limit),
+    );
+  }
   browseAll(_market: MarketContext, limit: number) {
     this.browsed.push(limit);
     return Promise.resolve(

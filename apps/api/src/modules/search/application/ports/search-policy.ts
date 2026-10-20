@@ -5,6 +5,8 @@ export interface SearchSettings {
   readonly textSearchConfig: string;
   /** The Market's default locale: the text of this locale is indexed and shown. */
   readonly locale: string;
+  /** The Market's currency: a price in another currency is never shown (ISO 4217). */
+  readonly currency: string;
 }
 
 /** The Market's search settings. Never falls back to another Market. */

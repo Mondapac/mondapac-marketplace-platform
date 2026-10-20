@@ -4,12 +4,13 @@ import type { Id } from '@mondapac/shared-kernel';
 import request from 'supertest';
 import { CategoryTreeQuery } from '../src/modules/catalog/application/use-cases/category-tree.use-case';
 import { ListBestsellers } from '../src/modules/search/application/use-cases/list-bestsellers.use-case';
+import { ViewProductDetail } from '../src/modules/search/application/use-cases/view-product-detail.use-case';
 import { ListSpecials } from '../src/modules/search/application/use-cases/list-specials.use-case';
 import { createTestApp } from './support/test-app';
 import { TEST_MARKETS } from './support/test-config';
 
 // The storefront read routes over HTTP (storefront reads package): GET /catalog/categories,
-// GET /search/bestsellers and GET /search/specials with the real guards, rate limiter and
+// GET /search/bestsellers, GET /search/specials and GET /search/product-detail/:productId with the real guards, rate limiter and
 // controllers; the use cases are stubs. This proves anonymous access (no session, no CSRF), the
 // request Market, the strict query string, the answer shapes (Money as a string amount and its
 // currency), `no-store` and the status of each refusal.
@@ -29,6 +30,7 @@ const ITEM = {
   categoryIds: [CATEGORY],
 };
 const ENDS = '2026-10-20T00:00:00Z';
+const PRODUCT = ITEM.productId;
 
 type Call = { route: string; actor: string; market: string; input: unknown };
 
@@ -72,6 +74,30 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
         },
       ],
     });
+    next.detail = ok({
+      productId: PRODUCT,
+      name: 'Halal sausages',
+      shortDescription: null,
+      description: 'Beef',
+      categoryIds: [CATEGORY],
+      offers: [
+        {
+          offerId: ITEM.offerId,
+          sellerId: ITEM.sellerId,
+          seller: { storeName: 'Butcher', minimumOrder: { amount: 2500n, currency } },
+          units: [
+            {
+              variantId: id<'Variant'>(4),
+              label: '500 g',
+              price: { amount: 800n, currency },
+              taxInclusive: true,
+              special: { endsAt: Temporal.Instant.from(ENDS) },
+              stock: { status: 'low', onlyLeft: 2 },
+            },
+          ],
+        },
+      ],
+    });
     ({ app } = await createTestApp({
       override: (builder) =>
         builder
@@ -80,7 +106,9 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
           .overrideProvider(ListBestsellers)
           .useValue(stub('bestsellers'))
           .overrideProvider(ListSpecials)
-          .useValue(stub('specials')),
+          .useValue(stub('specials'))
+          .overrideProvider(ViewProductDetail)
+          .useValue(stub('detail')),
     }));
   });
   afterEach(async () => {
@@ -140,11 +168,50 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
     expect(calls[0]).toMatchObject({ route: 'specials', actor: 'anonymous', input: {} });
   });
 
+  it('answers the product page with Money as a string amount, not cacheable', async () => {
+    const response = await get(`/search/product-detail/${PRODUCT}`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect(response.body).toEqual({
+      productId: PRODUCT,
+      name: 'Halal sausages',
+      shortDescription: null,
+      description: 'Beef',
+      categoryIds: [CATEGORY],
+      offers: [
+        {
+          offerId: ITEM.offerId,
+          sellerId: ITEM.sellerId,
+          seller: { storeName: 'Butcher', minimumOrder: { amount: '2500', currency } },
+          units: [
+            {
+              variantId: id<'Variant'>(4),
+              label: '500 g',
+              price: { amount: '800', currency },
+              taxInclusive: true,
+              special: { endsAt: ENDS },
+              stock: { status: 'low', onlyLeft: 2 },
+            },
+          ],
+        },
+      ],
+    });
+    expect(JSON.stringify(response.body)).not.toContain('sellable');
+    expect(calls).toEqual([
+      { route: 'detail', actor: 'anonymous', market: code, input: { productId: PRODUCT } },
+    ]);
+  });
+
   it('refuses a market-less request before any use case', async () => {
     const responses = await Promise.all(
-      ['/catalog/categories', '/search/bestsellers', '/search/specials'].map((path) =>
-        request(app.getHttpServer()).get(path),
-      ),
+      [
+        '/catalog/categories',
+        '/search/bestsellers',
+        '/search/specials',
+        `/search/product-detail/${PRODUCT}`,
+      ].map((path) => request(app.getHttpServer()).get(path)),
     );
 
     for (const response of responses) expect(response.status).toBeGreaterThanOrEqual(400);
@@ -158,6 +225,8 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
     ['/search/bestsellers?limit=-1', 'limit'],
     ['/search/specials?category=a&category=b', 'category'],
     ['/search/specials?limit[a]=1', 'limit[a]'],
+    [`/search/product-detail/${PRODUCT}?locale=fr`, 'locale'],
+    [`/search/product-detail/${PRODUCT}?a=1&b=2`, 'a'],
   ])('answers 400 for %s without calling the use case', async (path, field) => {
     const response = await get(path);
 
@@ -170,6 +239,29 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
       },
     });
     expect(calls).toEqual([]);
+  });
+
+  it('maps the product page refusals: bad id 400, not found 404, unavailable 503', async () => {
+    next.detail = err({
+      code: 'validation.failed',
+      fields: [{ path: 'productId', code: 'format' }],
+    });
+    const invalid = await get('/search/product-detail/not-a-uuid');
+    next.detail = err({ code: 'search.product-not-found' });
+    const missing = await get(`/search/product-detail/${PRODUCT}`);
+    next.detail = err({ code: 'search.unavailable' });
+    const unavailable = await get(`/search/product-detail/${PRODUCT}`);
+
+    expect(invalid.status).toBe(400);
+    expect(invalid.body).toEqual({
+      statusCode: 400,
+      code: 'validation.failed',
+      details: { fields: [{ path: 'productId', code: 'format' }] },
+    });
+    expect(missing.status).toBe(404);
+    expect(missing.body).toEqual({ statusCode: 404, code: 'search.product-not-found' });
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.body).toEqual({ statusCode: 503, code: 'search.unavailable' });
   });
 
   it('maps the refusals: validation 400, unavailable 503', async () => {

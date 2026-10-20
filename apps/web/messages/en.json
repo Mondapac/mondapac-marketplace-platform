@@ -11,7 +11,7 @@
     "log-in": "Log in",
     "cart": "{count, plural, =0 {Cart, empty} one {Cart, # item, {total}} other {Cart, # items, {total}}}",
     "search": "Search",
-    "search-placeholder": "Search products, sellers and recipes",
+    "search-placeholder": "Search products and stores",
     "log-out": "Log out"
   },
   "rail": {
@@ -56,7 +56,7 @@
     "recent": "Recent",
     "no-recent": "Your recent searches will show here.",
     "popular": "Popular right now",
-    "input": "Search products, sellers and recipes"
+    "input": "Search products and stores"
   },
   "home": {
     "featured": "Featured",
@@ -381,8 +381,6 @@
     "all": "All",
     "all-of": "See all {name}",
     "filter-subcategory": "Filter {name}",
-    "filter-category": "Filter by category",
-    "all-categories": "All categories",
     "results": "Products",
     "pages": "Pages",
     "previous": "Previous",
@@ -393,12 +391,6 @@
     "category-empty": "There are no products in {name} yet. Check back soon.",
     "search": "Search",
     "results-for": "Results for “{q}”",
-    "search-hint": "Type at least {min} letters to search products.",
-    "popular": "Popular right now",
-    "no-results": "No products match “{q}”.",
-    "no-results-in": "No products in {name} match “{q}”.",
-    "no-results-hint": "Check the spelling or try fewer words.",
-    "search-everywhere": "Search all categories",
     "browse-products": "Browse products",
     "promotion": "Promotion",
     "filter-by": "Filter by:",
@@ -436,7 +428,10 @@
     "filters-empty-hint": "Try removing a filter to see more products.",
     "clear-filters": "Clear all filters",
     "previous-page": "Previous page",
-    "next-page": "Next page"
+    "next-page": "Next page",
+    "sort-best-match": "Best match",
+    "group-labels": "Labels",
+    "group-store": "Store"
   },
   "consent": {
     "title": "Cookies on Mondapac",
@@ -787,6 +782,37 @@
     "browse-products": "Browse products",
     "filters-empty": "No stores match these filters",
     "filters-empty-hint": "Try removing a filter to see more stores."
+  },
+  "search-results": {
+    "title": "Search",
+    "heading": "Results for <q>{query}</q>",
+    "summary": "{products, plural, one {# product} other {# products}} · {stores, plural, one {# store} other {# stores}}",
+    "tabs": "Result types",
+    "products": "Products",
+    "stores": "Stores",
+    "tab-count": "({count})",
+    "in-categories": "In categories:",
+    "category-count": "{name} ({count})",
+    "category-filter": "Category: {name}",
+    "no-products": "No products match “{query}”.",
+    "no-products-in": "No products in {name} match “{query}”.",
+    "search-everywhere": "Search all categories",
+    "no-stores": "No stores match “{query}”.",
+    "none-title": "No results for “{query}”",
+    "tip-spelling": "Check the spelling.",
+    "tip-fewer": "Try fewer or more general words.",
+    "tip-kind": "Search for a product, a store or a category.",
+    "popular": "Popular searches",
+    "browse": "Browse categories",
+    "start-title": "What are you looking for?",
+    "start-body": "Search for products, stores or categories.",
+    "short-title": "Type at least {min} characters",
+    "short-body": "Add a few more letters to search the marketplace.",
+    "loading": "Loading results",
+    "error-heading": "Search results",
+    "error-title": "We could not load the results",
+    "error-body": "Check your connection and try again. Nothing was changed.",
+    "retry": "Try again"
   },
   "errors": {
     "not-found-title": "We cannot find that page",
