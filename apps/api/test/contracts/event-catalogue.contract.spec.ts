@@ -119,10 +119,33 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'inventory.rekey-on-offer-moved',
       'inventory.retire-on-offer-deleted',
       'inventory.retire-on-variant-removed',
+      'notifications.admin-certificate-notice',
+      'notifications.admin-price-hold-notice',
+      'notifications.admin-product-revision-notice',
+      'notifications.admin-seller-file-notice',
       'notifications.order-confirmation-mail',
       'notifications.order-shipped-mail',
+      'notifications.seller-access-approved-notice',
+      'notifications.seller-access-reinstated-notice',
+      'notifications.seller-certificate-approved-notice',
+      'notifications.seller-certificate-changes-notice',
+      'notifications.seller-certificate-declined-notice',
+      'notifications.seller-certificate-expired-notice',
+      'notifications.seller-certificate-expiring-notice',
+      'notifications.seller-certificate-revoked-notice',
+      'notifications.seller-image-notice',
+      'notifications.seller-issuer-request-notice',
+      'notifications.seller-low-stock-notice',
       'notifications.seller-new-order-mail',
+      'notifications.seller-offer-changes-notice',
+      'notifications.seller-offer-published-notice',
       'notifications.seller-order-notice',
+      'notifications.seller-price-hold-notice',
+      'notifications.seller-product-changes-notice',
+      'notifications.seller-product-published-notice',
+      'notifications.seller-tag-removed-notice',
+      'notifications.seller-tag-restored-notice',
+      'notifications.seller-tag-suspended-notice',
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
       'search.index-deleted-offer',
@@ -176,10 +199,13 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'search.index-moved-offer',
     ]);
     // ... and search follows publication and revisions to keep its read model fresh.
+    // Notifications tells the seller (in-app notifications package 4).
     expect(subscriptions.subscribersOf('catalog.offer-published.v1')).toEqual([
+      'notifications.seller-offer-published-notice',
       'search.index-published-offer',
     ]);
     expect(subscriptions.subscribersOf('catalog.product-revision-published.v1')).toEqual([
+      'notifications.seller-product-published-notice',
       'search.index-published-revision',
     ]);
     expect(subscriptions.subscribersOf('identity.invitation-issued.v1')).toEqual([
@@ -195,6 +221,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('identity.seller-access-approved.v1')).toEqual([
       'identity.seller-approved-mail',
       'inventory.ensure-seller-inventory-approved',
+      'notifications.seller-access-approved-notice',
       'sellers.close-decision-approved',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-rejected.v1')).toEqual([
@@ -206,6 +233,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-reinstated.v1')).toEqual([
       'identity.seller-reinstated-mail',
+      'notifications.seller-access-reinstated-notice',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-reapplied.v1')).toEqual([]);
     expect(subscriptions.sealed).toBe(true);

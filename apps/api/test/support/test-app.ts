@@ -8,6 +8,8 @@ import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from '../../src/app.module';
 import { APP_OPTIONS, configureApp } from '../../src/configure-app';
+import { RATE_LIMIT_COUNTERS } from '../../src/platform/rate-limit/rate-limit-counters';
+import { MemoryRateLimitCounters } from './memory-rate-limit-counters';
 import { panelOriginMarketConfigDirs, testAppConfig } from './test-config';
 
 // nestjs-pino builds its pino-http instance once per module registry, so in one Jest test
@@ -44,6 +46,12 @@ export interface TestAppOptions {
    * send unsafe requests to admin or seller routes with `panelHeaders`.
    */
   readonly panelOrigins?: boolean;
+  /**
+   * Where the rate limiter counts: `memory` (the default) gives each application counters of
+   * its own, so suites without a database run and parallel database suites never share a
+   * window; `postgres` keeps the application's PostgreSQL store (the rate-limit database suite).
+   */
+  readonly rateLimitStore?: 'memory' | 'postgres';
 }
 
 /**
@@ -65,10 +73,14 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const config = options.panelOrigins
     ? { ...base, marketConfigDirs: panelOriginMarketConfigDirs() }
     : base;
-  const builder = Test.createTestingModule({
+  const created = Test.createTestingModule({
     imports: [AppModule.register({ config, logDestination })],
     controllers: [...(options.controllers ?? [])],
   });
+  const builder =
+    options.rateLimitStore === 'postgres'
+      ? created
+      : created.overrideProvider(RATE_LIMIT_COUNTERS).useValue(new MemoryRateLimitCounters());
   const moduleRef = await (options.override ? options.override(builder) : builder).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>(APP_OPTIONS);
   app.useLogger(app.get(Logger));

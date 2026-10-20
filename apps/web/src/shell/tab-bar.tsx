@@ -8,17 +8,33 @@ import { Icon } from '../icons/icon.tsx';
 import { useCartButton } from './header.tsx';
 import { useStore } from './store-context.tsx';
 
-/** The bottom bar of the phone and tablet layout: Home, Search, Browse, Cart, Account. */
+/**
+ * The bottom bar of the phone and tablet layout: Home, Search, Browse, Cart, Account. Account opens
+ * the log-in dialog signed out and the account menu panel signed in (a green dot shows it).
+ */
 export function TabBar() {
   const t = useTranslations('tabs');
   const path = usePathname();
-  const { cart, browseOpen, setBrowseOpen, searchOpen, setSearchOpen, cartOpen, setCartOpen } =
-    useStore();
+  const {
+    cart,
+    browseOpen,
+    setBrowseOpen,
+    searchOpen,
+    setSearchOpen,
+    cartOpen,
+    setCartOpen,
+    customer,
+    loginOpen,
+    setLoginOpen,
+    accountOpen,
+    setAccountOpen,
+  } = useStore();
   const { count } = summarise(cart);
   const cartButton = useCartButton();
-  const overlay = browseOpen || searchOpen || cartOpen;
+  const overlay = browseOpen || searchOpen || cartOpen || loginOpen || accountOpen;
   const on = (active: boolean) => (active ? 'on' : undefined);
   const page = (href: string) => !overlay && (href === '/' ? path === '/' : path.startsWith(href));
+  const account = accountOpen || loginOpen || page('/account');
 
   return (
     <nav className="tabbar" aria-label={t('label')}>
@@ -71,16 +87,27 @@ export function TabBar() {
         {t('cart')}
         <span className="sr-only">{t('cart-count', { count })}</span>
       </button>
-      <Link
-        href="/account"
-        className={on(page('/account'))}
+      <button
+        type="button"
+        className={account ? 'acct on' : 'acct'}
+        aria-haspopup="dialog"
+        aria-expanded={customer ? accountOpen : loginOpen}
         aria-current={page('/account') ? 'page' : undefined}
+        onClick={() => {
+          setBrowseOpen(false);
+          setSearchOpen(false);
+          setCartOpen(false);
+          if (customer) setAccountOpen(true);
+          else setLoginOpen(true);
+        }}
       >
         <span className="tic">
           <Icon name="user" />
+          {customer ? <span className="tdot" aria-hidden="true" /> : null}
         </span>
         {t('account')}
-      </Link>
+        {customer ? <span className="sr-only">, {t('signed-in')}</span> : null}
+      </button>
     </nav>
   );
 }

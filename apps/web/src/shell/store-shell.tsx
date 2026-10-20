@@ -1,11 +1,18 @@
 import type { ReactNode } from 'react';
+import { AccountDrawer } from '../account/account-drawer.tsx';
+import { LoginModal } from '../account/login-modal.tsx';
 import { CartDrawer } from '../cart/cart-drawer.tsx';
 import { ConsentBar } from '../consent/consent-bar.tsx';
 import type { Consent } from '../consent/consent.ts';
 import { DeliverModal } from '../delivery/deliver-modal.tsx';
 import type { DeliverTo } from '../delivery/deliver-to.ts';
 import type { TextSize } from '../preferences/preferences.ts';
-import type { CartSource, DeliveryLocatorSource, StorefrontContent } from '../storefront/types.ts';
+import type {
+  CartSource,
+  CheckoutCustomer,
+  DeliveryLocatorSource,
+  StorefrontContent,
+} from '../storefront/types.ts';
 import { BrowsePanel } from './browse-panel.tsx';
 import { Footer } from './footer.tsx';
 import { Header } from './header.tsx';
@@ -15,7 +22,7 @@ import { SearchView } from './search-view.tsx';
 import { StoreProvider } from './store-context.tsx';
 import { TabBar } from './tab-bar.tsx';
 
-/** The locked frame of every buyer page: header, side rail, footer, the cookie bar and the bottom bar, overlays (the cart drawer among them). */
+/** The locked frame of every buyer page: header, side rail, footer, the cookie bar and the bottom bar, overlays (the cart drawer, the log-in dialog and the account menu among them). */
 export function StoreShell({
   content,
   cartSource,
@@ -23,6 +30,7 @@ export function StoreShell({
   deliverTo,
   textSize,
   consent,
+  signIn,
   children,
 }: {
   readonly content: StorefrontContent;
@@ -31,6 +39,8 @@ export function StoreShell({
   readonly deliverTo: DeliverTo | null;
   readonly textSize: TextSize;
   readonly consent: Consent | null;
+  /** The account the sample log-in signs in to, until customer sessions are wired. */
+  readonly signIn: CheckoutCustomer;
   readonly children: ReactNode;
 }) {
   return (
@@ -39,6 +49,8 @@ export function StoreShell({
         <BrowsePanel categories={content.categories} />
         <CartDrawer />
         <DeliverModal source={locator} />
+        <LoginModal customer={signIn} />
+        <AccountDrawer />
         <SearchView popular={content.popularSearches} />
         <PageFrame>
           <Header delivery={content.delivery} />

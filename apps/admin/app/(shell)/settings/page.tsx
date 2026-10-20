@@ -4,6 +4,8 @@ import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
+import { ASSISTANT_VIEW_PERMISSION } from '../../../src/settings/assistant-types.ts';
+import { SettingsTabs, settingsTabLabels } from '../../../src/settings/settings-tabs.tsx';
 import { SupportEmailCard } from '../../../src/settings/support-email-card.tsx';
 import {
   SUPPORT_MANAGE_PERMISSION,
@@ -27,10 +29,13 @@ export default async function SettingsPage() {
   const shell = (body: React.ReactNode) => (
     <AdminShell session={gate.session} activeId="settings" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <SettingsTabs active="general" labels={settingsTabLabels(t, permissionKeys)} />
       {body}
     </AdminShell>
   );
   if (!permissionKeys.includes(SUPPORT_VIEW_PERMISSION)) {
+    // An admin who may see only the assistant tab lands on it.
+    if (permissionKeys.includes(ASSISTANT_VIEW_PERMISSION)) redirect('/settings/assistant');
     return shell(
       <>
         <p className="text-fg-muted">{t('settings.no-access')}</p>

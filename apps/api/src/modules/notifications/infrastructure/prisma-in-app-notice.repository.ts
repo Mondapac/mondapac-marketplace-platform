@@ -3,20 +3,27 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   InAppNoticeRepository,
-  NewSellerNotice,
+  NewNotice,
   NoticeFilter,
-  SellerNoticeScope,
+  NoticeOwner,
+  NoticeScope,
   StoredNotice,
 } from '../application/ports/in-app-notice.repository';
 
 const instant = (date: Date) => Temporal.Instant.fromEpochMilliseconds(date.getTime());
 const date = (at: Temporal.Instant) => new Date(at.epochMilliseconds);
 
-/** The rows one seller-side reader may see (the Market is added by each query). */
-function sellerScope(scope: SellerNoticeScope) {
+/** The rows of one owner (the Market is added by each query). */
+function ownerRows(owner: NoticeOwner) {
+  return owner.audience === 'seller'
+    ? { audience: 'seller', sellerId: owner.sellerId }
+    : { audience: 'admin', sellerId: null };
+}
+
+/** The rows one reader may see (the Market is added by each query). */
+function readerScope(scope: NoticeScope) {
   return {
-    audience: 'seller',
-    sellerId: scope.sellerId,
+    ...ownerRows(scope.owner),
     kind: { in: [...scope.kinds] },
     createdAt: { gte: date(scope.since) },
   };
@@ -30,15 +37,14 @@ function sellerScope(scope: SellerNoticeScope) {
 export class PrismaInAppNoticeRepository implements InAppNoticeRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async addForSellers(market: MarketContext, notices: readonly NewSellerNotice[]) {
+  async add(market: MarketContext, notices: readonly NewNotice[]) {
     if (notices.length === 0) return;
     await this.prisma.tx(market).notificationsInAppNotice.createMany({
       data: notices.map((notice) => ({
         marketId: market.marketId,
         tenantId: market.tenantId,
         id: notice.id,
-        audience: 'seller',
-        sellerId: notice.sellerId,
+        ...ownerRows(notice.owner),
         kind: notice.kind,
         params: { ...notice.params },
         createdAt: date(notice.createdAt),
@@ -46,24 +52,29 @@ export class PrismaInAppNoticeRepository implements InAppNoticeRepository {
     });
   }
 
-  async trimSeller(market: MarketContext, sellerId: Id<'Seller'>, keep: number) {
+  async trim(market: MarketContext, owner: NoticeOwner, keep: number, kind?: string) {
     const tx = this.prisma.tx(market);
+    const rows = {
+      marketId: market.marketId,
+      ...ownerRows(owner),
+      ...(kind === undefined ? {} : { kind }),
+    };
     const edge = await tx.notificationsInAppNotice.findFirst({
-      where: { marketId: market.marketId, audience: 'seller', sellerId },
+      where: rows,
       orderBy: { id: 'desc' },
       skip: keep - 1,
       select: { id: true },
     });
     if (edge === null) return 0;
     const deleted = await tx.notificationsInAppNotice.deleteMany({
-      where: { marketId: market.marketId, audience: 'seller', sellerId, id: { lt: edge.id } },
+      where: { ...rows, id: { lt: edge.id } },
     });
     return deleted.count;
   }
 
-  async listForSeller(
+  async list(
     market: MarketContext,
-    scope: SellerNoticeScope,
+    scope: NoticeScope,
     page: {
       readonly before: Id<'InAppNotice'> | null;
       readonly limit: number;
@@ -74,7 +85,7 @@ export class PrismaInAppNoticeRepository implements InAppNoticeRepository {
     const rows = await this.prisma.tx(market).notificationsInAppNotice.findMany({
       where: {
         marketId: market.marketId,
-        ...sellerScope(scope),
+        ...readerScope(scope),
         ...(page.before === null ? {} : { id: { lt: page.before } }),
         ...(page.show === 'unread' ? { reads: { none: mine } } : {}),
         ...(page.show === 'read' ? { reads: { some: mine } } : {}),
@@ -98,20 +109,22 @@ export class PrismaInAppNoticeRepository implements InAppNoticeRepository {
     }));
   }
 
-  async unreadForSeller(market: MarketContext, scope: SellerNoticeScope) {
+  async unread(market: MarketContext, scope: NoticeScope, newestOf: readonly string[]) {
     const tx = this.prisma.tx(market);
     const where = {
       marketId: market.marketId,
-      ...sellerScope(scope),
+      ...readerScope(scope),
       reads: { none: { accountId: scope.accountId } },
     };
     const [count, newest] = await Promise.all([
       tx.notificationsInAppNotice.count({ where }),
-      tx.notificationsInAppNotice.findFirst({
-        where,
-        orderBy: { id: 'desc' },
-        select: { id: true, kind: true, params: true, createdAt: true },
-      }),
+      newestOf.length === 0
+        ? Promise.resolve(null)
+        : tx.notificationsInAppNotice.findFirst({
+            where: { ...where, kind: { in: [...newestOf] } },
+            orderBy: { id: 'desc' },
+            select: { id: true, kind: true, params: true, createdAt: true },
+          }),
     ]);
     return {
       count,
@@ -128,23 +141,23 @@ export class PrismaInAppNoticeRepository implements InAppNoticeRepository {
     };
   }
 
-  async existsForSeller(market: MarketContext, scope: SellerNoticeScope, id: Id<'InAppNotice'>) {
+  async exists(market: MarketContext, scope: NoticeScope, id: Id<'InAppNotice'>) {
     const row = await this.prisma.tx(market).notificationsInAppNotice.findFirst({
-      where: { marketId: market.marketId, ...sellerScope(scope), id },
+      where: { marketId: market.marketId, ...readerScope(scope), id },
       select: { id: true },
     });
     return row !== null;
   }
 
-  async unreadIdsForSeller(
+  async unreadIds(
     market: MarketContext,
-    scope: SellerNoticeScope,
+    scope: NoticeScope,
     ids: readonly Id<'InAppNotice'>[] | 'all',
   ) {
     const rows = await this.prisma.tx(market).notificationsInAppNotice.findMany({
       where: {
         marketId: market.marketId,
-        ...sellerScope(scope),
+        ...readerScope(scope),
         ...(ids === 'all' ? {} : { id: { in: [...ids] } }),
         reads: { none: { accountId: scope.accountId } },
       },

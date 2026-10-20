@@ -1,4 +1,5 @@
 [
+  { "name": "assistant.view-storefront-assistant", "rule": "anonymous" },
   { "name": "cart.add-guest-item", "rule": "anonymous" },
   { "name": "cart.add-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.clear-ordered-lines", "rule": "system" },
@@ -54,6 +55,7 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "catalog.pending-product-revisions", "rule": "system" },
   { "name": "catalog.published-offer-ids", "rule": "system" },
   { "name": "catalog.reconcile-tags", "rule": "system" },
   { "name": "catalog.reevaluate-from-certification", "rule": "system" },
@@ -61,6 +63,7 @@
   { "name": "catalog.seed-attributes", "rule": "system" },
   { "name": "catalog.seed-category-tree", "rule": "system" },
   { "name": "catalog.sell-unit-labels", "rule": "anonymous" },
+  { "name": "catalog.seller-product-owners", "rule": "system" },
   { "name": "catalog.send-offer-owner-notices", "rule": "system" },
   { "name": "catalog.sweep-orphan-images", "rule": "system" },
   { "name": "catalog.warn-offer-owners-of-expiry", "rule": "system" },
@@ -344,6 +347,8 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "notifications.purge-expired-notices", "rule": "system" },
+  { "name": "notifications.record-admin-review-notice", "rule": "system" },
+  { "name": "notifications.record-seller-notice", "rule": "system" },
   { "name": "notifications.record-seller-order-notices", "rule": "system" },
   { "name": "notifications.send-order-confirmation-mail", "rule": "system" },
   { "name": "notifications.send-order-shipped-mail", "rule": "system" },

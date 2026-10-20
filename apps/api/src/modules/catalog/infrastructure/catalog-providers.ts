@@ -90,6 +90,16 @@ import {
 } from '../application/ports/offer-tax-categories.reader';
 import { PrismaOfferTaxCategoriesReader } from './prisma-offer-tax-categories.reader';
 import {
+  PENDING_PRODUCT_REVISIONS_READER,
+  type PendingProductRevisionsReader,
+} from '../application/ports/pending-product-revisions.reader';
+import { PrismaPendingProductRevisionsReader } from './prisma-pending-product-revisions.reader';
+import {
+  SELLER_PRODUCT_OWNERS_READER,
+  type SellerProductOwnersReader,
+} from '../application/ports/seller-product-owners.reader';
+import { PrismaSellerProductOwnersReader } from './prisma-seller-product-owners.reader';
+import {
   CATEGORY_TREE_READER,
   type CategoryTreeReader,
 } from '../application/ports/category-tree.reader';
@@ -237,6 +247,18 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferTaxCategoriesReader =>
       new PrismaOfferTaxCategoriesReader(prisma),
+  },
+  {
+    provide: PENDING_PRODUCT_REVISIONS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PendingProductRevisionsReader =>
+      new PrismaPendingProductRevisionsReader(prisma),
+  },
+  {
+    provide: SELLER_PRODUCT_OWNERS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerProductOwnersReader =>
+      new PrismaSellerProductOwnersReader(prisma),
   },
   {
     provide: CATEGORY_TREE_READER,

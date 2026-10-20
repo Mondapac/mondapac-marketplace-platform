@@ -74,6 +74,12 @@ interface StoreState {
   /** The confirmed delivery location; null shows the storefront's default area. */
   readonly deliverTo: DeliverTo | null;
   readonly setDeliverTo: (to: DeliverTo) => void;
+  /** The log-in dialog (header Log in, the rail's My Account, the Account tab when signed out). */
+  readonly loginOpen: boolean;
+  readonly setLoginOpen: (open: boolean) => void;
+  /** The account menu panel of the phone and tablet layout (the Account tab when signed in). */
+  readonly accountOpen: boolean;
+  readonly setAccountOpen: (open: boolean) => void;
 }
 
 const StoreContext = createContext<StoreState | null>(null);
@@ -83,6 +89,7 @@ export function StoreProvider({
   cartSource = NO_SOURCE,
   initialCart = {},
   initialDeliverTo = null,
+  initialCustomer = null,
   children,
 }: {
   readonly cartSource?: CartSource;
@@ -90,11 +97,13 @@ export function StoreProvider({
   readonly initialCart?: Cart;
   /** The location kept in this browser (the delivery cookie). */
   readonly initialDeliverTo?: DeliverTo | null;
+  /** The signed-in customer to start with (tests; the session once it is read). */
+  readonly initialCustomer?: CheckoutCustomer | null;
   readonly children: ReactNode;
 }) {
   const [cart, setCart] = useState<Cart>(initialCart);
   const [cartOpen, setCartOpen] = useState(false);
-  const [customer, setCustomer] = useState<CheckoutCustomer | null>(null);
+  const [customer, setCustomer] = useState<CheckoutCustomer | null>(initialCustomer);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [saved, setSaved] = useState<readonly string[]>([]);
   const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
@@ -106,6 +115,8 @@ export function StoreProvider({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deliverOpen, setDeliverOpen] = useState(false);
   const [deliverTo, setDeliverTo] = useState<DeliverTo | null>(initialDeliverTo);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const add = useCallback(
     (id: string, unitPrice: Money, limit: number) =>
       setCart((current) => addOne(current, id, unitPrice, limit)),
@@ -175,6 +186,10 @@ export function StoreProvider({
       setDeliverOpen,
       deliverTo,
       setDeliverTo,
+      loginOpen,
+      setLoginOpen,
+      accountOpen,
+      setAccountOpen,
     }),
     [
       cart,
@@ -200,6 +215,8 @@ export function StoreProvider({
       dialogOpen,
       deliverOpen,
       deliverTo,
+      loginOpen,
+      accountOpen,
     ],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

@@ -5,14 +5,31 @@ import { useStore } from './store-context.tsx';
 
 /**
  * The page behind the overlays. While Browse products, the search view, a listing's filters
- * drawer, the cart drawer, the Deliver to modal or a page's modal dialog is open the page is inert (Tab stays in the
+ * drawer, the cart drawer, the log-in dialog, the account menu, the Deliver to modal or a page's modal dialog is open the page is inert (Tab stays in the
  * overlay) and does not scroll; the search view, a phone and tablet layout, closes when the
  * screen grows to the desktop layout.
  */
 export function PageFrame({ children }: { readonly children: ReactNode }) {
-  const { browseOpen, searchOpen, setSearchOpen, filtersOpen, dialogOpen, cartOpen, deliverOpen } =
-    useStore();
-  const overlay = browseOpen || searchOpen || filtersOpen || dialogOpen || cartOpen || deliverOpen;
+  const {
+    browseOpen,
+    searchOpen,
+    setSearchOpen,
+    filtersOpen,
+    dialogOpen,
+    cartOpen,
+    loginOpen,
+    accountOpen,
+    deliverOpen,
+  } = useStore();
+  const overlay =
+    browseOpen ||
+    searchOpen ||
+    filtersOpen ||
+    dialogOpen ||
+    cartOpen ||
+    loginOpen ||
+    accountOpen ||
+    deliverOpen;
 
   useEffect(() => {
     if (!overlay) return;

@@ -207,6 +207,40 @@ export interface CatalogFacade {
   ): Promise<
     Result<OfferListingsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
   >;
+
+  /**
+   * Which of the requested product revisions, each named with its product, still waits for
+   * review (it is its product's pending revision now), at most 200, refused whole above. Rule `system`: for the admins' review
+   * notice (in-app notifications package 3). An unknown id, another Market's, a published or a
+   * replaced revision is absent. Ids only. In-process only.
+   */
+  pendingProductRevisions(
+    context: CallContext,
+    revisions: readonly {
+      readonly productId: Id<'Product'>;
+      readonly revisionId: Id<'ProductRevision'>;
+    }[],
+  ): Promise<
+    Result<
+      ReadonlySet<Id<'ProductRevision'>>,
+      AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
+    >
+  >;
+
+  /**
+   * The owning seller of each requested SELLER product, at most 200, refused whole above. Rule
+   * `system`: for the sellers' product notices (in-app notifications package 4). A PLATFORM
+   * product, an unknown id and another Market's are absent. Ids only. In-process only.
+   */
+  sellerProductOwners(
+    context: CallContext,
+    productIds: readonly Id<'Product'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Product'>, Id<'Seller'>>,
+      AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
+    >
+  >;
 }
 
 /** Nest token of the {@link CatalogFacade}, provided and exported by `CatalogModule`. */

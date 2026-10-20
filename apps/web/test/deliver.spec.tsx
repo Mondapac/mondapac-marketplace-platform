@@ -47,6 +47,11 @@ function SignIn() {
   return null;
 }
 
+function LoginProbe() {
+  const { loginOpen } = useStore();
+  return <output data-testid="login">{loginOpen ? 'open' : 'closed'}</output>;
+}
+
 function renderHeader({
   signedIn = false,
   deliverTo = null,
@@ -57,6 +62,7 @@ function renderHeader({
         {signedIn ? <SignIn /> : null}
         <Header delivery={{ label: 'Brisbane 4000' }} />
         <DeliverModal source={SOURCE} />
+        <LoginProbe />
       </StoreProvider>
     </NextIntlClientProvider>,
   );
@@ -279,6 +285,14 @@ describe('Deliver to modal', () => {
     expect(summary(dialog).textContent).toContain(
       'Level 3, 100 Sample Road, Brisbane City QLD 4000',
     );
+  });
+
+  it('opens the log-in dialog from the saved addresses line when signed out', async () => {
+    renderHeader();
+    const dialog = await openModal();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Log in' }));
+    expect(screen.queryByRole('dialog', { name: 'Choose where to deliver' })).toBeNull();
+    expect(screen.getByTestId('login').textContent).toBe('open');
   });
 
   it('starts from the suburb kept in this browser', async () => {

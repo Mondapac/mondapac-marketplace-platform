@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { HomeSections } from '../src/home/home-sections.tsx';
 import { StoreShell } from '../src/shell/store-shell.tsx';
-import { SAMPLE_CART_SOURCE } from '../src/storefront/sample-cart.ts';
+import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from '../src/storefront/sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from '../src/storefront/sample-delivery.ts';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import type { StorefrontContent } from '../src/storefront/types.ts';
@@ -35,6 +35,7 @@ function renderStore(content: StorefrontContent = SAMPLE_CONTENT) {
         deliverTo={null}
         textSize="auto"
         consent={{ personalization: false }}
+        signIn={SAMPLE_CHECKOUT.customer}
       >
         <HomeSections
           sections={content.home}

@@ -1,7 +1,6 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   useEffect,
@@ -50,7 +49,14 @@ const NARROW = '(max-width: 760px)';
 export function DeliverModal({ source }: { readonly source: DeliveryLocatorSource }) {
   const t = useTranslations('deliver');
   const router = useRouter();
-  const { deliverOpen: open, setDeliverOpen, deliverTo, setDeliverTo, customer } = useStore();
+  const {
+    deliverOpen: open,
+    setDeliverOpen,
+    deliverTo,
+    setDeliverTo,
+    customer,
+    setLoginOpen,
+  } = useStore();
   const lookup = useMemo(() => sampleLookup(source), [source]);
   const [mounted, setMounted] = useState(false);
   const [pick, setPick] = useState<Pick>({
@@ -372,9 +378,17 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                 <p className="lmpriv">
                   {t.rich('log-in', {
                     login: (chunks) => (
-                      <Link className="lnk" href="/account" onClick={close}>
+                      <button
+                        className="lnk"
+                        type="button"
+                        aria-haspopup="dialog"
+                        onClick={() => {
+                          close();
+                          setLoginOpen(true);
+                        }}
+                      >
                         {chunks}
-                      </Link>
+                      </button>
                     ),
                   })}
                 </p>

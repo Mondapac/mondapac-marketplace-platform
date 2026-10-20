@@ -67,7 +67,7 @@ export class RecordSellerOrderNotices extends UseCase<
       const now = this.deps.clock.now();
       const notices = notice.value.sellerOrders.map((sellerOrder) => ({
         id: this.deps.ids.next<'InAppNotice'>(),
-        sellerId: sellerOrder.sellerId,
+        owner: { audience: 'seller' as const, sellerId: sellerOrder.sellerId },
         kind: SELLER_ORDER_PAID,
         params: {
           sellerOrderId: sellerOrder.sellerOrderId,
@@ -81,9 +81,14 @@ export class RecordSellerOrderNotices extends UseCase<
         context.market,
         input.delivery,
         async () => {
-          await this.deps.notices.addForSellers(context.market, notices);
-          for (const sellerId of new Set(notices.map((item) => item.sellerId))) {
-            await this.deps.notices.trimSeller(context.market, sellerId, NOTICES_PER_SELLER);
+          await this.deps.notices.add(context.market, notices);
+          for (const sellerId of new Set(notices.map((item) => item.owner.sellerId))) {
+            await this.deps.notices.trim(
+              context.market,
+              { audience: 'seller', sellerId },
+              NOTICES_PER_SELLER,
+              SELLER_ORDER_PAID,
+            );
           }
           return ok(notices.length);
         },

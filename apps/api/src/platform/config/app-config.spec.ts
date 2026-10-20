@@ -32,6 +32,34 @@ describe('loadAppConfig', () => {
       stripeWebhookSecrets: {},
       stripeConnectWebhookSecrets: {},
       clientAddressTrust: null,
+      assistantModelApiKey: null,
+      assistantModels: { fast: null, balanced: null },
+    });
+  });
+
+  describe('the buyer assistant model (key and tiers)', () => {
+    it('reads the key and the model id of each tier', () => {
+      const config = loadAppConfig({
+        HOSTED_MARKETS: 'AU',
+        ASSISTANT_MODEL_API_KEY: 'test-key-0123456789abcdef',
+        ASSISTANT_MODEL_FAST: 'provider-model-fast-1',
+      });
+      expect(config.assistantModelApiKey).toBe('test-key-0123456789abcdef');
+      expect(config.assistantModels).toEqual({ fast: 'provider-model-fast-1', balanced: null });
+    });
+
+    it.each([
+      ['ASSISTANT_MODEL_API_KEY', 'short'],
+      ['ASSISTANT_MODEL_API_KEY', 'has a space in it 0123456789'],
+      ['ASSISTANT_MODEL_FAST', 'bad model id'],
+      ['ASSISTANT_MODEL_BALANCED', '-leading-dash'],
+    ])('refuses %s=%j without echoing it', (name, value) => {
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', [name]: value })).toThrow(name);
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', [name]: value });
+      } catch (error) {
+        expect(String((error as Error).message)).not.toContain(value);
+      }
     });
   });
 

@@ -1,5 +1,10 @@
 [
   {
+    "name": "assistant.view-storefront-assistant",
+    "rule": "anonymous",
+    "reason": "The storefront asks whether to show the buyer assistant to a visitor who may have no session; the answer is the safe subset only (on for this visitor, guests allowed, reply language, welcome text) and changes nothing."
+  },
+  {
     "name": "cart.add-guest-item",
     "rule": "anonymous",
     "reason": "A guest adds to the cart held by the cart cookie: a guest has no account or session."

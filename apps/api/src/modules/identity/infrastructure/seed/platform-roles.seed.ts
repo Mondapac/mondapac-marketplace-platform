@@ -139,8 +139,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 11 adds `certification.type.view`, likewise unprotected (certification slice 12).
     // Version 12 adds `certification.claim-policy.view`, likewise unprotected (certification
     // slice 13). Version 13 adds `certification.product-certificate.view`, likewise unprotected
-    // (certification slice 14; it never reads the number).
-    seedVersion: 13,
+    // (certification slice 14; it never reads the number). Version 14 adds
+    // `assistant.settings.view`, likewise unprotected (buyer assistant settings).
+    seedVersion: 14,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -159,6 +160,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'certification.type.view',
       'certification.claim-policy.view',
       'certification.product-certificate.view',
+      'assistant.settings.view',
     ],
   },
   {

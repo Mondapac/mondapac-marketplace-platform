@@ -1,13 +1,17 @@
 import 'server-only';
+import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleProduct } from './sample-product.ts';
+import { sampleSeller } from './sample-seller.ts';
 import type {
+  AccountSource,
   CartSource,
   CheckoutSource,
   DeliveryLocatorSource,
   ProductDetail,
+  SellerShop,
   StorefrontContent,
 } from './types.ts';
 
@@ -46,4 +50,20 @@ export async function loadCheckout(): Promise<CheckoutSource> {
  */
 export async function loadDeliveryLocator(): Promise<DeliveryLocatorSource> {
   return Promise.resolve(SAMPLE_DELIVERY_LOCATOR);
+}
+
+/**
+ * The seller page's read: profile, terms, certificates and products, or undefined when there is
+ * no such seller. Sample data until the backend has the seller public read.
+ */
+export async function loadSeller(slug: string): Promise<SellerShop | undefined> {
+  return Promise.resolve(sampleSeller(slug));
+}
+
+/**
+ * The signed-in buyer's account: profile, orders, address book, saved lists and email choices.
+ * Sample data until the account backend (orders read, profile, password, saved lists) exists.
+ */
+export async function loadAccount(): Promise<AccountSource> {
+  return Promise.resolve(SAMPLE_ACCOUNT);
 }
