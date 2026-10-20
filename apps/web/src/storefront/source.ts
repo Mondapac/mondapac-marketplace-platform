@@ -144,11 +144,12 @@ export async function resendSellerVerification(email: string): Promise<SellerSig
 
 /**
  * A product id the product read did not find: a removed product (its page says so and shows
- * similar ones), or undefined for an id that never existed (the 404 page). Sample data until the
- * product detail read tells them apart.
+ * similar ones), or undefined for an id that never existed (the 404 page). Sample data only: the
+ * product detail read answers the same 404 for both (no oracle on hidden products), so with the
+ * API on every miss is the 404 page until a read tells removed products apart.
  */
 export async function loadUnavailableProduct(id: string): Promise<UnavailableProduct | undefined> {
-  return Promise.resolve(sampleUnavailableProduct(id));
+  return Promise.resolve(storefrontApiConfig() === null ? sampleUnavailableProduct(id) : undefined);
 }
 
 /**
