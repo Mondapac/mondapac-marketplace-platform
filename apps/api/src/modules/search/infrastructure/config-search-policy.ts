@@ -14,6 +14,7 @@ export class ConfigSearchPolicy implements SearchPolicy {
     return {
       textSearchConfig: config.search?.textSearchConfig ?? DEFAULT_TEXT_SEARCH_CONFIG,
       locale: config.defaultLocale,
+      currency: config.defaultCurrency,
     };
   }
 }
