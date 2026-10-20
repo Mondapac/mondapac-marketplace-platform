@@ -1,4 +1,5 @@
 import 'server-only';
+import type { AssistantSetup } from '../assistant/assistant.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
@@ -99,4 +100,14 @@ export async function submitSellerSignUp(input: {
 export async function resendSellerVerification(email: string): Promise<SellerSignUpAnswer> {
   void email;
   return Promise.resolve({ kind: 'accepted' });
+}
+
+/**
+ * Whether the buyer assistant shows, and what the widget needs: null while it is off. Always null
+ * for now: the assistant ships switched off in every Market, and the storefront does not call the
+ * API yet. Once it does, this asks `GET /assistant/storefront` and adds the conversation route,
+ * the Market's support address and retention, and the session's CSRF token.
+ */
+export async function loadAssistant(): Promise<AssistantSetup | null> {
+  return Promise.resolve(null);
 }
