@@ -20,8 +20,11 @@ export type ApiRead<T> =
   /** API_BASE_URL is empty: the caller answers sample data. */
   | { readonly kind: 'off' }
   | { readonly kind: 'ok'; readonly body: T }
-  /** Refused, unreachable, too slow, not JSON, or the host is not listed. */
-  | { readonly kind: 'failed' };
+  /**
+   * Refused, unreachable, too slow, not JSON, or the host is not listed. `status` is the API's
+   * HTTP status when it refused, so a page can tell "no such thing" (404) from an outage.
+   */
+  | { readonly kind: 'failed'; readonly status?: number };
 
 interface RequestHeaders {
   get(name: string): string | null;
@@ -85,7 +88,7 @@ export async function apiGetWith<T>(
     });
     if (!response.ok) {
       log({ msg: 'storefront.api-read-refused', path: routeOf(path), status: response.status });
-      return { kind: 'failed' };
+      return { kind: 'failed', status: response.status };
     }
     return { kind: 'ok', body: (await response.json()) as T };
   } catch (error) {
