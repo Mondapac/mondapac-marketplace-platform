@@ -158,7 +158,12 @@ describe('home source: real data', () => {
       'storefront/pages/home',
     ]);
 
-    expect(home.sections.map((s) => s.kind)).toEqual(['promos', 'categories', 'products']);
+    expect(home.sections.map((s) => s.kind)).toEqual([
+      'promos',
+      'categories',
+      'products',
+      'products',
+    ]);
     expect(home.sections[0]).toEqual({
       kind: 'promos',
       banners: [
@@ -199,8 +204,22 @@ describe('home source: real data', () => {
         },
       ],
     });
-    // Best sellers have no price in the API yet, so no card can be shown; no sample sellers.
-    expect(shelf(home.sections, 'Best sellers')).toBeUndefined();
+    // Best sellers have no price in the API yet: the card shows the name only, nothing to add.
+    expect(shelf(home.sections, 'Best sellers')).toEqual({
+      kind: 'products',
+      title: 'Best sellers',
+      href: '/best-sellers',
+      products: [
+        {
+          id: LAMB,
+          name: 'Lamb shoulder, 1 kg',
+          sellerName: '',
+          category: 'meat',
+          certifications: [],
+        },
+      ],
+    });
+    // No sellers near you until the seller public read merges.
     expect(home.sellers).toEqual([]);
   });
 
@@ -220,14 +239,14 @@ describe('home source: real data', () => {
   });
 
   it('fills the shelves the API leaves empty with the sample while the fallback is on', async () => {
-    serve(REAL);
+    serve({ ...REAL, 'search/bestsellers': { items: [] } });
     const home = await loadWith(ENV);
     const bestsellers = shelf(home.sections, 'Best sellers');
     expect(bestsellers?.kind === 'products' && bestsellers.products[0]?.id).toBe('lamb-shoulder');
     const specials = shelf(home.sections, 'Special prices this week');
     expect(specials?.kind === 'products' && specials.products.map((p) => p.id)).toEqual([LAMB]);
-    expect(home.sections.map((s) => s.kind)).toContain('sellers');
-    expect(home.sellers.length).toBeGreaterThan(0);
+    // Sample stores never stand beside real products.
+    expect(home.sections.map((s) => s.kind)).not.toContain('sellers');
   });
 });
 
@@ -255,7 +274,6 @@ describe('home source: empty data', () => {
       'categories',
       'products',
       'products',
-      'sellers',
     ]);
   });
 
@@ -276,7 +294,11 @@ describe('home source: API error', () => {
   it('keeps the page when one read fails', async () => {
     serve({ ...REAL, 'catalog/categories': 503, 'search/specials': 500 });
     const result = await loadWith(NO_SAMPLE);
-    expect(result.sections.map((s) => s.kind)).toEqual(['promos']);
+    // The categories and specials are gone; the best sellers still show.
+    expect(result.sections.map((s) => [s.kind, s.kind === 'products' ? s.title : ''])).toEqual([
+      ['promos', ''],
+      ['products', 'Best sellers'],
+    ]);
   });
 
   it('treats an answer that is not a page as no layout', async () => {

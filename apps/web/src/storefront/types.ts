@@ -35,6 +35,12 @@ export interface ProductCard {
   readonly imageUrl?: string;
 }
 
+/**
+ * A product card of a home shelf. The price is absent when the shelf read does not carry it (the
+ * best-sellers route gives ids and text only): the card then shows no price and no add button.
+ */
+export type ShelfCard = Omit<ProductCard, 'price'> & { readonly price?: Money };
+
 export interface SellerSummary {
   readonly id: string;
   readonly name: string;
@@ -71,7 +77,7 @@ export type HomeSection =
       readonly kind: 'products';
       readonly title: string;
       readonly href: string;
-      readonly products: readonly ProductCard[];
+      readonly products: readonly ShelfCard[];
     };
 
 export interface DeliveryArea {

@@ -6,9 +6,9 @@ import { CategoryArt } from '../icons/category-icon.tsx';
 import type {
   Category,
   HomeSection,
-  ProductCard as Product,
   PromoBanner,
   SellerSummary,
+  ShelfCard,
 } from '../storefront/types.ts';
 import { ProductCard } from './product-card.tsx';
 
@@ -163,7 +163,7 @@ function Products({
 }: {
   readonly title: string;
   readonly href: string;
-  readonly products: readonly Product[];
+  readonly products: readonly ShelfCard[];
 }) {
   const t = useTranslations('home');
   return (

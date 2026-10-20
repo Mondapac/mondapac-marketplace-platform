@@ -6,6 +6,7 @@ import type {
   HomeSection,
   Money,
   ProductCard,
+  ShelfCard,
   PromoBanner,
   SellerSummary,
 } from './types.ts';
@@ -17,8 +18,9 @@ import type {
 // currency. Where the API answers nothing or fails, sample data stands in while the sample
 // fallback is on (STOREFRONT_SAMPLE_DATA, below); with it off the section is left out.
 //
-// Not in the API yet, so never real: seller names and seller logos on cards, prices of best
-// sellers and category shelves, photos, certification seals on shelves, the sellers near you.
+// Not in the API yet, so left off the cards: seller names, prices of best sellers and category
+// shelves (no add button either), photos, certification seals. The sellers near you section is
+// left out until the seller public read merges.
 // The info strip, text block and image-text modules have no design on the buyer site yet and are
 // skipped.
 
@@ -45,7 +47,6 @@ const BANNER_IMAGES: ReadonlySet<string> = new Set([
 ]);
 
 const SHELF_LIMIT_MAX = 24;
-const SELLERS_LIMIT_MAX = 12;
 
 const SAMPLE_HOME: HomeContent = {
   sections: SAMPLE_CONTENT.home,
@@ -63,7 +64,6 @@ const SAMPLE_SHELVES: Readonly<Record<'bestsellers' | 'specials', readonly Produ
 const DEFAULT_TITLE = {
   bestsellers: 'Best sellers',
   specials: 'Special prices this week',
-  sellers: 'Sellers near you',
 } as const;
 
 type Json = Readonly<Record<string, unknown>>;
@@ -140,19 +140,24 @@ export function categoriesOf(body: unknown): {
 }
 
 /**
- * A shelf item as a product card, or null when it cannot be shown: no price (best sellers and
- * category shelves carry none yet), a price without a currency, or a price that excludes tax
- * (the card says "including GST"). The certification seal is never built here (AI rule R1: it
- * comes only from evaluateClaim, and the shelf routes do not carry it).
+ * A shelf item as a card, or null when it cannot be shown: no id or name, or a price that excludes
+ * tax (the card says "including GST"). Without a price (best sellers and category shelves carry
+ * none yet, nor does a price without a currency) the card shows no price and no add button; no
+ * shelf route carries the seller's name, so that line is left out. The certification seal is
+ * never built here (AI rule R1: it comes only from evaluateClaim, and the shelf routes do not
+ * carry it).
  */
-export function cardOf(item: unknown, slugs: ReadonlyMap<string, string>): ProductCard | null {
+export function cardOf(item: unknown, slugs: ReadonlyMap<string, string>): ShelfCard | null {
   if (!isObject(item) || typeof item.productId !== 'string') return null;
   const name = textOf(item.name, 200);
   const price = moneyOf(item.price);
-  if (name === undefined || price === undefined || item.taxInclusive === false) return null;
+  if (name === undefined || (price !== undefined && item.taxInclusive === false)) return null;
   const regular = moneyOf(item.regularPrice);
   const wasPrice =
-    regular !== undefined && regular.currency === price.currency && regular.amount > price.amount
+    price !== undefined &&
+    regular !== undefined &&
+    regular.currency === price.currency &&
+    regular.amount > price.amount
       ? regular
       : undefined;
   const firstCategory: unknown = Array.isArray(item.categoryIds)
@@ -163,17 +168,17 @@ export function cardOf(item: unknown, slugs: ReadonlyMap<string, string>): Produ
     name,
     sellerName: '',
     category: (typeof firstCategory === 'string' ? slugs.get(firstCategory) : undefined) ?? '',
-    price,
+    ...(price === undefined ? {} : { price }),
     ...(wasPrice === undefined ? {} : { wasPrice }),
     certifications: [],
   };
 }
 
 /** The cards of a shelf answer, one per product, in shelf order. */
-export function cardsOf(body: unknown, slugs: ReadonlyMap<string, string>): ProductCard[] {
+export function cardsOf(body: unknown, slugs: ReadonlyMap<string, string>): ShelfCard[] {
   if (!isObject(body) || !Array.isArray(body.items)) return [];
   const seen = new Set<string>();
-  const cards: ProductCard[] = [];
+  const cards: ShelfCard[] = [];
   for (const item of body.items as unknown[]) {
     const card = cardOf(item, slugs);
     if (card === null || seen.has(card.id)) continue;
@@ -285,7 +290,6 @@ export function homeFrom(reads: HomeReads, fallback: boolean): HomeContent {
   const categories = categoriesOf(reads.tree.kind === 'ok' ? reads.tree.body : null);
   const sections: HomeSection[] = [];
   let shownCategories: readonly Category[] = [];
-  let sellers: readonly SellerSummary[] = [];
   let bannerCount = 0;
   for (const m of placed) {
     switch (m.module) {
@@ -326,20 +330,16 @@ export function homeFrom(reads: HomeReads, fallback: boolean): HomeContent {
         }
         break;
       }
-      case 'sellers-near-you': {
-        // No public seller list yet: the sample stores, only while the fallback is on.
-        if (!fallback) break;
-        sellers = SAMPLE_HOME.sellers.slice(0, limitOf(m.config.limit, 8, SELLERS_LIMIT_MAX));
-        const title = textOf(m.config.title, 80) ?? DEFAULT_TITLE.sellers;
-        sections.push({ kind: 'sellers', title, href: '/sellers' });
+      case 'sellers-near-you':
+        // Left out until the seller public read merges: sample stores beside real products would
+        // send buyers to shops that do not exist.
         break;
-      }
       default:
         break;
     }
   }
   if (sections.length === 0 && fallback) return SAMPLE_HOME;
-  return { sections, categories: shownCategories, sellers };
+  return { sections, categories: shownCategories, sellers: [] };
 }
 
 /** A read of one public route, as `apiGet` answers it. */
