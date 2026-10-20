@@ -73,30 +73,40 @@ export function StoreCard({
         ))}
       </ul>
       <ul className="slc-d">
-        <li>
-          <Icon name="clock" />
-          {store.deliveryWindow}
-        </li>
-        <li>
-          <Icon name="bag" />
-          {store.minimumOrder
-            ? t('minimum', { amount: formatMoney(store.minimumOrder, locale) })
-            : t('no-minimum')}
-        </li>
-        <li className="num">
-          <Icon name="truck" />
-          {t('delivery-fee', { fee: formatMoney(store.deliveryFee, locale) })}
-        </li>
+        {store.deliveryWindow === undefined ? null : (
+          <li>
+            <Icon name="clock" />
+            {store.deliveryWindow}
+          </li>
+        )}
+        {store.minimumUnknown ? null : (
+          <li>
+            <Icon name="bag" />
+            {store.minimumOrder
+              ? t('minimum', { amount: formatMoney(store.minimumOrder, locale) })
+              : t('no-minimum')}
+          </li>
+        )}
+        {store.deliveryFee === undefined ? null : (
+          <li className="num">
+            <Icon name="truck" />
+            {t('delivery-fee', { fee: formatMoney(store.deliveryFee, locale) })}
+          </li>
+        )}
       </ul>
-      <div className="slc-p">
-        {store.thumbnails.map((p, i) => (
-          <span key={i} className="slc-th" aria-hidden="true">
-            <Icon name={categoryIcon(p.category)} />
-            {p.imageUrl ? <img src={p.imageUrl} alt="" loading="lazy" decoding="async" /> : null}
-          </span>
-        ))}
-        <span className="n num">{t('products', { count: store.productCount })}</span>
-      </div>
+      {store.thumbnails.length === 0 && store.productCount === undefined ? null : (
+        <div className="slc-p">
+          {store.thumbnails.map((p, i) => (
+            <span key={i} className="slc-th" aria-hidden="true">
+              <Icon name={categoryIcon(p.category)} />
+              {p.imageUrl ? <img src={p.imageUrl} alt="" loading="lazy" decoding="async" /> : null}
+            </span>
+          ))}
+          {store.productCount === undefined ? null : (
+            <span className="n num">{t('products', { count: store.productCount })}</span>
+          )}
+        </div>
+      )}
     </article>
   );
 }

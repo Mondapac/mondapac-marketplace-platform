@@ -312,26 +312,36 @@ export interface SellerProduct extends ProductCard {
   readonly listedAt: string;
 }
 
-/** The public seller page (`/s/<slug>`): profile, terms, certificates and products. */
+/**
+ * The public seller page (`/s/<slug>`): profile, terms, certificates and products. Fields marked
+ * "not known yet" are absent while the seller read has no source for them (the API answers name,
+ * area, year and minimum order today): the page then leaves that part out, never shows "none".
+ */
 export interface SellerShop {
   /** The URL slug. */
   readonly id: string;
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;
-  /** Suburb and city only; the seller's address is never shown. */
+  /** Suburb and city only, or the ServiceArea's name; the seller's address is never shown. */
   readonly location: string;
   readonly sellingSince: number;
-  readonly about: string;
-  /** What the platform checked of the business, e.g. "ABN checked by Mondapac". */
-  readonly businessCheck: string;
-  readonly deliveryWindow: string;
-  readonly deliveryFee: Money;
-  /** Absent when the seller has no minimum order. */
+  /** Not known yet when absent. */
+  readonly about?: string;
+  /** What the platform checked of the business, e.g. "ABN checked by Mondapac". Not known yet when absent. */
+  readonly businessCheck?: string;
+  /** Not known yet when absent. */
+  readonly deliveryWindow?: string;
+  /** Not known yet when absent. */
+  readonly deliveryFee?: Money;
+  /** Absent when the seller has no minimum order (unless `minimumUnknown`). */
   readonly minimumOrder?: Money;
-  /** The area the seller delivers to. */
-  readonly deliversTo: string;
-  readonly certificates: readonly SellerCertificate[];
+  /** The minimum order cannot be told now: no minimum line is shown. */
+  readonly minimumUnknown?: true;
+  /** The area the seller delivers to. Not known yet when absent. */
+  readonly deliversTo?: string;
+  /** Not known yet when absent: the Certificates tab is left out, never "no certificates". */
+  readonly certificates?: readonly SellerCertificate[];
   /** Absent for a new seller without ratings; shown only behind the seller-ratings feature. */
   readonly ratings?: {
     readonly satisfaction: number;
@@ -339,11 +349,27 @@ export interface SellerShop {
     readonly asDescribed: number;
     readonly count: number;
   };
-  /** The categories of its products, in display order. */
-  readonly categories: readonly { readonly code: string; readonly name: string }[];
-  /** In popularity order. */
-  readonly products: readonly SellerProduct[];
+  /** The categories of its products, in display order. Not known yet when absent. */
+  readonly categories?: readonly { readonly code: string; readonly name: string }[];
+  /** In popularity order. Not known yet when absent: the Products tab is left out. */
+  readonly products?: readonly SellerProduct[];
 }
+
+/** A seller page with every part known: what the sample data gives. */
+export type CompleteSellerShop = SellerShop &
+  Required<
+    Pick<
+      SellerShop,
+      | 'about'
+      | 'businessCheck'
+      | 'deliveryWindow'
+      | 'deliveryFee'
+      | 'deliversTo'
+      | 'certificates'
+      | 'categories'
+      | 'products'
+    >
+  >;
 
 /** Where one seller's part of an order is. */
 export type OrderPartStatus =
@@ -431,13 +457,18 @@ export interface SellerListing {
   /** The labels evaluateClaim allows the seller (CERT-*); never free text. */
   readonly certifications: readonly { readonly type: string; readonly name: string }[];
   readonly categories: readonly { readonly code: string; readonly name: string }[];
-  readonly deliveryWindow: string;
+  /** Not known yet when absent. */
+  readonly deliveryWindow?: string;
   /** Whether it delivers today to the buyer's location. */
   readonly sameDay: boolean;
-  /** Absent when the seller has no minimum order. */
+  /** Absent when the seller has no minimum order (unless `minimumUnknown`). */
   readonly minimumOrder?: Money;
-  readonly deliveryFee: Money;
-  readonly productCount: number;
+  /** The minimum order cannot be told now: no minimum line is shown. */
+  readonly minimumUnknown?: true;
+  /** Not known yet when absent. */
+  readonly deliveryFee?: Money;
+  /** Not known yet when absent. */
+  readonly productCount?: number;
   /** Up to three products for the card's footer. */
   readonly thumbnails: readonly { readonly category: string; readonly imageUrl?: string }[];
   /** Whether it delivers to the buyer's location; true when the location is not known. */
@@ -487,6 +518,10 @@ export interface SellerResults {
   readonly all: number;
   readonly location: BuyerLocation;
   readonly facets: SellerFacets;
+  /** The sorts the read can order by; every sort when absent. */
+  readonly sorts?: readonly SellerSort[];
+  /** False when the read cannot filter yet: the page offers no filter. */
+  readonly filtersOffered?: false;
 }
 
 /**
