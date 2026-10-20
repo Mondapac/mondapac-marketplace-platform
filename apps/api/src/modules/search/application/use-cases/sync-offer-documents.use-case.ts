@@ -5,16 +5,19 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { SearchDependencies } from '../search-dependencies';
 import { syncOffers, SYNC_BATCH, type SyncCounts } from '../sync-offers';
 
-/** Which Offers to bring in line: some by id, or every Offer of one product. */
+/** Which Offers to bring in line: some by id, or every Offer of one product or of one seller. */
 export type SyncOfferDocumentsInput =
-  { readonly offerIds: readonly Id<'Offer'>[] } | { readonly productId: Id<'Product'> };
+  | { readonly offerIds: readonly Id<'Offer'>[] }
+  | { readonly productId: Id<'Product'> }
+  | { readonly sellerId: Id<'Seller'> };
 
-/** The most pages of one product's Offers read in one call (a safety stop, not a limit in use). */
+/** The most pages of one product's or seller's Offers read in one call (a safety stop). */
 const MAX_PRODUCT_PAGES = 50;
 
 /**
  * `search.sync-offer-documents`: the handler of the catalog event subscriptions (offer
- * published, deleted or moved; product revision published). Rule `system`; the Market comes from
+ * published, deleted or moved; product revision published) and of identity's seller access
+ * suspended and reinstated. Rule `system`; the Market comes from
  * the envelope (the context). The event only says which Offers to look at: the content is
  * re-read from catalog, so deliveries may repeat and arrive in any order. Logs ids and counts.
  */
@@ -37,8 +40,7 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
     context: CallContext,
     input: SyncOfferDocumentsInput,
   ): Promise<Result<SyncCounts, never>> {
-    const offerIds =
-      'offerIds' in input ? input.offerIds : await this.#offersOfProduct(context, input.productId);
+    const offerIds = 'offerIds' in input ? input.offerIds : await this.#offersOf(context, input);
     const counts = await syncOffers(this.deps, context, offerIds);
     this.#logger.log({
       msg: 'search.documents-synced',
@@ -50,13 +52,21 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
     return ok(counts);
   }
 
-  /** The product's published Offers (from catalog) and those that still have a document. */
-  async #offersOfProduct(context: CallContext, productId: Id<'Product'>): Promise<Id<'Offer'>[]> {
+  /** The product's or seller's published Offers (from catalog) and those that have a document. */
+  async #offersOf(
+    context: CallContext,
+    scope: { readonly productId: Id<'Product'> } | { readonly sellerId: Id<'Seller'> },
+  ): Promise<Id<'Offer'>[]> {
     const { market } = context;
     const found = new Set<Id<'Offer'>>();
     const indexed = await this.deps.unitOfWork.run(
       market,
-      async () => ok(await this.deps.documents.offerIdsOfProduct(market, productId)),
+      async () =>
+        ok(
+          'productId' in scope
+            ? await this.deps.documents.offerIdsOfProduct(market, scope.productId)
+            : await this.deps.documents.offerIdsOfSeller(market, scope.sellerId),
+        ),
       { readOnly: true },
     );
     if (!indexed.ok) throw new Error('search: the index read failed');
@@ -64,7 +74,7 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
     let after: Id<'Offer'> | undefined;
     for (let page = 0; page < MAX_PRODUCT_PAGES; page += 1) {
       const ids = await this.deps.feed.publishedIds(context, {
-        productId,
+        ...scope,
         ...(after === undefined ? {} : { after }),
         limit: SYNC_BATCH,
       });

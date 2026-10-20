@@ -90,6 +90,7 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
         marketId: market.marketId,
         status: 'published',
         ...(input.productId === undefined ? {} : { productId: input.productId }),
+        ...(input.sellerId === undefined ? {} : { sellerId: input.sellerId }),
         ...(input.after === undefined ? {} : { id: { gt: input.after } }),
       },
       select: { id: true },

@@ -12,6 +12,7 @@ import type { OfferDocumentRepository } from './ports/offer-document.repository'
 import type { FeedFacts, OfferFeed } from './ports/offer-feed';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
 import type { PublicVisibility } from './ports/public-visibility';
+import type { SellerEligibility } from './ports/seller-eligibility';
 import type { SearchDependencies } from './search-dependencies';
 import { SYNC_BATCH } from './sync-offers';
 import { RebuildOfferIndex } from './use-cases/rebuild-offer-index.use-case';
@@ -33,6 +34,7 @@ const id = <T extends string>(n: number): Id<T> => {
 };
 const offer = (n: number): Id<'Offer'> => id<'Offer'>(0x1000 + n);
 const SELLER = id<'Seller'>(0x51);
+const SUSPENDED = id<'Seller'>(0x52);
 const PRODUCT = id<'Product'>(0x91);
 const CATEGORY = id<'Category'>(0xca);
 
@@ -59,6 +61,14 @@ class MemoryDocuments implements OfferDocumentRepository {
       [...this.rows.entries()]
         .filter(([key]) => key.startsWith(`${market.marketId}:`))
         .filter(([, row]) => row.document.productId === productId)
+        .map(([, row]) => row.document.offerId),
+    );
+  }
+  offerIdsOfSeller(market: MarketContext, sellerId: Id<'Seller'>) {
+    return Promise.resolve(
+      [...this.rows.entries()]
+        .filter(([key]) => key.startsWith(`${market.marketId}:`))
+        .filter(([, row]) => row.document.sellerId === sellerId)
         .map(([, row]) => row.document.offerId),
     );
   }
@@ -94,17 +104,37 @@ class StubFeed implements OfferFeed {
   }
   publishedIds(
     _context: CallContext,
-    input: { productId?: Id<'Product'>; after?: Id<'Offer'>; limit: number },
+    input: {
+      productId?: Id<'Product'>;
+      sellerId?: Id<'Seller'>;
+      after?: Id<'Offer'>;
+      limit: number;
+    },
   ) {
     if (this.failing) return Promise.resolve(null);
     const ids = this.published
       .filter(
         (o) => input.productId === undefined || this.facts_.get(o)?.productId === input.productId,
       )
+      .filter(
+        (o) => input.sellerId === undefined || this.facts_.get(o)?.sellerId === input.sellerId,
+      )
       .filter((o) => input.after === undefined || o > input.after)
       .sort()
       .slice(0, input.limit);
     return Promise.resolve(ids);
+  }
+}
+
+/** The may-sell contract: every seller may sell except the suspended ones. */
+class StubSellers implements SellerEligibility {
+  suspended = new Set<Id<'Seller'>>();
+  failing = false;
+  readonly asked: Id<'Seller'>[][] = [];
+  eligible(_context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
+    this.asked.push([...sellerIds]);
+    if (this.failing) return Promise.resolve(null);
+    return Promise.resolve(new Set(sellerIds.filter((s) => !this.suspended.has(s))));
   }
 }
 
@@ -164,6 +194,7 @@ describe.each([
   let feed: StubFeed;
   let reader: StubReader;
   let visibility: StubVisibility;
+  let sellers: StubSellers;
   let deps: SearchDependencies;
 
   beforeEach(() => {
@@ -171,6 +202,7 @@ describe.each([
     feed = new StubFeed();
     reader = new StubReader();
     visibility = new StubVisibility();
+    sellers = new StubSellers();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       documents,
@@ -178,6 +210,7 @@ describe.each([
       policy: new ConfigSearchPolicy(markets),
       feed,
       visibility,
+      sellers,
       clock: new FixedClock(T0),
     };
   });
@@ -256,6 +289,61 @@ describe.each([
       ]);
     });
 
+    it('gives no document to an Offer whose seller may not sell, and asks only about sellable ones', async () => {
+      feed.facts_.set(offer(1), sellable());
+      feed.facts_.set(offer(2), sellable({ sellerId: SUSPENDED }));
+      feed.facts_.set(offer(3), sellable({ sellerId: id<'Seller'>(0x53), sellable: false }));
+      sellers.suspended.add(SUSPENDED);
+      await documents.upsert(market, { ...documentOf(offer(2)), sellerId: SUSPENDED }, T_OLD);
+
+      const result = await new SyncOfferDocuments(gate, deps).execute(system, {
+        offerIds: [offer(1), offer(2), offer(3)],
+      });
+
+      expect(result).toEqual({ ok: true, value: { upserted: 1, deleted: 1 } });
+      expect([...documents.rows.values()].map((row) => row.document.offerId)).toEqual([offer(1)]);
+      expect(sellers.asked).toEqual([[SELLER, SUSPENDED]]);
+    });
+
+    it("drops a suspended seller's documents and brings them back on reinstatement", async () => {
+      for (const n of [1, 2]) {
+        feed.facts_.set(offer(n), sellable({ sellerId: SUSPENDED }));
+        feed.published.push(offer(n));
+      }
+      feed.facts_.set(offer(3), sellable());
+      feed.published.push(offer(3));
+      const sync = new SyncOfferDocuments(gate, deps);
+      await sync.execute(system, { offerIds: [offer(1), offer(2), offer(3)] });
+      // Unlisted since: catalog no longer lists it as published, but it still has a document.
+      feed.published = feed.published.filter((o) => o !== offer(2));
+      expect(documents.rows.size).toBe(3);
+
+      sellers.suspended.add(SUSPENDED);
+      const suspended = await sync.execute(system, { sellerId: SUSPENDED });
+
+      expect(suspended).toEqual({ ok: true, value: { upserted: 0, deleted: 2 } });
+      expect([...documents.rows.values()].map((row) => row.document.offerId)).toEqual([offer(3)]);
+
+      sellers.suspended.delete(SUSPENDED);
+      const reinstated = await sync.execute(system, { sellerId: SUSPENDED });
+
+      expect(reinstated).toEqual({ ok: true, value: { upserted: 1, deleted: 0 } });
+      expect([...documents.rows.values()].map((row) => row.document.offerId).sort()).toEqual(
+        [offer(1), offer(3)].sort(),
+      );
+    });
+
+    it('throws when the may-sell contract cannot answer, writing nothing', async () => {
+      feed.facts_.set(offer(1), sellable());
+      sellers.failing = true;
+      await documents.upsert(market, documentOf(offer(1)), T_OLD);
+
+      await expect(
+        new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1)] }),
+      ).rejects.toThrow('seller eligibility unavailable');
+      expect(documents.rows.get(`${code}:${offer(1)}`)?.indexedAt).toEqual(T_OLD);
+    });
+
     it('throws when catalog cannot answer, so the delivery is retried', async () => {
       feed.failing = true;
       await expect(
@@ -292,6 +380,21 @@ describe.each([
       });
       expect(documents.rows.size).toBe(total - 1);
       expect(documents.rows.has(`${code}:${offer(9999)}`)).toBe(false);
+    });
+
+    it("leaves a suspended seller's Offers out, so a rebuild does not bring them back", async () => {
+      feed.facts_.set(offer(1), sellable());
+      feed.facts_.set(offer(2), sellable({ sellerId: SUSPENDED }));
+      feed.published = [offer(1), offer(2)];
+      sellers.suspended.add(SUSPENDED);
+
+      const result = await new RebuildOfferIndex(gate, deps).execute(system, {});
+
+      expect(result).toEqual({
+        ok: true,
+        value: { offers: 2, upserted: 1, deleted: 0, stale: 0 },
+      });
+      expect([...documents.rows.values()].map((row) => row.document.offerId)).toEqual([offer(1)]);
     });
 
     it('deletes nothing when catalog fails midway', async () => {

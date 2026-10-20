@@ -5,6 +5,7 @@ import type { OfferFeed } from './ports/offer-feed';
 import type { OfferSearchReader } from './ports/offer-search.reader';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { SearchPolicy } from './ports/search-policy';
+import type { SellerEligibility } from './ports/seller-eligibility';
 
 /** The ports the search use cases share; each use case reads the ones it needs. */
 export interface SearchDependencies {
@@ -14,5 +15,6 @@ export interface SearchDependencies {
   readonly policy: SearchPolicy;
   readonly feed: OfferFeed;
   readonly visibility: PublicVisibility;
+  readonly sellers: SellerEligibility;
   readonly clock: Clock;
 }
