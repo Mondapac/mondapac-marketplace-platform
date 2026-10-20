@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { AssistantWidget } from '../assistant/assistant-widget.tsx';
+import type { AssistantSetup } from '../assistant/assistant.ts';
 import { AccountDrawer } from '../account/account-drawer.tsx';
 import { LoginModal } from '../account/login-modal.tsx';
 import { CartDrawer } from '../cart/cart-drawer.tsx';
@@ -6,7 +8,6 @@ import { ConsentBar } from '../consent/consent-bar.tsx';
 import type { Consent } from '../consent/consent.ts';
 import { DeliverModal } from '../delivery/deliver-modal.tsx';
 import type { DeliverTo } from '../delivery/deliver-to.ts';
-import type { TextSize } from '../preferences/preferences.ts';
 import type {
   CartSource,
   CheckoutCustomer,
@@ -22,25 +23,26 @@ import { SearchView } from './search-view.tsx';
 import { StoreProvider } from './store-context.tsx';
 import { TabBar } from './tab-bar.tsx';
 
-/** The locked frame of every buyer page: header, side rail, footer, the cookie bar and the bottom bar, overlays (the cart drawer, the log-in dialog and the account menu among them). */
+/** The locked frame of every buyer page: header, side rail, footer, the cookie bar and the bottom bar, overlays (the cart drawer, the log-in dialog and the account menu among them) and the buyer assistant when it is on. */
 export function StoreShell({
   content,
   cartSource,
   locator,
   deliverTo,
-  textSize,
   consent,
   signIn,
+  assistant = null,
   children,
 }: {
   readonly content: StorefrontContent;
   readonly cartSource: CartSource;
   readonly locator: DeliveryLocatorSource;
   readonly deliverTo: DeliverTo | null;
-  readonly textSize: TextSize;
   readonly consent: Consent | null;
   /** The account the sample log-in signs in to, until customer sessions are wired. */
   readonly signIn: CheckoutCustomer;
+  /** The buyer assistant's setup; null (off) renders nothing. */
+  readonly assistant?: AssistantSetup | null;
   readonly children: ReactNode;
 }) {
   return (
@@ -60,12 +62,13 @@ export function StoreShell({
               {children}
             </main>
           </div>
-          <Footer area={content.delivery.label} textSize={textSize} />
+          <Footer area={content.delivery.label} />
           <div className="dock">
             <ConsentBar initial={consent} />
             <TabBar />
           </div>
         </PageFrame>
+        {assistant ? <AssistantWidget setup={assistant} /> : null}
       </div>
     </StoreProvider>
   );

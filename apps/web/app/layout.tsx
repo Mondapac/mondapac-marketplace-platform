@@ -13,6 +13,7 @@ import { CONSENT_COOKIE, consentOf } from '../src/consent/consent.ts';
 import { DELIVER_TO_COOKIE, deliverToOf } from '../src/delivery/deliver-to.ts';
 import { StoreShell } from '../src/shell/store-shell.tsx';
 import {
+  loadAssistant,
   loadCartSource,
   loadCheckout,
   loadDeliveryLocator,
@@ -28,15 +29,17 @@ export async function generateMetadata() {
 export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const [messages, locale, jar, content, cartSource, checkout, locator] = await Promise.all([
-    getMessages(),
-    getLocale(),
-    cookies(),
-    loadStorefrontContent(),
-    loadCartSource(),
-    loadCheckout(),
-    loadDeliveryLocator(),
-  ]);
+  const [messages, locale, jar, content, cartSource, checkout, assistant, locator] =
+    await Promise.all([
+      getMessages(),
+      getLocale(),
+      cookies(),
+      loadStorefrontContent(),
+      loadCartSource(),
+      loadCheckout(),
+      loadAssistant(),
+      loadDeliveryLocator(),
+    ]);
   const palette = paletteOf(jar.get(PALETTE_COOKIE)?.value);
   const textSize = textSizeOf(jar.get(TEXT_SIZE_COOKIE)?.value);
   return (
@@ -62,9 +65,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             cartSource={cartSource}
             locator={locator}
             deliverTo={deliverToOf(jar.get(DELIVER_TO_COOKIE)?.value)}
-            textSize={textSize}
             consent={consentOf(jar.get(CONSENT_COOKIE)?.value)}
             signIn={checkout.customer}
+            assistant={assistant}
           >
             {children}
           </StoreShell>

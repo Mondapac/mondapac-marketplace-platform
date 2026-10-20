@@ -1,16 +1,20 @@
 import 'server-only';
+import type { AssistantSetup } from '../assistant/assistant.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
+import { sampleSellers } from './sample-sellers.ts';
 import type {
   AccountSource,
   CartSource,
   CheckoutSource,
   DeliveryLocatorSource,
   ProductDetail,
+  SellerQuery,
+  SellerResults,
   SellerShop,
   StorefrontContent,
 } from './types.ts';
@@ -66,4 +70,22 @@ export async function loadSeller(slug: string): Promise<SellerShop | undefined> 
  */
 export async function loadAccount(): Promise<AccountSource> {
   return Promise.resolve(SAMPLE_ACCOUNT);
+}
+
+/**
+ * The sellers page's read: the matching stores, their total, the filter counts and where the
+ * buyer's location stands. Sample data until the backend has a seller list read.
+ */
+export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
+  return Promise.resolve(sampleSellers(query));
+}
+
+/**
+ * Whether the buyer assistant shows, and what the widget needs: null while it is off. Always null
+ * for now: the assistant ships switched off in every Market, and the storefront does not call the
+ * API yet. Once it does, this asks `GET /assistant/storefront` and adds the conversation route,
+ * the Market's support address and retention, and the session's CSRF token.
+ */
+export async function loadAssistant(): Promise<AssistantSetup | null> {
+  return Promise.resolve(null);
 }

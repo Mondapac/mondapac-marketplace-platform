@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import type { Palette, TextSize } from '../preferences/preferences.ts';
 import type {
   AccountOrder,
   AccountSource,
@@ -16,6 +17,12 @@ export interface Profile {
   readonly fullName: string;
   readonly email: string;
   readonly mobile: string;
+}
+
+/** A signed-in customer's look, saved to their account (the browser keeps a copy for first paint). */
+export interface Appearance {
+  readonly palette?: Palette;
+  readonly textSize?: TextSize;
 }
 
 interface AccountState {
@@ -35,6 +42,9 @@ interface AccountState {
   readonly createList: (name: string) => void;
   readonly emails: EmailChoices;
   readonly setEmail: (key: keyof EmailChoices, on: boolean) => void;
+  readonly appearance: Appearance;
+  /** Saves a look change to the account. Sample: this tab only, until the personalization API. */
+  readonly saveAppearance: (change: Appearance) => void;
 }
 
 const AccountContext = createContext<AccountState | null>(null);
@@ -95,6 +105,7 @@ export function AccountProvider({
   const [addresses, setAddresses] = useState(source.customer.addresses);
   const [lists, setLists] = useState(source.lists);
   const [emails, setEmails] = useState(source.emails);
+  const [appearance, setAppearance] = useState<Appearance>({});
 
   const cancelOrder = useCallback(
     (reference: string) =>
@@ -144,6 +155,10 @@ export function AccountProvider({
     (key: keyof EmailChoices, on: boolean) => setEmails((current) => ({ ...current, [key]: on })),
     [],
   );
+  const saveAppearance = useCallback(
+    (change: Appearance) => setAppearance((current) => ({ ...current, ...change })),
+    [],
+  );
 
   const value = useMemo(
     () => ({
@@ -160,6 +175,8 @@ export function AccountProvider({
       createList,
       emails,
       setEmail,
+      appearance,
+      saveAppearance,
     }),
     [
       source,
@@ -174,6 +191,8 @@ export function AccountProvider({
       createList,
       emails,
       setEmail,
+      appearance,
+      saveAppearance,
     ],
   );
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;

@@ -1,11 +1,14 @@
 import type { OnModuleDestroy } from '@nestjs/common';
 import type { Clock } from '@mondapac/shared-kernel';
 import { RateLimiterPostgres } from 'rate-limiter-flexible';
-import { RATE_LIMIT_CLASSES, type RateLimitClass } from '../rate-limit/rate-limit.decorator';
+import { RATE_LIMIT_CLASSES } from '../rate-limit/rate-limit.decorator';
 import {
-  RATE_LIMIT_WINDOW_SECONDS,
+  SUBJECT_LIMIT_WINDOWS,
+  windowSecondsOf,
+  type CountedClass,
   type RateLimitCount,
   type RateLimitCounters,
+  type SubjectLimitClass,
 } from '../rate-limit/rate-limit-counters';
 import type { PrismaRoot } from './prisma-root';
 
@@ -26,7 +29,7 @@ interface StoreQuery {
 
 /**
  * {@link RateLimitCounters} on the PostgreSQL store of `rate-limiter-flexible` (identity design
- * 13; owner-approved package, pinned 11.2.1). One row per limit class and origin key in
+ * 13; owner-approved package, pinned 11.2.1). One row per limit class and key (origin or subject) in
  * `platform.rate_limit_counters`, counted by the package's single `INSERT ... ON CONFLICT DO
  * UPDATE`, so concurrent requests on any number of API instances add to one count.
  *
@@ -37,7 +40,7 @@ interface StoreQuery {
  * the package (`tableCreated`), so the application role needs no CREATE.
  */
 export class PostgresRateLimitCounters implements RateLimitCounters, OnModuleDestroy {
-  readonly #limiters: Readonly<Record<RateLimitClass, RateLimiterPostgres>>;
+  readonly #limiters: Readonly<Record<CountedClass, RateLimiterPostgres>>;
   readonly #purge: NodeJS.Timeout;
 
   constructor(
@@ -50,8 +53,12 @@ export class PostgresRateLimitCounters implements RateLimitCounters, OnModuleDes
         return { rows: rows.map(numbersOf), rowCount: rows.length };
       },
     };
-    const limiters = {} as Record<RateLimitClass, RateLimiterPostgres>;
-    for (const limitClass of RATE_LIMIT_CLASSES) {
+    const limiters = {} as Record<CountedClass, RateLimiterPostgres>;
+    const counted: readonly CountedClass[] = [
+      ...RATE_LIMIT_CLASSES,
+      ...(Object.keys(SUBJECT_LIMIT_WINDOWS) as SubjectLimitClass[]),
+    ];
+    for (const limitClass of counted) {
       // The library never refuses (the limit is the Market's, compared by the guard), so one
       // counter serves every Market: `points` is only the ceiling of the count it keeps.
       limiters[limitClass] = new RateLimiterPostgres({
@@ -63,7 +70,7 @@ export class PostgresRateLimitCounters implements RateLimitCounters, OnModuleDes
         clearExpiredByTimeout: false,
         keyPrefix: limitClass,
         points: Number.MAX_SAFE_INTEGER,
-        duration: RATE_LIMIT_WINDOW_SECONDS,
+        duration: windowSecondsOf(limitClass),
       });
     }
     this.#limiters = Object.freeze(limiters);
@@ -78,8 +85,8 @@ export class PostgresRateLimitCounters implements RateLimitCounters, OnModuleDes
     this.#purge.unref();
   }
 
-  async consume(limitClass: RateLimitClass, originKey: string): Promise<RateLimitCount> {
-    const counted = await this.#limiters[limitClass].consume(originKey);
+  async consume(limitClass: CountedClass, key: string): Promise<RateLimitCount> {
+    const counted = await this.#limiters[limitClass].consume(key);
     return { count: counted.consumedPoints, msBeforeNext: counted.msBeforeNext };
   }
 

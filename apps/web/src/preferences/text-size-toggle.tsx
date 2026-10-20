@@ -4,8 +4,17 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { TEXT_SIZE_COOKIE, savePreference, type TextSize } from './preferences.ts';
 
-/** Large or Small text. Untouched, the size follows the screen (Large from 900px). */
-export function TextSizeToggle({ initial }: { readonly initial: TextSize }) {
+/**
+ * Large or Small text. Untouched, the size follows the screen (Large from 900px). `onChoose` also
+ * hears each choice.
+ */
+export function TextSizeToggle({
+  initial,
+  onChoose,
+}: {
+  readonly initial: TextSize;
+  readonly onChoose?: (size: TextSize) => void;
+}) {
   const t = useTranslations('footer');
   const [size, setSize] = useState<TextSize>(initial);
   // The automatic size depends on the screen, known only after the first render.
@@ -21,6 +30,7 @@ export function TextSizeToggle({ initial }: { readonly initial: TextSize }) {
   const choose = (value: 'large' | 'small') => {
     setSize(value);
     savePreference(TEXT_SIZE_COOKIE, 'textSize', value);
+    onChoose?.(value);
   };
   const pressed = (value: 'large' | 'small') =>
     size === value || (size === 'auto' && auto === value);

@@ -8,7 +8,14 @@ import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 
 export const ASSISTANT_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
+  'assistant.off': 403,
+  'assistant.sign-in-required': 403,
+  'assistant.conversation-not-found': 404,
   'assistant.conflict': 409,
+  'assistant.conversation-full': 409,
+  'request.throttled': 429,
+  'assistant.paused': 503,
+  'assistant.unavailable': 503,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
@@ -66,5 +73,8 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  if (error.retryAfterSeconds !== undefined) {
+    return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
+  }
   return fail(status, error.code);
 }
