@@ -219,12 +219,6 @@ export const ICON_PATHS = {
       <path d="M12 11v6M12 7.5v.5" />
     </>
   ),
-  warn: (
-    <>
-      <path d="M10.3 4.2 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
-      <path d="M12 10v4M12 17v.5" />
-    </>
-  ),
   share: (
     <>
       <circle cx="6" cy="12" r="2.5" />
