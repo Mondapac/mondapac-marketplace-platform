@@ -19,6 +19,7 @@ import { StoreProvider } from '../src/shell/store-context.tsx';
 import { StoreShell } from '../src/shell/store-shell.tsx';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from '../src/storefront/sample-cart.ts';
+import { SAMPLE_DELIVERY_LOCATOR } from '../src/storefront/sample-delivery.ts';
 
 const push = vi.hoisted(() => vi.fn());
 vi.mock('next/navigation', () => ({
@@ -234,6 +235,8 @@ describe('assistant widget', () => {
         <StoreShell
           content={SAMPLE_CONTENT}
           cartSource={SAMPLE_CART_SOURCE}
+          locator={SAMPLE_DELIVERY_LOCATOR}
+          deliverTo={null}
           consent={null}
           signIn={SAMPLE_CHECKOUT.customer}
           assistant={assistant}
