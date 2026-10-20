@@ -23,6 +23,9 @@ export interface StorefrontApiConfig {
 type Env = Readonly<Record<string, string | undefined>>;
 
 const MARKET_ID = /^[A-Z]{2}$/;
+const LOCAL_HOST = /^[a-z0-9-]+\.localhost(:\d+)?$/;
+/** The API takes storefront-only requests only under these key ids (csrf.ts isStorefrontKeyId). */
+const STOREFRONT_KEY_ID = /^storefront(-[a-z0-9]+)*$/u;
 
 /** Parses `origin=MARKET,origin=MARKET`. Throws on anything malformed, so start-up fails. */
 export function parseStorefrontHosts(raw: string | undefined): readonly StorefrontHost[] {
@@ -47,6 +50,11 @@ export function parseStorefrontHosts(raw: string | undefined): readonly Storefro
     if (url.origin !== originText || (url.protocol !== 'https:' && url.protocol !== 'http:')) {
       throw new Error(
         `STOREFRONT_HOSTS: '${originText}' must be scheme://host[:port] with no path`,
+      );
+    }
+    if (url.protocol === 'http:' && !LOCAL_HOST.test(url.host)) {
+      throw new Error(
+        `STOREFRONT_HOSTS: '${originText}' must use https (http only on *.localhost)`,
       );
     }
     if (!MARKET_ID.test(marketId)) {
@@ -85,10 +93,17 @@ function parseApiBaseUrl(raw: string): string {
 export function parseStorefrontApiConfig(env: Env): StorefrontApiConfig | null {
   const raw = env['API_BASE_URL']?.trim() ?? '';
   if (raw === '') return null;
+  const clientAddressKey = parseClientAddressKey(env);
+  if (clientAddressKey !== null && !STOREFRONT_KEY_ID.test(clientAddressKey.keyId)) {
+    throw new Error(
+      'BFF_CLIENT_ADDRESS_KEY_ID must be storefront or storefront-<suffix>: the API accepts ' +
+        'buyer-site requests only under such a key',
+    );
+  }
   return {
     apiBaseUrl: parseApiBaseUrl(raw),
     hosts: parseStorefrontHosts(env['STOREFRONT_HOSTS']),
-    clientAddressKey: parseClientAddressKey(env),
+    clientAddressKey,
   };
 }
 
@@ -98,7 +113,7 @@ export function parseStorefrontApiConfig(env: Env): StorefrontApiConfig | null {
  * signing key (BFF_CLIENT_ADDRESS_KEY_ID and BFF_CLIENT_ADDRESS_SECRET).
  */
 export function assertClientAddressForwarding(config: StorefrontApiConfig): void {
-  const local = config.hosts.every((host) => /^[a-z0-9-]+\.localhost(:\d+)?$/.test(host.host));
+  const local = config.hosts.every((host) => LOCAL_HOST.test(host.host));
   if (local || config.clientAddressKey !== null) return;
   throw new Error(
     'A buyer site on a real host must sign the client address: set BFF_CLIENT_ADDRESS_KEY_ID ' +

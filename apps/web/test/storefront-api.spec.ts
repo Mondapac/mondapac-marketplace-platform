@@ -83,6 +83,19 @@ describe('storefront API configuration', () => {
     ).toThrow(/must be set together/);
   });
 
+  it('takes http only on *.localhost and a storefront key id only', () => {
+    expect(() =>
+      parseStorefrontApiConfig({ ...LOCAL, STOREFRONT_HOSTS: 'http://mondapac.com.au=AU' }),
+    ).toThrow(/must use https/);
+    expect(() =>
+      parseStorefrontApiConfig({ ...SIGNED, BFF_CLIENT_ADDRESS_KEY_ID: 'panel' }),
+    ).toThrow(/storefront or storefront-<suffix>/);
+    expect(
+      parseStorefrontApiConfig({ ...SIGNED, BFF_CLIENT_ADDRESS_KEY_ID: 'storefront-2' })
+        ?.clientAddressKey?.keyId,
+    ).toBe('storefront-2');
+  });
+
   it('needs a signing key on a real host, never on *.localhost', () => {
     expect(() => assertClientAddressForwarding(config(LOCAL))).not.toThrow();
     const real = { ...LOCAL, STOREFRONT_HOSTS: 'https://mondapac.com.au=AU' };
