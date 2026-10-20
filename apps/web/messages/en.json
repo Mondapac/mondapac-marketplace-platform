@@ -605,6 +605,7 @@
     "region": "State",
     "postcode": "Postcode",
     "outside-area": "We do not deliver to {postcode} yet. We currently deliver to {area}.",
+    "area-check-failed": "We could not check this postcode just now. Please try again in a moment.",
     "instructions": "Delivery instructions (optional)",
     "instructions-placeholder": "For example: leave at the front door",
     "save-address": "Save to my address book",
