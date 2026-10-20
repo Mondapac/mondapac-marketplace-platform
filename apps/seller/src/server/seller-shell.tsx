@@ -16,6 +16,7 @@ import { UserMenu } from '../auth/user-menu.tsx';
 import { sellerNavItems } from '../nav.ts';
 import { SellerNotifications } from '../notifications/seller-notifications.tsx';
 import { showsNoticeBell } from '../notifications/types.ts';
+import { StepUpProvider } from '../step-up/step-up.tsx';
 import type { SellerSession } from './session.ts';
 
 /**
@@ -92,7 +93,7 @@ export async function SellerShell({
         />
       }
     >
-      {children}
+      <StepUpProvider>{children}</StepUpProvider>
     </AppShell>
   );
 }

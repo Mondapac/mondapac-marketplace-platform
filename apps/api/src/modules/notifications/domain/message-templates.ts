@@ -5,7 +5,12 @@
 // a new entry here and no change to the flows. Plain text only: no template carries markup.
 
 export type TemplateId =
-  'order-confirmation' | 'seller-new-order' | 'order-shipped' | 'marketing-footer';
+  | 'order-confirmation'
+  | 'seller-new-order'
+  | 'order-shipped'
+  | 'marketing-footer'
+  | 'cart-reminder-first'
+  | 'cart-reminder-second';
 
 export interface TemplateText {
   /** Absent for a channel without a subject. */
@@ -83,6 +88,38 @@ const TEMPLATES: Readonly<Record<TemplateId, TemplateSet>> = {
         'You receive this email because you agreed to marketing email from {senderName}.',
         'Unsubscribe at any time: {unsubscribeUrl}',
         'Contact us: {contactEmail}',
+      ),
+    },
+  },
+  // The abandoned-cart email (personalization 1c), a marketing mail: the marketing footer is
+  // appended. Only a count and the cart page link: no product, price or name.
+  'cart-reminder-first': {
+    en: {
+      subject: 'You left something in your cart',
+      body: lines(
+        'Your cart is waiting',
+        '',
+        'Items in your cart: {lineCount}',
+        'They are not reserved, and prices and stock may change.',
+        '',
+        'View your cart (you will be asked to sign in):',
+        '{cartUrl}',
+        '',
+      ),
+    },
+  },
+  'cart-reminder-second': {
+    en: {
+      subject: 'Your cart is still waiting',
+      body: lines(
+        'Still thinking it over?',
+        '',
+        'Items in your cart: {lineCount}',
+        'This is our last reminder about this cart.',
+        '',
+        'View your cart (you will be asked to sign in):',
+        '{cartUrl}',
+        '',
       ),
     },
   },

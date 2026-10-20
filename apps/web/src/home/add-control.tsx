@@ -9,15 +9,17 @@ import type { ProductCard } from '../storefront/types.ts';
 /** The round add button on a product tile; after the first add it becomes a - n + stepper. */
 export function AddControl({ product }: { readonly product: ProductCard }) {
   const t = useTranslations('home');
-  const { cart, add, remove } = useStore();
+  const { cart, add, remove, online } = useStore();
+  const off = online ? undefined : true;
   const quantity = cart[product.id]?.quantity ?? 0;
   const limit = lineLimit(product.lowStock);
   if (limit === 0) return null;
   if (quantity === 0) {
     return (
       <button
-        className="addb one"
+        className="addb one ctl"
         type="button"
+        aria-disabled={off}
         aria-label={t('add', { name: product.name })}
         onClick={() => add(product.id, product.price, limit)}
       >
@@ -27,8 +29,13 @@ export function AddControl({ product }: { readonly product: ProductCard }) {
   }
   const full = quantity >= limit;
   return (
-    <div className="addb step" role="group" aria-label={t('quantity', { name: product.name })}>
-      <button type="button" aria-label={t('decrease')} onClick={() => remove(product.id)}>
+    <div className="addb step ctl" role="group" aria-label={t('quantity', { name: product.name })}>
+      <button
+        type="button"
+        aria-label={t('decrease')}
+        aria-disabled={off}
+        onClick={() => remove(product.id)}
+      >
         <Icon name="minus" />
       </button>
       <output className="num" aria-live="polite">
@@ -37,6 +44,7 @@ export function AddControl({ product }: { readonly product: ProductCard }) {
       <button
         type="button"
         aria-label={full ? t('max-reached') : t('increase')}
+        aria-disabled={off}
         disabled={full}
         onClick={() => add(product.id, product.price, limit)}
       >

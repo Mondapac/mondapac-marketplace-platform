@@ -6,9 +6,9 @@ import { CategoryArt } from '../icons/category-icon.tsx';
 import type {
   Category,
   HomeSection,
-  ProductCard as Product,
   PromoBanner,
-  SellerSummary,
+  HomeSeller,
+  ShelfCard,
 } from '../storefront/types.ts';
 import { ProductCard } from './product-card.tsx';
 
@@ -20,10 +20,12 @@ export function HomeSections({
 }: {
   readonly sections: readonly HomeSection[];
   readonly categories: readonly Category[];
-  readonly sellers: readonly SellerSummary[];
+  readonly sellers: readonly HomeSeller[];
 }) {
-  // The first promo banner holds the page's one h1.
-  return sections.map((section, index) => {
+  const t = useTranslations('home');
+  // The first promo banner holds the page's one h1; a layout without a banner gets a hidden one.
+  const hasBanner = sections.some((s) => s.kind === 'promos' && s.banners.length > 0);
+  const body = sections.map((section, index) => {
     switch (section.kind) {
       case 'promos':
         return <Promos key={index} banners={section.banners} />;
@@ -42,6 +44,14 @@ export function HomeSections({
         );
     }
   });
+  return hasBanner ? (
+    body
+  ) : (
+    <>
+      <h1 className="sr-only">{t('title')}</h1>
+      {body}
+    </>
+  );
 }
 
 function Promos({ banners }: { readonly banners: readonly PromoBanner[] }) {
@@ -60,12 +70,14 @@ function Promos({ banners }: { readonly banners: readonly PromoBanner[] }) {
             </div>
             <Heading>{banner.title}</Heading>
             <p>{banner.body}</p>
-            <Link
-              className={banner.variant === 'primary' ? 'btn' : 'btn alt'}
-              href={banner.action.href}
-            >
-              {banner.action.label}
-            </Link>
+            {banner.action ? (
+              <Link
+                className={banner.variant === 'primary' ? 'btn' : 'btn alt'}
+                href={banner.action.href}
+              >
+                {banner.action.label}
+              </Link>
+            ) : null}
           </div>
         );
       })}
@@ -112,7 +124,7 @@ function Sellers({
 }: {
   readonly title: string;
   readonly href: string;
-  readonly sellers: readonly SellerSummary[];
+  readonly sellers: readonly HomeSeller[];
 }) {
   const t = useTranslations('home');
   return (
@@ -130,11 +142,13 @@ function Sellers({
                   {art ? <svg viewBox="0 0 64 64">{art}</svg> : s.initials}
                 </span>
                 <b>{s.name}</b>
-                <span className="eta">
-                  <Icon name="clock" />
-                  {s.deliveryWindow}
-                </span>
-                <span className="mn">{s.minimumOrder}</span>
+                {s.deliveryWindow === undefined ? null : (
+                  <span className="eta">
+                    <Icon name="clock" />
+                    {s.deliveryWindow}
+                  </span>
+                )}
+                {s.minimumOrder === undefined ? null : <span className="mn">{s.minimumOrder}</span>}
               </Link>
             );
           })}
@@ -151,7 +165,7 @@ function Products({
 }: {
   readonly title: string;
   readonly href: string;
-  readonly products: readonly Product[];
+  readonly products: readonly ShelfCard[];
 }) {
   const t = useTranslations('home');
   return (

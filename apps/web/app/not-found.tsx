@@ -1,15 +1,7 @@
-import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
+import { NotFoundView } from '../src/errors/not-found-view.tsx';
+import { loadStorefrontContent } from '../src/storefront/source.ts';
 
 export default async function NotFound() {
-  const t = await getTranslations('route');
-  return (
-    <div className="state">
-      <h1>{t('not-found-title')}</h1>
-      <p>{t('not-found-message')}</p>
-      <Link className="btn" href="/">
-        {t('home')}
-      </Link>
-    </div>
-  );
+  const content = await loadStorefrontContent();
+  return <NotFoundView categories={content.categories} />;
 }

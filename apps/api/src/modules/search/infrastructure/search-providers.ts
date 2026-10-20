@@ -7,8 +7,14 @@ import {
 } from '../../../platform/persistence/raw-reads/raw-read-port';
 import { CATALOG_FACADE, CATALOG_INDEX_FACADE } from '../../catalog';
 import type { CatalogFacade, CatalogIndexFacade } from '../../catalog';
+import { INVENTORY_FACADE, type InventoryFacade } from '../../inventory';
 import { ORDERING_RANKING_FACADE, type OrderingRankingFacade } from '../../ordering';
-import { PRICING_SPECIALS_FACADE, type PricingSpecialsFacade } from '../../pricing';
+import {
+  PRICING_FACADE,
+  PRICING_SPECIALS_FACADE,
+  type PricingFacade,
+  type PricingSpecialsFacade,
+} from '../../pricing';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import {
   OFFER_DOCUMENT_REPOSITORY,
@@ -26,6 +32,11 @@ import {
   type ShelfDocumentsReader,
 } from '../application/ports/shelf-documents.reader';
 import { SHELF_SOURCES, type ShelfSources } from '../application/ports/shelf-sources';
+import {
+  PRODUCT_DETAIL_SOURCES,
+  type ProductDetailSources,
+} from '../application/ports/product-detail-sources';
+import { FacadeProductDetailSources } from './facade-product-detail-sources';
 import { FacadeShelfSources } from './facade-shelf-sources';
 import { FacadePublishedVariants } from './facade-published-variants';
 import {
@@ -88,5 +99,15 @@ export const searchProviders: readonly FactoryProvider[] = [
     provide: PUBLISHED_VARIANTS,
     inject: [CATALOG_FACADE],
     useFactory: (catalog: CatalogFacade): PublishedVariants => new FacadePublishedVariants(catalog),
+  },
+  {
+    provide: PRODUCT_DETAIL_SOURCES,
+    inject: [CATALOG_FACADE, PRICING_FACADE, INVENTORY_FACADE, SELLERS_FACADE],
+    useFactory: (
+      catalog: CatalogFacade,
+      pricing: PricingFacade,
+      inventory: InventoryFacade,
+      sellers: SellersFacade,
+    ): ProductDetailSources => new FacadeProductDetailSources(catalog, pricing, inventory, sellers),
   },
 ];

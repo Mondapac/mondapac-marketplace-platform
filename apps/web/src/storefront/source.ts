@@ -1,5 +1,10 @@
 import 'server-only';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { apiGet } from './api.ts';
+import { storefrontApiConfig } from './config.ts';
+import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
 import type { AssistantSetup } from '../assistant/assistant.ts';
+import { loadHome, type HomeContent } from './home-source.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
@@ -8,10 +13,12 @@ import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { SAMPLE_SELLER_SIGN_UP } from './sample-seller-sign-up.ts';
 import { sampleSellers } from './sample-sellers.ts';
+import { sampleClosedStore, sampleUnavailableProduct } from './sample-unavailable.ts';
 import type {
   AccountSource,
   CartSource,
   CheckoutSource,
+  ClosedStore,
   DeliveryLocatorSource,
   ProductDetail,
   SellerQuery,
@@ -20,22 +27,56 @@ import type {
   SellerSignUpAnswer,
   SellerSignUpSetup,
   StorefrontContent,
+  UnavailableProduct,
 } from './types.ts';
 
 /**
- * The storefront's one read of the home content. Sample data for now; it calls the
- * pages-and-content and catalog APIs once PR #401 and storefront package 2 are on main.
+ * True while any read in this file returns sample data. It turns false only when every read here
+ * calls the API. It is the indexing lock: search engines cannot be let in while it is true
+ * (src/seo/indexing.ts).
+ */
+export const SAMPLE_DATA: boolean = true;
+
+/**
+ * The shell's content: delivery area, popular searches, the rail and drawer categories and the
+ * sample sellers. Sample data; the shell moves to the navigation and category reads in its own
+ * package.
  */
 export async function loadStorefrontContent(): Promise<StorefrontContent> {
   return Promise.resolve(SAMPLE_CONTENT);
 }
 
 /**
+ * The home page middle: the published home layout, the live category tree and the product
+ * shelves when API_BASE_URL is set, with sample data where they answer nothing (unless
+ * STOREFRONT_SAMPLE_DATA is off). Sample only without the URL. See ./home-source.ts.
+ */
+export async function loadHomeContent(): Promise<HomeContent> {
+  return loadHome();
+}
+
+/**
  * The product page's read: the product, its sellable offers and similar products, or undefined
- * when there is no such product. Sample data until the backend has the product detail read.
+ * when there is no such product. With the API on it asks `search/product-detail/:id` (a path id
+ * that is not a product id is no product); with it off, the sample. An outage throws, so the
+ * page shows the error page rather than "not found".
  */
 export async function loadProduct(id: string): Promise<ProductDetail | undefined> {
-  return Promise.resolve(sampleProduct(id));
+  // Only the sample has paths that are not product ids; with the API on they are no product.
+  if (!isProductId(id)) return storefrontApiConfig() === null ? sampleProduct(id) : undefined;
+  const read = await apiGet<ProductDetailBody>(
+    `search/product-detail/${encodeURIComponent(id.toLowerCase())}`,
+  );
+  if (read.kind === 'off') return sampleProduct(id);
+  if (read.kind === 'failed') {
+    if (read.status === 404) return undefined;
+    throw new Error('product detail unavailable');
+  }
+  const [locale, t] = await Promise.all([getLocale(), getTranslations('seller')]);
+  return productDetailOf(read.body, locale, {
+    minimum: (amount) => t('minimum', { amount }),
+    noMinimum: t('no-minimum'),
+  });
 }
 
 /**
@@ -110,6 +151,25 @@ export async function submitSellerSignUp(input: {
 export async function resendSellerVerification(email: string): Promise<SellerSignUpAnswer> {
   void email;
   return Promise.resolve({ kind: 'accepted' });
+}
+
+/**
+ * A product id the product read did not find: a removed product (its page says so and shows
+ * similar ones), or undefined for an id that never existed (the 404 page). Sample data only: the
+ * product detail read answers the same 404 for both (no oracle on hidden products), so with the
+ * API on every miss is the 404 page until a read tells removed products apart.
+ */
+export async function loadUnavailableProduct(id: string): Promise<UnavailableProduct | undefined> {
+  return Promise.resolve(storefrontApiConfig() === null ? sampleUnavailableProduct(id) : undefined);
+}
+
+/**
+ * A seller slug the seller read did not find: a store that is not taking orders (paused,
+ * suspended or not live; the reason never reaches the buyer), or undefined for an unknown slug.
+ * Sample data until the seller public read tells them apart.
+ */
+export async function loadClosedStore(slug: string): Promise<ClosedStore | undefined> {
+  return Promise.resolve(sampleClosedStore(slug));
 }
 
 /**
