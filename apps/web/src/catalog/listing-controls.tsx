@@ -2,12 +2,12 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useEffect, useOptimistic, useRef, useState, useTransition, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useOptimistic, useTransition } from 'react';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import type { ListingFacets } from '../storefront/catalog.ts';
 import { priceBandLabel } from './filter-labels.ts';
+import { FilterGroupView, FilterOption, FiltersDrawerFrame } from './filters-drawer.tsx';
 import {
   SORTS,
   activeFilterCount,
@@ -118,44 +118,11 @@ export function ListingFilters({ path, state, facets, total }: Props) {
 function FiltersDrawer({ path, state, facets, total }: Props) {
   const t = useTranslations('catalog');
   const locale = useLocale();
-  const { filtersOpen: open, setFiltersOpen } = useStore();
+  const { setFiltersOpen } = useStore();
   const { current, pending, apply } = useApply(path, state);
-  const [mounted, setMounted] = useState(false);
-  const panel = useRef<HTMLElement>(null);
-  const opener = useRef<Element | null>(null);
-
-  useEffect(() => setMounted(true), []);
-  // Leaving the listing closes the drawer, so it never stays open over another page.
-  useEffect(() => () => setFiltersOpen(false), [setFiltersOpen]);
-
-  useEffect(() => {
-    if (!open) return;
-    opener.current = document.activeElement;
-    panel.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setFiltersOpen(false);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      if (opener.current instanceof HTMLElement) opener.current.focus({ preventScroll: true });
-    };
-  }, [open, setFiltersOpen]);
-
-  const close = () => setFiltersOpen(false);
 
   const option = (key: string, label: string, count: number, on: boolean, next: ListingState) => (
-    // An option with nothing in it cannot be ticked (a dead end); a ticked one can always go.
-    <label key={key} className="opt">
-      <input
-        type="checkbox"
-        checked={on}
-        disabled={count === 0 && !on}
-        onChange={() => apply(next)}
-      />
-      <span>{label}</span>
-      <small className="num">{count}</small>
-    </label>
+    <FilterOption key={key} label={label} count={count} on={on} onChange={() => apply(next)} />
   );
   const flag = (key: FilterFlag, label: string, count: number) =>
     option(key, label, count, current.filters[key], withFlag(current, key, !current.filters[key]));
@@ -164,46 +131,11 @@ function FiltersDrawer({ path, state, facets, total }: Props) {
     return option(`${group}:${id}`, label, count, on, withValue(current, group, id, !on));
   };
 
-  if (!mounted) return null;
-  return createPortal(
-    <div className={open ? 'fwrap open' : 'fwrap'}>
-      <div className="fscrim" onClick={close} />
-      <aside
-        className="fpanel"
-        id="filters-panel"
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="filters-title"
-        inert={!open}
-      >
-        <div className="phd">
-          <h2 id="filters-title">{t('filters')}</h2>
-          <button className="iconbtn" type="button" aria-label={t('close-filters')} onClick={close}>
-            <Icon name="close" />
-          </button>
-        </div>
-        <div className="fb" aria-busy={pending}>
-          <Group title={t('group-offers')} open>
-            {flag('special', t('special-prices'), facets.special)}
-            {facets.certifications.map((c) =>
-              value('certifications', c.id, t('certified', { name: c.name }), c.count),
-            )}
-            {flag('lowStock', t('low-stock'), facets.lowStock)}
-          </Group>
-          <Group title={t('group-delivery')} open>
-            {flag('sameDay', t('same-day-delivery'), facets.sameDay)}
-          </Group>
-          <Group title={t('group-seller')}>
-            {facets.sellers.map((s) => value('sellers', s.id, s.name, s.count))}
-          </Group>
-          <Group title={t('group-price')}>
-            {facets.prices.map((p) =>
-              value('prices', p.id, priceBandLabel(p.band, t, locale), p.count),
-            )}
-          </Group>
-        </div>
-        <div className="ff">
+  return (
+    <FiltersDrawerFrame
+      pending={pending}
+      footer={
+        <>
           <button
             className="btn ghost"
             type="button"
@@ -212,33 +144,36 @@ function FiltersDrawer({ path, state, facets, total }: Props) {
           >
             {t('clear-all')}
           </button>
-          <button className="btn" type="button" onClick={close} disabled={pending}>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => setFiltersOpen(false)}
+            disabled={pending}
+          >
             {t('show-results', { count: total })}
           </button>
-        </div>
-      </aside>
-    </div>,
-    document.body,
-  );
-}
-
-function Group({
-  title,
-  open = false,
-  children,
-}: {
-  readonly title: string;
-  readonly open?: boolean;
-  readonly children: ReactNode;
-}) {
-  return (
-    <details className="fg" open={open}>
-      <summary>
-        {title}
-        <Icon name="chevd" />
-      </summary>
-      <div className="opts">{children}</div>
-    </details>
+        </>
+      }
+    >
+      <FilterGroupView title={t('group-offers')} open>
+        {flag('special', t('special-prices'), facets.special)}
+        {facets.certifications.map((c) =>
+          value('certifications', c.id, t('certified', { name: c.name }), c.count),
+        )}
+        {flag('lowStock', t('low-stock'), facets.lowStock)}
+      </FilterGroupView>
+      <FilterGroupView title={t('group-delivery')} open>
+        {flag('sameDay', t('same-day-delivery'), facets.sameDay)}
+      </FilterGroupView>
+      <FilterGroupView title={t('group-seller')}>
+        {facets.sellers.map((s) => value('sellers', s.id, s.name, s.count))}
+      </FilterGroupView>
+      <FilterGroupView title={t('group-price')}>
+        {facets.prices.map((p) =>
+          value('prices', p.id, priceBandLabel(p.band, t, locale), p.count),
+        )}
+      </FilterGroupView>
+    </FiltersDrawerFrame>
   );
 }
 

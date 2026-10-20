@@ -1970,7 +1970,8 @@ svg {
   color: var(--sf-slate);
   font-weight: 400;
 }
-.empty.rich h2 {
+.empty.rich h2,
+.empty.rich h3 {
   margin-top: 8px;
   font-size: calc(15px * var(--fs));
   line-height: calc(20px * var(--fs));
@@ -5946,5 +5947,283 @@ button.login {
   .ac-li .ac-acts .btn {
     flex: 1 1 auto;
     min-width: 0;
+  }
+}
+
+/* Sellers page (approved design sellers-a-teal v4): "All stores" with the product listing's
+   filters, count and sort, then the store cards, 12 at a time. One column on a phone, two on a
+   tablet, three on a desktop (each column at least 300px). */
+.sl {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.sl > section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.sl > section > h2 {
+  font-size: calc(20px * var(--fs));
+  line-height: 1.25;
+  font-weight: 800;
+}
+.sl-grid {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(100%, max(300px, calc((100% - 28px) / 3))), 1fr)
+  );
+  gap: 14px;
+}
+.slc {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-white);
+}
+.slc:hover {
+  border-color: color-mix(in srgb, var(--sf-teal) 45%, var(--sf-line));
+  box-shadow: 0 6px 18px var(--sf-shadow-soft);
+}
+.slc-h {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+.slc-lg .lg {
+  display: block;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--sf-radius-tile);
+  overflow: hidden;
+  border: 1px solid var(--sf-line);
+}
+.slc-lg .lgv {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.slc h3 {
+  font-size: calc(16px * var(--fs));
+  line-height: 1.25;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.slc h3 a {
+  color: var(--sf-ink);
+  text-decoration: none;
+}
+/* The name's link covers the card, so the whole card opens the seller page. */
+.slc h3 a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--sf-radius-tile);
+}
+.slc h3 a:hover {
+  color: var(--sf-teal);
+  text-decoration: underline;
+}
+.slc h3 a:focus-visible {
+  outline: none;
+}
+.slc:has(h3 a:focus-visible) {
+  outline: 2px solid var(--sf-teal);
+  outline-offset: 2px;
+}
+.slc-m {
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+}
+.slc-rt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: calc(13px * var(--fs));
+  font-weight: 700;
+}
+.slc-rt i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.slc-rt small {
+  color: var(--sf-slate);
+  font-weight: 500;
+}
+.slc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.slc-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-mist-soft);
+  font-size: calc(12px * var(--fs));
+  font-weight: 600;
+}
+.slc-chips li.new {
+  background: var(--sf-saffron-soft);
+}
+.slc-chips li.off {
+  background: var(--sf-surface);
+  color: var(--sf-slate);
+}
+.slc-chips .ico {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--sf-teal);
+}
+.slc-chips li.off .ico {
+  color: var(--sf-slate);
+}
+.slc-d {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 2px;
+  padding: 0;
+  list-style: none;
+  font-size: calc(13.5px * var(--fs));
+}
+.slc-d li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.slc-d .ico {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--sf-slate);
+}
+.slc-p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--sf-line);
+}
+.slc-th {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--sf-mist);
+}
+.slc-th .ico {
+  width: 22px;
+  height: 22px;
+  color: var(--sf-teal);
+}
+.slc-th img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.slc-p .n {
+  margin-inline-start: auto;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+  text-align: end;
+}
+.sl-more {
+  justify-self: center;
+  text-decoration: none;
+}
+.sl-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  border: 1px dashed var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  color: var(--sf-slate);
+  text-align: center;
+}
+.sl-empty > .ico {
+  width: 36px;
+  height: 36px;
+  color: var(--sf-teal);
+}
+.sl-empty h2 {
+  color: var(--sf-ink);
+  font-size: calc(18px * var(--fs));
+  font-weight: 800;
+}
+.sl-empty p {
+  max-width: 42ch;
+}
+.sl-sk {
+  pointer-events: none;
+}
+.sl-sk i {
+  display: block;
+  border-radius: 8px;
+  background: var(--sf-mist);
+}
+.sl-sk i.lg {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--sf-radius-tile);
+}
+.sl-sk-lines {
+  display: grid;
+  gap: 8px;
+}
+.sl-sk .name {
+  height: 16px;
+  width: 80%;
+}
+.sl-sk .meta {
+  height: 12px;
+  width: 55%;
+}
+.sl-sk .chips {
+  height: 24px;
+  width: 70%;
+}
+.sl-sk .row {
+  height: 12px;
+  width: 60%;
+}
+.sl-sk .row.short {
+  width: 50%;
+}
+.sl-sk .foot {
+  height: 44px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sl-sk i {
+    animation: sl-pulse 1.2s ease-in-out infinite;
+  }
+}
+@keyframes sl-pulse {
+  50% {
+    opacity: 0.5;
   }
 }

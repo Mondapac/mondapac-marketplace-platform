@@ -4,11 +4,14 @@ import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
+import { sampleSellers } from './sample-sellers.ts';
 import type {
   AccountSource,
   CartSource,
   CheckoutSource,
   ProductDetail,
+  SellerQuery,
+  SellerResults,
   SellerShop,
   StorefrontContent,
 } from './types.ts';
@@ -56,4 +59,12 @@ export async function loadSeller(slug: string): Promise<SellerShop | undefined> 
  */
 export async function loadAccount(): Promise<AccountSource> {
   return Promise.resolve(SAMPLE_ACCOUNT);
+}
+
+/**
+ * The sellers page's read: the matching stores, their total, the filter counts and where the
+ * buyer's location stands. Sample data until the backend has a seller list read.
+ */
+export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
+  return Promise.resolve(sampleSellers(query));
 }

@@ -1,3 +1,5 @@
+import type { SellerFilters, SellerSort } from '../sellers/sellers-state.ts';
+
 // The storefront's view of the backend contracts. Until PR #401 (pages and content) and
 // storefront package 2 (best sellers, special prices, category tree) are on main, the home page
 // reads these shapes from the sample source in ./sample-home.ts; only that file changes when the
@@ -371,4 +373,77 @@ export interface AccountSource {
   readonly lists: readonly NamedList[];
   readonly emails: EmailChoices;
   readonly serviceArea: ServiceArea;
+}
+
+/** One store card of the sellers page (`/sellers`). */
+export interface SellerListing {
+  /** The URL slug of the seller page. */
+  readonly id: string;
+  readonly name: string;
+  /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
+  readonly logo?: string;
+  /** Suburb only; the seller's address is never shown. */
+  readonly city: string;
+  readonly sellingSince: number;
+  /** Absent for a new seller without ratings; shown only behind the seller-ratings feature. */
+  readonly ratings?: { readonly satisfaction: number; readonly count: number };
+  /** The labels evaluateClaim allows the seller (CERT-*); never free text. */
+  readonly certifications: readonly { readonly type: string; readonly name: string }[];
+  readonly categories: readonly { readonly code: string; readonly name: string }[];
+  readonly deliveryWindow: string;
+  /** Whether it delivers today to the buyer's location. */
+  readonly sameDay: boolean;
+  /** Absent when the seller has no minimum order. */
+  readonly minimumOrder?: Money;
+  readonly deliveryFee: Money;
+  readonly productCount: number;
+  /** Up to three products for the card's footer. */
+  readonly thumbnails: readonly { readonly category: string; readonly imageUrl?: string }[];
+  /** Whether it delivers to the buyer's location; true when the location is not known. */
+  readonly deliversHere: boolean;
+  /** Kilometres from the buyer's location; only when the location is inside the delivery area. */
+  readonly distanceKm?: number;
+}
+
+/** A minimum-order bucket of the sellers filter; `max` absent for "No minimum order". */
+export interface MinimumBucket {
+  readonly id: string;
+  readonly max?: Money;
+}
+
+/** Where the buyer's location stands against the delivery area. */
+export type BuyerLocation = 'inside' | 'outside' | 'unknown';
+
+/** The sellers page's read: filters and sort as the URL gives them, and how many to return. */
+export interface SellerQuery {
+  readonly filters: SellerFilters;
+  readonly sort: SellerSort;
+  readonly limit: number;
+}
+
+/** A filter option with the number of stores it holds, counted over every store. */
+export interface SellerFacet {
+  readonly id: string;
+  readonly count: number;
+}
+
+export interface SellerFacets {
+  readonly newSellers: number;
+  readonly sameDay: number;
+  readonly certifications: readonly (SellerFacet & { readonly name: string })[];
+  readonly categories: readonly (SellerFacet & { readonly name: string })[];
+  readonly minimums: readonly (SellerFacet & { readonly bucket: MinimumBucket })[];
+  /** Only when the buyer's location is inside the delivery area. */
+  readonly distances: readonly { readonly km: number; readonly count: number }[];
+}
+
+export interface SellerResults {
+  /** The first `limit` matching stores, in the sort's order. */
+  readonly items: readonly SellerListing[];
+  /** Matching stores. */
+  readonly total: number;
+  /** Every store in the Market, with no filter; 0 means there are no sellers yet. */
+  readonly all: number;
+  readonly location: BuyerLocation;
+  readonly facets: SellerFacets;
 }
