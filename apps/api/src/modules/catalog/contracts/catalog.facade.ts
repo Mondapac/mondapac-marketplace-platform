@@ -111,6 +111,28 @@ export interface OfferListing {
 /** The answer of `offerListings`, keyed by {@link sellUnitKey}. */
 export type OfferListingsMap = ReadonlyMap<string, OfferListing>;
 
+/** One Variant of a published product, as a buyer sees it. */
+export interface PublishedProductVariant {
+  readonly variantId: Id<'Variant'>;
+  readonly position: number;
+  readonly label: string | null;
+}
+
+/**
+ * What `publishedProduct` gives: the content of a product's published revision. Texts are in the
+ * asked locale with the INTL-13 fallback; seller-entered text: escape it. `categoryIds` are in the
+ * revision's order and `variants` in position order, published Variants only.
+ */
+export interface PublishedProduct {
+  readonly productId: Id<'Product'>;
+  readonly publishedRevisionId: Id<'ProductRevision'>;
+  readonly name: string;
+  readonly shortDescription: string | null;
+  readonly description: string | null;
+  readonly categoryIds: readonly Id<'Category'>[];
+  readonly variants: readonly PublishedProductVariant[];
+}
+
 /** A request refused before any read: a code and the fields, never their values. */
 export interface CatalogValidationFailed {
   readonly code: 'validation.failed';
@@ -207,6 +229,22 @@ export interface CatalogFacade {
   ): Promise<
     Result<OfferListingsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
   >;
+
+  /**
+   * The published content of one product, for the buyer's product page. Rule `anonymous`: only
+   * a product whose status is `published` with a published revision is answered; a draft, pending
+   * or unpublished product, an unknown id and an id of another Market are all `null`, byte-identical.
+   * Texts are in `locale` with the INTL-13 fallback (the Market's default locale, then the first
+   * locale in code order), exactly as `offerListings` picks them; they are seller-entered text:
+   * escape it. Variants are the rows of the published revision whose registry variant is
+   * `published` (not proposed, not retired). No image, attribute or tag is read: images wait for
+   * the media slice, and a tag is never read by an anonymous rule. In-process only.
+   */
+  publishedProduct(
+    context: CallContext,
+    productId: Id<'Product'>,
+    locale: string,
+  ): Promise<Result<PublishedProduct | null, AccessDenied | CatalogValidationFailed>>;
 
   /**
    * Which of the requested product revisions, each named with its product, still waits for

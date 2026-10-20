@@ -460,5 +460,31 @@ describe.each(TEST_MARKETS)('storefront reads in market %s (database)', (code) =
       expect(mine).toEqual([a.offerId, b.offerId]);
       expect(settings.textSearchConfig).toBeTruthy();
     });
+
+    it('reads the documents of one product by Offer id, at most the limit, in this Market only', async () => {
+      const documents = new PrismaOfferDocumentRepository(db.service);
+      const reader = new PrismaShelfDocumentsReader(db.service);
+      const productId = ids.next<'Product'>();
+      const a = { ...doc(market, 'Reads product one'), productId };
+      const b = { ...doc(market, 'Reads product two'), productId };
+      const c = { ...doc(market, 'Reads product three'), productId };
+      const unrelated = doc(market, 'Reads product unrelated');
+      const canary = { ...doc(other, 'Reads product canary'), productId };
+      await value(market, async () => {
+        for (const document of [c, a, b, unrelated])
+          await documents.upsert(market, document, clock.now());
+      });
+      await value(other, () => documents.upsert(other, canary, clock.now()));
+
+      const all = await value(market, () => reader.byProductId(market, productId, 10));
+      const first = await value(market, () => reader.byProductId(market, productId, 2));
+
+      expect(all.map((h) => h.offerId)).toEqual([a.offerId, b.offerId, c.offerId].sort());
+      expect(first.map((h) => h.offerId)).toEqual(
+        [a.offerId, b.offerId, c.offerId].sort().slice(0, 2),
+      );
+      expect(all.map((h) => h.offerId)).not.toContain(canary.offerId);
+      expect(all.map((h) => h.offerId)).not.toContain(unrelated.offerId);
+    });
   });
 });
