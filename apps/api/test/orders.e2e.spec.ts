@@ -80,6 +80,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'validation.failed': 400,
     'ordering.order-not-found': 404,
     'ordering.address-not-found': 422,
+    'ordering.outside-delivery-area': 422,
     'ordering.cart-empty': 422,
     'ordering.cart-not-purchasable': 422,
     'ordering.stock-insufficient': 409,
@@ -282,6 +283,69 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(foreign.body).toEqual({ statusCode: 422, code: 'ordering.address-not-found' });
       expect(inventory.calls).toEqual([]);
       expect(orders.rows.size).toBe(0);
+    });
+
+    it('refuses an address the Market does not deliver to, before anything is reserved', async () => {
+      const headers = customer();
+      shipping.outside.add(TEST_DELIVERY_ADDRESS.postcode);
+
+      const outside = await checkout(headers);
+
+      expect(outside.status).toBe(422);
+      expect(outside.body).toEqual({ statusCode: 422, code: 'ordering.outside-delivery-area' });
+      expect(inventory.calls).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+    });
+
+    it("keeps the customer's note to each seller with the order, and refuses a bad note", async () => {
+      const headers = customer();
+      const gone = id<'Seller'>(0xb0ff);
+
+      const started = await checkout(headers, {
+        addressId: ADDRESS,
+        sellerNotes: { [SELLER]: '  Ring twice\r\nThanks 👩\u200d🍳  ', [gone]: 'Not in the cart' },
+      });
+      const one = await http()
+        .get(`/orders/${body(started).orderId}`)
+        .set({ 'x-market-id': code, cookie: headers.cookie });
+      const long = await checkout(headers, {
+        addressId: ADDRESS,
+        sellerNotes: { [SELLER]: 'x'.repeat(201) },
+      });
+      const control = await checkout(headers, {
+        addressId: ADDRESS,
+        sellerNotes: { [SELLER]: 'bell\u0007' },
+      });
+      const hidden = await Promise.all(
+        ['\u202edesrever', 'zero\u200bwidth', 'line\u2028sep'].map((note) =>
+          checkout(headers, { addressId: ADDRESS, sellerNotes: { [SELLER]: note } }),
+        ),
+      );
+      const notAnId = await checkout(headers, { addressId: ADDRESS, sellerNotes: { x: 'y' } });
+
+      expect(started.status).toBe(200);
+      // Trimmed, and the note to a seller that is not in the cart any more is dropped.
+      expect(one.body).toMatchObject({
+        sellerNotes: { [SELLER]: 'Ring twice\nThanks 👩\u200d🍳' },
+      });
+      expect(Object.keys((one.body as { sellerNotes: object }).sellerNotes)).toEqual([SELLER]);
+      expect(long.status).toBe(400);
+      expect(long.body).toMatchObject({
+        details: { fields: [{ path: `sellerNotes.${SELLER}`, code: 'length' }] },
+      });
+      expect(control.body).toMatchObject({
+        details: { fields: [{ path: `sellerNotes.${SELLER}`, code: 'format' }] },
+      });
+      // A bidi override, a zero-width space and a line separator would hide what the note says.
+      for (const res of hidden) {
+        expect(res.body).toMatchObject({
+          details: { fields: [{ path: `sellerNotes.${SELLER}`, code: 'format' }] },
+        });
+      }
+      expect(notAnId.body).toMatchObject({
+        details: { fields: [{ path: 'sellerNotes', code: 'format' }] },
+      });
+      expect(orders.rows.size).toBe(1);
     });
 
     it('answers the refusals with their status and details', async () => {

@@ -182,6 +182,11 @@
     "reason": "The public storefront search: a visitor with no session finds sellable Offers by text or category; the answer is ids, text and category ids, re-checked against catalog and sellers, and the route is rate limited per origin."
   },
   {
+    "name": "shipping.delivery-area",
+    "rule": "anonymous",
+    "reason": "The buyer site asks whether the Market delivers to a postcode before sign-in (cart, checkout, Deliver to): the answer is the public ServiceArea configuration; nothing about a person is read or stored."
+  },
+  {
     "name": "storefront.view-published-landing-page",
     "rule": "anonymous",
     "reason": "A visitor with no session reads a live landing page at /l/<slug>: only a published, unarchived page inside its live window, or the site path an old or archived slug now sends to; layout and settings only, no product data."

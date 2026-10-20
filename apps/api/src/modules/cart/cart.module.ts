@@ -8,13 +8,19 @@ import { CatalogModule } from '../catalog';
 import { InventoryModule } from '../inventory';
 import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
-import type { CartDependencies } from './application/cart-operations';
+import { ShippingModule } from '../shipping';
 import { CART_POLICY } from './application/ports/cart-policy';
 import { CART_REPOSITORY } from './application/ports/cart.repository';
 import { GUEST_TOKENS } from './application/ports/guest-tokens';
 import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
 import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
 import { LINE_FACTS_SOURCE } from './application/ports/line-facts';
+import { SAVED_ITEM_REPOSITORY } from './application/ports/saved-item.repository';
+import type { SavedDependencies } from './application/saved-operations';
+import { MoveSavedToCart } from './application/use-cases/move-saved-to-cart.use-case';
+import { RemoveSaved } from './application/use-cases/remove-saved.use-case';
+import { SaveForLater } from './application/use-cases/save-for-later.use-case';
+import { ViewSaved } from './application/use-cases/view-saved.use-case';
 import { AddGuestItem } from './application/use-cases/add-guest-item.use-case';
 import { AddItem } from './application/use-cases/add-item.use-case';
 import { MergeGuestCart } from './application/use-cases/merge-guest-cart.use-case';
@@ -33,9 +39,9 @@ import { CartCheckoutFacadeImplementation } from './presentation/cart-checkout.f
 import { CartController } from './presentation/cart.controller';
 import { purgeInactiveCartsJob } from './presentation/jobs/purge-inactive-carts.job';
 
-type UseCaseClass<U> = new (gate: UseCaseGate, deps: CartDependencies) => U;
+type UseCaseClass<U> = new (gate: UseCaseGate, deps: SavedDependencies) => U;
 
-const PORTS: readonly [keyof CartDependencies, InjectionToken][] = [
+const PORTS: readonly [keyof SavedDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['carts', CART_REPOSITORY],
   ['tokens', GUEST_TOKENS],
@@ -45,6 +51,7 @@ const PORTS: readonly [keyof CartDependencies, InjectionToken][] = [
   ['clock', CLOCK],
   ['counters', RATE_COUNTER_REPOSITORY],
   ['counterKeys', RATE_COUNTER_KEYS],
+  ['saved', SAVED_ITEM_REPOSITORY],
 ];
 
 /** Every cart use case shares one dependency object, built from the same ports. */
@@ -57,7 +64,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         gate,
         Object.fromEntries(
           PORTS.map(([name], index) => [name, values[index]]),
-        ) as unknown as CartDependencies,
+        ) as unknown as SavedDependencies,
       ),
   };
 }
@@ -65,11 +72,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
 /**
  * The cart (docs/design/domain/cart.md, simplified for speed mode): a customer's or a guest's
  * lines of sell units, checked against catalog, sellers, pricing and inventory on every read and
- * every add. The cart reserves no stock and fixes no price; the hold and the price lock arrive
+ * every add, and a signed-in customer's saved-for-later list. The cart reserves no stock and fixes no price; the hold and the price lock arrive
  * with checkout.
  */
 @Module({
-  imports: [CatalogModule, SellersModule, PricingModule, InventoryModule],
+  imports: [CatalogModule, SellersModule, PricingModule, InventoryModule, ShippingModule],
   controllers: [CartController],
   providers: [
     ...cartProviders,
@@ -85,6 +92,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AddGuestItem,
       SetGuestLineQuantity,
       RemoveGuestItem,
+      ViewSaved,
+      SaveForLater,
+      MoveSavedToCart,
+      RemoveSaved,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: PurgeInactiveCarts,
@@ -93,17 +104,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         UNIT_OF_WORK,
         CART_REPOSITORY,
         RATE_COUNTER_REPOSITORY,
+        SAVED_ITEM_REPOSITORY,
         CART_POLICY,
         CLOCK,
       ],
       useFactory: (
         gate: UseCaseGate,
-        unitOfWork: CartDependencies['unitOfWork'],
-        carts: CartDependencies['carts'],
-        counters: CartDependencies['counters'],
-        policy: CartDependencies['policy'],
-        clock: CartDependencies['clock'],
-      ) => new PurgeInactiveCarts(gate, { unitOfWork, carts, counters, policy, clock }),
+        unitOfWork: SavedDependencies['unitOfWork'],
+        carts: SavedDependencies['carts'],
+        counters: SavedDependencies['counters'],
+        saved: SavedDependencies['saved'],
+        policy: SavedDependencies['policy'],
+        clock: SavedDependencies['clock'],
+      ) => new PurgeInactiveCarts(gate, { unitOfWork, carts, counters, saved, policy, clock }),
     },
     registerJobsFrom('cart', [PurgeInactiveCarts], (purge: PurgeInactiveCarts) => [
       purgeInactiveCartsJob(purge),

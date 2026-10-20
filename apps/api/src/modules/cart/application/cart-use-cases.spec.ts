@@ -18,7 +18,7 @@ import { HmacRateCounterKeys } from '../infrastructure/hmac-rate-counter-keys';
 import { InMemoryRateCounters } from './testing/in-memory-rate-counters';
 import { CryptoGuestTokens } from '../infrastructure/crypto-guest-tokens';
 import { ConfigCartPolicy } from '../infrastructure/config-cart-policy';
-import type { CartDependencies } from './cart-operations';
+import type { SavedDependencies } from './saved-operations';
 import type { CartRepository } from './ports/cart.repository';
 import { verdictKey, type LineFactsSource, type LineVerdict } from './ports/line-facts';
 import { AddGuestItem } from './use-cases/add-guest-item.use-case';
@@ -34,6 +34,12 @@ import { ViewCart } from './use-cases/view-cart.use-case';
 import { PurgeInactiveCarts } from './use-cases/purge-inactive-carts.use-case';
 import { SetGuestLineQuantity } from './use-cases/set-guest-line-quantity.use-case';
 import { ViewGuestCart } from './use-cases/view-guest-cart.use-case';
+import { InMemorySavedItems } from './testing/in-memory-saved-items';
+import { MAX_SAVED_ITEMS } from './saved-operations';
+import { MoveSavedToCart } from './use-cases/move-saved-to-cart.use-case';
+import { RemoveSaved } from './use-cases/remove-saved.use-case';
+import { SaveForLater } from './use-cases/save-for-later.use-case';
+import { ViewSaved } from './use-cases/view-saved.use-case';
 
 // The cart use cases in memory on both Market fixtures (AU 99 per line, AUD; ZZ 50, another
 // currency): add with limits, stock clamp, guest cookie lifecycle, merge, price change, fail
@@ -106,6 +112,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
   const market = testMarketContext(code, 'default');
   const ceiling = markets.get(market.marketId).maxLineQuantity;
   const currency = markets.get(market.marketId).defaultCurrency;
+  const FEE = money(750n, currency);
   const clock = new FixedClock(T0);
   let carts: MemoryCarts;
   let verdicts: Map<string, LineVerdict>;
@@ -114,7 +121,8 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
   let minimumCalls: number;
   let factCalls: number;
   let counters: InMemoryRateCounters;
-  let deps: CartDependencies;
+  let deps: SavedDependencies;
+  let saved: InMemorySavedItems;
 
   const buyable = (
     amount: bigint,
@@ -163,6 +171,10 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
         ),
       );
     },
+    sellerDeliveryFees: (_c, sellerIds) =>
+      Promise.resolve(
+        new Map(sellerIds.flatMap((sellerId) => (sellerId === SELLER ? [[sellerId, FEE]] : []))),
+      ),
   };
 
   beforeEach(() => {
@@ -187,6 +199,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       clock,
       counters,
       counterKeys: new HmacRateCounterKeys(new Uint8Array(32).fill(7)),
+      saved: (saved = new InMemorySavedItems()),
     };
   });
 
@@ -455,6 +468,140 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     expect(await read.execute(guestCtx, {})).toMatchObject({ ok: false });
   });
 
+  describe('saved for later (cart v4)', () => {
+    const lineIdOf = async () => {
+      const view = await new ViewCart(gate, deps).execute(customerCtx, {});
+      return view.ok ? view.value.groups[0]!.lines[0]!.lineId : null;
+    };
+    const savedIdOf = async () => {
+      const list = await new ViewSaved(gate, deps).execute(customerCtx, {});
+      return list.ok ? list.value[0]!.savedId : null;
+    };
+
+    it('moves a cart line to the list and back, one of it, with its current price', async () => {
+      await new AddItem(gate, deps).execute(customerCtx, { ...line, quantity: 3 });
+
+      const moved = await new SaveForLater(gate, deps).execute(customerCtx, {
+        lineId: await lineIdOf(),
+      });
+      const list = await new ViewSaved(gate, deps).execute(customerCtx, {});
+      const cartAfter = await new ViewCart(gate, deps).execute(customerCtx, {});
+
+      expect(moved.ok).toBe(true);
+      expect(cartAfter.ok && cartAfter.value.lineCount).toBe(0);
+      expect(list.ok && list.value).toMatchObject([
+        { offerId: OFFER, variantId: VARIANT, state: 'buyable', unitPrice: money(1000n, currency) },
+      ]);
+
+      const back = await new MoveSavedToCart(gate, deps).execute(customerCtx, {
+        savedId: await savedIdOf(),
+      });
+      expect(back.ok && back.value.quantity).toBe(1);
+      expect(saved.rows.size).toBe(0);
+    });
+
+    it('keeps an item on the list when the cart refuses it, and removes one on request', async () => {
+      await new AddItem(gate, deps).execute(customerCtx, { ...line, quantity: 1 });
+      await new SaveForLater(gate, deps).execute(customerCtx, { lineId: await lineIdOf() });
+      verdicts.set(verdictKey(line), {
+        ...buyable(1000n),
+        state: 'unavailable',
+        reason: 'out-of-stock',
+      });
+      const savedId = await savedIdOf();
+
+      const refused = await new MoveSavedToCart(gate, deps).execute(customerCtx, { savedId });
+      expect(refused).toMatchObject({
+        ok: false,
+        error: { code: 'cart.offer-not-purchasable', reason: 'out-of-stock' },
+      });
+      expect(saved.rows.size).toBe(1);
+
+      expect((await new RemoveSaved(gate, deps).execute(customerCtx, { savedId })).ok).toBe(true);
+      expect(await new RemoveSaved(gate, deps).execute(customerCtx, { savedId })).toMatchObject({
+        ok: false,
+        error: { code: 'cart.saved-not-found' },
+      });
+    });
+
+    it('refuses a bad id, an unknown line, a full list, and every caller but the customer', async () => {
+      await new AddItem(gate, deps).execute(customerCtx, { ...line, quantity: 1 });
+      const save = new SaveForLater(gate, deps);
+
+      expect(await save.execute(customerCtx, { lineId: 'x' })).toMatchObject({
+        error: { code: 'validation.failed' },
+      });
+      expect(await save.execute(customerCtx, { lineId: id<'CartLine'>(0xdead) })).toMatchObject({
+        error: { code: 'cart.line-not-found' },
+      });
+      for (let n = 0; n < MAX_SAVED_ITEMS; n += 1) {
+        await saved.upsert(market, {
+          id: id<'SavedItem'>(0x9000 + n),
+          accountId: ACCOUNT,
+          offerId: id<'Offer'>(0x8000 + n),
+          variantId: VARIANT,
+          savedAt: T0,
+        });
+      }
+      expect(await save.execute(customerCtx, { lineId: await lineIdOf() })).toMatchObject({
+        error: { code: 'cart.saved-full' },
+      });
+      // Nothing left the cart.
+      expect(await lineIdOf()).not.toBeNull();
+      expect(await new ViewSaved(gate, deps).execute(guestCtx, {})).toMatchObject({ ok: false });
+      expect(await new ViewSaved(gate, deps).execute(sellerCtx, {})).toMatchObject({ ok: false });
+      expect(
+        await new RemoveSaved(gate, deps).execute(customerCtx, { savedId: 'nope' }),
+      ).toMatchObject({ error: { code: 'validation.failed' } });
+    });
+
+    it("never shows or touches another customer's items", async () => {
+      await saved.upsert(market, {
+        id: id<'SavedItem'>(0x9999),
+        accountId: id<'Account'>(0x77),
+        offerId: OFFER,
+        variantId: VARIANT,
+        savedAt: T0,
+      });
+
+      const list = await new ViewSaved(gate, deps).execute(customerCtx, {});
+      const remove = await new RemoveSaved(gate, deps).execute(customerCtx, {
+        savedId: id<'SavedItem'>(0x9999),
+      });
+      const move = await new MoveSavedToCart(gate, deps).execute(customerCtx, {
+        savedId: id<'SavedItem'>(0x9999),
+      });
+
+      expect(list.ok && list.value).toEqual([]);
+      expect(remove).toMatchObject({ error: { code: 'cart.saved-not-found' } });
+      expect(move).toMatchObject({ error: { code: 'cart.saved-not-found' } });
+      expect(saved.rows.size).toBe(1);
+    });
+
+    it('purges the items last saved a year ago or more', async () => {
+      const at = (days: number) => T0.subtract({ hours: days * 24 });
+      for (const [n, days] of [
+        [1, 366],
+        [2, 364],
+      ] as const) {
+        await saved.upsert(market, {
+          id: id<'SavedItem'>(0x9100 + n),
+          accountId: ACCOUNT,
+          offerId: id<'Offer'>(0x8100 + n),
+          variantId: VARIANT,
+          savedAt: at(days),
+        });
+      }
+      const done = await new PurgeInactiveCarts(gate, { ...deps }).execute(
+        testCallContext(market, 'system', 'cart-purge-abcd'),
+        {},
+      );
+
+      expect(done.ok && done.value.savedItems).toBe(1);
+      expect([...saved.rows.keys()]).toEqual([id<'SavedItem'>(0x9102)]);
+    });
+  });
+
   describe('minimum order per seller (cart design 6.4, 6.6; CRT-05)', () => {
     const minimum = (amount: bigint): SellerMinimum => ({
       kind: 'minimum',
@@ -524,7 +671,15 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       });
 
       expect((await groupOf())?.minimumOrder).toEqual({ state: 'not-applicable', minimum: null });
+      expect((await groupOf())?.deliveryFee).toBeNull();
       expect(minimumCalls).toBe(0);
+    });
+
+    it("shows the seller's delivery fee on a group with a buyable line", async () => {
+      await fill();
+      verdicts.set(verdictKey(line), buyable(1000n));
+
+      expect((await groupOf())?.deliveryFee).toEqual(FEE);
     });
 
     it.each([
@@ -860,7 +1015,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
 
       const done = await purge().execute(system, {});
 
-      expect(done.ok && done.value).toEqual({ carts: 450, rateCounters: 1 });
+      expect(done.ok && done.value).toEqual({ carts: 450, rateCounters: 1, savedItems: 0 });
       expect(carts.rows.size).toBe(0);
       expect([...counters.rows.keys()]).toEqual(['AU|guest.write.cart.15min|bb']);
     });

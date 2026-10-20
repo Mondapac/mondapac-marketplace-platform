@@ -10,6 +10,7 @@ import { FLAT_FEE_REPOSITORY } from './application/ports/flat-fee.repository';
 import { SELLER_DIRECTORY } from './application/ports/seller-directory';
 import { SHIPPING_POLICY } from './application/ports/shipping-policy';
 import type { ShippingDependencies } from './application/shipping-dependencies';
+import { DeliveryArea } from './application/use-cases/delivery-area.use-case';
 import { FlatFees } from './application/use-cases/flat-fees.use-case';
 import { SetFlatFee } from './application/use-cases/set-flat-fee.use-case';
 import { ViewFlatFee } from './application/use-cases/view-flat-fee.use-case';
@@ -21,6 +22,7 @@ import {
   AdminFlatFeeController,
   SellerFlatFeeController,
 } from './presentation/flat-fee.controller';
+import { DeliveryAreaController } from './presentation/delivery-area.controller';
 import { ShippingFacadeImplementation } from './presentation/shipping.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: ShippingDependencies) => U;
@@ -52,23 +54,26 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
 /**
  * Shipping (Phase 5 package 4, SHP-01, speed mode). The flat shipping fee of each seller: an
  * admin sets it, the seller sees it, and `ordering` reads it through `SHIPPING_FACADE` at
- * checkout (a seller without a fee cannot be bought from). Real carrier rates are Phase 6.
+ * checkout (a seller without a fee cannot be bought from) and `cart` reads it for the cart page.
+ * The delivery area check answers whether the Market delivers to a postcode (ServiceArea config).
+ * Real carrier rates are Phase 6.
  */
 @Module({
   imports: [SellersModule],
-  controllers: [AdminFlatFeeController, SellerFlatFeeController],
+  controllers: [AdminFlatFeeController, SellerFlatFeeController, DeliveryAreaController],
   providers: [
     PersistenceModule.auditWriterFor('shipping'),
     registerAuditActions('shipping', SHIPPING_AUDIT_ACTIONS),
     registerPermissions('shipping', SHIPPING_PERMISSIONS),
     ...shippingProviders,
-    ...[SetFlatFee, ViewFlatFee, ViewOwnFlatFee, FlatFees].map((type) =>
+    ...[SetFlatFee, ViewFlatFee, ViewOwnFlatFee, FlatFees, DeliveryArea].map((type) =>
       useCaseProvider(type as UseCaseClass<unknown>),
     ),
     {
       provide: SHIPPING_FACADE,
-      inject: [FlatFees],
-      useFactory: (fees: FlatFees) => new ShippingFacadeImplementation(fees),
+      inject: [FlatFees, DeliveryArea],
+      useFactory: (fees: FlatFees, area: DeliveryArea) =>
+        new ShippingFacadeImplementation(fees, area),
     },
   ],
   exports: [SHIPPING_FACADE],

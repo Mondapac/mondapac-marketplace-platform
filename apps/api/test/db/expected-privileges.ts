@@ -417,6 +417,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['count', 'window_started_at'],
     },
+    // Saved for later: saved again moves the item to the top; removed, moved to the cart or
+    // purged a year after it was last saved.
+    'cart.saved_items': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: ['saved_at'] },
     // Ordering (Phase 5 package 1): no row is ever deleted. Seller orders and lines are written
     // once; an order's state, payment state, Stripe ids, times and version change.
     'ordering.orders': {
