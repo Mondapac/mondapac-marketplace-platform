@@ -9,11 +9,12 @@ import { AUTHENTICATOR, type Authenticator } from '../authz/authenticator';
 import { MarketRegistry } from '../market-config/market-registry';
 import { isMarketContextExempt } from '../market-context/market-context.guard';
 import { marketContextOf } from '../market-context/market.decorator';
-import { clientAddressProven } from '../http/client-address';
+import { clientAddressKeyIdOf } from '../http/client-address';
 import {
   CSRF_HEADER,
   csrfTokenFor,
   csrfTokenMatches,
+  isStorefrontKeyId,
   isUnsafeMethod,
   originRefused,
   storefrontOriginMatches,
@@ -49,8 +50,8 @@ const STATUS: Readonly<Record<Refusal, number>> = {
  *    `allowedOrigins` of that population. Admin and seller routes also refuse a request
  *    without either header (`ORIGIN_HEADERS_REQUIRED`). A seller route marked
  *    `@AcceptsStorefrontOrigin` (seller sign-up and its resend only) also accepts the Market's
- *    `customer` origins, with `Sec-Fetch-Site: same-origin` and a BFF-proved client address
- *    (ADR-0037); the seller list itself never holds the storefront.
+ *    `customer` origins, with `Sec-Fetch-Site: same-origin` and a client address proved under a
+ *    storefront key (ADR-0037); the seller list itself never holds the storefront.
  * 3. **Session cookie**: a route reads a session only when it is marked `@ReadsSession()`;
  *    otherwise its actor is the Market's anonymous actor, whatever cookie came with it (sign-in
  *    and sign-up). The guard reads only the cookie named for the route's population and the
@@ -112,7 +113,17 @@ export class ActorGuard implements CanActivate {
         if (!storefrontRoute || !storefrontOriginMatches(request.headers, origins.customer)) {
           refuse(REQUEST_CSRF, 'origin');
         }
-        if (!clientAddressProven(request)) refuse(REQUEST_CSRF, 'storefront-unproven');
+        if (!isStorefrontKeyId(clientAddressKeyIdOf(request))) {
+          refuse(REQUEST_CSRF, 'storefront-unproven');
+        }
+        // Accepted through the storefront exception: marked so the new public path can be
+        // watched. The route, Market and correlation id only.
+        this.#logger.log({
+          msg: 'actor.storefront-origin',
+          route: context.getHandler().name,
+          marketId: market.marketId,
+          correlationId: request.id ?? null,
+        });
       }
     }
     if (!readsSession || population === undefined) {

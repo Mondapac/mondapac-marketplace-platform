@@ -75,7 +75,8 @@ export function originRefused(
  * Whether an unsafe request comes from the storefront's BFF for a route marked
  * `@AcceptsStorefrontOrigin` (Hassan's conditions on PR #442): `Sec-Fetch-Site: same-origin`
  * and an `Origin` on the Market's storefront (`customer`) list. An empty list accepts nothing.
- * The actor guard also requires a client address proved by a BFF.
+ * The actor guard also requires a client address proved under a storefront key
+ * ({@link isStorefrontKeyId}).
  */
 export function storefrontOriginMatches(
   headers: IncomingHttpHeaders,
@@ -87,4 +88,13 @@ export function storefrontOriginMatches(
     typeof origin === 'string' &&
     storefrontOrigins.includes(origin)
   );
+}
+
+/**
+ * Whether an ADR-0037 keyId belongs to the storefront's BFF (Hassan, PR #443 finding 1): the
+ * keyId `storefront`, or a later generation `storefront-<n>` (ADR-0037 decision 4 rotation). A
+ * panel BFF's proof never opens the storefront exception.
+ */
+export function isStorefrontKeyId(keyId: string | undefined): boolean {
+  return keyId !== undefined && /^storefront(-[a-z0-9]+)*$/u.test(keyId);
 }

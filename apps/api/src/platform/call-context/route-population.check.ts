@@ -28,21 +28,27 @@ export class RoutePopulationError extends Error {
 
 type ControllerClass = abstract new (...args: never[]) => unknown;
 
-/** A route path without leading, trailing or repeated slashes (the first path of a list). */
-function pathOf(metadata: unknown): string {
-  const first: unknown = Array.isArray(metadata) ? metadata[0] : metadata;
-  return typeof first === 'string' ? first.split('/').filter(Boolean).join('/') : '';
+/** A route path without leading, trailing or repeated slashes; `null` for a list of paths. */
+function pathOf(metadata: unknown): string | null {
+  if (Array.isArray(metadata)) {
+    return metadata.length === 1 ? pathOf(metadata[0]) : null;
+  }
+  return typeof metadata === 'string' ? metadata.split('/').filter(Boolean).join('/') : '';
 }
 
-/** `METHOD path` of a handler, as {@link STOREFRONT_ORIGIN_ROUTES} spells it. */
-function routeKeyOf(controller: object, handler: object): string {
+/**
+ * `METHOD path` of a handler, as {@link STOREFRONT_ORIGIN_ROUTES} spells it, or `null` when the
+ * controller or the handler declares several paths (Hassan, PR #443 finding 2: a path list
+ * would carry the exception to its other paths).
+ */
+function routeKeyOf(controller: object, handler: object): string | null {
   const method = Reflect.getMetadata(METHOD_METADATA, handler) as RequestMethod | undefined;
-  const path = [
+  const parts = [
     pathOf(Reflect.getMetadata(PATH_METADATA, controller)),
     pathOf(Reflect.getMetadata(PATH_METADATA, handler)),
-  ]
-    .filter(Boolean)
-    .join('/');
+  ];
+  if (parts.includes(null)) return null;
+  const path = parts.filter(Boolean).join('/');
   return `${method === undefined ? '?' : RequestMethod[method]} ${path}`;
 }
 
@@ -84,7 +90,9 @@ export function routePopulationProblems(controllers: readonly ControllerClass[])
     for (const { key, handler } of methods) {
       if (Reflect.getOwnMetadata(STOREFRONT_ORIGIN, handler) === undefined) continue;
       const route = routeKeyOf(controller, handler);
-      if (population !== 'seller' || !STOREFRONT_ORIGIN_ROUTES.has(route)) {
+      if (route === null) {
+        problems.push(`${name}.${key} carries @AcceptsStorefrontOrigin on a list of paths`);
+      } else if (population !== 'seller' || !STOREFRONT_ORIGIN_ROUTES.has(route)) {
         problems.push(
           `${name}.${key} carries @AcceptsStorefrontOrigin on ${route}, which is not a listed seller route`,
         );

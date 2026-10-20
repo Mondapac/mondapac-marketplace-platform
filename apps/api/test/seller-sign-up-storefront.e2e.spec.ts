@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { Controller, Post, RequestMethod } from '@nestjs/common';
+import { All, Controller, Post, RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { ModulesContainer } from '@nestjs/core';
 import { MetadataScanner } from '@nestjs/core/metadata-scanner';
@@ -22,15 +22,25 @@ import { panelHeaders } from './support/test-config';
 
 // The storefront's seller sign-up (john's decision of 2026-10-20 on PR #442, Hassan's
 // conditions): `POST identity/seller/sign-up` and `verification-email` also accept the
-// Market's storefront (customer) origin, same-origin and with a BFF-proved client address
-// (ADR-0037). The seller list never holds the storefront, every other admin and seller route
-// still refuses it, and the seller panel's own requests are unchanged. The test client connects
-// from 127.0.0.1, configured as the one BFF network, so a request with a proof plays a BFF.
+// Market's storefront (customer) origin, same-origin and with a client address proved under a
+// storefront key (ADR-0037). The seller list never holds the storefront, every other admin and
+// seller route still refuses it, and the seller panel's own requests are unchanged. The test
+// client connects from 127.0.0.1, configured as the one BFF network, so a request with a proof
+// plays a BFF.
 
 const KEY = Buffer.alloc(32, 0x3c).toString('base64');
+const NEXT_KEY = Buffer.alloc(32, 0x3d).toString('base64');
+const PANEL_KEY = Buffer.alloc(32, 0x3e).toString('base64');
+const KEYS: Record<string, string> = {
+  storefront: KEY,
+  'storefront-2': NEXT_KEY,
+  panel: PANEL_KEY,
+};
 const BFF_ENV = {
   TRUSTED_BFF_CIDRS: '127.0.0.1/32,::1/128',
-  CLIENT_ADDRESS_KEYS: `storefront:127.0.0.1/32,::1/128:${KEY}`,
+  CLIENT_ADDRESS_KEYS: Object.entries(KEYS)
+    .map(([keyId, secret]) => `${keyId}:127.0.0.1/32,::1/128:${secret}`)
+    .join(';'),
 };
 /** test/fixtures/markets/ZZ.json: `allowedOrigins.customer`. */
 const STOREFRONT = 'https://storefront.zz.test';
@@ -48,20 +58,20 @@ const SIGN_UP = {
 const CSRF = { statusCode: 403, code: 'request.csrf' };
 const fakes = new IdentityFakes();
 
-function proof(market: string): string {
+function proof(market: string, keyId = 'storefront'): string {
   const client = nextClient();
   const t = String(Math.floor(Date.now() / 1000));
-  const s = createHmac('sha256', Buffer.from(KEY, 'base64'))
-    .update(`v1\nstorefront\n${t}\n${client}\n${market}`, 'utf8')
+  const s = createHmac('sha256', Buffer.from(KEYS[keyId]!, 'base64'))
+    .update(`v1\n${keyId}\n${t}\n${client}\n${market}`, 'utf8')
     .digest('base64url');
-  return `v1;k=storefront;t=${t};a=${client};s=${s}`;
+  return `v1;k=${keyId};t=${t};a=${client};s=${s}`;
 }
 
 /** As the storefront's BFF relays the sign-up page: same-origin, its origin, the proof. */
-const fromStorefront = (market: string, origin = STOREFRONT) => ({
+const fromStorefront = (market: string, keyId = 'storefront') => ({
   'x-market-id': market,
-  'x-client-address': proof(market),
-  origin,
+  'x-client-address': proof(market, keyId),
+  origin: STOREFRONT,
   'sec-fetch-site': 'same-origin',
 });
 
@@ -91,6 +101,22 @@ class SessionReadingController {
 }
 
 @RoutePopulation('seller')
+@Controller('identity/seller')
+class PathListController {
+  @Post(['sign-up', 'sign-in'])
+  @AcceptsStorefrontOrigin()
+  write(): void {}
+}
+
+@RoutePopulation('seller')
+@Controller('identity/seller')
+class AllMethodsController {
+  @All('sign-up')
+  @AcceptsStorefrontOrigin()
+  write(): void {}
+}
+
+@RoutePopulation('seller')
 @(AcceptsStorefrontOrigin() as unknown as ClassDecorator)
 @Controller('test/storefront-origin/class')
 class ClassLevelController {}
@@ -115,6 +141,14 @@ describe('@AcceptsStorefrontOrigin at start-up', () => {
     [
       SessionReadingController,
       /SessionReadingController\.write carries @AcceptsStorefrontOrigin and reads a session/,
+    ],
+    [
+      PathListController,
+      /PathListController\.write carries @AcceptsStorefrontOrigin on a list of paths/,
+    ],
+    [
+      AllMethodsController,
+      /AllMethodsController\.write carries @AcceptsStorefrontOrigin on ALL identity\/seller\/sign-up, which is not a listed seller route/,
     ],
     [
       ClassLevelController,
@@ -167,6 +201,15 @@ describe('seller sign-up from the storefront (HF14, ADR-0037)', () => {
   it('accepts sign-up and "send it again" from the storefront through its BFF', async () => {
     await signUp(fromStorefront('ZZ')).expect(202);
     await resend(fromStorefront('ZZ')).expect(202);
+  });
+
+  it('accepts a later storefront key generation (ADR-0037 rotation)', async () => {
+    await signUp(fromStorefront('ZZ', 'storefront-2')).expect(202);
+  });
+
+  it("refuses the storefront origin under another BFF's key (the panel's)", async () => {
+    expect((await signUp(fromStorefront('ZZ', 'panel')).expect(403)).body).toEqual(CSRF);
+    expect((await resend(fromStorefront('ZZ', 'panel')).expect(403)).body).toEqual(CSRF);
   });
 
   it('still accepts the seller panel, unchanged', async () => {
