@@ -17,6 +17,10 @@ model CartCart {
   lastChangedAt    DateTime   @map("last_changed_at") @db.Timestamptz(6)
   mergedIntoCartId String?    @map("merged_into_cart_id") @db.Uuid
   mergedAt         DateTime?  @map("merged_at") @db.Timestamptz(6)
+  /// Set when a paid order removed lines from this cart, to the same instant as `lastChangedAt`;
+  /// cleared by the cart's next change (personalization 1c). While set, the cart gets no cart
+  /// reminder ("stop on order").
+  orderedAt        DateTime?  @map("ordered_at") @db.Timestamptz(6)
   /// Optimistic version of the aggregate; 1 at insert, +1 per change.
   version          Int
   createdAt        DateTime   @map("created_at") @db.Timestamptz(6)

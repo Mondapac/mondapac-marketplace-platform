@@ -8,6 +8,10 @@ import {
   type NotificationsPolicy,
 } from '../application/ports/notifications-policy';
 import {
+  CART_REMINDER_REPOSITORY,
+  type CartReminderRepository,
+} from '../application/ports/cart-reminder.repository';
+import {
   IN_APP_NOTICE_REPOSITORY,
   type InAppNoticeRepository,
 } from '../application/ports/in-app-notice.repository';
@@ -22,6 +26,7 @@ import {
 } from '../application/ports/unsubscribe-tokens';
 import { ConfigNotificationsPolicy } from './config-notifications-policy';
 import { HmacUnsubscribeTokens, localNotificationsSecret } from './hmac-unsubscribe-tokens';
+import { PrismaCartReminderRepository } from './prisma-cart-reminder.repository';
 import { PrismaInAppNoticeRepository } from './prisma-in-app-notice.repository';
 import { PrismaSupportContactRepository } from './prisma-support-contact.repository';
 
@@ -38,6 +43,12 @@ export const notificationsProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): InAppNoticeRepository =>
       new PrismaInAppNoticeRepository(prisma),
+  },
+  {
+    provide: CART_REMINDER_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CartReminderRepository =>
+      new PrismaCartReminderRepository(prisma),
   },
   {
     provide: NOTIFICATIONS_POLICY,
