@@ -6310,8 +6310,18 @@ button.login {
 .sg-card .sub {
   color: var(--sf-slate);
 }
+.sg-card .ac-fld label {
+  font-size: inherit;
+  font-weight: 600;
+}
 .sg-card .ac-fld input {
   height: 48px;
+}
+.sg-card .ac-fld small {
+  font-size: calc(13px * var(--fs));
+}
+.sg-card .ac-fld.bad input:focus-visible {
+  outline-color: var(--sf-error);
 }
 .sg-card .btn {
   width: 100%;
@@ -6322,7 +6332,7 @@ button.login {
   font-size: calc(13px * var(--fs));
   line-height: calc(19px * var(--fs));
 }
-.sg-card a {
+.sg-card a:not(.btn) {
   color: var(--sf-teal);
   font-weight: 600;
 }

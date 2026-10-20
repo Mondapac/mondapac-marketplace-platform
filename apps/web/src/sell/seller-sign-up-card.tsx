@@ -80,6 +80,13 @@ export function SellerSignUpCard({
     return () => clearTimeout(timer);
   }, [banner]);
 
+  // "Send it again" stays off for the wait the API gave.
+  useEffect(() => {
+    if (resent.kind !== 'throttled') return;
+    const timer = setTimeout(() => setResent({ kind: 'idle' }), resent.minutes * 60 * 1000);
+    return () => clearTimeout(timer);
+  }, [resent]);
+
   const message = (field: SellerSignUpField): string | undefined => {
     const code = errors[field];
     if (code === undefined) return undefined;
@@ -131,7 +138,7 @@ export function SellerSignUpCard({
   };
 
   const onResend = () => {
-    if (sentTo === null || resent.kind === 'sending') return;
+    if (sentTo === null || resent.kind === 'sending' || resent.kind === 'throttled') return;
     setResent({ kind: 'sending' });
     void (async () => {
       let answer: SellerSignUpAnswer;
@@ -171,7 +178,7 @@ export function SellerSignUpCard({
               className="sg-lk"
               type="button"
               onClick={onResend}
-              disabled={resent.kind === 'sending'}
+              disabled={resent.kind === 'sending' || resent.kind === 'throttled'}
             >
               {resent.kind === 'sending' ? t('mail.sending') : t('mail.again')}
             </button>

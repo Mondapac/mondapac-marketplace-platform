@@ -35,6 +35,11 @@ export function cleanSignUp(input: SellerSignUpInput): SellerSignUpInput {
   return { name: input.name.trim(), email: input.email.trim(), password: input.password };
 }
 
+/** Whether a trimmed address is short enough and looks like name@host.tld. */
+export function emailShaped(email: string): boolean {
+  return email.length <= EMAIL_MAX && EMAIL_SHAPE.test(email);
+}
+
 /** Each field's first problem; empty when the form may be sent. */
 export function checkSignUp(
   input: SellerSignUpInput,
@@ -47,8 +52,9 @@ export function checkSignUp(
   else if (NAME_FORBIDDEN.test(name) || NAME_URL_LIKE.some((rule) => rule.test(name)))
     errors.name = 'name-characters';
   if (email === '') errors.email = 'required';
-  else if (email.length > EMAIL_MAX || !EMAIL_SHAPE.test(email)) errors.email = 'email-format';
-  const length = [...input.password].length;
+  else if (!emailShaped(email)) errors.email = 'email-format';
+  // Counted as identity counts it: after NFKC, which expands some characters (U+FDFA).
+  const length = [...input.password.normalize('NFKC')].length;
   if (length === 0) errors.password = 'required';
   else if (length < password.min) errors.password = 'password-short';
   else if (length > password.max) errors.password = 'password-long';

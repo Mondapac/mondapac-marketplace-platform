@@ -87,6 +87,10 @@ describe('seller sign-up rules', () => {
       'password-short',
     );
     expect(checkSignUp({ ...GOOD, password: '😀'.repeat(15) }, RULE)).toEqual({});
+    // U+FDFA becomes 18 characters under NFKC, as identity counts it.
+    expect(checkSignUp({ ...GOOD, password: '\ufdfa'.repeat(8) }, RULE).password).toBe(
+      'password-long',
+    );
     expect(checkSignUp({ ...GOOD, password: 'a'.repeat(129) }, RULE).password).toBe(
       'password-long',
     );
@@ -112,6 +116,10 @@ describe('seller sign-up server actions', () => {
     await expect(signUpSeller(null)).resolves.toEqual({ kind: 'failed' });
     await expect(resendSellerEmail(GOOD.email)).resolves.toEqual({ kind: 'accepted' });
     await expect(resendSellerEmail(42)).resolves.toEqual({ kind: 'failed' });
+    await expect(resendSellerEmail('not-an-address')).resolves.toEqual({ kind: 'failed' });
+    await expect(resendSellerEmail(`${'a'.repeat(250)}@b.co`)).resolves.toEqual({
+      kind: 'failed',
+    });
   });
 
   it('takes the password rule from the Market setup', async () => {
@@ -171,7 +179,7 @@ describe('seller sign-up card', () => {
     create();
     const title = await screen.findByRole('heading', { name: 'Check your email' });
     expect(submit).toHaveBeenCalledWith(GOOD);
-    expect(document.activeElement).toBe(title);
+    await waitFor(() => expect(document.activeElement).toBe(title));
     expect(screen.getByText('maryam@example.com').tagName).toBe('B');
     expect(screen.getByRole('link', { name: 'Back to sign in' }).getAttribute('href')).toBe(
       SIGN_IN,
@@ -190,6 +198,22 @@ describe('seller sign-up card', () => {
     expect(resend).toHaveBeenCalledWith('maryam@example.com');
   });
 
+  it('keeps Send it again off while throttled', async () => {
+    renderCard(undefined, () => Promise.resolve({ kind: 'throttled', retryAfterSeconds: 120 }));
+    fill();
+    create();
+    await screen.findByRole('heading', { name: 'Check your email' });
+    fireEvent.click(screen.getByRole('button', { name: 'Send it again' }));
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        'Too many attempts. Please wait 2 minutes and try again.',
+      ),
+    );
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Send it again' }).disabled).toBe(
+      true,
+    );
+  });
+
   it('goes back to the form with the name and email kept when the address was wrong', async () => {
     renderCard();
     fill();
@@ -200,7 +224,7 @@ describe('seller sign-up card', () => {
     expect(email.value).toBe(GOOD.email);
     expect(screen.getByLabelText<HTMLInputElement>('Your name').value).toBe(GOOD.name);
     expect(screen.getByLabelText<HTMLInputElement>('Password').value).toBe('');
-    expect(document.activeElement).toBe(email);
+    await waitFor(() => expect(document.activeElement).toBe(email));
   });
 
   it('shows the field errors the server returns', async () => {
@@ -210,7 +234,7 @@ describe('seller sign-up card', () => {
     expect(
       await screen.findByText('That password is too easy to guess. Choose a different one.'),
     ).toBeTruthy();
-    expect(document.activeElement).toBe(screen.getByLabelText('Password'));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Password')));
   });
 
   it('when throttled, says how long to wait and keeps the button off until then', async () => {
@@ -235,6 +259,15 @@ describe('seller sign-up card', () => {
       'We could not create your account just now. Nothing was saved. Please try again.',
     );
     expect(screen.getByLabelText<HTMLInputElement>('Email').value).toBe(GOOD.email);
+  });
+});
+
+describe('seller sign-in redirect', () => {
+  it('sends the footer link to the seller panel sign-in from the Market setup', async () => {
+    const { GET } = await import('../app/sell/sign-in/route.ts');
+    const answer = await GET();
+    expect(answer.status).toBe(307);
+    expect(answer.headers.get('location')).toBe((await loadSellerSignUp()).sellerSignInUrl);
   });
 });
 
