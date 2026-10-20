@@ -89,7 +89,8 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const tcart = useTranslations('cart');
   const locale = useLocale();
   const router = useRouter();
-  const { cart, cartSource, discount, customer, setCustomer, setDeliveryAddress } = useStore();
+  const { cart, cartSource, discount, customer, setCustomer, setDeliveryAddress, online } =
+    useStore();
   const view = viewCart(cart, cartSource, discount);
   const [step, setStep] = useState<Step>(customer ? 2 : 1);
   const [choice, setChoice] = useState<string>(
@@ -280,7 +281,14 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
               </div>
               <p className="legal">{t.rich('agree-order', legalLinks)}</p>
               <div>
-                <Link className="btn" href="/checkout/payment">
+                <Link
+                  className="btn ctl"
+                  href="/checkout/payment"
+                  aria-disabled={online ? undefined : true}
+                  onClick={(event) => {
+                    if (!online) event.preventDefault();
+                  }}
+                >
                   <Icon name="lock" />
                   {t('pay', { amount: money(view.total) })}
                 </Link>

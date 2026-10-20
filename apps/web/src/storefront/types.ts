@@ -502,6 +502,37 @@ export interface SellerResults {
 }
 
 /**
+ * A product that is no longer sold or was removed (`/p/<id>`). A sold-out product that is still
+ * listed is a normal product page; this is only for removed ones. The reason is never shown.
+ */
+export interface UnavailableProduct {
+  readonly id: string;
+  readonly name: string;
+  readonly category: string;
+  readonly imageUrl?: string;
+  readonly seller: { readonly id: string; readonly name: string };
+  /** Up to four products: the same category first, then the same seller. */
+  readonly similar: readonly ProductCard[];
+}
+
+/**
+ * A store that is not taking orders (`/s/<slug>`): paused, suspended or not live yet. Buyers never
+ * see which; the page shows the static facts only and other stores that deliver to them.
+ */
+export interface ClosedStore {
+  readonly id: string;
+  readonly name: string;
+  /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
+  readonly logo?: string;
+  /** Suburb only; the seller's address is never shown. */
+  readonly city: string;
+  readonly sellingSince: number;
+  readonly location: BuyerLocation;
+  /** Up to three open stores that deliver to the buyer, as the sellers page shows them. */
+  readonly others: readonly SellerListing[];
+}
+
+/**
  * What the sell page needs from the Market: the password rule, the area and business identifier
  * its copy names, and the seller panel's sign-in page. Never a default Market's values in code.
  */
