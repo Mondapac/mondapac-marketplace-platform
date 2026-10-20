@@ -1,7 +1,7 @@
 import 'server-only';
+import { headers } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { apiGet } from './api.ts';
-import { storefrontApiConfig } from './config.ts';
 import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
 import type { AssistantSetup } from '../assistant/assistant.ts';
 import { loadHome, type HomeContent } from './home-source.ts';
@@ -12,6 +12,9 @@ import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { SAMPLE_SELLER_SIGN_UP } from './sample-seller-sign-up.ts';
+import { storefrontApiConfig, storefrontHostFor } from './config.ts';
+import { sellerSignInUrls } from './seller-sign-in.ts';
+import { callSellerSignUp, type SellerSignUpCall } from './seller-sign-up-api.ts';
 import { sampleSellers } from './sample-sellers.ts';
 import { sampleClosedStore, sampleUnavailableProduct } from './sample-unavailable.ts';
 import type {
@@ -124,33 +127,67 @@ export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
   return Promise.resolve(sampleSellers(query));
 }
 
-/** The sell page's Market values: password rule, area, business identifier, seller sign-in page. */
+/**
+ * The sell page's Market values: password rule, area, business identifier, seller sign-in page.
+ * With API_BASE_URL set, the sign-in page is the request Market's from SELLER_SIGN_IN_URLS; the
+ * rest stays sample until the storefront reads the Market config.
+ */
 export async function loadSellerSignUp(): Promise<SellerSignUpSetup> {
-  return Promise.resolve(SAMPLE_SELLER_SIGN_UP);
+  const config = storefrontApiConfig();
+  if (config === null) return SAMPLE_SELLER_SIGN_UP;
+  const host = storefrontHostFor(config, (await headers()).get('host'));
+  const sellerSignInUrl = host && sellerSignInUrls(config)[host.marketId];
+  return sellerSignInUrl ? { ...SAMPLE_SELLER_SIGN_UP, sellerSignInUrl } : SAMPLE_SELLER_SIGN_UP;
 }
 
 /**
- * Creates a seller account (identity `POST identity/seller/sign-up`). Sample: every valid form is
- * accepted and no mail goes, until the storefront may reach the seller sign-up route (the API
- * takes seller requests only from the seller panel's origin; open decision in
- * handoffs/seller-signup-done.md). The answer never says whether the address has an account.
+ * The call's inputs for this request, or null (logged) while API_BASE_URL is empty, without a
+ * signing key (the API refuses the storefront without a proved address) or on an unlisted host.
+ */
+async function sellerSignUpCall(route: string): Promise<SellerSignUpCall | null> {
+  const off = (reason: string): null => {
+    console.log(JSON.stringify({ msg: 'storefront.seller-sign-up.off', route, reason }));
+    return null;
+  };
+  const config = storefrontApiConfig();
+  if (config === null) return off('not-connected');
+  const { apiBaseUrl, clientAddressKey } = config;
+  if (clientAddressKey === null) return off('no-key');
+  const incoming = await headers();
+  const host = storefrontHostFor(config, incoming.get('host'));
+  if (host === undefined) return off('unknown-host');
+  return { apiBaseUrl, clientAddressKey, host, incoming };
+}
+
+/**
+ * Creates a seller account (identity `POST identity/seller/sign-up`, PR #443). The answer never
+ * says whether the address has an account. Not connected or an unknown host: failed, logged
+ * without the address. In a Market whose storefront origin is not set yet (AU until D2) the API
+ * refuses, so the page answers failed.
  */
 export async function submitSellerSignUp(input: {
   readonly name: string;
   readonly email: string;
   readonly password: string;
 }): Promise<SellerSignUpAnswer> {
-  void input;
-  return Promise.resolve({ kind: 'accepted' });
+  const call = await sellerSignUpCall('sign-up');
+  if (call === null) return { kind: 'failed' };
+  return callSellerSignUp(
+    call,
+    'sign-up',
+    { displayName: input.name, email: input.email, password: input.password },
+    { typed: input.password, maxLength: SAMPLE_SELLER_SIGN_UP.passwordMaxLength },
+  );
 }
 
 /**
  * "Send it again" (identity `POST identity/seller/verification-email`): the same answer for every
- * address. Sample until wired, as {@link submitSellerSignUp}.
+ * address, as {@link submitSellerSignUp}.
  */
 export async function resendSellerVerification(email: string): Promise<SellerSignUpAnswer> {
-  void email;
-  return Promise.resolve({ kind: 'accepted' });
+  const call = await sellerSignUpCall('verification-email');
+  if (call === null) return { kind: 'failed' };
+  return callSellerSignUp(call, 'verification-email', { email });
 }
 
 /**

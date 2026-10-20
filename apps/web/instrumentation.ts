@@ -2,6 +2,7 @@
 export async function register(): Promise<void> {
   if (process.env['NEXT_RUNTIME'] === 'nodejs') {
     const { storefrontApiConfig } = await import('./src/storefront/config.ts');
-    storefrontApiConfig();
+    const { sellerSignInUrls } = await import('./src/storefront/seller-sign-in.ts');
+    sellerSignInUrls(storefrontApiConfig());
   }
 }
