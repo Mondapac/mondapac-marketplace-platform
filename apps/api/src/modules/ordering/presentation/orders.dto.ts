@@ -139,6 +139,15 @@ const SHIP_TO_DESCRIPTION =
 export class OwnOrderBody extends OrderBody {
   @ApiProperty({ type: ShipToBody, nullable: true, description: SHIP_TO_DESCRIPTION })
   shipTo!: ShipToBody | null;
+
+  @ApiProperty({
+    type: Object,
+    additionalProperties: { type: 'string' },
+    description:
+      "The customer's note to each seller, keyed by seller id; empty when none was written, " +
+      'on older orders and once the account was erased.',
+  })
+  sellerNotes!: Record<string, string>;
 }
 
 export class CheckoutRequest {
@@ -147,6 +156,17 @@ export class CheckoutRequest {
     description: "The id of one of the customer's own addresses (GET /customers/me/addresses).",
   })
   addressId!: string;
+
+  @ApiProperty({
+    required: false,
+    type: Object,
+    additionalProperties: { type: 'string' },
+    description:
+      'A note to each seller, keyed by seller id: plain text, trimmed, 200 characters at most, ' +
+      'line breaks allowed, no other control character. An empty note is dropped, and so is a ' +
+      'note to a seller who is not in the cart any more.',
+  })
+  sellerNotes?: Record<string, string>;
 }
 
 export class LabelledOrderLineBody extends OrderLineBody {
@@ -272,6 +292,15 @@ export class SellerOrderShipBody extends SellerOrderDetailBody {
     description: `${SHIP_TO_DESCRIPTION} Recipient name, phone and address only.`,
   })
   shipTo!: ShipToBody | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The customer's note to this seller (plain text, 200 characters at most; escape it). " +
+      'Null when none was written, on older orders and once the account was erased.',
+  })
+  buyerNote!: string | null;
 }
 
 export class SellerOrderCountsBody {
@@ -329,6 +358,8 @@ const shipToBody = (shipTo: ShipTo | null): ShipToBody | null =>
 export const sellerOrderShipBody = (order: LabelledSellerOrderShipView): SellerOrderShipBody => ({
   ...sellerOrderDetailBody(order),
   shipTo: shipToBody(order.shipTo),
+  // A seller reads its own note only.
+  buyerNote: order.shipTo?.sellerNotes?.[order.sellerId] ?? null,
 });
 
 export const sellerOrderPageBody = (page: LabelledSellerOrderPageView): SellerOrderPageBody => ({
@@ -354,6 +385,7 @@ export const orderBody = (order: OrderView): OrderBody => ({
 export const ownOrderBody = (order: OwnOrderView): OwnOrderBody => ({
   ...orderBody(order),
   shipTo: shipToBody(order.shipTo),
+  sellerNotes: { ...(order.shipTo?.sellerNotes ?? {}) },
 });
 
 export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody => ({

@@ -54,12 +54,19 @@ import { SetGuestLineQuantity } from '../application/use-cases/set-guest-line-qu
 import { SetLineQuantity } from '../application/use-cases/set-line-quantity.use-case';
 import { ViewCart } from '../application/use-cases/view-cart.use-case';
 import { ViewGuestCart } from '../application/use-cases/view-guest-cart.use-case';
+import { MoveSavedToCart } from '../application/use-cases/move-saved-to-cart.use-case';
+import { RemoveSaved } from '../application/use-cases/remove-saved.use-case';
+import { SaveForLater } from '../application/use-cases/save-for-later.use-case';
+import { ViewSaved, type SavedItemView } from '../application/use-cases/view-saved.use-case';
 import {
   AddItemRequest,
   CartViewBody,
   LineWrittenView,
   MergedView,
   RemovedView,
+  SaveForLaterRequest,
+  SavedListView,
+  SavedView,
   SetQuantityRequest,
 } from './cart.dto';
 import { clearedGuestCookie, guestCookie, guestTokenOf } from './guest-cookie';
@@ -69,6 +76,8 @@ import { closedBody, fail } from './http-answers';
 export const CART_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'cart.line-not-found': 404,
+  'cart.saved-not-found': 404,
+  'cart.saved-full': 422,
   'cart.offer-not-purchasable': 422,
   'cart.too-many-lines': 422,
   'conflict.stale': 409,
@@ -93,6 +102,7 @@ const viewBody = (view: CartView) => ({
       state: group.minimumOrder.state,
       minimum: group.minimumOrder.minimum === null ? null : money(group.minimumOrder.minimum),
     },
+    deliveryFee: group.deliveryFee === null ? null : money(group.deliveryFee),
     lines: group.lines.map((line) => ({
       lineId: line.lineId,
       offerId: line.offerId,
@@ -130,7 +140,120 @@ export class CartController {
     private readonly removeAccount: RemoveItem,
     private readonly removeGuest: RemoveGuestItem,
     private readonly merge: MergeGuestCart,
+    private readonly viewSaved: ViewSaved,
+    private readonly saveLater: SaveForLater,
+    private readonly moveSaved: MoveSavedToCart,
+    private readonly removeSaved: RemoveSaved,
   ) {}
+
+  @Get('saved')
+  @ReadsSession()
+  @ApiOperation({
+    summary: "The signed-in customer's saved-for-later list, newest first",
+    description:
+      'Each item with its current price and stock state, checked like a cart line. A guest keeps ' +
+      'its list in the browser, so this route needs a session.',
+  })
+  @ApiOkResponse({ type: SavedListView })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async saved(@Call() context: CallContext, @Res({ passthrough: true }) response: Response) {
+    const result = await this.viewSaved.execute(context, {});
+    return this.answer('cart.view-saved', context, response, result, (items) => ({
+      body: { items: items.map(savedBody) },
+      cookie: null,
+    }));
+  }
+
+  @Post('saved')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Move a line of the cart to the saved-for-later list',
+    description:
+      'The line leaves the cart and the sell unit is saved, or neither. A unit already saved ' +
+      'moves to the top. At most 100 items.',
+  })
+  @ApiHeader({ ...CSRF, required: true })
+  @ApiBody({ type: SaveForLaterRequest })
+  @ApiOkResponse({ type: SavedView })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'cart.line-not-found' })
+  @ApiConflictResponse({ ...ERROR, description: 'conflict.stale' })
+  @ApiUnprocessableEntityResponse({ ...ERROR, description: 'cart.saved-full' })
+  @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
+  async save(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    const input = closedBody(request, body, ['lineId']);
+    if (input instanceof HttpException) throw this.refused('cart.save-for-later', context, input);
+    const result = await this.saveLater.execute(context, { lineId: input.lineId });
+    return this.answer('cart.save-for-later', context, response, result, (value) => ({
+      body: { savedId: value.savedId },
+      cookie: null,
+    }));
+  }
+
+  @Post('saved/:savedId/move-to-cart')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Move a saved item back to the cart, one of it',
+    description:
+      'Adds through the same checks as POST /cart/items; a refused add leaves the item saved.',
+  })
+  @ApiHeader({ ...CSRF, required: true })
+  @ApiParam({ name: 'savedId', format: 'uuid' })
+  @ApiOkResponse({ type: LineWrittenView })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'cart.saved-not-found' })
+  @ApiConflictResponse({ ...ERROR, description: 'conflict.stale' })
+  @ApiUnprocessableEntityResponse({
+    ...ERROR,
+    description: 'cart.offer-not-purchasable (details.reason) or cart.too-many-lines',
+  })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'cart.check-unavailable or access.unavailable',
+  })
+  async moveToCart(
+    @Call() context: CallContext,
+    @Param('savedId') savedId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.moveSaved.execute(context, { savedId });
+    return this.answer('cart.move-saved-to-cart', context, response, result, written);
+  }
+
+  @Delete('saved/:savedId')
+  @ReadsSession()
+  @ApiOperation({ summary: 'Remove an item from the saved-for-later list' })
+  @ApiHeader({ ...CSRF, required: true })
+  @ApiParam({ name: 'savedId', format: 'uuid' })
+  @ApiOkResponse({ type: RemovedView })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'cart.saved-not-found' })
+  async unsave(
+    @Call() context: CallContext,
+    @Param('savedId') savedId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.removeSaved.execute(context, { savedId });
+    return this.answer('cart.remove-saved', context, response, result, () => ({
+      body: { removed: true as const },
+      cookie: null,
+    }));
+  }
 
   @Get()
   @ReadsSession()
@@ -372,6 +495,18 @@ export class CartController {
     return fail(status, error.code);
   }
 }
+
+const savedBody = (item: SavedItemView) => ({
+  savedId: item.savedId,
+  offerId: item.offerId,
+  variantId: item.variantId,
+  savedAt: item.savedAt.toString(),
+  state: item.state,
+  reason: item.reason,
+  sellerId: item.sellerId,
+  unitPrice: item.unitPrice === null ? null : money(item.unitPrice),
+  availability: item.availability,
+});
 
 const written = (value: LineWritten) => ({
   body: {
