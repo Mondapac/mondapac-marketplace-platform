@@ -89,8 +89,16 @@
     "rule": "anonymous",
     "reason": "The storefront asks which sign-in providers the Market offers, to show their buttons to a visitor who has no session; configuration only."
   },
-  { "name": "identity.register-customer", "rule": "anonymous", "reason": "Customer sign-up form." },
-  { "name": "identity.register-seller", "rule": "anonymous", "reason": "Seller sign-up form." },
+  {
+    "name": "identity.register-customer",
+    "rule": "anonymous",
+    "reason": "Customer sign-up form."
+  },
+  {
+    "name": "identity.register-seller",
+    "rule": "anonymous",
+    "reason": "Seller sign-up form."
+  },
   {
     "name": "identity.request-customer-verification",
     "rule": "anonymous",
@@ -180,6 +188,16 @@
     "name": "search.search-products",
     "rule": "anonymous",
     "reason": "The public storefront search: a visitor with no session finds sellable Offers by text or category; the answer is ids, text and category ids, re-checked against catalog and sellers, and the route is rate limited per origin."
+  },
+  {
+    "name": "sellers.published-store-list",
+    "rule": "anonymous",
+    "reason": "The buyer site's sellers page for a visitor with no session: the allow-listed public fields (slug, store name, ServiceArea code, year of first approval, minimum order) of stores that may sell now; no address, contact or identifier, nothing about a seller that may not sell, no key unwrapped."
+  },
+  {
+    "name": "sellers.published-store-read",
+    "rule": "anonymous",
+    "reason": "The buyer site's store page for a visitor with no session: one held slug's allow-listed public fields, only while the seller may sell; an unknown, retired or not-selling slug answers the same not-found."
   },
   {
     "name": "shipping.delivery-area",

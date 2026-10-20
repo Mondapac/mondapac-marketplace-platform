@@ -8,10 +8,12 @@ import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { SAMPLE_SELLER_SIGN_UP } from './sample-seller-sign-up.ts';
 import { sampleSellers } from './sample-sellers.ts';
+import { sampleClosedStore, sampleUnavailableProduct } from './sample-unavailable.ts';
 import type {
   AccountSource,
   CartSource,
   CheckoutSource,
+  ClosedStore,
   DeliveryLocatorSource,
   ProductDetail,
   SellerQuery,
@@ -20,7 +22,15 @@ import type {
   SellerSignUpAnswer,
   SellerSignUpSetup,
   StorefrontContent,
+  UnavailableProduct,
 } from './types.ts';
+
+/**
+ * True while any read in this file returns sample data. It turns false only when every read here
+ * calls the API. It is the indexing lock: search engines cannot be let in while it is true
+ * (src/seo/indexing.ts).
+ */
+export const SAMPLE_DATA: boolean = true;
 
 /**
  * The storefront's one read of the home content. Sample data for now; it calls the
@@ -110,6 +120,24 @@ export async function submitSellerSignUp(input: {
 export async function resendSellerVerification(email: string): Promise<SellerSignUpAnswer> {
   void email;
   return Promise.resolve({ kind: 'accepted' });
+}
+
+/**
+ * A product id the product read did not find: a removed product (its page says so and shows
+ * similar ones), or undefined for an id that never existed (the 404 page). Sample data until the
+ * product detail read tells them apart.
+ */
+export async function loadUnavailableProduct(id: string): Promise<UnavailableProduct | undefined> {
+  return Promise.resolve(sampleUnavailableProduct(id));
+}
+
+/**
+ * A seller slug the seller read did not find: a store that is not taking orders (paused,
+ * suspended or not live; the reason never reaches the buyer), or undefined for an unknown slug.
+ * Sample data until the seller public read tells them apart.
+ */
+export async function loadClosedStore(slug: string): Promise<ClosedStore | undefined> {
+  return Promise.resolve(sampleClosedStore(slug));
 }
 
 /**
