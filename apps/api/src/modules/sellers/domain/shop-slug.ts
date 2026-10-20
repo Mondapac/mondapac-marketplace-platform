@@ -35,3 +35,13 @@ export function parseShopSlug(
   }
   return ok(slug as ShopSlug);
 }
+
+/**
+ * A slug exactly as stored (a public lookup, slice 12): no trimming or lower-casing, so one store
+ * has one address. Null for anything else; reserved words are not checked (no held slug is one).
+ */
+export function storedShopSlug(raw: unknown): ShopSlug | null {
+  if (typeof raw !== 'string') return null;
+  if (raw.length < SLUG_MIN_LENGTH || raw.length > SLUG_MAX_LENGTH) return null;
+  return SLUG_PATTERN.test(raw) ? (raw as ShopSlug) : null;
+}

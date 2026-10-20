@@ -104,6 +104,10 @@ import { MyFileController } from './presentation/my-file.controller';
 import { ReviewReadController } from './presentation/review-read.controller';
 import { ReviewRegisterCheckController } from './presentation/review-register-check.controller';
 import { SellerListController } from './presentation/seller-list.controller';
+import { PublicStoreController } from './presentation/public-store.controller';
+import { PublishedStoreList } from './application/use-cases/published-store-list.use-case';
+import { PublishedStoreRead } from './application/use-cases/published-store-read.use-case';
+import { PUBLISHED_STORE_REPOSITORY } from './application/ports/published-store.repository';
 import { sellerFileSubscriptions } from './presentation/subscribers/seller-file.subscriptions';
 
 /**
@@ -145,6 +149,7 @@ const PORT = {
   flags: ADMIN_FLAG_REPOSITORY,
   sellingFacts: SELLING_FACTS_REPOSITORY,
   storeProfiles: STORE_PROFILE_REPOSITORY,
+  publishedStores: PUBLISHED_STORE_REPOSITORY,
   minimumOrderPolicy: MINIMUM_ORDER_POLICY,
   decider: SELLER_ACCESS_DECIDER,
   ids: ID_GENERATOR,
@@ -177,6 +182,14 @@ const SELLING_ELIGIBILITY_PORTS = {
   sellingFacts: true,
   accessReader: true,
   policy: true,
+} as const;
+
+/** The ports of the public store reads (slice 12): the may-sell contract's and the store rows. */
+const PUBLISHED_STORE_PORTS = {
+  ...SELLING_ELIGIBILITY_PORTS,
+  publishedStores: true,
+  storeProfiles: true,
+  minimumOrderPolicy: true,
 } as const;
 
 /** The ports of the reviewer's approve and reject (slice 7a-decide). */
@@ -218,6 +231,7 @@ const REVIEW_DECISION_PORTS = {
     SellerListController,
     StoreSettingsController,
     OwnZoneController,
+    PublicStoreController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('sellers'),
@@ -252,6 +266,10 @@ const REVIEW_DECISION_PORTS = {
     // Slice 20, the optional minimum order (design 18): store settings over HTTP through
     // StoreSettingsController, under `sellers.store-settings.edit`, approved sellers only.
     // The seller's own zone for the panel's time inputs (special-price windows).
+    // Slice 12, the public store reads of the buyer site over HTTP through PublicStoreController
+    // (rule `anonymous`; clear columns only, no key unwrapped).
+    useCaseProvider(PublishedStoreList, PUBLISHED_STORE_PORTS),
+    useCaseProvider(PublishedStoreRead, PUBLISHED_STORE_PORTS),
     useCaseProvider(OwnZoneRead, { unitOfWork: true, revisions: true }),
     useCaseProvider(StoreSettingsRead, {
       unitOfWork: true,
