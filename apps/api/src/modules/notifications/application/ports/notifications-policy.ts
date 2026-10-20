@@ -33,6 +33,18 @@ export interface NotificationsPolicy {
     market: MarketContext,
     token: string,
   ): { readonly page: string; readonly oneClick: string } | null;
+
+  /** The Market's cart reminder settings; null when it configures none (no reminder). */
+  cartReminders(market: MarketContext): CartReminderSettings | null;
+}
+
+/** The abandoned-cart email settings of a Market (personalization 1c). */
+export interface CartReminderSettings {
+  /** `test`: only the accounts in `testAccountIds` get the mail. */
+  readonly mode: 'off' | 'test' | 'live';
+  /** The storefront cart page the mail links to. */
+  readonly cartPage: string;
+  readonly testAccountIds: readonly string[];
 }
 
 export const NOTIFICATIONS_POLICY = Symbol('NOTIFICATIONS_POLICY');

@@ -14,6 +14,7 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { CART_REMINDER_FACADE, CartModule } from '../cart';
 import { CATALOG_FACADE, CatalogModule } from '../catalog';
 import { IDENTITY_FACADE, IdentityModule } from '../identity';
 import { LEGAL_FACADE, LegalModule } from '../legal';
@@ -22,6 +23,7 @@ import type { MarketingDependencies } from './application/marketing-mail-flow';
 import type { InAppNoticeDependencies } from './application/in-app-notice-flow';
 import type { OrderMailDependencies } from './application/order-mail-flow';
 import type { NotificationsDependencies } from './application/notifications-dependencies';
+import { CART_REMINDER_REPOSITORY } from './application/ports/cart-reminder.repository';
 import { IN_APP_NOTICE_REPOSITORY } from './application/ports/in-app-notice.repository';
 import { NOTIFICATIONS_POLICY } from './application/ports/notifications-policy';
 import { SUPPORT_CONTACT_REPOSITORY } from './application/ports/support-contact.repository';
@@ -33,6 +35,10 @@ import { PurgeExpiredNotices } from './application/use-cases/purge-expired-notic
 import { RecordAdminReviewNotice } from './application/use-cases/record-admin-review-notice.use-case';
 import { RecordSellerNotice } from './application/use-cases/record-seller-notice.use-case';
 import { RecordSellerOrderNotices } from './application/use-cases/record-seller-order-notices.use-case';
+import {
+  SendCartReminders,
+  type CartReminderDependencies,
+} from './application/use-cases/send-cart-reminders.use-case';
 import { SendOrderConfirmationMail } from './application/use-cases/send-order-confirmation-mail.use-case';
 import { SendOrderShippedMail } from './application/use-cases/send-order-shipped-mail.use-case';
 import { SendSellerNewOrderMail } from './application/use-cases/send-seller-new-order-mail.use-case';
@@ -48,6 +54,7 @@ import { NOTIFICATIONS_AUDIT_ACTIONS } from './domain/audit';
 import { notificationsProviders } from './infrastructure/notifications-providers';
 import { AdminNoticesController } from './presentation/admin-notices.controller';
 import { purgeExpiredNoticesJob } from './presentation/jobs/purge-expired-notices.job';
+import { sendCartRemindersJob } from './presentation/jobs/send-cart-reminders.job';
 import { SellerNoticesController } from './presentation/seller-notices.controller';
 import { inAppNoticeSubscriptions } from './presentation/subscribers/in-app-notice.subscriptions';
 import { orderMailSubscriptions } from './presentation/subscribers/order-mail.subscriptions';
@@ -133,6 +140,26 @@ function marketingProvider<U>(
   };
 }
 
+const CART_REMINDER_PORTS: readonly [keyof CartReminderDependencies, InjectionToken][] = [
+  ...MARKETING_PORTS,
+  ['carts', CART_REMINDER_FACADE],
+  ['reminders', CART_REMINDER_REPOSITORY],
+  ['clock', CLOCK],
+];
+
+/** The cart reminder (personalization 1c): the marketing ports plus cart, its record and the clock. */
+const cartReminderProvider: FactoryProvider<SendCartReminders> = {
+  provide: SendCartReminders,
+  inject: [USE_CASE_GATE, ...CART_REMINDER_PORTS.map(([, token]) => token)],
+  useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+    new SendCartReminders(
+      gate,
+      Object.fromEntries(
+        CART_REMINDER_PORTS.map(([name], index) => [name, values[index]]),
+      ) as unknown as CartReminderDependencies,
+    ),
+};
+
 const IN_APP_NOTICE_PORTS: readonly [keyof InAppNoticeDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['notices', IN_APP_NOTICE_REPOSITORY],
@@ -169,10 +196,11 @@ function inAppNoticeProvider<U>(
  * (package 3) the admins' review notices (certificate, product revision, seller file, held price);
  * (package 4) the sellers' other notices (stock, certificates, catalog, prices, access).
  * Personalization 1b: the marketing mail rule (consent from `legal`, sender, contact and
- * unsubscribe link) and the one-click unsubscribe route.
+ * unsubscribe link) and the one-click unsubscribe route. Personalization 1c: the abandoned-cart
+ * email (the job `notifications.cart-reminders`, a marketing mail at about 4 and 24 hours idle).
  */
 @Module({
-  imports: [OrderingModule, CatalogModule, IdentityModule, LegalModule],
+  imports: [OrderingModule, CatalogModule, IdentityModule, LegalModule, CartModule],
   controllers: [
     AdminNoticesController,
     AdminSupportContactController,
@@ -193,6 +221,7 @@ function inAppNoticeProvider<U>(
     orderMailProvider(SendOrderShippedMail),
     marketingProvider(ViewUnsubscribeLink),
     marketingProvider(UnsubscribeMarketingEmail),
+    cartReminderProvider,
     ...[
       RecordSellerOrderNotices,
       RecordAdminReviewNotice,
@@ -224,9 +253,14 @@ function inAppNoticeProvider<U>(
         sellerNotices: RecordSellerNotice,
       ) => inAppNoticeSubscriptions(sellerOrders, adminReviews, sellerNotices),
     ),
-    registerJobsFrom('notifications', [PurgeExpiredNotices], (purge: PurgeExpiredNotices) => [
-      purgeExpiredNoticesJob(purge),
-    ]),
+    registerJobsFrom(
+      'notifications',
+      [PurgeExpiredNotices, SendCartReminders],
+      (purge: PurgeExpiredNotices, cartReminders: SendCartReminders) => [
+        purgeExpiredNoticesJob(purge),
+        sendCartRemindersJob(cartReminders),
+      ],
+    ),
     {
       provide: SUPPORT_CONTACT_FACADE,
       inject: [ViewPublicSupportContact],

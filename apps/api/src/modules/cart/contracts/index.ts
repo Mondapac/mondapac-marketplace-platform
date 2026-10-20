@@ -6,3 +6,8 @@ export {
   type CartCheckoutFailure,
   type CheckoutLine,
 } from './cart.facade';
+export {
+  CART_REMINDER_FACADE,
+  type CartReminderFacade,
+  type IdleCart,
+} from './cart-reminder.facade';
