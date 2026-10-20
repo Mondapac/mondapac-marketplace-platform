@@ -46,7 +46,7 @@
   "allowedOrigins": {
     "admin": [],
     "seller": [],
-    "customer": []
+    "customer": ["https://storefront.au.mondapac.test"]
   },
   "identity": {
     "password": {

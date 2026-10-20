@@ -413,13 +413,14 @@ describe('loadMarketConfigs', () => {
       expect(load(withOrigins(empty)).allowedOrigins).toEqual(empty);
     });
 
-    it('configures both test Markets: AU fails closed, ZZ lists its link-page hosts', () => {
+    it('configures both test Markets: AU lists only its storefront, ZZ lists its link-page hosts', () => {
       const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
 
+      // AU's panels fail closed until D2; its storefront origin is the host of its customer links.
       expect(markets.get(testMarketId('AU'))!.allowedOrigins).toEqual({
         admin: [],
         seller: [],
-        customer: [],
+        customer: ['https://storefront.au.mondapac.test'],
       });
       expect(markets.get(testMarketId('ZZ'))!.allowedOrigins).toEqual({
         admin: ['https://admin.zz.test'],
