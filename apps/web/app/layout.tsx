@@ -11,6 +11,7 @@ import {
 } from '../src/preferences/preferences.ts';
 import { CONSENT_COOKIE, consentOf } from '../src/consent/consent.ts';
 import { DELIVER_TO_COOKIE, deliverToOf } from '../src/delivery/deliver-to.ts';
+import { indexingOn } from '../src/seo/indexing.ts';
 import { StoreShell } from '../src/shell/store-shell.tsx';
 import {
   loadAssistant,
@@ -23,7 +24,11 @@ import './globals.css';
 
 export async function generateMetadata() {
   const t = await getTranslations('store');
-  return { title: t('title'), description: t('description') };
+  return {
+    title: t('title'),
+    description: t('description'),
+    ...(indexingOn() ? {} : { robots: { index: false, follow: false } }),
+  };
 }
 
 export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
