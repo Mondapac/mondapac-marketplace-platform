@@ -58,6 +58,8 @@ import { OFFER_TAX_CATEGORIES_READER } from './application/ports/offer-tax-categ
 import { PENDING_PRODUCT_REVISIONS_READER } from './application/ports/pending-product-revisions.reader';
 import { OfferTaxCategoriesQuery } from './application/use-cases/offer-tax-categories.use-case';
 import { PendingProductRevisionsQuery } from './application/use-cases/pending-product-revisions.use-case';
+import { SELLER_PRODUCT_OWNERS_READER } from './application/ports/seller-product-owners.reader';
+import { SellerProductOwnersQuery } from './application/use-cases/seller-product-owners.use-case';
 import { CATEGORY_TREE_READER } from './application/ports/category-tree.reader';
 import { CategoryTreeQuery } from './application/use-cases/category-tree.use-case';
 import { PublicCategoryController } from './presentation/public-category.controller';
@@ -89,7 +91,9 @@ import { PublishedOfferIdsQuery } from './application/use-cases/published-offer-
 import { OfferSellUnitsSystemQuery } from './application/use-cases/offer-sell-units-system.use-case';
 import { OfferSellUnitsQuery } from './application/use-cases/offer-sell-units.use-case';
 import { SeedCategoryTree } from './application/use-cases/seed-category-tree.use-case';
+import { CATALOG_ASSISTANT_FACADE } from './contracts/catalog-assistant.facade';
 import { CATALOG_FACADE } from './contracts/catalog.facade';
+import { CatalogAssistantFacadeImplementation } from './presentation/catalog-assistant.facade';
 import { CATALOG_INDEX_FACADE } from './contracts/catalog-index.facade';
 import { CATALOG_EVENTS } from './domain/events';
 import {
@@ -198,6 +202,7 @@ const PORT = {
   labelsReader: SELL_UNIT_LABELS_READER,
   taxCategoriesReader: OFFER_TAX_CATEGORIES_READER,
   pendingRevisionsReader: PENDING_PRODUCT_REVISIONS_READER,
+  productOwnersReader: SELLER_PRODUCT_OWNERS_READER,
   treeReader: CATEGORY_TREE_READER,
   offers: OFFER_REPOSITORY,
   offerFinder: OWN_OFFER_FINDER,
@@ -728,6 +733,10 @@ const productTypeProvider: FactoryProvider<string> = {
       unitOfWork: true,
       pendingRevisionsReader: true,
     }),
+    useCaseProvider(SellerProductOwnersQuery, {
+      unitOfWork: true,
+      productOwnersReader: true,
+    }),
     useCaseProvider(CategoryTreeQuery, { unitOfWork: true, treeReader: true, policy: true }),
     useCaseProvider(OfferListingsQuery, {
       unitOfWork: true,
@@ -752,6 +761,7 @@ const productTypeProvider: FactoryProvider<string> = {
         OfferListingsQuery,
         OfferListingsSystemQuery,
         PendingProductRevisionsQuery,
+        SellerProductOwnersQuery,
       ],
       useFactory: (
         offerSellUnits: OfferSellUnitsQuery,
@@ -762,6 +772,7 @@ const productTypeProvider: FactoryProvider<string> = {
         offerListings: OfferListingsQuery,
         offerListingsSystem: OfferListingsSystemQuery,
         pendingProductRevisions: PendingProductRevisionsQuery,
+        sellerProductOwners: SellerProductOwnersQuery,
       ) =>
         new CatalogFacadeImplementation({
           offerSellUnits,
@@ -772,6 +783,7 @@ const productTypeProvider: FactoryProvider<string> = {
           offerListings,
           offerListingsSystem,
           pendingProductRevisions,
+          sellerProductOwners,
         }),
     },
     useCaseProvider(OfferSearchFactsQuery, { unitOfWork: true, searchReader: true }),
@@ -782,7 +794,12 @@ const productTypeProvider: FactoryProvider<string> = {
       useFactory: (facts: OfferSearchFactsQuery, published: PublishedOfferIdsQuery) =>
         new CatalogIndexFacadeImplementation(facts, published),
     },
+    {
+      provide: CATALOG_ASSISTANT_FACADE,
+      inject: [CategoryTreeQuery],
+      useFactory: (tree: CategoryTreeQuery) => new CatalogAssistantFacadeImplementation(tree),
+    },
   ],
-  exports: [CATALOG_FACADE, CATALOG_INDEX_FACADE],
+  exports: [CATALOG_FACADE, CATALOG_INDEX_FACADE, CATALOG_ASSISTANT_FACADE],
 })
 export class CatalogModule {}

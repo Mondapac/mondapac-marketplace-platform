@@ -6,8 +6,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { sealArt } from '../certification/certification-seal.tsx';
 import { Icon } from '../icons/icon.tsx';
 import type { IconName } from '../icons/icon-paths.tsx';
-import type { TextSize } from '../preferences/preferences.ts';
-import { TextSizeToggle } from '../preferences/text-size-toggle.tsx';
 import { Logo } from './logo.tsx';
 
 const COLUMNS = [
@@ -93,7 +91,7 @@ function Column({
   );
 }
 
-export function Footer({ area, textSize }: { readonly area: string; readonly textSize: TextSize }) {
+export function Footer({ area }: { readonly area: string }) {
   const t = useTranslations('footer');
   const name = useTranslations('store')('name');
   const desktop = useDesktop();
@@ -157,7 +155,6 @@ export function Footer({ area, textSize }: { readonly area: string; readonly tex
           <Link href="/privacy">{t('privacy')}</Link>
           <Link href="/cookies">{t('cookies')}</Link>
         </div>
-        <TextSizeToggle initial={textSize} />
         <PaymentMarks label={t('payments')} />
         <button
           className="btt"

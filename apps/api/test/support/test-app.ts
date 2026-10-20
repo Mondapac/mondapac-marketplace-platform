@@ -8,7 +8,9 @@ import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from '../../src/app.module';
 import { APP_OPTIONS, configureApp } from '../../src/configure-app';
+import { MODEL_PROVIDER, type ModelProvider } from '../../src/platform/ai/model-provider';
 import { RATE_LIMIT_COUNTERS } from '../../src/platform/rate-limit/rate-limit-counters';
+import { FakeModelProvider } from './fake-model-provider';
 import { MemoryRateLimitCounters } from './memory-rate-limit-counters';
 import { panelOriginMarketConfigDirs, testAppConfig } from './test-config';
 
@@ -52,6 +54,11 @@ export interface TestAppOptions {
    * window; `postgres` keeps the application's PostgreSQL store (the rate-limit database suite).
    */
   readonly rateLimitStore?: 'memory' | 'postgres';
+  /**
+   * The model provider: a {@link FakeModelProvider} with an empty script by default, so no test
+   * ever calls a real model.
+   */
+  readonly modelProvider?: ModelProvider;
 }
 
 /**
@@ -77,10 +84,13 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     imports: [AppModule.register({ config, logDestination })],
     controllers: [...(options.controllers ?? [])],
   });
+  const offline = created
+    .overrideProvider(MODEL_PROVIDER)
+    .useValue(options.modelProvider ?? new FakeModelProvider());
   const builder =
     options.rateLimitStore === 'postgres'
-      ? created
-      : created.overrideProvider(RATE_LIMIT_COUNTERS).useValue(new MemoryRateLimitCounters());
+      ? offline
+      : offline.overrideProvider(RATE_LIMIT_COUNTERS).useValue(new MemoryRateLimitCounters());
   const moduleRef = await (options.override ? options.override(builder) : builder).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>(APP_OPTIONS);
   app.useLogger(app.get(Logger));

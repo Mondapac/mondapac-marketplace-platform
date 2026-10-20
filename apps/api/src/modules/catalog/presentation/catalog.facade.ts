@@ -8,6 +8,7 @@ import type { OfferSellUnitsQuery } from '../application/use-cases/offer-sell-un
 import type { OfferListingsQuery } from '../application/use-cases/offer-listings.use-case';
 import type { OfferListingsSystemQuery } from '../application/use-cases/offer-listings-system.use-case';
 import type { PendingProductRevisionsQuery } from '../application/use-cases/pending-product-revisions.use-case';
+import type { SellerProductOwnersQuery } from '../application/use-cases/seller-product-owners.use-case';
 import type {
   CatalogBatchTooLarge,
   CatalogFacade,
@@ -28,6 +29,7 @@ export interface CatalogFacadeUseCases {
   readonly offerListings: OfferListingsQuery;
   readonly offerListingsSystem: OfferListingsSystemQuery;
   readonly pendingProductRevisions: PendingProductRevisionsQuery;
+  readonly sellerProductOwners: SellerProductOwnersQuery;
 }
 
 /**
@@ -114,5 +116,17 @@ export class CatalogFacadeImplementation implements CatalogFacade {
     >
   > {
     return this.useCases.pendingProductRevisions.execute(context, { revisions });
+  }
+
+  sellerProductOwners(
+    context: CallContext,
+    productIds: readonly Id<'Product'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Product'>, Id<'Seller'>>,
+      AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
+    >
+  > {
+    return this.useCases.sellerProductOwners.execute(context, { productIds });
   }
 }

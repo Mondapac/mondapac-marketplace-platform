@@ -35,6 +35,16 @@ const MARKET_EXEMPTION_IMPORTERS = [
   '^src/platform/health/health\\.controller\\.ts$',
 ];
 
+// The one model entry point of platform/ai (ADR-0019 R2, R7): the gateway and the provider behind
+// it. Besides platform/ai itself, only the files on this checked-in allow-list import them; the
+// port's types (model-provider.ts) carry no call and may be imported by an AI module's ports.
+const MODEL_ENTRY_ALLOW_LIST = [
+  '^src/platform/ai/',
+  '^src/app\\.module\\.ts$',
+  '^src/modules/assistant/infrastructure/gateway-assistant-runtime\\.ts$',
+  '^src/modules/assistant/infrastructure/assistant-providers\\.ts$',
+];
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 module.exports = {
   forbidden: [
@@ -301,6 +311,26 @@ module.exports = {
         path: '^src/platform/subject-keys/',
         pathNot: '^src/platform/subject-keys/(?:subject-key-service|labels)\\.ts$',
       },
+    },
+    {
+      name: 'model-entry-only-from-the-allow-list',
+      comment:
+        'A model is called only through platform/ai (ADR-0019 R7), and only the files on ' +
+        'MODEL_ENTRY_ALLOW_LIST import its entry point (R2): never a domain/ file, a decision ' +
+        'use case or a module without an approved AI use.',
+      severity: 'error',
+      from: { pathNot: MODEL_ENTRY_ALLOW_LIST },
+      to: {
+        path: '^src/platform/ai/',
+        pathNot: '^src/platform/ai/model-provider\\.ts$',
+      },
+    },
+    {
+      name: 'model-provider-sdks-only-in-platform-ai',
+      comment: 'No provider SDK is imported outside platform/ai (ADR-0019 R7).',
+      severity: 'error',
+      from: { pathNot: '^src/platform/ai/' },
+      to: { path: '(?:^|/)(?:@anthropic-ai|openai|@google/generative-ai|@aws-sdk/client-bedrock)' },
     },
     {
       name: 'module-public-api-only',

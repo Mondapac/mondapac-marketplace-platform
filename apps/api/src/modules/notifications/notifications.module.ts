@@ -31,6 +31,7 @@ import { ListOwnNotices } from './application/use-cases/list-own-notices.use-cas
 import { MarkOwnNoticesRead } from './application/use-cases/mark-own-notices-read.use-case';
 import { PurgeExpiredNotices } from './application/use-cases/purge-expired-notices.use-case';
 import { RecordAdminReviewNotice } from './application/use-cases/record-admin-review-notice.use-case';
+import { RecordSellerNotice } from './application/use-cases/record-seller-notice.use-case';
 import { RecordSellerOrderNotices } from './application/use-cases/record-seller-order-notices.use-case';
 import { SendOrderConfirmationMail } from './application/use-cases/send-order-confirmation-mail.use-case';
 import { SendOrderShippedMail } from './application/use-cases/send-order-shipped-mail.use-case';
@@ -38,6 +39,8 @@ import { SendSellerNewOrderMail } from './application/use-cases/send-seller-new-
 import { SetSupportContact } from './application/use-cases/set-support-contact.use-case';
 import { UnsubscribeMarketingEmail } from './application/use-cases/unsubscribe-marketing-email.use-case';
 import { ViewPublicSupportContact } from './application/use-cases/view-public-support-contact.use-case';
+import { SUPPORT_CONTACT_FACADE } from './contracts/support-contact.facade';
+import { SupportContactFacadeImplementation } from './presentation/support-contact.facade';
 import { ViewSupportContact } from './application/use-cases/view-support-contact.use-case';
 import { ViewUnsubscribeLink } from './application/use-cases/view-unsubscribe-link.use-case';
 import { NOTIFICATIONS_PERMISSIONS } from './contracts';
@@ -163,7 +166,8 @@ function inAppNoticeProvider<U>(
  * from here later. Phase 6 package 1: the order emails (Q10), sent when `ordering.order-paid.v1`
  * arrives: the customer's "Order confirmation" and the sellers' "New order". In-app notices
  * (package 1): the sellers' "New order" notice under the panel bell, read per member, kept 90 days;
- * (package 3) the admins' review notices (certificate, product revision, seller file, held price).
+ * (package 3) the admins' review notices (certificate, product revision, seller file, held price);
+ * (package 4) the sellers' other notices (stock, certificates, catalog, prices, access).
  * Personalization 1b: the marketing mail rule (consent from `legal`, sender, contact and
  * unsubscribe link) and the one-click unsubscribe route.
  */
@@ -192,6 +196,7 @@ function inAppNoticeProvider<U>(
     ...[
       RecordSellerOrderNotices,
       RecordAdminReviewNotice,
+      RecordSellerNotice,
       ListOwnNotices,
       CountOwnUnreadNotices,
       MarkOwnNoticesRead,
@@ -212,13 +217,22 @@ function inAppNoticeProvider<U>(
     ),
     registerSubscriptionsFrom(
       'notifications',
-      [RecordSellerOrderNotices, RecordAdminReviewNotice],
-      (sellerOrders: RecordSellerOrderNotices, adminReviews: RecordAdminReviewNotice) =>
-        inAppNoticeSubscriptions(sellerOrders, adminReviews),
+      [RecordSellerOrderNotices, RecordAdminReviewNotice, RecordSellerNotice],
+      (
+        sellerOrders: RecordSellerOrderNotices,
+        adminReviews: RecordAdminReviewNotice,
+        sellerNotices: RecordSellerNotice,
+      ) => inAppNoticeSubscriptions(sellerOrders, adminReviews, sellerNotices),
     ),
     registerJobsFrom('notifications', [PurgeExpiredNotices], (purge: PurgeExpiredNotices) => [
       purgeExpiredNoticesJob(purge),
     ]),
+    {
+      provide: SUPPORT_CONTACT_FACADE,
+      inject: [ViewPublicSupportContact],
+      useFactory: (view: ViewPublicSupportContact) => new SupportContactFacadeImplementation(view),
+    },
   ],
+  exports: [SUPPORT_CONTACT_FACADE],
 })
 export class NotificationsModule {}

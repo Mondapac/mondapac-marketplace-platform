@@ -1641,15 +1641,35 @@
     "unread-item": "Unread",
     "kind": {
       "order-paid": "<strong>New order</strong> with {items, plural, one {# item} other {# items}} is paid and ready to ship",
-      "order-paid-by": "<strong>New order</strong> from <strong>{name}</strong> with {items, plural, one {# item} other {# items}} is paid and ready to ship"
+      "order-paid-by": "<strong>New order</strong> from <strong>{name}</strong> with {items, plural, one {# item} other {# items}} is paid and ready to ship",
+      "low-stock": "{left, plural, =0 {<strong>Out of stock</strong>: an offer has no units left} one {<strong>Low stock</strong>: # unit left of an offer} other {<strong>Low stock</strong>: # units left of an offer}}",
+      "certificate-decided": "{outcome, select, approved {Your <strong>certificate</strong> was approved} changes_requested {Your <strong>certificate</strong> needs changes} declined {Your <strong>certificate</strong> was declined} other {Your <strong>certificate</strong> was reviewed}}",
+      "certificate-expiring": "Your <strong>certificate</strong> expires in {days, plural, one {# day} other {# days}}",
+      "certificate-ended": "{cause, select, expired {Your <strong>certificate</strong> has expired} revoked {Your <strong>certificate</strong> was revoked} other {Your <strong>certificate</strong> is no longer valid}}",
+      "issuer-request-answered": "{outcome, select, issuer_added {The <strong>issuer</strong> you asked for was added} not_accepted {Your <strong>issuer request</strong> was not accepted} other {Your <strong>issuer request</strong> was answered}}",
+      "offer-published": "Your <strong>offer</strong> is published",
+      "offer-changes-requested": "Your <strong>offer</strong> needs changes: {reason, select, content_unclear {the content is unclear} description_claim {the description makes a claim} sku_or_condition {check the SKU or condition} handling_unclear {the handling is unclear} other {see the offer}}",
+      "product-published": "Your <strong>product</strong> changes are published",
+      "product-changes-requested": "Your <strong>product</strong> changes were sent back: {reason, select, content_unclear {the content is unclear} description_claim {the description makes a claim} sku_or_condition {check the SKU or condition} handling_unclear {the handling is unclear} other {see the product}}",
+      "offer-tag-changed": "{change, select, suspended {A <strong>certification tag</strong> was suspended and the offer is off sale} removed {A <strong>certification tag</strong> was removed from an offer} restored {A <strong>certification tag</strong> is active again} other {A <strong>certification tag</strong> changed}}",
+      "image-taken-down": "A <strong>product image</strong> was taken down {reason, select, certification_mark {because it shows a certification mark} misleading {because it is misleading} rights {after a rights claim} unsafe_or_illegal {because it is unsafe or illegal} other {by the platform}}",
+      "price-hold-decided": "{outcome, select, approved {Your <strong>{priceKind, select, special {special price} other {price}}</strong> change was approved} rejected {Your <strong>{priceKind, select, special {special price} other {price}}</strong> change was rejected} other {Your <strong>price</strong> change was reviewed}}",
+      "access-changed": "{change, select, approved {Your <strong>store</strong> is approved: you can start selling} reinstated {Your <strong>store</strong> is reinstated: you can sell again} other {Your <strong>store</strong> access changed}}",
+      "other": "You have a new notification"
     },
     "category": {
-      "orders": "Orders"
+      "orders": "Orders",
+      "stock": "Stock",
+      "certificates": "Certificates",
+      "catalogue": "Catalogue",
+      "prices": "Prices",
+      "account": "Account",
+      "other": "Other"
     },
     "empty": {
       "unread": {
         "title": "You're all caught up",
-        "body": "New orders show up here."
+        "body": "New orders and updates show up here."
       },
       "read": {
         "title": "Nothing read yet",
@@ -1657,7 +1677,7 @@
       },
       "all": {
         "title": "No notifications yet",
-        "body": "New orders show up here. Notifications are kept for 90 days."
+        "body": "New orders and updates show up here. Notifications are kept for 90 days."
       }
     },
     "error": "Notifications could not be loaded.",

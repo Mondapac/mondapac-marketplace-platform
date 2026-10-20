@@ -39,17 +39,21 @@ The database CHECKs repeat these bounds.
 
 The guardrails of plan section 5 (numbers only from server cards, certification only from
 `evaluateClaim`, no mutating tool, never payment, refunds, orders, addresses, accounts, discount
-codes or Cost) and the model API key. The key is `ASSISTANT_MODEL_API_KEY`, a server secret; the
-provider model of each tier is `ASSISTANT_MODEL_FAST` / `ASSISTANT_MODEL_BALANCED`. Without the
-key, or without a model for the chosen tier, the storefront read answers `enabled: false`.
+codes or Cost) and the model configuration. Since package 4 that configuration is per Market,
+as `MARKET=value` pairs: `ASSISTANT_MODEL_API_KEY` (a server secret; the admin read shows only
+`set` / `not-set`), `ASSISTANT_MODEL_FAST` / `ASSISTANT_MODEL_BALANCED` (the provider model of
+each tier) and `ASSISTANT_MODEL_PRICE_FAST` / `_BALANCED` (US dollars per million input/output
+tokens, so the spend caps can be counted). Without the key, the model or the price for the chosen
+tier, the storefront read answers `enabled: false` and no message reaches a model.
 
 ## Rollout
 
 `all` shows it to every visitor; `percent` uses a stable bucket of the Market and the widget's
 random `visitor` key (no key: left out); `internal` reaches no storefront visitor yet. How the
-internal team tries it on the storefront (a preview route) is decided with the chat endpoint
-(package 4). The spend counters, the automatic switch-off at a cap and the rate limits that use
-these numbers are built in package 4.
+internal team tries it on the storefront (a preview route) is designed in
+[conversation.md](conversation.md) and not built. The spend counters, the automatic pause at a cap
+and the message limits that use these numbers are built in package 4 (conversation.md); the admin
+read also answers `spend` (today, this month, conversations today, the last automatic pause).
 
 ## Admin panel
 
@@ -58,6 +62,6 @@ status card and a read-only summary; the Platform Administrator gets the form. T
 only whether the model key is set, and the model of each tier as the server reports it. Saving
 sends `expectedVersion`; on a 409 the page reads the settings again and asks the admin to make
 the change again. A tier whose model the server does not configure is offered disabled.
-Spend today and this month (against the caps), conversations today, the reason of the last
-automatic switch-off and the cost estimate per conversation (plan section 11) need the package 4
-counters; until then the status card shows "Recorded once buyers can chat".
+Spend today and this month (against the caps), conversations today and the last automatic
+switch-off are now in the read's `spend` (package 4); wiring them into the status card is a
+follow-up of the admin tab. The cost estimate per conversation is not computed by the server.

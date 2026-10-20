@@ -29,6 +29,8 @@ import { rebuildIndexJob } from './presentation/jobs/rebuild-offer-index.job';
 import { SearchController } from './presentation/search.controller';
 import { ShelfController } from './presentation/shelf.controller';
 import { catalogIndexSubscriptions } from './presentation/subscribers/catalog-index.subscriptions';
+import { SEARCH_ASSISTANT_FACADE } from './contracts';
+import { SearchAssistantFacadeImplementation } from './presentation/search-assistant.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: SearchDependencies) => U;
 
@@ -89,7 +91,8 @@ function shelfProvider<U>(
  * `search.offer_documents` kept fresh from catalog's events and rebuilt by a job, and the public
  * `GET /search/products` over PostgreSQL full-text search (ADR-0004). Storefront reads: the
  * best-sellers and specials shelves (`GET /search/bestsellers`, `GET /search/specials`) over the
- * same read model, ordered by ordering's ranking and pricing's specials.
+ * same read model, ordered by ordering's ranking and pricing's specials. The same three reads are
+ * the buyer assistant's READ tools (`SEARCH_ASSISTANT_FACADE`).
  */
 @Module({
   imports: [CatalogModule, SellersModule, OrderingModule, PricingModule],
@@ -102,6 +105,12 @@ function shelfProvider<U>(
     ),
     shelfProvider(ListBestsellers),
     shelfProvider(ListSpecials),
+    {
+      provide: SEARCH_ASSISTANT_FACADE,
+      inject: [SearchProducts, ListBestsellers, ListSpecials],
+      useFactory: (search: SearchProducts, bestsellers: ListBestsellers, specials: ListSpecials) =>
+        new SearchAssistantFacadeImplementation(search, bestsellers, specials),
+    },
     registerSubscriptionsFrom('search', [SyncOfferDocuments], (sync: SyncOfferDocuments) =>
       catalogIndexSubscriptions(sync),
     ),
@@ -109,5 +118,6 @@ function shelfProvider<U>(
       rebuildIndexJob(rebuild),
     ]),
   ],
+  exports: [SEARCH_ASSISTANT_FACADE],
 })
 export class SearchModule {}

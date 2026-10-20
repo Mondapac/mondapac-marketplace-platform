@@ -4,7 +4,14 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../icons/icon.tsx';
+import { SOCIAL_SIGN_IN_SHOWN } from '../storefront/features.ts';
 import { AcField, PasswordField } from './fields.tsx';
+import {
+  SocialSignIn,
+  sampleSocialSignIn,
+  type SocialProvider,
+  type SocialResult,
+} from './social-sign-in.tsx';
 
 type Mode = 'login' | 'new' | 'forgot' | 'sent';
 
@@ -17,14 +24,19 @@ const legalLinks = {
  * Log in, Create account and the forgot-password flow, shared by the log-in dialog and the log-in
  * page. `heading` draws the title (an h2 with a close button in the dialog, the page's h1).
  * Sample: any submit signs in to the sample account until customer sessions are wired; the reset
- * answer never says whether the email has an account.
+ * answer never says whether the email has an account. Continue with Google or Apple shows only
+ * with SOCIAL_SIGN_IN_SHOWN.
  */
 export function AuthForms({
   heading,
   onSignedIn,
+  social = SOCIAL_SIGN_IN_SHOWN,
+  startSocial = sampleSocialSignIn,
 }: {
   readonly heading: (title: string) => ReactNode;
   readonly onSignedIn: () => void;
+  readonly social?: boolean;
+  readonly startSocial?: (provider: SocialProvider) => Promise<SocialResult>;
 }) {
   const t = useTranslations('account.auth');
   const [mode, setMode] = useState<Mode>('login');
@@ -111,6 +123,7 @@ export function AuthForms({
             {t('create-account')}
           </button>
         </div>
+        {social ? <SocialSignIn start={startSocial} onSignedIn={onSignedIn} legal={login} /> : null}
         <form
           className="ac-f"
           id={`${id}-form`}
