@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiGetWith } from '../src/storefront/api.ts';
+import { checkDeliveryArea, deliveryAreaAnswer } from '../src/storefront/source.ts';
 import {
   assertClientAddressForwarding,
   parseStorefrontApiConfig,
@@ -256,5 +257,41 @@ describe('storefront API read', () => {
     expect(log).toHaveBeenCalledWith(
       JSON.stringify({ msg: 'storefront.api-read-refused', path: 'search/products', status: 500 }),
     );
+  });
+});
+
+describe('delivery area read', () => {
+  it('answers in or out from the API, and failed for anything else', () => {
+    expect(deliveryAreaAnswer({ kind: 'ok', body: { delivers: true } })).toEqual({ kind: 'in' });
+    expect(deliveryAreaAnswer({ kind: 'ok', body: { delivers: false } })).toEqual({ kind: 'out' });
+    expect(deliveryAreaAnswer({ kind: 'ok', body: { delivers: 'yes' } })).toEqual({
+      kind: 'failed',
+    });
+    expect(deliveryAreaAnswer({ kind: 'ok', body: {} })).toEqual({ kind: 'failed' });
+    expect(deliveryAreaAnswer({ kind: 'failed' })).toEqual({ kind: 'failed' });
+    expect(deliveryAreaAnswer({ kind: 'off' })).toEqual({ kind: 'off' });
+  });
+
+  it('refuses a postcode the API would refuse without asking it', async () => {
+    const calls = serve();
+    expect(await checkDeliveryArea('')).toEqual({ kind: 'out' });
+    expect(await checkDeliveryArea('4000\u0000')).toEqual({ kind: 'out' });
+    expect(await checkDeliveryArea('x'.repeat(17))).toEqual({ kind: 'out' });
+    expect(calls).toEqual([]);
+  });
+
+  it('asks the encoded route without the query in its logs', async () => {
+    const calls = serve(200, { delivers: true });
+    const logged = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const read = await apiGetWith<{ delivers?: unknown }>(
+      config(LOCAL),
+      incoming({ host: 'storefront.localhost:3003' }),
+      `shipping/delivery-area?postcode=${encodeURIComponent('40 31&x=1')}`,
+    );
+    expect(deliveryAreaAnswer(read)).toEqual({ kind: 'in' });
+    expect(calls[0]?.url).toBe(
+      'http://localhost:3000/shipping/delivery-area?postcode=40%2031%26x%3D1',
+    );
+    expect(logged).not.toHaveBeenCalled();
   });
 });

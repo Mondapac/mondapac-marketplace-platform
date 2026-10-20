@@ -247,7 +247,19 @@ export interface CheckoutSource {
   readonly serviceArea: ServiceArea;
   /** Sample only: the order Pay creates gives its reference when checkout is wired. */
   readonly orderReference: string;
+  /**
+   * Who answers whether a new address's postcode is delivered to: `sample` checks
+   * `serviceArea.postcodes` in the browser; `api` asks the API's delivery area (API_BASE_URL set).
+   */
+  readonly areaCheck: 'sample' | 'api';
 }
+
+/** The API's answer for one postcode: `off` while the storefront reads sample data. */
+export type DeliveryAreaAnswer =
+  | { readonly kind: 'off' }
+  | { readonly kind: 'in' }
+  | { readonly kind: 'out' }
+  | { readonly kind: 'failed' };
 
 /** A point on the map (WGS 84 degrees). */
 export interface GeoPoint {

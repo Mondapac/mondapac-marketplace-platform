@@ -1,5 +1,7 @@
 import 'server-only';
 import type { AssistantSetup } from '../assistant/assistant.ts';
+import { apiGet, type ApiRead } from './api.ts';
+import { storefrontApiConfig } from './config.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
@@ -12,6 +14,7 @@ import type {
   AccountSource,
   CartSource,
   CheckoutSource,
+  DeliveryAreaAnswer,
   DeliveryLocatorSource,
   ProductDetail,
   SellerQuery,
@@ -46,9 +49,42 @@ export async function loadCartSource(): Promise<CartSource> {
   return Promise.resolve(SAMPLE_CART_SOURCE);
 }
 
-/** The checkout's customer, address book and service area. Sample data until checkout is wired. */
+/**
+ * The checkout's customer, address book and service area. Sample data until the buyer's session
+ * reaches the API; with API_BASE_URL set, a new address's postcode is checked by the API.
+ */
 export async function loadCheckout(): Promise<CheckoutSource> {
-  return Promise.resolve(SAMPLE_CHECKOUT);
+  return Promise.resolve({
+    ...SAMPLE_CHECKOUT,
+    areaCheck: storefrontApiConfig() === null ? 'sample' : 'api',
+  });
+}
+
+/** What the API's postcode rule accepts (shipping `delivery-area`): printable ASCII, 1 to 16. */
+const POSTCODE = /^[\x20-\x7e]{1,16}$/u;
+
+/** The answer of a `shipping/delivery-area` read; anything but a yes or a no is `failed`. */
+export function deliveryAreaAnswer(
+  read: ApiRead<{ readonly delivers?: unknown }>,
+): DeliveryAreaAnswer {
+  if (read.kind !== 'ok') return { kind: read.kind };
+  const delivers = read.body.delivers;
+  if (typeof delivers !== 'boolean') return { kind: 'failed' };
+  return { kind: delivers ? 'in' : 'out' };
+}
+
+/**
+ * Whether the Market delivers to a postcode (shipping `GET delivery-area`, anonymous). Checkout
+ * asks the same before it takes an order, so this only spares the buyer a refused order.
+ */
+export async function checkDeliveryArea(postcode: string): Promise<DeliveryAreaAnswer> {
+  const value = postcode.trim();
+  if (!POSTCODE.test(value)) return { kind: 'out' };
+  return deliveryAreaAnswer(
+    await apiGet<{ readonly delivers?: unknown }>(
+      `shipping/delivery-area?postcode=${encodeURIComponent(value)}`,
+    ),
+  );
 }
 
 /**

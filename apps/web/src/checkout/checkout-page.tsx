@@ -12,6 +12,7 @@ import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import type { CheckoutSource, ServiceArea } from '../storefront/types.ts';
+import { deliveryAreaFor } from './actions.ts';
 
 // Checkout of the approved design: one page with four steps (Account, Delivery address, Delivery
 // by seller, Payment); a finished step shows its answer and a Change link. The order summary sits
@@ -32,7 +33,7 @@ interface NewAddress {
 
 const EMPTY: NewAddress = { name: '', phone: '', street: '', suburb: '', postcode: '', note: '' };
 
-/** Whether a postcode is in the service area (a placeholder for the backend's area check). */
+/** Whether a postcode is in the sample service area (the API answers once API_BASE_URL is set). */
 export function inServiceArea(area: ServiceArea, postcode: string): boolean {
   return (
     /^\d+$/.test(postcode) &&
@@ -40,6 +41,46 @@ export function inServiceArea(area: ServiceArea, postcode: string): boolean {
       (r) => postcode.length === r.from.length && postcode >= r.from && postcode <= r.to,
     )
   );
+}
+
+/** Where a new address's postcode stands: `checking` while the API has not answered. */
+type AreaState = 'in' | 'out' | 'checking' | 'failed';
+
+/** Shortest postcode worth asking about (an AU postcode has four digits). */
+const AREA_CHECK_MIN = 4;
+
+/**
+ * The delivery area answer for a postcode: the sample list in the browser, or the API's answer
+ * (one read per postcode typed, the last one wins).
+ */
+function useDeliveryArea(source: CheckoutSource, postcode: string): AreaState {
+  const api = source.areaCheck === 'api';
+  const value = postcode.trim();
+  const [answer, setAnswer] = useState<{ readonly postcode: string; readonly state: AreaState }>();
+  useEffect(() => {
+    if (!api || value.length < AREA_CHECK_MIN) return;
+    let live = true;
+    const settle = (state: AreaState) => {
+      if (live) setAnswer({ postcode: value, state });
+    };
+    deliveryAreaFor(value).then(
+      (read) =>
+        settle(
+          read.kind === 'off'
+            ? inServiceArea(source.serviceArea, value)
+              ? 'in'
+              : 'out'
+            : read.kind,
+        ),
+      () => settle('failed'),
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, value, source.serviceArea]);
+  if (!api) return inServiceArea(source.serviceArea, postcode) ? 'in' : 'out';
+  if (value.length < AREA_CHECK_MIN) return 'out';
+  return answer?.postcode === value ? answer.state : 'checking';
 }
 
 export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
@@ -55,6 +96,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     () => source.customer.addresses.find((a) => a.isDefault)?.id ?? 'new',
   );
   const [fresh, setFresh] = useState<NewAddress>(EMPTY);
+  const areaState = useDeliveryArea(source, fresh.postcode);
 
   // Signed in (at step 1 or by another tab of the shell): the account step is done.
   useEffect(() => {
@@ -73,7 +115,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     fresh.phone.trim() !== '' &&
     fresh.street.trim() !== '' &&
     fresh.suburb.trim() !== '' &&
-    inServiceArea(area, fresh.postcode);
+    areaState === 'in';
   const addresses = customer?.addresses ?? [];
   const saved = addresses.find((a) => a.id === choice);
   const addressLine = saved
@@ -169,7 +211,9 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
                   <span>{t('new-address-note', { area: area.name })}</span>
                 </label>
               </div>
-              {saved ? null : <AddressForm area={area} value={fresh} onChange={setFresh} />}
+              {saved ? null : (
+                <AddressForm area={area} areaState={areaState} value={fresh} onChange={setFresh} />
+              )}
               <div>
                 <button
                   className="btn"
@@ -412,10 +456,12 @@ function AccountStep({ onSignedIn }: { readonly onSignedIn: () => void }) {
 
 function AddressForm({
   area,
+  areaState,
   value,
   onChange,
 }: {
   readonly area: ServiceArea;
+  readonly areaState: AreaState;
   readonly value: NewAddress;
   readonly onChange: (value: NewAddress) => void;
 }) {
@@ -423,11 +469,14 @@ function AddressForm({
   const set = (key: keyof NewAddress) => (text: string) => onChange({ ...value, [key]: text });
   // The postcode error shows once four digits are typed, or when the field is left too short.
   const [left, setLeft] = useState(false);
-  const outside =
-    (value.postcode.length >= 4 || (left && value.postcode !== '')) &&
-    !inServiceArea(area, value.postcode)
+  const shown = value.postcode.length >= AREA_CHECK_MIN || (left && value.postcode !== '');
+  const outside = !shown
+    ? undefined
+    : areaState === 'out'
       ? t('outside-area', { postcode: value.postcode, area: area.name })
-      : undefined;
+      : areaState === 'failed'
+        ? t('area-check-failed')
+        : undefined;
   const noteId = useId();
   return (
     <>
