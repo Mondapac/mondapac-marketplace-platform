@@ -1,5 +1,5 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import { ok } from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { AccessState } from '../../domain/seller-status';
@@ -19,6 +19,9 @@ export interface SellingEligibilityInput {
 export type SellingEligibilityAnswer = ReadonlyMap<Id<'Seller'>, { readonly eligible: boolean }>;
 
 export type SellingEligibilityFailure = SellerIdsRefused;
+
+/** The system pair's answer when a read fails: a retried delivery, never a false "no". */
+export type SellingEligibilityUnavailable = { readonly code: 'sellers.unavailable' };
 
 export interface SellingEligibilityDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -55,12 +58,31 @@ export function mayAnswerYes(
  * for the ids `sellers` would allow. Fails closed (row 4): an unknown id, another Market's seller,
  * a read error or an `identity` refusal is `eligible: false`; nothing is cached; no register call
  * (row 5); no reason code leaves (row 6). `sellers`' conditions only narrow identity's yes (row 7).
+ * With `faults: 'unavailable'` (the system pair only) a failed read, policy or `identity` call is
+ * `sellers.unavailable` instead, so an event handler or job retries rather than acting on a "no"
+ * it never got (seller operations P-D: search would otherwise drop sellers who may sell).
  */
 export async function sellingEligibilityFor(
   deps: SellingEligibilityDependencies,
   context: CallContext,
   sellerIds: readonly string[],
-): Promise<Result<SellingEligibilityAnswer, SellingEligibilityFailure>> {
+): Promise<Result<SellingEligibilityAnswer, SellingEligibilityFailure>>;
+export async function sellingEligibilityFor(
+  deps: SellingEligibilityDependencies,
+  context: CallContext,
+  sellerIds: readonly string[],
+  options: { readonly faults: 'unavailable' },
+): Promise<
+  Result<SellingEligibilityAnswer, SellingEligibilityFailure | SellingEligibilityUnavailable>
+>;
+export async function sellingEligibilityFor(
+  deps: SellingEligibilityDependencies,
+  context: CallContext,
+  sellerIds: readonly string[],
+  options?: { readonly faults: 'unavailable' },
+): Promise<
+  Result<SellingEligibilityAnswer, SellingEligibilityFailure | SellingEligibilityUnavailable>
+> {
   const ids = parseSellerIds(sellerIds);
   if (!ids.ok) return ids;
   const distinct = [...ids.value];
@@ -68,12 +90,14 @@ export async function sellingEligibilityFor(
     new Map(distinct.map((sellerId) => [sellerId, { eligible: yes.has(sellerId) }] as const));
   if (distinct.length === 0) return ok(answer(new Set()));
   const { market } = context;
+  const fault = () =>
+    options === undefined ? ok(answer(new Set())) : err({ code: 'sellers.unavailable' as const });
 
   let identifierRequired: boolean | null = null;
   try {
     identifierRequired = deps.policy.businessIdentifier(market)?.required ?? null;
   } catch {
-    identifierRequired = null;
+    return fault();
   }
   if (identifierRequired === null) return ok(answer(new Set()));
 
@@ -84,10 +108,10 @@ export async function sellingEligibilityFor(
       async () => ok(await deps.sellingFacts.approvedSellingFacts(market, distinct)),
       { readOnly: true },
     );
-    if (!read.ok) return ok(answer(new Set()));
+    if (!read.ok) return fault();
     facts = read.value;
   } catch {
-    return ok(answer(new Set()));
+    return fault();
   }
   const candidates = distinct.filter((sellerId) =>
     mayAnswerYes('approved', facts.get(sellerId), identifierRequired),
@@ -98,7 +122,7 @@ export async function sellingEligibilityFor(
   try {
     access = await deps.accessReader.accessOfMany(context, candidates);
   } catch {
-    return ok(answer(new Set()));
+    return fault();
   }
   return ok(
     answer(

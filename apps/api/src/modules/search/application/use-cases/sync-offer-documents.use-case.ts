@@ -80,9 +80,11 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
       });
       if (ids === null) throw new Error('search: catalog ids unavailable');
       for (const offerId of ids) found.add(offerId);
-      if (ids.length < SYNC_BATCH) break;
+      if (ids.length < SYNC_BATCH) return [...found];
       after = ids[ids.length - 1];
     }
-    return [...found];
+    // Never a silently partial sync: the delivery is retried and, after its last attempt,
+    // dead-lettered with an alert.
+    throw new Error('search: too many Offers in one scope');
   }
 }

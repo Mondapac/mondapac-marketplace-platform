@@ -72,13 +72,17 @@ export interface SellersFacade {
    * closed: an unknown id, a missing record or any error is `eligible: false`, never cached, and
    * no reason leaves the facade. Callers treat any `ok: false` (`AccessDenied`,
    * `validation.failed`) and any missing key as not eligible; nothing is retried towards a yes.
+   * For the system actor only, a failed read is `sellers.unavailable` rather than all "no", so an
+   * event handler or job can retry (a request caller still gets "no").
    * At most 100 ids; a larger or malformed call is refused whole. Two use cases behind this
    * method, as for `sellerSummaries`. Not exposed over HTTP.
    */
   sellingEligibility(
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
-  ): Promise<Result<SellingEligibilityMap, AccessDenied | SellersValidationFailed>>;
+  ): Promise<
+    Result<SellingEligibilityMap, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  >;
 
   /**
    * `allowedProductTypesOf` (sellers design 7.1; SEL-12): `all`, or the set of type codes the

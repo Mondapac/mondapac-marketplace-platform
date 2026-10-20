@@ -54,7 +54,9 @@ export class SellersFacadeImplementation implements SellersFacade {
   sellingEligibility(
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
-  ): Promise<Result<SellingEligibilityMap, AccessDenied | SellersValidationFailed>> {
+  ): Promise<
+    Result<SellingEligibilityMap, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  > {
     const useCase =
       context.actor.kind === 'system'
         ? this.useCases.sellingEligibilitySystem

@@ -20,7 +20,9 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
 - **Suspended sellers (seller operations P-D):** a sync also asks the may-sell contract, so an Offer
   whose seller may not sell gets no document (a rebuild keeps it out too). `identity.seller-access-
   suspended` and `-reinstated` sync every Offer of that seller (its documents plus catalog's
-  `publishedOfferIds` with `sellerId`). Reads still check may-sell on every request.
+  `publishedOfferIds` with `sellerId`). A failed may-sell read is `sellers.unavailable` for the
+  system actor, so the sync throws and is retried rather than dropping sellers who may sell. Reads
+  still check may-sell on every request.
 - **Query:** `GET /search/products?q=&category=&page=&pageSize=` (anonymous, Market from `x-market-id`
   like other storefront routes, default rate-limit class per origin, `no-store`). `q` 2 to 100
   characters in web-search syntax (`websearch_to_tsquery`, ranked by `ts_rank`, ties by Offer id, so
