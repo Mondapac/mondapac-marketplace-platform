@@ -39,20 +39,33 @@ export function ListingBannerView({ banner }: { readonly banner: ListingBanner }
   );
 }
 
+/** A removable chip of a filter in use that the listing state does not hold (search's category). */
+export interface ExtraFilter {
+  readonly key: string;
+  readonly label: string;
+  /** The URL without this filter. */
+  readonly href: string;
+}
+
 /** The removable chips of the filters in use, and "Clear all" (the result count announces). */
 export function ActiveFilters({
   path,
   state,
   facets,
+  extra = [],
+  clearHref,
 }: {
   readonly path: string;
   readonly state: ListingState;
   readonly facets: ListingFacets;
+  /** Chips shown first; "Clear all" then goes to `clearHref`. */
+  readonly extra?: readonly ExtraFilter[];
+  readonly clearHref?: string;
 }) {
   const t = useTranslations('catalog');
   const locale = useLocale();
   const { filters } = state;
-  const chips: { key: string; label: string; href: string }[] = [];
+  const chips: ExtraFilter[] = [...extra];
   const flag = (on: boolean, key: 'special' | 'sameDay' | 'lowStock', label: string) => {
     if (on) chips.push({ key, label, href: listingHref(path, withFlag(state, key, false)) });
   };
@@ -91,7 +104,11 @@ export function ActiveFilters({
         </Link>
       ))}
       {chips.length > 0 ? (
-        <Link className="clr" href={listingHref(path, withoutFilters(state))} scroll={false}>
+        <Link
+          className="clr"
+          href={clearHref ?? listingHref(path, withoutFilters(state))}
+          scroll={false}
+        >
           {t('clear-all')}
         </Link>
       ) : null}

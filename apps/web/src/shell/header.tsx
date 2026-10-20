@@ -7,6 +7,7 @@ import { useLogOut } from '../account/account-nav.ts';
 import { summarise } from '../cart/cart.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
+import { useSearchSubmit } from '../search/search-focus.tsx';
 import type { DeliveryArea } from '../storefront/types.ts';
 import { Logo } from './logo.tsx';
 import { useStore } from './store-context.tsx';
@@ -24,6 +25,7 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
   // On the results page the box keeps the words searched for.
   const searched = useSearchParams()?.get('q') ?? '';
   const query = usePathname() === '/search' ? searched : '';
+  const onSearch = useSearchSubmit();
 
   // The header's height drives the sticky offset of the side rail.
   useEffect(() => {
@@ -43,7 +45,7 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
         <div className="lead">
           <Logo name={name} href="/" />
         </div>
-        <form className="search" role="search" action="/search">
+        <form className="search" role="search" action="/search" onSubmit={onSearch}>
           <Icon name="search" />
           <input
             key={query}
@@ -52,6 +54,7 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
             defaultValue={query}
             aria-label={t('search')}
             placeholder={t('search-placeholder')}
+            maxLength={100}
           />
           <button className="go" type="submit" aria-label={t('search')}>
             <Icon name="search" />
