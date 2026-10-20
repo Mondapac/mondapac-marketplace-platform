@@ -1,5 +1,6 @@
 import 'server-only';
 import { NO_FILTERS, type ListingFilters, type Sort } from '../catalog/listing-state.ts';
+import { NO_SELLER_FILTERS } from '../sellers/sellers-state.ts';
 import {
   SAMPLE_CERTIFICATION_NAMES,
   SAMPLE_LISTING_BANNERS,
@@ -10,7 +11,14 @@ import {
   sampleSellerId,
 } from './sample-catalog.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
-import type { ListingBanner, PriceBand, ProductCard } from './types.ts';
+import { sampleSellers } from './sample-sellers.ts';
+import type {
+  BuyerLocation,
+  ListingBanner,
+  PriceBand,
+  ProductCard,
+  SellerListing,
+} from './types.ts';
 
 // The category and search pages' one read of products. It follows the contract of
 // `GET /search/products` (q 2 to 100 characters, page 1 to 100, pageSize 1 to 48, `hasMore`
@@ -145,9 +153,12 @@ export async function findProducts(query: ProductQuery): Promise<ProductPage> {
   });
 }
 
-/** The filter options of a category listing with their counts (not narrowed by other filters). */
+/**
+ * The filter options of a category listing or a search with their counts (not narrowed by other
+ * filters).
+ */
 export async function listingFacets(
-  query: Pick<ProductQuery, 'category' | 'subcategory'>,
+  query: Pick<ProductQuery, 'q' | 'category' | 'subcategory'>,
 ): Promise<ListingFacets> {
   const products = inScope(query);
   const count = (test: (p: ProductCard) => boolean) => products.filter(test).length;
@@ -175,4 +186,50 @@ export async function listingFacets(
 /** The promotion banner of a category listing, if its content slot has one. */
 export async function listingBanner(category: string): Promise<ListingBanner | undefined> {
   return Promise.resolve(SAMPLE_LISTING_BANNERS[category]);
+}
+
+/** A category that holds results of a search, with how many. */
+export interface CategoryCount {
+  readonly code: string;
+  readonly count: number;
+}
+
+/** The categories of the products matching the search words, most results first. */
+export async function searchCategories(q: string): Promise<readonly CategoryCount[]> {
+  const counts = new Map<string, number>();
+  for (const p of inScope({ q })) counts.set(p.category, (counts.get(p.category) ?? 0) + 1);
+  return Promise.resolve(
+    [...counts].map(([code, count]) => ({ code, count })).sort((a, b) => b.count - a.count),
+  );
+}
+
+export interface StoreResults {
+  readonly items: readonly SellerListing[];
+  readonly location: BuyerLocation;
+}
+
+/**
+ * The stores of a search: sellers with matching products (most matches first) and sellers whose
+ * name matches. Store search is not in the API yet; the sample answers it so the Stores tab can
+ * be built, and the backend adds it as its own package.
+ */
+export async function findStores(q: string): Promise<StoreResults> {
+  const words = q.toLowerCase().split(' ').filter(Boolean);
+  const matches = new Map<string, number>();
+  for (const p of inScope({ q })) {
+    const id = sampleSellerId(p);
+    if (id !== undefined) matches.set(id, (matches.get(id) ?? 0) + 1);
+  }
+  const { items, location } = sampleSellers({
+    filters: NO_SELLER_FILTERS,
+    sort: 'name',
+    limit: Number.MAX_SAFE_INTEGER,
+  });
+  const named = (s: SellerListing) => words.every((w) => s.name.toLowerCase().includes(w));
+  return Promise.resolve({
+    items: items
+      .filter((s) => matches.has(s.id) || named(s))
+      .sort((a, b) => (matches.get(b.id) ?? 0) - (matches.get(a.id) ?? 0)),
+    location,
+  });
 }

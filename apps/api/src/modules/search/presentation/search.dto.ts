@@ -74,3 +74,77 @@ export class SpecialsPageBody {
   @ApiProperty({ type: [SpecialItemBody], description: 'Newest special first.' })
   items!: SpecialItemBody[];
 }
+
+// Body of the product page route (storefront reads package).
+
+export class ProductDetailSpecialBody {
+  @ApiProperty({ format: 'date-time', description: 'When the special ends (UTC).' })
+  endsAt!: string;
+}
+
+export class ProductDetailStockBody {
+  @ApiProperty({
+    enum: ['in-stock', 'low', 'out'],
+    description: 'The public stock state; the exact count is never shown.',
+  })
+  status!: string;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'How many are left, set only when the status is `low`.',
+  })
+  onlyLeft!: number | null;
+}
+
+export class ProductDetailUnitBody {
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The published Variant label.' })
+  label!: string | null;
+  @ApiProperty({ type: MoneyBody, description: 'The price a buyer pays now.' })
+  price!: MoneyBody;
+  @ApiProperty({ description: 'Whether the price includes tax.' }) taxInclusive!: boolean;
+  @ApiProperty({
+    type: ProductDetailSpecialBody,
+    nullable: true,
+    description: 'Set only while the price is a special.',
+  })
+  special!: ProductDetailSpecialBody | null;
+  @ApiProperty({ type: ProductDetailStockBody }) stock!: ProductDetailStockBody;
+}
+
+export class ProductDetailSellerBody {
+  @ApiProperty({ nullable: true, type: String, description: 'The seller public store name.' })
+  storeName!: string | null;
+  @ApiPropertyOptional({
+    type: MoneyBody,
+    nullable: true,
+    description: 'The seller minimum order; null for none. Absent when it cannot be told.',
+  })
+  minimumOrder?: MoneyBody | null;
+}
+
+export class ProductDetailOfferBody {
+  @ApiProperty({ format: 'uuid' }) offerId!: string;
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ type: ProductDetailSellerBody }) seller!: ProductDetailSellerBody;
+  @ApiProperty({
+    type: [ProductDetailUnitBody],
+    description: 'Priced Variants, in position order.',
+  })
+  units!: ProductDetailUnitBody[];
+}
+
+export class ProductDetailBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ description: 'The published name in the Market default locale.' })
+  name!: string;
+  @ApiProperty({ nullable: true, type: String }) shortDescription!: string | null;
+  @ApiProperty({ nullable: true, type: String }) description!: string | null;
+  @ApiProperty({ type: [String], description: 'Platform category ids, in the revision order.' })
+  categoryIds!: string[];
+  @ApiProperty({
+    type: [ProductDetailOfferBody],
+    description: 'At least one Offer, lowest unit price first.',
+  })
+  offers!: ProductDetailOfferBody[];
+}

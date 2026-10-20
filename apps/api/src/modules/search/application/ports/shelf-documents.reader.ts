@@ -8,6 +8,12 @@ import type { OfferHit } from '../../domain/offer-document';
 export interface ShelfDocumentsReader {
   /** The documents of these Offers that are indexed, in any order; absent ones are left out. */
   byOfferIds(market: MarketContext, offerIds: readonly Id<'Offer'>[]): Promise<readonly OfferHit[]>;
+  /** The documents of this product's Offers, by Offer id, at most `limit`. */
+  byProductId(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    limit: number,
+  ): Promise<readonly OfferHit[]>;
   /** The first `limit` documents of the Market in search's browse order (name, then Offer id). */
   browseAll(market: MarketContext, limit: number): Promise<readonly OfferHit[]>;
 }
