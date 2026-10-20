@@ -125,7 +125,13 @@ describe('step-up code dialog', () => {
     await screen.findByRole('dialog');
     vi.useFakeTimers({ shouldAdvanceTime: true });
     typeCode('111111');
-    expect(await screen.findByText('Too many tries. You can try again in 1:30.')).toBeTruthy();
+    const banner = await screen.findByText(
+      /Too many tries\. You can try again in about 2 minutes\./,
+    );
+    expect(banner.textContent).toContain('(1:30 left)');
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' })),
+    );
     expect(boxes().every((box) => (box as HTMLInputElement).readOnly)).toBe(true);
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Verify' }).disabled).toBe(true);
     await act(async () => {
@@ -133,6 +139,23 @@ describe('step-up code dialog', () => {
     });
     expect(screen.queryByText(/Too many tries/)).toBeNull();
     expect(boxes().every((box) => !(box as HTMLInputElement).readOnly)).toBe(true);
+  });
+
+  it('never sends part of an app code', async () => {
+    call.mockResolvedValueOnce(required());
+    show();
+    await screen.findByRole('dialog');
+    typeCode('123');
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    expect(await screen.findByText('Enter all 6 digits.')).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('names no action from a key that is not action-shaped', async () => {
+    call.mockResolvedValueOnce(required('identity'));
+    show();
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain('This action needs a fresh code');
   });
 
   it('takes a backup code, with spaces and hyphens removed', async () => {

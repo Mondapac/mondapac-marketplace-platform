@@ -94,13 +94,17 @@ export function StepUpProvider({ children }: { readonly children: ReactNode }) {
   );
 }
 
-/** The words of the wait, as minutes and seconds (or hours) left. */
-function waitText(seconds: number): string {
+/** The clock of the wait, as minutes and seconds (or hours) left. */
+function clockOf(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const rest = String(seconds % 60).padStart(2, '0');
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, '0')}:${rest}` : `${minutes}:${rest}`;
 }
+
+const CODE_LENGTH = 6;
+/** `<module>.<noun>.<verb>`, as the API registers step-up actions. */
+const ACTION_KEY = /^[a-z-]+(\.[a-z-]+){2}$/;
 
 function StepUpDialog({ ask }: { readonly ask: Ask }) {
   const t = useTranslations('step-up');
@@ -113,10 +117,15 @@ function StepUpDialog({ ask }: { readonly ask: Ask }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [waitUntil, setWaitUntil] = useState<number | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  // The wait in whole minutes as it was when the lock-out began: announced once, not every tick.
+  const [waitMinutes, setWaitMinutes] = useState(1);
+  const formRef = useRef<HTMLFormElement>(null);
   const inFlight = useRef(false);
-  const action = t.has(`action.${ask.actionKey}`)
-    ? t(`action.${ask.actionKey}`)
-    : t('action.fallback');
+  // The key comes from the answer: only an action-shaped key may pick a message, never a group.
+  const action =
+    ACTION_KEY.test(ask.actionKey) && t.has(`action.${ask.actionKey}`)
+      ? t(`action.${ask.actionKey}`)
+      : t('action.fallback');
 
   useEffect(() => {
     if (waitUntil === null) return undefined;
@@ -136,6 +145,16 @@ function StepUpDialog({ ask }: { readonly ask: Ask }) {
 
   const waiting = waitUntil !== null;
 
+  // While locked the boxes are read-only: focus goes where the member can act. An effect, so it
+  // runs after the remounted code field has taken focus.
+  useEffect(() => {
+    if (!waiting) return;
+    formRef.current
+      ?.closest('dialog')
+      ?.querySelector<HTMLButtonElement>('[data-step-up-cancel]')
+      ?.focus();
+  }, [waiting]);
+
   function clearField() {
     setCode('');
     setFieldKey((key) => key + 1);
@@ -147,6 +166,11 @@ function StepUpDialog({ ask }: { readonly ask: Ask }) {
     if (inFlight.current || waiting) return;
     if (clean === '') {
       setProblem(t('error.required'));
+      return;
+    }
+    // A part of an app code is never sent: it would only spend a try towards the lock-out.
+    if (!backup && clean.length < CODE_LENGTH) {
+      setProblem(t('error.incomplete', { length: CODE_LENGTH }));
       return;
     }
     inFlight.current = true;
@@ -179,6 +203,7 @@ function StepUpDialog({ ask }: { readonly ask: Ask }) {
       clearField();
       // Both at once: the first paint already shows the whole wait, not 0:00.
       setSecondsLeft(seconds);
+      setWaitMinutes(Math.max(1, Math.ceil(seconds / 60)));
       setWaitUntil(Date.now() + seconds * 1000);
       return;
     }
@@ -223,7 +248,7 @@ function StepUpDialog({ ask }: { readonly ask: Ask }) {
       onClose={close}
       actions={
         <>
-          <Button variant="secondary" onClick={close} disabled={checking}>
+          <Button data-step-up-cancel variant="secondary" onClick={close} disabled={checking}>
             {t('cancel')}
           </Button>
           <Button loading={checking} disabled={waiting} onClick={() => void verify(code)}>
@@ -233,6 +258,7 @@ function StepUpDialog({ ask }: { readonly ask: Ask }) {
       }
     >
       <form
+        ref={formRef}
         onSubmit={(event: FormEvent) => {
           event.preventDefault();
           void verify(code);
@@ -247,7 +273,7 @@ function StepUpDialog({ ask }: { readonly ask: Ask }) {
             label={t('label.backup-code')}
             name="code"
             autoComplete="one-time-code"
-            autoFocus
+            autoFocus={!waiting}
             dir="ltr"
             value={code}
             readOnly={checking || waiting}
@@ -258,9 +284,10 @@ function StepUpDialog({ ask }: { readonly ask: Ask }) {
           <OtpField
             key={`app-${fieldKey}`}
             label={t('label.code')}
+            length={CODE_LENGTH}
             digitLabel={(position, total) => t('label.digit', { position, total })}
             name="code"
-            autoFocus
+            autoFocus={!waiting}
             readOnly={checking || waiting}
             onChange={setCode}
             onComplete={(full) => void verify(full)}
@@ -268,7 +295,13 @@ function StepUpDialog({ ask }: { readonly ask: Ask }) {
           />
         )}
         {waiting ? (
-          <Banner tone="attention">{t('error.throttled', { wait: waitText(secondsLeft) })}</Banner>
+          <Banner tone="attention">
+            {t('error.throttled', { minutes: waitMinutes })}{' '}
+            {/* The ticking clock is for the eye; the sentence above is announced once. */}
+            <span aria-hidden="true" className="tabular-nums">
+              {t('error.throttled-clock', { clock: clockOf(secondsLeft) })}
+            </span>
+          </Banner>
         ) : null}
         <button
           type="button"

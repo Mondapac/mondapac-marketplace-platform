@@ -1733,8 +1733,10 @@
     "use-app": "Use your authenticator app instead",
     "error": {
       "required": "Enter the code.",
+      "incomplete": "Enter all {length} digits.",
       "invalid": "That code didn't work. Enter the newest code from your app.",
-      "throttled": "Too many tries. You can try again in {wait}.",
+      "throttled": "Too many tries. You can try again in about {minutes, plural, one {# minute} other {# minutes}}.",
+      "throttled-clock": "({clock} left)",
       "network": "You're offline or the connection dropped. Check it and try again.",
       "unknown": "Something went wrong on our side. Try again."
     },
