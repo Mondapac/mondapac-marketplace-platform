@@ -27,6 +27,7 @@
   /* The offline banner (error pages). */
   --sf-warn-soft: #fff6e2;
   --sf-warn-line: #e0b15a;
+  --sf-warn-ink-strong: #4d3500;
   --sf-error: #b3261e;
   --sf-error-ink: #7a1f17;
   --sf-error-soft: #fbeae8;
@@ -6300,7 +6301,7 @@ button.login {
   color: var(--sf-teal);
 }
 .er-act .btn.ghost:hover {
-  background: var(--sf-mist-soft);
+  background: var(--sf-mist);
 }
 .er-links {
   display: flex;
@@ -6467,7 +6468,7 @@ button.login {
   border: 1px solid var(--sf-warn-line);
   border-radius: 12px;
   background: var(--sf-warn-soft);
-  color: var(--sf-warn-ink);
+  color: var(--sf-warn-ink-strong);
 }
 .er-ban > .ico {
   flex: none;
