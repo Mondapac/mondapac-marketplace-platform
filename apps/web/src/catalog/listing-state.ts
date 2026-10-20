@@ -11,6 +11,15 @@ export const SORTS = [
 ] as const;
 export type Sort = (typeof SORTS)[number];
 
+/** The orders the search results offer; "recommended" reads "Best match" there. */
+export const SEARCH_SORTS: readonly Sort[] = [
+  'recommended',
+  'best-seller',
+  'price-asc',
+  'price-desc',
+  'name',
+];
+
 export interface ListingFilters {
   readonly special: boolean;
   readonly sameDay: boolean;
@@ -83,9 +92,13 @@ export function listingStateOf(query: Query): ListingState {
   };
 }
 
-/** The listing's URL for a state, with the query keys in one order and defaults left out. */
+/**
+ * The listing's URL for a state, with the query keys in one order and defaults left out. A query
+ * already on `path` (the search words of the results page) stays first.
+ */
 export function listingHref(path: string, state: ListingState): string {
-  const params = new URLSearchParams();
+  const [base = path, fixed] = path.split('?', 2);
+  const params = new URLSearchParams(fixed);
   const { filters } = state;
   for (const flag of Object.keys(FLAG_KEYS) as FilterFlag[])
     if (filters[flag]) params.set(FLAG_KEYS[flag], '1');
@@ -95,7 +108,7 @@ export function listingHref(path: string, state: ListingState): string {
   if (state.sort !== 'recommended') params.set('sort', state.sort);
   if (state.page > 1) params.set('page', String(state.page));
   const query = params.toString();
-  return query ? `${path}?${query}` : path;
+  return query ? `${base}?${query}` : base;
 }
 
 export function activeFilterCount(filters: ListingFilters): number {

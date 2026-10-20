@@ -36,7 +36,7 @@ export function StoreCard({
             </Link>
           </h3>
           <p className="slc-m">
-            {t.rich('selling-since', {
+            {t.rich('selling-since-card', {
               city: store.city,
               year: String(store.sellingSince),
               nw: (chunks) => <span className="nw">{chunks}</span>,

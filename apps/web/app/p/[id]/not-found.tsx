@@ -1,16 +1,8 @@
-import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
+import { NotFoundView } from '../../../src/errors/not-found-view.tsx';
+import { loadStorefrontContent } from '../../../src/storefront/source.ts';
 
-/** An unknown product: say so, rather than the shop-wide "not ready yet" page. */
+/** An unknown product id: the shop-wide 404 page. A removed product has its own page. */
 export default async function ProductNotFound() {
-  const t = await getTranslations('product');
-  return (
-    <div className="state">
-      <h1>{t('not-found-title')}</h1>
-      <p>{t('not-found-message')}</p>
-      <Link className="btn" href="/">
-        {t('not-found-home')}
-      </Link>
-    </div>
-  );
+  const content = await loadStorefrontContent();
+  return <NotFoundView categories={content.categories} />;
 }

@@ -225,6 +225,13 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText:
       'read copy of the published revision name and Variant label, already claim-checked when the revision was frozen, with ids and tags',
   },
+  PublishedProduct: {
+    noCustomerText:
+      'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids',
+  },
+  PublishedProductVariant: {
+    noCustomerText: 'published Variant label read back from a revision, with ids and a position',
+  },
   OfferListingTag: { noCustomerText: 'tag status, basis code and the OfferListingBadge copy' },
   OfferListingBadge: {
     noCustomerText:

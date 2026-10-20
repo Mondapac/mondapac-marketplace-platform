@@ -19,7 +19,8 @@ export function BuyControl({
   readonly variant: 'wide' | 'bar' | 'small';
 }) {
   const t = useTranslations('product');
-  const { cart, add, remove } = useStore();
+  const { cart, add, remove, online } = useStore();
+  const off = online ? undefined : true;
   const quantity = cart[offer.id]?.quantity ?? 0;
   const limit = lineLimit(offer.lowStock);
   if (limit === 0)
@@ -31,8 +32,9 @@ export function BuyControl({
   if (quantity === 0)
     return (
       <button
-        className={`btn ${variant}`}
+        className={`btn ${variant} ctl`}
         type="button"
+        aria-disabled={off}
         {...(variant === 'small'
           ? { 'aria-label': t('add-offer', { seller: offer.seller.name }) }
           : {})}
@@ -44,9 +46,14 @@ export function BuyControl({
     );
   const full = quantity >= limit;
   return (
-    <div className={`qrow ${variant}`}>
+    <div className={`qrow ${variant} ctl`}>
       <div className="qstep" role="group" aria-label={t('quantity')}>
-        <button type="button" aria-label={t('decrease')} onClick={() => remove(offer.id)}>
+        <button
+          type="button"
+          aria-label={t('decrease')}
+          aria-disabled={off}
+          onClick={() => remove(offer.id)}
+        >
           <Icon name="minus" />
         </button>
         <output className="num" aria-live="polite">
@@ -55,6 +62,7 @@ export function BuyControl({
         <button
           type="button"
           aria-label={t('increase')}
+          aria-disabled={off}
           disabled={full}
           onClick={() => add(offer.id, offer.price, limit)}
         >
