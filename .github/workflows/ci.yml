@@ -97,6 +97,10 @@ jobs:
         run: pnpm verify
         env:
           MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
+          # Fewer database spec files at once than Jest's default (cores - 1): under the full
+          # parallel load a unit sometimes could not start its transaction in time (owner
+          # decision 2026-10-20). Local runs keep the default.
+          TEST_DB_MAX_WORKERS: '2'
 
       - name: Build
         run: pnpm build

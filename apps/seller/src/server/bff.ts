@@ -57,6 +57,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/second-factor/reset/confirm',
     'identity/seller/sign-out',
     'identity/seller/team/invitations',
+    // A code for one guarded action (`second-factor.required`); the panel then repeats the request.
+    'identity/seller/step-up/verify',
     // Anonymous: the one-time token of the invitation link is in the body.
     'identity/seller/accept-invitation',
     'identity/seller/password-reset-email',

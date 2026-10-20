@@ -106,6 +106,50 @@ export interface ShipTo {
   readonly deliveryNotes: string | null;
   /** ISO 3166 country of the address. */
   readonly countryCode: string;
+  /**
+   * The customer's note to each seller of the order (plain text, 1 to 200 characters), keyed by
+   * seller id; absent when none was written. Sealed with the address, so erasure removes it too;
+   * a seller reads only its own.
+   */
+  readonly sellerNotes?: Readonly<Record<string, string>>;
+}
+
+/** The longest note a customer may leave for one seller, in characters. */
+export const SELLER_NOTE_MAX = 200;
+/** No order has more seller orders than this; a larger notes object is refused whole. */
+const SELLER_NOTES_MAX = 50;
+
+/**
+ * Parses the `sellerNotes` of a checkout: absent, or an object of seller id to text. Each note is
+ * trimmed (CRLF becomes LF); an empty one is dropped; one over {@link SELLER_NOTE_MAX} characters,
+ * or with a control or invisible format character other than a line break, is refused. Ids are checked by the caller against the order's sellers.
+ */
+export function parseSellerNotes(
+  value: unknown,
+): { ok: true; notes: ReadonlyMap<string, string> } | { ok: false; path: string; code: string } {
+  if (value === undefined || value === null) return { ok: true, notes: new Map() };
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return { ok: false, path: 'sellerNotes', code: 'type' };
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > SELLER_NOTES_MAX) return { ok: false, path: 'sellerNotes', code: 'range' };
+  const notes = new Map<string, string>();
+  for (const [sellerId, raw] of entries) {
+    // The path never echoes a key that is not an id.
+    const path = /^[0-9a-f-]{36}$/u.test(sellerId) ? `sellerNotes.${sellerId}` : 'sellerNotes';
+    if (path === 'sellerNotes') return { ok: false, path, code: 'format' };
+    if (typeof raw !== 'string') return { ok: false, path, code: 'type' };
+    const note = raw.replace(/\r\n/gu, '\n').trim();
+    // Line breaks are the only control allowed. Invisible format characters (bidi overrides,
+    // zero-width spaces) and the Unicode line and paragraph separators are refused, so a note
+    // reads on the seller's page as it was written; the zero-width joiner stays for emoji.
+    if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(note.replace(/[\n\u200d]/gu, ''))) {
+      return { ok: false, path, code: 'format' };
+    }
+    if ([...note].length > SELLER_NOTE_MAX) return { ok: false, path, code: 'length' };
+    if (note !== '') notes.set(sellerId, note);
+  }
+  return { ok: true, notes };
 }
 
 export interface OrderState {

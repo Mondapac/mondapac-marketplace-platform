@@ -22,6 +22,7 @@ export interface CertificationBadge {
 export interface ProductCard {
   readonly id: string;
   readonly name: string;
+  /** Empty when the read does not carry it (the shelf routes give only a seller id). */
   readonly sellerName: string;
   /** Category code, used for the fallback illustration when there is no photo. */
   readonly category: string;
@@ -34,6 +35,12 @@ export interface ProductCard {
   readonly imageUrl?: string;
 }
 
+/**
+ * A product card of a home shelf. The price is absent when the shelf read does not carry it (the
+ * best-sellers route gives ids and text only): the card then shows no price and no add button.
+ */
+export type ShelfCard = Omit<ProductCard, 'price'> & { readonly price?: Money };
+
 export interface SellerSummary {
   readonly id: string;
   readonly name: string;
@@ -43,6 +50,15 @@ export interface SellerSummary {
   /** Key of a sample logo; real sellers' logos arrive with media. */
   readonly logo?: string;
 }
+
+/**
+ * A "Sellers near you" tile. The public store list has no delivery window yet, and its minimum
+ * order is absent when it cannot be told, so both lines are optional here.
+ */
+export type HomeSeller = Omit<SellerSummary, 'deliveryWindow' | 'minimumOrder'> & {
+  readonly deliveryWindow?: string;
+  readonly minimumOrder?: string;
+};
 
 export interface Category {
   readonly code: string;
@@ -56,7 +72,8 @@ export interface PromoBanner {
   readonly variant: 'primary' | 'secondary';
   readonly title: string;
   readonly body: string;
-  readonly action: { readonly label: string; readonly href: string };
+  /** Absent when the layout gives no link or no button label. */
+  readonly action?: { readonly label: string; readonly href: string };
   readonly images: readonly string[];
 }
 
@@ -69,7 +86,7 @@ export type HomeSection =
       readonly kind: 'products';
       readonly title: string;
       readonly href: string;
-      readonly products: readonly ProductCard[];
+      readonly products: readonly ShelfCard[];
     };
 
 export interface DeliveryArea {
@@ -252,7 +269,19 @@ export interface CheckoutSource {
   readonly serviceArea: ServiceArea;
   /** Sample only: the order Pay creates gives its reference when checkout is wired. */
   readonly orderReference: string;
+  /**
+   * Who answers whether a new address's postcode is delivered to: `sample` checks
+   * `serviceArea.postcodes` in the browser; `api` asks the API's delivery area (API_BASE_URL set).
+   */
+  readonly areaCheck: 'sample' | 'api';
 }
+
+/** The API's answer for one postcode: `off` while the storefront reads sample data. */
+export type DeliveryAreaAnswer =
+  | { readonly kind: 'off' }
+  | { readonly kind: 'in' }
+  | { readonly kind: 'out' }
+  | { readonly kind: 'failed' };
 
 /** A point on the map (WGS 84 degrees). */
 export interface GeoPoint {

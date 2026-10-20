@@ -11,6 +11,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { sellerNav } from '../nav.ts';
+import { StepUpProvider } from '../step-up/step-up.tsx';
 import { InviteMemberButton } from './invite-member-button.tsx';
 import { NoticeProvider } from './notice.tsx';
 import { RowActions, type RowTarget } from './row-actions.tsx';
@@ -57,7 +58,9 @@ const roles: SellerRole[] = [
 function wrap(node: React.ReactNode) {
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <NoticeProvider>{node}</NoticeProvider>
+      <StepUpProvider>
+        <NoticeProvider>{node}</NoticeProvider>
+      </StepUpProvider>
     </NextIntlClientProvider>,
   );
 }
@@ -160,6 +163,31 @@ describe('change role', () => {
     expect(screen.queryByRole('menuitem', { name: 'Change role' })).toBeNull();
   });
 
+  it('asks for a two-step code when the rule needs one, then changes the role', async () => {
+    call
+      .mockResolvedValueOnce(
+        refused(403, 'second-factor.required', { actionKey: 'identity.team.change-role' }),
+      )
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { code: 'step-up-verified' } })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: {} });
+    choose();
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'r-stock' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Change role' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Enter your 6-digit code' });
+    expect(dialog.textContent).toContain("Changing a team member's role");
+    fireEvent.paste(screen.getAllByRole('textbox', { name: /Digit \d of 6/ })[0] as HTMLElement, {
+      clipboardData: { getData: () => '654321' },
+    });
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call).toHaveBeenLastCalledWith(
+      'POST',
+      `identity/seller/team/accounts/${ID}/role`,
+      { roleId: 'r-stock' },
+      'csrf-1',
+    );
+    expect(router.refresh).toHaveBeenCalled();
+  });
+
   it('goes to the signed-out page on a 401', async () => {
     call.mockResolvedValue(refused(401, 'session.invalid'));
     choose();
@@ -215,6 +243,52 @@ describe('remove a member', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove from team' }));
     expect(await screen.findByText(/no longer on the team/)).toBeTruthy();
     expect(router.refresh).toHaveBeenCalled();
+  });
+
+  it('asks for a two-step code when the rule needs one, then removes', async () => {
+    call
+      .mockResolvedValueOnce(
+        refused(403, 'second-factor.required', { actionKey: 'identity.team.invite-remove' }),
+      )
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { code: 'step-up-verified' } })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: {} });
+    confirm();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from team' }));
+    await screen.findByRole('dialog', { name: 'Enter your 6-digit code' });
+    fireEvent.paste(screen.getAllByRole('textbox', { name: /Digit \d of 6/ })[0] as HTMLElement, {
+      clipboardData: { getData: () => '123456' },
+    });
+    expect(await screen.findByText(/Sam Seller is removed from the team/)).toBeTruthy();
+    expect(call).toHaveBeenNthCalledWith(
+      2,
+      'POST',
+      'identity/seller/step-up/verify',
+      { actionKey: 'identity.team.invite-remove', code: '123456' },
+      'csrf-1',
+    );
+    expect(call).toHaveBeenNthCalledWith(
+      3,
+      'POST',
+      `identity/seller/team/accounts/${ID}/remove`,
+      {},
+      'csrf-1',
+    );
+  });
+
+  it('keeps the confirmation as it was when the code dialog is closed', async () => {
+    call.mockResolvedValueOnce(
+      refused(403, 'second-factor.required', { actionKey: 'identity.team.invite-remove' }),
+    );
+    confirm();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from team' }));
+    await screen.findByRole('dialog', { name: 'Enter your 6-digit code' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Enter your 6-digit code' })).toBeNull(),
+    );
+    expect(screen.getByRole('dialog', { name: 'Remove Sam Seller from the team?' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(call).toHaveBeenCalledTimes(1);
   });
 
   it('sends nothing when dismissed', () => {

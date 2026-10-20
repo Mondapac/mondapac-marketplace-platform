@@ -114,6 +114,11 @@ export interface SellerGroupView {
   /** Sum of the buyable lines at the current price; null when there are none or prices mix. */
   readonly subtotal: Money | null;
   readonly minimumOrder: MinimumOrderView;
+  /**
+   * The seller's flat delivery fee for this group (one per seller order); null when the group
+   * has no buyable line, the seller has no fee yet, or shipping could not be asked.
+   */
+  readonly deliveryFee: Money | null;
   readonly lines: readonly LineView[];
 }
 
@@ -349,6 +354,18 @@ async function evaluateGroups(
   );
 }
 
+/** The delivery fee of each seller group that has a buyable line (one shipping read). */
+async function deliveryFees(
+  deps: CartDependencies,
+  context: CallContext,
+  groups: readonly Group[],
+): Promise<ReadonlyMap<Id<'Seller'>, Money>> {
+  const sellerIds = groups.flatMap((group) =>
+    group.buyable.length > 0 && group.sellerId !== null ? [group.sellerId] : [],
+  );
+  return sellerIds.length === 0 ? new Map() : deps.facts.sellerDeliveryFees(context, sellerIds);
+}
+
 /** `view`: the cart composed with the other modules' answers; a failed facade marks lines. */
 export async function viewCart(
   deps: CartDependencies,
@@ -368,7 +385,10 @@ export async function viewCart(
   }
   const verdicts = await deps.facts.evaluate(context, cart.lines);
   const groups = groupLines(cart, verdicts);
-  const evaluations = await evaluateGroups(deps, context, groups);
+  const [evaluations, fees] = await Promise.all([
+    evaluateGroups(deps, context, groups),
+    deliveryFees(deps, context, groups),
+  ]);
   return ok({
     groups: groups.map((group, index) => ({
       sellerId: group.sellerId,
@@ -377,6 +397,7 @@ export async function viewCart(
         state: evaluations[index]!.state,
         minimum: evaluations[index]!.minimum,
       },
+      deliveryFee: group.sellerId === null ? null : (fees.get(group.sellerId) ?? null),
       lines: group.lines,
     })),
     lineCount: cart.lines.length,
@@ -744,12 +765,16 @@ export async function clearOrdered(
     const kept = cart.lines.filter((line) => !wanted.has(verdictKey(line)));
     const removed = cart.lines.length - kept.length;
     if (removed === 0) return ok({ removed });
+    const now = deps.clock.now();
     const saved = await deps.carts.save(context.market, {
       ...cart,
       lines: kept,
-      lastChangedAt: deps.clock.now(),
+      lastChangedAt: now,
     });
     if (saved === 'stale') return err({ code: 'conflict.stale' } as const);
+    // Personalization 1c: the lines left after an order get no cart reminder until the buyer
+    // changes the cart again.
+    await deps.carts.markOrdered(context.market, cart.id, now);
     return ok({ removed });
   });
 }
