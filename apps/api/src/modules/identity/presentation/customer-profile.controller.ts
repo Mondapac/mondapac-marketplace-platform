@@ -23,7 +23,12 @@ import { ChangeDisplayName } from '../application/use-cases/change-display-name.
 import { ChangeStorefrontAppearance } from '../application/use-cases/change-storefront-appearance.use-case';
 import type { FieldProblem } from '../application/use-cases/register-customer.use-case';
 import { adminBody, adminFailure } from './admin.answer';
-import { fail } from './customer-sign-up.controller';
+import {
+  echoedFieldName,
+  fail,
+  MAX_ECHOED_UNKNOWN_FIELDS,
+  MORE_FIELDS,
+} from './customer-sign-up.controller';
 import { ApiErrorBody } from './customer-sign-up.dto';
 import { AppearanceChanged, ChangeAppearanceRequest } from './customer-session.dto';
 import { ChangeDisplayNameRequest, DisplayNameChanged } from './profile.dto';
@@ -45,11 +50,16 @@ function appearanceBody(
     return fail(400, 'validation.failed', { fields: [{ path: '', code: 'type' }] });
   }
   const record = body as Record<string, unknown>;
-  const problems: FieldProblem[] = Object.keys(record)
+  // Unknown fields are answered as the other routes do (`parseStringFields`): echoed, capped.
+  const unknown = Object.keys(record)
     .filter((key) => !(APPEARANCE_FIELDS as readonly string[]).includes(key))
-    .sort()
-    .slice(0, 1)
-    .map(() => ({ path: '', code: 'unknown-field' }));
+    .sort();
+  const problems: FieldProblem[] = unknown
+    .slice(0, MAX_ECHOED_UNKNOWN_FIELDS)
+    .map((key) => ({ path: echoedFieldName(key), code: 'unknown-field' }));
+  if (unknown.length > MAX_ECHOED_UNKNOWN_FIELDS) {
+    problems.push({ path: MORE_FIELDS, code: 'unknown-field' });
+  }
   for (const field of APPEARANCE_FIELDS) {
     const value = Object.hasOwn(record, field) ? record[field] : undefined;
     if (value === undefined) problems.push({ path: field, code: 'required' });

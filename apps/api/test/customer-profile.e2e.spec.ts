@@ -181,12 +181,75 @@ describe('customer profile over HTTP (integration)', () => {
       expect(fakes.accounts.get(ACCOUNT_ID(code))!.displayName).toBeNull();
     });
 
+    it('refuses a cross-site or foreign origin, a seller session and an unverified customer', async () => {
+      await boot();
+      seed(code);
+      const { cookie, csrfToken } = await signedIn(code);
+      const auth = { cookie, 'x-csrf-token': csrfToken };
+      const look = { palette: 'A', textSize: null };
+
+      const crossSite = await put(code, 'profile/appearance', look, {
+        ...auth,
+        'sec-fetch-site': 'cross-site',
+      });
+      const foreign = await put(
+        code,
+        'profile/display-name',
+        { displayName: 'Amina' },
+        {
+          ...auth,
+          origin: 'https://evil.example',
+        },
+      );
+      expect([crossSite.status, foreign.status]).toEqual([403, 403]);
+      expect(crossSite.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+      expect(foreign.body).toEqual({ statusCode: 403, code: 'request.csrf' });
+
+      // A seller session cookie on a customer route: not the route's population, nothing read.
+      const sellerCookie = cookie.replace('__Host-session-customer-', '__Host-session-seller-');
+      const seller = await put(code, 'profile/appearance', look, {
+        cookie: sellerCookie,
+        'x-csrf-token': csrfToken,
+      });
+      expect(seller.status).toBe(401);
+
+      const state = fakes.accounts.get(ACCOUNT_ID(code))!;
+      expect([state.displayName, state.appearance ?? null]).toEqual([null, null]);
+    });
+
+    it('refuses a customer whose email is not verified', async () => {
+      await boot();
+      seed(code);
+      const { cookie, csrfToken } = await signedIn(code);
+      // The address became unverified after sign-in (an email change, later): no profile change.
+      fakes.accounts.set(ACCOUNT_ID(code), {
+        ...fakes.accounts.get(ACCOUNT_ID(code))!,
+        emailVerifiedAt: null,
+      });
+
+      const response = await put(
+        code,
+        'profile/appearance',
+        { palette: 'A', textSize: null },
+        {
+          cookie,
+          'x-csrf-token': csrfToken,
+        },
+      );
+
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({ statusCode: 403, code: 'access.denied' });
+    });
+
     it.each([
       [{ palette: 'E', textSize: null }, [{ path: 'palette', code: 'invalid' }]],
       [{ palette: 'A', textSize: 'huge' }, [{ path: 'textSize', code: 'invalid' }]],
       [{ palette: 1, textSize: null }, [{ path: 'palette', code: 'type' }]],
       [{ palette: 'A' }, [{ path: 'textSize', code: 'required' }]],
-      [{ palette: 'A', textSize: null, accountId: 'x' }, [{ path: '', code: 'unknown-field' }]],
+      [
+        { palette: 'A', textSize: null, accountId: 'x' },
+        [{ path: 'accountId', code: 'unknown-field' }],
+      ],
       [[], [{ path: '', code: 'type' }]],
     ])('refuses the look %j', async (body, fields) => {
       await boot();
