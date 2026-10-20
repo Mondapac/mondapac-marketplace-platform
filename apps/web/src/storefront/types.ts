@@ -249,6 +249,47 @@ export interface CheckoutSource {
   readonly orderReference: string;
 }
 
+/** A point on the map (WGS 84 degrees). */
+export interface GeoPoint {
+  readonly lat: number;
+  readonly lng: number;
+}
+
+/** An address or a suburb the address lookup knows. */
+export interface Place {
+  readonly id: string;
+  /** The street part ("12 Example Street"); empty for a suburb. */
+  readonly street: string;
+  readonly suburb: string;
+  /** The state or region as written in an address ("QLD"). */
+  readonly region: string;
+  readonly postcode: string;
+  readonly point: GeoPoint;
+}
+
+/** The map's extent: the stubbed map draws this box. */
+export interface MapBounds {
+  readonly north: number;
+  readonly south: number;
+  readonly west: number;
+  readonly east: number;
+}
+
+/**
+ * What the Deliver to modal needs: the service area (ServiceArea config) and, while the map and
+ * address-lookup provider is not chosen, the sample places its stubbed lookup knows.
+ */
+export interface DeliveryLocatorSource {
+  readonly area: { readonly name: string; readonly boundary: readonly GeoPoint[] };
+  readonly bounds: MapBounds;
+  /** Where the pin starts when the buyer has not chosen a place the lookup can find. */
+  readonly start: Place;
+  /** Sample only: the addresses the stubbed search finds. */
+  readonly addresses: readonly Place[];
+  /** Sample only: the suburbs the stubbed reverse lookup and the map labels use. */
+  readonly suburbs: readonly Place[];
+}
+
 /**
  * A certificate the platform approved for a seller, as the seller page's Certificates tab shows it.
  * Contract of the seller read: it returns only certificates that are approved and in date today, so
@@ -478,3 +519,45 @@ export interface ClosedStore {
   /** Up to three open stores that deliver to the buyer, as the sellers page shows them. */
   readonly others: readonly SellerListing[];
 }
+
+/**
+ * What the sell page needs from the Market: the password rule, the area and business identifier
+ * its copy names, and the seller panel's sign-in page. Never a default Market's values in code.
+ */
+export interface SellerSignUpSetup {
+  readonly passwordMinLength: number;
+  readonly passwordMaxLength: number;
+  /** Where the Market sells now, for example "Greater Brisbane". */
+  readonly serviceArea: string;
+  /** The business identifier's short name, for example "ABN". */
+  readonly businessIdentifier: string;
+  /** The seller panel's sign-in page (another host: seller and customer accounts are separate). */
+  readonly sellerSignInUrl: string;
+}
+
+/** The fields of the seller sign-up form. */
+export type SellerSignUpField = 'name' | 'email' | 'password';
+
+/** Why a field was refused; the form shows one message per code. */
+export type SellerSignUpFieldError =
+  | 'required'
+  | 'name-length'
+  | 'name-characters'
+  | 'email-format'
+  | 'password-short'
+  | 'password-long'
+  | 'password-common'
+  | 'password-identity';
+
+/**
+ * The answer to a seller sign-up or a "send it again". `accepted` is the same for every address,
+ * new or already registered (identity AC 21): the page never says whether an account exists.
+ */
+export type SellerSignUpAnswer =
+  | { readonly kind: 'accepted' }
+  | {
+      readonly kind: 'invalid';
+      readonly fields: Readonly<Partial<Record<SellerSignUpField, SellerSignUpFieldError>>>;
+    }
+  | { readonly kind: 'throttled'; readonly retryAfterSeconds: number }
+  | { readonly kind: 'failed' };

@@ -4,9 +4,11 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
 import { sealArt } from '../certification/certification-seal.tsx';
+import { deliverToLabel } from '../delivery/deliver-to.ts';
 import { Icon } from '../icons/icon.tsx';
 import type { IconName } from '../icons/icon-paths.tsx';
 import { Logo } from './logo.tsx';
+import { useStore } from './store-context.tsx';
 
 const COLUMNS = [
   {
@@ -95,6 +97,8 @@ export function Footer({ area }: { readonly area: string }) {
   const t = useTranslations('footer');
   const name = useTranslations('store')('name');
   const desktop = useDesktop();
+  const { deliverTo } = useStore();
+  const shown = deliverTo ? deliverToLabel(deliverTo) : area;
   const trust: [IconName | 'seal', string][] = [
     ['seal', 'certificates'],
     ['truck', 'delivery'],
@@ -131,7 +135,7 @@ export function Footer({ area }: { readonly area: string }) {
             </a>
             <Link href="/delivery-area">
               <Icon name="pin" />
-              {t('delivering', { area })}
+              {t('delivering', { area: shown })}
             </Link>
           </div>
           <div className="fsoc" role="group" aria-label={t('social')}>

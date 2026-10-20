@@ -1,4 +1,15 @@
 import {
+  EXTERNAL_IDENTITY_REPOSITORY,
+  type ExternalIdentity,
+  type ExternalIdentityRepository,
+} from '../../src/modules/identity/application/ports/external-identity.repository';
+import {
+  SIGN_IN_PROVIDERS_PORT,
+  type ProviderExchangeFailure,
+  type ProviderIdentity,
+  type SignInProviders,
+} from '../../src/modules/identity/application/ports/sign-in-providers';
+import {
   ADMIN_ACCOUNT_READER,
   type AdminAccountReader,
 } from '../../src/modules/identity/application/ports/admin-account-reader';
@@ -206,8 +217,34 @@ export class IdentityFakes {
   needsRehash = false;
   /** Makes the reservation unit fail, as an unreachable counter table would. */
   throttlesDown = false;
+  /** Provider identities (social sign-in) by "market|provider|subject". */
+  readonly externalIdentities = new Map<string, ExternalIdentity & { marketId: string }>();
+  /**
+   * The fake sign-in provider: off unless a test configures it; `identity` is who the next code
+   * exchange returns, `failure` makes it fail; every exchange is recorded.
+   */
+  readonly provider: {
+    configured: boolean;
+    identity: ProviderIdentity;
+    failure: ProviderExchangeFailure | null;
+    readonly exchanges: { code: string; codeVerifier: string; nonce: string }[];
+  } = {
+    configured: false,
+    identity: { subject: 'google-sub-1', email: 'shopper@example.com', emailVerified: true },
+    failure: null,
+    exchanges: [],
+  };
 
   reset(): void {
+    this.externalIdentities.clear();
+    this.provider.configured = false;
+    this.provider.identity = {
+      subject: 'google-sub-1',
+      email: 'shopper@example.com',
+      emailVerified: true,
+    };
+    this.provider.failure = null;
+    this.provider.exchanges.length = 0;
     this.accounts.clear();
     this.sessions.clear();
     this.throttles.clear();
@@ -1358,6 +1395,50 @@ export class IdentityFakes {
     purge: () => Promise.resolve(0),
   };
 
+  readonly externalIdentityRepository: ExternalIdentityRepository = {
+    findBySubject: (market, provider, subject) =>
+      Promise.resolve(
+        this.externalIdentities.get(`${market.marketId}|${provider}|${subject}`) ?? null,
+      ),
+    findForAccount: (market, accountId, provider) =>
+      Promise.resolve(
+        [...this.externalIdentities.values()].find(
+          (row) =>
+            row.marketId === market.marketId &&
+            row.accountId === accountId &&
+            row.provider === provider,
+        ) ?? null,
+      ),
+    add: (market, identity) => {
+      const key = `${market.marketId}|${identity.provider}|${identity.subject}`;
+      const taken =
+        this.externalIdentities.has(key) ||
+        [...this.externalIdentities.values()].some(
+          (row) =>
+            row.marketId === market.marketId &&
+            row.accountId === identity.accountId &&
+            row.provider === identity.provider,
+        );
+      if (taken) return Promise.resolve(err({ code: 'identity.taken' as const }));
+      this.externalIdentities.set(key, { ...identity, marketId: market.marketId });
+      return Promise.resolve(ok(undefined));
+    },
+  };
+
+  readonly signInProviders: SignInProviders = {
+    configured: () => (this.provider.configured ? ['google'] : []),
+    authorizationUrl: (_market, _provider, flow) =>
+      this.provider.configured
+        ? `https://provider.test/auth?state=${flow.state}&nonce=${flow.nonce}&code_challenge=${flow.codeChallenge}`
+        : null,
+    exchange: (_market, _provider, code, flow) => {
+      this.provider.exchanges.push({ code, codeVerifier: flow.codeVerifier, nonce: flow.nonce });
+      return Promise.resolve(
+        this.provider.failure === null ? ok(this.provider.identity) : err(this.provider.failure),
+      );
+    },
+  };
+
   readonly recordRepository: SignInRecordRepository = {
     add: (market, record) => {
       this.records.push({ ...record, marketId: market.marketId });
@@ -1812,6 +1893,10 @@ export class IdentityFakes {
       .overrideProvider(SECOND_FACTOR_SECRETS)
       .useValue(this.secrets)
       .overrideProvider(PASSWORD_HASHER)
-      .useValue(this.hasher);
+      .useValue(this.hasher)
+      .overrideProvider(EXTERNAL_IDENTITY_REPOSITORY)
+      .useValue(this.externalIdentityRepository)
+      .overrideProvider(SIGN_IN_PROVIDERS_PORT)
+      .useValue(this.signInProviders);
   }
 }

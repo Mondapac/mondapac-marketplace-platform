@@ -18,6 +18,7 @@ import {
   type Cart,
   type CartView,
 } from '../cart/cart.ts';
+import type { DeliverTo } from '../delivery/deliver-to.ts';
 import type { AppliedDiscount, CartSource, CheckoutCustomer, Money } from '../storefront/types.ts';
 import { checkReachable, reachable } from './connection.ts';
 
@@ -77,6 +78,12 @@ interface StoreState {
   /** A page's own modal dialog (the seller card on phone and tablet) is open. */
   readonly dialogOpen: boolean;
   readonly setDialogOpen: (open: boolean) => void;
+  /** The Deliver to modal of the header button. */
+  readonly deliverOpen: boolean;
+  readonly setDeliverOpen: (open: boolean) => void;
+  /** The confirmed delivery location; null shows the storefront's default area. */
+  readonly deliverTo: DeliverTo | null;
+  readonly setDeliverTo: (to: DeliverTo) => void;
   /** The log-in dialog (header Log in, the rail's My Account, the Account tab when signed out). */
   readonly loginOpen: boolean;
   readonly setLoginOpen: (open: boolean) => void;
@@ -95,12 +102,15 @@ const StoreContext = createContext<StoreState | null>(null);
 export function StoreProvider({
   cartSource = NO_SOURCE,
   initialCart = {},
+  initialDeliverTo = null,
   initialCustomer = null,
   children,
 }: {
   readonly cartSource?: CartSource;
   /** The lines to start with (the server cart once it is read; tests). */
   readonly initialCart?: Cart;
+  /** The location kept in this browser (the delivery cookie). */
+  readonly initialDeliverTo?: DeliverTo | null;
   /** The signed-in customer to start with (tests; the session once it is read). */
   readonly initialCustomer?: CheckoutCustomer | null;
   readonly children: ReactNode;
@@ -117,6 +127,8 @@ export function StoreProvider({
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deliverOpen, setDeliverOpen] = useState(false);
+  const [deliverTo, setDeliverTo] = useState<DeliverTo | null>(initialDeliverTo);
   const [loginOpen, setLoginOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [online, setOnlineState] = useState(true);
@@ -211,6 +223,10 @@ export function StoreProvider({
       setFiltersOpen,
       dialogOpen,
       setDialogOpen,
+      deliverOpen,
+      setDeliverOpen,
+      deliverTo,
+      setDeliverTo,
       loginOpen,
       setLoginOpen,
       accountOpen,
@@ -240,6 +256,8 @@ export function StoreProvider({
       searchOpen,
       filtersOpen,
       dialogOpen,
+      deliverOpen,
+      deliverTo,
       loginOpen,
       accountOpen,
       online,
