@@ -23,7 +23,7 @@ export function CartDrawer() {
   const locale = useLocale();
   const router = useRouter();
   const path = usePathname();
-  const { cart, cartSource, discount, cartOpen: open, setCartOpen } = useStore();
+  const { cart, cartSource, discount, cartOpen: open, setCartOpen, online } = useStore();
   const [mounted, setMounted] = useState(false);
   const panel = useRef<HTMLElement>(null);
   const opener = useRef<Element | null>(null);
@@ -133,12 +133,13 @@ export function CartDrawer() {
                 {t('view-cart')}
               </button>
               <button
-                className="btn"
+                className="btn ctl"
                 type="button"
-                aria-disabled={blocked ? true : undefined}
-                onClick={() =>
-                  go(blocked ? `/cart#${groupAnchor(blocked.seller.id)}` : '/checkout')
-                }
+                aria-disabled={blocked || !online ? true : undefined}
+                onClick={() => {
+                  if (!online) return;
+                  go(blocked ? `/cart#${groupAnchor(blocked.seller.id)}` : '/checkout');
+                }}
               >
                 {t('checkout')}
               </button>
