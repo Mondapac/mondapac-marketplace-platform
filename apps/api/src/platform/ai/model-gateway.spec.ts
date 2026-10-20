@@ -95,6 +95,7 @@ describe('ModelGateway (ADR-0019 R7, R8)', () => {
     await expect(gateway.complete(AU, 'fast', REQUEST, 20)).resolves.toEqual({
       ok: false,
       failure: 'timeout',
+      price: PRICE,
     });
     expect(aborted).toBe(true);
     expect(warnings).toEqual([
@@ -110,6 +111,7 @@ describe('ModelGateway (ADR-0019 R7, R8)', () => {
     await expect(gateway.complete(AU, 'fast', REQUEST, 1000)).resolves.toEqual({
       ok: false,
       failure: 'unavailable',
+      price: PRICE,
     });
     expect(JSON.stringify(warnings)).not.toContain(KEY);
     expect(JSON.stringify(warnings)).not.toContain('hi');

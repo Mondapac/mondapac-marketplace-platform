@@ -8,11 +8,11 @@ export const MAX_MESSAGE_CHARACTERS = 1000;
 export const MAX_TURNS = 30;
 /** Earlier messages sent with a new one, at most; older ones are left out of the model's view. */
 export const HISTORY_MESSAGES = 12;
-/** Model calls in one buyer turn: the answer and up to three rounds of tool results. */
 /** Tool calls the server runs in one model round; more are answered as refused. */
 export const MAX_TOOL_CALLS_PER_ROUND = 3;
 /** Cards one turn shows (the stored card refs allow 40); the support card always fits. */
 export const MAX_CARDS_PER_TURN = 24;
+/** Model calls in one buyer turn: the answer and up to three rounds of tool results. */
 export const MAX_MODEL_ROUNDS = 4;
 /** Output tokens of one model call. */
 export const MAX_OUTPUT_TOKENS = 600;

@@ -42,7 +42,7 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
 - One model entry point (`platform/ai`, `ModelGateway`); only the files on the boundary rule's
   allow-list import it, and no provider SDK is imported anywhere (plain HTTPS to the Messages
   API). Provider failures are logged with the Market, tier and failure kind only.
-- Instructions version `buyer-assistant-1`; the last 12 messages; read-only tools that call the
+- Instructions version `buyer-assistant-2`; the last 12 messages; read-only tools that call the
   `search`, `catalog` and `notifications` facades with the buyer's own `CallContext`:
   `search_products`, `list_bestsellers`, `list_specials`, `list_categories`, `show_page`,
   `support_contact`. `suggest_cart_change` and `open_support_form` answer "not ready yet".
@@ -87,7 +87,9 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
   that seller's product names and short texts then stay out of the assistant's model input?
 - Evaluation: `domain/evaluation-set.ts` (version = prompt version) runs offline against the reply
   guard in `pnpm verify` (claim leakage 0); the real-model run of the same set is recorded before
-  the switch. The "injection carried by a file" sample does not apply: this surface takes no files.
+  the switch; it should add a short local number ("13 xx xx") and a domain or number spelled
+  in words, which the guard does not catch. The "injection carried by a file" sample does not
+  apply: this surface takes no files.
 
 ## Preview for `internal` (designed, not built)
 

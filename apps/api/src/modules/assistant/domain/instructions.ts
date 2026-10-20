@@ -5,7 +5,7 @@ import type { ReplyLanguage } from './assistant-settings';
  * (ADR-0019 decision 9): changing the text below, or the tools, means a new version and a new
  * evaluation before the assistant is switched on again.
  */
-export const PROMPT_VERSION = 'buyer-assistant-1';
+export const PROMPT_VERSION = 'buyer-assistant-2';
 
 const COMMON = `You are the shopping assistant of an online marketplace. You help buyers find their way
 around the store, find products, and understand what the store offers.
