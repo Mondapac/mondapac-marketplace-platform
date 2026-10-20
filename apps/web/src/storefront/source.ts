@@ -21,6 +21,13 @@ import type {
 } from './types.ts';
 
 /**
+ * True while any read in this file returns sample data. It turns false only when every read here
+ * calls the API. It is the indexing lock: search engines cannot be let in while it is true
+ * (src/seo/indexing.ts).
+ */
+export const SAMPLE_DATA: boolean = true;
+
+/**
  * The storefront's one read of the home content. Sample data for now; it calls the
  * pages-and-content and catalog APIs once PR #401 and storefront package 2 are on main.
  */
