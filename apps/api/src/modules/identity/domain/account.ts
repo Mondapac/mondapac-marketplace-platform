@@ -1,6 +1,7 @@
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Population, Result } from '@mondapac/shared-kernel';
 import type { EmailAddress } from './email-address';
+import type { StorefrontAppearance } from './storefront-appearance';
 import type { PASSWORD_CHANGE_CAUSES } from './events';
 import {
   AccountDisabled,
@@ -64,6 +65,8 @@ export interface AccountState {
   readonly timezone?: string | null;
   /** The holder's panel language; null/absent = the Market's language. */
   readonly locale?: string | null;
+  /** A customer's kept storefront look; null/absent = no choice. Customer accounts only. */
+  readonly appearance?: StorefrontAppearance | null;
   readonly status: 'active' | 'disabled';
   readonly emailVerifiedAt: Temporal.Instant | null;
   readonly existingAccountNoticeAt: Temporal.Instant | null;
@@ -398,8 +401,9 @@ export class Account {
   }
 
   /**
-   * The holder replaces the own display name (profile package). Only a seller-side or admin
-   * account has one, and only an active, verified account may change it. The name was parsed by
+   * The holder replaces the own display name (profile package). Only an active, verified account
+   * may change it. A customer's starts null and is set here (buyer account Settings); it is never
+   * cleared again. The name was parsed by
    * the caller (`parseDisplayName`, HF13). The same name changes nothing and records nothing; the
    * answer says whether this call changed it. Records `identity.account-display-name-changed.v1`.
    */
@@ -409,11 +413,7 @@ export class Account {
   }): Result<boolean, AccountNotEligible> {
     const { displayName, now } = input;
     const state = this.#state;
-    if (
-      state.population === 'customer' ||
-      state.status !== 'active' ||
-      state.emailVerifiedAt === null
-    ) {
+    if (state.status !== 'active' || state.emailVerifiedAt === null) {
       return err({ code: 'account.not-eligible' });
     }
     if (displayName.trim() === '') throw new AccountInvariantError('display-name-required');
@@ -474,6 +474,35 @@ export class Account {
       ...state,
       timezone: input.timezone,
       locale: input.locale,
+      version: state.version + 1,
+    });
+    return ok(true);
+  }
+
+  /**
+   * A customer keeps the own storefront look on the account (buyer account Settings), both parts
+   * already parsed by the caller. Same values change nothing; the answer says whether this call
+   * changed them. Records no event: only the storefront reads it, from the session summary.
+   */
+  setAppearance(appearance: StorefrontAppearance): Result<boolean, AccountNotEligible> {
+    const state = this.#state;
+    if (
+      state.population !== 'customer' ||
+      state.status !== 'active' ||
+      state.emailVerifiedAt === null
+    ) {
+      return err({ code: 'account.not-eligible' });
+    }
+    const current = state.appearance ?? null;
+    if (
+      (current?.palette ?? null) === appearance.palette &&
+      (current?.textSize ?? null) === appearance.textSize
+    ) {
+      return ok(false);
+    }
+    this.#state = Object.freeze({
+      ...state,
+      appearance: Object.freeze({ palette: appearance.palette, textSize: appearance.textSize }),
       version: state.version + 1,
     });
     return ok(true);

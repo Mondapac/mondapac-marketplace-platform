@@ -568,6 +568,16 @@ left room; reviewers may overturn any of them.
 | Purge job | `identity.purge-expired`, hourly: sessions 30 days after their absolute expiry (revoked ones too), throttle rows whose window started more than 48 hours ago and that are not blocked, sign-in records older than the Market's `signInRecordRetentionDays`, a day at a time, at most 400 days per run |
 | `lastSeenAt` | Written by the Authenticator in its own unit at most once a minute; a failure there is logged and does not refuse the request |
 
+**Customer profile as built in the buyer account backend (2026-10-20).** The account page's
+Settings writes two things to the customer's own account; both need the session and its CSRF
+token and name no account in the body.
+
+| Point | As built |
+|---|---|
+| Display name | `PUT /identity/customer/profile/display-name` (`{displayName}`), the same use case and rules as the panels' route (`ChangeDisplayName`, now open to customers). A customer's name starts NULL and is never cleared again; records `identity.account-display-name-changed.v1` (ids and codes only) |
+| Storefront look | `PUT /identity/customer/profile/appearance` (`{palette, textSize}`, each a known id or null for no choice; `identity.change-storefront-appearance`, customers only). Columns `accounts.storefront_palette` and `storefront_text_size`; CHECKs keep the known ids and refuse a look on a non-customer row. No event |
+| Read back | `GET /identity/customer/session` carries `displayName` and `appearance` (`{palette, textSize}` or null) |
+
 **Email verification as built in slice 3 (Hossein, 2026-10-08).** Choices made where this
 design left room; reviewers may overturn any of them.
 

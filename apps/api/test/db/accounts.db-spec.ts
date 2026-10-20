@@ -229,6 +229,43 @@ describe('identity.accounts and password_credentials (database constraints)', ()
       });
     });
 
+    describe('storefront appearance', () => {
+      const setLook = (id: string, palette: string | null, textSize: string | null) =>
+        sql.query(
+          `UPDATE identity.accounts SET storefront_palette = $2, storefront_text_size = $3
+           WHERE id = $1`,
+          [id, palette, textSize],
+        );
+
+      it('keeps a known look on a customer account, or none', async () => {
+        const id = await insertAccount(market, { population: 'customer' });
+        expect(await violated(setLook(id, 'C', 'large'))).toBeNull();
+        expect(await violated(setLook(id, null, 'small'))).toBeNull();
+        expect(await violated(setLook(id, null, null))).toBeNull();
+      });
+
+      it('refuses an unknown palette or text size', async () => {
+        const id = await insertAccount(market, { population: 'customer' });
+        expect(await violated(setLook(id, 'E', null))).toBe('accounts_storefront_palette_check');
+        expect(await violated(setLook(id, 'b', null))).toBe('accounts_storefront_palette_check');
+        expect(await violated(setLook(id, null, 'huge'))).toBe(
+          'accounts_storefront_text_size_check',
+        );
+      });
+
+      it('refuses a look on a seller-side or admin account', async () => {
+        for (const population of ['seller', 'admin'] as const) {
+          const id = await insertAccount(market, { population, displayName: 'Amina' });
+          expect(await violated(setLook(id, 'A', null))).toBe(
+            'accounts_storefront_appearance_customer_check',
+          );
+          expect(await violated(setLook(id, null, 'auto'))).toBe(
+            'accounts_storefront_appearance_customer_check',
+          );
+        }
+      });
+    });
+
     describe('password credential', () => {
       const insertCredential = (credentialMarket: string, accountId: string, hash: string) =>
         sql.query(
