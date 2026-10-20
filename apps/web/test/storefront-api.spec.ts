@@ -198,4 +198,50 @@ describe('storefront API read', () => {
       }),
     ]);
   });
+
+  it('replaces an x-client-address the browser sent with the signed one', async () => {
+    const calls = serve();
+    await apiGetWith(
+      config(SIGNED),
+      incoming({
+        host: 'storefront.localhost:3003',
+        'x-mp-client-address': '203.0.113.9',
+        'x-client-address': 'v1;k=storefront;t=1;a=198.51.100.1;s=forged',
+      }),
+      'catalog/categories',
+    );
+    expect(calls[0]!.headers.get('x-client-address')).toMatch(/;a=203\.0\.113\.9;/);
+    expect(calls[0]!.headers.get('x-client-address')).not.toContain('forged');
+  });
+
+  it.each([
+    '/catalog/categories',
+    '../admin/x',
+    'storefront/pages/%2e%2e/%2E%2E/admin',
+    'storefront/pages/../../admin',
+    'storefront\\pages',
+    'storefront/pages/home#x',
+    'storefront/pages/a b',
+  ])('reads nothing for a path that could leave its route: %s', async (path) => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const calls = serve();
+    expect(
+      await apiGetWith(config(LOCAL), incoming({ host: 'storefront.localhost:3003' }), path),
+    ).toEqual({ kind: 'failed' });
+    expect(calls).toHaveLength(0);
+    expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'storefront.api-read-bad-path' }));
+  });
+
+  it('logs the route without its query', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    serve(500);
+    await apiGetWith(
+      config(LOCAL),
+      incoming({ host: 'storefront.localhost:3003' }),
+      'search/products?q=private%20words',
+    );
+    expect(log).toHaveBeenCalledWith(
+      JSON.stringify({ msg: 'storefront.api-read-refused', path: 'search/products', status: 500 }),
+    );
+  });
 });
