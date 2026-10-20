@@ -395,4 +395,36 @@ describe('log out', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Log in' })).toBeTruthy();
     expect(called('POST', 'identity/customer/sign-out')).toHaveLength(1);
   });
+
+  it('stays signed in when the API could not end the session', async () => {
+    signedIn({ 'POST identity/customer/sign-out': { status: 503, body: { code: 'x' } } });
+    renderLive(<p>Account page</p>);
+    await screen.findByText('Account page');
+    fireEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Log out' }));
+    await waitFor(() => expect(called('POST', 'identity/customer/sign-out')).toHaveLength(1));
+    expect(screen.getByText('Account page')).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Log in' })).toBeNull();
+  });
+});
+
+describe('stale CSRF token', () => {
+  it('reads the current token from the session and tries once more', async () => {
+    let tokens = 0;
+    let puts = 0;
+    signedIn({
+      'GET identity/customer/session': () => session({ csrfToken: `csrf-${++tokens}` }),
+      'PUT identity/customer/profile/display-name': () =>
+        ++puts === 1
+          ? { status: 403, body: { statusCode: 403, code: 'request.csrf' } }
+          : { status: 200 },
+    });
+    renderLive(<AccountSettings palette="B" textSize="auto" />);
+    const name = await screen.findByLabelText<HTMLInputElement>('Full name');
+    fireEvent.change(name, { target: { value: 'Jo Q Citizen' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Save changes' }));
+    expect(await within(main()).findByText('Saved')).toBeTruthy();
+    const sent = called('PUT', 'identity/customer/profile/display-name');
+    expect(sent).toHaveLength(2);
+    expect(sent[1]?.headers['x-csrf-token']).toBe(`csrf-${tokens}`);
+  });
 });

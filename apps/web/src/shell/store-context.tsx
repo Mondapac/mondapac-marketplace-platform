@@ -76,7 +76,8 @@ interface StoreState {
   /** Live sign-in: signs in, reads the session and sets `customer`. */
   readonly signIn: (email: string, password: string) => Promise<SignInOutcome>;
   /** Ends the session (live) and clears `customer`. */
-  readonly signOut: () => Promise<void>;
+  /** False when the API could not end the session: the buyer stays signed in. */
+  readonly signOut: () => Promise<boolean>;
   /** The delivery address chosen at checkout, as one line. */
   readonly deliveryAddress: string;
   readonly setDeliveryAddress: (address: string) => void;
@@ -204,10 +205,15 @@ export function StoreProvider({
     setCustomer(read);
     return 'ok';
   }, []);
-  // Best effort: the buyer is logged out here even when the call could not reach the API.
-  const signOut = useCallback(async () => {
-    if (live) await api.signOut();
+  // The buyer is logged out here only once the API ended the session (or it had already ended):
+  // on a shared computer a live cookie would sign them back in on the next page.
+  const signOut = useCallback(async (): Promise<boolean> => {
+    if (live) {
+      const result = await api.signOut();
+      if (result.kind !== 'ok' && result.kind !== 'signed-out') return false;
+    }
     setCustomer(null);
+    return true;
   }, [live]);
   const value = useMemo(
     () => ({

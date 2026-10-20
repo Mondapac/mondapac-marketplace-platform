@@ -34,6 +34,8 @@ export function useLogOut(): () => void {
   const { signOut, setAccountOpen } = useStore();
   return useCallback(() => {
     setAccountOpen(false);
-    void signOut().then(() => router.push('/account'));
+    void signOut().then((done) => {
+      if (done) router.push('/account');
+    });
   }, [router, signOut, setAccountOpen]);
 }

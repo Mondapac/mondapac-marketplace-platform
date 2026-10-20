@@ -86,6 +86,22 @@ async function call<T>(
   body: object | undefined,
   read: (json: Record<string, unknown>) => T | undefined,
 ): Promise<ApiResult<T>> {
+  const result = await callOnce(method, path, body, read);
+  // A token from before the session rotated (a password change in another tab): read the
+  // session's current token and try once more.
+  if (result.kind === 'invalid' && result.code === 'request.csrf' && method !== 'GET') {
+    forgetCsrfToken();
+    return callOnce(method, path, body, read);
+  }
+  return result;
+}
+
+async function callOnce<T>(
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  path: string,
+  body: object | undefined,
+  read: (json: Record<string, unknown>) => T | undefined,
+): Promise<ApiResult<T>> {
   try {
     const headers: Record<string, string> = { accept: 'application/json' };
     // Sign-in starts the session, so it has no token to send.
