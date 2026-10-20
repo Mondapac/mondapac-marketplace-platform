@@ -22,6 +22,7 @@ export interface CertificationBadge {
 export interface ProductCard {
   readonly id: string;
   readonly name: string;
+  /** Empty when the read does not carry it (the shelf routes give only a seller id). */
   readonly sellerName: string;
   /** Category code, used for the fallback illustration when there is no photo. */
   readonly category: string;
@@ -33,6 +34,12 @@ export interface ProductCard {
   readonly lowStock?: number;
   readonly imageUrl?: string;
 }
+
+/**
+ * A product card of a home shelf. The price is absent when the shelf read does not carry it (the
+ * best-sellers route gives ids and text only): the card then shows no price and no add button.
+ */
+export type ShelfCard = Omit<ProductCard, 'price'> & { readonly price?: Money };
 
 export interface SellerSummary {
   readonly id: string;
@@ -56,7 +63,8 @@ export interface PromoBanner {
   readonly variant: 'primary' | 'secondary';
   readonly title: string;
   readonly body: string;
-  readonly action: { readonly label: string; readonly href: string };
+  /** Absent when the layout gives no link or no button label. */
+  readonly action?: { readonly label: string; readonly href: string };
   readonly images: readonly string[];
 }
 
@@ -69,7 +77,7 @@ export type HomeSection =
       readonly kind: 'products';
       readonly title: string;
       readonly href: string;
-      readonly products: readonly ProductCard[];
+      readonly products: readonly ShelfCard[];
     };
 
 export interface DeliveryArea {
