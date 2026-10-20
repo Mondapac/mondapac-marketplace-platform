@@ -205,6 +205,11 @@
     "reason": "The buyer site's store page for a visitor with no session: one held slug's allow-listed public fields, only while the seller may sell; an unknown, retired or not-selling slug answers the same not-found."
   },
   {
+    "name": "shipping.delivery-area",
+    "rule": "anonymous",
+    "reason": "The buyer site asks whether the Market delivers to a postcode before sign-in (cart, checkout, Deliver to): the answer is the public ServiceArea configuration; nothing about a person is read or stored."
+  },
+  {
     "name": "storefront.view-published-landing-page",
     "rule": "anonymous",
     "reason": "A visitor with no session reads a live landing page at /l/<slug>: only a published, unarchived page inside its live window, or the site path an old or archived slug now sends to; layout and settings only, no product data."

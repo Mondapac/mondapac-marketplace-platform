@@ -14,6 +14,7 @@ import { CryptoGuestTokens } from '../../src/modules/cart/infrastructure/crypto-
 import { HmacRateCounterKeys } from '../../src/modules/cart/infrastructure/hmac-rate-counter-keys';
 import { PrismaCartRepository } from '../../src/modules/cart/infrastructure/prisma-cart.repository';
 import { PrismaRateCounterRepository } from '../../src/modules/cart/infrastructure/prisma-rate-counter.repository';
+import { PrismaSavedItemRepository } from '../../src/modules/cart/infrastructure/prisma-saved-item.repository';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
@@ -53,6 +54,7 @@ describe.each(TEST_MARKETS)(
     let db: Persistence;
     let carts: PrismaCartRepository;
     let counters: PrismaRateCounterRepository;
+    let saved: PrismaSavedItemRepository;
     let purge: PurgeInactiveCarts;
     let sql: Client;
 
@@ -60,10 +62,12 @@ describe.each(TEST_MARKETS)(
       db = createPersistence();
       carts = new PrismaCartRepository(db.service);
       counters = new PrismaRateCounterRepository(db.service);
+      saved = new PrismaSavedItemRepository(db.service);
       purge = new PurgeInactiveCarts(gate, {
         unitOfWork: db.unitOfWork,
         carts,
         counters,
+        saved,
         policy: new ConfigCartPolicy(markets),
         clock,
       });
@@ -80,6 +84,7 @@ describe.each(TEST_MARKETS)(
       // Only the 2020 rows of this file: nothing else sits that far back.
       await sql.query(`DELETE FROM cart.carts WHERE last_changed_at < '2021-01-01'`);
       await sql.query(`DELETE FROM cart.rate_counters WHERE window_started_at < '2021-01-01'`);
+      await sql.query(`DELETE FROM cart.saved_items WHERE saved_at < '2021-01-01'`);
     });
 
     const unit = async <T>(target: MarketContext, work: () => Promise<T>): Promise<T> => {
@@ -144,7 +149,7 @@ describe.each(TEST_MARKETS)(
 
       const done = await purge.execute(system(), {});
 
-      expect(done).toEqual({ ok: true, value: { carts: 3, rateCounters: 0 } });
+      expect(done).toEqual({ ok: true, value: { carts: 3, rateCounters: 0, savedItems: 0 } });
       expect(await exists(mine.guestOld)).toBe(false);
       expect(await linesOf(mine.guestOld)).toBe(0);
       expect(await exists(mine.mergedOld)).toBe(false);
@@ -157,8 +162,45 @@ describe.each(TEST_MARKETS)(
       expect(await exists(theirs.guestOld)).toBe(true);
       expect(await exists(theirs.accountOld)).toBe(true);
       const theirRun = await purge.execute(testCallContext(other, 'system', 'cart-purge-0002'), {});
-      expect(theirRun).toEqual({ ok: true, value: { carts: 2, rateCounters: 0 } });
+      expect(theirRun).toEqual({ ok: true, value: { carts: 2, rateCounters: 0, savedItems: 0 } });
       expect(await exists(theirs.guestOld)).toBe(false);
+    });
+
+    it('saves for an account only, moves a saved-again unit to the top, and purges a year on', async () => {
+      const account = ids.next<'Account'>();
+      const otherAccount = ids.next<'Account'>();
+      const unitOf = { offerId: ids.next<'Offer'>(), variantId: ids.next<'Variant'>() };
+      const item = (accountId: typeof account, ageDays: number, sellUnit = unitOf) => ({
+        id: ids.next<'SavedItem'>(),
+        accountId,
+        ...sellUnit,
+        savedAt: NOW.subtract({ milliseconds: Math.round(ageDays * DAY) }),
+      });
+      const first = await unit(market, () => saved.upsert(market, item(account, 400)));
+      const fresh = await unit(market, () =>
+        saved.upsert(market, item(account, 10, { offerId: ids.next(), variantId: ids.next() })),
+      );
+      await unit(market, () => saved.upsert(market, item(otherAccount, 400)));
+      await unit(other, () => saved.upsert(other, item(account, 400)));
+
+      // Saving the same unit again keeps its row and moves it to the top.
+      const again = await unit(market, () => saved.upsert(market, item(account, 1)));
+      expect(again.id).toBe(first.id);
+      const list = await unit(market, () => saved.list(market, account, 100));
+      expect(list.map((row) => row.id)).toEqual([first.id, fresh.id]);
+      expect(await unit(market, () => saved.count(market, account))).toBe(2);
+      // Another account's id is unknown to this one.
+      expect(await unit(market, () => saved.find(market, otherAccount, first.id))).toBeNull();
+      expect(await unit(market, () => saved.delete(market, otherAccount, first.id))).toBe(false);
+
+      const done = await purge.execute(system(), {});
+
+      // Only this Market's item last saved over a year ago went (the other account's).
+      expect(done.ok && done.value.savedItems).toBe(1);
+      expect(await unit(market, () => saved.count(market, account))).toBe(2);
+      expect(await unit(market, () => saved.count(market, otherAccount))).toBe(0);
+      expect(await unit(other, () => saved.count(other, account))).toBe(1);
+      expect(await unit(market, () => saved.delete(market, account, first.id))).toBe(true);
     });
 
     it('purges in batches of 200, oldest first, and a second run finds nothing', async () => {
@@ -183,10 +225,10 @@ describe.each(TEST_MARKETS)(
       for (const cart of freshest) expect(await exists(cart)).toBe(true);
 
       const run = await purge.execute(system(), {});
-      expect(run).toEqual({ ok: true, value: { carts: 5, rateCounters: 0 } });
+      expect(run).toEqual({ ok: true, value: { carts: 5, rateCounters: 0, savedItems: 0 } });
       expect(await purge.execute(system(), {})).toEqual({
         ok: true,
-        value: { carts: 0, rateCounters: 0 },
+        value: { carts: 0, rateCounters: 0, savedItems: 0 },
       });
     });
 
