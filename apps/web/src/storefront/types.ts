@@ -22,6 +22,7 @@ export interface CertificationBadge {
 export interface ProductCard {
   readonly id: string;
   readonly name: string;
+  /** Empty when the read does not carry it (the shelf routes give only a seller id). */
   readonly sellerName: string;
   /** Category code, used for the fallback illustration when there is no photo. */
   readonly category: string;
@@ -34,6 +35,12 @@ export interface ProductCard {
   readonly imageUrl?: string;
 }
 
+/**
+ * A product card of a home shelf. The price is absent when the shelf read does not carry it (the
+ * best-sellers route gives ids and text only): the card then shows no price and no add button.
+ */
+export type ShelfCard = Omit<ProductCard, 'price'> & { readonly price?: Money };
+
 export interface SellerSummary {
   readonly id: string;
   readonly name: string;
@@ -43,6 +50,15 @@ export interface SellerSummary {
   /** Key of a sample logo; real sellers' logos arrive with media. */
   readonly logo?: string;
 }
+
+/**
+ * A "Sellers near you" tile. The public store list has no delivery window yet, and its minimum
+ * order is absent when it cannot be told, so both lines are optional here.
+ */
+export type HomeSeller = Omit<SellerSummary, 'deliveryWindow' | 'minimumOrder'> & {
+  readonly deliveryWindow?: string;
+  readonly minimumOrder?: string;
+};
 
 export interface Category {
   readonly code: string;
@@ -56,7 +72,8 @@ export interface PromoBanner {
   readonly variant: 'primary' | 'secondary';
   readonly title: string;
   readonly body: string;
-  readonly action: { readonly label: string; readonly href: string };
+  /** Absent when the layout gives no link or no button label. */
+  readonly action?: { readonly label: string; readonly href: string };
   readonly images: readonly string[];
 }
 
@@ -69,7 +86,7 @@ export type HomeSection =
       readonly kind: 'products';
       readonly title: string;
       readonly href: string;
-      readonly products: readonly ProductCard[];
+      readonly products: readonly ShelfCard[];
     };
 
 export interface DeliveryArea {
@@ -110,8 +127,9 @@ export interface SellerProfile {
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;
-  readonly city: string;
-  readonly sellingSince: number;
+  /** Absent until the seller public read has it (real data); the card then leaves the line out. */
+  readonly city?: string;
+  readonly sellingSince?: number;
   /** Certificates the platform checked, named for the card line ("Halal certificate checked"). */
   readonly certificates: readonly { readonly type: string; readonly name: string }[];
   /**
@@ -130,14 +148,18 @@ export interface SellerProfile {
 /** One seller's offer of a product; `id` is the cart line key. */
 export interface ProductOffer {
   readonly id: string;
+  /** The priced Variant, for the cart (real data); sample offers have none. */
+  readonly variantId?: string;
   readonly seller: SellerProfile;
   readonly price: Money;
   readonly wasPrice?: Money;
   /** Badges built by certification from evaluateClaim for this offer. */
   readonly certifications: readonly CertificationBadge[];
   readonly lowStock?: number;
-  readonly deliveryWindow: string;
-  readonly minimumOrder: string;
+  /** Absent until the backend has delivery promises (real data); the page leaves it out. */
+  readonly deliveryWindow?: string;
+  /** Absent when the seller's minimum order cannot be told; the page leaves it out. */
+  readonly minimumOrder?: string;
 }
 
 export interface ProductSpecification {

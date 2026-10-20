@@ -61,7 +61,7 @@ function build(): CartSource {
       sellers[offer.seller.id] ??= terms(
         offer.seller.id,
         offer.seller.name,
-        offer.deliveryWindow,
+        offer.deliveryWindow ?? '',
         offer.seller.logo,
       );
       items[offer.id] = {
