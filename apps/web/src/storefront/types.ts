@@ -51,6 +51,15 @@ export interface SellerSummary {
   readonly logo?: string;
 }
 
+/**
+ * A "Sellers near you" tile. The public store list has no delivery window yet, and its minimum
+ * order is absent when it cannot be told, so both lines are optional here.
+ */
+export type HomeSeller = Omit<SellerSummary, 'deliveryWindow' | 'minimumOrder'> & {
+  readonly deliveryWindow?: string;
+  readonly minimumOrder?: string;
+};
+
 export interface Category {
   readonly code: string;
   readonly name: string;

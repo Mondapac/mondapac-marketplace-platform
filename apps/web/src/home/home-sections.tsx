@@ -7,7 +7,7 @@ import type {
   Category,
   HomeSection,
   PromoBanner,
-  SellerSummary,
+  HomeSeller,
   ShelfCard,
 } from '../storefront/types.ts';
 import { ProductCard } from './product-card.tsx';
@@ -20,7 +20,7 @@ export function HomeSections({
 }: {
   readonly sections: readonly HomeSection[];
   readonly categories: readonly Category[];
-  readonly sellers: readonly SellerSummary[];
+  readonly sellers: readonly HomeSeller[];
 }) {
   const t = useTranslations('home');
   // The first promo banner holds the page's one h1; a layout without a banner gets a hidden one.
@@ -124,7 +124,7 @@ function Sellers({
 }: {
   readonly title: string;
   readonly href: string;
-  readonly sellers: readonly SellerSummary[];
+  readonly sellers: readonly HomeSeller[];
 }) {
   const t = useTranslations('home');
   return (
@@ -142,11 +142,13 @@ function Sellers({
                   {art ? <svg viewBox="0 0 64 64">{art}</svg> : s.initials}
                 </span>
                 <b>{s.name}</b>
-                <span className="eta">
-                  <Icon name="clock" />
-                  {s.deliveryWindow}
-                </span>
-                <span className="mn">{s.minimumOrder}</span>
+                {s.deliveryWindow === undefined ? null : (
+                  <span className="eta">
+                    <Icon name="clock" />
+                    {s.deliveryWindow}
+                  </span>
+                )}
+                {s.minimumOrder === undefined ? null : <span className="mn">{s.minimumOrder}</span>}
               </Link>
             );
           })}
