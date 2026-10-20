@@ -38,7 +38,10 @@ import {
   SellerSignedIn,
   SellerSignUpRequest,
 } from './seller.dto';
-import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
+import {
+  AcceptsStorefrontOrigin,
+  RoutePopulation,
+} from '../../../platform/call-context/route-population.decorator';
 
 /**
  * Seller self-registration and email verification over HTTP (identity design 3.1, 3.2, 6.7, 8.6
@@ -53,6 +56,10 @@ import { RoutePopulation } from '../../../platform/call-context/route-population
  * - `POST verification-email`: "send it again"; one answer for every address.
  * - `POST accept-invitation` (slice 9): the invited Seller Owner's token and new password; the
  *   account is created and no session opens (`ux.md` F8).
+ *
+ * `sign-up` and `verification-email` also accept the storefront's seller sign-up page
+ * (`@AcceptsStorefrontOrigin`: the Market's customer origin, same-origin, a BFF-proved client
+ * address); the other routes accept the seller panel only.
  *
  * Every route logs its outcome code with the correlation id; never the name, the email, the
  * password or the link token.
@@ -72,6 +79,7 @@ export class SellerSignUpController {
   ) {}
 
   @Post('sign-up')
+  @AcceptsStorefrontOrigin()
   @HttpCode(202)
   @ApiOperation({
     summary: 'Create a seller account (self-registration)',
@@ -172,6 +180,7 @@ export class SellerSignUpController {
   }
 
   @Post('verification-email')
+  @AcceptsStorefrontOrigin()
   @HttpCode(202)
   @ApiOperation({
     summary: 'Send the seller verification email again',

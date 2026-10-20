@@ -70,3 +70,21 @@ export function originRefused(
   if (origin !== undefined && !allowedOrigins.includes(origin)) return true;
   return false;
 }
+
+/**
+ * Whether an unsafe request comes from the storefront's BFF for a route marked
+ * `@AcceptsStorefrontOrigin` (Hassan's conditions on PR #442): `Sec-Fetch-Site: same-origin`
+ * and an `Origin` on the Market's storefront (`customer`) list. An empty list accepts nothing.
+ * The actor guard also requires a client address proved by a BFF.
+ */
+export function storefrontOriginMatches(
+  headers: IncomingHttpHeaders,
+  storefrontOrigins: readonly string[],
+): boolean {
+  const origin = headers.origin;
+  return (
+    headers['sec-fetch-site'] === 'same-origin' &&
+    typeof origin === 'string' &&
+    storefrontOrigins.includes(origin)
+  );
+}

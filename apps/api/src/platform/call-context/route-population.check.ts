@@ -3,7 +3,13 @@ import type { OnApplicationBootstrap } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { DiscoveryService, MetadataScanner } from '@nestjs/core';
 import { isMarketContextExempt } from '../market-context/market-context.guard';
-import { READS_SESSION, ROUTE_POPULATION, routePopulationOf } from './route-population.decorator';
+import {
+  READS_SESSION,
+  ROUTE_POPULATION,
+  routePopulationOf,
+  STOREFRONT_ORIGIN,
+  STOREFRONT_ORIGIN_ROUTES,
+} from './route-population.decorator';
 
 /** Request methods that change nothing (RFC 9110 9.2.1); `ALL` and every other one are unsafe. */
 const SAFE_REQUEST_METHODS: ReadonlySet<RequestMethod> = new Set([
@@ -22,6 +28,24 @@ export class RoutePopulationError extends Error {
 
 type ControllerClass = abstract new (...args: never[]) => unknown;
 
+/** A route path without leading, trailing or repeated slashes (the first path of a list). */
+function pathOf(metadata: unknown): string {
+  const first: unknown = Array.isArray(metadata) ? metadata[0] : metadata;
+  return typeof first === 'string' ? first.split('/').filter(Boolean).join('/') : '';
+}
+
+/** `METHOD path` of a handler, as {@link STOREFRONT_ORIGIN_ROUTES} spells it. */
+function routeKeyOf(controller: object, handler: object): string {
+  const method = Reflect.getMetadata(METHOD_METADATA, handler) as RequestMethod | undefined;
+  const path = [
+    pathOf(Reflect.getMetadata(PATH_METADATA, controller)),
+    pathOf(Reflect.getMetadata(PATH_METADATA, handler)),
+  ]
+    .filter(Boolean)
+    .join('/');
+  return `${method === undefined ? '?' : RequestMethod[method]} ${path}`;
+}
+
 /**
  * Every problem with the route populations of the given controllers (identity design 6.4; Ali's
  * ruling and Hassan's review of 2026-10-08), in a stable order. Empty when all hold:
@@ -29,7 +53,9 @@ type ControllerClass = abstract new (...args: never[]) => unknown;
  * - no method carries `@RoutePopulation` (class only, so no route uses another allow-list);
  * - `@ReadsSession` is used only on a controller with a `@RoutePopulation`;
  * - a market-exempt controller has no route with an unsafe method (the actor guard returns
- *   before the origin check for such a controller).
+ *   before the origin check for such a controller);
+ * - `@AcceptsStorefrontOrigin` sits only on a method of a `seller` controller, on a route of
+ *   `STOREFRONT_ORIGIN_ROUTES`, and never on a route that reads a session.
  */
 export function routePopulationProblems(controllers: readonly ControllerClass[]): string[] {
   const scanner = new MetadataScanner();
@@ -50,6 +76,24 @@ export function routePopulationProblems(controllers: readonly ControllerClass[])
     for (const { key, handler } of methods) {
       if (Reflect.getOwnMetadata(ROUTE_POPULATION, handler) !== undefined) {
         problems.push(`${name}.${key} carries @RoutePopulation; it belongs on the class only`);
+      }
+    }
+    if (Reflect.getMetadata(STOREFRONT_ORIGIN, controller) !== undefined) {
+      problems.push(`${name} carries @AcceptsStorefrontOrigin; it belongs on a listed route only`);
+    }
+    for (const { key, handler } of methods) {
+      if (Reflect.getOwnMetadata(STOREFRONT_ORIGIN, handler) === undefined) continue;
+      const route = routeKeyOf(controller, handler);
+      if (population !== 'seller' || !STOREFRONT_ORIGIN_ROUTES.has(route)) {
+        problems.push(
+          `${name}.${key} carries @AcceptsStorefrontOrigin on ${route}, which is not a listed seller route`,
+        );
+      }
+      if (
+        Reflect.getMetadata(READS_SESSION, controller) === true ||
+        Reflect.getOwnMetadata(READS_SESSION, handler) === true
+      ) {
+        problems.push(`${name}.${key} carries @AcceptsStorefrontOrigin and reads a session`);
       }
     }
     const readsSession =

@@ -73,6 +73,9 @@ export function clientAddressMessage(
  */
 const resolved = new WeakMap<IncomingMessage, string | undefined>();
 
+/** The requests whose address a BFF proved (every check of decision 3 passed). */
+const proven = new WeakSet<IncomingMessage>();
+
 /**
  * The client address the middleware resolved for this request, as text: the socket's, or the
  * one a BFF proved. `undefined` when there is none (no socket address, or the request did not
@@ -81,6 +84,15 @@ const resolved = new WeakMap<IncomingMessage, string | undefined>();
  */
 export function clientAddressFrom(request: IncomingMessage): string | undefined {
   return resolved.get(request);
+}
+
+/**
+ * Whether this request's client address came from a BFF's verified `x-client-address` proof,
+ * rather than from the socket. The actor guard requires it of the storefront's seller sign-up
+ * calls (`@AcceptsStorefrontOrigin`), which only the storefront's BFF may send.
+ */
+export function clientAddressProven(request: IncomingMessage): boolean {
+  return proven.has(request);
 }
 
 /** How many header lines named `name` the request carried (Node joins repeated ones). */
@@ -191,6 +203,7 @@ export function clientAddressResolver(options: ClientAddressOptions): RequestHan
     }
 
     resolved.set(request, address);
+    proven.add(request);
     next();
   };
 }

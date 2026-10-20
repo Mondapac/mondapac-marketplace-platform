@@ -9,11 +9,19 @@ import { AUTHENTICATOR, type Authenticator } from '../authz/authenticator';
 import { MarketRegistry } from '../market-config/market-registry';
 import { isMarketContextExempt } from '../market-context/market-context.guard';
 import { marketContextOf } from '../market-context/market.decorator';
-import { CSRF_HEADER, csrfTokenFor, csrfTokenMatches, isUnsafeMethod, originRefused } from './csrf';
+import { clientAddressProven } from '../http/client-address';
+import {
+  CSRF_HEADER,
+  csrfTokenFor,
+  csrfTokenMatches,
+  isUnsafeMethod,
+  originRefused,
+  storefrontOriginMatches,
+} from './csrf';
 import { attachActor } from './request-actor';
 import { clearedSessionCookie, readCookie, sessionCookieName } from './session-cookie';
 import { recordSessionCsrfToken } from './session-csrf-token';
-import { READS_SESSION, routePopulationOf } from './route-population.decorator';
+import { READS_SESSION, routePopulationOf, STOREFRONT_ORIGIN } from './route-population.decorator';
 
 /** The answer codes of this guard (identity design 5.2). */
 export const SESSION_INVALID = 'session.invalid';
@@ -39,7 +47,10 @@ const STATUS: Readonly<Record<Refusal, number>> = {
  *    `request.csrf` (403) when its route has no population, when `Sec-Fetch-Site` is present
  *    and not `same-origin`, or when `Origin` is present and not on the Market's
  *    `allowedOrigins` of that population. Admin and seller routes also refuse a request
- *    without either header (`ORIGIN_HEADERS_REQUIRED`).
+ *    without either header (`ORIGIN_HEADERS_REQUIRED`). A seller route marked
+ *    `@AcceptsStorefrontOrigin` (seller sign-up and its resend only) also accepts the Market's
+ *    `customer` origins, with `Sec-Fetch-Site: same-origin` and a BFF-proved client address
+ *    (ADR-0037); the seller list itself never holds the storefront.
  * 3. **Session cookie**: a route reads a session only when it is marked `@ReadsSession()`;
  *    otherwise its actor is the Market's anonymous actor, whatever cookie came with it (sign-in
  *    and sign-up). The guard reads only the cookie named for the route's population and the
@@ -93,14 +104,15 @@ export class ActorGuard implements CanActivate {
     if (unsafe) {
       // Fail closed: an unsafe route with no population has no allow-list to check against.
       if (population === undefined) return refuse(REQUEST_CSRF, 'no-route-population');
-      if (
-        originRefused(
-          request.headers,
-          population,
-          this.markets.get(market.marketId).allowedOrigins[population],
-        )
-      ) {
-        refuse(REQUEST_CSRF, 'origin');
+      const origins = this.markets.get(market.marketId).allowedOrigins;
+      if (originRefused(request.headers, population, origins[population])) {
+        const storefrontRoute =
+          population === 'seller' &&
+          this.reflector.get<boolean | undefined>(STOREFRONT_ORIGIN, context.getHandler()) === true;
+        if (!storefrontRoute || !storefrontOriginMatches(request.headers, origins.customer)) {
+          refuse(REQUEST_CSRF, 'origin');
+        }
+        if (!clientAddressProven(request)) refuse(REQUEST_CSRF, 'storefront-unproven');
       }
     }
     if (!readsSession || population === undefined) {
