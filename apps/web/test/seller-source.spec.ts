@@ -41,15 +41,17 @@ describe('seller page read', () => {
     expect(shop?.location).toBe('name of greater-brisbane');
   });
 
-  it('answers no store for a 404 and for a malformed slug, without a read', async () => {
-    reads.answers = [{ kind: 'failed', status: 404 }];
+  it("answers no store for the module's not-found and a malformed slug, without a read", async () => {
+    reads.answers = [{ kind: 'failed', status: 404, code: 'sellers.store-not-found' }];
     expect(await loadSeller('gone')).toBeUndefined();
     expect(await loadSeller('../admin')).toBeUndefined();
     expect(await loadSeller('a'.repeat(51))).toBeUndefined();
     expect(reads.paths).toEqual(['sellers/stores/gone']);
   });
 
-  it('throws on any other failure, so the page shows its error state', async () => {
+  it('throws on any other failure, a bare 404 included, so the page shows its error', async () => {
+    reads.answers = [{ kind: 'failed', status: 404 }];
+    await expect(loadSeller('kedron')).rejects.toThrow('the store read failed');
     reads.answers = [{ kind: 'failed', status: 503 }];
     await expect(loadSeller('kedron')).rejects.toThrow('the store read failed');
     reads.answers = [{ kind: 'failed' }];
@@ -80,16 +82,24 @@ describe('sellers page read', () => {
     expect(results.filtersOffered).toBe(false);
   });
 
-  it('matches nothing for a filter it cannot answer', async () => {
-    reads.answers = [page(0, 3, 3)];
+  it('matches nothing for a filter it cannot answer, reading only the count', async () => {
+    reads.answers = [page(0, 1, 3)];
     const results = await loadSellers({
       filters: { ...NO_SELLER_FILTERS, sameDay: true },
       sort: 'newest',
       limit: 24,
     });
-    expect(reads.paths).toEqual(['sellers/stores?sort=newest&page=1&pageSize=48']);
+    expect(reads.paths).toEqual(['sellers/stores?pageSize=1']);
     expect(results.items).toEqual([]);
     expect(results.total).toBe(0);
+    expect(results.all).toBe(3);
+  });
+
+  it('reads at most four pages for one view, however far Show more went', async () => {
+    reads.answers = [0, 1, 2, 3, 4].map((n) => page(n * 48, 48, 1000));
+    const results = await loadSellers({ filters: NO_SELLER_FILTERS, sort: 'name', limit: 1200 });
+    expect(reads.paths).toHaveLength(4);
+    expect(results.items).toHaveLength(192);
   });
 
   it('throws on a failed read and keeps the sample while the API is off', async () => {

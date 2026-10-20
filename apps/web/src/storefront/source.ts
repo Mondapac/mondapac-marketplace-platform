@@ -95,7 +95,8 @@ export async function loadSeller(slug: string): Promise<SellerShop | undefined> 
   const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`);
   if (answer.kind === 'off') return sampleSeller(slug);
   if (answer.kind === 'failed') {
-    if (answer.status === 404) return undefined;
+    // Only the store module's own answer means "no such store"; a bare 404 is a missing route.
+    if (answer.status === 404 && answer.code === 'sellers.store-not-found') return undefined;
     throw new SellerReadFailed();
   }
   const store = publicStoreOf(answer.body);
@@ -106,6 +107,8 @@ export async function loadSeller(slug: string): Promise<SellerShop | undefined> 
 const API_SORT = { popular: 'name', nearest: 'name', name: 'name', newest: 'newest' } as const;
 /** The API's largest page. */
 const API_PAGE_SIZE = 48;
+/** At most this many API reads for one page view, however far "Show more" went. */
+const MAX_API_PAGES = 4;
 
 const anyFilter = (query: SellerQuery): boolean => {
   const { filters } = query;
@@ -126,9 +129,18 @@ const anyFilter = (query: SellerQuery): boolean => {
  * Otherwise sample data.
  */
 export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
+  // The API cannot filter yet and the page offers no filter (no facets). A filter left in a
+  // shared URL matches nothing rather than appearing to hold for stores nobody checked.
+  if (anyFilter(query)) {
+    const answer = await apiGet<unknown>(`sellers/stores?pageSize=1`);
+    if (answer.kind === 'off') return sampleSellers(query);
+    if (answer.kind === 'failed') throw new SellerReadFailed();
+    const { total } = publicStorePageOf(answer.body);
+    return { ...sellerResultsOf([], total, await areaNames()), total: 0 };
+  }
   const stores: PublicStore[] = [];
   let total = 0;
-  for (let page = 1; stores.length < query.limit; page += 1) {
+  for (let page = 1; stores.length < query.limit && page <= MAX_API_PAGES; page += 1) {
     const params = new URLSearchParams({
       sort: API_SORT[query.sort],
       page: String(page),
@@ -142,10 +154,7 @@ export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
     stores.push(...read.items);
     if (read.items.length < API_PAGE_SIZE) break;
   }
-  const results = sellerResultsOf(stores.slice(0, query.limit), total, await areaNames());
-  // The API cannot filter yet and the page offers no filter (no facets). A filter left in a
-  // shared URL matches nothing rather than appearing to hold for stores nobody checked.
-  return anyFilter(query) ? { ...results, items: [], total: 0 } : results;
+  return sellerResultsOf(stores.slice(0, query.limit), total, await areaNames());
 }
 
 /**

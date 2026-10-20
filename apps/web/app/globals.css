@@ -5257,6 +5257,12 @@ svg {
   border-bottom-color: var(--sf-teal);
   color: var(--sf-teal);
 }
+.shop-sec {
+  margin: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--sf-line);
+  font-size: calc(17px * var(--fs));
+}
 .shop-panel {
   display: grid;
   gap: 14px;
@@ -6558,6 +6564,9 @@ button.login {
 .slc-m {
   color: var(--sf-slate);
   font-size: calc(13px * var(--fs));
+}
+.slc-m .nw {
+  white-space: nowrap;
 }
 .slc-rt {
   display: inline-flex;

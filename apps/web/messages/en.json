@@ -777,7 +777,7 @@
     "up-to": "Up to {amount}",
     "show-stores": "Show {count, plural, one {# store} other {# stores}}",
     "open-seller": "{name}, opens the seller page",
-    "selling-since": "{city} · Selling since {year}",
+    "selling-since": "{city} · <nw>Selling since {year}</nw>",
     "satisfaction": "{value}% satisfaction",
     "satisfaction-label": "{value} percent satisfaction, {count, plural, one {# rating} other {# ratings}}",
     "outside-area": "Outside your delivery area",
@@ -793,7 +793,9 @@
     "none-body": "We are adding local sellers city by city. You can still browse products.",
     "browse-products": "Browse products",
     "filters-empty": "No stores match these filters",
-    "filters-empty-hint": "Try removing a filter to see more stores."
+    "filters-empty-hint": "Try removing a filter to see more stores.",
+    "filters-unavailable": "Store filters aren't available yet",
+    "filters-unavailable-hint": "Remove the filter to see every store."
   },
   "sell": {
     "title": "Sell on MondaPac",

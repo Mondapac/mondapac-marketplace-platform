@@ -36,7 +36,11 @@ export function StoreCard({
             </Link>
           </h3>
           <p className="slc-m">
-            {t('selling-since', { city: store.city, year: String(store.sellingSince) })}
+            {t.rich('selling-since', {
+              city: store.city,
+              year: String(store.sellingSince),
+              nw: (chunks) => <span className="nw">{chunks}</span>,
+            })}
           </p>
           {ratingsShown && rated ? (
             <p

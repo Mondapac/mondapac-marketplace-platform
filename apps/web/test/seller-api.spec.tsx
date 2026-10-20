@@ -45,6 +45,7 @@ describe('reading the API store answer', () => {
     ['an empty name', { ...STORE, name: ' ' }],
     ['a bad area', { ...STORE, serviceAreaCode: 'Greater Brisbane' }],
     ['a bad year', { ...STORE, sellingSince: '2026' }],
+    ['a year in the future', { ...STORE, sellingSince: new Date().getUTCFullYear() + 2 }],
     ['a numeric amount', { ...STORE, minimumOrder: { amount: 3000, currency: 'AUD' } }],
     ['a bad currency', { ...STORE, minimumOrder: { amount: '1', currency: 'aud' } }],
   ])('refuses %s whole', (_name, body) => {
@@ -78,7 +79,9 @@ describe('seller pages with real data', () => {
       <SellerPage shop={shopOf(publicStoreOf(STORE), 'Greater Brisbane')} ratingsShown={false} />,
     );
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Kedron Halal Meats');
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['About']);
+    // One part known: a heading, not a tab bar with a single tab.
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'About' })).toBeTruthy();
     expect(document.body.textContent).toContain('Greater Brisbane');
     expect(document.body.textContent).toContain('$30.00');
     expect(document.body.textContent).not.toMatch(/no certificates|no products/i);

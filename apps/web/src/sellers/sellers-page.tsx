@@ -62,7 +62,10 @@ export function SellersPage({
         {results.filtersOffered === false ? null : (
           <SellersFilters path={path} state={state} facets={facets} total={total} />
         )}
-        <ActiveSellerFilters results={results} state={state} />
+        {/* Without filters on offer, the empty state below is the one way out of an old URL. */}
+        {results.filtersOffered === false ? null : (
+          <ActiveSellerFilters results={results} state={state} />
+        )}
         <div className="rbar">
           <p className="cnt num" aria-live="polite">
             {t('count', { count: total })}
@@ -76,8 +79,14 @@ export function SellersPage({
         </div>
         {total === 0 ? (
           <div className="empty rich">
-            <h3>{t('filters-empty')}</h3>
-            <p className="hint">{t('filters-empty-hint')}</p>
+            <h3>{t(results.filtersOffered === false ? 'filters-unavailable' : 'filters-empty')}</h3>
+            <p className="hint">
+              {t(
+                results.filtersOffered === false
+                  ? 'filters-unavailable-hint'
+                  : 'filters-empty-hint',
+              )}
+            </p>
             <Link
               className="btn"
               href={sellersHref(path, withoutSellerFilters(state))}

@@ -57,7 +57,12 @@ export function publicStoreOf(value: unknown): PublicStore {
   if (typeof serviceAreaCode !== 'string' || !CODE.test(serviceAreaCode)) {
     throw new StoreAnswerRefused('serviceAreaCode');
   }
-  if (typeof sellingSince !== 'number' || !Number.isInteger(sellingSince) || sellingSince < 2000) {
+  if (
+    typeof sellingSince !== 'number' ||
+    !Number.isInteger(sellingSince) ||
+    sellingSince < 2000 ||
+    sellingSince > new Date().getUTCFullYear() + 1
+  ) {
     throw new StoreAnswerRefused('sellingSince');
   }
   const minimumOrder = moneyOf(value['minimumOrder']);
