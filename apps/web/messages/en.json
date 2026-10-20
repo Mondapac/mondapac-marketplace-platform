@@ -181,7 +181,9 @@
       "cart-kept": "Your cart is kept. Items you added before logging in are merged into your account cart.",
       "close": "Close",
       "show-password": "Show password",
-      "hide-password": "Hide password"
+      "hide-password": "Hide password",
+      "continue-with-google": "Continue with Google",
+      "or": "or"
     },
     "overview": {
       "hello": "Hello, {name}",

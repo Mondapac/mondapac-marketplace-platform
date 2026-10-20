@@ -116,6 +116,18 @@ const envSchema = z.object({
     .string()
     .regex(MODEL_ID, 'must be a provider model id (letters, digits, . _ : / @ -)')
     .optional(),
+  // Social sign-in: the Google OAuth client of this stack (Google Cloud console, "Web
+  // application"). Both or neither; unset: Google sign-in is off in every Market. The secret is a
+  // server secret and is never echoed. Each Market that offers it also names its redirect URI
+  // (Market config identity.socialSignIn.google.redirectUri).
+  GOOGLE_SIGN_IN_CLIENT_ID: z
+    .string()
+    .regex(/^[A-Za-z0-9._-]{10,200}$/, 'must be a Google OAuth client id')
+    .optional(),
+  GOOGLE_SIGN_IN_CLIENT_SECRET: z
+    .string()
+    .regex(/^[\x21-\x7e]{10,200}$/, 'must be 10 to 200 printable ASCII characters')
+    .optional(),
 });
 
 /** The migration role's URL: read by the prisma CLI, the scripts and test setup only. */
@@ -196,6 +208,11 @@ export interface AppConfig {
   readonly assistantModelApiKey: string | null;
   /** The provider model id of each assistant tier (`ASSISTANT_MODEL_FAST`, `_BALANCED`), or null. */
   readonly assistantModels: Readonly<{ fast: string | null; balanced: string | null }>;
+  /**
+   * The Google OAuth client for social sign-in (`GOOGLE_SIGN_IN_CLIENT_ID`, `_SECRET`), or null:
+   * then Google sign-in is off. Holds a secret: read by identity's sign-in providers alone.
+   */
+  readonly googleSignIn: Readonly<{ clientId: string; clientSecret: string }> | null;
 }
 
 /** The log levels a worker may run at: every one that still writes info lines. */
@@ -268,6 +285,13 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       'LOG_LEVEL: the worker logs at info, debug or trace (audit anchors are info lines)',
     );
   }
+  if (
+    parsed.success &&
+    (parsed.data.GOOGLE_SIGN_IN_CLIENT_ID === undefined) !==
+      (parsed.data.GOOGLE_SIGN_IN_CLIENT_SECRET === undefined)
+  ) {
+    issues.push('GOOGLE_SIGN_IN_CLIENT_ID and GOOGLE_SIGN_IN_CLIENT_SECRET: set both or neither');
+  }
   const clientAddress = parseClientAddressTrust(env.TRUSTED_BFF_CIDRS, env.CLIENT_ADDRESS_KEYS);
   issues.push(...clientAddress.issues);
   const webhookSecrets = parsed.success
@@ -321,5 +345,13 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       fast: parsed.data.ASSISTANT_MODEL_FAST ?? null,
       balanced: parsed.data.ASSISTANT_MODEL_BALANCED ?? null,
     }),
+    googleSignIn:
+      parsed.data.GOOGLE_SIGN_IN_CLIENT_ID === undefined ||
+      parsed.data.GOOGLE_SIGN_IN_CLIENT_SECRET === undefined
+        ? null
+        : Object.freeze({
+            clientId: parsed.data.GOOGLE_SIGN_IN_CLIENT_ID,
+            clientSecret: parsed.data.GOOGLE_SIGN_IN_CLIENT_SECRET,
+          }),
   });
 }

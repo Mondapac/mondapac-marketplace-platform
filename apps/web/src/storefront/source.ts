@@ -10,6 +10,7 @@ import type {
   CheckoutSource,
   ProductDetail,
   SellerShop,
+  SignInProvider,
   StorefrontContent,
 } from './types.ts';
 
@@ -56,4 +57,13 @@ export async function loadSeller(slug: string): Promise<SellerShop | undefined> 
  */
 export async function loadAccount(): Promise<AccountSource> {
   return Promise.resolve(SAMPLE_ACCOUNT);
+}
+
+/**
+ * The sign-in providers the Market offers (identity `GET /identity/customer/social/providers`;
+ * each start route is `/identity/customer/social/<id>/start`). None until the storefront reads the
+ * identity API and the server holds a provider's client: no provider button shows.
+ */
+export async function loadSignInProviders(): Promise<readonly SignInProvider[]> {
+  return Promise.resolve([]);
 }

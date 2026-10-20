@@ -21,6 +21,7 @@ import { TabBar } from '../src/shell/tab-bar.tsx';
 import { SAMPLE_CART_SOURCE } from '../src/storefront/sample-cart.ts';
 import { TAX_INVOICE_SHOWN } from '../src/storefront/features.ts';
 import { loadAccount } from '../src/storefront/source.ts';
+import type { SignInProvider } from '../src/storefront/types.ts';
 
 const nav = vi.hoisted(() => ({ path: '/', push: vi.fn() }));
 vi.mock('next/navigation', () => ({
@@ -48,7 +49,11 @@ function CartCount() {
   return <output data-testid="cart">{summarise(cart).count}</output>;
 }
 
-function renderStore(children: ReactNode, signedIn = true) {
+function renderStore(
+  children: ReactNode,
+  signedIn = true,
+  providers: readonly SignInProvider[] = [],
+) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
       <StoreProvider
@@ -58,10 +63,12 @@ function renderStore(children: ReactNode, signedIn = true) {
         <Header delivery={{ label: 'Kedron 4031' }} />
         <Rail />
         <TabBar />
-        <LoginModal customer={account.customer} />
+        <LoginModal customer={account.customer} providers={providers} />
         <AccountDrawer />
         <main>
-          <AccountArea source={account}>{children}</AccountArea>
+          <AccountArea source={account} providers={providers}>
+            {children}
+          </AccountArea>
         </main>
         <CartCount />
       </StoreProvider>
@@ -108,6 +115,22 @@ describe('global account menu', () => {
       'page',
     );
     expect(within(r).getByRole('button', { name: 'Log out' })).toBeTruthy();
+  });
+
+  it('shows a provider button only for a provider the Market offers', () => {
+    renderStore(<AccountOverview />, false);
+    expect(screen.queryByRole('link', { name: 'Continue with Google' })).toBeNull();
+    cleanup();
+
+    const google = { id: 'google', startUrl: '/identity/customer/social/google/start' } as const;
+    renderStore(<AccountOverview />, false, [google]);
+    const page = within(main());
+    expect(page.getByRole('link', { name: 'Continue with Google' }).getAttribute('href')).toBe(
+      google.startUrl,
+    );
+    fireEvent.click(within(rail()).getByRole('button', { name: 'My Account' }));
+    const dialog = within(screen.getByRole('dialog', { name: 'Log in' }));
+    expect(dialog.getByRole('link', { name: 'Continue with Google' })).toBeTruthy();
   });
 
   it('header says Log out (never the name) when signed in and logs out on click', () => {

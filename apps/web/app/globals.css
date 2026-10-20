@@ -5870,6 +5870,22 @@ button.login {
 .ac-f .lnk {
   justify-self: start;
 }
+.ac-sso {
+  display: grid;
+  gap: 8px;
+}
+.ac-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--sf-slate);
+}
+.ac-or::before,
+.ac-or::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--sf-line);
+}
 .btn.ac-danger {
   border-color: var(--sf-error-line);
   color: var(--sf-error-ink);

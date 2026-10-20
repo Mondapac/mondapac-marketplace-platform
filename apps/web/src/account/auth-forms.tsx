@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../icons/icon.tsx';
+import type { SignInProvider } from '../storefront/types.ts';
 import { AcField, PasswordField } from './fields.tsx';
 
 type Mode = 'login' | 'new' | 'forgot' | 'sent';
@@ -22,9 +23,12 @@ const legalLinks = {
 export function AuthForms({
   heading,
   onSignedIn,
+  providers = [],
 }: {
   readonly heading: (title: string) => ReactNode;
   readonly onSignedIn: () => void;
+  /** The sign-in providers the Market offers; none hides the provider buttons. */
+  readonly providers?: readonly SignInProvider[];
 }) {
   const t = useTranslations('account.auth');
   const [mode, setMode] = useState<Mode>('login');
@@ -111,6 +115,18 @@ export function AuthForms({
             {t('create-account')}
           </button>
         </div>
+        {providers.length > 0 ? (
+          <>
+            <div className="ac-sso">
+              {providers.map((provider) => (
+                <a className="btn ghost" key={provider.id} href={provider.startUrl}>
+                  {t(`continue-with-${provider.id}`)}
+                </a>
+              ))}
+            </div>
+            <p className="ac-or">{t('or')}</p>
+          </>
+        ) : null}
         <form
           className="ac-f"
           id={`${id}-form`}

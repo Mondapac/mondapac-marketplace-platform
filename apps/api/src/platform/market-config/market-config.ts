@@ -467,6 +467,16 @@ const identitySchema = z
      * answers `access.unavailable` (fail closed).
      */
     sellerMemberLimit: z.number().int().min(2).max(500).optional(),
+    /**
+     * Social sign-in for customers: per provider, the redirect URI registered with the provider
+     * (the callback route, `.../identity/customer/social/<provider>/callback`, as the browser
+     * reaches it). Absent, or no client credentials on the server: the provider is off.
+     */
+    socialSignIn: z
+      .strictObject({
+        google: z.strictObject({ redirectUri: pageUrl }).optional(),
+      })
+      .optional(),
     /** A never-verified account is deleted this many days after its latest sign-up (M5: 7). */
     unverifiedAccountRetentionDays: z.number().int().min(1).max(30),
     /** The sender of the Market's mail (identity design 9). */

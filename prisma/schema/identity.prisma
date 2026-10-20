@@ -78,6 +78,7 @@ model IdentityAccount {
   roleAssignments         IdentityRoleAssignment[]
   secondFactor            IdentitySecondFactor?
   signInChallenges        IdentitySignInChallenge[]
+  externalIdentities      IdentityExternalIdentity[]
 
   /// ADR-0018 decision 3: one account per Market, population and normalised email.
   @@unique([marketId, population, emailNormalized])
@@ -606,5 +607,27 @@ model IdentityStepUpProof {
 
   @@id([marketId, sessionId, actionKey])
   @@map("step_up_proofs")
+  @@schema("identity")
+}
+
+/// A customer account's identity at a sign-in provider (social sign-in): the provider's stable
+/// subject id, written when the account is created through the provider or when its holder
+/// connects the provider after signing in with the password. Never changed; rows go with their
+/// account. The CHECKs and the grants are hand-written in the migration.
+model IdentityExternalIdentity {
+  marketId  String          @map("market_id") @db.VarChar(8)
+  tenantId  String          @map("tenant_id")
+  /// google (more providers by name later).
+  provider  String          @db.VarChar(16)
+  /// Personal. The provider's `sub`: its stable id of the person.
+  subject   String          @db.VarChar(255)
+  accountId String          @map("account_id") @db.Uuid
+  createdAt DateTime        @map("created_at") @db.Timestamptz(6)
+  account   IdentityAccount @relation(fields: [marketId, accountId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, provider, subject])
+  /// At most one identity per account and provider.
+  @@unique([marketId, accountId, provider])
+  @@map("external_identities")
   @@schema("identity")
 }

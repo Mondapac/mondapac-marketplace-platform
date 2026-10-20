@@ -5,7 +5,12 @@ import { CartDrawer } from '../cart/cart-drawer.tsx';
 import { ConsentBar } from '../consent/consent-bar.tsx';
 import type { Consent } from '../consent/consent.ts';
 import type { TextSize } from '../preferences/preferences.ts';
-import type { CartSource, CheckoutCustomer, StorefrontContent } from '../storefront/types.ts';
+import type {
+  CartSource,
+  CheckoutCustomer,
+  SignInProvider,
+  StorefrontContent,
+} from '../storefront/types.ts';
 import { BrowsePanel } from './browse-panel.tsx';
 import { Footer } from './footer.tsx';
 import { Header } from './header.tsx';
@@ -22,6 +27,7 @@ export function StoreShell({
   textSize,
   consent,
   signIn,
+  signInProviders,
   children,
 }: {
   readonly content: StorefrontContent;
@@ -30,6 +36,8 @@ export function StoreShell({
   readonly consent: Consent | null;
   /** The account the sample log-in signs in to, until customer sessions are wired. */
   readonly signIn: CheckoutCustomer;
+  /** The sign-in providers the Market offers (none: no provider button). */
+  readonly signInProviders: readonly SignInProvider[];
   readonly children: ReactNode;
 }) {
   return (
@@ -37,7 +45,7 @@ export function StoreShell({
       <div className="page">
         <BrowsePanel categories={content.categories} />
         <CartDrawer />
-        <LoginModal customer={signIn} />
+        <LoginModal customer={signIn} providers={signInProviders} />
         <AccountDrawer />
         <SearchView popular={content.popularSearches} />
         <PageFrame>

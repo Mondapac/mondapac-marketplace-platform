@@ -11,7 +11,12 @@ import {
 } from '../src/preferences/preferences.ts';
 import { CONSENT_COOKIE, consentOf } from '../src/consent/consent.ts';
 import { StoreShell } from '../src/shell/store-shell.tsx';
-import { loadCartSource, loadCheckout, loadStorefrontContent } from '../src/storefront/source.ts';
+import {
+  loadCartSource,
+  loadCheckout,
+  loadSignInProviders,
+  loadStorefrontContent,
+} from '../src/storefront/source.ts';
 import './globals.css';
 
 export async function generateMetadata() {
@@ -22,14 +27,17 @@ export async function generateMetadata() {
 export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const [messages, locale, jar, content, cartSource, checkout] = await Promise.all([
-    getMessages(),
-    getLocale(),
-    cookies(),
-    loadStorefrontContent(),
-    loadCartSource(),
-    loadCheckout(),
-  ]);
+  const [messages, locale, jar, content, cartSource, checkout, signInProviders] = await Promise.all(
+    [
+      getMessages(),
+      getLocale(),
+      cookies(),
+      loadStorefrontContent(),
+      loadCartSource(),
+      loadCheckout(),
+      loadSignInProviders(),
+    ],
+  );
   const palette = paletteOf(jar.get(PALETTE_COOKIE)?.value);
   const textSize = textSizeOf(jar.get(TEXT_SIZE_COOKIE)?.value);
   return (
@@ -56,6 +64,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             textSize={textSize}
             consent={consentOf(jar.get(CONSENT_COOKIE)?.value)}
             signIn={checkout.customer}
+            signInProviders={signInProviders}
           >
             {children}
           </StoreShell>

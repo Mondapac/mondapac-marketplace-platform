@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
-import type { CheckoutCustomer } from '../storefront/types.ts';
+import type { CheckoutCustomer, SignInProvider } from '../storefront/types.ts';
 import { AuthForms } from './auth-forms.tsx';
 import { useDialog } from './use-dialog.ts';
 
@@ -15,7 +15,13 @@ import { useDialog } from './use-dialog.ts';
  * Create account and Forgot password. Signing in opens the account overview. Sample: it signs in
  * to `customer` until customer sessions are wired.
  */
-export function LoginModal({ customer }: { readonly customer: CheckoutCustomer }) {
+export function LoginModal({
+  customer,
+  providers,
+}: {
+  readonly customer: CheckoutCustomer;
+  readonly providers: readonly SignInProvider[];
+}) {
   const t = useTranslations('account.auth');
   const router = useRouter();
   const { loginOpen: open, setLoginOpen, setCustomer } = useStore();
@@ -40,6 +46,7 @@ export function LoginModal({ customer }: { readonly customer: CheckoutCustomer }
         >
           {open ? (
             <AuthForms
+              providers={providers}
               heading={(title) => (
                 <div className="amh">
                   <h2 id="login-title">{title}</h2>

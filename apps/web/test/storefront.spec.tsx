@@ -33,6 +33,7 @@ function renderStore(content: StorefrontContent = SAMPLE_CONTENT) {
         textSize="auto"
         consent={{ personalization: false }}
         signIn={SAMPLE_CHECKOUT.customer}
+        signInProviders={[]}
       >
         <HomeSections
           sections={content.home}

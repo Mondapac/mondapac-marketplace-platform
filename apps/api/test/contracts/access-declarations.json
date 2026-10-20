@@ -215,8 +215,14 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "identity.describe-social-sign-in", "rule": "anonymous" },
   { "name": "identity.find-access-decisions-by-basis", "rule": "system" },
   { "name": "identity.issue-first-admin-invitation", "rule": "system" },
+  {
+    "name": "identity.link-sign-in-provider",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   {
     "name": "identity.list-own-sessions",
     "rule": "own-resources",
@@ -278,6 +284,7 @@
   { "name": "identity.sign-in-admin", "rule": "anonymous" },
   { "name": "identity.sign-in-customer", "rule": "anonymous" },
   { "name": "identity.sign-in-seller", "rule": "anonymous" },
+  { "name": "identity.sign-in-with-provider", "rule": "anonymous" },
   { "name": "identity.sign-out", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   {
     "name": "identity.sign-out-other-sessions",
@@ -296,6 +303,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "identity.start-social-sign-in", "rule": "anonymous" },
   {
     "name": "identity.verify-seller-step-up",
     "rule": "own-resources",

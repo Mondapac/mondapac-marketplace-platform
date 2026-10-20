@@ -4,7 +4,12 @@ import { useFormatter, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { Icon, categoryIcon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
-import type { AccountSource, OrderPartStatus, OrderStatus } from '../storefront/types.ts';
+import type {
+  AccountSource,
+  OrderPartStatus,
+  OrderStatus,
+  SignInProvider,
+} from '../storefront/types.ts';
 import { AccountProvider } from './account-state.tsx';
 import { AuthForms } from './auth-forms.tsx';
 
@@ -14,9 +19,12 @@ import { AuthForms } from './auth-forms.tsx';
  */
 export function AccountArea({
   source,
+  providers,
   children,
 }: {
   readonly source: AccountSource;
+  /** The sign-in providers the Market offers (none: no provider button). */
+  readonly providers: readonly SignInProvider[];
   readonly children: ReactNode;
 }) {
   const { customer, setCustomer } = useStore();
@@ -25,6 +33,7 @@ export function AccountArea({
       <div className="ac">
         <section className="ac-card ac-auth">
           <AuthForms
+            providers={providers}
             heading={(title) => <h1 className="ac-ah">{title}</h1>}
             onSignedIn={() => setCustomer(source.customer)}
           />
