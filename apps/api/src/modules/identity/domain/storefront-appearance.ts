@@ -4,8 +4,9 @@ import { err, ok, type Result } from '@mondapac/shared-kernel';
  * The storefront looks a customer may keep on the account (buyer account Settings, john 19 Oct):
  * a palette and a text size. They are ids of the storefront's own themes, the same lists as
  * `apps/web/src/preferences/preferences.ts`; a look is added here in the same change that adds
- * it to the storefront. Neither is personal data worth hiding, but both are shown only to their
- * holder.
+ * it to the storefront, with a migration that replaces the CHECKs `accounts_storefront_*_check`
+ * (the database keeps the same closed lists). Neither is personal data worth hiding, but both
+ * are shown only to their holder.
  */
 export const STOREFRONT_PALETTES = ['A', 'B', 'C', 'D'] as const;
 export const STOREFRONT_TEXT_SIZES = ['auto', 'large', 'small'] as const;

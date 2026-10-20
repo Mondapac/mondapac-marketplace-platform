@@ -242,6 +242,7 @@ describe('identity.accounts and password_credentials (database constraints)', ()
         expect(await violated(setLook(id, 'C', 'large'))).toBeNull();
         expect(await violated(setLook(id, null, 'small'))).toBeNull();
         expect(await violated(setLook(id, null, null))).toBeNull();
+        expect(await violated(setLook(id, 'B', null))).toBeNull();
       });
 
       it('refuses an unknown palette or text size', async () => {
@@ -256,6 +257,7 @@ describe('identity.accounts and password_credentials (database constraints)', ()
       it('refuses a look on a seller-side or admin account', async () => {
         for (const population of ['seller', 'admin'] as const) {
           const id = await insertAccount(market, { population, displayName: 'Amina' });
+          expect(await violated(setLook(id, null, null))).toBeNull();
           expect(await violated(setLook(id, 'A', null))).toBe(
             'accounts_storefront_appearance_customer_check',
           );
