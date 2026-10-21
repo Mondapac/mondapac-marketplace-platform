@@ -118,6 +118,7 @@ import { ResetOtherAdminSecondFactor } from './application/use-cases/reset-other
 import { RevokeAdminInvitation } from './application/use-cases/revoke-admin-invitation.use-case';
 import { ChangeDisplayName } from './application/use-cases/change-display-name.use-case';
 import { ChangePanelPreferences } from './application/use-cases/change-panel-preferences.use-case';
+import { ChangeStorefrontAppearance } from './application/use-cases/change-storefront-appearance.use-case';
 import { ListOwnSessions } from './application/use-cases/list-own-sessions.use-case';
 import { SignOutOtherSessions } from './application/use-cases/sign-out-other-sessions.use-case';
 import { ChangePassword } from './application/use-cases/change-password.use-case';
@@ -212,6 +213,7 @@ import { AdminSellersController } from './presentation/admin-sellers.controller'
 import { AdminTeamController } from './presentation/admin-team.controller';
 import { CustomerEmailVerificationController } from './presentation/customer-email-verification.controller';
 import { CustomerPasswordController } from './presentation/customer-password.controller';
+import { CustomerProfileController } from './presentation/customer-profile.controller';
 import { CustomerSessionController } from './presentation/customer-session.controller';
 import { CustomerSignUpController } from './presentation/customer-sign-up.controller';
 import { IdentityFacadeImplementation } from './presentation/identity.facade';
@@ -409,6 +411,7 @@ function useCaseProvider<D, U>(
     SellerSessionController,
     SellerSecondFactorController,
     CustomerPasswordController,
+    CustomerProfileController,
     SellerPasswordController,
     SellerProfileController,
     SellerRolesController,
@@ -918,6 +921,11 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     useCaseProvider(ChangePanelPreferences, {
+      unitOfWork: true,
+      accounts: true,
+    }),
+    // Buyer account backend: a customer keeps the own storefront look on the account.
+    useCaseProvider(ChangeStorefrontAppearance, {
       unitOfWork: true,
       accounts: true,
     }),
