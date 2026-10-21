@@ -1,4 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  STOREFRONT_PALETTES,
+  STOREFRONT_TEXT_SIZES,
+  type StorefrontPalette,
+  type StorefrontTextSize,
+} from '../domain/storefront-appearance';
 
 /** The body of a customer sign-in (identity design 6.3): email and password only. */
 export class CustomerSignInRequest {
@@ -42,6 +48,32 @@ class SessionTimes {
   absoluteExpiresAt!: string;
 }
 
+/** A customer's kept storefront look; a null part means no choice. */
+export class CustomerAppearance {
+  @ApiProperty({ type: String, nullable: true, enum: STOREFRONT_PALETTES })
+  palette!: StorefrontPalette | null;
+
+  @ApiProperty({ type: String, nullable: true, enum: STOREFRONT_TEXT_SIZES })
+  textSize!: StorefrontTextSize | null;
+}
+
+/** The new look; null clears a part. */
+export class ChangeAppearanceRequest {
+  @ApiProperty({ type: String, nullable: true, enum: STOREFRONT_PALETTES })
+  palette!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, enum: STOREFRONT_TEXT_SIZES })
+  textSize!: string | null;
+}
+
+export class AppearanceChanged {
+  @ApiProperty({ enum: ['storefront-appearance-changed'] })
+  code!: 'storefront-appearance-changed';
+
+  @ApiProperty({ description: 'False when the look already was the one given.' })
+  changed!: boolean;
+}
+
 /** The actor summary of identity design 8.6 rows 2 and 9 (customer). */
 export class CustomerSessionSummary {
   @ApiProperty({ format: 'uuid' })
@@ -78,8 +110,19 @@ export class CustomerSessionSummary {
   @ApiProperty({ description: 'The sign-in email (personal data: shown to its owner only).' })
   email!: string;
 
-  @ApiProperty({ type: String, nullable: true, description: 'Null for a customer.' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The name the customer set in Settings; null until they set one.',
+  })
   displayName!: string | null;
+
+  @ApiProperty({
+    type: CustomerAppearance,
+    nullable: true,
+    description: 'The storefront look kept on the account; null when none was chosen.',
+  })
+  appearance!: CustomerAppearance | null;
 
   @ApiProperty({ type: SessionTimes })
   session!: SessionTimes;

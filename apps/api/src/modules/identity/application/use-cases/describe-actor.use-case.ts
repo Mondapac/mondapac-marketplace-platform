@@ -3,6 +3,7 @@ import type { CallContext, Id, Population, Result } from '@mondapac/shared-kerne
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { SellerAccessStateCode } from '../../domain/seller-access';
+import type { StorefrontAppearance } from '../../domain/storefront-appearance';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
 import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
@@ -42,6 +43,8 @@ export interface ActorSummary {
   readonly timezone: string | null;
   /** The holder's panel language, or null when none was chosen. */
   readonly locale: string | null;
+  /** A customer's kept storefront look, or null when none was chosen (always null otherwise). */
+  readonly appearance: StorefrontAppearance | null;
   /** The panel counts idle time from its own last request (8.6 row 9). */
   readonly session: {
     readonly idleTimeoutSeconds: number;
@@ -145,6 +148,7 @@ export class DescribeActor extends UseCase<
       displayName: account.state.displayName,
       timezone: account.state.timezone ?? null,
       locale: account.state.locale ?? null,
+      appearance: account.state.appearance ?? null,
       session: {
         idleTimeoutSeconds: session.idleTimeoutSeconds,
         absoluteExpiresAt: session.absoluteExpiresAt.toString(),
