@@ -568,6 +568,16 @@ left room; reviewers may overturn any of them.
 | Purge job | `identity.purge-expired`, hourly: sessions 30 days after their absolute expiry (revoked ones too), throttle rows whose window started more than 48 hours ago and that are not blocked, sign-in records older than the Market's `signInRecordRetentionDays`, a day at a time, at most 400 days per run |
 | `lastSeenAt` | Written by the Authenticator in its own unit at most once a minute; a failure there is logged and does not refuse the request |
 
+**Customer profile as built in the buyer account backend (2026-10-20).** The account page's
+Settings writes two things to the customer's own account; both need the session and its CSRF
+token and name no account in the body.
+
+| Point | As built |
+|---|---|
+| Display name | `PUT /identity/customer/profile/display-name` (`{displayName}`), the same use case and rules as the panels' route (`ChangeDisplayName`, now open to customers). A customer's name starts NULL and is never cleared again; records `identity.account-display-name-changed.v1` (ids and codes only) |
+| Storefront look | `PUT /identity/customer/profile/appearance` (`{palette, textSize}`, each a known id or null for no choice; `identity.change-storefront-appearance`, customers only). Columns `accounts.storefront_palette` and `storefront_text_size`; CHECKs keep the known ids and refuse a look on a non-customer row. No event |
+| Read back | `GET /identity/customer/session` carries `displayName` and `appearance` (`{palette, textSize}` or null) |
+
 **Email verification as built in slice 3 (Hossein, 2026-10-08).** Choices made where this
 design left room; reviewers may overturn any of them.
 
@@ -998,7 +1008,7 @@ ADR-0022 point 6 answers for a set of seller ids in one call; `sellerAccessOf` t
 | # | Request | Answer |
 |---|---|---|
 | 1 | Names for unnamed codes; password policy readable before submit | **Accept.** `sign-up.accepted`, `password-reset.accepted`, `verification-resend.accepted`; `link.rejected` and `invitation.rejected` (one answer for every cause); `password.rejected` with `details.rule` (`length`, `common`, `contains-identity`); `password.current-incorrect`; `second-factor.code-rejected`, `second-factor.challenge-ended`; `role.in-use`, `role.read-only`, `role.limit`, `role.not-grantable`; `member.limit`, `member.last-holder`, `member.self`, `member.outranks-actor`; `seller-access.reason-required`, `seller-access.wrong-state`, `seller-access.reapply-limit`; `validation.failed`. Added at review: `request.busy` (6.5), `role.name-taken` (M10), `second-factor-enrolment.accepted` (the enrolment link was sent, 3.6), `second-factor.locked` with `retryAfterSeconds` (6.3 step 5), `invitation.already-pending` (3.4) and `validation.failed` with `details.rule` `characters` (HF13). Added in slice 9: `seller-access.owner-unverified` (approve: the seller has no owner with a confirmed email, the 3.3 guard) and `seller.has-members` (an owner invitation to a seller that has had a member, HF5); Reza writes their wording in `ux.md` before slice 13. The names match Jafar's change 3. An anonymous read returns the password rules of a population and the invitation lifetimes by kind (`ux.md` 7.2) |
-| 2 | Display name, email and role name after sign-in; reason and its date on S1 and A10 | **Accept.** The HTTP actor summary adds them to the facade's ids and codes; the status read returns the reason (owner only) and the instant of the decision. The status read also says whether a re-application is still possible, so the panel shows "Changes needed" or "Not approved" (Jafar). Responses to the person entitled to see them may hold personal data; events, logs and audit rows may not (the display name is null for a customer; a panel or storefront that needs a label uses the email) |
+| 2 | Display name, email and role name after sign-in; reason and its date on S1 and A10 | **Accept.** The HTTP actor summary adds them to the facade's ids and codes; the status read returns the reason (owner only) and the instant of the decision. The status read also says whether a re-application is still possible, so the panel shows "Changes needed" or "Not approved" (Jafar). Responses to the person entitled to see them may hold personal data; events, logs and audit rows may not (a customer's display name is null until they set one in the storefront's Settings, buyer account backend 2026-10-20; until then a panel or storefront that needs a label uses the email) |
 | 3 | No second typing of the password after confirming an email | **Accept, as proposed:** confirming is the sign-in sequence with the link's token (6.3), so a correct password ends in a session unless a later step stops it. Accepted by Hassan, under full throttling, the link consumed only on success (14.2) |
 | 4 | Dates of the finished steps on S1 | **Accept:** account creation, email confirmation, last decision |
 | 5 | Invitation preview for a valid token | **Accept:** an `anonymous` use case, token in the body: kind, invited email, role name, whether the address already has an account and, for a Staff invitation only, the inviter's display name. Any invalid token: `invitation.rejected` |
