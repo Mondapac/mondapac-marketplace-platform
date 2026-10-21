@@ -1,5 +1,10 @@
 import 'server-only';
-import { NO_FILTERS, type ListingFilters, type Sort } from '../catalog/listing-state.ts';
+import {
+  NO_FILTERS,
+  activeFilterCount,
+  type ListingFilters,
+  type Sort,
+} from '../catalog/listing-state.ts';
 import { NO_SELLER_FILTERS } from '../sellers/sellers-state.ts';
 import {
   SAMPLE_CERTIFICATION_NAMES,
@@ -10,6 +15,8 @@ import {
   SAMPLE_SUBCATEGORY,
   sampleSellerId,
 } from './sample-catalog.ts';
+import { storefrontApiConfig } from './config.ts';
+import { liveCategory, liveProducts, type CategoryScope } from './listing-source.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleSellers } from './sample-sellers.ts';
 import type {
@@ -18,6 +25,7 @@ import type {
   PriceBand,
   ProductCard,
   SellerListing,
+  ShelfCard,
 } from './types.ts';
 
 // The category and search pages' one read of products. It follows the contract of
@@ -26,6 +34,11 @@ import type {
 // package 2 are on main; only this file changes when the route is wired. Filters, sort, the
 // total and the facet counts of the listing page are not in that route yet: the sample answers
 // them so the approved design can be built, and the backend adds them as their own package.
+//
+// With API_BASE_URL set the reads below go to the API (./listing-source.ts) and never mix in the
+// sample: what the route cannot do answers nothing. A filter in a shared URL matches nothing, the
+// order is always the route's best match, there is no total, no facet count, no promotion banner,
+// no category counts and no store search. The pages leave those controls out (`listingIsLive`).
 
 export const PAGE_SIZE = 24;
 export const MAX_PAGE = 100;
@@ -47,7 +60,8 @@ export interface ProductQuery {
 }
 
 export interface ProductPage {
-  readonly items: readonly ProductCard[];
+  /** Cards without a price when the source carries none (the API's search items). */
+  readonly items: readonly ShelfCard[];
   readonly page: number;
   readonly pageSize: number;
   /** True when a later page has items; the API gives no total. */
@@ -73,6 +87,40 @@ export interface ListingFacets {
 }
 
 export const LISTING_PAGE_SIZE = 12;
+
+/** True while the listing reads the API; false while API_BASE_URL is empty (sample data). */
+export function listingIsLive(): boolean {
+  return storefrontApiConfig() !== null;
+}
+
+/** What the filters of a listing offer when the source counts nothing. */
+export const NO_FACETS: ListingFacets = {
+  special: 0,
+  sameDay: 0,
+  lowStock: 0,
+  certifications: [],
+  sellers: [],
+  prices: [],
+};
+
+export type { CategoryScope };
+
+/**
+ * The category (and its subcategory) a category URL names, or undefined for an unknown one (the
+ * page is a 404). With the API on, from the live tree; otherwise the sample's.
+ */
+export async function resolveCategory(
+  code: string,
+  sub?: string,
+): Promise<CategoryScope | undefined> {
+  const live = await liveCategory(code, sub);
+  if (live !== undefined) return live ?? undefined;
+  const category = SAMPLE_CONTENT.categories.find((c) => c.code === code);
+  if (category === undefined) return undefined;
+  if (sub === undefined) return { category };
+  const child = category.children.find((c) => c.code === sub);
+  return child === undefined ? undefined : { category, child };
+}
 
 /** The page number of a `?page=` value: a whole number from 1 to 100, otherwise 1. */
 export function pageOf(value: string | string[] | undefined): number {
@@ -139,6 +187,18 @@ function inScope(query: Pick<ProductQuery, 'q' | 'category' | 'subcategory'>) {
 
 export async function findProducts(query: ProductQuery): Promise<ProductPage> {
   const pageSize = query.pageSize ?? PAGE_SIZE;
+  // A filter the route cannot apply matches nothing rather than seeming to hold for products
+  // nobody checked; the sort is not sent (the route ranks), so every sort reads as best match.
+  if (listingIsLive() && activeFilterCount(query.filters ?? NO_FILTERS) > 0)
+    return { items: [], page: query.page, pageSize, hasMore: false };
+  const live = await liveProducts({
+    ...(query.q === undefined ? {} : { q: query.q }),
+    ...(query.category === undefined ? {} : { category: query.category }),
+    ...(query.subcategory === undefined ? {} : { subcategory: query.subcategory }),
+    page: query.page,
+    pageSize,
+  });
+  if (live !== undefined) return { ...live, page: query.page, pageSize };
   const filters = query.filters ?? NO_FILTERS;
   const matches = inScope(query)
     .filter((p) => matchesFilters(p, filters))
@@ -160,6 +220,7 @@ export async function findProducts(query: ProductQuery): Promise<ProductPage> {
 export async function listingFacets(
   query: Pick<ProductQuery, 'q' | 'category' | 'subcategory'>,
 ): Promise<ListingFacets> {
+  if (listingIsLive()) return Promise.resolve(NO_FACETS);
   const products = inScope(query);
   const count = (test: (p: ProductCard) => boolean) => products.filter(test).length;
   return Promise.resolve({
@@ -185,6 +246,8 @@ export async function listingFacets(
 
 /** The promotion banner of a category listing, if its content slot has one. */
 export async function listingBanner(category: string): Promise<ListingBanner | undefined> {
+  // Banners are admin content with no public read yet: none with the API on, never the sample's.
+  if (listingIsLive()) return Promise.resolve(undefined);
   return Promise.resolve(SAMPLE_LISTING_BANNERS[category]);
 }
 
@@ -196,6 +259,8 @@ export interface CategoryCount {
 
 /** The categories of the products matching the search words, most results first. */
 export async function searchCategories(q: string): Promise<readonly CategoryCount[]> {
+  // The route counts nothing per category: no "In categories" with the API on.
+  if (listingIsLive()) return Promise.resolve([]);
   const counts = new Map<string, number>();
   for (const p of inScope({ q })) counts.set(p.category, (counts.get(p.category) ?? 0) + 1);
   return Promise.resolve(
@@ -214,6 +279,8 @@ export interface StoreResults {
  * be built, and the backend adds it as its own package.
  */
 export async function findStores(q: string): Promise<StoreResults> {
+  // There is no store search route: no store is claimed to match with the API on.
+  if (listingIsLive()) return Promise.resolve({ items: [], location: 'unknown' });
   const words = q.toLowerCase().split(' ').filter(Boolean);
   const matches = new Map<string, number>();
   for (const p of inScope({ q })) {
