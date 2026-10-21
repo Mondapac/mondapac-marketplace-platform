@@ -61,7 +61,7 @@ function build(): CartSource {
       sellers[offer.seller.id] ??= terms(
         offer.seller.id,
         offer.seller.name,
-        offer.deliveryWindow,
+        offer.deliveryWindow ?? '',
         offer.seller.logo,
       );
       items[offer.id] = {
@@ -87,6 +87,7 @@ function build(): CartSource {
 export const SAMPLE_CART_SOURCE: CartSource = build();
 
 export const SAMPLE_CHECKOUT: CheckoutSource = {
+  areaCheck: 'sample',
   customer: {
     firstName: 'Alex',
     fullName: 'Alex Nguyen',

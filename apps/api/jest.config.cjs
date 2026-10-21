@@ -21,4 +21,8 @@ module.exports = {
   // In CI, also report each failed test as a GitHub annotation, so the failing test can be read
   // from the check run without downloading the whole job log.
   reporters: process.env.GITHUB_ACTIONS ? ['default', 'github-actions'] : ['default'],
+  // Shared CI runners are slower and noisier than a laptop: on the Node minimum leg single HTTP
+  // specs went over Jest's 5 s default now and then. CI gets more time; locally the default stays,
+  // so a test that really got slow still shows up there.
+  ...(process.env.GITHUB_ACTIONS ? { testTimeout: 30_000 } : {}),
 };

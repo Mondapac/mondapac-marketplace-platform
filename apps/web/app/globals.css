@@ -957,6 +957,10 @@ svg {
   overflow-wrap: anywhere;
   line-height: calc(18px * var(--fs));
 }
+/* A store with no delivery or minimum-order line: centre its name beside the avatar. */
+.seller b:last-child {
+  grid-row: span 3;
+}
 .seller .eta {
   font-size: calc(12px * var(--fs));
   line-height: calc(16px * var(--fs));
@@ -2633,6 +2637,11 @@ svg {
   overflow: hidden;
   display: grid;
   place-items: center;
+}
+/* No photo yet (real data before catalog media): a shorter, calmer art tile. */
+.gmain.nophoto {
+  aspect-ratio: 16 / 9;
+  max-height: 280px;
 }
 .gmain > img {
   width: 100%;
@@ -5265,6 +5274,12 @@ svg {
   border-bottom-color: var(--sf-teal);
   color: var(--sf-teal);
 }
+.shop-sec {
+  margin: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--sf-line);
+  font-size: calc(17px * var(--fs));
+}
 .shop-panel {
   display: grid;
   gap: 14px;
@@ -6566,6 +6581,9 @@ button.login {
 .slc-m {
   color: var(--sf-slate);
   font-size: calc(13px * var(--fs));
+}
+.slc-m .nw {
+  white-space: nowrap;
 }
 .slc-rt {
   display: inline-flex;

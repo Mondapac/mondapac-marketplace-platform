@@ -1,8 +1,9 @@
-import type { CallContext, Id } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Money } from '@mondapac/shared-kernel';
 import type { CatalogFacade, OfferSellUnits } from '../../catalog';
 import type { InventoryFacade } from '../../inventory';
 import type { PricingFacade } from '../../pricing';
 import type { SellersFacade } from '../../sellers';
+import type { ShippingFacade } from '../../shipping';
 import type { SellerMinimum } from '../domain/cart-evaluator';
 import {
   verdictKey,
@@ -45,6 +46,7 @@ export class FacadeLineFacts implements LineFactsSource {
     private readonly sellers: SellersFacade,
     private readonly pricing: PricingFacade,
     private readonly inventory: InventoryFacade,
+    private readonly shipping: ShippingFacade,
   ) {}
 
   async evaluate(
@@ -231,6 +233,23 @@ export class FacadeLineFacts implements LineFactsSource {
       }
     }
     return minimums;
+  }
+
+  async sellerDeliveryFees(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, Money>> {
+    const fees = new Map<Id<'Seller'>, Money>();
+    const answers = await Promise.all(
+      chunks([...new Set(sellerIds)], BATCH).map((ids) =>
+        this.safe(() => this.shipping.flatFees(context, ids)),
+      ),
+    );
+    for (const answer of answers) {
+      if (answer === null || !answer.ok) continue;
+      for (const [sellerId, fee] of answer.value) fees.set(sellerId, fee);
+    }
+    return fees;
   }
 
   /** A facade that throws is a failed facade (fail closed). */

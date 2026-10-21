@@ -4,7 +4,7 @@ import { Banner, Button, Dialog, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { callApi } from '../api/client.ts';
+import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { useNotice } from './notice.tsx';
 import { grantableOptions, roleLabel } from './role-label.ts';
 import type { SellerRole } from './types.ts';
@@ -41,6 +41,7 @@ export function ChangeRoleDialog({
   const notify = useNotice();
   const messageFor = useFailureMessage();
   const flight = useSingleFlight();
+  const callGuarded = useGuardedCall();
   const [roleId, setRoleId] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
@@ -65,12 +66,13 @@ export function ChangeRoleDialog({
     }
     await flight.run(async () => {
       setProblem(null);
-      const result = await callApi(
+      const result = await callGuarded(
         'POST',
         `identity/seller/team/accounts/${accountId}/role`,
         { roleId },
         csrfToken,
       );
+      if (isStepUpCancelled(result)) return;
       if (result.ok) {
         onClose();
         notify({ tone: 'success', text: t('toast.change-role', { name }) });
@@ -147,6 +149,7 @@ export function InviteMemberDialog({
   const notify = useNotice();
   const messageFor = useFailureMessage();
   const flight = useSingleFlight();
+  const callGuarded = useGuardedCall();
   const [email, setEmail] = useState('');
   const [roleId, setRoleId] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -179,12 +182,13 @@ export function InviteMemberDialog({
       return;
     }
     await flight.run(async () => {
-      const result = await callApi(
+      const result = await callGuarded(
         'POST',
         'identity/seller/team/invitations',
         { email: address, roleId },
         csrfToken,
       );
+      if (isStepUpCancelled(result)) return;
       if (result.ok) {
         onClose();
         notify({ tone: 'success', text: t('dialog.invite.toast-sent', { email: address }) });

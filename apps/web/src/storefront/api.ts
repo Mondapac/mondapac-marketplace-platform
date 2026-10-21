@@ -20,8 +20,12 @@ export type ApiRead<T> =
   /** API_BASE_URL is empty: the caller answers sample data. */
   | { readonly kind: 'off' }
   | { readonly kind: 'ok'; readonly body: T }
-  /** Refused, unreachable, too slow, not JSON, or the host is not listed. */
-  | { readonly kind: 'failed' };
+  /**
+   * Refused, unreachable, too slow, not JSON, or the host is not listed. When the API refused,
+   * `status` is its status and `code` its error code, if the body had one: a caller tells "no
+   * such thing" from a fault by the module's own code, never by a bare 404 (a missing route).
+   */
+  | { readonly kind: 'failed'; readonly status?: number; readonly code?: string };
 
 interface RequestHeaders {
   get(name: string): string | null;
@@ -44,6 +48,18 @@ function urlOf(origin: string, path: string): string | null {
   const url = new URL(`${origin}/${path}`);
   if (url.origin !== origin || url.pathname !== `/${routeOf(path)}`) return null;
   return url.href;
+}
+
+/** The `code` of an API error body, when it is JSON with a short string code. */
+async function errorCodeOf(response: Response): Promise<string | undefined> {
+  try {
+    const body: unknown = await response.json();
+    const code =
+      typeof body === 'object' && body !== null ? (body as { code?: unknown }).code : undefined;
+    return typeof code === 'string' && /^[a-z0-9.-]{1,64}$/u.test(code) ? code : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** {@link apiGet} with its inputs given, for tests. */
@@ -85,7 +101,10 @@ export async function apiGetWith<T>(
     });
     if (!response.ok) {
       log({ msg: 'storefront.api-read-refused', path: routeOf(path), status: response.status });
-      return { kind: 'failed' };
+      const code = await errorCodeOf(response);
+      return code === undefined
+        ? { kind: 'failed', status: response.status }
+        : { kind: 'failed', status: response.status, code };
     }
     return { kind: 'ok', body: (await response.json()) as T };
   } catch (error) {

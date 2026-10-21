@@ -5,6 +5,7 @@ import type { CatalogFacade, OfferSellUnits } from '../../catalog';
 import type { InventoryFacade, SellUnitAvailability } from '../../inventory';
 import type { EffectivePrice, PricingFacade } from '../../pricing';
 import type { SellersFacade } from '../../sellers';
+import type { ShippingFacade } from '../../shipping';
 import { verdictKey } from '../application/ports/line-facts';
 import { FacadeLineFacts } from './facade-line-facts';
 
@@ -93,7 +94,10 @@ describe.each([
         return Promise.resolve(ok(new Map(value === null ? [] : [[key, value]])));
       },
     } as unknown as InventoryFacade;
-    return { facts: new FacadeLineFacts(catalog, sellers, pricing, inventory), calls };
+    return {
+      facts: new FacadeLineFacts(catalog, sellers, pricing, inventory, {} as ShippingFacade),
+      calls,
+    };
   }
   const verdict = async (over?: Parameters<typeof build>[0]) =>
     (await build(over).facts.evaluate(context, [ref])).get(key);
@@ -183,6 +187,7 @@ describe.each([
         { sellerSummaries: answer } as unknown as SellersFacade,
         {} as PricingFacade,
         {} as InventoryFacade,
+        {} as ShippingFacade,
       );
 
     it('maps an explicit none, a Money, and an absent key to none, minimum and unknown', async () => {
@@ -223,6 +228,46 @@ describe.each([
       const many = Array.from({ length: 150 }, (_, n) => id<'Seller'>(1000 + n));
 
       await facts.sellerMinimums(context, [...many, ...many]);
+
+      expect(calls.sort()).toEqual([100, 50]);
+    });
+  });
+
+  describe('sellerDeliveryFees', () => {
+    const OTHER = id<'Seller'>(6);
+    const withFees = (answer: (context: unknown, ids: unknown[]) => Promise<unknown>) =>
+      new FacadeLineFacts(
+        {} as CatalogFacade,
+        {} as SellersFacade,
+        {} as PricingFacade,
+        {} as InventoryFacade,
+        { flatFees: answer } as unknown as ShippingFacade,
+      );
+
+    it('answers the sellers that have a fee, an explicit zero included', async () => {
+      const fees = await withFees(() =>
+        Promise.resolve(ok(new Map([[SELLER, money(0n, currency)]]))),
+      ).sellerDeliveryFees(context, [SELLER, OTHER]);
+
+      expect([...fees]).toEqual([[SELLER, money(0n, currency)]]);
+    });
+
+    it.each([
+      ['a refused call', () => Promise.resolve(err({ code: 'shipping.unavailable' } as never))],
+      ['a thrown call', () => Promise.reject(new Error('down'))],
+    ])('answers no fee on %s', async (_name, answer) => {
+      expect((await withFees(answer).sellerDeliveryFees(context, [SELLER])).size).toBe(0);
+    });
+
+    it('asks once per 100 distinct sellers', async () => {
+      const calls: number[] = [];
+      const facts = withFees((_context, ids) => {
+        calls.push(ids.length);
+        return Promise.resolve(ok(new Map()));
+      });
+      const many = Array.from({ length: 150 }, (_, n) => id<'Seller'>(1000 + n));
+
+      await facts.sellerDeliveryFees(context, [...many, ...many]);
 
       expect(calls.sort()).toEqual([100, 50]);
     });

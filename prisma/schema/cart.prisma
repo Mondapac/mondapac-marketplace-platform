@@ -17,6 +17,10 @@ model CartCart {
   lastChangedAt    DateTime   @map("last_changed_at") @db.Timestamptz(6)
   mergedIntoCartId String?    @map("merged_into_cart_id") @db.Uuid
   mergedAt         DateTime?  @map("merged_at") @db.Timestamptz(6)
+  /// Set when a paid order removed lines from this cart, to the same instant as `lastChangedAt`;
+  /// cleared by the cart's next change (personalization 1c). While set, the cart gets no cart
+  /// reminder ("stop on order").
+  orderedAt        DateTime?  @map("ordered_at") @db.Timestamptz(6)
   /// Optimistic version of the aggregate; 1 at insert, +1 per change.
   version          Int
   createdAt        DateTime   @map("created_at") @db.Timestamptz(6)
@@ -69,5 +73,30 @@ model CartRateCounter {
   @@id([marketId, kind, keyHash])
   @@index([marketId, windowStartedAt])
   @@map("rate_counters")
+  @@schema("cart")
+}
+
+/// A sell unit a signed-in customer saved for later (cart v4); a guest keeps its list in the
+/// browser. Ids only: no quantity, no price, no personal data. At most 100 per account (use case)
+/// and deleted by the hourly purge a year after it was last saved. The CHECKs and the grants are
+/// hand-written in the migration `cart_saved_items`.
+model CartSavedItem {
+  id        String   @id @db.Uuid
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  /// The customer's account id (a plain id, no foreign key, as on carts).
+  accountId String   @map("account_id") @db.Uuid
+  offerId   String   @map("offer_id") @db.Uuid
+  variantId String   @map("variant_id") @db.Uuid
+  /// When the unit was saved, or saved again.
+  savedAt   DateTime @map("saved_at") @db.Timestamptz(6)
+
+  /// One item per sell unit and account.
+  @@unique([marketId, accountId, offerId, variantId])
+  /// The list of an account, newest first.
+  @@index([marketId, accountId, savedAt])
+  /// The purge reads the oldest items of a Market.
+  @@index([marketId, savedAt])
+  @@map("saved_items")
   @@schema("cart")
 }
