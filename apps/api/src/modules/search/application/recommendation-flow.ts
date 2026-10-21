@@ -15,8 +15,8 @@ import type { ProductSearchItem } from './use-cases/search-products.use-case';
 
 /** The viewed products whose categories feed "for you": the newest ones only. */
 export const SIGNAL_PRODUCTS = 20;
-/** The most documents read for the viewed products: every Offer of 50 products, with room. */
-export const VIEWED_DOCUMENTS = 500;
+/** The most Offers read for each viewed product (the first sellable one is shown). */
+export const OFFERS_PER_VIEWED_PRODUCT = 10;
 
 export interface PersonalShelfInput {
   readonly limit?: number | undefined;
@@ -65,7 +65,7 @@ export async function listForYou(
       const viewed = await deps.shelves.byProductIds(
         market,
         viewedProducts.slice(0, SIGNAL_PRODUCTS),
-        SIGNAL_PRODUCTS * 10,
+        1, // a product's categories are the same on each of its Offers
       );
       const documents = await deps.shelves.byOfferIds(market, ranked);
       const fill = await deps.shelves.browseAll(market, FILL_DEPTH);
@@ -135,7 +135,8 @@ export async function listRecentlyViewed(
 
   const read = await deps.unitOfWork.run(
     market,
-    async () => ok(await deps.shelves.byProductIds(market, views.productIds, VIEWED_DOCUMENTS)),
+    async () =>
+      ok(await deps.shelves.byProductIds(market, views.productIds, OFFERS_PER_VIEWED_PRODUCT)),
     { readOnly: true },
   );
   if (!read.ok) return err(UNAVAILABLE);

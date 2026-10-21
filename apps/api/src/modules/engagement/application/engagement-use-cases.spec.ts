@@ -450,6 +450,22 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
       });
     });
 
+    it('checks the switch on read: events that still exist are not answered when it is off', async () => {
+      await record(alice, viewProduct(1), viewCategory(1));
+      // The switch row says off while the events are still there (a write racing the switch,
+      // or a deletion that failed): the read itself must refuse them.
+      await settings.save(market, {
+        id: id<'PersonalizationSetting'>(0x7001),
+        accountId: ALICE,
+        enabled: false,
+        changedAt: T0,
+        createdAt: T0,
+      });
+      expect(events.rows).toHaveLength(2);
+
+      expect(await facade().recentViews(alice, read)).toEqual(EMPTY);
+    });
+
     it('never mixes customers, and takes the subject from the context, not the request', async () => {
       await record(alice, viewProduct(1));
       await record(bob, viewProduct(2));

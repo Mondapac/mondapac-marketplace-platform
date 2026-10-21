@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { CertificationFacade } from '../../certification';
 import type { EngagementFacade } from '../../engagement';
@@ -13,6 +14,8 @@ import type {
  * or exception is `null`: the caller fails closed (no personal signal is used).
  */
 export class FacadePersonalSignals implements PersonalSignals {
+  readonly #logger = new Logger('FacadePersonalSignals');
+
   constructor(
     private readonly engagement: EngagementFacade,
     private readonly certification: CertificationFacade,
@@ -25,10 +28,13 @@ export class FacadePersonalSignals implements PersonalSignals {
         consent: privacy.consent,
         guestToken: privacy.guestToken,
       });
-      return result.ok
-        ? { productIds: result.value.productIds, categoryIds: result.value.categoryIds }
-        : null;
-    } catch {
+      if (result.ok) {
+        return { productIds: result.value.productIds, categoryIds: result.value.categoryIds };
+      }
+      this.#warn('search.signals-refused', 'engagement.recent-views', context, result.error.code);
+      return null;
+    } catch (error) {
+      this.#warn('search.signals-failed', 'engagement.recent-views', context, nameOf(error));
       return null;
     }
   }
@@ -36,9 +42,35 @@ export class FacadePersonalSignals implements PersonalSignals {
   async certifiedCategoryIds(context: CallContext): Promise<ReadonlySet<Id<'Category'>> | null> {
     try {
       const result = await this.certification.certifiedCategoryIds(context);
-      return result.ok ? new Set(result.value) : null;
-    } catch {
+      if (result.ok) return new Set(result.value);
+      this.#warn(
+        'search.signals-refused',
+        'certification.certified-categories',
+        context,
+        result.error.code,
+      );
+      return null;
+    } catch (error) {
+      this.#warn(
+        'search.signals-failed',
+        'certification.certified-categories',
+        context,
+        nameOf(error),
+      );
       return null;
     }
   }
+
+  /** A code or an error name, the Market and the correlation id: never a message, id or token. */
+  #warn(msg: string, source: string, context: CallContext, code: string): void {
+    this.#logger.warn({
+      msg,
+      source,
+      code,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+  }
 }
+
+const nameOf = (error: unknown): string => (error instanceof Error ? error.name : 'unknown');

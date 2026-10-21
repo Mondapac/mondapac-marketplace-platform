@@ -64,12 +64,14 @@ class MemoryShelves implements ShelfDocumentsReader {
   byProductId(_market: MarketContext, productId: Id<'Product'>, limit: number) {
     return Promise.resolve(this.documents.filter((d) => d.productId === productId).slice(0, limit));
   }
-  byProductIds(_market: MarketContext, productIds: readonly Id<'Product'>[], limit: number) {
+  byProductIds(_market: MarketContext, productIds: readonly Id<'Product'>[], perProduct: number) {
     return Promise.resolve(
-      this.documents
-        .filter((d) => productIds.includes(d.productId))
-        .sort((a, b) => (a.offerId < b.offerId ? -1 : 1))
-        .slice(0, limit),
+      productIds.flatMap((productId) =>
+        this.documents
+          .filter((d) => d.productId === productId)
+          .sort((a, b) => (a.offerId < b.offerId ? -1 : 1))
+          .slice(0, perProduct),
+      ),
     );
   }
   browseAll(_market: MarketContext, limit: number) {
@@ -197,6 +199,22 @@ describe.each([['AU'], ['ZZ']] as const)('personal shelves in market %s', (code)
 
       expect(offersOf(result)).toEqual([2, 4, 5, 1, 3, 6].map(offer));
       expect(sources.asked).toEqual([`authenticated:${RANKED_DEPTH}`]);
+    });
+
+    it('reads the categories of every newest viewed product, however many Offers another has', async () => {
+      shelves.documents = [
+        ...shelves.documents,
+        ...[...Array(300).keys()].map((n) => hit(3000 + n, [GROCERY], 2)),
+        hit(7000, [category(9)], 9),
+      ];
+      sources.ranked = [offer(1), offer(2), offer(7000)];
+      signals.views = { productIds: [product(2), product(9)], categoryIds: [] };
+
+      const items = offersOf(await forYou({ limit: 2 }));
+
+      // Product 9 sorts last and its category still counts: its Offer is lifted over offer 1,
+      // which plain rank order would have shown second.
+      expect(items).toEqual([offer(2), offer(7000)]);
     });
 
     it('also reads the categories of the viewed products', async () => {
@@ -327,6 +345,20 @@ describe.each([['AU'], ['ZZ']] as const)('personal shelves in market %s', (code)
       visibility.hidden = new Set([offer(3)]);
 
       expect(offersOf(await recent())).toEqual([9, 1, 4].map(offer));
+    });
+
+    it('keeps the newest viewed product when an older one has more Offers than any cap', async () => {
+      // Product 5000 sorts after product 3, and product 3 has far more Offers than the old
+      // whole-answer cap of 500: the newest view (5000) must still be shown.
+      shelves.documents = [
+        ...[...Array(600).keys()].map((n) => hit(2000 + n, [GROCERY], 3)),
+        hit(1, [GROCERY], 5000),
+      ];
+      signals.views = { productIds: [product(5000), product(3)], categoryIds: [] };
+
+      const items = offersOf(await recent());
+
+      expect(items).toEqual([offer(1), offer(2000)]);
     });
 
     it('drops a viewed product that has no indexed Offer', async () => {

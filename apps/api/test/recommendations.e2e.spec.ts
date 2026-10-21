@@ -99,8 +99,16 @@ describe('personal shelves over HTTP', () => {
             byOfferIds: (_m: MarketContext, offerIds: readonly Id<'Offer'>[]) =>
               Promise.resolve(documents.filter((d) => offerIds.includes(d.offerId))),
             byProductId: () => Promise.resolve([]),
-            byProductIds: (_m: MarketContext, productIds: readonly Id<'Product'>[]) =>
-              Promise.resolve(documents.filter((d) => productIds.includes(d.productId))),
+            byProductIds: (
+              _m: MarketContext,
+              productIds: readonly Id<'Product'>[],
+              perProduct: number,
+            ) =>
+              Promise.resolve(
+                productIds.flatMap((p) =>
+                  documents.filter((d) => d.productId === p).slice(0, perProduct),
+                ),
+              ),
             browseAll: (_m: MarketContext, limit: number) =>
               Promise.resolve(
                 [...documents].sort((a, b) => a.name.localeCompare(b.name)).slice(0, limit),
@@ -350,10 +358,10 @@ describe('personal shelves over HTTP', () => {
         expect(mine.headers['set-cookie']).toBeUndefined();
         expect(offersOf(mine.body)).toEqual([offer(4), offer(2)]);
 
-        // A guest cookie and consent on the same request change nothing for a customer.
+        // Sec-GPC wins for a customer too.
         const stray = await http()
           .get(PATH)
-          .set({ ...headers, ...CONSENT, 'sec-gpc': '1' });
+          .set({ ...headers, 'sec-gpc': '1' });
         expect(stray.body).toEqual({ items: [] });
 
         const off = await http()
@@ -362,6 +370,22 @@ describe('personal shelves over HTTP', () => {
           .send({ enabled: false });
         expect(off.status).toBe(200);
         expect((await http().get(PATH).set(headers)).body).toEqual({ items: [] });
+      });
+
+      it("ignores a consenting guest cookie on a customer request: only the customer's views come back", async () => {
+        await boot();
+        // A guest who consented and has views of product 1; the customer has viewed product 2.
+        const guestCookie = await guestWithViews(code, [view(1)]);
+        const headers = customerSession(code);
+        await http().post('/engagement/events').set(headers).send(view(2));
+
+        const response = await http()
+          .get(PATH)
+          .set({ ...headers, ...CONSENT, cookie: `${headers.cookie}; ${guestCookie}` });
+
+        expect(response.status).toBe(200);
+        expect(offersOf(response.body)).toEqual([offer(2)]);
+        expect(response.headers['set-cookie']).toBeUndefined();
       });
 
       it('shows nothing of one customer to another or to a guest', async () => {
@@ -448,6 +472,20 @@ describe('personal shelves over HTTP', () => {
         await http().put('/customers/me/personalization').set(headers).send({ enabled: false });
         const off = await http().get(PATH).set(headers);
         expect(offersOf(off.body)).toEqual([1, 2, 3, 4].map(offer));
+      });
+
+      it('ignores a consenting guest cookie on a customer request', async () => {
+        await boot();
+        const guestCookie = await guestWithViews(code, [viewCategory(MEAT)]);
+        const headers = customerSession(code);
+        await http().post('/engagement/events').set(headers).send(viewCategory(GROCERY));
+
+        const response = await http()
+          .get(PATH)
+          .set({ ...headers, ...CONSENT, cookie: `${headers.cookie}; ${guestCookie}` });
+
+        // The customer's grocery view leads, not the guest's meat view.
+        expect(offersOf(response.body)).toEqual([1, 3, 2, 4].map(offer));
       });
 
       it('takes the subject from nowhere but the session or the cookie, and bounds limit', async () => {

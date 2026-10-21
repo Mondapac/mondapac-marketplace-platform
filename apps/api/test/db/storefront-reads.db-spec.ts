@@ -487,16 +487,17 @@ describe.each(TEST_MARKETS)('storefront reads in market %s (database)', (code) =
       expect(all.map((h) => h.offerId)).not.toContain(unrelated.offerId);
     });
 
-    it('reads the documents of several products at once, at most the limit, in this Market only', async () => {
+    it('reads the documents of several products, at most the limit of each, in this Market only', async () => {
       const documents = new PrismaOfferDocumentRepository(db.service);
       const reader = new PrismaShelfDocumentsReader(db.service);
       const [one, two] = [ids.next<'Product'>(), ids.next<'Product'>()];
       const a = { ...doc(market, 'Reads many one'), productId: one };
       const b = { ...doc(market, 'Reads many two'), productId: two };
+      const a2 = { ...doc(market, 'Reads many one again'), productId: one };
       const unrelated = doc(market, 'Reads many unrelated');
       const canary = { ...doc(other, 'Reads many canary'), productId: one };
       await value(market, async () => {
-        for (const document of [a, b, unrelated])
+        for (const document of [a, a2, b, unrelated])
           await documents.upsert(market, document, clock.now());
       });
       await value(other, () => documents.upsert(other, canary, clock.now()));
@@ -505,10 +506,11 @@ describe.each(TEST_MARKETS)('storefront reads in market %s (database)', (code) =
       const capped = await value(market, () => reader.byProductIds(market, [one, two], 1));
       const none = await value(market, () => reader.byProductIds(market, [], 10));
 
-      expect(all.map((h) => h.offerId).sort()).toEqual([a.offerId, b.offerId].sort());
+      expect(all.map((h) => h.offerId).sort()).toEqual([a.offerId, a2.offerId, b.offerId].sort());
       expect(all.map((h) => h.offerId)).not.toContain(canary.offerId);
       expect(all.map((h) => h.offerId)).not.toContain(unrelated.offerId);
-      expect(capped).toHaveLength(1);
+      // The cap is per product: neither product loses its documents to the other.
+      expect(capped.map((h) => h.productId).sort()).toEqual([one, two].sort());
       expect(none).toEqual([]);
     });
   });
