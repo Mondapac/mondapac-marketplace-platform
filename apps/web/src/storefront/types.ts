@@ -359,7 +359,7 @@ export type StoreProducts =
       readonly page: number;
       readonly hasMore: boolean;
     }
-  | { readonly kind: 'failed' };
+  | { readonly kind: 'failed'; readonly page: number };
 
 /**
  * The public seller page (`/s/<slug>`): profile, terms, certificates and products. Fields marked

@@ -13,6 +13,7 @@ import type { Response } from 'express';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { MarketFromPath } from '../../../platform/http/market-from-path.decorator';
+import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
 import { PublishedImageRead } from '../application/use-cases/published-image-read.use-case';
 import { fail } from './http-answers';
@@ -27,7 +28,7 @@ export const PUBLIC_IMAGE_MAX_AGE_SECONDS = 300;
 /**
  * The buyer-facing photo route (catalog design 10, simplified path; storefront images package).
  * No session is read and none is ever written: the actor is the Market's anonymous actor and the
- * Market is in the path (`:market`, checked like `x-market-id`; an `<img>` cannot send a header). In the default per-origin rate-limit class. Serves a
+ * Market is in the path (`:market`, checked like `x-market-id`; an `<img>` cannot send a header). In its own per-origin rate-limit class (`public-media`, Market `requestLimits.publicMediaPerMinute`), so a page of photos cannot trip the default limit. Serves a
  * rendition only for a product that is published in the Market, for a photo that is in its
  * current published revision and is not taken down; every other case, whatever the reason, is the
  * same `404 image.not-found`. The bytes are JPEG written by the server; the type is set by the
@@ -36,6 +37,7 @@ export const PUBLIC_IMAGE_MAX_AGE_SECONDS = 300;
 @ApiTags('catalog')
 @RoutePopulation('customer')
 @MarketFromPath()
+@RateLimit('public-media')
 @Controller('catalog/public-images')
 export class PublicProductImageController {
   readonly #logger = new Logger('PublicProductImageController');
@@ -49,7 +51,7 @@ export class PublicProductImageController {
       'No session needed; the Market is in the path because a browser image request cannot send `x-market-id`. `size` is thumb, medium or large. Served only for a published ' +
       "product's current photo that is not taken down; any other case is 404 image.not-found. " +
       'The answer is an image/jpeg written by the server, with `nosniff`, a sandboxing CSP, ' +
-      '`Cross-Origin-Resource-Policy: cross-origin` and `Cache-Control: public, max-age=300` ' +
+      '`Cross-Origin-Resource-Policy: cross-origin` and `Cache-Control: public, max-age=300, s-maxage=300` ' +
       '(no `immutable`: a takedown must take effect quickly). No cookie is ever set. The ' +
       'query string is ignored.',
   })
@@ -77,7 +79,10 @@ export class PublicProductImageController {
     const result = await this.readImage.execute(context, { productId, imageId, size });
     if (result.ok) {
       // Only a served photo is cacheable; the global `no-store` stays on every refusal.
-      response.setHeader('Cache-Control', `public, max-age=${PUBLIC_IMAGE_MAX_AGE_SECONDS}`);
+      response.setHeader(
+        'Cache-Control',
+        `public, max-age=${PUBLIC_IMAGE_MAX_AGE_SECONDS}, s-maxage=${PUBLIC_IMAGE_MAX_AGE_SECONDS}`,
+      );
       // The storefront loads the photo from another origin (a cookieless image domain).
       response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       return new StreamableFile(result.value.bytes, { type: result.value.contentType });

@@ -182,7 +182,9 @@ class StubShelves implements ShelfDocumentsReader {
     offset: number,
   ) {
     this.browsed.push({ market: market.marketId, sellerId, categoryId, limit, offset });
-    return Promise.resolve(this.hits.filter((h) => h.sellerId === sellerId).slice(0, limit));
+    return Promise.resolve(
+      this.hits.filter((h) => h.sellerId === sellerId).slice(offset, offset + limit),
+    );
   }
 }
 
@@ -526,14 +528,14 @@ describe.each([
         stores.stores.set('halal-shop', SELLER);
         shelves.hits = [storeHit(1), storeHit(2, OTHER), storeHit(3)];
 
-        const result = await search({ store: 'halal-shop', page: 2, pageSize: 10 });
+        const result = await search({ store: 'halal-shop', page: 1, pageSize: 10 });
 
         expect(result.ok && result.value.items.map((item) => item.offerId)).toEqual([
           offer(1),
           offer(3),
         ]);
         expect(shelves.browsed).toEqual([
-          { market: code, sellerId: SELLER, categoryId: null, limit: 11, offset: 10 },
+          { market: code, sellerId: SELLER, categoryId: null, limit: 11, offset: 0 },
         ]);
         expect(stores.asked).toEqual(['halal-shop']);
         expect(reader.requests).toEqual([]);
@@ -558,7 +560,7 @@ describe.each([
         expect(result.ok && result.value.items.map((item) => item.offerId)).toEqual([offer(2)]);
       });
 
-      it('answers an empty page, not an error, for a store that is unknown, retired or not selling', async () => {
+      it('answers an empty page, not an error, for an address that sellers resolves to no store', async () => {
         shelves.hits = [storeHit(1)];
 
         const result = await search({ store: 'no-such-shop', page: 3, pageSize: 5 });
@@ -571,6 +573,29 @@ describe.each([
         expect(reader.requests).toEqual([]);
         expect(images.asked).toEqual([]);
       });
+
+      it.each([
+        // [hits for the store, page, pageSize, ids shown, hasMore]
+        [3, 1, 3, [1, 2, 3], false],
+        [4, 1, 3, [1, 2, 3], true],
+        [6, 2, 3, [4, 5, 6], false],
+        [7, 2, 3, [4, 5, 6], true],
+        [3, 2, 3, [], false],
+        [3, 5, 3, [], false],
+      ])(
+        'with %i products, page %i of %i shows %j and hasMore %s',
+        async (total, page, pageSize, shown, more) => {
+          stores.stores.set('halal-shop', SELLER);
+          shelves.hits = Array.from({ length: total }, (_, i) => storeHit(i + 1));
+
+          const result = await search({ store: 'halal-shop', page, pageSize });
+
+          expect(result.ok && result.value.items.map((item) => item.offerId)).toEqual(
+            shown.map((n) => offer(n)),
+          );
+          expect(result.ok && result.value.hasMore).toBe(more);
+        },
+      );
 
       it('fails closed when sellers cannot say who holds the address', async () => {
         shelves.hits = [storeHit(1)];

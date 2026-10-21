@@ -26,18 +26,22 @@ const PRODUCT = id<'Product'>(0xc001);
 const DRAFT_ONLY = id<'ProductImage'>(0x7d);
 const TAKEN_DOWN = id<'ProductImage'>(0x7e);
 const PUBLIC = id<'ProductImage'>(0x7f);
+const SUPERSEDED = id<'ProductImage'>(0x80);
 
 interface Row {
   readonly market: string;
   readonly productId: string;
   readonly imageId: string;
   readonly productPublished: boolean;
-  readonly inPublishedRevision: boolean;
+  /** The revision this photo belongs to; the product's published one is `publishedRevision`. */
+  readonly revision: number;
   readonly state: 'clean' | 'taken-down';
 }
 
 class MemoryPublished implements PublishedImagesReader {
   rows: Row[] = [];
+  publishedRevision = 2;
+  failWith: Error | null = null;
   imagesOf() {
     return Promise.resolve(new Map());
   }
@@ -47,11 +51,15 @@ class MemoryPublished implements PublishedImagesReader {
     imageId: string,
     size: string,
   ): Promise<string | null> {
+    if (this.failWith !== null) return Promise.reject(this.failWith);
     const row = this.rows.find(
       (r) => r.market === market.marketId && r.productId === productId && r.imageId === imageId,
     );
     const open =
-      row !== undefined && row.productPublished && row.inPublishedRevision && row.state === 'clean';
+      row !== undefined &&
+      row.productPublished &&
+      row.revision === this.publishedRevision &&
+      row.state === 'clean';
     return Promise.resolve(open ? `${productId}/${imageId}/${size}` : null);
   }
 }
@@ -74,7 +82,7 @@ describe.each(TEST_MARKETS)('public product photos over HTTP in market %s', (cod
     market: code,
     productId: PRODUCT,
     productPublished: true,
-    inPublishedRevision: true,
+    revision: 2,
     state: 'clean',
     ...overrides,
   });
@@ -91,13 +99,14 @@ describe.each(TEST_MARKETS)('public product photos over HTTP in market %s', (cod
     store = new MemoryObjectStore();
     reader.rows = [
       row({ imageId: PUBLIC }),
-      row({ imageId: DRAFT_ONLY, inPublishedRevision: false }),
+      row({ imageId: DRAFT_ONLY, revision: 3 }),
       row({ imageId: TAKEN_DOWN, state: 'taken-down' }),
+      row({ imageId: SUPERSEDED, revision: 1 }),
       // The same ids in the other Market: not readable from this one.
       { ...row({ imageId: PUBLIC }), market: otherCode },
     ];
     for (const size of ['thumb', 'medium', 'large']) {
-      for (const imageId of [PUBLIC, DRAFT_ONLY, TAKEN_DOWN]) {
+      for (const imageId of [PUBLIC, DRAFT_ONLY, TAKEN_DOWN, SUPERSEDED]) {
         await store.put(`${PRODUCT}/${imageId}/${size}`, jpeg);
       }
     }
@@ -126,7 +135,7 @@ describe.each(TEST_MARKETS)('public product photos over HTTP in market %s', (cod
         "default-src 'none'; frame-ancestors 'none'; sandbox",
       );
       expect(response.headers['cross-origin-resource-policy']).toBe('cross-origin');
-      expect(response.headers['cache-control']).toBe('public, max-age=300');
+      expect(response.headers['cache-control']).toBe('public, max-age=300, s-maxage=300');
       expect(response.headers['cache-control']).not.toContain('immutable');
       expect(response.headers['set-cookie']).toBeUndefined();
       expect((response.body as Buffer).equals(jpeg)).toBe(true);
@@ -157,6 +166,7 @@ describe.each(TEST_MARKETS)('public product photos over HTTP in market %s', (cod
     ['an unknown photo id', () => url(MISSING)],
     ['an unknown product id', () => url(PUBLIC, 'medium', id<'Product'>(0xc999))],
     ['a draft or pending-only photo (not in the published revision)', () => url(DRAFT_ONLY)],
+    ['a photo of a superseded (older) revision', () => url(SUPERSEDED)],
     ['a taken-down photo', () => url(TAKEN_DOWN)],
     ['an unknown size', () => url(PUBLIC, 'huge')],
     ['the original', () => url(PUBLIC, 'original')],
@@ -225,6 +235,29 @@ describe.each(TEST_MARKETS)('public product photos over HTTP in market %s', (cod
       .set({ 'x-market-id': code });
 
     expect(response.status).toBe(404);
+  });
+
+  it('stops serving a photo once a newer revision is published without it', async () => {
+    expect((await get(url(PUBLIC))).status).toBe(200);
+    reader.publishedRevision = 3;
+
+    const response = await get(url(PUBLIC));
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual(NOT_FOUND);
+    expect((await get(url(DRAFT_ONLY))).status).toBe(200);
+  });
+
+  it('answers 503 image.unavailable, never cacheable, with no cookie, when the reader fails', async () => {
+    reader.failWith = new Error('connection refused');
+
+    const response = await get(url(PUBLIC));
+
+    expect(response.status).toBe(503);
+    expect(response.body).toMatchObject({ code: 'image.unavailable' });
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect(response.headers['content-type']).toMatch(/json/);
   });
 
   it('answers 503 image.unavailable, not a guess, when the store fails', async () => {

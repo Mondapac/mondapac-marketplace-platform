@@ -38,8 +38,10 @@ export function storeProductsOf(
   slugs: ReadonlyMap<string, string>,
   photo: PhotoUrl | null,
 ): StoreProducts {
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) return { kind: 'failed' };
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return { kind: 'failed', page };
+  }
   const { items, hasMore } = body as { items?: unknown; hasMore?: unknown };
-  if (!Array.isArray(items) || typeof hasMore !== 'boolean') return { kind: 'failed' };
+  if (!Array.isArray(items) || typeof hasMore !== 'boolean') return { kind: 'failed', page };
   return { kind: 'ok', items: cardsOf({ items }, slugs, photo), page, hasMore };
 }

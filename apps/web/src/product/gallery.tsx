@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { CertificationSeal } from '../certification/certification-seal.tsx';
+import { checkLoaded } from '../icons/check-loaded.ts';
 import { CategoryArt } from '../icons/category-icon.tsx';
 import type { CertificationBadge } from '../storefront/types.ts';
 
@@ -38,10 +39,22 @@ export function Gallery({
   const fail = (src: string) => setFailed((list) => (list.includes(src) ? list : [...list, src]));
   return (
     <div className="gal">
-      <div className={shots.length === 0 ? 'gmain nophoto' : 'gmain'}>
+      <div
+        className={
+          photos.length === 0 ? 'gmain nophoto' : shots.length === 0 ? 'gmain broken' : 'gmain'
+        }
+      >
         {photo ? (
           // A photo is the API's public photo route (a plain image, not a server-resized one).
-          <img src={photo} alt={name} decoding="async" onError={() => fail(photo)} />
+          <img
+            src={photo}
+            alt={name}
+            width={800}
+            height={800}
+            decoding="async"
+            ref={(el) => checkLoaded(el, () => fail(photo))}
+            onError={() => fail(photo)}
+          />
         ) : (
           <CategoryArt code={category} />
         )}
@@ -63,6 +76,9 @@ export function Gallery({
               <img
                 src={shot.thumb}
                 alt=""
+                width={64}
+                height={64}
+                ref={(el) => checkLoaded(el, () => fail(shot.src))}
                 loading="lazy"
                 decoding="async"
                 onError={() => fail(shot.src)}

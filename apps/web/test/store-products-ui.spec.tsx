@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { checkLoaded } from '../src/icons/check-loaded.ts';
 import messages from '../messages/en.json';
 import { CardPhoto } from '../src/home/card-photo.tsx';
 import { Gallery } from '../src/product/gallery.tsx';
@@ -69,16 +70,35 @@ describe('Products tab of a real store', () => {
     expect(screen.queryByRole('navigation', { name: 'Products pages' })).toBeNull();
   });
 
-  it('pages with links that carry the page number', () => {
+  it('pages with the numbered pager: fixed slots, the current page as a link, the panel fragment', () => {
     show({ kind: 'ok', page: 2, hasMore: true, items: [card('p3', 'Chicken thigh')] });
-    const nav = screen.getByRole('navigation', { name: 'Products pages' });
-    expect(within(nav).getByRole('link', { name: 'Previous' }).getAttribute('href')).toBe(
-      '/s/kedron-halal',
+    const nav = screen.getByRole('navigation', { name: 'Product pages' });
+    expect(nav.className).toContain('pager nums');
+    expect(within(nav).getByRole('link', { name: 'Previous page' }).getAttribute('href')).toBe(
+      '/s/kedron-halal#store-products',
     );
-    expect(within(nav).getByRole('link', { name: 'Next' }).getAttribute('href')).toBe(
-      '/s/kedron-halal?page=3',
+    expect(within(nav).getByRole('link', { name: 'Next page' }).getAttribute('href')).toBe(
+      '/s/kedron-halal?page=3#store-products',
     );
-    expect(within(nav).getByText('Page 2')).toBeTruthy();
+    const current = within(nav).getByRole('link', { name: 'Page 2' });
+    expect(current.getAttribute('aria-current')).toBe('page');
+    expect(current.tagName).toBe('A');
+  });
+
+  it('keeps both slots on the first and the last page, the missing one disabled', () => {
+    show({ kind: 'ok', page: 1, hasMore: true, items: [card('p3', 'Chicken thigh')] });
+    let nav = screen.getByRole('navigation', { name: 'Product pages' });
+    expect(nav.querySelector('span[aria-disabled="true"]')?.getAttribute('aria-label')).toBe(
+      'Previous page',
+    );
+    expect(within(nav).getByRole('link', { name: 'Next page' })).toBeTruthy();
+    cleanup();
+    show({ kind: 'ok', page: 3, hasMore: false, items: [card('p3', 'Chicken thigh')] });
+    nav = screen.getByRole('navigation', { name: 'Product pages' });
+    expect(nav.querySelector('span[aria-disabled="true"]')?.getAttribute('aria-label')).toBe(
+      'Next page',
+    );
+    expect(within(nav).getByRole('link', { name: 'Previous page' })).toBeTruthy();
   });
 
   it('says so for a store with no products and for a page past the end', () => {
@@ -86,12 +106,18 @@ describe('Products tab of a real store', () => {
     expect(screen.getByText('No products yet')).toBeTruthy();
     cleanup();
     show({ kind: 'ok', page: 9, hasMore: false, items: [] });
+    expect(screen.getByText('This page has no products')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Back to the first page' })).toBeTruthy();
   });
 
   it('says the products could not be loaded, inside the tab, and keeps the other tabs', () => {
-    show({ kind: 'failed' });
-    expect(screen.getByRole('alert').textContent).toContain('Products could not be loaded');
+    show({ kind: 'failed', page: 2 });
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain('Products could not be loaded');
+    expect(alert.textContent).not.toContain('in a moment');
+    expect(within(alert).getByRole('link', { name: 'Try again' }).getAttribute('href')).toBe(
+      '/s/kedron-halal?page=2#store-products',
+    );
     expect(screen.getByRole('tab', { name: 'About' })).toBeTruthy();
   });
 });
@@ -101,7 +127,7 @@ describe('reading the products page', () => {
 
   it('refuses a body that is not a page, whole', () => {
     for (const body of [null, 'x', [], {}, { items: {} }, { items: [item] }, { hasMore: true }]) {
-      expect(storeProductsOf(body, 1, new Map(), photo)).toEqual({ kind: 'failed' });
+      expect(storeProductsOf(body, 1, new Map(), photo)).toEqual({ kind: 'failed', page: 1 });
     }
   });
 
@@ -126,6 +152,26 @@ describe('reading the products page', () => {
 });
 
 describe('photos that fail to load', () => {
+  it('a photo already failed before hydration (complete, no pixels) is treated as failed', () => {
+    const img = (complete: boolean, naturalWidth: number, currentSrc = 'https://x/y') =>
+      ({ complete, naturalWidth, currentSrc }) as HTMLImageElement;
+    const broken = vi.fn();
+    checkLoaded(img(true, 0), broken);
+    checkLoaded(img(true, 640), broken);
+    checkLoaded(img(false, 0), broken);
+    checkLoaded(null, broken);
+    expect(broken).toHaveBeenCalledTimes(1);
+  });
+
+  it('a product that starts without photos keeps the shorter art tile', () => {
+    const { container } = render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <Gallery name="x" category="meat" photos={[]} certifications={[]} special={false} />
+      </NextIntlClientProvider>,
+    );
+    expect(container.querySelector('.gmain.nophoto')).not.toBeNull();
+  });
+
   it('a card shows its illustration instead of a broken image', () => {
     const { container } = render(<CardPhoto src="https://img.example.com/x" category="meat" />);
     const img = container.querySelector('img')!;
@@ -157,6 +203,8 @@ describe('photos that fail to load', () => {
     expect(container.querySelector('.gth')).toBeNull();
     fireEvent.error(container.querySelector('.gmain img')!);
     expect(container.querySelector('.gmain img')).toBeNull();
-    expect(container.querySelector('.gmain.nophoto')).not.toBeNull();
+    // It started with photos, so the tile keeps its square: no jump to the 16:9 no-photo tile.
+    expect(container.querySelector('.gmain.broken')).not.toBeNull();
+    expect(container.querySelector('.gmain.nophoto')).toBeNull();
   });
 });

@@ -185,3 +185,27 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
     expect(calls).toHaveLength(limit);
   }, 60_000);
 });
+
+describe.each(TEST_MARKETS)('product search with the real use case in market %s', (code) => {
+  let app: NestExpressApplication;
+  beforeEach(async () => {
+    ({ app } = await createTestApp({}));
+  });
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('refuses a text query together with a store as 400 validation.failed, before any read', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/search/products?q=tea&store=kedron-halal')
+      .set({ 'x-market-id': code });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      statusCode: 400,
+      code: 'validation.failed',
+      details: { fields: [{ path: 'store', code: 'with-text' }] },
+    });
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+});

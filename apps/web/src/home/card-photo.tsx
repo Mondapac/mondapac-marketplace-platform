@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { checkLoaded } from '../icons/check-loaded.ts';
 import { CategoryArt } from '../icons/category-icon.tsx';
 
 /**
@@ -18,6 +19,7 @@ export function CardPhoto({ src, category }: { readonly src: string; readonly ca
       alt=""
       loading="lazy"
       decoding="async"
+      ref={(el) => checkLoaded(el, () => setBroken(true))}
       onError={() => setBroken(true)}
     />
   );

@@ -67,19 +67,25 @@ export class PublishedImageRead extends UseCase<
     if (typeof input.size !== 'string' || !isRenditionSize(input.size)) return err(NOT_FOUND);
     const size = input.size;
     const { market } = context;
-    const read = await this.deps.unitOfWork.run<string | null, never>(
-      market,
-      async () =>
-        ok(
-          await this.deps.publishedImagesReader.renditionKey(
-            market,
-            product.value,
-            image.value,
-            size,
+    let read: Result<string | null, unknown>;
+    try {
+      read = await this.deps.unitOfWork.run<string | null, never>(
+        market,
+        async () =>
+          ok(
+            await this.deps.publishedImagesReader.renditionKey(
+              market,
+              product.value,
+              image.value,
+              size,
+            ),
           ),
-        ),
-      { readOnly: true },
-    );
+        { readOnly: true },
+      );
+    } catch {
+      // A reader or unit-of-work fault is never a guess: the route answers 503, not 500 or 404.
+      return err({ code: 'image.unavailable' });
+    }
     if (!read.ok) return err({ code: 'image.unavailable' });
     if (read.value === null) return err(NOT_FOUND);
     try {

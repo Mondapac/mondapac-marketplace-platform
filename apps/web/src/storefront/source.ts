@@ -202,7 +202,7 @@ async function loadStoreProducts(slug: string, page: number): Promise<StoreProdu
     apiGet<unknown>('catalog/categories'),
     photoUrls(),
   ]);
-  if (answer.kind !== 'ok') return { kind: 'failed' };
+  if (answer.kind !== 'ok') return { kind: 'failed', page };
   const slugs = categoriesOf(tree.kind === 'ok' ? tree.body : null).slugs;
   return storeProductsOf(answer.body, page, slugs, photo);
 }
