@@ -59,8 +59,9 @@ export const BusinessFileWithdrawn = defineEvent({
 
 /**
  * A store's public profile texts were saved and published (sellers design 7.4, 3.7; slice 12 part
- * 2). Ids only: no text, no hash. The aggregate is the store profile and its version is the
- * revision number, so the pair is unique per save. No consumer yet (the storefront reads the
+ * 2). Ids only: no text, no hash. The aggregate id is the revision's id and its version the
+ * revision number: the outbox key (aggregate id, version) is unique, and the seller id's own
+ * versions belong to the business file's events. No consumer yet (the storefront reads the
  * pointer in clear on every call).
  */
 export const StoreProfilePublished = defineEvent({

@@ -66,7 +66,9 @@ function exported(
     | 'TEST_PRICING_CONSTRAINTS_DATABASE_URL'
     | 'TEST_PRICING_CONSTRAINTS_OWNER_DATABASE_URL'
     | 'TEST_CERT_CLAIMS_CORE_DATABASE_URL'
-    | 'TEST_CERT_CLAIMS_CORE_OWNER_DATABASE_URL',
+    | 'TEST_CERT_CLAIMS_CORE_OWNER_DATABASE_URL'
+    | 'TEST_STORE_PROFILE_DATABASE_URL'
+    | 'TEST_STORE_PROFILE_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -278,4 +280,16 @@ export function certClaimsCoreTestDatabaseUrl(): string {
 
 export function certClaimsCoreOwnerTestDatabaseUrl(): string {
   return exported('TEST_CERT_CLAIMS_CORE_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that sellers-store-profile-http.db-spec.ts runs the whole application on (a published
+ * claim-term vocabulary per Market, relayed events), as the application login and as its owner.
+ */
+export function storeProfileTestDatabaseUrl(): string {
+  return exported('TEST_STORE_PROFILE_DATABASE_URL');
+}
+
+export function storeProfileOwnerTestDatabaseUrl(): string {
+  return exported('TEST_STORE_PROFILE_OWNER_DATABASE_URL');
 }

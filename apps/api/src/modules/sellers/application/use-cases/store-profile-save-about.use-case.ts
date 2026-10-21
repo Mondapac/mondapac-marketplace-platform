@@ -173,7 +173,9 @@ export class StoreProfileSaveAbout extends UseCase<
           );
           await deps.outbox.append(context, [
             StoreProfilePublished.record({
-              aggregateId: owner.sellerId,
+              // The revision id, not the seller id: the outbox key (aggregate id, version) is unique
+              // and the seller id's versions are taken by the business file's own events.
+              aggregateId: revisionId,
               aggregateVersion: current + 1,
               occurredAt: now,
               payload: { sellerId: owner.sellerId, revisionId },
