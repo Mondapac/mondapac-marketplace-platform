@@ -2,10 +2,14 @@ import { getTranslations } from 'next-intl/server';
 import { cookies } from 'next/headers';
 import { CONSENT_COOKIE, consentOf } from '../../src/consent/consent.ts';
 import { CookieSettings } from '../../src/consent/cookie-settings.tsx';
+import { pageMetadata, seoDescription } from '../../src/seo/metadata.ts';
 
 export async function generateMetadata() {
-  const t = await getTranslations('cookies');
-  return { title: t('title') };
+  const [t, description] = await Promise.all([
+    getTranslations('cookies'),
+    seoDescription('cookies'),
+  ]);
+  return pageMetadata({ name: t('title'), description, path: '/cookies' });
 }
 
 const NECESSARY = ['session', 'cart', 'palette', 'text-size', 'delivery', 'consent'] as const;
