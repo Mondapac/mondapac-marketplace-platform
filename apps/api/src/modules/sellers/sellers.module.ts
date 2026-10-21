@@ -88,6 +88,7 @@ import { SELLERS_FACADE } from './contracts/sellers.facade';
 import { SELLERS_AUDIT_ACTIONS } from './domain/audit';
 import { OwnZoneRead } from './application/use-cases/own-zone-read.use-case';
 import { StoreSettingsRead } from './application/use-cases/store-settings-read.use-case';
+import { StoreSettingsSaveDelivery } from './application/use-cases/store-settings-save-delivery.use-case';
 import { StoreSettingsSaveMinimumOrder } from './application/use-cases/store-settings-save-minimum-order.use-case';
 import { OwnZoneController } from './presentation/own-zone.controller';
 import { StoreSettingsController } from './presentation/store-settings.controller';
@@ -107,6 +108,7 @@ import { SellerListController } from './presentation/seller-list.controller';
 import { PublicStoreController } from './presentation/public-store.controller';
 import { PublishedStoreList } from './application/use-cases/published-store-list.use-case';
 import { PublishedStoreRead } from './application/use-cases/published-store-read.use-case';
+import { PublishedStoreSellerId } from './application/use-cases/published-store-seller-id.use-case';
 import { PUBLISHED_STORE_REPOSITORY } from './application/ports/published-store.repository';
 import { sellerFileSubscriptions } from './presentation/subscribers/seller-file.subscriptions';
 
@@ -271,6 +273,7 @@ const REVIEW_DECISION_PORTS = {
     // (rule `anonymous`; clear columns only, no key unwrapped).
     useCaseProvider(PublishedStoreList, PUBLISHED_STORE_PORTS),
     useCaseProvider(PublishedStoreRead, PUBLISHED_STORE_PORTS),
+    useCaseProvider(PublishedStoreSellerId, PUBLISHED_STORE_PORTS),
     useCaseProvider(OwnZoneRead, { unitOfWork: true, revisions: true }),
     useCaseProvider(StoreSettingsRead, {
       unitOfWork: true,
@@ -278,6 +281,16 @@ const REVIEW_DECISION_PORTS = {
       minimumOrderPolicy: true,
     }),
     useCaseProvider(StoreSettingsSaveMinimumOrder, {
+      unitOfWork: true,
+      storeProfiles: true,
+      minimumOrderPolicy: true,
+      audit: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    // Package e, the delivery terms: the same gate and deps as the minimum order.
+    useCaseProvider(StoreSettingsSaveDelivery, {
       unitOfWork: true,
       storeProfiles: true,
       minimumOrderPolicy: true,
@@ -520,6 +533,7 @@ const REVIEW_DECISION_PORTS = {
         AllowedProductTypes,
         AllowedProductTypesSystem,
         ReviewerBusinessDetailsRead,
+        PublishedStoreSellerId,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -529,6 +543,7 @@ const REVIEW_DECISION_PORTS = {
         allowedProductTypes: AllowedProductTypes,
         allowedProductTypesSystem: AllowedProductTypesSystem,
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
+        publishedStoreSellerId: PublishedStoreSellerId,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -538,6 +553,7 @@ const REVIEW_DECISION_PORTS = {
           allowedProductTypes,
           allowedProductTypesSystem,
           reviewerBusinessDetails,
+          publishedStoreSellerId,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by

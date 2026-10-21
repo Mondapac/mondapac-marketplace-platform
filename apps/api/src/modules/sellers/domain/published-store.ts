@@ -1,4 +1,5 @@
 import type { Id, Money, Temporal } from '@mondapac/shared-kernel';
+import type { DeliveryTerms } from './delivery-terms';
 
 /**
  * What `sellers` holds in clear about a store with an approved revision and a held slug, for the
@@ -32,6 +33,8 @@ export interface PublishedStore {
   /** The calendar year of the first approval, in the seller's own zone (ADR-0005). */
   readonly sellingSince: number;
   readonly minimumOrder?: Money | null;
+  /** The seller's delivery terms; absent when the seller has set none. */
+  readonly delivery?: DeliveryTerms;
 }
 
 /** The orders of the public store list. */

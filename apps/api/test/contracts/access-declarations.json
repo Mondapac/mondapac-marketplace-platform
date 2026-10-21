@@ -453,6 +453,7 @@
   { "name": "sellers.own-zone-read", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "sellers.published-store-list", "rule": "anonymous" },
   { "name": "sellers.published-store-read", "rule": "anonymous" },
+  { "name": "sellers.published-store-seller-id", "rule": "anonymous" },
   { "name": "sellers.purge-expired", "rule": "system" },
   { "name": "sellers.reconcile-decisions", "rule": "system" },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
@@ -466,6 +467,7 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "shipping.view-store-flat-fee", "rule": "anonymous" },
   { "name": "storefront.view-published-landing-page", "rule": "anonymous" },
   { "name": "storefront.view-published-navigation", "rule": "anonymous" },
   { "name": "storefront.view-published-page", "rule": "anonymous" },

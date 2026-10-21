@@ -15,6 +15,7 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
+import { termsTextOf } from '../domain/delivery-terms';
 import type { PublishedStore } from '../domain/published-store';
 import {
   PublishedStoreList,
@@ -27,6 +28,16 @@ export class StoreMoneyBody {
   @ApiProperty({ description: 'Minor units, as a decimal string.', example: '3000' })
   amount!: string;
   @ApiProperty({ description: 'ISO 4217 code.' }) currency!: string;
+}
+
+export class StoreDeliveryBody {
+  @ApiProperty({ enum: ['same-day', 'next-day'] }) day!: string;
+  @ApiProperty({ example: '08:00', description: "The window opens, the seller's clock." })
+  from!: string;
+  @ApiProperty({ example: '12:00', description: 'The window closes; 24:00 is end of day.' })
+  to!: string;
+  @ApiProperty({ example: '14:00', description: "Orders before this clock time (seller's clock)." })
+  cutoff!: string;
 }
 
 export class PublishedStoreBody {
@@ -46,6 +57,11 @@ export class PublishedStoreBody {
       'null: no minimum order. Absent: it cannot be told now; show no minimum line, never "none".',
   })
   minimumOrder?: StoreMoneyBody | null;
+  @ApiPropertyOptional({
+    type: StoreDeliveryBody,
+    description: 'Absent when the seller has set no delivery terms: show no delivery line.',
+  })
+  delivery?: StoreDeliveryBody;
 }
 
 export class PublishedStorePageBody {
@@ -102,9 +118,11 @@ const bodyOf = (store: PublishedStore): PublishedStoreBody => {
     serviceAreaCode: store.serviceAreaCode,
     sellingSince: store.sellingSince,
   };
-  if (store.minimumOrder === undefined) return body;
+  const withTerms: PublishedStoreBody =
+    store.delivery === undefined ? body : { ...body, delivery: termsTextOf(store.delivery) };
+  if (store.minimumOrder === undefined) return withTerms;
   return {
-    ...body,
+    ...withTerms,
     minimumOrder:
       store.minimumOrder === null
         ? null

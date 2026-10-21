@@ -96,6 +96,18 @@ export interface SellersFacade {
   >;
 
   /**
+   * `publishedStoreSellerId`: the seller that holds `slug` as a store address, or `null`. Yes only
+   * under the published-store rules of the public store page (an approved revision, a `held` slug,
+   * and the may-sell contract says yes); an unknown, malformed, retired or not-selling slug is
+   * `null`, byte-identical. A request actor only (rule `anonymous`); ids only, never a store
+   * field. A fault is `sellers.unavailable`: the caller fails closed. In-process only.
+   */
+  publishedStoreSellerId(
+    context: CallContext,
+    slug: string,
+  ): Promise<Result<Id<'Seller'> | null, AccessDenied | SellersUnavailable>>;
+
+  /**
    * `reviewerBusinessDetails` (sellers design 7.1; board 13 item 3): legal name, trading name and
    * the operating and registered addresses of the seller's **approved** revision, for a
    * certification reviewer. Rule `permissions [sellers.business-details.view]` (Hassan M4): a

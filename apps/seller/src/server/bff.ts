@@ -22,6 +22,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file',
     'sellers/own-zone',
     'sellers/my-file/form-descriptors',
+    // The store's settings (delivery terms; the minimum order is in the same answer).
+    'sellers/store-settings',
     'payments/seller/payout-account',
     'ordering/seller/orders',
     'commission-payouts/seller/ledger',
@@ -39,6 +41,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/address',
     'sellers/my-file/slug',
     'sellers/my-file/identifier',
+    // The delivery day, window and order cut-off (package e).
+    'sellers/store-settings/delivery',
     'inventory/seller/sources-order',
   ]),
   POST: new Set([

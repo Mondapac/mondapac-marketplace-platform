@@ -3,6 +3,7 @@ import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
 import type { SellerShop } from '../storefront/types.ts';
+import { useDeliveryLine } from './delivery-line.ts';
 import { Ring } from './rings.tsx';
 import { ShareMenu } from './share-menu.tsx';
 
@@ -20,6 +21,7 @@ export function SellerHead({
   const t = useTranslations('seller');
   const tp = useTranslations('product');
   const locale = useLocale();
+  const deliveryLine = useDeliveryLine(shop);
   const rated = shop.ratings !== undefined && shop.ratings.count > 0;
   return (
     <header className="shop-head">
@@ -62,10 +64,10 @@ export function SellerHead({
               {t('new-seller')}
             </li>
           )}
-          {shop.deliveryWindow === undefined ? null : (
+          {deliveryLine === undefined ? null : (
             <li>
               <Icon name="truck" />
-              {shop.deliveryWindow}
+              {deliveryLine}
             </li>
           )}
           {shop.minimumUnknown ? null : (
@@ -80,7 +82,9 @@ export function SellerHead({
             <li>
               <Icon name="truck" />
               <span className="num">
-                {t('delivery-fee', { fee: formatMoney(shop.deliveryFee, locale) })}
+                {shop.deliveryFee.amount === 0
+                  ? t('free-delivery')
+                  : t('delivery-fee', { fee: formatMoney(shop.deliveryFee, locale) })}
               </span>
             </li>
           )}

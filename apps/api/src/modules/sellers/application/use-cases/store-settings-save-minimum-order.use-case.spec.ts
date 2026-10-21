@@ -122,7 +122,13 @@ describe.each(MARKETS)('sellers store settings in $code (design 18)', (fixture) 
 
     expect(result).toEqual({
       ok: true,
-      value: { version: 1, minimumOrder: null, currency, maximumAmount: BigInt(max) },
+      value: {
+        version: 1,
+        minimumOrder: null,
+        currency,
+        maximumAmount: BigInt(max),
+        delivery: null,
+      },
     });
   });
 
@@ -142,6 +148,7 @@ describe.each(MARKETS)('sellers store settings in $code (design 18)', (fixture) 
         minimumOrder: money(2500n, currency),
         currency,
         maximumAmount: BigInt(max),
+        delivery: null,
       },
     });
     expect(t.profiles.at(market(code), sellerId)).toMatchObject({

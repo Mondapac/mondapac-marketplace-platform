@@ -33,12 +33,51 @@ beforeEach(() => {
 });
 
 describe('seller page read', () => {
-  it('reads the store by its slug', async () => {
-    reads.answers = [{ kind: 'ok', body: store('kedron') }];
+  it('reads the store and its flat fee by the slug', async () => {
+    reads.answers = [
+      { kind: 'ok', body: store('kedron') },
+      { kind: 'ok', body: { amount: '995', currency: 'AUD' } },
+    ];
     const shop = await loadSeller('kedron');
-    expect(reads.paths).toEqual(['sellers/stores/kedron']);
+    expect(reads.paths).toEqual(['sellers/stores/kedron', 'shipping/stores/kedron/flat-fee']);
     expect(shop?.name).toBe('Store kedron');
     expect(shop?.location).toBe('name of greater-brisbane');
+    expect(shop?.deliveryFee).toEqual({ amount: 995, currency: 'AUD' });
+  });
+
+  it('keeps the page without a fee when the store has none set, the read failed or it is malformed', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    for (const fee of [
+      { kind: 'failed', status: 404, code: 'shipping.store-fee-not-found' },
+      { kind: 'failed', status: 503 },
+      { kind: 'failed' },
+      { kind: 'ok', body: { amount: 995, currency: 'AUD' } },
+      { kind: 'ok', body: null },
+    ] as ApiRead<unknown>[]) {
+      reads.answers = [{ kind: 'ok', body: store('kedron') }, fee];
+      const shop = await loadSeller('kedron');
+      expect(shop?.name).toBe('Store kedron');
+      expect(shop !== undefined && 'deliveryFee' in shop).toBe(false);
+    }
+    // Only the two answers of the wrong shape are logged here, by slug only.
+    expect(log.mock.calls.map(([line]: unknown[]) => line)).toEqual([
+      JSON.stringify({ msg: 'storefront.seller-flat-fee-unusable', slug: 'kedron' }),
+      JSON.stringify({ msg: 'storefront.seller-flat-fee-unusable', slug: 'kedron' }),
+    ]);
+    log.mockRestore();
+  });
+
+  it('does not let a failed fee read hide a missing store or a failed store read', async () => {
+    reads.answers = [
+      { kind: 'failed', status: 404, code: 'sellers.store-not-found' },
+      { kind: 'ok', body: { amount: '995', currency: 'AUD' } },
+    ];
+    expect(await loadSeller('gone')).toBeUndefined();
+    reads.answers = [
+      { kind: 'failed', status: 503 },
+      { kind: 'ok', body: { amount: '0', currency: 'AUD' } },
+    ];
+    await expect(loadSeller('kedron')).rejects.toThrow('the store read failed');
   });
 
   it("answers no store for the module's not-found and a malformed slug, without a read", async () => {
@@ -46,7 +85,7 @@ describe('seller page read', () => {
     expect(await loadSeller('gone')).toBeUndefined();
     expect(await loadSeller('../admin')).toBeUndefined();
     expect(await loadSeller('a'.repeat(51))).toBeUndefined();
-    expect(reads.paths).toEqual(['sellers/stores/gone']);
+    expect(reads.paths).toEqual(['sellers/stores/gone', 'shipping/stores/gone/flat-fee']);
   });
 
   it('throws on any other failure, a bare 404 included, so the page shows its error', async () => {
