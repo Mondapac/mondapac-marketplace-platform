@@ -115,6 +115,16 @@ export class SellerGroupView {
   @ApiProperty({ type: MinimumOrderStateView })
   minimumOrder!: MinimumOrderStateView;
 
+  @ApiProperty({
+    type: MoneyView,
+    nullable: true,
+    description:
+      "The seller's flat delivery fee, charged once per seller order (an explicit zero is free " +
+      'delivery). Null when the group has no buyable line, the seller has no fee yet (checkout ' +
+      'then refuses with ordering.shipping-unavailable) or shipping could not be asked.',
+  })
+  deliveryFee!: MoneyView | null;
+
   @ApiProperty({ type: [CartLineView] })
   lines!: CartLineView[];
 }
@@ -141,4 +151,44 @@ export class MergedView {
 
   @ApiProperty({ type: [Object], description: 'Guest lines left out: the cart is full.' })
   notAdded!: { offerId: string; variantId: string }[];
+}
+
+export class SaveForLaterRequest {
+  @ApiProperty({ format: 'uuid', description: "A line of the customer's cart." })
+  lineId!: string;
+}
+
+export class SavedView {
+  @ApiProperty({ format: 'uuid' })
+  savedId!: string;
+}
+
+export class SavedItemBody {
+  @ApiProperty({ format: 'uuid' }) savedId!: string;
+  @ApiProperty({ format: 'uuid' }) offerId!: string;
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+  @ApiProperty({ format: 'date-time' }) savedAt!: string;
+
+  @ApiProperty({ enum: ['buyable', 'unavailable', 'check-unavailable'] })
+  state!: 'buyable' | 'unavailable' | 'check-unavailable';
+
+  @ApiProperty({
+    enum: ['offer-unavailable', 'seller-not-eligible', 'no-valid-price', 'out-of-stock'],
+    nullable: true,
+  })
+  reason!: string | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  sellerId!: string | null;
+
+  @ApiProperty({ type: MoneyView, nullable: true })
+  unitPrice!: MoneyView | null;
+
+  @ApiProperty({ type: AvailabilityView, nullable: true })
+  availability!: AvailabilityView | null;
+}
+
+export class SavedListView {
+  @ApiProperty({ type: [SavedItemBody] })
+  items!: SavedItemBody[];
 }

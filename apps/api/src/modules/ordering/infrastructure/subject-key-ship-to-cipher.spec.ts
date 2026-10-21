@@ -3,7 +3,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { testMarketContext } from '@mondapac/shared-kernel/testing';
 import type { SubjectKeyService } from '../../../platform/subject-keys/subject-key-service';
 import type { ShipTo } from '../domain/order';
-import { shipToFromJson, SubjectKeyShipToCipher } from './subject-key-ship-to-cipher';
+import { shipToFromJson, shipToJson, SubjectKeyShipToCipher } from './subject-key-ship-to-cipher';
 
 // The order's address is sealed as its canonical JSON under the customer account (the subject)
 // and the `ordering.order.ship-to` label; a destroyed key is passed on, never read as an address.
@@ -79,5 +79,23 @@ describe('SubjectKeyShipToCipher', () => {
     expect(() => shipToFromJson(JSON.stringify({ ...SHIP_TO, phone: null }))).toThrow(
       'ordering.stored-ship-to-invalid',
     );
+    for (const sellerNotes of [[], 'x', { a: 1 }, null]) {
+      expect(() => shipToFromJson(JSON.stringify({ ...SHIP_TO, sellerNotes }))).toThrow(
+        'ordering.stored-ship-to-invalid',
+      );
+    }
+  });
+
+  it('seals the seller notes with the address, and an order without notes as before', () => {
+    const notes = { 'seller-a': 'Ring twice' };
+    expect(JSON.parse(shipToJson(SHIP_TO))).not.toHaveProperty('sellerNotes');
+    expect(JSON.parse(shipToJson({ ...SHIP_TO, sellerNotes: {} }))).not.toHaveProperty(
+      'sellerNotes',
+    );
+    expect(shipToFromJson(shipToJson({ ...SHIP_TO, sellerNotes: notes }))).toEqual({
+      ...SHIP_TO,
+      sellerNotes: notes,
+    });
+    expect(shipToFromJson(shipToJson(SHIP_TO))).toEqual(SHIP_TO);
   });
 });

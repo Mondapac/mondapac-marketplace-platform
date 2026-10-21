@@ -88,7 +88,8 @@ export class OrdersController {
     summary: 'Start checkout: the cart becomes a pending order and a hosted payment page',
     description:
       "Copies the chosen address of the customer's address book onto the order (a later change " +
-      'of the address book never touches it), reserves the stock for the whole cart, stores the ' +
+      'of the address book never touches it) after checking the Market delivers to its ' +
+      'postcode, keeps the optional note to each seller with it, reserves the stock for the whole cart, stores the ' +
       'order with its seller split and opens a Stripe Checkout page. Nothing is charged here. ' +
       'Send the customer to checkoutUrl.',
   })
@@ -97,7 +98,9 @@ export class OrdersController {
   @ApiOkResponse({ type: CheckoutStartedView })
   @ApiBadRequestResponse({
     ...ERROR,
-    description: 'validation.failed (details.fields: addressId required or format)',
+    description:
+      'validation.failed (details.fields: addressId required or format; sellerNotes type, ' +
+      'range, format or length)',
   })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -110,7 +113,9 @@ export class OrdersController {
   @ApiUnprocessableEntityResponse({
     ...ERROR,
     description:
-      "ordering.address-not-found (not one of the customer's addresses), ordering.cart-empty or " +
+      "ordering.address-not-found (not one of the customer's addresses), " +
+      'ordering.outside-delivery-area (the Market does not deliver to its postcode), ' +
+      'ordering.cart-empty or ' +
       'ordering.cart-not-purchasable (details.lineIndexes)',
   })
   @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
@@ -126,10 +131,10 @@ export class OrdersController {
     @Body() body: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, body, ['addressId']);
+    const invalid = closedBody(request, body, ['addressId', 'sellerNotes']);
     if (invalid !== null) throw this.refused(invalid, context);
-    const { addressId } = body as { addressId?: unknown };
-    const result = await this.start.execute(context, { addressId });
+    const { addressId, sellerNotes } = body as { addressId?: unknown; sellerNotes?: unknown };
+    const result = await this.start.execute(context, { addressId, sellerNotes });
     this.log('ordering.start-checkout-route', context, result.ok ? 'started' : result.error.code);
     if (!result.ok) {
       if (result.error.code === 'request.throttled') {

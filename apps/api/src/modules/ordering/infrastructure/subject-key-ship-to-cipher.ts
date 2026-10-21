@@ -22,9 +22,16 @@ const FIELDS = [
 ] as const satisfies readonly (keyof ShipTo)[];
 const NULLABLE: ReadonlySet<string> = new Set(['line2', 'region', 'deliveryNotes']);
 
-/** The canonical JSON that is sealed: the fields in a fixed order. */
-export const shipToJson = (shipTo: ShipTo): string =>
-  JSON.stringify(Object.fromEntries(FIELDS.map((key) => [key, shipTo[key]])));
+/**
+ * The canonical JSON that is sealed: the fields in a fixed order, then the seller notes when
+ * there are any (an order without notes seals exactly what it sealed before notes existed).
+ */
+export const shipToJson = (shipTo: ShipTo): string => {
+  const fields: [string, unknown][] = FIELDS.map((key) => [key, shipTo[key]]);
+  const notes = shipTo.sellerNotes ?? {};
+  if (Object.keys(notes).length > 0) fields.push(['sellerNotes', notes]);
+  return JSON.stringify(Object.fromEntries(fields));
+};
 
 /** Reads back a sealed address. Only checkout writes it: a bad shape means damage, so it throws. */
 export function shipToFromJson(json: string): ShipTo {
@@ -45,7 +52,18 @@ export function shipToFromJson(json: string): ShipTo {
       throw new Error('ordering.stored-ship-to-invalid');
     }
   }
-  return Object.fromEntries(FIELDS.map((key) => [key, record[key]])) as unknown as ShipTo;
+  const address = Object.fromEntries(FIELDS.map((key) => [key, record[key]])) as unknown as ShipTo;
+  const notes = record.sellerNotes;
+  if (notes === undefined) return address;
+  if (
+    typeof notes !== 'object' ||
+    notes === null ||
+    Array.isArray(notes) ||
+    Object.values(notes).some((note) => typeof note !== 'string')
+  ) {
+    throw new Error('ordering.stored-ship-to-invalid');
+  }
+  return { ...address, sellerNotes: { ...(notes as Record<string, string>) } };
 }
 
 /**

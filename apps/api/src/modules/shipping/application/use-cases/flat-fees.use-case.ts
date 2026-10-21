@@ -4,9 +4,10 @@ import { readFlatFees, type FlatFeesFailure } from '../flat-fee-flow';
 import type { ShippingDependencies } from '../shipping-dependencies';
 
 /**
- * `shipping.flat-fees`: the fees of up to 100 sellers for `ordering`, called with the signed-in
- * customer's context at checkout. The fee is what the buyer is charged, so it is no secret; the
- * method is not exposed over HTTP.
+ * `shipping.flat-fees`: the fees of up to 100 sellers, for `ordering` at checkout and for the
+ * cart read (a guest's cart too). The fee is what the buyer is charged and is shown on the cart
+ * before sign-in, so it is no secret and the rule is `anonymous`; the method is not exposed over
+ * HTTP.
  */
 export class FlatFees extends UseCase<
   { readonly sellerIds: unknown },
@@ -15,8 +16,7 @@ export class FlatFees extends UseCase<
 > {
   static override readonly access: AccessDeclaration = {
     name: 'shipping.flat-fees',
-    rule: { kind: 'own-resources' },
-    whenSellerNotApproved: 'deny',
+    rule: { kind: 'anonymous' },
   };
 
   constructor(

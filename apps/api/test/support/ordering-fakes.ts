@@ -299,10 +299,18 @@ export class MemoryOrders implements OrderRepository {
   }
 }
 
-/** The flat fees `ordering` reads at checkout; a seller without an entry has no fee. */
+/**
+ * The flat fees `ordering` reads at checkout (a seller without an entry has no fee) and the
+ * delivery area: every postcode is delivered to except those in `outside`.
+ */
 export class FakeShipping implements ShippingFacade {
   fees = new Map<string, Money>();
+  outside = new Set<string>();
   down = false;
+  deliversTo(_c: CallContext, postcode: string): Promise<Result<boolean, ShippingFailure>> {
+    if (this.down) return Promise.resolve(err({ code: 'shipping.unavailable' }));
+    return Promise.resolve(ok(!this.outside.has(postcode)));
+  }
   flatFees(
     _c: CallContext,
     sellerIds: readonly Id<'Seller'>[],

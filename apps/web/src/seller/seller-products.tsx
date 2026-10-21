@@ -28,7 +28,11 @@ function sorted(products: readonly SellerProduct[], sort: Sort): SellerProduct[]
   return list;
 }
 
-export function ProductsPane({ shop }: { readonly shop: SellerShop }) {
+export function ProductsPane({
+  shop,
+}: {
+  readonly shop: SellerShop & Required<Pick<SellerShop, 'products' | 'categories'>>;
+}) {
   const t = useTranslations('seller');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('popular');
