@@ -4,6 +4,7 @@ import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
 import type { SellerShop } from '../storefront/types.ts';
 import { Ring } from './rings.tsx';
+import './store-images.css';
 import { ShareMenu } from './share-menu.tsx';
 
 // The seller page's header card (approved design v9): the neutral banner with the Share pill, the
@@ -23,11 +24,21 @@ export function SellerHead({
   const rated = shop.ratings !== undefined && shop.ratings.count > 0;
   return (
     <header className="shop-head">
-      <div className="shop-banner" aria-hidden="true" />
+      <div className={shop.banner === undefined ? 'shop-banner' : 'shop-banner has-image'}>
+        {shop.banner === undefined ? null : (
+          <img
+            src={shop.banner.src}
+            width={shop.banner.width}
+            height={shop.banner.height}
+            alt={t('banner-alt', { name: shop.name })}
+            decoding="async"
+          />
+        )}
+      </div>
       <ShareMenu name={shop.name} path={`/s/${shop.id}`} />
       <div className="shop-body">
         <div className="shop-id">
-          <SellerLogo logo={shop.logo} />
+          <SellerLogo logo={shop.logo} image={shop.logoImage} alt={shop.name} />
           <div className="shop-title">
             <h1>{shop.name}</h1>
             <p className="shop-meta">

@@ -62,12 +62,17 @@ async function errorCodeOf(response: Response): Promise<string | undefined> {
   }
 }
 
-/** {@link apiGet} with its inputs given, for tests. */
-export async function apiGetWith<T>(
+/** What a read does with an answer that is ok: parse it into the caller's type. */
+type ReadBody<T> = (response: Response) => Promise<T>;
+
+/** One GET of a public API route; {@link apiGetWith} and {@link apiGetBytesWith} differ in the body. */
+async function readWith<T>(
   config: StorefrontApiConfig | null,
   incoming: RequestHeaders,
   path: string,
-  nowMilliseconds: () => number = Date.now,
+  nowMilliseconds: () => number,
+  accept: string,
+  readBody: ReadBody<T>,
 ): Promise<ApiRead<T>> {
   if (config === null) return { kind: 'off' };
   const url = urlOf(config.apiBaseUrl, path);
@@ -81,7 +86,7 @@ export async function apiGetWith<T>(
     return { kind: 'failed' };
   }
   try {
-    const upstream = new Headers({ accept: 'application/json', 'x-market-id': host.marketId });
+    const upstream = new Headers({ accept, 'x-market-id': host.marketId });
     if (config.clientAddressKey !== null) {
       upstream.set(
         CLIENT_ADDRESS_HEADER,
@@ -106,7 +111,7 @@ export async function apiGetWith<T>(
         ? { kind: 'failed', status: response.status }
         : { kind: 'failed', status: response.status, code };
     }
-    return { kind: 'ok', body: (await response.json()) as T };
+    return { kind: 'ok', body: await readBody(response) };
   } catch (error) {
     // A missing address means the request did not come through server.mjs; never sent unsigned.
     const reason =
@@ -120,6 +125,43 @@ export async function apiGetWith<T>(
   }
 }
 
+/** {@link apiGet} with its inputs given, for tests. */
+export async function apiGetWith<T>(
+  config: StorefrontApiConfig | null,
+  incoming: RequestHeaders,
+  path: string,
+  nowMilliseconds: () => number = Date.now,
+): Promise<ApiRead<T>> {
+  return readWith(config, incoming, path, nowMilliseconds, 'application/json', async (response) => {
+    return (await response.json()) as T;
+  });
+}
+
+/** The most bytes of a picture read from the API: a store image is a rendition of a few hundred KB. */
+export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
+/** A picture the API answered: its bytes and the type it declared. */
+export interface ApiBytes {
+  readonly bytes: Uint8Array;
+  readonly contentType: string;
+}
+
+/** {@link apiGetBytes} with its inputs given, for tests. */
+export async function apiGetBytesWith(
+  config: StorefrontApiConfig | null,
+  incoming: RequestHeaders,
+  path: string,
+  nowMilliseconds: () => number = Date.now,
+): Promise<ApiRead<ApiBytes>> {
+  return readWith(config, incoming, path, nowMilliseconds, 'image/jpeg', async (response) => {
+    const declared = Number(response.headers.get('content-length') ?? '0');
+    if (declared > MAX_IMAGE_BYTES) throw new RangeError('the picture is too large');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length > MAX_IMAGE_BYTES) throw new RangeError('the picture is too large');
+    return { bytes, contentType: response.headers.get('content-type') ?? '' };
+  });
+}
+
 /**
  * A GET of a public API route (`path` without the leading slash, query included, every value
  * encoded with `encodeURIComponent` by the caller) for the
@@ -130,4 +172,12 @@ export async function apiGet<T>(path: string): Promise<ApiRead<T>> {
   if (config === null) return { kind: 'off' };
   const incoming = await headers();
   return apiGetWith<T>(config, incoming, path);
+}
+
+/** A GET of a public API route that answers a picture, for the current request (see {@link apiGet}). */
+export async function apiGetBytes(path: string): Promise<ApiRead<ApiBytes>> {
+  const config = storefrontApiConfig();
+  if (config === null) return { kind: 'off' };
+  const incoming = await headers();
+  return apiGetBytesWith(config, incoming, path);
 }

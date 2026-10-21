@@ -723,6 +723,7 @@
     "no-match-body": "Try a different word or category.",
     "clear-search": "Clear search",
     "about": "About {name}",
+    "banner-alt": "Banner of {name}",
     "details": "Shop details",
     "business": "Business",
     "location-label": "Location",

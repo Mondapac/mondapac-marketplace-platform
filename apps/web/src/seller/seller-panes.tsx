@@ -2,6 +2,7 @@ import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import type { SellerCertificate, SellerShop } from '../storefront/types.ts';
+import './store-images.css';
 
 // The About and Certificates tabs of the seller page. No seller contact details: orders, delivery
 // problems and refunds go through Mondapac. A certificate shows only as the platform approved it.
@@ -45,7 +46,7 @@ export function AboutPane({ shop }: { readonly shop: SellerShop }) {
       {shop.about === undefined ? null : (
         <section className="shop-box">
           <h2>{t('about', { name: shop.name })}</h2>
-          <p className="shop-text">{shop.about}</p>
+          <p className="shop-text shop-about">{shop.about}</p>
         </section>
       )}
       <section className="shop-box">
