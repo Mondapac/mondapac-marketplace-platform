@@ -451,6 +451,7 @@
   },
   { "name": "sellers.my-file-withdraw", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "sellers.own-zone-read", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "sellers.published-store-image-read", "rule": "anonymous" },
   { "name": "sellers.published-store-list", "rule": "anonymous" },
   { "name": "sellers.published-store-read", "rule": "anonymous" },
   { "name": "sellers.purge-expired", "rule": "system" },

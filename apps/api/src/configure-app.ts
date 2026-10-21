@@ -42,6 +42,16 @@ export function isProductImageUploadRequest(
   return method === 'POST' && url !== undefined && PRODUCT_IMAGE_PATH.test(url);
 }
 
+/** A base64 store logo or banner of 4 MiB is 5.6 million characters; the rest is the JSON around it. */
+const STORE_IMAGE_PATH = /^\/sellers\/store-profile\/(?:logo|banner)\/?(?:\?.*)?$/;
+
+export function isStoreImageUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+): boolean {
+  return method === 'PUT' && url !== undefined && STORE_IMAGE_PATH.test(url);
+}
+
 /** A base64 certificate file of 10 MiB is 14 million characters; the rest is the JSON around it. */
 const CERTIFICATE_DOCUMENT_BODY_LIMIT = '14500kb';
 const CERTIFICATE_DOCUMENT_PATH =
@@ -103,6 +113,12 @@ export function configureApp(app: NestExpressApplication): void {
   // skips that request, as it does for the webhook.
   app.useBodyParser('raw', {
     type: (request) => isProductImageUploadRequest(request.method, request.url),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
+    inflate: false,
+  });
+  // The store logo and banner routes take the same larger body (sellers slice 12 part 2).
+  app.useBodyParser('raw', {
+    type: (request) => isStoreImageUploadRequest(request.method, request.url),
     limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });

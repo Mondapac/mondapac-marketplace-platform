@@ -58,6 +58,18 @@ export const BusinessFileWithdrawn = defineEvent({
 });
 
 /**
+ * A store's public profile texts were saved and published (sellers design 7.4, 3.7; slice 12 part
+ * 2). Ids only: no text, no hash. The aggregate is the store profile and its version is the
+ * revision number, so the pair is unique per save. No consumer yet (the storefront reads the
+ * pointer in clear on every call).
+ */
+export const StoreProfilePublished = defineEvent({
+  type: 'sellers.store-profile-published.v1',
+  aggregateType: 'store-profile',
+  payload: { sellerId: eventField.id(), revisionId: eventField.id() },
+});
+
+/**
  * Every event sellers publishes, declared with `defineEvent` and registered with the event
  * catalogue by `SellersModule`. Each new type changes the catalogue snapshot
  * (`apps/api/test/contracts/event-catalogue.snapshot.json`).
@@ -67,4 +79,5 @@ export const SELLERS_EVENTS: readonly EventDefinition[] = [
   TaxRegistrationRecorded,
   BusinessFileSubmitted,
   BusinessFileWithdrawn,
+  StoreProfilePublished,
 ];

@@ -54,7 +54,8 @@ export type PublishedStoreListFailure =
 /**
  * `sellers.published-store-list` (slice 12): the buyer site's sellers page. Rule `anonymous`: the
  * answer is the allow-listed public fields of stores that may sell now (AC 25, Hassan M5), the
- * same for every caller. Clear columns only, so no key is unwrapped. Sort `name` (default) or
+ * same for every caller. Clear columns only, so no key is unwrapped (the logo of a card is a ref to
+ * a clear image; the About text is not on the list). Sort `name` (default) or
  * `newest`; `page` 1 to 100, `pageSize` 1 to 48 (default 24).
  */
 export class PublishedStoreList extends UseCase<
@@ -135,7 +136,16 @@ export class PublishedStoreList extends UseCase<
       const eligible = await this.#eligibleStores(context);
       const sorted = sortStores(eligible, sort as PublishedStoreSort);
       const slice = sorted.slice((page - 1) * pageSize, page * pageSize);
-      const items = await publishedStoresOf(this.deps, context, slice);
+      const published = await publishedStoresOf(this.deps, context, slice);
+      // The card's logo is clear data: one read for the page, nothing decrypted (slice 12 part 2).
+      const logos = await this.deps.publishedContent.logosOf(
+        context,
+        slice.map((store) => store.sellerId),
+      );
+      const items = published.map((store, index) => ({
+        ...store,
+        logo: logos.get(slice[index]!.sellerId) ?? null,
+      }));
       return { items, total: eligible.length, page, pageSize };
     });
   }
