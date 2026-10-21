@@ -8,7 +8,7 @@ import { CartDrawer } from '../src/cart/cart-drawer.tsx';
 import { CartPage } from '../src/cart/cart-page.tsx';
 import { viewCart, type Cart } from '../src/cart/cart.ts';
 import { CheckoutPage, inServiceArea } from '../src/checkout/checkout-page.tsx';
-import { Confirmation, SamplePayment } from '../src/checkout/payment-result.tsx';
+import { Confirmation } from '../src/checkout/payment-result.tsx';
 import { Header } from '../src/shell/header.tsx';
 import { StoreProvider, useStore } from '../src/shell/store-context.tsx';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from '../src/storefront/sample-cart.ts';
@@ -18,11 +18,12 @@ const push = vi.fn();
 const scrolled = vi.fn();
 const replace = vi.fn();
 let path = '/';
-const { deliveryAreaFor, deliveryQuotesFor } = vi.hoisted(() => ({
+const { deliveryAreaFor, deliveryQuotesFor, payOrder } = vi.hoisted(() => ({
   deliveryAreaFor: vi.fn<(postcode: string) => Promise<{ kind: string }>>(),
   deliveryQuotesFor: vi.fn<(request: unknown) => Promise<Record<string, unknown>>>(),
+  payOrder: vi.fn<(request: unknown) => Promise<Record<string, unknown>>>(),
 }));
-vi.mock('../src/checkout/actions.ts', () => ({ deliveryAreaFor, deliveryQuotesFor }));
+vi.mock('../src/checkout/actions.ts', () => ({ deliveryAreaFor, deliveryQuotesFor, payOrder }));
 vi.mock('next/navigation', () => ({
   usePathname: () => path,
   useSearchParams: () => new URLSearchParams(),
@@ -35,6 +36,14 @@ beforeEach(() => {
   replace.mockReset();
   deliveryAreaFor.mockReset();
   deliveryQuotesFor.mockReset();
+  payOrder.mockReset();
+  payOrder.mockImplementation((request) =>
+    Promise.resolve(
+      (request as { method: string }).method === 'stripe'
+        ? { kind: 'redirect', url: '/checkout/payment' }
+        : { kind: 'paid', reference: 'MP-1' },
+    ),
+  );
   // The sample courier: Express for Kedron, none for Paddington (its cut-off has passed).
   deliveryQuotesFor.mockImplementation((request) =>
     Promise.resolve(
@@ -259,9 +268,167 @@ describe('checkout', () => {
       'checked',
       true,
     );
-    expect(payButtons()[0]!.textContent).toBe('Pay A$67.90 with Stripe');
+    expect(payButtons()[0]!.textContent).toBe('Pay A$67.90');
     fireEvent.click(payButtons()[0]!);
-    expect(push).toHaveBeenCalledWith('/checkout/payment');
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/checkout/confirmation'));
+    expect(payOrder).toHaveBeenCalledWith({
+      method: 'card',
+      confirmationToken: null,
+      address: { kind: 'saved', id: 'home' },
+      lines: { brisket: 1, sourdough: 1 },
+      delivery: { kedron: { speed: 'scheduled' }, paddington: { speed: 'scheduled' } },
+      discountCode: null,
+      total: aud(6790),
+    });
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('pays on Stripe from the Stripe tile, and says the card is the default', async () => {
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    const card = screen.getByRole('radio', { name: /^Card/ });
+    expect(card).toHaveProperty('checked', true);
+    expect(screen.getByText(/^Sample: card fields are not connected yet\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: /^Stripe/ }));
+    expect(screen.getByText('Pay securely on Stripe')).toBeTruthy();
+    await waitFor(() => expect(payOff()).toBe(false));
+    const pay = payButtons()[0]!;
+    expect(pay.textContent).toBe('Pay A$67.90 with Stripe');
+    fireEvent.click(pay);
+    expect(pay.textContent).toBe('Taking you to Stripe...');
+    expect(pay.getAttribute('aria-disabled')).toBe('true');
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/checkout/payment'));
+    expect(payOrder).toHaveBeenCalledWith(expect.objectContaining({ method: 'stripe' }));
+  });
+
+  it("takes the card in Stripe's fields and sends only the confirmation token", async () => {
+    const elementsOptions: Record<string, unknown>[] = [];
+    const updates: Record<string, unknown>[] = [];
+    const tokenParams: Record<string, unknown>[] = [];
+    const mounted = vi.fn();
+    vi.stubGlobal('Stripe', (key: string) => {
+      expect(key).toBe('pk_test_51Sample');
+      return {
+        elements: (options: Record<string, unknown>) => {
+          elementsOptions.push(options);
+          return {
+            create: () => ({
+              mount: mounted,
+              destroy: vi.fn(),
+              on: (event: string, handler: () => void) => {
+                if (event === 'ready') setTimeout(handler, 0);
+              },
+            }),
+            update: (options: Record<string, unknown>) => updates.push(options),
+            submit: () => Promise.resolve({}),
+          };
+        },
+        createConfirmationToken: (options: { params: Record<string, unknown> }) => {
+          tokenParams.push(options.params);
+          return Promise.resolve({ confirmationToken: { id: 'ctoken_test1' } });
+        },
+      };
+    });
+    renderWith(
+      <CheckoutPage
+        source={{
+          ...SAMPLE_CHECKOUT,
+          card: { kind: 'stripe', publishableKey: 'pk_test_51Sample' },
+        }}
+      />,
+      MET,
+      true,
+    );
+    expect(screen.getByText('Loading the secure card fields...')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText('Loading the secure card fields...')).toBeNull());
+    expect(mounted).toHaveBeenCalledTimes(1);
+    expect(elementsOptions[0]).toMatchObject({
+      mode: 'payment',
+      amount: 6790,
+      currency: 'aud',
+      captureMethod: 'manual',
+      paymentMethodTypes: ['card'],
+    });
+    // Express changes the total: the fields follow.
+    fireEvent.click(await screen.findByRole('radio', { name: /Express.*A\$12\.90/ }));
+    await waitFor(() => expect(updates.at(-1)).toEqual({ amount: 7330, currency: 'aud' }));
+    // The name on the card is asked for first.
+    fireEvent.click(payButtons()[0]!);
+    const name = screen.getByLabelText('Name on card');
+    expect(screen.getByText('Enter the name on the card.')).toBeTruthy();
+    expect(document.activeElement).toBe(name);
+    expect(payOrder).not.toHaveBeenCalled();
+    fireEvent.change(name, { target: { value: 'Alex Nguyen' } });
+    fireEvent.click(payButtons()[0]!);
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/checkout/confirmation'));
+    expect(tokenParams).toEqual([
+      { payment_method_data: { billing_details: { name: 'Alex Nguyen' } } },
+    ]);
+    expect(payOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'card',
+        confirmationToken: 'ctoken_test1',
+        total: aud(7330),
+      }),
+    );
+  });
+
+  it('shows a changed Express price with the new total, charging nothing', async () => {
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    fireEvent.click(await screen.findByRole('radio', { name: /Express.*A\$12\.90/ }));
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30'));
+    payOrder.mockResolvedValueOnce({
+      kind: 'price-changed',
+      changes: [{ sellerId: 'kedron', was: aud(1290), now: aud(1490) }],
+      quotes: { kedron: { kind: 'quote', express: aud(1490) } },
+    });
+    fireEvent.click(payButtons()[0]!);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(
+      'A delivery price changed. Kedron Halal Butchers: A$12.90 is now A$14.90. Your new total is shown. Nothing has been charged.',
+    );
+    expect(payButtons()[0]!.textContent).toBe('Pay A$75.30');
+    expect(document.activeElement?.textContent).toBe('Payment method');
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('lowers a line whose stock ran out and holds Pay until the cart is reviewed', async () => {
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    await waitFor(() => expect(payOff()).toBe(false));
+    payOrder.mockResolvedValueOnce({
+      kind: 'stock-changed',
+      changes: [{ itemId: 'sourdough', was: 1, now: 0 }],
+    });
+    fireEvent.click(payButtons()[0]!);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Sourdough loaf, 800 g is sold out and was removed.');
+    expect(within(alert).getByRole('link', { name: 'Review cart' }).getAttribute('href')).toBe(
+      '/cart',
+    );
+    expect(payOff()).toBe(true);
+    // The quotes are asked again for the sellers left, then Pay says why it is held.
+    expect(await screen.findAllByText('Review your cart to pay.')).toHaveLength(2);
+    expect(screen.queryByRole('heading', { name: 'Paddington Bakehouse' })).toBeNull();
+    expect(payOff()).toBe(true);
+  });
+
+  it('says a declined card or a failure charged nothing, and Pay can be pressed again', async () => {
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    await waitFor(() => expect(payOff()).toBe(false));
+    payOrder.mockResolvedValueOnce({ kind: 'declined' });
+    fireEvent.click(payButtons()[0]!);
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Your card was declined. Nothing was charged. Check the details, use another card or pay with Stripe.',
+    );
+    expect(payOff()).toBe(false);
+    // Choosing Stripe instead clears the card's notice.
+    fireEvent.click(screen.getByRole('radio', { name: /^Stripe/ }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    payOrder.mockResolvedValueOnce({ kind: 'redirect', url: 'https://evil.example/pay' });
+    fireEvent.click(payButtons()[0]!);
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'We could not take the payment. Nothing was charged.',
+    );
+    expect(push).not.toHaveBeenCalled();
   });
 
   it('adds Express at the courier price, and says why a seller has none', async () => {
@@ -273,7 +440,7 @@ describe('checkout', () => {
     fireEvent.click(express);
     expect(express).toHaveProperty('checked', true);
     // A$67.90 - A$7.50 Scheduled + A$12.90 Express.
-    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30 with Stripe'));
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30'));
     const paddington = screen.getByRole('radiogroup', {
       name: 'Delivery speed for Paddington Bakehouse',
     });
@@ -355,14 +522,14 @@ describe('checkout', () => {
   it('updates the total to a new Express price, and keeps Express wished through a failure', async () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
     fireEvent.click(await screen.findByRole('radio', { name: /Express.*A\$12\.90/ }));
-    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30 with Stripe'));
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30'));
     // Another address prices Express differently; the total follows.
     deliveryQuotesFor.mockResolvedValueOnce({
       kedron: { kind: 'quote', express: aud(1590) },
       paddington: { kind: 'quote', express: null },
     });
     fireEvent.click(screen.getByRole('radio', { name: /^Work/ }));
-    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$76.30 with Stripe'));
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$76.30'));
     // A failed quote shows Scheduled only and holds Pay; Try again brings Express back.
     deliveryQuotesFor.mockResolvedValueOnce({
       kedron: { kind: 'failed' },
@@ -375,7 +542,7 @@ describe('checkout', () => {
     fireEvent.click(within(failed).getByRole('button', { name: 'Try again' }));
     const express = await screen.findByRole('radio', { name: /Express.*A\$12\.90/ });
     expect(express).toHaveProperty('checked', true);
-    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30 with Stripe'));
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30'));
   });
 
   it('turns Express off until there is an address to price', () => {
@@ -453,8 +620,6 @@ describe('checkout', () => {
       address: { kind: 'new', postcode: '4031' },
       sellerIds: ['kedron', 'paddington'],
     });
-    fireEvent.click(payButtons()[0]!);
-    expect(push).toHaveBeenCalledWith('/checkout/payment');
     // Change goes back to the search, with the focus in it.
     fireEvent.click(screen.getByRole('button', { name: 'Change address' }));
     expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Address' }));
@@ -639,7 +804,6 @@ describe('discount code, save for later and seller note (sample data)', () => {
     renderWith(
       <>
         <CheckoutPage source={SAMPLE_CHECKOUT} />
-        <SamplePayment reference="MP-1" />
         <Confirmation />
       </>,
       MET,
@@ -654,8 +818,9 @@ describe('discount code, save for later and seller note (sample data)', () => {
     expect(screen.getByText('20 / 200')).toBeTruthy();
     // The delivery choice is taken when Pay is pressed.
     fireEvent.click(screen.getAllByRole('button', { name: /^Pay A\$/ })[0]!);
-    fireEvent.click(screen.getByRole('button', { name: 'Complete the sample payment' }));
-    const part = screen.getByRole('heading', { name: 'Kedron Halal Butchers' }).closest('article')!;
+    const part = (await screen.findByRole('heading', { name: 'Kedron Halal Butchers' })).closest(
+      'article',
+    )!;
     expect(within(part).getByText('<b>Ring the bell</b>')).toBeTruthy();
     expect(part.querySelector('p b b')).toBeNull();
     expect(within(part).getByText('Order MP-1-1 · Delivery: Express, within 2 hours')).toBeTruthy();

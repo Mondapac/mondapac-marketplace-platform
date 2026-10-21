@@ -3,13 +3,19 @@
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { viewCart, type CartView } from '../cart/cart.ts';
 import { DiscountBox, ItemThumb, SummaryTotals, TrustLines } from '../cart/cart-parts.tsx';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
-import type { CheckoutSource, QuoteAddress } from '../storefront/types.ts';
+import type {
+  CheckoutSource,
+  PayAnswer,
+  PaymentMethod,
+  PayRequest,
+  QuoteAddress,
+} from '../storefront/types.ts';
 import {
   AddressSection,
   EMPTY_ADDRESS,
@@ -26,7 +32,16 @@ import {
   quotesReady,
   useDeliveryQuotes,
 } from './delivery-section.tsx';
+import { payOrder } from './actions.ts';
+import {
+  legalLinks,
+  PaymentSection,
+  PayButton,
+  type PayBlock,
+  type PayNotice,
+} from './payment-section.tsx';
 import { CheckoutProgress } from './progress.tsx';
+import { useStripeCard } from './stripe-card.ts';
 
 export { inServiceArea } from './address-section.tsx';
 
@@ -35,10 +50,9 @@ export { inServiceArea } from './address-section.tsx';
 // 1000px the order summary and a help card sit on the right; below, the summary folds on top, the
 // discount code sits under it and Pay ends the form. An account is required (no guest checkout);
 // the guest cart is kept and merged on log-in. Sample data: the log-in, the address book and the
-// courier are not wired yet, and Pay goes to a placeholder instead of Stripe's hosted page.
-
-/** Why Pay is off, for the line under it; null when the buyer can pay. */
-type PayBlock = 'address' | 'loading' | 'delivery' | 'offline' | null;
+// courier are not wired yet. Pay checks the order again on the server (Express prices, stock):
+// the Card tile sends Stripe's confirmation token, the Stripe tile goes to Stripe's hosted page
+// (the sample stand-in until ordering takes payments).
 
 export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const t = useTranslations('checkout');
@@ -55,6 +69,10 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     setCustomer,
     setDeliveryAddress,
     online,
+    notes,
+    limitLines,
+    clearCart,
+    setPlacedOrder,
   } = useStore();
   const sellerIds = viewCart(cart, cartSource)?.groups.map((g) => g.seller.id) ?? [];
   const addresses = customer?.addresses ?? [];
@@ -70,9 +88,23 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     : freshReady
       ? { kind: 'new', postcode: newPostcode(fresh) }
       : null;
-  const { quotes, retry } = useDeliveryQuotes(customer ? quoteAddress : null, sellerIds, online);
+  const { quotes, retry, replace } = useDeliveryQuotes(
+    customer ? quoteAddress : null,
+    sellerIds,
+    online,
+  );
   const choices = deliveryChoices(sellerIds, deliveryWish, quotes);
   const view = viewCart(cart, cartSource, discount, choices);
+  const [method, setMethod] = useState<PaymentMethod>('card');
+  const [cardName, setCardName] = useState('');
+  const [nameError, setNameError] = useState(false);
+  const [notice, setNotice] = useState<PayNotice | null>(null);
+  const [paying, setPaying] = useState(false);
+  const stripeKey =
+    customer && method === 'card' && source.card.kind === 'stripe'
+      ? source.card.publishableKey
+      : null;
+  const stripeCard = useStripeCard(stripeKey, view?.total ?? { amount: 0, currency: 'AUD' });
 
   // Signed in from the Log in step: the address section takes the focus (the form is gone).
   const wasGuest = useRef(customer === null);
@@ -82,10 +114,12 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     document.querySelector<HTMLElement>('#checkout-address h2')?.focus();
   }, [customer]);
 
-  // Nothing to check out, or a seller below its minimum: back to the cart.
+  // Nothing to check out, or a seller below its minimum: back to the cart (not once the order is
+  // placed: the cart is emptied as the confirmation opens).
+  const placed = useRef(false);
   const blocked = !view || view.blocked.length > 0;
   useEffect(() => {
-    if (blocked) router.replace('/cart');
+    if (blocked && !placed.current) router.replace('/cart');
   }, [blocked, router]);
   if (!view || blocked) return null;
 
@@ -101,12 +135,93 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
         ? 'loading'
         : ready === 'problem'
           ? 'delivery'
-          : null;
-  const pay = () => {
-    if (block === null) {
-      setDelivery(choices);
-      setDeliveryAddress(addressLine);
-      router.push('/checkout/payment');
+          : notice?.kind === 'stock-changed'
+            ? 'stock'
+            : null;
+
+  /** What Pay found: the order is placed, Stripe's page opens, or the page says what changed. */
+  const settle = (answer: PayAnswer) => {
+    if (answer.kind === 'paid') {
+      placed.current = true;
+      setPlacedOrder({
+        reference: answer.reference,
+        view,
+        address: addressLine,
+        discountCode: discount?.code ?? null,
+        notes,
+      });
+      clearCart();
+      router.push('/checkout/confirmation');
+      return;
+    }
+    if (answer.kind === 'redirect') {
+      // Only Stripe's hosted page or a path on this site; anything else is refused.
+      const own = /^\/(?!\/)/u.test(answer.url);
+      if (own || answer.url.startsWith('https://checkout.stripe.com/')) {
+        setDelivery(choices);
+        setDeliveryAddress(addressLine);
+        if (own) router.push(answer.url);
+        else window.location.assign(answer.url);
+        return;
+      }
+      answer = { kind: 'failed' };
+    }
+    setPaying(false);
+    if (answer.kind === 'price-changed') {
+      replace(answer.quotes);
+      setNotice({
+        kind: 'price-changed',
+        changes: answer.changes.map((c) => ({
+          seller: cartSource.sellers[c.sellerId]?.name ?? c.sellerId,
+          was: c.was,
+          now: c.now,
+        })),
+      });
+    } else if (answer.kind === 'stock-changed') {
+      limitLines(Object.fromEntries(answer.changes.map((c) => [c.itemId, c.now])));
+      setNotice({
+        kind: 'stock-changed',
+        changes: answer.changes.map((c) => ({
+          item: cartSource.items[c.itemId]?.name ?? c.itemId,
+          was: c.was,
+          now: c.now,
+        })),
+      });
+    } else setNotice(answer);
+    document.querySelector<HTMLElement>('#checkout-payment h2')?.focus();
+  };
+
+  const pay = async () => {
+    if (paying) return;
+    if (block === null && quoteAddress !== null) {
+      let token: string | null = null;
+      if (method === 'card' && source.card.kind === 'stripe') {
+        if (cardName.trim() === '') {
+          setNameError(true);
+          document.querySelector<HTMLElement>('#checkout-payment .cfm input')?.focus();
+          return;
+        }
+        setPaying(true);
+        const made = await stripeCard.tokenize(cardName.trim());
+        if (made.kind !== 'token') {
+          setPaying(false);
+          if (made.kind === 'failed') setNotice({ kind: 'failed' });
+          return;
+        }
+        token = made.id;
+      }
+      setPaying(true);
+      setNotice(null);
+      const request: PayRequest = {
+        method,
+        confirmationToken: token,
+        address: quoteAddress,
+        lines: Object.fromEntries(Object.entries(cart).map(([id, line]) => [id, line.quantity])),
+        delivery: choices,
+        discountCode: discount?.code ?? null,
+        total: view.total,
+      };
+      settle(await payOrder(request).catch((): PayAnswer => ({ kind: 'failed' })));
       return;
     }
     // Blocked: the focus goes to the first thing to fix.
@@ -189,7 +304,28 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
             onChangeAddress={toAddress}
             addressLine={addressLine.replace(/^[^:]*: /, '')}
           />
-          <PaymentSection view={view} block={block} onPay={pay} reasonId={`${reason}-form`} />
+          <PaymentSection
+            view={view}
+            method={method}
+            onMethod={(next) => {
+              setMethod(next);
+              if (notice?.kind === 'declined') setNotice(null);
+            }}
+            card={{
+              setup: source.card,
+              target: stripeCard.target,
+              state: stripeCard.state,
+              onRetry: stripeCard.retry,
+              name: cardName,
+              onName: setCardName,
+              nameError,
+            }}
+            notice={notice}
+            block={block}
+            paying={paying}
+            onPay={() => void pay()}
+            reasonId={`${reason}-form`}
+          />
         </div>
         <div className="ckside">
           <div className="cs stick alt">
@@ -204,8 +340,10 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
             <SummaryTotals view={view} deliveryLoading={ready === 'loading'} />
             <PayButton
               view={view}
+              method={method}
               block={block}
-              onPay={pay}
+              paying={paying}
+              onPay={() => void pay()}
               className="ckpd"
               reasonId={`${reason}-side`}
             />
@@ -216,83 +354,6 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
         </div>
       </div>
     </div>
-  );
-}
-
-const legalLinks = {
-  terms: (chunks: ReactNode) => <Link href="/terms">{chunks}</Link>,
-  privacy: (chunks: ReactNode) => <Link href="/privacy">{chunks}</Link>,
-};
-
-/** The Payment method section: Stripe's hosted page; on phone and tablet, Pay ends the form. */
-function PaymentSection({
-  view,
-  block,
-  onPay,
-  reasonId,
-}: {
-  readonly view: CartView;
-  readonly block: PayBlock;
-  readonly onPay: () => void;
-  readonly reasonId: string;
-}) {
-  const t = useTranslations('checkout');
-  const heading = useId();
-  return (
-    <section className="cks" aria-labelledby={heading}>
-      <h2 id={heading}>{t('payment-method')}</h2>
-      <div className="paybox">
-        <div className="payhd">
-          <Icon name="lock" />
-          {t('pay-title')}
-        </div>
-        <p>{t('pay-body')}</p>
-      </div>
-      <p className="legal ckl">
-        <Icon name="info" />
-        {t('full-charge')}
-      </p>
-      <div className="ckpm">
-        <PayButton view={view} block={block} onPay={onPay} reasonId={reasonId} />
-        {block !== null ? (
-          <p className="legal" id={reasonId}>
-            {t(`pay-block-${block}-above`)}
-          </p>
-        ) : null}
-        <p className="legal">{t.rich('agree-order', legalLinks)}</p>
-      </div>
-    </section>
-  );
-}
-
-function PayButton({
-  view,
-  block,
-  onPay,
-  className,
-  reasonId,
-}: {
-  readonly view: CartView;
-  readonly block: PayBlock;
-  readonly onPay: () => void;
-  readonly className?: string;
-  /** The line under the button that says why it is off. */
-  readonly reasonId: string;
-}) {
-  const t = useTranslations('checkout');
-  const locale = useLocale();
-  return (
-    <button
-      className={className ? `btn wide ${className}` : 'btn wide'}
-      type="button"
-      data-pay=""
-      aria-disabled={block === null ? undefined : true}
-      aria-describedby={block === null ? undefined : reasonId}
-      onClick={onPay}
-    >
-      <Icon name="lock" />
-      {t('pay', { amount: formatMoney(view.total, locale) })}
-    </button>
   );
 }
 

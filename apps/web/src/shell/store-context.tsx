@@ -12,6 +12,7 @@ import {
 } from 'react';
 import {
   addOne,
+  limitLine,
   lineLimit,
   removeLine,
   removeOne,
@@ -52,6 +53,8 @@ interface StoreState {
   readonly remove: (id: string) => void;
   /** Removes a whole line (the Remove link). */
   readonly removeLine: (id: string) => void;
+  /** Lowers lines to the stock Pay found left (item id to units left). */
+  readonly limitLines: (left: Readonly<Record<string, number>>) => void;
   readonly clearCart: () => void;
   readonly cartSource: CartSource;
   /** Saved-for-later offer ids, newest last; not in the cart or its totals. */
@@ -182,6 +185,11 @@ export function StoreProvider({
   const dropLine = useCallback((id: string) => {
     if (onlineRef.current) setCart((current) => removeLine(current, id));
   }, []);
+  const limitLines = useCallback((left: Readonly<Record<string, number>>) => {
+    setCart((current) =>
+      Object.entries(left).reduce((cart, [id, units]) => limitLine(cart, id, units), current),
+    );
+  }, []);
   const clearCart = useCallback(() => {
     setCart({});
     setDiscount(null);
@@ -222,6 +230,7 @@ export function StoreProvider({
       add,
       remove,
       removeLine: dropLine,
+      limitLines,
       clearCart,
       cartSource,
       saved,
@@ -268,6 +277,7 @@ export function StoreProvider({
       add,
       remove,
       dropLine,
+      limitLines,
       clearCart,
       cartSource,
       saved,
