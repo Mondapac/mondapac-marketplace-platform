@@ -80,9 +80,12 @@ export function RemoveLine({ line }: { readonly line: CartGroupLine }) {
 export function SummaryTotals({
   view,
   discountCode,
+  deliveryLoading = false,
 }: {
   readonly view: CartView;
   readonly discountCode?: string | null;
+  /** Checkout: the delivery prices are still being asked (a placeholder shows). */
+  readonly deliveryLoading?: boolean;
 }) {
   const t = useTranslations('cart');
   const locale = useLocale();
@@ -104,7 +107,9 @@ export function SummaryTotals({
         ) : null}
         <div>
           <dt>{t('summary-delivery', { count: view.groups.length })}</dt>
-          <dd className="num">{money(view.delivery)}</dd>
+          <dd className="num">
+            {deliveryLoading ? <i className="sk" aria-hidden="true" /> : money(view.delivery)}
+          </dd>
         </div>
         <div className="tot">
           <dt>{t('total')}</dt>

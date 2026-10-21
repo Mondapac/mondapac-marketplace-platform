@@ -20,7 +20,12 @@ import {
   useDeliveryArea,
   type NewAddress,
 } from './address-section.tsx';
-import { DeliverySection, quotesReady, useDeliveryQuotes } from './delivery-section.tsx';
+import {
+  DeliverySection,
+  deliveryChoices,
+  quotesReady,
+  useDeliveryQuotes,
+} from './delivery-section.tsx';
 import { CheckoutProgress } from './progress.tsx';
 
 export { inServiceArea } from './address-section.tsx';
@@ -39,18 +44,19 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const t = useTranslations('checkout');
   const locale = useLocale();
   const router = useRouter();
+  const reason = useId();
   const {
     cart,
     cartSource,
     discount,
-    delivery,
+    deliveryWish,
     setDelivery,
     customer,
     setCustomer,
     setDeliveryAddress,
     online,
   } = useStore();
-  const view = viewCart(cart, cartSource, discount, delivery);
+  const sellerIds = viewCart(cart, cartSource)?.groups.map((g) => g.seller.id) ?? [];
   const addresses = customer?.addresses ?? [];
   const [choice, setChoice] = useState<string>(
     () => source.customer.addresses.find((a) => a.isDefault)?.id ?? 'new',
@@ -64,20 +70,9 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     : freshReady
       ? { kind: 'new', postcode: newPostcode(fresh) }
       : null;
-  const sellerIds = view?.groups.map((g) => g.seller.id) ?? [];
-  const { quotes, retry } = useDeliveryQuotes(customer ? quoteAddress : null, sellerIds);
-
-  // A new quote replaces the Express price chosen before; no Express price means Scheduled.
-  useEffect(() => {
-    for (const [sellerId, choice] of Object.entries(delivery)) {
-      const quote = quotes[sellerId];
-      if (choice.speed !== 'express' || quote === undefined || quote.kind === 'loading') continue;
-      const express = quote.kind === 'quote' ? quote.express : null;
-      if (express === null) setDelivery(sellerId, { speed: 'scheduled' });
-      else if (express.amount !== choice.fee.amount)
-        setDelivery(sellerId, { speed: 'express', fee: express });
-    }
-  }, [quotes, delivery, setDelivery]);
+  const { quotes, retry } = useDeliveryQuotes(customer ? quoteAddress : null, sellerIds, online);
+  const choices = deliveryChoices(sellerIds, deliveryWish, quotes);
+  const view = viewCart(cart, cartSource, discount, choices);
 
   // Signed in from the Log in step: the address section takes the focus (the form is gone).
   const wasGuest = useRef(customer === null);
@@ -108,9 +103,24 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
           ? 'delivery'
           : null;
   const pay = () => {
-    if (block !== null) return;
-    setDeliveryAddress(addressLine);
-    router.push('/checkout/payment');
+    if (block === null) {
+      setDelivery(choices);
+      setDeliveryAddress(addressLine);
+      router.push('/checkout/payment');
+      return;
+    }
+    // Blocked: the focus goes to the first thing to fix.
+    const target =
+      block === 'address'
+        ? [
+            ...document.querySelectorAll<HTMLInputElement>(
+              '#checkout-address input:not([type=radio]):not([type=checkbox]):not([readonly])',
+            ),
+          ].find((input) => input.value.trim() === '' || input.getAttribute('aria-invalid'))
+        : block === 'delivery'
+          ? document.querySelector<HTMLElement>('.dcard .dwarn2 button, .dcard .dwarn2 a')
+          : null;
+    target?.focus();
   };
   const toAddress = () => {
     const section = document.getElementById('checkout-address');
@@ -179,7 +189,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
             onChangeAddress={toAddress}
             addressLine={addressLine.replace(/^[^:]*: /, '')}
           />
-          <PaymentSection view={view} block={block} onPay={pay} />
+          <PaymentSection view={view} block={block} onPay={pay} reasonId={`${reason}-form`} />
         </div>
         <div className="ckside">
           <div className="cs stick alt">
@@ -191,11 +201,15 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
             </div>
             <ItemList view={view} />
             <DiscountBox startOpen />
-            <SummaryTotals view={view} />
-            <PayButton view={view} block={block} onPay={pay} className="ckpd" />
-            {block !== null && block !== 'offline' ? (
-              <small>{t(`pay-block-${block}`)}</small>
-            ) : null}
+            <SummaryTotals view={view} deliveryLoading={ready === 'loading'} />
+            <PayButton
+              view={view}
+              block={block}
+              onPay={pay}
+              className="ckpd"
+              reasonId={`${reason}-side`}
+            />
+            {block !== null ? <small id={`${reason}-side`}>{t(`pay-block-${block}`)}</small> : null}
             <small className="legal">{t.rich('agree-order', legalLinks)}</small>
           </div>
           <HelpCard />
@@ -215,10 +229,12 @@ function PaymentSection({
   view,
   block,
   onPay,
+  reasonId,
 }: {
   readonly view: CartView;
   readonly block: PayBlock;
   readonly onPay: () => void;
+  readonly reasonId: string;
 }) {
   const t = useTranslations('checkout');
   const heading = useId();
@@ -232,10 +248,16 @@ function PaymentSection({
         </div>
         <p>{t('pay-body')}</p>
       </div>
+      <p className="legal ckl">
+        <Icon name="info" />
+        {t('full-charge')}
+      </p>
       <div className="ckpm">
-        <PayButton view={view} block={block} onPay={onPay} />
-        {block !== null && block !== 'offline' ? (
-          <p className="legal">{t(`pay-block-${block}-above`)}</p>
+        <PayButton view={view} block={block} onPay={onPay} reasonId={reasonId} />
+        {block !== null ? (
+          <p className="legal" id={reasonId}>
+            {t(`pay-block-${block}-above`)}
+          </p>
         ) : null}
         <p className="legal">{t.rich('agree-order', legalLinks)}</p>
       </div>
@@ -248,11 +270,14 @@ function PayButton({
   block,
   onPay,
   className,
+  reasonId,
 }: {
   readonly view: CartView;
   readonly block: PayBlock;
   readonly onPay: () => void;
   readonly className?: string;
+  /** The line under the button that says why it is off. */
+  readonly reasonId: string;
 }) {
   const t = useTranslations('checkout');
   const locale = useLocale();
@@ -262,6 +287,7 @@ function PayButton({
       type="button"
       data-pay=""
       aria-disabled={block === null ? undefined : true}
+      aria-describedby={block === null ? undefined : reasonId}
       onClick={onPay}
     >
       <Icon name="lock" />
@@ -282,7 +308,10 @@ function ItemList({ view }: { readonly view: CartView }) {
             <ItemThumb item={l.item} />
             <div>
               <b>{l.item.name}</b>
-              <small>{t('item-meta', { seller: g.seller.name, quantity: l.quantity })}</small>
+              <small>
+                {g.seller.name} ·{' '}
+                <span className="nw">{t('item-qty', { quantity: l.quantity })}</span>
+              </small>
             </div>
             <span className="num">{formatMoney(l.total, locale)}</span>
           </li>

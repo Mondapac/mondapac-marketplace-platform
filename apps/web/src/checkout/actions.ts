@@ -15,7 +15,8 @@ export async function deliveryAreaFor(raw: unknown): Promise<DeliveryAreaAnswer>
 /** The most sellers one checkout asks quotes for (a cart holds far fewer). */
 const MAX_SELLERS = 50;
 const ID = /^[A-Za-z0-9_-]{1,64}$/u;
-const POSTCODE = /^[\x20-\x7e]{1,16}$/u;
+/** A postcode in any market's style: letters, digits, spaces and hyphens (AU 4031, UK SW1A 1AA). */
+const POSTCODE = /^[A-Za-z0-9][A-Za-z0-9 -]{1,9}$/u;
 
 /** A quote request as the browser sent it, or null when it is not one. */
 function quoteRequest(
@@ -27,7 +28,8 @@ function quoteRequest(
     !Array.isArray(sellerIds) ||
     sellerIds.length === 0 ||
     sellerIds.length > MAX_SELLERS ||
-    !sellerIds.every((id) => typeof id === 'string' && ID.test(id))
+    !sellerIds.every((id) => typeof id === 'string' && ID.test(id)) ||
+    new Set(sellerIds).size !== sellerIds.length
   )
     return null;
   if (typeof address !== 'object' || address === null) return null;

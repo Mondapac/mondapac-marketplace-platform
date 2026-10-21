@@ -210,6 +210,8 @@ function NewAddressForm({
     return (text: string) => onChange({ ...value, [key]: text });
   };
   const noteId = useId();
+  // After "Change" on a picked address the search comes back with the focus in it.
+  const [searchAgain, setSearchAgain] = useState(false);
   const nameField = (
     <Field label={t('full-name')} autoComplete="name" value={value.name} onText={set('name')} />
   );
@@ -233,10 +235,18 @@ function NewAddressForm({
               place={value.picked}
               areaState={areaState}
               area={area}
-              onChange={() => onChange({ ...value, picked: null, suburbPick: null, query: '' })}
+              onChange={() => {
+                setSearchAgain(true);
+                onChange({ ...value, picked: null, suburbPick: null, query: '' });
+              }}
             />
           ) : (
-            <AddressSearch source={source} value={value} onChange={onChange} />
+            <AddressSearch
+              source={source}
+              value={value}
+              onChange={onChange}
+              focusOnShow={searchAgain}
+            />
           )}
           <div className="frow two">
             <Field
@@ -332,34 +342,49 @@ function PickedAddress({
 
 /**
  * The address search: a combobox with a listbox of suburbs and addresses (arrows move, Enter
- * picks, Esc clears). A full postcode outside the service area says so instead of a list.
+ * picks, Esc closes the list and a second Esc clears; leaving the field closes it too). A full
+ * postcode outside the service area, or no match, is said on a status line below the field.
  */
 function AddressSearch({
   source,
   value,
   onChange,
+  focusOnShow,
 }: {
   readonly source: CheckoutSource;
   readonly value: NewAddress;
   readonly onChange: (value: NewAddress) => void;
+  readonly focusOnShow: boolean;
 }) {
   const t = useTranslations('checkout');
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const [active, setActive] = useState(-1);
+  const [closed, setClosed] = useState(false);
   const area = source.serviceArea;
   const query = value.query.trim();
   const list = suggestPlaces(source.places, value.query, value.suburbPick);
   const typedPostcode = value.suburbPick === null && isPostcodeQuery(query) ? query : '';
   const postcodeArea = useDeliveryArea(source, typedPostcode);
   const outside = typedPostcode.length >= AREA_CHECK_MIN && postcodeArea === 'out';
-  const shown = outside ? [] : list;
   const typed = query !== '' || value.suburbPick !== null;
-  const open = typed && (shown.length > 0 || outside || list.length === 0);
+  const shown = outside || closed || !typed ? [] : list;
+  const expanded = shown.length > 0;
+  const status = !typed
+    ? null
+    : outside
+      ? 'outside'
+      : list.length === 0 && query !== ''
+        ? 'none'
+        : null;
   const focusInput = () => setTimeout(() => input.current?.focus(), 0);
+  useEffect(() => {
+    if (focusOnShow) input.current?.focus();
+  }, [focusOnShow]);
 
   const pick = (place: CheckoutPlace) => {
     setActive(-1);
+    setClosed(false);
     if (place.street === '') {
       onChange({ ...value, suburbPick: place, query: '' });
       focusInput();
@@ -379,7 +404,8 @@ function AddressSearch({
       if (chosen) pick(chosen);
     } else if (event.key === 'Escape') {
       setActive(-1);
-      onChange({ ...value, query: '' });
+      if (expanded) setClosed(true);
+      else onChange({ ...value, query: '' });
     }
   };
   return (
@@ -394,7 +420,7 @@ function AddressSearch({
           <button
             className="lnk"
             type="button"
-            aria-label={t('remove-suburb')}
+            aria-label={t('change-suburb')}
             onClick={() => {
               onChange({ ...value, suburbPick: null, query: '' });
               focusInput();
@@ -409,7 +435,7 @@ function AddressSearch({
           id={id}
           ref={input}
           role="combobox"
-          aria-expanded={shown.length > 0}
+          aria-expanded={expanded}
           aria-controls={`${id}-list`}
           aria-autocomplete="list"
           aria-activedescendant={active >= 0 && shown[active] ? `${id}-o${active}` : undefined}
@@ -419,54 +445,59 @@ function AddressSearch({
           value={value.query}
           onChange={(event) => {
             setActive(-1);
+            setClosed(false);
             onChange({ ...value, query: event.target.value });
           }}
           onKeyDown={onKey}
+          onBlur={() => {
+            setActive(-1);
+            setClosed(true);
+          }}
+          onFocus={() => setClosed(false)}
         />
         <ul className="aclist" id={`${id}-list`} role="listbox" aria-label={t('suggestions')}>
-          {open && outside ? (
-            <li className="acn" role="presentation">
-              {t('outside-area', { postcode: typedPostcode, area: area.name })}
+          {shown.map((place, i) => (
+            <li
+              key={place.id}
+              id={`${id}-o${i}`}
+              role="option"
+              aria-selected={i === active}
+              className={i === active ? 'on' : undefined}
+              // Keep the focus in the field: the click picks without blurring it first.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => pick(place)}
+            >
+              <Icon name="pin" />
+              {place.street === '' ? (
+                <span>
+                  <b>{place.suburb}</b> {place.regionCode} {place.postcode}
+                  <small>{t('suburb-then-street')}</small>
+                </span>
+              ) : (
+                <span>
+                  <b>{place.street}</b>, {place.suburb} {place.regionCode} {place.postcode}
+                </span>
+              )}
             </li>
-          ) : open && shown.length === 0 ? (
-            <li className="acn" role="presentation">
-              {t('no-addresses')}{' '}
-              <button
-                className="lnk"
-                type="button"
-                onClick={() => onChange({ ...value, mode: 'manual' })}
-              >
-                {t('enter-manually')}
-              </button>
-            </li>
-          ) : (
-            shown.map((place, i) => (
-              <li
-                key={place.id}
-                id={`${id}-o${i}`}
-                role="option"
-                aria-selected={i === active}
-                className={i === active ? 'on' : undefined}
-                // Keep the focus in the field: the click picks without blurring it first.
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => pick(place)}
-              >
-                <Icon name="pin" />
-                {place.street === '' ? (
-                  <span>
-                    <b>{place.suburb}</b> {place.regionCode} {place.postcode}
-                    <small>{t('suburb-then-street')}</small>
-                  </span>
-                ) : (
-                  <span>
-                    <b>{place.street}</b>, {place.suburb} {place.regionCode} {place.postcode}
-                  </span>
-                )}
-              </li>
-            ))
-          )}
+          ))}
         </ul>
       </div>
+      <p className="acst" role="status">
+        {status === 'outside' ? (
+          t('outside-area', { postcode: typedPostcode, area: area.name })
+        ) : status === 'none' ? (
+          <>
+            {t('no-addresses')}{' '}
+            <button
+              className="lnk"
+              type="button"
+              onClick={() => onChange({ ...value, mode: 'manual' })}
+            >
+              {t('enter-manually')}
+            </button>
+          </>
+        ) : null}
+      </p>
       <small id={`${id}-help`}>{t('search-hint')}</small>
       <button
         className="lnk acm"

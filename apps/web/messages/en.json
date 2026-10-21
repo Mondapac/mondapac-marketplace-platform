@@ -656,7 +656,6 @@
     "enter-manually": "Enter it manually",
     "enter-address-manually": "Enter address manually",
     "search-instead": "Search for the address instead",
-    "remove-suburb": "Remove suburb",
     "we-deliver-here": "We deliver here",
     "change-address-search": "Change address",
     "unit": "Unit or apartment (optional)",
@@ -684,12 +683,17 @@
     "pay-block-delivery": "Fix the delivery problem to pay.",
     "pay-block-delivery-above": "Fix the delivery problem above to pay.",
     "edit-cart": "Edit cart",
-    "item-meta": "{seller} · Qty: {quantity}",
     "help-title": "Need help?",
     "help-email": "Email us",
     "help-delivery": "Delivery and returns",
     "help-delivery-note": "Answers to common questions",
-    "part-express": "Order {reference} · Delivery: Express, within 2 hours"
+    "part-express": "Order {reference} · Delivery: Express, within 2 hours",
+    "item-qty": "Qty: {quantity}",
+    "full-charge": "The full amount is charged when you pay. If a seller cannot fill their part, that part is refunded to your card.",
+    "pay-block-offline": "You are offline. Pay works again when your connection is back.",
+    "pay-block-offline-above": "You are offline. Pay works again when your connection is back.",
+    "express-no-address": "Choose an address to see the price.",
+    "change-suburb": "Change suburb"
   },
   "deliver": {
     "title": "Choose where to deliver",

@@ -67,7 +67,10 @@ describe('delivery quotes (server action, sample courier)', () => {
       { address: { kind: 'saved', id: 'home' }, sellerIds: ['a b'] },
       { address: { kind: 'saved', id: 'home' }, sellerIds: Array(51).fill('s') },
       { address: { kind: 'new', postcode: '' }, sellerIds: ['kedron'] },
-      { address: { kind: 'new', postcode: '4'.repeat(17) }, sellerIds: ['kedron'] },
+      { address: { kind: 'new', postcode: '4'.repeat(11) }, sellerIds: ['kedron'] },
+      { address: { kind: 'new', postcode: '4' }, sellerIds: ['kedron'] },
+      { address: { kind: 'new', postcode: '40<1' }, sellerIds: ['kedron'] },
+      { address: { kind: 'saved', id: 'home' }, sellerIds: ['kedron', 'kedron'] },
       { address: { kind: 'other', id: 'home' }, sellerIds: ['kedron'] },
     ])
       expect(await deliveryQuotesFor(raw)).toEqual({});

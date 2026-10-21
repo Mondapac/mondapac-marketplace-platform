@@ -23,11 +23,11 @@ export function CartDrawer() {
   const locale = useLocale();
   const router = useRouter();
   const path = usePathname();
-  const { cart, cartSource, discount, delivery, cartOpen: open, setCartOpen, online } = useStore();
+  const { cart, cartSource, discount, cartOpen: open, setCartOpen, online } = useStore();
   const [mounted, setMounted] = useState(false);
   const panel = useRef<HTMLElement>(null);
   const opener = useRef<Element | null>(null);
-  const view = viewCart(cart, cartSource, discount, delivery);
+  const view = viewCart(cart, cartSource, discount);
 
   useEffect(() => setMounted(true), []);
   // A new page closes the drawer.
@@ -117,7 +117,7 @@ export function CartDrawer() {
                     </ul>
                     <div className="dsh">
                       <span>{t('delivery')}</span>
-                      <b className="num">{formatMoney(group.deliveryFee, locale)}</b>
+                      <b className="num">{formatMoney(seller.deliveryFee, locale)}</b>
                     </div>
                   </section>
                 );

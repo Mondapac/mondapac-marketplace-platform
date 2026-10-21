@@ -3,29 +3,41 @@
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import type { CartGroup, CartView } from '../cart/cart.ts';
+import type { CartGroup, CartView, DeliveryChoice } from '../cart/cart.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
 import { useStore } from '../shell/store-context.tsx';
-import type { DeliveryQuote, ExpressTerms, QuoteAddress } from '../storefront/types.ts';
+import type {
+  DeliveryQuote,
+  DeliverySpeed,
+  ExpressTerms,
+  Money,
+  QuoteAddress,
+} from '../storefront/types.ts';
 import { deliveryQuotesFor } from './actions.ts';
 
 // The checkout's Delivery method section: one card per seller with Scheduled (the seller's window
 // and flat fee) and Express (within 2 hours once the seller has the order ready, at the courier's
-// live price) side by side. Scheduled is the default; Express is off when the seller does not
-// offer it or its cut-off has passed. Prices are checked again when the buyer pays.
+// live price) side by side. Scheduled is the default. Express is offered only while the courier
+// quotes a price for it; the order checks every price again when it is placed.
 
-/** A seller's quote, or `loading` while the courier has not answered. */
-export type QuoteState = DeliveryQuote | { readonly kind: 'loading' };
+/**
+ * A seller's quote: `loading` while the courier has not answered, `no-address` until an address
+ * is chosen.
+ */
+export type QuoteState =
+  DeliveryQuote | { readonly kind: 'loading' } | { readonly kind: 'no-address' };
 
 /**
  * Each seller's delivery quote for the address: asked again when the address or the sellers
- * change (the last request wins); `retry` asks again for one seller. Null address: no quotes.
+ * change (an answer for an earlier address is dropped); `retry` asks again for one seller. When
+ * the connection comes back, the sellers whose quote failed are asked again.
  */
 export function useDeliveryQuotes(
   address: QuoteAddress | null,
   sellerIds: readonly string[],
+  online: boolean,
 ): { readonly quotes: Readonly<Record<string, QuoteState>>; readonly retry: (id: string) => void } {
   const key = address === null ? '' : JSON.stringify([address, sellerIds]);
   const [answers, setAnswers] = useState<{
@@ -68,8 +80,46 @@ export function useDeliveryQuotes(
 
   const quotes: Record<string, QuoteState> = {};
   for (const id of sellerIds)
-    quotes[id] = (answers.key === key ? answers.quotes[id] : undefined) ?? { kind: 'loading' };
+    quotes[id] =
+      address === null
+        ? { kind: 'no-address' }
+        : ((answers.key === key ? answers.quotes[id] : undefined) ?? { kind: 'loading' });
+
+  // Back online: the quotes that failed meanwhile are asked again.
+  const failed = sellerIds.filter((id) => quotes[id]?.kind === 'failed').join(' ');
+  const wasOnline = useRef(online);
+  useEffect(() => {
+    const back = online && !wasOnline.current;
+    wasOnline.current = online;
+    if (back && failed !== '') for (const id of failed.split(' ')) retry(id);
+  }, [online, failed, retry]);
+
   return { quotes, retry };
+}
+
+/** The Express price a quote gives, or null: Express is offered only with a price. */
+export function expressPrice(quote: QuoteState | undefined): Money | null {
+  return quote?.kind === 'quote' ? quote.express : null;
+}
+
+/**
+ * The delivery each seller gets: Express at the quoted price when the buyer picked it and the
+ * courier prices it now; Scheduled otherwise (the buyer's pick is kept for when a price comes).
+ */
+export function deliveryChoices(
+  sellerIds: readonly string[],
+  wishes: Readonly<Record<string, DeliverySpeed>>,
+  quotes: Readonly<Record<string, QuoteState>>,
+): Record<string, DeliveryChoice> {
+  const choices: Record<string, DeliveryChoice> = {};
+  for (const id of sellerIds) {
+    const price = expressPrice(quotes[id]);
+    choices[id] =
+      wishes[id] === 'express' && price !== null
+        ? { speed: 'express', fee: price }
+        : { speed: 'scheduled' };
+  }
+  return choices;
 }
 
 /** Where the delivery choices stand for Pay: `ok`, still `loading`, or a `problem` to fix. */
@@ -78,7 +128,7 @@ export function quotesReady(
 ): 'ok' | 'loading' | 'problem' {
   const states = Object.values(quotes);
   if (states.some((q) => q.kind === 'failed' || q.kind === 'out-of-range')) return 'problem';
-  if (states.some((q) => q.kind === 'loading')) return 'loading';
+  if (states.some((q) => q.kind === 'loading' || q.kind === 'no-address')) return 'loading';
   return 'ok';
 }
 
@@ -136,11 +186,10 @@ function DeliveryCard({
   const t = useTranslations('checkout');
   const tcart = useTranslations('cart');
   const locale = useLocale();
-  const { delivery, setDelivery } = useStore();
+  const { setDeliveryWish } = useStore();
   const { seller } = group;
   const money = (m: CartView['total']) => formatMoney(m, locale);
-  const express = quote.kind === 'quote' ? quote.express : null;
-  const chosen = delivery[seller.id]?.speed ?? 'scheduled';
+  const express = expressPrice(quote);
   const loading = quote.kind === 'loading';
   return (
     <div className="dcard">
@@ -189,23 +238,23 @@ function DeliveryCard({
         >
           <SpeedOption
             name={`speed-${seller.id}`}
-            checked={chosen === 'scheduled'}
+            checked={group.speed === 'scheduled'}
             title={t('scheduled')}
             detail={seller.deliveryWindow}
             fee={money(seller.deliveryFee)}
-            onPick={() => setDelivery(seller.id, { speed: 'scheduled' })}
+            onPick={() => setDeliveryWish(seller.id, 'scheduled')}
           />
-          {seller.express?.kind === 'offered' && (express || loading) ? (
+          {express || loading ? (
             <SpeedOption
               name={`speed-${seller.id}`}
-              checked={chosen === 'express'}
+              checked={group.speed === 'express'}
               title={t('express')}
               tag={t('fastest')}
               detail={t('express-detail')}
               fee={express ? money(express) : null}
               disabled={!express}
               onPick={() => {
-                if (express) setDelivery(seller.id, { speed: 'express', fee: express });
+                if (express) setDeliveryWish(seller.id, 'express');
               }}
             />
           ) : (
@@ -214,7 +263,13 @@ function DeliveryCard({
               <span className="dtx">
                 <b>{t('express')}</b>
                 <small>
-                  {t('express-off')} <ExpressReason terms={seller.express} />
+                  {quote.kind === 'no-address' ? (
+                    t('express-no-address')
+                  ) : (
+                    <>
+                      {t('express-off')} <ExpressReason terms={seller.express} />
+                    </>
+                  )}
                 </small>
               </span>
             </div>

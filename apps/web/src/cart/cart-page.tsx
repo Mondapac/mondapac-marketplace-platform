@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Crumbs } from '../catalog/results.tsx';
+import { CheckoutProgress } from '../checkout/progress.tsx';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
-import { CheckoutProgress } from '../checkout/progress.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import { viewCart, type CartGroup, type CartGroupLine, type CartView } from './cart.ts';
 import {
@@ -38,8 +38,8 @@ export function CartPage() {
   const tc = useTranslations('catalog');
   const locale = useLocale();
   const router = useRouter();
-  const { cart, cartSource, discount, delivery, customer, online } = useStore();
-  const view = viewCart(cart, cartSource, discount, delivery);
+  const { cart, cartSource, discount, customer, online } = useStore();
+  const view = viewCart(cart, cartSource, discount);
   const [notice, setNotice] = useState(true);
 
   // The drawer's Checkout of a blocked cart lands here with the seller's anchor.
@@ -250,7 +250,7 @@ function SellerGroup({ group, notice }: { readonly group: CartGroup; readonly no
           <Icon name="truck" />
           {t('delivery-from-seller')}
         </span>
-        <b className="num">{money(group.deliveryFee)}</b>
+        <b className="num">{money(seller.deliveryFee)}</b>
       </div>
     </section>
   );

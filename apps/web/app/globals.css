@@ -4415,7 +4415,7 @@ svg {
   .ckst li {
     flex: 0 0 auto;
     flex-direction: row;
-    gap: 10px;
+    gap: 12px;
     font-size: calc(14px * var(--fs));
     text-align: start;
     white-space: nowrap;
@@ -4428,7 +4428,7 @@ svg {
     flex: 1 1 24px;
     width: auto;
     min-width: 24px;
-    margin-inline-start: 2px;
+    margin-inline: 12px 0;
   }
   .ckst .n {
     box-shadow: none;
@@ -4536,13 +4536,12 @@ svg {
   display: block;
   color: var(--sf-slate);
 }
-.aclist .acn {
-  display: block;
-  color: var(--sf-slate);
-  cursor: default;
+.acst:empty {
+  display: none;
 }
-.aclist .acn:hover {
-  background: none;
+.acst {
+  margin: 0;
+  color: var(--sf-slate);
 }
 .acm {
   justify-self: start;
@@ -4553,7 +4552,7 @@ svg {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 0 12px;
+  padding: 6px 12px;
   border-radius: 10px;
   background: var(--sf-mist);
   color: var(--sf-teal);
@@ -4574,12 +4573,15 @@ svg {
 .acsel {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: 12px;
   align-items: center;
-  padding: 8px 14px;
+  padding: 12px 14px;
   border: 1px solid var(--sf-teal);
   border-radius: 12px;
   background: var(--sf-mist-soft);
+}
+.acsel > .lnk {
+  margin-inline-start: auto;
 }
 .acsel.bad {
   border-color: var(--sf-error);
@@ -4820,6 +4822,21 @@ svg {
 }
 .ckit .num {
   font-weight: 800;
+}
+.ckit .nw {
+  white-space: nowrap;
+}
+.ckl {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+}
+.ckl .ico {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--sf-teal);
 }
 .ckdc {
   padding: 4px 16px;
