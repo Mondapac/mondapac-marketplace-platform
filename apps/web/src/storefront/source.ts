@@ -12,10 +12,10 @@ import {
 } from './real-sellers.ts';
 import type { AssistantSetup } from '../assistant/assistant.ts';
 import { loadHome, type HomeContent } from './home-source.ts';
+import { loadShellContent } from './shell-source.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
-import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { SAMPLE_SELLER_SIGN_UP } from './sample-seller-sign-up.ts';
@@ -49,12 +49,13 @@ import type {
 export const SAMPLE_DATA: boolean = true;
 
 /**
- * The shell's content: delivery area, popular searches, the rail and drawer categories and the
- * sample sellers. Sample data; the shell moves to the navigation and category reads in its own
- * package.
+ * The shell's content: delivery area, popular searches, the drawer categories and the sample
+ * sellers. The categories and popular searches come from the approved navigation and the live
+ * category tree when API_BASE_URL is set; the delivery area and sellers are sample data. See
+ * ./shell-source.ts.
  */
 export async function loadStorefrontContent(): Promise<StorefrontContent> {
-  return Promise.resolve(SAMPLE_CONTENT);
+  return loadShellContent();
 }
 
 /**

@@ -28,9 +28,10 @@ import {
   findProducts,
   listingBanner,
   listingFacets,
+  listingIsLive,
+  resolveCategory,
 } from '../../../../src/storefront/catalog.ts';
 import { listingNoindex, pageMetadata, seoDescription } from '../../../../src/seo/metadata.ts';
-import { loadStorefrontContent } from '../../../../src/storefront/source.ts';
 
 interface Props {
   readonly params: Promise<{ category: string; sub?: string[] }>;
@@ -40,12 +41,10 @@ interface Props {
 /** The category and subcategory of the path; an unknown one is a 404. */
 async function resolve(params: Props['params']) {
   const { category: code, sub = [] } = await params;
-  const content = await loadStorefrontContent();
-  const category = content.categories.find((c) => c.code === code);
-  if (!category || sub.length > 1) notFound();
-  const child = sub.length === 0 ? undefined : category.children.find((c) => c.code === sub[0]);
-  if (sub.length === 1 && !child) notFound();
-  return { category, child };
+  if (sub.length > 1) notFound();
+  const found = await resolveCategory(code, sub[0]);
+  if (!found) notFound();
+  return found;
 }
 
 export async function generateMetadata({ params, searchParams }: Props) {
@@ -77,6 +76,9 @@ export default async function CategoryPage({ params, searchParams }: Props) {
   ]);
   const base = `/c/${category.code}`;
   const path = child ? `${base}/${child.code}` : base;
+  // With the API on the page lists products only: the route has no filters, sort, total, facets
+  // or banners, so those controls are left out and a filter left in the URL matches nothing.
+  const live = listingIsLive();
   const state = listingStateOf(query);
   const scope = { category: category.code, ...(child ? { subcategory: child.code } : {}) };
   const [result, facets, banner] = await Promise.all([
@@ -111,16 +113,20 @@ export default async function CategoryPage({ params, searchParams }: Props) {
           ]}
         />
       </ResultsHead>
-      <ListingFilters path={path} state={state} facets={facets} total={total} />
-      <ActiveFilters path={path} state={state} facets={facets} />
-      <div className="rbar">
-        <ResultCount page={state.page} pageSize={LISTING_PAGE_SIZE} total={total} />
-        <SortSelect path={path} state={state} />
-      </div>
+      {live ? null : (
+        <>
+          <ListingFilters path={path} state={state} facets={facets} total={total} />
+          <ActiveFilters path={path} state={state} facets={facets} />
+          <div className="rbar">
+            <ResultCount page={state.page} pageSize={LISTING_PAGE_SIZE} total={total} />
+            <SortSelect path={path} state={state} />
+          </div>
+        </>
+      )}
       <ProductResults
         result={result}
         hrefFor={(page) => listingHref(path, withPage(state, page))}
-        pager={<NumberedPager path={path} state={state} pages={pages} />}
+        {...(live ? {} : { pager: <NumberedPager path={path} state={state} pages={pages} /> })}
         empty={
           filtered ? (
             <EmptyResults message={t('filters-empty')}>
