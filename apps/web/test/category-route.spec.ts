@@ -20,8 +20,8 @@ const digestOf = (error: unknown) => (error as { digest?: string }).digest ?? ''
 
 describe('category route', () => {
   it('resolves a category and its subcategory', async () => {
-    expect((await metadata('meat')).title).toBe('Meat | title');
-    expect((await metadata('meat', ['lamb'])).title).toBe('Lamb | title');
+    expect((await metadata('meat')).title).toEqual({ absolute: 'Meat | title' });
+    expect((await metadata('meat', ['lamb'])).title).toEqual({ absolute: 'Lamb | title' });
   });
 
   it('is a 404 for a path deeper than one subcategory', async () => {

@@ -9,7 +9,21 @@ import {
   paletteOf,
   textSizeOf,
 } from '../../../src/preferences/preferences.ts';
+import { pageMetadata, seoDescription } from '../../../src/seo/metadata.ts';
 import { TextSizeToggle } from '../../../src/preferences/text-size-toggle.tsx';
+
+export async function generateMetadata() {
+  const [t, description] = await Promise.all([
+    getTranslations('personalization'),
+    seoDescription('personalization'),
+  ]);
+  return pageMetadata({
+    name: t('title'),
+    description,
+    path: '/account/personalization',
+    noindex: true,
+  });
+}
 
 export default async function PersonalizationPage() {
   const t = await getTranslations('personalization');

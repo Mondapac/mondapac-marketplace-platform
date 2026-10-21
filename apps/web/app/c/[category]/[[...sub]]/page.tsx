@@ -31,6 +31,7 @@ import {
   listingIsLive,
   resolveCategory,
 } from '../../../../src/storefront/catalog.ts';
+import { listingNoindex, pageMetadata, seoDescription } from '../../../../src/seo/metadata.ts';
 
 interface Props {
   readonly params: Promise<{ category: string; sub?: string[] }>;
@@ -46,10 +47,25 @@ async function resolve(params: Props['params']) {
   return found;
 }
 
-export async function generateMetadata({ params }: Props) {
-  const { category, child } = await resolve(params);
-  const t = await getTranslations('store');
-  return { title: `${child?.name ?? category.name} | ${t('title')}` };
+export async function generateMetadata({ params, searchParams }: Props) {
+  const [{ category, child }, query] = await Promise.all([resolve(params), searchParams]);
+  const state = listingStateOf(query);
+  const path = child ? `/c/${category.code}/${child.code}` : `/c/${category.code}`;
+  const scope = { category: category.code, ...(child ? { subcategory: child.code } : {}) };
+  const [all, description] = await Promise.all([
+    findProducts({ ...scope, page: 1, pageSize: 1 }),
+    child
+      ? seoDescription('subcategory', { name: child.name, category: category.name })
+      : seoDescription('category', { name: category.name }),
+  ]);
+  return pageMetadata({
+    name: child?.name ?? category.name,
+    description,
+    path,
+    page: state.page,
+    // An empty list, or a filtered or re-ordered copy of the plain one, stays out of the index.
+    noindex: listingNoindex(state) || (all.total ?? all.items.length) === 0,
+  });
 }
 
 export default async function CategoryPage({ params, searchParams }: Props) {
