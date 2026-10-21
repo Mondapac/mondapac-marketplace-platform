@@ -11,6 +11,8 @@ import { detailKeyOf, type DetailBadge, type DetailKey } from '../ports/product-
 export const MAX_DETAIL_OFFERS = 20;
 /** The most (Offer, Variant) keys asked of pricing and inventory: both refuse more than 200. */
 export const MAX_DETAIL_KEYS = 200;
+/** How long the page waits for the badge source: past it the page answers with no badge. */
+export const BADGES_DEADLINE_MS = 1500;
 
 export interface ProductDetailRequest {
   readonly productId: string;
@@ -210,16 +212,22 @@ export class ViewProductDetail extends UseCase<
 
   /**
    * The badges per Offer. Badges fail closed and the page does not: a source that cannot answer,
-   * or throws, gives no badge for any Offer.
+   * throws, or is slower than {@link BADGES_DEADLINE_MS} gives no badge for any Offer.
    */
   private async badgesOf(
     context: CallContext,
     offerIds: readonly Id<'Offer'>[],
   ): Promise<ReadonlyMap<Id<'Offer'>, readonly ProductDetailBadge[]>> {
+    let timer: NodeJS.Timeout | undefined;
+    const none = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), BADGES_DEADLINE_MS);
+    });
     try {
-      return (await this.deps.sources.badges(context, offerIds)) ?? new Map();
+      return (await Promise.race([this.deps.sources.badges(context, offerIds), none])) ?? new Map();
     } catch {
       return new Map();
+    } finally {
+      clearTimeout(timer);
     }
   }
 }

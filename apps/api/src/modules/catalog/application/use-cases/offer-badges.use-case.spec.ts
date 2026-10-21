@@ -1,8 +1,10 @@
+import { Logger } from '@nestjs/common';
 import { Temporal, err } from '@mondapac/shared-kernel';
-import type { Id, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   SequenceIdGenerator,
+  testAuthenticatedActor,
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
@@ -140,10 +142,19 @@ describe.each([
     new CatalogFacadeImplementation({
       offerBadges: new OfferBadgesQuery(gate, { unitOfWork, offers, claims, evaluator, policy }),
     } as never);
-  const ask = (offerIds: readonly Id<'Offer'>[]) =>
-    facade().offerBadges(testCallContext(market, 'anonymous', 'offer-badges-0001'), offerIds);
+  const ask = (offerIds: readonly Id<'Offer'>[], context?: CallContext) =>
+    facade().offerBadges(
+      context ?? testCallContext(market, 'anonymous', 'offer-badges-0001'),
+      offerIds,
+    );
+  let warnings: Record<string, unknown>[] = [];
+  const hiddenLogs = () => warnings.filter((w) => w.msg === 'catalog.offer-badges.hidden');
 
   beforeEach(() => {
+    warnings = [];
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(message as Record<string, unknown>);
+    });
     units.length = 0;
     insideUnit = false;
     askedInsideUnit = false;
@@ -157,6 +168,8 @@ describe.each([
     };
     evaluator.names.set(typeCode, { typeRevisionId: certificate.typeRevisionId, name: 'Halal' });
   });
+
+  afterEach(() => jest.restoreAllMocks());
 
   it('declares an anonymous rule under its own name', () => {
     expect(OfferBadgesQuery.access).toEqual({
@@ -264,13 +277,83 @@ describe.each([
     expect(evaluator.calls).toEqual([]);
   });
 
-  it('answers no badge when the live basis differs from the stored tag basis', async () => {
+  it('answers no badge when the live basis differs from the stored tag basis, and logs the code only', async () => {
     const base = activeTag();
     const offerId = add(offerState(), [
       { ...base, copy: { ...base.copy!, basis: 'MANUFACTURER' } },
     ]);
     const result = await ask([offerId]);
     expect(result.ok && result.value.size).toBe(0);
+    expect(hiddenLogs()).toEqual([
+      {
+        msg: 'catalog.offer-badges.hidden',
+        reason: 'basis-mismatch',
+        typeCode,
+        marketId: code,
+        correlationId: 'offer-badges-0001',
+      },
+    ]);
+  });
+
+  it('answers a MANUFACTURER badge when the stored and live basis are both MANUFACTURER', async () => {
+    const base = activeTag();
+    const offerId = add(offerState({ attestationRecordedAt: T0 }), [
+      {
+        ...base,
+        copy: { ...base.copy!, basis: 'MANUFACTURER', certificateKind: 'manufacturer' },
+      },
+    ]);
+    evaluator.decide = (query) => {
+      const decision = allowedDecision(query, certificate);
+      return {
+        ...decision,
+        basis: 'MANUFACTURER',
+        certificate: { ...decision.certificate!, kind: 'manufacturer' },
+        badge: { ...decision.badge!, basis: 'MANUFACTURER', sellerClaim: false },
+      };
+    };
+    const result = await ask([offerId]);
+    expect(result.ok && result.value.get(offerId)).toEqual([
+      {
+        typeCode,
+        typeName: 'Halal',
+        basis: 'MANUFACTURER',
+        sellerClaim: false,
+        issuerName: null,
+        validUntilLocalDate: null,
+        verifiedWithIssuer: false,
+      },
+    ]);
+    expect(evaluator.calls[0]!.every((q) => q.handling === 'SEALED_ORIGINAL')).toBe(true);
+    expect(evaluator.calls[0]!.every((q) => q.attestationRecorded)).toBe(true);
+    expect(hiddenLogs()).toEqual([]);
+  });
+
+  it('answers a seller-claim badge with no issuer and no expiry as null name and null date', async () => {
+    const offerId = add(offerState(), [activeTag()]);
+    const result = await ask([offerId]);
+    const badge = result.ok ? result.value.get(offerId)![0]! : null;
+    expect(badge).toMatchObject({ sellerClaim: true, issuerName: null, validUntilLocalDate: null });
+  });
+
+  it("hands the evaluator one context, the gate's anonymous one of the same Market and correlation id, for a customer caller", async () => {
+    const offerId = add(offerState(), [activeTag()]);
+    const actor = testAuthenticatedActor(market, {
+      population: 'customer',
+      accountId: ids.next(),
+      sessionId: ids.next(),
+      sellerId: null,
+    });
+    const context = testCallContext(market, actor, 'offer-badges-0002');
+    const result = await ask([offerId], context);
+    expect(result.ok && result.value.size).toBe(1);
+    // The `anonymous` rule runs the use case as the Market's anonymous actor (no customer identity
+    // reaches certification); the same context object is used for the ask and the type names.
+    expect(evaluator.contexts).toHaveLength(1);
+    expect(evaluator.contexts[0]!.actor).toEqual({ kind: 'anonymous', marketId: code });
+    expect(evaluator.contexts[0]!.market).toBe(context.market);
+    expect(evaluator.contexts[0]!.correlationId).toBe(context.correlationId);
+    expect(evaluator.nameContexts[0]).toBe(evaluator.contexts[0]);
   });
 
   it('answers no badge when the live decisions disagree between variants', async () => {
@@ -340,15 +423,70 @@ describe.each([
     expect(result.ok && result.value.size).toBe(0);
   });
 
-  it('drops the badge when the type has no name, or a name of another revision', async () => {
+  it('drops the badge when the type has no name, and logs the code only', async () => {
     const offerId = add(offerState(), [activeTag()]);
     evaluator.names.clear();
-    const missing = await ask([offerId]);
-    expect(missing.ok && missing.value.size).toBe(0);
+    const result = await ask([offerId]);
+    expect(result.ok && result.value.size).toBe(0);
+    expect(hiddenLogs()).toEqual([
+      {
+        msg: 'catalog.offer-badges.hidden',
+        reason: 'type-name-missing',
+        typeCode,
+        marketId: code,
+        correlationId: 'offer-badges-0001',
+      },
+    ]);
+  });
 
+  it('drops the badge when the name is of another type revision than the badge, and logs it', async () => {
+    const offerId = add(offerState(), [activeTag()]);
+    // The live badge is decided on `certificate.typeRevisionId`; the names map holds another.
     evaluator.names.set(typeCode, { typeRevisionId: ids.next(), name: 'Halal' });
-    const otherRevision = await ask([offerId]);
-    expect(otherRevision.ok && otherRevision.value.size).toBe(0);
+    const result = await ask([offerId]);
+    expect(result.ok && result.value.size).toBe(0);
+    expect(hiddenLogs()).toEqual([
+      {
+        msg: 'catalog.offer-badges.hidden',
+        reason: 'type-revision-mismatch',
+        typeCode,
+        marketId: code,
+        correlationId: 'offer-badges-0001',
+      },
+    ]);
+    expect(JSON.stringify(hiddenLogs())).not.toContain(offerId);
+  });
+
+  it('asks and shows only the active type when another type of the Offer is suspended', async () => {
+    const other = 'aaa-cert';
+    const offerId = add(offerState(), [activeTag(), activeTag({ status: 'suspended' }, other)]);
+    evaluator.names.set(other, { typeRevisionId: certificate.typeRevisionId, name: 'Other' });
+    const result = await ask([offerId]);
+    expect(result.ok && result.value.get(offerId)!.map((b) => b.typeCode)).toEqual([typeCode]);
+    expect(new Set(evaluator.calls[0]!.map((q) => q.typeCode))).toEqual(new Set([typeCode]));
+  });
+
+  it('answers no badge and asks nothing for an active tag with no copy', async () => {
+    const offerId = add(offerState(), [activeTag({ copy: null })]);
+    const result = await ask([offerId]);
+    expect(result.ok && result.value.size).toBe(0);
+    expect(evaluator.calls).toEqual([]);
+  });
+
+  it('gives no entry for an Offer the store does not return, the others unaffected', async () => {
+    const present = add(offerState(), [activeTag()]);
+    const missing = ids.next<'Offer'>();
+    const result = await ask([missing, present]);
+    expect(result.ok && [...result.value.keys()]).toEqual([present]);
+  });
+
+  it('gives no entry for a soft-deleted Offer, the others unaffected', async () => {
+    const present = add(offerState(), [activeTag()]);
+    const deleted = add(offerState({ status: 'deleted', listed: false, deletedAt: T0 }), [
+      activeTag(),
+    ]);
+    const result = await ask([deleted, present]);
+    expect(result.ok && [...result.value.keys()]).toEqual([present]);
   });
 
   it('keeps the badge of one type when another type is refused, in type-code order', async () => {

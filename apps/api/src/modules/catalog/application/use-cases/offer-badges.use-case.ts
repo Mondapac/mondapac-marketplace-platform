@@ -96,6 +96,21 @@ export class OfferBadgesQuery extends UseCase<
     }
   }
 
+  /** A badge hidden although the live decision allowed it: the type code only, no ids. */
+  #hidden(
+    context: CallContext,
+    reason: 'basis-mismatch' | 'type-name-missing' | 'type-revision-mismatch',
+    typeCode: string,
+  ): void {
+    this.#logger.warn({
+      msg: 'catalog.offer-badges.hidden',
+      reason,
+      typeCode,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+  }
+
   async #badges(context: CallContext, offerIds: readonly Id<'Offer'>[]): Promise<OfferBadgesMap> {
     const { deps } = this;
     const { market } = context;
@@ -154,9 +169,19 @@ export class OfferBadgesQuery extends UseCase<
       for (const typeCode of [...item.queries.keys()].sort()) {
         const judged = judgeTag(item.queries.get(typeCode)!, answers.get(typeCode));
         if (judged.kind !== 'allowed') continue;
-        if (item.storedBasis.get(typeCode) !== judged.copy.basis) continue;
+        if (item.storedBasis.get(typeCode) !== judged.copy.basis) {
+          this.#hidden(context, 'basis-mismatch', typeCode);
+          continue;
+        }
         const type = names.value.get(typeCode);
-        if (type === undefined || type.typeRevisionId !== judged.badge.typeRevisionId) continue;
+        if (type === undefined) {
+          this.#hidden(context, 'type-name-missing', typeCode);
+          continue;
+        }
+        if (type.typeRevisionId !== judged.badge.typeRevisionId) {
+          this.#hidden(context, 'type-revision-mismatch', typeCode);
+          continue;
+        }
         badges.push({
           typeCode: judged.badge.typeCode,
           typeName: type.name,

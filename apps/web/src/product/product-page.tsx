@@ -95,10 +95,11 @@ export function ProductPage({
                     <div className="osl">
                       <SellerBlock offer={o} placement="row" />
                       {o.certifications.map((c) => (
-                        <span key={c.type} className="badge hl">
-                          {c.sellerClaim === true
-                            ? t('declared-badge', { name: c.label })
-                            : c.label}
+                        <span
+                          key={c.type}
+                          className={c.sellerClaim === true ? 'badge decl' : 'badge hl'}
+                        >
+                          {c.sellerClaim === true ? t('declared-chip', { name: c.label }) : c.label}
                         </span>
                       ))}
                     </div>
@@ -256,10 +257,10 @@ function Certificates({ offer }: { readonly offer: ProductOffer }) {
 }
 
 /**
- * Who stands behind a badge, in words: the seller's own declaration is never worded as certified;
- * a certificate names its issuer when it has one, whose it is (the seller's or the manufacturer's),
- * when it ends and whether the platform confirmed it with the issuer. Dates are calendar dates, so
- * they are formatted in UTC and never shift a day.
+ * Who stands behind a badge, in words, as a short hierarchy under the type name: one sentence for
+ * who issued it and to whom, then one compact line for when it ends and how it was checked. The
+ * seller's own declaration is never worded as certified. Dates are calendar dates, so they are
+ * formatted in UTC and never shift a day.
  */
 function CertificateNote({
   badge,
@@ -281,20 +282,30 @@ function CertificateNote({
       : manufacturer
         ? t('certificate-issued-manufacturer-by', { issuer })
         : t('certificate-issued-by', { issuer, seller });
+  const verified = badge.verifiedWithIssuer === true;
   return (
     <>
       <p>{who}</p>
-      {badge.validUntil === undefined ? null : (
-        <p>
-          {t('certificate-valid-until', {
-            date: format.dateTime(new Date(`${badge.validUntil}T00:00:00Z`), {
-              dateStyle: 'medium',
-              timeZone: 'UTC',
-            }),
-          })}
-        </p>
-      )}
-      {badge.verifiedWithIssuer === true ? <p>{t('certificate-verified')}</p> : null}
+      <p className="certmeta">
+        {badge.validUntil === undefined ? null : (
+          <span>
+            {t('certificate-valid-until', {
+              date: format.dateTime(new Date(`${badge.validUntil}T00:00:00Z`), {
+                dateStyle: 'medium',
+                timeZone: 'UTC',
+              }),
+            })}
+          </span>
+        )}
+        {verified ? (
+          <span className="certok">
+            <Icon name="check" />
+            {t('certificate-verified')}
+          </span>
+        ) : (
+          <span>{t('certificate-reviewed')}</span>
+        )}
+      </p>
     </>
   );
 }

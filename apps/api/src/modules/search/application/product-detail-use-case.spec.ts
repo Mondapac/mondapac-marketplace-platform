@@ -25,6 +25,7 @@ import type { PublishedVariants } from './ports/published-variants';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
 import {
   MAX_DETAIL_KEYS,
+  BADGES_DEADLINE_MS,
   MAX_DETAIL_OFFERS,
   ViewProductDetail,
 } from './use-cases/view-product-detail.use-case';
@@ -122,7 +123,7 @@ class StubSources implements ProductDetailSources {
   stock = new Map<string, DetailStock>();
   sellers_: Map<Id<'Seller'>, DetailSeller> | null = new Map();
   badges_ = new Map<Id<'Offer'>, readonly DetailBadge[]>();
-  badgesFailing: 'null' | 'throw' | null = null;
+  badgesFailing: 'null' | 'throw' | 'hang' | null = null;
   readonly badgesAsked: Id<'Offer'>[][] = [];
   pricesFailing = false;
   stockFailing = false;
@@ -143,6 +144,7 @@ class StubSources implements ProductDetailSources {
     this.asked.push({ kind: 'badges', actor: context.actor.kind });
     this.badgesAsked.push([...offerIds]);
     if (this.badgesFailing === 'throw') return Promise.reject(new Error('badges down'));
+    if (this.badgesFailing === 'hang') return new Promise<never>(() => undefined);
     return Promise.resolve(this.badgesFailing === 'null' ? null : this.badges_);
   }
   sellers(context: CallContext) {
@@ -352,6 +354,25 @@ describe.each([
         expect(result.ok && result.value.offers.map((o) => o.badges)).toEqual([[], []]);
       },
     );
+
+    it('answers the page with no badge when the badge source is slower than the deadline', async () => {
+      jest.useFakeTimers();
+      try {
+        shelves.documents = [hit(1), hit(2)];
+        price(1, 1, 900n);
+        price(2, 1, 800n);
+        sources.badges_ = new Map([[offer(1), [halal]]]);
+        sources.badgesFailing = 'hang';
+
+        const pending = run();
+        await jest.advanceTimersByTimeAsync(BADGES_DEADLINE_MS);
+        const result = await pending;
+
+        expect(result.ok && result.value.offers.map((o) => o.badges)).toEqual([[], []]);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
 
     it('asks no badge for an Offer that is dropped for having no priced unit', async () => {
       shelves.documents = [hit(1), hit(2)];

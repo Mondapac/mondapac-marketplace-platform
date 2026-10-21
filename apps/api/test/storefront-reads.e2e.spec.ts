@@ -227,6 +227,20 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
     ]);
   });
 
+  it('answers 200 with an empty badges list when the badge source failed (the page does not fail)', async () => {
+    // The use case answers `badges: []` for a failing source (see product-detail-use-case.spec);
+    // the route must carry that through as an empty list, never drop the key or fail the page.
+    const detail = next.detail as { ok: true; value: { offers: { badges: unknown[] }[] } };
+    detail.value.offers[0]!.badges = [];
+
+    const response = await get(`/search/product-detail/${PRODUCT}`);
+
+    expect(response.status).toBe(200);
+    const [offer] = (response.body as { offers: { badges: unknown; units: unknown[] }[] }).offers;
+    expect(offer!.badges).toEqual([]);
+    expect(offer!.units).toHaveLength(1);
+  });
+
   it('refuses a market-less request before any use case', async () => {
     const responses = await Promise.all(
       [

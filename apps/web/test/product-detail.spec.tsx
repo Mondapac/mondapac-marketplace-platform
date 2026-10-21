@@ -269,6 +269,22 @@ describe('certification badges from the API', () => {
     expect(certificationsOf(many)).toHaveLength(10);
   });
 
+  it('does not carry fields the page has no use for (a certificate id, extra keys) into the badge', () => {
+    const [badge] = certificationsOf([
+      { ...GOOD, certificateId: 'cert-123', versionId: 'v-1', documentUrl: 'https://x.test/a.pdf' },
+    ]);
+    expect(Object.keys(badge!).sort()).toEqual([
+      'basis',
+      'issuer',
+      'label',
+      'sellerClaim',
+      'type',
+      'validUntil',
+      'verifiedWithIssuer',
+    ]);
+    expect(JSON.stringify(badge)).not.toMatch(/cert-123|v-1|documentUrl|x\.test/);
+  });
+
   it('sets the seller card line only for the seller basis and never for a seller claim', () => {
     const certificates = (badges: unknown[]) =>
       productDetailOf(withBadges(badges), 'en', labels)!.offers[0].seller.certificates;
@@ -279,14 +295,18 @@ describe('certification badges from the API', () => {
   });
 
   describe('on the page', () => {
-    const renderOffer = (badges: unknown) => {
+    const renderOffer = (badges: unknown, intl: { locale?: string; timeZone?: string } = {}) => {
       window.matchMedia = ((query: string) => ({
         matches: query.includes('min-width: 1000px'),
         addEventListener: () => undefined,
         removeEventListener: () => undefined,
       })) as unknown as typeof window.matchMedia;
       return render(
-        <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <NextIntlClientProvider
+          locale={intl.locale ?? 'en'}
+          messages={messages}
+          timeZone={intl.timeZone ?? 'UTC'}
+        >
           <StoreProvider>
             <ProductPage
               product={productDetailOf(withBadges(badges), 'en', labels)!}
@@ -310,6 +330,60 @@ describe('certification badges from the API', () => {
       expect(screen.getAllByRole('img', { name: 'Halal' }).length).toBeGreaterThan(0);
     });
 
+    it('words the issuer sentence first, then one meta line, and drops the review sentence when confirmed', () => {
+      renderOffer([GOOD]);
+      const section = screen.getByRole('heading', { name: 'Certificates' }).closest('section')!;
+      expect(within(section).queryByText(/Our team checked/)).toBeNull();
+      expect(within(section).queryByText('Reviewed by our team')).toBeNull();
+      const meta = section.querySelector('.certmeta')!;
+      expect(meta.textContent).toBe('Valid until Mar 1, 2027Confirmed with the issuer');
+      expect(meta.querySelector('svg')).not.toBeNull();
+    });
+
+    it('keeps a short platform-reviewed line when the issuer did not confirm', () => {
+      renderOffer([{ ...GOOD, verifiedWithIssuer: false }]);
+      const section = screen.getByRole('heading', { name: 'Certificates' }).closest('section')!;
+      expect(within(section).queryByText('Confirmed with the issuer')).toBeNull();
+      expect(within(section).getByText('Reviewed by our team')).toBeTruthy();
+      expect(section.querySelector('.certmeta svg')).toBeNull();
+    });
+
+    it("words a manufacturer's certificate as the maker's, with the seal and no declaration text", () => {
+      renderOffer([{ ...GOOD, basis: 'MANUFACTURER' }]);
+      const section = screen.getByRole('heading', { name: 'Certificates' }).closest('section')!;
+      expect(
+        within(section).getByText(
+          'Issued by Brisbane Islamic Council to the maker of this product.',
+        ),
+      ).toBeTruthy();
+      expect(within(section).queryByText(/Kedron Butchers/)).toBeNull();
+      expect(within(section).queryByText(/seller's own declaration/)).toBeNull();
+      expect(within(section).queryByText(/declares this themselves/)).toBeNull();
+      // A certificate, so the seal is drawn in the box and on the photo.
+      expect(section.querySelector('.certbox .cl svg')).not.toBeNull();
+      expect(screen.getAllByRole('img', { name: 'Halal' }).length).toBeGreaterThan(0);
+    });
+
+    it("words a manufacturer's certificate without an issuer name", () => {
+      renderOffer([{ ...GOOD, basis: 'MANUFACTURER', issuerName: null }]);
+      expect(screen.getByText('Issued to the maker of this product.')).toBeTruthy();
+    });
+
+    it.each([
+      ['2027-01-31', 'Pacific/Kiritimati', 'en', 'Valid until Jan 31, 2027'],
+      ['2027-01-31', 'America/Los_Angeles', 'en', 'Valid until Jan 31, 2027'],
+      ['2027-03-01', 'Pacific/Kiritimati', 'en', 'Valid until Mar 1, 2027'],
+      ['2027-03-01', 'America/Los_Angeles', 'en', 'Valid until Mar 1, 2027'],
+      ['2027-01-31', 'America/Los_Angeles', 'en-AU', 'Valid until 31 Jan 2027'],
+      ['2027-03-01', 'Pacific/Kiritimati', 'en-AU', 'Valid until 1 Mar 2027'],
+    ])(
+      'shows the calendar date %s unshifted in zone %s and locale %s',
+      (validUntilLocalDate, timeZone, locale, text) => {
+        renderOffer([{ ...GOOD, validUntilLocalDate }], { locale, timeZone });
+        expect(screen.getByText(text)).toBeTruthy();
+      },
+    );
+
     it("words a seller's own declaration as a declaration, with no seal", () => {
       renderOffer([{ ...GOOD, sellerClaim: true, issuerName: null, validUntilLocalDate: null }]);
       const section = screen.getByRole('heading', { name: 'Certificates' }).closest('section')!;
@@ -321,6 +395,33 @@ describe('certification badges from the API', () => {
       ).toBeTruthy();
       expect(within(section).queryByText(/Issued/)).toBeNull();
       expect(screen.queryByRole('img', { name: 'Halal' })).toBeNull();
+      expect(section.querySelector('.certbox .cl')).toBeNull();
+      expect(section.querySelector('.certmeta')).toBeNull();
+    });
+
+    it("marks a seller's own declaration in the Other sellers row with a short, neutral chip", () => {
+      const other = {
+        ...TWO_SELLERS,
+        offers: TWO_SELLERS.offers.map((offer, index) =>
+          index === 1 ? { ...offer, badges: [{ ...GOOD, sellerClaim: true }] } : offer,
+        ),
+      };
+      window.matchMedia = ((query: string) => ({
+        matches: query.includes('min-width: 1000px'),
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      })) as unknown as typeof window.matchMedia;
+      render(
+        <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+          <StoreProvider>
+            <ProductPage product={productDetailOf(other, 'en', labels)!} category={undefined} />
+          </StoreProvider>
+        </NextIntlClientProvider>,
+      );
+      const row = document.querySelector('#others')!;
+      const chip = within(row as HTMLElement).getByText("Halal · seller's declaration");
+      expect(chip.className).toBe('badge decl');
+      expect(chip.className).not.toContain('hl');
     });
 
     it('shows no Certificates section when every badge is malformed', () => {
