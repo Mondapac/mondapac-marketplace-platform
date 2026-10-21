@@ -11,8 +11,7 @@ export type ShippingFailure =
 export type FlatFeeMap = ReadonlyMap<Id<'Seller'>, Money>;
 
 /**
- * What `ordering` calls at checkout. The method takes the caller's `CallContext` unchanged and
- * is not exposed over HTTP.
+ * What `ordering` calls at checkout and `cart` calls on a read. Each method takes the caller's `CallContext` unchanged.
  */
 export interface ShippingFacade {
   /**
@@ -24,6 +23,13 @@ export interface ShippingFacade {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<FlatFeeMap, ShippingFailure>>;
+
+  /**
+   * Whether the Market delivers to the postcode: in a ServiceArea open for delivery. Anyone may
+   * ask (the areas are public configuration). `validation.failed` for a postcode that is not 1
+   * to 16 printable characters.
+   */
+  deliversTo(context: CallContext, postcode: string): Promise<Result<boolean, ShippingFailure>>;
 }
 
 /** Nest token of the {@link ShippingFacade}, provided and exported by `ShippingModule`. */

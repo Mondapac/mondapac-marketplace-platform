@@ -142,7 +142,8 @@ describe('SellerNotifications sound', () => {
     mount();
     await waitFor(() => expect(unreadCalls()).toHaveLength(1));
     expect(chime.play).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Notifications, 1 unread' }));
+    // The count call can resolve before the bell's label re-renders, so wait for the label too.
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
     fireEvent.click(await screen.findByRole('button', { name: /Order sound off/ }));
     expect(window.localStorage.getItem('mp.seller.notices.sound')).toBe('on');
   });

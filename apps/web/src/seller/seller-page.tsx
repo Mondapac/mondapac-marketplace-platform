@@ -10,8 +10,8 @@ import { SellerHead } from './seller-head.tsx';
 // The seller page (approved design v9, `/s/<slug>`): the header card, then the Products, About
 // and Certificates tabs. No breadcrumb on this page (john).
 
-const TABS = ['products', 'about', 'certificates'] as const;
-type Tab = (typeof TABS)[number];
+const ALL_TABS = ['products', 'about', 'certificates'] as const;
+type Tab = (typeof ALL_TABS)[number];
 
 export function SellerPage({
   shop,
@@ -21,73 +21,95 @@ export function SellerPage({
   readonly ratingsShown: boolean;
 }) {
   const t = useTranslations('seller');
-  const [tab, setTab] = useState<Tab>('products');
+  // A part the seller read does not know yet has no tab (never "no products" or "no certificates").
+  const { products, certificates } = shop;
+  const tabs = ALL_TABS.filter(
+    (key) =>
+      (key !== 'products' || products !== undefined) &&
+      (key !== 'certificates' || certificates !== undefined),
+  );
+  const [tab, setTab] = useState<Tab>(tabs[0] ?? 'about');
   const id = useId();
   const list = useRef<HTMLDivElement>(null);
   const label = (key: Tab) =>
     key === 'products'
-      ? t('products-tab', { count: shop.products.length })
+      ? t('products-tab', { count: products?.length ?? 0 })
       : t(key === 'about' ? 'about-tab' : 'certificates-tab');
 
   // Arrow keys, Home and End move between the tabs and select them (automatic activation).
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    const at = TABS.indexOf(tab);
+    const at = tabs.indexOf(tab);
     const next =
       event.key === 'ArrowRight'
-        ? (at + 1) % TABS.length
+        ? (at + 1) % tabs.length
         : event.key === 'ArrowLeft'
-          ? (at - 1 + TABS.length) % TABS.length
+          ? (at - 1 + tabs.length) % tabs.length
           : event.key === 'Home'
             ? 0
             : event.key === 'End'
-              ? TABS.length - 1
+              ? tabs.length - 1
               : -1;
     if (next < 0) return;
     event.preventDefault();
-    setTab(TABS[next]!);
+    setTab(tabs[next]!);
     list.current?.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
   };
+
+  const pane =
+    tab === 'products' && products !== undefined ? (
+      <ProductsPane shop={{ ...shop, products, categories: shop.categories ?? [] }} />
+    ) : tab === 'certificates' && certificates !== undefined ? (
+      <CertificatesPane shop={shop} certificates={certificates} />
+    ) : (
+      <AboutPane shop={shop} />
+    );
 
   return (
     <div className="shop">
       <SellerHead shop={shop} ratingsShown={ratingsShown} />
-      <div
-        className="shop-tabs"
-        role="tablist"
-        aria-label={t('sections')}
-        ref={list}
-        onKeyDown={onKey}
-      >
-        {TABS.map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            id={`${id}-${key}`}
-            aria-selected={tab === key}
-            aria-controls={`${id}-panel`}
-            tabIndex={tab === key ? 0 : -1}
-            onClick={() => setTab(key)}
+      {tabs.length === 1 ? (
+        // One part known: a heading, not a tab bar with a single tab.
+        <section className="shop-panel" aria-labelledby={`${id}-${tab}`}>
+          <h2 className="shop-sec" id={`${id}-${tab}`}>
+            {label(tab)}
+          </h2>
+          {pane}
+        </section>
+      ) : (
+        <>
+          <div
+            className="shop-tabs"
+            role="tablist"
+            aria-label={t('sections')}
+            ref={list}
+            onKeyDown={onKey}
           >
-            {label(key)}
-          </button>
-        ))}
-      </div>
-      <div
-        className="shop-panel"
-        role="tabpanel"
-        id={`${id}-panel`}
-        aria-labelledby={`${id}-${tab}`}
-        tabIndex={0}
-      >
-        {tab === 'products' ? (
-          <ProductsPane shop={shop} />
-        ) : tab === 'about' ? (
-          <AboutPane shop={shop} />
-        ) : (
-          <CertificatesPane shop={shop} />
-        )}
-      </div>
+            {tabs.map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                id={`${id}-${key}`}
+                aria-selected={tab === key}
+                aria-controls={`${id}-panel`}
+                tabIndex={tab === key ? 0 : -1}
+                onClick={() => setTab(key)}
+              >
+                {label(key)}
+              </button>
+            ))}
+          </div>
+          <div
+            className="shop-panel"
+            role="tabpanel"
+            id={`${id}-panel`}
+            aria-labelledby={`${id}-${tab}`}
+            tabIndex={0}
+          >
+            {pane}
+          </div>
+        </>
+      )}
     </div>
   );
 }

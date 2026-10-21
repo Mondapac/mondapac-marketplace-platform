@@ -22,6 +22,7 @@ export interface CertificationBadge {
 export interface ProductCard {
   readonly id: string;
   readonly name: string;
+  /** Empty when the read does not carry it (the shelf routes give only a seller id). */
   readonly sellerName: string;
   /** Category code, used for the fallback illustration when there is no photo. */
   readonly category: string;
@@ -34,6 +35,12 @@ export interface ProductCard {
   readonly imageUrl?: string;
 }
 
+/**
+ * A product card of a home shelf. The price is absent when the shelf read does not carry it (the
+ * best-sellers route gives ids and text only): the card then shows no price and no add button.
+ */
+export type ShelfCard = Omit<ProductCard, 'price'> & { readonly price?: Money };
+
 export interface SellerSummary {
   readonly id: string;
   readonly name: string;
@@ -43,6 +50,15 @@ export interface SellerSummary {
   /** Key of a sample logo; real sellers' logos arrive with media. */
   readonly logo?: string;
 }
+
+/**
+ * A "Sellers near you" tile. The public store list has no delivery window yet, and its minimum
+ * order is absent when it cannot be told, so both lines are optional here.
+ */
+export type HomeSeller = Omit<SellerSummary, 'deliveryWindow' | 'minimumOrder'> & {
+  readonly deliveryWindow?: string;
+  readonly minimumOrder?: string;
+};
 
 export interface Category {
   readonly code: string;
@@ -56,7 +72,8 @@ export interface PromoBanner {
   readonly variant: 'primary' | 'secondary';
   readonly title: string;
   readonly body: string;
-  readonly action: { readonly label: string; readonly href: string };
+  /** Absent when the layout gives no link or no button label. */
+  readonly action?: { readonly label: string; readonly href: string };
   readonly images: readonly string[];
 }
 
@@ -69,7 +86,7 @@ export type HomeSection =
       readonly kind: 'products';
       readonly title: string;
       readonly href: string;
-      readonly products: readonly ProductCard[];
+      readonly products: readonly ShelfCard[];
     };
 
 export interface DeliveryArea {
@@ -252,7 +269,19 @@ export interface CheckoutSource {
   readonly serviceArea: ServiceArea;
   /** Sample only: the order Pay creates gives its reference when checkout is wired. */
   readonly orderReference: string;
+  /**
+   * Who answers whether a new address's postcode is delivered to: `sample` checks
+   * `serviceArea.postcodes` in the browser; `api` asks the API's delivery area (API_BASE_URL set).
+   */
+  readonly areaCheck: 'sample' | 'api';
 }
+
+/** The API's answer for one postcode: `off` while the storefront reads sample data. */
+export type DeliveryAreaAnswer =
+  | { readonly kind: 'off' }
+  | { readonly kind: 'in' }
+  | { readonly kind: 'out' }
+  | { readonly kind: 'failed' };
 
 /** A point on the map (WGS 84 degrees). */
 export interface GeoPoint {
@@ -317,26 +346,36 @@ export interface SellerProduct extends ProductCard {
   readonly listedAt: string;
 }
 
-/** The public seller page (`/s/<slug>`): profile, terms, certificates and products. */
+/**
+ * The public seller page (`/s/<slug>`): profile, terms, certificates and products. Fields marked
+ * "not known yet" are absent while the seller read has no source for them (the API answers name,
+ * area, year and minimum order today): the page then leaves that part out, never shows "none".
+ */
 export interface SellerShop {
   /** The URL slug. */
   readonly id: string;
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;
-  /** Suburb and city only; the seller's address is never shown. */
+  /** Suburb and city only, or the ServiceArea's name; the seller's address is never shown. */
   readonly location: string;
   readonly sellingSince: number;
-  readonly about: string;
-  /** What the platform checked of the business, e.g. "ABN checked by Mondapac". */
-  readonly businessCheck: string;
-  readonly deliveryWindow: string;
-  readonly deliveryFee: Money;
-  /** Absent when the seller has no minimum order. */
+  /** Not known yet when absent. */
+  readonly about?: string;
+  /** What the platform checked of the business, e.g. "ABN checked by Mondapac". Not known yet when absent. */
+  readonly businessCheck?: string;
+  /** Not known yet when absent. */
+  readonly deliveryWindow?: string;
+  /** Not known yet when absent. */
+  readonly deliveryFee?: Money;
+  /** Absent when the seller has no minimum order (unless `minimumUnknown`). */
   readonly minimumOrder?: Money;
-  /** The area the seller delivers to. */
-  readonly deliversTo: string;
-  readonly certificates: readonly SellerCertificate[];
+  /** The minimum order cannot be told now: no minimum line is shown. */
+  readonly minimumUnknown?: true;
+  /** The area the seller delivers to. Not known yet when absent. */
+  readonly deliversTo?: string;
+  /** Not known yet when absent: the Certificates tab is left out, never "no certificates". */
+  readonly certificates?: readonly SellerCertificate[];
   /** Absent for a new seller without ratings; shown only behind the seller-ratings feature. */
   readonly ratings?: {
     readonly satisfaction: number;
@@ -344,11 +383,27 @@ export interface SellerShop {
     readonly asDescribed: number;
     readonly count: number;
   };
-  /** The categories of its products, in display order. */
-  readonly categories: readonly { readonly code: string; readonly name: string }[];
-  /** In popularity order. */
-  readonly products: readonly SellerProduct[];
+  /** The categories of its products, in display order. Not known yet when absent. */
+  readonly categories?: readonly { readonly code: string; readonly name: string }[];
+  /** In popularity order. Not known yet when absent: the Products tab is left out. */
+  readonly products?: readonly SellerProduct[];
 }
+
+/** A seller page with every part known: what the sample data gives. */
+export type CompleteSellerShop = SellerShop &
+  Required<
+    Pick<
+      SellerShop,
+      | 'about'
+      | 'businessCheck'
+      | 'deliveryWindow'
+      | 'deliveryFee'
+      | 'deliversTo'
+      | 'certificates'
+      | 'categories'
+      | 'products'
+    >
+  >;
 
 /** Where one seller's part of an order is. */
 export type OrderPartStatus =
@@ -436,13 +491,18 @@ export interface SellerListing {
   /** The labels evaluateClaim allows the seller (CERT-*); never free text. */
   readonly certifications: readonly { readonly type: string; readonly name: string }[];
   readonly categories: readonly { readonly code: string; readonly name: string }[];
-  readonly deliveryWindow: string;
+  /** Not known yet when absent. */
+  readonly deliveryWindow?: string;
   /** Whether it delivers today to the buyer's location. */
   readonly sameDay: boolean;
-  /** Absent when the seller has no minimum order. */
+  /** Absent when the seller has no minimum order (unless `minimumUnknown`). */
   readonly minimumOrder?: Money;
-  readonly deliveryFee: Money;
-  readonly productCount: number;
+  /** The minimum order cannot be told now: no minimum line is shown. */
+  readonly minimumUnknown?: true;
+  /** Not known yet when absent. */
+  readonly deliveryFee?: Money;
+  /** Not known yet when absent. */
+  readonly productCount?: number;
   /** Up to three products for the card's footer. */
   readonly thumbnails: readonly { readonly category: string; readonly imageUrl?: string }[];
   /** Whether it delivers to the buyer's location; true when the location is not known. */
@@ -492,6 +552,10 @@ export interface SellerResults {
   readonly all: number;
   readonly location: BuyerLocation;
   readonly facets: SellerFacets;
+  /** The sorts the read can order by; every sort when absent. */
+  readonly sorts?: readonly SellerSort[];
+  /** False when the read cannot filter yet: the page offers no filter. */
+  readonly filtersOffered?: false;
 }
 
 /**

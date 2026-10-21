@@ -4,6 +4,7 @@ import { Banner, Button } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { offerActionErrorOf } from './offer-action-errors.ts';
 
 type Outcome = 'submitted' | 'published' | 'deleted';
@@ -29,6 +30,7 @@ export function OfferActions({
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState<'submit' | 'delete' | null>(null);
   const busy = useRef(false);
+  const callGuarded = useGuardedCall();
 
   const canSubmit = status === 'draft';
   const canDelete = status === 'draft' || status === 'changes-needed';
@@ -46,9 +48,15 @@ export function OfferActions({
             undefined,
             csrfToken,
           )
-        : await callApi<null>('DELETE', `catalog/seller/offers/${offerId}`, undefined, csrfToken);
+        : await callGuarded<null>(
+            'DELETE',
+            `catalog/seller/offers/${offerId}`,
+            undefined,
+            csrfToken,
+          );
     busy.current = false;
     setPending(null);
+    if (isStepUpCancelled(result)) return;
     if (result.ok) {
       setConfirming(false);
       setOutcome(

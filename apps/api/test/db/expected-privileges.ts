@@ -395,8 +395,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     // Cart (speed mode): a cart is deleted only by the purge job (cart.purge-inactive, hourly; an
     // expired guest cart is also ignored at read time; a merged one is kept so a replay is
-    // recognised); its owner columns and status change on a merge. A line is deleted on remove
-    // and by the cascade of the purge; only its quantity, price-at-add and add instant change.
+    // recognised); its owner columns and status change on a merge, and its order mark is set when
+    // a paid order clears lines and cleared by the next change (personalization 1c). A line is
+    // deleted on remove and by the cascade of the purge; only its quantity, price-at-add and add
+    // instant change.
     'cart.carts': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [
@@ -405,6 +407,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'last_changed_at',
         'merged_at',
         'merged_into_cart_id',
+        'ordered_at',
         'status',
         'version',
       ],
@@ -417,6 +420,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['count', 'window_started_at'],
     },
+    // Saved for later: saved again moves the item to the top; removed, moved to the cart or
+    // purged a year after it was last saved.
+    'cart.saved_items': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: ['saved_at'] },
     // Ordering (Phase 5 package 1): no row is ever deleted. Seller orders and lines are written
     // once; an order's state, payment state, Stripe ids, times and version change.
     'ordering.orders': {
@@ -541,6 +547,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // 200 per seller); a read is insert-only and leaves with its notice by the cascade.
     'notifications.in_app_notices': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'notifications.in_app_notice_reads': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Personalization 1c: a cart reminder is taken once per account, cart change and stage, never
+    // updated, and deleted by retention (30 days, the reminder job).
+    'notifications.cart_reminders': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // Search (Phase 6 package 2): a projection of catalog, upserted by events and the rebuild job
     // and deleted when an Offer is no longer sellable. The vector is set by a trigger, so it is
     // not an updatable column for the application.

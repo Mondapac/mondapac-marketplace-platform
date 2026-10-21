@@ -957,6 +957,10 @@ svg {
   overflow-wrap: anywhere;
   line-height: calc(18px * var(--fs));
 }
+/* A store with no delivery or minimum-order line: centre its name beside the avatar. */
+.seller b:last-child {
+  grid-row: span 3;
+}
 .seller .eta {
   font-size: calc(12px * var(--fs));
   line-height: calc(16px * var(--fs));
@@ -5270,6 +5274,12 @@ svg {
   border-bottom-color: var(--sf-teal);
   color: var(--sf-teal);
 }
+.shop-sec {
+  margin: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--sf-line);
+  font-size: calc(17px * var(--fs));
+}
 .shop-panel {
   display: grid;
   gap: 14px;
@@ -6571,6 +6581,9 @@ button.login {
 .slc-m {
   color: var(--sf-slate);
   font-size: calc(13px * var(--fs));
+}
+.slc-m .nw {
+  white-space: nowrap;
 }
 .slc-rt {
   display: inline-flex;

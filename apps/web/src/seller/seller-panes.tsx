@@ -1,7 +1,7 @@
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
-import type { SellerShop } from '../storefront/types.ts';
+import type { SellerCertificate, SellerShop } from '../storefront/types.ts';
 
 // The About and Certificates tabs of the seller page. No seller contact details: orders, delivery
 // problems and refunds go through Mondapac. A certificate shows only as the platform approved it.
@@ -15,15 +15,24 @@ function Note({ children }: { readonly children: string }) {
   );
 }
 
-function Facts({ rows }: { readonly rows: readonly (readonly [string, string, boolean?])[] }) {
+function Facts({
+  rows,
+}: {
+  readonly rows: readonly (readonly [string, string | undefined, boolean?])[];
+}) {
   return (
     <dl className="shop-facts">
-      {rows.map(([term, value, numeric]) => (
-        <div key={term}>
-          <dt>{term}</dt>
-          <dd className={numeric ? 'num' : undefined}>{value}</dd>
-        </div>
-      ))}
+      {rows
+        .flatMap(([term, value, numeric]) =>
+          // A fact the seller read does not know yet is left out.
+          value === undefined ? [] : [[term, value, numeric] as const],
+        )
+        .map(([term, value, numeric]) => (
+          <div key={term}>
+            <dt>{term}</dt>
+            <dd className={numeric ? 'num' : undefined}>{value}</dd>
+          </div>
+        ))}
     </dl>
   );
 }
@@ -33,10 +42,12 @@ export function AboutPane({ shop }: { readonly shop: SellerShop }) {
   const locale = useLocale();
   return (
     <div className="shop-boxes">
-      <section className="shop-box">
-        <h2>{t('about', { name: shop.name })}</h2>
-        <p className="shop-text">{shop.about}</p>
-      </section>
+      {shop.about === undefined ? null : (
+        <section className="shop-box">
+          <h2>{t('about', { name: shop.name })}</h2>
+          <p className="shop-text">{shop.about}</p>
+        </section>
+      )}
       <section className="shop-box">
         <h2>{t('details')}</h2>
         <Facts
@@ -45,10 +56,18 @@ export function AboutPane({ shop }: { readonly shop: SellerShop }) {
             [t('location-label'), shop.location],
             [t('since-label'), String(shop.sellingSince)],
             [t('delivery'), shop.deliveryWindow],
-            [t('fee-label'), formatMoney(shop.deliveryFee, locale), true],
+            [
+              t('fee-label'),
+              shop.deliveryFee ? formatMoney(shop.deliveryFee, locale) : undefined,
+              true,
+            ],
             [
               t('minimum-label'),
-              shop.minimumOrder ? formatMoney(shop.minimumOrder, locale) : t('no-minimum'),
+              shop.minimumUnknown
+                ? undefined
+                : shop.minimumOrder
+                  ? formatMoney(shop.minimumOrder, locale)
+                  : t('no-minimum'),
               shop.minimumOrder !== undefined,
             ],
             [t('delivers-to'), shop.deliversTo],
@@ -60,10 +79,16 @@ export function AboutPane({ shop }: { readonly shop: SellerShop }) {
   );
 }
 
-export function CertificatesPane({ shop }: { readonly shop: SellerShop }) {
+export function CertificatesPane({
+  shop,
+  certificates,
+}: {
+  readonly shop: SellerShop;
+  readonly certificates: readonly SellerCertificate[];
+}) {
   const t = useTranslations('seller');
   const format = useFormatter();
-  if (shop.certificates.length === 0)
+  if (certificates.length === 0)
     return (
       <section className="shop-box">
         <h2>{t('certificates')}</h2>
@@ -81,7 +106,7 @@ export function CertificatesPane({ shop }: { readonly shop: SellerShop }) {
   return (
     <div className="shop-boxes">
       <div className="shop-certs">
-        {shop.certificates.map((c) => (
+        {certificates.map((c) => (
           <section key={c.type} className="shop-box">
             <h2>{t('certificate', { name: c.name })}</h2>
             <span className="shop-ok">
