@@ -8,6 +8,8 @@ import {
 import { Client } from 'pg';
 import { ForgetAccount } from '../../src/modules/engagement/application/use-cases/forget-account.use-case';
 import { PurgeExpiredEvents } from '../../src/modules/engagement/application/use-cases/purge-expired-events.use-case';
+import { RecentViewsOfCustomer } from '../../src/modules/engagement/application/use-cases/recent-views.use-case';
+import { RecentViewsOfGuest } from '../../src/modules/engagement/application/use-cases/recent-views-guest.use-case';
 import { RecordEvent } from '../../src/modules/engagement/application/use-cases/record-event.use-case';
 import { RecordGuestEvent } from '../../src/modules/engagement/application/use-cases/record-guest-event.use-case';
 import { SetPersonalization } from '../../src/modules/engagement/application/use-cases/set-personalization.use-case';
@@ -25,7 +27,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { testDatabaseUrl } from './test-database';
+import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // The behaviour store as the application role, in both Market fixtures: the real use cases on
 // the real unit of work write each kind to its columns, keep a guest under its token's hash,
@@ -284,5 +286,160 @@ describe.each(TEST_MARKETS)('behaviour store in market %s (database)', (code) =>
     expect(
       await insertRow({ account: null, guest: hash }, 'search-performed', { query: 'x' }),
     ).toBe('allowed');
+  });
+  describe('recent views (personalization 1d-1)', () => {
+    const read = { globalPrivacyControl: false, consent: false, guestToken: null };
+    const view = (kind: 'product-viewed' | 'category-viewed', id: Id) =>
+      kind === 'product-viewed' ? { kind, productId: id } : { kind, categoryId: id };
+
+    it('answers distinct ids, newest view first, in this Market and for this account only', async () => {
+      const [alice, bob] = [ids.next<'Account'>(), ids.next<'Account'>()];
+      const [one, two, three] = [ids.next(), ids.next(), ids.next()];
+      const record = new RecordEvent(gate, deps());
+      const at = async (
+        who: Id<'Account'>,
+        target: MarketContext,
+        event: Record<string, unknown>,
+      ) => {
+        clock.advance(Temporal.Duration.from({ seconds: 1 }));
+        await record.execute(customer(target, who), { event, ...quiet });
+      };
+      await at(alice, market, view('product-viewed', one));
+      await at(alice, market, view('product-viewed', two));
+      await at(alice, market, view('category-viewed', one));
+      await at(alice, market, view('product-viewed', one));
+      await at(alice, market, view('product-viewed', three));
+      await at(alice, market, { kind: 'search-performed', query: 'lamb' });
+      await at(bob, market, view('product-viewed', ids.next()));
+      await at(alice, other, view('product-viewed', ids.next()));
+
+      const recent = new RecentViewsOfCustomer(gate, deps());
+      expect(await recent.execute(customer(market, alice), read)).toEqual({
+        ok: true,
+        value: { productIds: [three, one, two], categoryIds: [one] },
+      });
+      // The same account in the other Market sees only that Market's rows.
+      const there = await recent.execute(customer(other, alice), read);
+      expect(there.ok && there.value.productIds).toHaveLength(1);
+      expect(there.ok && there.value.productIds).not.toContain(three);
+    });
+
+    it('answers at most 50 of each, the newest ones', async () => {
+      const account = ids.next<'Account'>();
+      const record = new RecordEvent(gate, deps());
+      const products: Id<'Product'>[] = [];
+      for (let n = 0; n < 53; n += 1) {
+        clock.advance(Temporal.Duration.from({ seconds: 1 }));
+        products.push(ids.next<'Product'>());
+        await record.execute(customer(market, account), {
+          event: { kind: 'product-viewed', productId: products[n] },
+          ...quiet,
+        });
+      }
+
+      const result = await new RecentViewsOfCustomer(gate, deps()).execute(
+        customer(market, account),
+        read,
+      );
+
+      expect(result.ok && result.value.productIds).toEqual(products.slice(3).reverse());
+    });
+
+    it('answers nothing, and reads nothing, with the switch off or Global Privacy Control', async () => {
+      const account = ids.next<'Account'>();
+      await new RecordEvent(gate, deps()).execute(customer(market, account), {
+        event: { kind: 'product-viewed', productId: ids.next() },
+        ...quiet,
+      });
+      const recent = new RecentViewsOfCustomer(gate, deps());
+      const empty = { ok: true, value: { productIds: [], categoryIds: [] } };
+
+      expect(
+        await recent.execute(customer(market, account), { ...read, globalPrivacyControl: true }),
+      ).toEqual(empty);
+      await new SetPersonalization(gate, deps()).execute(customer(market, account), {
+        enabled: false,
+      });
+      expect(await recent.execute(customer(market, account), read)).toEqual(empty);
+    });
+
+    it('answers a guest by the hash of the cookie token, only with consent, and sets no cookie', async () => {
+      const anonymous = testCallContext(market, 'anonymous');
+      const product = ids.next<'Product'>();
+      const first = await new RecordGuestEvent(gate, deps()).execute(anonymous, {
+        event: { kind: 'product-viewed', productId: product },
+        token: null,
+        ...consented,
+      });
+      if (!first.ok || first.value.cookie?.action !== 'set') throw new Error('no cookie');
+      const guest = {
+        globalPrivacyControl: false,
+        consent: true,
+        guestToken: first.value.cookie.token,
+      };
+      const recent = new RecentViewsOfGuest(gate, deps());
+
+      expect(await recent.execute(anonymous, guest)).toEqual({
+        ok: true,
+        value: { productIds: [product], categoryIds: [] },
+      });
+      expect(await recent.execute(anonymous, { ...guest, consent: false })).toEqual({
+        ok: true,
+        value: { productIds: [], categoryIds: [] },
+      });
+      // Another Market's request with the same token finds nothing.
+      expect(await recent.execute(testCallContext(other, 'anonymous'), guest)).toEqual({
+        ok: true,
+        value: { productIds: [], categoryIds: [] },
+      });
+      const rows = await sql.query(
+        'SELECT count(*)::int AS n FROM engagement.behaviour_events WHERE product_id = $1',
+        [product],
+      );
+      expect(rows.rows[0]).toEqual({ n: 1 });
+    });
+
+    it('reads a subject through the (market, subject, time) index', async () => {
+      // Enough rows of other subjects for the planner to prefer the subject's index, as the
+      // owner (statistics need ANALYZE); the rows are removed afterwards.
+      const owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+      await owner.connect();
+      const tag = ids.next<'Account'>();
+      try {
+        await owner.query(
+          `INSERT INTO engagement.behaviour_events
+             (id, market_id, tenant_id, account_id, guest_hash, kind, product_id, occurred_at)
+           SELECT gen_random_uuid(), $1, 'plan-test',
+                  CASE WHEN n % 2 = 0 THEN gen_random_uuid() END,
+                  CASE WHEN n % 2 = 1 THEN md5(n::text) || md5((n + 1)::text) END,
+                  'product-viewed', gen_random_uuid(), now() - (n || ' seconds')::interval
+             FROM generate_series(1, 4000) AS n`,
+          [code],
+        );
+        await owner.query('ANALYZE engagement.behaviour_events');
+        const plan = async (subject: 'account_id' | 'guest_hash', value: string) => {
+          const result = await owner.query<{ 'QUERY PLAN': string }>(
+            `EXPLAIN SELECT product_id, max(occurred_at) FROM engagement.behaviour_events
+              WHERE market_id = $1 AND ${subject} = $2 AND kind = 'product-viewed'
+              GROUP BY product_id ORDER BY max(occurred_at) DESC, product_id LIMIT 50`,
+            [code, value],
+          );
+          return result.rows.map((row) => row['QUERY PLAN']).join('\n');
+        };
+
+        expect(await plan('account_id', tag)).toContain(
+          'behaviour_events_market_id_account_id_occurred_at_idx',
+        );
+        expect(await plan('guest_hash', 'a'.repeat(64))).toContain(
+          'behaviour_events_market_id_guest_hash_occurred_at_idx',
+        );
+      } finally {
+        await owner.query(
+          "DELETE FROM engagement.behaviour_events WHERE market_id = $1 AND tenant_id = 'plan-test'",
+          [code],
+        );
+        await owner.end();
+      }
+    });
   });
 });

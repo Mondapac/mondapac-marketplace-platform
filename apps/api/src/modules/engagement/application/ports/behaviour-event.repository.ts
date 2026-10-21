@@ -14,12 +14,29 @@ export interface BehaviourEventRecord {
   readonly occurredAt: Temporal.Instant;
 }
 
+/** The distinct products and categories a subject viewed, each newest view first. Ids only. */
+export interface RecentViews {
+  readonly productIds: readonly Id<'Product'>[];
+  readonly categoryIds: readonly Id<'Category'>[];
+}
+
 /**
  * `engagement.behaviour_events`. Every read and delete is scoped by the Market; runs inside the
  * caller's unit of work.
  */
 export interface BehaviourEventRepository {
   append(market: MarketContext, event: BehaviourEventRecord): Promise<void>;
+
+  /**
+   * The subject's most recent `product-viewed` and `category-viewed` events in the Market, as
+   * distinct ids, newest view first, at most `limit` of each. Never another Market's or another
+   * subject's rows.
+   */
+  recentViews(
+    market: MarketContext,
+    subject: BehaviourSubject,
+    limit: number,
+  ): Promise<RecentViews>;
 
   /** Deletes every event of one account in the Market; answers how many went. */
   deleteForAccount(market: MarketContext, accountId: Id<'Account'>): Promise<number>;
