@@ -244,4 +244,33 @@ describe('seller pages with pictures', () => {
     expect(document.querySelector('.shop-banner img')).toBeNull();
     expect(document.querySelector('.shop-banner')).not.toBeNull();
   });
+
+  it('falls back at once when the picture had already failed before hydration', () => {
+    const proto = HTMLImageElement.prototype;
+    const complete = vi.spyOn(proto, 'complete', 'get').mockReturnValue(true);
+    const width = vi.spyOn(proto, 'naturalWidth', 'get').mockReturnValue(0);
+    try {
+      wrap(<SellerPage shop={shopWith({ logo: LOGO, banner: BANNER })} ratingsShown={false} />);
+      expect(document.querySelector('.lg-img')).toBeNull();
+      expect(document.querySelector('.shop-id .lg svg')).not.toBeNull();
+      expect(document.querySelector('.shop-banner.has-image')).toBeNull();
+    } finally {
+      complete.mockRestore();
+      width.mockRestore();
+    }
+  });
+
+  it('keeps a picture that finished loading with a width', () => {
+    const proto = HTMLImageElement.prototype;
+    const complete = vi.spyOn(proto, 'complete', 'get').mockReturnValue(true);
+    const width = vi.spyOn(proto, 'naturalWidth', 'get').mockReturnValue(512);
+    try {
+      wrap(<SellerPage shop={shopWith({ logo: LOGO, banner: BANNER })} ratingsShown={false} />);
+      expect(document.querySelector('.lg-img img')).not.toBeNull();
+      expect(document.querySelector('.shop-banner.has-image')).not.toBeNull();
+    } finally {
+      complete.mockRestore();
+      width.mockRestore();
+    }
+  });
 });
