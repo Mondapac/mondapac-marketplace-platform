@@ -181,6 +181,12 @@ describe('storefront API read', () => {
       kind: 'failed',
       status: 503,
     });
+    serve(404, { statusCode: 404, code: 'sellers.store-not-found' });
+    expect(await apiGetWith(config(LOCAL), host, 'sellers/stores/x')).toEqual({
+      kind: 'failed',
+      status: 404,
+      code: 'sellers.store-not-found',
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn(() => Promise.reject(new TypeError('fetch failed'))),
@@ -200,6 +206,11 @@ describe('storefront API read', () => {
         msg: 'storefront.api-read-refused',
         path: 'search/bestsellers',
         status: 503,
+      }),
+      JSON.stringify({
+        msg: 'storefront.api-read-refused',
+        path: 'sellers/stores/x',
+        status: 404,
       }),
       JSON.stringify({
         msg: 'storefront.api-read-failed',

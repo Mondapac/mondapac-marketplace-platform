@@ -3,6 +3,13 @@ import { headers } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { apiGet, type ApiRead } from './api.ts';
 import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
+import {
+  publicStoreOf,
+  publicStorePageOf,
+  sellerResultsOf,
+  shopOf,
+  type PublicStore,
+} from './real-sellers.ts';
 import type { AssistantSetup } from '../assistant/assistant.ts';
 import { loadHome, type HomeContent } from './home-source.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
@@ -137,12 +144,93 @@ export async function loadDeliveryLocator(): Promise<DeliveryLocatorSource> {
   return Promise.resolve(SAMPLE_DELIVERY_LOCATOR);
 }
 
+/** The display name of a ServiceArea code ("greater-brisbane"); the code itself when unnamed. */
+async function areaNames(): Promise<(code: string) => string> {
+  const t = await getTranslations('areas');
+  return (code) => (t.has(code) ? t(code) : code);
+}
+
+/** The API answered something other than the expected status and shape. */
+class SellerReadFailed extends Error {
+  constructor() {
+    super('the store read failed');
+  }
+}
+
+const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
 /**
  * The seller page's read: profile, terms, certificates and products, or undefined when there is
- * no such seller. Sample data until the backend has the seller public read.
+ * no such seller. With the API configured, `GET sellers/stores/:slug` gives name, area, year and
+ * minimum order; the other parts stay absent until their public reads exist. Otherwise sample
+ * data. Any answer but 200 or 404 throws, so the page shows its error state.
  */
 export async function loadSeller(slug: string): Promise<SellerShop | undefined> {
-  return Promise.resolve(sampleSeller(slug));
+  // No sample or real store has any other slug; nothing else reaches the API path.
+  if (slug.length > 50 || !STORE_SLUG.test(slug)) return undefined;
+  const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`);
+  if (answer.kind === 'off') return sampleSeller(slug);
+  if (answer.kind === 'failed') {
+    // Only the store module's own answer means "no such store"; a bare 404 is a missing route.
+    if (answer.status === 404 && answer.code === 'sellers.store-not-found') return undefined;
+    throw new SellerReadFailed();
+  }
+  const store = publicStoreOf(answer.body);
+  return shopOf(store, (await areaNames())(store.serviceAreaCode));
+}
+
+/** The API's sort for the page's: popularity and distance are not known yet, so name. */
+const API_SORT = { popular: 'name', nearest: 'name', name: 'name', newest: 'newest' } as const;
+/** The API's largest page. */
+const API_PAGE_SIZE = 48;
+/** At most this many API reads for one page view, however far "Show more" went. */
+const MAX_API_PAGES = 4;
+
+const anyFilter = (query: SellerQuery): boolean => {
+  const { filters } = query;
+  return (
+    filters.newSellers ||
+    filters.sameDay ||
+    filters.certifications.length > 0 ||
+    filters.categories.length > 0 ||
+    filters.minimums.length > 0 ||
+    filters.distance !== undefined
+  );
+};
+
+/**
+ * The sellers page's read: the matching stores, their total, the filter counts and where the
+ * buyer's location stands. With the API configured, `GET sellers/stores` in pages until `limit`
+ * stores are read (no filters or facets yet; the location is unknown until deliver-to is wired).
+ * Otherwise sample data.
+ */
+export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
+  // The API cannot filter yet and the page offers no filter (no facets). A filter left in a
+  // shared URL matches nothing rather than appearing to hold for stores nobody checked.
+  if (anyFilter(query)) {
+    const answer = await apiGet<unknown>(`sellers/stores?pageSize=1`);
+    if (answer.kind === 'off') return sampleSellers(query);
+    if (answer.kind === 'failed') throw new SellerReadFailed();
+    const { total } = publicStorePageOf(answer.body);
+    return { ...sellerResultsOf([], total, await areaNames()), total: 0 };
+  }
+  const stores: PublicStore[] = [];
+  let total = 0;
+  for (let page = 1; stores.length < query.limit && page <= MAX_API_PAGES; page += 1) {
+    const params = new URLSearchParams({
+      sort: API_SORT[query.sort],
+      page: String(page),
+      pageSize: String(API_PAGE_SIZE),
+    });
+    const answer = await apiGet<unknown>(`sellers/stores?${params.toString()}`);
+    if (answer.kind === 'off') return sampleSellers(query);
+    if (answer.kind === 'failed') throw new SellerReadFailed();
+    const read = publicStorePageOf(answer.body);
+    total = read.total;
+    stores.push(...read.items);
+    if (read.items.length < API_PAGE_SIZE) break;
+  }
+  return sellerResultsOf(stores.slice(0, query.limit), total, await areaNames());
 }
 
 /**
@@ -151,14 +239,6 @@ export async function loadSeller(slug: string): Promise<SellerShop | undefined> 
  */
 export async function loadAccount(): Promise<AccountSource> {
   return Promise.resolve(SAMPLE_ACCOUNT);
-}
-
-/**
- * The sellers page's read: the matching stores, their total, the filter counts and where the
- * buyer's location stands. Sample data until the backend has a seller list read.
- */
-export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
-  return Promise.resolve(sampleSellers(query));
 }
 
 /**
