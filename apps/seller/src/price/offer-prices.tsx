@@ -4,7 +4,7 @@ import { Banner, Button, Card, FieldAction, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
-import { callApi } from '../api/client.ts';
+import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { priceProblemOf } from './errors.ts';
 import { formatMinor, inputOf, minorOf } from './money.ts';
 import { FALLBACK_ZONE, formatInZone } from './zone-time.ts';
@@ -31,6 +31,7 @@ function VariantRow({
   const t = useTranslations();
   const locale = useLocale();
   const router = useRouter();
+  const callGuarded = useGuardedCall();
   const [version, setVersion] = useState(variant.seriesVersion);
   const [text, setText] = useState(
     variant.inForce === null ? '' : inputOf(variant.inForce.amount, currency),
@@ -53,13 +54,14 @@ function VariantRow({
     setPending(true);
     setError(null);
     setDone(null);
-    const result = await callApi<PriceWritten>(
+    const result = await callGuarded<PriceWritten>(
       'PUT',
       `pricing/seller/offers/${offerId}/variants/${variant.variantId}/regular-price`,
       { amount, currency, expectedVersion: version },
       csrfToken,
     );
     setPending(false);
+    if (isStepUpCancelled(result)) return;
     if (!result.ok) {
       if (result.failure.status === 401) window.location.assign('/session-ended');
       else {

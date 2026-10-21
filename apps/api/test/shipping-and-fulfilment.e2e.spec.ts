@@ -76,7 +76,11 @@ const detail = (currency: string, patch: object = {}) => ({
       tax: money(273n, currency),
     },
   ],
-  shipTo: TEST_DELIVERY_ADDRESS,
+  // The customer wrote to this seller and to another one of the order.
+  shipTo: {
+    ...TEST_DELIVERY_ADDRESS,
+    sellerNotes: { [SELLER]: 'Ring twice', [id<'Seller'>(0xb021)]: 'For the other shop' },
+  },
   ...patch,
 });
 
@@ -272,7 +276,10 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
       const one = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}`, session);
       expect(one.status).toBe(200);
       // One order's page tells the seller where to send it; the list does not.
-      expect(one.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS });
+      expect(one.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
+      // The seller reads its own note only, and the notes are no part of the address.
+      expect(JSON.stringify(one.body)).not.toContain('For the other shop');
+      expect((one.body as { shipTo: object }).shipTo).not.toHaveProperty('sellerNotes');
       expect(calls[0]).toEqual({ name: 'view', input: { sellerOrderId: SELLER_ORDER } });
 
       next = err({ code: 'ordering.seller-order-not-found' });
@@ -433,6 +440,28 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
       next = err({ code: 'ordering.fulfilment-conflict' });
       expect((await call('post', 'seller', path, session, {})).status).toBe(409);
       expect(calls).toHaveLength(2);
+    });
+  });
+
+  describe('delivery area', () => {
+    it('answers whether the Market delivers to a postcode, to a visitor with no session', async () => {
+      await boot();
+      const ask = (postcode: string) =>
+        http()
+          .get(`/shipping/delivery-area?postcode=${encodeURIComponent(postcode)}`)
+          .set({ 'x-market-id': code });
+
+      // AU's area is listed but not open for delivery until the owner opens it; ZZ's is open.
+      const inside = await ask(code === 'AU' ? '4031' : '1000001');
+      const outside = await ask(code === 'AU' ? '2000' : '3000000');
+      const bad = await ask('x'.repeat(17));
+
+      expect(inside.status).toBe(200);
+      expect(inside.headers['cache-control']).toBe('no-store');
+      expect(inside.body).toEqual({ delivers: code === 'ZZ' });
+      expect(outside.body).toEqual({ delivers: false });
+      expect(bad.status).toBe(400);
+      expect(bad.body).toMatchObject({ code: 'validation.failed' });
     });
   });
 

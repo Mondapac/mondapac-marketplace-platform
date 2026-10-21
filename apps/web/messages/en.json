@@ -11,7 +11,7 @@
     "log-in": "Log in",
     "cart": "{count, plural, =0 {Cart, empty} one {Cart, # item, {total}} other {Cart, # items, {total}}}",
     "search": "Search",
-    "search-placeholder": "Search products, sellers and recipes",
+    "search-placeholder": "Search products and stores",
     "log-out": "Log out"
   },
   "rail": {
@@ -56,9 +56,10 @@
     "recent": "Recent",
     "no-recent": "Your recent searches will show here.",
     "popular": "Popular right now",
-    "input": "Search products, sellers and recipes"
+    "input": "Search products and stores"
   },
   "home": {
+    "title": "Local food sellers in one cart",
     "featured": "Featured",
     "categories": "Product categories",
     "show-all": "Show all",
@@ -401,8 +402,6 @@
     "all": "All",
     "all-of": "See all {name}",
     "filter-subcategory": "Filter {name}",
-    "filter-category": "Filter by category",
-    "all-categories": "All categories",
     "results": "Products",
     "pages": "Pages",
     "previous": "Previous",
@@ -413,12 +412,6 @@
     "category-empty": "There are no products in {name} yet. Check back soon.",
     "search": "Search",
     "results-for": "Results for “{q}”",
-    "search-hint": "Type at least {min} letters to search products.",
-    "popular": "Popular right now",
-    "no-results": "No products match “{q}”.",
-    "no-results-in": "No products in {name} match “{q}”.",
-    "no-results-hint": "Check the spelling or try fewer words.",
-    "search-everywhere": "Search all categories",
     "browse-products": "Browse products",
     "promotion": "Promotion",
     "filter-by": "Filter by:",
@@ -456,7 +449,10 @@
     "filters-empty-hint": "Try removing a filter to see more products.",
     "clear-filters": "Clear all filters",
     "previous-page": "Previous page",
-    "next-page": "Next page"
+    "next-page": "Next page",
+    "sort-best-match": "Best match",
+    "group-labels": "Labels",
+    "group-store": "Store"
   },
   "consent": {
     "title": "Cookies on Mondapac",
@@ -629,6 +625,7 @@
     "region": "State",
     "postcode": "Postcode",
     "outside-area": "We do not deliver to {postcode} yet. We currently deliver to {area}.",
+    "area-check-failed": "We could not check this postcode just now. Please try again in a moment.",
     "instructions": "Delivery instructions (optional)",
     "instructions-placeholder": "For example: leave at the front door",
     "save-address": "Save to my address book",
@@ -790,6 +787,7 @@
     "show-stores": "Show {count, plural, one {# store} other {# stores}}",
     "open-seller": "{name}, opens the seller page",
     "selling-since": "{city} · Selling since {year}",
+    "selling-since-card": "{city} · <nw>Selling since {year}</nw>",
     "satisfaction": "{value}% satisfaction",
     "satisfaction-label": "{value} percent satisfaction, {count, plural, one {# rating} other {# ratings}}",
     "outside-area": "Outside your delivery area",
@@ -805,7 +803,40 @@
     "none-body": "We are adding local sellers city by city. You can still browse products.",
     "browse-products": "Browse products",
     "filters-empty": "No stores match these filters",
-    "filters-empty-hint": "Try removing a filter to see more stores."
+    "filters-empty-hint": "Try removing a filter to see more stores.",
+    "filters-unavailable": "Store filters aren't available yet",
+    "filters-unavailable-hint": "Remove the filter to see every store."
+  },
+  "search-results": {
+    "title": "Search",
+    "heading": "Results for <q>{query}</q>",
+    "summary": "{products, plural, one {# product} other {# products}} · {stores, plural, one {# store} other {# stores}}",
+    "tabs": "Result types",
+    "products": "Products",
+    "stores": "Stores",
+    "tab-count": "({count})",
+    "in-categories": "In categories:",
+    "category-count": "{name} ({count})",
+    "category-filter": "Category: {name}",
+    "no-products": "No products match “{query}”.",
+    "no-products-in": "No products in {name} match “{query}”.",
+    "search-everywhere": "Search all categories",
+    "no-stores": "No stores match “{query}”.",
+    "none-title": "No results for “{query}”",
+    "tip-spelling": "Check the spelling.",
+    "tip-fewer": "Try fewer or more general words.",
+    "tip-kind": "Search for a product, a store or a category.",
+    "popular": "Popular searches",
+    "browse": "Browse categories",
+    "start-title": "What are you looking for?",
+    "start-body": "Search for products, stores or categories.",
+    "short-title": "Type at least {min} characters",
+    "short-body": "Add a few more letters to search the marketplace.",
+    "loading": "Loading results",
+    "error-heading": "Search results",
+    "error-title": "We could not load the results",
+    "error-body": "Check your connection and try again. Nothing was changed.",
+    "retry": "Try again"
   },
   "errors": {
     "not-found-title": "We cannot find that page",
@@ -1011,5 +1042,38 @@
       "privacy": "Privacy policy",
       "sell-guidelines": "Seller guidelines"
     }
+  },
+  "seo": {
+    "descriptions": {
+      "home": "Shop local food sellers in one cart on {store}. Every price includes GST.",
+      "category": "{name} from local sellers on {store}. Compare prices and delivery times, then order in one cart.",
+      "subcategory": "{name} in {category} from local sellers on {store}. Compare prices and delivery times.",
+      "product": "{name} from {seller} on {store}.",
+      "seller": "{name}, {location}. {about}",
+      "sellers": "Local sellers on {store} that deliver to your area. Compare delivery times, minimum orders and fees.",
+      "search": "Search products and stores on {store}.",
+      "search-results": "Products and stores on {store} that match “{q}”.",
+      "cart": "Your cart on {store}: items from each seller, delivery fees and the total.",
+      "checkout": "Check out your order on {store}.",
+      "payment": "Pay for your order on {store}.",
+      "confirmation": "Your order on {store} is placed.",
+      "not-completed": "Your payment on {store} was not completed. Nothing was charged and your cart is kept.",
+      "account-overview": "Your {store} account: orders, addresses, saved lists and settings.",
+      "account-orders": "Your orders on {store} and where each one is.",
+      "account-order": "The details of order {reference} on {store}.",
+      "account-addresses": "Your saved delivery addresses on {store}.",
+      "account-lists": "Products you saved on {store}.",
+      "account-settings": "Your {store} account settings and email choices.",
+      "personalization": "Choose the colours and text size of {store} on this device.",
+      "coming-soon": "{name}: coming soon to {store}.",
+      "cookies": "The cookies {store} uses and the optional ones you can switch on or off.",
+      "sell": "Sell your food to local buyers on {store}. Sign up as a seller.",
+      "offline": "You are offline. Pages you opened on {store} before still work.",
+      "unavailable-product": "{name} is no longer sold on {store}. See similar products from local sellers.",
+      "closed-store": "{name} is not taking orders on {store} right now."
+    }
+  },
+  "areas": {
+    "greater-brisbane": "Greater Brisbane"
   }
 }

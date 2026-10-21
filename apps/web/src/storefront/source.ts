@@ -1,6 +1,17 @@
 import 'server-only';
+import { headers } from 'next/headers';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { apiGet, type ApiRead } from './api.ts';
+import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
+import {
+  publicStoreOf,
+  publicStorePageOf,
+  sellerResultsOf,
+  shopOf,
+  type PublicStore,
+} from './real-sellers.ts';
 import type { AssistantSetup } from '../assistant/assistant.ts';
-import { storefrontApiConfig } from './config.ts';
+import { loadHome, type HomeContent } from './home-source.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
@@ -8,6 +19,9 @@ import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { SAMPLE_SELLER_SIGN_UP } from './sample-seller-sign-up.ts';
+import { storefrontApiConfig, storefrontHostFor } from './config.ts';
+import { sellerSignInUrls } from './seller-sign-in.ts';
+import { callSellerSignUp, type SellerSignUpCall } from './seller-sign-up-api.ts';
 import { sampleSellers } from './sample-sellers.ts';
 import { sampleClosedStore, sampleUnavailableProduct } from './sample-unavailable.ts';
 import type {
@@ -15,6 +29,7 @@ import type {
   CartSource,
   CheckoutSource,
   ClosedStore,
+  DeliveryAreaAnswer,
   DeliveryLocatorSource,
   ProductDetail,
   SellerQuery,
@@ -34,19 +49,45 @@ import type {
 export const SAMPLE_DATA: boolean = true;
 
 /**
- * The storefront's one read of the home content. Sample data for now; it calls the
- * pages-and-content and catalog APIs once PR #401 and storefront package 2 are on main.
+ * The shell's content: delivery area, popular searches, the rail and drawer categories and the
+ * sample sellers. Sample data; the shell moves to the navigation and category reads in its own
+ * package.
  */
 export async function loadStorefrontContent(): Promise<StorefrontContent> {
   return Promise.resolve(SAMPLE_CONTENT);
 }
 
 /**
+ * The home page middle: the published home layout, the live category tree and the product
+ * shelves when API_BASE_URL is set, with sample data where they answer nothing (unless
+ * STOREFRONT_SAMPLE_DATA is off). Sample only without the URL. See ./home-source.ts.
+ */
+export async function loadHomeContent(): Promise<HomeContent> {
+  return loadHome();
+}
+
+/**
  * The product page's read: the product, its sellable offers and similar products, or undefined
- * when there is no such product. Sample data until the backend has the product detail read.
+ * when there is no such product. With the API on it asks `search/product-detail/:id` (a path id
+ * that is not a product id is no product); with it off, the sample. An outage throws, so the
+ * page shows the error page rather than "not found".
  */
 export async function loadProduct(id: string): Promise<ProductDetail | undefined> {
-  return Promise.resolve(sampleProduct(id));
+  // Only the sample has paths that are not product ids; with the API on they are no product.
+  if (!isProductId(id)) return storefrontApiConfig() === null ? sampleProduct(id) : undefined;
+  const read = await apiGet<ProductDetailBody>(
+    `search/product-detail/${encodeURIComponent(id.toLowerCase())}`,
+  );
+  if (read.kind === 'off') return sampleProduct(id);
+  if (read.kind === 'failed') {
+    if (read.status === 404) return undefined;
+    throw new Error('product detail unavailable');
+  }
+  const [locale, t] = await Promise.all([getLocale(), getTranslations('seller')]);
+  return productDetailOf(read.body, locale, {
+    minimum: (amount) => t('minimum', { amount }),
+    noMinimum: t('no-minimum'),
+  });
 }
 
 /**
@@ -57,9 +98,42 @@ export async function loadCartSource(): Promise<CartSource> {
   return Promise.resolve(SAMPLE_CART_SOURCE);
 }
 
-/** The checkout's customer, address book and service area. Sample data until checkout is wired. */
+/**
+ * The checkout's customer, address book and service area. Sample data until the buyer's session
+ * reaches the API; with API_BASE_URL set, a new address's postcode is checked by the API.
+ */
 export async function loadCheckout(): Promise<CheckoutSource> {
-  return Promise.resolve(SAMPLE_CHECKOUT);
+  return Promise.resolve({
+    ...SAMPLE_CHECKOUT,
+    areaCheck: storefrontApiConfig() === null ? 'sample' : 'api',
+  });
+}
+
+/** What the API's postcode rule accepts (shipping `delivery-area`): printable ASCII, 1 to 16. */
+const POSTCODE = /^[\x20-\x7e]{1,16}$/u;
+
+/** The answer of a `shipping/delivery-area` read; anything but a yes or a no is `failed`. */
+export function deliveryAreaAnswer(
+  read: ApiRead<{ readonly delivers?: unknown }>,
+): DeliveryAreaAnswer {
+  if (read.kind !== 'ok') return { kind: read.kind };
+  const delivers = read.body.delivers;
+  if (typeof delivers !== 'boolean') return { kind: 'failed' };
+  return { kind: delivers ? 'in' : 'out' };
+}
+
+/**
+ * Whether the Market delivers to a postcode (shipping `GET delivery-area`, anonymous). Checkout
+ * asks the same before it takes an order, so this only spares the buyer a refused order.
+ */
+export async function checkDeliveryArea(postcode: string): Promise<DeliveryAreaAnswer> {
+  const value = postcode.trim();
+  if (!POSTCODE.test(value)) return { kind: 'out' };
+  return deliveryAreaAnswer(
+    await apiGet<{ readonly delivers?: unknown }>(
+      `shipping/delivery-area?postcode=${encodeURIComponent(value)}`,
+    ),
+  );
 }
 
 /**
@@ -70,12 +144,93 @@ export async function loadDeliveryLocator(): Promise<DeliveryLocatorSource> {
   return Promise.resolve(SAMPLE_DELIVERY_LOCATOR);
 }
 
+/** The display name of a ServiceArea code ("greater-brisbane"); the code itself when unnamed. */
+async function areaNames(): Promise<(code: string) => string> {
+  const t = await getTranslations('areas');
+  return (code) => (t.has(code) ? t(code) : code);
+}
+
+/** The API answered something other than the expected status and shape. */
+class SellerReadFailed extends Error {
+  constructor() {
+    super('the store read failed');
+  }
+}
+
+const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
 /**
  * The seller page's read: profile, terms, certificates and products, or undefined when there is
- * no such seller. Sample data until the backend has the seller public read.
+ * no such seller. With the API configured, `GET sellers/stores/:slug` gives name, area, year and
+ * minimum order; the other parts stay absent until their public reads exist. Otherwise sample
+ * data. Any answer but 200 or 404 throws, so the page shows its error state.
  */
 export async function loadSeller(slug: string): Promise<SellerShop | undefined> {
-  return Promise.resolve(sampleSeller(slug));
+  // No sample or real store has any other slug; nothing else reaches the API path.
+  if (slug.length > 50 || !STORE_SLUG.test(slug)) return undefined;
+  const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`);
+  if (answer.kind === 'off') return sampleSeller(slug);
+  if (answer.kind === 'failed') {
+    // Only the store module's own answer means "no such store"; a bare 404 is a missing route.
+    if (answer.status === 404 && answer.code === 'sellers.store-not-found') return undefined;
+    throw new SellerReadFailed();
+  }
+  const store = publicStoreOf(answer.body);
+  return shopOf(store, (await areaNames())(store.serviceAreaCode));
+}
+
+/** The API's sort for the page's: popularity and distance are not known yet, so name. */
+const API_SORT = { popular: 'name', nearest: 'name', name: 'name', newest: 'newest' } as const;
+/** The API's largest page. */
+const API_PAGE_SIZE = 48;
+/** At most this many API reads for one page view, however far "Show more" went. */
+const MAX_API_PAGES = 4;
+
+const anyFilter = (query: SellerQuery): boolean => {
+  const { filters } = query;
+  return (
+    filters.newSellers ||
+    filters.sameDay ||
+    filters.certifications.length > 0 ||
+    filters.categories.length > 0 ||
+    filters.minimums.length > 0 ||
+    filters.distance !== undefined
+  );
+};
+
+/**
+ * The sellers page's read: the matching stores, their total, the filter counts and where the
+ * buyer's location stands. With the API configured, `GET sellers/stores` in pages until `limit`
+ * stores are read (no filters or facets yet; the location is unknown until deliver-to is wired).
+ * Otherwise sample data.
+ */
+export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
+  // The API cannot filter yet and the page offers no filter (no facets). A filter left in a
+  // shared URL matches nothing rather than appearing to hold for stores nobody checked.
+  if (anyFilter(query)) {
+    const answer = await apiGet<unknown>(`sellers/stores?pageSize=1`);
+    if (answer.kind === 'off') return sampleSellers(query);
+    if (answer.kind === 'failed') throw new SellerReadFailed();
+    const { total } = publicStorePageOf(answer.body);
+    return { ...sellerResultsOf([], total, await areaNames()), total: 0 };
+  }
+  const stores: PublicStore[] = [];
+  let total = 0;
+  for (let page = 1; stores.length < query.limit && page <= MAX_API_PAGES; page += 1) {
+    const params = new URLSearchParams({
+      sort: API_SORT[query.sort],
+      page: String(page),
+      pageSize: String(API_PAGE_SIZE),
+    });
+    const answer = await apiGet<unknown>(`sellers/stores?${params.toString()}`);
+    if (answer.kind === 'off') return sampleSellers(query);
+    if (answer.kind === 'failed') throw new SellerReadFailed();
+    const read = publicStorePageOf(answer.body);
+    total = read.total;
+    stores.push(...read.items);
+    if (read.items.length < API_PAGE_SIZE) break;
+  }
+  return sellerResultsOf(stores.slice(0, query.limit), total, await areaNames());
 }
 
 /**
@@ -97,49 +252,76 @@ export function storefrontIsLive(): boolean {
 }
 
 /**
- * The sellers page's read: the matching stores, their total, the filter counts and where the
- * buyer's location stands. Sample data until the backend has a seller list read.
+ * The sell page's Market values: password rule, area, business identifier, seller sign-in page.
+ * With API_BASE_URL set, the sign-in page is the request Market's from SELLER_SIGN_IN_URLS; the
+ * rest stays sample until the storefront reads the Market config.
  */
-export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
-  return Promise.resolve(sampleSellers(query));
-}
-
-/** The sell page's Market values: password rule, area, business identifier, seller sign-in page. */
 export async function loadSellerSignUp(): Promise<SellerSignUpSetup> {
-  return Promise.resolve(SAMPLE_SELLER_SIGN_UP);
+  const config = storefrontApiConfig();
+  if (config === null) return SAMPLE_SELLER_SIGN_UP;
+  const host = storefrontHostFor(config, (await headers()).get('host'));
+  const sellerSignInUrl = host && sellerSignInUrls(config)[host.marketId];
+  return sellerSignInUrl ? { ...SAMPLE_SELLER_SIGN_UP, sellerSignInUrl } : SAMPLE_SELLER_SIGN_UP;
 }
 
 /**
- * Creates a seller account (identity `POST identity/seller/sign-up`). Sample: every valid form is
- * accepted and no mail goes, until the storefront may reach the seller sign-up route (the API
- * takes seller requests only from the seller panel's origin; open decision in
- * handoffs/seller-signup-done.md). The answer never says whether the address has an account.
+ * The call's inputs for this request, or null (logged) while API_BASE_URL is empty, without a
+ * signing key (the API refuses the storefront without a proved address) or on an unlisted host.
+ */
+async function sellerSignUpCall(route: string): Promise<SellerSignUpCall | null> {
+  const off = (reason: string): null => {
+    console.log(JSON.stringify({ msg: 'storefront.seller-sign-up.off', route, reason }));
+    return null;
+  };
+  const config = storefrontApiConfig();
+  if (config === null) return off('not-connected');
+  const { apiBaseUrl, clientAddressKey } = config;
+  if (clientAddressKey === null) return off('no-key');
+  const incoming = await headers();
+  const host = storefrontHostFor(config, incoming.get('host'));
+  if (host === undefined) return off('unknown-host');
+  return { apiBaseUrl, clientAddressKey, host, incoming };
+}
+
+/**
+ * Creates a seller account (identity `POST identity/seller/sign-up`, PR #443). The answer never
+ * says whether the address has an account. Not connected or an unknown host: failed, logged
+ * without the address. In a Market whose storefront origin is not set yet (AU until D2) the API
+ * refuses, so the page answers failed.
  */
 export async function submitSellerSignUp(input: {
   readonly name: string;
   readonly email: string;
   readonly password: string;
 }): Promise<SellerSignUpAnswer> {
-  void input;
-  return Promise.resolve({ kind: 'accepted' });
+  const call = await sellerSignUpCall('sign-up');
+  if (call === null) return { kind: 'failed' };
+  return callSellerSignUp(
+    call,
+    'sign-up',
+    { displayName: input.name, email: input.email, password: input.password },
+    { typed: input.password, maxLength: SAMPLE_SELLER_SIGN_UP.passwordMaxLength },
+  );
 }
 
 /**
  * "Send it again" (identity `POST identity/seller/verification-email`): the same answer for every
- * address. Sample until wired, as {@link submitSellerSignUp}.
+ * address, as {@link submitSellerSignUp}.
  */
 export async function resendSellerVerification(email: string): Promise<SellerSignUpAnswer> {
-  void email;
-  return Promise.resolve({ kind: 'accepted' });
+  const call = await sellerSignUpCall('verification-email');
+  if (call === null) return { kind: 'failed' };
+  return callSellerSignUp(call, 'verification-email', { email });
 }
 
 /**
  * A product id the product read did not find: a removed product (its page says so and shows
- * similar ones), or undefined for an id that never existed (the 404 page). Sample data until the
- * product detail read tells them apart.
+ * similar ones), or undefined for an id that never existed (the 404 page). Sample data only: the
+ * product detail read answers the same 404 for both (no oracle on hidden products), so with the
+ * API on every miss is the 404 page until a read tells removed products apart.
  */
 export async function loadUnavailableProduct(id: string): Promise<UnavailableProduct | undefined> {
-  return Promise.resolve(sampleUnavailableProduct(id));
+  return Promise.resolve(storefrontApiConfig() === null ? sampleUnavailableProduct(id) : undefined);
 }
 
 /**

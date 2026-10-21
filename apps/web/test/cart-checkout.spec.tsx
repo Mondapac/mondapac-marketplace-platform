@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { useLayoutEffect, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +18,10 @@ const push = vi.fn();
 const scrolled = vi.fn();
 const replace = vi.fn();
 let path = '/';
+const { deliveryAreaFor } = vi.hoisted(() => ({
+  deliveryAreaFor: vi.fn<(postcode: string) => Promise<{ kind: string }>>(),
+}));
+vi.mock('../src/checkout/actions.ts', () => ({ deliveryAreaFor }));
 vi.mock('next/navigation', () => ({
   usePathname: () => path,
   useSearchParams: () => new URLSearchParams(),
@@ -28,6 +32,7 @@ beforeEach(() => {
   path = '/';
   push.mockReset();
   replace.mockReset();
+  deliveryAreaFor.mockReset();
   Element.prototype.scrollIntoView = scrolled;
   scrolled.mockReset();
 });
@@ -236,6 +241,57 @@ describe('checkout', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Change Delivery address' }));
     expect(screen.getByText('Step 2 of 4')).toBeTruthy();
+  });
+
+  it("asks the API whether a new address's postcode is delivered to once API_BASE_URL is set", async () => {
+    const answers: Record<string, { kind: string }> = {
+      '4031': { kind: 'in' },
+      '4210': { kind: 'out' },
+      '4000': { kind: 'failed' },
+    };
+    deliveryAreaFor.mockImplementation((postcode: string) =>
+      Promise.resolve(answers[postcode] ?? { kind: 'off' }),
+    );
+    renderWith(<CheckoutPage source={{ ...SAMPLE_CHECKOUT, areaCheck: 'api' }} />, MET, true);
+    fireEvent.click(screen.getByRole('radio', { name: /Add a new address/ }));
+    for (const [label, text] of [
+      ['Full name', 'Alex Nguyen'],
+      ['Mobile number', '0400 000 000'],
+      ['Street address and unit', '1 Example Street'],
+      ['Suburb', 'Kedron'],
+    ] as const)
+      fireEvent.change(screen.getByLabelText(label), { target: { value: text } });
+    const deliver = screen.getByRole('button', { name: 'Deliver to this address' });
+    const postcode = screen.getByLabelText('Postcode');
+
+    fireEvent.change(postcode, { target: { value: '4210' } });
+    expect(deliver.getAttribute('aria-disabled')).toBe('true');
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'We do not deliver to 4210 yet. We currently deliver to Greater Brisbane.',
+    );
+
+    fireEvent.change(postcode, { target: { value: '4000' } });
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'We could not check this postcode just now. Please try again in a moment.',
+    );
+    expect(deliver.getAttribute('aria-disabled')).toBe('true');
+
+    // Short of four characters, nothing is asked.
+    fireEvent.change(postcode, { target: { value: '40' } });
+    fireEvent.change(postcode, { target: { value: ' 4031 ' } });
+    await waitFor(() => expect(deliver.getAttribute('aria-disabled')).toBeNull());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(deliveryAreaFor.mock.calls.map(([value]) => value)).toEqual(['4210', '4000', '4031']);
+  });
+
+  it('checks the sample list without asking the API while the storefront reads sample data', () => {
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    fireEvent.click(screen.getByRole('radio', { name: /Add a new address/ }));
+    fireEvent.change(screen.getByLabelText('Postcode'), { target: { value: '4210' } });
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(deliveryAreaFor).not.toHaveBeenCalled();
   });
 
   it('sends a blocked or empty cart back to the cart', () => {

@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { callApi, type ApiResult } from '../api/client.ts';
+import type { ApiResult } from '../api/client.ts';
+import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { problemOf, type SaveProblem } from './errors.ts';
 
 /**
@@ -13,6 +14,7 @@ export function useStepSave(csrfToken: string) {
   const [problem, setProblem] = useState<SaveProblem | null>(null);
   const [saved, setSaved] = useState(false);
   const busy = useRef(false);
+  const callGuarded = useGuardedCall();
 
   async function save<T>(path: string, body: unknown): Promise<ApiResult<T> | null> {
     if (busy.current) return null;
@@ -20,9 +22,10 @@ export function useStepSave(csrfToken: string) {
     setPending(true);
     setProblem(null);
     setSaved(false);
-    const result = await callApi<T>('PUT', path, body, csrfToken);
+    const result = await callGuarded<T>('PUT', path, body, csrfToken);
     busy.current = false;
     setPending(false);
+    if (isStepUpCancelled(result)) return null;
     if (result.ok) setSaved(true);
     else if (result.failure.status === 401) window.location.assign('/session-ended');
     else setProblem(problemOf(result.failure));

@@ -152,9 +152,9 @@ const hit = (n: number): OfferHit => ({
 });
 
 describe.each([
-  ['AU', 'en-AU', 'english'],
-  ['ZZ', 'ja-JP', 'simple'],
-] as const)('product search in market %s', (code, locale, config) => {
+  ['AU', 'en-AU', 'english', 'AUD'],
+  ['ZZ', 'ja-JP', 'simple', 'JPY'],
+] as const)('product search in market %s', (code, locale, config, currency) => {
   const market = testMarketContext(code, 'default');
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
   const system = testCallContext(market, 'system', 'search-system-abcd');
@@ -184,7 +184,7 @@ describe.each([
 
   describe('the Market settings', () => {
     it('come from the Market file, never from a default Market', () => {
-      expect(deps.policy.settings(market)).toEqual({ textSearchConfig: config, locale });
+      expect(deps.policy.settings(market)).toEqual({ textSearchConfig: config, locale, currency });
     });
   });
 

@@ -157,6 +157,8 @@ import { ReevaluateTags } from './application/use-cases/reevaluate-tags.use-case
 import { OfferListingsQuery } from './application/use-cases/offer-listings.use-case';
 import { OfferListingsSystemQuery } from './application/use-cases/offer-listings-system.use-case';
 import { OFFER_LISTINGS_READER } from './application/ports/offer-listings.reader';
+import { PublishedProductQuery } from './application/use-cases/published-product.use-case';
+import { PUBLISHED_PRODUCT_READER } from './application/ports/published-product.reader';
 import { reevaluateTagsJob } from './presentation/jobs/reevaluate-tags.job';
 import { OwnProductController } from './presentation/own-product.controller';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
@@ -219,6 +221,7 @@ const PORT = {
   requests: TAG_REEVALUATION_REQUESTS,
   tagSelection: TAG_SELECTION_READER,
   listingsReader: OFFER_LISTINGS_READER,
+  publishedProductReader: PUBLISHED_PRODUCT_READER,
   ownerContacts: OFFER_OWNER_CONTACT,
   mailTransport: MAIL_TRANSPORT,
   mailSettings: OFFER_OWNER_MAIL_SETTINGS,
@@ -750,6 +753,11 @@ const productTypeProvider: FactoryProvider<string> = {
       policy: true,
       clock: true,
     }),
+    useCaseProvider(PublishedProductQuery, {
+      unitOfWork: true,
+      publishedProductReader: true,
+      policy: true,
+    }),
     {
       provide: CATALOG_FACADE,
       inject: [
@@ -760,6 +768,7 @@ const productTypeProvider: FactoryProvider<string> = {
         OfferTaxCategoriesQuery,
         OfferListingsQuery,
         OfferListingsSystemQuery,
+        PublishedProductQuery,
         PendingProductRevisionsQuery,
         SellerProductOwnersQuery,
       ],
@@ -771,6 +780,7 @@ const productTypeProvider: FactoryProvider<string> = {
         offerTaxCategories: OfferTaxCategoriesQuery,
         offerListings: OfferListingsQuery,
         offerListingsSystem: OfferListingsSystemQuery,
+        publishedProduct: PublishedProductQuery,
         pendingProductRevisions: PendingProductRevisionsQuery,
         sellerProductOwners: SellerProductOwnersQuery,
       ) =>
@@ -782,6 +792,7 @@ const productTypeProvider: FactoryProvider<string> = {
           offerTaxCategories,
           offerListings,
           offerListingsSystem,
+          publishedProduct,
           pendingProductRevisions,
           sellerProductOwners,
         }),

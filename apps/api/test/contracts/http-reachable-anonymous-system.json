@@ -190,6 +190,11 @@
     "reason": "The public storefront search: a visitor with no session finds sellable Offers by text or category; the answer is ids, text and category ids, re-checked against catalog and sellers, and the route is rate limited per origin."
   },
   {
+    "name": "search.view-product-detail",
+    "rule": "anonymous",
+    "reason": "The storefront product page for a visitor with no session: the published product text and variants and its sellable Offers with buyer price (never Cost), public stock state (never the exact count) and the seller's public store name; re-checked against catalog and sellers; rate limited per origin."
+  },
+  {
     "name": "sellers.published-store-list",
     "rule": "anonymous",
     "reason": "The buyer site's sellers page for a visitor with no session: the allow-listed public fields (slug, store name, ServiceArea code, year of first approval, minimum order) of stores that may sell now; no address, contact or identifier, nothing about a seller that may not sell, no key unwrapped."
@@ -198,6 +203,11 @@
     "name": "sellers.published-store-read",
     "rule": "anonymous",
     "reason": "The buyer site's store page for a visitor with no session: one held slug's allow-listed public fields, only while the seller may sell; an unknown, retired or not-selling slug answers the same not-found."
+  },
+  {
+    "name": "shipping.delivery-area",
+    "rule": "anonymous",
+    "reason": "The buyer site asks whether the Market delivers to a postcode before sign-in (cart, checkout, Deliver to): the answer is the public ServiceArea configuration; nothing about a person is read or stored."
   },
   {
     "name": "storefront.view-published-landing-page",
