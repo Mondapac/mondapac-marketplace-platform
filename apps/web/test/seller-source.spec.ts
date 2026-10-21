@@ -36,7 +36,11 @@ describe('seller page read', () => {
   it('reads the store by its slug', async () => {
     reads.answers = [{ kind: 'ok', body: store('kedron') }];
     const shop = await loadSeller('kedron');
-    expect(reads.paths).toEqual(['sellers/stores/kedron']);
+    expect(reads.paths).toEqual([
+      'sellers/stores/kedron',
+      'search/products?store=kedron&page=1&pageSize=24',
+      'catalog/categories',
+    ]);
     expect(shop?.name).toBe('Store kedron');
     expect(shop?.location).toBe('name of greater-brisbane');
   });
@@ -60,7 +64,48 @@ describe('seller page read', () => {
 
   it('keeps the sample while the API is off', async () => {
     reads.answers = [{ kind: 'off' }];
-    expect((await loadSeller('kedron'))?.name).toBe('Kedron Halal Butchers');
+    const shop = await loadSeller('kedron');
+    expect(shop?.name).toBe('Kedron Halal Butchers');
+    expect(reads.paths).toEqual(['sellers/stores/kedron']);
+    expect(shop?.storeProducts).toBeUndefined();
+  });
+
+  const ITEM = '01990000-0000-7000-8000-000000000900';
+  const productsPage = (hasMore: boolean) => ({
+    kind: 'ok' as const,
+    body: {
+      items: [
+        { offerId: 'o', productId: ITEM, sellerId: 's', name: 'Lamb shoulder', categoryIds: [] },
+      ],
+      page: 1,
+      pageSize: 24,
+      hasMore,
+    },
+  });
+
+  it("reads the store's products from search by store, page by page", async () => {
+    reads.answers = [
+      { kind: 'ok', body: store('kedron') },
+      productsPage(true),
+      { kind: 'failed', status: 503 },
+    ];
+    const shop = await loadSeller('kedron', 3);
+    expect(reads.paths[1]).toBe('search/products?store=kedron&page=3&pageSize=24');
+    expect(shop?.storeProducts).toMatchObject({ kind: 'ok', page: 3, hasMore: true });
+    expect(shop?.storeProducts?.kind === 'ok' && shop.storeProducts.items[0]?.name).toBe(
+      'Lamb shoulder',
+    );
+  });
+
+  it('shows the page without products, not an error page, when the products read fails', async () => {
+    reads.answers = [
+      { kind: 'ok', body: store('kedron') },
+      { kind: 'failed', status: 503 },
+      { kind: 'ok', body: { categories: [] } },
+    ];
+    const shop = await loadSeller('kedron');
+    expect(shop?.name).toBe('Store kedron');
+    expect(shop?.storeProducts).toEqual({ kind: 'failed' });
   });
 });
 

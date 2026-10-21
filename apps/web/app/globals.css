@@ -5384,6 +5384,17 @@ svg {
 .shop-more {
   justify-self: center;
 }
+.shop-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 16px;
+  margin-top: 24px;
+}
+.shop-pager > span {
+  color: var(--sf-slate);
+}
 .shop-empty {
   display: grid;
   justify-items: center;

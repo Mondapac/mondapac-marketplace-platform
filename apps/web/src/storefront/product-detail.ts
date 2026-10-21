@@ -1,9 +1,10 @@
 import { formatMoney } from '../format/money.ts';
+import { imageIdsOf, type PhotoUrl } from './photos.ts';
 import type { Money, ProductDetail, ProductOffer } from './types.ts';
 
 // The product page's read of the API (`GET search/product-detail/:productId`, PR #450) and its
 // mapping to the page's own shape. What the API does not have yet stays empty and the page hides
-// it: photos (catalog media), specifications, certification badges (an anonymous read gets none),
+// it: specifications, certification badges (an anonymous read gets none),
 // the regular price beside a special, similar products, the seller's city, "selling since",
 // ratings and delivery window.
 
@@ -19,6 +20,8 @@ export interface ProductDetailBody {
   readonly shortDescription: string | null;
   readonly description: string | null;
   readonly categoryIds: readonly string[];
+  /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageIdsOf}. */
+  readonly images?: unknown;
   readonly offers: readonly {
     readonly offerId: string;
     readonly sellerId: string;
@@ -67,6 +70,7 @@ export function productDetailOf(
   body: ProductDetailBody,
   locale: string,
   labels: ProductDetailLabels,
+  photo: PhotoUrl | null = null,
 ): ProductDetail | undefined {
   const offers = body.offers.flatMap((offer): ProductOffer[] => {
     const unit = offer.units[0];
@@ -97,13 +101,21 @@ export function productDetailOf(
   });
   const [first, ...rest] = offers;
   if (first === undefined) return undefined;
+  const ids = photo === null ? [] : imageIdsOf(body.images);
+  // Both sizes or neither: an id the builder refuses drops that photo from both lists.
+  const shots = ids.flatMap((id) => {
+    const large = photo?.(body.productId, id, 'large');
+    const thumb = photo?.(body.productId, id, 'thumb');
+    return large === undefined || thumb === undefined ? [] : [{ large, thumb }];
+  });
   return {
     id: body.productId,
     name: body.name,
     category: body.categoryIds[0] ?? '',
     description: body.description ?? body.shortDescription ?? '',
     specifications: [],
-    photos: [],
+    photos: shots.map((shot) => shot.large),
+    ...(shots.length > 1 ? { photoThumbs: shots.map((shot) => shot.thumb) } : {}),
     offers: [first, ...rest],
     similar: [],
   };

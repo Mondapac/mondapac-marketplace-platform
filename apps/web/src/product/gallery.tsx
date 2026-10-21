@@ -14,24 +14,34 @@ export function Gallery({
   name,
   category,
   photos,
+  thumbs,
   certifications,
   special,
 }: {
   readonly name: string;
   readonly category: string;
   readonly photos: readonly string[];
+  /** Small versions of the photos for the strip, same order; the photos themselves when absent. */
+  readonly thumbs?: readonly string[] | undefined;
   readonly certifications: readonly CertificationBadge[];
   readonly special: boolean;
 }) {
   const t = useTranslations('product');
   const [index, setIndex] = useState(0);
-  const photo = photos[index];
+  // A photo the browser cannot load (taken down since, or the image origin is down) is left out;
+  // with none left the category art shows, as for a product without photos.
+  const [failed, setFailed] = useState<readonly string[]>([]);
+  const shots = photos.flatMap((src, i) =>
+    failed.includes(src) ? [] : [{ src, thumb: thumbs?.[i] ?? src }],
+  );
+  const photo = shots[Math.min(index, shots.length - 1)]?.src;
+  const fail = (src: string) => setFailed((list) => (list.includes(src) ? list : [...list, src]));
   return (
     <div className="gal">
-      <div className={photos.length === 0 ? 'gmain nophoto' : 'gmain'}>
+      <div className={shots.length === 0 ? 'gmain nophoto' : 'gmain'}>
         {photo ? (
-          // Placeholder photos are local files; seller media moves to next/image with the media API.
-          <img src={photo} alt={name} decoding="async" />
+          // A photo is the API's public photo route (a plain image, not a server-resized one).
+          <img src={photo} alt={name} decoding="async" onError={() => fail(photo)} />
         ) : (
           <CategoryArt code={category} />
         )}
@@ -40,17 +50,23 @@ export function Gallery({
         ))}
         {special ? <span className="badge">{t('special-price')}</span> : null}
       </div>
-      {photos.length > 1 ? (
+      {shots.length > 1 ? (
         <div className="gth" role="group" aria-label={t('photos')}>
-          {photos.map((src, i) => (
+          {shots.map((shot, i) => (
             <button
-              key={src}
+              key={shot.src}
               type="button"
               aria-label={t('photo', { index: i + 1 })}
-              aria-current={i === index ? 'true' : undefined}
+              aria-current={shot.src === photo ? 'true' : undefined}
               onClick={() => setIndex(i)}
             >
-              <img src={src} alt="" loading="lazy" decoding="async" />
+              <img
+                src={shot.thumb}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={() => fail(shot.src)}
+              />
             </button>
           ))}
         </div>
