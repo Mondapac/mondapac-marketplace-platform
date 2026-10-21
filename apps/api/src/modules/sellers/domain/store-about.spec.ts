@@ -45,6 +45,12 @@ describe('parseAboutText', () => {
     ['myshop。com', 'url'],
     ['myshop．com', 'url'],
     ['myshop｡com', 'url'],
+    ['myshop۔com', 'url'],
+    ['myshop٫com', 'url'],
+    ['myshop·com', 'url'],
+    ['myshop‧com', 'url'],
+    ['myshop.̈com', 'url'],
+    ['myshop̈.com', 'url'],
     ['ｍｙｓｈｏｐ.ｃｏｍ', 'url'],
     ['bob＠shop.io', 'url'],
     ['bell\u0007', 'characters'],
@@ -54,6 +60,15 @@ describe('parseAboutText', () => {
     ['lone ‍ joiner', 'characters'],
   ])('refuses %j as %s', (text, rule) => {
     expect(parseAboutText(text)).toEqual({ ok: false, error: { code: 'about.invalid', rule } });
+  });
+
+  it.each([
+    'We weigh 2.5kg boxes.',
+    'Open from 7.30am daily.',
+    'Cakes, pies, e.g. lamingtons.',
+    'قیمت ۲.۵ کیلو',
+  ])('still accepts ordinary prose %j', (text) => {
+    expect(parseAboutText(text).ok).toBe(true);
   });
 
   it('refuses a value that is not a string', () => {

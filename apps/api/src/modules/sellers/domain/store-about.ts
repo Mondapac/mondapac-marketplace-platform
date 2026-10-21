@@ -38,11 +38,16 @@ const URL_LIKE = [
 /**
  * The text as the URL patterns see it: NFKC turns full-width and compatibility forms (`．`, `＠`,
  * full-width letters) into their ASCII shapes, and the ideographic and half-width full stops
- * (`。`, `｡`), which NFKC leaves alone, become `.`. Only the test uses this; the stored text is
- * the seller's own (NFC).
+ * (`。`, `｡`), the Arabic full stop and decimal separator (`۔`, `٫`), the middle dot and the
+ * hyphenation point (`·`, `‧`), which NFKC leaves alone, become `.`. Combining marks are removed,
+ * so a mark placed between a letter and a dot does not hide a host name. Only the test uses this;
+ * the stored text is the seller's own (NFC).
  */
 function foldForUrlTest(text: string): string {
-  return text.normalize('NFKC').replace(/[。．｡]/gu, '.');
+  return text
+    .normalize('NFKC')
+    .replace(/[。．｡۔٫·‧]/gu, '.')
+    .replace(/\p{M}/gu, '');
 }
 
 /**
