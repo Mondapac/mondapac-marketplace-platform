@@ -14,6 +14,15 @@ export interface ShelfDocumentsReader {
     productId: Id<'Product'>,
     limit: number,
   ): Promise<readonly OfferHit[]>;
+  /**
+   * The documents of these products' Offers (any order), at most `limit` in all; products without
+   * an indexed Offer are left out. Documents of this Market only.
+   */
+  byProductIds(
+    market: MarketContext,
+    productIds: readonly Id<'Product'>[],
+    limit: number,
+  ): Promise<readonly OfferHit[]>;
   /** The first `limit` documents of the Market in search's browse order (name, then Offer id). */
   browseAll(market: MarketContext, limit: number): Promise<readonly OfferHit[]>;
 }

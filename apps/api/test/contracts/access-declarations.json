@@ -410,6 +410,14 @@
   { "name": "pricing.retire-series-for-removed-variant", "rule": "system" },
   { "name": "pricing.specials-in-force", "rule": "anonymous" },
   { "name": "search.list-bestsellers", "rule": "anonymous" },
+  { "name": "search.list-for-you", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "search.list-for-you-guest", "rule": "anonymous" },
+  {
+    "name": "search.list-recently-viewed",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "search.list-recently-viewed-guest", "rule": "anonymous" },
   { "name": "search.list-specials", "rule": "anonymous" },
   { "name": "search.rebuild-offer-index", "rule": "system" },
   { "name": "search.search-products", "rule": "anonymous" },
