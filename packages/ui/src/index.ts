@@ -30,6 +30,7 @@ export {
   type LinkButtonProps,
 } from './form/button.tsx';
 export { TextField, type TextFieldProps } from './form/text-field.tsx';
+export { TextAreaField, type TextAreaFieldProps } from './form/text-area-field.tsx';
 export { OtpField, type OtpFieldProps } from './form/otp-field.tsx';
 export { Card, type CardProps } from './form/card.tsx';
 export { CheckboxRow, type CheckboxRowProps } from './form/checkbox-row.tsx';
