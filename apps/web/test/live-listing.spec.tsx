@@ -16,6 +16,7 @@ import {
   listingIsLive,
   resolveCategory,
   searchCategories,
+  searchCategory,
 } from '../src/storefront/catalog.ts';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import type * as CategoryTree from '../src/storefront/category-tree.ts';
@@ -109,12 +110,24 @@ describe('catalog reads with the API on', () => {
     expect(await resolveCategory('poultry')).toBeUndefined();
   });
 
+  it('keeps an unknown search category so the search finds nothing there', async () => {
+    expect(await searchCategory('meat')).toMatchObject({ code: 'meat', name: 'Meat' });
+    const stale = await searchCategory('poultry');
+    expect(stale).toEqual({ code: 'poultry', name: 'poultry', shortName: 'poultry', children: [] });
+    reads.paths = [];
+    const result = await findProducts({ q: 'lamb', category: 'poultry', page: 1, pageSize: 12 });
+    expect(result.items).toEqual([]);
+    expect(reads.paths).toEqual(['catalog/categories']);
+    expect(await searchCategory(undefined)).toBeUndefined();
+  });
+
   it('answers the sample with the API off', async () => {
     reads.config = false;
     expect(listingIsLive()).toBe(false);
     expect((await resolveCategory('poultry'))?.category.code).toBe('poultry');
     expect((await resolveCategory('meat', 'lamb'))?.child?.code).toBe('lamb');
     expect(await resolveCategory('meat', 'nope')).toBeUndefined();
+    expect(await searchCategory('nope')).toBeUndefined();
     expect((await findProducts({ category: 'meat', page: 1 })).total).toBe(5);
     expect((await findProducts({ category: 'meat', page: 1 })).items[0]?.price).toBeDefined();
   });
@@ -160,6 +173,17 @@ describe('live search results', () => {
     expect(screen.queryByText('Filter by:')).toBeNull();
     expect(screen.getByRole('link', { name: /next/i }).getAttribute('href')).toBe(
       '/search?q=lamb&page=2',
+    );
+  });
+
+  it('says nothing was found in a category, with a way to search everywhere', () => {
+    show([], {
+      category: { code: 'poultry', name: 'poultry', shortName: 'poultry', children: [] },
+      products: { items: [], page: 1, pageSize: 12, hasMore: false },
+    });
+    expect(screen.getByRole('status').textContent).toContain('poultry');
+    expect(screen.getByRole('link', { name: 'Search all categories' }).getAttribute('href')).toBe(
+      '/search?q=lamb',
     );
   });
 

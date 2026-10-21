@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  MAX_TREE_ROWS,
   categoryOf,
   findInTree,
   slugsOf,
   topCategories,
   treeOf,
 } from '../src/storefront/category-tree.ts';
-import { navigationOf } from '../src/storefront/navigation.ts';
+import { MAX_SLOT_ENTRIES, navigationOf } from '../src/storefront/navigation.ts';
 import type { ApiRead } from '../src/storefront/api.ts';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import { loadShellContent, shellFrom } from '../src/storefront/shell-source.ts';
@@ -89,6 +90,46 @@ describe('category tree', () => {
   });
 });
 
+describe('category tree depth and size', () => {
+  const CHOPS = '0b5e1c3a-0000-4000-8000-000000000010';
+  const DEEP_LAMB = '0b5e1c3a-0000-4000-8000-000000000011';
+  const TOP_LAMB = '0b5e1c3a-0000-4000-8000-000000000012';
+  const rows = treeOf({
+    categories: [
+      ...TREE.categories,
+      { id: CHOPS, parentId: LAMB, slug: 'chops', name: 'Chops' },
+      { id: DEEP_LAMB, parentId: BAKERY, slug: 'lamb-pies', name: 'Lamb pies' },
+      { id: TOP_LAMB, parentId: null, slug: 'lamb-pies', name: 'Lamb pies (top)' },
+    ],
+  })!;
+
+  it('finds a grandchild by its own slug and under its parent', () => {
+    expect(findInTree(rows, 'chops')?.node.id).toBe(CHOPS);
+    expect(findInTree(rows, 'lamb', 'chops')?.child?.id).toBe(CHOPS);
+    // A grandchild is not a subcategory of the top level.
+    expect(findInTree(rows, 'meat', 'chops')).toBeUndefined();
+  });
+
+  it('prefers the top level when a deeper category has the same slug', () => {
+    expect(findInTree(rows, 'lamb-pies')?.node.id).toBe(TOP_LAMB);
+  });
+
+  it('refuses a subcategory that belongs to another parent', () => {
+    expect(findInTree(rows, 'bakery', 'lamb')).toBeUndefined();
+    expect(findInTree(rows, 'meat', 'lamb-pies')).toBeUndefined();
+  });
+
+  it('reads at most MAX_TREE_ROWS rows', () => {
+    const many = Array.from({ length: MAX_TREE_ROWS + 10 }, (_, i) => ({
+      id: `0b5e1c3a-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      parentId: null,
+      slug: `c${i}`,
+      name: `C ${i}`,
+    }));
+    expect(treeOf({ categories: many })).toHaveLength(MAX_TREE_ROWS);
+  });
+});
+
 describe('approved navigation', () => {
   const rows = treeOf(TREE)!;
 
@@ -116,6 +157,16 @@ describe('approved navigation', () => {
       ],
     });
     expect(navigationOf(body, rows)!.categories.map((c) => c.code)).toEqual(['meat']);
+  });
+
+  it('reads at most MAX_SLOT_ENTRIES entries of a slot', () => {
+    const body = nav({
+      'drawer-categories': [
+        ...Array.from({ length: MAX_SLOT_ENTRIES }, () => entry(GONE)),
+        entry(MEAT),
+      ],
+    });
+    expect(navigationOf(body, rows)!.categories).toEqual([]);
   });
 
   it('is empty before an admin approves one, and not a navigation when the body is not a page', () => {

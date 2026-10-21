@@ -21,6 +21,7 @@ import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleSellers } from './sample-sellers.ts';
 import type {
   BuyerLocation,
+  Category,
   ListingBanner,
   PriceBand,
   ProductCard,
@@ -183,6 +184,21 @@ function inScope(query: Pick<ProductQuery, 'q' | 'category' | 'subcategory'>) {
       (query.subcategory === undefined || SAMPLE_SUBCATEGORY[p.id] === query.subcategory) &&
       words.every((w) => `${p.name} ${p.sellerName} ${p.category}`.toLowerCase().includes(w)),
   );
+}
+
+/**
+ * The category a search is narrowed to (`/search?category=<code>`). With the API on it is the
+ * live tree's (the navigation may not list it); one the tree does not have (a stale link) is kept
+ * under its code, so the search stays in it and finds nothing there (`findProducts` reads no
+ * products for it) rather than running everywhere. Without the API an unknown code is dropped.
+ */
+export async function searchCategory(code: string | undefined): Promise<Category | undefined> {
+  if (code === undefined || code === '') return undefined;
+  const found = await resolveCategory(code);
+  if (found !== undefined) return found.category;
+  if (!listingIsLive()) return undefined;
+  const name = Array.from(code).slice(0, 40).join('');
+  return { code, name, shortName: name, children: [] };
 }
 
 export async function findProducts(query: ProductQuery): Promise<ProductPage> {

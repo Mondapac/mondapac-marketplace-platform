@@ -119,6 +119,24 @@ describe('products of a listing', () => {
     expect(page?.items.some((card) => 'price' in card)).toBe(false);
   });
 
+  it('drops an item whose product id is not a UUID, since the card links to it', async () => {
+    const body = {
+      items: [
+        item('../../account', 'Path'),
+        item('p1', 'Short id'),
+        item(`${P1}/x`, 'Suffixed'),
+        { ...item(P1, 'Number'), productId: 7 },
+        item(P2, 'Lamb cutlets'),
+      ],
+      hasMore: false,
+    };
+    const page = await liveProducts(
+      { q: 'lamb', page: 1, pageSize: 12 },
+      reader({ kind: 'ok', body }).read,
+    );
+    expect(page?.items.map((card) => card.id)).toEqual([P2]);
+  });
+
   it('matches nothing for a category the tree does not have, without reading products', async () => {
     const { read, paths } = reader({ kind: 'ok', body: PAGE });
     expect(await liveProducts({ category: 'nope', page: 1, pageSize: 12 }, read)).toEqual({

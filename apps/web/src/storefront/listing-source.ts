@@ -1,5 +1,6 @@
 import 'server-only';
 import {
+  UUID,
   findInTree,
   categoryOf,
   readOnce,
@@ -104,5 +105,10 @@ export async function liveProducts(
   const body = answer.kind === 'ok' ? answer.body : null;
   if (!isObject(body) || !Array.isArray(body.items) || typeof body.hasMore !== 'boolean')
     throw new ListingReadFailed('product search');
-  return { items: cardsOf(body, slugsOf(rows)), hasMore: body.hasMore };
+  // The card links to `/p/<productId>`: an item whose id is not a UUID is dropped here, before
+  // it can become a link.
+  const items = (body.items as unknown[]).filter(
+    (item) => isObject(item) && typeof item.productId === 'string' && UUID.test(item.productId),
+  );
+  return { items: cardsOf({ items }, slugsOf(rows)), hasMore: body.hasMore };
 }

@@ -17,6 +17,9 @@ export interface Navigation {
   readonly popular: readonly string[];
 }
 
+/** Most entries read from one slot (the template allows 30 at most). */
+export const MAX_SLOT_ENTRIES = 200;
+
 /** The category entries of one slot of a published page, in order. */
 function entriesOf(page: Record<string, unknown>, key: string) {
   const entries: { readonly id: string; readonly label?: string }[] = [];
@@ -24,6 +27,7 @@ function entriesOf(page: Record<string, unknown>, key: string) {
   for (const slot of page.slots as unknown[]) {
     if (!isObject(slot) || slot.key !== key || !Array.isArray(slot.modules)) continue;
     for (const entry of slot.modules as unknown[]) {
+      if (entries.length >= MAX_SLOT_ENTRIES) break;
       if (!isObject(entry) || entry.module !== 'nav-category' || !isObject(entry.config)) continue;
       const { categoryId } = entry.config;
       if (typeof categoryId !== 'string') continue;
@@ -37,10 +41,11 @@ function entriesOf(page: Record<string, unknown>, key: string) {
 /** The drawer lists of a navigation answer, or null when the answer is not a page. */
 export function navigationOf(body: unknown, rows: readonly TreeRow[]): Navigation | null {
   if (!isObject(body) || body.kind !== 'page' || !isObject(body.page)) return null;
+  const byId = new Map(rows.map((r) => [r.id, r]));
   const known = (entries: ReturnType<typeof entriesOf>) => {
     const seen = new Set<string>();
     return entries.flatMap((entry) => {
-      const node = rows.find((r) => r.id === entry.id);
+      const node = byId.get(entry.id);
       if (node === undefined || seen.has(node.id)) return [];
       seen.add(node.id);
       return [{ node, label: entry.label }];

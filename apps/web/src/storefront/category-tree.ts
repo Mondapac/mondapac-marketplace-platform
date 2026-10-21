@@ -17,7 +17,10 @@ export interface TreeRow {
   readonly name: string;
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+/** Most rows read from one tree answer; a Market's tree is far smaller, the rest is ignored. */
+export const MAX_TREE_ROWS = 5000;
 
 /** One read of a public route per request, however many parts of the page ask (layout, page). */
 export const readOnce: (path: string) => Promise<ApiRead<unknown>> = cache((path: string) =>
@@ -28,14 +31,17 @@ export const readOnce: (path: string) => Promise<ApiRead<unknown>> = cache((path
 export function treeOf(body: unknown): TreeRow[] | null {
   if (!isObject(body) || !Array.isArray(body.categories)) return null;
   const rows: TreeRow[] = [];
+  const seen = new Set<string>();
   for (const row of body.categories as unknown[]) {
+    if (rows.length >= MAX_TREE_ROWS) break;
     if (!isObject(row) || typeof row.id !== 'string' || !UUID.test(row.id)) continue;
     const slug = textOf(row.slug, 120);
     const name = textOf(row.name, 120);
     if (slug === undefined || name === undefined || !/^[a-z0-9-]+$/u.test(slug)) continue;
     if (row.parentId !== null && (typeof row.parentId !== 'string' || !UUID.test(row.parentId)))
       continue;
-    if (rows.some((r) => r.id === row.id)) continue;
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
     rows.push({ id: row.id, parentId: row.parentId, slug, name });
   }
   return rows;
