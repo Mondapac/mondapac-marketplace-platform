@@ -100,7 +100,7 @@ describe('listing sample source', () => {
 
   it('sorts, counts the total and pages by 12', async () => {
     const byPrice = await findProducts({ category: 'meat', page: 1, sort: 'price-asc' });
-    expect(byPrice.items.map((p) => p.price.amount)).toEqual([1050, 1190, 2490, 2690, 4690]);
+    expect(byPrice.items.map((p) => p.price?.amount)).toEqual([1050, 1190, 2490, 2690, 4690]);
     const pantry = await findProducts({ category: 'pantry', page: 2, pageSize: 12 });
     expect(pantry.total).toBe(14);
     expect(pantry.items).toHaveLength(2);
