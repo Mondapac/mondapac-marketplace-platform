@@ -62,8 +62,10 @@ describe.each(TEST_MARKETS)('public product photos over HTTP in market %s', (cod
   let reader: MemoryPublished;
   let store: MemoryObjectStore;
   let jpeg: Buffer;
+  const urlIn = (market: string, imageId: string, size = 'medium', productId: string = PRODUCT) =>
+    `/catalog/public-images/${market}/${productId}/${imageId}/${size}`;
   const url = (imageId: string, size = 'medium', productId: string = PRODUCT) =>
-    `/catalog/products/${productId}/images/${imageId}/${size}`;
+    urlIn(code, imageId, size, productId);
   const get = (path: string, headers: Record<string, string> = {}) =>
     request(app.getHttpServer())
       .get(path)
@@ -192,9 +194,7 @@ describe.each(TEST_MARKETS)('public product photos over HTTP in market %s', (cod
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual(NOT_FOUND);
-    const there = await request(app.getHttpServer())
-      .get(url(PUBLIC))
-      .set({ 'x-market-id': otherCode });
+    const there = await request(app.getHttpServer()).get(urlIn(otherCode, PUBLIC));
     expect(there.status).toBe(200);
   });
 
@@ -207,11 +207,24 @@ describe.each(TEST_MARKETS)('public product photos over HTTP in market %s', (cod
     expect(response.body).toEqual(NOT_FOUND);
   });
 
-  it('refuses a request with no Market before any read', async () => {
-    const response = await request(app.getHttpServer()).get(url(PUBLIC));
+  it.each(['au', 'XYZ', 'QQ'])(
+    'refuses a malformed or unhosted Market in the path (%s) before any read',
+    async (market) => {
+      const response = await request(app.getHttpServer()).get(urlIn(market, PUBLIC));
 
-    expect(response.status).toBeGreaterThanOrEqual(400);
-    expect(response.headers['content-type']).not.toBe('image/jpeg');
+      expect(response.status).toBe(400);
+      expect(response.headers['content-type']).not.toBe('image/jpeg');
+    },
+  );
+
+  it('does not read x-market-id: the path decides the Market', async () => {
+    reader.rows = [row({ imageId: PUBLIC })];
+
+    const response = await request(app.getHttpServer())
+      .get(urlIn(otherCode, PUBLIC))
+      .set({ 'x-market-id': code });
+
+    expect(response.status).toBe(404);
   });
 
   it('answers 503 image.unavailable, not a guess, when the store fails', async () => {

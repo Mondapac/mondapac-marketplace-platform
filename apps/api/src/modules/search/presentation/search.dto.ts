@@ -8,7 +8,7 @@ export class ProductImageRefBody {
     format: 'uuid',
     description:
       'The photo id. The storefront builds the URL by code: ' +
-      '`GET /catalog/products/{productId}/images/{imageId}/{thumb|medium|large}`.',
+      '`GET /catalog/public-images/{market}/{productId}/{imageId}/{thumb|medium|large}`.',
   })
   imageId!: string;
   @ApiProperty({ description: 'Pixel width of the largest rendition (the ratio holds for all).' })
