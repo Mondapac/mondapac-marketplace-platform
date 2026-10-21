@@ -140,6 +140,36 @@ export async function apiGetWith<T>(
 /** The most bytes of a picture read from the API: a store image is a rendition of a few hundred KB. */
 export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
+/**
+ * The body of a response, read in chunks and aborted as soon as it passes `limit` bytes, so a
+ * body with no (or a false) Content-Length never fills memory first. The stream is cancelled
+ * before the error is thrown.
+ */
+async function readCapped(response: Response, limit: number): Promise<Uint8Array> {
+  const body = response.body;
+  if (body === null) return new Uint8Array(0);
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > limit) {
+      await reader.cancel().catch(() => undefined);
+      throw new RangeError('the picture is too large');
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return bytes;
+}
+
 /** A picture the API answered: its bytes and the type it declared. */
 export interface ApiBytes {
   readonly bytes: Uint8Array;
@@ -156,8 +186,7 @@ export async function apiGetBytesWith(
   return readWith(config, incoming, path, nowMilliseconds, 'image/jpeg', async (response) => {
     const declared = Number(response.headers.get('content-length') ?? '0');
     if (declared > MAX_IMAGE_BYTES) throw new RangeError('the picture is too large');
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.length > MAX_IMAGE_BYTES) throw new RangeError('the picture is too large');
+    const bytes = await readCapped(response, MAX_IMAGE_BYTES);
     return { bytes, contentType: response.headers.get('content-type') ?? '' };
   });
 }

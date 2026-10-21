@@ -353,4 +353,79 @@ describe('reading a picture from the API', () => {
       code: 'image.not-found',
     });
   });
+
+  /** A response whose body is a stream of `chunks` of `size` bytes, with no Content-Length. */
+  const streamed = (chunks: number, size: number, onPull: () => void, onCancel: () => void) => {
+    let sent = 0;
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          onPull();
+          if (sent === chunks) return controller.close();
+          sent += 1;
+          controller.enqueue(new Uint8Array(size));
+        },
+        cancel: onCancel,
+      }),
+      { headers: { 'content-type': 'image/jpeg' } },
+    );
+  };
+
+  it('stops reading and cancels the stream once a body without Content-Length passes 2 MiB', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const pulls = vi.fn();
+    const cancelled = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(streamed(1000, 256 * 1024, pulls, cancelled))),
+    );
+
+    const read = await apiGetBytesWith(config(LOCAL), host, 'sellers/stores/x/images/y/small');
+
+    expect(read).toEqual({ kind: 'failed' });
+    // 2 MiB is eight 256 KiB chunks; the ninth tips it over and the rest is never pulled.
+    expect(pulls.mock.calls.length).toBeLessThanOrEqual(12);
+    expect(cancelled).toHaveBeenCalled();
+  });
+
+  it('refuses a body that lies about a small Content-Length', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const cancelled = vi.fn();
+    const lying = streamed(100, 256 * 1024, () => undefined, cancelled);
+    lying.headers.set('content-length', '10');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(lying)),
+    );
+
+    expect(await apiGetBytesWith(config(LOCAL), host, 'sellers/stores/x/images/y/small')).toEqual({
+      kind: 'failed',
+    });
+    expect(cancelled).toHaveBeenCalled();
+  });
+
+  it('reads a streamed body up to the cap in order', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new Uint8Array([1, 2]));
+                controller.enqueue(new Uint8Array([3]));
+                controller.close();
+              },
+            }),
+            { headers: { 'content-type': 'image/jpeg' } },
+          ),
+        ),
+      ),
+    );
+
+    expect(await apiGetBytesWith(config(LOCAL), host, 'sellers/stores/x/images/y/small')).toEqual({
+      kind: 'ok',
+      body: { bytes: new Uint8Array([1, 2, 3]), contentType: 'image/jpeg' },
+    });
+  });
 });
