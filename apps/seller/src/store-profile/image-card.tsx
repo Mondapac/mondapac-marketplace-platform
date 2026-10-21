@@ -80,6 +80,8 @@ export function ImageCard({
     setProblem(null);
     setConfirming(false);
     const prepared = await preparePhoto(file);
+    // The picker was disabled while the picture went up: focus returns to it when this ends.
+    focusNext.current = 'choose';
     if (prepared.kind === 'refused') {
       failed({ key: prepared.reason === 'too-large' ? 'too-large' : 'unreadable' });
     } else {
@@ -197,10 +199,15 @@ export function ImageCard({
               height={image.height}
               className="size-full object-cover"
             />
+            {/* Where the buyer site puts its Share button, in both shapes. */}
+            <span
+              aria-hidden="true"
+              className="absolute end-2 top-2 h-6 w-16 rounded-full border-2 border-dashed border-line-control bg-surface/60"
+            />
             {preview === 'desktop' ? (
               <span
                 aria-hidden="true"
-                className="absolute bottom-0 start-4 h-3/5 aspect-square rounded-md border-2 border-dashed border-line-control bg-surface/60"
+                className="absolute bottom-0 start-4 aspect-square h-2/5 rounded-md border-2 border-dashed border-line-control bg-surface/60"
               />
             ) : null}
           </div>
@@ -217,11 +224,7 @@ export function ImageCard({
             disabled={working}
             onFiles={(files) => void upload(files)}
           >
-            {status === 'uploading'
-              ? t('store-profile.image.uploading')
-              : image === null
-                ? t('store-profile.image.choose')
-                : t('store-profile.image.replace')}
+            {image === null ? t('store-profile.image.choose') : t('store-profile.image.replace')}
           </FileButton>
           {image === null ? null : confirming ? (
             <>
@@ -255,7 +258,7 @@ export function ImageCard({
         </div>
       ) : null}
       {/* Always in the page, so a screen reader hears the text when it is put in. */}
-      <p role="status" className="text-sm text-success-fg empty:hidden">
+      <p role="status" className="text-sm text-success-fg empty:sr-only">
         {announced}
       </p>
     </Card>

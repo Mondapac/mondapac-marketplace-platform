@@ -1777,14 +1777,14 @@
       "rule": {
         "length": "Use at most {max} characters.",
         "characters": "This text has characters that are not allowed.",
-        "url": "Remove web addresses and links; buyers contact you through the platform.",
+        "url": "Remove web addresses and links, or add a space after a full stop. Buyers contact you through the platform.",
         "claim-term": "This text claims a certification. Remove that wording. Certificates are shown as verified badges after our team checks them.",
         "invalid": "This text is not valid."
       }
     },
     "logo": {
       "title": "Logo",
-      "help": "Shown next to your store name. A square picture works best. At least 128 by 128 pixels.",
+      "help": "Shown next to your store name. A square picture works best. At least 128 × 128 px.",
       "none": "No logo yet.",
       "alt": "Your store logo",
       "confirm": "Remove the logo?",
@@ -1793,7 +1793,7 @@
     },
     "banner": {
       "title": "Banner",
-      "help": "A wide picture at the top of your store page. Keep the important part in the middle: the edges are cropped on phones and wide screens, and your logo covers the lower left on a computer. Use 1200 × 300 px or larger.",
+      "help": "A wide picture at the top of your store page. Keep the important part in the middle: the edges are cropped on phones and wide screens. The Share button covers the top right, and your logo the lower left from tablet width up. Use 1200 × 300 px or larger.",
       "none": "No banner yet.",
       "alt": "Your store banner",
       "preview": {
@@ -1821,8 +1821,8 @@
         "too-many-pixels": "That picture has too many pixels. Choose a smaller one.",
         "unreadable": "We could not read that picture. Try another file.",
         "too-small": {
-          "logo": "That logo is too small. Use at least 128 by 128 pixels.",
-          "banner": "That banner is too small. Use at least 1200 by 300 pixels."
+          "logo": "That logo is too small. Use at least 128 × 128 px.",
+          "banner": "That banner is too small. Use at least 1200 × 300 px."
         },
         "throttled": "Too many saves. Wait {seconds, plural, one {# second} other {# seconds}} and try again.",
         "denied": "You do not have access to change the store profile.",

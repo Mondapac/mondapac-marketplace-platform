@@ -126,13 +126,13 @@ body {
 
 /* Aspect ratios of the store banner (sellers slice 12 part 2), made in code first (speed mode), to be
  * back-ported to the Figma tokens. `stored` is the shape the server keeps (4 to 1); `phone` and
- * `desktop` are the boxes the buyer site crops it into (its header banner is 130 px high on a
+ * `desktop` are the boxes the buyer site crops it into (its header banner is 130 px high and 343 px wide on a
  * 375 px phone and 184 px high on a 1100 px column). */
 @utility aspect-banner-stored {
   aspect-ratio: 4 / 1;
 }
 @utility aspect-banner-phone {
-  aspect-ratio: 375 / 130;
+  aspect-ratio: 343 / 130;
 }
 @utility aspect-banner-desktop {
   aspect-ratio: 1100 / 184;

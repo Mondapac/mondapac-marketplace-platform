@@ -250,12 +250,34 @@ describe('StoreProfile images', () => {
       expect(within(logoCard()).getByRole('status').textContent).toBe('Uploading…'),
     );
     expect(chooseIn(logoCard()).disabled).toBe(true);
+    // "Uploading…" is said once, in the status line, not on the button as well.
+    expect(within(logoCard()).getAllByText('Uploading…')).toHaveLength(1);
     finish(done(view({ logo: { id: IMAGE, width: 512, height: 512 } })));
     await screen.findByText('Logo saved. Buyers can see it now.');
+    // The picker was disabled while the picture went up: focus comes back to it.
+    await waitFor(() => expect(document.activeElement).toBe(chooseIn(logoCard())));
+  });
+
+  it('puts focus back on the picker when an upload fails', async () => {
+    mount();
+    prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
+    call.mockResolvedValueOnce(failure({ status: 422, code: 'file.too-small' }));
+
+    fireEvent.change(chooseIn(logoCard()), { target: { files: [file()] } });
+
+    await screen.findByText(/That logo is too small/);
+    await waitFor(() => expect(document.activeElement).toBe(chooseIn(logoCard())));
+  });
+
+  it('keeps the status line in the page when it is empty, so a screen reader hears it', () => {
+    mount();
+    const status = within(logoCard()).getByRole('status');
+    expect(status.textContent).toBe('');
+    expect(status.className).not.toContain('empty:hidden');
   });
 
   it.each([
-    ['file.too-small', 422, 'That logo is too small. Use at least 128 by 128 pixels.'],
+    ['file.too-small', 422, 'That logo is too small. Use at least 128 × 128 px.'],
     ['file.unsupported-type', 415, 'That file is not a JPEG, PNG or WebP picture.'],
     ['file.too-many-pixels', 422, 'That picture has too many pixels. Choose a smaller one.'],
     ['file.unreadable', 422, 'We could not read that picture. Try another file.'],
@@ -276,9 +298,7 @@ describe('StoreProfile images', () => {
     prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
     call.mockResolvedValueOnce(failure({ status: 422, code: 'file.too-small' }));
     fireEvent.change(chooseIn(bannerCard()), { target: { files: [file()] } });
-    await within(bannerCard()).findByText(
-      'That banner is too small. Use at least 1200 by 300 pixels.',
-    );
+    await within(bannerCard()).findByText('That banner is too small. Use at least 1200 × 300 px.');
 
     prepare.mockResolvedValueOnce({ kind: 'refused', reason: 'unreadable' });
     fireEvent.change(chooseIn(bannerCard()), { target: { files: [file()] } });
@@ -353,8 +373,13 @@ describe('StoreProfile images', () => {
     expect(phone.getAttribute('aria-pressed')).toBe('true');
     expect(box().className).toContain('aspect-banner-phone');
     expect(within(card).queryByText(/dashed square/)).toBeNull();
+    expect(within(card).getByText(/The Share button covers the top right/)).toBeTruthy();
+    // The ghost Share pill is in both shapes and hidden from assistive technology.
+    const ghosts = () => box().querySelectorAll('[aria-hidden="true"]');
+    expect(ghosts()).toHaveLength(1);
 
     fireEvent.click(desktop);
+    expect(ghosts()).toHaveLength(2);
 
     expect(desktop.getAttribute('aria-pressed')).toBe('true');
     expect(phone.getAttribute('aria-pressed')).toBe('false');
