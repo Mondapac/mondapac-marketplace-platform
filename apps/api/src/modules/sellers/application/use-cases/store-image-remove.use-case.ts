@@ -33,9 +33,10 @@ export interface StoreImageRemoveDependencies extends StoreProfileReadDependenci
 
 /**
  * `store-image.remove` (sellers design 3.7; slice 12 part 2): takes the logo or the banner off the
- * store. Rule `permissions [sellers.store-profile.edit]`, approved sellers only. The saves limit of
- * 6.5 is reserved; one read-write unit deletes the row (so the image can no longer be served from
- * that moment) and records `sellers.store-image.changed`; the objects are deleted after the commit.
+ * store. Rule `permissions [sellers.store-profile.edit]`, approved sellers only. The picture limit
+ * `STORE_IMAGE_LIMITS` (10 a minute and 100 a day per account,
+ * shared with saves) is reserved; one read-write unit deletes the row (so the image can no
+ * longer be served from that moment) and records `sellers.store-image.changed`; the objects are deleted after the commit.
  * Removing what is not there is not an error: the answer is the profile as it is, and nothing is
  * audited.
  */

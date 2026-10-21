@@ -54,8 +54,10 @@ const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
  * `store-image.save` (sellers design 3.7, 6.2 `my-store-profile.save`; slice 12 part 2): sets or
  * replaces the logo or the banner. The picture is decoded and written again as two metadata-free
  * JPEG renditions; the raw upload is never stored. Rule `permissions [sellers.store-profile.edit]`,
- * approved sellers only. In order: the seller is `ActorContext.sellerId`; the saves limit of 6.5
- * is reserved; the kind and the base64 text are checked (at most 4 MiB of bytes); the seller's
+ * approved sellers only. In order: the seller is `ActorContext.sellerId`; the picture limit
+ * is reserved (the picture limits `STORE_IMAGE_LIMITS` of 10 a minute and 100 a day per account,
+ * not the About text's, and a refusal such as `file.busy` does not give the save back: it still
+ * spends one); the kind and the base64 text are checked (at most 4 MiB of bytes); the seller's
  * file is checked as approved before any decoding; the picture is processed (type by content, a
  * bounded pixel count, no animation, orientation applied; `file.too-small`, `file.too-large`,
  * `file.too-many-pixels`, `file.unsupported-type`, `file.unreadable`); the renditions are written

@@ -1053,6 +1053,17 @@ describe.each(MARKETS)('sellers store profile in $code (design 3.7)', (fixture) 
       expect(t.audits).toEqual([]);
     });
 
+    it('still spends one picture save when the pipeline is busy (the counter is not released)', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      t.imageProcessor.busy = true;
+
+      await t.saveImage.execute(context, { kind: 'logo', data: await picture(300, 300) });
+
+      expect(t.counters.countOf('store-image.account.minute')).toBe(1);
+      expect(t.counters.countOf('store-image.account.day')).toBe(1);
+    });
+
     it('shows the logo and banner refs to the public reader, and the logo in a list read', async () => {
       const t = setUp();
       const { sellerId, context } = ownerOf(t, code);
