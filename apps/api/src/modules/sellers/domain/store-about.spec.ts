@@ -14,6 +14,17 @@ describe('parseAboutText', () => {
     expect(parseAboutText('می‌خواهم')).toMatchObject({ ok: true });
   });
 
+  it('keeps ordinary prose with full stops', () => {
+    for (const text of [
+      'We bake daily. Open 7am.',
+      'Fresh bread, e.g. sourdough. Closed Sundays.',
+      'Since 1998... still family run.',
+      'Halal meat and more. Call us in store.',
+    ]) {
+      expect(parseAboutText(text)).toMatchObject({ ok: true });
+    }
+  });
+
   it('counts characters, not UTF-16 units', () => {
     expect(parseAboutText('😀'.repeat(STORE_ABOUT_MAX_LENGTH))).toMatchObject({ ok: true });
     expect(parseAboutText('😀'.repeat(STORE_ABOUT_MAX_LENGTH + 1))).toEqual({
@@ -27,6 +38,15 @@ describe('parseAboutText', () => {
     ['see www.example', 'url'],
     ['mail us at shop.example.com', 'url'],
     ['order at example.com/shop', 'url'],
+    ['Visit myshop.com.', 'url'],
+    ['myshop.com, now', 'url'],
+    ['t.me/mystore', 'url'],
+    ['bob@shop.io!', 'url'],
+    ['myshop。com', 'url'],
+    ['myshop．com', 'url'],
+    ['myshop｡com', 'url'],
+    ['ｍｙｓｈｏｐ.ｃｏｍ', 'url'],
+    ['bob＠shop.io', 'url'],
     ['bell\u0007', 'characters'],
     ['tab\there is fine?', 'characters'],
     ['‮evil', 'characters'],

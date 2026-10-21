@@ -21,8 +21,8 @@ const FORBIDDEN = /[\p{Cc}؜‎‏‪-‮⁦-⁩]/u;
 const LINE_FEED = '\n';
 
 /**
- * URL-like text (HF13): a scheme, a `www.` host, or a dotted host name such as
- * `shop.example.com`. The same patterns as identity's display-name rule (HF13); `sellers` cannot
+ * URL-like text (HF13): a scheme, a `www.` host, an email address, or a dotted host
+ * name such as `shop.example.com`, `myshop.com` or `t.me` (a one-letter first label counts). The same patterns as identity's display-name rule (HF13); `sellers` cannot
  * import another module's internals (ADR-0008), so they are repeated here, and a change to one
  * must be made in the other. The store's contact path is the platform, so a link or address in
  * a store's text is refused rather than shown.
@@ -30,9 +30,20 @@ const LINE_FEED = '\n';
 const URL_LIKE = [
   /[a-z][a-z0-9+.-]*:\/\//iu,
   /(?:^|[^\p{L}\p{N}])www\./iu,
-  /[\p{L}\p{N}-]{2,}\.[\p{L}\p{N}-]+\.[\p{L}]{2,}/iu,
-  /[\p{L}\p{N}-]{2,}\.\p{L}{2,}(?:$|[\s/:?#])/iu,
+  /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.\p{L}{2,}/iu,
+  /[\p{L}\p{N}-]+\.[\p{L}\p{N}-]+\.\p{L}{2,}(?=$|[^\p{L}\p{N}-])/iu,
+  /[\p{L}\p{N}-]+\.\p{L}{2,}(?=$|[^\p{L}\p{N}-])/iu,
 ];
+
+/**
+ * The text as the URL patterns see it: NFKC turns full-width and compatibility forms (`．`, `＠`,
+ * full-width letters) into their ASCII shapes, and the ideographic and half-width full stops
+ * (`。`, `｡`), which NFKC leaves alone, become `.`. Only the test uses this; the stored text is
+ * the seller's own (NFC).
+ */
+function foldForUrlTest(text: string): string {
+  return text.normalize('NFKC').replace(/[。．｡]/gu, '.');
+}
 
 /**
  * One locale's About text: trimmed, line endings made `\n`, NFC; at most
@@ -50,7 +61,8 @@ export function parseAboutText(raw: unknown): Result<string, AboutInvalid> {
   if (!parsePlainText(text).ok || FORBIDDEN.test(text.replaceAll(LINE_FEED, ''))) {
     return err({ code: 'about.invalid', rule: 'characters' });
   }
-  if (URL_LIKE.some((pattern) => pattern.test(text))) {
+  const folded = foldForUrlTest(text);
+  if (URL_LIKE.some((pattern) => pattern.test(folded))) {
     return err({ code: 'about.invalid', rule: 'url' });
   }
   return ok(text);
