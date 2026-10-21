@@ -78,6 +78,7 @@
   { "name": "catalog.warn-offer-owners-of-expiry", "rule": "system" },
   { "name": "certification.certification-types", "rule": "anonymous" },
   { "name": "certification.certification-types-system", "rule": "system" },
+  { "name": "certification.certified-categories", "rule": "anonymous" },
   { "name": "certification.evaluate-claims", "rule": "anonymous" },
   { "name": "certification.evaluate-claims-system", "rule": "system" },
   { "name": "certification.expire-product-certificates", "rule": "system" },
