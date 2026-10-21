@@ -53,4 +53,14 @@ describe('LateBoundStoreTextClaimCheck', () => {
 
     expect(await late.flagged(context, texts)).toEqual({ ok: true, value: [true, false] });
   });
+
+  it('binds once: a second bind throws and keeps the first check (Hassan H3)', async () => {
+    const late = new LateBoundStoreTextClaimCheck();
+    late.bind({ flagged: () => Promise.resolve(ok([true, false])) });
+
+    expect(() => late.bind({ flagged: () => Promise.resolve(ok([false, false])) })).toThrow(
+      'already bound',
+    );
+    expect(await late.flagged(context, texts)).toEqual({ ok: true, value: [true, false] });
+  });
 });

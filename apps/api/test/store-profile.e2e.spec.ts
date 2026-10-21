@@ -292,14 +292,40 @@ describe('the seller store profile over HTTP (integration)', () => {
         const data = 'A'.repeat(200_000); // 200 KB: over the 64 KB JSON limit, under the image one
 
         const saved = await putImage(kind, session.headers, { data });
+        // Without the CSRF header the large body is not even read: the 64 KiB parser refuses it.
         const noToken = await putImage(kind, { ...session.headers, 'x-csrf-token': '' }, { data });
+        // A small body without the header reaches the guard, which refuses the token.
+        const noTokenSmall = await putImage(
+          kind,
+          { ...session.headers, 'x-csrf-token': '' },
+          { data: 'AAAA' },
+        );
 
         expect(saved.status).toBe(200);
         expect(saved.body).toEqual(ANSWER);
         expect(saved.headers['cache-control']).toBe('no-store');
-        expect(noToken.status).toBe(403);
+        expect(noToken.status).toBe(413);
+        expect(noTokenSmall.status).toBe(403);
         expect(stubs.image.calls).toHaveLength(1);
         expect(stubs.image.calls[0]!.input).toEqual({ kind, data });
+      },
+    );
+
+    it.each([
+      ['no session cookie', (h: Record<string, string>) => ({ ...h, cookie: '' })],
+      ['no CSRF header', (h: Record<string, string>) => ({ ...h, 'x-csrf-token': '' })],
+    ])(
+      'keeps the 64 KiB limit on an image PUT with %s, before any use case (Hassan H4)',
+      async (_n, strip) => {
+        await boot(true);
+        const session = await signedIn(code);
+
+        const response = await putImage('logo', strip(session.headers), {
+          data: 'A'.repeat(200_000),
+        });
+
+        expect(response.status).toBe(413);
+        expect(stubs.image.calls).toHaveLength(0);
       },
     );
 
@@ -315,6 +341,14 @@ describe('the seller store profile over HTTP (integration)', () => {
 
     it.each([
       ['a kind in the body', { data: 'AAAA', kind: 'banner' }, 'kind', 'unknown-field'],
+      // The picture routes are last-write-wins: they carry no version, so one is refused, not
+      // ignored (only the About text is guarded by expectedVersion).
+      [
+        'an expectedVersion (the picture routes are last-write-wins)',
+        { data: 'AAAA', expectedVersion: 2 },
+        'expectedVersion',
+        'unknown-field',
+      ],
       ['no data', {}, 'data', 'required'],
       ['data that is a number', { data: 12 }, 'data', 'type'],
     ])('refuses %s on the logo as validation.failed', async (_n, body, path, fieldCode) => {
@@ -329,6 +363,42 @@ describe('the seller store profile over HTTP (integration)', () => {
         details: { fields: expect.arrayContaining([{ path, code: fieldCode }]) as unknown },
       });
       expect(stubs.image.calls).toHaveLength(0);
+    });
+
+    it('answers 503 access.unavailable with Retry-After when the picture pipeline is busy (Hassan H2)', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.image.next = {
+        ok: false,
+        error: { code: 'access.unavailable', retryAfterSeconds: 2 },
+      };
+
+      const response = await putImage('logo', session.headers, { data: 'AAAA' });
+
+      expect(response.status).toBe(503);
+      expect(response.headers['retry-after']).toBe('2');
+      expect(response.body).toEqual({ statusCode: 503, code: 'access.unavailable' });
+    });
+
+    it('hands the own-image route an unknown size and an id that is not an id to the use case unchanged', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.own.next = { ok: false, error: { code: 'image.not-found' } };
+
+      const huge = await http()
+        .get(`/sellers/store-profile/images/${IMAGE_ID}/huge`)
+        .set(session.headers);
+      const notAnId = await http()
+        .get('/sellers/store-profile/images/not-an-id/small')
+        .set(session.headers);
+
+      expect(huge.status).toBe(404);
+      expect(notAnId.status).toBe(404);
+      expect(notAnId.body).toEqual(huge.body);
+      expect(stubs.own.calls.map((call) => call.input)).toEqual([
+        { imageId: IMAGE_ID, size: 'huge' },
+        { imageId: 'not-an-id', size: 'small' },
+      ]);
     });
 
     it('refuses an image body that is not JSON with 415', async () => {
@@ -419,13 +489,26 @@ describe('the seller store profile over HTTP (integration)', () => {
 
       for (const answer of visitors) expect(answer.status).toBe(401);
       // AU requires approval, so a just-registered seller is pending and the gate refuses it
-      // (403) before the use case reads anything. ZZ approves at once: the gate admits it and the
-      // use case runs; sellers' repositories have no database here, so only "not refused" is
-      // asserted (the admitted path is in test/db/sellers-store-profile.db-spec.ts).
-      for (const answer of sellers) {
-        if (code === 'AU') expect(answer.status).toBe(403);
-        else expect([401, 403]).not.toContain(answer.status);
-      }
+      // (403) before the use case reads anything.
+      // ZZ approves at once, so the gate admits the seller and the use case runs. This suite has no
+      // database for sellers' repositories, so the run fails closed with the exact answer below
+      // (503, the code of the step that could not read); the admitted path is proved on PostgreSQL
+      // in test/db/sellers-store-profile-http.db-spec.ts.
+      const ZZ_UNAVAILABLE = [
+        'sellers.unavailable',
+        'access.unavailable',
+        'access.unavailable',
+        'access.unavailable',
+        'sellers.unavailable',
+      ];
+      sellers.forEach((answer, index) => {
+        if (code === 'AU') {
+          expect(answer.status).toBe(403);
+        } else {
+          expect(answer.status).toBe(503);
+          expect((answer.body as { code: string }).code).toBe(ZZ_UNAVAILABLE[index]);
+        }
+      });
     });
 
     describe('the public image route', () => {

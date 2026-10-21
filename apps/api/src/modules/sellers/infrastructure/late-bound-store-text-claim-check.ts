@@ -14,7 +14,11 @@ import type {
 export class LateBoundStoreTextClaimCheck implements StoreTextClaimCheck {
   #bound: StoreTextClaimCheck | null = null;
 
+  /** Binds the real check once; a second bind is a wiring fault and throws (Hassan H3). */
   bind(check: StoreTextClaimCheck): void {
+    if (this.#bound !== null) {
+      throw new Error('LateBoundStoreTextClaimCheck is already bound');
+    }
     this.#bound = check;
   }
 
