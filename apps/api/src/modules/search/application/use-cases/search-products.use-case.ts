@@ -6,9 +6,14 @@ import {
   type SearchProductsRequest,
   type SearchValidationFailed,
 } from '../../domain/search-query';
+import type { ImageRef } from '../../domain/image-ref';
+import { withPrimaryImages } from '../product-images';
 import type { SearchDependencies } from '../search-dependencies';
 
-/** A result of the storefront search: ids, text and categories. No badge, price or stock. */
+/**
+ * A result of the storefront search: ids, text, categories and the first photo (or null). No
+ * badge, price or stock.
+ */
 export interface ProductSearchItem {
   readonly offerId: Id<'Offer'>;
   readonly productId: Id<'Product'>;
@@ -16,7 +21,12 @@ export interface ProductSearchItem {
   readonly name: string;
   readonly shortText: string | null;
   readonly categoryIds: readonly Id<'Category'>[];
+  /** The first public photo of the product, or null (a draft or taken-down photo is never one). */
+  readonly primaryImage: ImageRef | null;
 }
+
+/** A result before its photo is read. */
+export type ProductSearchItemFacts = Omit<ProductSearchItem, 'primaryImage'>;
 
 export interface ProductSearchPage {
   readonly items: readonly ProductSearchItem[];
@@ -36,7 +46,10 @@ export type SearchProductsFailure =
  * then catalog and sellers are asked whether each hit is still sellable now. A hit that fails
  * either check is dropped, so a page can hold fewer than `pageSize` items while `hasMore` is
  * true. If a check cannot be made the answer is `search.unavailable`, never an unchecked list.
- * Text, categories and ids only: a certification badge comes from `evaluateClaim`, never from
+ * With a `store` (no `q`) the route lists that store's Offers by name, optionally in one category:
+ * sellers resolves the address under the published-store rules, and a store that is unknown,
+ * retired or not selling answers an empty page, never an error or a hint of why. Text, categories,
+ * ids and the first photo only: a certification badge comes from `evaluateClaim`, never from
  * indexed text.
  */
 export class SearchProducts extends UseCase<
@@ -63,20 +76,36 @@ export class SearchProducts extends UseCase<
     const query = parseSearchQuery(input);
     if (!query.ok) return query;
     const { market } = context;
-    const { text, categoryId, page, pageSize } = query.value;
+    const { text, categoryId, storeSlug, page, pageSize } = query.value;
     const { textSearchConfig } = this.deps.policy.settings(market);
+    const offset = (page - 1) * pageSize;
 
+    let storeSellerId: Id<'Seller'> | null = null;
+    if (storeSlug !== null) {
+      const store = await this.deps.stores.sellerIdOf(context, storeSlug);
+      if (store === null) return err({ code: 'search.unavailable' });
+      if (store.sellerId === null) return ok({ items: [], page, pageSize, hasMore: false });
+      storeSellerId = store.sellerId;
+    }
     const hits = await this.deps.unitOfWork.run(
       market,
       async () =>
         ok(
-          await this.deps.reader.search(market, {
-            textSearchConfig,
-            text,
-            categoryId,
-            limit: pageSize + 1,
-            offset: (page - 1) * pageSize,
-          }),
+          storeSellerId !== null
+            ? await this.deps.shelves.browseBySeller(
+                market,
+                storeSellerId,
+                categoryId,
+                pageSize + 1,
+                offset,
+              )
+            : await this.deps.reader.search(market, {
+                textSearchConfig,
+                text,
+                categoryId,
+                limit: pageSize + 1,
+                offset,
+              }),
         ),
       { readOnly: true },
     );
@@ -89,16 +118,26 @@ export class SearchProducts extends UseCase<
     const shown = hits.value.slice(0, pageSize);
     const extra = hits.value[pageSize];
     const hasMore = extra !== undefined && visible.has(extra.offerId);
-    const items = shown
+    const facts = shown
       .filter((hit) => visible.has(hit.offerId))
-      .map(({ offerId, productId, sellerId, name, shortText, categoryIds }) => ({
-        offerId,
-        productId,
-        sellerId,
-        name,
-        shortText,
-        categoryIds,
-      }));
+      .map(
+        ({
+          offerId,
+          productId,
+          sellerId,
+          name,
+          shortText,
+          categoryIds,
+        }): ProductSearchItemFacts => ({
+          offerId,
+          productId,
+          sellerId,
+          name,
+          shortText,
+          categoryIds,
+        }),
+      );
+    const items = await withPrimaryImages(this.deps.images, context, facts);
     return ok({ items, page, pageSize, hasMore });
   }
 }

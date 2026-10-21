@@ -127,6 +127,7 @@ export class ShelfController {
         name: item.name,
         shortText: item.shortText,
         categoryIds: [...item.categoryIds],
+        primaryImage: item.primaryImage,
         variantId: item.variantId,
         price: money(item.price),
         regularPrice: money(item.regularPrice),

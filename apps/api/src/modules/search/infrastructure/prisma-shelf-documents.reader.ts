@@ -61,6 +61,27 @@ export class PrismaShelfDocumentsReader implements ShelfDocumentsReader {
     return rows.map(hitOf);
   }
 
+  async browseBySeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    categoryId: Id<'Category'> | null,
+    limit: number,
+    offset: number,
+  ): Promise<readonly OfferHit[]> {
+    const rows = await this.prisma.tx(market).searchOfferDocument.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        ...(categoryId === null ? {} : { categoryIds: { has: categoryId } }),
+      },
+      orderBy: [{ name: 'asc' }, { offerId: 'asc' }],
+      skip: offset,
+      take: limit,
+      select: SELECT,
+    });
+    return rows.map(hitOf);
+  }
+
   async browseAll(market: MarketContext, limit: number): Promise<readonly OfferHit[]> {
     const rows = await this.prisma.tx(market).searchOfferDocument.findMany({
       where: { marketId: market.marketId },

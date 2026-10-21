@@ -13,6 +13,8 @@ import { SellersModule } from '../sellers';
 import { OFFER_DOCUMENT_REPOSITORY } from './application/ports/offer-document.repository';
 import { OFFER_FEED } from './application/ports/offer-feed';
 import { OFFER_SEARCH_READER } from './application/ports/offer-search.reader';
+import { PRODUCT_IMAGES } from './application/ports/product-images';
+import { STORE_RESOLVER } from './application/ports/store-resolver';
 import { PUBLIC_VISIBILITY } from './application/ports/public-visibility';
 import { SEARCH_POLICY } from './application/ports/search-policy';
 import { SHELF_DOCUMENTS_READER } from './application/ports/shelf-documents.reader';
@@ -47,6 +49,9 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['feed', OFFER_FEED],
   ['visibility', PUBLIC_VISIBILITY],
   ['clock', CLOCK],
+  ['shelves', SHELF_DOCUMENTS_READER],
+  ['stores', STORE_RESOLVER],
+  ['images', PRODUCT_IMAGES],
 ];
 
 /** Every search use case shares one dependency object, built from the same ports. */
@@ -72,6 +77,7 @@ const SHELF_PORTS: readonly [keyof ShelfDependencies, InjectionToken][] = [
   ['visibility', PUBLIC_VISIBILITY],
   ['policy', SEARCH_POLICY],
   ['variants', PUBLISHED_VARIANTS],
+  ['images', PRODUCT_IMAGES],
 ];
 
 /** The two shelf use cases share their own dependency object. */
@@ -98,6 +104,7 @@ const DETAIL_PORTS: readonly [keyof ProductDetailDependencies, InjectionToken][]
   ['visibility', PUBLIC_VISIBILITY],
   ['policy', SEARCH_POLICY],
   ['variants', PUBLISHED_VARIANTS],
+  ['images', PRODUCT_IMAGES],
 ];
 
 /** The product page read has its own dependency object. */

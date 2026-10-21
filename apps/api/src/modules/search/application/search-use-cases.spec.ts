@@ -11,7 +11,10 @@ import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
 import type { OfferDocumentRepository } from './ports/offer-document.repository';
 import type { FeedFacts, OfferFeed } from './ports/offer-feed';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
+import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
+import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
+import type { StoreResolver } from './ports/store-resolver';
 import type { SearchDependencies } from './search-dependencies';
 import { SYNC_BATCH } from './sync-offers';
 import { RebuildOfferIndex } from './use-cases/rebuild-offer-index.use-case';
@@ -131,6 +134,58 @@ class StubVisibility implements PublicVisibility {
   }
 }
 
+class StubImages implements ProductImages {
+  images_ = new Map<Id<'Product'>, PublicImage[]>();
+  failing = false;
+  readonly asked: Id<'Product'>[][] = [];
+  of(_context: CallContext, productIds: readonly Id<'Product'>[]) {
+    this.asked.push([...productIds]);
+    if (this.failing) return Promise.resolve(null);
+    return Promise.resolve(new Map(this.images_));
+  }
+}
+
+class StubStores implements StoreResolver {
+  stores = new Map<string, Id<'Seller'>>();
+  failing = false;
+  readonly asked: string[] = [];
+  sellerIdOf(_context: CallContext, slug: string) {
+    this.asked.push(slug);
+    if (this.failing) return Promise.resolve(null);
+    return Promise.resolve({ sellerId: this.stores.get(slug) ?? null });
+  }
+}
+
+class StubShelves implements ShelfDocumentsReader {
+  hits: OfferHit[] = [];
+  readonly browsed: {
+    market: string;
+    sellerId: Id<'Seller'>;
+    categoryId: Id<'Category'> | null;
+    limit: number;
+    offset: number;
+  }[] = [];
+  byOfferIds() {
+    return Promise.resolve([]);
+  }
+  byProductId() {
+    return Promise.resolve([]);
+  }
+  browseAll() {
+    return Promise.resolve([]);
+  }
+  browseBySeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    categoryId: Id<'Category'> | null,
+    limit: number,
+    offset: number,
+  ) {
+    this.browsed.push({ market: market.marketId, sellerId, categoryId, limit, offset });
+    return Promise.resolve(this.hits.filter((h) => h.sellerId === sellerId).slice(0, limit));
+  }
+}
+
 const sellable = (overrides: Partial<FeedFacts> = {}): FeedFacts => ({
   sellerId: SELLER,
   productId: PRODUCT,
@@ -164,6 +219,9 @@ describe.each([
   let feed: StubFeed;
   let reader: StubReader;
   let visibility: StubVisibility;
+  let images: StubImages;
+  let stores: StubStores;
+  let shelves: StubShelves;
   let deps: SearchDependencies;
 
   beforeEach(() => {
@@ -171,6 +229,9 @@ describe.each([
     feed = new StubFeed();
     reader = new StubReader();
     visibility = new StubVisibility();
+    images = new StubImages();
+    stores = new StubStores();
+    shelves = new StubShelves();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       documents,
@@ -179,6 +240,9 @@ describe.each([
       feed,
       visibility,
       clock: new FixedClock(T0),
+      shelves,
+      stores,
+      images,
     };
   });
 
@@ -330,6 +394,7 @@ describe.each([
               name: 'Product 1',
               shortText: null,
               categoryIds: [CATEGORY],
+              primaryImage: null,
             },
             {
               offerId: offer(2),
@@ -338,6 +403,7 @@ describe.each([
               name: 'Product 2',
               shortText: null,
               categoryIds: [CATEGORY],
+              primaryImage: null,
             },
           ],
           page: 1,
@@ -407,6 +473,117 @@ describe.each([
       expect(visibleExtra.ok && visibleExtra.value.hasMore).toBe(true);
     });
 
+    describe('photos', () => {
+      const PHOTO = id<'ProductImage'>(0x701);
+
+      it('gives each item the first public photo of its product, with the name as alt text', async () => {
+        reader.hits = [hit(1), hit(2)];
+        images.images_.set(PRODUCT, [
+          { imageId: PHOTO, width: 1600, height: 1200 },
+          { imageId: id<'ProductImage'>(0x702), width: 800, height: 800 },
+        ]);
+
+        const result = await search({ q: 'product' });
+
+        expect(result.ok && result.value.items.map((item) => item.primaryImage)).toEqual([
+          { imageId: PHOTO, width: 1600, height: 1200, alt: 'Product 1' },
+          { imageId: PHOTO, width: 1600, height: 1200, alt: 'Product 2' },
+        ]);
+        expect(images.asked).toEqual([[PRODUCT]]);
+      });
+
+      it('asks for the photos of the shown items only, never of a hidden or extra hit', async () => {
+        reader.hits = [hit(1), hit(2), hit(3)];
+        visibility.hidden = new Set([offer(2)]);
+
+        await search({ q: 'product', pageSize: 2 });
+
+        expect(images.asked).toEqual([[PRODUCT]]);
+        reader.hits = [];
+        images.asked.length = 0;
+        await search({ q: 'product' });
+        expect(images.asked).toEqual([]);
+      });
+
+      it('answers with no photo, not an error, when the photo source cannot answer', async () => {
+        reader.hits = [hit(1)];
+        images.failing = true;
+
+        const result = await search({ q: 'product' });
+
+        expect(result.ok && result.value.items.map((item) => item.primaryImage)).toEqual([null]);
+      });
+    });
+
+    describe('a store', () => {
+      const OTHER = id<'Seller'>(0x52);
+      const storeHit = (n: number, sellerId: Id<'Seller'> = SELLER): OfferHit => ({
+        ...hit(n),
+        sellerId,
+      });
+
+      it("lists the store's Offers by name through its seller, never through the text index", async () => {
+        stores.stores.set('halal-shop', SELLER);
+        shelves.hits = [storeHit(1), storeHit(2, OTHER), storeHit(3)];
+
+        const result = await search({ store: 'halal-shop', page: 2, pageSize: 10 });
+
+        expect(result.ok && result.value.items.map((item) => item.offerId)).toEqual([
+          offer(1),
+          offer(3),
+        ]);
+        expect(shelves.browsed).toEqual([
+          { market: code, sellerId: SELLER, categoryId: null, limit: 11, offset: 10 },
+        ]);
+        expect(stores.asked).toEqual(['halal-shop']);
+        expect(reader.requests).toEqual([]);
+      });
+
+      it('combines with a category', async () => {
+        stores.stores.set('halal-shop', SELLER);
+        shelves.hits = [storeHit(1)];
+
+        await search({ store: 'halal-shop', category: CATEGORY });
+
+        expect(shelves.browsed[0]).toMatchObject({ sellerId: SELLER, categoryId: CATEGORY });
+      });
+
+      it('still drops an Offer that catalog or sellers no longer show', async () => {
+        stores.stores.set('halal-shop', SELLER);
+        shelves.hits = [storeHit(1), storeHit(2)];
+        visibility.hidden = new Set([offer(1)]);
+
+        const result = await search({ store: 'halal-shop' });
+
+        expect(result.ok && result.value.items.map((item) => item.offerId)).toEqual([offer(2)]);
+      });
+
+      it('answers an empty page, not an error, for a store that is unknown, retired or not selling', async () => {
+        shelves.hits = [storeHit(1)];
+
+        const result = await search({ store: 'no-such-shop', page: 3, pageSize: 5 });
+
+        expect(result).toEqual({
+          ok: true,
+          value: { items: [], page: 3, pageSize: 5, hasMore: false },
+        });
+        expect(shelves.browsed).toEqual([]);
+        expect(reader.requests).toEqual([]);
+        expect(images.asked).toEqual([]);
+      });
+
+      it('fails closed when sellers cannot say who holds the address', async () => {
+        shelves.hits = [storeHit(1)];
+        stores.failing = true;
+
+        expect(await search({ store: 'halal-shop' })).toEqual({
+          ok: false,
+          error: { code: 'search.unavailable' },
+        });
+        expect(shelves.browsed).toEqual([]);
+      });
+    });
+
     it('fails closed when the visibility check cannot be made', async () => {
       reader.hits = [hit(1)];
       visibility.failing = true;
@@ -427,6 +604,12 @@ describe.each([
       [{ q: 'ok', pageSize: 49 }, 'pageSize'],
       [{ q: 'ok', pageSize: 1.5 }, 'pageSize'],
       [{ q: 'ok\u0000x' }, 'q'],
+      [{ store: 'ab' }, 'store'],
+      [{ store: 'Shop-One' }, 'store'],
+      [{ store: 'shop--one' }, 'store'],
+      [{ store: 'shop-' }, 'store'],
+      [{ store: 'x'.repeat(51) }, 'store'],
+      [{ q: 'sausages', store: 'halal-shop' }, 'store'],
     ])('refuses %j before any read', async (input, path) => {
       const result = await search(input);
 

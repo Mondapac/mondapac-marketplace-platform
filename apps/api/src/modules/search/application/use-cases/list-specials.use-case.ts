@@ -4,6 +4,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { parseShelfQuery, type ShelfRequest } from '../../domain/shelf-query';
 import type { ShelfSpecial } from '../ports/shelf-sources';
 import type { ShelfDependencies } from '../shelf-dependencies';
+import { withPrimaryImages } from '../product-images';
 import { itemOf, type ShelfFailure } from './list-bestsellers.use-case';
 import type { ProductSearchItem } from './search-products.use-case';
 
@@ -81,20 +82,19 @@ export class ListSpecials extends UseCase<ShelfRequest, SpecialsPage, ShelfFailu
     });
     const visible = await this.deps.visibility.visible(context, candidates);
     if (visible === null) return err({ code: 'search.unavailable' });
-    const items = candidates
-      .filter((hit) => visible.has(hit.offerId))
-      .slice(0, limit)
-      .map((hit) => {
-        const special = firstOf.get(hit.offerId) as ShelfSpecial;
-        return {
-          ...itemOf(hit),
-          variantId: special.variantId,
-          price: special.price,
-          regularPrice: special.regularPrice,
-          taxInclusive: special.taxInclusive,
-          specialEndsAt: special.endsAt,
-        };
-      });
+    const shown = candidates.filter((hit) => visible.has(hit.offerId)).slice(0, limit);
+    const withSpecials = shown.map((hit) => {
+      const special = firstOf.get(hit.offerId) as ShelfSpecial;
+      return {
+        ...itemOf(hit),
+        variantId: special.variantId,
+        price: special.price,
+        regularPrice: special.regularPrice,
+        taxInclusive: special.taxInclusive,
+        specialEndsAt: special.endsAt,
+      };
+    });
+    const items = await withPrimaryImages(this.deps.images, context, withSpecials);
     return ok({ items });
   }
 }

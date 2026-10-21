@@ -1,5 +1,6 @@
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { OfferSearchReader } from './ports/offer-search.reader';
+import type { ProductImages } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { PublishedVariants } from './ports/published-variants';
 import type { SearchPolicy } from './ports/search-policy';
@@ -15,4 +16,5 @@ export interface ShelfDependencies {
   readonly visibility: PublicVisibility;
   readonly policy: SearchPolicy;
   readonly variants: PublishedVariants;
+  readonly images: ProductImages;
 }

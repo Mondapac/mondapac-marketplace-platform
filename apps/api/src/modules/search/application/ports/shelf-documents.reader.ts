@@ -14,6 +14,17 @@ export interface ShelfDocumentsReader {
     productId: Id<'Product'>,
     limit: number,
   ): Promise<readonly OfferHit[]>;
+  /**
+   * The documents of one seller's Offers (in one category when `categoryId` is set) in browse
+   * order (name, then Offer id), `limit` rows from `offset`.
+   */
+  browseBySeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    categoryId: Id<'Category'> | null,
+    limit: number,
+    offset: number,
+  ): Promise<readonly OfferHit[]>;
   /** The first `limit` documents of the Market in search's browse order (name, then Offer id). */
   browseAll(market: MarketContext, limit: number): Promise<readonly OfferHit[]>;
 }
