@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
@@ -188,9 +188,9 @@ describe('seller pages with pictures', () => {
     const images = Array.from(document.querySelectorAll('img'));
     const banner = images.find((i) => i.getAttribute('src')?.includes(ID2));
     const logo = images.find((i) => i.getAttribute('src')?.includes(ID));
-    expect(banner?.getAttribute('alt')).toBe('Banner of Kedron Halal Meats');
+    expect(banner?.getAttribute('alt')).toBe('');
     expect(banner?.getAttribute('width')).toBe('1536');
-    expect(logo?.getAttribute('alt')).toBe('Kedron Halal Meats');
+    expect(logo?.getAttribute('alt')).toBe('');
     const about = document.querySelector('.shop-about');
     expect(about?.textContent).toBe('Line one\n\nLine two <b>x</b>');
     expect(about?.querySelector('b')).toBeNull();
@@ -214,5 +214,34 @@ describe('seller pages with pictures', () => {
     const img = document.querySelector('img');
     expect(img?.getAttribute('src')).toBe(`/s/kedron-halal/images/${ID}/small`);
     expect(img?.getAttribute('alt')).toBe('');
+  });
+
+  it('falls back to the default store tile when the logo does not load, on the page and on a card', () => {
+    wrap(<SellerPage shop={shopWith({ logo: LOGO, banner: BANNER })} ratingsShown={false} />);
+    const logoImg = document.querySelector('.lg-img img')!;
+    fireEvent.error(logoImg);
+    expect(document.querySelector('.lg-img')).toBeNull();
+    expect(document.querySelector('.shop-id .lg svg')).not.toBeNull();
+    cleanup();
+
+    wrap(
+      <StoreCard
+        store={listingOf(publicStoreOf({ ...STORE, logo: LOGO }), 'Greater Brisbane')}
+        location="unknown"
+        ratingsShown={false}
+      />,
+    );
+    fireEvent.error(document.querySelector('img')!);
+    expect(document.querySelector('img')).toBeNull();
+    expect(document.querySelector('.slc-lg .lg svg')).not.toBeNull();
+  });
+
+  it('drops the banner back to the neutral one when it does not load', () => {
+    wrap(<SellerPage shop={shopWith({ banner: BANNER })} ratingsShown={false} />);
+    expect(document.querySelector('.shop-banner.has-image')).not.toBeNull();
+    fireEvent.error(document.querySelector('.shop-banner img')!);
+    expect(document.querySelector('.shop-banner.has-image')).toBeNull();
+    expect(document.querySelector('.shop-banner img')).toBeNull();
+    expect(document.querySelector('.shop-banner')).not.toBeNull();
   });
 });
