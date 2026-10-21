@@ -716,9 +716,9 @@
     "notice-stock-body": "Review your cart before paying.",
     "review-cart": "Review cart",
     "notice-declined": "<b>Your card was declined.</b> Nothing was charged. Check the details, use another card or pay with Stripe.",
-    "notice-failed": "<b>We could not take the payment.</b> Nothing was charged. Please try again.",
-    "pay-block-stock": "Review your cart to pay.",
-    "pay-block-stock-above": "Review your cart to pay."
+    "notice-failed": "<b>We could not take the payment.</b> Nothing was charged. Try again, or pay with Stripe.",
+    "pay-block-card": "Wait for the card fields, or pay with Stripe.",
+    "pay-block-card-above": "Wait for the card fields above, or pay with Stripe."
   },
   "deliver": {
     "title": "Choose where to deliver",

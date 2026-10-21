@@ -86,11 +86,18 @@ function money(raw: unknown): Money | null {
     : null;
 }
 
-/** Own keys of a plain record of up to `max` ids, or null. */
+/**
+ * Own keys of a plain record of up to `max` ids, or null. A key that names a property every object
+ * has (`__proto__`, `constructor`, `toString`) is refused: looked up by id it would be found.
+ */
 function idsOf(raw: unknown, max: number): string[] | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
   const ids = Object.keys(raw);
-  return ids.length > 0 && ids.length <= max && ids.every((id) => ID.test(id)) ? ids : null;
+  return ids.length > 0 &&
+    ids.length <= max &&
+    ids.every((id) => ID.test(id) && !(id in Object.prototype))
+    ? ids
+    : null;
 }
 
 /** A Pay request as the browser sent it, or null when it is not one. */
@@ -110,7 +117,7 @@ function payRequest(raw: unknown): PayRequest | null {
   const lineIds = idsOf(r.lines, MAX_LINES);
   const sellerIds = idsOf(r.delivery, MAX_SELLERS);
   if (lineIds === null || sellerIds === null) return null;
-  const lines: Record<string, number> = {};
+  const lines: Record<string, number> = Object.create(null) as Record<string, number>;
   for (const id of lineIds) {
     const quantity = (r.lines as Record<string, unknown>)[id];
     if (
@@ -121,7 +128,7 @@ function payRequest(raw: unknown): PayRequest | null {
       return null;
     lines[id] = quantity as number;
   }
-  const delivery: Record<string, PayRequest['delivery'][string]> = {};
+  const delivery = Object.create(null) as Record<string, PayRequest['delivery'][string]>;
   for (const id of sellerIds) {
     const choice = (r.delivery as Record<string, unknown>)[id];
     if (typeof choice !== 'object' || choice === null) return null;
@@ -154,7 +161,15 @@ export async function payOrder(raw: unknown): Promise<PayAnswer> {
   if (request === null) return { kind: 'failed' };
   try {
     return await takePayment(request);
-  } catch {
+  } catch (error) {
+    // No token, address or card detail in the log: the method and the error's kind only.
+    console.log(
+      JSON.stringify({
+        msg: 'storefront.pay-failed',
+        method: request.method,
+        error: error instanceof Error ? error.name : 'unknown',
+      }),
+    );
     return { kind: 'failed' };
   }
 }

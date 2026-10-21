@@ -10,6 +10,8 @@ import type { Money } from '../storefront/types.ts';
 // once the seller accepts). Only the types used here are declared, so no Stripe package is added.
 
 const STRIPE_JS = 'https://js.stripe.com/v3/';
+/** How long Pay waits for Stripe to make the token before it says the payment failed. */
+const TOKEN_TIMEOUT_MS = 30_000;
 
 interface StripeError {
   readonly type?: string;
@@ -18,6 +20,7 @@ interface StripeError {
 interface StripeElement {
   mount(target: HTMLElement): void;
   destroy(): void;
+  focus(): void;
   on(event: 'ready' | 'loaderror', handler: () => void): void;
 }
 interface StripeElements {
@@ -52,12 +55,13 @@ function loadStripe(): Promise<StripeFactory> {
     const script = document.createElement('script');
     script.src = STRIPE_JS;
     script.async = true;
-    script.onload = () => (window.Stripe ? resolve(window.Stripe) : reject(new Error('no Stripe')));
-    script.onerror = () => {
+    const fail = () => {
       loading = null;
       script.remove();
       reject(new Error('Stripe.js did not load'));
     };
+    script.onload = () => (window.Stripe ? resolve(window.Stripe) : fail());
+    script.onerror = fail;
     document.head.append(script);
   });
   return loading;
@@ -91,13 +95,19 @@ function appearance(): Record<string, unknown> {
  * Mounts the Payment Element (cards only: Apple Pay and Google Pay are on Stripe's page) into the
  * returned ref while `publishableKey` is set, and turns it into a confirmation token on Pay.
  */
-export function useStripeCard(publishableKey: string | null, total: Money) {
+export function useStripeCard(publishableKey: string | null, total: Money | null) {
   const target = useRef<HTMLDivElement>(null);
-  const stripe = useRef<{ js: StripeJs; elements: StripeElements } | null>(null);
+  const stripe = useRef<{
+    js: StripeJs;
+    elements: StripeElements;
+    element: StripeElement;
+  } | null>(null);
   const [state, setState] = useState<CardFieldsState>('loading');
   const [attempt, setAttempt] = useState(0);
-  // The first amount mounts the fields; later totals update them (below).
-  const first = useRef(total);
+  // The fields mount with the total of the moment (also after a switch back to Card or a retry);
+  // later totals update them (below).
+  const latest = useRef(total);
+  latest.current = total;
 
   useEffect(() => {
     if (publishableKey === null) return;
@@ -107,12 +117,13 @@ export function useStripeCard(publishableKey: string | null, total: Money) {
     loadStripe().then(
       (factory) => {
         const node = target.current;
-        if (!live || !node) return;
+        const amount = latest.current;
+        if (!live || !node || !amount) return;
         const js = factory(publishableKey);
         const elements = js.elements({
           mode: 'payment',
-          amount: first.current.amount,
-          currency: first.current.currency.toLowerCase(),
+          amount: amount.amount,
+          currency: amount.currency.toLowerCase(),
           captureMethod: 'manual',
           paymentMethodTypes: ['card'],
           appearance: appearance(),
@@ -124,7 +135,7 @@ export function useStripeCard(publishableKey: string | null, total: Money) {
         element.on('ready', () => live && setState('ready'));
         element.on('loaderror', () => live && setState('failed'));
         element.mount(node);
-        stripe.current = { js, elements };
+        stripe.current = { js, elements, element };
       },
       () => live && setState('failed'),
     );
@@ -135,17 +146,17 @@ export function useStripeCard(publishableKey: string | null, total: Money) {
     };
   }, [publishableKey, attempt]);
 
+  const amount = total?.amount;
+  const currency = total?.currency;
   useEffect(() => {
-    stripe.current?.elements.update({
-      amount: total.amount,
-      currency: total.currency.toLowerCase(),
-    });
-  }, [total.amount, total.currency]);
+    if (amount === undefined || currency === undefined) return;
+    stripe.current?.elements.update({ amount, currency: currency.toLowerCase() });
+  }, [amount, currency]);
 
   const tokenize = useCallback(async (name: string): Promise<CardToken> => {
     const current = stripe.current;
     if (!current) return { kind: 'failed' };
-    try {
+    const make = async (): Promise<CardToken> => {
       const submitted = await current.elements.submit();
       if (submitted.error) return { kind: 'invalid' };
       const made = await current.js.createConfirmationToken({
@@ -154,11 +165,23 @@ export function useStripeCard(publishableKey: string | null, total: Money) {
       });
       if (made.confirmationToken) return { kind: 'token', id: made.confirmationToken.id };
       return made.error?.type === 'validation_error' ? { kind: 'invalid' } : { kind: 'failed' };
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<CardToken>((resolve) => {
+      timer = setTimeout(() => resolve({ kind: 'failed' }), TOKEN_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([make(), late]);
     } catch {
       return { kind: 'failed' };
+    } finally {
+      clearTimeout(timer);
     }
   }, []);
 
+  /** Puts the focus in Stripe's fields, where Stripe shows what to fix. */
+  const focus = useCallback(() => stripe.current?.element.focus(), []);
+
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
-  return { target, state, tokenize, retry };
+  return { target, state, tokenize, retry, focus };
 }

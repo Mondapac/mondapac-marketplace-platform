@@ -104,7 +104,16 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     customer && method === 'card' && source.card.kind === 'stripe'
       ? source.card.publishableKey
       : null;
-  const stripeCard = useStripeCard(stripeKey, view?.total ?? { amount: 0, currency: 'AUD' });
+  const stripeCard = useStripeCard(stripeKey, view?.total ?? null);
+
+  // Back from Stripe's page through the browser's cache: the page is not still paying.
+  useEffect(() => {
+    const shown = (event: PageTransitionEvent) => {
+      if (event.persisted) setPaying(false);
+    };
+    window.addEventListener('pageshow', shown);
+    return () => window.removeEventListener('pageshow', shown);
+  }, []);
 
   // Signed in from the Log in step: the address section takes the focus (the form is gone).
   const wasGuest = useRef(customer === null);
@@ -137,7 +146,9 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
           ? 'delivery'
           : notice?.kind === 'stock-changed'
             ? 'stock'
-            : null;
+            : stripeKey !== null && stripeCard.state !== 'ready'
+              ? 'card'
+              : null;
 
   /** What Pay found: the order is placed, Stripe's page opens, or the page says what changed. */
   const settle = (answer: PayAnswer) => {
@@ -155,13 +166,14 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
       return;
     }
     if (answer.kind === 'redirect') {
-      // Only Stripe's hosted page or a path on this site; anything else is refused.
-      const own = /^\/(?!\/)/u.test(answer.url);
-      if (own || answer.url.startsWith('https://checkout.stripe.com/')) {
+      // Only Stripe's hosted page or a page of this site; anything else is refused. The URL is
+      // parsed as the browser would (a `/\host` or a tab in the path would leave the site).
+      const to = safeRedirect(answer.url, window.location.origin);
+      if (to !== null) {
         setDelivery(choices);
         setDeliveryAddress(addressLine);
-        if (own) router.push(answer.url);
-        else window.location.assign(answer.url);
+        if (to.own) router.push(to.href);
+        else window.location.assign(to.href);
         return;
       }
       answer = { kind: 'failed' };
@@ -205,7 +217,11 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
         const made = await stripeCard.tokenize(cardName.trim());
         if (made.kind !== 'token') {
           setPaying(false);
-          if (made.kind === 'failed') setNotice({ kind: 'failed' });
+          if (made.kind === 'invalid') stripeCard.focus();
+          else {
+            setNotice({ kind: 'failed' });
+            document.querySelector<HTMLElement>('#checkout-payment h2')?.focus();
+          }
           return;
         }
         token = made.id;
@@ -283,27 +299,30 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
           <MiniSummary view={view} discount={false} />
         </div>
       </details>
-      <div className="ckdc">
+      <div className="ckdc" inert={paying}>
         <DiscountBox startOpen />
       </div>
       <div className="cgrid">
         <div className="cklist">
-          <AddressSection
-            source={source}
-            addresses={addresses}
-            choice={choice}
-            onChoice={setChoice}
-            fresh={fresh}
-            onFresh={setFresh}
-            areaState={areaState}
-          />
-          <DeliverySection
-            view={view}
-            quotes={quotes}
-            onRetry={retry}
-            onChangeAddress={toAddress}
-            addressLine={addressLine.replace(/^[^:]*: /, '')}
-          />
+          {/* While Pay waits for its answer, the order cannot change under it. */}
+          <div className="ckwait" inert={paying}>
+            <AddressSection
+              source={source}
+              addresses={addresses}
+              choice={choice}
+              onChoice={setChoice}
+              fresh={fresh}
+              onFresh={setFresh}
+              areaState={areaState}
+            />
+            <DeliverySection
+              view={view}
+              quotes={quotes}
+              onRetry={retry}
+              onChangeAddress={toAddress}
+              addressLine={addressLine.replace(/^[^:]*: /, '')}
+            />
+          </div>
           <PaymentSection
             view={view}
             method={method}
@@ -336,7 +355,9 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
               </Link>
             </div>
             <ItemList view={view} />
-            <DiscountBox startOpen />
+            <div className="ckwait" inert={paying}>
+              <DiscountBox startOpen />
+            </div>
             <SummaryTotals view={view} deliveryLoading={ready === 'loading'} />
             <PayButton
               view={view}
@@ -347,7 +368,9 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
               className="ckpd"
               reasonId={`${reason}-side`}
             />
-            {block !== null ? <small id={`${reason}-side`}>{t(`pay-block-${block}`)}</small> : null}
+            {block !== null && block !== 'stock' ? (
+              <small id={`${reason}-side`}>{t(`pay-block-${block}`)}</small>
+            ) : null}
             <small className="legal">{t.rich('agree-order', legalLinks)}</small>
           </div>
           <HelpCard />
@@ -518,4 +541,24 @@ function AccountStep({ onSignedIn }: { readonly onSignedIn: () => void }) {
       </div>
     </section>
   );
+}
+
+/**
+ * Where Pay's redirect may go: Stripe's hosted page, or a page of this site (pushed as its path).
+ * Parsed with the browser's own rules, so `/\host`, a tab or `//host` cannot leave the site.
+ */
+export function safeRedirect(
+  url: string,
+  origin: string,
+): { readonly own: boolean; readonly href: string } | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url, origin);
+  } catch {
+    return null;
+  }
+  if (parsed.origin === origin && url.startsWith('/'))
+    return { own: true, href: `${parsed.pathname}${parsed.search}${parsed.hash}` };
+  if (parsed.origin === 'https://checkout.stripe.com') return { own: false, href: parsed.href };
+  return null;
 }

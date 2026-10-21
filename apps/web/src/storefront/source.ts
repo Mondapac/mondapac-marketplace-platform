@@ -166,19 +166,25 @@ export async function takePayment(request: PayRequest): Promise<PayAnswer> {
   const quotes = await quoteDelivery(request.address, sellerIds);
   const changes = sellerIds.flatMap((id) => {
     const choice = request.delivery[id];
-    const quote = quotes[id];
+    const quote = Object.hasOwn(quotes, id) ? quotes[id] : undefined;
     if (choice?.speed !== 'express' || quote?.kind !== 'quote') return [];
     // No Express any more: the seller's Scheduled fee applies.
-    const now = quote.express ?? source.sellers[id]?.deliveryFee;
-    if (!now || now.amount === choice.fee.amount) return [];
+    const now =
+      quote.express ??
+      (Object.hasOwn(source.sellers, id) ? source.sellers[id]?.deliveryFee : undefined);
+    if (!now) return [];
+    if (now.amount === choice.fee.amount && now.currency === choice.fee.currency) return [];
     return [{ sellerId: id, was: choice.fee, now }];
   });
+  // A seller the courier no longer reaches, or no answer: nothing is charged.
+  if (sellerIds.some((id) => quotes[id]?.kind !== 'quote')) return { kind: 'failed' };
   if (changes.length > 0) return { kind: 'price-changed', changes, quotes };
+  const known = (id: string) => Object.hasOwn(source.items, id);
+  if (Object.keys(request.lines).some((id) => !known(id))) return { kind: 'failed' };
   const stock = Object.entries(request.lines).flatMap(([id, quantity]) => {
     const left = source.items[id]?.lowStock;
     return left !== undefined && quantity > left ? [{ itemId: id, was: quantity, now: left }] : [];
   });
-  if (Object.keys(request.lines).some((id) => !source.items[id])) return { kind: 'failed' };
   if (stock.length > 0) return { kind: 'stock-changed', changes: stock };
   if (request.method === 'stripe') return { kind: 'redirect', url: '/checkout/payment' };
   if (request.confirmationToken !== null) return { kind: 'failed' };

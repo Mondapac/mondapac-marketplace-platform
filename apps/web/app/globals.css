@@ -4892,6 +4892,10 @@ svg {
 .sfr:empty {
   display: none;
 }
+/* Wraps the sections Pay locks while it waits; the grid keeps laying out what is inside. */
+.ckwait {
+  display: contents;
+}
 .ckdc {
   padding: 4px 16px;
   border: 1px solid var(--sf-line);

@@ -15,7 +15,10 @@ import type { CardFieldsState } from './stripe-card.ts';
 // and Google Pay are offered). Above the tiles, what Pay found when it checked the order again.
 
 /** Why Pay is off, for the line under it; null when the buyer can pay. */
-export type PayBlock = 'address' | 'loading' | 'delivery' | 'offline' | 'stock' | null;
+export type PayBlock = 'address' | 'loading' | 'delivery' | 'offline' | 'stock' | 'card' | null;
+
+/** The stock notice says why Pay is held; both Pay buttons point to it. */
+const NOTICE_ID = 'checkout-pay-notice';
 
 /** What the last press of Pay found; nothing was charged in any of these. */
 export type PayNotice =
@@ -79,8 +82,13 @@ export function PaymentSection({
       <h2 id={heading} tabIndex={-1}>
         {t('payment-method')}
       </h2>
-      {notice ? <Notice notice={notice} /> : null}
-      <div className="ptl" role="radiogroup" aria-label={t('payment-method')}>
+      {notice && (notice.kind !== 'declined' || method === 'card') ? (
+        <Notice notice={notice} />
+      ) : null}
+      <p className="sr-only" role="status">
+        {paying ? t(method === 'card' ? 'paying-card' : 'paying-stripe') : ''}
+      </p>
+      <div className="ptl" role="radiogroup" aria-label={t('payment-method')} inert={paying}>
         <MethodTile
           value="card"
           method={method}
@@ -122,7 +130,7 @@ export function PaymentSection({
           onPay={onPay}
           reasonId={reasonId}
         />
-        {block !== null ? (
+        {block !== null && block !== 'stock' ? (
           <p className="legal" id={reasonId}>
             {t(`pay-block-${block}-above`)}
           </p>
@@ -186,7 +194,7 @@ function CardFields({ card }: { readonly card: CardForm }) {
   return (
     <div className="cfm">
       {card.state === 'failed' ? (
-        <div className="dwarn2" role="alert">
+        <div className="dwarn2" role="status">
           <Icon name="info" />
           <p>{t('card-load-failed')}</p>
           <span className="dwa">
@@ -240,7 +248,7 @@ function Notice({ notice }: { readonly notice: PayNotice }) {
         </p>
       ) : notice.kind === 'stock-changed' ? (
         <>
-          <p>
+          <p id={NOTICE_ID}>
             <b>{t('notice-stock-title')}</b>{' '}
             {notice.changes
               .map((c) =>
@@ -293,7 +301,8 @@ export function PayButton({
       type="button"
       data-pay=""
       aria-disabled={block === null && !paying ? undefined : true}
-      aria-describedby={block === null ? undefined : reasonId}
+      aria-busy={paying || undefined}
+      aria-describedby={block === null ? undefined : block === 'stock' ? NOTICE_ID : reasonId}
       onClick={onPay}
     >
       {paying ? (

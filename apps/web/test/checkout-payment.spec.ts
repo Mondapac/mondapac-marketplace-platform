@@ -71,6 +71,10 @@ describe('Pay (server action, sample ordering)', () => {
       request({ total: { amount: -1, currency: 'AUD' } }),
       request({ total: { amount: 1, currency: 'aud' } }),
       request({ discountCode: '<b>' }),
+      request({ lines: JSON.parse('{"__proto__": 1}') as unknown }),
+      request({ lines: { constructor: 1 } }),
+      request({ delivery: JSON.parse('{"__proto__": {"speed": "scheduled"}}') as unknown }),
+      request({ delivery: { toString: { speed: 'scheduled' } } }),
     ])
       expect(await payOrder(raw)).toEqual({ kind: 'failed' });
   });
