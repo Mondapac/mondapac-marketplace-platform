@@ -1023,6 +1023,36 @@
       "sell-guidelines": "Seller guidelines"
     }
   },
+  "seo": {
+    "descriptions": {
+      "home": "Shop local food sellers in one cart on {store}. Every price includes GST.",
+      "category": "{name} from local sellers on {store}. Compare prices and delivery times, then order in one cart.",
+      "subcategory": "{name} in {category} from local sellers on {store}. Compare prices and delivery times.",
+      "product": "{name} from {seller} on {store}.",
+      "seller": "{name}, {location}. {about}",
+      "sellers": "Local sellers on {store} that deliver to your area. Compare delivery times, minimum orders and fees.",
+      "search": "Search products and stores on {store}.",
+      "search-results": "Products and stores on {store} that match “{q}”.",
+      "cart": "Your cart on {store}: items from each seller, delivery fees and the total.",
+      "checkout": "Check out your order on {store}.",
+      "payment": "Pay for your order on {store}.",
+      "confirmation": "Your order on {store} is placed.",
+      "not-completed": "Your payment on {store} was not completed. Nothing was charged and your cart is kept.",
+      "account-overview": "Your {store} account: orders, addresses, saved lists and settings.",
+      "account-orders": "Your orders on {store} and where each one is.",
+      "account-order": "The details of order {reference} on {store}.",
+      "account-addresses": "Your saved delivery addresses on {store}.",
+      "account-lists": "Products you saved on {store}.",
+      "account-settings": "Your {store} account settings and email choices.",
+      "personalization": "Choose the colours and text size of {store} on this device.",
+      "coming-soon": "{name}: coming soon to {store}.",
+      "cookies": "The cookies {store} uses and the optional ones you can switch on or off.",
+      "sell": "Sell your food to local buyers on {store}. Sign up as a seller.",
+      "offline": "You are offline. Pages you opened on {store} before still work.",
+      "unavailable-product": "{name} is no longer sold on {store}. See similar products from local sellers.",
+      "closed-store": "{name} is not taking orders on {store} right now."
+    }
+  },
   "areas": {
     "greater-brisbane": "Greater Brisbane"
   }
