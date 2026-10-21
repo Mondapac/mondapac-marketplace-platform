@@ -9,6 +9,11 @@ import type {
   CustomerSummaryRow,
 } from '../application/ports/account.repository';
 import { Account, type AccountState } from '../domain/account';
+import {
+  parseStorefrontPalette,
+  parseStorefrontTextSize,
+  type StorefrontAppearance,
+} from '../domain/storefront-appearance';
 
 /** Constraint names this repository turns into domain errors (data design 3.3, N1). */
 const EMAIL_TAKEN = 'accounts_market_id_population_email_normalized_key';
@@ -26,6 +31,23 @@ const toInstant = (date: Date): Temporal.Instant =>
 const toOptionalInstant = (date: Date | null): Temporal.Instant | null =>
   date === null ? null : toInstant(date);
 
+/**
+ * The kept storefront look of a row, or null when neither part was chosen. A value the domain
+ * does not know (a look removed from the storefront) reads as no choice.
+ */
+function appearanceOf(row: {
+  readonly storefrontPalette: string | null;
+  readonly storefrontTextSize: string | null;
+}): StorefrontAppearance | null {
+  const palette = parseStorefrontPalette(row.storefrontPalette);
+  const textSize = parseStorefrontTextSize(row.storefrontTextSize);
+  const value = {
+    palette: palette.ok ? palette.value : null,
+    textSize: textSize.ok ? textSize.value : null,
+  };
+  return value.palette === null && value.textSize === null ? null : value;
+}
+
 /** The account columns read; the credential comes from its own table (never in a list). */
 const SELECTED = {
   id: true,
@@ -36,6 +58,8 @@ const SELECTED = {
   displayName: true,
   timezone: true,
   locale: true,
+  storefrontPalette: true,
+  storefrontTextSize: true,
   status: true,
   emailVerifiedAt: true,
   existingAccountNoticeAt: true,
@@ -55,6 +79,8 @@ interface SelectedRow {
   readonly displayName: string | null;
   readonly timezone: string | null;
   readonly locale: string | null;
+  readonly storefrontPalette: string | null;
+  readonly storefrontTextSize: string | null;
   readonly status: string;
   readonly emailVerifiedAt: Date | null;
   readonly existingAccountNoticeAt: Date | null;
@@ -154,6 +180,7 @@ export class PrismaAccountRepository implements AccountRepository {
       displayName: row.displayName,
       timezone: row.timezone,
       locale: row.locale,
+      appearance: appearanceOf(row),
       status: row.status,
       emailVerifiedAt: toOptionalInstant(row.emailVerifiedAt),
       existingAccountNoticeAt: toOptionalInstant(row.existingAccountNoticeAt),
@@ -225,6 +252,8 @@ export class PrismaAccountRepository implements AccountRepository {
         displayName: state.displayName,
         timezone: state.timezone ?? null,
         locale: state.locale ?? null,
+        storefrontPalette: state.appearance?.palette ?? null,
+        storefrontTextSize: state.appearance?.textSize ?? null,
         // Slice 8b: disable and enable. Written under the version guard, in the caller's
         // serializable unit (HF8: every writer of accounts.status).
         status: state.status,

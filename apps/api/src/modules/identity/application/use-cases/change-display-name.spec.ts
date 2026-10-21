@@ -150,8 +150,17 @@ describe.each(TEST_MARKETS)('ChangeDisplayName in market %s', (code) => {
     ).resolves.toMatchObject({ ok: false, error: { code: 'validation.failed' } });
   });
 
-  it('refuses a customer (no display name) and the anonymous caller', async () => {
+  it('sets the first name of a customer account, which starts with none', async () => {
     seed(CUSTOMER_ID, 'customer');
+
+    await expect(
+      useCase().execute(contextOf('customer', CUSTOMER_ID), { displayName: '  Amina  ' }),
+    ).resolves.toEqual({ ok: true, value: { code: 'display-name-changed', changed: true } });
+    expect(fakes.accounts.get(CUSTOMER_ID)).toMatchObject({ displayName: 'Amina', version: 4 });
+  });
+
+  it('refuses an unverified customer and the anonymous caller', async () => {
+    seed(CUSTOMER_ID, 'customer', { emailVerifiedAt: null });
 
     await expect(
       useCase().execute(contextOf('customer', CUSTOMER_ID), { displayName: 'Amina' }),
