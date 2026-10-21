@@ -114,7 +114,8 @@ describe('StoreProfile About card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await screen.findByText(/This text claims a certification/);
-    expect(screen.getByText('The text was not saved. Change what is marked below.')).toBeTruthy();
+    // One announcement of the failure: the field's own alert, with no second banner above it.
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(box().getAttribute('aria-invalid')).toBe('true');
     expect(call).toHaveBeenCalledTimes(1);
   });
@@ -245,7 +246,9 @@ describe('StoreProfile images', () => {
 
     fireEvent.change(chooseIn(logoCard()), { target: { files: [file()] } });
 
-    await within(logoCard()).findByText('Uploading…');
+    await waitFor(() =>
+      expect(within(logoCard()).getByRole('status').textContent).toBe('Uploading…'),
+    );
     expect(chooseIn(logoCard()).disabled).toBe(true);
     finish(done(view({ logo: { id: IMAGE, width: 512, height: 512 } })));
     await screen.findByText('Logo saved. Buyers can see it now.');
@@ -295,6 +298,76 @@ describe('StoreProfile images', () => {
     await screen.findByText('Logo removed.');
     expect(call).toHaveBeenCalledWith('DELETE', 'sellers/store-profile/logo', undefined, 'csrf');
     expect(screen.getByText('No logo yet.')).toBeTruthy();
+  });
+
+  it('moves focus: Yes, remove on asking; back to Remove on cancel; Choose a picture after removing', async () => {
+    mount(view({ logo: { id: IMAGE, width: 512, height: 512 } }));
+    call.mockResolvedValueOnce(done(view()));
+
+    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Remove' }));
+    expect(document.activeElement).toBe(
+      within(logoCard()).getByRole('button', { name: 'Yes, remove' }),
+    );
+    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Cancel' }));
+    expect(document.activeElement).toBe(within(logoCard()).getByRole('button', { name: 'Remove' }));
+
+    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Remove' }));
+    fireEvent.click(within(logoCard()).getByRole('button', { name: 'Yes, remove' }));
+    await screen.findByText('Logo removed.');
+    expect(document.activeElement).toBe(chooseIn(logoCard()));
+    expect(within(logoCard()).getByText('Choose a picture')).toBeTruthy();
+  });
+
+  it('keeps an empty status region in each picture card from the start', () => {
+    mount();
+    for (const card of [logoCard(), bannerCard()]) {
+      const status = within(card).getByRole('status');
+      expect(status.textContent).toBe('');
+    }
+  });
+
+  it('dims the old picture while a new one uploads', async () => {
+    mount(view({ logo: { id: IMAGE, width: 512, height: 512 } }));
+    prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
+    let finish: (value: ReturnType<typeof done>) => void = () => undefined;
+    call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+
+    fireEvent.change(chooseIn(logoCard()), { target: { files: [file()] } });
+
+    await waitFor(() =>
+      expect(within(logoCard()).getByRole('img').className).toContain('opacity-50'),
+    );
+    finish(done(view({ logo: { id: IMAGE, width: 512, height: 512 } })));
+    await screen.findByText('Logo saved. Buyers can see it now.');
+    expect(within(logoCard()).getByRole('img').className).not.toContain('opacity-50');
+  });
+
+  it('previews the banner as buyers see it, on a phone or a wide screen, and says what is cropped', () => {
+    mount(view({ banner: { id: IMAGE, width: 1536, height: 384 } }));
+    const card = bannerCard();
+    expect(within(card).getByText(/edges are cropped on phones and wide screens/)).toBeTruthy();
+    expect(within(card).getByText(/1200 × 300 px/)).toBeTruthy();
+    const box = () => within(card).getByRole('img').parentElement!;
+    const phone = within(card).getByRole('button', { name: 'Phone' });
+    const desktop = within(card).getByRole('button', { name: 'Desktop' });
+    expect(phone.getAttribute('aria-pressed')).toBe('true');
+    expect(box().className).toContain('aspect-banner-phone');
+    expect(within(card).queryByText(/dashed square/)).toBeNull();
+
+    fireEvent.click(desktop);
+
+    expect(desktop.getAttribute('aria-pressed')).toBe('true');
+    expect(phone.getAttribute('aria-pressed')).toBe('false');
+    expect(box().className).toContain('aspect-banner-desktop');
+    expect(within(card).getByText(/dashed square/)).toBeTruthy();
+  });
+
+  it('puts the removal question on its own line', () => {
+    mount(view({ banner: { id: IMAGE, width: 1536, height: 384 } }));
+
+    fireEvent.click(within(bannerCard()).getByRole('button', { name: 'Remove' }));
+
+    expect(within(bannerCard()).getByText('Remove the banner?').className).toContain('basis-full');
   });
 
   it('keeps the picture when the removal is cancelled', () => {

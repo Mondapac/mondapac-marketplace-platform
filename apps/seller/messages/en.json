@@ -1750,13 +1750,14 @@
   "store-profile": {
     "title": "Store profile",
     "intro": "What buyers see on your store page: a few words about your store, a logo and a banner. Changes are public as soon as you save them.",
+    "loading": "Loading the store profile",
     "view-only": "You can see the store profile but not change it. Ask the store owner for access.",
     "error": {
       "unavailable": "The store profile is unavailable right now. Try again later."
     },
     "about": {
       "title": "About your store",
-      "help": "Plain text, up to {max} characters. Links and web addresses are not allowed. Do not claim a certification here; certificates you upload show as a badge.",
+      "help": "Plain text, up to {max} characters. Links and web addresses are not allowed. Certificates are shown as verified badges after our team checks them.",
       "field": "About your store ({language})",
       "counter": "{count} of {max} characters",
       "save": "Save",
@@ -1771,14 +1772,13 @@
         "csrf": "Your session needs refreshing. Reload the page and try again.",
         "unavailable": "The store profile is unavailable right now. Try again later.",
         "not-ready": "Your store is not ready yet. Try again in a moment.",
-        "unknown": "Something went wrong. Try again.",
-        "fields": "The text was not saved. Change what is marked below."
+        "unknown": "Something went wrong. Try again."
       },
       "rule": {
         "length": "Use at most {max} characters.",
         "characters": "This text has characters that are not allowed.",
         "url": "Remove web addresses and links; buyers contact you through the platform.",
-        "claim-term": "This text claims a certification. Remove that wording; certificates you upload show as a badge on your products.",
+        "claim-term": "This text claims a certification. Remove that wording. Certificates are shown as verified badges after our team checks them.",
         "invalid": "This text is not valid."
       }
     },
@@ -1793,9 +1793,15 @@
     },
     "banner": {
       "title": "Banner",
-      "help": "A wide picture at the top of your store page, cropped to 4 to 1 at the centre. At least 1200 by 300 pixels.",
+      "help": "A wide picture at the top of your store page. Keep the important part in the middle: the edges are cropped on phones and wide screens, and your logo covers the lower left on a computer. Use 1200 × 300 px or larger.",
       "none": "No banner yet.",
       "alt": "Your store banner",
+      "preview": {
+        "label": "Preview",
+        "phone": "Phone",
+        "desktop": "Desktop",
+        "logo-note": "The dashed square is where your logo sits on a computer."
+      },
       "confirm": "Remove the banner?",
       "saved": "Banner saved. Buyers can see it now.",
       "removed": "Banner removed."

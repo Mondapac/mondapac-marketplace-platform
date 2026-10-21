@@ -31,6 +31,8 @@ export {
 } from './form/button.tsx';
 export { TextField, type TextFieldProps } from './form/text-field.tsx';
 export { TextAreaField, type TextAreaFieldProps } from './form/text-area-field.tsx';
+export { FileButton, type FileButtonProps } from './form/file-button.tsx';
+export { ImageSlot, type ImageSlotProps, type ImageSlotShape } from './form/image-slot.tsx';
 export { OtpField, type OtpFieldProps } from './form/otp-field.tsx';
 export { Card, type CardProps } from './form/card.tsx';
 export { CheckboxRow, type CheckboxRowProps } from './form/checkbox-row.tsx';

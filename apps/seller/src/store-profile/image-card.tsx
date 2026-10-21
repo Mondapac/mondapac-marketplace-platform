@@ -1,8 +1,8 @@
 'use client';
 
-import { Banner, Button, Card } from '@mondapac/ui';
+import { Banner, Button, Card, FileButton, ImageSlot } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { preparePhoto } from '../catalog/photo-prepare.ts';
 import { imageProblemOf, type ImageProblem } from './errors.ts';
@@ -14,10 +14,18 @@ import {
 } from './types.ts';
 
 type Status = 'idle' | 'uploading' | 'removing' | 'saved' | 'removed';
+type Preview = 'phone' | 'desktop';
+
+/** The classes of the banner boxes buyers see (packages/ui styles.css): a phone strip and a wide one. */
+const PREVIEW_ASPECT: Record<Preview, string> = {
+  phone: 'aspect-banner-phone',
+  desktop: 'aspect-banner-desktop',
+};
 
 /**
  * The logo or the banner: the picture as buyers see it, choose or replace (shrunk in the browser
- * first), and remove with a confirmation. The picture is public as soon as it is saved.
+ * first), and remove with a confirmation. The picture is public as soon as it is saved. The banner
+ * preview is cropped the way the buyer site crops it, on a phone or on a wide screen.
  */
 export function ImageCard({
   kind,
@@ -33,14 +41,31 @@ export function ImageCard({
   readonly canEdit: boolean;
 }) {
   const t = useTranslations();
-  const inputId = useId();
   const input = useRef<HTMLInputElement>(null);
+  const removeButton = useRef<HTMLButtonElement>(null);
+  const confirmButton = useRef<HTMLButtonElement>(null);
   const busy = useRef(false);
+  // Where focus goes after the next render: the confirm button, back to Remove, or the picker.
+  const focusNext = useRef<'confirm' | 'remove' | 'choose' | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [problem, setProblem] = useState<ImageProblem | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [preview, setPreview] = useState<Preview>('phone');
   const working = status === 'uploading' || status === 'removing';
   const path = `sellers/store-profile/${kind}`;
+
+  useEffect(() => {
+    const target = focusNext.current;
+    if (target === null) return;
+    focusNext.current = null;
+    const element =
+      target === 'confirm'
+        ? confirmButton.current
+        : target === 'remove'
+          ? removeButton.current
+          : input.current;
+    element?.focus();
+  });
 
   function failed(problemOf: ImageProblem) {
     setStatus('idle');
@@ -87,13 +112,35 @@ export function ImageCard({
     busy.current = false;
     if (result.ok) {
       onImage(result.body[kind]);
+      // The Remove button is gone with the picture: focus moves to the way to choose another.
+      focusNext.current = 'choose';
       setStatus('removed');
     } else if (result.failure.status === 401) {
       window.location.assign('/session-ended');
     } else {
+      focusNext.current = 'remove';
       failed(imageProblemOf(result.failure, kind));
     }
   }
+
+  function askToRemove() {
+    focusNext.current = 'confirm';
+    setConfirming(true);
+  }
+
+  function cancelRemove() {
+    focusNext.current = 'remove';
+    setConfirming(false);
+  }
+
+  const announced =
+    status === 'uploading'
+      ? t('store-profile.image.uploading')
+      : status === 'removing'
+        ? t('store-profile.image.removing')
+        : status === 'saved' || status === 'removed'
+          ? t(`store-profile.${kind}.${status}`)
+          : null;
 
   return (
     <Card title={t(`store-profile.${kind}.title`)}>
@@ -106,67 +153,96 @@ export function ImageCard({
         </Banner>
       )}
       {image === null ? (
-        <p
-          className={`rounded-md border border-dashed border-line p-4 text-sm text-fg-muted ${
-            kind === 'banner' ? 'aspect-[4/1] content-center' : ''
-          }`}
-        >
+        <ImageSlot shape={kind === 'logo' ? 'square' : 'banner'}>
           {t(`store-profile.${kind}.none`)}
-        </p>
+        </ImageSlot>
       ) : kind === 'logo' ? (
         <img
           src={storeImageUrl(image.id, 'small')}
           alt={t('store-profile.logo.alt')}
           width={96}
           height={96}
-          className="size-24 rounded-md border border-line bg-surface object-contain"
+          className={`size-24 rounded-md border border-line bg-surface object-contain ${
+            working ? 'opacity-50' : ''
+          }`}
         />
       ) : (
-        <img
-          src={storeImageUrl(image.id, 'large')}
-          alt={t('store-profile.banner.alt')}
-          width={image.width}
-          height={image.height}
-          className="aspect-[4/1] w-full rounded-md border border-line bg-muted object-cover"
-        />
+        <div className="flex flex-col gap-2">
+          <div
+            role="group"
+            aria-label={t('store-profile.banner.preview.label')}
+            className="flex items-center gap-2"
+          >
+            <span className="text-sm text-fg-muted">{t('store-profile.banner.preview.label')}</span>
+            {(['phone', 'desktop'] as const).map((choice) => (
+              <Button
+                key={choice}
+                variant={preview === choice ? 'primary' : 'secondary'}
+                aria-pressed={preview === choice}
+                onClick={() => setPreview(choice)}
+              >
+                {t(`store-profile.banner.preview.${choice}`)}
+              </Button>
+            ))}
+          </div>
+          <div
+            className={`relative w-full overflow-hidden rounded-md border border-line bg-muted ${PREVIEW_ASPECT[preview]} ${
+              working ? 'opacity-50' : ''
+            }`}
+          >
+            <img
+              src={storeImageUrl(image.id, 'large')}
+              alt={t('store-profile.banner.alt')}
+              width={image.width}
+              height={image.height}
+              className="size-full object-cover"
+            />
+            {preview === 'desktop' ? (
+              <span
+                aria-hidden="true"
+                className="absolute bottom-0 start-4 h-3/5 aspect-square rounded-md border-2 border-dashed border-line-control bg-surface/60"
+              />
+            ) : null}
+          </div>
+          {preview === 'desktop' ? (
+            <p className="text-sm text-fg-muted">{t('store-profile.banner.preview.logo-note')}</p>
+          ) : null}
+        </div>
       )}
       {canEdit ? (
         <div className="flex flex-wrap items-center gap-3">
-          <input
-            ref={input}
-            id={inputId}
-            type="file"
+          <FileButton
+            inputRef={input}
             accept="image/jpeg,image/png,image/webp"
-            className="peer sr-only"
             disabled={working}
-            onChange={(event) => void upload(event.target.files)}
-          />
-          <label
-            htmlFor={inputId}
-            className={`inline-flex h-(--mp-size-control) items-center justify-center rounded-md border border-line-control bg-surface px-4 font-medium text-fg peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus ${
-              working ? 'cursor-not-allowed text-fg-muted' : 'cursor-pointer hover:bg-muted'
-            }`}
+            onFiles={(files) => void upload(files)}
           >
             {status === 'uploading'
               ? t('store-profile.image.uploading')
               : image === null
                 ? t('store-profile.image.choose')
                 : t('store-profile.image.replace')}
-          </label>
+          </FileButton>
           {image === null ? null : confirming ? (
             <>
-              <span className="text-sm">{t(`store-profile.${kind}.confirm`)}</span>
-              <Button variant="destructive" onClick={() => void remove()} disabled={working}>
+              <p className="basis-full text-sm">{t(`store-profile.${kind}.confirm`)}</p>
+              <Button
+                ref={confirmButton}
+                variant="destructive"
+                onClick={() => void remove()}
+                disabled={working}
+              >
                 {t('store-profile.image.remove-yes')}
               </Button>
-              <Button variant="link" onClick={() => setConfirming(false)}>
+              <Button variant="link" onClick={cancelRemove}>
                 {t('store-profile.image.cancel')}
               </Button>
             </>
           ) : (
             <Button
+              ref={removeButton}
               variant="destructive"
-              onClick={() => setConfirming(true)}
+              onClick={askToRemove}
               disabled={working}
               loading={status === 'removing'}
             >
@@ -178,11 +254,10 @@ export function ImageCard({
           <span className="text-sm text-fg-muted">{t('store-profile.image.formats')}</span>
         </div>
       ) : null}
-      {status === 'saved' || status === 'removed' ? (
-        <p role="status" className="text-sm text-success-fg">
-          {t(`store-profile.${kind}.${status}`)}
-        </p>
-      ) : null}
+      {/* Always in the page, so a screen reader hears the text when it is put in. */}
+      <p role="status" className="text-sm text-success-fg empty:hidden">
+        {announced}
+      </p>
     </Card>
   );
 }

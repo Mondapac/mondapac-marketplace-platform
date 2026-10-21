@@ -97,7 +97,6 @@ export function AboutCard({
   }
 
   const banner = problem?.banner ?? null;
-  const fieldProblem = problem !== null && Object.keys(problem.fields).length > 0;
 
   return (
     <Card title={t('store-profile.about.title')}>
@@ -121,9 +120,6 @@ export function AboutCard({
           ) : null}
         </Banner>
       )}
-      {fieldProblem ? (
-        <Banner tone="critical">{t('store-profile.about.error.fields')}</Banner>
-      ) : null}
       {status === 'reloading' ? (
         <SkeletonRows label={t('store-profile.about.loading')} rows={2} />
       ) : (
@@ -162,12 +158,15 @@ export function AboutCard({
       )}
       {canEdit ? (
         <FormActionBar
+          // Always in the page, so a screen reader hears the text when it is put in.
           status={
-            status === 'saved' ? (
-              <span role="status">{t('store-profile.about.saved')}</span>
-            ) : status === 'saving' ? (
-              <span role="status">{t('store-profile.about.saving')}</span>
-            ) : null
+            <span role="status">
+              {status === 'saved'
+                ? t('store-profile.about.saved')
+                : status === 'saving'
+                  ? t('store-profile.about.saving')
+                  : null}
+            </span>
           }
         >
           <Button
