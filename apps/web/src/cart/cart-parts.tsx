@@ -119,18 +119,20 @@ export function SummaryTotals({
 /**
  * "Have a discount code?" in the order summary: one input and Apply (Enter works); an applied
  * code is a chip with Remove. Sample data: the code is checked against the source's sample list
- * until the backend's validate endpoint exists.
+ * until the backend's validate endpoint exists. `startOpen` (checkout) shows the input at once;
+ * the input takes the focus only when the link opened it.
  */
-export function DiscountBox() {
+export function DiscountBox({ startOpen = false }: { readonly startOpen?: boolean }) {
   const t = useTranslations('cart');
   const { cartSource, discount, setDiscount } = useStore();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const opened = useRef(false);
   const id = useId();
   useEffect(() => {
-    if (open) input.current?.focus();
+    if (open && opened.current) input.current?.focus();
   }, [open]);
 
   if (discount)
@@ -147,7 +149,7 @@ export function DiscountBox() {
           onClick={() => {
             setDiscount(null);
             setCode('');
-            setOpen(false);
+            setOpen(startOpen);
           }}
         >
           {t('remove')}
@@ -156,7 +158,14 @@ export function DiscountBox() {
     );
   if (!open)
     return (
-      <button className="lnk dcl" type="button" onClick={() => setOpen(true)}>
+      <button
+        className="lnk dcl"
+        type="button"
+        onClick={() => {
+          opened.current = true;
+          setOpen(true);
+        }}
+      >
         <Icon name="tag" />
         {t('discount-open')}
       </button>

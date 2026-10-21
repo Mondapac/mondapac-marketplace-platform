@@ -13,7 +13,7 @@ import {
 import type { AssistantSetup } from '../assistant/assistant.ts';
 import { loadHome, type HomeContent } from './home-source.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
-import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
+import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT, sampleQuotes } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleProduct } from './sample-product.ts';
@@ -31,7 +31,9 @@ import type {
   ClosedStore,
   DeliveryAreaAnswer,
   DeliveryLocatorSource,
+  DeliveryQuote,
   ProductDetail,
+  QuoteAddress,
   SellerQuery,
   SellerResults,
   SellerShop,
@@ -134,6 +136,18 @@ export async function checkDeliveryArea(postcode: string): Promise<DeliveryAreaA
       `shipping/delivery-area?postcode=${encodeURIComponent(value)}`,
     ),
   );
+}
+
+/**
+ * Each seller's delivery quote for an address (Scheduled is the seller's flat fee; Express is the
+ * courier's live price). SAMPLE: no courier is connected yet (delivery plan: Uber Direct, Zoom2u
+ * as the fallback), so every seller gets its sample price; the address is not used until then.
+ */
+export async function quoteDelivery(
+  _address: QuoteAddress,
+  sellerIds: readonly string[],
+): Promise<Readonly<Record<string, DeliveryQuote>>> {
+  return Promise.resolve(sampleQuotes(sellerIds));
 }
 
 /**

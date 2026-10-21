@@ -18,10 +18,11 @@ const push = vi.fn();
 const scrolled = vi.fn();
 const replace = vi.fn();
 let path = '/';
-const { deliveryAreaFor } = vi.hoisted(() => ({
+const { deliveryAreaFor, deliveryQuotesFor } = vi.hoisted(() => ({
   deliveryAreaFor: vi.fn<(postcode: string) => Promise<{ kind: string }>>(),
+  deliveryQuotesFor: vi.fn<(request: unknown) => Promise<Record<string, unknown>>>(),
 }));
-vi.mock('../src/checkout/actions.ts', () => ({ deliveryAreaFor }));
+vi.mock('../src/checkout/actions.ts', () => ({ deliveryAreaFor, deliveryQuotesFor }));
 vi.mock('next/navigation', () => ({
   usePathname: () => path,
   useSearchParams: () => new URLSearchParams(),
@@ -33,6 +34,18 @@ beforeEach(() => {
   push.mockReset();
   replace.mockReset();
   deliveryAreaFor.mockReset();
+  deliveryQuotesFor.mockReset();
+  // The sample courier: Express for Kedron, none for Paddington (its cut-off has passed).
+  deliveryQuotesFor.mockImplementation((request) =>
+    Promise.resolve(
+      Object.fromEntries(
+        (request as { sellerIds: string[] }).sellerIds.map((id) => [
+          id,
+          { kind: 'quote', express: id === 'kedron' ? { amount: 1290, currency: 'AUD' } : null },
+        ]),
+      ),
+    ),
+  );
   Element.prototype.scrollIntoView = scrolled;
   scrolled.mockReset();
 });
@@ -197,50 +210,186 @@ describe('cart page', () => {
 });
 
 describe('checkout', () => {
+  /** The Pay buttons (the right column's and the one ending the form on phone and tablet). */
+  const payButtons = () => screen.getAllByRole('button', { name: /^Pay A\$/ });
+  const payOff = () => payButtons().every((b) => b.getAttribute('aria-disabled') === 'true');
+
   it('asks a guest to log in or create an account, keeping the cart', () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET);
-    expect(screen.getByText('Step 1 of 4')).toBeTruthy();
+    const progress = screen.getByRole('list', { name: 'Checkout progress' });
+    expect(
+      within(progress)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['Cart (done)', '2Log in', '3Delivery and payment', '4Confirmation']);
+    expect(within(progress).getByText('Log in').closest('li')!.getAttribute('aria-current')).toBe(
+      'step',
+    );
     expect(screen.getByRole('button', { name: 'Log in' }).getAttribute('aria-pressed')).toBe(
       'true',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
     expect(screen.getByLabelText('Full name')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Create account and continue' }));
-    expect(screen.getByText('Signed in as alex.nguyen@example.com')).toBeTruthy();
-    expect(screen.getByText('Step 2 of 4')).toBeTruthy();
-    // The new step takes the focus: the button that moved on is gone.
+    // One page now: the address section takes the focus; Log in leaves the progress bar.
     expect(document.activeElement?.textContent).toBe('Delivery address');
+    expect(screen.getByRole('heading', { name: 'Delivery method' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Payment method' })).toBeTruthy();
+    expect(
+      within(screen.getByRole('list', { name: 'Checkout progress' }))
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['Cart (done)', '2Delivery and payment', '3Confirmation']);
   });
 
-  it('refuses a new address outside the service area, then walks to payment', () => {
+  it('pays for a saved address with each seller on Scheduled delivery by default', async () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    expect(screen.getByText('Step 2 of 4')).toBeTruthy();
+    await waitFor(() => expect(payOff()).toBe(false));
+    expect(deliveryQuotesFor).toHaveBeenCalledWith({
+      address: { kind: 'saved', id: 'home' },
+      sellerIds: ['kedron', 'paddington'],
+    });
+    const kedron = screen.getByRole('radiogroup', {
+      name: 'Delivery speed for Kedron Halal Butchers',
+    });
+    expect(within(kedron).getByRole('radio', { name: /Scheduled/ })).toHaveProperty(
+      'checked',
+      true,
+    );
+    expect(payButtons()[0]!.textContent).toBe('Pay A$67.90 with Stripe');
+    fireEvent.click(payButtons()[0]!);
+    expect(push).toHaveBeenCalledWith('/checkout/payment');
+  });
+
+  it('adds Express at the courier price, and says why a seller has none', async () => {
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    const kedron = screen.getByRole('radiogroup', {
+      name: 'Delivery speed for Kedron Halal Butchers',
+    });
+    const express = await within(kedron).findByRole('radio', { name: /Express.*A\$12\.90/ });
+    fireEvent.click(express);
+    expect(express).toHaveProperty('checked', true);
+    // A$67.90 - A$7.50 Scheduled + A$12.90 Express.
+    await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$73.30 with Stripe'));
+    const paddington = screen.getByRole('radiogroup', {
+      name: 'Delivery speed for Paddington Bakehouse',
+    });
+    expect(within(paddington).queryAllByRole('radio')).toHaveLength(1);
+    expect(
+      within(paddington).getByText(
+        /Not available\. Express orders for this seller closed at 3\sPM today \(Brisbane time\)\./i,
+      ),
+    ).toBeTruthy();
+  });
+
+  it('holds Pay while quotes load, and offers Try again for a seller without a price', async () => {
+    let answer: (value: Record<string, unknown>) => void = () => {};
+    deliveryQuotesFor.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    expect(payOff()).toBe(true);
+    expect(screen.getAllByText('Getting delivery prices...')).toHaveLength(2);
+    answer({ kedron: { kind: 'quote', express: aud(1290) }, paddington: { kind: 'failed' } });
+    const failed = await screen.findByRole('alert');
+    expect(failed.textContent).toContain('We could not get a delivery price.');
+    expect(payOff()).toBe(true);
+    expect(screen.getAllByText('Fix the delivery problem above to pay.').length).toBe(1);
+    fireEvent.click(within(failed).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(payOff()).toBe(false));
+    expect(deliveryQuotesFor).toHaveBeenLastCalledWith({
+      address: { kind: 'saved', id: 'home' },
+      sellerIds: ['paddington'],
+    });
+  });
+
+  it('says when a seller cannot deliver to the address', async () => {
+    deliveryQuotesFor.mockResolvedValueOnce({
+      kedron: { kind: 'out-of-range' },
+      paddington: { kind: 'quote', express: null },
+    });
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain(
+      'Its couriers do not reach 12 Example Street, Kedron QLD 4031.',
+    );
+    expect(within(alert).getByRole('link', { name: 'Back to cart' }).getAttribute('href')).toBe(
+      '/cart',
+    );
+    fireEvent.click(within(alert).getByRole('button', { name: 'Change address' }));
+    expect(document.activeElement?.textContent).toBe('Delivery address');
+    expect(payOff()).toBe(true);
+  });
+
+  it('finds a new address by postcode, suburb and street with the keyboard', async () => {
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
     fireEvent.click(screen.getByRole('radio', { name: /Add a new address/ }));
-    const deliver = screen.getByRole('button', { name: 'Deliver to this address' });
-    expect(deliver.getAttribute('aria-disabled')).toBe('true');
+    expect(payOff()).toBe(true);
+    expect(screen.getByText('Complete the new address above to pay.')).toBeTruthy();
+    const search = screen.getByRole('combobox', { name: 'Address' });
+    fireEvent.change(search, { target: { value: '403' } });
+    const options = () =>
+      screen.getAllByRole('option').map((o) => o.textContent?.replace(/\s+/g, ' ').trim());
+    expect(options().slice(0, 2)).toEqual([
+      'Kedron QLD 4031Suburb: then choose the street',
+      'Chermside QLD 4032Suburb: then choose the street',
+    ]);
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    expect(search.getAttribute('aria-activedescendant')).toBe(screen.getAllByRole('option')[0]!.id);
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(screen.getByText('Kedron QLD 4031')).toBeTruthy();
+    expect(options()).toHaveLength(3);
+    fireEvent.change(search, { target: { value: 'test' } });
+    expect(options()).toEqual(['48 Test Avenue, Kedron QLD 4031']);
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(screen.getByText('We deliver here')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByLabelText('Unit or apartment (optional)'));
+    fireEvent.change(screen.getByLabelText('Unit or apartment (optional)'), {
+      target: { value: '3' },
+    });
+    fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Alex Nguyen' } });
+    fireEvent.change(screen.getByLabelText('Mobile number'), { target: { value: '0400 000 000' } });
+    await waitFor(() => expect(payOff()).toBe(false));
+    expect(deliveryQuotesFor).toHaveBeenLastCalledWith({
+      address: { kind: 'new', postcode: '4031' },
+      sellerIds: ['kedron', 'paddington'],
+    });
+    fireEvent.click(payButtons()[0]!);
+    expect(push).toHaveBeenCalledWith('/checkout/payment');
+    // Change goes back to the search.
+    fireEvent.click(screen.getByRole('button', { name: 'Change address' }));
+    expect(screen.getByRole('combobox', { name: 'Address' })).toBeTruthy();
+  });
+
+  it('refuses a postcode outside the area and falls back to manual entry', () => {
+    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
+    fireEvent.click(screen.getByRole('radio', { name: /Add a new address/ }));
+    const search = screen.getByRole('combobox', { name: 'Address' });
+    fireEvent.change(search, { target: { value: '4210' } });
+    expect(
+      screen.getByText('We do not deliver to 4210 yet. We currently deliver to Greater Brisbane.'),
+    ).toBeTruthy();
+    expect(screen.queryAllByRole('option')).toEqual([]);
+    fireEvent.change(search, { target: { value: 'Nowhere Street' } });
+    expect(screen.getByText('No addresses found.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Enter it manually' }));
+    for (const [label, text] of [
+      ['Full name', 'Alex Nguyen'],
+      ['Mobile number', '0400 000 000'],
+      ['Street address and unit', '1 Nowhere Street'],
+      ['Suburb', 'Kedron'],
+    ] as const)
+      fireEvent.change(screen.getByLabelText(label), { target: { value: text } });
     fireEvent.change(screen.getByLabelText('Postcode'), { target: { value: '4210' } });
     expect(screen.getByRole('alert').textContent).toBe(
       'We do not deliver to 4210 yet. We currently deliver to Greater Brisbane.',
     );
+    expect(payOff()).toBe(true);
     fireEvent.change(screen.getByLabelText('Postcode'), { target: { value: '42' } });
     expect(screen.queryByRole('alert')).toBeNull();
     fireEvent.blur(screen.getByLabelText('Postcode'));
     expect(screen.getByRole('alert').textContent).toContain('We do not deliver to 42 yet.');
-    fireEvent.click(screen.getByRole('radio', { name: /Home/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Deliver to this address' }));
-    expect(screen.getByText('Home: 12 Example Street, Kedron QLD 4031')).toBeTruthy();
-    expect(
-      screen.getByText(
-        'Each seller prepares and delivers its own part of your order, so you may receive more than one delivery.',
-      ),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue to payment' }));
-    expect(screen.getByText('2 deliveries, A$12.50 total')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Pay A$67.90 on Stripe' }).getAttribute('href')).toBe(
-      '/checkout/payment',
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Change Delivery address' }));
-    expect(screen.getByText('Step 2 of 4')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Search for the address instead' }));
+    expect(screen.getByRole('combobox', { name: 'Address' })).toBeTruthy();
+    expect(deliveryAreaFor).not.toHaveBeenCalled();
   });
 
   it("asks the API whether a new address's postcode is delivered to once API_BASE_URL is set", async () => {
@@ -254,6 +403,7 @@ describe('checkout', () => {
     );
     renderWith(<CheckoutPage source={{ ...SAMPLE_CHECKOUT, areaCheck: 'api' }} />, MET, true);
     fireEvent.click(screen.getByRole('radio', { name: /Add a new address/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enter address manually' }));
     for (const [label, text] of [
       ['Full name', 'Alex Nguyen'],
       ['Mobile number', '0400 000 000'],
@@ -261,11 +411,10 @@ describe('checkout', () => {
       ['Suburb', 'Kedron'],
     ] as const)
       fireEvent.change(screen.getByLabelText(label), { target: { value: text } });
-    const deliver = screen.getByRole('button', { name: 'Deliver to this address' });
     const postcode = screen.getByLabelText('Postcode');
 
     fireEvent.change(postcode, { target: { value: '4210' } });
-    expect(deliver.getAttribute('aria-disabled')).toBe('true');
+    expect(payOff()).toBe(true);
     expect(await screen.findByRole('alert')).toHaveProperty(
       'textContent',
       'We do not deliver to 4210 yet. We currently deliver to Greater Brisbane.',
@@ -276,22 +425,14 @@ describe('checkout', () => {
       'textContent',
       'We could not check this postcode just now. Please try again in a moment.',
     );
-    expect(deliver.getAttribute('aria-disabled')).toBe('true');
+    expect(payOff()).toBe(true);
 
     // Short of four characters, nothing is asked.
     fireEvent.change(postcode, { target: { value: '40' } });
     fireEvent.change(postcode, { target: { value: ' 4031 ' } });
-    await waitFor(() => expect(deliver.getAttribute('aria-disabled')).toBeNull());
+    await waitFor(() => expect(payOff()).toBe(false));
     expect(screen.queryByRole('alert')).toBeNull();
     expect(deliveryAreaFor.mock.calls.map(([value]) => value)).toEqual(['4210', '4000', '4031']);
-  });
-
-  it('checks the sample list without asking the API while the storefront reads sample data', () => {
-    renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    fireEvent.click(screen.getByRole('radio', { name: /Add a new address/ }));
-    fireEvent.change(screen.getByLabelText('Postcode'), { target: { value: '4210' } });
-    expect(screen.getByRole('alert')).toBeTruthy();
-    expect(deliveryAreaFor).not.toHaveBeenCalled();
   });
 
   it('sends a blocked or empty cart back to the cart', () => {
@@ -368,7 +509,7 @@ describe('discount code, save for later and seller note (sample data)', () => {
     expect(screen.queryByRole('region', { name: /Saved for later/ })).toBeNull();
   });
 
-  it('keeps a seller note as plain text up to the confirmation', () => {
+  it('keeps a seller note and the Express choice up to the confirmation', async () => {
     renderWith(
       <>
         <CheckoutPage source={SAMPLE_CHECKOUT} />
@@ -378,8 +519,7 @@ describe('discount code, save for later and seller note (sample data)', () => {
       MET,
       true,
     );
-    fireEvent.click(screen.getByRole('radio', { name: /Home/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Deliver to this address' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Express.*A\$12\.90/ }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Add a note for this seller' })[0]!);
     const note = screen.getByLabelText(/^Note for Kedron Halal Butchers/);
     expect(note.getAttribute('maxlength')).toBe('200');
@@ -390,6 +530,9 @@ describe('discount code, save for later and seller note (sample data)', () => {
     const part = screen.getByRole('heading', { name: 'Kedron Halal Butchers' }).closest('article')!;
     expect(within(part).getByText('<b>Ring the bell</b>')).toBeTruthy();
     expect(part.querySelector('p b b')).toBeNull();
+    expect(within(part).getByText('Order MP-1-1 · Delivery: Express, within 2 hours')).toBeTruthy();
+    const other = screen.getByRole('heading', { name: 'Paddington Bakehouse' }).closest('article')!;
+    expect(within(other).getByText(/^Order MP-1-2 · Delivery: Scheduled, /)).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Payment summary' })).toBeTruthy();
   });
 });

@@ -8,6 +8,7 @@ import { Crumbs } from '../catalog/results.tsx';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
+import { CheckoutProgress } from '../checkout/progress.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import { viewCart, type CartGroup, type CartGroupLine, type CartView } from './cart.ts';
 import {
@@ -37,8 +38,8 @@ export function CartPage() {
   const tc = useTranslations('catalog');
   const locale = useLocale();
   const router = useRouter();
-  const { cart, cartSource, discount, customer, online } = useStore();
-  const view = viewCart(cart, cartSource, discount);
+  const { cart, cartSource, discount, delivery, customer, online } = useStore();
+  const view = viewCart(cart, cartSource, discount, delivery);
   const [notice, setNotice] = useState(true);
 
   // The drawer's Checkout of a blocked cart lands here with the seller's anchor.
@@ -83,6 +84,7 @@ export function CartPage() {
         <h1>{t('title')}</h1>
         <span>{t('summary-line', { count: view.count, sellers: view.groups.length })}</span>
       </div>
+      <CheckoutProgress current="cart" signedIn={customer !== null} />
       {notice && changed?.item.addedAt ? (
         <div className="cnote" role="status">
           <Icon name="info" />
@@ -248,7 +250,7 @@ function SellerGroup({ group, notice }: { readonly group: CartGroup; readonly no
           <Icon name="truck" />
           {t('delivery-from-seller')}
         </span>
-        <b className="num">{money(seller.deliveryFee)}</b>
+        <b className="num">{money(group.deliveryFee)}</b>
       </div>
     </section>
   );
