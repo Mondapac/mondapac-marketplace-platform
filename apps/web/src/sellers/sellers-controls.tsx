@@ -212,21 +212,24 @@ export function SellerSortSelect({
   path,
   state,
   nearest,
+  offered = SELLER_SORTS,
 }: {
   readonly path: string;
   readonly state: SellersState;
   readonly nearest: boolean;
+  /** The sorts the read can order by. */
+  readonly offered?: readonly SellerSort[] | undefined;
 }) {
   const t = useTranslations('sellers');
   const tc = useTranslations('catalog');
   const { current, apply } = useApply(path, state);
-  const sorts = SELLER_SORTS.filter((s) => s !== 'nearest' || nearest);
+  const sorts = SELLER_SORTS.filter((s) => offered.includes(s) && (s !== 'nearest' || nearest));
   return (
     <label className="sortw">
       {tc('sort-by')}
       <span className="sel">
         <select
-          value={current.sort}
+          value={sorts.includes(current.sort) ? current.sort : sorts[0]}
           onChange={(event) => apply(withSellerSort(current, event.target.value as SellerSort))}
         >
           {sorts.map((sort) => (

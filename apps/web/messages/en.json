@@ -605,6 +605,7 @@
     "region": "State",
     "postcode": "Postcode",
     "outside-area": "We do not deliver to {postcode} yet. We currently deliver to {area}.",
+    "area-check-failed": "We could not check this postcode just now. Please try again in a moment.",
     "instructions": "Delivery instructions (optional)",
     "instructions-placeholder": "For example: leave at the front door",
     "save-address": "Save to my address book",
@@ -766,6 +767,7 @@
     "show-stores": "Show {count, plural, one {# store} other {# stores}}",
     "open-seller": "{name}, opens the seller page",
     "selling-since": "{city} · Selling since {year}",
+    "selling-since-card": "{city} · <nw>Selling since {year}</nw>",
     "satisfaction": "{value}% satisfaction",
     "satisfaction-label": "{value} percent satisfaction, {count, plural, one {# rating} other {# ratings}}",
     "outside-area": "Outside your delivery area",
@@ -781,7 +783,9 @@
     "none-body": "We are adding local sellers city by city. You can still browse products.",
     "browse-products": "Browse products",
     "filters-empty": "No stores match these filters",
-    "filters-empty-hint": "Try removing a filter to see more stores."
+    "filters-empty-hint": "Try removing a filter to see more stores.",
+    "filters-unavailable": "Store filters aren't available yet",
+    "filters-unavailable-hint": "Remove the filter to see every store."
   },
   "search-results": {
     "title": "Search",
@@ -1018,5 +1022,38 @@
       "privacy": "Privacy policy",
       "sell-guidelines": "Seller guidelines"
     }
+  },
+  "seo": {
+    "descriptions": {
+      "home": "Shop local food sellers in one cart on {store}. Every price includes GST.",
+      "category": "{name} from local sellers on {store}. Compare prices and delivery times, then order in one cart.",
+      "subcategory": "{name} in {category} from local sellers on {store}. Compare prices and delivery times.",
+      "product": "{name} from {seller} on {store}.",
+      "seller": "{name}, {location}. {about}",
+      "sellers": "Local sellers on {store} that deliver to your area. Compare delivery times, minimum orders and fees.",
+      "search": "Search products and stores on {store}.",
+      "search-results": "Products and stores on {store} that match “{q}”.",
+      "cart": "Your cart on {store}: items from each seller, delivery fees and the total.",
+      "checkout": "Check out your order on {store}.",
+      "payment": "Pay for your order on {store}.",
+      "confirmation": "Your order on {store} is placed.",
+      "not-completed": "Your payment on {store} was not completed. Nothing was charged and your cart is kept.",
+      "account-overview": "Your {store} account: orders, addresses, saved lists and settings.",
+      "account-orders": "Your orders on {store} and where each one is.",
+      "account-order": "The details of order {reference} on {store}.",
+      "account-addresses": "Your saved delivery addresses on {store}.",
+      "account-lists": "Products you saved on {store}.",
+      "account-settings": "Your {store} account settings and email choices.",
+      "personalization": "Choose the colours and text size of {store} on this device.",
+      "coming-soon": "{name}: coming soon to {store}.",
+      "cookies": "The cookies {store} uses and the optional ones you can switch on or off.",
+      "sell": "Sell your food to local buyers on {store}. Sign up as a seller.",
+      "offline": "You are offline. Pages you opened on {store} before still work.",
+      "unavailable-product": "{name} is no longer sold on {store}. See similar products from local sellers.",
+      "closed-store": "{name} is not taking orders on {store} right now."
+    }
+  },
+  "areas": {
+    "greater-brisbane": "Greater Brisbane"
   }
 }

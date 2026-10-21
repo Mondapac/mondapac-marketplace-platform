@@ -1,6 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { SELLERS_PAGE_SIZE, SellersPage } from '../../src/sellers/sellers-page.tsx';
 import { sellersStateOf } from '../../src/sellers/sellers-state.ts';
+import { pageMetadata, sellersNoindex, seoDescription } from '../../src/seo/metadata.ts';
 import { SELLER_RATINGS_SHOWN } from '../../src/storefront/features.ts';
 import { loadSellers } from '../../src/storefront/source.ts';
 
@@ -8,9 +9,19 @@ interface Props {
   readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export async function generateMetadata() {
-  const [t, ts] = await Promise.all([getTranslations('store'), getTranslations('sellers')]);
-  return { title: `${ts('title')} | ${t('title')}` };
+export async function generateMetadata({ searchParams }: Props) {
+  const [t, description, query] = await Promise.all([
+    getTranslations('sellers'),
+    seoDescription('sellers'),
+    searchParams,
+  ]);
+  // "Show more" adds stores to the same list, so every page of it has the plain list as canonical.
+  return pageMetadata({
+    name: t('title'),
+    description,
+    path: '/sellers',
+    noindex: sellersNoindex(sellersStateOf(query, true)),
+  });
 }
 
 export default async function SellersRoute({ searchParams }: Props) {

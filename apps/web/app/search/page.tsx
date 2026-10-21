@@ -16,6 +16,7 @@ import {
   queryOf,
   searchCategories,
 } from '../../src/storefront/catalog.ts';
+import { pageMetadata, seoDescription } from '../../src/seo/metadata.ts';
 import { SELLER_RATINGS_SHOWN } from '../../src/storefront/features.ts';
 import { loadStorefrontContent } from '../../src/storefront/source.ts';
 import type { StorefrontContent } from '../../src/storefront/types.ts';
@@ -25,15 +26,18 @@ interface Props {
 }
 
 export async function generateMetadata({ searchParams }: Props) {
-  const [query, t, store] = await Promise.all([
-    searchParams,
-    getTranslations('catalog'),
-    getTranslations('store'),
-  ]);
+  const [query, t] = await Promise.all([searchParams, getTranslations('catalog')]);
   const q = queryOf(query.q);
-  const title = Array.from(q).length >= QUERY_MIN ? t('results-for', { q }) : t('search');
+  const asked = Array.from(q).length >= QUERY_MIN;
   // Result pages stay out of search engines; categories are the indexable lists.
-  return { title: `${title} | ${store('title')}`, robots: { index: false } };
+  return pageMetadata({
+    name: asked ? t('results-for', { q }) : t('search'),
+    description: asked
+      ? await seoDescription('search-results', { q })
+      : await seoDescription('search'),
+    path: asked ? `/search?${new URLSearchParams({ q }).toString()}` : '/search',
+    noindex: true,
+  });
 }
 
 export default async function SearchPage({ searchParams }: Props) {
