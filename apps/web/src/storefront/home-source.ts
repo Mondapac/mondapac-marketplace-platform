@@ -71,10 +71,10 @@ const DEFAULT_TITLE = {
 
 type Json = Readonly<Record<string, unknown>>;
 
-const isObject = (value: unknown): value is Json =>
+export const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const textOf = (value: unknown, max: number): string | undefined =>
+export const textOf = (value: unknown, max: number): string | undefined =>
   typeof value === 'string' && value.trim() !== ''
     ? Array.from(value).slice(0, max).join('')
     : undefined;
