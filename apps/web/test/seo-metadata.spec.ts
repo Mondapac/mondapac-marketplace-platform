@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
+import type { SellerShop } from '../src/storefront/types.ts';
 
 // The request: its Host header and the listed hosts (none on sample data).
 const request = vi.hoisted((): { host: string | null; listed: boolean } => ({
@@ -11,7 +12,9 @@ const request = vi.hoisted((): { host: string | null; listed: boolean } => ({
   listed: true,
 }));
 // The sample-data lock, switchable per test; the real value is true (src/storefront/source.ts).
-const lock = vi.hoisted(() => ({ sampleData: true }));
+const lock = vi.hoisted((): { sampleData: boolean; seller?: SellerShop } => ({
+  sampleData: true,
+}));
 
 vi.mock('next/headers', () => ({
   headers: () => Promise.resolve(new Headers(request.host === null ? {} : { host: request.host })),
@@ -41,6 +44,7 @@ vi.mock('../src/storefront/source.ts', async (importOriginal) => {
   const actual = await importOriginal<object>();
   const { sampleProduct } = await import('../src/storefront/sample-product.ts');
   const { sampleUnavailableProduct } = await import('../src/storefront/sample-unavailable.ts');
+  const { sampleSeller } = await import('../src/storefront/sample-seller.ts');
   return {
     ...actual,
     get SAMPLE_DATA() {
@@ -48,6 +52,7 @@ vi.mock('../src/storefront/source.ts', async (importOriginal) => {
     },
     loadProduct: (id: string) => Promise.resolve(sampleProduct(id)),
     loadUnavailableProduct: (id: string) => Promise.resolve(sampleUnavailableProduct(id)),
+    loadSeller: (slug: string) => Promise.resolve(lock.seller ?? sampleSeller(slug)),
   };
 });
 
@@ -225,6 +230,7 @@ function switchOn(): void {
 afterEach(() => {
   vi.unstubAllEnvs();
   lock.sampleData = true;
+  delete lock.seller;
   request.host = 'shop.example';
   request.listed = true;
 });
@@ -352,6 +358,28 @@ describe('head text', () => {
     expect(metadata.openGraph?.images).toEqual(
       shared === undefined ? undefined : [{ url: shared }],
     );
+  });
+});
+
+describe('a store read that does not give everything yet', () => {
+  it('keeps the seller out of the index and leaves the about text out', async () => {
+    switchOn();
+    lock.seller = {
+      id: 'new-store',
+      name: 'New Store',
+      location: 'Greater Brisbane',
+      sellingSince: 2026,
+      certificates: [],
+    };
+    const row = ROWS.find((r) => r.url === '/s/kedron')!;
+    const metadata = await row.load().then((m) =>
+      m.generateMetadata({
+        params: Promise.resolve({ slug: 'new-store' }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(metadata.robots).toEqual({ index: false, follow: true });
+    expect(metadata.description).toBe('New Store, Greater Brisbane.');
   });
 });
 

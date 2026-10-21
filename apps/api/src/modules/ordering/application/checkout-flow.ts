@@ -24,6 +24,7 @@ import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
   addShipping,
   cancelOrder,
+  parseSellerNotes,
   planOrder,
   type OrderLine,
   type OrderState,
@@ -71,6 +72,8 @@ export type StartCheckoutFailure =
     }
   /** The chosen address is not one of the customer's (unknown, removed or another's). */
   | { readonly code: 'ordering.address-not-found' }
+  /** The Market does not deliver to the chosen address's postcode (ServiceArea config). */
+  | { readonly code: 'ordering.outside-delivery-area' }
   | { readonly code: 'ordering.cart-empty' }
   | { readonly code: 'ordering.cart-not-purchasable'; readonly lineIndexes: readonly number[] }
   | { readonly code: 'ordering.check-unavailable' }
@@ -126,21 +129,25 @@ async function reserveWithRetry(
   return last;
 }
 
-/** What the customer sends to start checkout: the id of an address of their address book. */
+/**
+ * What the customer sends to start checkout: the id of an address of their address book and,
+ * optionally, a note to each seller (`{ [sellerId]: text }`, plain text, 200 characters at most).
+ */
 export interface StartCheckoutInput {
   readonly addressId: unknown;
+  readonly sellerNotes?: unknown;
 }
 
 /**
- * Reads the chosen address from the customer's address book and seals a fixed copy of it under
- * the account's key, before anything is reserved: no order is ever placed without an address.
+ * Reads the chosen address from the customer's address book and checks that the Market delivers
+ * there, before anything is reserved: no order is ever placed without an address in the
+ * delivery area.
  */
-async function sealShipTo(
+async function readShipTo(
   deps: OrderingDependencies,
   context: CallContext,
-  accountId: Id<'Account'>,
   addressId: unknown,
-): Promise<Result<string, StartCheckoutFailure>> {
+): Promise<Result<ShipTo, StartCheckoutFailure>> {
   if (addressId === undefined || addressId === null) {
     return err({ code: 'validation.failed', fields: [{ path: 'addressId', code: 'required' }] });
   }
@@ -170,14 +177,22 @@ async function sealShipTo(
     deliveryNotes: a.deliveryNotes,
     countryCode: a.countryCode,
   };
-  const sealed = await deps.shipTo.seal(context.market, accountId, shipTo);
-  // The account was erased between the read and the seal: its address is gone.
-  return sealed.ok ? ok(sealed.value) : err({ code: 'ordering.address-not-found' });
+  const delivers = await deps.shipping.deliversTo(context, a.postcode);
+  if (!delivers.ok) {
+    // A stored postcode the area check cannot read is outside every area; a failed read is not.
+    return err(
+      delivers.error.code === 'validation.failed'
+        ? { code: 'ordering.outside-delivery-area' }
+        : { code: 'ordering.check-unavailable' },
+    );
+  }
+  return delivers.value ? ok(shipTo) : err({ code: 'ordering.outside-delivery-area' });
 }
 
 /**
  * `start-checkout`: the signed-in customer's cart becomes a pending order and a hosted payment
- * page. In order: copy the chosen delivery address (customers package 2), read the cart (price and stock verdicts), plan sellers and totals, reserve the
+ * page. In order: copy the chosen delivery address (customers package 2) and check the Market
+ * delivers there, read the cart (price and stock verdicts), plan sellers and totals, reserve the
  * stock for the whole checkout (all lines or none), store the order and its Stripe idempotency
  * key, create the Checkout session, store its id. Nothing is captured here. Any failure after
  * the reservation releases it and cancels the order.
@@ -188,8 +203,12 @@ export async function startCheckout(
   accountId: Id<'Account'>,
   input: StartCheckoutInput,
 ): Promise<Result<CheckoutStarted, StartCheckoutFailure>> {
-  const shipToSealed = await sealShipTo(deps, context, accountId, input?.addressId);
-  if (!shipToSealed.ok) return shipToSealed;
+  const notes = parseSellerNotes(input?.sellerNotes);
+  if (!notes.ok) {
+    return err({ code: 'validation.failed', fields: [{ path: notes.path, code: notes.code }] });
+  }
+  const address = await readShipTo(deps, context, input?.addressId);
+  if (!address.ok) return address;
   const read = await deps.cart.checkoutLines(context);
   if (!read.ok) {
     if (read.error.code === 'cart.not-ready') {
@@ -220,6 +239,21 @@ export async function startCheckout(
     return err({ code: 'ordering.shipping-unavailable', sellerIds: priced.sellerIds });
   }
   const plan = priced.plan;
+  // A note to a seller that is no longer in the cart is dropped: the cart may have changed since
+  // the page was drawn, and the note has nobody to go to.
+  const sellerNotes = Object.fromEntries(
+    plan.sellers.flatMap(({ sellerId }) => {
+      const note = notes.notes.get(sellerId);
+      return note === undefined ? [] : [[sellerId, note] as const];
+    }),
+  );
+  // The address and the notes are sealed under the account's key before anything is reserved.
+  const shipToSealed = await deps.shipTo.seal(context.market, accountId, {
+    ...address.value,
+    ...(Object.keys(sellerNotes).length > 0 ? { sellerNotes } : {}),
+  });
+  // The account was erased between the read and the seal: its address is gone.
+  if (!shipToSealed.ok) return err({ code: 'ordering.address-not-found' });
   // The commission rate of each seller is frozen on its lines now (COM-04); no rate, no order.
   const rates = await deps.commission.commissionRates(
     context,

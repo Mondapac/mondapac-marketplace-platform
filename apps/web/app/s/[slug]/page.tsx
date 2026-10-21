@@ -29,11 +29,13 @@ export async function generateMetadata({ params }: Props) {
       description: await seoDescription('seller', {
         name: shop.name,
         location: shop.location,
-        about: shop.about,
+        // Not known yet from the store read: the description ends after the location.
+        about: shop.about ?? '',
       }),
       path,
-      // Only a seller with at least one listed product is indexed (SEO plan, decision 5).
-      noindex: shop.products.length === 0,
+      // Only a seller with at least one listed product is indexed (SEO plan, decision 5); while
+      // the read does not give the products yet, the page stays out.
+      noindex: (shop.products?.length ?? 0) === 0,
       ...(shop.logo === undefined ? {} : { image: shop.logo }),
     });
   }

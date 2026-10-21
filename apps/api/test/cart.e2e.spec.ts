@@ -17,6 +17,8 @@ import type { CartState } from '../src/modules/cart/domain/cart';
 import type { SellerMinimum } from '../src/modules/cart/domain/cart-evaluator';
 import { RATE_COUNTER_REPOSITORY } from '../src/modules/cart/application/ports/rate-counter.repository';
 import { InMemoryRateCounters } from '../src/modules/cart/application/testing/in-memory-rate-counters';
+import { SAVED_ITEM_REPOSITORY } from '../src/modules/cart/application/ports/saved-item.repository';
+import { InMemorySavedItems } from '../src/modules/cart/application/testing/in-memory-saved-items';
 import { CART_STATUS } from '../src/modules/cart/presentation/cart.controller';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
@@ -105,6 +107,7 @@ class MemoryCarts implements CartRepository {
 describe('cart routes over HTTP', () => {
   let app: NestExpressApplication | undefined;
   let carts: MemoryCarts;
+  let saved: InMemorySavedItems;
   let counters: InMemoryRateCounters;
   let clock: FixedClock;
   /** What `sellers` says about the seller's minimum order (design 6.4); reset to none per test. */
@@ -116,6 +119,10 @@ describe('cart routes over HTTP', () => {
     const facts: LineFactsSource = {
       sellerMinimums: (_c, sellerIds) =>
         Promise.resolve(new Map(sellerIds.map((sellerId) => [sellerId, sellerMinimum] as const))),
+      sellerDeliveryFees: (_c, sellerIds) =>
+        Promise.resolve(
+          new Map(sellerIds.map((sellerId) => [sellerId, money(500n, currency)] as const)),
+        ),
       evaluate: (_c, refs) =>
         Promise.resolve(
           new Map(
@@ -153,7 +160,9 @@ describe('cart routes over HTTP', () => {
           .overrideProvider(RATE_COUNTER_REPOSITORY)
           .useValue(counters)
           .overrideProvider(LINE_FACTS_SOURCE)
-          .useValue(facts),
+          .useValue(facts)
+          .overrideProvider(SAVED_ITEM_REPOSITORY)
+          .useValue(saved),
     }));
   }
 
@@ -208,6 +217,7 @@ describe('cart routes over HTTP', () => {
       subtotal: unknown;
       sellerId: string;
       minimumOrder: { state: string; minimum: unknown };
+      deliveryFee: unknown;
     }[];
     details: { fields: unknown };
   }
@@ -217,6 +227,7 @@ describe('cart routes over HTTP', () => {
     fakes.reset();
     clock = new FixedClock(START);
     carts = new MemoryCarts();
+    saved = new InMemorySavedItems();
     counters = new InMemoryRateCounters();
     sellerMinimum = { kind: 'none' };
   });
@@ -228,6 +239,8 @@ describe('cart routes over HTTP', () => {
     expect(CART_STATUS).toEqual({
       'validation.failed': 400,
       'cart.line-not-found': 404,
+      'cart.saved-not-found': 404,
+      'cart.saved-full': 422,
       'cart.offer-not-purchasable': 422,
       'cart.too-many-lines': 422,
       'conflict.stale': 409,
@@ -295,6 +308,8 @@ describe('cart routes over HTTP', () => {
         state: 'below-minimum',
         minimum: { amount: '4000', currency },
       });
+      // The seller's flat delivery fee is shown to a guest before sign-in.
+      expect(json(below).groups[0]!.deliveryFee).toEqual({ amount: '500', currency });
 
       await http()
         .post('/cart/items')
@@ -491,6 +506,63 @@ describe('cart routes over HTTP', () => {
       );
       const viewed = await http().get('/cart').set({ 'x-market-id': code, cookie: sessionCookie });
       expect(json(viewed).lineCount).toBe(1);
+    });
+
+    it('moves a line to the saved list and back for a signed-in customer only', async () => {
+      await boot(code);
+      const currency = code === 'AU' ? 'AUD' : 'JPY';
+      const { sessionCookie, csrf } = customerSession(code);
+      const read = { 'x-market-id': code, cookie: sessionCookie };
+      const write = { ...read, 'x-csrf-token': csrf };
+      await http()
+        .post('/cart/items')
+        .set(write)
+        .send({ ...line, quantity: 2 });
+      const lineId = (
+        json(await http().get('/cart').set(read)) as unknown as {
+          groups: { lines: { lineId: string }[] }[];
+        }
+      ).groups[0]!.lines[0]!.lineId;
+
+      const noToken = await http().post('/cart/saved').set(read).send({ lineId });
+      const moved = await http().post('/cart/saved').set(write).send({ lineId });
+      const list = await http().get('/cart/saved').set(read);
+      const savedId = (moved.body as { savedId: string }).savedId;
+      const guest = await http().get('/cart/saved').set({ 'x-market-id': code });
+      const stray = await http().post('/cart/saved').set(write).send({ lineId, quantity: 1 });
+
+      expect(noToken.status).toBe(403);
+      expect(moved.status).toBe(200);
+      expect(list.headers['cache-control']).toBe('no-store');
+      expect(list.body).toEqual({
+        items: [
+          {
+            savedId,
+            offerId: OFFER,
+            variantId: line.variantId,
+            savedAt: START.toString(),
+            state: 'buyable',
+            reason: null,
+            sellerId: SELLER,
+            unitPrice: { amount: '1500', currency },
+            availability: { status: 'in-stock', onlyLeft: null },
+          },
+        ],
+      });
+      expect(json(await http().get('/cart').set(read)).lineCount).toBe(0);
+      expect(guest.status).toBe(401);
+      expect(stray.status).toBe(400);
+
+      const back = await http().post(`/cart/saved/${savedId}/move-to-cart`).set(write);
+      expect(back.status).toBe(200);
+      expect(back.body).toMatchObject({ quantity: 1 });
+      expect(json(await http().get('/cart').set(read)).lineCount).toBe(1);
+
+      const gone = await http().delete(`/cart/saved/${savedId}`).set(write);
+      const bad = await http().delete('/cart/saved/nope').set(write);
+      expect(gone.status).toBe(404);
+      expect(gone.body).toEqual({ statusCode: 404, code: 'cart.saved-not-found' });
+      expect(bad.status).toBe(400);
     });
 
     it('refuses a merge with no session', async () => {

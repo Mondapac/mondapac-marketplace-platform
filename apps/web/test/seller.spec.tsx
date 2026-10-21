@@ -8,17 +8,18 @@ import { SellerPage } from '../src/seller/seller-page.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 import { SELLER_RATINGS_SHOWN } from '../src/storefront/features.ts';
 import { loadSeller } from '../src/storefront/source.ts';
-import type { SellerShop } from '../src/storefront/types.ts';
+import type { CompleteSellerShop } from '../src/storefront/types.ts';
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
-async function seller(slug: string): Promise<SellerShop> {
+/** A sample seller (no API is configured in tests, so every part is known). */
+async function seller(slug: string): Promise<CompleteSellerShop> {
   const found = await loadSeller(slug);
   if (!found) throw new Error(`no sample seller ${slug}`);
-  return found;
+  return found as CompleteSellerShop;
 }
 
 async function renderPage(slug = 'kedron', ratingsShown = false) {

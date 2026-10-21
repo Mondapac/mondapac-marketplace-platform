@@ -1,5 +1,6 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import {
@@ -21,8 +22,9 @@ export const shippingProviders: readonly FactoryProvider[] = [
   },
   {
     provide: SHIPPING_POLICY,
-    inject: [MarketRegistry],
-    useFactory: (markets: MarketRegistry): ShippingPolicy => new ConfigShippingPolicy(markets),
+    inject: [MarketRegistry, ServiceAreaDirectory],
+    useFactory: (markets: MarketRegistry, areas: ServiceAreaDirectory): ShippingPolicy =>
+      new ConfigShippingPolicy(markets, areas),
   },
   {
     provide: SELLER_DIRECTORY,

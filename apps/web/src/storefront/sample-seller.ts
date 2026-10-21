@@ -2,7 +2,7 @@ import 'server-only';
 import { SAMPLE_TERMS } from './sample-cart.ts';
 import { SAMPLE_CERTIFICATION_NAMES, SAMPLE_PRODUCTS, sampleSellerId } from './sample-catalog.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
-import type { Money, SellerCertificate, SellerShop } from './types.ts';
+import type { CompleteSellerShop, Money, SellerCertificate, SellerShop } from './types.ts';
 
 // Sample data of the seller page (approved design, seller-a-teal v9). It stands in for the seller
 // public read (profile, terms, certificates, ratings and the product list) until the backend has
@@ -211,7 +211,7 @@ export const SAMPLE_SELLER_SLUGS: readonly string[] = [
 const FIRST_LISTED = Date.UTC(2026, 6, 1);
 const DAY = 86_400_000;
 
-export function sampleSeller(slug: string): SellerShop | undefined {
+export function sampleSeller(slug: string): CompleteSellerShop | undefined {
   const summary = SAMPLE_CONTENT.sellers.find((s) => s.id === slug);
   const other = OTHERS[slug];
   const profile = PROFILES[slug] ?? other;
