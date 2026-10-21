@@ -1,6 +1,7 @@
 import { Temporal, err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, PendingEvent, Result } from '@mondapac/shared-kernel';
 import type {
+  CertificationTypeName,
   ClaimCheckUnavailable,
   ClaimEvaluator,
 } from '../../src/modules/catalog/application/ports/claim-evaluator';
@@ -107,6 +108,20 @@ export class FakeClaimEvaluator implements ClaimEvaluator {
   /** Type ids to codes for `typeCodeOf` (slice 14); `typesUnavailable` makes it unavailable. */
   readonly typeCodes = new Map<string, string>();
   typesUnavailable = false;
+
+  /** Type names for `typeNames` by code; `namesUnavailable` makes it unavailable. */
+  readonly names = new Map<string, CertificationTypeName>();
+  namesUnavailable = false;
+  readonly nameLocales: string[] = [];
+
+  typeNames(
+    _context: CallContext,
+    locale: string,
+  ): Promise<Result<ReadonlyMap<string, CertificationTypeName>, ClaimCheckUnavailable>> {
+    this.nameLocales.push(locale);
+    if (this.namesUnavailable) return Promise.resolve(err({ code: 'claim.check-unavailable' }));
+    return Promise.resolve(ok(new Map(this.names)));
+  }
 
   typeCodeOf(
     _context: CallContext,

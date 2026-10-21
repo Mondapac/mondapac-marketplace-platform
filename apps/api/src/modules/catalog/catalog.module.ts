@@ -154,6 +154,7 @@ import { ProductRevisionImageList } from './application/use-cases/product-revisi
 import { SweepOrphanImages } from './application/use-cases/sweep-orphan-images.use-case';
 import { sweepOrphanImagesJob } from './presentation/jobs/sweep-orphan-images.job';
 import { ReevaluateTags } from './application/use-cases/reevaluate-tags.use-case';
+import { OfferBadgesQuery } from './application/use-cases/offer-badges.use-case';
 import { OfferListingsQuery } from './application/use-cases/offer-listings.use-case';
 import { OfferListingsSystemQuery } from './application/use-cases/offer-listings-system.use-case';
 import { OFFER_LISTINGS_READER } from './application/ports/offer-listings.reader';
@@ -759,6 +760,13 @@ const productTypeProvider: FactoryProvider<string> = {
       policy: true,
       clock: true,
     }),
+    useCaseProvider(OfferBadgesQuery, {
+      unitOfWork: true,
+      offers: true,
+      claims: true,
+      evaluator: true,
+      policy: true,
+    }),
     useCaseProvider(PublishedProductQuery, {
       unitOfWork: true,
       publishedProductReader: true,
@@ -783,6 +791,7 @@ const productTypeProvider: FactoryProvider<string> = {
         OfferTaxCategoriesQuery,
         OfferListingsQuery,
         OfferListingsSystemQuery,
+        OfferBadgesQuery,
         PublishedProductQuery,
         PublishedProductImagesQuery,
         PendingProductRevisionsQuery,
@@ -796,6 +805,7 @@ const productTypeProvider: FactoryProvider<string> = {
         offerTaxCategories: OfferTaxCategoriesQuery,
         offerListings: OfferListingsQuery,
         offerListingsSystem: OfferListingsSystemQuery,
+        offerBadges: OfferBadgesQuery,
         publishedProduct: PublishedProductQuery,
         publishedProductImages: PublishedProductImagesQuery,
         pendingProductRevisions: PendingProductRevisionsQuery,
@@ -809,6 +819,7 @@ const productTypeProvider: FactoryProvider<string> = {
           offerTaxCategories,
           offerListings,
           offerListingsSystem,
+          offerBadges,
           publishedProduct,
           publishedProductImages,
           pendingProductRevisions,

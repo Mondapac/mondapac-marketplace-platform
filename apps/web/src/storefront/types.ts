@@ -17,6 +17,17 @@ export interface CertificationBadge {
   readonly type: string;
   /** Accessible label of the seal, e.g. "Halal certified". */
   readonly label: string;
+  // The fields below come from the live badge of the product page's read; the samples have none.
+  /** Whose certificate it is: the seller's own, or the product manufacturer's. */
+  readonly basis?: 'SELLER' | 'MANUFACTURER';
+  /** True when this is the seller's own declaration, not an outside body's certificate. */
+  readonly sellerClaim?: boolean;
+  /** The issuing body's name, when there is one. */
+  readonly issuer?: string;
+  /** ISO calendar date (`YYYY-MM-DD`) the certificate is valid until. */
+  readonly validUntil?: string;
+  /** True when the platform confirmed the certificate with its issuer. */
+  readonly verifiedWithIssuer?: boolean;
 }
 
 export interface ProductCard {

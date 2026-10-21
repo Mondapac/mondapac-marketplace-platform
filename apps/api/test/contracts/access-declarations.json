@@ -21,6 +21,7 @@
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "cart.view-saved", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "catalog.category-tree", "rule": "anonymous" },
+  { "name": "catalog.offer-badges", "rule": "anonymous" },
   { "name": "catalog.offer-listings", "rule": "anonymous" },
   { "name": "catalog.offer-listings-system", "rule": "system" },
   { "name": "catalog.offer-names-system", "rule": "system" },

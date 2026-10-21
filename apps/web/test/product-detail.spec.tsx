@@ -170,3 +170,162 @@ describe('product page on API data', () => {
     expect(screen.queryByRole('heading', { name: 'Details' })).toBeNull();
   });
 });
+
+// Certification badges: the API's `badges` are untrusted input. Each is checked field by field and
+// a malformed one is dropped whole; absent means none.
+describe('certification badges from the API', () => {
+  const GOOD = {
+    typeCode: 'halal',
+    typeName: 'Halal',
+    basis: 'SELLER',
+    sellerClaim: false,
+    issuerName: 'Brisbane Islamic Council',
+    validUntilLocalDate: '2027-03-01',
+    verifiedWithIssuer: true,
+  };
+  const withBadges = (badges: unknown, offers = TWO_SELLERS.offers): ProductDetailBody => ({
+    ...TWO_SELLERS,
+    offers: offers.map((offer, index) => (index === 0 ? { ...offer, badges } : offer)),
+  });
+  const certificationsOf = (badges: unknown) =>
+    productDetailOf(withBadges(badges), 'en', labels)!.offers[0].certifications;
+
+  it('maps a valid badge: type is the code, label is the name, the rest is kept', () => {
+    expect(certificationsOf([GOOD])).toEqual([
+      {
+        type: 'halal',
+        label: 'Halal',
+        basis: 'SELLER',
+        sellerClaim: false,
+        issuer: 'Brisbane Islamic Council',
+        validUntil: '2027-03-01',
+        verifiedWithIssuer: true,
+      },
+    ]);
+  });
+
+  it('accepts a type the page has no artwork for, and null issuer and date', () => {
+    expect(
+      certificationsOf([
+        {
+          ...GOOD,
+          typeCode: 'kosher',
+          typeName: 'Kosher',
+          issuerName: null,
+          validUntilLocalDate: null,
+        },
+      ]),
+    ).toEqual([
+      {
+        type: 'kosher',
+        label: 'Kosher',
+        basis: 'SELLER',
+        sellerClaim: false,
+        verifiedWithIssuer: true,
+      },
+    ]);
+  });
+
+  it('has none when badges are absent, not a list, or empty', () => {
+    expect(productDetailOf(TWO_SELLERS, 'en', labels)!.offers[0].certifications).toEqual([]);
+    for (const badges of [undefined, null, 'halal', {}, 3, []]) {
+      expect(certificationsOf(badges)).toEqual([]);
+    }
+  });
+
+  it.each([
+    ['a type code in the wrong shape', { typeCode: 'Halal Cert' }],
+    ['a one-letter type code', { typeCode: 'h' }],
+    ['a type code over 32 characters', { typeCode: `a${'b'.repeat(32)}` }],
+    ['an empty type name', { typeName: '' }],
+    ['a blank type name', { typeName: '   ' }],
+    ['a type name over 200 characters', { typeName: 'x'.repeat(201) }],
+    ['a type name that is not text', { typeName: 5 }],
+    ['an unknown basis', { basis: 'ADMIN' }],
+    ['a sellerClaim that is not a boolean', { sellerClaim: 'false' }],
+    ['a verifiedWithIssuer that is missing', { verifiedWithIssuer: undefined }],
+    ['an issuer name over 200 characters', { issuerName: 'x'.repeat(201) }],
+    ['an issuer name that is not text', { issuerName: 7 }],
+    ['an empty issuer name', { issuerName: '' }],
+    ['a date in another format', { validUntilLocalDate: '01/03/2027' }],
+    ['a date that is not a day', { validUntilLocalDate: '2027-02-30' }],
+    ['a date with a time', { validUntilLocalDate: '2027-03-01T00:00:00Z' }],
+    ['a date that is missing', { validUntilLocalDate: undefined }],
+  ])('drops a badge with %s whole, and keeps the valid one beside it', (_label, patch) => {
+    const other = { ...GOOD, typeCode: 'vegan', typeName: 'Vegan' };
+    expect(certificationsOf([{ ...GOOD, ...patch }, other]).map((c) => c.type)).toEqual(['vegan']);
+  });
+
+  it('drops an entry that is not an object, and keeps one badge per type', () => {
+    expect(
+      certificationsOf([null, 'halal', 4, [], GOOD, { ...GOOD, typeName: 'Halal again' }]).map(
+        (c) => c.label,
+      ),
+    ).toEqual(['Halal']);
+  });
+
+  it('keeps at most ten badges', () => {
+    const many = Array.from({ length: 15 }, (_, n) => ({ ...GOOD, typeCode: `type-${n}` }));
+    expect(certificationsOf(many)).toHaveLength(10);
+  });
+
+  it('sets the seller card line only for the seller basis and never for a seller claim', () => {
+    const certificates = (badges: unknown[]) =>
+      productDetailOf(withBadges(badges), 'en', labels)!.offers[0].seller.certificates;
+    expect(certificates([GOOD])).toEqual([{ type: 'halal', name: 'Halal' }]);
+    expect(certificates([{ ...GOOD, sellerClaim: true }])).toEqual([]);
+    expect(certificates([{ ...GOOD, basis: 'MANUFACTURER' }])).toEqual([]);
+    expect(certificates([{ ...GOOD, typeName: '' }])).toEqual([]);
+  });
+
+  describe('on the page', () => {
+    const renderOffer = (badges: unknown) => {
+      window.matchMedia = ((query: string) => ({
+        matches: query.includes('min-width: 1000px'),
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      })) as unknown as typeof window.matchMedia;
+      return render(
+        <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+          <StoreProvider>
+            <ProductPage
+              product={productDetailOf(withBadges(badges), 'en', labels)!}
+              category={undefined}
+            />
+          </StoreProvider>
+        </NextIntlClientProvider>,
+      );
+    };
+
+    it('shows the certificate, its issuer and a date in the page language', () => {
+      renderOffer([GOOD]);
+      const section = screen.getByRole('heading', { name: 'Certificates' }).closest('section')!;
+      expect(within(section).getByText('Halal')).toBeTruthy();
+      expect(
+        within(section).getByText(/Issued by Brisbane Islamic Council to Kedron Butchers/),
+      ).toBeTruthy();
+      expect(within(section).getByText('Valid until Mar 1, 2027')).toBeTruthy();
+      expect(within(section).getByText('Confirmed with the issuer')).toBeTruthy();
+      // The seal on the photo is for a certificate: it carries the type name.
+      expect(screen.getAllByRole('img', { name: 'Halal' }).length).toBeGreaterThan(0);
+    });
+
+    it("words a seller's own declaration as a declaration, with no seal", () => {
+      renderOffer([{ ...GOOD, sellerClaim: true, issuerName: null, validUntilLocalDate: null }]);
+      const section = screen.getByRole('heading', { name: 'Certificates' }).closest('section')!;
+      expect(within(section).getByText("Halal (seller's own declaration)")).toBeTruthy();
+      expect(
+        within(section).getByText(
+          /Kedron Butchers declares this themselves\. This is not a certificate/,
+        ),
+      ).toBeTruthy();
+      expect(within(section).queryByText(/Issued/)).toBeNull();
+      expect(screen.queryByRole('img', { name: 'Halal' })).toBeNull();
+    });
+
+    it('shows no Certificates section when every badge is malformed', () => {
+      renderOffer([{ ...GOOD, typeCode: 'NOPE' }]);
+      expect(screen.queryByRole('heading', { name: 'Certificates' })).toBeNull();
+    });
+  });
+});

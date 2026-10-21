@@ -36,6 +36,15 @@ const ITEM = {
   categoryIds: [CATEGORY],
   primaryImage: IMAGE,
 };
+const BADGE = {
+  typeCode: 'halal',
+  typeName: 'Halal',
+  basis: 'SELLER',
+  sellerClaim: false,
+  issuerName: 'Council',
+  validUntilLocalDate: '2027-03-01',
+  verifiedWithIssuer: true,
+};
 const ENDS = '2026-10-20T00:00:00Z';
 const PRODUCT = ITEM.productId;
 
@@ -103,6 +112,8 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
               stock: { status: 'low', onlyLeft: 2 },
             },
           ],
+          // Fields beyond the seven the route allows must never reach the body.
+          badges: [{ ...BADGE, certificateId: 'must-not-appear' }],
         },
       ],
     });
@@ -204,9 +215,11 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
               stock: { status: 'low', onlyLeft: 2 },
             },
           ],
+          badges: [BADGE],
         },
       ],
     });
+    expect(JSON.stringify(response.body)).not.toContain('must-not-appear');
     expect(JSON.stringify(response.body)).not.toContain('sellable');
     expect(JSON.stringify(response.body)).not.toMatch(/objectKey|object_key|sha256|uploader|http/);
     expect(calls).toEqual([

@@ -61,7 +61,7 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   count) and the seller's public store name and minimum order. Units without a price and Offers
   without a priced unit are left out, Offers come lowest unit price first (ties by Offer id), and at
   most 200 (Offer, Variant) keys are asked. 404 `search.product-not-found` when nothing is left; a
-  failed source or check is 503 `search.unavailable`. Adds `images` (at most 8 public photos in the published revision's order: `imageId`, `width`, `height`, `alt`). No attribute, tag or badge yet.
+  failed source or check is 503 `search.unavailable`. Adds `images` (at most 8 public photos in the published revision's order: `imageId`, `width`, `height`, `alt`). Each Offer adds `badges` (certification badges: `typeCode`, `typeName`, `basis`, `sellerClaim`, `issuerName`, `validUntilLocalDate`, `verifiedWithIssuer`), read in one call of catalog's `offerBadges` for the Offers on the page (rule anonymous, at most 20). Search decides nothing: catalog asks certification's `evaluateClaims` live in the request and copies the badge of the decision (see `catalog.offer-badges` in docs/design/domain/catalog.md, 9.1 "Offer badges"). Badges fail closed and the page does not: a badge source that fails gives `badges: []` on every Offer and a 200. No attribute or tag yet.
 - **Photos:** each item of `search/products`, `bestsellers` and `specials` has `primaryImage` (the same
   `{imageId, width, height, alt}` or `null`). The refs come from catalog's `publishedProductImages`
   (rule anonymous, published revision only, taken-down photos skipped), read for the shown items only;
