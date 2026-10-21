@@ -7,6 +7,7 @@ import { SELLERS_STORE_PROFILE_EDIT } from '../../contracts/permissions';
 import { StoreProfileSaved } from '../../domain/audit';
 import { StoreProfilePublished } from '../../domain/events';
 import { SAVE_LIMITS } from '../../domain/rate-limits';
+import { derivedId } from '../../../../platform/hashing/derived-id';
 import { parseAboutText } from '../../domain/store-about';
 import { contentOf } from '../../domain/store-profile-content';
 import { logDraftOutcome, reserveRateLimits, sellerActorOf } from '../draft/draft-support';
@@ -20,6 +21,9 @@ import {
   type StoreProfileView,
   type StoreProfileWriteFailure,
 } from '../store-profile/store-profile';
+
+/** The namespace of a store's profile aggregate id; never changed once events exist. */
+const STORE_PROFILE_AGGREGATE_NAMESPACE = 'sellers.store-profile.aggregate.v1';
 
 /** The request as the seller sends it: the version the page read and the text of each locale. */
 export interface SaveAboutInput {
@@ -173,9 +177,13 @@ export class StoreProfileSaveAbout extends UseCase<
           );
           await deps.outbox.append(context, [
             StoreProfilePublished.record({
-              // The revision id, not the seller id: the outbox key (aggregate id, version) is unique
-              // and the seller id's versions are taken by the business file's own events.
-              aggregateId: revisionId,
+              // A stable store-profile id derived from the seller id (never the seller id itself:
+              // the outbox key (aggregate id, version) is unique and the seller id's versions
+              // belong to the business file's events). The version is the revision number.
+              aggregateId: derivedId<'StoreProfile'>(
+                STORE_PROFILE_AGGREGATE_NAMESPACE,
+                owner.sellerId,
+              ),
               aggregateVersion: current + 1,
               occurredAt: now,
               payload: { sellerId: owner.sellerId, revisionId },

@@ -59,9 +59,10 @@ export const BusinessFileWithdrawn = defineEvent({
 
 /**
  * A store's public profile texts were saved and published (sellers design 7.4, 3.7; slice 12 part
- * 2). Ids only: no text, no hash. The aggregate id is the revision's id and its version the
- * revision number: the outbox key (aggregate id, version) is unique, and the seller id's own
- * versions belong to the business file's events. No consumer yet (the storefront reads the
+ * 2). Ids only: no text, no hash. The aggregate id is the store profile's own, derived from the
+ * seller id (`derivedId`, a version 7 layout id) and its version the revision number, so a consumer can
+ * order a store's events (ADR-0006 decision 3). It is not the seller id: the outbox key (aggregate
+ * id, version) is unique and the seller id's versions belong to the business file's events. No consumer yet (the storefront reads the
  * pointer in clear on every call).
  */
 export const StoreProfilePublished = defineEvent({

@@ -493,7 +493,7 @@ Exactly the columns, CHECKs, keys and indexes of ID-data 3.1 and 3.8 with the mo
 stored here; `inbox_handler_check` is `^sellers\.[a-z0-9-]+$`. Unique `(market_id, aggregate_id,
 aggregate_version)`; the claim index `(market_id, event_id) WHERE published_at IS NULL`. Aggregate
 types used (D 7.4): `seller-file`, `shop-slug`, `store-profile`, `seller-admin-settings`,
-`seller-tax-profile`. Payloads hold ids, codes, booleans and instants only (P 5.3; D 8.3); the
+`seller-tax-profile`. The `store-profile` aggregate id is a deterministic id in the version 7 layout derived from the seller id (time prefix kept, other bits from SHA-256 over a fixed namespace and the seller id; the platform accepts only version 7 aggregate ids) (the seller id itself is the aggregate id of the `seller-file` events, and the unique key does not include the aggregate type), and its version is the revision number. Payloads hold ids, codes, booleans and instants only (P 5.3; D 8.3); the
 database cannot check that. "Every outbox has the same columns" is the catalog test of P 13; this
 table is added to it. `platform.event_delivery` is unchanged: `sellers.<handler>` already fits its
 `subscriber` CHECK.

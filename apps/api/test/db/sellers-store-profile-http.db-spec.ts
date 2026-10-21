@@ -532,12 +532,21 @@ describe.each(TEST_MARKETS)('store profile over HTTP on PostgreSQL in market %s'
       expect((await http().delete('/sellers/store-profile/banner').set(headers)).status).toBe(200);
       expect(store.objects.size).toBe(0);
 
+      // A second About save (version 1 to 2) publishes a second event: it must not collide with
+      // the first on the outbox key, and both share one store-profile aggregate id.
+      const secondSave = await http()
+        .put('/sellers/store-profile/about')
+        .set(headers)
+        .send({ expectedVersion: 1, about: { [defaultLocale]: 'Family bakery, open daily.' } });
+      expect(secondSave.status).toBe(200);
+      expect(secondSave.body).toMatchObject({ version: 2 });
+
       // The text is encrypted at rest and appears in no audit row, event or outbox payload.
       const { rows: revisions } = await sql.query(
         'SELECT content_ciphertext, content_hash FROM sellers.store_profile_revisions WHERE market_id = $1 AND seller_id = $2',
         [code, sellerId],
       );
-      expect(revisions).toHaveLength(1);
+      expect(revisions).toHaveLength(2);
       expect(JSON.stringify(revisions)).not.toContain('bake bread');
       const { rows: audit } = await sql.query(
         `SELECT action, before, after FROM platform.audit_log
@@ -552,18 +561,25 @@ describe.each(TEST_MARKETS)('store profile over HTTP on PostgreSQL in market %s'
         'sellers.store-image.changed',
         'sellers.store-image.changed',
         'sellers.store-image.changed',
+        'sellers.store-profile.saved',
       ]);
       expect(audit[0]).toMatchObject({
         after: { revisionId: expect.any(String) as unknown, revisionNo: 1 },
       });
       expect(JSON.stringify(audit)).not.toContain('bake bread');
       const { rows: events } = await sql.query(
-        `SELECT aggregate_version, payload FROM sellers.outbox
-          WHERE market_id = $1 AND payload->>'sellerId' = $2 AND type = 'sellers.store-profile-published.v1'`,
+        `SELECT aggregate_id, aggregate_version, payload FROM sellers.outbox
+          WHERE market_id = $1 AND payload->>'sellerId' = $2 AND type = 'sellers.store-profile-published.v1'
+          ORDER BY aggregate_version`,
         [code, sellerId],
       );
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({ aggregate_version: 1 });
+      expect(events).toHaveLength(2);
+      expect(events.map((row: { aggregate_version: number }) => row.aggregate_version)).toEqual([
+        1, 2,
+      ]);
+      const aggregateIds = new Set(events.map((row: { aggregate_id: string }) => row.aggregate_id));
+      expect(aggregateIds.size).toBe(1);
+      expect(aggregateIds.has(sellerId)).toBe(false);
       expect(JSON.stringify(events)).not.toContain('bake bread');
     });
 
