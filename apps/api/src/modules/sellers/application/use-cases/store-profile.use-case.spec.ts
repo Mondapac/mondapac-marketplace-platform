@@ -20,6 +20,8 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { HmacRateCounterKeys } from '../../infrastructure/hmac-rate-counter-keys';
+import type { StoreImageProcessor } from '../ports/store-image-processor';
+import { SELLERS_STORE_PROFILE_VIEW } from '../../contracts/permissions';
 import { MarketConfigStoreProfileLocales } from '../../infrastructure/market-config-store-profile-locales';
 import { SharpStoreImageProcessor } from '../../infrastructure/sharp-store-image-processor';
 import { InMemoryStoreProfiles } from '../testing/in-memory-store-profiles';
@@ -79,12 +81,28 @@ function setUp() {
     },
   };
   let allowed = true;
+  // null: every key is held; a set: only these keys are (a seller who may view but not edit).
+  let held: ReadonlySet<string> | null = null;
   const authorisation: AuthorisationCheck = {
-    check: () =>
-      Promise.resolve(
-        allowed ? { allowed: true } : { allowed: false, denial: { code: 'access.denied' } },
-      ),
+    check: (_context, declaration) => {
+      const keys = declaration.rule.kind === 'permissions' ? declaration.rule.allOf : [];
+      const ok = allowed && (held === null || keys.every((key) => held!.has(key)));
+      return Promise.resolve(
+        ok ? { allowed: true } : { allowed: false, denial: { code: 'access.denied' } },
+      );
+    },
   };
+  // The real processor, counted, so a test sees that a refused request never decoded anything.
+  const real = new SharpStoreImageProcessor();
+  const imageProcessor = {
+    calls: 0,
+    busy: false,
+    process(kind, bytes) {
+      this.calls += 1;
+      if (this.busy) return Promise.resolve({ ok: false, error: { code: 'file.busy' } });
+      return real.process(kind, bytes);
+    },
+  } as StoreImageProcessor & { calls: number; busy: boolean };
   const gate = createUseCaseGate(markets, authorisation);
   const unitOfWork: UnitOfWork = { run: (_market, work) => work(), runOnce: noRunOnce };
   const localesPolicy = new MarketConfigStoreProfileLocales(markets);
@@ -111,7 +129,9 @@ function setUp() {
     audits,
     events,
     aboutCache,
+    imageProcessor,
     deny: () => void (allowed = false),
+    holdOnly: (...keys: string[]) => void (held = new Set(keys)),
     read: new StoreProfileRead(gate, reading),
     saveAbout: new StoreProfileSaveAbout(gate, {
       ...reading,
@@ -125,7 +145,7 @@ function setUp() {
     }),
     saveImage: new StoreImageSave(gate, {
       ...reading,
-      imageProcessor: new SharpStoreImageProcessor(),
+      imageProcessor,
       objectStore,
       audit,
       counters,
@@ -799,6 +819,238 @@ describe.each(MARKETS)('sellers store profile in $code (design 3.7)', (fixture) 
 
       expect(replaced).toEqual({ ok: false, error: { code: 'image.not-found' } });
       expect(crossed).toEqual(replaced);
+    });
+
+    describe('refused pictures store nothing (S2)', () => {
+      const animatedWebp = async () => {
+        const frame = (background: string) =>
+          sharp({ create: { width: 300, height: 300, channels: 3, background } })
+            .png()
+            .toBuffer();
+        return sharp([await frame('#fff'), await frame('#000')], { join: { animated: true } })
+          .webp({ loop: 0, delay: [100, 100] })
+          .toBuffer();
+      };
+      const solid = (width: number, height: number) =>
+        sharp({ create: { width, height, channels: 3, background: '#224488' } })
+          .png()
+          .toBuffer();
+
+      it.each([
+        ['12001 pixels wide', () => solid(12001, 300), 'banner', 'file.too-many-pixels'],
+        ['more than 24 million pixels', () => solid(4900, 4900), 'logo', 'file.too-many-pixels'],
+        ['an animated WebP', animatedWebp, 'logo', 'file.unsupported-type'],
+        [
+          'a GIF',
+          () => Promise.resolve(Buffer.from('GIF89a\u0001\u0000\u0001\u0000', 'latin1')),
+          'logo',
+          'file.unsupported-type',
+        ],
+        [
+          'a damaged JPEG',
+          () =>
+            Promise.resolve(
+              Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64, 7)]),
+            ),
+          'logo',
+          'file.unreadable',
+        ],
+      ])('refuses %s with no object, no row and no audit', async (_, make, kind, refusal) => {
+        const t = setUp();
+        const { context } = ownerOf(t, code);
+        const data = (await make()).toString('base64');
+
+        const result = await t.saveImage.execute(context, { kind, data });
+
+        expect(result).toEqual({ ok: false, error: { code: refusal } });
+        expect(t.objectStore.objects.size).toBe(0);
+        expect(t.storeImages.current.size).toBe(0);
+        expect(t.audits).toEqual([]);
+      });
+    });
+
+    describe('permissions (S3)', () => {
+      it('refuses every write and the own-image read without the permission: nothing decoded, stored or audited', async () => {
+        const t = setUp();
+        const { context } = ownerOf(t, code);
+        const saved = await t.saveImage.execute(context, {
+          kind: 'logo',
+          data: await picture(300, 300),
+        });
+        const id = saved.ok ? saved.value.logo!.id : '';
+        const decodedBefore = t.imageProcessor.calls;
+        const objectsBefore = t.objectStore.objects.size;
+        const auditsBefore = t.audits.length;
+        t.deny();
+
+        const refusals = [
+          await t.saveAbout.execute(context, { expectedVersion: 0, about: { [locale]: TEXT } }),
+          await t.saveImage.execute(context, { kind: 'banner', data: await picture(1600, 500) }),
+          await t.removeImage.execute(context, { kind: 'logo' }),
+          await t.readImage.execute(context, { imageId: id, size: 'small' }),
+          await t.read.execute(context, {}),
+        ];
+
+        for (const refusal of refusals) {
+          expect(refusal).toEqual({ ok: false, error: { code: 'access.denied' } });
+        }
+        expect(t.imageProcessor.calls).toBe(decodedBefore);
+        expect(t.objectStore.objects.size).toBe(objectsBefore);
+        expect(t.audits).toHaveLength(auditsBefore);
+        expect(t.storeContent.revisions.size).toBe(0);
+        expect(t.storeImages.current.size).toBe(1);
+      });
+
+      it('lets a seller who may view but not edit read, and refuses every write', async () => {
+        const t = setUp();
+        const { context } = ownerOf(t, code);
+        const saved = await t.saveImage.execute(context, {
+          kind: 'logo',
+          data: await picture(300, 300),
+        });
+        const id = saved.ok ? saved.value.logo!.id : '';
+        const decodedBefore = t.imageProcessor.calls;
+        t.holdOnly(SELLERS_STORE_PROFILE_VIEW.key);
+
+        expect(await t.read.execute(context, {})).toMatchObject({ ok: true });
+        expect(await t.readImage.execute(context, { imageId: id, size: 'small' })).toMatchObject({
+          ok: true,
+        });
+        for (const refusal of [
+          await t.saveAbout.execute(context, { expectedVersion: 0, about: { [locale]: TEXT } }),
+          await t.saveImage.execute(context, { kind: 'logo', data: await picture(300, 300) }),
+          await t.removeImage.execute(context, { kind: 'logo' }),
+        ]) {
+          expect(refusal).toEqual({ ok: false, error: { code: 'access.denied' } });
+        }
+        expect(t.imageProcessor.calls).toBe(decodedBefore);
+        expect(t.storeContent.revisions.size).toBe(0);
+        expect(t.storeImages.current.size).toBe(1);
+      });
+
+      it('refuses an unauthenticated caller, and a seller that is not approved, on remove and own-read', async () => {
+        const t = setUp();
+        const pending = ownerOf(t, code, false);
+        const anonymous = testCallContext(market(code), 'anonymous');
+        const imageId = '0199dddd-0000-7000-8000-000000000999';
+
+        expect(await t.removeImage.execute(anonymous, { kind: 'logo' })).toMatchObject({
+          ok: false,
+          error: { code: 'access.unauthenticated' },
+        });
+        expect(await t.readImage.execute(anonymous, { imageId, size: 'small' })).toMatchObject({
+          ok: false,
+          error: { code: 'access.unauthenticated' },
+        });
+        expect(await t.removeImage.execute(pending.context, { kind: 'logo' })).toEqual({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+        expect(await t.readImage.execute(pending.context, { imageId, size: 'small' })).toEqual({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+        expect(t.audits).toEqual([]);
+      });
+    });
+
+    describe('the picture rate limit (H2, S4)', () => {
+      const bad = { kind: 'avatar', data: 'AAAA' };
+
+      it('spends its own counters, not the text saves', async () => {
+        const t = setUp();
+        const { context } = ownerOf(t, code);
+
+        await t.saveImage.execute(context, { kind: 'logo', data: await picture(300, 300) });
+        await t.removeImage.execute(context, { kind: 'logo' });
+
+        expect(t.counters.countOf('store-image.account.minute')).toBe(2);
+        expect(t.counters.countOf('store-image.account.day')).toBe(2);
+        expect(t.counters.countOf('save.account.minute')).toBe(0);
+      });
+
+      it('allows 10 a minute for an account across saves and removals, then throttles both', async () => {
+        const t = setUp();
+        const { context } = ownerOf(t, code);
+        for (let i = 0; i < 5; i += 1) {
+          expect((await t.saveImage.execute(context, bad)).ok).toBe(false);
+          expect((await t.removeImage.execute(context, { kind: 'avatar' })).ok).toBe(false);
+        }
+
+        const save = await t.saveImage.execute(context, bad);
+        const remove = await t.removeImage.execute(context, { kind: 'logo' });
+
+        for (const answer of [save, remove]) {
+          expect(answer).toMatchObject({
+            ok: false,
+            error: { code: 'request.throttled', retryAfterSeconds: expect.any(Number) as unknown },
+          });
+        }
+        // The About text save has its own, larger limit and still works.
+        expect(
+          await t.saveAbout.execute(context, { expectedVersion: 0, about: { [locale]: TEXT } }),
+        ).toMatchObject({ ok: true });
+      });
+
+      it('counts per account: another account of the Market is not affected', async () => {
+        const t = setUp();
+        const first = ownerOf(t, code);
+        const second = ownerOf(t, code);
+        for (let i = 0; i < 11; i += 1) await t.saveImage.execute(first.context, bad);
+
+        expect(await t.saveImage.execute(first.context, bad)).toMatchObject({
+          error: { code: 'request.throttled' },
+        });
+        expect(await t.saveImage.execute(second.context, bad)).toMatchObject({
+          error: { code: 'validation.failed' },
+        });
+      });
+
+      it('counts per Market: the same account id in the other Market starts at zero', async () => {
+        const t = setUp();
+        const here = ownerOf(t, code);
+        const otherCode = code === 'AU' ? 'ZZ' : 'AU';
+        const sellerId = t.ids.next<'Seller'>();
+        t.profiles.put(market(otherCode), sellerId, { approved: true });
+        t.storeContent.addProfile(market(otherCode), sellerId);
+        const accountId =
+          here.context.actor.kind === 'authenticated' ? here.context.actor.accountId : null;
+        const there = testCallContext(
+          market(otherCode),
+          testAuthenticatedActor(market(otherCode), {
+            population: 'seller',
+            accountId: accountId!,
+            sessionId: t.ids.next<'Session'>(),
+            sellerId,
+          }),
+        );
+        for (let i = 0; i < 11; i += 1) await t.saveImage.execute(here.context, bad);
+
+        expect(await t.saveImage.execute(here.context, bad)).toMatchObject({
+          error: { code: 'request.throttled' },
+        });
+        expect(await t.saveImage.execute(there, bad)).toMatchObject({
+          error: { code: 'validation.failed' },
+        });
+      });
+    });
+
+    it('answers access.unavailable with a short wait when the picture pipeline is busy, and stores nothing', async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      t.imageProcessor.busy = true;
+
+      const result = await t.saveImage.execute(context, {
+        kind: 'logo',
+        data: await picture(300, 300),
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        error: { code: 'access.unavailable', retryAfterSeconds: 2 },
+      });
+      expect(t.objectStore.objects.size).toBe(0);
+      expect(t.audits).toEqual([]);
     });
 
     it('shows the logo and banner refs to the public reader, and the logo in a list read', async () => {

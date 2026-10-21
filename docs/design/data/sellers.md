@@ -438,6 +438,7 @@ One table for every limit of D 6.5 and the lookup quotas of D 7.7, in the shape 
 |---|---|---|---|
 | `slug-check.account.minute`, `slug-check.account.day` | Account id | 30 per minute; 300 per 24 h | 2 |
 | `save.account.minute`, `save.account.day` | Account id | 60 per minute; 1,000 per 24 h (`my-file.save-*`, `validate-identifier`, profile and contact saves) | 2 |
+| `store-image.account.minute`, `store-image.account.day` | Account id | 10 per minute; 100 per 24 h (store logo and banner saves and removals; slice 12 part 2) | 12b |
 | `lookup.account` | Seller-side account id | 5 new identifier values per 24 h | 4a |
 | `lookup.origin` | Origin | 30 per 24 h | 4a |
 | `lookup.market` | The Market (a constant subject) | 1,000 per 24 h; alert at 80%; the periodic job stops at 50% | 4a |

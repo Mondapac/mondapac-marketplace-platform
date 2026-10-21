@@ -203,4 +203,37 @@ describe('processImage', () => {
       'file.unsupported-type',
     );
   });
+
+  describe('the decode queue (Hassan H2)', () => {
+    it('refuses an upload past 2 running and 8 waiting, before decoding it, and recovers', async () => {
+      const bytes = await picture(600, 600, '#336699', 'jpeg');
+      const results = await Promise.all(
+        Array.from({ length: 12 }, () => processImage(bytes, LOGO)),
+      );
+
+      // Two decode at once and eight wait; the last two are refused at once.
+      expect(results.slice(0, 10).every((r) => r.ok)).toBe(true);
+      expect(results.slice(10).map((r) => (r.ok ? 'ok' : r.error.code))).toEqual([
+        'file.busy',
+        'file.busy',
+      ]);
+
+      // The queue drained: the next upload is decoded again.
+      expect((await processImage(bytes, LOGO)).ok).toBe(true);
+    });
+
+    it('answers the cheap refusals before the queue: a too large or unsupported upload is never busy', async () => {
+      const bytes = await picture(600, 600, '#336699', 'jpeg');
+      const flood = Array.from({ length: 10 }, () => processImage(bytes, LOGO));
+      const refused = await Promise.all([
+        processImage(Buffer.alloc(5 * 1024 * 1024), LOGO),
+        processImage(Buffer.from('GIF89a-not-allowed'), LOGO),
+      ]);
+      expect(refused.map((r) => (r.ok ? 'ok' : r.error.code))).toEqual([
+        'file.too-large',
+        'file.unsupported-type',
+      ]);
+      await Promise.all(flood);
+    });
+  });
 });

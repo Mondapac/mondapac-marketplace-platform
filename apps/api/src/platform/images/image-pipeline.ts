@@ -8,7 +8,9 @@ export type ImageRefusalCode =
   | 'file.too-large'
   | 'file.too-many-pixels'
   | 'file.too-small'
-  | 'file.unreadable';
+  | 'file.unreadable'
+  /** Too many pictures are being processed already: nothing was decoded, try again shortly. */
+  | 'file.busy';
 
 /**
  * One output size. `inside` fits the picture in the box without enlarging it; `cover` fills the
@@ -49,6 +51,10 @@ const MAX_SIDE = 12000;
 const MAX_PIXELS = 24_000_000;
 /** Decodes that may run at once in this process (Hassan M1). */
 const MAX_CONCURRENT = 2;
+/** Uploads that may wait for a decode slot; one more is refused before it is decoded (Hassan H2). */
+const MAX_WAITING = 8;
+/** The wait the callers announce with a busy refusal, in seconds. */
+export const IMAGE_BUSY_RETRY_SECONDS = 2;
 const ALLOWED = new Set(['jpeg', 'png', 'webp']);
 const JPEG_QUALITY = 82;
 const WHITE = '#ffffff';
@@ -70,6 +76,12 @@ function hasAllowedSignature(bytes: Buffer): boolean {
 
 let running = 0;
 const waiting: (() => void)[] = [];
+
+/** True when every slot is taken and the waiting queue is full: the next upload is refused. */
+function isSaturated(): boolean {
+  return running >= MAX_CONCURRENT && waiting.length >= MAX_WAITING;
+}
+
 async function withSlot<T>(work: () => Promise<T>): Promise<T> {
   if (running >= MAX_CONCURRENT) await new Promise<void>((resolve) => waiting.push(resolve));
   running += 1;
@@ -99,7 +111,9 @@ function boxFor(spec: RenditionSpec, width: number, height: number): { w: number
  * bounded by `limitInputPixels`, a damaged file fails (`failOn: 'error'`), an animated or
  * multi-page file is refused, orientation is applied, and each rendition is a fresh JPEG: sharp
  * writes no metadata unless asked, so EXIF, GPS, ICC profiles and embedded thumbnails of the upload
- * are gone. Transparent pixels are flattened onto white.
+ * are gone. Transparent pixels are flattened onto white. At most {@link MAX_CONCURRENT} decodes
+ * run and {@link MAX_WAITING} wait for a slot; past that the upload is refused as `file.busy`
+ * before any decoding (a flood of uploads cannot queue unbounded buffers).
  */
 export function processImage(
   bytes: Buffer,
@@ -108,6 +122,7 @@ export function processImage(
   if (bytes.length === 0) return Promise.resolve(err({ code: 'file.unreadable' }));
   if (bytes.length > spec.maxUploadBytes) return Promise.resolve(err({ code: 'file.too-large' }));
   if (!hasAllowedSignature(bytes)) return Promise.resolve(err({ code: 'file.unsupported-type' }));
+  if (isSaturated()) return Promise.resolve(err({ code: 'file.busy' }));
   return withSlot(() => decode(bytes, spec));
 }
 

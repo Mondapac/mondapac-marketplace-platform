@@ -7,7 +7,9 @@ export type StoreImageRefusalCode =
   | 'file.too-large'
   | 'file.too-many-pixels'
   | 'file.too-small'
-  | 'file.unreadable';
+  | 'file.unreadable'
+  /** Too many pictures are being processed at once; nothing was decoded. */
+  | 'file.busy';
 
 export interface ProcessedStoreRendition {
   readonly size: StoreImageSize;

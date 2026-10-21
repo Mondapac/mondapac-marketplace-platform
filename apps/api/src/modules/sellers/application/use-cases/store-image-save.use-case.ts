@@ -3,10 +3,11 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import { IMAGE_BUSY_RETRY_SECONDS } from '../../../../platform/images/image-pipeline';
 import type { ObjectStore } from '../../../../platform/storage/object-store';
 import { SELLERS_STORE_PROFILE_EDIT } from '../../contracts/permissions';
 import { StoreImageChanged } from '../../domain/audit';
-import { SAVE_LIMITS } from '../../domain/rate-limits';
+import { STORE_IMAGE_LIMITS } from '../../domain/rate-limits';
 import {
   isStoreImageKind,
   STORE_IMAGE_MAX_UPLOAD_BYTES,
@@ -33,7 +34,9 @@ export interface StoreImageSaveInput {
 }
 
 export type StoreImageSaveFailure =
-  StoreProfileWriteFailure | { readonly code: StoreImageRefusalCode };
+  | StoreProfileWriteFailure
+  | { readonly code: Exclude<StoreImageRefusalCode, 'file.busy'> }
+  | { readonly code: 'access.unavailable'; readonly retryAfterSeconds: number };
 
 export interface StoreImageSaveDependencies extends StoreProfileReadDependencies {
   readonly imageProcessor: StoreImageProcessor;
@@ -103,7 +106,7 @@ export class StoreImageSave extends UseCase<
     const fail = (path: string, code: string): Result<never, StoreImageSaveFailure> =>
       err({ code: 'validation.failed', fields: [{ path, code }] });
 
-    const reserved = await reserveRateLimits(deps, context, SAVE_LIMITS, owner.accountId);
+    const reserved = await reserveRateLimits(deps, context, STORE_IMAGE_LIMITS, owner.accountId);
     if (!reserved.ok) return reserved;
 
     const kind = input.kind;
@@ -120,7 +123,12 @@ export class StoreImageSave extends UseCase<
 
     const bytes = Buffer.from(data, 'base64');
     const processed = await deps.imageProcessor.process(kind, bytes);
-    if (!processed.ok) return err(processed.error);
+    if (!processed.ok) {
+      // Too many pictures are in flight: a 503 with a short wait, before anything is stored.
+      return processed.error.code === 'file.busy'
+        ? err({ code: 'access.unavailable', retryAfterSeconds: IMAGE_BUSY_RETRY_SECONDS })
+        : err({ code: processed.error.code });
+    }
 
     const imageId = deps.ids.next<'StoreImage'>();
     const renditions: StoredStoreRendition[] = [];

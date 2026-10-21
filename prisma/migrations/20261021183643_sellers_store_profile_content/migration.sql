@@ -125,3 +125,17 @@ ALTER TABLE "sellers"."store_image_renditions"
 GRANT SELECT, INSERT ON TABLE "sellers"."store_profile_revisions" TO "mondapac_app";
 GRANT SELECT, INSERT, DELETE ON TABLE "sellers"."store_images" TO "mondapac_app";
 GRANT SELECT, INSERT ON TABLE "sellers"."store_image_renditions" TO "mondapac_app";
+
+-- Hassan H2: the pictures have their own rate counters (10 per minute and 100 per 24 h per
+-- account, one pair shared by saves and removals). The kinds are a closed CHECK list (data design
+-- 3.11), so the constraint of the file-details migration is replaced by the same list plus the two
+-- new kinds. rate_counters is small and pruned, so the full check is cheap.
+ALTER TABLE "sellers"."rate_counters" DROP CONSTRAINT "rate_counters_kind_check";
+ALTER TABLE "sellers"."rate_counters"
+  ADD CONSTRAINT "rate_counters_kind_check" CHECK ("kind" IN (
+    'slug-check.account.minute', 'slug-check.account.day',
+    'save.account.minute', 'save.account.day',
+    'store-image.account.minute', 'store-image.account.day',
+    'lookup.account', 'lookup.origin', 'lookup.market', 'lookup.admin',
+    'submit.file', 'withdraw.file', 'bulk.admin',
+    'reviewer-notice.seller', 'reviewer-notice.market'));

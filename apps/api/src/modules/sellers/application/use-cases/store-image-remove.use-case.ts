@@ -5,7 +5,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { ObjectStore } from '../../../../platform/storage/object-store';
 import { SELLERS_STORE_PROFILE_EDIT } from '../../contracts/permissions';
 import { StoreImageChanged } from '../../domain/audit';
-import { SAVE_LIMITS } from '../../domain/rate-limits';
+import { STORE_IMAGE_LIMITS } from '../../domain/rate-limits';
 import { isStoreImageKind } from '../../domain/store-image';
 import { logDraftOutcome, reserveRateLimits, sellerActorOf } from '../draft/draft-support';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
@@ -80,7 +80,7 @@ export class StoreImageRemove extends UseCase<
     const { market } = context;
     const { deps } = this;
 
-    const reserved = await reserveRateLimits(deps, context, SAVE_LIMITS, owner.accountId);
+    const reserved = await reserveRateLimits(deps, context, STORE_IMAGE_LIMITS, owner.accountId);
     if (!reserved.ok) return reserved;
     const kind = input.kind;
     if (!isStoreImageKind(kind)) {
