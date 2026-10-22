@@ -3,6 +3,8 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import type {
   BehaviourEventRecord,
   BehaviourEventRepository,
+  BehaviourSubject,
+  RecentViews,
 } from '../application/ports/behaviour-event.repository';
 import type { BehaviourFacts } from '../domain/behaviour-event';
 
@@ -42,6 +44,42 @@ export class PrismaBehaviourEventRepository implements BehaviourEventRepository 
         occurredAt: toDate(event.occurredAt),
       },
     });
+  }
+
+  async recentViews(
+    market: MarketContext,
+    subject: BehaviourSubject,
+    limit: number,
+  ): Promise<RecentViews> {
+    const tx = this.prisma.tx(market);
+    const who =
+      subject.kind === 'account'
+        ? { accountId: subject.accountId }
+        : { guestHash: subject.guestHash };
+    // One group per id with its latest view, newest first (ties by id, so the order is stable).
+    // The subject's rows come through the (market, subject, occurred_at) index.
+    const products = await tx.engagementBehaviourEvent.groupBy({
+      by: ['productId'],
+      where: { marketId: market.marketId, ...who, kind: 'product-viewed' },
+      _max: { occurredAt: true },
+      orderBy: [{ _max: { occurredAt: 'desc' } }, { productId: 'asc' }],
+      take: limit,
+    });
+    const categories = await tx.engagementBehaviourEvent.groupBy({
+      by: ['categoryId'],
+      where: { marketId: market.marketId, ...who, kind: 'category-viewed' },
+      _max: { occurredAt: true },
+      orderBy: [{ _max: { occurredAt: 'desc' } }, { categoryId: 'asc' }],
+      take: limit,
+    });
+    return {
+      productIds: products.flatMap((row) =>
+        row.productId === null ? [] : [row.productId as Id<'Product'>],
+      ),
+      categoryIds: categories.flatMap((row) =>
+        row.categoryId === null ? [] : [row.categoryId as Id<'Category'>],
+      ),
+    };
   }
 
   async deleteForAccount(market: MarketContext, accountId: Id<'Account'>): Promise<number> {

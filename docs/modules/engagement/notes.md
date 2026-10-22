@@ -43,6 +43,28 @@ what it records through methods it will add to `ENGAGEMENT_FACADE`.
   switch; for account deletion (customers package 5), which does not exist yet.
 - No permission key, no domain event, no outbox row.
 
+## Package 1d-1: recently viewed and "for you"
+
+- Facade `ENGAGEMENT_FACADE.recentViews(context, { globalPrivacyControl, consent, guestToken })`:
+  the subject's distinct viewed product ids and category ids, newest first, at most 50 of each;
+  ids only. The subject is the context's customer account or the guest cookie's token (hashed
+  here), never a request field, always inside the call's Market. Empty (and nothing read) with
+  `Sec-GPC: 1`, with the customer's switch off, and for a guest without `Engagement-Consent:
+  granted` or a well-formed cookie. Reads only: no event, no token, no cookie. Two use cases
+  (`engagement.recent-views`, `own-resources`; `engagement.recent-views-guest`, `anonymous`), chosen
+  by the actor. `recentViewsRequestOf(headers, marketId)` (contracts) reads the three request
+  signals the way the recording route does.
+- The index `(market_id, account_id | guest_hash, occurred_at DESC)` of package 1a serves the read
+  (checked by `EXPLAIN` in the DB spec); no migration.
+- The two routes live in `search` (the summaries come from its read model, and `engagement` cannot
+  depend on `search`): `GET /engagement/recommendations/recently-viewed` and `GET /search/for-you`,
+  both `?limit=1..24`, customer route population with `@ReadsSession`, `no-store`, no cookie ever set,
+  extended or cleared. See `docs/modules/search/search.md`.
+- Certification is never a signal. No tag is read. A category counts as certified when a published
+  claim policy row of certification names it with a basis other than `NOT_APPLICABLE`
+  (`CERTIFICATION_FACADE.certifiedCategoryIds`); those categories are left out of "for you".
+  Subcategories of a certified category are not followed yet.
+
 ## Privacy impact note (PIA)
 
 Owner decisions 4 and 5 of 2026-10-18; Australian Privacy Principles (APP 1, 3, 5, 6, 11).

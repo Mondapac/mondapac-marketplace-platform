@@ -22,6 +22,8 @@ import {
 } from './testing/in-memory-engagement';
 import { ForgetAccount } from './use-cases/forget-account.use-case';
 import { PurgeExpiredEvents } from './use-cases/purge-expired-events.use-case';
+import { RecentViewsOfGuest } from './use-cases/recent-views-guest.use-case';
+import { RecentViewsOfCustomer } from './use-cases/recent-views.use-case';
 import { RecordEvent } from './use-cases/record-event.use-case';
 import { RecordGuestEvent } from './use-cases/record-guest-event.use-case';
 import { SetPersonalization } from './use-cases/set-personalization.use-case';
@@ -84,6 +86,8 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
     set: SetPersonalization;
     purge: PurgeExpiredEvents;
     forget: ForgetAccount;
+    recent: RecentViewsOfCustomer;
+    recentGuest: RecentViewsOfGuest;
   };
 
   beforeEach(() => {
@@ -106,6 +110,8 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
       set: new SetPersonalization(gate, deps),
       purge: new PurgeExpiredEvents(gate, deps),
       forget: new ForgetAccount(gate, deps),
+      recent: new RecentViewsOfCustomer(gate, deps),
+      recentGuest: new RecentViewsOfGuest(gate, deps),
     };
   });
 
@@ -348,7 +354,11 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
       await uc.record.execute(bob, { event: viewed, ...quiet });
       await uc.set.execute(alice, { enabled: false });
       await uc.set.execute(alice, { enabled: true });
-      const facade = new EngagementFacadeImplementation({ forgetAccount: uc.forget });
+      const facade = new EngagementFacadeImplementation({
+        forgetAccount: uc.forget,
+        recentViewsOfCustomer: uc.recent,
+        recentViewsOfGuest: uc.recentGuest,
+      });
 
       expect(await facade.forgetAccount(alice, ALICE)).toMatchObject({ ok: false });
       expect(await facade.forgetAccount(system, ALICE)).toEqual({ ok: true, value: { events: 0 } });
@@ -364,6 +374,182 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
         ok: true,
         value: { recorded: true },
       });
+    });
+  });
+  describe('recent views (personalization 1d-1)', () => {
+    const product = (n: number) => id<'Product'>(0x1100 + n);
+    const category = (n: number) => id<'Category'>(0x1200 + n);
+    const viewProduct = (n: number) => ({ kind: 'product-viewed', productId: product(n) });
+    const viewCategory = (n: number) => ({ kind: 'category-viewed', categoryId: category(n) });
+    const read = { globalPrivacyControl: false, consent: false, guestToken: null };
+    const EMPTY = { ok: true, value: { productIds: [], categoryIds: [] } };
+    const facade = () =>
+      new EngagementFacadeImplementation({
+        forgetAccount: uc.forget,
+        recentViewsOfCustomer: uc.recent,
+        recentViewsOfGuest: uc.recentGuest,
+      });
+    const record = async (who: CallContextLike, ...bodies: Record<string, unknown>[]) => {
+      for (const event of bodies) {
+        clock.set(clock.now().add({ seconds: 1 }));
+        await uc.record.execute(who, { event, ...quiet });
+      }
+    };
+    type CallContextLike = typeof alice;
+
+    it("answers a customer's distinct ids, newest view first, ids only", async () => {
+      await record(
+        alice,
+        viewProduct(1),
+        viewProduct(2),
+        viewCategory(1),
+        viewProduct(1),
+        viewCategory(2),
+        { kind: 'search-performed', query: 'lamb' },
+        { kind: 'added-to-cart', offerId: OFFER, variantId: VARIANT },
+      );
+
+      expect(await facade().recentViews(alice, read)).toEqual({
+        ok: true,
+        value: {
+          productIds: [product(1), product(2)],
+          categoryIds: [category(2), category(1)],
+        },
+      });
+    });
+
+    it('answers at most 50 of each', async () => {
+      for (let n = 0; n < 55; n += 1) await record(alice, viewProduct(n), viewCategory(n));
+
+      const result = await facade().recentViews(alice, read);
+
+      expect(result.ok && result.value.productIds).toHaveLength(50);
+      expect(result.ok && result.value.categoryIds).toHaveLength(50);
+      expect(result.ok && result.value.productIds[0]).toBe(product(54));
+    });
+
+    it('is empty with Global Privacy Control, and reads nothing', async () => {
+      await record(alice, viewProduct(1));
+
+      expect(await facade().recentViews(alice, { ...read, globalPrivacyControl: true })).toEqual(
+        EMPTY,
+      );
+    });
+
+    it('is empty with the customer switch off, and again with it on after a new view', async () => {
+      await record(alice, viewProduct(1));
+      await uc.set.execute(alice, { enabled: false });
+      expect(await facade().recentViews(alice, read)).toEqual(EMPTY);
+
+      await uc.set.execute(alice, { enabled: true });
+      expect(await facade().recentViews(alice, read)).toEqual(EMPTY);
+      await record(alice, viewProduct(2));
+      expect(await facade().recentViews(alice, read)).toEqual({
+        ok: true,
+        value: { productIds: [product(2)], categoryIds: [] },
+      });
+    });
+
+    it('checks the switch on read: events that still exist are not answered when it is off', async () => {
+      await record(alice, viewProduct(1), viewCategory(1));
+      // The switch row says off while the events are still there (a write racing the switch,
+      // or a deletion that failed): the read itself must refuse them.
+      await settings.save(market, {
+        id: id<'PersonalizationSetting'>(0x7001),
+        accountId: ALICE,
+        enabled: false,
+        changedAt: T0,
+        createdAt: T0,
+      });
+      expect(events.rows).toHaveLength(2);
+
+      expect(await facade().recentViews(alice, read)).toEqual(EMPTY);
+    });
+
+    it('never mixes customers, and takes the subject from the context, not the request', async () => {
+      await record(alice, viewProduct(1));
+      await record(bob, viewProduct(2));
+
+      expect(await facade().recentViews(bob, { ...read, guestToken: 'g'.padEnd(43, '0') })).toEqual(
+        { ok: true, value: { productIds: [product(2)], categoryIds: [] } },
+      );
+    });
+
+    it('answers a guest only with consent, a well-formed token and no Global Privacy Control', async () => {
+      const first = await uc.recordGuest.execute(anonymous, {
+        event: viewProduct(1),
+        token: null,
+        ...consented,
+      });
+      const token =
+        first.ok && first.value.cookie?.action === 'set' ? first.value.cookie.token : '';
+      const guest = { globalPrivacyControl: false, consent: true, guestToken: token };
+
+      expect(await facade().recentViews(anonymous, guest)).toEqual({
+        ok: true,
+        value: { productIds: [product(1)], categoryIds: [] },
+      });
+      expect(await facade().recentViews(anonymous, { ...guest, consent: false })).toEqual(EMPTY);
+      expect(
+        await facade().recentViews(anonymous, { ...guest, globalPrivacyControl: true }),
+      ).toEqual(EMPTY);
+      expect(await facade().recentViews(anonymous, { ...guest, guestToken: null })).toEqual(EMPTY);
+      expect(
+        await facade().recentViews(anonymous, { ...guest, guestToken: 'not a token' }),
+      ).toEqual(EMPTY);
+      // Reading records nothing and issues no token.
+      expect(events.rows).toHaveLength(1);
+    });
+
+    it('keeps a guest apart from other guests', async () => {
+      const one = await uc.recordGuest.execute(anonymous, {
+        event: viewProduct(1),
+        token: null,
+        ...consented,
+      });
+      const two = await uc.recordGuest.execute(anonymous, {
+        event: viewProduct(2),
+        token: null,
+        ...consented,
+      });
+      const tokenOf = (r: typeof one) =>
+        r.ok && r.value.cookie?.action === 'set' ? r.value.cookie.token : '';
+
+      expect(
+        await facade().recentViews(anonymous, {
+          globalPrivacyControl: false,
+          consent: true,
+          guestToken: tokenOf(two),
+        }),
+      ).toEqual({ ok: true, value: { productIds: [product(2)], categoryIds: [] } });
+      expect(tokenOf(one)).not.toBe(tokenOf(two));
+    });
+
+    it('never reads another Market, for a customer or a guest', async () => {
+      const elsewhere = as('customer', ALICE, other);
+      const outside = testCallContext(other, 'anonymous');
+      await record(elsewhere, viewProduct(7));
+      const guestRow = await uc.recordGuest.execute(outside, {
+        event: viewProduct(8),
+        token: null,
+        ...consented,
+      });
+      const token =
+        guestRow.ok && guestRow.value.cookie?.action === 'set' ? guestRow.value.cookie.token : '';
+
+      expect(await facade().recentViews(alice, read)).toEqual(EMPTY);
+      expect(
+        await facade().recentViews(anonymous, {
+          globalPrivacyControl: false,
+          consent: true,
+          guestToken: token,
+        }),
+      ).toEqual(EMPTY);
+    });
+
+    it('refuses a seller and the system actor (fail closed)', async () => {
+      expect(await facade().recentViews(as('seller', ALICE), read)).toMatchObject({ ok: false });
+      expect(await facade().recentViews(system, read)).toMatchObject({ ok: false });
     });
   });
 });
