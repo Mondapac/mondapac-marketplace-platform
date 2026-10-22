@@ -1,4 +1,4 @@
-import { Controller, Get, Header, HttpException, Logger, Query } from '@nestjs/common';
+import { Controller, Get, Header, Logger, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiOkResponse,
@@ -19,44 +19,12 @@ import {
 } from '../application/use-cases/list-bestsellers.use-case';
 import { ListSpecials } from '../application/use-cases/list-specials.use-case';
 import { ShelfPageBody, SpecialsPageBody } from './search.dto';
-
-const ALLOWED = ['category', 'limit'] as const;
-const WHOLE_NUMBER = /^[0-9]{1,6}$/u;
-
-const fail = (status: number, code: string, details?: object): HttpException =>
-  new HttpException({ statusCode: status, code, ...(details ? { details } : {}) }, status);
+import { fail, shelfRequestOf } from './shelf-request';
 
 const money = (value: Money) => ({ amount: value.amount.toString(), currency: value.currency });
 
-/** The query string as a shelf request; anything else is `validation.failed` (400). */
-function requestOf(query: Record<string, unknown>): ShelfRequest {
-  const fields = Object.keys(query)
-    .filter((key) => !(ALLOWED as readonly string[]).includes(key))
-    .sort()
-    .slice(0, 10)
-    .map((key) => ({
-      path: Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�'),
-      code: 'unknown-field',
-    }));
-  const text = (name: (typeof ALLOWED)[number]): string | undefined => {
-    const value = query[name];
-    if (value === undefined) return undefined;
-    if (typeof value !== 'string') {
-      fields.push({ path: name, code: 'type' });
-      return undefined;
-    }
-    return value;
-  };
-  const category = text('category');
-  const limitText = text('limit');
-  let limit: number | undefined;
-  if (limitText !== undefined) {
-    if (WHOLE_NUMBER.test(limitText)) limit = Number(limitText);
-    else fields.push({ path: 'limit', code: 'range' });
-  }
-  if (fields.length > 0) throw fail(400, 'validation.failed', { fields });
-  return { category, limit };
-}
+const requestOf = (query: Record<string, unknown>): ShelfRequest =>
+  shelfRequestOf(query, ['category', 'limit']);
 
 /**
  * The storefront's product shelves (storefront reads package): best sellers and specials. No

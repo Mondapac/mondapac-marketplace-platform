@@ -61,6 +61,20 @@ export class PrismaShelfDocumentsReader implements ShelfDocumentsReader {
     return rows.map(hitOf);
   }
 
+  async byProductIds(
+    market: MarketContext,
+    productIds: readonly Id<'Product'>[],
+    perProduct: number,
+  ): Promise<readonly OfferHit[]> {
+    // One indexed query per product (at most 50): a `take` over all of them would cut the
+    // products that sort last. They run in the caller's unit, one after the other.
+    const hits: OfferHit[] = [];
+    for (const productId of new Set(productIds)) {
+      hits.push(...(await this.byProductId(market, productId, perProduct)));
+    }
+    return hits;
+  }
+
   async browseAll(market: MarketContext, limit: number): Promise<readonly OfferHit[]> {
     const rows = await this.prisma.tx(market).searchOfferDocument.findMany({
       where: { marketId: market.marketId },

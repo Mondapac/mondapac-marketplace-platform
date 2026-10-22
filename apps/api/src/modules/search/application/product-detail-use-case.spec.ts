@@ -72,6 +72,9 @@ class MemoryShelves implements ShelfDocumentsReader {
         .slice(0, limit),
     );
   }
+  byProductIds() {
+    return Promise.resolve([]);
+  }
   browseAll() {
     return Promise.resolve([]);
   }
