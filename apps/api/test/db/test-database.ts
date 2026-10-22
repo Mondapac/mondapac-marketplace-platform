@@ -68,7 +68,9 @@ function exported(
     | 'TEST_CERT_CLAIMS_CORE_DATABASE_URL'
     | 'TEST_CERT_CLAIMS_CORE_OWNER_DATABASE_URL'
     | 'TEST_STORE_PROFILE_DATABASE_URL'
-    | 'TEST_STORE_PROFILE_OWNER_DATABASE_URL',
+    | 'TEST_STORE_PROFILE_OWNER_DATABASE_URL'
+    | 'TEST_CERTIFIED_CATEGORIES_DATABASE_URL'
+    | 'TEST_CERTIFIED_CATEGORIES_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -292,4 +294,16 @@ export function storeProfileTestDatabaseUrl(): string {
 
 export function storeProfileOwnerTestDatabaseUrl(): string {
   return exported('TEST_STORE_PROFILE_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that certification-certified-categories.db-spec.ts reads whole Markets of policy rows
+ * in (global-setup.ts), as the application login and as its owner.
+ */
+export function certifiedCategoriesTestDatabaseUrl(): string {
+  return exported('TEST_CERTIFIED_CATEGORIES_DATABASE_URL');
+}
+
+export function certifiedCategoriesOwnerTestDatabaseUrl(): string {
+  return exported('TEST_CERTIFIED_CATEGORIES_OWNER_DATABASE_URL');
 }

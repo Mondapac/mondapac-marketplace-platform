@@ -26,6 +26,12 @@ const PAGE = {
       name: 'Halal sausages',
       shortText: null,
       categoryIds: [CATEGORY],
+      primaryImage: {
+        imageId: id<'ProductImage'>(0x701),
+        width: 1600,
+        height: 1200,
+        alt: 'Halal sausages',
+      },
     },
   ],
   page: 1,
@@ -90,6 +96,41 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
     });
   });
 
+  it('passes a store address, alone or with a category, and answers the photo of each item', async () => {
+    const alone = await get('?store=kedron-halal&page=2');
+    const combined = await get(`?store=kedron-halal&category=${CATEGORY}`);
+
+    expect(alone.status).toBe(200);
+    expect(combined.status).toBe(200);
+    expect((alone.body as typeof PAGE).items[0]?.primaryImage).toEqual(PAGE.items[0]?.primaryImage);
+    expect(calls.map((call) => call.input)).toEqual([
+      { store: 'kedron-halal', page: 2 },
+      { store: 'kedron-halal', category: CATEGORY },
+    ]);
+    expect(calls.every((call) => call.actor === 'anonymous')).toBe(true);
+  });
+
+  it('refuses a repeated or bracketed store before the use case', async () => {
+    for (const query of ['?store=a-b&store=c-d', '?store[a]=1']) {
+      const response = await get(query);
+      expect(response.status).toBe(400);
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it('maps a use case refusal of the store to validation.failed 400', async () => {
+    next = err({ code: 'validation.failed', fields: [{ path: 'store', code: 'with-text' }] });
+
+    const response = await get('?q=tea&store=kedron-halal');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      statusCode: 400,
+      code: 'validation.failed',
+      details: { fields: [{ path: 'store', code: 'with-text' }] },
+    });
+  });
+
   it('refuses the market-less request before the use case', async () => {
     const response = await request(app.getHttpServer()).get('/search/products?q=tea');
 
@@ -143,4 +184,28 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
     expect(refused.body).toMatchObject({ statusCode: 429, code: 'request.throttled' });
     expect(calls).toHaveLength(limit);
   }, 60_000);
+});
+
+describe.each(TEST_MARKETS)('product search with the real use case in market %s', (code) => {
+  let app: NestExpressApplication;
+  beforeEach(async () => {
+    ({ app } = await createTestApp({}));
+  });
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('refuses a text query together with a store as 400 validation.failed, before any read', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/search/products?q=tea&store=kedron-halal')
+      .set({ 'x-market-id': code });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      statusCode: 400,
+      code: 'validation.failed',
+      details: { fields: [{ path: 'store', code: 'with-text' }] },
+    });
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
 });

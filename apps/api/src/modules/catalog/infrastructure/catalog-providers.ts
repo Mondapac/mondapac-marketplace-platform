@@ -146,6 +146,11 @@ import {
   type PublishedProductReader,
 } from '../application/ports/published-product.reader';
 import { PrismaPublishedProductReader } from './prisma-published-product.reader';
+import {
+  PUBLISHED_IMAGES_READER,
+  type PublishedImagesReader,
+} from '../application/ports/published-images.reader';
+import { PrismaPublishedImagesReader } from './prisma-published-images.reader';
 
 const CATALOG_SECRET = Symbol('CATALOG_SECRET');
 
@@ -189,6 +194,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): PublishedProductReader =>
       new PrismaPublishedProductReader(prisma),
+  },
+  {
+    provide: PUBLISHED_IMAGES_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PublishedImagesReader =>
+      new PrismaPublishedImagesReader(prisma),
   },
   // The fan-out work queue (design 5.4; data design 3.18).
   {

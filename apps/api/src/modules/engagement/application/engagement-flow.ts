@@ -2,12 +2,13 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import {
   readBehaviour,
+  RECENT_VIEWS_LIMIT,
   retentionEdges,
   type BehaviourFacts,
   type FieldProblem,
 } from '../domain/behaviour-event';
 import type { EngagementDependencies } from './engagement-dependencies';
-import type { BehaviourSubject } from './ports/behaviour-event.repository';
+import type { BehaviourSubject, RecentViews } from './ports/behaviour-event.repository';
 import type { PersonalizationSettingRecord } from './ports/personalization-setting.repository';
 
 // Behaviour capture (personalization package 1a). The storefront reports what a shopper viewed,
@@ -55,6 +56,23 @@ export type PersonalizationFailure =
       readonly code: 'validation.failed';
       readonly fields: readonly { readonly path: string; readonly code: string }[];
     };
+
+/**
+ * What a recent-views read is asked for besides the caller: the browser's privacy signals and,
+ * for a guest, the raw token of the engagement guest cookie. A signed-in customer's token (and
+ * consent header) are ignored: the account and its switch decide.
+ */
+export interface RecentViewsInput {
+  readonly globalPrivacyControl: boolean;
+  /** Whether the storefront says the guest accepted the behaviour cookie. */
+  readonly consent: boolean;
+  /** The raw token of the engagement guest cookie; null when there is none. */
+  readonly guestToken: string | null;
+}
+
+export type RecentViewsFailure = { readonly code: 'access.denied' };
+
+const NO_VIEWS: RecentViews = { productIds: [], categoryIds: [] };
 
 /** One settings row per account: a first write and a concurrent one must not both insert. */
 const SERIAL = { isolation: 'serializable' } as const;
@@ -142,6 +160,66 @@ export async function recordGuestEvent(
         cookie: issued === null ? null : { action: 'set', token: issued.token },
       });
     },
+  );
+}
+
+/**
+ * A signed-in customer's recent views: distinct product and category ids, newest first, at most
+ * 50 of each. Empty with Global Privacy Control or when the customer switched personalization
+ * off (nothing is read then). Reads only; never records, never touches a cookie.
+ */
+export async function recentViewsOfCustomer(
+  deps: EngagementDependencies,
+  context: CallContext,
+  input: RecentViewsInput,
+): Promise<Result<RecentViews, RecentViewsFailure>> {
+  const accountId = customerOf(context);
+  if (accountId === null) return err({ code: 'access.denied' });
+  if (input.globalPrivacyControl) return ok(NO_VIEWS);
+  return deps.unitOfWork.run<RecentViews, RecentViewsFailure>(
+    context.market,
+    async () => {
+      const setting = await deps.settings.find(context.market, accountId);
+      if (!viewOf(setting).enabled) return ok(NO_VIEWS);
+      return ok(
+        await deps.events.recentViews(
+          context.market,
+          { kind: 'account', accountId },
+          RECENT_VIEWS_LIMIT,
+        ),
+      );
+    },
+    { readOnly: true },
+  );
+}
+
+/**
+ * A guest's recent views, under the hash of the engagement guest cookie. Empty without
+ * `Engagement-Consent: granted`, with Global Privacy Control, or without a well-formed cookie
+ * (nothing is read then). Reads only: no token is issued and no cookie is set, extended or
+ * cleared.
+ */
+export async function recentViewsOfGuest(
+  deps: EngagementDependencies,
+  context: CallContext,
+  input: RecentViewsInput,
+): Promise<Result<RecentViews, RecentViewsFailure>> {
+  if (input.globalPrivacyControl || !input.consent || input.guestToken === null) {
+    return ok(NO_VIEWS);
+  }
+  const guestHash = deps.guestTokens.hashOf(input.guestToken);
+  if (guestHash === null) return ok(NO_VIEWS);
+  return deps.unitOfWork.run<RecentViews, RecentViewsFailure>(
+    context.market,
+    async () =>
+      ok(
+        await deps.events.recentViews(
+          context.market,
+          { kind: 'guest', guestHash },
+          RECENT_VIEWS_LIMIT,
+        ),
+      ),
+    { readOnly: true },
   );
 }
 

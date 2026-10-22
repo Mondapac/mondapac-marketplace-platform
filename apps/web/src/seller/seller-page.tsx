@@ -5,6 +5,7 @@ import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import type { SellerShop } from '../storefront/types.ts';
 import { AboutPane, CertificatesPane } from './seller-panes.tsx';
 import { ProductsPane } from './seller-products.tsx';
+import { StoreProductsPane } from './store-products-pane.tsx';
 import { SellerHead } from './seller-head.tsx';
 
 // The seller page (approved design v9, `/s/<slug>`): the header card, then the Products, About
@@ -22,10 +23,10 @@ export function SellerPage({
 }) {
   const t = useTranslations('seller');
   // A part the seller read does not know yet has no tab (never "no products" or "no certificates").
-  const { products, certificates } = shop;
+  const { products, storeProducts, certificates } = shop;
   const tabs = ALL_TABS.filter(
     (key) =>
-      (key !== 'products' || products !== undefined) &&
+      (key !== 'products' || products !== undefined || storeProducts !== undefined) &&
       (key !== 'certificates' || certificates !== undefined),
   );
   const [tab, setTab] = useState<Tab>(tabs[0] ?? 'about');
@@ -33,7 +34,9 @@ export function SellerPage({
   const list = useRef<HTMLDivElement>(null);
   const label = (key: Tab) =>
     key === 'products'
-      ? t('products-tab', { count: products?.length ?? 0 })
+      ? products === undefined
+        ? t('products-tab-plain')
+        : t('products-tab', { count: products.length })
       : t(key === 'about' ? 'about-tab' : 'certificates-tab');
 
   // Arrow keys, Home and End move between the tabs and select them (automatic activation).
@@ -58,6 +61,8 @@ export function SellerPage({
   const pane =
     tab === 'products' && products !== undefined ? (
       <ProductsPane shop={{ ...shop, products, categories: shop.categories ?? [] }} />
+    ) : tab === 'products' && storeProducts !== undefined ? (
+      <StoreProductsPane shop={shop} products={storeProducts} />
     ) : tab === 'certificates' && certificates !== undefined ? (
       <CertificatesPane shop={shop} certificates={certificates} />
     ) : (

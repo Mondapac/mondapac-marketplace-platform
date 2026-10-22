@@ -35,6 +35,7 @@ import { contentOf } from '../../domain/store-profile-content';
 import { PublishedStoreImageRead } from './published-store-image-read.use-case';
 import { PublishedStoreList } from './published-store-list.use-case';
 import { PublishedStoreRead } from './published-store-read.use-case';
+import { PublishedStoreSellerId } from './published-store-seller-id.use-case';
 
 // The public store reads (slice 12) with in-memory ports, on both Market fixtures (AU in AUD, ZZ
 // in JPY): only stores that may sell now, allow-listed fields only, sorts and pages, the minimum
@@ -69,6 +70,7 @@ describe.each([
   let clock: FixedClock;
   let list: PublishedStoreList;
   let read: PublishedStoreRead;
+  let sellerIdRead: PublishedStoreSellerId;
   let imageRead: PublishedStoreImageRead;
   let storeContent: InMemoryStoreContent;
   let storeImages: InMemoryStoreImages;
@@ -108,7 +110,9 @@ describe.each([
       approvedStores: (_market, limit) =>
         failStores ? Promise.reject(new Error('down')) : Promise.resolve(stores.slice(0, limit)),
       approvedStoreBySlug: (_market, slug) =>
-        Promise.resolve(stores.find((store) => store.slug === slug) ?? null),
+        failStores
+          ? Promise.reject(new Error('down'))
+          : Promise.resolve(stores.find((store) => store.slug === slug) ?? null),
     };
     const sellingFacts: SellingFactsRepository = {
       approvedSellingFacts: (_market, sellerIds) =>
@@ -173,6 +177,7 @@ describe.each([
     };
     list = new PublishedStoreList(gate, deps);
     read = new PublishedStoreRead(gate, deps);
+    sellerIdRead = new PublishedStoreSellerId(gate, deps);
     imageRead = new PublishedStoreImageRead(gate, { ...deps, objectStore });
   });
 
@@ -511,6 +516,66 @@ describe.each([
         ok: false,
         error: { code: 'image.not-found' },
       });
+    });
+  });
+
+  describe('the seller of a store address (for the storefront product list)', () => {
+    it('declares the anonymous rule under its own name', () => {
+      expect(PublishedStoreSellerId.access).toEqual({
+        name: 'sellers.published-store-seller-id',
+        rule: { kind: 'anonymous' },
+      });
+    });
+
+    it('gives the seller that holds the exact slug while it may sell, and nothing else', async () => {
+      const id = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+
+      const result = await sellerIdRead.execute(anonymous(), { slug: 'alpha-market' });
+
+      expect(result).toEqual(ok(id));
+      expect(JSON.stringify(result)).not.toContain('Alpha');
+    });
+
+    it.each([
+      ['a store that may not sell', 'held-back', 'held-back'],
+      ['an unknown slug', 'held-back', 'no-such-store'],
+      ['a slug in another case', 'held-back', 'Held-Back'],
+      ['a malformed slug', 'held-back', '../x'],
+      ['a too short slug', 'held-back', 'ab'],
+    ])('answers null alike for %s', async (_name, stored, asked) => {
+      addStore(stored, 'Held', '2026-01-10T00:00:00Z', {
+        state: asked === stored ? 'suspended' : 'approved',
+      });
+
+      expect(await sellerIdRead.execute(anonymous(), { slug: asked })).toEqual(ok(null));
+    });
+
+    it('answers null while identity is down (the may-sell contract fails closed)', async () => {
+      addStore('a-store', 'A', '2026-01-01T00:00:00Z');
+      identityDown = true;
+
+      expect(await sellerIdRead.execute(anonymous(), { slug: 'a-store' })).toEqual(ok(null));
+    });
+
+    it('answers sellers.unavailable when the store read fails, never a guess', async () => {
+      addStore('a-store', 'A', '2026-01-01T00:00:00Z');
+      failStores = true;
+
+      expect(await sellerIdRead.execute(anonymous(), { slug: 'a-store' })).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+    });
+
+    it('is not for the system actor (rule anonymous)', async () => {
+      addStore('a-store', 'A', '2026-01-01T00:00:00Z');
+
+      const result = await sellerIdRead.execute(
+        testCallContext(market(), 'system', 'store-system-abcd'),
+        { slug: 'a-store' },
+      );
+
+      expect(result.ok).toBe(false);
     });
   });
 });

@@ -175,6 +175,8 @@ export interface ProductDetail {
   readonly description: string;
   readonly specifications: readonly ProductSpecification[];
   readonly photos: readonly string[];
+  /** Small versions of `photos`, same order and length, for the thumbnail strip. */
+  readonly photoThumbs?: readonly string[];
   /** Never empty: a product without a sellable offer is not shown. */
   readonly offers: readonly [ProductOffer, ...ProductOffer[]];
   readonly similar: readonly ProductCard[];
@@ -347,6 +349,19 @@ export interface SellerProduct extends ProductCard {
 }
 
 /**
+ * One page of the store's products from the API (`search/products?store=`): cards in name order.
+ * No total is known (the API answers `hasMore`), so the tab shows no count.
+ */
+export type StoreProducts =
+  | {
+      readonly kind: 'ok';
+      readonly items: readonly ShelfCard[];
+      readonly page: number;
+      readonly hasMore: boolean;
+    }
+  | { readonly kind: 'failed'; readonly page: number };
+
+/**
  * The public seller page (`/s/<slug>`): profile, terms, certificates and products. Fields marked
  * "not known yet" are absent while the seller read has no source for them (the API answers name,
  * area, year and minimum order today): the page then leaves that part out, never shows "none".
@@ -391,6 +406,11 @@ export interface SellerShop {
   readonly categories?: readonly { readonly code: string; readonly name: string }[];
   /** In popularity order. Not known yet when absent: the Products tab is left out. */
   readonly products?: readonly SellerProduct[];
+  /**
+   * The store's products read from the API, one page. Used instead of `products` when the seller
+   * read is real: the tab then pages through the cards and shows a failed read inside the tab.
+   */
+  readonly storeProducts?: StoreProducts;
 }
 
 /**

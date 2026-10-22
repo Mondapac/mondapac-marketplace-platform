@@ -69,6 +69,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'PRICING_CONSTRAINTS');
   await createCopy(name, 'CERT_CLAIMS_CORE');
   await createCopy(name, 'STORE_PROFILE');
+  await createCopy(name, 'CERTIFIED_CATEGORIES');
 }
 
 /**
@@ -116,6 +117,8 @@ export default async function globalSetup(): Promise<void> {
  * - `store_profile`: sellers-store-profile-http.db-spec.ts runs the whole application over HTTP, seeds
  *   a published claim-term vocabulary per Market and relays and dispatches sellers' and identity's
  *   events, so no other file's vocabulary or outbox rows live there.
+ * - `certified_categories`: certification-certified-categories.db-spec.ts reads the policy rows of
+ *   whole Markets, so no other file's policies live there.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -140,7 +143,8 @@ async function createCopy(
     | 'CATALOG_ATTRIBUTES'
     | 'PRICING_CONSTRAINTS'
     | 'CERT_CLAIMS_CORE'
-    | 'STORE_PROFILE',
+    | 'STORE_PROFILE'
+    | 'CERTIFIED_CATEGORIES',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });
