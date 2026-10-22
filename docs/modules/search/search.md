@@ -55,7 +55,7 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   check or views read of "recently viewed" is `search.unavailable` (503); a failed views read of "for
   you" falls back to the plain best sellers. Four use cases (`search.list-for-you`,
   `search.list-recently-viewed`: `own-resources`; the `-guest` pair: `anonymous`, in
-  `http-reachable-anonymous-system.json`).
+  `http-reachable-anonymous-system.json`). Items carry `primaryImage` like the other shelves.
 - **Best sellers:** ordering's `OrderingRankingFacade.bestSellingOffers` (rule anonymous) ranks Offers
   by order lines on orders confirmed in the last 30 days (ids only, no count leaves ordering); search
   takes the top 100, keeps the indexed ones (in the category when asked) in rank order, and fills a
