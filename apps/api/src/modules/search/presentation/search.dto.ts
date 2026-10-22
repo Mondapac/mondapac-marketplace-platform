@@ -3,6 +3,21 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 // Bodies of the storefront search route. Ids, text and categories only: a certification badge
 // is never part of a search result (it comes from `evaluateClaim`, never from indexed text).
 
+export class ProductImageRefBody {
+  @ApiProperty({
+    format: 'uuid',
+    description:
+      'The photo id. The storefront builds the URL by code: ' +
+      '`GET /catalog/public-images/{market}/{productId}/{imageId}/{thumb|medium|large}`.',
+  })
+  imageId!: string;
+  @ApiProperty({ description: 'Pixel width of the largest rendition (the ratio holds for all).' })
+  width!: number;
+  @ApiProperty({ description: 'Pixel height of the largest rendition.' }) height!: number;
+  @ApiProperty({ description: 'Text for `alt`: the product name in the Market default locale.' })
+  alt!: string;
+}
+
 export class ProductSearchItemBody {
   @ApiProperty({ format: 'uuid' }) offerId!: string;
   @ApiProperty({ format: 'uuid' }) productId!: string;
@@ -12,6 +27,13 @@ export class ProductSearchItemBody {
   @ApiProperty({ nullable: true, type: String }) shortText!: string | null;
   @ApiProperty({ type: [String], description: 'Platform category ids of the product.' })
   categoryIds!: string[];
+  @ApiProperty({
+    type: ProductImageRefBody,
+    nullable: true,
+    description:
+      'The first public photo of the product (published revision, not taken down), or null.',
+  })
+  primaryImage!: ProductImageRefBody | null;
 }
 
 export class ProductSearchPageBody {
@@ -38,6 +60,14 @@ export class SearchQueryParams {
   q?: string;
   @ApiPropertyOptional({ format: 'uuid', description: 'A platform category id.' })
   category?: string;
+  @ApiPropertyOptional({
+    minLength: 3,
+    maxLength: 50,
+    description:
+      "A store address (slug): lists that store's Offers by name. Not with `q`; may combine with " +
+      '`category`. An unknown, retired or not-selling store answers an empty page.',
+  })
+  store?: string;
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 1 }) page?: number;
   @ApiPropertyOptional({ minimum: 1, maximum: 48, default: 24 }) pageSize?: number;
 }
@@ -142,6 +172,12 @@ export class ProductDetailBody {
   @ApiProperty({ nullable: true, type: String }) description!: string | null;
   @ApiProperty({ type: [String], description: 'Platform category ids, in the revision order.' })
   categoryIds!: string[];
+  @ApiProperty({
+    type: [ProductImageRefBody],
+    description:
+      'Public photos in the published revision order (the first is the main one); at most 8.',
+  })
+  images!: ProductImageRefBody[];
   @ApiProperty({
     type: [ProductDetailOfferBody],
     description: 'At least one Offer, lowest unit price first.',

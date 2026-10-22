@@ -15,6 +15,17 @@ export interface ShelfDocumentsReader {
     limit: number,
   ): Promise<readonly OfferHit[]>;
   /**
+   * The documents of one seller's Offers (in one category when `categoryId` is set) in browse
+   * order (name, then Offer id), `limit` rows from `offset`.
+   */
+  browseBySeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    categoryId: Id<'Category'> | null,
+    limit: number,
+    offset: number,
+  ): Promise<readonly OfferHit[]>;
+  /**
    * The documents of these products' Offers, at most `perProduct` of each product (by Offer id),
    * so no product loses its documents to another's: a cap on the whole answer would cut the
    * products with the highest ids. Products without an indexed Offer are left out. Documents of

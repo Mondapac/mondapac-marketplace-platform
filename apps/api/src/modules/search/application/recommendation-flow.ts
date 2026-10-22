@@ -4,9 +4,13 @@ import type { OfferHit } from '../domain/offer-document';
 import type { SearchValidationFailed } from '../domain/search-query';
 import { parseShelfQuery } from '../domain/shelf-query';
 import type { PrivacySignals } from './ports/personal-signals';
+import { withPrimaryImages } from './product-images';
 import type { RecommendationDependencies } from './recommendation-dependencies';
 import { FILL_DEPTH, itemOf, RANKED_DEPTH } from './use-cases/list-bestsellers.use-case';
-import type { ProductSearchItem } from './use-cases/search-products.use-case';
+import type {
+  ProductSearchItem,
+  ProductSearchItemFacts,
+} from './use-cases/search-products.use-case';
 
 // The personal shelves of personalization package 1d-1: "for you" and "recently viewed". Both read
 // the shopper's recent views from engagement (ids only; empty under Global Privacy Control, with
@@ -104,12 +108,15 @@ export async function listForYou(
   });
   const visible = await deps.visibility.visible(context, candidates);
   if (visible === null) return err(UNAVAILABLE);
-  return ok({
-    items: candidates
+  const items = await withPrimaryImages(
+    deps.images,
+    context,
+    candidates
       .filter((hit) => visible.has(hit.offerId))
       .slice(0, limit)
       .map(itemOf),
-  });
+  );
+  return ok({ items });
 }
 
 /**
@@ -144,11 +151,11 @@ export async function listRecentlyViewed(
 
   const visible = await deps.visibility.visible(context, documents);
   if (visible === null) return err(UNAVAILABLE);
-  const items: ProductSearchItem[] = [];
+  const facts: ProductSearchItemFacts[] = [];
   for (const productId of views.productIds) {
     const shown = documents.find((hit) => hit.productId === productId && visible.has(hit.offerId));
-    if (shown !== undefined) items.push(itemOf(shown));
-    if (items.length === limit) break;
+    if (shown !== undefined) facts.push(itemOf(shown));
+    if (facts.length === limit) break;
   }
-  return ok({ items });
+  return ok({ items: await withPrimaryImages(deps.images, context, facts) });
 }

@@ -55,7 +55,7 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   check or views read of "recently viewed" is `search.unavailable` (503); a failed views read of "for
   you" falls back to the plain best sellers. Four use cases (`search.list-for-you`,
   `search.list-recently-viewed`: `own-resources`; the `-guest` pair: `anonymous`, in
-  `http-reachable-anonymous-system.json`).
+  `http-reachable-anonymous-system.json`). Items carry `primaryImage` like the other shelves.
 - **Best sellers:** ordering's `OrderingRankingFacade.bestSellingOffers` (rule anonymous) ranks Offers
   by order lines on orders confirmed in the last 30 days (ids only, no count leaves ordering); search
   takes the top 100, keeps the indexed ones (in the category when asked) in rank order, and fills a
@@ -75,6 +75,19 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   count) and the seller's public store name and minimum order. Units without a price and Offers
   without a priced unit are left out, Offers come lowest unit price first (ties by Offer id), and at
   most 200 (Offer, Variant) keys are asked. 404 `search.product-not-found` when nothing is left; a
-  failed source or check is 503 `search.unavailable`. No image, attribute, tag or badge yet.
+  failed source or check is 503 `search.unavailable`. Adds `images` (at most 8 public photos in the published revision's order: `imageId`, `width`, `height`, `alt`). No attribute, tag or badge yet.
+- **Photos:** each item of `search/products`, `bestsellers` and `specials` has `primaryImage` (the same
+  `{imageId, width, height, alt}` or `null`). The refs come from catalog's `publishedProductImages`
+  (rule anonymous, published revision only, taken-down photos skipped), read for the shown items only;
+  `alt` is the product name; `width` and `height` are the largest rendition's pixel size (the ratio
+  holds for all sizes). A photo source that fails gives no photo, never an error (photos are not a
+  check). The storefront builds the URL from the ids and `STOREFRONT_IMAGE_ORIGIN`; the bytes come
+  from catalog's public photo route (catalog design 10.6).
+- **Store list:** `GET /search/products?store=<slug>` (3 to 50 characters, a-z, 0-9, single hyphens;
+  not with `q`; may combine with `category`) lists one store's Offers by name through
+  `PrismaShelfDocumentsReader.browseBySeller` (Prisma, no new raw statement). sellers' facade
+  `publishedStoreSellerId` resolves the address under the published-store rules; an unknown, retired
+  or not-selling store is an empty page (`hasMore` false), a failed lookup is 503. Every Offer is
+  re-checked like any other result. Unknown query parameters stay 400.
 - **Known gaps:** the Market-wide fill reads `offer_documents` ordered by name without an index on
   `(market_id, name)`; add one if the read model grows large.

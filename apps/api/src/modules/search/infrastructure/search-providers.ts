@@ -38,6 +38,10 @@ import {
   PRODUCT_DETAIL_SOURCES,
   type ProductDetailSources,
 } from '../application/ports/product-detail-sources';
+import { PRODUCT_IMAGES, type ProductImages } from '../application/ports/product-images';
+import { STORE_RESOLVER, type StoreResolver } from '../application/ports/store-resolver';
+import { FacadeProductImages } from './facade-product-images';
+import { FacadeStoreResolver } from './facade-store-resolver';
 import { PERSONAL_SIGNALS, type PersonalSignals } from '../application/ports/personal-signals';
 import { FacadePersonalSignals } from './facade-personal-signals';
 import { FacadeProductDetailSources } from './facade-product-detail-sources';
@@ -103,6 +107,16 @@ export const searchProviders: readonly FactoryProvider[] = [
     provide: PUBLISHED_VARIANTS,
     inject: [CATALOG_FACADE],
     useFactory: (catalog: CatalogFacade): PublishedVariants => new FacadePublishedVariants(catalog),
+  },
+  {
+    provide: PRODUCT_IMAGES,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): ProductImages => new FacadeProductImages(catalog),
+  },
+  {
+    provide: STORE_RESOLVER,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): StoreResolver => new FacadeStoreResolver(sellers),
   },
   {
     provide: PERSONAL_SIGNALS,

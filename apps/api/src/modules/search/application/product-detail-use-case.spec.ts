@@ -18,6 +18,7 @@ import {
   type DetailStock,
   type ProductDetailSources,
 } from './ports/product-detail-sources';
+import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { PublishedVariants } from './ports/published-variants';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
@@ -72,11 +73,24 @@ class MemoryShelves implements ShelfDocumentsReader {
         .slice(0, limit),
     );
   }
+  browseBySeller() {
+    return Promise.resolve([]);
+  }
   byProductIds() {
     return Promise.resolve([]);
   }
   browseAll() {
     return Promise.resolve([]);
+  }
+}
+
+class StubImages implements ProductImages {
+  images_ = new Map<Id<'Product'>, PublicImage[]>();
+  failing = false;
+  readonly asked: Id<'Product'>[][] = [];
+  of(_context: CallContext, productIds: readonly Id<'Product'>[]) {
+    this.asked.push([...productIds]);
+    return Promise.resolve(this.failing ? null : new Map(this.images_));
   }
 }
 
@@ -147,6 +161,7 @@ describe.each([
   let sources: StubSources;
   let visibility: StubVisibility;
   let variants: StubVariants;
+  let images: StubImages;
   let deps: ProductDetailDependencies;
 
   const content = (): DetailProduct => ({
@@ -175,6 +190,7 @@ describe.each([
     sources = new StubSources();
     visibility = new StubVisibility();
     variants = new StubVariants();
+    images = new StubImages();
     sources.product_ = { product: content() };
     deps = {
       unitOfWork: new FakeUnitOfWork(),
@@ -183,6 +199,7 @@ describe.each([
       visibility,
       policy: new ConfigSearchPolicy(markets),
       variants,
+      images,
     };
   });
 
@@ -207,6 +224,67 @@ describe.each([
       expect.objectContaining({ variantId: variant(2), label: null, price: money(1200n) }),
     ]);
     expect(shelves.asked).toEqual([{ productId: PRODUCT, limit: MAX_DETAIL_OFFERS }]);
+  });
+
+  describe('photos', () => {
+    const PHOTOS = [0x701, 0x702, 0x703].map((n) => id<'ProductImage'>(n));
+
+    it('lists the public photos in the published order, each with the product name as alt', async () => {
+      shelves.documents = [hit(1)];
+      price(1, 1, 900n);
+      images.images_.set(
+        PRODUCT,
+        PHOTOS.map((imageId, index) => ({ imageId, width: 1600 - index, height: 1200 })),
+      );
+
+      const result = await run();
+
+      expect(result.ok && result.value.images).toEqual(
+        PHOTOS.map((imageId, index) => ({
+          imageId,
+          width: 1600 - index,
+          height: 1200,
+          alt: 'Dates',
+        })),
+      );
+      expect(images.asked).toEqual([[PRODUCT]]);
+    });
+
+    it('has no photo for a product with none, and never more than 8', async () => {
+      shelves.documents = [hit(1)];
+      price(1, 1, 900n);
+      expect((await run()).ok && (await run())).toMatchObject({ value: { images: [] } });
+
+      images.images_.set(
+        PRODUCT,
+        [...Array(12).keys()].map((n) => ({
+          imageId: id<'ProductImage'>(0x800 + n),
+          width: 100,
+          height: 100,
+        })),
+      );
+      const result = await run();
+      expect(result.ok && result.value.images).toHaveLength(8);
+    });
+
+    it('still shows the product, without photos, when the photo source cannot answer', async () => {
+      shelves.documents = [hit(1)];
+      price(1, 1, 900n);
+      images.failing = true;
+
+      const result = await run();
+
+      expect(result.ok && result.value.images).toEqual([]);
+      expect(result.ok && result.value.offers).toHaveLength(1);
+    });
+
+    it('reads no photo for a product that is not found', async () => {
+      shelves.documents = [];
+
+      await run();
+
+      expect(images.asked).toEqual([]);
+    });
   });
 
   it('asks catalog for the Market default locale and every source as the request actor', async () => {

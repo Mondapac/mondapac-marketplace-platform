@@ -13,6 +13,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import type { OfferHit } from '../domain/offer-document';
 import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
 import type { PersonalSignals, PersonalViews, PrivacySignals } from './ports/personal-signals';
+import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { PublishedVariants } from './ports/published-variants';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
@@ -78,6 +79,17 @@ class MemoryShelves implements ShelfDocumentsReader {
     return Promise.resolve(
       [...this.documents].sort((a, b) => a.name.localeCompare(b.name)).slice(0, limit),
     );
+  }
+  browseBySeller() {
+    return Promise.resolve([]);
+  }
+}
+
+class StubImages implements ProductImages {
+  images_ = new Map<Id<'Product'>, PublicImage[]>();
+  failing = false;
+  of() {
+    return Promise.resolve(this.failing ? null : new Map(this.images_));
   }
 }
 
@@ -146,6 +158,7 @@ describe.each([['AU'], ['ZZ']] as const)('personal shelves in market %s', (code)
   let sources: StubSources;
   let visibility: StubVisibility;
   let signals: StubSignals;
+  let images: StubImages;
   let deps: RecommendationDependencies;
 
   beforeEach(() => {
@@ -153,6 +166,7 @@ describe.each([['AU'], ['ZZ']] as const)('personal shelves in market %s', (code)
     sources = new StubSources();
     visibility = new StubVisibility();
     signals = new StubSignals();
+    images = new StubImages();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       reader: { search: () => Promise.resolve([]) },
@@ -161,6 +175,7 @@ describe.each([['AU'], ['ZZ']] as const)('personal shelves in market %s', (code)
       visibility,
       policy: new ConfigSearchPolicy(markets),
       variants: new StubVariants(),
+      images,
       signals,
     };
   });
@@ -257,7 +272,10 @@ describe.each([['AU'], ['ZZ']] as const)('personal shelves in market %s', (code)
       const guestPlain = await forYouGuest();
 
       expect(guestPlain).toEqual(plain);
-      expect(plain.ok && plain.value.items[0]).toEqual(itemOf(hit(1, [GROCERY])));
+      expect(plain.ok && plain.value.items[0]).toEqual({
+        ...itemOf(hit(1, [GROCERY])),
+        primaryImage: null,
+      });
     });
 
     it('shows each Offer once', async () => {
@@ -327,6 +345,30 @@ describe.each([['AU'], ['ZZ']] as const)('personal shelves in market %s', (code)
     beforeEach(() => {
       shelves.documents = [1, 2, 3, 4].map((n) => hit(n, [GROCERY]));
       signals.views = { productIds: [product(3), product(1), product(4)], categoryIds: [] };
+    });
+
+    it('gives each item its first public photo, and none when the photo source fails', async () => {
+      const PHOTO = id<'ProductImage'>(0x701);
+      images.images_.set(product(3), [{ imageId: PHOTO, width: 640, height: 480 }]);
+
+      const withPhoto = await recent();
+      const forYouPhoto = await forYou();
+      images.failing = true;
+      const without = await recent();
+
+      expect(withPhoto.ok && withPhoto.value.items.map((i) => i.primaryImage)).toEqual([
+        { imageId: PHOTO, width: 640, height: 480, alt: hit(3, []).name },
+        null,
+        null,
+      ]);
+      expect(
+        forYouPhoto.ok && forYouPhoto.value.items.find((i) => i.productId === product(3)),
+      ).toMatchObject({ primaryImage: { imageId: PHOTO } });
+      expect(without.ok && without.value.items.map((i) => i.primaryImage)).toEqual([
+        null,
+        null,
+        null,
+      ]);
     });
 
     it('lists the viewed products in viewed order', async () => {

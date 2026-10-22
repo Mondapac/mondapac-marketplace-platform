@@ -64,8 +64,10 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "catalog.pending-product-revisions", "rule": "system" },
+  { "name": "catalog.published-image-read", "rule": "anonymous" },
   { "name": "catalog.published-offer-ids", "rule": "system" },
   { "name": "catalog.published-product", "rule": "anonymous" },
+  { "name": "catalog.published-product-images", "rule": "anonymous" },
   { "name": "catalog.reconcile-tags", "rule": "system" },
   { "name": "catalog.reevaluate-from-certification", "rule": "system" },
   { "name": "catalog.reevaluate-tags", "rule": "system" },
@@ -469,6 +471,7 @@
   { "name": "sellers.own-zone-read", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "sellers.published-store-list", "rule": "anonymous" },
   { "name": "sellers.published-store-read", "rule": "anonymous" },
+  { "name": "sellers.published-store-seller-id", "rule": "anonymous" },
   { "name": "sellers.purge-expired", "rule": "system" },
   { "name": "sellers.reconcile-decisions", "rule": "system" },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },

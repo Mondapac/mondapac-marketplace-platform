@@ -11,8 +11,10 @@ import {
   type PublicStore,
 } from './real-sellers.ts';
 import type { AssistantSetup } from '../assistant/assistant.ts';
-import { loadHome, type HomeContent } from './home-source.ts';
+import { categoriesOf, loadHome, type HomeContent } from './home-source.ts';
+import { photoUrls } from './photo-source.ts';
 import { loadShellContent } from './shell-source.ts';
+import { storeProductsOf, storeProductsPath } from './store-products.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
@@ -38,6 +40,7 @@ import type {
   SellerSignUpAnswer,
   SellerSignUpSetup,
   StorefrontContent,
+  StoreProducts,
   UnavailableProduct,
 } from './types.ts';
 
@@ -84,11 +87,17 @@ export async function loadProduct(id: string): Promise<ProductDetail | undefined
     if (read.status === 404) return undefined;
     throw new Error('product detail unavailable');
   }
-  const [locale, t] = await Promise.all([getLocale(), getTranslations('seller')]);
-  return productDetailOf(read.body, locale, {
-    minimum: (amount) => t('minimum', { amount }),
-    noMinimum: t('no-minimum'),
-  });
+  const [locale, t, photo] = await Promise.all([
+    getLocale(),
+    getTranslations('seller'),
+    photoUrls(),
+  ]);
+  return productDetailOf(
+    read.body,
+    locale,
+    { minimum: (amount) => t('minimum', { amount }), noMinimum: t('no-minimum') },
+    photo,
+  );
 }
 
 /**
@@ -163,10 +172,12 @@ const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 /**
  * The seller page's read: profile, terms, certificates and products, or undefined when there is
  * no such seller. With the API configured, `GET sellers/stores/:slug` gives name, area, year and
- * minimum order; the other parts stay absent until their public reads exist. Otherwise sample
- * data. Any answer but 200 or 404 throws, so the page shows its error state.
+ * minimum order, and `GET search/products?store=<slug>` gives one page of its products (24 cards)
+ * with their photos; the other parts stay absent until their public reads exist. Otherwise sample
+ * data. Any answer but 200 or 404 for the store throws, so the page shows its error state; a
+ * failed products read does not: the Products tab says so and the rest of the page stays.
  */
-export async function loadSeller(slug: string): Promise<SellerShop | undefined> {
+export async function loadSeller(slug: string, page = 1): Promise<SellerShop | undefined> {
   // No sample or real store has any other slug; nothing else reaches the API path.
   if (slug.length > 50 || !STORE_SLUG.test(slug)) return undefined;
   const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`);
@@ -177,7 +188,24 @@ export async function loadSeller(slug: string): Promise<SellerShop | undefined> 
     throw new SellerReadFailed();
   }
   const store = publicStoreOf(answer.body);
-  return shopOf(store, (await areaNames())(store.serviceAreaCode));
+  const [areaName, storeProducts] = await Promise.all([
+    areaNames(),
+    loadStoreProducts(store.slug, page),
+  ]);
+  return { ...shopOf(store, areaName(store.serviceAreaCode)), storeProducts };
+}
+
+/** One page of a store's products; any failure is `failed`, never an exception. */
+async function loadStoreProducts(slug: string, page: number): Promise<StoreProducts> {
+  const [answer, tree, photo] = await Promise.all([
+    apiGet<unknown>(storeProductsPath(slug, page)),
+    // Only for the illustration of a card without a photo; a failed tree gives plain cards.
+    apiGet<unknown>('catalog/categories'),
+    photoUrls(),
+  ]);
+  if (answer.kind !== 'ok') return { kind: 'failed', page };
+  const slugs = categoriesOf(tree.kind === 'ok' ? tree.body : null).slugs;
+  return storeProductsOf(answer.body, page, slugs, photo);
 }
 
 /** The API's sort for the page's: popularity and distance are not known yet, so name. */

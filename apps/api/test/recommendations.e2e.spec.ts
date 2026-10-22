@@ -213,7 +213,15 @@ describe('personal shelves over HTTP', () => {
         expect(response.headers['set-cookie']).toBeUndefined();
         expect(offersOf(response.body)).toEqual([offer(3), offer(1)]);
         expect(Object.keys((response.body as { items: object[] }).items[0]!).sort()).toEqual(
-          ['categoryIds', 'name', 'offerId', 'productId', 'sellerId', 'shortText'].sort(),
+          [
+            'categoryIds',
+            'name',
+            'offerId',
+            'primaryImage',
+            'productId',
+            'sellerId',
+            'shortText',
+          ].sort(),
         );
         expect(events.rows).toHaveLength(3);
       });
