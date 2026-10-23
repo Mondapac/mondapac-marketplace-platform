@@ -20,6 +20,7 @@ import { STORE_RESOLVER } from './application/ports/store-resolver';
 import { PERSONAL_SIGNALS } from './application/ports/personal-signals';
 import { PUBLIC_VISIBILITY } from './application/ports/public-visibility';
 import { SEARCH_POLICY } from './application/ports/search-policy';
+import { SELLER_ELIGIBILITY } from './application/ports/seller-eligibility';
 import { SHELF_DOCUMENTS_READER } from './application/ports/shelf-documents.reader';
 import { SHELF_SOURCES } from './application/ports/shelf-sources';
 import { PRODUCT_DETAIL_SOURCES } from './application/ports/product-detail-sources';
@@ -46,6 +47,7 @@ import { ProductDetailController } from './presentation/product-detail.controlle
 import { SearchController } from './presentation/search.controller';
 import { ShelfController } from './presentation/shelf.controller';
 import { catalogIndexSubscriptions } from './presentation/subscribers/catalog-index.subscriptions';
+import { sellerAccessIndexSubscriptions } from './presentation/subscribers/seller-access-index.subscriptions';
 import { SEARCH_ASSISTANT_FACADE } from './contracts';
 import { SearchAssistantFacadeImplementation } from './presentation/search-assistant.facade';
 
@@ -58,6 +60,7 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['policy', SEARCH_POLICY],
   ['feed', OFFER_FEED],
   ['visibility', PUBLIC_VISIBILITY],
+  ['sellers', SELLER_ELIGIBILITY],
   ['clock', CLOCK],
   ['shelves', SHELF_DOCUMENTS_READER],
   ['stores', STORE_RESOLVER],
@@ -204,9 +207,10 @@ function productDetailProvider<U>(
       useFactory: (search: SearchProducts, bestsellers: ListBestsellers, specials: ListSpecials) =>
         new SearchAssistantFacadeImplementation(search, bestsellers, specials),
     },
-    registerSubscriptionsFrom('search', [SyncOfferDocuments], (sync: SyncOfferDocuments) =>
-      catalogIndexSubscriptions(sync),
-    ),
+    registerSubscriptionsFrom('search', [SyncOfferDocuments], (sync: SyncOfferDocuments) => [
+      ...catalogIndexSubscriptions(sync),
+      ...sellerAccessIndexSubscriptions(sync),
+    ]),
     registerJobsFrom('search', [RebuildOfferIndex], (rebuild: RebuildOfferIndex) => [
       rebuildIndexJob(rebuild),
     ]),

@@ -1,7 +1,7 @@
 'use client';
 
 import { useFormatter, useTranslations } from 'next-intl';
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Icon, categoryIcon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import type { AccountSource, OrderPartStatus, OrderStatus } from '../storefront/types.ts';
@@ -10,7 +10,7 @@ import { AuthForms } from './auth-forms.tsx';
 
 /**
  * The signed-in account pages: signed out, the log-in page shows in their place (any account
- * address); signed in, the pages share the account state. Sample session until sessions are wired.
+ * address); signed in, the pages share the account state. Live, the session is the API's; sample mode keeps a sample session.
  */
 export function AccountArea({
   source,
@@ -19,19 +19,29 @@ export function AccountArea({
   readonly source: AccountSource;
   readonly children: ReactNode;
 }) {
-  const { customer, setCustomer } = useStore();
+  const { customer, setCustomer, sessionReady, signIn } = useStore();
+  // Live: the signed-in customer is the API's; the sample orders, lists and emails stay as they are.
+  const effective = useMemo(
+    () => (source.live && customer ? { ...source, customer, mobile: '' } : source),
+    [source, customer],
+  );
+  // The session is still being read: show neither the log-in page nor the account.
+  if (!sessionReady) return null;
   if (!customer)
     return (
       <div className="ac">
         <section className="ac-card ac-auth">
           <AuthForms
             heading={(title) => <h1 className="ac-ah">{title}</h1>}
-            onSignedIn={() => setCustomer(source.customer)}
+            {...(source.live ? { signIn } : {})}
+            onSignedIn={() => {
+              if (!source.live) setCustomer(source.customer);
+            }}
           />
         </section>
       </div>
     );
-  return <AccountProvider source={source}>{children}</AccountProvider>;
+  return <AccountProvider source={effective}>{children}</AccountProvider>;
 }
 
 /** An account page: its h1 and a single column of cards, full width of the content area. */

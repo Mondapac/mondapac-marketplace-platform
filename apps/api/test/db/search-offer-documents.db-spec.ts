@@ -266,6 +266,18 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
     expect(await find('renamed')).toEqual([]);
   });
 
+  it('lists the Offers of a seller, in this Market only', async () => {
+    const seller = id<'Seller'>();
+    const a = doc({ name: 'Seller one', sellerId: seller });
+    const b = doc({ name: 'Seller two', sellerId: seller });
+    await seed(market, a, b, doc({ name: 'Someone else' }));
+    await seed(other, doc({ name: 'Elsewhere', sellerId: seller }));
+
+    const ofSeller = await inUnit(market, () => documents.offerIdsOfSeller(market, seller), true);
+
+    expect([...ofSeller].sort()).toEqual([a.offerId, b.offerId].sort());
+  });
+
   it('lists the Offers of a product and deletes only documents older than a rebuild start', async () => {
     const product = id<'Product'>();
     const a = doc({ name: 'Old one', productId: product });
@@ -346,6 +358,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
             new Set(offers.map((o) => o.offerId).filter((o) => o !== hidden.offerId)),
           ),
       },
+      sellers: { eligible: () => Promise.resolve(null) },
       clock: new FixedClock(T0),
       shelves,
       stores: { sellerIdOf: () => Promise.resolve({ sellerId: null }) },

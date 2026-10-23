@@ -37,6 +37,8 @@ export type OfferSearchFactsMap = ReadonlyMap<Id<'Offer'>, OfferSearchFacts>;
 export interface PublishedOfferIdsInput {
   /** Only the Offers of this product (a new revision of it changes all of them). */
   readonly productId?: Id<'Product'>;
+  /** Only the Offers of this seller (a suspension or reinstatement changes all of them). */
+  readonly sellerId?: Id<'Seller'>;
   /** Keyset: only ids after this one, in id order. */
   readonly after?: Id<'Offer'>;
   /** 1 to {@link MAX_INDEX_PAGE}. */
@@ -57,7 +59,7 @@ export interface CatalogIndexFacade {
     Result<OfferSearchFactsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
   >;
 
-  /** Ids of Offers with `status = 'published'` (listed or not), ascending, for a backfill. */
+  /** Ids of Offers with `status = 'published'` (listed or not), ascending, of all, a product or a seller. */
   publishedOfferIds(
     context: CallContext,
     input: PublishedOfferIdsInput,

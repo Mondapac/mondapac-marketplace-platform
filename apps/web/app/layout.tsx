@@ -21,6 +21,7 @@ import {
   loadCheckout,
   loadDeliveryLocator,
   loadStorefrontContent,
+  storefrontIsLive,
 } from '../src/storefront/source.ts';
 import './globals.css';
 // After globals.css: the store pictures refine the logo tile and the banner it defines.
@@ -77,6 +78,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             deliverTo={deliverToOf(jar.get(DELIVER_TO_COOKIE)?.value)}
             consent={consentOf(jar.get(CONSENT_COOKIE)?.value)}
             signIn={checkout.customer}
+            live={storefrontIsLive()}
             assistant={assistant}
           >
             {children}

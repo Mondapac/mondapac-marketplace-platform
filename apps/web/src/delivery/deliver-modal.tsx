@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { addressLine as savedLine, recipientName } from '../account/address-line.ts';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import type { DeliveryLocatorSource, GeoPoint, Place } from '../storefront/types.ts';
@@ -359,19 +360,22 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                 <fieldset className="lmsv">
                   <legend>{t('saved')}</legend>
                   <div className="aopts">
-                    {customer.addresses.map((address) => (
-                      <label className="aopt" key={address.id}>
-                        <input
-                          type="radio"
-                          name={`${ids}-saved`}
-                          value={address.id}
-                          checked={pick.savedId === address.id}
-                          onChange={() => chooseSaved(address.id, address.line)}
-                        />
-                        <b>{address.label}</b>
-                        <span>{address.line}</span>
-                      </label>
-                    ))}
+                    {customer.addresses.map((address) => {
+                      const line = savedLine(address, source.area.regionCode);
+                      return (
+                        <label className="aopt" key={address.id}>
+                          <input
+                            type="radio"
+                            name={`${ids}-saved`}
+                            value={address.id}
+                            checked={pick.savedId === address.id}
+                            onChange={() => chooseSaved(address.id, line)}
+                          />
+                          <b>{recipientName(address)}</b>
+                          <span>{line}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </fieldset>
               ) : (
