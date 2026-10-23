@@ -8,19 +8,35 @@ export const MAX_PAGE_SIZE = 48;
 /** Deep pages are refused: a storefront narrows the query instead of paging far. */
 export const MAX_PAGE = 100;
 
+/**
+ * The shape of a store address (sellers' shop slug: a-z, 0-9 and single inner hyphens, 3 to 50
+ * characters). Search keeps its own copy: it never imports sellers' code. Whether a store with
+ * that slug exists and may sell is sellers' answer, never decided here.
+ */
+export const STORE_SLUG_MIN_LENGTH = 3;
+export const STORE_SLUG_MAX_LENGTH = 50;
+const STORE_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
 /** What a visitor asked, as the transport hands it over: text, not yet checked. */
 export interface SearchProductsRequest {
   readonly q?: string | undefined;
   readonly category?: string | undefined;
+  /** A store address: lists that store's Offers (no `q`). */
+  readonly store?: string | undefined;
   readonly page?: number | undefined;
   readonly pageSize?: number | undefined;
 }
 
-/** A checked request. Exactly one of the two modes: a text search, or a browse by category. */
+/**
+ * A checked request. Exactly one of the two modes: a text search, or a browse (by category, by
+ * store, or both).
+ */
 export interface SearchQuery {
   /** The text to search for, or null when browsing a category. */
   readonly text: string | null;
   readonly categoryId: Id<'Category'> | null;
+  /** The store address to list, or null. Never with a text. */
+  readonly storeSlug: string | null;
   readonly page: number;
   readonly pageSize: number;
 }
@@ -44,7 +60,7 @@ function hasControlCharacter(value: string): boolean {
 
 /**
  * Checks a request (pure). `q` is trimmed and its inner white space collapsed; when present it
- * must be 2 to 100 characters. An absent or blank `q` needs a `category` (browse). The text is
+ * must be 2 to 100 characters. An absent or blank `q` needs a `category` or a `store` (browse). The text is
  * never interpreted here: it goes to `websearch_to_tsquery` as a bound parameter, which accepts
  * any text and never raises a syntax error.
  */
@@ -70,7 +86,22 @@ export function parseSearchQuery(
     if (parsed === null || !parsed.ok) return invalid('category', 'format');
     categoryId = parsed.value;
   }
-  if (text === null && categoryId === null) return invalid('q', 'required');
+  let storeSlug: string | null = null;
+  if (request.store !== undefined && request.store !== '') {
+    const slug = request.store;
+    if (
+      typeof slug !== 'string' ||
+      slug.length < STORE_SLUG_MIN_LENGTH ||
+      slug.length > STORE_SLUG_MAX_LENGTH ||
+      !STORE_SLUG_PATTERN.test(slug)
+    ) {
+      return invalid('store', 'format');
+    }
+    // A store's list is a browse by name; text search inside one store is not offered.
+    if (text !== null) return invalid('store', 'with-text');
+    storeSlug = slug;
+  }
+  if (text === null && categoryId === null && storeSlug === null) return invalid('q', 'required');
 
   const page = request.page ?? 1;
   if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) return invalid('page', 'range');
@@ -78,5 +109,5 @@ export function parseSearchQuery(
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
     return invalid('pageSize', 'range');
   }
-  return ok({ text, categoryId, page, pageSize });
+  return ok({ text, categoryId, storeSlug, page, pageSize });
 }

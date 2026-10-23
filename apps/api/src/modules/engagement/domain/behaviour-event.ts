@@ -19,6 +19,9 @@ export type BehaviourKind = (typeof BEHAVIOUR_KINDS)[number];
 /** The longest search text kept, in characters after normalization. */
 export const MAX_SEARCH_QUERY_LENGTH = 200;
 
+/** The most distinct products (and the most distinct categories) a recent-views read answers. */
+export const RECENT_VIEWS_LIMIT = 50;
+
 /** How long a signed-in customer's behaviour is kept (owner decision 4). */
 export const ACCOUNT_RETENTION = { months: 12 } as const;
 /** How long a guest's behaviour is kept, and the life of the guest token (owner decision 4). */

@@ -14,6 +14,7 @@ import { clientAddressResolver } from '../http/client-address';
 import { MarketRegistry } from '../market-config/market-registry';
 import { attachMarketContext } from '../market-context/attached-market-context';
 import { MemoryRateLimitCounters } from '../../../test/support/memory-rate-limit-counters';
+import { RateLimit } from './rate-limit.decorator';
 import { RateLimitGuard } from './rate-limit.guard';
 
 class SomeController {
@@ -134,5 +135,64 @@ describe('RateLimitGuard fails closed (identity design 5.2 and 6.8)', () => {
     attachMarketContext(request, testMarketContext('ZZ', 'default'));
 
     await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
+  });
+});
+
+@RateLimit('public-media')
+class MediaController {
+  handle(this: void): void {}
+}
+
+describe('RateLimitGuard public-media class', () => {
+  const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+  const limits = markets.get(testMarketContext('ZZ', 'default').marketId).requestLimits;
+  const mediaContext = (request: object): ExecutionContext =>
+    ({
+      ...(contextFor(request) as unknown as object),
+      getClass: () => MediaController,
+      getHandler: () => MediaController.prototype.handle,
+    }) as unknown as ExecutionContext;
+
+  it('has its own, higher limit and its own counter, apart from the default class', async () => {
+    expect(limits.publicMediaPerMinute).toBeGreaterThan(limits.defaultPerMinute);
+    const guard = new RateLimitGuard(
+      new Reflector(),
+      markets,
+      new MemoryRateLimitCounters(),
+      testAppConfig(),
+    );
+    const request = resolvedRequest('203.0.113.50');
+    attachMarketContext(request, testMarketContext('ZZ', 'default'));
+
+    // More photo requests than the default limit allows are admitted ...
+    for (let i = 0; i < limits.defaultPerMinute + 5; i += 1) {
+      await expect(guard.canActivate(mediaContext(request))).resolves.toBe(true);
+    }
+    // ... and the default class of the same origin is untouched by them.
+    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
+  });
+
+  it('still refuses past its own limit with 429', async () => {
+    const guard = new RateLimitGuard(
+      new Reflector(),
+      markets,
+      new MemoryRateLimitCounters(),
+      testAppConfig(),
+    );
+    const request = resolvedRequest('203.0.113.51');
+    attachMarketContext(request, testMarketContext('ZZ', 'default'));
+    for (let i = 0; i < limits.publicMediaPerMinute; i += 1) {
+      await guard.canActivate(mediaContext(request));
+    }
+
+    const refused = await (async () => {
+      try {
+        await guard.canActivate(mediaContext(request));
+        return null;
+      } catch (error) {
+        return error instanceof HttpException ? error.getStatus() : -1;
+      }
+    })();
+    expect(refused).toBe(429);
   });
 });

@@ -34,10 +34,11 @@ export interface ChangeDisplayNameDependencies {
 const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
 
 /**
- * A signed-in admin or seller-side member changes the own display name (profile package). Rule
+ * A signed-in admin, seller-side member or customer changes the own display name (profile
+ * package; customers from the buyer account backend, whose name starts empty). Rule
  * `own-resources`, allowed while a seller is not approved (the name is the holder's own, like the
  * password). The account is the actor's: nothing in the input names one, so nobody can rename
- * another account through this use case. A customer has no display name and is refused. One
+ * another account through this use case. One
  * read-write unit under the account's version; a concurrent change of the same account answers
  * `access.unavailable` and the holder repeats it. Records
  * `identity.account-display-name-changed.v1` (ids and codes only: the name is personal data).
@@ -68,7 +69,6 @@ export class ChangeDisplayName extends UseCase<
     const { market, actor } = context;
     // The gate admits only an authenticated actor under own-resources.
     if (actor.kind !== 'authenticated') return err({ code: 'access.denied' });
-    if (actor.population === 'customer') return err({ code: 'access.denied' });
     const name = parseDisplayName(input.displayName);
     if (!name.ok) {
       return err({

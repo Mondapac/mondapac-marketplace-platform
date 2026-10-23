@@ -111,12 +111,12 @@ describe('global account menu', () => {
     expect(within(r).getByRole('button', { name: 'Log out' })).toBeTruthy();
   });
 
-  it('header says Log out (never the name) when signed in and logs out on click', () => {
+  it('header says Log out (never the name) when signed in and logs out on click', async () => {
     renderStore(<AccountOverview />);
     const header = screen.getByRole('banner');
     expect(header.textContent).not.toContain('Alex');
     fireEvent.click(within(header).getByRole('button', { name: 'Log out' }));
-    expect(nav.push).toHaveBeenCalledWith('/account');
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/account'));
     expect(within(header).getByRole('button', { name: 'Log in' })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: 'Log in' })).toBeTruthy();
   });
@@ -304,14 +304,14 @@ describe('order details', () => {
 });
 
 describe('addresses', () => {
-  it('saves an address outside the area with a notice, and refuses a bad postcode', () => {
+  it('saves an address outside the area with a notice, and refuses a bad postcode', async () => {
     renderStore(<AccountAddresses />);
     const page = main();
     fireEvent.click(within(page).getByRole('button', { name: 'Add an address' }));
     const type = (label: string, text: string) =>
       fireEvent.change(within(page).getByLabelText(label), { target: { value: text } });
-    type('Label', 'Gold Coast');
-    type('Full name', 'Alex Nguyen');
+    type('First name', 'Jo');
+    type('Last name', 'Citizen');
     type('Street address and unit', '1 Beach Road');
     type('Suburb', 'Surfers Paradise');
     type('Postcode', '42');
@@ -322,24 +322,34 @@ describe('addresses', () => {
     type('Postcode', '4217');
     expect(within(page).getByRole('status').textContent).toContain('We do not deliver to 4217');
     fireEvent.click(within(page).getByRole('button', { name: 'Save address' }));
-    const card = within(page).getByRole('article', { name: 'Gold Coast' });
+    const card = await within(page).findByRole('article', { name: 'Jo Citizen' });
     expect(card.textContent).toContain('1 Beach Road, Surfers Paradise QLD 4217');
     expect(within(card).getByText('Outside our delivery area')).toBeTruthy();
   });
 
-  it('makes another address the default and deletes after asking', () => {
+  it('makes another address the default and deletes after asking', async () => {
     renderStore(<AccountAddresses />);
     const page = main();
-    fireEvent.click(within(page).getByRole('button', { name: 'Make Work the default' }));
-    expect(within(page).getByRole('article', { name: 'Work' }).className).toContain('def');
-    fireEvent.click(within(page).getByRole('button', { name: 'Delete Work' }));
+    fireEvent.click(within(page).getByRole('button', { name: 'Make Sam Nguyen the default' }));
+    await waitFor(() =>
+      expect(within(page).getByRole('article', { name: 'Sam Nguyen' }).className).toContain('def'),
+    );
+    fireEvent.click(within(page).getByRole('button', { name: 'Delete Sam Nguyen' }));
     fireEvent.click(within(page).getByRole('button', { name: 'Keep' }));
-    expect(document.activeElement).toBe(within(page).getByRole('button', { name: 'Delete Work' }));
-    fireEvent.click(within(page).getByRole('button', { name: 'Delete Work' }));
+    expect(document.activeElement).toBe(
+      within(page).getByRole('button', { name: 'Delete Sam Nguyen' }),
+    );
+    fireEvent.click(within(page).getByRole('button', { name: 'Delete Sam Nguyen' }));
     fireEvent.click(within(page).getByRole('button', { name: 'Delete' }));
-    expect(within(page).queryByRole('article', { name: 'Work' })).toBeNull();
-    expect(document.activeElement).toBe(within(page).getByRole('button', { name: 'Delete Home' }));
-    expect(within(page).getByRole('article', { name: 'Home' }).className).toContain('def');
+    await waitFor(() =>
+      expect(within(page).queryByRole('article', { name: 'Sam Nguyen' })).toBeNull(),
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(page).getByRole('button', { name: 'Delete Alex Nguyen' }),
+      ),
+    );
+    expect(within(page).getByRole('article', { name: 'Alex Nguyen' }).className).toContain('def');
   });
 });
 
@@ -392,7 +402,7 @@ describe('settings', () => {
     );
   });
 
-  it('checks the new password before it says it was updated', () => {
+  it('checks the new password before it says it was updated', async () => {
     renderStore(<AccountSettings palette="B" textSize="auto" />);
     const page = main();
     const type = (label: string, text: string) =>
@@ -409,6 +419,6 @@ describe('settings', () => {
     expect(within(page).getByText('The passwords do not match.')).toBeTruthy();
     type('Confirm new password', 'a-longer-password');
     update();
-    expect(within(page).getByText('Your password has been updated.')).toBeTruthy();
+    expect(await within(page).findByText('Your password has been updated.')).toBeTruthy();
   });
 });

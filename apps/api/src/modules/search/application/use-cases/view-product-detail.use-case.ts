@@ -3,6 +3,8 @@ import type { CallContext, Id, Money, Result, Temporal } from '@mondapac/shared-
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { SearchValidationFailed } from '../../domain/search-query';
 import type { ProductDetailDependencies } from '../product-detail-dependencies';
+import type { ImageRef } from '../../domain/image-ref';
+import { imageRefsOf } from '../product-images';
 import { detailKeyOf, type DetailKey } from '../ports/product-detail-sources';
 
 /** How many Offers of one product a page reads: a product with more is shown its first 20 by id. */
@@ -40,6 +42,8 @@ export interface ProductDetail {
   readonly shortDescription: string | null;
   readonly description: string | null;
   readonly categoryIds: readonly Id<'Category'>[];
+  /** The product's public photos in the published revision's order, at most 8; may be empty. */
+  readonly images: readonly ImageRef[];
   readonly offers: readonly [ProductDetailOffer, ...ProductDetailOffer[]];
 }
 
@@ -76,6 +80,8 @@ const UNAVAILABLE = { code: 'search.unavailable' } as const;
  * lowest unit price first, ties by Offer id. When the keys would exceed {@link MAX_DETAIL_KEYS}
  * the last Offers (by id) are left out before pricing. A product no Offer of which is left is
  * `search.product-not-found`; a source or check that cannot be made is `search.unavailable`.
+ * The product's public photos (catalog's published revision only, taken down ones skipped, at
+ * most 8) come with the answer; a photo source that cannot answer gives none, never an error.
  * Prices are always Money (amount and currency); never Cost.
  */
 export class ViewProductDetail extends UseCase<
@@ -141,10 +147,11 @@ export class ViewProductDetail extends UseCase<
     }
     const keys = [...keysOf.values()].flat();
     const offers = candidates.filter((hit) => keysOf.has(hit.offerId));
-    const [prices, availability, sellers] = await Promise.all([
+    const [prices, availability, sellers, imageRefs] = await Promise.all([
       this.deps.sources.prices(context, keys),
       this.deps.sources.availability(context, keys),
       this.deps.sources.sellers(context, [...new Set(offers.map((hit) => hit.sellerId))]),
+      imageRefsOf(this.deps.images, context, [{ productId, name: product.name }]),
     ]);
     if (prices === null || availability === null || sellers === null) return err(UNAVAILABLE);
 
@@ -184,6 +191,7 @@ export class ViewProductDetail extends UseCase<
       shortDescription: product.shortDescription,
       description: product.description,
       categoryIds: product.categoryIds,
+      images: imageRefs.get(productId) ?? [],
       offers: [first, ...rest],
     });
   }

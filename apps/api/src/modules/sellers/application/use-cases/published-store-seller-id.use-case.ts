@@ -15,12 +15,13 @@ export interface PublishedStoreSellerIdInput {
 }
 
 /**
- * `sellers.published-store-seller-id`: the seller that holds `slug` as a store address, for a
- * module that serves a per-store public read (the flat shipping fee). Rule `anonymous`, in-process
- * only (the facade; no route). The same rules as the public store page: a held slug of a store
- * with an approved revision whose seller may sell now. An unknown, malformed, retired or
- * not-selling slug is `null`, alike. Ids only, never a store field. A fault is
- * `sellers.unavailable`: the caller fails closed.
+ * `sellers.published-store-seller-id` (the facade's `publishedStoreSellerId`): which seller holds
+ * a store address, for the storefront's product list of one store. Rule `anonymous`, in-process
+ * only. The same published-store rules as `sellers.published-store-read`: a `held` slug (never a
+ * retired one) of a seller with an approved revision who may sell now. An unknown, malformed,
+ * retired or not-selling slug all answer `null`, byte-identical; the caller reveals no more than
+ * the store page does. A fault is `sellers.unavailable` and never a guess. Ids only: no field of
+ * the store leaves.
  */
 export class PublishedStoreSellerId extends UseCase<
   PublishedStoreSellerIdInput,

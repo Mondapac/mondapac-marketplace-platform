@@ -95,6 +95,18 @@ export interface CertificationFacade {
   ): Promise<Result<readonly CertificationTypeView[], Failure>>;
 
   /**
+   * The Market's platform categories that certification marks: every category a published claim
+   * policy row names with a basis other than `NOT_APPLICABLE`, for every type, active or
+   * inactive, sorted. Consumers that must never use a certification as a signal (the buyer's
+   * "for you" shelf) leave these categories out. Ids only; no type, no basis. Rule `anonymous`
+   * (the answer is the same for every caller). A failed read is `certification.unavailable`,
+   * never an empty answer: the consumer fails closed. Not exposed over HTTP.
+   */
+  certifiedCategoryIds(
+    context: CallContext,
+  ): Promise<Result<readonly Id<'Category'>[], AccessDenied | CertificationUnavailable>>;
+
+  /**
    * For the sellers admin list (SEL-10, CERT-30): per requested seller (at most 100 distinct ids),
    * the type codes with a valid certificate and with one awaiting review. Admin callers holding
    * `certification.seller-certificate.view` only; the claim is decided by `evaluateClaims` alone.

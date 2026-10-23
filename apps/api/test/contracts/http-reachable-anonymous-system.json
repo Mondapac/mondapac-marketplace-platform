@@ -35,6 +35,11 @@
     "reason": "The buyer site's left menu and Browse drawer for a visitor with no session: the live platform category tree (ids, slugs, names, order); no seller category, no count, nothing unpublished."
   },
   {
+    "name": "catalog.published-image-read",
+    "rule": "anonymous",
+    "reason": "The buyer site shows product photos to a visitor with no session: one rendition (thumb, medium or large) of a photo that is in the current published revision of a published product and is not taken down; every other case answers the same not-found. JPEG written by the server, sandboxed, nosniff, never a cookie."
+  },
+  {
     "name": "engagement.record-guest-event",
     "rule": "anonymous",
     "reason": "The storefront records what a guest viewed, searched for or added to the cart under the engagement guest cookie (30 days): a guest has no account or session; ids only, and Sec-GPC records nothing."
@@ -178,6 +183,16 @@
     "name": "search.list-bestsellers",
     "rule": "anonymous",
     "reason": "The storefront best-sellers shelf for a visitor with no session: Offer ids, text and category ids in rank order (no sales figure), each re-checked against catalog and sellers; rate limited per origin."
+  },
+  {
+    "name": "search.list-for-you-guest",
+    "rule": "anonymous",
+    "reason": "The storefront for-you shelf for a guest: a guest has no account or session. The guest is the engagement guest cookie's token, read only with Engagement-Consent: granted and without Sec-GPC: 1; otherwise the shelf is the Market's best sellers. Offer ids, text and category ids only, each re-checked against catalog and sellers; no-store, never sets a cookie; rate limited per origin."
+  },
+  {
+    "name": "search.list-recently-viewed-guest",
+    "rule": "anonymous",
+    "reason": "The storefront recently-viewed shelf for a guest: a guest has no account or session. The guest is the engagement guest cookie's token, read only with Engagement-Consent: granted and without Sec-GPC: 1; otherwise the list is empty. Offer ids, text and category ids only, each re-checked against catalog and sellers; no-store, never sets a cookie; rate limited per origin."
   },
   {
     "name": "search.list-specials",

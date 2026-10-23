@@ -59,6 +59,7 @@ describe.each(TEST_MARKETS)('offerSellUnits in market %s', (code) => {
     offerListings: undefined as never,
     offerListingsSystem: undefined as never,
     publishedProduct: undefined as never,
+    publishedProductImages: undefined as never,
     pendingProductRevisions: undefined as never,
     sellerProductOwners: undefined as never,
   });

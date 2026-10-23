@@ -78,8 +78,10 @@ describe('coming soon pages', () => {
       const module = await load!();
       const metadata = await module.generateMetadata();
       const name = messages['coming-soon'].pages[page];
-      expect(metadata.title).toBe(`${name} | Mondapac`);
-      expect(metadata.robots).toEqual({ index: false, follow: true });
+      expect(metadata.title).toEqual({ absolute: `${name} | Mondapac` });
+      // Indexing is off in tests, so the root rule wins; with it on the page says noindex, follow
+      // (test/seo-metadata.spec.ts).
+      expect(metadata.robots).toEqual({ index: false, follow: false });
 
       // The page returns an async server component; jsdom renders only what it resolves to.
       const element = module.default() as ReactElement<

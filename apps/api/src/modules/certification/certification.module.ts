@@ -17,12 +17,15 @@ import {
   type ApprovedSellerZonesReader,
 } from '../sellers/contracts/approved-seller-zones.contract';
 import {
+  CERTIFIED_CATEGORIES_READER,
   CLAIM_FACTS_READER,
   PUBLISHED_TYPES_READER,
   SELLER_ZONES_SOURCE,
 } from './application/ports/tokens';
 import type { ClaimFactsReader, SellerZonesSource } from './application/ports/claim-facts.ports';
+import type { CertifiedCategoriesReader } from './application/ports/certified-categories.reader';
 import type { PublishedTypesReader } from './application/ports/published-types.reader';
+import { CertifiedCategories } from './application/use-cases/certified-categories.use-case';
 import { CertificationTypesSystem } from './application/use-cases/certification-types-system.use-case';
 import { CertificationTypes } from './application/use-cases/certification-types.use-case';
 import { EvaluateClaimsSystem } from './application/use-cases/evaluate-claims-system.use-case';
@@ -33,6 +36,7 @@ import { CERTIFICATION_FACADE } from './contracts/certification.facade';
 import { isUsableZone } from './domain/validity';
 import { manufacturerBasisEnabledIn } from './infrastructure/market-config-expiry-policy';
 import { claimFactsReaderProvider } from './infrastructure/claim-facts-reader.provider';
+import { certifiedCategoriesReaderProvider } from './infrastructure/certified-categories-reader.provider';
 import { publishedTypesReaderProvider } from './infrastructure/published-types-reader.provider';
 import { SellersZonesSource } from './infrastructure/sellers-zones.source';
 import { CertificationFacadeImplementation } from './presentation/certification.facade';
@@ -166,6 +170,13 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     ...productCertificationProviders,
     PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
+    certifiedCategoriesReaderProvider,
+    {
+      provide: CertifiedCategories,
+      inject: [USE_CASE_GATE, CERTIFIED_CATEGORIES_READER],
+      useFactory: (gate: UseCaseGate, reader: CertifiedCategoriesReader) =>
+        new CertifiedCategories(gate, reader),
+    },
     claimFactsReaderProvider,
     {
       provide: SELLER_ZONES_SOURCE,
@@ -228,6 +239,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         CertificationTypes,
         CertificationTypesSystem,
         SellerCertificateOverview,
+        CertifiedCategories,
       ],
       useFactory: (
         evaluateClaims: EvaluateClaims,
@@ -237,6 +249,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         certificationTypes: CertificationTypes,
         certificationTypesSystem: CertificationTypesSystem,
         sellerCertificateOverview: SellerCertificateOverview,
+        certifiedCategories: CertifiedCategories,
       ) =>
         new CertificationFacadeImplementation({
           evaluateClaims,
@@ -246,6 +259,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
           certificationTypes,
           certificationTypesSystem,
           sellerCertificateOverview,
+          certifiedCategories,
         }),
     },
   ],

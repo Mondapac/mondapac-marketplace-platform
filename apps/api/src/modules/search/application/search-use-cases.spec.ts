@@ -11,7 +11,11 @@ import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
 import type { OfferDocumentRepository } from './ports/offer-document.repository';
 import type { FeedFacts, OfferFeed } from './ports/offer-feed';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
+import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
+import type { SellerEligibility } from './ports/seller-eligibility';
+import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
+import type { StoreResolver } from './ports/store-resolver';
 import type { SearchDependencies } from './search-dependencies';
 import { SYNC_BATCH } from './sync-offers';
 import { RebuildOfferIndex } from './use-cases/rebuild-offer-index.use-case';
@@ -33,6 +37,7 @@ const id = <T extends string>(n: number): Id<T> => {
 };
 const offer = (n: number): Id<'Offer'> => id<'Offer'>(0x1000 + n);
 const SELLER = id<'Seller'>(0x51);
+const SUSPENDED = id<'Seller'>(0x52);
 const PRODUCT = id<'Product'>(0x91);
 const CATEGORY = id<'Category'>(0xca);
 
@@ -59,6 +64,14 @@ class MemoryDocuments implements OfferDocumentRepository {
       [...this.rows.entries()]
         .filter(([key]) => key.startsWith(`${market.marketId}:`))
         .filter(([, row]) => row.document.productId === productId)
+        .map(([, row]) => row.document.offerId),
+    );
+  }
+  offerIdsOfSeller(market: MarketContext, sellerId: Id<'Seller'>) {
+    return Promise.resolve(
+      [...this.rows.entries()]
+        .filter(([key]) => key.startsWith(`${market.marketId}:`))
+        .filter(([, row]) => row.document.sellerId === sellerId)
         .map(([, row]) => row.document.offerId),
     );
   }
@@ -94,17 +107,37 @@ class StubFeed implements OfferFeed {
   }
   publishedIds(
     _context: CallContext,
-    input: { productId?: Id<'Product'>; after?: Id<'Offer'>; limit: number },
+    input: {
+      productId?: Id<'Product'>;
+      sellerId?: Id<'Seller'>;
+      after?: Id<'Offer'>;
+      limit: number;
+    },
   ) {
     if (this.failing) return Promise.resolve(null);
     const ids = this.published
       .filter(
         (o) => input.productId === undefined || this.facts_.get(o)?.productId === input.productId,
       )
+      .filter(
+        (o) => input.sellerId === undefined || this.facts_.get(o)?.sellerId === input.sellerId,
+      )
       .filter((o) => input.after === undefined || o > input.after)
       .sort()
       .slice(0, input.limit);
     return Promise.resolve(ids);
+  }
+}
+
+/** The may-sell contract: every seller may sell except the suspended ones. */
+class StubSellers implements SellerEligibility {
+  suspended = new Set<Id<'Seller'>>();
+  failing = false;
+  readonly asked: Id<'Seller'>[][] = [];
+  eligible(_context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
+    this.asked.push([...sellerIds]);
+    if (this.failing) return Promise.resolve(null);
+    return Promise.resolve(new Set(sellerIds.filter((s) => !this.suspended.has(s))));
   }
 }
 
@@ -127,6 +160,63 @@ class StubVisibility implements PublicVisibility {
     if (this.failing) return Promise.resolve(null);
     return Promise.resolve(
       new Set(offers.filter((o) => !this.hidden.has(o.offerId)).map((o) => o.offerId)),
+    );
+  }
+}
+
+class StubImages implements ProductImages {
+  images_ = new Map<Id<'Product'>, PublicImage[]>();
+  failing = false;
+  readonly asked: Id<'Product'>[][] = [];
+  of(_context: CallContext, productIds: readonly Id<'Product'>[]) {
+    this.asked.push([...productIds]);
+    if (this.failing) return Promise.resolve(null);
+    return Promise.resolve(new Map(this.images_));
+  }
+}
+
+class StubStores implements StoreResolver {
+  stores = new Map<string, Id<'Seller'>>();
+  failing = false;
+  readonly asked: string[] = [];
+  sellerIdOf(_context: CallContext, slug: string) {
+    this.asked.push(slug);
+    if (this.failing) return Promise.resolve(null);
+    return Promise.resolve({ sellerId: this.stores.get(slug) ?? null });
+  }
+}
+
+class StubShelves implements ShelfDocumentsReader {
+  hits: OfferHit[] = [];
+  readonly browsed: {
+    market: string;
+    sellerId: Id<'Seller'>;
+    categoryId: Id<'Category'> | null;
+    limit: number;
+    offset: number;
+  }[] = [];
+  byOfferIds() {
+    return Promise.resolve([]);
+  }
+  byProductId() {
+    return Promise.resolve([]);
+  }
+  byProductIds() {
+    return Promise.resolve([]);
+  }
+  browseAll() {
+    return Promise.resolve([]);
+  }
+  browseBySeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    categoryId: Id<'Category'> | null,
+    limit: number,
+    offset: number,
+  ) {
+    this.browsed.push({ market: market.marketId, sellerId, categoryId, limit, offset });
+    return Promise.resolve(
+      this.hits.filter((h) => h.sellerId === sellerId).slice(offset, offset + limit),
     );
   }
 }
@@ -164,6 +254,10 @@ describe.each([
   let feed: StubFeed;
   let reader: StubReader;
   let visibility: StubVisibility;
+  let sellers: StubSellers;
+  let images: StubImages;
+  let stores: StubStores;
+  let shelves: StubShelves;
   let deps: SearchDependencies;
 
   beforeEach(() => {
@@ -171,6 +265,10 @@ describe.each([
     feed = new StubFeed();
     reader = new StubReader();
     visibility = new StubVisibility();
+    sellers = new StubSellers();
+    images = new StubImages();
+    stores = new StubStores();
+    shelves = new StubShelves();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       documents,
@@ -178,7 +276,11 @@ describe.each([
       policy: new ConfigSearchPolicy(markets),
       feed,
       visibility,
+      sellers,
       clock: new FixedClock(T0),
+      shelves,
+      stores,
+      images,
     };
   });
 
@@ -256,6 +358,61 @@ describe.each([
       ]);
     });
 
+    it('gives no document to an Offer whose seller may not sell, and asks only about sellable ones', async () => {
+      feed.facts_.set(offer(1), sellable());
+      feed.facts_.set(offer(2), sellable({ sellerId: SUSPENDED }));
+      feed.facts_.set(offer(3), sellable({ sellerId: id<'Seller'>(0x53), sellable: false }));
+      sellers.suspended.add(SUSPENDED);
+      await documents.upsert(market, { ...documentOf(offer(2)), sellerId: SUSPENDED }, T_OLD);
+
+      const result = await new SyncOfferDocuments(gate, deps).execute(system, {
+        offerIds: [offer(1), offer(2), offer(3)],
+      });
+
+      expect(result).toEqual({ ok: true, value: { upserted: 1, deleted: 1 } });
+      expect([...documents.rows.values()].map((row) => row.document.offerId)).toEqual([offer(1)]);
+      expect(sellers.asked).toEqual([[SELLER, SUSPENDED]]);
+    });
+
+    it("drops a suspended seller's documents and brings them back on reinstatement", async () => {
+      for (const n of [1, 2]) {
+        feed.facts_.set(offer(n), sellable({ sellerId: SUSPENDED }));
+        feed.published.push(offer(n));
+      }
+      feed.facts_.set(offer(3), sellable());
+      feed.published.push(offer(3));
+      const sync = new SyncOfferDocuments(gate, deps);
+      await sync.execute(system, { offerIds: [offer(1), offer(2), offer(3)] });
+      // Unlisted since: catalog no longer lists it as published, but it still has a document.
+      feed.published = feed.published.filter((o) => o !== offer(2));
+      expect(documents.rows.size).toBe(3);
+
+      sellers.suspended.add(SUSPENDED);
+      const suspended = await sync.execute(system, { sellerId: SUSPENDED });
+
+      expect(suspended).toEqual({ ok: true, value: { upserted: 0, deleted: 2 } });
+      expect([...documents.rows.values()].map((row) => row.document.offerId)).toEqual([offer(3)]);
+
+      sellers.suspended.delete(SUSPENDED);
+      const reinstated = await sync.execute(system, { sellerId: SUSPENDED });
+
+      expect(reinstated).toEqual({ ok: true, value: { upserted: 1, deleted: 0 } });
+      expect([...documents.rows.values()].map((row) => row.document.offerId).sort()).toEqual(
+        [offer(1), offer(3)].sort(),
+      );
+    });
+
+    it('throws when the may-sell contract cannot answer, writing nothing', async () => {
+      feed.facts_.set(offer(1), sellable());
+      sellers.failing = true;
+      await documents.upsert(market, documentOf(offer(1)), T_OLD);
+
+      await expect(
+        new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1)] }),
+      ).rejects.toThrow('seller eligibility unavailable');
+      expect(documents.rows.get(`${code}:${offer(1)}`)?.indexedAt).toEqual(T_OLD);
+    });
+
     it('throws when catalog cannot answer, so the delivery is retried', async () => {
       feed.failing = true;
       await expect(
@@ -294,6 +451,21 @@ describe.each([
       expect(documents.rows.has(`${code}:${offer(9999)}`)).toBe(false);
     });
 
+    it("leaves a suspended seller's Offers out, so a rebuild does not bring them back", async () => {
+      feed.facts_.set(offer(1), sellable());
+      feed.facts_.set(offer(2), sellable({ sellerId: SUSPENDED }));
+      feed.published = [offer(1), offer(2)];
+      sellers.suspended.add(SUSPENDED);
+
+      const result = await new RebuildOfferIndex(gate, deps).execute(system, {});
+
+      expect(result).toEqual({
+        ok: true,
+        value: { offers: 2, upserted: 1, deleted: 0, stale: 0 },
+      });
+      expect([...documents.rows.values()].map((row) => row.document.offerId)).toEqual([offer(1)]);
+    });
+
     it('deletes nothing when catalog fails midway', async () => {
       feed.facts_.set(offer(1), sellable());
       feed.published = [offer(1)];
@@ -330,6 +502,7 @@ describe.each([
               name: 'Product 1',
               shortText: null,
               categoryIds: [CATEGORY],
+              primaryImage: null,
             },
             {
               offerId: offer(2),
@@ -338,6 +511,7 @@ describe.each([
               name: 'Product 2',
               shortText: null,
               categoryIds: [CATEGORY],
+              primaryImage: null,
             },
           ],
           page: 1,
@@ -407,6 +581,140 @@ describe.each([
       expect(visibleExtra.ok && visibleExtra.value.hasMore).toBe(true);
     });
 
+    describe('photos', () => {
+      const PHOTO = id<'ProductImage'>(0x701);
+
+      it('gives each item the first public photo of its product, with the name as alt text', async () => {
+        reader.hits = [hit(1), hit(2)];
+        images.images_.set(PRODUCT, [
+          { imageId: PHOTO, width: 1600, height: 1200 },
+          { imageId: id<'ProductImage'>(0x702), width: 800, height: 800 },
+        ]);
+
+        const result = await search({ q: 'product' });
+
+        expect(result.ok && result.value.items.map((item) => item.primaryImage)).toEqual([
+          { imageId: PHOTO, width: 1600, height: 1200, alt: 'Product 1' },
+          { imageId: PHOTO, width: 1600, height: 1200, alt: 'Product 2' },
+        ]);
+        expect(images.asked).toEqual([[PRODUCT]]);
+      });
+
+      it('asks for the photos of the shown items only, never of a hidden or extra hit', async () => {
+        reader.hits = [hit(1), hit(2), hit(3)];
+        visibility.hidden = new Set([offer(2)]);
+
+        await search({ q: 'product', pageSize: 2 });
+
+        expect(images.asked).toEqual([[PRODUCT]]);
+        reader.hits = [];
+        images.asked.length = 0;
+        await search({ q: 'product' });
+        expect(images.asked).toEqual([]);
+      });
+
+      it('answers with no photo, not an error, when the photo source cannot answer', async () => {
+        reader.hits = [hit(1)];
+        images.failing = true;
+
+        const result = await search({ q: 'product' });
+
+        expect(result.ok && result.value.items.map((item) => item.primaryImage)).toEqual([null]);
+      });
+    });
+
+    describe('a store', () => {
+      const OTHER = id<'Seller'>(0x52);
+      const storeHit = (n: number, sellerId: Id<'Seller'> = SELLER): OfferHit => ({
+        ...hit(n),
+        sellerId,
+      });
+
+      it("lists the store's Offers by name through its seller, never through the text index", async () => {
+        stores.stores.set('halal-shop', SELLER);
+        shelves.hits = [storeHit(1), storeHit(2, OTHER), storeHit(3)];
+
+        const result = await search({ store: 'halal-shop', page: 1, pageSize: 10 });
+
+        expect(result.ok && result.value.items.map((item) => item.offerId)).toEqual([
+          offer(1),
+          offer(3),
+        ]);
+        expect(shelves.browsed).toEqual([
+          { market: code, sellerId: SELLER, categoryId: null, limit: 11, offset: 0 },
+        ]);
+        expect(stores.asked).toEqual(['halal-shop']);
+        expect(reader.requests).toEqual([]);
+      });
+
+      it('combines with a category', async () => {
+        stores.stores.set('halal-shop', SELLER);
+        shelves.hits = [storeHit(1)];
+
+        await search({ store: 'halal-shop', category: CATEGORY });
+
+        expect(shelves.browsed[0]).toMatchObject({ sellerId: SELLER, categoryId: CATEGORY });
+      });
+
+      it('still drops an Offer that catalog or sellers no longer show', async () => {
+        stores.stores.set('halal-shop', SELLER);
+        shelves.hits = [storeHit(1), storeHit(2)];
+        visibility.hidden = new Set([offer(1)]);
+
+        const result = await search({ store: 'halal-shop' });
+
+        expect(result.ok && result.value.items.map((item) => item.offerId)).toEqual([offer(2)]);
+      });
+
+      it('answers an empty page, not an error, for an address that sellers resolves to no store', async () => {
+        shelves.hits = [storeHit(1)];
+
+        const result = await search({ store: 'no-such-shop', page: 3, pageSize: 5 });
+
+        expect(result).toEqual({
+          ok: true,
+          value: { items: [], page: 3, pageSize: 5, hasMore: false },
+        });
+        expect(shelves.browsed).toEqual([]);
+        expect(reader.requests).toEqual([]);
+        expect(images.asked).toEqual([]);
+      });
+
+      it.each([
+        // [hits for the store, page, pageSize, ids shown, hasMore]
+        [3, 1, 3, [1, 2, 3], false],
+        [4, 1, 3, [1, 2, 3], true],
+        [6, 2, 3, [4, 5, 6], false],
+        [7, 2, 3, [4, 5, 6], true],
+        [3, 2, 3, [], false],
+        [3, 5, 3, [], false],
+      ])(
+        'with %i products, page %i of %i shows %j and hasMore %s',
+        async (total, page, pageSize, shown, more) => {
+          stores.stores.set('halal-shop', SELLER);
+          shelves.hits = Array.from({ length: total }, (_, i) => storeHit(i + 1));
+
+          const result = await search({ store: 'halal-shop', page, pageSize });
+
+          expect(result.ok && result.value.items.map((item) => item.offerId)).toEqual(
+            shown.map((n) => offer(n)),
+          );
+          expect(result.ok && result.value.hasMore).toBe(more);
+        },
+      );
+
+      it('fails closed when sellers cannot say who holds the address', async () => {
+        shelves.hits = [storeHit(1)];
+        stores.failing = true;
+
+        expect(await search({ store: 'halal-shop' })).toEqual({
+          ok: false,
+          error: { code: 'search.unavailable' },
+        });
+        expect(shelves.browsed).toEqual([]);
+      });
+    });
+
     it('fails closed when the visibility check cannot be made', async () => {
       reader.hits = [hit(1)];
       visibility.failing = true;
@@ -427,6 +735,12 @@ describe.each([
       [{ q: 'ok', pageSize: 49 }, 'pageSize'],
       [{ q: 'ok', pageSize: 1.5 }, 'pageSize'],
       [{ q: 'ok\u0000x' }, 'q'],
+      [{ store: 'ab' }, 'store'],
+      [{ store: 'Shop-One' }, 'store'],
+      [{ store: 'shop--one' }, 'store'],
+      [{ store: 'shop-' }, 'store'],
+      [{ store: 'x'.repeat(51) }, 'store'],
+      [{ q: 'sausages', store: 'halal-shop' }, 'store'],
     ])('refuses %j before any read', async (input, path) => {
       const result = await search(input);
 

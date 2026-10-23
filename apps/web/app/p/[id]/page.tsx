@@ -1,7 +1,7 @@
-import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { UnavailableProductView } from '../../../src/errors/unavailable-product.tsx';
 import { ProductPage } from '../../../src/product/product-page.tsx';
+import { pageMetadata, seoDescription } from '../../../src/seo/metadata.ts';
 import {
   loadProduct,
   loadStorefrontContent,
@@ -23,10 +23,32 @@ async function resolve(params: Props['params']) {
 }
 
 export async function generateMetadata({ params }: Props) {
-  const [found, t] = await Promise.all([resolve(params), getTranslations('store')]);
-  if (found.product) return { title: `${found.product.name} | ${t('title')}` };
+  const [found, { id }] = await Promise.all([resolve(params), params]);
+  // The current path; a later URL shape changes only this line (SEO plan, package 5).
+  const path = `/p/${encodeURIComponent(id)}`;
+  if (found.product) {
+    const { product } = found;
+    const description =
+      product.description.trim() === ''
+        ? await seoDescription('product', {
+            name: product.name,
+            seller: product.offers[0].seller.name,
+          })
+        : product.description;
+    return pageMetadata({
+      name: product.name,
+      description,
+      path,
+      ...(product.photos[0] === undefined ? {} : { image: product.photos[0] }),
+    });
+  }
   // A removed product leaves the search index; the page stays for old links.
-  return { title: `${found.removed.name} | ${t('title')}`, robots: { index: false } };
+  return pageMetadata({
+    name: found.removed.name,
+    description: await seoDescription('unavailable-product', { name: found.removed.name }),
+    path,
+    noindex: true,
+  });
 }
 
 export default async function ProductRoute({ params }: Props) {

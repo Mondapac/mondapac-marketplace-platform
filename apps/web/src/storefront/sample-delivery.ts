@@ -49,6 +49,7 @@ export const SAMPLE_DELIVERY_LOCATOR: DeliveryLocatorSource = {
   // Launch area (ServiceArea config): Greater Brisbane. The boundary is a sample shape.
   area: {
     name: 'Greater Brisbane',
+    regionCode: 'QLD',
     boundary: (
       [
         [95, 120],

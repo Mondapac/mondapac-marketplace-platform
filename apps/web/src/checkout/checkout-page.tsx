@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { viewCart, type CartView } from '../cart/cart.ts';
 import { DiscountBox, SummaryTotals, TrustLines } from '../cart/cart-parts.tsx';
+import { addressLine as savedLine, recipientName } from '../account/address-line.ts';
 import { Crumbs } from '../catalog/results.tsx';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
@@ -120,7 +121,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const addresses = customer?.addresses ?? [];
   const saved = addresses.find((a) => a.id === choice);
   const addressLine = saved
-    ? `${saved.label}: ${saved.line}`
+    ? `${recipientName(saved)}: ${savedLine(saved, area.regionCode)}`
     : [
         fresh.street || t('new-address-summary'),
         fresh.suburb,
@@ -191,12 +192,10 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
                       onChange={() => setChoice(a.id)}
                     />
                     <b>
-                      {a.label}
+                      {recipientName(a)}
                       {a.isDefault ? <span className="badge">{t('default')}</span> : null}
                     </b>
-                    <span>
-                      {a.name}, {a.line}
-                    </span>
+                    <span>{savedLine(a, area.regionCode)}</span>
                     <span>{a.phone}</span>
                   </label>
                 ))}

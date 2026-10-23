@@ -7,6 +7,7 @@ import { SearchProducts } from '../../src/modules/search/application/use-cases/s
 import type { OfferDocument } from '../../src/modules/search/domain/offer-document';
 import { ConfigSearchPolicy } from '../../src/modules/search/infrastructure/config-search-policy';
 import { PrismaOfferDocumentRepository } from '../../src/modules/search/infrastructure/prisma-offer-document.repository';
+import { PrismaShelfDocumentsReader } from '../../src/modules/search/infrastructure/prisma-shelf-documents.reader';
 import { RawOfferSearchReader } from '../../src/modules/search/infrastructure/raw-offer-search.reader';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
@@ -48,6 +49,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
   let db: Persistence;
   let documents: PrismaOfferDocumentRepository;
   let reader: RawOfferSearchReader;
+  let shelves: PrismaShelfDocumentsReader;
   let sql: Client;
 
   const doc = (overrides: Partial<OfferDocument> & { name: string }): OfferDocument => ({
@@ -96,6 +98,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
   beforeAll(async () => {
     db = createPersistence();
     documents = new PrismaOfferDocumentRepository(db.service);
+    shelves = new PrismaShelfDocumentsReader(db.service);
     reader = new RawOfferSearchReader(new PrismaRawReadPort(db.root).forModule('search'));
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
@@ -263,6 +266,18 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
     expect(await find('renamed')).toEqual([]);
   });
 
+  it('lists the Offers of a seller, in this Market only', async () => {
+    const seller = id<'Seller'>();
+    const a = doc({ name: 'Seller one', sellerId: seller });
+    const b = doc({ name: 'Seller two', sellerId: seller });
+    await seed(market, a, b, doc({ name: 'Someone else' }));
+    await seed(other, doc({ name: 'Elsewhere', sellerId: seller }));
+
+    const ofSeller = await inUnit(market, () => documents.offerIdsOfSeller(market, seller), true);
+
+    expect([...ofSeller].sort()).toEqual([a.offerId, b.offerId].sort());
+  });
+
   it('lists the Offers of a product and deletes only documents older than a rebuild start', async () => {
     const product = id<'Product'>();
     const a = doc({ name: 'Old one', productId: product });
@@ -343,7 +358,11 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
             new Set(offers.map((o) => o.offerId).filter((o) => o !== hidden.offerId)),
           ),
       },
+      sellers: { eligible: () => Promise.resolve(null) },
       clock: new FixedClock(T0),
+      shelves,
+      stores: { sellerIdOf: () => Promise.resolve({ sellerId: null }) },
+      images: { of: () => Promise.resolve(new Map()) },
     };
     const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
     const visitor = testCallContext(market, 'anonymous', 'search-db-visitor-1');
@@ -352,5 +371,80 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
 
     expect(result.ok && result.value.items.map((item) => item.name)).toEqual(['Visible mug']);
     expect(result.ok && result.value.hasMore).toBe(false);
+  });
+
+  describe('browsing the Offers of one store', () => {
+    const browse = (
+      sellerId: Id<'Seller'>,
+      options: {
+        categoryId?: Id<'Category'>;
+        limit?: number;
+        offset?: number;
+        on?: MarketContext;
+      } = {},
+    ) =>
+      inUnit(
+        options.on ?? market,
+        () =>
+          shelves.browseBySeller(
+            options.on ?? market,
+            sellerId,
+            options.categoryId ?? null,
+            options.limit ?? 49,
+            options.offset ?? 0,
+          ),
+        true,
+      );
+
+    it("lists one seller's Offers by name then Offer id, and pages by offset", async () => {
+      const seller = id<'Seller'>();
+      const otherSeller = id<'Seller'>();
+      await seed(
+        market,
+        doc({ name: 'Cherry tea', sellerId: seller }),
+        doc({ name: 'Apple tea', sellerId: seller }),
+        doc({ name: 'Banana tea', sellerId: seller }),
+        doc({ name: 'Another seller tea', sellerId: otherSeller }),
+      );
+
+      expect(names(await browse(seller))).toEqual(['Apple tea', 'Banana tea', 'Cherry tea']);
+      expect(names(await browse(seller, { limit: 2, offset: 0 }))).toEqual([
+        'Apple tea',
+        'Banana tea',
+      ]);
+      expect(names(await browse(seller, { limit: 2, offset: 2 }))).toEqual(['Cherry tea']);
+      expect(await browse(seller, { offset: 3 })).toEqual([]);
+    });
+
+    it('narrows to one category, and gives the same Offer id order for equal names', async () => {
+      const seller = id<'Seller'>();
+      const tea = id<'Category'>();
+      const coffee = id<'Category'>();
+      const first = doc({ name: 'Same name', sellerId: seller, categoryIds: [tea] });
+      const second = doc({ name: 'Same name', sellerId: seller, categoryIds: [tea, coffee] });
+      await seed(
+        market,
+        second,
+        first,
+        doc({ name: 'Coffee only', sellerId: seller, categoryIds: [coffee] }),
+      );
+
+      const inTea = await browse(seller, { categoryId: tea });
+      expect(inTea.map((hit) => hit.offerId)).toEqual([first.offerId, second.offerId].sort());
+      expect(names(await browse(seller, { categoryId: coffee }))).toEqual([
+        'Coffee only',
+        'Same name',
+      ]);
+      expect(await browse(seller, { categoryId: id<'Category'>() })).toEqual([]);
+    });
+
+    it("never shows another Market's documents, even for the same seller id", async () => {
+      const seller = id<'Seller'>();
+      await seed(market, doc({ name: 'Here', sellerId: seller }));
+      await seed(other, doc({ name: 'There', sellerId: seller }));
+
+      expect(names(await browse(seller))).toEqual(['Here']);
+      expect(names(await browse(seller, { on: other }))).toEqual(['There']);
+    });
   });
 });
