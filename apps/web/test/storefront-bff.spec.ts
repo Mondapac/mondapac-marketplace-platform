@@ -10,6 +10,7 @@ const config: StorefrontApiConfig = {
   apiBaseUrl: 'http://api.test',
   hosts: [{ origin: ORIGIN, host: 'storefront.localhost:3003', marketId: 'AU' }],
   clientAddressKey: null,
+  imageOrigin: null,
 };
 const sameOrigin = {
   host: 'storefront.localhost:3003',
