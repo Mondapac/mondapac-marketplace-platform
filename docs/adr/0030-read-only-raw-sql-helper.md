@@ -161,6 +161,13 @@ needs none (data catalog 6.3). Its cycle trigger is migration SQL, ruled outside
   directly. The statements are `search.offer-search`, `search.offer-search-in-category` and
   `search.offer-browse`; a visitor's text is always a bound value. `to_tsvector` is not allowed: the
   vector is built by a trigger on `search.offer_documents` (decision 10, out of scope).
+- Amended 2026-10-23 (search, category subtree; pending Hassan's security review): the parse
+  check gains array overlap in the one shape `@>` already has, `<column> && $n::uuid[]` (a column
+  on the left, a `uuid[]` cast of a bound parameter on the right, nothing else).
+  `search.offer-search-in-category` and `search.offer-browse` use it so a category filter matches a
+  document in the asked category or any live subcategory; their `categoryIds` cap goes from 1 to
+  1000 (`MAX_FILTER_CATEGORIES`, the list check's largest cap). The ids come from catalog's public
+  category tree, never from the visitor.
 
 ## Alternatives considered
 - **Prisma with `relationLoadStrategy: 'join'` (option B):** no raw SQL, but one statement is

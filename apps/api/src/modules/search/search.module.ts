@@ -12,6 +12,7 @@ import { InventoryModule } from '../inventory';
 import { OrderingModule } from '../ordering';
 import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
+import { CATEGORY_SUBTREE_SOURCE } from './application/ports/category-subtree';
 import { OFFER_DOCUMENT_REPOSITORY } from './application/ports/offer-document.repository';
 import { OFFER_FEED } from './application/ports/offer-feed';
 import { OFFER_SEARCH_READER } from './application/ports/offer-search.reader';
@@ -65,6 +66,7 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['shelves', SHELF_DOCUMENTS_READER],
   ['stores', STORE_RESOLVER],
   ['images', PRODUCT_IMAGES],
+  ['categories', CATEGORY_SUBTREE_SOURCE],
 ];
 
 /** Every search use case shares one dependency object, built from the same ports. */
@@ -91,6 +93,7 @@ const SHELF_PORTS: readonly [keyof ShelfDependencies, InjectionToken][] = [
   ['policy', SEARCH_POLICY],
   ['variants', PUBLISHED_VARIANTS],
   ['images', PRODUCT_IMAGES],
+  ['categories', CATEGORY_SUBTREE_SOURCE],
 ];
 
 /** The two shelf use cases share their own dependency object. */

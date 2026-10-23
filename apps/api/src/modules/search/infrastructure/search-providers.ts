@@ -5,8 +5,8 @@ import {
   RAW_READ_PORT,
   type RawReadPort,
 } from '../../../platform/persistence/raw-reads/raw-read-port';
-import { CATALOG_FACADE, CATALOG_INDEX_FACADE } from '../../catalog';
-import type { CatalogFacade, CatalogIndexFacade } from '../../catalog';
+import { CATALOG_ASSISTANT_FACADE, CATALOG_FACADE, CATALOG_INDEX_FACADE } from '../../catalog';
+import type { CatalogAssistantFacade, CatalogFacade, CatalogIndexFacade } from '../../catalog';
 import { CERTIFICATION_FACADE, type CertificationFacade } from '../../certification';
 import { ENGAGEMENT_FACADE, type EngagementFacade } from '../../engagement';
 import { INVENTORY_FACADE, type InventoryFacade } from '../../inventory';
@@ -44,6 +44,11 @@ import {
 } from '../application/ports/product-detail-sources';
 import { PRODUCT_IMAGES, type ProductImages } from '../application/ports/product-images';
 import { STORE_RESOLVER, type StoreResolver } from '../application/ports/store-resolver';
+import {
+  CATEGORY_SUBTREE_SOURCE,
+  type CategorySubtreeSource,
+} from '../application/ports/category-subtree';
+import { FacadeCategorySubtree } from './facade-category-subtree';
 import { FacadeProductImages } from './facade-product-images';
 import { FacadeStoreResolver } from './facade-store-resolver';
 import { PERSONAL_SIGNALS, type PersonalSignals } from '../application/ports/personal-signals';
@@ -127,6 +132,12 @@ export const searchProviders: readonly FactoryProvider[] = [
     provide: STORE_RESOLVER,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): StoreResolver => new FacadeStoreResolver(sellers),
+  },
+  {
+    provide: CATEGORY_SUBTREE_SOURCE,
+    inject: [CATALOG_ASSISTANT_FACADE],
+    useFactory: (catalog: CatalogAssistantFacade): CategorySubtreeSource =>
+      new FacadeCategorySubtree(catalog),
   },
   {
     provide: PERSONAL_SIGNALS,

@@ -176,6 +176,7 @@ describe.each([['AU'], ['ZZ']] as const)('personal shelves in market %s', (code)
       policy: new ConfigSearchPolicy(markets),
       variants: new StubVariants(),
       images,
+      categories: { subtreeOf: (_context, categoryId) => Promise.resolve([categoryId]) },
       signals,
     };
   });

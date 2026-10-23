@@ -8,6 +8,7 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { OfferHit } from '../domain/offer-document';
 import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
+import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
 import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
@@ -36,6 +37,7 @@ const variant = (n: number): Id<'Variant'> => id<'Variant'>(0x2000 + n);
 const SELLER = id<'Seller'>(0x51);
 const CATEGORY = id<'Category'>(0xca);
 const OTHER_CATEGORY = id<'Category'>(0xcb);
+const SUBCATEGORY = id<'Category'>(0xcc);
 
 const hit = (n: number, categoryIds: readonly Id<'Category'>[] = [CATEGORY]): OfferHit => ({
   offerId: offer(n),
@@ -138,6 +140,15 @@ class StubVariants implements PublishedVariants {
   }
 }
 
+class StubCategories implements CategorySubtreeSource {
+  children = new Map<Id<'Category'>, Id<'Category'>[]>();
+  failing = false;
+  subtreeOf(_context: CallContext, categoryId: Id<'Category'>) {
+    if (this.failing) return Promise.resolve(null);
+    return Promise.resolve([categoryId, ...(this.children.get(categoryId) ?? [])]);
+  }
+}
+
 describe.each([
   ['AU', 'AUD'],
   ['ZZ', 'JPY'],
@@ -153,6 +164,7 @@ describe.each([
   let visibility: StubVisibility;
   let variants: StubVariants;
   let images: StubImages;
+  let categories: StubCategories;
   let deps: ShelfDependencies;
 
   beforeEach(() => {
@@ -162,6 +174,7 @@ describe.each([
     visibility = new StubVisibility();
     variants = new StubVariants();
     images = new StubImages();
+    categories = new StubCategories();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       reader,
@@ -171,6 +184,7 @@ describe.each([
       policy: new ConfigSearchPolicy(markets),
       variants,
       images,
+      categories,
     };
   });
 
@@ -242,9 +256,38 @@ describe.each([
 
       expect(result.ok && result.value.items.map((i) => i.offerId)).toEqual([offer(2), offer(5)]);
       expect(reader.requests).toEqual([
-        expect.objectContaining({ text: null, categoryId: CATEGORY, limit: FILL_DEPTH, offset: 0 }),
+        expect.objectContaining({
+          text: null,
+          categoryIds: [CATEGORY],
+          limit: FILL_DEPTH,
+          offset: 0,
+        }),
       ]);
       expect(shelves.browsed).toEqual([]);
+    });
+
+    it('counts a subcategory as the category, for the ranked Offers and the fill', async () => {
+      categories.children.set(CATEGORY, [SUBCATEGORY]);
+      shelves.documents = [hit(1, [SUBCATEGORY]), hit(2, [OTHER_CATEGORY])];
+      sources.ranked = [offer(1), offer(2)];
+      reader.hits = [hit(5, [SUBCATEGORY])];
+
+      const result = await run({ category: CATEGORY, limit: 3 });
+
+      expect(result.ok && result.value.items.map((i) => i.offerId)).toEqual([offer(1), offer(5)]);
+      expect(reader.requests[0]?.categoryIds).toEqual([CATEGORY, SUBCATEGORY]);
+    });
+
+    it('is unavailable when the category tree cannot be read', async () => {
+      categories.failing = true;
+      shelves.documents = [hit(1)];
+      sources.ranked = [offer(1)];
+
+      expect(await run({ category: CATEGORY })).toEqual({
+        ok: false,
+        error: { code: 'search.unavailable' },
+      });
+      expect(reader.requests).toEqual([]);
     });
 
     it('drops what catalog or sellers no longer show, and caps at the limit', async () => {
@@ -343,6 +386,27 @@ describe.each([
       const result = await run({ category: CATEGORY });
 
       expect(result.ok && result.value.items.map((i) => i.offerId)).toEqual([offer(1)]);
+    });
+
+    it('keeps Offers of a subcategory when a category is asked', async () => {
+      categories.children.set(CATEGORY, [SUBCATEGORY]);
+      shelves.documents = [hit(1, [SUBCATEGORY]), hit(2, [OTHER_CATEGORY])];
+      sources.specials_ = [special(1), special(2)];
+
+      const result = await run({ category: CATEGORY });
+
+      expect(result.ok && result.value.items.map((i) => i.offerId)).toEqual([offer(1)]);
+    });
+
+    it('is unavailable when the category tree cannot be read', async () => {
+      categories.failing = true;
+      shelves.documents = [hit(1)];
+      sources.specials_ = [special(1)];
+
+      expect(await run({ category: CATEGORY })).toEqual({
+        ok: false,
+        error: { code: 'search.unavailable' },
+      });
     });
 
     it('skips a key whose Variant is not published and uses the Offer next key', async () => {

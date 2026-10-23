@@ -26,14 +26,20 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
 - **Query:** `GET /search/products?q=&category=&page=&pageSize=` (anonymous, Market from `x-market-id`
   like other storefront routes, default rate-limit class per origin, `no-store`). `q` 2 to 100
   characters in web-search syntax (`websearch_to_tsquery`, ranked by `ts_rank`, ties by Offer id, so
-  pages are stable); no `q` with `category` browses by name; `pageSize` 1 to 48 (24), `page` 1 to 100;
+  pages are stable); no `q` with `category` browses by name; `category` covers its live
+  subcategories: search reads catalog's public category tree (`CATALOG_ASSISTANT_FACADE.categories`,
+  rule `anonymous`, the caller's context) and filters on the category and every category under it
+  (at most 1000, array overlap `&&`), so a top-level page lists its subcategories' products without
+  indexing ancestors; a tree that cannot be read is `search.unavailable`; a category the live tree
+  does not hold filters on itself alone. The same holds for a store's list and the two shelves; `pageSize` 1 to 48 (24), `page` 1 to 100;
   unknown parameters are 400. Answer: `{ items, page, pageSize, hasMore }`; `hasMore` is true only when the next result is visible, so hidden matches never show through it.
 - **Visibility:** each page is re-checked against catalog (`offerSellUnits`: published and listed) and
   sellers (`sellingEligibility`, the may-sell contract). A failed check is 503 `search.unavailable`,
   never an unchecked list. A page can hold fewer than `pageSize` items, and `hasMore` can be false while a later page still has items.
 - **SQL:** the two statements are on the ADR-0030 list (`search.offer-search`, `search.offer-browse`),
   (text, text in one category, browse), all values bound; ADR-0030 was amended for
-  `websearch_to_tsquery`, `ts_rank`, `@@`, `@>`, `regconfig`, each in one exact shape.
+  `websearch_to_tsquery`, `ts_rank`, `@@`, `@>`, `&&` (2026-10-23), `regconfig`, each in one exact
+  shape.
 - **Known gaps:** sellers has no separate "show publicly" read, so may-sell is the test. An off-sale
   cause that raises no event (for example a suspended tag) is hidden at query time and repaired by the
   next rebuild. A write racing a delete can briefly resurrect a document; the query-time check hides it.
