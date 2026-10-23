@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Crumbs } from '../catalog/results.tsx';
+import { CheckoutProgress } from '../checkout/progress.tsx';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
@@ -83,6 +84,7 @@ export function CartPage() {
         <h1>{t('title')}</h1>
         <span>{t('summary-line', { count: view.count, sellers: view.groups.length })}</span>
       </div>
+      <CheckoutProgress current="cart" signedIn={customer !== null} />
       {notice && changed?.item.addedAt ? (
         <div className="cnote" role="status">
           <Icon name="info" />
