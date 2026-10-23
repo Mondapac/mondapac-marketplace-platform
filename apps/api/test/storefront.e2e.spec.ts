@@ -12,6 +12,11 @@ import { ReplaceStorefrontNavigationDraft } from '../src/modules/storefront/appl
 import { ViewPublishedLandingPage } from '../src/modules/storefront/application/use-cases/view-published-landing-page.use-case';
 import { ViewPublishedStorefrontNavigation } from '../src/modules/storefront/application/use-cases/view-published-navigation.use-case';
 import { ViewPublishedStorefrontPage } from '../src/modules/storefront/application/use-cases/view-published-page.use-case';
+import { ArchiveStorefrontSlide } from '../src/modules/storefront/application/use-cases/archive-slide.use-case';
+import { CreateStorefrontSlide } from '../src/modules/storefront/application/use-cases/create-slide.use-case';
+import { ListStorefrontSlides } from '../src/modules/storefront/application/use-cases/list-slides.use-case';
+import { PrepareStorefrontSlideCopy } from '../src/modules/storefront/application/use-cases/prepare-slide-copy.use-case';
+import { UpdateStorefrontSlideDraft } from '../src/modules/storefront/application/use-cases/update-slide-draft.use-case';
 import { STOREFRONT_STATUS } from '../src/modules/storefront/presentation/http-answers';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
@@ -54,6 +59,10 @@ it('maps every refusal code of the storefront routes to its exact status', () =>
     'storefront.slug-taken': 409,
     'storefront.nothing-to-publish': 409,
     'storefront.draft-changed': 409,
+    'storefront.slide-not-found': 404,
+    'storefront.slide-version-not-found': 404,
+    'storefront.slide-archived': 409,
+    'storefront.slide-version-limit': 409,
   });
 });
 
@@ -82,6 +91,16 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
           .useValue(clock)
           .overrideProvider(CreateStorefrontPage)
           .useValue(stub('create'))
+          .overrideProvider(CreateStorefrontSlide)
+          .useValue(stub('create-slide'))
+          .overrideProvider(UpdateStorefrontSlideDraft)
+          .useValue(stub('update-slide'))
+          .overrideProvider(ArchiveStorefrontSlide)
+          .useValue(stub('archive-slide'))
+          .overrideProvider(ListStorefrontSlides)
+          .useValue(stub('list-slides'))
+          .overrideProvider(PrepareStorefrontSlideCopy)
+          .useValue(stub('copy-slide'))
           .overrideProvider(AddStorefrontModule)
           .useValue(stub('add'))
           .overrideProvider(ReorderStorefrontModules)
@@ -286,6 +305,141 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
     expect((await publish()).status).toBe(404);
     next = err({ code: 'access.denied' });
     expect((await publish()).status).toBe(403);
+  });
+
+  describe('slides', () => {
+    const SLIDE_ID = id<'StorefrontSlide'>(0xd501);
+    const slideBody = {
+      kind: 'announcement',
+      internalName: 'Eid',
+      content: { title: 'Eid Mubarak' },
+      startsAt: START.toString(),
+      endsAt: START.add({ hours: 48 }).toString(),
+      placements: [{ position: 'home.hero' }],
+    };
+    const slideView = {
+      id: SLIDE_ID,
+      kind: 'announcement',
+      internalName: 'Eid',
+      status: 'draft',
+      startsAt: START,
+      endsAt: START.add({ hours: 48 }),
+      pinned: false,
+      sponsored: false,
+      hasDraft: true,
+      positions: ['home.hero'],
+      updatedAt: START,
+      draft: null,
+      live: null,
+      pending: false,
+      versions: [],
+    };
+
+    it('lets an admin create, change, list, copy out and archive slides', async () => {
+      await boot();
+      const session = adminSession();
+      next = ok(slideView);
+      const made = await call('post', '/storefront/admin/slides', session, slideBody);
+      expect(made.status).toBe(201);
+      expect(made.headers['cache-control']).toBe('no-store');
+      expect(made.body).toMatchObject({ id: SLIDE_ID, startsAt: START.toString(), draft: null });
+      const draftBody: Record<string, unknown> = { ...slideBody };
+      delete draftBody.kind;
+      expect(
+        (await call('put', `/storefront/admin/slides/${SLIDE_ID}`, session, draftBody)).status,
+      ).toBe(200);
+      expect(
+        (await call('post', `/storefront/admin/slides/${SLIDE_ID}/archive`, session)).status,
+      ).toBe(200);
+      next = ok([slideView]);
+      const listed = await call(
+        'get',
+        '/storefront/admin/slides?state=draft&position=home.hero',
+        session,
+      );
+      expect(listed.status).toBe(200);
+      expect(listed.body).toMatchObject({ slides: [{ id: SLIDE_ID, positions: ['home.hero'] }] });
+      next = ok({
+        ...draftBody,
+        kind: 'announcement',
+        pinned: false,
+        sponsored: false,
+        content: null,
+        startsAt: 'a',
+        endsAt: 'b',
+        placements: [],
+      });
+      expect((await call('get', `/storefront/admin/slides/${SLIDE_ID}/copy`, session)).status).toBe(
+        200,
+      );
+      expect(calls.map((c) => c.name)).toEqual([
+        'create-slide',
+        'update-slide',
+        'archive-slide',
+        'list-slides',
+        'copy-slide',
+      ]);
+      expect(calls[3]!.input).toEqual({ state: 'draft', position: 'home.hero' });
+    });
+
+    it('refuses a slide route with no session, no CSRF, a cross-site origin and a stray field', async () => {
+      await boot();
+      const session = adminSession();
+      // No session: the actor is anonymous and the gate of the real use case answers 401.
+      next = err({ code: 'access.unauthenticated' });
+      expect((await call('get', '/storefront/admin/slides', {})).status).toBe(401);
+      calls = [];
+      expect(
+        (await call('post', '/storefront/admin/slides', { cookie: session.cookie }, slideBody))
+          .status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            'post',
+            '/storefront/admin/slides',
+            { ...session, 'sec-fetch-site': 'cross-site' },
+            slideBody,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            'post',
+            '/storefront/admin/slides',
+            { ...session, origin: 'https://evil.example' },
+            slideBody,
+          )
+        ).status,
+      ).toBe(403);
+      const extra = await call('put', `/storefront/admin/slides/${SLIDE_ID}`, session, {
+        ...slideBody,
+      });
+      expect(extra.status).toBe(400);
+      expect(extra.body).toMatchObject({
+        details: { fields: [{ path: 'kind', code: 'unknown-field' }] },
+      });
+      expect(calls).toEqual([]);
+    });
+
+    it('maps the refusals of the slide routes', async () => {
+      await boot();
+      const session = adminSession();
+      const view = () => call('get', `/storefront/admin/slides`, session);
+      next = err({ code: 'storefront.slide-not-found' });
+      expect((await view()).status).toBe(404);
+      next = err({ code: 'storefront.slide-archived' });
+      expect((await view()).status).toBe(409);
+      next = err({ code: 'validation.failed', fields: [{ path: 'state', code: 'enum' }] });
+      expect((await view()).body).toEqual({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'state', code: 'enum' }] },
+      });
+      next = err({ code: 'access.denied' });
+      expect((await view()).status).toBe(403);
+    });
   });
 
   it('answers the published layouts to a buyer with no session, and a redirect for an old slug', async () => {

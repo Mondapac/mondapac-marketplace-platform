@@ -7,6 +7,7 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { PAGE_REPOSITORY } from './application/ports/page.repository';
+import { SLIDE_REPOSITORY } from './application/ports/slide.repository';
 import type { StorefrontDependencies } from './application/storefront-dependencies';
 import { AddStorefrontModule } from './application/use-cases/add-module.use-case';
 import { ApproveStorefrontNavigation } from './application/use-cases/approve-navigation.use-case';
@@ -27,10 +28,18 @@ import { ViewStorefrontPage } from './application/use-cases/view-page.use-case';
 import { ViewPublishedLandingPage } from './application/use-cases/view-published-landing-page.use-case';
 import { ViewPublishedStorefrontNavigation } from './application/use-cases/view-published-navigation.use-case';
 import { ViewPublishedStorefrontPage } from './application/use-cases/view-published-page.use-case';
+import { ArchiveStorefrontSlide } from './application/use-cases/archive-slide.use-case';
+import { CreateStorefrontSlide } from './application/use-cases/create-slide.use-case';
+import { ListStorefrontSlides } from './application/use-cases/list-slides.use-case';
+import { PrepareStorefrontSlideCopy } from './application/use-cases/prepare-slide-copy.use-case';
+import { RestoreStorefrontSlideVersion } from './application/use-cases/restore-slide-version.use-case';
+import { UpdateStorefrontSlideDraft } from './application/use-cases/update-slide-draft.use-case';
+import { ViewStorefrontSlide } from './application/use-cases/view-slide.use-case';
 import { STOREFRONT_PERMISSIONS } from './contracts';
 import { STOREFRONT_AUDIT_ACTIONS } from './domain/audit';
 import { storefrontProviders } from './infrastructure/storefront-providers';
 import { AdminNavigationController } from './presentation/admin-navigation.controller';
+import { AdminSlideController } from './presentation/admin-slide.controller';
 import { AdminStorefrontController } from './presentation/admin-storefront.controller';
 import { PublicStorefrontController } from './presentation/public-storefront.controller';
 
@@ -39,6 +48,7 @@ type UseCaseClass<U> = new (gate: UseCaseGate, deps: StorefrontDependencies) => 
 const PORTS: readonly [keyof StorefrontDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['pages', PAGE_REPOSITORY],
+  ['slides', SLIDE_REPOSITORY],
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -69,7 +79,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * their own modules' routes.
  */
 @Module({
-  controllers: [AdminStorefrontController, AdminNavigationController, PublicStorefrontController],
+  controllers: [
+    AdminStorefrontController,
+    AdminNavigationController,
+    AdminSlideController,
+    PublicStorefrontController,
+  ],
   providers: [
     PersistenceModule.auditWriterFor('storefront'),
     registerAuditActions('storefront', STOREFRONT_AUDIT_ACTIONS),
@@ -95,6 +110,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewPublishedLandingPage,
       ViewPublishedStorefrontNavigation,
       ViewPublishedStorefrontPage,
+      ArchiveStorefrontSlide,
+      CreateStorefrontSlide,
+      ListStorefrontSlides,
+      PrepareStorefrontSlideCopy,
+      RestoreStorefrontSlideVersion,
+      UpdateStorefrontSlideDraft,
+      ViewStorefrontSlide,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
   ],
 })

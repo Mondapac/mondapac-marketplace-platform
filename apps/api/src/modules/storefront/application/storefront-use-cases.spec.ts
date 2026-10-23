@@ -7,6 +7,7 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import { MemorySlides } from '../../../../test/support/memory-slide-repository';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
@@ -302,6 +303,7 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       pages,
+      slides: new MemorySlides(),
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,

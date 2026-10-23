@@ -81,6 +81,39 @@ locale, depth, position by name). `GET search/bestsellers` and `GET search/speci
 `bestsellers` and `specials` shelf sources (docs/modules/search/search.md). All anonymous,
 `no-store`, default rate-limit class.
 
+## Slide library (backend PR 1, 23 Oct 2026)
+
+A separate per-Market library of slides (kinds `announcement`, `promotion`, `link`) that slider
+positions show; pages only name a position (build brief `storefront-slider`). Tables in the
+`storefront` schema: `slides`, `slide_versions` (insert-only: every draft save is a new version;
+only the approval stamp is ever written to a row), `slide_placements` (the projection of the live
+version, with its window, so caps and the later buyer read need no join) and `slide_position_locks`
+(one row per Market and position; approving locks them so two approvals cannot both pass a cap).
+
+- **Content** (all kinds): `title` <= 60, `body` <= 160, `ctaLabel` <= 24 (needs a link), optional
+  `image` `{ ref, alt, decorative }` (a placeholder/media key; alt required unless `decorative`,
+  which needs an empty alt), `textPosition` start|center|end, `textTone` light|dark, one optional
+  `link` `{ type: category|product|seller|page|search, id }` that makes the whole slide clickable.
+  Kind `link` requires the link. Plain text only: no markup characters, no URL; a link is never a
+  URL. Checked in `domain/slides.ts`, with the basic limits repeated as CHECKs.
+- **Window**: `startsAt` and `endsAt` both required; `endsAt` after `startsAt` and at most 2160
+  hours (90 days in absolute time, so a daylight-saving change cannot move it) later.
+- **Positions** (closed list in `domain/slide-positions.ts`): `home.hero` 8 (autoplay), `home.mid`
+  4, `category.top` 4, `product.below-details` 3, `cart.below-lines` 3, `landing.top` 8
+  (autoplay). `autoplay` is valid only at the two autoplay positions. A placement has a scope
+  (`all|category|product|seller|page`, with `scopeId`, `includeSubcategories` for a category,
+  `sortOrder`); each position allows only the scopes that make sense there.
+- **Draft flow**: create (a draft), replace the draft (new version, withdraws a submission),
+  restore an earlier version into a new draft, view, list (filter by status and position),
+  archive. A slide is only ever found in the request's Market.
+- **Copy to another Market**: there is no cross-Market admin (ADR-0018), so a copy is two steps,
+  each in its own Market: `GET .../slides/:slide/copy` (read key, source Market) returns a body,
+  and an editor of the other Market posts it to `POST .../slides` (edit key there). Scopes are
+  reset to `all`; link targets must be checked in the target Market.
+- **Routes** (admin, session, CSRF, `Origin` + `Sec-Fetch-Site` as every admin route):
+  `GET|POST storefront/admin/slides`, `GET|PUT storefront/admin/slides/:slide`,
+  `GET .../:slide/copy`, `POST .../:slide/restore`, `POST .../:slide/archive`.
+
 ## Not in v1 (follow-ups)
 
 Read routes for product detail, seller page and list, and the `category`, `seller`, `tag` and
