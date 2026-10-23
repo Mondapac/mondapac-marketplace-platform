@@ -6,6 +6,9 @@ import {
   paletteOf,
   textSizeOf,
 } from '../../../../src/preferences/preferences.ts';
+import { accountMetadata } from '../../../../src/seo/metadata.ts';
+
+export const generateMetadata = () => accountMetadata('settings', '/account/settings');
 
 export default async function AccountSettingsPage() {
   const jar = await cookies();

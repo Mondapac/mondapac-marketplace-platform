@@ -1,7 +1,11 @@
 import { money, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { CartRepository } from '../application/ports/cart.repository';
+import type {
+  CartRepository,
+  IdleAccountCart,
+  IdleCartCursor,
+} from '../application/ports/cart.repository';
 import type { CartLine, CartOwner, CartState } from '../domain/cart';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
@@ -155,6 +159,8 @@ export class PrismaCartRepository implements CartRepository {
           lastChangedAt: toDate(cart.lastChangedAt),
           mergedIntoCartId: cart.mergedIntoCartId,
           mergedAt: cart.mergedAt === null ? null : toDate(cart.mergedAt),
+          // Every change clears the order mark; `markOrdered` sets it again after an order.
+          orderedAt: null,
           version: cart.version + 1,
         },
       });
@@ -202,6 +208,72 @@ export class PrismaCartRepository implements CartRepository {
       });
     }
     return 'saved';
+  }
+
+  async markOrdered(market: MarketContext, cartId: Id<'Cart'>, at: Temporal.Instant) {
+    await this.prisma.tx(market).cartCart.updateMany({
+      // Only the cart as the order's save just left it: a cart changed since is not marked.
+      where: { marketId: market.marketId, id: cartId, lastChangedAt: toDate(at) },
+      data: { orderedAt: toDate(at) },
+    });
+  }
+
+  async idleAccountCarts(
+    market: MarketContext,
+    query: {
+      readonly changedAfter: Temporal.Instant;
+      readonly changedAtOrBefore: Temporal.Instant;
+      readonly after: IdleCartCursor | null;
+      readonly limit: number;
+      readonly accountIds?: readonly Id<'Account'>[];
+    },
+  ): Promise<readonly IdleAccountCart[]> {
+    const tx = this.prisma.tx(market);
+    const after = query.after;
+    const rows = await tx.cartCart.findMany({
+      where: {
+        marketId: market.marketId,
+        accountId: query.accountIds === undefined ? { not: null } : { in: [...query.accountIds] },
+        status: 'active',
+        lastChangedAt: { gt: toDate(query.changedAfter), lte: toDate(query.changedAtOrBefore) },
+        lines: { some: {} },
+        // Not left as a paid order left it (the buyer's next change clears the mark).
+        orderedAt: null,
+        AND: [
+          ...(after === null
+            ? []
+            : [
+                {
+                  OR: [
+                    { lastChangedAt: { gt: toDate(after.lastChangedAt) } },
+                    { lastChangedAt: toDate(after.lastChangedAt), id: { gt: after.cartId } },
+                  ],
+                },
+              ]),
+        ],
+      },
+      orderBy: [{ lastChangedAt: 'asc' }, { id: 'asc' }],
+      take: query.limit,
+      select: {
+        id: true,
+        accountId: true,
+        lastChangedAt: true,
+      },
+    });
+    if (rows.length === 0) return [];
+    // The line counts of this page only, on the lines' (market, cart, ...) unique index.
+    const counts = await tx.cartLine.groupBy({
+      by: ['cartId'],
+      where: { marketId: market.marketId, cartId: { in: rows.map((row) => row.id) } },
+      _count: { _all: true },
+    });
+    const countOf = new Map(counts.map((row) => [row.cartId, row._count._all]));
+    return rows.map((row) => ({
+      cartId: row.id as Id<'Cart'>,
+      accountId: row.accountId as Id<'Account'>,
+      lastChangedAt: toInstant(row.lastChangedAt),
+      lineCount: countOf.get(row.id) ?? 0,
+    }));
   }
 
   async purgeInactive(

@@ -50,7 +50,7 @@ export function SellerHead({
           ) : null}
         </div>
         <ul className="shop-chips">
-          {shop.certificates.map((c) => (
+          {(shop.certificates ?? []).map((c) => (
             <li key={c.type}>
               <Icon name="check" />
               {tp('certificate-checked', { name: c.name })}
@@ -62,22 +62,28 @@ export function SellerHead({
               {t('new-seller')}
             </li>
           )}
-          <li>
-            <Icon name="truck" />
-            {shop.deliveryWindow}
-          </li>
-          <li>
-            <Icon name="receipt" />
-            {shop.minimumOrder
-              ? t('minimum', { amount: formatMoney(shop.minimumOrder, locale) })
-              : t('no-minimum')}
-          </li>
-          <li>
-            <Icon name="truck" />
-            <span className="num">
-              {t('delivery-fee', { fee: formatMoney(shop.deliveryFee, locale) })}
-            </span>
-          </li>
+          {shop.deliveryWindow === undefined ? null : (
+            <li>
+              <Icon name="truck" />
+              {shop.deliveryWindow}
+            </li>
+          )}
+          {shop.minimumUnknown ? null : (
+            <li>
+              <Icon name="receipt" />
+              {shop.minimumOrder
+                ? t('minimum', { amount: formatMoney(shop.minimumOrder, locale) })
+                : t('no-minimum')}
+            </li>
+          )}
+          {shop.deliveryFee === undefined ? null : (
+            <li>
+              <Icon name="truck" />
+              <span className="num">
+                {t('delivery-fee', { fee: formatMoney(shop.deliveryFee, locale) })}
+              </span>
+            </li>
+          )}
         </ul>
       </div>
     </header>

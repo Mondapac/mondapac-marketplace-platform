@@ -63,18 +63,22 @@ export function SearchView({ popular }: { readonly popular: readonly string[] })
       <div className="sbody">
         <h2>{t('recent')}</h2>
         <p className="hint">{t('no-recent')}</p>
-        <h2>{t('popular')}</h2>
-        <div className="pchips">
-          {popular.map((term) => (
-            <Link
-              key={term}
-              href={`/search?q=${encodeURIComponent(term)}`}
-              onClick={() => setSearchOpen(false)}
-            >
-              {term}
-            </Link>
-          ))}
-        </div>
+        {popular.length > 0 ? (
+          <>
+            <h2>{t('popular')}</h2>
+            <div className="pchips">
+              {popular.map((term) => (
+                <Link
+                  key={term}
+                  href={`/search?q=${encodeURIComponent(term)}`}
+                  onClick={() => setSearchOpen(false)}
+                >
+                  {term}
+                </Link>
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );

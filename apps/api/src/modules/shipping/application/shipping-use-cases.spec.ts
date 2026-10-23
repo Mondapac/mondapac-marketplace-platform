@@ -7,17 +7,23 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
-import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
+import {
+  TEST_MARKET_CONFIG_DIRS,
+  TEST_MARKET_IDS,
+  TEST_SERVICE_AREA_CONFIG_DIRS,
+} from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { loadServiceAreas } from '../../../platform/market-config/service-area-config';
 import { FlatFeeSet } from '../domain/audit';
 import { MAX_FLAT_FEE_MINOR, parseFlatFee } from '../domain/flat-fee';
 import { ConfigShippingPolicy } from '../infrastructure/config-shipping-policy';
 import type { FlatFeeRecord, FlatFeeRepository } from './ports/flat-fee.repository';
 import type { SellerDirectory } from './ports/seller-directory';
 import type { ShippingDependencies } from './shipping-dependencies';
+import { DeliveryArea } from './use-cases/delivery-area.use-case';
 import { FlatFees } from './use-cases/flat-fees.use-case';
 import { SetFlatFee } from './use-cases/set-flat-fee.use-case';
 import { ViewFlatFee } from './use-cases/view-flat-fee.use-case';
@@ -28,6 +34,7 @@ import { ViewOwnFlatFee } from './use-cases/view-own-flat-fee.use-case';
 // system read answers the sellers that have one.
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+const areas = loadServiceAreas(TEST_SERVICE_AREA_CONFIG_DIRS, TEST_MARKET_IDS);
 const T0 = Temporal.Instant.from('2026-10-14T10:00:00Z');
 const id = <T extends string>(n: number): Id<T> => {
   const parsed = parseId(`01990000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`);
@@ -129,7 +136,7 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       fees,
-      policy: new ConfigShippingPolicy(markets),
+      policy: new ConfigShippingPolicy(markets, areas),
       sellers,
       audit,
       clock,
@@ -240,9 +247,22 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
       ok: false,
       error: { code: 'validation.failed' },
     });
-    // A checkout is signed in: an anonymous caller reads nothing.
-    expect(
-      (await read([SELLER_A], testCallContext(market, 'anonymous', 'ship-anon-abcd'))).ok,
-    ).toBe(false);
+    // The fee is shown on a guest's cart: an anonymous caller reads it too.
+    const guest = await read([SELLER_A], testCallContext(market, 'anonymous', 'ship-anon-abcd'));
+    expect(guest.ok && [...guest.value]).toEqual([[SELLER_A, money(500n, currency)]]);
+  });
+
+  it('answers whether the Market delivers to a postcode, for anyone, fail closed', async () => {
+    const anonymous = testCallContext(market, 'anonymous', 'ship-anon-abcd');
+    const ask = (postcode: unknown) =>
+      new DeliveryArea(gate, deps).execute(anonymous, { postcode });
+    // AU's only area is listed but not open for delivery until the owner opens it; ZZ has two
+    // open areas with seven-digit and letter postcodes.
+    const inside = code === 'AU' ? '4031' : ' zz1 9aa ';
+    expect(await ask(inside)).toEqual(ok({ delivers: code === 'ZZ' }));
+    expect(await ask(code === 'AU' ? '2000' : '3000000')).toEqual(ok({ delivers: false }));
+    for (const bad of ['', '   ', 'x'.repeat(17), 'ä', 4031, null, undefined]) {
+      expect(await ask(bad)).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    }
   });
 });

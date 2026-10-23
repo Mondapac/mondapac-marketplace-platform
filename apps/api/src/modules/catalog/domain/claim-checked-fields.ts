@@ -232,6 +232,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   PublishedProductVariant: {
     noCustomerText: 'published Variant label read back from a revision, with ids and a position',
   },
+  PublishedImageRef: { noCustomerText: 'a photo id and its pixel size; no text' },
   OfferListingTag: { noCustomerText: 'tag status, basis code and the OfferListingBadge copy' },
   OfferListingBadge: {
     noCustomerText:

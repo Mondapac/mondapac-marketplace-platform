@@ -63,6 +63,8 @@ const perMinute = z.number().int().min(1).max(100_000);
 const requestLimitsSchema = z.strictObject({
   /** Routes marked `@RateLimit('anonymous-identity')`: sign-up, sign-in, reset requests. */
   anonymousIdentityPerMinute: perMinute,
+  /** Routes marked `@RateLimit('public-media')`: the anonymous buyer photo route. */
+  publicMediaPerMinute: perMinute,
   /** Every other market-scoped route. */
   defaultPerMinute: perMinute,
 });
@@ -1290,6 +1292,21 @@ const marketSchema = z
          * marketing mail.
          */
         oneClickUnsubscribeUrl: pageUrl.optional(),
+        /**
+         * The abandoned-cart email (personalization 1c): a marketing mail to a signed-in customer
+         * with consent whose cart has lines and sat idle about 4 hours, and again about 24 hours.
+         * `mode`: `off` sends nothing; `test` sends only to the accounts in `testAccountIds`
+         * (staff test accounts, never real customers); `live` sends to every customer with
+         * consent. `cartPage`: the storefront cart page the mail links to (sign-in needed; no
+         * personal data in the URL). Without this section the Market sends no cart reminder.
+         */
+        cartReminders: z
+          .strictObject({
+            mode: z.enum(['off', 'test', 'live']),
+            cartPage: pageUrl,
+            testAccountIds: z.array(z.uuid()).max(50).optional(),
+          })
+          .optional(),
       })
       .optional(),
     /**

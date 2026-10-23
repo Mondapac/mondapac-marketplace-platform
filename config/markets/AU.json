@@ -26,13 +26,18 @@
     "supportEmail": "jnamazi@gmail.com",
     "customerOrderPage": "https://storefront.au.mondapac.test/account/orders",
     "unsubscribePage": "https://storefront.au.mondapac.test/email/unsubscribe",
-    "oneClickUnsubscribeUrl": "https://api.au.mondapac.test/notifications/unsubscribe/AU"
+    "oneClickUnsubscribeUrl": "https://api.au.mondapac.test/notifications/unsubscribe/AU",
+    "cartReminders": {
+      "mode": "test",
+      "cartPage": "https://storefront.au.mondapac.test/cart"
+    }
   },
   "search": {
     "textSearchConfig": "english"
   },
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,
+    "publicMediaPerMinute": 1500,
     "defaultPerMinute": 300
   },
   "customers": {

@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { SEARCH_SORTS, listingStateOf } from '../../src/catalog/listing-state.ts';
 import { Suspense } from 'react';
 import {
+  LiveSearchResults,
   ResultsHeading,
   SearchLoading,
   SearchPrompt,
@@ -13,9 +14,12 @@ import {
   findProducts,
   findStores,
   listingFacets,
+  listingIsLive,
   queryOf,
+  searchCategory,
   searchCategories,
 } from '../../src/storefront/catalog.ts';
+import { pageMetadata, seoDescription } from '../../src/seo/metadata.ts';
 import { SELLER_RATINGS_SHOWN } from '../../src/storefront/features.ts';
 import { loadStorefrontContent } from '../../src/storefront/source.ts';
 import type { StorefrontContent } from '../../src/storefront/types.ts';
@@ -25,15 +29,18 @@ interface Props {
 }
 
 export async function generateMetadata({ searchParams }: Props) {
-  const [query, t, store] = await Promise.all([
-    searchParams,
-    getTranslations('catalog'),
-    getTranslations('store'),
-  ]);
+  const [query, t] = await Promise.all([searchParams, getTranslations('catalog')]);
   const q = queryOf(query.q);
-  const title = Array.from(q).length >= QUERY_MIN ? t('results-for', { q }) : t('search');
+  const asked = Array.from(q).length >= QUERY_MIN;
   // Result pages stay out of search engines; categories are the indexable lists.
-  return { title: `${title} | ${store('title')}`, robots: { index: false } };
+  return pageMetadata({
+    name: asked ? t('results-for', { q }) : t('search'),
+    description: asked
+      ? await seoDescription('search-results', { q })
+      : await seoDescription('search'),
+    path: asked ? `/search?${new URLSearchParams({ q }).toString()}` : '/search',
+    noindex: true,
+  });
 }
 
 export default async function SearchPage({ searchParams }: Props) {
@@ -67,7 +74,8 @@ async function Results({
   readonly content: StorefrontContent;
 }) {
   const code = typeof query.category === 'string' ? query.category : undefined;
-  const category = content.categories.find((c) => c.code === code);
+  const live = listingIsLive();
+  const category = await searchCategory(code);
   const asked = listingStateOf(query);
   // Search offers fewer orders than a category; any other falls back to Best match.
   const sorted = SEARCH_SORTS.includes(asked.sort)
@@ -75,6 +83,21 @@ async function Results({
     : { ...asked, sort: 'recommended' as const };
   const scope = { q, ...(category ? { category: category.code } : {}) };
   const facets = await listingFacets(scope);
+  if (live) {
+    // The API gives no counts, filters, sort or store search: the results page is the grid alone.
+    const products = await findProducts({ ...scope, ...sorted, pageSize: LISTING_PAGE_SIZE });
+    return (
+      <LiveSearchResults
+        query={q}
+        {...(category ? { category } : {})}
+        categories={content.categories}
+        state={sorted}
+        products={products}
+        facets={facets}
+        popular={content.popularSearches}
+      />
+    );
+  }
   // A store filter left over from another search would only show as a bare id: drop it.
   const shown = {
     ...sorted,

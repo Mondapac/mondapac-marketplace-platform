@@ -27,12 +27,17 @@
   },
   "requestLimits": {
     "anonymousIdentityPerMinute": 10,
+    "publicMediaPerMinute": 600,
     "defaultPerMinute": 200
   },
   "notifications": {
     "customerOrderPage": "https://storefront.zz.test/account/orders",
     "unsubscribePage": "https://storefront.zz.test/email/unsubscribe",
-    "oneClickUnsubscribeUrl": "https://api.zz.test/notifications/unsubscribe/ZZ"
+    "oneClickUnsubscribeUrl": "https://api.zz.test/notifications/unsubscribe/ZZ",
+    "cartReminders": {
+      "mode": "test",
+      "cartPage": "https://storefront.zz.test/cart"
+    }
   },
   "customers": {
     "addressBookLimit": 5,
