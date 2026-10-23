@@ -45,6 +45,10 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   next rebuild. A write racing a delete can briefly resurrect a document; the query-time check hides it.
   A deep, mostly hidden result set can return short pages. Variants, price, stock, ratings and
   certification badges are not part of this package.
+- **Follow-ups (Hassan, PR #478, Low):** cache the category tree per Market for a short time in
+  `FacadeCategorySubtree` (every category request reads it now); have database-designer EXPLAIN a
+  root-category browse at scale and consider a `(market_id, name, offer_id)` index; move the tree
+  read from `CATALOG_ASSISTANT_FACADE` to a non-AI catalog facade before any AI gating lands on it.
 - **Follow-ups (Hassan L-3):** a dedicated rate-limit class for this anonymous route (it uses `default`
   now), and a cap on the number of OR terms in `q`.
 
