@@ -5,6 +5,9 @@
 // this site with the request's nonce (Next.js puts it on its own scripts) or from Stripe; Stripe,
 // the Google Fonts stylesheet and its font files are the only other origins. A new third-party
 // script, frame or connection on any page needs its origin added here.
+// Every page must render on demand so it gets a fresh nonce: a static or cached route
+// (force-static, revalidate, generateStaticParams, 'use cache') would serve Next's scripts without
+// one, and under 'strict-dynamic' the browser would block them all.
 
 /** Paths whose responses are not documents (Next.js build files): no policy, no nonce. */
 export function policyPath(pathname: string): boolean {
