@@ -63,6 +63,8 @@ const perMinute = z.number().int().min(1).max(100_000);
 const requestLimitsSchema = z.strictObject({
   /** Routes marked `@RateLimit('anonymous-identity')`: sign-up, sign-in, reset requests. */
   anonymousIdentityPerMinute: perMinute,
+  /** Routes marked `@RateLimit('public-media')`: the anonymous buyer photo route. */
+  publicMediaPerMinute: perMinute,
   /** Every other market-scoped route. */
   defaultPerMinute: perMinute,
 });

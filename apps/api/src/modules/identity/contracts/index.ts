@@ -6,8 +6,10 @@
 export {
   IDENTITY_EVENTS,
   SellerAccessApproved,
-  // Consumed by notifications' seller notices (package 4).
+  // Consumed by notifications' seller notices (package 4) and by search's index (P-D).
   SellerAccessReinstated,
+  // Consumed by search's index: a suspended seller's Offers leave it (P-D).
+  SellerAccessSuspended,
   SellerRegistered,
 } from '../domain/events';
 export { IDENTITY_AUDIT_ACTIONS } from '../domain/audit';

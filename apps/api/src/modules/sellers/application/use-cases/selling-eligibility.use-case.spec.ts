@@ -168,6 +168,7 @@ describe.each([
         sellingFacts: store,
       }),
       reviewerBusinessDetails: undefined as never,
+      publishedStoreSellerId: undefined as never,
     });
   });
 
@@ -258,6 +259,26 @@ describe.each([
     const reads = store.reads;
     expect(await eligible(anonymous(), [yes])).toEqual([[yes, false]]);
     expect(store.reads).toBe(reads);
+  });
+
+  it('answers sellers.unavailable to the system on a read or identity error, so jobs retry', async () => {
+    const yes = approvedSeller();
+    const unavailable = { ok: false, error: { code: 'sellers.unavailable' } };
+
+    store.fail = true;
+    expect(await jobs.execute(system(), { sellerIds: [yes] })).toEqual(unavailable);
+    store.fail = false;
+
+    access.fail = true;
+    expect(await jobs.execute(system(), { sellerIds: [yes] })).toEqual(unavailable);
+    access.fail = false;
+
+    // A Market with no identifier rule is an answer, not a fault: no for everyone.
+    rule = null;
+    expect(await jobs.execute(system(), { sellerIds: [yes] })).toEqual({
+      ok: true,
+      value: new Map([[yes, { eligible: false }]]),
+    });
   });
 
   it('gives every caller the same answer, through the facade pair', async () => {

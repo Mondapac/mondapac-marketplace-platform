@@ -78,7 +78,9 @@ export class RateLimitGuard implements CanActivate {
       const limit =
         limitClass === 'anonymous-identity'
           ? limits.anonymousIdentityPerMinute
-          : limits.defaultPerMinute;
+          : limitClass === 'public-media'
+            ? limits.publicMediaPerMinute
+            : limits.defaultPerMinute;
       const origin = clientOriginOf(clientAddressFrom(request));
       if (origin === null) throw new Error('no client origin');
       const counted = await this.counters.consume(limitClass, this.#originKeys.keyOf(origin));

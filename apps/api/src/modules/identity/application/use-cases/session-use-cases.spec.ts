@@ -182,6 +182,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           displayName: null,
           timezone: null,
           locale: null,
+          appearance: null,
           session: {
             idleTimeoutSeconds: lifetime.idleTimeoutSeconds,
             absoluteExpiresAt: START.add({ seconds: lifetime.absoluteLifetimeSeconds }).toString(),
