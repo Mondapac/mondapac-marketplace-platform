@@ -5,7 +5,8 @@ import { MAX_PAGE_SIZE, type SearchValidationFailed } from '../../domain/search-
 import { parseShelfQuery, type ShelfRequest } from '../../domain/shelf-query';
 import type { OfferHit } from '../../domain/offer-document';
 import type { ShelfDependencies } from '../shelf-dependencies';
-import type { ProductSearchItem } from './search-products.use-case';
+import { withPrimaryImages } from '../product-images';
+import type { ProductSearchItem, ProductSearchItemFacts } from './search-products.use-case';
 
 /** How many ranked Offers are asked of ordering: enough to fill a shelf after drops. */
 export const RANKED_DEPTH = 100;
@@ -25,7 +26,14 @@ export const itemOf = ({
   name,
   shortText,
   categoryIds,
-}: OfferHit): ProductSearchItem => ({ offerId, productId, sellerId, name, shortText, categoryIds });
+}: OfferHit): ProductSearchItemFacts => ({
+  offerId,
+  productId,
+  sellerId,
+  name,
+  shortText,
+  categoryIds,
+});
 
 /**
  * `search.list-bestsellers`: the storefront's best-sellers shelf. Rule `anonymous`: no session,
@@ -91,10 +99,14 @@ export class ListBestsellers extends UseCase<ShelfRequest, ShelfPage, ShelfFailu
     const candidates = [...first, ...read.value.fill.filter((hit) => !taken.has(hit.offerId))];
     const visible = await this.deps.visibility.visible(context, candidates);
     if (visible === null) return err({ code: 'search.unavailable' });
-    const items = candidates
-      .filter((hit) => visible.has(hit.offerId))
-      .slice(0, limit)
-      .map(itemOf);
+    const items = await withPrimaryImages(
+      this.deps.images,
+      context,
+      candidates
+        .filter((hit) => visible.has(hit.offerId))
+        .slice(0, limit)
+        .map(itemOf),
+    );
     return ok({ items });
   }
 }

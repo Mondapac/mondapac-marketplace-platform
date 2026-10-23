@@ -77,7 +77,7 @@ export function SearchPrompt({
         </h1>
         <FocusResultsHeading />
         <SearchMessage icon="search" title={t('start-title')} body={t('start-body')}>
-          <TermLinks terms={popular} />
+          {popular.length > 0 ? <TermLinks terms={popular} /> : null}
         </SearchMessage>
       </div>
     );
@@ -92,6 +92,46 @@ export function SearchPrompt({
         live="status"
       />
     </div>
+  );
+}
+
+/** The nothing-found message: spelling tips, popular searches and categories to browse. */
+function NoResults({
+  query,
+  popular,
+  categories,
+}: {
+  readonly query: string;
+  readonly popular: readonly string[];
+  readonly categories: readonly Category[];
+}) {
+  const t = useTranslations('search-results');
+  return (
+    <SearchMessage icon="search" title={t('none-title', { query })}>
+      <ul>
+        <li>{t('tip-spelling')}</li>
+        <li>{t('tip-fewer')}</li>
+        <li>{t('tip-kind')}</li>
+      </ul>
+      {popular.length > 0 ? (
+        <>
+          <h3>{t('popular')}</h3>
+          <TermLinks terms={popular} />
+        </>
+      ) : null}
+      {categories.length > 0 ? (
+        <>
+          <h3>{t('browse')}</h3>
+          <div className="row">
+            {categories.slice(0, 6).map((c) => (
+              <Link key={c.code} href={`/c/${c.code}`}>
+                {c.shortName}
+              </Link>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </SearchMessage>
   );
 }
 
@@ -123,23 +163,7 @@ export function SearchResults(props: SearchResultsProps) {
       <div className="sr">
         <ResultsHeading query={query} />
         <FocusResultsHeading />
-        <SearchMessage icon="search" title={t('none-title', { query })}>
-          <ul>
-            <li>{t('tip-spelling')}</li>
-            <li>{t('tip-fewer')}</li>
-            <li>{t('tip-kind')}</li>
-          </ul>
-          <h3>{t('popular')}</h3>
-          <TermLinks terms={props.popular} />
-          <h3>{t('browse')}</h3>
-          <div className="row">
-            {categories.slice(0, 6).map((c) => (
-              <Link key={c.code} href={`/c/${c.code}`}>
-                {c.shortName}
-              </Link>
-            ))}
-          </div>
-        </SearchMessage>
+        <NoResults query={query} popular={props.popular} categories={categories} />
       </div>
     );
 
@@ -160,6 +184,84 @@ export function SearchResults(props: SearchResultsProps) {
           products: <ProductsPanel {...props} />,
           stores: <StoresPanel query={query} stores={stores} ratingsShown={props.ratingsShown} />,
         }}
+      />
+    </div>
+  );
+}
+
+export interface LiveSearchResultsProps {
+  readonly query: string;
+  readonly category?: Category;
+  readonly categories: readonly Category[];
+  readonly state: ListingState;
+  readonly products: ProductPage;
+  /** What the filters offer, which is nothing with the API on; only the category chip uses it. */
+  readonly facets: ListingFacets;
+  readonly popular: readonly string[];
+}
+
+/**
+ * The results with the API on: the heading and the product grid with previous and next. The
+ * search route gives no counts, filters, sort, store search or categories of the results, so the
+ * count line, the Products and Stores tabs, "In categories" and the filter controls are left
+ * out rather than shown from the sample. A filter left in a shared URL has matched nothing, and
+ * says so.
+ */
+export function LiveSearchResults({
+  query,
+  category,
+  categories,
+  state,
+  products,
+  facets,
+  popular,
+}: LiveSearchResultsProps) {
+  const t = useTranslations('search-results');
+  const tc = useTranslations('catalog');
+  const path = searchHref(query, category?.code);
+  const filtered = activeFilterCount(state.filters) > 0;
+  return (
+    <div className="sr">
+      <ResultsHeading query={query} />
+      <FocusResultsHeading />
+      {category ? (
+        <ActiveFilters
+          path={path}
+          state={withoutFilters(state)}
+          facets={facets}
+          extra={[
+            {
+              key: 'category',
+              label: t('category-filter', { name: category.shortName }),
+              href: searchHref(query),
+            },
+          ]}
+          clearHref={searchHref(query)}
+        />
+      ) : null}
+      <ProductResults
+        result={products}
+        hrefFor={(page) => listingHref(path, { ...state, page })}
+        empty={
+          filtered ? (
+            <div className="empty rich">
+              <p role="status">{tc('filters-empty')}</p>
+              <p className="hint">{tc('filters-empty-hint')}</p>
+              <Link className="btn" href={listingHref(path, withoutFilters(state))} scroll={false}>
+                {tc('clear-filters')}
+              </Link>
+            </div>
+          ) : category ? (
+            <div className="empty rich">
+              <p role="status">{t('no-products-in', { query, name: category.name })}</p>
+              <Link className="btn" href={searchHref(query)}>
+                {t('search-everywhere')}
+              </Link>
+            </div>
+          ) : (
+            <NoResults query={query} popular={popular} categories={categories} />
+          )
+        }
       />
     </div>
   );

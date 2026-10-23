@@ -133,6 +133,20 @@ export interface PublishedProduct {
   readonly variants: readonly PublishedProductVariant[];
 }
 
+/** The most photos a product page shows (the library limit of a product is the same). */
+export const MAX_PUBLISHED_IMAGES = 8;
+
+/**
+ * One photo of a product's published revision, as a buyer may see it: its id and the pixel size
+ * of the largest rendition (every rendition keeps the aspect ratio). Never a URL, a key or an
+ * uploader: the storefront builds the URL by code from the ids.
+ */
+export interface PublishedImageRef {
+  readonly imageId: Id<'ProductImage'>;
+  readonly width: number;
+  readonly height: number;
+}
+
 /** A request refused before any read: a code and the fields, never their values. */
 export interface CatalogValidationFailed {
   readonly code: 'validation.failed';
@@ -245,6 +259,24 @@ export interface CatalogFacade {
     productId: Id<'Product'>,
     locale: string,
   ): Promise<Result<PublishedProduct | null, AccessDenied | CatalogValidationFailed>>;
+
+  /**
+   * The photos of each requested product's PUBLISHED revision, in the revision's order, at most
+   * {@link MAX_PUBLISHED_IMAGES} per product and 200 products (refused whole above). Rule
+   * `anonymous`: only a product whose status is `published` with a published revision is answered,
+   * and only photos that are in that revision and not taken down; a draft or pending photo, an
+   * unknown product, another Market's product and a product with no photo are absent from the map.
+   * Ids and pixel sizes only. In-process only; the bytes are served by the public photo route.
+   */
+  publishedProductImages(
+    context: CallContext,
+    productIds: readonly Id<'Product'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Product'>, readonly PublishedImageRef[]>,
+      AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
+    >
+  >;
 
   /**
    * Which of the requested product revisions, each named with its product, still waits for
