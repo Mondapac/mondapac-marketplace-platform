@@ -55,6 +55,12 @@ interface StoreState {
   readonly removeLine: (id: string) => void;
   /** Lowers lines to the stock Pay found left (item id to units left). */
   readonly limitLines: (left: Readonly<Record<string, number>>) => void;
+  /**
+   * What Pay lowered for stock, by item name, so the cart can say it after checkout sends the
+   * buyer back; null once dismissed or after the next checkout.
+   */
+  readonly stockChanges: readonly StockChange[] | null;
+  readonly setStockChanges: (changes: readonly StockChange[] | null) => void;
   readonly clearCart: () => void;
   readonly cartSource: CartSource;
   /** Saved-for-later offer ids, newest last; not in the cart or its totals. */
@@ -113,6 +119,13 @@ interface StoreState {
   readonly online: boolean;
   /** Try again: checks the connection and updates `online`; resolves to the result. */
   readonly checkConnection: () => Promise<boolean>;
+}
+
+/** A line Pay lowered because the stock ran out: units before and after (0: removed). */
+export interface StockChange {
+  readonly item: string;
+  readonly was: number;
+  readonly now: number;
 }
 
 const StoreContext = createContext<StoreState | null>(null);
@@ -185,6 +198,7 @@ export function StoreProvider({
   const dropLine = useCallback((id: string) => {
     if (onlineRef.current) setCart((current) => removeLine(current, id));
   }, []);
+  const [stockChanges, setStockChanges] = useState<readonly StockChange[] | null>(null);
   const limitLines = useCallback((left: Readonly<Record<string, number>>) => {
     setCart((current) =>
       Object.entries(left).reduce((cart, [id, units]) => limitLine(cart, id, units), current),
@@ -231,6 +245,8 @@ export function StoreProvider({
       remove,
       removeLine: dropLine,
       limitLines,
+      stockChanges,
+      setStockChanges,
       clearCart,
       cartSource,
       saved,
@@ -278,6 +294,7 @@ export function StoreProvider({
       remove,
       dropLine,
       limitLines,
+      stockChanges,
       clearCart,
       cartSource,
       saved,

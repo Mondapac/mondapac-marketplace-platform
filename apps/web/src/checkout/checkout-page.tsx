@@ -71,6 +71,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     online,
     notes,
     limitLines,
+    setStockChanges,
     clearCart,
     setPlacedOrder,
   } = useStore();
@@ -154,6 +155,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const settle = (answer: PayAnswer) => {
     if (answer.kind === 'paid') {
       placed.current = true;
+      setStockChanges(null);
       setPlacedOrder({
         reference: answer.reference,
         view,
@@ -190,15 +192,16 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
         })),
       });
     } else if (answer.kind === 'stock-changed') {
+      const changes = answer.changes.map((c) => ({
+        item: cartSource.items[c.itemId]?.name ?? c.itemId,
+        was: c.was,
+        now: c.now,
+      }));
+      // The cart says it too: with every line gone, or a seller now below its minimum, checkout
+      // sends the buyer there.
+      setStockChanges(changes);
       limitLines(Object.fromEntries(answer.changes.map((c) => [c.itemId, c.now])));
-      setNotice({
-        kind: 'stock-changed',
-        changes: answer.changes.map((c) => ({
-          item: cartSource.items[c.itemId]?.name ?? c.itemId,
-          was: c.was,
-          now: c.now,
-        })),
-      });
+      setNotice({ kind: 'stock-changed', changes });
     } else setNotice(answer);
     document.querySelector<HTMLElement>('#checkout-payment h2')?.focus();
   };

@@ -581,6 +581,33 @@ describe('checkout', () => {
     expect(payOff()).toBe(true);
   });
 
+  it('tells the cart what stock Pay lowered when checkout sends the buyer back', async () => {
+    renderWith(
+      <>
+        <CheckoutPage source={SAMPLE_CHECKOUT} />
+        <CartPage />
+      </>,
+      MET,
+      true,
+    );
+    await waitFor(() => expect(payOff()).toBe(false));
+    payOrder.mockResolvedValueOnce({
+      kind: 'stock-changed',
+      changes: [
+        { itemId: 'brisket', was: 1, now: 0 },
+        { itemId: 'sourdough', was: 1, now: 0 },
+      ],
+    });
+    fireEvent.click(payButtons()[0]!);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/cart'));
+    const note = screen.getByText(/^Stock changed\./).closest('.cnote')!;
+    expect(note.textContent).toContain(
+      'Beef brisket, 1 kg is sold out and was removed. Sourdough loaf, 800 g is sold out and was removed.',
+    );
+    fireEvent.click(within(note as HTMLElement).getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText(/^Stock changed\./)).toBeNull();
+  });
+
   it('says a declined card or a failure charged nothing, and Pay can be pressed again', async () => {
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
     await waitFor(() => expect(payOff()).toBe(false));
