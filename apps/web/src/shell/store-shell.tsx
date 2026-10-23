@@ -32,6 +32,7 @@ export function StoreShell({
   deliverTo,
   consent,
   signIn,
+  live = false,
   assistant = null,
   children,
 }: {
@@ -42,12 +43,14 @@ export function StoreShell({
   readonly consent: Consent | null;
   /** The account the sample log-in signs in to, until customer sessions are wired. */
   readonly signIn: CheckoutCustomer;
+  /** The storefront talks to the API: sign-in, sign-out and the session are real. */
+  readonly live?: boolean;
   /** The buyer assistant's setup; null (off) renders nothing. */
   readonly assistant?: AssistantSetup | null;
   readonly children: ReactNode;
 }) {
   return (
-    <StoreProvider cartSource={cartSource} initialDeliverTo={deliverTo}>
+    <StoreProvider cartSource={cartSource} initialDeliverTo={deliverTo} live={live}>
       <div className="page">
         <BrowsePanel categories={content.categories} />
         <CartDrawer />
