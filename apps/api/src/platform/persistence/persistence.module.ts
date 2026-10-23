@@ -3,6 +3,7 @@ import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import { MODEL_MAP } from '../../generated/model-map';
 import { AuditActionCatalogue } from '../audit/audit-action-catalogue';
 import { AUDIT_CHAIN_STORE, type AuditChainStore } from '../audit/audit-chain-store';
+import { AUDIT_TRAIL_READER, type AuditTrailReader } from '../audit/audit-trail-reader';
 import { AUDIT_WRITER, type AuditWriter } from '../audit/audit-writer';
 import { CLOCK } from '../clock/clock.module';
 import type { AppConfig } from '../config/app-config';
@@ -26,6 +27,7 @@ import { SUBJECT_KEY_STORE, type SubjectKeyStore } from '../subject-keys/subject
 import { UNIT_OF_WORK, type UnitOfWork } from '../unit-of-work/unit-of-work';
 import { AdvisoryJobLock } from './advisory-job-lock';
 import { PrismaAuditChainStore } from './audit/prisma-audit-chain-store';
+import { createAuditTrailReader } from './audit/prisma-audit-trail-reader';
 import { createAuditWriter } from './audit/prisma-audit-writer';
 import { DatabaseProbe } from './database-probe';
 import { createGuardedClient, GUARDED_CLIENT, type GuardedClient } from './guarded-client';
@@ -210,6 +212,23 @@ export class PersistenceModule {
         clock: Clock,
         permissionKeys: PermissionKeyLookup,
       ) => createAuditWriter(owner, { catalogue, ids, clock, permissionKeys }),
+    };
+  }
+
+  /**
+   * A module's own audit history reader (docs/design/domain/platform-audit.md 10), bound the way
+   * {@link PersistenceModule.auditWriterFor} binds the writer: `providers:
+   * [PersistenceModule.auditTrailReaderFor('sellers')]`. It reads only the owner's own actions;
+   * no factory is injectable and a module never exports `AUDIT_TRAIL_READER`.
+   */
+  static auditTrailReaderFor(owner: string): FactoryProvider<AuditTrailReader> {
+    if (!/^(?:platform\.)?[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(owner) || owner === 'platform') {
+      throw new Error(`"${owner}" is not a module name or "platform.<component>"`);
+    }
+    return {
+      provide: AUDIT_TRAIL_READER,
+      inject: [AuditActionCatalogue],
+      useFactory: (catalogue: AuditActionCatalogue) => createAuditTrailReader(owner, catalogue),
     };
   }
 

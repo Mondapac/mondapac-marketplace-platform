@@ -150,6 +150,12 @@ import {
 } from '../application/ports/seller-account-directory';
 import { REVIEWER_NOTIFIER, type ReviewerNotifier } from '../application/ports/reviewer-notifier';
 import { IdentitySellerAccess, IdentitySellerAccountDirectory } from './identity-seller-access';
+import { IdentityTeamMemberLabels } from './identity-team-member-labels';
+import {
+  TEAM_MEMBER_LABEL_SOURCE,
+  type TeamMemberLabelSource,
+} from '../application/ports/team-member-labels';
+import { IDENTITY_FACADE, type IdentityFacade } from '../../identity';
 import { IdentityReviewerNotifier } from './identity-reviewer-notifier';
 import { SubjectKeyRevisionContentSealer } from './subject-key-revision-content-sealer';
 
@@ -317,6 +323,13 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [SELLER_ACCESS_CONTRACT],
     useFactory: (identity: SellerAccessContract): SellerAccessReader =>
       new IdentitySellerAccess(identity),
+  },
+  {
+    // Seller operations P-E: names and roles of the team members a minimum-order history names.
+    provide: TEAM_MEMBER_LABEL_SOURCE,
+    inject: [IDENTITY_FACADE],
+    useFactory: (identity: IdentityFacade): TeamMemberLabelSource =>
+      new IdentityTeamMemberLabels(identity),
   },
   {
     // Slice 6b: state, owner and the ids by state of `identity`'s admin read, for the list.
