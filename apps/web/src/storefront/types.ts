@@ -238,6 +238,65 @@ export type DeliveryQuote =
   | { readonly kind: 'out-of-range' }
   | { readonly kind: 'failed' };
 
+/** How the buyer pays: card fields on the page (Visa, Mastercard) or Stripe's hosted page. */
+export type PaymentMethod = 'card' | 'stripe';
+
+/**
+ * How the Card tile takes a card: Stripe's Payment Element (card numbers go to Stripe only; a
+ * test-mode key, `pk_test_`) or, with no key, the sample stand-in that shows no card fields.
+ */
+export type CardSetup =
+  { readonly kind: 'stripe'; readonly publishableKey: string } | { readonly kind: 'sample' };
+
+/** What Pay sends: the order as the buyer sees it, checked again by the server before a charge. */
+export interface PayRequest {
+  readonly method: PaymentMethod;
+  /** The card tile's Stripe confirmation token (`ctoken_...`); null for Stripe and the sample. */
+  readonly confirmationToken: string | null;
+  readonly address: QuoteAddress;
+  /** Quantity per item id. */
+  readonly lines: Readonly<Record<string, number>>;
+  /** Speed per seller id, with the Express fee the buyer saw. */
+  readonly delivery: Readonly<
+    Record<
+      string,
+      { readonly speed: 'scheduled' } | { readonly speed: 'express'; readonly fee: Money }
+    >
+  >;
+  readonly discountCode: string | null;
+  /** The total the buyer saw on the Pay button. */
+  readonly total: Money;
+}
+
+/**
+ * The answer to Pay. Nothing is charged unless it is `paid` or `redirect` (Stripe's page then
+ * takes the payment): a changed Express price or stock, or a declined card, says so first.
+ */
+export type PayAnswer =
+  | { readonly kind: 'paid'; readonly reference: string }
+  /** Stripe's hosted page (https://checkout.stripe.com) or the sample stand-in (/checkout/payment). */
+  | { readonly kind: 'redirect'; readonly url: string }
+  | {
+      readonly kind: 'price-changed';
+      readonly changes: readonly {
+        readonly sellerId: string;
+        readonly was: Money;
+        readonly now: Money;
+      }[];
+      /** The new quotes, for the page to show. */
+      readonly quotes: Readonly<Record<string, DeliveryQuote>>;
+    }
+  | {
+      readonly kind: 'stock-changed';
+      readonly changes: readonly {
+        readonly itemId: string;
+        readonly was: number;
+        readonly now: number;
+      }[];
+    }
+  | { readonly kind: 'declined' }
+  | { readonly kind: 'failed' };
+
 /**
  * How the cart shows the tax a GST-inclusive total holds ("Includes A$x GST"). A PLACEHOLDER
  * until the tax module gives the figure: whether tax applies to delivery fees, and tax-exclusive
@@ -310,6 +369,7 @@ export interface CheckoutSource {
    * `serviceArea.postcodes` in the browser; `api` asks the API's delivery area (API_BASE_URL set).
    */
   readonly areaCheck: 'sample' | 'api';
+  readonly card: CardSetup;
 }
 
 /** A suburb (no street) or a street address the checkout's address search suggests. */

@@ -177,6 +177,7 @@ function samplePlaces(): CheckoutPlace[] {
 
 export const SAMPLE_CHECKOUT: CheckoutSource = {
   areaCheck: 'sample',
+  card: { kind: 'sample' },
   customer: {
     firstName: 'Alex',
     fullName: 'Alex Nguyen',

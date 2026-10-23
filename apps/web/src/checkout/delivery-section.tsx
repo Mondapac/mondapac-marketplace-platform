@@ -32,13 +32,18 @@ export type QuoteState =
 /**
  * Each seller's delivery quote for the address: asked again when the address or the sellers
  * change (an answer for an earlier address is dropped); `retry` asks again for one seller. When
- * the connection comes back, the sellers whose quote failed are asked again.
+ * the connection comes back, the sellers whose quote failed are asked again. `replace` takes the
+ * quotes Pay found when it checked the prices again.
  */
 export function useDeliveryQuotes(
   address: QuoteAddress | null,
   sellerIds: readonly string[],
   online: boolean,
-): { readonly quotes: Readonly<Record<string, QuoteState>>; readonly retry: (id: string) => void } {
+): {
+  readonly quotes: Readonly<Record<string, QuoteState>>;
+  readonly retry: (id: string) => void;
+  readonly replace: (quotes: Readonly<Record<string, DeliveryQuote>>) => void;
+} {
   const key = address === null ? '' : JSON.stringify([address, sellerIds]);
   const [answers, setAnswers] = useState<{
     readonly key: string;
@@ -78,6 +83,14 @@ export function useDeliveryQuotes(
     [address, key, ask],
   );
 
+  const replace = useCallback(
+    (fresh: Readonly<Record<string, DeliveryQuote>>) =>
+      setAnswers((current) =>
+        current.key === key ? { key, quotes: { ...current.quotes, ...fresh } } : current,
+      ),
+    [key],
+  );
+
   const quotes: Record<string, QuoteState> = {};
   for (const id of sellerIds)
     quotes[id] =
@@ -94,7 +107,7 @@ export function useDeliveryQuotes(
     if (back && failed !== '') for (const id of failed.split(' ')) retry(id);
   }, [online, failed, retry]);
 
-  return { quotes, retry };
+  return { quotes, retry, replace };
 }
 
 /** The Express price a quote gives, or null: Express is offered only with a price. */

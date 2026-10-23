@@ -4838,6 +4838,64 @@ svg {
   flex: none;
   color: var(--sf-teal);
 }
+.ptl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.pt {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 2px;
+  min-height: 84px;
+  padding: 14px 10px;
+  border: 1px solid var(--sf-line);
+  border-radius: 12px;
+  background: var(--sf-white);
+  text-align: center;
+  cursor: pointer;
+}
+.pt input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.pt:has(input:checked) {
+  border-color: var(--sf-teal);
+  background: var(--sf-mist-soft);
+  box-shadow: 0 0 0 1px var(--sf-teal);
+}
+.pt:has(input:focus-visible) {
+  outline: 3px solid var(--sf-teal);
+  outline-offset: 2px;
+}
+.pt .pti {
+  color: var(--sf-teal);
+}
+.pt .pti .ico {
+  width: 24px;
+  height: 24px;
+}
+.pt small {
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+}
+.cfm {
+  display: grid;
+  gap: 12px;
+}
+/* Stripe's card frames keep their own height; nothing is drawn here while they load. */
+.sfr:empty {
+  display: none;
+}
+/* Wraps the sections Pay locks while it waits; the grid keeps laying out what is inside. */
+.ckwait {
+  display: contents;
+}
 .ckdc {
   padding: 4px 16px;
   border: 1px solid var(--sf-line);
