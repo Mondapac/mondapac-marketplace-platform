@@ -20,10 +20,15 @@ export interface OfferFeed {
     offerIds: readonly Id<'Offer'>[],
     locale: string,
   ): Promise<ReadonlyMap<Id<'Offer'>, FeedFacts> | null>;
-  /** One page of the ids of published Offers (any product, or one), after `after`. */
+  /** One page of the ids of published Offers (any, of one product or of one seller), after `after`. */
   publishedIds(
     context: CallContext,
-    input: { productId?: Id<'Product'>; after?: Id<'Offer'>; limit: number },
+    input: {
+      productId?: Id<'Product'>;
+      sellerId?: Id<'Seller'>;
+      after?: Id<'Offer'>;
+      limit: number;
+    },
   ): Promise<readonly Id<'Offer'>[] | null>;
 }
 

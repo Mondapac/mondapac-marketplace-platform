@@ -251,10 +251,16 @@ export interface CartSource {
 
 export interface SavedAddress {
   readonly id: string;
-  readonly label: string;
-  readonly name: string;
-  readonly line: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  /** Street address and unit. */
+  readonly street: string;
+  /** The API's second line and courier note; kept so a save does not drop them (not on the form). */
+  readonly line2: string | null;
+  readonly suburb: string;
+  readonly postcode: string;
   readonly phone: string;
+  readonly deliveryNotes: string | null;
   readonly isDefault: boolean;
 }
 
@@ -327,7 +333,12 @@ export interface MapBounds {
  * address-lookup provider is not chosen, the sample places its stubbed lookup knows.
  */
 export interface DeliveryLocatorSource {
-  readonly area: { readonly name: string; readonly boundary: readonly GeoPoint[] };
+  readonly area: {
+    readonly name: string;
+    /** The region's short form in a one-line address ("QLD"). */
+    readonly regionCode: string;
+    readonly boundary: readonly GeoPoint[];
+  };
   readonly bounds: MapBounds;
   /** Where the pin starts when the buyer has not chosen a place the lookup can find. */
   readonly start: Place;
@@ -498,6 +509,8 @@ export interface EmailChoices {
 
 /** The signed-in buyer's account: profile, orders, address book, lists and email choices. */
 export interface AccountSource {
+  /** True when the storefront talks to the API: the session, profile and address book are real. */
+  readonly live: boolean;
   readonly customer: CheckoutCustomer;
   readonly mobile: string;
   /** Newest first. */

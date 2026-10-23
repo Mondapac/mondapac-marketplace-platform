@@ -6,6 +6,7 @@ import type { OfferSearchReader } from './ports/offer-search.reader';
 import type { ProductImages } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { SearchPolicy } from './ports/search-policy';
+import type { SellerEligibility } from './ports/seller-eligibility';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
 import type { StoreResolver } from './ports/store-resolver';
 
@@ -17,6 +18,7 @@ export interface SearchDependencies {
   readonly policy: SearchPolicy;
   readonly feed: OfferFeed;
   readonly visibility: PublicVisibility;
+  readonly sellers: SellerEligibility;
   readonly clock: Clock;
   /** A store's list is read from the same documents, by seller (Prisma, no raw SQL). */
   readonly shelves: ShelfDocumentsReader;

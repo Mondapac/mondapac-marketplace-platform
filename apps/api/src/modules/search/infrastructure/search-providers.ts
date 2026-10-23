@@ -30,6 +30,10 @@ import {
 import { PUBLIC_VISIBILITY, type PublicVisibility } from '../application/ports/public-visibility';
 import { SEARCH_POLICY, type SearchPolicy } from '../application/ports/search-policy';
 import {
+  SELLER_ELIGIBILITY,
+  type SellerEligibility,
+} from '../application/ports/seller-eligibility';
+import {
   SHELF_DOCUMENTS_READER,
   type ShelfDocumentsReader,
 } from '../application/ports/shelf-documents.reader';
@@ -55,6 +59,7 @@ import { PrismaShelfDocumentsReader } from './prisma-shelf-documents.reader';
 import { ConfigSearchPolicy } from './config-search-policy';
 import { FacadeOfferFeed } from './facade-offer-feed';
 import { FacadePublicVisibility } from './facade-public-visibility';
+import { FacadeSellerEligibility } from './facade-seller-eligibility';
 import { PrismaOfferDocumentRepository } from './prisma-offer-document.repository';
 import { RawOfferSearchReader } from './raw-offer-search.reader';
 
@@ -90,6 +95,11 @@ export const searchProviders: readonly FactoryProvider[] = [
     inject: [CATALOG_FACADE, SELLERS_FACADE],
     useFactory: (catalog: CatalogFacade, sellers: SellersFacade): PublicVisibility =>
       new FacadePublicVisibility(catalog, sellers),
+  },
+  {
+    provide: SELLER_ELIGIBILITY,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerEligibility => new FacadeSellerEligibility(sellers),
   },
   {
     provide: SHELF_DOCUMENTS_READER,
