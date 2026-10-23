@@ -53,6 +53,7 @@ function order(fields: Omit<AccountOrder, 'includedTax'>): AccountOrder {
 const HOME = 'Home: 12 Example Street, Kedron QLD 4031';
 
 export const SAMPLE_ACCOUNT: AccountSource = {
+  live: false,
   customer: SAMPLE_CHECKOUT.customer,
   mobile: '0400 000 000',
   orders: [
