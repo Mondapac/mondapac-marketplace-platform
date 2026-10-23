@@ -34,6 +34,10 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { ApproveStorefrontSlide } from '../application/use-cases/approve-slide.use-case';
+import { PauseStorefrontSlide } from '../application/use-cases/pause-slide.use-case';
+import { ResumeStorefrontSlide } from '../application/use-cases/resume-slide.use-case';
+import { SubmitStorefrontSlide } from '../application/use-cases/submit-slide.use-case';
 import { ArchiveStorefrontSlide } from '../application/use-cases/archive-slide.use-case';
 import { CreateStorefrontSlide } from '../application/use-cases/create-slide.use-case';
 import { ListStorefrontSlides } from '../application/use-cases/list-slides.use-case';
@@ -44,6 +48,7 @@ import { ViewStorefrontSlide } from '../application/use-cases/view-slide.use-cas
 import { closedBody, refusal } from './http-answers';
 import {
   SlideCopyBody,
+  SlideApproveRequest,
   SlideDetailBody,
   SlideListBody,
   SlideRequest,
@@ -78,8 +83,7 @@ const CONFLICT = {
 
 /**
  * The slide library, for admins (john 23 Oct): list, create, change the draft, restore a version,
- * copy out for another Market and archive. Approving, pausing and resuming are routes of the same
- * controller. Thin adapters: each use case does its work behind its gate. Unsafe requests carry a
+ * copy out for another Market and archive; submit, approve, pause and resume. Thin adapters: each use case does its work behind its gate. Unsafe requests carry a
  * session cookie, so the Origin and Sec-Fetch-Site checks and the CSRF token apply as on every
  * admin route. Every answer is `Cache-Control: no-store`.
  */
@@ -98,6 +102,10 @@ export class AdminSlideController {
     private readonly copy: PrepareStorefrontSlideCopy,
     private readonly restore: RestoreStorefrontSlideVersion,
     private readonly archive: ArchiveStorefrontSlide,
+    private readonly submit: SubmitStorefrontSlide,
+    private readonly approve: ApproveStorefrontSlide,
+    private readonly pause: PauseStorefrontSlide,
+    private readonly resume: ResumeStorefrontSlide,
   ) {}
 
   private answer<T, U>(
@@ -291,5 +299,130 @@ export class AdminSlideController {
     response.setHeader('Cache-Control', 'no-store');
     const result = await this.archive.execute(context, { slide });
     return this.answer('storefront.archive-slide-route', context, result, slideDetailBody);
+  }
+
+  @Post(':slide/submit')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Send a slide's draft for approval (admin)",
+    description:
+      'Needs storefront.slide.edit. Buyers keep seeing the live version until a platform admin ' +
+      'approves. Changing the draft again withdraws the submission. Audited.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam(SLIDE)
+  @ApiOkResponse({ type: SlideDetailBody })
+  @ApiUnauthorizedResponse(UNAUTHORIZED)
+  @ApiForbiddenResponse(FORBIDDEN)
+  @ApiNotFoundResponse(NOT_FOUND)
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'storefront.slide-no-draft, storefront.slide-ended or storefront.slide-archived',
+  })
+  async submitDraft(
+    @Call() context: CallContext,
+    @Param('slide') slide: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.submit.execute(context, { slide });
+    return this.answer('storefront.submit-slide-route', context, result, slideDetailBody);
+  }
+
+  @Post(':slide/approve')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Approve and publish a slide's submitted draft (platform admin)",
+    description:
+      'Needs storefront.slide.publish (protected). `versionNo` is the draft the admin reviewed. ' +
+      'The draft becomes the live version, with the approver and time on it, and the slide is ' +
+      'placed. Refused when a position would hold more than its maximum of active slides in an ' +
+      'overlapping window. Audited.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam(SLIDE)
+  @ApiBody({ type: SlideApproveRequest })
+  @ApiOkResponse({ type: SlideDetailBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse(UNAUTHORIZED)
+  @ApiForbiddenResponse(FORBIDDEN)
+  @ApiNotFoundResponse(NOT_FOUND)
+  @ApiConflictResponse({
+    ...ERROR,
+    description:
+      'storefront.slide-no-draft, storefront.slide-draft-changed, storefront.slide-not-submitted, ' +
+      'storefront.slide-ended, storefront.slide-position-full (details.fields) or ' +
+      'storefront.slide-archived',
+  })
+  async approveDraft(
+    @Call() context: CallContext,
+    @Param('slide') slide: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, ['versionNo']);
+    if (invalid !== null) throw invalid;
+    const result = await this.approve.execute(context, { slide, body });
+    return this.answer('storefront.approve-slide-route', context, result, slideDetailBody);
+  }
+
+  @Post(':slide/pause')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Pause an approved slide (admin)',
+    description:
+      'Needs storefront.slide.pause. No approval: the slide stops being served at once. ' +
+      'Resuming needs storefront.slide.publish. Audited.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam(SLIDE)
+  @ApiOkResponse({ type: SlideDetailBody })
+  @ApiUnauthorizedResponse(UNAUTHORIZED)
+  @ApiForbiddenResponse(FORBIDDEN)
+  @ApiNotFoundResponse(NOT_FOUND)
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'storefront.slide-not-live or storefront.slide-archived',
+  })
+  async pauseSlide(
+    @Call() context: CallContext,
+    @Param('slide') slide: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.pause.execute(context, { slide });
+    return this.answer('storefront.pause-slide-route', context, result, slideDetailBody);
+  }
+
+  @Post(':slide/resume')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Resume a paused slide (platform admin)',
+    description:
+      'Needs storefront.slide.publish (protected). The live version is served again once the ' +
+      'maximums of its positions are checked. Audited.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam(SLIDE)
+  @ApiOkResponse({ type: SlideDetailBody })
+  @ApiUnauthorizedResponse(UNAUTHORIZED)
+  @ApiForbiddenResponse(FORBIDDEN)
+  @ApiNotFoundResponse(NOT_FOUND)
+  @ApiConflictResponse({
+    ...ERROR,
+    description:
+      'storefront.slide-not-paused, storefront.slide-ended, storefront.slide-position-full ' +
+      '(details.fields) or storefront.slide-archived',
+  })
+  async resumeSlide(
+    @Call() context: CallContext,
+    @Param('slide') slide: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.resume.execute(context, { slide });
+    return this.answer('storefront.resume-slide-route', context, result, slideDetailBody);
   }
 }

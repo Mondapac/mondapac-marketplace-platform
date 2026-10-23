@@ -242,8 +242,8 @@ describe.each(TEST_MARKETS)('storefront slide store in market %s (database)', (c
     await value(market, () => slides.lockPositions(market, keys, T0.add({ hours: 1 })));
     await value(other, () => slides.lockPositions(other, ['home.hero'], T0));
     const { rows } = await sql.query(
-      `SELECT market_id, position_key FROM storefront.slide_position_locks WHERE market_id = $1 ORDER BY position_key`,
-      [market.marketId],
+      `SELECT market_id, position_key FROM storefront.slide_position_locks WHERE market_id = $1 AND position_key = ANY($2) ORDER BY position_key`,
+      [market.marketId, ['home.hero', 'home.mid']],
     );
     expect(rows.map((r: { position_key: string }) => r.position_key)).toEqual([
       'home.hero',

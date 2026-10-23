@@ -28,6 +28,10 @@ import { ViewStorefrontPage } from './application/use-cases/view-page.use-case';
 import { ViewPublishedLandingPage } from './application/use-cases/view-published-landing-page.use-case';
 import { ViewPublishedStorefrontNavigation } from './application/use-cases/view-published-navigation.use-case';
 import { ViewPublishedStorefrontPage } from './application/use-cases/view-published-page.use-case';
+import { ApproveStorefrontSlide } from './application/use-cases/approve-slide.use-case';
+import { PauseStorefrontSlide } from './application/use-cases/pause-slide.use-case';
+import { ResumeStorefrontSlide } from './application/use-cases/resume-slide.use-case';
+import { SubmitStorefrontSlide } from './application/use-cases/submit-slide.use-case';
 import { ArchiveStorefrontSlide } from './application/use-cases/archive-slide.use-case';
 import { CreateStorefrontSlide } from './application/use-cases/create-slide.use-case';
 import { ListStorefrontSlides } from './application/use-cases/list-slides.use-case';
@@ -117,6 +121,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RestoreStorefrontSlideVersion,
       UpdateStorefrontSlideDraft,
       ViewStorefrontSlide,
+      ApproveStorefrontSlide,
+      PauseStorefrontSlide,
+      ResumeStorefrontSlide,
+      SubmitStorefrontSlide,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
   ],
 })

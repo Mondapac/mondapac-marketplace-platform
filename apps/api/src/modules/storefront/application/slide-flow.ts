@@ -38,7 +38,20 @@ export type SlideFailure =
   | { readonly code: 'storefront.slide-not-found' }
   | { readonly code: 'storefront.slide-version-not-found' }
   | { readonly code: 'storefront.slide-archived' }
-  | { readonly code: 'storefront.slide-version-limit' };
+  | { readonly code: 'storefront.slide-version-limit' }
+  /** Submit or approve with no draft: there is nothing new to send. */
+  | { readonly code: 'storefront.slide-no-draft' }
+  /** Approve of a draft that is not the version the admin reviewed. */
+  | { readonly code: 'storefront.slide-draft-changed' }
+  /** Approve of a draft that was not sent for approval. */
+  | { readonly code: 'storefront.slide-not-submitted' }
+  /** Approve or resume of a slide whose window has ended. */
+  | { readonly code: 'storefront.slide-ended' }
+  /** Pause of a slide that is not approved, or has ended. */
+  | { readonly code: 'storefront.slide-not-live' }
+  | { readonly code: 'storefront.slide-not-paused' }
+  /** The position already has its maximum of slides active in the window. */
+  | { readonly code: 'storefront.slide-position-full'; readonly fields: Problems };
 
 export const MAX_SLIDES_LISTED = 500;
 export const MAX_SLIDE_VERSIONS_SHOWN = 50;

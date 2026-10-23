@@ -13,6 +13,10 @@ import { ViewPublishedLandingPage } from '../src/modules/storefront/application/
 import { ViewPublishedStorefrontNavigation } from '../src/modules/storefront/application/use-cases/view-published-navigation.use-case';
 import { ViewPublishedStorefrontPage } from '../src/modules/storefront/application/use-cases/view-published-page.use-case';
 import { ArchiveStorefrontSlide } from '../src/modules/storefront/application/use-cases/archive-slide.use-case';
+import { ApproveStorefrontSlide } from '../src/modules/storefront/application/use-cases/approve-slide.use-case';
+import { PauseStorefrontSlide } from '../src/modules/storefront/application/use-cases/pause-slide.use-case';
+import { ResumeStorefrontSlide } from '../src/modules/storefront/application/use-cases/resume-slide.use-case';
+import { SubmitStorefrontSlide } from '../src/modules/storefront/application/use-cases/submit-slide.use-case';
 import { CreateStorefrontSlide } from '../src/modules/storefront/application/use-cases/create-slide.use-case';
 import { ListStorefrontSlides } from '../src/modules/storefront/application/use-cases/list-slides.use-case';
 import { PrepareStorefrontSlideCopy } from '../src/modules/storefront/application/use-cases/prepare-slide-copy.use-case';
@@ -63,6 +67,13 @@ it('maps every refusal code of the storefront routes to its exact status', () =>
     'storefront.slide-version-not-found': 404,
     'storefront.slide-archived': 409,
     'storefront.slide-version-limit': 409,
+    'storefront.slide-no-draft': 409,
+    'storefront.slide-draft-changed': 409,
+    'storefront.slide-not-submitted': 409,
+    'storefront.slide-ended': 409,
+    'storefront.slide-not-live': 409,
+    'storefront.slide-not-paused': 409,
+    'storefront.slide-position-full': 409,
   });
 });
 
@@ -101,6 +112,14 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
           .useValue(stub('list-slides'))
           .overrideProvider(PrepareStorefrontSlideCopy)
           .useValue(stub('copy-slide'))
+          .overrideProvider(SubmitStorefrontSlide)
+          .useValue(stub('submit-slide'))
+          .overrideProvider(ApproveStorefrontSlide)
+          .useValue(stub('approve-slide'))
+          .overrideProvider(PauseStorefrontSlide)
+          .useValue(stub('pause-slide'))
+          .overrideProvider(ResumeStorefrontSlide)
+          .useValue(stub('resume-slide'))
           .overrideProvider(AddStorefrontModule)
           .useValue(stub('add'))
           .overrideProvider(ReorderStorefrontModules)
@@ -380,6 +399,75 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
         'copy-slide',
       ]);
       expect(calls[3]!.input).toEqual({ state: 'draft', position: 'home.hero' });
+    });
+
+    it('lets an admin submit, approve, pause and resume a slide', async () => {
+      await boot();
+      const session = adminSession();
+      next = ok(slideView);
+      const at = (action: string) => `/storefront/admin/slides/${SLIDE_ID}/${action}`;
+      expect((await call('post', at('submit'), session)).status).toBe(200);
+      const approved = await call('post', at('approve'), session, { versionNo: 2 });
+      expect(approved.status).toBe(200);
+      expect(approved.headers['cache-control']).toBe('no-store');
+      expect((await call('post', at('pause'), session)).status).toBe(200);
+      expect((await call('post', at('resume'), session)).status).toBe(200);
+      expect(calls).toEqual([
+        { name: 'submit-slide', input: { slide: SLIDE_ID } },
+        { name: 'approve-slide', input: { slide: SLIDE_ID, body: { versionNo: 2 } } },
+        { name: 'pause-slide', input: { slide: SLIDE_ID } },
+        { name: 'resume-slide', input: { slide: SLIDE_ID } },
+      ]);
+    });
+
+    it('refuses the unsafe approval routes without CSRF or from another origin, and a stray field', async () => {
+      await boot();
+      const session = adminSession();
+      const at = (action: string) => `/storefront/admin/slides/${SLIDE_ID}/${action}`;
+      for (const action of ['submit', 'approve', 'pause', 'resume']) {
+        const body = action === 'approve' ? { versionNo: 1 } : undefined;
+        expect((await call('post', at(action), { cookie: session.cookie }, body)).status).toBe(403);
+        expect(
+          (await call('post', at(action), { ...session, 'sec-fetch-site': 'same-site' }, body))
+            .status,
+        ).toBe(403);
+        expect(
+          (await call('post', at(action), { ...session, origin: 'https://evil.example' }, body))
+            .status,
+        ).toBe(403);
+      }
+      const extra = await call('post', at('approve'), session, { versionNo: 1, force: true });
+      expect(extra.status).toBe(400);
+      expect(extra.body).toMatchObject({
+        details: { fields: [{ path: 'force', code: 'unknown-field' }] },
+      });
+      expect(calls).toEqual([]);
+    });
+
+    it('maps the refusals of the approval routes', async () => {
+      await boot();
+      const session = adminSession();
+      const approve = () =>
+        call('post', `/storefront/admin/slides/${SLIDE_ID}/approve`, session, { versionNo: 1 });
+      next = err({
+        code: 'storefront.slide-position-full',
+        fields: [{ path: 'placements[0].position', code: 'full' }],
+      });
+      const refused = await approve();
+      expect([refused.status, refused.body as unknown]).toEqual([
+        409,
+        {
+          statusCode: 409,
+          code: 'storefront.slide-position-full',
+          details: { fields: [{ path: 'placements[0].position', code: 'full' }] },
+        },
+      ]);
+      for (const code of ['draft-changed', 'not-submitted', 'ended', 'no-draft']) {
+        next = err({ code: `storefront.slide-${code}` });
+        expect((await approve()).status).toBe(409);
+      }
+      next = err({ code: 'access.denied' });
+      expect((await approve()).status).toBe(403);
     });
 
     it('refuses a slide route with no session, no CSRF, a cross-site origin and a stray field', async () => {

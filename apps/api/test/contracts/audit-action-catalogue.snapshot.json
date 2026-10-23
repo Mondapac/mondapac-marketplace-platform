@@ -1306,6 +1306,47 @@
     }
   },
   {
+    "action": "storefront.slide.pause",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.publish",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "placementCount": "integer",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.resume",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.submit",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "versionNo": "integer"
+    }
+  },
+  {
     "action": "tax.strategy.activate",
     "targetType": "tax.strategy",
     "targetId": "id",

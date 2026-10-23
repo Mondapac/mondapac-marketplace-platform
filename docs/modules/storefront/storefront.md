@@ -49,8 +49,12 @@ go live only after a platform admin approves them.
 | `storefront.page.archive` | yes | archive a landing page |
 | `storefront.navigation.edit` | no | replace the navigation draft, restore a version |
 | `storefront.navigation.approve` | yes | approve the navigation draft |
+| `storefront.slide.read` | no | slide list, detail, copy package |
+| `storefront.slide.edit` | no | create, replace draft, restore, submit for approval, archive |
+| `storefront.slide.pause` | no | pause an approved slide (stops at once, no approval) |
+| `storefront.slide.publish` | yes | approve a submitted draft, resume a paused slide |
 
-No default role holds a key (role seed unchanged); a platform admin gives the editor keys to a
+No default role holds a key (role seed unchanged, slide keys included: the role seed snapshot holds no `storefront.` key); a platform admin gives the editor keys to a
 custom role. Publishing, archiving and approving stay with the Platform Administrator, who may
 also edit, so one admin can publish their own draft. That is accepted while the protected keys
 are theirs alone; if another role ever holds `storefront.page.publish` or
@@ -110,9 +114,24 @@ version, with its window, so caps and the later buyer read need no join) and `sl
   each in its own Market: `GET .../slides/:slide/copy` (read key, source Market) returns a body,
   and an editor of the other Market posts it to `POST .../slides` (edit key there). Scopes are
   reset to `all`; link targets must be checked in the target Market.
+- **Approval flow**: an editor submits the draft (`storefront.slide.edit`); only
+  `storefront.slide.publish` approves it, naming the draft's `versionNo` it reviewed. Approving
+  stamps `approved_by`/`approved_at` on the version, sets `live_version_id`, takes the draft's
+  window and flags onto the slide and rebuilds the placement projection, in one unit, after
+  locking the position rows. It is refused (`storefront.slide-position-full`) when a position
+  would hold more than its maximum at some instant of an overlapping window; scopes count only
+  when they can show on the same page (conservative without the category tree). Replacing the
+  draft again withdraws a submission; the live version keeps serving until the next approval.
+  Pausing (`storefront.slide.pause`) removes the projection at once; resuming needs the publish
+  key and checks the maximums again. States: draft, pending approval, scheduled, live, ended
+  (from the Clock and the window), paused, archived. Every change is audited
+  (`storefront.slide.create|draft-change|submit|publish|pause|resume|archive`). As with pages, the
+  Platform Administrator may also edit, so one admin can approve their own draft; revisit if
+  another role ever holds the publish key.
 - **Routes** (admin, session, CSRF, `Origin` + `Sec-Fetch-Site` as every admin route):
   `GET|POST storefront/admin/slides`, `GET|PUT storefront/admin/slides/:slide`,
-  `GET .../:slide/copy`, `POST .../:slide/restore`, `POST .../:slide/archive`.
+  `GET .../:slide/copy`, `POST .../:slide/restore`, `POST .../:slide/archive`,
+  `POST .../:slide/submit|approve|pause|resume`.
 
 ## Not in v1 (follow-ups)
 
