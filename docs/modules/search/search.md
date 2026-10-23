@@ -42,6 +42,20 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   (anonymous, `@RoutePopulation('customer')`, default rate-limit class, `no-store`). `limit` 1 to 24
   (storefront's `MAX_SHELF_PRODUCTS`, default 12); `category` is a platform category id; unknown
   parameters are 400.
+- **Personal shelves (personalization 1d-1):** `GET /search/for-you?limit=` and `GET
+  /engagement/recommendations/recently-viewed?limit=` (limit 1 to 24, default 12; no other query
+  field; `no-store`; customer route population, session read; never set a cookie). The shopper is the
+  signed-in customer or the engagement guest cookie, read through `ENGAGEMENT_FACADE.recentViews`
+  (empty under `Sec-GPC: 1`, with the switch off, or for a guest without `Engagement-Consent:
+  granted`). "For you": the Market's best sellers in the categories the shopper viewed (and of the
+  products they viewed), without any category certification marks (`certifiedCategoryIds`), then the
+  rest of the best sellers, then the browse fill, each Offer once; with no views it is the plain best
+  sellers. "Recently viewed": the viewed products sellable now, newest view first, one Offer each,
+  certification not a filter. Every Offer is re-checked like best sellers; a failed ordering source,
+  check or views read of "recently viewed" is `search.unavailable` (503); a failed views read of "for
+  you" falls back to the plain best sellers. Four use cases (`search.list-for-you`,
+  `search.list-recently-viewed`: `own-resources`; the `-guest` pair: `anonymous`, in
+  `http-reachable-anonymous-system.json`). Items carry `primaryImage` like the other shelves.
 - **Best sellers:** ordering's `OrderingRankingFacade.bestSellingOffers` (rule anonymous) ranks Offers
   by order lines on orders confirmed in the last 30 days (ids only, no count leaves ordering); search
   takes the top 100, keeps the indexed ones (in the category when asked) in rank order, and fills a
