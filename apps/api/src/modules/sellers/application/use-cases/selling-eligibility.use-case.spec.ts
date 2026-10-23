@@ -168,6 +168,7 @@ describe.each([
         sellingFacts: store,
       }),
       reviewerBusinessDetails: undefined as never,
+      publishedStoreSellerId: undefined as never,
     });
   });
 

@@ -21,6 +21,12 @@ const id = <T extends string>(n: number): Id<T> => {
   return parsed.value as Id<T>;
 };
 const CATEGORY = id<'Category'>(0xca);
+const IMAGE = {
+  imageId: id<'ProductImage'>(0x701),
+  width: 1600,
+  height: 1200,
+  alt: 'Halal sausages',
+};
 const ITEM = {
   offerId: id<'Offer'>(1),
   productId: id<'Product'>(2),
@@ -28,6 +34,7 @@ const ITEM = {
   name: 'Halal sausages',
   shortText: null,
   categoryIds: [CATEGORY],
+  primaryImage: IMAGE,
 };
 const ENDS = '2026-10-20T00:00:00Z';
 const PRODUCT = ITEM.productId;
@@ -80,6 +87,7 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
       shortDescription: null,
       description: 'Beef',
       categoryIds: [CATEGORY],
+      images: [IMAGE, { ...IMAGE, imageId: id<'ProductImage'>(0x702), width: 800, height: 800 }],
       offers: [
         {
           offerId: ITEM.offerId,
@@ -180,6 +188,7 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
       shortDescription: null,
       description: 'Beef',
       categoryIds: [CATEGORY],
+      images: [IMAGE, { ...IMAGE, imageId: id<'ProductImage'>(0x702), width: 800, height: 800 }],
       offers: [
         {
           offerId: ITEM.offerId,
@@ -199,6 +208,7 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
       ],
     });
     expect(JSON.stringify(response.body)).not.toContain('sellable');
+    expect(JSON.stringify(response.body)).not.toMatch(/objectKey|object_key|sha256|uploader|http/);
     expect(calls).toEqual([
       { route: 'detail', actor: 'anonymous', market: code, input: { productId: PRODUCT } },
     ]);

@@ -2,6 +2,7 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
 import type { AllowedProductTypes } from '../application/use-cases/allowed-product-types.use-case';
+import type { PublishedStoreSellerId } from '../application/use-cases/published-store-seller-id.use-case';
 import type { ReviewerBusinessDetailsRead } from '../application/use-cases/reviewer-business-details.use-case';
 import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
 import type { SellingEligibility } from '../application/use-cases/selling-eligibility.use-case';
@@ -27,6 +28,7 @@ export interface SellersFacadeUseCases {
   readonly allowedProductTypes: AllowedProductTypes;
   readonly allowedProductTypesSystem: AllowedProductTypesSystem;
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
+  readonly publishedStoreSellerId: PublishedStoreSellerId;
 }
 
 /**
@@ -75,6 +77,13 @@ export class SellersFacadeImplementation implements SellersFacade {
         ? this.useCases.allowedProductTypesSystem
         : this.useCases.allowedProductTypes;
     return useCase.execute(context, { sellerId });
+  }
+
+  publishedStoreSellerId(
+    context: CallContext,
+    slug: string,
+  ): Promise<Result<Id<'Seller'> | null, AccessDenied | SellersUnavailable>> {
+    return this.useCases.publishedStoreSellerId.execute(context, { slug });
   }
 
   reviewerBusinessDetails(

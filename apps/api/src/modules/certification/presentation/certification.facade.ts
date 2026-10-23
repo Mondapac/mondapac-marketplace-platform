@@ -1,10 +1,11 @@
 import { err } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { EvaluateClaims } from '../application/use-cases/evaluate-claims.use-case';
 import type { EvaluateClaimsSystem } from '../application/use-cases/evaluate-claims-system.use-case';
 import type { CertificationTypes } from '../application/use-cases/certification-types.use-case';
 import type { CertificationTypesSystem } from '../application/use-cases/certification-types-system.use-case';
+import type { CertifiedCategories } from '../application/use-cases/certified-categories.use-case';
 import type { SellerCertificateOverview } from '../application/use-cases/seller-certificate-overview.use-case';
 import type { MatchClaimTerms } from '../application/use-cases/match-claim-terms.use-case';
 import type { MatchClaimTermsSystem } from '../application/use-cases/match-claim-terms-system.use-case';
@@ -28,6 +29,7 @@ export interface CertificationFacadeUseCases {
   readonly certificationTypes: CertificationTypes;
   readonly certificationTypesSystem: CertificationTypesSystem;
   readonly sellerCertificateOverview: SellerCertificateOverview;
+  readonly certifiedCategories: CertifiedCategories;
 }
 
 type Failure = AccessDenied | CertificationValidationFailed | CertificationUnavailable;
@@ -71,6 +73,16 @@ export class CertificationFacadeImplementation implements CertificationFacade {
         ? this.useCases.certificationTypesSystem
         : this.useCases.certificationTypes;
     return useCase.execute(context, { filter });
+  }
+
+  async certifiedCategoryIds(
+    context: CallContext,
+  ): Promise<Result<readonly Id<'Category'>[], AccessDenied | CertificationUnavailable>> {
+    const result = await this.useCases.certifiedCategories.execute(context, {});
+    if (result.ok) return result;
+    return result.error.code === 'access.denied'
+      ? err(result.error)
+      : err({ code: 'certification.unavailable' });
   }
 
   async sellerCertificateOverview(

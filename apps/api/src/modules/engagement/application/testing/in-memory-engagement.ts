@@ -2,6 +2,8 @@ import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type {
   BehaviourEventRecord,
   BehaviourEventRepository,
+  BehaviourSubject,
+  RecentViews,
 } from '../ports/behaviour-event.repository';
 import type { EngagementGuestTokens } from '../ports/guest-tokens';
 import type {
@@ -18,6 +20,35 @@ export class InMemoryBehaviourEvents implements BehaviourEventRepository {
   append(market: MarketContext, event: BehaviourEventRecord) {
     this.rows.push({ ...event, marketId: market.marketId });
     return Promise.resolve();
+  }
+
+  recentViews(market: MarketContext, subject: BehaviourSubject, limit: number) {
+    const mine = this.rows
+      .filter(
+        (row) =>
+          row.marketId === market.marketId &&
+          (subject.kind === 'account'
+            ? row.subject.kind === 'account' && row.subject.accountId === subject.accountId
+            : row.subject.kind === 'guest' && row.subject.guestHash === subject.guestHash),
+      )
+      .sort((a, b) => b.occurredAt.epochMilliseconds - a.occurredAt.epochMilliseconds);
+    const distinct = <T>(pick: (row: BehaviourEventRecord) => T | null): T[] => {
+      const seen = new Set<T>();
+      for (const row of mine) {
+        const value = pick(row);
+        if (value !== null) seen.add(value);
+      }
+      return [...seen].slice(0, limit);
+    };
+    const views: RecentViews = {
+      productIds: distinct((row) =>
+        row.facts.kind === 'product-viewed' ? row.facts.productId : null,
+      ),
+      categoryIds: distinct((row) =>
+        row.facts.kind === 'category-viewed' ? row.facts.categoryId : null,
+      ),
+    };
+    return Promise.resolve(views);
   }
 
   deleteForAccount(market: MarketContext, accountId: Id<'Account'>) {

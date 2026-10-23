@@ -52,6 +52,7 @@ export function ProductPage({
             name={product.name}
             category={product.category}
             photos={product.photos}
+            thumbs={product.photoThumbs}
             certifications={offer.certifications}
             special={offer.wasPrice !== undefined}
           />
