@@ -56,6 +56,13 @@ vi.mock('../src/storefront/source.ts', async (importOriginal) => {
   };
 });
 
+// The listing pages read the sample too: their live reads (./listing-source.ts) answer "off".
+vi.mock('../src/storefront/listing-source.ts', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  liveCategory: () => Promise.resolve(undefined),
+  liveProducts: () => Promise.resolve(undefined),
+}));
+
 const { cutDescription, pageTitle, plainText } = await import('../src/seo/defaults.ts');
 const { pageMetadata } = await import('../src/seo/metadata.ts');
 const layout = await import('../app/layout.tsx');

@@ -159,6 +159,10 @@ import { OfferListingsSystemQuery } from './application/use-cases/offer-listings
 import { OFFER_LISTINGS_READER } from './application/ports/offer-listings.reader';
 import { PublishedProductQuery } from './application/use-cases/published-product.use-case';
 import { PUBLISHED_PRODUCT_READER } from './application/ports/published-product.reader';
+import { PUBLISHED_IMAGES_READER } from './application/ports/published-images.reader';
+import { PublishedProductImagesQuery } from './application/use-cases/published-product-images.use-case';
+import { PublishedImageRead } from './application/use-cases/published-image-read.use-case';
+import { PublicProductImageController } from './presentation/public-product-image.controller';
 import { reevaluateTagsJob } from './presentation/jobs/reevaluate-tags.job';
 import { OwnProductController } from './presentation/own-product.controller';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
@@ -222,6 +226,7 @@ const PORT = {
   tagSelection: TAG_SELECTION_READER,
   listingsReader: OFFER_LISTINGS_READER,
   publishedProductReader: PUBLISHED_PRODUCT_READER,
+  publishedImagesReader: PUBLISHED_IMAGES_READER,
   ownerContacts: OFFER_OWNER_CONTACT,
   mailTransport: MAIL_TRANSPORT,
   mailSettings: OFFER_OWNER_MAIL_SETTINGS,
@@ -296,6 +301,7 @@ const productTypeProvider: FactoryProvider<string> = {
     ProductReviewController,
     ProductImageReviewController,
     PublicCategoryController,
+    PublicProductImageController,
   ],
   imports: [CertificationModule, SellersModule, CatalogReferencesModule, IdentityModule],
   providers: [
@@ -758,6 +764,15 @@ const productTypeProvider: FactoryProvider<string> = {
       publishedProductReader: true,
       policy: true,
     }),
+    useCaseProvider(PublishedProductImagesQuery, {
+      unitOfWork: true,
+      publishedImagesReader: true,
+    }),
+    useCaseProvider(PublishedImageRead, {
+      unitOfWork: true,
+      publishedImagesReader: true,
+      objectStore: true,
+    }),
     {
       provide: CATALOG_FACADE,
       inject: [
@@ -769,6 +784,7 @@ const productTypeProvider: FactoryProvider<string> = {
         OfferListingsQuery,
         OfferListingsSystemQuery,
         PublishedProductQuery,
+        PublishedProductImagesQuery,
         PendingProductRevisionsQuery,
         SellerProductOwnersQuery,
       ],
@@ -781,6 +797,7 @@ const productTypeProvider: FactoryProvider<string> = {
         offerListings: OfferListingsQuery,
         offerListingsSystem: OfferListingsSystemQuery,
         publishedProduct: PublishedProductQuery,
+        publishedProductImages: PublishedProductImagesQuery,
         pendingProductRevisions: PendingProductRevisionsQuery,
         sellerProductOwners: SellerProductOwnersQuery,
       ) =>
@@ -793,6 +810,7 @@ const productTypeProvider: FactoryProvider<string> = {
           offerListings,
           offerListingsSystem,
           publishedProduct,
+          publishedProductImages,
           pendingProductRevisions,
           sellerProductOwners,
         }),

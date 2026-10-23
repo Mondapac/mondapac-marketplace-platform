@@ -56,7 +56,7 @@ export class ProductDetailController {
     summary: 'Product page (public)',
     description:
       'No session needed. The published product text and categories and its sellable Offers, ' +
-      'lowest unit price first. Each Offer lists its priced Variants with the buyer price (Money: ' +
+      'lowest unit price first, and the public photos of the product (ids and sizes; the storefront builds the photo URLs by code). Each Offer lists its priced Variants with the buyer price (Money: ' +
       'minor units as a string and the currency), the public stock state (never the exact count) ' +
       'and the seller public store name and minimum order. Only Offers that are sellable now and ' +
       'whose seller may sell are returned. Takes no query string.',
@@ -80,6 +80,12 @@ export class ProductDetailController {
       shortDescription: detail.shortDescription,
       description: detail.description,
       categoryIds: [...detail.categoryIds],
+      images: detail.images.map(({ imageId, width, height, alt }) => ({
+        imageId,
+        width,
+        height,
+        alt,
+      })),
       offers: detail.offers.map((offer) => ({
         offerId: offer.offerId,
         sellerId: offer.sellerId,

@@ -60,6 +60,10 @@ model IdentityAccount {
   timezone                String?                     @db.VarChar(64)
   /// The holder's panel language, a language code; NULL = the Market's language.
   locale                  String?                     @db.VarChar(16)
+  /// A customer's kept storefront palette (A to D); NULL = no choice. Customer accounts only.
+  storefrontPalette       String?                     @map("storefront_palette") @db.VarChar(8)
+  /// A customer's kept storefront text size (auto, large, small); NULL = no choice.
+  storefrontTextSize      String?                     @map("storefront_text_size") @db.VarChar(8)
   /// active | disabled.
   status                  String
   /// NULL while the email is unverified.
