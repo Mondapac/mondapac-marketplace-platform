@@ -2,7 +2,7 @@ import type { Palette, TextSize } from '../preferences/preferences.ts';
 import type { CheckoutCustomer, SavedAddress } from '../storefront/types.ts';
 
 // The buyer's own API calls, made from the browser through the same-origin relay (`/api/...`,
-// src/storefront/bff.ts). Only used in live mode. Bodies, passwords and tokens are never logged.
+// src/storefront/session-relay.ts). Only used in live mode. Bodies, passwords and tokens are never logged.
 
 /** A refused field: its path in the body and a code, never the value. */
 export interface FieldProblem {
