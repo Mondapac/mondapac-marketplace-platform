@@ -460,6 +460,7 @@
     "accept": "Accept all",
     "reject": "Necessary only",
     "settings": "Cookie settings",
+    "short": "We use cookies to run the shop and, if you agree, to suggest products. <settings>Cookie settings</settings>",
     "error": "We could not save your choice. Try again."
   },
   "cookies": {
