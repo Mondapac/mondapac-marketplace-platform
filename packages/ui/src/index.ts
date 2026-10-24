@@ -16,8 +16,13 @@ export {
   SIDEBAR_COOKIE,
   sidebarCollapsed,
   navTrail,
+  navSections,
+  navOpenGroups,
+  NAV_OPEN_COOKIE,
   visibleNavItems,
   type NavConfig,
+  type NavGroup,
+  type NavSection,
   type NavItem,
 } from './shell/nav.ts';
 export { AuthLayout, type AuthLayoutProps, type AuthShowcaseCard } from './auth/auth-layout.tsx';

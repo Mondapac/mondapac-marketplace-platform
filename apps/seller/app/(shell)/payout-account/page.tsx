@@ -4,7 +4,6 @@ import { PayoutAccountView } from '../../../src/payout/payout-account.tsx';
 import { PAYOUT_MANAGE_PERMISSION } from '../../../src/payout/types.ts';
 import { loadPayoutPage } from '../../../src/server/payout-page.ts';
 import { SellerShell } from '../../../src/server/seller-shell.tsx';
-import { SettingsHeader } from '../../../src/settings/settings-header.tsx';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -23,8 +22,8 @@ export default async function PayoutAccountPage({
   }
   if (page.kind === 'no-access') {
     return (
-      <SellerShell session={page.session} activeId="s_settings" title={t('settings.tab.payout')}>
-        <SettingsHeader active="payout" permissionKeys={page.session.permissionKeys} t={t} />
+      <SellerShell session={page.session} activeId="s_payout" title={t('payout.title')}>
+        <h1 className="mb-6 text-2xl font-semibold">{t('payout.title')}</h1>
         <h2 className="mb-2 text-lg font-semibold">{t('payout.no-access.title')}</h2>
         <p className="text-fg-muted">{t('payout.no-access.body')}</p>
       </SellerShell>
@@ -32,8 +31,8 @@ export default async function PayoutAccountPage({
   }
   const { stripe } = await searchParams;
   return (
-    <SellerShell session={page.session} activeId="s_settings" title={t('settings.tab.payout')}>
-      <SettingsHeader active="payout" permissionKeys={page.session.permissionKeys} t={t} />
+    <SellerShell session={page.session} activeId="s_payout" title={t('payout.title')}>
+      <h1 className="mb-6 text-2xl font-semibold">{t('payout.title')}</h1>
       <PayoutAccountView
         initial={page.account}
         csrfToken={page.session.csrfToken}
