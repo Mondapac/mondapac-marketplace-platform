@@ -60,4 +60,12 @@ export class PrismaPersonalizationSettingRepository implements PersonalizationSe
     });
     return count > 0;
   }
+
+  async lockAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    mode: 'shared' | 'exclusive',
+  ): Promise<void> {
+    await this.prisma.namedQuery(market, 'engagement.lock-account', { accountId, mode });
+  }
 }

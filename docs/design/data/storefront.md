@@ -3,8 +3,8 @@
 **Author:** Mojtaba (database-designer), review round of PR #479, 24 Oct 2026
 **Ground truth:** `docs/modules/storefront/storefront.md` (slide library); `docs/design/data/platform.md`
 (**platform.md**: 10.2 grants, 3.4 triggers); ADR-0009 (insert-only versions), ADR-0018 (no cross-Market admin).
-**Files:** `prisma/schema/storefront.prisma`, `prisma/migrations/20261023223238_storefront_slides/`,
-`prisma/migrations/20261024130000_storefront_slide_reorder/` (the saved order of live slides, section 5).
+**Files:** `prisma/schema/storefront.prisma`, `prisma/migrations/20261024213000_storefront_slides/`,
+`prisma/migrations/20261024213100_storefront_slide_reorder/` (the saved order of live slides, section 5).
 
 This note covers the slide tables only (`slides`, `slide_versions`, `slide_placements`,
 `slide_position_locks`, `slide_saved_orders`). Every table carries `market_id` and `tenant_id`, and every statement the

@@ -272,3 +272,19 @@ model OrderingOutbox {
   @@map("outbox")
   @@schema("ordering")
 }
+
+/// Ordering's inbox (P 6.4): one row per consumed event and handler, so a repeated delivery of
+/// `ordering.order-paid.v1` (carrier booking) or `shipping.carrier-delivery-progressed.v1`
+/// changes nothing. Insert-only.
+model OrderingInbox {
+  eventId     String   @map("event_id") @db.Uuid
+  /// The subscriber's name, "ordering.<handler>".
+  handler     String
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  processedAt DateTime @map("processed_at") @db.Timestamptz(6)
+
+  @@id([eventId, handler])
+  @@map("inbox")
+  @@schema("ordering")
+}
