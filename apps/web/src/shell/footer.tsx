@@ -9,6 +9,7 @@ import { Icon } from '../icons/icon.tsx';
 import type { IconName } from '../icons/icon-paths.tsx';
 import { Logo } from './logo.tsx';
 import { useStore } from './store-context.tsx';
+import { from } from './breakpoints.ts';
 
 const COLUMNS = [
   {
@@ -57,7 +58,7 @@ function useDesktop(): boolean {
   const [desktop, setDesktop] = useState(false);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
-    const query = window.matchMedia('(min-width: 900px)');
+    const query = window.matchMedia(from('desktop'));
     const update = () => setDesktop(query.matches);
     update();
     query.addEventListener('change', update);
