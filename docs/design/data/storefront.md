@@ -3,10 +3,11 @@
 **Author:** Mojtaba (database-designer), review round of PR #479, 24 Oct 2026
 **Ground truth:** `docs/modules/storefront/storefront.md` (slide library); `docs/design/data/platform.md`
 (**platform.md**: 10.2 grants, 3.4 triggers); ADR-0009 (insert-only versions), ADR-0018 (no cross-Market admin).
-**Files:** `prisma/schema/storefront.prisma`, `prisma/migrations/20261023223238_storefront_slides/`.
+**Files:** `prisma/schema/storefront.prisma`, `prisma/migrations/20261023223238_storefront_slides/`,
+`prisma/migrations/20261024130000_storefront_slide_reorder/` (the saved order of live slides, section 5).
 
 This note covers the slide tables only (`slides`, `slide_versions`, `slide_placements`,
-`slide_position_locks`). Every table carries `market_id` and `tenant_id`, and every statement the
+`slide_position_locks`, `slide_saved_orders`). Every table carries `market_id` and `tenant_id`, and every statement the
 application sends is scoped to the request's Market.
 
 ## 1. Access paths
@@ -20,6 +21,9 @@ application sends is scoped to the request's Market.
 | Next version number | max `version_no` of `(market_id, slide_id)` | the same unique index |
 | Caps of a position in a window | `market_id, position_key`, window overlap | `slide_placements (market_id, position_key, starts_at, ends_at)` |
 | Projection rebuild | delete and insert by `(market_id, slide_id)` | `slide_placements (market_id, slide_id)` |
+| Live placements of one position and scope (reorder) | `market_id, position_key, scope, scope_id`, `ends_at > now`, slide `state = 'approved'` | `slide_placements (market_id, position_key, starts_at, ends_at)`; a few rows per list (at most 100 asked) |
+| Write the order of one list | update `sort_order` by `(market_id, slide_id, position_key, scope, scope_id)`; delete and insert the saved order by its primary key | `slide_placements (market_id, slide_id)`; `slide_saved_orders` primary key |
+| Saved orders of a slide | `market_id, slide_id` | primary key prefix |
 | Position lock | `(market_id, position_key)` | primary key |
 
 Version rows are the only place the large JSON lives, and no list reads it: the list and the admin
@@ -56,8 +60,10 @@ The application stores no JSON `null` in `content`: absent optional fields are l
   `WHERE approved_by IS NULL`, so a repeat approval touches no row and does not fire the trigger.
 - `slides.row_version` is incremented by the slide lock (the application sends no raw SQL, so the lock
   is a write). It is separate from `updated_at`, which records the last real change.
-- The application role may update only the listed columns of `slides` and the two approval columns of
-  `slide_versions`; it deletes only placements.
+- The application role may update only the listed columns of `slides`, the two approval columns of
+  `slide_versions` and, since the reorder migration, the `sort_order` column of `slide_placements`
+  (column-level `UPDATE`); it deletes only placements. `slide_saved_orders` gets `SELECT, INSERT, DELETE`
+  and no update (a saved order is replaced by delete and insert).
 
 ## 4. Retention
 
@@ -68,3 +74,26 @@ the database; `MAX_VERSIONS_PER_SLIDE` in the domain is the same number).
 
 The `down.sql` of the migration sets `lock_timeout = '5s'` and drops the three pointer foreign keys
 before the tables, then the trigger function.
+
+## 5. Saved order of live slides (reorder migration, 24 Oct 2026)
+
+Reordering the live slides of a position needs no approval, but the version a placement comes from is
+write-once and the `slide_placements` rows are deleted by a pause and rebuilt by an approval or a
+resume. So the order is kept in two places: `slide_placements.sort_order` (what the buyer read sorts
+by) and `slide_saved_orders`, one row per `(market_id, slide_id, position_key, scope, scope_key)` with
+`sort_order`, `saved_at` and `saved_by`. `scope_key` is a `uuid NOT NULL`: the nil uuid for the scope `all`, else the scope id (the same
+sentinel as the `COALESCE` of the placements' unique index; a nullable `scope_id` could not be part of
+the primary key). CHECKs: the Market and tenant formats, the position key format, `scope`/`scope_key`
+agree (nil exactly for `all`), `sort_order BETWEEN 0 AND 1000`. The foreign key
+`(market_id, slide_id)` to `slides` is `RESTRICT`, so a saved order is always of a slide of the same
+Market.
+
+A projection (approve, resume) reads the saved orders of the slide, writes each new placement with the
+saved `sort_order` if there is one (else the version's), and deletes the saved orders of placements the
+new version no longer has, and of those whose sort order the newly approved version changed (the
+approved version wins). Pausing keeps them; archiving deletes all of the slide's. The rows are written only under the slide row lock and
+the position row lock (see the module note), so there is no write skew between a reorder and a
+projection. The reorder writes in a fixed number of statements while it holds the position lock: one `UPDATE` per
+placement whose sort order really changes, one `DELETE ... slide_id IN (...)` and one `INSERT` of all
+saved orders. `down.sql` revokes the two grants and drops the table; the sort orders already written
+to `slide_placements` stay.

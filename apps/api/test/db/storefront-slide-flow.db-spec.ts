@@ -17,6 +17,7 @@ import {
   updateSlideDraft,
   viewSlide,
 } from '../../src/modules/storefront/application/slide-flow';
+import { reorderLiveSlides } from '../../src/modules/storefront/application/slide-order-flow';
 import { targetKey } from '../../src/modules/storefront/application/ports/slide-targets';
 import type { StorefrontDependencies } from '../../src/modules/storefront/application/storefront-dependencies';
 import { PrismaSlideRepository } from '../../src/modules/storefront/infrastructure/prisma-slide.repository';
@@ -271,5 +272,232 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
     expect(row.liveVersionId).toBe(live.live?.id);
     ok(await pauseSlide(deps, context, { slide: live.id }));
     expect((await served(market)).map((p) => p.slideId)).not.toContain(live.id);
+  });
+
+  describe('reordering the live slides', () => {
+    // Each case works in a category of its own, so its list of live slides is its own.
+    const inCategory = async (target: CallContext, scopeId: string, hours = 24 * 200) => {
+      const created = ok(
+        await createSlide(
+          deps,
+          target,
+          draft(hours, {
+            placements: [{ position: 'category.top', scope: 'category', scopeId }],
+          }),
+        ),
+      );
+      ok(await submitSlide(deps, target, { slide: created.id }));
+      return ok(await approveSlide(deps, target, { slide: created.id, body: { versionNo: 1 } }));
+    };
+    const reorder = (target: CallContext, scopeId: string, slideIds: readonly string[]) =>
+      reorderLiveSlides(deps, target, {
+        position: 'category.top',
+        scope: 'category',
+        scopeId,
+        slideIds,
+      });
+    const rowsOf = (target: typeof market, scopeId: string) =>
+      db.unitOfWork
+        .run(target, async () => ({
+          ok: true as const,
+          value: await slides.livePlacementsAt(
+            target,
+            { position: 'category.top', scope: 'category', scopeId },
+            start,
+          ),
+        }))
+        .then((r) => (r.ok ? r.value : []));
+    const orderOf = async (target: typeof market, scopeId: string) =>
+      (await rowsOf(target, scopeId)).map((p) => p.slideId as string);
+    const saved = (target: typeof market, slideId: Id<'StorefrontSlide'>) =>
+      db.unitOfWork
+        .run(target, async () => ({
+          ok: true as const,
+          value: await slides.savedOrdersOf(target, slideId),
+        }))
+        .then((r) => (r.ok ? r.value : []));
+    const category = () => ids.next<'Category'>() as string;
+
+    it('writes the sort order of the live rows and saves it, in this Market only', async () => {
+      const scope = category();
+      const [a, b, c] = [
+        await inCategory(context, scope),
+        await inCategory(context, scope),
+        await inCategory(context, scope),
+      ];
+      // The same scope id in the other Market is a list of its own.
+      const theirs = await inCategory(otherContext, scope);
+      const answer = ok(await reorder(context, scope, [c.id, a.id, b.id]));
+      expect(answer.slideIds).toEqual([c.id, a.id, b.id]);
+      expect(await orderOf(market, scope)).toEqual([c.id, a.id, b.id]);
+      expect((await rowsOf(market, scope)).map((p) => p.sortOrder)).toEqual([0, 1, 2]);
+      expect(await saved(market, c.id)).toEqual([
+        { position: 'category.top', scope: 'category', scopeId: scope, sortOrder: 0 },
+      ]);
+      expect(await orderOf(other, scope)).toEqual([theirs.id]);
+      expect(await saved(other, theirs.id)).toEqual([]);
+      // The other Market's editor cannot name this Market's slides.
+      expect(await reorder(otherContext, scope, [theirs.id, a.id])).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'slideIds[1]', code: 'not-found' }] },
+      });
+      expect(recorded.at(-1)).toBe('storefront.slide.reorder');
+    });
+
+    it('refuses a partial list, a paused slide and a slide of another scope, changing nothing', async () => {
+      const scope = category();
+      const [a, b, c] = [
+        await inCategory(context, scope),
+        await inCategory(context, scope),
+        await inCategory(context, scope),
+      ];
+      const elsewhere = await inCategory(context, category());
+      ok(await pauseSlide(deps, context, { slide: c.id }));
+      const was = await orderOf(market, scope);
+      expect(was).toHaveLength(2);
+      for (const list of [[a.id], [a.id, b.id, c.id], [a.id, b.id, elsewhere.id]]) {
+        expect(await reorder(context, scope, list)).toMatchObject({
+          ok: false,
+          error: { code: 'storefront.slide-order-mismatch' },
+        });
+      }
+      expect(await orderOf(market, scope)).toEqual(was);
+      expect(await saved(market, a.id)).toEqual([]);
+    });
+
+    it('keeps the saved order through a re-approval, a pause and a resume', async () => {
+      const scope = category();
+      const [a, b, c] = [
+        await inCategory(context, scope),
+        await inCategory(context, scope),
+        await inCategory(context, scope),
+      ];
+      ok(await reorder(context, scope, [c.id, a.id, b.id]));
+      // A new version of `b` that still says sort order 0.
+      const replacement: Record<string, unknown> = draft(24 * 200, {
+        internalName: 'Second',
+        placements: [{ position: 'category.top', scope: 'category', scopeId: scope, sortOrder: 0 }],
+      });
+      delete replacement.kind;
+      ok(await updateSlideDraft(deps, context, { slide: b.id, body: replacement }));
+      ok(await submitSlide(deps, context, { slide: b.id }));
+      ok(await approveSlide(deps, context, { slide: b.id, body: { versionNo: 2 } }));
+      expect(await orderOf(market, scope)).toEqual([c.id, a.id, b.id]);
+      ok(await pauseSlide(deps, context, { slide: c.id }));
+      expect(await orderOf(market, scope)).toEqual([a.id, b.id]);
+      ok(await resumeSlide(deps, context, { slide: c.id }));
+      expect(await orderOf(market, scope)).toEqual([c.id, a.id, b.id]);
+      // A version that moves the slide elsewhere forgets the saved order of the old place.
+      const moved: Record<string, unknown> = draft(24 * 700, {
+        placements: [{ position: 'home.mid' }],
+      });
+      delete moved.kind;
+      ok(await updateSlideDraft(deps, context, { slide: a.id, body: moved }));
+      ok(await submitSlide(deps, context, { slide: a.id }));
+      ok(await approveSlide(deps, context, { slide: a.id, body: { versionNo: 2 } }));
+      expect(await saved(market, a.id)).toEqual([]);
+      expect(await orderOf(market, scope)).toEqual([c.id, b.id]);
+    });
+
+    it('serializes a reorder with an approval and a resume of a slide at the same list', async () => {
+      for (let round = 0; round < 4; round += 1) {
+        const scope = category();
+        const [a, b] = [await inCategory(context, scope), await inCategory(context, scope)];
+        const parked = await inCategory(context, scope);
+        ok(await pauseSlide(deps, context, { slide: parked.id }));
+        const fresh = ok(
+          await createSlide(
+            deps,
+            context,
+            draft(24 * 200, {
+              placements: [{ position: 'category.top', scope: 'category', scopeId: scope }],
+            }),
+          ),
+        );
+        ok(await submitSlide(deps, context, { slide: fresh.id }));
+
+        const [moved, approvedFresh, resumed] = await Promise.all([
+          reorder(context, scope, [b.id, a.id]),
+          approveSlide(deps, context, { slide: fresh.id, body: { versionNo: 1 } }),
+          resumeSlide(deps, context, { slide: parked.id }),
+        ]);
+        // Neither the approval nor the resume is lost or deadlocked.
+        expect(approvedFresh.ok).toBe(true);
+        expect(resumed.ok).toBe(true);
+        const order = await orderOf(market, scope);
+        expect(new Set(order)).toEqual(new Set([a.id, b.id, fresh.id, parked.id]));
+        expect(order).toHaveLength(4);
+        if (moved.ok) {
+          // The reorder ran first: its two slides are in the order asked.
+          expect(order.filter((x) => x === a.id || x === b.id)).toEqual([b.id, a.id]);
+        } else {
+          // It ran after a placement was added: the list was stale, nothing was written.
+          expect(moved).toMatchObject({
+            ok: false,
+            error: { code: 'storefront.slide-order-mismatch' },
+          });
+          expect(await saved(market, a.id)).toEqual([]);
+        }
+      }
+    });
+
+    it('serializes a reorder with a pause of a slide it names', async () => {
+      for (let round = 0; round < 4; round += 1) {
+        const scope = category();
+        const [a, b, c] = [
+          await inCategory(context, scope),
+          await inCategory(context, scope),
+          await inCategory(context, scope),
+        ];
+        const [moved, paused] = await Promise.all([
+          reorder(context, scope, [c.id, b.id, a.id]),
+          pauseSlide(deps, context, { slide: b.id }),
+        ]);
+        expect(paused.ok).toBe(true);
+        const order = await orderOf(market, scope);
+        expect(order).toHaveLength(2);
+        expect(order).not.toContain(b.id);
+        if (moved.ok) expect(order).toEqual([c.id, a.id]);
+        else {
+          expect(moved).toMatchObject({
+            ok: false,
+            error: { code: 'storefront.slide-order-mismatch' },
+          });
+          expect(await saved(market, a.id)).toEqual([]);
+        }
+      }
+    });
+
+    it('drops the saved orders of a slide that is archived', async () => {
+      const scope = category();
+      const [a, b] = [await inCategory(context, scope), await inCategory(context, scope)];
+      ok(await reorder(context, scope, [b.id, a.id]));
+      expect(await saved(market, a.id)).toHaveLength(1);
+      ok(await archiveSlide(deps, context, { slide: a.id }));
+      expect(await saved(market, a.id)).toEqual([]);
+      expect(await saved(market, b.id)).toHaveLength(1);
+      expect(await orderOf(market, scope)).toEqual([b.id]);
+    });
+
+    it('lets two opposite reorders finish with one whole order and no deadlock', async () => {
+      const scope = category();
+      const [a, b, c] = [
+        await inCategory(context, scope),
+        await inCategory(context, scope),
+        await inCategory(context, scope),
+      ];
+      const results = await Promise.all([
+        reorder(context, scope, [a.id, b.id, c.id]),
+        reorder(context, scope, [c.id, b.id, a.id]),
+        reorder(context, scope, [b.id, c.id, a.id]),
+      ]);
+      expect(results.every((r) => r.ok)).toBe(true);
+      const rows = await rowsOf(market, scope);
+      expect(rows.map((p) => p.sortOrder)).toEqual([0, 1, 2]);
+      // The saved orders say what the rows say.
+      for (const [index, slideId] of rows.map((p) => p.slideId).entries()) {
+        expect((await saved(market, slideId)).map((o) => o.sortOrder)).toEqual([index]);
+      }
+    });
   });
 });
