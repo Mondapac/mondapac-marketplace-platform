@@ -20,6 +20,7 @@ import { StoreShell } from '../src/shell/store-shell.tsx';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from '../src/storefront/sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from '../src/storefront/sample-delivery.ts';
+import { under } from '../src/shell/breakpoints.ts';
 
 const push = vi.hoisted(() => vi.fn());
 vi.mock('next/navigation', () => ({
@@ -80,7 +81,7 @@ beforeEach(() => {
   sheet = false;
   push.mockClear();
   window.matchMedia = ((query: string) => ({
-    matches: sheet && query === '(max-width: 700px)',
+    matches: sheet && query === under('tablet'),
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   })) as unknown as typeof window.matchMedia;
