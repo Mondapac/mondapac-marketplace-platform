@@ -139,4 +139,9 @@ export class NamedStatementRefusedError extends Error {
 }
 
 export type NamedStatementRefusal =
-  'read-only-unit' | 'ids-empty' | 'ids-too-many' | 'ids-malformed' | 'rows-missing';
+  | 'read-only-unit'
+  | 'ids-empty'
+  | 'ids-too-many'
+  | 'ids-malformed'
+  | 'mode-malformed'
+  | 'rows-missing';

@@ -22,6 +22,15 @@ export interface PersonalizationSettingRepository {
   save(market: MarketContext, setting: PersonalizationSettingRecord): Promise<void>;
   /** Deletes the account's row; answers whether there was one. */
   delete(market: MarketContext, accountId: Id<'Account'>): Promise<boolean>;
+  /**
+   * Locks the account's behaviour until the unit ends: `shared` to record an event, `exclusive`
+   * to switch personalization or forget the account. Taken first in the unit.
+   */
+  lockAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    mode: 'shared' | 'exclusive',
+  ): Promise<void>;
 }
 
 export const PERSONALIZATION_SETTING_REPOSITORY = Symbol('PERSONALIZATION_SETTING_REPOSITORY');
