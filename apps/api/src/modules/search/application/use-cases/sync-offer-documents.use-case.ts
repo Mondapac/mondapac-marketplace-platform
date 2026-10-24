@@ -5,16 +5,19 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { SearchDependencies } from '../search-dependencies';
 import { syncOffers, SYNC_BATCH, type SyncCounts } from '../sync-offers';
 
-/** Which Offers to bring in line: some by id, or every Offer of one product. */
+/** Which Offers to bring in line: some by id, or every Offer of one product or of one seller. */
 export type SyncOfferDocumentsInput =
-  { readonly offerIds: readonly Id<'Offer'>[] } | { readonly productId: Id<'Product'> };
+  | { readonly offerIds: readonly Id<'Offer'>[] }
+  | { readonly productId: Id<'Product'> }
+  | { readonly sellerId: Id<'Seller'> };
 
-/** The most pages of one product's Offers read in one call (a safety stop, not a limit in use). */
+/** The most pages of one product's or seller's Offers read in one call (a safety stop). */
 const MAX_PRODUCT_PAGES = 50;
 
 /**
  * `search.sync-offer-documents`: the handler of the catalog event subscriptions (offer
- * published, deleted or moved; product revision published). Rule `system`; the Market comes from
+ * published, deleted or moved; product revision published) and of identity's seller access
+ * suspended and reinstated. Rule `system`; the Market comes from
  * the envelope (the context). The event only says which Offers to look at: the content is
  * re-read from catalog, so deliveries may repeat and arrive in any order. Logs ids and counts.
  */
@@ -37,12 +40,17 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
     context: CallContext,
     input: SyncOfferDocumentsInput,
   ): Promise<Result<SyncCounts, never>> {
-    const offerIds =
-      'offerIds' in input ? input.offerIds : await this.#offersOfProduct(context, input.productId);
-    const counts = await syncOffers(this.deps, context, offerIds);
+    const { offers, upserted, deleted } =
+      'offerIds' in input
+        ? {
+            offers: input.offerIds.length,
+            ...(await syncOffers(this.deps, context, input.offerIds)),
+          }
+        : await this.#syncScope(context, input);
+    const counts = { upserted, deleted };
     this.#logger.log({
       msg: 'search.documents-synced',
-      offers: offerIds.length,
+      offers,
       ...counts,
       marketId: context.market.marketId,
       correlationId: context.correlationId,
@@ -50,29 +58,48 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
     return ok(counts);
   }
 
-  /** The product's published Offers (from catalog) and those that still have a document. */
-  async #offersOfProduct(context: CallContext, productId: Id<'Product'>): Promise<Id<'Offer'>[]> {
+  /**
+   * Syncs the product's or seller's Offers that have a document first (so a suspension removes
+   * them at any size), then catalog's published ones page by page. An Offer in both is synced
+   * twice, which converges.
+   */
+  async #syncScope(
+    context: CallContext,
+    scope: { readonly productId: Id<'Product'> } | { readonly sellerId: Id<'Seller'> },
+  ): Promise<SyncCounts & { readonly offers: number }> {
     const { market } = context;
-    const found = new Set<Id<'Offer'>>();
     const indexed = await this.deps.unitOfWork.run(
       market,
-      async () => ok(await this.deps.documents.offerIdsOfProduct(market, productId)),
+      async () =>
+        ok(
+          'productId' in scope
+            ? await this.deps.documents.offerIdsOfProduct(market, scope.productId)
+            : await this.deps.documents.offerIdsOfSeller(market, scope.sellerId),
+        ),
       { readOnly: true },
     );
     if (!indexed.ok) throw new Error('search: the index read failed');
-    for (const offerId of indexed.value) found.add(offerId);
+    const first = await syncOffers(this.deps, context, indexed.value);
+    let offers = indexed.value.length;
+    let upserted = first.upserted;
+    let deleted = first.deleted;
     let after: Id<'Offer'> | undefined;
     for (let page = 0; page < MAX_PRODUCT_PAGES; page += 1) {
       const ids = await this.deps.feed.publishedIds(context, {
-        productId,
+        ...scope,
         ...(after === undefined ? {} : { after }),
         limit: SYNC_BATCH,
       });
       if (ids === null) throw new Error('search: catalog ids unavailable');
-      for (const offerId of ids) found.add(offerId);
-      if (ids.length < SYNC_BATCH) break;
+      const counts = await syncOffers(this.deps, context, ids);
+      offers += ids.length;
+      upserted += counts.upserted;
+      deleted += counts.deleted;
+      if (ids.length < SYNC_BATCH) return { offers, upserted, deleted };
       after = ids[ids.length - 1];
     }
-    return [...found];
+    // Never a silently partial sync: the delivery is retried and, after its last attempt,
+    // dead-lettered with an alert.
+    throw new Error('search: too many Offers in one scope');
   }
 }

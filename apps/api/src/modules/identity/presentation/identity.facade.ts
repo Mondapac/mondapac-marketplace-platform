@@ -8,6 +8,7 @@ import type { CustomerShortNames } from '../application/use-cases/customer-short
 import type { DescribeActor } from '../application/use-cases/describe-actor.use-case';
 import type { RequireStepUp } from '../application/use-cases/require-step-up.use-case';
 import type { MembershipOf } from '../application/use-cases/membership-of.use-case';
+import type { TeamMemberLabels } from '../application/use-cases/team-member-labels.use-case';
 import type { TeamMembershipOf } from '../application/use-cases/team-membership-of.use-case';
 import type {
   ActorDescription,
@@ -18,6 +19,7 @@ import type {
   IdentityFacade,
   IdentityValidationFailed,
   SellerMembershipSummary,
+  TeamMemberLabel,
 } from '../contracts/identity.facade';
 import type { StepUpFailure } from '../contracts/step-up';
 
@@ -31,6 +33,7 @@ export interface IdentityFacadeUseCases {
   readonly requireStepUp: RequireStepUp;
   readonly customerAccountSummaries: CustomerAccountSummaries;
   readonly customerShortNames: CustomerShortNames;
+  readonly teamMemberLabels: TeamMemberLabels;
 }
 
 /**
@@ -107,5 +110,24 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     accountIds: readonly Id<'Account'>[],
   ): Promise<Result<readonly CustomerShortName[], AccessDenied | IdentityValidationFailed>> {
     return this.useCases.customerShortNames.execute(context, { accountIds });
+  }
+
+  async teamMemberLabels(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<Result<readonly TeamMemberLabel[], AccessDenied | IdentityValidationFailed>> {
+    const result = await this.useCases.teamMemberLabels.execute(context, { accountIds });
+    if (!result.ok) return err(result.error);
+    // The role id stays inside identity; the label is enough to show the row.
+    return ok(
+      result.value.map((row) => ({
+        accountId: row.accountId,
+        displayName: row.displayName,
+        role:
+          row.role === null
+            ? null
+            : { kind: row.role.kind, seedCode: row.role.seedCode, name: row.role.name },
+      })),
+    );
   }
 }

@@ -8,6 +8,7 @@ import {
 } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
+import { AUDIT_TRAIL_READER } from '../../platform/audit/audit-trail-reader';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { registerEvents } from '../../platform/events/event-catalogue';
@@ -22,6 +23,7 @@ import { REVIEWER_NOTIFIER } from './application/ports/reviewer-notifier';
 import { REVISION_CONTENT_SEALER } from './application/ports/revision-content-sealer';
 import { SELLER_ACCESS_READER } from './application/ports/seller-access-reader';
 import { SELLER_ACCOUNT_DIRECTORY } from './application/ports/seller-account-directory';
+import { TEAM_MEMBER_LABEL_SOURCE } from './application/ports/team-member-labels';
 import { BUSINESS_IDENTIFIER_SCHEMES } from './application/ports/business-identifier-scheme';
 import { BUSINESS_REGISTER_LOOKUPS } from './application/ports/business-register-lookup';
 import { IDENTIFIER_INDEX } from './application/ports/identifier-index';
@@ -87,6 +89,7 @@ import { APPROVED_SELLER_ZONES } from './contracts/approved-seller-zones.contrac
 import { SELLERS_FACADE } from './contracts/sellers.facade';
 import { SELLERS_AUDIT_ACTIONS } from './domain/audit';
 import { OwnZoneRead } from './application/use-cases/own-zone-read.use-case';
+import { StoreSettingsMinimumOrderHistory } from './application/use-cases/store-settings-minimum-order-history.use-case';
 import { StoreSettingsRead } from './application/use-cases/store-settings-read.use-case';
 import { StoreSettingsSaveMinimumOrder } from './application/use-cases/store-settings-save-minimum-order.use-case';
 import { OwnZoneController } from './presentation/own-zone.controller';
@@ -139,6 +142,8 @@ const PORT = {
   taxProfiles: TAX_PROFILE_REPOSITORY,
   outbox: OUTBOX_WRITER,
   audit: AUDIT_WRITER,
+  auditTrail: AUDIT_TRAIL_READER,
+  teamMembers: TEAM_MEMBER_LABEL_SOURCE,
   revisions: BUSINESS_FILE_REVISION_REPOSITORY,
   sealer: REVISION_CONTENT_SEALER,
   accessReader: SELLER_ACCESS_READER,
@@ -238,6 +243,7 @@ const REVIEW_DECISION_PORTS = {
   providers: [
     PersistenceModule.outboxWriterFor('sellers'),
     PersistenceModule.auditWriterFor('sellers'),
+    PersistenceModule.auditTrailReaderFor('sellers'),
     registerEvents('sellers', SELLERS_EVENTS),
     registerAuditActions('sellers', SELLERS_AUDIT_ACTIONS),
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
@@ -278,6 +284,13 @@ const REVIEW_DECISION_PORTS = {
       unitOfWork: true,
       storeProfiles: true,
       minimumOrderPolicy: true,
+    }),
+    // Seller operations P-E: the minimum order's change history, from sellers' own audit rows.
+    useCaseProvider(StoreSettingsMinimumOrderHistory, {
+      unitOfWork: true,
+      storeProfiles: true,
+      auditTrail: true,
+      teamMembers: true,
     }),
     useCaseProvider(StoreSettingsSaveMinimumOrder, {
       unitOfWork: true,

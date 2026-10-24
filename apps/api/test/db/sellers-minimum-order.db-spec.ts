@@ -9,14 +9,24 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { readSellerSummaries } from '../../src/modules/sellers/application/summaries/read-seller-summaries';
+import { StoreSettingsMinimumOrderHistory } from '../../src/modules/sellers/application/use-cases/store-settings-minimum-order-history.use-case';
 import { StoreSettingsRead } from '../../src/modules/sellers/application/use-cases/store-settings-read.use-case';
 import { StoreSettingsSaveMinimumOrder } from '../../src/modules/sellers/application/use-cases/store-settings-save-minimum-order.use-case';
+import { SELLERS_AUDIT_ACTIONS } from '../../src/modules/sellers/domain/audit';
 import { SellerFile } from '../../src/modules/sellers/domain/seller-file';
 import { HmacRateCounterKeys } from '../../src/modules/sellers/infrastructure/hmac-rate-counter-keys';
 import { MarketConfigMinimumOrderPolicy } from '../../src/modules/sellers/infrastructure/market-config-minimum-order-policy';
 import { PrismaSellerFileRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-file.repository';
 import { PrismaStoreProfileRepository } from '../../src/modules/sellers/infrastructure/prisma-store-profile.repository';
+import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
+import {
+  AuditReadRefusedError,
+  type AuditTrailReader,
+} from '../../src/platform/audit/audit-trail-reader';
+import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
+import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
+import { PersistenceModule } from '../../src/platform/persistence/persistence.module';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
@@ -32,8 +42,9 @@ import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // The seller's minimum order on PostgreSQL (sellers design 18; data design 3.8, A1), for both
 // Market fixtures, as the application role: the four columns and their five CHECKs, the
-// optimistic version, the approved-only batch read behind `sellerSummaries`, and the save use
-// case end to end over the real unit of work.
+// optimistic version, the approved-only batch read behind `sellerSummaries`, the save use case
+// end to end over the real unit of work, and the change history (seller operations P-E) read
+// back through sellers' own audit trail reader from rows the real audit writer stored.
 
 const T0 = Temporal.Instant.from('2026-10-15T01:00:00Z');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
@@ -435,6 +446,146 @@ describe.each(TEST_MARKETS)('the seller minimum order in market %s', (code) => {
         { ok: false, error: { code: 'conflict.stale' } },
       ]);
       expect((await inUnit(() => profiles.find(market, sellerId)))?.version).toBe(2);
+    });
+  });
+  describe('the minimum-order history over the real audit writer and reader (P-E)', () => {
+    const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
+    const catalogue = new AuditActionCatalogue();
+    catalogue.register('sellers', SELLERS_AUDIT_ACTIONS);
+    catalogue.seal();
+    const audit = PersistenceModule.auditWriterFor('sellers').useFactory(
+      catalogue,
+      ids,
+      clock,
+      NO_PERMISSION_KEYS,
+    ) as AuditWriter;
+    const reader = PersistenceModule.auditTrailReaderFor('sellers').useFactory(
+      catalogue,
+    ) as AuditTrailReader;
+    const owner = { displayName: 'Amina Rahman', role: null };
+    const contextOf = (sellerId: Id<'Seller'>, m: MarketContext = market) =>
+      testCallContext(
+        m,
+        testAuthenticatedActor(m, {
+          population: 'seller',
+          accountId: ACCOUNT,
+          sessionId: ids.next<'Session'>(),
+          sellerId,
+        }),
+      );
+    const build = () => {
+      const shared = { unitOfWork: db.unitOfWork, storeProfiles: profiles };
+      return {
+        save: new StoreSettingsSaveMinimumOrder(gate, {
+          ...shared,
+          minimumOrderPolicy: policy,
+          audit,
+          counters: new InMemoryCounters(),
+          counterKeys: new HmacRateCounterKeys(new Uint8Array(32).fill(7)),
+          clock,
+        }),
+        history: new StoreSettingsMinimumOrderHistory(gate, {
+          ...shared,
+          auditTrail: reader,
+          teamMembers: {
+            labelsOf: (_context, accountIds) =>
+              Promise.resolve(new Map(accountIds.map((id) => [id, owner]))),
+          },
+        }),
+      };
+    };
+    /** Saves the amounts in order (null clears), each a millisecond after the last. */
+    async function changes(sellerId: Id<'Seller'>, amounts: (number | null)[], m = market) {
+      const { save } = build();
+      const unit = markets.get(m.marketId).defaultCurrency;
+      for (const [n, amount] of amounts.entries()) {
+        clock.advance(Temporal.Duration.from({ milliseconds: 1 }));
+        const saved = await save.execute(contextOf(sellerId, m), {
+          expectedVersion: n + 1,
+          minimumOrder: amount === null ? null : { amount, currency: unit },
+        });
+        if (!saved.ok) throw new Error(`save refused: ${saved.error.code}`);
+      }
+    }
+
+    it('reads the changes newest first with before and after, paged, of this seller only', async () => {
+      const sellerId = await newSeller(market, true);
+      const neighbour = await newSeller(market, true);
+      await changes(sellerId, [1000, 2000, null, 3000]);
+      await changes(neighbour, [9999]);
+      const { history } = build();
+      const at = (n: number) => (n === 0 ? null : { amount: BigInt(n), currency });
+
+      const first = await history.execute(contextOf(sellerId), { limit: 3 });
+      const second = await history.execute(contextOf(sellerId), {
+        limit: 3,
+        after: first.ok ? first.value.next : null,
+      });
+
+      expect(first.ok && first.value.items.map((item) => [item.before, item.after])).toEqual([
+        [at(0), at(3000)],
+        [at(2000), at(0)],
+        [at(1000), at(2000)],
+      ]);
+      expect(first.ok && first.value.items[0]!.changedBy).toEqual(owner);
+      expect(first.ok && first.value.next).not.toBeNull();
+      expect(second).toEqual({
+        ok: true,
+        value: {
+          items: [
+            {
+              changedAt: expect.anything() as unknown,
+              changedBy: owner,
+              before: null,
+              after: at(1000),
+            },
+          ],
+          next: null,
+        },
+      });
+      const times = first.ok
+        ? first.value.items.map((item) => item.changedAt.epochMilliseconds)
+        : [];
+      expect([...times].sort((a, b) => b - a)).toEqual(times);
+    });
+
+    it("does not read another Market's rows, and refuses a cursor of another seller", async () => {
+      const sellerId = await newSeller(market, true);
+      const neighbour = await newSeller(market, true);
+      const foreign = await newSeller(other, true);
+      await changes(foreign, [500], other);
+      await changes(neighbour, [700, 800]);
+      await changes(sellerId, [600]);
+      const { history } = build();
+      const theirs = await history.execute(contextOf(neighbour), { limit: 1 });
+
+      expect(await history.execute(contextOf(foreign), {})).toEqual({
+        ok: false,
+        error: { code: 'file.not-found' },
+      });
+      expect(
+        await history.execute(contextOf(sellerId), { after: theirs.ok ? theirs.value.next : null }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'after', code: 'unknown' }] },
+      });
+    });
+
+    it('refuses an action of another owner and a page out of range, in a read-only unit', async () => {
+      const read = (action: string, limit = 10) =>
+        db.unitOfWork.run(
+          market,
+          () => reader.history(market, { action, targetId: ACCOUNT, after: null, limit }),
+          { readOnly: true },
+        );
+
+      await expect(read('identity.account-role.assigned')).rejects.toBeInstanceOf(
+        AuditReadRefusedError,
+      );
+      await expect(read('sellers.minimum-order.changed', 101)).rejects.toBeInstanceOf(
+        AuditReadRefusedError,
+      );
+      expect(await read('sellers.minimum-order.changed')).toEqual({ ok: true, value: [] });
     });
   });
 });

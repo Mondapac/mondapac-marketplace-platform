@@ -182,6 +182,7 @@ import { socialSignInProviders } from './infrastructure/social/social-sign-in-pr
 import { CustomerSocialSignInController } from './presentation/customer-social-sign-in.controller';
 import { SignInSeller } from './application/use-cases/sign-in-seller.use-case';
 import { SignOut } from './application/use-cases/sign-out.use-case';
+import { TeamMemberLabels } from './application/use-cases/team-member-labels.use-case';
 import { TeamMembershipOf } from './application/use-cases/team-membership-of.use-case';
 import { IDENTITY_FACADE } from './contracts/identity.facade';
 import { IDENTITY_PERMISSIONS } from './contracts/permissions';
@@ -837,6 +838,14 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(MembershipOf, { unitOfWork: true, memberships: true, assignments: true }),
     useCaseProvider(TeamMembershipOf, { unitOfWork: true, memberships: true, assignments: true }),
+    useCaseProvider(TeamMemberLabels, {
+      unitOfWork: true,
+      accounts: true,
+      memberships: true,
+      roles: true,
+      grants: true,
+      effectiveKeys: true,
+    }),
     useCaseProvider(SellerAccessOf, { unitOfWork: true, sellerAccess: true }),
     useCaseProvider(SellerAccessOfSystem, { unitOfWork: true, sellerAccess: true }),
     useCaseProvider(ListRegisteredSellers, { unitOfWork: true, sellerAccess: true }),
@@ -1616,6 +1625,7 @@ function useCaseProvider<D, U>(
         RequireStepUp,
         CustomerAccountSummaries,
         CustomerShortNames,
+        TeamMemberLabels,
       ],
       useFactory: (
         describeActor: DescribeActor,
@@ -1626,6 +1636,7 @@ function useCaseProvider<D, U>(
         requireStepUp: RequireStepUp,
         customerAccountSummaries: CustomerAccountSummaries,
         customerShortNames: CustomerShortNames,
+        teamMemberLabels: TeamMemberLabels,
       ) =>
         new IdentityFacadeImplementation({
           describeActor,
@@ -1636,6 +1647,7 @@ function useCaseProvider<D, U>(
           requireStepUp,
           customerAccountSummaries,
           customerShortNames,
+          teamMemberLabels,
         }),
     },
     {

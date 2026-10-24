@@ -62,6 +62,17 @@ export class PrismaOfferDocumentRepository implements OfferDocumentRepository {
     return rows.map((row) => row.offerId as Id<'Offer'>);
   }
 
+  async offerIdsOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<readonly Id<'Offer'>[]> {
+    const rows = await this.prisma.tx(market).searchOfferDocument.findMany({
+      where: { marketId: market.marketId, sellerId },
+      select: { offerId: true },
+    });
+    return rows.map((row) => row.offerId as Id<'Offer'>);
+  }
+
   async deleteIndexedBefore(
     market: MarketContext,
     before: Temporal.Instant,
