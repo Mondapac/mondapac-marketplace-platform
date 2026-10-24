@@ -347,6 +347,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'withdrawn_by_kind',
       ],
     },
+    // docs/design/data/sellers.md 3.8 (slice 12 part 2): a store profile revision is insert-only; the
+    // current logo or banner row of a kind is replaced by deleting it and inserting the new one,
+    // and its renditions go by the foreign key cascade.
+    'sellers.store_profile_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'sellers.store_images': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'sellers.store_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/inventory.md section 7 (slice 1): the inbox gets DELETE with the prune job;
     // a seller inventory is never deleted and a source has no delete in the brief; the seller,
     // the key columns and the Default flag are immutable, so UPDATE is by column.

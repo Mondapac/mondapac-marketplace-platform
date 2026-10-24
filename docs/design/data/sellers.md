@@ -392,6 +392,8 @@ has one published pointer); `content_schema_version smallint`; `content_hash tex
   the slug through `shop_slugs (market_id, slug)` then the seller, then the revision by primary key:
   three index probes and one key unwrap (D 8.1; accepted until the storefront G2, D 16.2 item 7).
 
+**As built (store profile content, `20261021183643_sellers_store_profile_content`).** `store_profiles.published_revision_id` (nullable) with the composite FK of this section; `store_profile_revisions` as above (`revision_no` unique per seller, `content_ciphertext` under the label `sellers.store-profile-revision.content`, `content_schema_version` 1 holding `about` keyed by Market locale, `content_hash`, `author_account_id`, insert-only, no `UPDATE` grant). New clear tables `store_images (market_id, id)` with `seller_id`, `kind` (`logo` or `banner`, CHECK), `uploader_account_id`, pixel size and byte size, **unique `(market_id, seller_id, kind)`** (one current image per kind: a replace deletes and inserts in one unit), and `store_image_renditions (market_id, image_id, size_code)` (`small` or `large`) with unique `object_key`, `sha256` (32 bytes), byte and pixel sizes, FK to `store_images` with `ON DELETE CASCADE`. Public About read (Hassan M5): the pointer is read in clear on every call, the decrypted text is cached by `(market, seller, revision id)` in process, LRU 1000 entries, TTL 10 minutes, so a miss costs one key unwrap (see the sellers domain design, as-built store profile content). Down migration drops the tables and the pointer column. Not built: an orphan-object sweep for objects whose delete failed after commit.
+
 ### 3.9 `sellers.seller_admin_settings` and `sellers.seller_allowed_product_types` (slices 1 and 14)
 
 `seller_admin_settings` (slice 1): `seller_id` PK and unique `(market_id, seller_id)` (S3), FK to
@@ -436,6 +438,7 @@ One table for every limit of D 6.5 and the lookup quotas of D 7.7, in the shape 
 |---|---|---|---|
 | `slug-check.account.minute`, `slug-check.account.day` | Account id | 30 per minute; 300 per 24 h | 2 |
 | `save.account.minute`, `save.account.day` | Account id | 60 per minute; 1,000 per 24 h (`my-file.save-*`, `validate-identifier`, profile and contact saves) | 2 |
+| `store-image.account.minute`, `store-image.account.day` | Account id | 10 per minute; 100 per 24 h (store logo and banner saves and removals; slice 12 part 2) | 12b |
 | `lookup.account` | Seller-side account id | 5 new identifier values per 24 h | 4a |
 | `lookup.origin` | Origin | 30 per 24 h | 4a |
 | `lookup.market` | The Market (a constant subject) | 1,000 per 24 h; alert at 80%; the periodic job stops at 50% | 4a |
@@ -490,7 +493,7 @@ Exactly the columns, CHECKs, keys and indexes of ID-data 3.1 and 3.8 with the mo
 stored here; `inbox_handler_check` is `^sellers\.[a-z0-9-]+$`. Unique `(market_id, aggregate_id,
 aggregate_version)`; the claim index `(market_id, event_id) WHERE published_at IS NULL`. Aggregate
 types used (D 7.4): `seller-file`, `shop-slug`, `store-profile`, `seller-admin-settings`,
-`seller-tax-profile`. Payloads hold ids, codes, booleans and instants only (P 5.3; D 8.3); the
+`seller-tax-profile`. The `store-profile` aggregate id is a deterministic id in the version 7 layout derived from the seller id (time prefix kept, other bits from SHA-256 over a fixed namespace and the seller id; the platform accepts only version 7 aggregate ids) (the seller id itself is the aggregate id of the `seller-file` events, and the unique key does not include the aggregate type), and its version is the revision number. Payloads hold ids, codes, booleans and instants only (P 5.3; D 8.3); the
 database cannot check that. "Every outbox has the same columns" is the catalog test of P 13; this
 table is added to it. `platform.event_delivery` is unchanged: `sellers.<handler>` already fits its
 `subscriber` CHECK.

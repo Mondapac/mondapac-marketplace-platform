@@ -1203,6 +1203,30 @@
     }
   },
   {
+    "action": "sellers.store-image.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "imageId": "optional(id)"
+    },
+    "after": {
+      "imageId": "optional(id)",
+      "kind": "enumOf(logo|banner)"
+    }
+  },
+  {
+    "action": "sellers.store-profile.saved",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "revisionNo": "integer"
+    }
+  },
+  {
     "action": "shipping.flat-fee.set",
     "targetType": "shipping.seller-flat-fee",
     "targetId": "id",

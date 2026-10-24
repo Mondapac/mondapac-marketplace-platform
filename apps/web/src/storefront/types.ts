@@ -383,6 +383,10 @@ export interface SellerShop {
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;
+  /** The logo the store uploaded; it wins over `logo`. Absent: the default tile shows. */
+  readonly logoImage?: StoreImage;
+  /** The banner the store uploaded. Absent: the default banner shows. */
+  readonly banner?: StoreImage;
   /** Suburb and city only, or the ServiceArea's name; the seller's address is never shown. */
   readonly location: string;
   readonly sellingSince: number;
@@ -418,6 +422,16 @@ export interface SellerShop {
    * read is real: the tab then pages through the cards and shows a failed read inside the tab.
    */
   readonly storeProducts?: StoreProducts;
+}
+
+/**
+ * A store picture (logo or banner) the store published: where the buyer site serves it from and
+ * its pixels, so the page can reserve the space. Absent when the store has none.
+ */
+export interface StoreImage {
+  readonly src: string;
+  readonly width: number;
+  readonly height: number;
 }
 
 /** A seller page with every part known: what the sample data gives. */
@@ -516,6 +530,8 @@ export interface SellerListing {
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;
+  /** The logo the store uploaded; it wins over `logo`. Absent: the default tile shows. */
+  readonly logoImage?: StoreImage;
   /** Suburb only; the seller's address is never shown. */
   readonly city: string;
   readonly sellingSince: number;

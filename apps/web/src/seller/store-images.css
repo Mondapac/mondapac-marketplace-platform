@@ -1,0 +1,33 @@
+/*
+ * The pictures a store publishes (sellers slice 12 part 2): its logo in the tile that already holds
+ * the default store icon, its banner in the header banner, and its About text as written. Colours
+ * come from the storefront tokens; the storefront has no dark mode.
+ */
+.lg-img {
+  display: block;
+}
+.lg-img img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--sf-white);
+}
+.shop-banner.has-image::after {
+  display: none;
+}
+.shop-banner img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* The About text is plain text: its line breaks and spaces stay, long words wrap. */
+.shop-text.shop-about {
+  white-space: pre-wrap;
+  text-align: start;
+  hyphens: manual;
+  overflow-wrap: anywhere;
+}
