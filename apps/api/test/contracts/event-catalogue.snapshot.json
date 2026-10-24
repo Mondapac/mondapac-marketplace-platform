@@ -611,6 +611,15 @@
     }
   },
   {
+    "type": "ordering.refund-succeeded.v1",
+    "aggregateType": "refund",
+    "fields": {
+      "orderId": "id",
+      "sellerOrderId": "id",
+      "refundId": "id"
+    }
+  },
+  {
     "type": "pricing.effective-price-changed.v1",
     "aggregateType": "price-series",
     "fields": {
@@ -670,6 +679,14 @@
     "aggregateType": "seller-file",
     "fields": {
       "sellerId": "id"
+    }
+  },
+  {
+    "type": "sellers.store-profile-published.v1",
+    "aggregateType": "store-profile",
+    "fields": {
+      "sellerId": "id",
+      "revisionId": "id"
     }
   },
   {

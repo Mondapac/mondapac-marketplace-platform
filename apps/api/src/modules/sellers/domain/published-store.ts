@@ -1,4 +1,5 @@
 import type { Id, Money, Temporal } from '@mondapac/shared-kernel';
+import type { StoreImageRef } from './store-image';
 
 /**
  * What `sellers` holds in clear about a store with an approved revision and a held slug, for the
@@ -32,6 +33,14 @@ export interface PublishedStore {
   /** The calendar year of the first approval, in the seller's own zone (ADR-0005). */
   readonly sellingSince: number;
   readonly minimumOrder?: Money | null;
+  /**
+   * The About text in the Market's default locale (slice 12 part 2): a store page only, `null`
+   * when the store wrote none, plain text that is never HTML. Absent on the list.
+   */
+  readonly about?: string | null;
+  /** The current logo (a store page and the list) and banner (a store page only); `null`: none. */
+  readonly logo?: StoreImageRef | null;
+  readonly banner?: StoreImageRef | null;
 }
 
 /** The orders of the public store list. */

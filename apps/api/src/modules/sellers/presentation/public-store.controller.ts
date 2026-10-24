@@ -16,6 +16,7 @@ import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
 import type { PublishedStore } from '../domain/published-store';
+import type { StoreImageRef } from '../domain/store-image';
 import {
   PublishedStoreList,
   type PublishedStoreListInput,
@@ -27,6 +28,13 @@ export class StoreMoneyBody {
   @ApiProperty({ description: 'Minor units, as a decimal string.', example: '3000' })
   amount!: string;
   @ApiProperty({ description: 'ISO 4217 code.' }) currency!: string;
+}
+
+export class PublicStoreImageBody {
+  @ApiProperty({ description: 'Names the image in `GET sellers/stores/:slug/images/:id/:size`.' })
+  id!: string;
+  @ApiProperty({ description: 'Pixels of the `large` size.' }) width!: number;
+  @ApiProperty({ description: 'Pixels of the `large` size.' }) height!: number;
 }
 
 export class PublishedStoreBody {
@@ -46,6 +54,26 @@ export class PublishedStoreBody {
       'null: no minimum order. Absent: it cannot be told now; show no minimum line, never "none".',
   })
   minimumOrder?: StoreMoneyBody | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'The store About text in the Market default locale: plain text, never HTML, whitespace ' +
+      'kept. null: none written. A store page only (absent on the list).',
+  })
+  about?: string | null;
+  @ApiPropertyOptional({
+    type: PublicStoreImageBody,
+    nullable: true,
+    description: 'The current logo, or null. On the list and on the store page.',
+  })
+  logo?: PublicStoreImageBody | null;
+  @ApiPropertyOptional({
+    type: PublicStoreImageBody,
+    nullable: true,
+    description: 'The current banner (4 to 1), or null. A store page only.',
+  })
+  banner?: PublicStoreImageBody | null;
 }
 
 export class PublishedStorePageBody {
@@ -94,6 +122,9 @@ function listInputOf(query: Record<string, unknown>): PublishedStoreListInput {
   return input;
 }
 
+const imageOf = (image: StoreImageRef | null): PublicStoreImageBody | null =>
+  image === null ? null : { id: image.id, width: image.width, height: image.height };
+
 /** The allow-listed body of one store, field by field (AC 25); Money as a string amount. */
 const bodyOf = (store: PublishedStore): PublishedStoreBody => {
   const body: PublishedStoreBody = {
@@ -102,6 +133,9 @@ const bodyOf = (store: PublishedStore): PublishedStoreBody => {
     serviceAreaCode: store.serviceAreaCode,
     sellingSince: store.sellingSince,
   };
+  if (store.about !== undefined) body.about = store.about;
+  if (store.logo !== undefined) body.logo = imageOf(store.logo);
+  if (store.banner !== undefined) body.banner = imageOf(store.banner);
   if (store.minimumOrder === undefined) return body;
   return {
     ...body,

@@ -92,6 +92,8 @@ export interface RefundTarget {
   readonly lines: readonly RefundableLine[];
   /** Units already refunded per line, and the shipping gross already refunded. */
   readonly refundedUnits: ReadonlyMap<Id<'OrderLine'>, number>;
+  /** Units per line of the refunds Stripe confirmed (a subset of `refundedUnits`). */
+  readonly succeededUnits: ReadonlyMap<Id<'OrderLine'>, number>;
   readonly refundedShipping: bigint;
 }
 
@@ -306,4 +308,14 @@ export function priceRefund(
     settledAt: null,
     lines,
   };
+}
+
+/**
+ * Whether every unit of the seller order is refunded (SHP-03): by the refunds Stripe confirmed
+ * (`succeeded`, before a carrier delivery is cancelled), or by every refund not failed
+ * (`not-failed`, before one is booked: money on its way back is never delivered).
+ */
+export function refundedInFull(target: RefundTarget, by: 'succeeded' | 'not-failed'): boolean {
+  const units = by === 'succeeded' ? target.succeededUnits : target.refundedUnits;
+  return target.lines.every((line) => (units.get(line.id) ?? 0) >= line.quantity);
 }
