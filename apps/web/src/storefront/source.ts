@@ -2,6 +2,7 @@ import 'server-only';
 import { headers } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { apiGet, type ApiRead } from './api.ts';
+import { sessionGet } from './session.ts';
 import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
 import {
   publicStoreOf,
@@ -382,4 +383,38 @@ export async function loadClosedStore(slug: string): Promise<ClosedStore | undef
  */
 export async function loadAssistant(): Promise<AssistantSetup | null> {
   return Promise.resolve(null);
+}
+
+/** Who is shopping, as the API sees this browser's cookies (storefront session design 2). */
+export type BuyerSession =
+  /** The API is off: the sample log-in stays. */
+  | { readonly kind: 'off' }
+  /** No session, or it ended. `cartLines` is null when the cart could not be read. */
+  | { readonly kind: 'guest'; readonly cartLines: number | null }
+  | {
+      readonly kind: 'signed-in';
+      readonly email: string;
+      /** Sent as `x-csrf-token` on every write through the relay (app/api/[...path]). */
+      readonly csrfToken: string;
+      readonly cartLines: number | null;
+    };
+
+/**
+ * The buyer's session and the number of lines in their cart (the account's or the guest's). Reads
+ * only; a renewed or cleared cookie reaches the browser through the relay, never from a page.
+ */
+export async function loadBuyerSession(): Promise<BuyerSession> {
+  const [session, cart] = await Promise.all([
+    sessionGet<{ email: string; csrfToken: string }>('identity/customer/session'),
+    sessionGet<{ lineCount: number }>('cart'),
+  ]);
+  if (session.kind === 'off') return { kind: 'off' };
+  const cartLines = cart.kind === 'ok' ? cart.body.lineCount : null;
+  if (session.kind !== 'ok') return { kind: 'guest', cartLines };
+  return {
+    kind: 'signed-in',
+    email: session.body.email,
+    csrfToken: session.body.csrfToken,
+    cartLines,
+  };
 }
