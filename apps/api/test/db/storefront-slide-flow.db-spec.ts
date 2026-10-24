@@ -441,6 +441,44 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
       }
     });
 
+    it('serializes a reorder with a pause of a slide it names', async () => {
+      for (let round = 0; round < 4; round += 1) {
+        const scope = category();
+        const [a, b, c] = [
+          await inCategory(context, scope),
+          await inCategory(context, scope),
+          await inCategory(context, scope),
+        ];
+        const [moved, paused] = await Promise.all([
+          reorder(context, scope, [c.id, b.id, a.id]),
+          pauseSlide(deps, context, { slide: b.id }),
+        ]);
+        expect(paused.ok).toBe(true);
+        const order = await orderOf(market, scope);
+        expect(order).toHaveLength(2);
+        expect(order).not.toContain(b.id);
+        if (moved.ok) expect(order).toEqual([c.id, a.id]);
+        else {
+          expect(moved).toMatchObject({
+            ok: false,
+            error: { code: 'storefront.slide-order-mismatch' },
+          });
+          expect(await saved(market, a.id)).toEqual([]);
+        }
+      }
+    });
+
+    it('drops the saved orders of a slide that is archived', async () => {
+      const scope = category();
+      const [a, b] = [await inCategory(context, scope), await inCategory(context, scope)];
+      ok(await reorder(context, scope, [b.id, a.id]));
+      expect(await saved(market, a.id)).toHaveLength(1);
+      ok(await archiveSlide(deps, context, { slide: a.id }));
+      expect(await saved(market, a.id)).toEqual([]);
+      expect(await saved(market, b.id)).toHaveLength(1);
+      expect(await orderOf(market, scope)).toEqual([b.id]);
+    });
+
     it('lets two opposite reorders finish with one whole order and no deadlock', async () => {
       const scope = category();
       const [a, b, c] = [

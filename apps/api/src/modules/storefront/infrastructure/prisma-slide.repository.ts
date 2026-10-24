@@ -16,6 +16,8 @@ import type {
 import type { SlideScope } from '../domain/slide-positions';
 import type { SlideKind, StoredSlideState } from '../domain/slides';
 
+/** The scope id of a saved order for the scope `all` (as in the placements' unique index). */
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
@@ -308,6 +310,7 @@ export class PrismaSlideRepository implements SlideRepository {
       take: limit,
     });
     return rows.map((row) => ({
+      placementId: row.id,
       slideId: row.slideId,
       kind: row.slide.kind as SlideKind,
       liveVersionId: row.slide.liveVersionId!,
@@ -392,13 +395,19 @@ export class PrismaSlideRepository implements SlideRepository {
   async setLiveOrder(
     market: MarketContext,
     where: PlacementOrder,
-    orders: readonly { readonly slideId: Id<'StorefrontSlide'>; readonly sortOrder: number }[],
+    orders: readonly {
+      readonly slideId: Id<'StorefrontSlide'>;
+      readonly sortOrder: number;
+      /** False when the projection row already holds this sort order (only the saved order is written). */
+      readonly rewrite: boolean;
+    }[],
     stamp: SlideStamp,
   ) {
     const tx = this.prisma.tx(market);
-    const scopeKey = where.scopeId ?? '';
-    for (const { slideId, sortOrder } of orders) {
-      // Only the sort order of the row is written (column grant); the row is found by its key.
+    // The position lock is held meanwhile, so: one delete and one insert for every saved order,
+    // and one update per placement that changes (each has its own value; the guarded client sends
+    // no raw SQL, so a single UPDATE ... FROM VALUES is not available).
+    for (const { slideId, sortOrder } of orders.filter((o) => o.rewrite)) {
       await tx.storefrontSlidePlacement.updateMany({
         where: {
           marketId: market.marketId,
@@ -409,29 +418,30 @@ export class PrismaSlideRepository implements SlideRepository {
         },
         data: { sortOrder },
       });
-      await tx.storefrontSlideSavedOrder.deleteMany({
-        where: {
-          marketId: market.marketId,
-          slideId,
-          positionKey: where.position,
-          scope: where.scope,
-          scopeKey,
-        },
-      });
-      await tx.storefrontSlideSavedOrder.create({
-        data: {
-          marketId: market.marketId,
-          tenantId: market.tenantId,
-          slideId,
-          positionKey: where.position,
-          scope: where.scope,
-          scopeKey,
-          sortOrder,
-          savedAt: toDate(stamp.at),
-          savedBy: stamp.by,
-        },
-      });
     }
+    const scopeKey = where.scopeId ?? NIL_UUID;
+    await tx.storefrontSlideSavedOrder.deleteMany({
+      where: {
+        marketId: market.marketId,
+        slideId: { in: orders.map((o) => o.slideId) },
+        positionKey: where.position,
+        scope: where.scope,
+        scopeKey,
+      },
+    });
+    await tx.storefrontSlideSavedOrder.createMany({
+      data: orders.map(({ slideId, sortOrder }) => ({
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        slideId,
+        positionKey: where.position,
+        scope: where.scope,
+        scopeKey,
+        sortOrder,
+        savedAt: toDate(stamp.at),
+        savedBy: stamp.by,
+      })),
+    });
   }
 
   async savedOrdersOf(market: MarketContext, slideId: Id<'StorefrontSlide'>) {
@@ -441,7 +451,7 @@ export class PrismaSlideRepository implements SlideRepository {
     return rows.map((row): SavedOrder => ({
       position: row.positionKey,
       scope: row.scope,
-      scopeId: row.scopeKey === '' ? null : row.scopeKey,
+      scopeId: row.scopeKey === NIL_UUID ? null : row.scopeKey,
       sortOrder: row.sortOrder,
     }));
   }
@@ -462,7 +472,7 @@ export class PrismaSlideRepository implements SlideRepository {
               NOT: keep.map((k) => ({
                 positionKey: k.position,
                 scope: k.scope,
-                scopeKey: k.scopeId ?? '',
+                scopeKey: k.scopeId ?? NIL_UUID,
               })),
             }),
       },

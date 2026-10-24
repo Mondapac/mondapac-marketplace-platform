@@ -194,7 +194,12 @@ export interface SlideRepository {
   setLiveOrder(
     market: MarketContext,
     where: PlacementOrder,
-    orders: readonly { readonly slideId: Id<'StorefrontSlide'>; readonly sortOrder: number }[],
+    orders: readonly {
+      readonly slideId: Id<'StorefrontSlide'>;
+      readonly sortOrder: number;
+      /** False when the projection row already holds this sort order: only the saved order is written. */
+      readonly rewrite: boolean;
+    }[],
     stamp: SlideStamp,
   ): Promise<void>;
   /** The orders saved for a slide by earlier reorders (also while it is paused). */

@@ -35,8 +35,14 @@ export const MAX_PLACEMENTS = 10;
 /** A slide runs for at most 90 days: 2160 hours, in absolute time (no daylight-saving drift). */
 export const MAX_WINDOW_HOURS = 90 * 24;
 export const MAX_VERSIONS_PER_SLIDE = 100;
-/** Most slides one reorder names: the live placements of one position and scope. */
-export const MAX_REORDER_SLIDES = 100;
+/**
+ * Most slides one reorder names: the approved placements of one position and scope that have not
+ * ended, scheduled ones included. A position shows at most 8 at once and a window is at most 90
+ * days, so 50 means about six windows' worth of scheduled slides queued at one list (a year and a
+ * half); a list longer than that is a content-planning problem, and the request is refused as
+ * `slideIds: count` rather than written.
+ */
+export const MAX_REORDER_SLIDES = 50;
 
 export interface SlideLink {
   readonly type: LinkType;

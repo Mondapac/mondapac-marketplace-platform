@@ -581,7 +581,7 @@ describe.each(TEST_MARKETS)('storefront slide store in market %s (database)', (c
       await code_(
         sql.query(
           `INSERT INTO storefront.slide_saved_orders (market_id, tenant_id, slide_id, position_key, scope, scope_key, sort_order, saved_at, saved_by)
-           VALUES ($1, 'default', $2, 'home.hero', 'category', 'not-a-uuid', 0, now(), $2)`,
+           VALUES ($1, 'default', $2, 'home.hero', 'category', '00000000-0000-0000-0000-000000000000', 0, now(), $2)`,
           [market.marketId, slide.id],
         ),
       ),

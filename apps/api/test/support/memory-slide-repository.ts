@@ -143,6 +143,7 @@ export class MemorySlides implements SlideRepository {
           }
           return [
             {
+              placementId: p.id,
               slideId: p.slideId,
               kind: slide.kind,
               liveVersionId: slide.liveVersionId,

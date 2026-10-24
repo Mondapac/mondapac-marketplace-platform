@@ -132,8 +132,10 @@ version, with its window, so caps and the later buyer read need no join) and `sl
   storefront/admin/slides/order` with `{ position, scope?, scopeId?, slideIds[] }` saves the order of
   the slides that are approved at one position and scope (within the request's Market; for a scoped
   position, the same scope and scope id), and it takes effect at once. The list must be the whole set:
-  every approved slide whose window has not ended at that position and scope (scheduled ones
-  included), each once, first shown first. A duplicate, a malformed id, an id that is not a slide of
+  every approved slide whose window has not ended at that position and scope (scheduled ones,
+  approved with a start in the future, are part of the list on purpose: they take their place in the
+  order before they go live), each once, first shown first. A list longer than 50 (`slideIds: count`; a position shows at most 8 at once and a window is at
+  most 90 days, so 50 is about six windows of scheduled slides queued at one list), a duplicate, a malformed id, an id that is not a slide of
   this Market (`storefront.slide-not-found` is not leaked: it reads `validation.failed`
   `slideIds[i]: not-found`), a list that leaves a live slide out and a slide that is not live there
   (paused, draft, archived, ended, another position or scope) are refused: the first group with 400
@@ -149,8 +151,15 @@ version, with its window, so caps and the later buyer read need no join) and `sl
     and scope in `slide_saved_orders`, because the projection is deleted when a slide is paused and
     rebuilt when one is approved or resumed. Every projection (approve, resume) takes the saved order
     of a placement when there is one and the version's `sortOrder` only when there is none, so a
-    re-approval of one slide (even a new version that still says sort order 0) does not move it. A
-    saved order whose placement a new version no longer has (other position, scope or scope id) is
+    re-approval of one slide (even a new version that still says sort order 0) does not move it.
+    Exception, so an approval is never silently overridden: when the newly approved version asks for
+    a different sort order for a placement than the version it replaces, the approved version wins
+    and that placement's saved order is dropped (also when the slide is paused, so a resume does not
+    bring the old one back); an unchanged value keeps the saved order. Archiving a slide drops all
+    its saved orders. The public read picks the placement of a slide to serve by scope specificity
+    (a named entity, then a category with subcategories, then `all`; then the smaller placement id),
+    never by sort order, so a reorder can never change which placement, and so which `autoplay`
+    value, a page gets. A saved order whose placement a new version no longer has (other position, scope or scope id) is
     forgotten by that projection, and the placement starts from the version's sort order. Residual
     case: a slide paused while the others are reordered comes back with its old number, which may
     equal another slide's; ties are broken by start time then id, deterministically, and the next

@@ -1045,6 +1045,34 @@ describe.each([
       expect(await orderOf()).toEqual([c, a, b]);
     });
 
+    it('lets a newly approved version win when it asks for another sort order than the one it replaces', async () => {
+      const [a, b, c] = await three();
+      await value(reorder(editor, hero(c!, a!, b!)));
+      const newVersion = async (slide: string, sortOrder: number, versionNo: number) => {
+        await value(
+          run(UpdateStorefrontSlideDraft, editor, {
+            slide,
+            body: body({ placements: [{ position: 'home.hero', sortOrder }] }),
+          }),
+        );
+        await value(run(SubmitStorefrontSlide, editor, { slide }));
+        await value(approve(admin, slide, versionNo));
+      };
+      // `a` was saved at 1; its version said 0 and now says 7: the version wins, its saved row goes.
+      await newVersion(a!, 7, 2);
+      expect(slides.saved.filter((o) => o.slideId === a)).toEqual([]);
+      expect(await orderOf()).toEqual([c, b, a]);
+      // The other slides keep their saved orders.
+      expect(slides.saved.filter((o) => o.slideId === c)).toHaveLength(1);
+
+      // Paused: the change is final at approval, so a resume does not bring the saved order back.
+      await value(run(PauseStorefrontSlide, pauser, { slide: b }));
+      await newVersion(b!, 4, 2);
+      expect(slides.saved.filter((o) => o.slideId === b)).toEqual([]);
+      await value(run(ResumeStorefrontSlide, admin, { slide: b }));
+      expect(slides.placements.find((p) => p.slideId === b)?.sortOrder).toBe(4);
+    });
+
     it('forgets the saved order of a placement that a new version no longer has', async () => {
       const [a, b] = [await live(), await live()];
       await value(reorder(editor, hero(b.id, a.id)));

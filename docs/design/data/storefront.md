@@ -81,16 +81,19 @@ Reordering the live slides of a position needs no approval, but the version a pl
 write-once and the `slide_placements` rows are deleted by a pause and rebuilt by an approval or a
 resume. So the order is kept in two places: `slide_placements.sort_order` (what the buyer read sorts
 by) and `slide_saved_orders`, one row per `(market_id, slide_id, position_key, scope, scope_key)` with
-`sort_order`, `saved_at` and `saved_by`. `scope_key` is `''` for the scope `all`, else the scope id as
-lower-case text (a `NOT NULL` column in the primary key; a nullable `scope_id` could not be part of
-it). CHECKs: the Market and tenant formats, the position key format, `scope`/`scope_key` agree (empty
-exactly for `all`, a uuid otherwise), `sort_order BETWEEN 0 AND 1000`. The foreign key
+`sort_order`, `saved_at` and `saved_by`. `scope_key` is a `uuid NOT NULL`: the nil uuid for the scope `all`, else the scope id (the same
+sentinel as the `COALESCE` of the placements' unique index; a nullable `scope_id` could not be part of
+the primary key). CHECKs: the Market and tenant formats, the position key format, `scope`/`scope_key`
+agree (nil exactly for `all`), `sort_order BETWEEN 0 AND 1000`. The foreign key
 `(market_id, slide_id)` to `slides` is `RESTRICT`, so a saved order is always of a slide of the same
 Market.
 
 A projection (approve, resume) reads the saved orders of the slide, writes each new placement with the
 saved `sort_order` if there is one (else the version's), and deletes the saved orders of placements the
-new version no longer has. Pausing keeps them. The rows are written only under the slide row lock and
+new version no longer has, and of those whose sort order the newly approved version changed (the
+approved version wins). Pausing keeps them; archiving deletes all of the slide's. The rows are written only under the slide row lock and
 the position row lock (see the module note), so there is no write skew between a reorder and a
-projection. `down.sql` revokes the two grants and drops the table; the sort orders already written
+projection. The reorder writes in a fixed number of statements while it holds the position lock: one `UPDATE` per
+placement whose sort order really changes, one `DELETE ... slide_id IN (...)` and one `INSERT` of all
+saved orders. `down.sql` revokes the two grants and drops the table; the sort orders already written
 to `slide_placements` stay.

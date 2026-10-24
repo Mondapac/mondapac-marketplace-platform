@@ -199,7 +199,7 @@ model StorefrontSlidePlacement {
 /// The projection rows are rebuilt when a slide is approved or resumed, and removed when it is
 /// paused; this row survives them, so the next projection starts from the saved order and a
 /// re-approval cannot put the slide back at the sort order of its version. One row per slide,
-/// position and scope; `scopeKey` is empty for the scope `all`, else the scope id. Rows of a
+/// position and scope; `scopeKey` is the nil uuid for the scope `all`, else the scope id. Rows of a
 /// placement that a new version no longer has are removed by that projection.
 model StorefrontSlideSavedOrder {
   marketId    String          @map("market_id") @db.VarChar(8)
@@ -207,7 +207,7 @@ model StorefrontSlideSavedOrder {
   slideId     String          @map("slide_id") @db.Uuid
   positionKey String          @map("position_key")
   scope       String
-  scopeKey    String          @map("scope_key")
+  scopeKey    String          @map("scope_key") @db.Uuid
   sortOrder   Int             @map("sort_order")
   savedAt     DateTime        @map("saved_at") @db.Timestamptz(6)
   savedBy     String          @map("saved_by") @db.Uuid

@@ -60,6 +60,9 @@ export async function reorderLiveSlides(
     await deps.slides.lockPositions(context.market, [input.position], stamp.at);
     const live = await deps.slides.livePlacementsAt(context.market, where, stamp.at);
     const before = live.map((placement) => placement.slideId as string);
+    const current = new Map(
+      live.map((placement) => [placement.slideId as string, placement.sortOrder]),
+    );
     const mismatch = reorderMismatch(input.slideIds, before);
     if (mismatch.length > 0) {
       return err({ code: 'storefront.slide-order-mismatch', fields: mismatch } as const);
@@ -68,7 +71,11 @@ export async function reorderLiveSlides(
     await deps.slides.setLiveOrder(
       context.market,
       where,
-      ids.map((entry) => ({ slideId: entry.id as Id<'StorefrontSlide'>, sortOrder: entry.index })),
+      ids.map((entry) => ({
+        slideId: entry.id as Id<'StorefrontSlide'>,
+        sortOrder: entry.index,
+        rewrite: current.get(entry.raw) !== entry.index,
+      })),
       stamp,
     );
     const snapshot = (order: readonly string[]) => ({

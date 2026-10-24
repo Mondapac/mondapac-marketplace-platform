@@ -551,7 +551,7 @@ describe.each(TEST_MARKETS)('slide domain in market %s', (code) => {
       expect(bad({ position: 'home.hero', slideIds: ['nope'] })).toEqual([
         { path: 'slideIds[0]', code: 'format' },
       ]);
-      expect(bad({ position: 'home.hero', slideIds: Array(101).fill(A) })).toEqual([
+      expect(bad({ position: 'home.hero', slideIds: Array(51).fill(A) })).toEqual([
         { path: 'slideIds', code: 'count' },
       ]);
       expect(bad({ position: 'home.hero', slideIds: [A.toUpperCase()] })).toEqual([
