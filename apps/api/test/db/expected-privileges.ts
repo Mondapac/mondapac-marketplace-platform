@@ -526,6 +526,16 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['amount', 'currency', 'updated_at', 'updated_by'],
     },
+    // Shipping, the real-time carrier (SHP-02/03): a booking is stored once the carrier confirms
+    // it and only its progress moves; a carrier webhook event is taken once by its id; shipping
+    // writes `shipping.carrier-delivery-progressed.v1` and ordering records each one it handled.
+    'shipping.carrier_bookings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['carrier_status', 'progress', 'updated_at', 'version'],
+    },
+    'shipping.carrier_events': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'shipping.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'ordering.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Phase 6 package 1: the order emails. Ordering writes `ordering.order-paid.v1` (the relay marks
     // it published); notifications records each event it handled, once per handler.
     'notifications.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },

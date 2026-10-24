@@ -678,5 +678,14 @@
     "fields": {
       "sellerId": "id"
     }
+  },
+  {
+    "type": "shipping.carrier-delivery-progressed.v1",
+    "aggregateType": "carrier-booking",
+    "fields": {
+      "orderId": "id",
+      "sellerOrderId": "id",
+      "sellerId": "id"
+    }
   }
 ]
