@@ -11,7 +11,7 @@ import {
   type RelayPass,
   type RelayTransaction,
 } from '../../events/event-bus';
-import { CONNECTION_WAIT_MS, DEFAULT_UNIT_TIMEOUT_MS } from '../../unit-of-work/unit-of-work';
+import { DEFAULT_UNIT_TIMEOUT_MS } from '../../unit-of-work/unit-of-work';
 import type { ModelMap } from '../model-map';
 import type { PrismaRoot } from '../prisma-root';
 
@@ -184,7 +184,7 @@ export class PrismaOutboxRelay implements OutboxRelay {
         }
         return rows.length;
       },
-      { maxWait: CONNECTION_WAIT_MS, timeout: DEFAULT_UNIT_TIMEOUT_MS },
+      { maxWait: this.root.connectionWaitMs, timeout: DEFAULT_UNIT_TIMEOUT_MS },
     );
   }
 

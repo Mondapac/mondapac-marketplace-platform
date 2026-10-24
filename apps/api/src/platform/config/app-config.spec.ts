@@ -38,6 +38,50 @@ describe('loadAppConfig', () => {
         prices: { fast: {}, balanced: {} },
       },
       googleSignIn: null,
+      mondapacDrive: { apiKeys: {}, webhookSecrets: {} },
+    });
+  });
+
+  describe('the Mondapac Drive carrier (per Market: API key, webhook secret)', () => {
+    const KEY = 'drive_key_0123456789abcdefghij';
+    const SECRET = 'whsec-0123456789abcdefghijABCDEFGHIJ';
+
+    it('reads each value per hosted Market', () => {
+      const config = loadAppConfig({
+        HOSTED_MARKETS: 'AU,ZZ',
+        MONDAPAC_DRIVE_API_KEY: `AU=${KEY},ZZ=${KEY}zz`,
+        MONDAPAC_DRIVE_WEBHOOK_SECRET: `AU=${SECRET}`,
+      });
+      expect(config.mondapacDrive).toEqual({
+        apiKeys: { AU: KEY, ZZ: `${KEY}zz` },
+        webhookSecrets: { AU: SECRET },
+      });
+    });
+
+    it.each([
+      ['MONDAPAC_DRIVE_API_KEY', 'AU=short-key'],
+      ['MONDAPAC_DRIVE_API_KEY', KEY],
+      ['MONDAPAC_DRIVE_WEBHOOK_SECRET', 'AU=has a space 0123456789abcdef'],
+    ])('refuses %s=%j without echoing it', (name, value) => {
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', [name]: value })).toThrow(name);
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', [name]: value });
+      } catch (error) {
+        expect(String((error as Error).message)).not.toContain(value.slice(3));
+      }
+    });
+
+    it('refuses a Market that is not hosted, and a webhook secret equal to the key', () => {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', MONDAPAC_DRIVE_API_KEY: `NZ=${KEY}` }),
+      ).toThrow('NZ is not in HOSTED_MARKETS');
+      expect(() =>
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          MONDAPAC_DRIVE_API_KEY: `AU=${KEY}`,
+          MONDAPAC_DRIVE_WEBHOOK_SECRET: `AU=${KEY}`,
+        }),
+      ).toThrow('must differ from MONDAPAC_DRIVE_API_KEY');
     });
   });
 
