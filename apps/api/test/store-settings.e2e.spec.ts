@@ -1,10 +1,12 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { SendLinkMail } from '../src/modules/identity/application/use-cases/send-link-mail.use-case';
+import { StoreSettingsMinimumOrderHistory } from '../src/modules/sellers/application/use-cases/store-settings-minimum-order-history.use-case';
 import { StoreSettingsRead } from '../src/modules/sellers/application/use-cases/store-settings-read.use-case';
 import { StoreSettingsSaveDelivery } from '../src/modules/sellers/application/use-cases/store-settings-save-delivery.use-case';
 import { StoreSettingsSaveMinimumOrder } from '../src/modules/sellers/application/use-cases/store-settings-save-minimum-order.use-case';
@@ -43,7 +45,7 @@ const cookieOf = (setCookie: unknown): string => {
 
 describe('the seller store settings over HTTP (integration)', () => {
   let app: NestExpressApplication;
-  const stubs = { read: new Stub(), save: new Stub(), delivery: new Stub() };
+  const stubs = { read: new Stub(), save: new Stub(), delivery: new Stub(), history: new Stub() };
   const http = () => request(app.getHttpServer());
 
   async function boot(stubbed: boolean) {
@@ -60,6 +62,8 @@ describe('the seller store settings over HTTP (integration)', () => {
               .useValue(stubs.save)
               .overrideProvider(StoreSettingsSaveDelivery)
               .useValue(stubs.delivery)
+              .overrideProvider(StoreSettingsMinimumOrderHistory)
+              .useValue(stubs.history)
           : faked;
       },
     }));
@@ -417,6 +421,104 @@ describe('the seller store settings over HTTP (integration)', () => {
       });
     });
 
+    const history = (headers: Record<string, string>, query = '') =>
+      http().get(`/sellers/store-settings/minimum-order/history${query}`).set(headers);
+
+    it('reads the minimum-order history: newest first, numbers as numbers, the ISO instant, no-store', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      const changedBy = {
+        displayName: NAME,
+        role: { kind: 'system', seedCode: 'seller-owner', name: null },
+      };
+      stubs.history.next = {
+        ok: true,
+        value: {
+          items: [
+            {
+              changedAt: Temporal.Instant.from('2026-10-20T03:00:00Z'),
+              changedBy,
+              before: { amount: 2500n, currency },
+              after: null,
+            },
+            {
+              changedAt: Temporal.Instant.from('2026-10-19T03:00:00Z'),
+              changedBy: null,
+              before: null,
+              after: { amount: 2500n, currency },
+            },
+          ],
+          next: '01990000-0000-7000-8000-000000000001',
+        },
+      };
+
+      const response = await history(
+        session.headers,
+        '?after=01990000-0000-7000-8000-000000000009&limit=2',
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        items: [
+          {
+            changedAt: '2026-10-20T03:00:00Z',
+            changedBy,
+            before: { amount: 2500, currency },
+            after: null,
+          },
+          {
+            changedAt: '2026-10-19T03:00:00Z',
+            changedBy: null,
+            before: null,
+            after: { amount: 2500, currency },
+          },
+        ],
+        next: '01990000-0000-7000-8000-000000000001',
+      });
+      expect(stubs.history.calls[0]!.input).toEqual({
+        after: '01990000-0000-7000-8000-000000000009',
+        limit: 2,
+      });
+      expect(stubs.history.calls[0]!.context.actor).toMatchObject({ population: 'seller' });
+    });
+
+    it('passes no page to the use case when the query names none, and a non-numeric limit as invalid', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.history.next = { ok: true, value: { items: [], next: null } };
+
+      await history(session.headers).expect(200, { items: [], next: null });
+      await history(session.headers, '?limit=ten');
+
+      expect(stubs.history.calls.map((call) => call.input)).toEqual([
+        { after: null, limit: undefined },
+        { after: null, limit: 'invalid' },
+      ]);
+    });
+
+    it.each([
+      ['validation.failed', 400],
+      ['file.not-found', 404],
+      ['access.denied', 403],
+      ['sellers.unavailable', 503],
+    ])('maps a history %s to %i', async (errorCode, status) => {
+      await boot(true);
+      const session = await signedIn(code);
+      stubs.history.next = {
+        ok: false,
+        error:
+          errorCode === 'validation.failed'
+            ? { code: errorCode, fields: [{ path: 'after', code: 'unknown' }] }
+            : { code: errorCode },
+      };
+
+      const response = await history(session.headers);
+
+      expect(response.status).toBe(status);
+      expect((response.body as { code: string }).code).toBe(errorCode);
+    });
+
     it('refuses a visitor with 401; the gate holds back a pending seller and admits an approved one (real use cases)', async () => {
       await boot(false);
       const session = await signedIn(code);
@@ -428,14 +530,20 @@ describe('the seller store settings over HTTP (integration)', () => {
         .set({ 'x-market-id': code, ...panelHeaders(code, 'seller') });
       const save = await put(session.headers, body);
       const read = await http().get('/sellers/store-settings').set(session.headers);
+      const visitorHistory = await history({
+        'x-market-id': code,
+        ...panelHeaders(code, 'seller'),
+      });
+      const read2 = await history(session.headers);
 
       expect(visitor.status).toBe(401);
       expect(visitorRead.status).toBe(401);
+      expect(visitorHistory.status).toBe(401);
       // AU requires approval, so a just-registered seller is pending and the gate refuses it
       // (403) before the use case reads anything. ZZ approves at once: the gate admits it and the
       // use case runs; sellers' repositories have no database here, so only "not refused" is
       // asserted (the admitted path is in test/db/sellers-minimum-order.db-spec.ts).
-      for (const answer of [save, read]) {
+      for (const answer of [save, read, read2]) {
         if (code === 'AU') expect(answer.status).toBe(403);
         else expect([401, 403]).not.toContain(answer.status);
       }

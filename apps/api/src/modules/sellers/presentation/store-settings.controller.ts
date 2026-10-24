@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Logger, Put, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Logger, Put, Query, Req, Res } from '@nestjs/common';
 import { RequiresStepUp } from '../../../platform/authz';
 import {
   ApiBadRequestResponse,
@@ -10,6 +10,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiProperty,
+  ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
@@ -24,6 +25,13 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import {
+  MAX_MINIMUM_ORDER_HISTORY_PAGE,
+  MINIMUM_ORDER_HISTORY_PAGE,
+  StoreSettingsMinimumOrderHistory,
+  type MinimumOrderChangeView,
+  type MinimumOrderHistoryInput,
+} from '../application/use-cases/store-settings-minimum-order-history.use-case';
 import {
   StoreSettingsRead,
   type StoreSettingsView,
@@ -112,7 +120,76 @@ export class StoreSettingsBody {
   delivery!: DeliveryTermsBody | null;
 }
 
+export class MinimumOrderChangeRoleBody {
+  @ApiProperty({ enum: ['system', 'default', 'custom'] })
+  kind!: 'system' | 'default' | 'custom';
+
+  @ApiProperty({ nullable: true, description: 'Labels a seeded role (a translation key).' })
+  seedCode!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'The name of a custom role.' })
+  name!: string | null;
+}
+
+export class MinimumOrderChangedByBody {
+  @ApiProperty({ nullable: true })
+  displayName!: string | null;
+
+  @ApiProperty({ type: MinimumOrderChangeRoleBody, nullable: true })
+  role!: MinimumOrderChangeRoleBody | null;
+}
+
+export class MinimumOrderChangeBody {
+  @ApiProperty({ description: 'ISO 8601 instant, UTC.' })
+  changedAt!: string;
+
+  @ApiProperty({
+    type: MinimumOrderChangedByBody,
+    nullable: true,
+    description: 'A current member of your team; null for a former member.',
+  })
+  changedBy!: MinimumOrderChangedByBody | null;
+
+  @ApiProperty({ type: MinimumOrderAmountBody, nullable: true, description: 'null: no minimum.' })
+  before!: MinimumOrderAmountBody | null;
+
+  @ApiProperty({ type: MinimumOrderAmountBody, nullable: true, description: 'null: no minimum.' })
+  after!: MinimumOrderAmountBody | null;
+}
+
+export class MinimumOrderHistoryBody {
+  @ApiProperty({ type: [MinimumOrderChangeBody], description: 'Newest first.' })
+  items!: MinimumOrderChangeBody[];
+
+  @ApiProperty({ nullable: true, description: 'The `after` of the next page; null at the end.' })
+  next!: string | null;
+}
+
 const NO_STORE = 'no-store';
+
+const amountOf = (value: MinimumOrderChangeView['before']): MinimumOrderAmountBody | null =>
+  value === null ? null : { amount: Number(value.amount), currency: value.currency };
+
+const changeBodyOf = (change: MinimumOrderChangeView): MinimumOrderChangeBody => ({
+  changedAt: change.changedAt.toString(),
+  changedBy: change.changedBy,
+  before: amountOf(change.before),
+  after: amountOf(change.after),
+});
+
+/** The query as the use case takes it: a digits-only `limit` becomes a number, else is refused. */
+function historyInputOf(query: Record<string, unknown>): MinimumOrderHistoryInput {
+  const { after, limit } = query;
+  return {
+    after: after ?? null,
+    limit:
+      limit === undefined
+        ? undefined
+        : typeof limit === 'string' && /^[0-9]{1,3}$/.test(limit)
+          ? Number(limit)
+          : 'invalid',
+  };
+}
 
 const bodyOf = (view: StoreSettingsView): StoreSettingsBody => ({
   version: view.version,
@@ -142,6 +219,7 @@ export class StoreSettingsController {
   constructor(
     private readonly read: StoreSettingsRead,
     private readonly saveMinimumOrder: StoreSettingsSaveMinimumOrder,
+    private readonly minimumOrderHistory: StoreSettingsMinimumOrderHistory,
     private readonly saveDelivery: StoreSettingsSaveDelivery,
   ) {}
 
@@ -170,6 +248,47 @@ export class StoreSettingsController {
     response.setHeader('Cache-Control', NO_STORE);
     const result = await this.read.execute(context, {});
     return bodyOf(this.settle('sellers.store-settings-read', context, response, result, 'read'));
+  }
+
+  @Get('minimum-order/history')
+  @ApiOperation({
+    summary: 'The changes of the minimum order',
+    description:
+      'Newest first: when, who (a current member of your team, or null for a former member), ' +
+      'and the value before and after (null: no minimum). Read from the audit log. Paged with ' +
+      `after (the next of the previous page) and limit (1 to ${MAX_MINIMUM_ORDER_HISTORY_PAGE}, ` +
+      `default ${MINIMUM_ORDER_HISTORY_PAGE}). Needs sellers.store-settings.edit and an ` +
+      'approved seller.',
+  })
+  @ApiQuery({ name: 'after', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiOkResponse({ type: MinimumOrderHistoryBody })
+  @ApiBadRequestResponse({ type: SellersErrorBody, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({
+    type: SellersErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
+  @ApiServiceUnavailableResponse({
+    type: SellersErrorBody,
+    description: 'sellers.unavailable or access.unavailable',
+  })
+  async getMinimumOrderHistory(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<MinimumOrderHistoryBody> {
+    response.setHeader('Cache-Control', NO_STORE);
+    const result = await this.minimumOrderHistory.execute(context, historyInputOf(query));
+    const page = this.settle(
+      'sellers.store-settings-minimum-order-history',
+      context,
+      response,
+      result,
+      'read',
+    );
+    return { items: page.items.map(changeBodyOf), next: page.next };
   }
 
   @Put('minimum-order')

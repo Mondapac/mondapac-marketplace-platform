@@ -325,6 +325,11 @@
   },
   { "name": "identity.start-social-sign-in", "rule": "anonymous" },
   {
+    "name": "identity.team-member-labels",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
     "name": "identity.verify-seller-step-up",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
