@@ -44,3 +44,12 @@ export function launcherLift(
   }
   return { dock: covered, lift, alignBackToTop };
 }
+
+/**
+ * On a phone the launcher hides while the cookie bar is open: the bar fills the bottom of a small
+ * screen, and the launcher above it would cover the page (Reza, cookie bar compact pass). It comes
+ * back once the buyer chooses. Tablet and desktop keep it above the dock.
+ */
+export function launcherHidden(phone: boolean, cookieBarOpen: boolean): boolean {
+  return phone && cookieBarOpen;
+}
