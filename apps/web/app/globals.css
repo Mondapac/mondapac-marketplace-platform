@@ -886,6 +886,9 @@ svg {
   min-width: 0;
   overflow: hidden;
   border-radius: var(--sf-radius-hero);
+  /* Outlines paint above the scrim, so pale slides keep a visible frame edge. */
+  outline: 1px solid var(--sf-mist);
+  outline-offset: -1px;
   scroll-snap-align: start;
   background: var(--sf-mist-soft);
   color: var(--sf-ink);
