@@ -45,6 +45,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
 });
@@ -57,7 +58,7 @@ const wrap = (node: React.ReactNode, dir?: 'rtl') => (
 const show = (value: SlideSet, dir?: 'rtl') =>
   render(wrap(<Slider set={value} label="Featured" />, dir));
 const tick = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
-const slides = () => screen.getAllByRole('group', { name: /^\d+ of \d+$/u });
+const slides = () => [...document.querySelectorAll<HTMLElement>('[aria-roledescription="slide"]')];
 const current = () => slides().findIndex((s) => !s.hasAttribute('inert'));
 const track = () => document.querySelector('.slider-track') as HTMLElement;
 
@@ -132,6 +133,24 @@ describe('slides and their markup', () => {
     expect(screen.getAllByText('Sponsored')).toHaveLength(1);
   });
 
+  it('names the link of a sponsored slide with its tag first, then the title', () => {
+    show(set(2, { slides: [slide(1, { sponsored: true }), slide(2)] }));
+    const link = document.querySelector('a.slide-inner') as HTMLElement;
+    const ids = link.getAttribute('aria-labelledby')!.split(' ');
+    expect(ids.map((id) => document.getElementById(id)?.textContent)).toEqual([
+      'Sponsored',
+      'Slide 1 title',
+    ]);
+    const plain = document.querySelectorAll('a.slide-inner')[1]!;
+    expect(plain.getAttribute('aria-labelledby')!.split(' ')).toHaveLength(1);
+  });
+
+  it('draws a label without a link as nothing: no pill to click', () => {
+    show(set(2, { slides: [slide(1, { href: undefined }), slide(2)] }));
+    expect(screen.queryByText('Go 1')).toBeNull();
+    expect(screen.getByText('Go 2').className).toBe('slide-cta');
+  });
+
   it('renders every text as text, never as markup', () => {
     const hostile = '<img src=x onerror="alert(1)"><script>alert(2)</script>';
     const { container } = show(
@@ -175,14 +194,9 @@ describe('controls', () => {
   it('adds the pause button first, then previous, next and one picker button per slide', () => {
     show(set(3));
     const buttons = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
-    expect(buttons).toEqual([
-      'Pause slideshow',
-      'Previous slide',
-      'Next slide',
-      'Show slide 1 of 3',
-      'Show slide 2 of 3',
-      'Show slide 3 of 3',
-    ]);
+    expect(buttons).toEqual(['Pause slideshow', 'Previous slide', 'Next slide']);
+    const tabs = screen.getAllByRole('tab').map((b) => b.getAttribute('aria-label'));
+    expect(tabs).toEqual(['Show slide 1 of 3', 'Show slide 2 of 3', 'Show slide 3 of 3']);
     // The controls come before the slides in the page, so they are first in the tab order.
     const first = screen.getByRole('button', { name: 'Pause slideshow' });
     expect(
@@ -218,20 +232,24 @@ describe('controls', () => {
 
   it('jumps to a slide from the picker and marks it current', () => {
     show(set(4));
-    fireEvent.click(screen.getByRole('button', { name: 'Show slide 3 of 4' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Show slide 3 of 4' }));
     expect(current()).toBe(2);
     expect(
-      screen.getByRole('button', { name: 'Show slide 3 of 4' }).getAttribute('aria-current'),
+      screen.getByRole('tab', { name: 'Show slide 3 of 4' }).getAttribute('aria-selected'),
     ).toBe('true');
     expect(
-      screen.getByRole('button', { name: 'Show slide 1 of 4' }).getAttribute('aria-current'),
-    ).toBeNull();
+      screen.getByRole('tab', { name: 'Show slide 1 of 4' }).getAttribute('aria-selected'),
+    ).toBe('false');
+    expect(
+      screen.getByRole('tab', { name: 'Show slide 3 of 4' }).getAttribute('aria-controls'),
+    ).toBe(slides()[2]!.id);
+    expect(slides()[2]!.getAttribute('role')).toBe('tabpanel');
   });
 
   it('keeps one picker button in the tab order and moves with the arrow keys', () => {
     show(set(4));
-    const picker = screen.getByRole('group', { name: 'Choose a slide' });
-    const dots = within(picker).getAllByRole('button');
+    const picker = screen.getByRole('tablist', { name: 'Choose a slide' });
+    const dots = within(picker).getAllByRole('tab');
     expect(dots.map((d) => d.getAttribute('tabindex'))).toEqual(['0', '-1', '-1', '-1']);
     fireEvent.keyDown(dots[0]!, { key: 'ArrowRight' });
     expect(current()).toBe(1);
@@ -246,8 +264,8 @@ describe('controls', () => {
 
   it('reverses the arrow keys of the picker in right-to-left text', () => {
     show(set(4), 'rtl');
-    const dots = within(screen.getByRole('group', { name: 'Choose a slide' })).getAllByRole(
-      'button',
+    const dots = within(screen.getByRole('tablist', { name: 'Choose a slide' })).getAllByRole(
+      'tab',
     );
     fireEvent.keyDown(dots[0]!, { key: 'ArrowLeft' });
     expect(current()).toBe(1);
@@ -307,7 +325,36 @@ describe('autoplay', () => {
     expect(current()).toBe(1);
   });
 
+  it('goes on after a mouse click focused a button, since only keyboard focus holds it', () => {
+    const original = Reflect.get(Element.prototype, 'matches') as (
+      this: Element,
+      s: string,
+    ) => boolean;
+    const matches = vi.spyOn(Element.prototype, 'matches').mockImplementation(function (
+      this: Element,
+      selector: string,
+    ) {
+      return selector === ':focus-visible' ? false : original.call(this, selector);
+    });
+    show(set(3));
+    const next = screen.getByRole('button', { name: 'Next slide' });
+    act(() => next.focus());
+    tick(AUTOPLAY_MS);
+    expect(current()).toBe(1);
+    matches.mockRestore();
+  });
+
   it('stops while focus is inside and goes on when it leaves', () => {
+    const original = Reflect.get(Element.prototype, 'matches') as (
+      this: Element,
+      s: string,
+    ) => boolean;
+    vi.spyOn(Element.prototype, 'matches').mockImplementation(function (
+      this: Element,
+      selector: string,
+    ) {
+      return selector === ':focus-visible' ? true : original.call(this, selector);
+    });
     show(set(3));
     const next = screen.getByRole('button', { name: 'Next slide' });
     act(() => next.focus());

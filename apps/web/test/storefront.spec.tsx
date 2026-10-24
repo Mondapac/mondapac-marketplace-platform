@@ -60,7 +60,7 @@ describe('home page', () => {
     renderStore();
     const region = screen.getByRole('region', { name: 'Featured' });
     expect(region.getAttribute('aria-roledescription')).toBe('carousel');
-    expect(within(region).getAllByRole('group', { name: /^\d of 3$/ })).toHaveLength(3);
+    expect(region.querySelectorAll('[aria-roledescription="slide"]')).toHaveLength(3);
     expect(within(region).getAllByRole('heading', { level: 2 })).toHaveLength(3);
     const h1 = screen.getByRole('heading', { level: 1 });
     expect(h1.className).toBe('sr-only');

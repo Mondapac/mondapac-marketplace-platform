@@ -46,9 +46,9 @@
   --sf-scrim: rgb(20 33 31 / 0.5);
   /* Slider: the scrim that keeps the text readable over any image (tone light: light text on a dark
      scrim; tone dark: dark text on a light scrim). Strong behind the text, clear at the far side. */
-  --sf-slide-scrim-dark: color-mix(in srgb, var(--sf-ink) 82%, transparent);
+  --sf-slide-scrim-dark: color-mix(in srgb, var(--sf-ink) 94%, transparent);
   --sf-slide-scrim-dark-clear: color-mix(in srgb, var(--sf-ink) 10%, transparent);
-  --sf-slide-scrim-light: color-mix(in srgb, var(--sf-white) 90%, transparent);
+  --sf-slide-scrim-light: color-mix(in srgb, var(--sf-white) 94%, transparent);
   --sf-slide-scrim-light-clear: color-mix(in srgb, var(--sf-white) 8%, transparent);
   --sf-shadow: rgb(20 33 31 / 0.25);
   --sf-shadow-soft: rgb(20 33 31 / 0.06);
@@ -70,6 +70,11 @@
   --sf-radius-card: 5px;
   --sf-radius-tile: 14px;
   --sf-radius-pill: 999px;
+  --sf-radius-hero: 18px;
+  /* Slider: the gap between its rows and texts, and the padding of a slide (phone, then tablet up). */
+  --sf-slide-gap: 8px;
+  --sf-slide-pad-block: 16px;
+  --sf-slide-pad-inline: 20px;
   --sf-header-height: 72px;
   /* Side gutters; widen from the tablet breakpoint. */
   --gl: max(16px, env(safe-area-inset-left, 0px));
@@ -818,27 +823,26 @@ svg {
 
 /* Slider (storefront slider PR 2): text over an image with one link for the whole slide. Server
    rendered; the track scrolls sideways with scroll-snap, so it works without JavaScript. The
-   frame has a fixed aspect ratio per position (no layout shift), and the controls row keeps its
-   height whether or not the script has added the buttons. */
+   frame has a fixed aspect ratio per position (no layout shift) that is also its minimum: when
+   the text is larger than the frame (Large text on a phone) the frame grows to fit it, so
+   nothing is clipped. The controls row keeps its height whether or not the script has added the
+   buttons (without JavaScript it is an empty strip). */
 .slider {
   --slider-ratio: 4 / 3;
   --slider-controls: 44px;
   display: grid;
-  gap: 8px;
+  gap: var(--sf-slide-gap);
   min-width: 0;
   position: relative;
 }
 @media (min-width: 700px) {
   .slider {
     --slider-ratio: 5 / 2;
+    --sf-slide-pad-block: 24px;
+    --sf-slide-pad-inline: 36px;
   }
 }
-@media (min-width: 900px) {
-  .slider {
-    --slider-ratio: 5 / 2;
-  }
-}
-@media (min-width: 1500px) {
+@media (min-width: 1100px) {
   .slider[data-position='home.hero'],
   .slider[data-position='landing.top'] {
     --slider-ratio: 3 / 1;
@@ -858,11 +862,12 @@ svg {
   grid-row: 1;
   display: flex;
   aspect-ratio: var(--slider-ratio);
+  min-height: min-content;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
   scrollbar-width: thin;
-  border-radius: 18px;
+  border-radius: var(--sf-radius-hero);
   background: var(--sf-mist-soft);
 }
 .slider[data-ready] .slider-track {
@@ -877,11 +882,11 @@ svg {
 .slide {
   position: relative;
   flex: 0 0 100%;
+  display: grid;
   min-width: 0;
-  height: 100%;
   overflow: hidden;
+  border-radius: var(--sf-radius-hero);
   scroll-snap-align: start;
-  scroll-snap-stop: always;
   background: var(--sf-mist-soft);
   color: var(--sf-ink);
   --scrim: var(--sf-slide-scrim-light);
@@ -908,14 +913,16 @@ svg {
   --art-position: 100% 50%;
 }
 .slide-inner {
-  position: absolute;
-  inset: 0;
+  position: relative;
   display: flex;
   align-items: center;
-  padding: 16px 20px;
+  padding: var(--sf-slide-pad-block) var(--sf-slide-pad-inline);
+  border-radius: var(--sf-radius-hero);
   color: inherit;
   text-decoration: none;
 }
+/* The scrim is solid behind the text (the text is at most 60% wide, plus its padding) and only
+   then clears towards the picture, so no pixel of the art ever sits under a word. */
 .slide-inner::before {
   content: '';
   position: absolute;
@@ -923,7 +930,7 @@ svg {
   background: linear-gradient(
     var(--scrim-dir),
     var(--scrim) 0%,
-    var(--scrim) 50%,
+    var(--scrim) 65%,
     var(--scrim-clear) 100%
   );
 }
@@ -932,17 +939,18 @@ svg {
 }
 .slide[data-placement='center'] .slide-inner::before {
   background: var(--scrim);
-  opacity: 0.8;
 }
 .slide[data-placement='end'] .slide-inner {
   justify-content: flex-end;
 }
-/* On a phone the text spans the frame, so the scrim covers all of it. */
+/* On a phone the text spans the frame, so the scrim covers all of it and the art is faded. */
 @media (max-width: 699.98px) {
   .slide-inner::before,
   .slide[data-placement='center'] .slide-inner::before {
     background: var(--scrim);
-    opacity: 0.9;
+  }
+  .slide-img.art {
+    opacity: 0.35;
   }
 }
 .slide-img {
@@ -956,15 +964,13 @@ svg {
 .slide-img.art {
   object-fit: contain;
   object-position: var(--art-position);
-}
-.slide-img.art {
   mix-blend-mode: multiply;
 }
 .slide-text {
   position: relative;
   z-index: 1;
   display: grid;
-  gap: 8px;
+  gap: var(--sf-slide-gap);
   justify-items: start;
   max-width: min(100%, 36rem);
   text-align: start;
@@ -990,12 +996,9 @@ svg {
   overflow: hidden;
 }
 .slide[data-tone='dark'] .slide-text p {
-  color: var(--sf-slate);
+  color: var(--sf-ink);
 }
 @media (min-width: 700px) {
-  .slide-inner {
-    padding: 24px 36px;
-  }
   .slide-text {
     max-width: 54%;
   }
@@ -1021,14 +1024,14 @@ svg {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  opacity: 0.85;
 }
+/* The button look is only for a slide that is a link; a label without a link is not drawn. */
 .slide-cta {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  margin-top: 4px;
-  padding: 0 20px;
+  margin-top: calc(var(--sf-slide-gap) / 2);
+  padding: 0 var(--sf-slide-pad-inline);
   border-radius: var(--sf-radius-pill);
   font-weight: 700;
   background: var(--sf-ink);
@@ -1038,9 +1041,22 @@ svg {
   background: var(--sf-white);
   color: var(--sf-ink);
 }
+/* Focus: a 3px ink ring (3:1 on the light slides) with a white 2px ring inside it (so it is also
+   3:1 on the teal ones), on the rounded link itself, inside the frame, so nothing clips it. It is
+   drawn by the last child so the scrim cannot paint over it. */
 .slide-inner:focus-visible {
-  outline: 3px solid var(--sf-saffron);
-  outline-offset: -5px;
+  outline: none;
+}
+.slide-inner:focus-visible::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  outline: 3px solid var(--sf-ink);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 5px var(--sf-white);
+  pointer-events: none;
 }
 .slider-controls {
   grid-row: 2;
@@ -1049,7 +1065,7 @@ svg {
   align-items: center;
   justify-content: center;
   align-content: flex-start;
-  gap: 0 4px;
+  gap: 0 calc(var(--sf-slide-gap) / 2);
   min-height: var(--slider-controls);
 }
 .slider[data-count='1'] .slider-controls {
@@ -1093,7 +1109,7 @@ svg {
   border-radius: var(--sf-radius-pill);
   background: color-mix(in srgb, var(--sf-ink) 30%, var(--sf-white));
 }
-.slider-dot[aria-current='true'] span {
+.slider-dot[aria-selected='true'] span {
   width: 22px;
   background: var(--sf-teal);
 }

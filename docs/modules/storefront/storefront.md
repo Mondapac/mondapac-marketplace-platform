@@ -170,7 +170,12 @@ path (`/c/..`, `/p/<id>`, `/s/<slug>`, `/l/<slug>`, or a prepared search `/offer
 Web migration of the home banner (no data migration, no backend page change): the home hero is
 always the first section. Live slides win; if there are none, the first `banner` module of the
 published layout is shown as a one-slide slider (title cut to 60, an external link and its button
-dropped, image only a known placeholder key); later banners stay promos. The sample hero shows
+dropped, image only a known placeholder key); later banners stay promos.
+
+Without JavaScript the slider still scrolls (CSS scroll-snap) and every slide is readable and
+clickable, but the controls row below it (pause, arrows, picker) is an empty strip of fixed height:
+it keeps its space so the page does not shift when the script adds the buttons. A slide's button
+label is drawn only when the slide has a link (a label without a link is not shown). The sample hero shows
 only when the slides read failed and the sample fallback is on.
 
 ## Not in v1 (follow-ups)

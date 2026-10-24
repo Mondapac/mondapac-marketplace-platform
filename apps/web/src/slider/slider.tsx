@@ -29,6 +29,15 @@ const isRtl = (el: Element | null): boolean =>
   el !== null &&
   (getComputedStyle(el).direction === 'rtl' || el.closest('[dir]')?.getAttribute('dir') === 'rtl');
 
+/** Only keyboard focus holds the rotation; a click that happens to focus a button does not. */
+function keyboardFocus(target: Element): boolean {
+  try {
+    return target.matches(':focus-visible');
+  } catch {
+    return true;
+  }
+}
+
 function Chevron({ next }: { readonly next: boolean }) {
   return (
     <svg
@@ -70,15 +79,21 @@ function SlideView({
   index,
   count,
   inert,
+  id,
+  panel,
 }: {
   readonly slide: HeroSlide;
   readonly index: number;
   readonly count: number;
   readonly inert: boolean;
+  readonly id: string;
+  /** With the picker present each slide is the panel of its tab; without it, a plain group. */
+  readonly panel: boolean;
 }) {
   const t = useTranslations('slider');
   const uid = useId();
   const titleId = `${uid}t`;
+  const tagId = `${uid}s`;
   const bodyId = `${uid}b`;
   const art = slide.image?.src.startsWith('/placeholders/') === true;
   const inside: ReactNode = (
@@ -95,7 +110,11 @@ function SlideView({
         />
       )}
       <span className="slide-text">
-        {slide.sponsored ? <span className="slide-tag">{t('sponsored')}</span> : null}
+        {slide.sponsored ? (
+          <span id={tagId} className="slide-tag">
+            {t('sponsored')}
+          </span>
+        ) : null}
         <h2 id={titleId} dir="auto">
           {slide.title}
         </h2>
@@ -104,7 +123,7 @@ function SlideView({
             {slide.body}
           </p>
         )}
-        {slide.ctaLabel === undefined ? null : (
+        {slide.ctaLabel === undefined || slide.href === undefined ? null : (
           <span className="slide-cta" dir="auto">
             {slide.ctaLabel}
           </span>
@@ -114,12 +133,13 @@ function SlideView({
   );
   return (
     <div
+      id={id}
       className="slide"
       data-tone={slide.tone}
       data-placement={slide.placement}
       {...(count > 1
         ? {
-            role: 'group',
+            role: panel ? 'tabpanel' : 'group',
             'aria-roledescription': 'slide',
             'aria-label': t('slide-of', { n: index + 1, total: count }),
           }
@@ -132,7 +152,7 @@ function SlideView({
         <Link
           className="slide-inner"
           href={slide.href}
-          aria-labelledby={titleId}
+          aria-labelledby={slide.sponsored ? `${tagId} ${titleId}` : titleId}
           aria-describedby={slide.body === undefined ? undefined : bodyId}
         >
           {inside}
@@ -146,6 +166,7 @@ function Carousel({ set, label }: { readonly set: SlideSet; readonly label: stri
   const t = useTranslations('slider');
   const { slides } = set;
   const count = slides.length;
+  const base = useId();
   const rootRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const dotsRef = useRef<HTMLDivElement>(null);
@@ -229,6 +250,8 @@ function Carousel({ set, label }: { readonly set: SlideSet; readonly label: stri
     return () => clearTimeout(timer);
   }, [running, current, count, goTo]);
 
+  const slideId = (i: number) => `${base}-slide-${i}`;
+
   const onDotKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const back = isRtl(rootRef.current) ? 'ArrowRight' : 'ArrowLeft';
     const forward = back === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft';
@@ -254,7 +277,7 @@ function Carousel({ set, label }: { readonly set: SlideSet; readonly label: stri
       aria-label={label}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onFocus={() => setFocused(true)}
+      onFocus={(event) => setFocused(keyboardFocus(event.target))}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
       }}
@@ -292,7 +315,7 @@ function Carousel({ set, label }: { readonly set: SlideSet; readonly label: stri
             <div
               ref={dotsRef}
               className="slider-dots"
-              role="group"
+              role="tablist"
               aria-label={t('choose')}
               onKeyDown={onDotKey}
             >
@@ -301,9 +324,11 @@ function Carousel({ set, label }: { readonly set: SlideSet; readonly label: stri
                   key={slide.id}
                   type="button"
                   className="slider-dot"
+                  role="tab"
                   tabIndex={i === current ? 0 : -1}
                   aria-label={t('go-to', { n: i + 1, total: count })}
-                  aria-current={i === current ? 'true' : undefined}
+                  aria-selected={i === current}
+                  aria-controls={slideId(i)}
                   onClick={() => goTo(i, true)}
                 >
                   <span aria-hidden="true" />
@@ -330,6 +355,8 @@ function Carousel({ set, label }: { readonly set: SlideSet; readonly label: stri
             index={i}
             count={count}
             inert={ready && i !== current}
+            id={slideId(i)}
+            panel={ready}
           />
         ))}
       </div>
@@ -347,7 +374,14 @@ export function Slider({ set, label }: { readonly set: SlideSet; readonly label:
     return (
       <section className="slider" data-position={set.position} data-count="1" aria-label={label}>
         <div className="slider-track">
-          <SlideView slide={set.slides[0]!} index={0} count={1} inert={false} />
+          <SlideView
+            slide={set.slides[0]!}
+            index={0}
+            count={1}
+            inert={false}
+            id="slide-0"
+            panel={false}
+          />
         </div>
       </section>
     );

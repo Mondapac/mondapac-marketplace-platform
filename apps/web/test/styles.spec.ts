@@ -87,7 +87,9 @@ describe('slider styles', () => {
   });
 
   it('shows a visible focus ring on the slide link and the controls', () => {
-    expect(css).toMatch(/\.slide-inner:focus-visible\s*\{[^}]*outline:\s*3px/);
+    expect(css).toMatch(
+      /\.slide-inner:focus-visible::after\s*\{[^}]*outline:\s*3px solid var\(--sf-ink\)[^}]*inset 0 0 0 5px var\(--sf-white\)/,
+    );
     expect(css).toMatch(/\.slider-btn:focus-visible[^{]*\{[^}]*outline:\s*3px/);
   });
 
