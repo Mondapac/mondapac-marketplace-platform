@@ -356,5 +356,20 @@
     "expiryWarningThresholdsDays": [30, 14, 1],
     "renewalSubmitByDays": 7,
     "manufacturerBasisEnabled": false
+  },
+  "shipping": {
+    "realTimeCarrier": {
+      "carrier": "mondapac-drive",
+      "displayName": "Mondapac Drive",
+      "baseUrl": "https://drive-api.mondapac.test",
+      "merchantId": "mondapac-marketplace",
+      "serviceAreas": ["greater-brisbane"],
+      "parcel": { "weightGrams": 5000, "volumeLitres": 20, "temperature": "ambient" },
+      "mode": "on_demand",
+      "timeoutMs": 2500,
+      "maxAttempts": 2,
+      "backoffMs": 250,
+      "circuitBreaker": { "failureThreshold": 5, "cooldownSeconds": 30 }
+    }
   }
 }
