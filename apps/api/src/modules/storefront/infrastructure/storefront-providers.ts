@@ -1,12 +1,19 @@
 import type { FactoryProvider } from '@nestjs/common';
-import { CATALOG_ASSISTANT_FACADE, CATALOG_FACADE } from '../../catalog';
-import type { CatalogAssistantFacade, CatalogFacade } from '../../catalog';
-import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { LINK_TARGETS, type LinkTargets } from '../application/ports/link-targets';
 import { PAGE_REPOSITORY, type PageRepository } from '../application/ports/page.repository';
 import { SLIDE_REPOSITORY, type SlideRepository } from '../application/ports/slide.repository';
+import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import {
+  CATALOG_ASSISTANT_FACADE,
+  CATALOG_FACADE,
+  type CatalogAssistantFacade,
+  type CatalogFacade,
+} from '../../catalog';
+import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
+import { SLIDE_TARGETS, type SlideTargets } from '../application/ports/slide-targets';
 import { FacadeLinkTargets } from './facade-link-targets';
+import { FacadeSlideTargets } from './facade-slide-targets';
 import { PrismaPageRepository } from './prisma-page.repository';
 import { PrismaSlideRepository } from './prisma-slide.repository';
 
@@ -23,12 +30,19 @@ export const storefrontProviders: readonly FactoryProvider[] = [
     useFactory: (prisma: PrismaService): SlideRepository => new PrismaSlideRepository(prisma),
   },
   {
-    provide: LINK_TARGETS,
-    inject: [CATALOG_ASSISTANT_FACADE, CATALOG_FACADE, SELLERS_FACADE],
+    provide: SLIDE_TARGETS,
+    inject: [CATALOG_FACADE, CATALOG_ASSISTANT_FACADE, SELLERS_FACADE, MarketRegistry],
     useFactory: (
-      tree: CatalogAssistantFacade,
       catalog: CatalogFacade,
+      categories: CatalogAssistantFacade,
       sellers: SellersFacade,
-    ): LinkTargets => new FacadeLinkTargets(tree, catalog, sellers),
+      markets: MarketRegistry,
+    ): SlideTargets => new FacadeSlideTargets(catalog, categories, sellers, markets),
+  },
+  {
+    provide: LINK_TARGETS,
+    inject: [CATALOG_ASSISTANT_FACADE, SELLERS_FACADE],
+    useFactory: (tree: CatalogAssistantFacade, sellers: SellersFacade): LinkTargets =>
+      new FacadeLinkTargets(tree, sellers),
   },
 ];

@@ -24,6 +24,9 @@ import { testDatabaseUrl } from './test-database';
 
 const T0 = Temporal.Instant.from('2026-10-23T00:00:00Z');
 const CHECK = '23514';
+const FOREIGN_KEY = '23503';
+const WRITE_ONCE = '23001';
+const DUPLICATE = '23505';
 const DENIED = '42501';
 const UNIQUE = 'P2002';
 const HOURS_90_DAYS = 24 * 90;
@@ -75,7 +78,7 @@ describe.each(TEST_MARKETS)('storefront slide store in market %s (database)', (c
     updatedAt: T0,
     ...overrides,
   });
-  const content = { title: 'Eid Mubarak', body: 'Dates', link: null };
+  const content = { title: 'Eid Mubarak', body: 'Dates' };
   const version = (slideId: Id<'StorefrontSlide'>, versionNo: number) => ({
     id: ids.next<'StorefrontSlideVersion'>(),
     slideId,
@@ -299,7 +302,11 @@ describe.each(TEST_MARKETS)('storefront slide store in market %s (database)', (c
 
     const slide = slideRecord();
     await insert(slide);
-    const insertVersionRow = (overrides: Record<string, unknown> = {}, versionNo = 90) => {
+    let nextVersionNo = 1;
+    const insertVersionRow = (
+      overrides: Record<string, unknown> = {},
+      versionNo = nextVersionNo++,
+    ) => {
       const r = {
         content: JSON.stringify(content),
         placements: JSON.stringify([{ position: 'home.hero' }]),
@@ -317,7 +324,7 @@ describe.each(TEST_MARKETS)('storefront slide store in market %s (database)', (c
             market.marketId,
             market.tenantId,
             slide.id,
-            versionNo + Math.floor(Math.random() * 1e6),
+            versionNo,
             r.content,
             r.placements,
             T0.toString(),
@@ -345,6 +352,34 @@ describe.each(TEST_MARKETS)('storefront slide store in market %s (database)', (c
       }),
     ).toBe(CHECK);
     expect(await insertVersionRow({ content: JSON.stringify([]) })).toBe(CHECK);
+    // Strict content: a title is a string; body and call to action are strings when present.
+    expect(await insertVersionRow({ content: JSON.stringify({ title: 7 }) })).toBe(CHECK);
+    expect(await insertVersionRow({ content: JSON.stringify({ title: null }) })).toBe(CHECK);
+    expect(await insertVersionRow({ content: JSON.stringify({}) })).toBe(CHECK);
+    expect(await insertVersionRow({ content: JSON.stringify({ title: 'ok', body: 5 }) })).toBe(
+      CHECK,
+    );
+    expect(await insertVersionRow({ content: JSON.stringify({ title: 'ok', body: null }) })).toBe(
+      CHECK,
+    );
+    expect(
+      await insertVersionRow({ content: JSON.stringify({ title: 'ok', ctaLabel: ['x'] }) }),
+    ).toBe(CHECK);
+    // The whole document is capped at 8 KiB, the placements at 4 KiB.
+    expect(
+      await insertVersionRow({
+        content: JSON.stringify({ title: 'ok', padding: 'p'.repeat(8200) }),
+      }),
+    ).toBe(CHECK);
+    expect(
+      await insertVersionRow({
+        placements: JSON.stringify([{ position: 'home.hero', padding: 'p'.repeat(4100) }]),
+      }),
+    ).toBe(CHECK);
+    // At most 100 versions per slide; raising that needs a migration.
+    expect(await insertVersionRow({}, 0)).toBe(CHECK);
+    expect(await insertVersionRow({}, 101)).toBe(CHECK);
+    expect(await insertVersionRow({}, 100)).toBe('allowed');
     expect(await insertVersionRow({ placements: JSON.stringify([]) })).toBe(CHECK);
     expect(await insertVersionRow({ approved_by: by })).toBe(CHECK);
 
@@ -380,10 +415,36 @@ describe.each(TEST_MARKETS)('storefront slide store in market %s (database)', (c
       );
     };
     expect(await insertPlacementRow()).toBe('allowed');
-    expect(await insertPlacementRow({ autoplay: true })).toBe('allowed');
+    // A slide is placed once per position and scope, a null scope id included.
+    expect(await insertPlacementRow({ autoplay: true })).toBe(DUPLICATE);
     expect(await insertPlacementRow({ position_key: 'landing.top', autoplay: true })).toBe(
       'allowed',
     );
+    expect(await insertPlacementRow({ position_key: 'landing.top', autoplay: true })).toBe(
+      DUPLICATE,
+    );
+    const scopeId = ids.next();
+    expect(
+      await insertPlacementRow({
+        position_key: 'category.top',
+        scope: 'category',
+        scope_id: scopeId,
+      }),
+    ).toBe('allowed');
+    expect(
+      await insertPlacementRow({
+        position_key: 'category.top',
+        scope: 'category',
+        scope_id: scopeId,
+      }),
+    ).toBe(DUPLICATE);
+    expect(
+      await insertPlacementRow({
+        position_key: 'category.top',
+        scope: 'category',
+        scope_id: ids.next(),
+      }),
+    ).toBe('allowed');
     // Autoplay only at the hero and the top of a landing page.
     expect(await insertPlacementRow({ position_key: 'home.mid', autoplay: true })).toBe(CHECK);
     expect(await insertPlacementRow({ position_key: 'Home Hero' })).toBe(CHECK);
@@ -399,6 +460,83 @@ describe.each(TEST_MARKETS)('storefront slide store in market %s (database)', (c
       }),
     ).toBe(CHECK);
     expect(await insertPlacementRow({ sort_order: 5000 })).toBe(CHECK);
+  });
+
+  it('refuses a pointer to a version of another slide, and any change to an approved version', async () => {
+    const slide = slideRecord();
+    const peer = slideRecord();
+    await insert(slide);
+    await insert(peer);
+    const mine = version(slide.id, 1);
+    const theirs = version(peer.id, 1);
+    await value(market, () => slides.insertVersion(market, mine));
+    await value(market, () => slides.insertVersion(market, theirs));
+    const point = (column: string, versionId: string) =>
+      code_(
+        sql.query(`UPDATE storefront.slides SET ${column} = $1 WHERE id = $2`, [
+          versionId,
+          slide.id,
+        ]),
+      );
+    for (const column of ['draft_version_id', 'submitted_version_id']) {
+      expect(await point(column, theirs.id)).toBe(FOREIGN_KEY);
+      expect(await point(column, ids.next())).toBe(FOREIGN_KEY);
+      expect(await point(column, mine.id)).toBe('allowed');
+    }
+    // A live pointer needs the matching state, and is held to the slide's own versions too.
+    const live = (versionId: string) =>
+      code_(
+        sql.query(
+          `UPDATE storefront.slides SET state = 'approved', live_version_id = $1 WHERE id = $2`,
+          [versionId, slide.id],
+        ),
+      );
+    expect(await live(theirs.id)).toBe(FOREIGN_KEY);
+    expect(await live(mine.id)).toBe('allowed');
+
+    // Once approved, a version is written no more, not even the stamp.
+    await value(market, () => slides.markApproved(market, mine.id, stamp(3)));
+    for (const statement of [
+      `UPDATE storefront.slide_versions SET approved_by = approved_by WHERE id = $1`,
+      `UPDATE storefront.slide_versions SET approved_at = now() WHERE id = $1`,
+      `UPDATE storefront.slide_versions SET approved_by = NULL, approved_at = NULL WHERE id = $1`,
+    ]) {
+      expect(await code_(sql.query(statement, [mine.id]))).toBe(WRITE_ONCE);
+    }
+    // The repository's stamp only ever touches a version that is not approved yet.
+    await value(market, () => slides.markApproved(market, mine.id, stamp(9)));
+    expect(
+      (
+        await value(market, () => slides.findVersion(market, slide.id, mine.id))
+      )?.approvedAt?.toString(),
+    ).toBe(T0.add({ hours: 3 }).toString());
+    // An unapproved version can still be stamped.
+    await value(market, () => slides.markApproved(market, theirs.id, stamp(4)));
+    expect(
+      (await value(market, () => slides.findVersion(market, peer.id, theirs.id)))?.approvedBy,
+    ).toBe(by);
+  });
+
+  it('takes the slide lock without moving its last-change time', async () => {
+    const slide = slideRecord();
+    await insert(slide);
+    await value(market, () =>
+      slides.updateSlide(market, slide.id, { internalName: 'Late' }, stamp(10)),
+    );
+    const rowVersion = async () =>
+      (
+        await sql.query<{ row_version: number; updated_at: Date }>(
+          `SELECT row_version, updated_at FROM storefront.slides WHERE id = $1`,
+          [slide.id],
+        )
+      ).rows[0]!;
+    const before = await rowVersion();
+    expect(before.updated_at.getTime()).toBe(T0.add({ hours: 10 }).epochMilliseconds);
+    await value(market, () => slides.lockSlide(market, slide.id));
+    await value(market, () => slides.lockSlide(market, slide.id));
+    const after = await rowVersion();
+    expect(after.row_version).toBe(before.row_version + 2);
+    expect(after.updated_at.getTime()).toBe(before.updated_at.getTime());
   });
 
   it("grants the application role no delete of slides and versions, and no update of a version's content", async () => {

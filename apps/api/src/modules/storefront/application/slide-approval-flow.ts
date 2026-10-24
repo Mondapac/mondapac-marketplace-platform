@@ -1,5 +1,5 @@
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import {
   StorefrontSlidePaused,
   StorefrontSlidePublished,
@@ -10,12 +10,14 @@ import type { Problems } from '../domain/fields';
 import { positionOf } from '../domain/slide-positions';
 import {
   capExceeded,
+  readContent,
   readPlacements,
   windowProblems,
   type SlidePlacement,
   type SlideWindow,
 } from '../domain/slides';
 import { adminOf } from './page-flow';
+import { targetKey, type SlideTarget } from './ports/slide-targets';
 import type { PlacementRow, SlideRecord, SlideStamp } from './ports/slide.repository';
 import {
   detailOf,
@@ -86,6 +88,56 @@ function projectionOf(
     startsAt: window.startsAt,
     endsAt: window.endsAt,
   }));
+}
+
+/**
+ * The link and the scope ids of the draft that do not point at something live in this Market: a
+ * page that exists and is not archived, a category in the public tree, a published product, a
+ * seller who may sell. An answer that could not be had counts against the draft (fail closed).
+ */
+async function unresolvedTargets(
+  deps: StorefrontDependencies,
+  context: CallContext,
+  slide: SlideRecord,
+  draft: { readonly content: unknown },
+  placements: readonly SlidePlacement[],
+): Promise<Problems> {
+  const wanted: { path: string; type: string; id: string }[] = [];
+  const link = readContent(slide.kind, draft.content)?.link ?? null;
+  if (link !== null) wanted.push({ path: 'content.link', type: link.type, id: link.id });
+  for (const [index, placement] of placements.entries()) {
+    if (placement.scope !== 'all' && placement.scopeId !== null) {
+      wanted.push({
+        path: `placements[${index}].scopeId`,
+        type: placement.scope,
+        id: placement.scopeId,
+      });
+    }
+  }
+  const failed: Problems = [];
+  const toFacade: SlideTarget[] = [];
+  for (const entry of wanted) {
+    if (entry.type === 'page') {
+      const page = await deps.pages.findPage(context.market, entry.id as Id<'StorefrontPage'>);
+      if (page === null || page.archivedAt !== null) {
+        failed.push({ path: entry.path, code: 'not-found' });
+      }
+    } else if (entry.type === 'category' || entry.type === 'product' || entry.type === 'seller') {
+      toFacade.push({ type: entry.type, id: entry.id });
+    }
+    // A prepared search is named by a code, checked by its format when the draft was saved.
+  }
+  if (toFacade.length > 0) {
+    const live = await deps.targets.live(context, toFacade);
+    for (const entry of wanted) {
+      if (entry.type !== 'category' && entry.type !== 'product' && entry.type !== 'seller')
+        continue;
+      const key = targetKey({ type: entry.type, id: entry.id });
+      if (live === null) failed.push({ path: entry.path, code: 'unverifiable' });
+      else if (!live.has(key)) failed.push({ path: entry.path, code: 'not-found' });
+    }
+  }
+  return failed;
 }
 
 const reload = async (deps: StorefrontDependencies, context: CallContext, slide: SlideRecord) =>
@@ -160,6 +212,11 @@ export async function approveSlide(
     if (problems.length > 0) return err({ code: 'validation.failed', fields: problems } as const);
     if (isEnded(draft, stamp.at)) return err({ code: 'storefront.slide-ended' } as const);
 
+    const unresolved = await unresolvedTargets(deps, context, slide, draft, placements);
+    if (unresolved.length > 0) {
+      return err({ code: 'storefront.slide-link-invalid', fields: unresolved } as const);
+    }
+
     const project = slide.state !== 'paused';
     if (project) {
       await deps.slides.lockPositions(
@@ -198,7 +255,11 @@ export async function approveSlide(
     await deps.audit.record(
       context,
       StorefrontSlidePublished.entry(slide.id, {
-        after: { versionNo: draft.versionNo, placementCount: placements.length },
+        after: {
+          versionNo: draft.versionNo,
+          placementCount: placements.length,
+          selfApproved: draft.createdBy === admin.accountId,
+        },
       }),
     );
     return ok(await reload(deps, context, slide));

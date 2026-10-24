@@ -14,6 +14,7 @@ import { positionOf, type PositionDefinition } from '../domain/slide-positions';
 import { readContent, type SlideContent } from '../domain/slides';
 import { live } from './public-flow';
 import type { LiveCategoryRow } from './ports/link-targets';
+import { targetKey, type SlideTarget } from './ports/slide-targets';
 import type { StorefrontDependencies } from './storefront-dependencies';
 
 // What a buyer with no session reads of the slide library: the live slides of one position for
@@ -193,11 +194,25 @@ export async function viewPublishedSlides(
   const productIds = idsOf('product');
   const pageIds = idsOf('page');
 
-  const [products, sellers] = await Promise.all([
-    productIds.length === 0 ? new Set<string>() : deps.links.liveProducts(context, productIds),
-    sellerIds.length === 0 ? new Map<string, string>() : deps.links.sellerSlugs(context, sellerIds),
-  ]);
-  if (products === null || sellers === null) degraded = true;
+  // One rule of liveness for every target: the SlideTargets port (the same one approval uses).
+  const wanted: SlideTarget[] = [
+    ...idsOf('category').map((id) => ({ type: 'category' as const, id })),
+    ...productIds.map((id) => ({ type: 'product' as const, id })),
+    ...sellerIds.map((id) => ({ type: 'seller' as const, id })),
+  ];
+  const aliveKeys =
+    wanted.length === 0 ? new Set<string>() : await deps.targets.live(context, wanted);
+  if (aliveKeys === null) degraded = true;
+  const alive = (type: SlideTarget['type'], id: string): boolean =>
+    aliveKeys?.has(targetKey({ type, id })) ?? false;
+  const products = new Set(productIds.filter((id) => alive('product', id)));
+  const liveSellers = sellerIds.filter((id) => alive('seller', id));
+  const slugs =
+    liveSellers.length === 0
+      ? new Map<string, string>()
+      : await deps.links.sellerSlugs(context, liveSellers);
+  if (slugs === null) degraded = true;
+  const sellers = slugs ?? new Map<string, string>();
   const pages = new Map<string, string>();
   if (pageIds.length > 0) {
     await deps.unitOfWork.run(
@@ -223,9 +238,9 @@ export async function viewPublishedSlides(
     );
   }
   const lookups: LinkLookups = {
-    categories: categoryPaths(rows),
-    products: products ?? new Set(),
-    sellers: sellers ?? new Map(),
+    categories: new Map([...categoryPaths(rows)].filter(([id]) => alive('category', id))),
+    products,
+    sellers,
     pages,
   };
 

@@ -16,8 +16,6 @@ export interface LiveCategoryRow {
 export interface LinkTargets {
   /** The live category tree of the request's Market. */
   categories(context: CallContext): Promise<readonly LiveCategoryRow[] | null>;
-  /** Which of these products are published now (an unknown or other Market's id is absent). */
-  liveProducts(context: CallContext, ids: readonly string[]): Promise<ReadonlySet<string> | null>;
   /** The store address of each of these sellers that may sell now (a suspended one is absent). */
   sellerSlugs(
     context: CallContext,

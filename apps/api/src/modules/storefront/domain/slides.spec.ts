@@ -123,6 +123,66 @@ describe.each(TEST_MARKETS)('slide domain in market %s', (code) => {
       ]);
     });
 
+    it('refuses a bare host, an address and an IP in every text field', () => {
+      const link = { type: 'category', id: UUID_A };
+      const hosts = [
+        'halal-deals.com/x',
+        'halal-deals.com',
+        'Shop at halal-deals.com now',
+        'visit sub.example.com.au',
+        'deals.shop',
+        'a@b.example',
+        'call 192.168.0.1',
+        'Halal-Deals.COM/Sale',
+      ];
+      for (const bad of hosts) {
+        expect(problemsOf('announcement', content({ title: bad }))).toHaveLength(1);
+        expect(problemsOf('announcement', content({ body: bad }))).toHaveLength(1);
+        expect(problemsOf('promotion', content({ link, ctaLabel: bad }))).toHaveLength(1);
+        expect(problemsOf('announcement', content({ image: { ref: 'a', alt: bad } }))).toEqual([
+          { path: 'content.image.alt', code: 'url' },
+        ]);
+        expect(problemsOf('announcement', valid({ internalName: bad }))).toEqual([
+          { path: 'internalName', code: 'url' },
+        ]);
+      }
+    });
+
+    it('does not mistake ordinary text for a host: abbreviations, decimals, prices, sentences', () => {
+      const fine = [
+        'e.g. dates and figs',
+        'i.e. fresh stock',
+        'Save 2.5 percent',
+        'Only $2.50 a kilo',
+        '10.5% off, 3.14 kg',
+        'Mon.-Fri. 9am',
+        'Sale ends today. Hurry',
+        'Buy now.It is Eid',
+        'Dr. Ahmed picks',
+        'Halal & fresh - no preservatives',
+        'Order by 5 p.m. daily',
+        'v2.0 range',
+      ];
+      for (const good of fine) {
+        expect(problemsOf('announcement', content({ title: good }))).toEqual([]);
+        expect(problemsOf('announcement', content({ body: good }))).toEqual([]);
+        expect(problemsOf('announcement', content({ image: { ref: 'a', alt: good } }))).toEqual([]);
+        expect(problemsOf('announcement', valid({ internalName: good }))).toEqual([]);
+      }
+    });
+
+    it('keeps alt text plain: no markup, no URL (also when the image is not decorative)', () => {
+      const alt = (value: string) =>
+        problemsOf('announcement', content({ image: { ref: 'a', alt: value } }));
+      expect(alt('<img src=x onerror=alert(1)>')).toEqual([
+        { path: 'content.image.alt', code: 'markup' },
+      ]);
+      expect(alt('see https://evil.example/x')).toEqual([
+        { path: 'content.image.alt', code: 'url' },
+      ]);
+      expect(alt('Lanterns & dates')).toEqual([]);
+    });
+
     it('takes a link only as a typed reference, never a URL', () => {
       for (const type of ['category', 'product', 'seller', 'page']) {
         expect(parseDraft('link', content({ link: { type, id: UUID_B } })).ok).toBe(true);

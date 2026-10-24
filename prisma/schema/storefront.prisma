@@ -116,8 +116,14 @@ model StorefrontSlide {
   createdBy          String                     @map("created_by") @db.Uuid
   updatedAt          DateTime                   @map("updated_at") @db.Timestamptz(6)
   updatedBy          String                     @map("updated_by") @db.Uuid
-  versions           StorefrontSlideVersion[]
+  /// Raised by every lock of the row (`lockSlide`), so a lock never writes an older `updatedAt`.
+  rowVersion         Int                        @default(0) @map("row_version")
+  versions           StorefrontSlideVersion[]   @relation("SlideVersions")
   placements         StorefrontSlidePlacement[]
+  /// The version pointers are composite foreign keys into this slide's own versions.
+  liveVersion        StorefrontSlideVersion?    @relation("SlideLive", fields: [marketId, id, liveVersionId], references: [marketId, slideId, id], onDelete: Restrict, onUpdate: Restrict)
+  draftVersion       StorefrontSlideVersion?    @relation("SlideDraft", fields: [marketId, id, draftVersionId], references: [marketId, slideId, id], onDelete: Restrict, onUpdate: Restrict)
+  submittedVersion   StorefrontSlideVersion?    @relation("SlideSubmitted", fields: [marketId, id, submittedVersionId], references: [marketId, slideId, id], onDelete: Restrict, onUpdate: Restrict)
 
   /// The foreign-key target of the versions and placements.
   @@unique([marketId, id])
@@ -136,7 +142,7 @@ model StorefrontSlideVersion {
   marketId     String          @map("market_id") @db.VarChar(8)
   tenantId     String          @map("tenant_id")
   slideId      String          @map("slide_id") @db.Uuid
-  /// 1, 2, ... per slide, in creation order.
+  /// 1 to 100 (CHECK), per slide, in creation order; raising the cap needs a migration.
   versionNo    Int             @map("version_no")
   internalName String          @map("internal_name")
   content      Json
@@ -150,10 +156,14 @@ model StorefrontSlideVersion {
   /// The platform admin who approved this version; both or neither with `approvedAt` (CHECK).
   approvedBy   String?         @map("approved_by") @db.Uuid
   approvedAt   DateTime?       @map("approved_at") @db.Timestamptz(6)
-  slide        StorefrontSlide @relation(fields: [marketId, slideId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  slide        StorefrontSlide @relation("SlideVersions", fields: [marketId, slideId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  liveOf       StorefrontSlide[] @relation("SlideLive")
+  draftOf      StorefrontSlide[] @relation("SlideDraft")
+  submittedOf  StorefrontSlide[] @relation("SlideSubmitted")
 
+  /// The foreign-key target of the slide's version pointers.
+  @@unique([marketId, slideId, id])
   @@unique([marketId, slideId, versionNo])
-  @@unique([marketId, id])
   @@map("slide_versions")
   @@schema("storefront")
 }

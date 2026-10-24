@@ -89,7 +89,23 @@ export type Parsed<T> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly problems: Problems };
 
 const MARKUP = /[<>]/u;
-const URL_LIKE = /(?:[a-z][a-z0-9+.-]*:\/\/|\bwww\.|\bmailto:|\bjavascript:)/iu;
+// Top-level domains a bare host such as `halal-deals.com/x` can end in. A list, not "any word
+// after a dot", so "e.g.", "2.5" and "Sale.Ends today" are not mistaken for a host.
+const TLDS =
+  'com|net|org|info|biz|edu|gov|io|ai|app|dev|xyz|shop|store|online|site|website|link|click|club|' +
+  'vip|tv|cc|ly|ws|fm|au|nz|my|sg|uk|eu|fr|nl|ru|cn|jp|br|za|ae|pk|bd';
+const URL_LIKE = new RegExp(
+  [
+    '[a-z][a-z0-9+.-]*:\\/\\/', // a scheme
+    '\\bwww\\.',
+    '\\bmailto:',
+    '\\bjavascript:',
+    '[\\p{L}\\p{N}._-]+@[\\p{L}\\p{N}-]+\\.[\\p{L}]{2,}', // an address
+    '\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b', // an IPv4 address
+    `(?<![\\p{L}\\p{N}@])(?:[\\p{L}\\p{N}-]+\\.)+(?:${TLDS})(?![\\p{L}\\p{N}])`, // a bare host
+  ].join('|'),
+  'iu',
+);
 
 /** A plain text: no markup characters and no URL-like text. */
 function plain(
@@ -134,7 +150,10 @@ function parseImage(problems: Problems, path: string, value: unknown): SlideImag
   if (!decorative) {
     // A content image carries alt text (the shared check requires it).
     const checked = image(problems, path, { ref: value.ref, alt: value.alt });
-    return checked === null ? null : { ...checked, decorative: false };
+    if (checked === null) return null;
+    // Alt text is plain text too: no markup, no URL.
+    const alt = plain(problems, at(path, 'alt'), checked.alt, 160, false);
+    return alt === null ? null : { ref: checked.ref, alt, decorative: false };
   }
   // Decorative: the text carries the message, so the alt text must be empty.
   const probe: Problems = [];
@@ -359,7 +378,9 @@ export function parseNewSlide(body: unknown): Parsed<NewSlideInput> {
 }
 
 /** The stored forms (jsonb) of a version's content and placements. */
-export const storedContent = (content: SlideContent): Record<string, unknown> => ({ ...content });
+export const storedContent = (content: SlideContent): Record<string, unknown> =>
+  // An absent optional field is left out, not stored as null (the CHECKs read an absent key).
+  Object.fromEntries(Object.entries(content).filter(([, value]) => value !== null));
 export const storedPlacements = (placements: readonly SlidePlacement[]): unknown[] =>
   placements.map((placement) => ({ ...placement }));
 

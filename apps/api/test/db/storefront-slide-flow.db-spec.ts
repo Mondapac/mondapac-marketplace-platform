@@ -17,6 +17,7 @@ import {
   updateSlideDraft,
   viewSlide,
 } from '../../src/modules/storefront/application/slide-flow';
+import { targetKey } from '../../src/modules/storefront/application/ports/slide-targets';
 import type { StorefrontDependencies } from '../../src/modules/storefront/application/storefront-dependencies';
 import { PrismaSlideRepository } from '../../src/modules/storefront/infrastructure/prisma-slide.repository';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
@@ -35,6 +36,8 @@ import {
 
 const T0 = Temporal.Instant.from('2026-10-23T00:00:00Z');
 const POSITION = 'cart.below-lines';
+/** A position the other tests leave room in. */
+const PUBLIC_POSITION = 'landing.top';
 
 describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (code) => {
   const market = marketOf(code);
@@ -70,6 +73,8 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
     deps = {
       unitOfWork: db.unitOfWork,
       pages: undefined as never,
+      // Facades are covered by their own specs; here every target is live.
+      targets: { live: (_c, targets) => Promise.resolve(new Set(targets.map(targetKey))) },
       slides,
       links: undefined as never,
       audit: {
@@ -103,8 +108,10 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
       throw new Error(`refused: ${JSON.stringify((result as { error: unknown }).error)}`);
     return (result as { value: T }).value;
   };
-  const approved = async (target: CallContext, hours = 0) => {
-    const created = ok(await createSlide(deps, target, draft(hours)));
+  const approved = async (target: CallContext, hours = 0, position = POSITION) => {
+    const created = ok(
+      await createSlide(deps, target, draft(hours, { placements: [{ position }] })),
+    );
     ok(await submitSlide(deps, target, { slide: created.id }));
     return ok(await approveSlide(deps, target, { slide: created.id, body: { versionNo: 1 } }));
   };
@@ -181,6 +188,51 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
     expect((await projected(market, first.id)).map((p) => p.position)).toEqual([POSITION]);
   });
 
+  const FULL = { code: 'storefront.slide-position-full' };
+  const winners = (results: readonly { ok: boolean }[]) => results.filter((r) => r.ok).length;
+
+  it('lets exactly one of two parallel approvals take the last place of a position', async () => {
+    const day = 24 * 120;
+    await approved(context, day);
+    await approved(context, day);
+    const submit = async () => {
+      const created = ok(await createSlide(deps, context, draft(day)));
+      ok(await submitSlide(deps, context, { slide: created.id }));
+      return created.id;
+    };
+    const [a, b] = [await submit(), await submit()];
+    const results = await Promise.all([
+      approveSlide(deps, context, { slide: a, body: { versionNo: 1 } }),
+      approveSlide(deps, context, { slide: b, body: { versionNo: 1 } }),
+    ]);
+    expect(winners(results)).toBe(1);
+    const loser = results.find((r) => !r.ok);
+    expect(loser).toMatchObject({ ok: false, error: FULL });
+    const placed = [...(await projected(market, a)), ...(await projected(market, b))];
+    expect(placed).toHaveLength(1);
+  });
+
+  it('lets exactly one of an approval and a resume take the last place', async () => {
+    const day = 24 * 160;
+    const paused = await approved(context, day);
+    ok(await pauseSlide(deps, context, { slide: paused.id }));
+    await approved(context, day);
+    await approved(context, day);
+    const created = ok(await createSlide(deps, context, draft(day)));
+    ok(await submitSlide(deps, context, { slide: created.id }));
+    const results = await Promise.all([
+      approveSlide(deps, context, { slide: created.id, body: { versionNo: 1 } }),
+      resumeSlide(deps, context, { slide: paused.id }),
+    ]);
+    expect(winners(results)).toBe(1);
+    expect(results.find((r) => !r.ok)).toMatchObject({ ok: false, error: FULL });
+    const placed = [
+      ...(await projected(market, created.id)),
+      ...(await projected(market, paused.id)),
+    ];
+    expect(placed).toHaveLength(1);
+  });
+
   it('keeps every draft save as a version and leaves the live version serving', async () => {
     const live = await approved(context, 24 * 80);
     const replacement: Record<string, unknown> = draft(24 * 80, { internalName: 'Cart nudge v2' });
@@ -205,11 +257,11 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
       db.unitOfWork
         .run(target, async () => ({
           ok: true as const,
-          value: await slides.servedAt(target, POSITION, start, 100),
+          value: await slides.servedAt(target, PUBLIC_POSITION, start, 100),
         }))
         .then((r) => (r.ok ? r.value : []));
-    const live = await approved(context, 24 * 120);
-    const theirs = await approved(otherContext, 24 * 120);
+    const live = await approved(context, 24 * 120, PUBLIC_POSITION);
+    const theirs = await approved(otherContext, 24 * 120, PUBLIC_POSITION);
     expect((await served(market)).map((p) => p.slideId)).toContain(live.id);
     expect((await served(market)).map((p) => p.slideId)).not.toContain(theirs.id);
     expect((await served(other)).map((p) => p.slideId)).toContain(theirs.id);

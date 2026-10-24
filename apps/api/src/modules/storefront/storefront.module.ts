@@ -1,4 +1,6 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { CatalogModule } from '../catalog';
+import { SellersModule } from '../sellers';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
@@ -9,6 +11,7 @@ import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { PAGE_REPOSITORY } from './application/ports/page.repository';
 import { LINK_TARGETS } from './application/ports/link-targets';
 import { SLIDE_REPOSITORY } from './application/ports/slide.repository';
+import { SLIDE_TARGETS } from './application/ports/slide-targets';
 import type { StorefrontDependencies } from './application/storefront-dependencies';
 import { AddStorefrontModule } from './application/use-cases/add-module.use-case';
 import { ApproveStorefrontNavigation } from './application/use-cases/approve-navigation.use-case';
@@ -29,8 +32,6 @@ import { ViewStorefrontPage } from './application/use-cases/view-page.use-case';
 import { ViewPublishedLandingPage } from './application/use-cases/view-published-landing-page.use-case';
 import { ViewPublishedStorefrontNavigation } from './application/use-cases/view-published-navigation.use-case';
 import { ViewPublishedStorefrontSlides } from './application/use-cases/view-published-slides.use-case';
-import { CatalogModule } from '../catalog';
-import { SellersModule } from '../sellers';
 import { ViewPublishedStorefrontPage } from './application/use-cases/view-published-page.use-case';
 import { ApproveStorefrontSlide } from './application/use-cases/approve-slide.use-case';
 import { PauseStorefrontSlide } from './application/use-cases/pause-slide.use-case';
@@ -57,6 +58,7 @@ const PORTS: readonly [keyof StorefrontDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['pages', PAGE_REPOSITORY],
   ['slides', SLIDE_REPOSITORY],
+  ['targets', SLIDE_TARGETS],
   ['links', LINK_TARGETS],
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],

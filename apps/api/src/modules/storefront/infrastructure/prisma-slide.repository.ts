@@ -8,6 +8,7 @@ import type {
   SlideRepository,
   SlideStamp,
   SlideVersionRecord,
+  SlideVersionSummary,
 } from '../application/ports/slide.repository';
 import type { SlideScope } from '../domain/slide-positions';
 import type { SlideKind, StoredSlideState } from '../domain/slides';
@@ -99,15 +100,14 @@ export class PrismaSlideRepository implements SlideRepository {
   }
 
   async lockSlide(market: MarketContext, id: Id<'StorefrontSlide'>) {
-    // A same-value update takes the row lock until the unit ends (the guarded client sends no raw
-    // SQL); the read after it sees what was committed before the lock was granted.
-    const first = await this.findSlide(market, id);
-    if (first === null) return null;
-    await this.prisma.tx(market).storefrontSlide.updateMany({
+    // Raising the row version takes the row lock until the unit ends (the guarded client sends no
+    // raw SQL) and writes no other column, so a lock never puts an older `updated_at` back over
+    // a change that committed first; the read after it sees what was committed before the lock.
+    const { count } = await this.prisma.tx(market).storefrontSlide.updateMany({
       where: { marketId: market.marketId, id },
-      data: { updatedAt: toDate(first.updatedAt) },
+      data: { rowVersion: { increment: 1 } },
     });
-    return this.findSlide(market, id);
+    return count === 0 ? null : this.findSlide(market, id);
   }
 
   async insertSlide(market: MarketContext, slide: SlideRecord, by: Id<'Account'>) {
@@ -173,8 +173,23 @@ export class PrismaSlideRepository implements SlideRepository {
       where: { marketId: market.marketId, slideId },
       orderBy: [{ versionNo: 'desc' }],
       take: limit,
+      select: {
+        id: true,
+        slideId: true,
+        versionNo: true,
+        internalName: true,
+        createdAt: true,
+        approvedAt: true,
+      },
     });
-    return rows.map(toVersion);
+    return rows.map((row): SlideVersionSummary => ({
+      id: row.id as Id<'StorefrontSlideVersion'>,
+      slideId: row.slideId as Id<'StorefrontSlide'>,
+      versionNo: row.versionNo,
+      internalName: row.internalName,
+      createdAt: toInstant(row.createdAt),
+      approvedAt: row.approvedAt === null ? null : toInstant(row.approvedAt),
+    }));
   }
 
   async findVersion(

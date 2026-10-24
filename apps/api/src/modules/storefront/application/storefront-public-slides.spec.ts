@@ -16,6 +16,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { storedContent } from '../domain/slides';
 import type { SlideContent } from '../domain/slides';
 import type { LinkTargets, LiveCategoryRow } from './ports/link-targets';
+import { targetKey, type SlideTargets } from './ports/slide-targets';
 import type { SlideRecord } from './ports/slide.repository';
 import type { StorefrontDependencies } from './storefront-dependencies';
 import { ViewPublishedStorefrontSlides } from './use-cases/view-published-slides.use-case';
@@ -55,10 +56,28 @@ const worldOf = (code: string): World => {
   }
   return world;
 };
+const targets: SlideTargets & { down: boolean } = {
+  down: false,
+  live: (c, wanted) => {
+    if (targets.down) return Promise.resolve(null);
+    const world = worldOf(c.market.marketId);
+    return Promise.resolve(
+      new Set(
+        wanted
+          .filter((t) =>
+            t.type === 'category'
+              ? world.categories.some((row) => row.id === t.id)
+              : t.type === 'product'
+                ? world.products.has(t.id)
+                : world.sellers.has(t.id),
+          )
+          .map(targetKey),
+      ),
+    );
+  },
+};
 const links: LinkTargets = {
   categories: (c) => Promise.resolve(worldOf(c.market.marketId).categories),
-  liveProducts: (c, ids) =>
-    Promise.resolve(new Set(ids.filter((p) => worldOf(c.market.marketId).products.has(p)))),
   sellerSlugs: (c, ids) =>
     Promise.resolve(
       new Map(
@@ -122,6 +141,7 @@ describe.each([
 
   beforeEach(() => {
     worlds.clear();
+    targets.down = false;
     for (const c of [code, otherCode]) {
       worldOf(c).categories = [
         { id: TOP, parentId: null, slug: 'meat' },
@@ -137,6 +157,7 @@ describe.each([
       unitOfWork: new FakeUnitOfWork(),
       pages: pagesStub as never,
       slides,
+      targets,
       links: setLinks,
       audit: undefined as never,
       ids: new SequenceIdGenerator(clock),
@@ -348,18 +369,8 @@ describe.each([
     it('drops what depends on an owner that cannot answer and does not let it be cached', async () => {
       seed({ content: { link: { type: 'product', id: PRODUCT } } });
       const plain = seed();
-      const deps = {
-        unitOfWork: new FakeUnitOfWork(),
-        pages: pagesStub as never,
-        slides,
-        links: { ...links, liveProducts: () => Promise.resolve(null) },
-        audit: undefined as never,
-        ids: new SequenceIdGenerator(clock),
-        clock,
-      } as StorefrontDependencies;
-      const view = await new ViewPublishedStorefrontSlides(gate, deps).execute(buyer, {
-        position: 'home.hero',
-      });
+      targets.down = true;
+      const view = await read.execute(buyer, { position: 'home.hero' });
       expect(view.ok && view.value.slides.map((s) => s.id)).toEqual([plain]);
       expect(view.ok && view.value.maxAgeSeconds).toBe(0);
     });

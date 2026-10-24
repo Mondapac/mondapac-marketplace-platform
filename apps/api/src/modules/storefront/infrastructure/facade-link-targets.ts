@@ -1,6 +1,6 @@
 import { parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
-import type { CatalogAssistantFacade, CatalogFacade } from '../../catalog';
+import type { CatalogAssistantFacade } from '../../catalog';
 import type { SellersFacade } from '../../sellers';
 import type { LinkTargets, LiveCategoryRow } from '../application/ports/link-targets';
 
@@ -14,7 +14,6 @@ const BATCH = 100;
 export class FacadeLinkTargets implements LinkTargets {
   constructor(
     private readonly categoryTree: CatalogAssistantFacade,
-    private readonly catalog: CatalogFacade,
     private readonly sellers: SellersFacade,
   ) {}
 
@@ -29,40 +28,17 @@ export class FacadeLinkTargets implements LinkTargets {
     }
   }
 
-  async liveProducts(
-    context: CallContext,
-    ids: readonly string[],
-  ): Promise<ReadonlySet<string> | null> {
-    const live = new Set<string>();
-    try {
-      for (const id of ids) {
-        const parsed = parseId(id);
-        if (!parsed.ok) continue;
-        // Existence only: the name is not used, so any locale will do (INTL-13 fallback).
-        const answer = await this.catalog.publishedProduct(
-          context,
-          parsed.value as Id<'Product'>,
-          'en',
-        );
-        if (!answer.ok) return null;
-        if (answer.value !== null) live.add(id);
-      }
-    } catch {
-      return null;
-    }
-    return live;
-  }
-
   async sellerSlugs(
     context: CallContext,
     ids: readonly string[],
   ): Promise<ReadonlyMap<string, string> | null> {
     const slugs = new Map<string, string>();
     try {
-      const sellerIds = ids.flatMap((id) => {
+      const sellerIds: Id<'Seller'>[] = [];
+      for (const id of ids) {
         const parsed = parseId(id);
-        return parsed.ok ? [parsed.value] : [];
-      });
+        if (parsed.ok) sellerIds.push(parsed.value as Id<'Seller'>);
+      }
       for (let from = 0; from < sellerIds.length; from += BATCH) {
         const answer = await this.sellers.publishedStoreSlugs(
           context,

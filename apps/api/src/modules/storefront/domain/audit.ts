@@ -118,7 +118,12 @@ export const StorefrontSlidePublished = defineAuditAction({
   action: 'storefront.slide.publish',
   targetType: STOREFRONT_SLIDE_TARGET,
   actors: ['authenticated'],
-  after: { versionNo: auditField.integer(), placementCount: auditField.integer() },
+  after: {
+    versionNo: auditField.integer(),
+    placementCount: auditField.integer(),
+    /** The approver is the person who saved the version (a one-person approval). */
+    selfApproved: auditField.boolean(),
+  },
 });
 
 /** An editor paused a slide: it stops being served at once, with no approval. */

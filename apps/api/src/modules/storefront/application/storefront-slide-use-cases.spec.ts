@@ -8,6 +8,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { MemorySlides } from '../../../../test/support/memory-slide-repository';
+import { MemoryTargets } from '../../../../test/support/memory-slide-targets';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
@@ -122,15 +123,31 @@ describe.each([
   const seller = actorIn(market, EDITOR, 'seller');
 
   let slides: MemorySlides;
+  let targets: MemoryTargets;
+  let pageIds: Map<string, { archivedAt: Temporal.Instant | null }>;
   let audit: RecordingAudit;
   let deps: StorefrontDependencies;
   beforeEach(() => {
     clock.set(T0);
     slides = new MemorySlides();
     audit = new RecordingAudit();
+    targets = new MemoryTargets();
+    pageIds = new Map();
+    // Both Markets know the categories the specs scope to; products, sellers and pages are added
+    // by the cases that need them.
+    for (const m of [market, otherMarket]) {
+      for (const n of [0xca, 0xca1, 0xca2]) {
+        targets.add(m.marketId, 'category', id<'Category'>(n).toString());
+      }
+    }
     deps = {
       unitOfWork: new FakeUnitOfWork(),
-      pages: undefined as never,
+      // Only `findPage` is read by the slide flow: a page of this Market, archived or not.
+      pages: {
+        findPage: (m: MarketContext, pageId: string) =>
+          Promise.resolve(m.marketId === market.marketId ? (pageIds.get(pageId) ?? null) : null),
+      } as never,
+      targets,
       slides,
       links: undefined as never,
       audit,
@@ -793,6 +810,128 @@ describe.each([
     });
   });
 
+  describe('approving checks what the slide points at', () => {
+    const PRODUCT = id<'Product'>(0x9d1).toString();
+    const SELLER = id<'Seller'>(0x5e1).toString();
+    const PAGE = id<'StorefrontPage'>(0x9a1).toString();
+    const submitted = async (extra: object, kind = 'promotion') => {
+      const slide = await made(editor, kind, extra);
+      await value(run(SubmitStorefrontSlide, editor, { slide: slide.id }));
+      return slide;
+    };
+    const approveIt = (slide: string, context: CallContext = admin) =>
+      run(ApproveStorefrontSlide, context, { slide, body: { versionNo: 1 } });
+    const withLink = (link: object) => ({
+      content: { title: 'Dates', link, ctaLabel: 'Shop' },
+    });
+
+    it('approves a link and scopes that are live in this Market', async () => {
+      targets.add(market.marketId, 'product', PRODUCT);
+      targets.add(market.marketId, 'seller', SELLER);
+      pageIds.set(PAGE, { archivedAt: null });
+      for (const link of [
+        { type: 'product', id: PRODUCT },
+        { type: 'seller', id: SELLER },
+        { type: 'page', id: PAGE },
+        { type: 'category', id: CATEGORY },
+        { type: 'search', id: 'halal-snacks' },
+      ]) {
+        const slide = await submitted(withLink(link));
+        expect((await value<SlideDetailView>(approveIt(slide.id))).status).toBe('live');
+      }
+      const scoped = await submitted({
+        placements: [
+          { position: 'product.below-details', scope: 'seller', scopeId: SELLER },
+          { position: 'landing.top', scope: 'page', scopeId: PAGE },
+        ],
+      });
+      expect((await value<SlideDetailView>(approveIt(scoped.id))).status).toBe('live');
+    });
+
+    it('refuses a product of the other Market, naming the field, and changes nothing', async () => {
+      targets.add(otherMarket.marketId, 'product', PRODUCT);
+      const slide = await submitted(withLink({ type: 'product', id: PRODUCT }));
+      const before = audit.entries.length;
+      expect(await errorOf(approveIt(slide.id))).toEqual({
+        code: 'storefront.slide-link-invalid',
+        fields: [{ path: 'content.link', code: 'not-found' }],
+      });
+      expect(slides.placements).toEqual([]);
+      expect(slides.slides.get(slide.id)).toMatchObject({
+        liveVersionId: null,
+        submittedVersionId: expect.any(String) as unknown,
+      });
+      expect(audit.entries).toHaveLength(before);
+      // The same product id is fine in the Market that has it.
+      const theirs = await made(
+        otherEditor,
+        'promotion',
+        withLink({ type: 'product', id: PRODUCT }),
+      );
+      await value(run(SubmitStorefrontSlide, otherEditor, { slide: theirs.id }));
+      expect((await value<SlideDetailView>(approveIt(theirs.id, otherAdmin))).status).toBe('live');
+    });
+
+    it('refuses an unknown or archived target and lists every field', async () => {
+      pageIds.set(PAGE, { archivedAt: T0 });
+      const slide = await submitted({
+        ...withLink({ type: 'page', id: PAGE }),
+        placements: [
+          {
+            position: 'category.top',
+            scope: 'category',
+            scopeId: id<'Category'>(0xdead).toString(),
+          },
+          { position: 'product.below-details', scope: 'seller', scopeId: SELLER },
+          { position: 'home.hero' },
+        ],
+      });
+      expect(await errorOf(approveIt(slide.id))).toEqual({
+        code: 'storefront.slide-link-invalid',
+        fields: [
+          { path: 'content.link', code: 'not-found' },
+          { path: 'placements[0].scopeId', code: 'not-found' },
+          { path: 'placements[1].scopeId', code: 'not-found' },
+        ],
+      });
+    });
+
+    it('refuses a page of the other Market', async () => {
+      pageIds.set(PAGE, { archivedAt: null });
+      const theirs = await made(otherEditor, 'promotion', withLink({ type: 'page', id: PAGE }));
+      await value(run(SubmitStorefrontSlide, otherEditor, { slide: theirs.id }));
+      expect(await errorOf(approveIt(theirs.id, otherAdmin))).toMatchObject({
+        code: 'storefront.slide-link-invalid',
+      });
+    });
+
+    it('fails closed when the facades cannot answer', async () => {
+      targets.add(market.marketId, 'product', PRODUCT);
+      targets.unavailable = true;
+      const slide = await submitted(withLink({ type: 'product', id: PRODUCT }));
+      expect(await errorOf(approveIt(slide.id))).toEqual({
+        code: 'storefront.slide-link-invalid',
+        fields: [{ path: 'content.link', code: 'unverifiable' }],
+      });
+    });
+
+    it('records on the publish entry whether the author approved their own version', async () => {
+      const mine = await made(admin, 'announcement');
+      await value(run(SubmitStorefrontSlide, admin, { slide: mine.id }));
+      await value(approveIt(mine.id));
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'storefront.slide.publish',
+        after: { selfApproved: true },
+      });
+      const theirs = await submitted({}, 'announcement');
+      await value(approveIt(theirs.id));
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'storefront.slide.publish',
+        after: { selfApproved: false },
+      });
+    });
+  });
+
   describe('copy to another Market', () => {
     it('hands out a package that an editor of the other Market creates a draft from', async () => {
       const link = { type: 'category', id: CATEGORY };
@@ -815,7 +954,7 @@ describe.each([
       expect(pack).toMatchObject({
         kind: 'promotion',
         pinned: true,
-        content: { title: 'Dates', link },
+        content: { title: 'Dates', link: null, ctaLabel: null },
         placements: [
           { position: 'category.top', scope: 'all', scopeId: null, includeSubcategories: false },
           { position: 'home.hero', scope: 'all', autoplay: true },
