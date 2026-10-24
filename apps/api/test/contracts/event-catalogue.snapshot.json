@@ -673,6 +673,14 @@
     }
   },
   {
+    "type": "sellers.store-profile-published.v1",
+    "aggregateType": "store-profile",
+    "fields": {
+      "sellerId": "id",
+      "revisionId": "id"
+    }
+  },
+  {
     "type": "sellers.tax-registration-recorded.v1",
     "aggregateType": "seller-tax-profile",
     "fields": {

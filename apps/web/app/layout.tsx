@@ -24,6 +24,8 @@ import {
   storefrontIsLive,
 } from '../src/storefront/source.ts';
 import './globals.css';
+// After globals.css: the store pictures refine the logo tile and the banner it defines.
+import '../src/seller/store-images.css';
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('store');

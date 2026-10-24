@@ -5,6 +5,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { ObjectStore } from '../../../../platform/storage/object-store';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
+import { IMAGE_BUSY_RETRY_SECONDS } from '../../../../platform/images/image-pipeline';
 import { MAX_IMAGES_PER_PRODUCT, MAX_UPLOAD_BYTES } from '../images/image-limits';
 import { ownedProduct, type ProductImageView } from '../images/own-product-access';
 import type { ImageProcessor, ImageRefusalCode } from '../ports/image-processor';
@@ -33,7 +34,9 @@ export type OwnProductImageUploadFailure =
       readonly fields: readonly { readonly path: string; readonly code: string }[];
     };
 
-type ImageRefusalCodeFailure = { readonly code: ImageRefusalCode };
+type ImageRefusalCodeFailure =
+  | { readonly code: Exclude<ImageRefusalCode, 'file.busy'> }
+  | { readonly code: 'access.unavailable'; readonly retryAfterSeconds: number };
 
 export interface OwnProductImageUploadDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -123,7 +126,12 @@ export class OwnProductImageUpload extends UseCase<
 
     const bytes = Buffer.from(input.data, 'base64');
     const processed = await deps.imageProcessor.process(bytes);
-    if (!processed.ok) return err(processed.error);
+    if (!processed.ok) {
+      // Too many pictures are in flight: the same 503 as a store fault, with a short wait.
+      return processed.error.code === 'file.busy'
+        ? err({ code: 'access.unavailable', retryAfterSeconds: IMAGE_BUSY_RETRY_SECONDS })
+        : err({ code: processed.error.code });
+    }
 
     const imageId = deps.ids.next<'ProductImage'>();
     const renditions: StoredRendition[] = [];
