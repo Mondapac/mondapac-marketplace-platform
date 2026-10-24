@@ -1,4 +1,4 @@
--- Reverses 20261021183643_sellers_store_profile_content (sellers design 3.7; data design 3.8): the
+-- Reverses 20261024210000_sellers_store_profile_content (sellers design 3.7; data design 3.8): the
 -- grants first; then the pointer foreign key and column of store_profiles (the pointer names the
 -- revisions); then the new tables, children first (their CHECKs, indexes and keys go with them).
 -- The rate_counters kind CHECK goes back to the list of the file-details migration (the counters of
