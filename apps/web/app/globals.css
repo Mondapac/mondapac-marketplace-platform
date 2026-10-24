@@ -2914,7 +2914,7 @@ svg {
 .certbox {
   display: flex;
   gap: 16px;
-  align-items: center;
+  align-items: flex-start;
   border: 1px solid var(--sf-line);
   border-radius: 10px;
   padding: 16px;
@@ -2931,6 +2931,27 @@ svg {
 }
 .certbox p {
   color: var(--sf-slate);
+}
+.certbox .certmeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 16px;
+  margin-top: 4px;
+  font-size: calc(13px * var(--fs));
+  line-height: calc(18px * var(--fs));
+}
+.certbox .certok {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--sf-ok-ink);
+  font-weight: 600;
+}
+.certbox .certok .ico {
+  width: 14px;
+  height: 14px;
+  flex: none;
 }
 .offs {
   display: grid;
@@ -2956,6 +2977,12 @@ svg {
 .badge.hl {
   background: var(--sf-mist);
   color: var(--sf-teal);
+}
+.badge.decl {
+  background: transparent;
+  border: 1px solid var(--sf-line);
+  color: var(--sf-slate);
+  font-weight: 600;
 }
 .ofa {
   grid-column: 1;
