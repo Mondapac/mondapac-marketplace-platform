@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { relay } from '../src/storefront/bff.ts';
+import { relaySession as relay } from '../src/storefront/session-relay.ts';
 import type { StorefrontApiConfig } from '../src/storefront/config.ts';
 
-// The buyer site's relay of the customer's own routes (ADR-0034 decision 3, as the panels'):
-// allowlist, Market from the host, same-origin unsafe requests only, cookies relayed unchanged.
+// The customer's own account routes through the buyer site's one relay (ADR-0034 decision 3, as
+// the panels'): allowlist, Market from the host, same-origin unsafe requests only. Cookie and
+// Set-Cookie filtering, the cart and the guest-cart merge are in session-relay.spec.ts.
 
 const ORIGIN = 'http://storefront.localhost:3003';
 const config: StorefrontApiConfig = {
@@ -36,7 +37,7 @@ describe('storefront relay', () => {
       upstream,
       quiet,
     );
-    expect(answer.status).toBe(404);
+    expect(answer.status).toBe(503);
     expect(upstream).not.toHaveBeenCalled();
   });
 
@@ -174,8 +175,11 @@ describe('storefront relay', () => {
     expect(sent.get('x-forwarded-for')).toBeNull();
   });
 
-  it('relays every Set-Cookie unchanged and defaults to no-store', async () => {
-    const headers = new Headers({ 'content-type': 'application/json' });
+  it('relays the session cookie of a sign-in, drops any other, and is never cached', async () => {
+    const headers = new Headers({
+      'content-type': 'application/json',
+      'cache-control': 'max-age=60',
+    });
     headers.append('set-cookie', '__Host-session-customer-AU=ms1_a; Path=/; Secure; HttpOnly');
     headers.append('set-cookie', 'other=1; Path=/; Secure');
     const answer = await relay(
@@ -187,7 +191,6 @@ describe('storefront relay', () => {
     );
     expect(answer.headers.getSetCookie()).toEqual([
       '__Host-session-customer-AU=ms1_a; Path=/; Secure; HttpOnly',
-      'other=1; Path=/; Secure',
     ]);
     expect(answer.headers.get('cache-control')).toBe('private, no-store');
   });
@@ -211,7 +214,7 @@ describe('storefront relay', () => {
     );
     expect(down.status).toBe(503);
     expect(log).toHaveBeenCalledWith({
-      msg: 'storefront.relay.upstream-unreachable',
+      msg: 'storefront.session.upstream-unreachable',
       method: 'GET',
       path: 'customers/me/addresses',
       marketId: 'AU',
