@@ -74,7 +74,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
   const find = (
     text: string | null,
     options: {
-      categoryId?: Id<'Category'>;
+      categoryIds?: readonly Id<'Category'>[];
       limit?: number;
       offset?: number;
       on?: MarketContext;
@@ -87,7 +87,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
           textSearchConfig:
             markets.get((options.on ?? market).marketId).search?.textSearchConfig ?? 'simple',
           text,
-          categoryId: options.categoryId ?? null,
+          categoryIds: options.categoryIds ?? null,
           limit: options.limit ?? 49,
           offset: options.offset ?? 0,
         }),
@@ -173,11 +173,54 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       doc({ name: 'Uncategorised tea' }),
     );
 
-    expect(names(await find('tea', { categoryId: tea }))).toHaveLength(2);
-    expect(names(await find('tea', { categoryId: coffee }))).toEqual(['Apple tea']);
-    expect(names(await find(null, { categoryId: tea }))).toEqual(['Apple tea', 'Zebra tea']);
-    expect(names(await find(null, { categoryId: coffee }))).toEqual(['Apple tea', 'Mocha']);
-    expect(await find(null, { categoryId: id<'Category'>() })).toEqual([]);
+    expect(names(await find('tea', { categoryIds: [tea] }))).toHaveLength(2);
+    expect(names(await find('tea', { categoryIds: [coffee] }))).toEqual(['Apple tea']);
+    expect(names(await find(null, { categoryIds: [tea] }))).toEqual(['Apple tea', 'Zebra tea']);
+    expect(names(await find(null, { categoryIds: [coffee] }))).toEqual(['Apple tea', 'Mocha']);
+    expect(await find(null, { categoryIds: [id<'Category'>()] })).toEqual([]);
+  });
+
+  it('matches a document in any of the given categories (a category and its subcategories), once', async () => {
+    const pantry = id<'Category'>();
+    const pasta = id<'Category'>();
+    const rice = id<'Category'>();
+    await seed(
+      market,
+      doc({ name: 'Spaghetti', categoryIds: [pasta] }),
+      doc({ name: 'Basmati rice', categoryIds: [rice] }),
+      doc({ name: 'Pantry staples box', categoryIds: [pantry, pasta, rice] }),
+      doc({ name: 'Garden hose' }),
+    );
+    const subtree = [pantry, pasta, rice];
+
+    expect(names(await find(null, { categoryIds: subtree }))).toEqual([
+      'Basmati rice',
+      'Pantry staples box',
+      'Spaghetti',
+    ]);
+    expect(names(await find('spaghetti OR rice', { categoryIds: subtree })).sort()).toEqual([
+      'Basmati rice',
+      'Spaghetti',
+    ]);
+    expect(names(await find(null, { categoryIds: [pantry] }))).toEqual(['Pantry staples box']);
+  });
+
+  it('refuses an empty or oversized category filter before any statement', async () => {
+    const ask = (categoryIds: readonly Id<'Category'>[]) =>
+      reader.search(market, {
+        textSearchConfig: settings.textSearchConfig,
+        text: null,
+        categoryIds,
+        limit: 10,
+        offset: 0,
+      });
+
+    await expect(ask([])).rejects.toThrow(RangeError);
+    await expect(ask(Array.from({ length: 1001 }, () => id<'Category'>()))).rejects.toThrow(
+      RangeError,
+    );
+    const full = Array.from({ length: 1000 }, () => id<'Category'>());
+    expect(await inUnit(market, () => ask(full), true)).toEqual([]);
   });
 
   it('pages stably: no Offer twice, none missing, the same order every time', async () => {
@@ -212,7 +255,9 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       'Foreign shared',
       'Shared word beta',
     ]);
-    expect(await find(null, { categoryId: mine.categoryIds[0] ?? id<'Category'>() })).toEqual([]);
+    expect(await find(null, { categoryIds: [mine.categoryIds[0] ?? id<'Category'>()] })).toEqual(
+      [],
+    );
   });
 
   it.each([
@@ -239,7 +284,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       reader.search(market, {
         textSearchConfig: settings.textSearchConfig,
         text: 'x',
-        categoryId: null,
+        categoryIds: null,
         limit,
         offset,
       });
@@ -363,6 +408,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       shelves,
       stores: { sellerIdOf: () => Promise.resolve({ sellerId: null }) },
       images: { of: () => Promise.resolve(new Map()) },
+      categories: { subtreeOf: (_context, categoryId) => Promise.resolve([categoryId]) },
     };
     const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
     const visitor = testCallContext(market, 'anonymous', 'search-db-visitor-1');
@@ -377,7 +423,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
     const browse = (
       sellerId: Id<'Seller'>,
       options: {
-        categoryId?: Id<'Category'>;
+        categoryIds?: readonly Id<'Category'>[];
         limit?: number;
         offset?: number;
         on?: MarketContext;
@@ -389,7 +435,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
           shelves.browseBySeller(
             options.on ?? market,
             sellerId,
-            options.categoryId ?? null,
+            options.categoryIds ?? null,
             options.limit ?? 49,
             options.offset ?? 0,
           ),
@@ -429,13 +475,18 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
         doc({ name: 'Coffee only', sellerId: seller, categoryIds: [coffee] }),
       );
 
-      const inTea = await browse(seller, { categoryId: tea });
+      const inTea = await browse(seller, { categoryIds: [tea] });
       expect(inTea.map((hit) => hit.offerId)).toEqual([first.offerId, second.offerId].sort());
-      expect(names(await browse(seller, { categoryId: coffee }))).toEqual([
+      expect(names(await browse(seller, { categoryIds: [coffee] }))).toEqual([
         'Coffee only',
         'Same name',
       ]);
-      expect(await browse(seller, { categoryId: id<'Category'>() })).toEqual([]);
+      expect(await browse(seller, { categoryIds: [id<'Category'>()] })).toEqual([]);
+      expect(names(await browse(seller, { categoryIds: [tea, coffee] }))).toEqual([
+        'Coffee only',
+        'Same name',
+        'Same name',
+      ]);
     });
 
     it("never shows another Market's documents, even for the same seller id", async () => {
