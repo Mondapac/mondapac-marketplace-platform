@@ -1,4 +1,5 @@
-import type { Money, SellerListing, SellerResults, SellerShop } from './types.ts';
+import { CLOCK_TIME } from '../format/clock.ts';
+import type { DeliveryTerms, Money, SellerListing, SellerResults, SellerShop } from './types.ts';
 
 // The API's public store answers (`GET sellers/stores`, `GET sellers/stores/:slug`) as the
 // storefront's seller types. The body is untrusted: anything that is not the expected shape is
@@ -14,6 +15,8 @@ export interface PublicStore {
   readonly sellingSince: number;
   /** null: no minimum. Absent: not known now, so no minimum line is shown. */
   readonly minimumOrder?: Money | null;
+  /** The seller's delivery terms. Absent: the seller set none, so no delivery line is shown. */
+  readonly delivery?: DeliveryTerms;
 }
 
 export class StoreAnswerRefused extends Error {
@@ -44,6 +47,31 @@ function moneyOf(value: unknown): Money | null | undefined {
   return { amount: Number(amount), currency };
 }
 
+const minutesOf = (time: string): number =>
+  Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+
+/** The delivery terms of a store, or undefined when the API sent none. Anything else is refused. */
+function deliveryOf(value: unknown): DeliveryTerms | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new StoreAnswerRefused('delivery');
+  const { day, from, to, cutoff } = value;
+  if (day !== 'same-day' && day !== 'next-day') throw new StoreAnswerRefused('delivery.day');
+  for (const [name, time] of [
+    ['from', from],
+    ['to', to],
+    ['cutoff', cutoff],
+  ] as const) {
+    if (typeof time !== 'string' || !CLOCK_TIME.test(time)) {
+      throw new StoreAnswerRefused(`delivery.${name}`);
+    }
+  }
+  const [open, close, last] = [from, to, cutoff] as [string, string, string];
+  if (minutesOf(open) >= minutesOf(close) || open === '24:00' || last === '24:00') {
+    throw new StoreAnswerRefused('delivery.window');
+  }
+  return { day, from: open, to: close, cutoff: last };
+}
+
 /** One store of the API's answer, checked field by field. */
 export function publicStoreOf(value: unknown): PublicStore {
   if (!isRecord(value)) throw new StoreAnswerRefused('store');
@@ -66,8 +94,28 @@ export function publicStoreOf(value: unknown): PublicStore {
     throw new StoreAnswerRefused('sellingSince');
   }
   const minimumOrder = moneyOf(value['minimumOrder']);
-  const store = { slug, name, serviceAreaCode, sellingSince };
+  const delivery = deliveryOf(value['delivery']);
+  const store = {
+    slug,
+    name,
+    serviceAreaCode,
+    sellingSince,
+    ...(delivery === undefined ? {} : { delivery }),
+  };
   return minimumOrder === undefined ? store : { ...store, minimumOrder };
+}
+
+/** A store's flat delivery fee as the API answers it (`GET shipping/stores/:slug/flat-fee`). */
+export function flatFeeOf(value: unknown): Money {
+  if (!isRecord(value)) throw new StoreAnswerRefused('flat fee');
+  const { amount, currency } = value;
+  if (typeof amount !== 'string' || !AMOUNT.test(amount)) {
+    throw new StoreAnswerRefused('flat fee.amount');
+  }
+  if (typeof currency !== 'string' || !CURRENCY.test(currency)) {
+    throw new StoreAnswerRefused('flat fee.currency');
+  }
+  return { amount: Number(amount), currency };
 }
 
 /** A page of the list: its stores and the count of every store that sells now. */
@@ -90,6 +138,7 @@ export function shopOf(store: PublicStore, area: string): SellerShop {
     name: store.name,
     location: area,
     sellingSince: store.sellingSince,
+    ...(store.delivery === undefined ? {} : { delivery: store.delivery }),
   };
   if (store.minimumOrder === undefined) return { ...shop, minimumUnknown: true };
   return store.minimumOrder === null ? shop : { ...shop, minimumOrder: store.minimumOrder };

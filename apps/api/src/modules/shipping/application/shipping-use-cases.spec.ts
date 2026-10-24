@@ -22,12 +22,14 @@ import { MAX_FLAT_FEE_MINOR, parseFlatFee } from '../domain/flat-fee';
 import { ConfigShippingPolicy } from '../infrastructure/config-shipping-policy';
 import type { FlatFeeRecord, FlatFeeRepository } from './ports/flat-fee.repository';
 import type { SellerDirectory } from './ports/seller-directory';
+import type { StoreDirectory } from './ports/store-directory';
 import type { ShippingDependencies } from './shipping-dependencies';
 import { DeliveryArea } from './use-cases/delivery-area.use-case';
 import { FlatFees } from './use-cases/flat-fees.use-case';
 import { SetFlatFee } from './use-cases/set-flat-fee.use-case';
 import { ViewFlatFee } from './use-cases/view-flat-fee.use-case';
 import { ViewOwnFlatFee } from './use-cases/view-own-flat-fee.use-case';
+import { ViewStoreFlatFee } from './use-cases/view-store-flat-fee.use-case';
 
 // The flat delivery fee in memory on both Market fixtures (AU in AUD, ZZ in JPY): an admin sets
 // it for an existing seller with an audit row, the seller reads only its own, and ordering's
@@ -122,6 +124,8 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
   let audit: RecordingAudit;
   let known: Set<string>;
   let sellersDown: boolean;
+  let stores: Map<string, Id<'Seller'>>;
+  let storesDown: boolean;
   let deps: ShippingDependencies;
 
   beforeEach(() => {
@@ -129,6 +133,11 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
     audit = new RecordingAudit();
     known = new Set([SELLER_A, SELLER_B]);
     sellersDown = false;
+    stores = new Map([
+      ['kedron', SELLER_A],
+      ['logan-road', SELLER_B],
+    ]);
+    storesDown = false;
     const sellers: SellerDirectory = {
       exists: (_c: CallContext, sellerId: Id<'Seller'>) =>
         Promise.resolve(sellersDown ? ('unavailable' as const) : known.has(sellerId)),
@@ -138,6 +147,10 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
       fees,
       policy: new ConfigShippingPolicy(markets, areas),
       sellers,
+      stores: {
+        sellerOf: (_c: CallContext, slug: string) =>
+          Promise.resolve(storesDown ? ('unavailable' as const) : (stores.get(slug) ?? null)),
+      } satisfies StoreDirectory,
       audit,
       clock,
     };
@@ -250,6 +263,32 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
     // The fee is shown on a guest's cart: an anonymous caller reads it too.
     const guest = await read([SELLER_A], testCallContext(market, 'anonymous', 'ship-anon-abcd'));
     expect(guest.ok && [...guest.value]).toEqual([[SELLER_A, money(500n, currency)]]);
+  });
+
+  it('shows the fee of a store that sells to anyone, and answers every other case alike', async () => {
+    await set(SELLER_A, 995);
+    await set(SELLER_B, 0);
+    const anonymous = testCallContext(market, 'anonymous', 'ship-anon-abcd');
+    const ask = (slug: unknown, context: CallContext = anonymous) =>
+      new ViewStoreFlatFee(gate, deps).execute(context, { slug });
+    expect(await ask('kedron')).toEqual(ok(money(995n, currency)));
+    // An explicit zero is a fee (free shipping), not "none".
+    expect(await ask('logan-road')).toEqual(ok(money(0n, currency)));
+    // A signed-in buyer reads it too.
+    expect(await ask('kedron', actor('customer', null))).toEqual(ok(money(995n, currency)));
+    // An unknown store, a bad slug and a store with no fee are one answer: no store is revealed.
+    stores.set('no-fee', id<'Seller'>(0x53));
+    const notFound = err({ code: 'shipping.store-fee-not-found' });
+    for (const slug of ['nobody', 'no-fee', '', 'x'.repeat(51), 42, null, undefined]) {
+      expect(await ask(slug)).toEqual(notFound);
+    }
+    // A failed lookup is a fault, never read as "no fee".
+    storesDown = true;
+    expect(await ask('kedron')).toEqual(err({ code: 'shipping.unavailable' }));
+    storesDown = false;
+    // The result carries money only, never the seller id.
+    const shown = await ask('kedron');
+    expect(shown.ok && Object.keys(shown.value).sort()).toEqual(['amount', 'currency']);
   });
 
   it('answers whether the Market delivers to a postcode, for anyone, fail closed', async () => {

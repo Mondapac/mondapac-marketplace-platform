@@ -328,6 +328,16 @@ model SellersStoreProfile {
   /// (ADR-0004 decision 3), no foreign key.
   minimumOrderChangedAt          DateTime?         @map("minimum_order_changed_at") @db.Timestamptz(6)
   minimumOrderChangedByAccountId String?           @map("minimum_order_changed_by_account_id") @db.Uuid
+  /// The delivery terms (package e): `same-day` or `next-day`, the window and the daily order
+  /// cut-off as minutes since local midnight in the seller's zone. All four set or all NULL (CHECK);
+  /// half-hour steps; a same-day cut-off is before the window closes. Clear: public terms.
+  deliveryDay                    String?           @map("delivery_day") @db.VarChar(8)
+  deliveryFromMinute             Int?              @map("delivery_from_minute") @db.SmallInt
+  deliveryToMinute               Int?              @map("delivery_to_minute") @db.SmallInt
+  orderCutoffMinute              Int?              @map("order_cutoff_minute") @db.SmallInt
+  /// When and by whom the terms were last changed; both NULL until the first change.
+  deliveryChangedAt              DateTime?         @map("delivery_changed_at") @db.Timestamptz(6)
+  deliveryChangedByAccountId     String?           @map("delivery_changed_by_account_id") @db.Uuid
   sellerFile                     SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([marketId, sellerId])

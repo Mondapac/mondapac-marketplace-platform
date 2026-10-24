@@ -10,6 +10,7 @@ export const SHIPPING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'shipping.seller-not-found': 404,
   'shipping.fee-not-set': 404,
+  'shipping.store-fee-not-found': 404,
   'shipping.unavailable': 503,
 });
 

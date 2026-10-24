@@ -1,4 +1,5 @@
 import type { Id, MarketContext, Money, Temporal } from '@mondapac/shared-kernel';
+import type { DeliveryTerms } from '../../domain/delivery-terms';
 
 /** The settings of a seller's store profile that this build reads and writes (design 18). */
 export interface StoreSettings {
@@ -8,6 +9,8 @@ export interface StoreSettings {
   readonly approved: boolean;
   /** As stored: null is "no minimum". The currency may differ from the Market's after a change. */
   readonly minimumOrder: Money | null;
+  /** The delivery terms as stored; null is "no terms set". */
+  readonly delivery: DeliveryTerms | null;
 }
 
 /**
@@ -25,6 +28,16 @@ export interface StoreProfileRepository {
     market: MarketContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<ReadonlyMap<Id<'Seller'>, Money | null>>;
+
+  /**
+   * The delivery terms as stored, for each of the ids that has a store profile and an approved
+   * revision in the Market and has terms set. A seller without terms, an unknown id and an id of
+   * another Market are not in the answer. The caller bounds the list (at most 100).
+   */
+  approvedDeliveryTerms(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, DeliveryTerms>>;
 
   /**
    * The public store name of the APPROVED revision (`public_store_name`, copied in the unit that
@@ -51,6 +64,22 @@ export interface StoreProfileRepository {
     change: {
       readonly expectedVersion: number;
       readonly minimumOrder: Money | null;
+      readonly changedByAccountId: Id<'Account'>;
+      readonly changedAt: Temporal.Instant;
+    },
+  ): Promise<number | null>;
+
+  /**
+   * Sets or clears (`delivery` null) the delivery terms and raises the version, only where the
+   * stored version is still `expectedVersion`. Answers the new version, or null and writes
+   * nothing when another unit changed the profile first.
+   */
+  saveDeliveryTerms(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    change: {
+      readonly expectedVersion: number;
+      readonly delivery: DeliveryTerms | null;
       readonly changedByAccountId: Id<'Account'>;
       readonly changedAt: Temporal.Instant;
     },

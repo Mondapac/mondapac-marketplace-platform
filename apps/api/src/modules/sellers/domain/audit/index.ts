@@ -61,9 +61,34 @@ export const MinimumOrderChanged = defineAuditAction({
   after: { minimumOrder: auditField.optional(auditField.money()) },
 });
 
+/**
+ * A seller's delivery terms were set, changed or cleared (package e): the day, the window and the
+ * cut-off as minutes since local midnight before and after, absent meaning "no terms". Not
+ * personal data.
+ */
+const DELIVERY_DAY_VALUES = ['same-day', 'next-day'] as const;
+export const DeliveryTermsChanged = defineAuditAction({
+  action: 'sellers.delivery-terms.changed',
+  targetType: SELLER_TARGET,
+  actors: ['authenticated'],
+  before: {
+    day: auditField.optional(auditField.enumOf(DELIVERY_DAY_VALUES)),
+    fromMinute: auditField.optional(auditField.integer()),
+    toMinute: auditField.optional(auditField.integer()),
+    cutoffMinute: auditField.optional(auditField.integer()),
+  },
+  after: {
+    day: auditField.optional(auditField.enumOf(DELIVERY_DAY_VALUES)),
+    fromMinute: auditField.optional(auditField.integer()),
+    toMinute: auditField.optional(auditField.integer()),
+    cutoffMinute: auditField.optional(auditField.integer()),
+  },
+});
+
 /** Every audited action of sellers, for its module's registration. */
 export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   BusinessDetailsViewed,
   ManualRegisterCheckRecorded,
   MinimumOrderChanged,
+  DeliveryTermsChanged,
 ]);

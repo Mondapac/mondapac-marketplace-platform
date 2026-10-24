@@ -8,10 +8,12 @@ import {
   type FlatFeeRepository,
 } from '../application/ports/flat-fee.repository';
 import { SELLER_DIRECTORY, type SellerDirectory } from '../application/ports/seller-directory';
+import { STORE_DIRECTORY, type StoreDirectory } from '../application/ports/store-directory';
 import { SHIPPING_POLICY, type ShippingPolicy } from '../application/ports/shipping-policy';
 import { ConfigShippingPolicy } from './config-shipping-policy';
 import { PrismaFlatFeeRepository } from './prisma-flat-fee.repository';
 import { SellersSellerDirectory } from './sellers-seller-directory';
+import { SellersStoreDirectory } from './sellers-store-directory';
 
 /** Binds the ports of shipping. Only this layer may reach `PrismaService`. */
 export const shippingProviders: readonly FactoryProvider[] = [
@@ -30,5 +32,10 @@ export const shippingProviders: readonly FactoryProvider[] = [
     provide: SELLER_DIRECTORY,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): SellerDirectory => new SellersSellerDirectory(sellers),
+  },
+  {
+    provide: STORE_DIRECTORY,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): StoreDirectory => new SellersStoreDirectory(sellers),
   },
 ];

@@ -8,6 +8,7 @@ import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { SellersModule } from '../sellers';
 import { FLAT_FEE_REPOSITORY } from './application/ports/flat-fee.repository';
 import { SELLER_DIRECTORY } from './application/ports/seller-directory';
+import { STORE_DIRECTORY } from './application/ports/store-directory';
 import { SHIPPING_POLICY } from './application/ports/shipping-policy';
 import type { ShippingDependencies } from './application/shipping-dependencies';
 import { DeliveryArea } from './application/use-cases/delivery-area.use-case';
@@ -15,6 +16,7 @@ import { FlatFees } from './application/use-cases/flat-fees.use-case';
 import { SetFlatFee } from './application/use-cases/set-flat-fee.use-case';
 import { ViewFlatFee } from './application/use-cases/view-flat-fee.use-case';
 import { ViewOwnFlatFee } from './application/use-cases/view-own-flat-fee.use-case';
+import { ViewStoreFlatFee } from './application/use-cases/view-store-flat-fee.use-case';
 import { SHIPPING_FACADE, SHIPPING_PERMISSIONS } from './contracts';
 import { SHIPPING_AUDIT_ACTIONS } from './domain/audit';
 import { shippingProviders } from './infrastructure/shipping-providers';
@@ -23,6 +25,7 @@ import {
   SellerFlatFeeController,
 } from './presentation/flat-fee.controller';
 import { DeliveryAreaController } from './presentation/delivery-area.controller';
+import { StoreFlatFeeController } from './presentation/store-flat-fee.controller';
 import { ShippingFacadeImplementation } from './presentation/shipping.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: ShippingDependencies) => U;
@@ -32,6 +35,7 @@ const PORTS: readonly [keyof ShippingDependencies, InjectionToken][] = [
   ['fees', FLAT_FEE_REPOSITORY],
   ['policy', SHIPPING_POLICY],
   ['sellers', SELLER_DIRECTORY],
+  ['stores', STORE_DIRECTORY],
   ['audit', AUDIT_WRITER],
   ['clock', CLOCK],
 ];
@@ -60,14 +64,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  */
 @Module({
   imports: [SellersModule],
-  controllers: [AdminFlatFeeController, SellerFlatFeeController, DeliveryAreaController],
+  controllers: [
+    AdminFlatFeeController,
+    SellerFlatFeeController,
+    DeliveryAreaController,
+    StoreFlatFeeController,
+  ],
   providers: [
     PersistenceModule.auditWriterFor('shipping'),
     registerAuditActions('shipping', SHIPPING_AUDIT_ACTIONS),
     registerPermissions('shipping', SHIPPING_PERMISSIONS),
     ...shippingProviders,
-    ...[SetFlatFee, ViewFlatFee, ViewOwnFlatFee, FlatFees, DeliveryArea].map((type) =>
-      useCaseProvider(type as UseCaseClass<unknown>),
+    ...[SetFlatFee, ViewFlatFee, ViewOwnFlatFee, FlatFees, DeliveryArea, ViewStoreFlatFee].map(
+      (type) => useCaseProvider(type as UseCaseClass<unknown>),
     ),
     {
       provide: SHIPPING_FACADE,

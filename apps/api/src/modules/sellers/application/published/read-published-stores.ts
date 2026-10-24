@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Money, Result } from '@mondapac/shared-kernel';
+import type { DeliveryTerms } from '../../domain/delivery-terms';
 import {
   sellingSinceOf,
   type ApprovedStoreFacts,
@@ -106,13 +107,31 @@ export async function publishedStoresOf(
     if (!result.ok) throw new Error('the read unit failed');
     for (const [sellerId, minimum] of result.value) minimums.set(sellerId, minimum);
   }
+  const deliveries = new Map<Id<'Seller'>, DeliveryTerms>();
+  for (const batch of chunks(stores, MAX_SELLER_SUMMARY_IDS)) {
+    const result = await deps.unitOfWork.run(
+      market,
+      async () =>
+        ok(
+          await deps.storeProfiles.approvedDeliveryTerms(
+            market,
+            batch.map((store) => store.sellerId),
+          ),
+        ),
+      { readOnly: true },
+    );
+    if (!result.ok) throw new Error('the read unit failed');
+    for (const [sellerId, terms] of result.value) deliveries.set(sellerId, terms);
+  }
   const rule = deps.minimumOrderPolicy.rule(market);
   return stores.map((store): PublishedStore => {
+    const terms = deliveries.get(store.sellerId);
     const base: PublishedStore = {
       slug: store.slug,
       name: store.name,
       serviceAreaCode: store.serviceAreaCode,
       sellingSince: sellingSinceOf(store),
+      ...(terms === undefined ? {} : { delivery: terms }),
     };
     const minimum = minimums.get(store.sellerId);
     if (minimum === undefined) return base;

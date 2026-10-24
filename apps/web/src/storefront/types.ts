@@ -195,6 +195,18 @@ export interface CartItem {
   readonly addedAt?: Money;
 }
 
+/**
+ * A seller's delivery terms as the seller set them: orders placed before `cutoff` arrive the same
+ * day or the next, in the window `from` to `to`. Clock times (`HH:MM` on the half hour, `24:00` for
+ * the end of the day) on the seller's own wall clock, shown without a time zone.
+ */
+export interface DeliveryTerms {
+  readonly day: 'same-day' | 'next-day';
+  readonly from: string;
+  readonly to: string;
+  readonly cutoff: string;
+}
+
 /** A seller's delivery terms as the cart and checkout show them. */
 export interface SellerTerms {
   readonly id: string;
@@ -392,6 +404,8 @@ export interface SellerShop {
   readonly businessCheck?: string;
   /** Not known yet when absent. */
   readonly deliveryWindow?: string;
+  /** The seller's own delivery terms; the page words them. Absent when the seller set none. */
+  readonly delivery?: DeliveryTerms;
   /** Not known yet when absent. */
   readonly deliveryFee?: Money;
   /** Absent when the seller has no minimum order (unless `minimumUnknown`). */
