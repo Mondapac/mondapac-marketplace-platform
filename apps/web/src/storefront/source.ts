@@ -13,6 +13,7 @@ import {
 import type { AssistantSetup } from '../assistant/assistant.ts';
 import { categoriesOf, loadHome, type HomeContent } from './home-source.ts';
 import { photoUrls } from './photo-source.ts';
+import { loadSlides as readSlides, type SlideScope } from './slides-source.ts';
 import { loadShellContent } from './shell-source.ts';
 import { storeProductsOf, storeProductsPath } from './store-products.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
@@ -39,6 +40,7 @@ import type {
   SellerShop,
   SellerSignUpAnswer,
   SellerSignUpSetup,
+  SlideSet,
   StorefrontContent,
   StoreProducts,
   UnavailableProduct,
@@ -68,6 +70,16 @@ export async function loadStorefrontContent(): Promise<StorefrontContent> {
  */
 export async function loadHomeContent(): Promise<HomeContent> {
   return loadHome();
+}
+
+/**
+ * The slides of one slider position for a page (`GET storefront/slides`), each checked here: plain
+ * text, site-path links, images from this app or our media origin only. Sample slides stand in
+ * while API_BASE_URL is empty or the read fails (unless STOREFRONT_SAMPLE_DATA is off). See
+ * ./slides-source.ts. The home hero is read with the home page (loadHomeContent).
+ */
+export async function loadSlides(position: string, scope?: SlideScope): Promise<SlideSet> {
+  return readSlides(position, scope);
 }
 
 /**

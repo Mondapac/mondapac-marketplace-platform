@@ -44,6 +44,12 @@
   --sf-info-soft: #e0eef5;
   --sf-info-ink: #124a66;
   --sf-scrim: rgb(20 33 31 / 0.5);
+  /* Slider: the scrim that keeps the text readable over any image (tone light: light text on a dark
+     scrim; tone dark: dark text on a light scrim). Strong behind the text, clear at the far side. */
+  --sf-slide-scrim-dark: color-mix(in srgb, var(--sf-ink) 82%, transparent);
+  --sf-slide-scrim-dark-clear: color-mix(in srgb, var(--sf-ink) 10%, transparent);
+  --sf-slide-scrim-light: color-mix(in srgb, var(--sf-white) 90%, transparent);
+  --sf-slide-scrim-light-clear: color-mix(in srgb, var(--sf-white) 8%, transparent);
   --sf-shadow: rgb(20 33 31 / 0.25);
   --sf-shadow-soft: rgb(20 33 31 / 0.06);
   --sf-shadow-strong: rgb(20 33 31 / 0.35);
@@ -795,7 +801,7 @@ svg {
 }
 @media (min-width: 900px) {
   .promos {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
   .promo {
     min-height: 220px;
@@ -808,6 +814,291 @@ svg {
   .promo.secondary {
     padding: 28px;
   }
+}
+
+/* Slider (storefront slider PR 2): text over an image with one link for the whole slide. Server
+   rendered; the track scrolls sideways with scroll-snap, so it works without JavaScript. The
+   frame has a fixed aspect ratio per position (no layout shift), and the controls row keeps its
+   height whether or not the script has added the buttons. */
+.slider {
+  --slider-ratio: 4 / 3;
+  --slider-controls: 44px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  position: relative;
+}
+@media (min-width: 700px) {
+  .slider {
+    --slider-ratio: 5 / 2;
+  }
+}
+@media (min-width: 900px) {
+  .slider {
+    --slider-ratio: 5 / 2;
+  }
+}
+@media (min-width: 1500px) {
+  .slider[data-position='home.hero'],
+  .slider[data-position='landing.top'] {
+    --slider-ratio: 3 / 1;
+  }
+}
+/* On a phone the picker sits in its own row below the arrows; eight slides need two rows. */
+@media (max-width: 699.98px) {
+  .slider[data-count] {
+    --slider-ratio: 6 / 5;
+    --slider-controls: 96px;
+  }
+  .slider[data-count='8'] {
+    --slider-controls: 140px;
+  }
+}
+.slider-track {
+  grid-row: 1;
+  display: flex;
+  aspect-ratio: var(--slider-ratio);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  border-radius: 18px;
+  background: var(--sf-mist-soft);
+}
+.slider[data-ready] .slider-track {
+  scrollbar-width: none;
+}
+.slider[data-ready] .slider-track::-webkit-scrollbar {
+  display: none;
+}
+.slider[data-count='1'] .slider-track {
+  overflow: hidden;
+}
+.slide {
+  position: relative;
+  flex: 0 0 100%;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  background: var(--sf-mist-soft);
+  color: var(--sf-ink);
+  --scrim: var(--sf-slide-scrim-light);
+  --scrim-clear: var(--sf-slide-scrim-light-clear);
+  --scrim-dir: to right;
+  --art-position: 100% 50%;
+}
+.slide[data-tone='light'] {
+  background: var(--sf-teal);
+  color: var(--sf-white);
+  --scrim: var(--sf-slide-scrim-dark);
+  --scrim-clear: var(--sf-slide-scrim-dark-clear);
+}
+.slide[data-placement='end'] {
+  --scrim-dir: to left;
+  --art-position: 0% 50%;
+}
+:dir(rtl) .slide {
+  --scrim-dir: to left;
+  --art-position: 0% 50%;
+}
+:dir(rtl) .slide[data-placement='end'] {
+  --scrim-dir: to right;
+  --art-position: 100% 50%;
+}
+.slide-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  color: inherit;
+  text-decoration: none;
+}
+.slide-inner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    var(--scrim-dir),
+    var(--scrim) 0%,
+    var(--scrim) 50%,
+    var(--scrim-clear) 100%
+  );
+}
+.slide[data-placement='center'] .slide-inner {
+  justify-content: center;
+}
+.slide[data-placement='center'] .slide-inner::before {
+  background: var(--scrim);
+  opacity: 0.8;
+}
+.slide[data-placement='end'] .slide-inner {
+  justify-content: flex-end;
+}
+/* On a phone the text spans the frame, so the scrim covers all of it. */
+@media (max-width: 699.98px) {
+  .slide-inner::before,
+  .slide[data-placement='center'] .slide-inner::before {
+    background: var(--scrim);
+    opacity: 0.9;
+  }
+}
+.slide-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* The ready-made art is a square picture on white: it sits at the far side, blended into the tint. */
+.slide-img.art {
+  object-fit: contain;
+  object-position: var(--art-position);
+}
+.slide-img.art {
+  mix-blend-mode: multiply;
+}
+.slide-text {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  max-width: min(100%, 36rem);
+  text-align: start;
+}
+.slide[data-placement='center'] .slide-text {
+  justify-items: center;
+  text-align: center;
+}
+.slide-text h2 {
+  font-size: calc(22px * var(--fs));
+  line-height: calc(28px * var(--fs));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.slide-text p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.slide[data-tone='dark'] .slide-text p {
+  color: var(--sf-slate);
+}
+@media (min-width: 700px) {
+  .slide-inner {
+    padding: 24px 36px;
+  }
+  .slide-text {
+    max-width: 54%;
+  }
+  .slide-text h2 {
+    font-size: calc(28px * var(--fs));
+    line-height: calc(34px * var(--fs));
+  }
+}
+@media (min-width: 900px) {
+  .slide-text {
+    max-width: 60%;
+  }
+  .slide-text h2 {
+    font-size: calc(30px * var(--fs));
+    line-height: calc(36px * var(--fs));
+  }
+  .slide-text p {
+    -webkit-line-clamp: 2;
+  }
+}
+.slide-tag {
+  font-size: calc(12px * var(--fs));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+.slide-cta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 0 20px;
+  border-radius: var(--sf-radius-pill);
+  font-weight: 700;
+  background: var(--sf-ink);
+  color: var(--sf-white);
+}
+.slide[data-tone='light'] .slide-cta {
+  background: var(--sf-white);
+  color: var(--sf-ink);
+}
+.slide-inner:focus-visible {
+  outline: 3px solid var(--sf-saffron);
+  outline-offset: -5px;
+}
+.slider-controls {
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  align-content: flex-start;
+  gap: 0 4px;
+  min-height: var(--slider-controls);
+}
+.slider[data-count='1'] .slider-controls {
+  display: none;
+}
+.slider-btn,
+.slider-dot {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--sf-radius-pill);
+  background: transparent;
+  color: var(--sf-ink);
+  cursor: pointer;
+}
+.slider-btn:hover,
+.slider-dot:hover {
+  background: var(--sf-mist-soft);
+}
+.slider-btn:focus-visible,
+.slider-dot:focus-visible {
+  outline: 3px solid var(--sf-teal);
+  outline-offset: -3px;
+}
+.slider-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+@media (max-width: 699.98px) {
+  .slider-dots {
+    flex-basis: 100%;
+  }
+}
+.slider-dot span {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--sf-radius-pill);
+  background: color-mix(in srgb, var(--sf-ink) 30%, var(--sf-white));
+}
+.slider-dot[aria-current='true'] span {
+  width: 22px;
+  background: var(--sf-teal);
+}
+:dir(rtl) .slider-arrow {
+  transform: scaleX(-1);
 }
 
 /* Category strip */

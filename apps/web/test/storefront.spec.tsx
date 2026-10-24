@@ -56,6 +56,20 @@ describe('home page', () => {
     );
   });
 
+  it('puts the hero slider first, with the page heading hidden and the slides as h2', () => {
+    renderStore();
+    const region = screen.getByRole('region', { name: 'Featured' });
+    expect(region.getAttribute('aria-roledescription')).toBe('carousel');
+    expect(within(region).getAllByRole('group', { name: /^\d of 3$/ })).toHaveLength(3);
+    expect(within(region).getAllByRole('heading', { level: 2 })).toHaveLength(3);
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1.className).toBe('sr-only');
+    expect(
+      region.compareDocumentPosition(screen.getByRole('region', { name: 'Product categories' })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('keeps the text size control out of the footer (it lives in the account settings)', () => {
     renderStore();
     const footer = screen.getByRole('contentinfo');

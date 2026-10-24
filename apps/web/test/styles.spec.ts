@@ -60,3 +60,45 @@ describe('storefront styles', () => {
     expect(css).toMatch(/--sf-certified:\s*#[0-9a-fA-F]{6};/);
   });
 });
+
+describe('slider styles', () => {
+  it('gives every control a 44 px target', () => {
+    const [body] = rules('.slider-btn,');
+    expect(body).toContain('min-width: 44px');
+    expect(body).toContain('min-height: 44px');
+    expect(rules('.slide-cta')[0]).toContain('min-height: 44px');
+  });
+
+  it('keeps a fixed aspect ratio on the frame and lets the track scroll with scroll-snap', () => {
+    const [body] = rules('.slider-track');
+    expect(body).toContain('aspect-ratio: var(--slider-ratio)');
+    expect(body).toContain('scroll-snap-type: x mandatory');
+  });
+
+  it('flips the arrows in right-to-left text and uses logical placement for the text', () => {
+    expect(css).toMatch(/:dir\(rtl\) \.slider-arrow\s*\{\s*transform:\s*scaleX\(-1\)/);
+    const [text] = rules('.slide-text');
+    expect(text).toContain('text-align: start');
+    expect(rules('.slide-inner')[0]).not.toMatch(/(?:left|right)\s*:/);
+  });
+
+  it('makes no smooth scrolling in CSS (the script decides, and never with reduced motion)', () => {
+    expect(css).not.toMatch(/scroll-behavior:\s*smooth/);
+  });
+
+  it('shows a visible focus ring on the slide link and the controls', () => {
+    expect(css).toMatch(/\.slide-inner:focus-visible\s*\{[^}]*outline:\s*3px/);
+    expect(css).toMatch(/\.slider-btn:focus-visible[^{]*\{[^}]*outline:\s*3px/);
+  });
+
+  it('draws the scrim from tokens of both tones', () => {
+    for (const token of [
+      '--sf-slide-scrim-dark',
+      '--sf-slide-scrim-dark-clear',
+      '--sf-slide-scrim-light',
+      '--sf-slide-scrim-light-clear',
+    ]) {
+      expect(css).toContain(`${token}:`);
+    }
+  });
+});
