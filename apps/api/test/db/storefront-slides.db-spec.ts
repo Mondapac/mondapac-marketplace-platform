@@ -557,10 +557,34 @@ describe.each(TEST_MARKETS)('storefront slide store in market %s (database)', (c
         `UPDATE storefront.slide_versions SET ends_at = ends_at + interval '1 hour' WHERE id = $1`,
         [v1.id],
       ],
-      [`UPDATE storefront.slide_placements SET sort_order = 1 WHERE slide_id = $1`, [slide.id]],
+      // A projection row is never rewritten, except for its sort order (the live reorder).
+      [
+        `UPDATE storefront.slide_placements SET position_key = 'home.mid' WHERE slide_id = $1`,
+        [slide.id],
+      ],
+      [`UPDATE storefront.slide_placements SET scope = 'all' WHERE slide_id = $1`, [slide.id]],
+      [`UPDATE storefront.slide_placements SET ends_at = ends_at WHERE slide_id = $1`, [slide.id]],
+      [`UPDATE storefront.slide_saved_orders SET sort_order = 1 WHERE slide_id = $1`, [slide.id]],
       [`DELETE FROM storefront.slide_position_locks WHERE market_id = $1`, [market.marketId]],
     ] as const) {
       expect(await code_(sql.query(statement[0], [...statement[1]]))).toBe(DENIED);
     }
+    // The sort order alone may be written, and a saved order is a row of the same Market only.
+    expect(
+      await code_(
+        sql.query(`UPDATE storefront.slide_placements SET sort_order = 1 WHERE slide_id = $1`, [
+          slide.id,
+        ]),
+      ),
+    ).toBe('allowed');
+    expect(
+      await code_(
+        sql.query(
+          `INSERT INTO storefront.slide_saved_orders (market_id, tenant_id, slide_id, position_key, scope, scope_key, sort_order, saved_at, saved_by)
+           VALUES ($1, 'default', $2, 'home.hero', 'category', 'not-a-uuid', 0, now(), $2)`,
+          [market.marketId, slide.id],
+        ),
+      ),
+    ).toBe(CHECK);
   });
 });

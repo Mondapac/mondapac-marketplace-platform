@@ -1328,6 +1328,22 @@
     }
   },
   {
+    "action": "storefront.slide.reorder",
+    "targetType": "storefront.slide-order",
+    "targetId": "enumOf(home.hero|home.mid|category.top|product.below-details|cart.below-lines|landing.top)",
+    "actors": ["authenticated"],
+    "before": {
+      "order": "listOf(id, max 100)",
+      "scope": "enumOf(all|category|product|seller|page)",
+      "scopeId": "optional(id)"
+    },
+    "after": {
+      "order": "listOf(id, max 100)",
+      "scope": "enumOf(all|category|product|seller|page)",
+      "scopeId": "optional(id)"
+    }
+  },
+  {
     "action": "storefront.slide.resume",
     "targetType": "storefront.slide",
     "targetId": "id",

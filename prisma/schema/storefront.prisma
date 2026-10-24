@@ -97,33 +97,34 @@ model StorefrontRedirect {
 /// approved version buyers see; the three are plain ids checked by the application. The window,
 /// `pinned` and `sponsored` are those of the live version, or of the draft while there is none.
 model StorefrontSlide {
-  id                 String                     @id @db.Uuid
-  marketId           String                     @map("market_id") @db.VarChar(8)
-  tenantId           String                     @map("tenant_id")
+  id                 String                      @id @db.Uuid
+  marketId           String                      @map("market_id") @db.VarChar(8)
+  tenantId           String                      @map("tenant_id")
   /// announcement, promotion or link (CHECK).
   kind               String
-  internalName       String                     @map("internal_name")
+  internalName       String                      @map("internal_name")
   state              String
-  startsAt           DateTime                   @map("starts_at") @db.Timestamptz(6)
+  startsAt           DateTime                    @map("starts_at") @db.Timestamptz(6)
   /// Required, after startsAt and at most 2160 hours (90 days) later (CHECK).
-  endsAt             DateTime                   @map("ends_at") @db.Timestamptz(6)
+  endsAt             DateTime                    @map("ends_at") @db.Timestamptz(6)
   pinned             Boolean
   sponsored          Boolean
-  liveVersionId      String?                    @map("live_version_id") @db.Uuid
-  draftVersionId     String?                    @map("draft_version_id") @db.Uuid
-  submittedVersionId String?                    @map("submitted_version_id") @db.Uuid
-  createdAt          DateTime                   @map("created_at") @db.Timestamptz(6)
-  createdBy          String                     @map("created_by") @db.Uuid
-  updatedAt          DateTime                   @map("updated_at") @db.Timestamptz(6)
-  updatedBy          String                     @map("updated_by") @db.Uuid
+  liveVersionId      String?                     @map("live_version_id") @db.Uuid
+  draftVersionId     String?                     @map("draft_version_id") @db.Uuid
+  submittedVersionId String?                     @map("submitted_version_id") @db.Uuid
+  createdAt          DateTime                    @map("created_at") @db.Timestamptz(6)
+  createdBy          String                      @map("created_by") @db.Uuid
+  updatedAt          DateTime                    @map("updated_at") @db.Timestamptz(6)
+  updatedBy          String                      @map("updated_by") @db.Uuid
   /// Raised by every lock of the row (`lockSlide`), so a lock never writes an older `updatedAt`.
-  rowVersion         Int                        @default(0) @map("row_version")
-  versions           StorefrontSlideVersion[]   @relation("SlideVersions")
+  rowVersion         Int                         @default(0) @map("row_version")
+  versions           StorefrontSlideVersion[]    @relation("SlideVersions")
   placements         StorefrontSlidePlacement[]
+  savedOrders        StorefrontSlideSavedOrder[]
   /// The version pointers are composite foreign keys into this slide's own versions.
-  liveVersion        StorefrontSlideVersion?    @relation("SlideLive", fields: [marketId, id, liveVersionId], references: [marketId, slideId, id], onDelete: Restrict, onUpdate: Restrict)
-  draftVersion       StorefrontSlideVersion?    @relation("SlideDraft", fields: [marketId, id, draftVersionId], references: [marketId, slideId, id], onDelete: Restrict, onUpdate: Restrict)
-  submittedVersion   StorefrontSlideVersion?    @relation("SlideSubmitted", fields: [marketId, id, submittedVersionId], references: [marketId, slideId, id], onDelete: Restrict, onUpdate: Restrict)
+  liveVersion        StorefrontSlideVersion?     @relation("SlideLive", fields: [marketId, id, liveVersionId], references: [marketId, slideId, id], onDelete: Restrict, onUpdate: Restrict)
+  draftVersion       StorefrontSlideVersion?     @relation("SlideDraft", fields: [marketId, id, draftVersionId], references: [marketId, slideId, id], onDelete: Restrict, onUpdate: Restrict)
+  submittedVersion   StorefrontSlideVersion?     @relation("SlideSubmitted", fields: [marketId, id, submittedVersionId], references: [marketId, slideId, id], onDelete: Restrict, onUpdate: Restrict)
 
   /// The foreign-key target of the versions and placements.
   @@unique([marketId, id])
@@ -138,25 +139,25 @@ model StorefrontSlide {
 /// { position, scope, scopeId, includeSubcategories, sortOrder, autoplay }, both checked by the
 /// application.
 model StorefrontSlideVersion {
-  id           String          @id @db.Uuid
-  marketId     String          @map("market_id") @db.VarChar(8)
-  tenantId     String          @map("tenant_id")
-  slideId      String          @map("slide_id") @db.Uuid
+  id           String            @id @db.Uuid
+  marketId     String            @map("market_id") @db.VarChar(8)
+  tenantId     String            @map("tenant_id")
+  slideId      String            @map("slide_id") @db.Uuid
   /// 1 to 100 (CHECK), per slide, in creation order; raising the cap needs a migration.
-  versionNo    Int             @map("version_no")
-  internalName String          @map("internal_name")
+  versionNo    Int               @map("version_no")
+  internalName String            @map("internal_name")
   content      Json
   placements   Json
-  startsAt     DateTime        @map("starts_at") @db.Timestamptz(6)
-  endsAt       DateTime        @map("ends_at") @db.Timestamptz(6)
+  startsAt     DateTime          @map("starts_at") @db.Timestamptz(6)
+  endsAt       DateTime          @map("ends_at") @db.Timestamptz(6)
   pinned       Boolean
   sponsored    Boolean
-  createdAt    DateTime        @map("created_at") @db.Timestamptz(6)
-  createdBy    String          @map("created_by") @db.Uuid
+  createdAt    DateTime          @map("created_at") @db.Timestamptz(6)
+  createdBy    String            @map("created_by") @db.Uuid
   /// The platform admin who approved this version; both or neither with `approvedAt` (CHECK).
-  approvedBy   String?         @map("approved_by") @db.Uuid
-  approvedAt   DateTime?       @map("approved_at") @db.Timestamptz(6)
-  slide        StorefrontSlide @relation("SlideVersions", fields: [marketId, slideId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  approvedBy   String?           @map("approved_by") @db.Uuid
+  approvedAt   DateTime?         @map("approved_at") @db.Timestamptz(6)
+  slide        StorefrontSlide   @relation("SlideVersions", fields: [marketId, slideId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   liveOf       StorefrontSlide[] @relation("SlideLive")
   draftOf      StorefrontSlide[] @relation("SlideDraft")
   submittedOf  StorefrontSlide[] @relation("SlideSubmitted")
@@ -191,6 +192,29 @@ model StorefrontSlidePlacement {
   @@index([marketId, positionKey, startsAt, endsAt])
   @@index([marketId, slideId])
   @@map("slide_placements")
+  @@schema("storefront")
+}
+
+/// The order an editor saved for one placement of a slide (reorder of the live slides, no approval).
+/// The projection rows are rebuilt when a slide is approved or resumed, and removed when it is
+/// paused; this row survives them, so the next projection starts from the saved order and a
+/// re-approval cannot put the slide back at the sort order of its version. One row per slide,
+/// position and scope; `scopeKey` is empty for the scope `all`, else the scope id. Rows of a
+/// placement that a new version no longer has are removed by that projection.
+model StorefrontSlideSavedOrder {
+  marketId    String          @map("market_id") @db.VarChar(8)
+  tenantId    String          @map("tenant_id")
+  slideId     String          @map("slide_id") @db.Uuid
+  positionKey String          @map("position_key")
+  scope       String
+  scopeKey    String          @map("scope_key")
+  sortOrder   Int             @map("sort_order")
+  savedAt     DateTime        @map("saved_at") @db.Timestamptz(6)
+  savedBy     String          @map("saved_by") @db.Uuid
+  slide       StorefrontSlide @relation(fields: [marketId, slideId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, slideId, positionKey, scope, scopeKey])
+  @@map("slide_saved_orders")
   @@schema("storefront")
 }
 

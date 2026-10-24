@@ -10,6 +10,7 @@ import type { Problems } from '../domain/fields';
 import { positionOf } from '../domain/slide-positions';
 import {
   capExceeded,
+  orderKey,
   readContent,
   readPlacements,
   windowProblems,
@@ -18,7 +19,7 @@ import {
 } from '../domain/slides';
 import { adminOf } from './page-flow';
 import { targetKey, type SlideTarget } from './ports/slide-targets';
-import type { PlacementRow, SlideRecord, SlideStamp } from './ports/slide.repository';
+import type { SlideRecord, SlideStamp } from './ports/slide.repository';
 import {
   detailOf,
   invalidField,
@@ -70,24 +71,42 @@ async function fullPositions(
   return full;
 }
 
-function projectionOf(
+/**
+ * Rebuilds the slide's projection from its live placements. The sort order of a placement is the
+ * one an editor saved by reordering the live slides (it survives a pause and a new version);
+ * only a placement with no saved order takes the sort order of the version. A saved order of a
+ * placement the version no longer has is forgotten. The slide row is locked by the caller.
+ */
+async function projectLive(
   deps: StorefrontDependencies,
+  context: CallContext,
   slide: SlideRecord,
   window: SlideWindow,
   placements: readonly SlidePlacement[],
-): PlacementRow[] {
-  return placements.map((placement) => ({
-    id: deps.ids.next<'StorefrontSlidePlacement'>(),
-    slideId: slide.id,
-    position: placement.position,
-    scope: placement.scope,
-    scopeId: placement.scopeId,
-    includeSubcategories: placement.includeSubcategories,
-    sortOrder: placement.sortOrder,
-    autoplay: placement.autoplay,
-    startsAt: window.startsAt,
-    endsAt: window.endsAt,
-  }));
+): Promise<void> {
+  const saved = new Map(
+    (await deps.slides.savedOrdersOf(context.market, slide.id)).map((order) => [
+      orderKey(order),
+      order.sortOrder,
+    ]),
+  );
+  await deps.slides.keepSavedOrders(context.market, slide.id, placements);
+  await deps.slides.replacePlacements(
+    context.market,
+    slide.id,
+    placements.map((placement) => ({
+      id: deps.ids.next<'StorefrontSlidePlacement'>(),
+      slideId: slide.id,
+      position: placement.position,
+      scope: placement.scope,
+      scopeId: placement.scopeId,
+      includeSubcategories: placement.includeSubcategories,
+      sortOrder: saved.get(orderKey(placement)) ?? placement.sortOrder,
+      autoplay: placement.autoplay,
+      startsAt: window.startsAt,
+      endsAt: window.endsAt,
+    })),
+  );
 }
 
 /**
@@ -246,11 +265,7 @@ export async function approveSlide(
       stamp,
     );
     if (project) {
-      await deps.slides.replacePlacements(
-        context.market,
-        slide.id,
-        projectionOf(deps, slide, draft, placements),
-      );
+      await projectLive(deps, context, slide, draft, placements);
     }
     await deps.audit.record(
       context,
@@ -321,11 +336,7 @@ export async function resumeSlide(
     const full = await fullPositions(deps, context, slide, slide, placements);
     if (full.length > 0)
       return err({ code: 'storefront.slide-position-full', fields: full } as const);
-    await deps.slides.replacePlacements(
-      context.market,
-      slide.id,
-      projectionOf(deps, slide, slide, placements),
-    );
+    await projectLive(deps, context, slide, slide, placements);
     await deps.slides.updateSlide(context.market, slide.id, { state: 'approved' }, stamp);
     await deps.audit.record(
       context,

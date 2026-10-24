@@ -2,7 +2,10 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
+  LivePlacement,
+  PlacementOrder,
   PlacementRow,
+  SavedOrder,
   SlideChange,
   SlideRecord,
   SlideRepository,
@@ -364,6 +367,105 @@ export class PrismaSlideRepository implements SlideRepository {
         startsAt: toDate(row.startsAt),
         endsAt: toDate(row.endsAt),
       })),
+    });
+  }
+
+  async livePlacementsAt(market: MarketContext, where: PlacementOrder, after: Temporal.Instant) {
+    const rows = await this.prisma.tx(market).storefrontSlidePlacement.findMany({
+      where: {
+        marketId: market.marketId,
+        positionKey: where.position,
+        scope: where.scope,
+        scopeId: where.scopeId,
+        endsAt: { gt: toDate(after) },
+        slide: { marketId: market.marketId, state: 'approved' },
+      },
+      orderBy: [{ sortOrder: 'asc' }, { startsAt: 'asc' }, { slideId: 'asc' }],
+    });
+    return rows.map((row): LivePlacement => ({
+      slideId: row.slideId as Id<'StorefrontSlide'>,
+      sortOrder: row.sortOrder,
+      startsAt: toInstant(row.startsAt),
+    }));
+  }
+
+  async setLiveOrder(
+    market: MarketContext,
+    where: PlacementOrder,
+    orders: readonly { readonly slideId: Id<'StorefrontSlide'>; readonly sortOrder: number }[],
+    stamp: SlideStamp,
+  ) {
+    const tx = this.prisma.tx(market);
+    const scopeKey = where.scopeId ?? '';
+    for (const { slideId, sortOrder } of orders) {
+      // Only the sort order of the row is written (column grant); the row is found by its key.
+      await tx.storefrontSlidePlacement.updateMany({
+        where: {
+          marketId: market.marketId,
+          slideId,
+          positionKey: where.position,
+          scope: where.scope,
+          scopeId: where.scopeId,
+        },
+        data: { sortOrder },
+      });
+      await tx.storefrontSlideSavedOrder.deleteMany({
+        where: {
+          marketId: market.marketId,
+          slideId,
+          positionKey: where.position,
+          scope: where.scope,
+          scopeKey,
+        },
+      });
+      await tx.storefrontSlideSavedOrder.create({
+        data: {
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          slideId,
+          positionKey: where.position,
+          scope: where.scope,
+          scopeKey,
+          sortOrder,
+          savedAt: toDate(stamp.at),
+          savedBy: stamp.by,
+        },
+      });
+    }
+  }
+
+  async savedOrdersOf(market: MarketContext, slideId: Id<'StorefrontSlide'>) {
+    const rows = await this.prisma.tx(market).storefrontSlideSavedOrder.findMany({
+      where: { marketId: market.marketId, slideId },
+    });
+    return rows.map((row): SavedOrder => ({
+      position: row.positionKey,
+      scope: row.scope,
+      scopeId: row.scopeKey === '' ? null : row.scopeKey,
+      sortOrder: row.sortOrder,
+    }));
+  }
+
+  async keepSavedOrders(
+    market: MarketContext,
+    slideId: Id<'StorefrontSlide'>,
+    keep: readonly PlacementOrder[],
+  ) {
+    await this.prisma.tx(market).storefrontSlideSavedOrder.deleteMany({
+      where: {
+        marketId: market.marketId,
+        slideId,
+        // An empty NOT list would match nothing to spare, so it is only added with entries.
+        ...(keep.length === 0
+          ? {}
+          : {
+              NOT: keep.map((k) => ({
+                positionKey: k.position,
+                scope: k.scope,
+                scopeKey: k.scopeId ?? '',
+              })),
+            }),
+      },
     });
   }
 }
