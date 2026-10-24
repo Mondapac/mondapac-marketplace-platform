@@ -1,5 +1,6 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import { MODULE_KEYS } from './modules';
+import { SLIDE_KINDS } from './slides';
 import { LINKED_TYPES, TEMPLATES } from './templates';
 
 // The audited actions of the storefront, registered at boot with
@@ -74,10 +75,92 @@ export const StorefrontPageArchived = defineAuditAction({
   after: { redirected: auditField.boolean() },
 });
 
+/** The audit target type of a storefront slide. */
+export const STOREFRONT_SLIDE_TARGET = 'storefront.slide';
+
+const SLIDE_KIND = auditField.enumOf(SLIDE_KINDS);
+const SLIDE_OPERATION = auditField.enumOf(['update', 'restore'] as const);
+
+/** An editor created a slide (a draft); `placementCount` is its first version's placements. */
+export const StorefrontSlideCreated = defineAuditAction({
+  action: 'storefront.slide.create',
+  targetType: STOREFRONT_SLIDE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    kind: SLIDE_KIND,
+    versionNo: auditField.integer(),
+    placementCount: auditField.integer(),
+  },
+});
+
+/** An editor changed a slide's draft, or restored an earlier version into it (a new version). */
+export const StorefrontSlideDraftChanged = defineAuditAction({
+  action: 'storefront.slide.draft-change',
+  targetType: STOREFRONT_SLIDE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    operation: SLIDE_OPERATION,
+    versionNo: auditField.integer(),
+    placementCount: auditField.integer(),
+  },
+});
+
+/** An editor sent a slide's draft for approval. */
+export const StorefrontSlideSubmitted = defineAuditAction({
+  action: 'storefront.slide.submit',
+  targetType: STOREFRONT_SLIDE_TARGET,
+  actors: ['authenticated'],
+  after: { versionNo: auditField.integer() },
+});
+
+/** A platform admin approved a slide's draft, so it is live (or scheduled). */
+export const StorefrontSlidePublished = defineAuditAction({
+  action: 'storefront.slide.publish',
+  targetType: STOREFRONT_SLIDE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    versionNo: auditField.integer(),
+    placementCount: auditField.integer(),
+    /** The approver is the person who saved the version (a one-person approval). */
+    selfApproved: auditField.boolean(),
+  },
+});
+
+/** An editor paused a slide: it stops being served at once, with no approval. */
+export const StorefrontSlidePaused = defineAuditAction({
+  action: 'storefront.slide.pause',
+  targetType: STOREFRONT_SLIDE_TARGET,
+  actors: ['authenticated'],
+  after: { versionNo: auditField.integer() },
+});
+
+/** A platform admin resumed a paused slide. */
+export const StorefrontSlideResumed = defineAuditAction({
+  action: 'storefront.slide.resume',
+  targetType: STOREFRONT_SLIDE_TARGET,
+  actors: ['authenticated'],
+  after: { versionNo: auditField.integer() },
+});
+
+/** An editor archived a slide; `wasApproved` says it had a live version that stopped being served. */
+export const StorefrontSlideArchived = defineAuditAction({
+  action: 'storefront.slide.archive',
+  targetType: STOREFRONT_SLIDE_TARGET,
+  actors: ['authenticated'],
+  after: { wasApproved: auditField.boolean() },
+});
+
 export const STOREFRONT_AUDIT_ACTIONS = [
   StorefrontPageCreated,
   StorefrontPageUpdated,
   StorefrontDraftChanged,
   StorefrontPagePublished,
   StorefrontPageArchived,
+  StorefrontSlideCreated,
+  StorefrontSlideDraftChanged,
+  StorefrontSlideSubmitted,
+  StorefrontSlidePublished,
+  StorefrontSlidePaused,
+  StorefrontSlideResumed,
+  StorefrontSlideArchived,
 ] as const;
