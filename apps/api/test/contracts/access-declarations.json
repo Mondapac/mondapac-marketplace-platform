@@ -326,6 +326,11 @@
   },
   { "name": "identity.start-social-sign-in", "rule": "anonymous" },
   {
+    "name": "identity.team-member-labels",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
     "name": "identity.verify-seller-step-up",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
@@ -386,10 +391,12 @@
   { "name": "notifications.view-public-support-contact", "rule": "anonymous" },
   { "name": "notifications.view-unsubscribe-link", "rule": "anonymous" },
   { "name": "ordering.best-selling-offers", "rule": "anonymous" },
+  { "name": "ordering.book-carrier-deliveries", "rule": "system" },
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.order-notice", "rule": "system" },
+  { "name": "ordering.record-carrier-progress", "rule": "system" },
   { "name": "ordering.record-ledger", "rule": "system" },
   { "name": "ordering.record-shipments", "rule": "system" },
   { "name": "ordering.settle-refunds", "rule": "system" },
@@ -437,6 +444,7 @@
   { "name": "sellers.approved-seller-zones", "rule": "anonymous" },
   { "name": "sellers.approved-seller-zones-system", "rule": "system" },
   { "name": "sellers.backfill-seller-files", "rule": "system" },
+  { "name": "sellers.carrier-pickup", "rule": "system" },
   { "name": "sellers.close-decision", "rule": "system" },
   { "name": "sellers.create-seller-file", "rule": "system" },
   {
@@ -479,8 +487,12 @@
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },
   { "name": "sellers.selling-eligibility-system", "rule": "system" },
+  { "name": "shipping.book-carrier-delivery", "rule": "system" },
+  { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
+  { "name": "shipping.carrier-shipment", "rule": "system" },
   { "name": "shipping.delivery-area", "rule": "anonymous" },
   { "name": "shipping.flat-fees", "rule": "anonymous" },
+  { "name": "shipping.receive-carrier-webhook", "rule": "anonymous" },
   {
     "name": "shipping.view-own-flat-fee",
     "rule": "permissions",

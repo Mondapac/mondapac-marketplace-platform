@@ -39,8 +39,15 @@ export type PrismaRootOptions = Omit<Prisma.PrismaClientOptions, 'adapter' | 'ac
  * later the relay and the scheduler lock, each in short transactions of their own.
  */
 export class PrismaRoot extends PrismaClient implements OnModuleDestroy {
-  constructor(config: AppConfig, { connectionWaitMs, ...options }: PrismaRootOptions = {}) {
+  /** The pool's connection wait, also the `maxWait` of the root's own transactions. */
+  readonly connectionWaitMs: number;
+
+  constructor(
+    config: AppConfig,
+    { connectionWaitMs = CONNECTION_WAIT_MS, ...options }: PrismaRootOptions = {},
+  ) {
     super({ ...options, adapter: new PrismaPg(poolConfigOf(config, connectionWaitMs)) });
+    this.connectionWaitMs = connectionWaitMs;
   }
 
   async onModuleDestroy(): Promise<void> {
