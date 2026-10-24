@@ -153,6 +153,26 @@ export class ProductDetailSellerBody {
   minimumOrder?: MoneyBody | null;
 }
 
+export class ProductDetailBadgeBody {
+  @ApiProperty({ description: 'The certification type code, as configured (never a fixed list).' })
+  typeCode!: string;
+  @ApiProperty({ description: 'The type name in the Market default locale.' })
+  typeName!: string;
+  @ApiProperty({ enum: ['SELLER', 'MANUFACTURER'] }) basis!: 'SELLER' | 'MANUFACTURER';
+  @ApiProperty({
+    description: "True when this is the seller's own declaration, not a certificate.",
+  })
+  sellerClaim!: boolean;
+  @ApiProperty({ nullable: true, type: String }) issuerName!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'ISO calendar date (YYYY-MM-DD) the certificate is valid until, or null.',
+  })
+  validUntilLocalDate!: string | null;
+  @ApiProperty() verifiedWithIssuer!: boolean;
+}
+
 export class ProductDetailOfferBody {
   @ApiProperty({ format: 'uuid' }) offerId!: string;
   @ApiProperty({ format: 'uuid' }) sellerId!: string;
@@ -162,6 +182,14 @@ export class ProductDetailOfferBody {
     description: 'Priced Variants, in position order.',
   })
   units!: ProductDetailUnitBody[];
+  @ApiProperty({
+    type: [ProductDetailBadgeBody],
+    description:
+      'Certification badges of this Offer, decided live by certification when the page is ' +
+      'requested; empty when there is none or they cannot be had. Never an ID, certificate ' +
+      'number, document or link.',
+  })
+  badges!: ProductDetailBadgeBody[];
 }
 
 export class ProductDetailBody {
