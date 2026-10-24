@@ -2,6 +2,7 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
 import type { AllowedProductTypes } from '../application/use-cases/allowed-product-types.use-case';
+import type { CarrierPickupRead } from '../application/use-cases/carrier-pickup.use-case';
 import type { PublishedStoreSellerId } from '../application/use-cases/published-store-seller-id.use-case';
 import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';
 import type { ReviewerBusinessDetailsRead } from '../application/use-cases/reviewer-business-details.use-case';
@@ -11,6 +12,7 @@ import type { SellerSummariesSystem } from '../application/use-cases/seller-summ
 import type { SellerSummaries } from '../application/use-cases/seller-summaries.use-case';
 import type {
   AllowedProductTypesOf,
+  CarrierPickup,
   ReviewerBusinessDetails,
   SellerDetailsNotFound,
   SellersFacade,
@@ -31,6 +33,7 @@ export interface SellersFacadeUseCases {
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
   readonly publishedStoreSellerId: PublishedStoreSellerId;
   readonly publishedStoreSlugs: PublishedStoreSlugs;
+  readonly carrierPickup: CarrierPickupRead;
 }
 
 /**
@@ -105,5 +108,20 @@ export class SellersFacadeImplementation implements SellersFacade {
     >
   > {
     return this.useCases.reviewerBusinessDetails.execute(context, { sellerId });
+  }
+
+  carrierPickup(
+    context: CallContext,
+    request: { readonly sellerId: Id<'Seller'>; readonly sellerOrderId: string },
+  ): Promise<
+    Result<
+      CarrierPickup,
+      AccessDenied | SellersValidationFailed | SellerDetailsNotFound | SellersUnavailable
+    >
+  > {
+    return this.useCases.carrierPickup.execute(context, {
+      sellerId: request?.sellerId,
+      sellerOrderId: request?.sellerOrderId,
+    });
   }
 }

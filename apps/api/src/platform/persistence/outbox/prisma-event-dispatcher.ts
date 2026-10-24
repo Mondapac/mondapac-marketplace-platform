@@ -19,7 +19,7 @@ import type {
 } from '../../events/event-subscriptions';
 import type { MarketRegistry } from '../../market-config/market-registry';
 import type { MarketContextFactory } from '../../market-context/market-context.factory';
-import { CONNECTION_WAIT_MS, DEFAULT_UNIT_TIMEOUT_MS } from '../../unit-of-work/unit-of-work';
+import { DEFAULT_UNIT_TIMEOUT_MS } from '../../unit-of-work/unit-of-work';
 import type { PrismaRoot } from '../prisma-root';
 import { deliverySettled, issueDelivery } from './delivery-ledger';
 
@@ -189,7 +189,7 @@ export class PrismaEventDispatcher implements EventDispatcher {
           DISPATCH_BATCH_SIZE,
           market.tenantId,
         ),
-      { maxWait: CONNECTION_WAIT_MS, timeout: DEFAULT_UNIT_TIMEOUT_MS },
+      { maxWait: this.root.connectionWaitMs, timeout: DEFAULT_UNIT_TIMEOUT_MS },
     );
   }
 
