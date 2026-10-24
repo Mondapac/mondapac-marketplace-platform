@@ -312,7 +312,6 @@ seller ships as in SHP-01.
 - `displayName` (required, 1 to 60 letters, digits, spaces and `.&'-`): the carrier name the
   customer and the seller see on the shipment (AU "Mondapac Drive").
 - `baseUrl` (required): the carrier API (https; http only for a loopback host).
-- `merchantId` (required): the marketplace's merchant id at the carrier.
 - `serviceAreas` (required, 1 to 50 codes of `config/service-areas`): a paid seller order goes to
   the carrier only when its pickup and its drop-off each fall in one of them (AU
   `greater-brisbane`).

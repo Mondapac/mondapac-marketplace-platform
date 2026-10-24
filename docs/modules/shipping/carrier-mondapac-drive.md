@@ -40,11 +40,13 @@ cancellation after pickup is ignored.
 
 ## Drive API calls
 
-- `POST /delivery/deliveries` with `merchantId`, `externalReference`, `pickup` and `dropoff`
+- `POST /delivery/deliveries` with `externalReference`, `pickup` and `dropoff`
   (`address` as one line, `postcode`, `contactName`, `contactPhone`, optional `notes`), and
   `parcel` and `mode` from the Market config. No `point`: the marketplace stores no coordinates,
   so Drive geocodes the address.
-- `POST /delivery/deliveries/:id/events` with `{ "type": "cancelled" }`.
+- `POST /delivery/deliveries/:id/cancel` with `{ "reason": "..." }`. A 409 (picked up already)
+  is taken as not cancellable.
+- No merchant field: Drive's merchant is the API key's, and its schemas reject unknown fields.
 - Headers: `Authorization: Bearer <MONDAPAC_DRIVE_API_KEY of the Market>` and `x-market-id`.
 - Client: a timeout per attempt (the whole call at most 6 s); retries with backoff (`backoffMs * 2^(n-1)`) on a 5xx, a timeout
   or a network fault, never on a 4xx; redirects refused; a circuit breaker per Market and endpoint.
@@ -93,7 +95,7 @@ in an event or an error.
   answer at once.
 - A refund in full before pickup cancels the delivery (step 4). Progress on an order that is no
   longer confirmed is logged at warn as `ordering.carrier-progress-on-unconfirmed-order`.
-- Before the secrets are set for a production Market, replace the placeholder `baseUrl` and
-  `merchantId` in `config/markets/AU.json`.
+- Before the secrets are set for a production Market, replace the placeholder `baseUrl` in
+  `config/markets/AU.json`.
 - Follow-ups: cap the size of Drive's answer body; key the circuit breaker per call as well as per
   endpoint; a retention job for `shipping.carrier_events`.

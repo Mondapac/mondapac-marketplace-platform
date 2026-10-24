@@ -288,7 +288,6 @@
       "carrier": "mondapac-drive",
       "displayName": "Zed Courier",
       "baseUrl": "http://127.0.0.1:9/zz",
-      "merchantId": "zz-marketplace",
       "serviceAreas": ["zz-central"],
       "parcel": { "weightGrams": 2000, "volumeLitres": 10, "temperature": "chilled" },
       "mode": "scheduled",
