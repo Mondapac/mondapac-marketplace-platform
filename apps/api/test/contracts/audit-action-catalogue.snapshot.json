@@ -1192,6 +1192,17 @@
     }
   },
   {
+    "action": "sellers.pickup-details.read-for-carrier",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "sellerOrderId": "id"
+    }
+  },
+  {
     "action": "sellers.register.manual-check-recorded",
     "targetType": "sellers.seller",
     "targetId": "id",

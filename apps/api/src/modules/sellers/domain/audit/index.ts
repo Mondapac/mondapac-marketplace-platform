@@ -90,6 +90,22 @@ export const StoreImageChanged = defineAuditAction({
   },
 });
 
+/**
+ * The system read a seller's store name, phone and operating address in clear to hand them to the
+ * real-time carrier as the pickup of a paid seller order (SHP-02/03). One row per read, in a unit
+ * of the read; a refused row means nothing is returned. `revisionId` names the approved revision
+ * read; `sellerOrderId` the seller order the pickup is for.
+ */
+export const PickupDetailsReadForCarrier = defineAuditAction({
+  action: 'sellers.pickup-details.read-for-carrier',
+  targetType: SELLER_TARGET,
+  actors: ['system'],
+  after: {
+    revisionId: auditField.id(),
+    sellerOrderId: auditField.id(),
+  },
+});
+
 /** Every audited action of sellers, for its module's registration. */
 export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   BusinessDetailsViewed,
@@ -97,4 +113,5 @@ export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.fr
   MinimumOrderChanged,
   StoreProfileSaved,
   StoreImageChanged,
+  PickupDetailsReadForCarrier,
 ]);

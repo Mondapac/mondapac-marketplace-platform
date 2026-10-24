@@ -230,6 +230,11 @@
     "reason": "The buyer site asks whether the Market delivers to a postcode before sign-in (cart, checkout, Deliver to): the answer is the public ServiceArea configuration; nothing about a person is read or stored."
   },
   {
+    "name": "shipping.receive-carrier-webhook",
+    "rule": "anonymous",
+    "reason": "Mondapac Drive's status webhook: the caller is the carrier, which holds no session. The use case refuses anything without a valid HMAC-SHA256 signature of the timestamp and the raw body under the Market's webhook secret, within a 300-second replay window; each event is taken once by its id, and it only moves a seller order's carrier delivery forward."
+  },
+  {
     "name": "storefront.view-published-landing-page",
     "rule": "anonymous",
     "reason": "A visitor with no session reads a live landing page at /l/<slug>: only a published, unarchived page inside its live window, or the site path an old or archived slug now sends to; layout and settings only, no product data."

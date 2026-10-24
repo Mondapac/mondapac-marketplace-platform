@@ -24,13 +24,22 @@ export const APP_OPTIONS = {
   bodyParser: false,
 } as const satisfies NestApplicationOptions;
 
-/** The path prefix of the Stripe webhook routes (`payments`), the only raw-body routes. */
+/** The path prefix of the Stripe webhook routes (`payments`), a raw-body route. */
 export const STRIPE_WEBHOOK_PATH = '/payments/stripe/webhook/';
 
 /** True for a request to the Stripe webhook, query string ignored. */
 export function isStripeWebhookPath(url: string | undefined): boolean {
   const path = (url ?? '').split('?', 1)[0] ?? '';
   return path.startsWith(STRIPE_WEBHOOK_PATH);
+}
+
+/** The real-time carrier webhook routes (`shipping`, SHP-03): signed over the raw body too. */
+const CARRIER_WEBHOOK_PATH = /^\/shipping\/carriers\/[a-z0-9-]{1,32}\/webhook\//;
+
+/** True for a request to a carrier webhook, query string ignored. */
+export function isCarrierWebhookPath(url: string | undefined): boolean {
+  const path = (url ?? '').split('?', 1)[0] ?? '';
+  return CARRIER_WEBHOOK_PATH.test(path);
 }
 
 /** A base64 photo of 4 MiB is 5.6 million characters; the rest is the JSON around it. */
@@ -120,10 +129,11 @@ export function configureApp(app: NestExpressApplication): void {
   // JSON only, at most 64 KiB, objects and arrays only. No CORS middleware until origins exist.
   // inflate: false - a compressed body is refused with 415, never decompressed (Hassan L1).
   // The Stripe webhook alone gets its body as raw bytes, because its signature is computed over
-  // the exact bytes (Phase 5 package 2). Same limit and no decompression; the JSON parser then
-  // skips that request, since this parser has already read it.
+  // the exact bytes (Phase 5 package 2); so does a carrier's status webhook (SHP-03). Same limit
+  // and no decompression; the JSON parser then skips that request, since this parser has already
+  // read it.
   app.useBodyParser('raw', {
-    type: (request) => isStripeWebhookPath(request.url),
+    type: (request) => isStripeWebhookPath(request.url) || isCarrierWebhookPath(request.url),
     limit: '64kb',
     inflate: false,
   });
