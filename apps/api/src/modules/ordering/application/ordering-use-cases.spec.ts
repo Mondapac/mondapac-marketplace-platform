@@ -33,6 +33,7 @@ import type { CheckoutLine } from '../../cart';
 import { ConfigOrderingPolicy } from '../infrastructure/config-ordering-policy';
 import type { OrderingDependencies } from './checkout-flow';
 import { AdminListOrders } from './use-cases/admin-list-orders.use-case';
+import { BookCarrierDeliveries } from './use-cases/book-carrier-deliveries.use-case';
 import { AdminViewOrderDocument } from './use-cases/admin-view-order-document.use-case';
 import { AdminViewOrder } from './use-cases/admin-view-order.use-case';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
@@ -40,6 +41,7 @@ import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
 import { ShipmentNoticeQuery } from './use-cases/shipment-notice.use-case';
 import { StartCheckout } from './use-cases/start-checkout.use-case';
+import { RecordCarrierProgress } from './use-cases/record-carrier-progress.use-case';
 import { RecordLedger } from './use-cases/record-ledger.use-case';
 import { RecordShipments } from './use-cases/record-shipments.use-case';
 import { SellerDeliverOrder } from './use-cases/seller-deliver-order.use-case';
@@ -1399,6 +1401,163 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(await new RecordShipments(gate, deps).execute(customer, {})).toMatchObject({
         ok: false,
         error: { code: 'access.denied' },
+      });
+    });
+
+    describe('the real-time carrier (SHP-02/03)', () => {
+      const delivery = (n: number, subscriber: string) => ({
+        eventId: id<'event'>(0xe00 + n),
+        subscriber,
+        attempt: 1,
+      });
+      const book = (orderId: unknown, n = 1) =>
+        new BookCarrierDeliveries(gate, deps).execute(system, {
+          delivery: delivery(n, 'ordering.book-carrier-deliveries'),
+          orderId: orderId as string,
+        });
+      const progress = (orderId: string, sellerOrderId: string, n: number) =>
+        new RecordCarrierProgress(gate, deps).execute(system, {
+          delivery: delivery(n, 'ordering.record-carrier-progress'),
+          orderId,
+          sellerOrderId,
+        });
+
+      it('offers each paid seller order to shipping with the opened address, once', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        shipping.carrierBookings.set(a, ok('booked'));
+
+        expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.handled' }));
+        expect(shipping.carrierRequests.map((r) => r.sellerOrderId).sort()).toEqual(
+          order.sellerOrders.map((s) => s.id).sort(),
+        );
+        expect(shipping.carrierRequests[0]).toMatchObject({
+          orderId: order.id,
+          dropoff: {
+            contactName: 'Aisha Rahman',
+            contactPhone: '0412345678',
+            addressLines: ['12 Example Street', '', 'Sunnybank', 'QLD'],
+            postcode: '4109',
+            notes: 'Leave at the door',
+          },
+        });
+        // The same delivery again changes nothing.
+        expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.already-handled' }));
+        // Only the system actor may run it.
+        expect(
+          await new BookCarrierDeliveries(gate, deps).execute(customer, {
+            delivery: delivery(9, 'ordering.book-carrier-deliveries'),
+            orderId: order.id,
+          }),
+        ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      });
+
+      it('retries only a temporary carrier fault, and refuses a malformed order id', async () => {
+        const order = await paid();
+        shipping.carrierBookings.set(
+          sellerOrderIdOf(order.id, SELLER_A),
+          err({ code: 'shipping.carrier-unavailable' }),
+        );
+        expect(await book(order.id)).toEqual(err({ code: 'ordering.try-again' }));
+        shipping.carrierBookings.set(
+          sellerOrderIdOf(order.id, SELLER_A),
+          err({ code: 'validation.failed', fields: [] }),
+        );
+        expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+        expect(await book('not-an-id', 2)).toEqual(err({ code: 'validation.failed' }));
+      });
+
+      it('defers the next seller order when it would not fit in the handler budget', async () => {
+        const order = await paid();
+        const book6s = shipping.bookCarrierDelivery.bind(shipping);
+        shipping.bookCarrierDelivery = (context, request) => {
+          clock.advance(Temporal.Duration.from({ seconds: 6 }));
+          return book6s(context, request);
+        };
+
+        try {
+          expect(await book(order.id)).toEqual(err({ code: 'ordering.try-again' }));
+          expect(shipping.carrierRequests).toHaveLength(1);
+        } finally {
+          clock.set(T0);
+        }
+      });
+
+      it('books nothing for an order that is not paid', async () => {
+        const order = await placed();
+        expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+        expect(shipping.carrierRequests).toEqual([]);
+      });
+
+      it('records the pickup as the shipment and the delivery after it', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        const trackingRef = '01990000-0000-7000-8000-00000000d001';
+        shipping.carrierShipments.set(a, {
+          sellerOrderId: a,
+          carrierName: 'Mondapac Drive',
+          trackingRef,
+          progress: 'booked',
+        });
+        expect(await progress(order.id, a, 1)).toEqual(
+          ok({ code: 'ordering.carrier.not-applicable' }),
+        );
+        expect(orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)!.fulfilment).toBe(
+          'to-ship',
+        );
+
+        shipping.carrierShipments.set(a, {
+          ...shipping.carrierShipments.get(a)!,
+          progress: 'picked-up',
+        });
+        expect(await progress(order.id, a, 2)).toEqual(ok({ code: 'ordering.carrier.handled' }));
+        const shipped = orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)!;
+        expect(shipped).toMatchObject({
+          fulfilment: 'shipped',
+          carrier: 'Mondapac Drive',
+          trackingRef,
+        });
+        expect(written.filter((e) => e.type === 'ordering.order-shipped.v1')).toHaveLength(1);
+        // A repeated delivery of the same event changes nothing.
+        expect(await progress(order.id, a, 2)).toEqual(
+          ok({ code: 'ordering.carrier.already-handled' }),
+        );
+
+        shipping.carrierShipments.set(a, {
+          ...shipping.carrierShipments.get(a)!,
+          progress: 'delivered',
+        });
+        expect(await progress(order.id, a, 3)).toEqual(ok({ code: 'ordering.carrier.handled' }));
+        expect(orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)!.fulfilment).toBe(
+          'delivered',
+        );
+        expect(written.filter((e) => e.type === 'ordering.order-shipped.v1')).toHaveLength(1);
+      });
+
+      it('ships and delivers at once when the pickup was never reported', async () => {
+        const order = await paid();
+        const b = sellerOrderIdOf(order.id, SELLER_B);
+        shipping.carrierShipments.set(b, {
+          sellerOrderId: b,
+          carrierName: 'Mondapac Drive',
+          trackingRef: '01990000-0000-7000-8000-00000000d002',
+          progress: 'delivered',
+        });
+        expect(await progress(order.id, b, 1)).toEqual(ok({ code: 'ordering.carrier.handled' }));
+        expect(orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === b)!.fulfilment).toBe(
+          'delivered',
+        );
+        expect(written.filter((e) => e.type === 'ordering.order-shipped.v1')).toHaveLength(1);
+      });
+
+      it('retries while shipping is down and drops an event without a booking', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        shipping.carrierDown = true;
+        expect(await progress(order.id, a, 1)).toEqual(err({ code: 'ordering.try-again' }));
+        shipping.carrierDown = false;
+        expect(await progress(order.id, a, 1)).toEqual(err({ code: 'validation.failed' }));
+        expect(await progress(order.id, 'nope', 2)).toEqual(err({ code: 'validation.failed' }));
       });
     });
   });

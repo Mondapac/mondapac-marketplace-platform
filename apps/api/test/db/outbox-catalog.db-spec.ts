@@ -196,6 +196,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX business_file_revisions_market_id_kind_created_at_pending_idx ON sellers.business_file_revisions USING btree (market_id, kind, created_at, id) WHERE (status = 'pending'::text)",
   'sellers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Shipping (SHP-02/03): the relay's claim index of shipping.outbox.
+  'shipping.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON shipping.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'sellers.seller_files_market_id_identifier_index_idx':
     'CREATE INDEX seller_files_market_id_identifier_index_idx ON sellers.seller_files USING btree (market_id, identifier_index) WHERE (identifier_index IS NOT NULL)',
   // docs/design/data/sellers.md 7 (A4) and 9.1 migration 7 (slice 6): the "Incomplete" tab and the
