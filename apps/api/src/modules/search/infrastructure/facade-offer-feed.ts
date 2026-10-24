@@ -29,7 +29,12 @@ export class FacadeOfferFeed implements OfferFeed {
 
   async publishedIds(
     context: CallContext,
-    input: { productId?: Id<'Product'>; after?: Id<'Offer'>; limit: number },
+    input: {
+      productId?: Id<'Product'>;
+      sellerId?: Id<'Seller'>;
+      after?: Id<'Offer'>;
+      limit: number;
+    },
   ): Promise<readonly Id<'Offer'>[] | null> {
     const answer = await this.catalog.publishedOfferIds(context, input);
     return answer.ok ? answer.value : null;

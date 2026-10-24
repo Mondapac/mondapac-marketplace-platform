@@ -72,13 +72,17 @@ export interface SellersFacade {
    * closed: an unknown id, a missing record or any error is `eligible: false`, never cached, and
    * no reason leaves the facade. Callers treat any `ok: false` (`AccessDenied`,
    * `validation.failed`) and any missing key as not eligible; nothing is retried towards a yes.
+   * For the system actor only, a failed read is `sellers.unavailable` rather than all "no", so an
+   * event handler or job can retry (a request caller still gets "no").
    * At most 100 ids; a larger or malformed call is refused whole. Two use cases behind this
    * method, as for `sellerSummaries`. Not exposed over HTTP.
    */
   sellingEligibility(
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
-  ): Promise<Result<SellingEligibilityMap, AccessDenied | SellersValidationFailed>>;
+  ): Promise<
+    Result<SellingEligibilityMap, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  >;
 
   /**
    * `allowedProductTypesOf` (sellers design 7.1; SEL-12): `all`, or the set of type codes the
@@ -94,6 +98,19 @@ export interface SellersFacade {
   ): Promise<
     Result<AllowedProductTypesOf, AccessDenied | SellersValidationFailed | SellersUnavailable>
   >;
+
+  /**
+   * `publishedStoreSellerId` (storefront products package): the seller that holds `slug` as a
+   * store address, or `null`. Yes only under the published-store rules of the public store page
+   * (an approved revision, a `held` slug, and the may-sell contract says yes); an unknown,
+   * malformed, retired or not-selling slug is `null`, byte-identical. A request actor only (rule
+   * `anonymous`); ids only, never a store field. A fault is `sellers.unavailable`: the caller
+   * fails closed. In-process only.
+   */
+  publishedStoreSellerId(
+    context: CallContext,
+    slug: string,
+  ): Promise<Result<Id<'Seller'> | null, AccessDenied | SellersUnavailable>>;
 
   /**
    * `reviewerBusinessDetails` (sellers design 7.1; board 13 item 3): legal name, trading name and

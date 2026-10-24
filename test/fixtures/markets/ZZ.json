@@ -27,6 +27,7 @@
   },
   "requestLimits": {
     "anonymousIdentityPerMinute": 10,
+    "publicMediaPerMinute": 600,
     "defaultPerMinute": 200
   },
   "notifications": {

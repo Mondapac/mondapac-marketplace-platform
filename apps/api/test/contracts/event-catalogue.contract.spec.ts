@@ -152,6 +152,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'search.index-moved-offer',
       'search.index-published-offer',
       'search.index-published-revision',
+      'search.index-reinstated-seller',
+      'search.unindex-suspended-seller',
       'sellers.after-submission',
       'sellers.close-decision-approved',
       'sellers.close-decision-rejected',
@@ -230,10 +232,12 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-suspended.v1')).toEqual([
       'identity.seller-suspended-mail',
+      'search.unindex-suspended-seller',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-reinstated.v1')).toEqual([
       'identity.seller-reinstated-mail',
       'notifications.seller-access-reinstated-notice',
+      'search.index-reinstated-seller',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-reapplied.v1')).toEqual([]);
     expect(subscriptions.sealed).toBe(true);

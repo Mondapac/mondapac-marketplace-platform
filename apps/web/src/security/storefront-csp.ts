@@ -3,8 +3,9 @@
 // page, the cart drawer or the assistant without loading a new document, so the policy in force
 // on the checkout is the one of the first page loaded: every page gets it. Scripts run only from
 // this site with the request's nonce (Next.js puts it on its own scripts) or from Stripe; Stripe,
-// the Google Fonts stylesheet and its font files are the only other origins. A new third-party
-// script, frame or connection on any page needs its origin added here.
+// the Google Fonts stylesheet and its font files, and the product photo origin are the only
+// other origins. A new third-party script, frame or connection on any page needs its origin
+// added here.
 // Every page must render on demand so it gets a fresh nonce: a static or cached route
 // (force-static, revalidate, generateStaticParams, 'use cache') would serve Next's scripts without
 // one, and under 'strict-dynamic' the browser would block them all.
@@ -25,15 +26,15 @@ const STRIPE_SCRIPTS = 'https://js.stripe.com https://*.js.stripe.com';
 /**
  * The policy for one response. `dev` adds what `next dev` needs (eval and the socket for its
  * refresh) and leaves out the upgrade to https, which a plain-http local site cannot follow.
- * Product images come from this site today; the image host of the real cart goes in `img-src`.
+ * `imageOrigin` is where product photos load from (STOREFRONT_IMAGE_ORIGIN); null: this site only.
  */
-export function storefrontCsp(nonce: string, dev: boolean): string {
+export function storefrontCsp(nonce: string, dev: boolean, imageOrigin: string | null): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${STRIPE_SCRIPTS}${dev ? " 'unsafe-eval'" : ''}`,
     // Stripe's Element and React set style attributes; no script can come through a style.
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: blob: https://*.stripe.com",
+    `img-src 'self' data: blob: https://*.stripe.com${imageOrigin ? ` ${imageOrigin}` : ''}`,
     "font-src 'self' data: https://fonts.gstatic.com",
     `connect-src 'self' https://api.stripe.com https://merchant-ui-api.stripe.com${dev ? ' ws:' : ''}`,
     `frame-src ${STRIPE_SCRIPTS} https://hooks.stripe.com`,

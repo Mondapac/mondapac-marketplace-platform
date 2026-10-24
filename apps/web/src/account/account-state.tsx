@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { Palette, TextSize } from '../preferences/preferences.ts';
+import { useStore } from '../shell/store-context.tsx';
+import * as api from './customer-api.ts';
 import type {
   AccountOrder,
   AccountSource,
@@ -25,25 +27,44 @@ export interface Appearance {
   readonly textSize?: TextSize;
 }
 
+/** How a save ended: done, or refused with the fields to fix (`invalid`) or a limit or a failure. */
+export type SaveOutcome =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly reason: 'invalid' | 'limit' | 'failed';
+      readonly fields: readonly api.FieldProblem[];
+    };
+
+/** How a password change ended; each refusal has its own message. */
+export type PasswordOutcome =
+  'ok' | 'current-incorrect' | 'rejected' | 'invalid' | 'throttled' | 'failed';
+
+const SAVED: SaveOutcome = { ok: true };
+const FAILED: SaveOutcome = { ok: false, reason: 'failed', fields: [] };
+
 interface AccountState {
   readonly source: AccountSource;
   readonly profile: Profile;
-  readonly setProfile: (profile: Profile) => void;
+  /** Saves the profile. Live: only the name goes to the API (email and mobile are not editable). */
+  readonly saveProfile: (profile: Profile) => Promise<SaveOutcome>;
+  /** Changes the password. Sample: always done. */
+  readonly changePassword: (current: string, next: string) => Promise<PasswordOutcome>;
   readonly orders: readonly AccountOrder[];
   /** Cancels an order no seller has confirmed yet; others are left as they are. */
   readonly cancelOrder: (reference: string) => void;
   readonly addresses: readonly SavedAddress[];
-  /** Adds an address (a new id) or replaces the one with its id. */
-  readonly saveAddress: (address: SavedAddress) => void;
-  readonly makeDefault: (id: string) => void;
+  /** Adds an address (empty id) or replaces the one with its id. */
+  readonly saveAddress: (address: SavedAddress) => Promise<SaveOutcome>;
+  readonly makeDefault: (id: string) => Promise<SaveOutcome>;
   /** Deletes an address; when it was the default, the first one left becomes the default. */
-  readonly deleteAddress: (id: string) => void;
+  readonly deleteAddress: (id: string) => Promise<SaveOutcome>;
   readonly lists: readonly NamedList[];
   readonly createList: (name: string) => void;
   readonly emails: EmailChoices;
   readonly setEmail: (key: keyof EmailChoices, on: boolean) => void;
   readonly appearance: Appearance;
-  /** Saves a look change to the account. Sample: this tab only, until the personalization API. */
+  /** Saves a look change to the account (live: both values go to the API; sample: this tab only). */
   readonly saveAppearance: (change: Appearance) => void;
 }
 
@@ -86,8 +107,9 @@ export function orderTotals(order: AccountOrder): {
 }
 
 /**
- * The account pages' client state, kept while the buyer moves between them. Sample: changes stay
- * in this browser tab until the account backend exists (handoffs/account.md).
+ * The account pages' client state, kept while the buyer moves between them. Live, the profile name,
+ * password, look and address book go to the API; orders, lists and email choices, and everything
+ * in sample mode, stay in this browser tab until their backends exist (handoffs/account.md).
  */
 export function AccountProvider({
   source,
@@ -96,6 +118,8 @@ export function AccountProvider({
   readonly source: AccountSource;
   readonly children: ReactNode;
 }) {
+  const live = source.live;
+  const { setCustomer } = useStore();
   const [profile, setProfile] = useState<Profile>({
     fullName: source.customer.fullName,
     email: source.customer.email,
@@ -122,29 +146,133 @@ export function AccountProvider({
       ),
     [],
   );
+  // Live: a 401 means the session ended, so the store signs the buyer out (the log-in page shows).
+  const settle = useCallback(
+    (result: api.ApiResult<unknown>): SaveOutcome => {
+      switch (result.kind) {
+        case 'ok':
+          return SAVED;
+        case 'invalid':
+          return {
+            ok: false,
+            reason: result.code === 'customers.address-limit-reached' ? 'limit' : 'invalid',
+            fields: result.fields,
+          };
+        case 'signed-out':
+          setCustomer(null);
+          return FAILED;
+        default:
+          return FAILED;
+      }
+    },
+    [setCustomer],
+  );
+  // Live: the book as the API holds it, also given to the store for checkout.
+  const adoptBook = useCallback(
+    (book: readonly SavedAddress[]) => {
+      setAddresses(book);
+      setCustomer((current) => (current ? { ...current, addresses: book } : current));
+    },
+    [setCustomer],
+  );
+  const reload = useCallback(
+    async (result: api.ApiResult<unknown>): Promise<SaveOutcome> => {
+      if (result.kind !== 'ok') return settle(result);
+      const book = await api.listAddresses();
+      if (book.kind === 'ok') adoptBook(book.value);
+      return book.kind === 'ok' ? SAVED : settle(book);
+    },
+    [settle, adoptBook],
+  );
   const saveAddress = useCallback(
-    (address: SavedAddress) =>
+    async (address: SavedAddress): Promise<SaveOutcome> => {
+      if (live) {
+        const input = {
+          firstName: address.firstName,
+          lastName: address.lastName,
+          phone: address.phone,
+          street: address.street,
+          line2: address.line2,
+          suburb: address.suburb,
+          region: source.serviceArea.regionCode,
+          postcode: address.postcode,
+          deliveryNotes: address.deliveryNotes,
+        };
+        return reload(
+          await (address.id === ''
+            ? api.createAddress(input)
+            : api.updateAddress(address.id, input)),
+        );
+      }
       setAddresses((current) =>
         current.some((a) => a.id === address.id)
           ? current.map((a) => (a.id === address.id ? address : a))
-          : [...current, { ...address, isDefault: current.length === 0 }],
-      ),
-    [],
+          : [
+              ...current,
+              { ...address, id: `address-${Date.now()}`, isDefault: current.length === 0 },
+            ],
+      );
+      return SAVED;
+    },
+    [live, reload, source.serviceArea.regionCode],
   );
   const makeDefault = useCallback(
-    (id: string) =>
-      setAddresses((current) => current.map((a) => ({ ...a, isDefault: a.id === id }))),
-    [],
+    async (id: string): Promise<SaveOutcome> => {
+      if (live) {
+        const result = await api.makeDefaultAddress(id);
+        if (result.kind === 'ok') adoptBook(result.value);
+        return settle(result);
+      }
+      setAddresses((current) => current.map((a) => ({ ...a, isDefault: a.id === id })));
+      return SAVED;
+    },
+    [live, settle, adoptBook],
   );
   const deleteAddress = useCallback(
-    (id: string) =>
+    async (id: string): Promise<SaveOutcome> => {
+      if (live) return reload(await api.deleteAddress(id));
       setAddresses((current) => {
         const left = current.filter((a) => a.id !== id);
         if (left.length > 0 && !left.some((a) => a.isDefault))
           return left.map((a, i) => ({ ...a, isDefault: i === 0 }));
         return left;
-      }),
-    [],
+      });
+      return SAVED;
+    },
+    [live, reload],
+  );
+  const saveProfile = useCallback(
+    async (next: Profile): Promise<SaveOutcome> => {
+      if (live) {
+        const name = next.fullName.trim();
+        const result = await api.saveDisplayName(name);
+        if (result.kind !== 'ok') return settle(result);
+        setProfile((current) => ({ ...current, fullName: name }));
+        setCustomer((current) =>
+          current
+            ? { ...current, fullName: name, firstName: name.split(/\s+/)[0] ?? name }
+            : current,
+        );
+        return SAVED;
+      }
+      setProfile(next);
+      return SAVED;
+    },
+    [live, settle, setCustomer],
+  );
+  const changePassword = useCallback(
+    async (current: string, next: string): Promise<PasswordOutcome> => {
+      if (!live) return 'ok';
+      const result = await api.changePassword(current, next);
+      if (result.kind === 'ok') return 'ok';
+      if (result.kind === 'throttled') return 'throttled';
+      if (result.kind === 'signed-out') setCustomer(null);
+      if (result.kind !== 'invalid') return 'failed';
+      if (result.code === 'password.current-incorrect') return 'current-incorrect';
+      if (result.code === 'password.rejected') return 'rejected';
+      return result.code === 'validation.failed' ? 'invalid' : 'failed';
+    },
+    [live, setCustomer],
   );
   const createList = useCallback(
     (name: string) =>
@@ -156,15 +284,25 @@ export function AccountProvider({
     [],
   );
   const saveAppearance = useCallback(
-    (change: Appearance) => setAppearance((current) => ({ ...current, ...change })),
-    [],
+    (change: Appearance) => {
+      const merged = { ...appearance, ...change };
+      setAppearance(merged);
+      if (live)
+        void api
+          .saveAppearance({ palette: merged.palette ?? null, textSize: merged.textSize ?? null })
+          .then((result) => {
+            if (result.kind === 'signed-out') setCustomer(null);
+          });
+    },
+    [appearance, live, setCustomer],
   );
 
   const value = useMemo(
     () => ({
       source,
       profile,
-      setProfile,
+      saveProfile,
+      changePassword,
       orders,
       cancelOrder,
       addresses,
@@ -181,6 +319,8 @@ export function AccountProvider({
     [
       source,
       profile,
+      saveProfile,
+      changePassword,
       orders,
       cancelOrder,
       addresses,

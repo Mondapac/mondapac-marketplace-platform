@@ -175,6 +175,8 @@ export interface ProductDetail {
   readonly description: string;
   readonly specifications: readonly ProductSpecification[];
   readonly photos: readonly string[];
+  /** Small versions of `photos`, same order and length, for the thumbnail strip. */
+  readonly photoThumbs?: readonly string[];
   /** Never empty: a product without a sellable offer is not shown. */
   readonly offers: readonly [ProductOffer, ...ProductOffer[]];
   readonly similar: readonly ProductCard[];
@@ -328,10 +330,16 @@ export interface CartSource {
 
 export interface SavedAddress {
   readonly id: string;
-  readonly label: string;
-  readonly name: string;
-  readonly line: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  /** Street address and unit. */
+  readonly street: string;
+  /** The API's second line and courier note; kept so a save does not drop them (not on the form). */
+  readonly line2: string | null;
+  readonly suburb: string;
+  readonly postcode: string;
   readonly phone: string;
+  readonly deliveryNotes: string | null;
   readonly isDefault: boolean;
 }
 
@@ -421,7 +429,12 @@ export interface MapBounds {
  * address-lookup provider is not chosen, the sample places its stubbed lookup knows.
  */
 export interface DeliveryLocatorSource {
-  readonly area: { readonly name: string; readonly boundary: readonly GeoPoint[] };
+  readonly area: {
+    readonly name: string;
+    /** The region's short form in a one-line address ("QLD"). */
+    readonly regionCode: string;
+    readonly boundary: readonly GeoPoint[];
+  };
   readonly bounds: MapBounds;
   /** Where the pin starts when the buyer has not chosen a place the lookup can find. */
   readonly start: Place;
@@ -452,6 +465,19 @@ export interface SellerCertificate {
 export interface SellerProduct extends ProductCard {
   readonly listedAt: string;
 }
+
+/**
+ * One page of the store's products from the API (`search/products?store=`): cards in name order.
+ * No total is known (the API answers `hasMore`), so the tab shows no count.
+ */
+export type StoreProducts =
+  | {
+      readonly kind: 'ok';
+      readonly items: readonly ShelfCard[];
+      readonly page: number;
+      readonly hasMore: boolean;
+    }
+  | { readonly kind: 'failed'; readonly page: number };
 
 /**
  * The public seller page (`/s/<slug>`): profile, terms, certificates and products. Fields marked
@@ -494,6 +520,11 @@ export interface SellerShop {
   readonly categories?: readonly { readonly code: string; readonly name: string }[];
   /** In popularity order. Not known yet when absent: the Products tab is left out. */
   readonly products?: readonly SellerProduct[];
+  /**
+   * The store's products read from the API, one page. Used instead of `products` when the seller
+   * read is real: the tab then pages through the cards and shows a failed read inside the tab.
+   */
+  readonly storeProducts?: StoreProducts;
 }
 
 /** A seller page with every part known: what the sample data gives. */
@@ -574,6 +605,8 @@ export interface EmailChoices {
 
 /** The signed-in buyer's account: profile, orders, address book, lists and email choices. */
 export interface AccountSource {
+  /** True when the storefront talks to the API: the session, profile and address book are real. */
+  readonly live: boolean;
   readonly customer: CheckoutCustomer;
   readonly mobile: string;
   /** Newest first. */

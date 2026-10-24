@@ -2643,6 +2643,10 @@ svg {
   aspect-ratio: 16 / 9;
   max-height: 280px;
 }
+/* Photos that failed after they were shown: the tile keeps its square, so the page does not jump. */
+.gmain.broken {
+  aspect-ratio: 1 / 1;
+}
 .gmain > img {
   width: 100%;
   height: 100%;
@@ -2673,7 +2677,7 @@ svg {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding: 2px;
+  padding: 4px;
 }
 .gth button {
   flex: none;
@@ -5973,6 +5977,16 @@ svg {
 }
 .shop-more {
   justify-self: center;
+}
+.shop-pager {
+  margin-top: 24px;
+}
+/* The focus target of the Products panel: in view below the sticky header, no ring on a mouse jump. */
+.shop-products-target {
+  scroll-margin-top: 96px;
+}
+.shop-products-target:focus {
+  outline: none;
 }
 .shop-empty {
   display: grid;

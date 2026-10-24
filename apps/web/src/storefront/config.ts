@@ -2,6 +2,7 @@
 // the panels' apps/admin/src/server/config.ts). Nothing here has a default Market: a host that is
 // not listed reads nothing from the API (ADR-0020 decision 3).
 import 'server-only';
+import { parseImageOrigin } from './photos.ts';
 import { parseClientAddressKey, type ClientAddressKey } from '@mondapac/panel-server/signer';
 import type { CardSetup } from './types.ts';
 
@@ -19,6 +20,11 @@ export interface StorefrontApiConfig {
   readonly hosts: readonly StorefrontHost[];
   /** This site's key for the signed client address; null when it is not set. */
   readonly clientAddressKey: ClientAddressKey | null;
+  /**
+   * Where the browser loads product photos from (STOREFRONT_IMAGE_ORIGIN): the API origin as the
+   * browser reaches it, a CDN in front of it, or a cookieless image domain. Null: no photos.
+   */
+  readonly imageOrigin: string | null;
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -105,6 +111,7 @@ export function parseStorefrontApiConfig(env: Env): StorefrontApiConfig | null {
     apiBaseUrl: parseApiBaseUrl(raw),
     hosts: parseStorefrontHosts(env['STOREFRONT_HOSTS']),
     clientAddressKey,
+    imageOrigin: parseImageOrigin(env['STOREFRONT_IMAGE_ORIGIN']),
   };
 }
 

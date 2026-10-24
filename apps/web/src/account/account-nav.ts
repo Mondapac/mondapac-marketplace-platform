@@ -26,15 +26,16 @@ export function useAccountCurrent(): string | undefined {
 }
 
 /**
- * Log out: the sample session ends and the log-in page shows (the account overview signed out).
- * Wired to the customer sign-out when sessions are.
+ * Log out: the session ends (live: the API sign-out) and the log-in page shows (the account
+ * overview signed out).
  */
 export function useLogOut(): () => void {
   const router = useRouter();
-  const { setCustomer, setAccountOpen } = useStore();
+  const { signOut, setAccountOpen } = useStore();
   return useCallback(() => {
     setAccountOpen(false);
-    setCustomer(null);
-    router.push('/account');
-  }, [router, setCustomer, setAccountOpen]);
+    void signOut().then((done) => {
+      if (done) router.push('/account');
+    });
+  }, [router, signOut, setAccountOpen]);
 }

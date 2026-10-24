@@ -18,7 +18,7 @@ import { useDialog } from './use-dialog.ts';
 export function LoginModal({ customer }: { readonly customer: CheckoutCustomer }) {
   const t = useTranslations('account.auth');
   const router = useRouter();
-  const { loginOpen: open, setLoginOpen, setCustomer } = useStore();
+  const { loginOpen: open, setLoginOpen, setCustomer, live, signIn } = useStore();
   const [mounted, setMounted] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
   const close = () => setLoginOpen(false);
@@ -48,8 +48,10 @@ export function LoginModal({ customer }: { readonly customer: CheckoutCustomer }
                   </button>
                 </div>
               )}
+              {...(live ? { signIn } : {})}
               onSignedIn={() => {
-                setCustomer(customer);
+                // Live: the store already holds the signed-in customer.
+                if (!live) setCustomer(customer);
                 close();
                 router.push('/account');
               }}

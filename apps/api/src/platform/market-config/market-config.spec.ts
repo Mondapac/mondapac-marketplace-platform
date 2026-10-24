@@ -24,7 +24,11 @@ const VALID = {
   pricesIncludeTax: true,
   maxLineQuantity: 99,
   timezone: 'Pacific/Auckland',
-  requestLimits: { anonymousIdentityPerMinute: 20, defaultPerMinute: 300 },
+  requestLimits: {
+    anonymousIdentityPerMinute: 20,
+    publicMediaPerMinute: 1500,
+    defaultPerMinute: 300,
+  },
   allowedOrigins: {
     admin: ['https://admin.qq.test'],
     seller: ['https://seller.qq.test'],
@@ -146,7 +150,13 @@ describe('loadMarketConfigs', () => {
     ['no request limits', { requestLimits: undefined }, /requestLimits/],
     [
       'a zero request limit',
-      { requestLimits: { anonymousIdentityPerMinute: 0, defaultPerMinute: 300 } },
+      {
+        requestLimits: {
+          anonymousIdentityPerMinute: 0,
+          publicMediaPerMinute: 1500,
+          defaultPerMinute: 300,
+        },
+      },
       /requestLimits\.anonymousIdentityPerMinute/,
     ],
     ['no identity section', { identity: undefined }, /identity/],
@@ -413,13 +423,14 @@ describe('loadMarketConfigs', () => {
       expect(load(withOrigins(empty)).allowedOrigins).toEqual(empty);
     });
 
-    it('configures both test Markets: AU fails closed, ZZ lists its link-page hosts', () => {
+    it('configures both test Markets: AU lists only its storefront, ZZ lists its link-page hosts', () => {
       const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
 
+      // AU's panels fail closed until D2; its storefront origin is the host of its customer links.
       expect(markets.get(testMarketId('AU'))!.allowedOrigins).toEqual({
         admin: [],
         seller: [],
-        customer: [],
+        customer: ['https://storefront.au.mondapac.test'],
       });
       expect(markets.get(testMarketId('ZZ'))!.allowedOrigins).toEqual({
         admin: ['https://admin.zz.test'],

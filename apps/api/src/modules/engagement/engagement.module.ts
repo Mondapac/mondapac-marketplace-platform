@@ -10,6 +10,8 @@ import { ENGAGEMENT_GUEST_TOKENS } from './application/ports/guest-tokens';
 import { PERSONALIZATION_SETTING_REPOSITORY } from './application/ports/personalization-setting.repository';
 import { ForgetAccount } from './application/use-cases/forget-account.use-case';
 import { PurgeExpiredEvents } from './application/use-cases/purge-expired-events.use-case';
+import { RecentViewsOfGuest } from './application/use-cases/recent-views-guest.use-case';
+import { RecentViewsOfCustomer } from './application/use-cases/recent-views.use-case';
 import { RecordEvent } from './application/use-cases/record-event.use-case';
 import { RecordGuestEvent } from './application/use-cases/record-guest-event.use-case';
 import { SetPersonalization } from './application/use-cases/set-personalization.use-case';
@@ -65,12 +67,22 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SetPersonalization,
       PurgeExpiredEvents,
       ForgetAccount,
+      RecentViewsOfCustomer,
+      RecentViewsOfGuest,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: ENGAGEMENT_FACADE,
-      inject: [ForgetAccount],
-      useFactory: (forgetAccount: ForgetAccount) =>
-        new EngagementFacadeImplementation({ forgetAccount }),
+      inject: [ForgetAccount, RecentViewsOfCustomer, RecentViewsOfGuest],
+      useFactory: (
+        forgetAccount: ForgetAccount,
+        recentViewsOfCustomer: RecentViewsOfCustomer,
+        recentViewsOfGuest: RecentViewsOfGuest,
+      ) =>
+        new EngagementFacadeImplementation({
+          forgetAccount,
+          recentViewsOfCustomer,
+          recentViewsOfGuest,
+        }),
     },
     registerJobsFrom('engagement', [PurgeExpiredEvents], (purge: PurgeExpiredEvents) => [
       purgeExpiredEventsJob(purge),

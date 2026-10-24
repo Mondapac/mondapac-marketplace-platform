@@ -13,7 +13,7 @@ describe('storefront Content-Security-Policy', () => {
   });
 
   it('lets scripts run from this site with the nonce or from Stripe, and nothing frame the page', () => {
-    const policy = storefrontCsp('abc123', false);
+    const policy = storefrontCsp('abc123', false, null);
     expect(policy).toContain(
       "script-src 'self' 'nonce-abc123' 'strict-dynamic' https://js.stripe.com https://*.js.stripe.com;",
     );
@@ -27,15 +27,18 @@ describe('storefront Content-Security-Policy', () => {
     expect(policy).toContain("object-src 'none'");
     expect(policy).toContain('upgrade-insecure-requests');
     expect(policy).not.toContain('unsafe-eval');
-    const dev = storefrontCsp('abc123', true);
+    const dev = storefrontCsp('abc123', true, null);
     expect(dev).toContain("'unsafe-eval'");
     expect(dev).not.toContain('upgrade-insecure-requests');
   });
 
   it('loads images only from this site and Stripe, and fonts from Google Fonts', () => {
-    const policy = storefrontCsp('abc123', false);
+    const policy = storefrontCsp('abc123', false, null);
     expect(policy).toContain("img-src 'self' data: blob: https://*.stripe.com;");
     expect(policy).not.toMatch(/img-src[^;]* https:(;| )/);
+    expect(storefrontCsp('abc123', false, 'https://img.example.test')).toContain(
+      "img-src 'self' data: blob: https://*.stripe.com https://img.example.test;",
+    );
     expect(policy).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;");
     expect(policy).toContain("font-src 'self' data: https://fonts.gstatic.com;");
   });

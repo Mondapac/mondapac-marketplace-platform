@@ -2,6 +2,7 @@ import 'server-only';
 import { headers } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { apiGet, type ApiRead } from './api.ts';
+import { sessionGet } from './session.ts';
 import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
 import {
   publicStoreOf,
@@ -11,11 +12,13 @@ import {
   type PublicStore,
 } from './real-sellers.ts';
 import type { AssistantSetup } from '../assistant/assistant.ts';
-import { loadHome, type HomeContent } from './home-source.ts';
+import { categoriesOf, loadHome, type HomeContent } from './home-source.ts';
+import { photoUrls } from './photo-source.ts';
+import { loadShellContent } from './shell-source.ts';
+import { storeProductsOf, storeProductsPath } from './store-products.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT, sampleQuotes } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
-import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { SAMPLE_SELLER_SIGN_UP } from './sample-seller-sign-up.ts';
@@ -42,6 +45,7 @@ import type {
   SellerSignUpAnswer,
   SellerSignUpSetup,
   StorefrontContent,
+  StoreProducts,
   UnavailableProduct,
 } from './types.ts';
 
@@ -53,12 +57,13 @@ import type {
 export const SAMPLE_DATA: boolean = true;
 
 /**
- * The shell's content: delivery area, popular searches, the rail and drawer categories and the
- * sample sellers. Sample data; the shell moves to the navigation and category reads in its own
- * package.
+ * The shell's content: delivery area, popular searches, the drawer categories and the sample
+ * sellers. The categories and popular searches come from the approved navigation and the live
+ * category tree when API_BASE_URL is set; the delivery area and sellers are sample data. See
+ * ./shell-source.ts.
  */
 export async function loadStorefrontContent(): Promise<StorefrontContent> {
-  return Promise.resolve(SAMPLE_CONTENT);
+  return loadShellContent();
 }
 
 /**
@@ -87,11 +92,17 @@ export async function loadProduct(id: string): Promise<ProductDetail | undefined
     if (read.status === 404) return undefined;
     throw new Error('product detail unavailable');
   }
-  const [locale, t] = await Promise.all([getLocale(), getTranslations('seller')]);
-  return productDetailOf(read.body, locale, {
-    minimum: (amount) => t('minimum', { amount }),
-    noMinimum: t('no-minimum'),
-  });
+  const [locale, t, photo] = await Promise.all([
+    getLocale(),
+    getTranslations('seller'),
+    photoUrls(),
+  ]);
+  return productDetailOf(
+    read.body,
+    locale,
+    { minimum: (amount) => t('minimum', { amount }), noMinimum: t('no-minimum') },
+    photo,
+  );
 }
 
 /**
@@ -217,10 +228,12 @@ const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 /**
  * The seller page's read: profile, terms, certificates and products, or undefined when there is
  * no such seller. With the API configured, `GET sellers/stores/:slug` gives name, area, year and
- * minimum order; the other parts stay absent until their public reads exist. Otherwise sample
- * data. Any answer but 200 or 404 throws, so the page shows its error state.
+ * minimum order, and `GET search/products?store=<slug>` gives one page of its products (24 cards)
+ * with their photos; the other parts stay absent until their public reads exist. Otherwise sample
+ * data. Any answer but 200 or 404 for the store throws, so the page shows its error state; a
+ * failed products read does not: the Products tab says so and the rest of the page stays.
  */
-export async function loadSeller(slug: string): Promise<SellerShop | undefined> {
+export async function loadSeller(slug: string, page = 1): Promise<SellerShop | undefined> {
   // No sample or real store has any other slug; nothing else reaches the API path.
   if (slug.length > 50 || !STORE_SLUG.test(slug)) return undefined;
   const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`);
@@ -231,7 +244,24 @@ export async function loadSeller(slug: string): Promise<SellerShop | undefined> 
     throw new SellerReadFailed();
   }
   const store = publicStoreOf(answer.body);
-  return shopOf(store, (await areaNames())(store.serviceAreaCode));
+  const [areaName, storeProducts] = await Promise.all([
+    areaNames(),
+    loadStoreProducts(store.slug, page),
+  ]);
+  return { ...shopOf(store, areaName(store.serviceAreaCode)), storeProducts };
+}
+
+/** One page of a store's products; any failure is `failed`, never an exception. */
+async function loadStoreProducts(slug: string, page: number): Promise<StoreProducts> {
+  const [answer, tree, photo] = await Promise.all([
+    apiGet<unknown>(storeProductsPath(slug, page)),
+    // Only for the illustration of a card without a photo; a failed tree gives plain cards.
+    apiGet<unknown>('catalog/categories'),
+    photoUrls(),
+  ]);
+  if (answer.kind !== 'ok') return { kind: 'failed', page };
+  const slugs = categoriesOf(tree.kind === 'ok' ? tree.body : null).slugs;
+  return storeProductsOf(answer.body, page, slugs, photo);
 }
 
 /** The API's sort for the page's: popularity and distance are not known yet, so name. */
@@ -290,10 +320,20 @@ export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
 
 /**
  * The signed-in buyer's account: profile, orders, address book, saved lists and email choices.
- * Sample data until the account backend (orders read, profile, password, saved lists) exists.
+ * Orders, saved lists and email choices are sample data until their backends exist; the profile,
+ * session and address book come from the API in live mode (see `live`).
  */
 export async function loadAccount(): Promise<AccountSource> {
-  return Promise.resolve(SAMPLE_ACCOUNT);
+  return Promise.resolve({ ...SAMPLE_ACCOUNT, live: storefrontIsLive() });
+}
+
+/**
+ * Whether the storefront talks to the API (`API_BASE_URL` is set). The account pages and the
+ * shell's sign-in then use the customer routes through the same-origin relay; otherwise they run
+ * on sample data.
+ */
+export function storefrontIsLive(): boolean {
+  return storefrontApiConfig() !== null;
 }
 
 /**
@@ -386,4 +426,38 @@ export async function loadClosedStore(slug: string): Promise<ClosedStore | undef
  */
 export async function loadAssistant(): Promise<AssistantSetup | null> {
   return Promise.resolve(null);
+}
+
+/** Who is shopping, as the API sees this browser's cookies (storefront session design 2). */
+export type BuyerSession =
+  /** The API is off: the sample log-in stays. */
+  | { readonly kind: 'off' }
+  /** No session, or it ended. `cartLines` is null when the cart could not be read. */
+  | { readonly kind: 'guest'; readonly cartLines: number | null }
+  | {
+      readonly kind: 'signed-in';
+      readonly email: string;
+      /** Sent as `x-csrf-token` on every write through the relay (app/api/[...path]). */
+      readonly csrfToken: string;
+      readonly cartLines: number | null;
+    };
+
+/**
+ * The buyer's session and the number of lines in their cart (the account's or the guest's). Reads
+ * only; a renewed or cleared cookie reaches the browser through the relay, never from a page.
+ */
+export async function loadBuyerSession(): Promise<BuyerSession> {
+  const [session, cart] = await Promise.all([
+    sessionGet<{ email: string; csrfToken: string }>('identity/customer/session'),
+    sessionGet<{ lineCount: number }>('cart'),
+  ]);
+  if (session.kind === 'off') return { kind: 'off' };
+  const cartLines = cart.kind === 'ok' ? cart.body.lineCount : null;
+  if (session.kind !== 'ok') return { kind: 'guest', cartLines };
+  return {
+    kind: 'signed-in',
+    email: session.body.email,
+    csrfToken: session.body.csrfToken,
+    cartLines,
+  };
 }

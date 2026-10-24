@@ -18,7 +18,8 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
 
 - `requestLimits`: the generic per-origin rate limiter (`apps/api/src/platform/rate-limit/`;
   identity design 6.8). `anonymousIdentityPerMinute` (sign-up, sign-in and reset requests;
-  20 for AU) and `defaultPerMinute` (every other market-scoped route; 300 for AU). The counter
+  20 for AU) and `publicMediaPerMinute` (the anonymous buyer photo route; 1500 for AU) and `defaultPerMinute`
+  (every other market-scoped route; 300 for AU). The counter
   of an origin is shared by every Market of the Region Stack; the request's Market chooses
   only the limit.
 - `identity`: the identity policy section (identity design 8.5 and 15). `password.minLength`

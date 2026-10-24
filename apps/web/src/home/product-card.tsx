@@ -5,6 +5,7 @@ import { formatMoney } from '../format/money.ts';
 import { CategoryArt } from '../icons/category-icon.tsx';
 import type { ShelfCard } from '../storefront/types.ts';
 import { AddControl } from './add-control.tsx';
+import { CardPhoto } from './card-photo.tsx';
 
 export function ProductCard({ product }: { readonly product: ShelfCard }) {
   const t = useTranslations('home');
@@ -15,8 +16,7 @@ export function ProductCard({ product }: { readonly product: ShelfCard }) {
     <article className="pc">
       <div className="tile">
         {product.imageUrl ? (
-          // Placeholder photos are local files; seller media moves to next/image with the media API.
-          <img className="photo" src={product.imageUrl} alt="" loading="lazy" decoding="async" />
+          <CardPhoto src={product.imageUrl} category={product.category} />
         ) : (
           <CategoryArt code={product.category} />
         )}
