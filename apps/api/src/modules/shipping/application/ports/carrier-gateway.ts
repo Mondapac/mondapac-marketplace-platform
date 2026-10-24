@@ -1,4 +1,4 @@
-import type { MarketContext, Result } from '@mondapac/shared-kernel';
+import type { MarketContext, Money, Result } from '@mondapac/shared-kernel';
 import type { CarrierStopInput } from '../../domain/carrier-stop';
 
 /**
@@ -20,6 +20,22 @@ export interface CarrierBookingRequest {
   readonly externalReference: string;
   readonly pickup: CarrierStop;
   readonly dropoff: CarrierStop;
+  readonly parcel: CarrierParcel;
+  readonly mode: 'on_demand' | 'scheduled';
+}
+
+/**
+ * One end of a quoted trip: its postcode only, for the carrier to locate. Never a street, a
+ * suburb the customer typed, a name or a phone: a quote is asked before anything is bought, and
+ * free text would let a customer move the quoted place (Hassan, SHP-02/03).
+ */
+export interface CarrierQuoteStop {
+  readonly postcode: string;
+}
+
+export interface CarrierQuoteRequest {
+  readonly pickup: CarrierQuoteStop;
+  readonly dropoff: CarrierQuoteStop;
   readonly parcel: CarrierParcel;
   readonly mode: 'on_demand' | 'scheduled';
 }
@@ -48,6 +64,12 @@ export interface CarrierGateway {
     market: MarketContext,
     request: CarrierBookingRequest,
   ): Promise<Result<CarrierBookingAnswer, CarrierFailure>>;
+
+  /** The carrier's price of a trip, without booking it: its total, in its currency. */
+  quote(
+    market: MarketContext,
+    request: CarrierQuoteRequest,
+  ): Promise<Result<Money, CarrierFailure>>;
 
   /** Asks the carrier to drop a delivery that has not been picked up yet. */
   cancel(

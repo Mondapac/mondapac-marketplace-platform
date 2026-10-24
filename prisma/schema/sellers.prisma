@@ -453,6 +453,9 @@ model SellersBusinessFileRevision {
   /// Clear IANA zone and ServiceArea code of the operating address at submission.
   operatingTimezone    String              @map("operating_timezone")
   serviceAreaCode      String              @map("service_area_code")
+  /// Clear postcode of the operating address at submission (CHECK), the real-time carrier's
+  /// quote pickup (SHP-02/03); NULL for a revision written before it existed. Never updated.
+  operatingPostcode    String?             @map("operating_postcode")
   /// Clear IANA zone derived from the operating address only, copied at submit; NULL for a
   /// backfill revision (fail closed for the claim path).
   addressTimezone      String?             @map("address_timezone")

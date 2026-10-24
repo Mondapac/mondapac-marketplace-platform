@@ -177,6 +177,7 @@ describe('the review page over HTTP (integration, slice 7a-read)', () => {
         },
         contentHash: sealed.value.contentHash,
         register: { outcome: 'not-performed', mismatches: [], checkedAt: null },
+        operatingPostcode: '4109',
         now: START,
       }),
       sealed.value,

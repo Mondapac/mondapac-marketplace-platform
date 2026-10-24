@@ -222,9 +222,12 @@ export async function startCheckout(
   }
   const planned = planOrder(read.value, { maxLines: deps.policy.maxLines() });
   if (!planned.ok) return err(planned.error);
-  const fees = await deps.shipping.flatFees(
+  // The live quote of the real-time carrier where it carries the seller order, else the flat fee
+  // (SHP-02/03). Only the postcode of the address is given for a quote.
+  const fees = await deps.shipping.shippingFees(
     context,
     planned.plan.sellers.map((seller) => seller.sellerId),
+    { postcode: address.value.postcode },
   );
   if (!fees.ok) {
     return err(
@@ -233,7 +236,7 @@ export async function startCheckout(
         : { code: 'ordering.check-unavailable' },
     );
   }
-  const priced = addShipping(planned.plan, fees.value);
+  const priced = addShipping(planned.plan, fees.value.fees);
   if (!priced.ok) {
     // The customer cannot fix this; an admin must set the seller's fee (the use case logs it).
     return err({ code: 'ordering.shipping-unavailable', sellerIds: priced.sellerIds });
@@ -283,14 +286,14 @@ export async function startCheckout(
   if (planLines.some((line) => !categories.has(line.offerId))) {
     return err({ code: 'ordering.check-unavailable' });
   }
-  // The flat shipping fee of each seller is taxed in the same answer, after the product lines.
-  // It takes the price basis of that seller's goods (inclusive only when every line is) and the
-  // strategy's default rate (no category); a working assumption until the tax agent confirms
-  // (brief s40, Q1).
+  // The shipping fee of each seller is taxed in the same answer, after the product lines, at the
+  // strategy's default rate (no category). A flat fee takes the price basis of that seller's goods
+  // (inclusive only when every line is), a working assumption until the tax agent confirms (brief
+  // s40, Q1). A carrier quote is a price with tax included (Drive's `total`), so it is inclusive.
   const shippingInclusive = new Map(
     plan.sellers.map((seller) => [
       seller.sellerId,
-      seller.lines.every((line) => line.taxInclusive),
+      fees.value.quoted.has(seller.sellerId) || seller.lines.every((line) => line.taxInclusive),
     ]),
   );
   const taxed = await deps.tax.calculateTax(context, [

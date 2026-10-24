@@ -12,7 +12,36 @@ export type DriveFetch = (
     signal: AbortSignal;
     redirect: 'error';
   },
-) => Promise<{ readonly status: number; json(): Promise<unknown> }>;
+) => Promise<{ readonly status: number; readonly body: ReadableStream<Uint8Array> | null }>;
+
+/**
+ * The largest answer body read (Hassan, SHP-02/03): Drive's answers are a few hundred bytes; a
+ * larger one is not read whole into memory and counts as no answer.
+ */
+export const MAX_ANSWER_BYTES = 64 * 1024;
+
+/** The body as JSON, or null when it is empty, not JSON or larger than the cap. */
+async function boundedJson(body: ReadableStream<Uint8Array> | null): Promise<unknown> {
+  if (body === null) return null;
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_ANSWER_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+  } catch {
+    return null;
+  }
+}
 
 /** Waits; injected so tests do not sleep. */
 export type Sleep = (milliseconds: number) => Promise<void>;
@@ -35,7 +64,7 @@ export type DriveCallFailure = 'unavailable' | 'refused';
 
 /**
  * The HTTP client of the Mondapac Drive API: JSON over HTTPS with the Market in `x-market-id`
- * and the merchant API key as a bearer token. Each attempt has a timeout; a 5xx, a timeout or a
+ * and the merchant API key as a bearer token. Each attempt has a timeout; a 5xx, a 429, a timeout or a
  * network fault is retried with exponential backoff (every Drive call the marketplace makes is
  * idempotent), a 4xx never is. A circuit breaker per Market stops calls while Drive is down.
  * The key and Drive's answer bodies never reach a log or an error: a failure is a code.
@@ -47,12 +76,17 @@ export class DriveHttpClient {
     private readonly sleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   ) {}
 
+  /**
+   * `call` names the kind of call (`book`, `cancel`, `quote`): each has its own circuit, so
+   * failing quotes at checkout never stop the bookings of paid orders (Hassan, PR 1 follow-up).
+   */
   async post(
     endpoint: DriveEndpoint,
     path: string,
     body: unknown,
+    call: 'book' | 'cancel' | 'quote',
   ): Promise<Result<{ readonly status: number; readonly body: unknown }, DriveCallFailure>> {
-    const key = `${endpoint.marketId}|${endpoint.baseUrl}`;
+    const key = `${endpoint.marketId}|${endpoint.baseUrl}|${call}`;
     if (!this.breaker.allow(key)) return err('unavailable');
     const url = `${endpoint.baseUrl.replace(/\/+$/, '')}${path}`;
     const payload = JSON.stringify(body);
@@ -91,14 +125,13 @@ export class DriveHttpClient {
         signal: AbortSignal.timeout(endpoint.timeoutMs),
         redirect: 'error',
       });
-      if (response.status >= 500) return { kind: 'fault' };
-      let body: unknown = null;
-      try {
-        body = await response.json();
-      } catch {
-        body = null;
+      // A 429 is Drive shedding load, not a judgement of the request: it is retried and counts
+      // towards the circuit, like a 5xx (Hassan, SHP-02/03).
+      if (response.status >= 500 || response.status === 429) {
+        await response.body?.cancel();
+        return { kind: 'fault' };
       }
-      return { kind: 'answer', status: response.status, body };
+      return { kind: 'answer', status: response.status, body: await boundedJson(response.body) };
     } catch {
       return { kind: 'fault' };
     }

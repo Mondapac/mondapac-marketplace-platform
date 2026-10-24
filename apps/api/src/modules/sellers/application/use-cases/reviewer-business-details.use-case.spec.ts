@@ -113,6 +113,7 @@ describe.each(['AU', 'ZZ'] as const)('reviewerBusinessDetails in Market %s', (co
         },
         contentHash: sealed.value.contentHash,
         register: { outcome: 'not-performed', mismatches: [], checkedAt: null },
+        operatingPostcode: '4109',
         now: START,
       }),
       status,
