@@ -61,6 +61,7 @@
   "home": {
     "title": "Local food sellers in one cart",
     "featured": "Featured",
+    "promotions": "Promotions",
     "categories": "Product categories",
     "show-all": "Show all",
     "show-all-of": "Show all: {title}",
@@ -75,6 +76,16 @@
     "max-reached": "No more in stock",
     "empty": "Nothing to show here yet. Check back soon.",
     "no-sellers": "No sellers deliver to this area yet."
+  },
+  "slider": {
+    "slide-of": "{n} of {total}",
+    "previous": "Previous slide",
+    "next": "Next slide",
+    "pause": "Pause slideshow",
+    "play": "Start slideshow",
+    "choose": "Choose a slide",
+    "go-to": "Show slide {n} of {total}",
+    "sponsored": "Sponsored"
   },
   "footer": {
     "trust": {

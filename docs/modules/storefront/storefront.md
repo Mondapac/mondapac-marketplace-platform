@@ -74,7 +74,7 @@ Public (`@RoutePopulation('customer')`, no session, `no-store`): `GET storefront
 (a never-published system page answers its template defaults), `GET storefront/landing/:slug`
 (a live page, or `{ kind: 'redirect', to }` for an old slug of a live, published page or an
 archived slug; an archived page never sends buyers to an archived page or to itself), `GET
-storefront/navigation`.
+storefront/navigation`, and `GET storefront/slides` (below; the only one that may be cached).
 
 ## Buyer reads (package 2, 18 Oct 2026)
 
@@ -143,6 +143,40 @@ version, with its window, so caps and the later buyer read need no join) and `sl
   `GET|POST storefront/admin/slides`, `GET|PUT storefront/admin/slides/:slide`,
   `GET .../:slide/copy`, `POST .../:slide/restore`, `POST .../:slide/archive`,
   `POST .../:slide/submit|approve|pause|resume`.
+
+## Public slides read (backend PR 2, 24 Oct 2026)
+
+`GET storefront/slides?position=<key>` plus the scope the position allows (`category`, `product`,
+`seller`, `page`; any other or disallowed param is a 400 `validation.failed`). Anonymous
+(`@RoutePopulation('customer')`, use case `storefront.view-published-slides`), of the request's
+Market only. It answers `{ position, autoplay, slides[], nextChangeAt }` where a slide is `{ id,
+kind, title, body, ctaLabel, image { key, alt, decorative } | null, textPosition, textTone, href |
+null, sponsored }`. Plain text only; `image.key` is a ready-made placeholder key; `href` is a site
+path (`/c/..`, `/p/<id>`, `/s/<slug>`, `/l/<slug>`, or a prepared search `/offers`, `/express`,
+`/certified`), never an external URL.
+
+- Served: placement in the projection (approved, not paused or archived), window holds now, scope
+  covers the page (a category slide also covers subcategories when it says so), content passes the
+  checks again, sorted by the position's order and capped at its `maxActive`.
+- Dropped: a slide whose link target is dead, from another Market, or whose seller is suspended
+  (or has no published store address). Liveness is decided by the same `SlideTargets` port as
+  approval, called with the request's context; site paths come from `LinkTargets` (category tree,
+  `sellers.publishedStoreSlugs`, a new anonymous facade method).
+- `autoplay` is true only when the position allows it (`home.hero`) and every shown slide asks.
+- Cache: `Cache-Control: public, max-age=N`, N at most 60 and never past `nextChangeAt`;
+  `Vary: X-Market-Id`. When an owner could not answer, the dependent slides are dropped and the
+  answer is `no-store`. A 400 is `no-store`.
+
+Web migration of the home banner (no data migration, no backend page change): the home hero is
+always the first section. Live slides win; if there are none, the first `banner` module of the
+published layout is shown as a one-slide slider (title cut to 60, an external link and its button
+dropped, image only a known placeholder key); later banners stay promos.
+
+Without JavaScript the slider still scrolls (CSS scroll-snap) and every slide is readable and
+clickable, but the controls row below it (pause, arrows, picker) is an empty strip of fixed height:
+it keeps its space so the page does not shift when the script adds the buttons. A slide's button
+label is drawn only when the slide has a link (a label without a link is not shown). The sample hero shows
+only when the slides read failed and the sample fallback is on.
 
 ## Not in v1 (follow-ups)
 

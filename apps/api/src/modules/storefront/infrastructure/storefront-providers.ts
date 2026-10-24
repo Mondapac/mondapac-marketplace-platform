@@ -1,5 +1,6 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
+import { LINK_TARGETS, type LinkTargets } from '../application/ports/link-targets';
 import { PAGE_REPOSITORY, type PageRepository } from '../application/ports/page.repository';
 import { SLIDE_REPOSITORY, type SlideRepository } from '../application/ports/slide.repository';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -11,6 +12,7 @@ import {
 } from '../../catalog';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { SLIDE_TARGETS, type SlideTargets } from '../application/ports/slide-targets';
+import { FacadeLinkTargets } from './facade-link-targets';
 import { FacadeSlideTargets } from './facade-slide-targets';
 import { PrismaPageRepository } from './prisma-page.repository';
 import { PrismaSlideRepository } from './prisma-slide.repository';
@@ -36,5 +38,11 @@ export const storefrontProviders: readonly FactoryProvider[] = [
       sellers: SellersFacade,
       markets: MarketRegistry,
     ): SlideTargets => new FacadeSlideTargets(catalog, categories, sellers, markets),
+  },
+  {
+    provide: LINK_TARGETS,
+    inject: [CATALOG_ASSISTANT_FACADE, SELLERS_FACADE],
+    useFactory: (tree: CatalogAssistantFacade, sellers: SellersFacade): LinkTargets =>
+      new FacadeLinkTargets(tree, sellers),
   },
 ];

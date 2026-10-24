@@ -9,6 +9,7 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { PAGE_REPOSITORY } from './application/ports/page.repository';
+import { LINK_TARGETS } from './application/ports/link-targets';
 import { SLIDE_REPOSITORY } from './application/ports/slide.repository';
 import { SLIDE_TARGETS } from './application/ports/slide-targets';
 import type { StorefrontDependencies } from './application/storefront-dependencies';
@@ -30,6 +31,7 @@ import { ViewStorefrontNavigation } from './application/use-cases/view-navigatio
 import { ViewStorefrontPage } from './application/use-cases/view-page.use-case';
 import { ViewPublishedLandingPage } from './application/use-cases/view-published-landing-page.use-case';
 import { ViewPublishedStorefrontNavigation } from './application/use-cases/view-published-navigation.use-case';
+import { ViewPublishedStorefrontSlides } from './application/use-cases/view-published-slides.use-case';
 import { ViewPublishedStorefrontPage } from './application/use-cases/view-published-page.use-case';
 import { ApproveStorefrontSlide } from './application/use-cases/approve-slide.use-case';
 import { PauseStorefrontSlide } from './application/use-cases/pause-slide.use-case';
@@ -57,6 +59,7 @@ const PORTS: readonly [keyof StorefrontDependencies, InjectionToken][] = [
   ['pages', PAGE_REPOSITORY],
   ['slides', SLIDE_REPOSITORY],
   ['targets', SLIDE_TARGETS],
+  ['links', LINK_TARGETS],
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -119,6 +122,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewPublishedLandingPage,
       ViewPublishedStorefrontNavigation,
       ViewPublishedStorefrontPage,
+      ViewPublishedStorefrontSlides,
       ArchiveStorefrontSlide,
       CreateStorefrontSlide,
       ListStorefrontSlides,

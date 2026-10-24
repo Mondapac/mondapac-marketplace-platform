@@ -111,6 +111,7 @@ import { PublicStoreController } from './presentation/public-store.controller';
 import { PublishedStoreList } from './application/use-cases/published-store-list.use-case';
 import { PublishedStoreRead } from './application/use-cases/published-store-read.use-case';
 import { PublishedStoreSellerId } from './application/use-cases/published-store-seller-id.use-case';
+import { PublishedStoreSlugs } from './application/use-cases/published-store-slugs.use-case';
 import { PUBLISHED_STORE_REPOSITORY } from './application/ports/published-store.repository';
 import { sellerFileSubscriptions } from './presentation/subscribers/seller-file.subscriptions';
 
@@ -279,6 +280,7 @@ const REVIEW_DECISION_PORTS = {
     useCaseProvider(PublishedStoreList, PUBLISHED_STORE_PORTS),
     useCaseProvider(PublishedStoreRead, PUBLISHED_STORE_PORTS),
     useCaseProvider(PublishedStoreSellerId, PUBLISHED_STORE_PORTS),
+    useCaseProvider(PublishedStoreSlugs, PUBLISHED_STORE_PORTS),
     useCaseProvider(OwnZoneRead, { unitOfWork: true, revisions: true }),
     useCaseProvider(StoreSettingsRead, {
       unitOfWork: true,
@@ -536,6 +538,7 @@ const REVIEW_DECISION_PORTS = {
         AllowedProductTypesSystem,
         ReviewerBusinessDetailsRead,
         PublishedStoreSellerId,
+        PublishedStoreSlugs,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -546,6 +549,7 @@ const REVIEW_DECISION_PORTS = {
         allowedProductTypesSystem: AllowedProductTypesSystem,
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
         publishedStoreSellerId: PublishedStoreSellerId,
+        publishedStoreSlugs: PublishedStoreSlugs,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -556,6 +560,7 @@ const REVIEW_DECISION_PORTS = {
           allowedProductTypesSystem,
           reviewerBusinessDetails,
           publishedStoreSellerId,
+          publishedStoreSlugs,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by

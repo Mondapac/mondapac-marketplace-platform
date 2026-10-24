@@ -77,8 +77,39 @@ export interface PromoBanner {
   readonly images: readonly string[];
 }
 
+/**
+ * One slide of a slider position: plain text over an optional image, with one internal link that
+ * makes the whole slide clickable. Built only by `slideSetOf` / `legacySlideOf`
+ * (src/storefront/slides.ts), which check every field.
+ */
+export interface HeroSlide {
+  readonly id: string;
+  readonly title: string;
+  readonly body?: string;
+  /** The button label; only with `href`. */
+  readonly ctaLabel?: string;
+  /** A site path (`/offers`), never a URL. */
+  readonly href?: string;
+  /** A site-relative placeholder path or a URL on our own media origin. */
+  readonly image?: { readonly src: string; readonly alt: string; readonly decorative: boolean };
+  /** Where the text sits along the line of text: start, centre or end (flips in right-to-left). */
+  readonly placement: 'start' | 'center' | 'end';
+  /** `light`: light text on a dark scrim; `dark`: dark text on a light scrim. */
+  readonly tone: 'light' | 'dark';
+  readonly sponsored: boolean;
+}
+
+/** The slides of one position, as the API answered them and the buyer app re-checked them. */
+export interface SlideSet {
+  readonly position: string;
+  /** The position allows autoplay and the API asked for it. */
+  readonly autoplay: boolean;
+  readonly slides: readonly HeroSlide[];
+}
+
 /** One section of the admin-editable middle of the home page (handoffs/storefront.md). */
 export type HomeSection =
+  | { readonly kind: 'hero'; readonly set: SlideSet }
   | { readonly kind: 'promos'; readonly banners: readonly PromoBanner[] }
   | { readonly kind: 'categories' }
   | { readonly kind: 'sellers'; readonly title: string; readonly href: string }

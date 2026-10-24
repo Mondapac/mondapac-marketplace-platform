@@ -1,4 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { ServedPlacement } from '../../domain/slide-public';
 import type { PlacedSlide, SlideKind, StoredSlideState } from '../../domain/slides';
 
 export interface SlideRecord {
@@ -141,6 +142,17 @@ export interface SlideRepository {
     from: Temporal.Instant,
     to: Temporal.Instant,
   ): Promise<readonly (PlacedSlide & { readonly slideId: string })[]>;
+  /**
+   * The projected placements of a position whose window ends after `after`, of slides that are
+   * approved now (not paused, not archived), at most `limit`, soonest start first. A slide of
+   * another Market is never found.
+   */
+  servedAt(
+    market: MarketContext,
+    position: string,
+    after: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly ServedPlacement[]>;
   /** The projection of one slide. */
   placementsOf(
     market: MarketContext,

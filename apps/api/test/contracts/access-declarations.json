@@ -477,6 +477,7 @@
   { "name": "sellers.published-store-list", "rule": "anonymous" },
   { "name": "sellers.published-store-read", "rule": "anonymous" },
   { "name": "sellers.published-store-seller-id", "rule": "anonymous" },
+  { "name": "sellers.published-store-slugs", "rule": "anonymous" },
   { "name": "sellers.purge-expired", "rule": "system" },
   { "name": "sellers.reconcile-decisions", "rule": "system" },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
@@ -493,6 +494,7 @@
   { "name": "storefront.view-published-landing-page", "rule": "anonymous" },
   { "name": "storefront.view-published-navigation", "rule": "anonymous" },
   { "name": "storefront.view-published-page", "rule": "anonymous" },
+  { "name": "storefront.view-published-slides", "rule": "anonymous" },
   {
     "name": "tax.calculate-tax",
     "rule": "own-resources",
