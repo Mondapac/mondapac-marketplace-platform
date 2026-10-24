@@ -505,6 +505,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'internal_name',
         'live_version_id',
         'pinned',
+        'row_version',
         'sponsored',
         'starts_at',
         'state',

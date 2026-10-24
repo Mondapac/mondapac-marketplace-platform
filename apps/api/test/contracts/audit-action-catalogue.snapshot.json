@@ -1323,6 +1323,7 @@
     "before": null,
     "after": {
       "placementCount": "integer",
+      "selfApproved": "boolean",
       "versionNo": "integer"
     }
   },

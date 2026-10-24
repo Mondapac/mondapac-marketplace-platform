@@ -126,8 +126,19 @@ version, with its window, so caps and the later buyer read need no join) and `sl
   key and checks the maximums again. States: draft, pending approval, scheduled, live, ended
   (from the Clock and the window), paused, archived. Every change is audited
   (`storefront.slide.create|draft-change|submit|publish|pause|resume|archive`). As with pages, the
-  Platform Administrator may also edit, so one admin can approve their own draft; revisit if
-  another role ever holds the publish key.
+  Platform Administrator may also edit, so one admin can approve their own draft (flagged
+  `selfApproved` in the audit entry); revisit if another role ever holds the publish key.
+- **Targets are checked at approval**: under the slide lock and before the stamp, `content.link` and
+  every non-`all` `scopeId` are resolved in the request's Market through public facades only
+  (catalog categories and published products, sellers who may sell, storefront pages that are not
+  archived; a prepared search is checked by its code format). Anything missing, of another Market, or
+  that could not be verified (fail closed) refuses with `storefront.slide-link-invalid` (409,
+  `details.fields` lists the paths). A copy to another Market drops `content.link` and `ctaLabel`;
+  the other Market's editor picks the link again. The publish audit entry carries `selfApproved`,
+  true when the approver also saved the approved version.
+- **Physical model and retention**: see `docs/design/data/storefront.md` (access paths, which CHECK
+  guards which invariant). A slide keeps at most 100 versions; after 100 saves the editor copies the
+  slide into a new one. Raising the cap needs a migration.
 - **Routes** (admin, session, CSRF, `Origin` + `Sec-Fetch-Site` as every admin route):
   `GET|POST storefront/admin/slides`, `GET|PUT storefront/admin/slides/:slide`,
   `GET .../:slide/copy`, `POST .../:slide/restore`, `POST .../:slide/archive`,

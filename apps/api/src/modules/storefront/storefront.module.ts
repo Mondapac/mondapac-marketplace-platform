@@ -1,4 +1,6 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { CatalogModule } from '../catalog';
+import { SellersModule } from '../sellers';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
@@ -8,6 +10,7 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { PAGE_REPOSITORY } from './application/ports/page.repository';
 import { SLIDE_REPOSITORY } from './application/ports/slide.repository';
+import { SLIDE_TARGETS } from './application/ports/slide-targets';
 import type { StorefrontDependencies } from './application/storefront-dependencies';
 import { AddStorefrontModule } from './application/use-cases/add-module.use-case';
 import { ApproveStorefrontNavigation } from './application/use-cases/approve-navigation.use-case';
@@ -53,6 +56,7 @@ const PORTS: readonly [keyof StorefrontDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['pages', PAGE_REPOSITORY],
   ['slides', SLIDE_REPOSITORY],
+  ['targets', SLIDE_TARGETS],
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -83,6 +87,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * their own modules' routes.
  */
 @Module({
+  imports: [CatalogModule, SellersModule],
   controllers: [
     AdminStorefrontController,
     AdminNavigationController,

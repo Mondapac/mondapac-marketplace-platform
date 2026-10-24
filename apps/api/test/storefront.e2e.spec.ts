@@ -74,6 +74,7 @@ it('maps every refusal code of the storefront routes to its exact status', () =>
     'storefront.slide-not-live': 409,
     'storefront.slide-not-paused': 409,
     'storefront.slide-position-full': 409,
+    'storefront.slide-link-invalid': 409,
   });
 });
 

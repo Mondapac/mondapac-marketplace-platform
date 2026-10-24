@@ -36,6 +36,12 @@ export interface SlideVersionRecord {
   readonly approvedAt: Temporal.Instant | null;
 }
 
+/** A version without its JSON columns: what a version list needs. */
+export type SlideVersionSummary = Pick<
+  SlideVersionRecord,
+  'id' | 'slideId' | 'versionNo' | 'internalName' | 'createdAt' | 'approvedAt'
+>;
+
 export interface SlideStamp {
   readonly at: Temporal.Instant;
   readonly by: Id<'Account'>;
@@ -79,7 +85,10 @@ export interface SlideRepository {
   /** Newest first, at most `limit`. */
   listSlides(market: MarketContext, limit: number): Promise<readonly SlideRecord[]>;
   findSlide(market: MarketContext, id: Id<'StorefrontSlide'>): Promise<SlideRecord | null>;
-  /** Like `findSlide`, and takes the slide row's write lock for the rest of the unit. */
+  /**
+   * Like `findSlide`, and takes the slide row's write lock for the rest of the unit (it raises the
+   * row's version, and writes no other column).
+   */
   lockSlide(market: MarketContext, id: Id<'StorefrontSlide'>): Promise<SlideRecord | null>;
   insertSlide(market: MarketContext, slide: SlideRecord, by: Id<'Account'>): Promise<void>;
   updateSlide(
@@ -94,12 +103,12 @@ export interface SlideRepository {
     market: MarketContext,
     ids: readonly Id<'StorefrontSlideVersion'>[],
   ): Promise<readonly SlideVersionRecord[]>;
-  /** Newest first, at most `limit`. */
+  /** Newest first, at most `limit`; the content and placements are not read. */
   versions(
     market: MarketContext,
     slideId: Id<'StorefrontSlide'>,
     limit: number,
-  ): Promise<readonly SlideVersionRecord[]>;
+  ): Promise<readonly SlideVersionSummary[]>;
   findVersion(
     market: MarketContext,
     slideId: Id<'StorefrontSlide'>,

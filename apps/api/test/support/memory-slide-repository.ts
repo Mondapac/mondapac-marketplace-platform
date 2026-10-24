@@ -57,7 +57,15 @@ export class MemorySlides implements SlideRepository {
       [...this.versionRows.values()]
         .filter((v) => v.marketId === m.marketId && v.slideId === slideId)
         .sort((a, b) => b.versionNo - a.versionNo)
-        .slice(0, limit),
+        .slice(0, limit)
+        .map(({ id, slideId: of, versionNo, internalName, createdAt, approvedAt }) => ({
+          id,
+          slideId: of,
+          versionNo,
+          internalName,
+          createdAt,
+          approvedAt,
+        })),
     );
   }
   findVersion(m: MarketContext, slideId: Id<'StorefrontSlide'>, id: Id<'StorefrontSlideVersion'>) {

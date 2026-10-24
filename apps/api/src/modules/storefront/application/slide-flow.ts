@@ -51,7 +51,9 @@ export type SlideFailure =
   | { readonly code: 'storefront.slide-not-live' }
   | { readonly code: 'storefront.slide-not-paused' }
   /** The position already has its maximum of slides active in the window. */
-  | { readonly code: 'storefront.slide-position-full'; readonly fields: Problems };
+  | { readonly code: 'storefront.slide-position-full'; readonly fields: Problems }
+  /** Approve of a draft whose link or scope points at something that is not live in this Market. */
+  | { readonly code: 'storefront.slide-link-invalid'; readonly fields: Problems };
 
 export const MAX_SLIDES_LISTED = 500;
 export const MAX_SLIDE_VERSIONS_SHOWN = 50;
@@ -158,18 +160,15 @@ export async function detailOf(
 ): Promise<SlideDetailView> {
   const market = context.market;
   const versions = await deps.slides.versions(market, slide.id, MAX_SLIDE_VERSIONS_SHOWN);
-  const find = (id: string | null) =>
-    id === null ? null : (versions.find((v) => v.id === id) ?? null);
+  // The version list carries no content; the draft and the live version are read on their own.
   const draftRow =
-    find(slide.draftVersionId) ??
-    (slide.draftVersionId === null
+    slide.draftVersionId === null
       ? null
-      : await deps.slides.findVersion(market, slide.id, slide.draftVersionId));
+      : await deps.slides.findVersion(market, slide.id, slide.draftVersionId);
   const liveRow =
-    find(slide.liveVersionId) ??
-    (slide.liveVersionId === null
+    slide.liveVersionId === null
       ? null
-      : await deps.slides.findVersion(market, slide.id, slide.liveVersionId));
+      : await deps.slides.findVersion(market, slide.id, slide.liveVersionId);
   const draft = draftRow === null ? null : versionView(draftRow, slide.kind);
   const live = liveRow === null ? null : versionView(liveRow, slide.kind);
   return {
@@ -513,6 +512,9 @@ export async function listSlides(
  * read here), then `createSlide` there (storefront.slide.edit there). Scopes are reset to "all":
  * their ids belong to this Market's catalogue.
  */
+const copiedContent = (content: SlideContent | null): SlideContent | null =>
+  content === null ? null : { ...content, link: null, ctaLabel: null };
+
 export async function prepareSlideCopy(
   deps: StorefrontDependencies,
   context: CallContext,
@@ -543,7 +545,9 @@ export async function prepareSlideCopy(
       return ok({
         kind: slide.kind,
         internalName: version.internalName,
-        content: readContent(slide.kind, version.content),
+        // A link is Market data (a product id of this Market): the other Market's editor picks it
+        // again, so the link and the call-to-action text that needs it are left out.
+        content: copiedContent(readContent(slide.kind, version.content)),
         startsAt: version.startsAt.toString(),
         endsAt: version.endsAt.toString(),
         pinned: version.pinned,
