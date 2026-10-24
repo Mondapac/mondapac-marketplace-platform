@@ -1,5 +1,4 @@
 import type { JobLock, JobLockOutcome } from '../scheduler/job-lock';
-import { CONNECTION_WAIT_MS } from '../unit-of-work/unit-of-work';
 import type { PrismaRoot } from './prisma-root';
 
 /**
@@ -30,7 +29,7 @@ export class AdvisoryJobLock implements JobLock {
         await work();
         return 'ran';
       },
-      { maxWait: CONNECTION_WAIT_MS, timeout: maxRunMs },
+      { maxWait: this.root.connectionWaitMs, timeout: maxRunMs },
     );
   }
 }
