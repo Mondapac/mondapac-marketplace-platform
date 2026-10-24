@@ -8,7 +8,7 @@ import { visibleNavItems, type NavConfig, type NavItem } from '@mondapac/ui';
 export const sellerNav: NavConfig = {
   groups: [
     { id: 'orders', labelKey: 'nav.group.orders', icon: 'clipboard' },
-    { id: 'catalogue', labelKey: 'nav.group.catalogue', icon: 'package' },
+    { id: 'catalogue', labelKey: 'nav.group.catalogue', icon: 'store' },
     { id: 'money', labelKey: 'nav.group.money', icon: 'wallet' },
     { id: 'team', labelKey: 'nav.group.team', icon: 'users' },
   ],

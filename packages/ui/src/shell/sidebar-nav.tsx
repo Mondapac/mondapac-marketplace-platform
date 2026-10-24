@@ -155,7 +155,7 @@ export function SidebarNav({
           type="button"
           data-nav-stop="control"
           onClick={() => save(allOpen ? [] : groupIds)}
-          className="mb-1 self-end rounded-md px-2 py-1 text-xs font-medium text-link hover:bg-muted group-data-[rail=true]/rail:invisible"
+          className="mb-1 min-h-(--mp-size-control-sm) self-end rounded-md px-3 text-xs font-medium text-link hover:bg-muted md:min-h-8 group-data-[rail=true]/rail:invisible"
         >
           {allOpen ? collapseAll : expandAll}
         </button>
@@ -184,7 +184,10 @@ export function SidebarNav({
                 if (fromRail.current) fromRail.current = false;
                 else setGroup(entry.id, !isOpen);
               }}
-              className={`${ROW} text-start text-fg-secondary hover:bg-muted hover:text-fg`}
+              // A closed group that holds the page keeps the link colour, so the place stays visible.
+              className={`${ROW} text-start hover:bg-muted hover:text-fg ${
+                !isOpen && entry.id === activeGroup ? 'font-medium text-link' : 'text-fg-secondary'
+              }`}
             >
               <Icon name={entry.icon} className="text-icon" />
               <span className={`min-w-0 flex-1 break-words ${RAIL_HIDDEN}`}>{entry.label}</span>
