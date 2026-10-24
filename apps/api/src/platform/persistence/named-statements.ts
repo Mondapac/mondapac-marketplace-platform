@@ -48,7 +48,8 @@ export function isApprovedStatement(request: RawStatementRequest, market: Market
         values.length === 3 &&
         values[0] === market.marketId &&
         values[1] === market.tenantId &&
-        typeof values[2] === 'string'
+        typeof values[2] === 'string' &&
+        UUID.test(values[2])
       );
     }
     return (
@@ -165,7 +166,9 @@ export interface NamedStatements {
    * for the records in flight and they wait for it, so no event read as "on" commits after a
    * switch-off deleted the events, without SERIALIZABLE and its 40001 aborts. The key is
    * `hashtext` of Market, tenant and account under a class of its own; a collision only makes
-   * two accounts wait for each other. Released at COMMIT or ROLLBACK; one row always.
+   * two accounts wait for each other. Released at COMMIT or ROLLBACK; one row always. A wait
+   * past the role's `lock_timeout` (55P03) ends the unit as a conflict (409), never a 500.
+   * Advisory class 1701 is this statement's alone; the scheduler uses the one-bigint form.
    */
   readonly 'engagement.lock-account': {
     readonly params: { readonly accountId: string; readonly mode: 'shared' | 'exclusive' };

@@ -299,6 +299,8 @@ describe.each(['AU', 'ZZ'] as const)('engagement.lock-account in market %s', (co
       expect(isApprovedStatement(request, market)).toBe(true);
       expect(isApprovedStatement(request, other)).toBe(false);
       expect(isApprovedStatement({ operation: '$executeRaw', args: seen[0] }, market)).toBe(false);
+      const forged = { sql: seen[0]!.sql, values: [market.marketId, market.tenantId, "x' OR '1"] };
+      expect(isApprovedStatement({ operation: '$queryRaw', args: forged }, market)).toBe(false);
     },
   );
 

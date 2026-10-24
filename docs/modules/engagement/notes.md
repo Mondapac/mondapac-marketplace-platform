@@ -119,4 +119,5 @@ Now each of these units takes the named statement `engagement.lock-account` firs
 transaction advisory lock on `hashtext(market:tenant:account)` under class 1701, shared to
 record and exclusive to switch or forget, at READ COMMITTED. M1 still holds: a record that locks
 first commits before the switch's delete runs; a record after the switch reads the new setting.
-
+Under a heavy burst for one account a wait can pass the role's `lock_timeout` (3 s); the unit then
+ends as a conflict (409), where it used to fail with a 500 after three 40001 aborts.
