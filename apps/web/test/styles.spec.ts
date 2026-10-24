@@ -71,9 +71,9 @@ describe('storefront styles', () => {
     expect(rules(":root[data-keyboard='open'] .tabbar")[0]).toContain('display: none');
   });
 
-  it('keeps phone form fields at 16px or more (iOS Safari zooms into smaller ones)', () => {
+  it('keeps phone and touch form fields at 16px or more (iOS Safari zooms into smaller ones)', () => {
     expect(css).toMatch(
-      /@media \(max-width: 699\.98px\) \{\s*:is\(input, select, textarea\):not\(\[type='checkbox'\]\):not\(\[type='radio'\]\) \{\s*font-size: max\(16px, 1em\);/,
+      /@media \(max-width: 699\.98px\), \(pointer: coarse\) \{\s*:is\(input, select, textarea\):not\(\[type='checkbox'\]\):not\(\[type='radio'\]\) \{\s*font-size: max\(16px, 1em\);/,
     );
   });
 });

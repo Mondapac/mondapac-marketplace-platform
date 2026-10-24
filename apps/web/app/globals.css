@@ -84,6 +84,8 @@
      dock; the launcher lifts above the bars (assistant-widget.tsx). */
   --sf-tabbar-height: 65px;
   --sf-dock-height: calc(var(--sf-tabbar-height) + env(safe-area-inset-bottom, 0px));
+  /* 13px, not 12px: the raised Browse tab stands 10px above the tab bar's top edge, and this keeps
+     the bars clear of it (the old fixed 78px = 65px tab bar + 13px). */
   --sf-dock-gap: 13px;
   /* Side gutters; widen from the tablet breakpoint. */
   --gl: max(16px, env(safe-area-inset-left, 0px));
@@ -126,8 +128,10 @@
 }
 @media (min-width: 900px) {
   :root {
-    /* No tab bar: the dock holds the cookie bar or nothing. */
+    /* No tab bar: the dock holds the cookie bar or nothing, and its measured height never includes
+       the safe area, so the gap adds it (what the 900px to 999px bars had before). */
     --sf-dock-height: 0px;
+    --sf-dock-gap: calc(12px + env(safe-area-inset-bottom, 0px));
   }
 }
 @media (min-width: 700px) {
@@ -297,6 +301,7 @@ svg {
 .search input {
   flex: 1;
   min-width: 0;
+  text-overflow: ellipsis;
   border: 0;
   background: none;
   outline: 0;
@@ -560,6 +565,7 @@ svg {
 .sin input {
   flex: 1;
   min-width: 0;
+  text-overflow: ellipsis;
   border: 0;
   background: none;
   outline: 0;
@@ -1625,6 +1631,10 @@ svg {
     align-items: center;
     gap: 0 16px;
   }
+  /* The copyright on its own line, so Terms, Privacy and Cookies make one 44px row. */
+  .fbase .fl > span:first-child {
+    flex-basis: 100%;
+  }
   .fbase .fl a {
     display: inline-flex;
     align-items: center;
@@ -1636,8 +1646,9 @@ svg {
     min-height: 44px;
   }
 }
-/* iOS Safari zooms the page into a field set under 16px: phones keep every field at 16px or more. */
-@media (max-width: 699.98px) {
+/* iOS Safari zooms the page into a field set under 16px: phones, and any touch screen (a phone held
+   sideways is wider than 700px), keep every field at 16px or more. A mouse keeps the set size. */
+@media (max-width: 699.98px), (pointer: coarse) {
   :is(input, select, textarea):not([type='checkbox']):not([type='radio']) {
     font-size: max(16px, 1em);
   }
@@ -3428,11 +3439,6 @@ svg {
     display: none;
   }
 }
-@media (min-width: 900px) and (max-width: 999.98px) {
-  .buybar {
-    bottom: calc(var(--sf-dock-height) + 12px + env(safe-area-inset-bottom, 0px));
-  }
-}
 
 /* Cart drawer, cart page and checkout (approved design cart-a-teal v3). Under 1000px the order
    summary follows the list and a sticky bar sits above the tab bar; from 1000px the summary is a
@@ -4437,11 +4443,6 @@ svg {
   }
   .frow.three {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
-  }
-}
-@media (min-width: 900px) and (max-width: 999.98px) {
-  .cbar {
-    bottom: calc(var(--sf-dock-height) + 12px + env(safe-area-inset-bottom, 0px));
   }
 }
 @media (min-width: 1000px) {
