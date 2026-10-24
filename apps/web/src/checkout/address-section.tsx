@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { addressLine as savedLine, recipientName } from '../account/address-line.ts';
 import { Icon } from '../icons/icon.tsx';
 import type {
   CheckoutPlace,
@@ -165,12 +166,10 @@ export function AddressSection({
               onChange={() => onChoice(a.id)}
             />
             <b>
-              {a.label}
+              {recipientName(a)}
               {a.isDefault ? <span className="badge">{t('default')}</span> : null}
             </b>
-            <span>
-              {a.name}, {a.line}
-            </span>
+            <span>{savedLine(a, source.serviceArea.regionCode)}</span>
             <span>{a.phone}</span>
           </label>
         ))}

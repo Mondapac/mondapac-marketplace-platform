@@ -1,4 +1,5 @@
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { ProductImages } from './ports/product-images';
 import type { ProductDetailSources } from './ports/product-detail-sources';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { PublishedVariants } from './ports/published-variants';
@@ -13,4 +14,5 @@ export interface ProductDetailDependencies {
   readonly visibility: PublicVisibility;
   readonly policy: SearchPolicy;
   readonly variants: PublishedVariants;
+  readonly images: ProductImages;
 }

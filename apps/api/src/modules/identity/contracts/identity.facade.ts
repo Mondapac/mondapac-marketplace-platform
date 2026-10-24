@@ -66,6 +66,25 @@ export interface CustomerShortName {
   readonly shortName: string;
 }
 
+/**
+ * One current member of the actor's own team (`teamMemberLabels`): the display name and the role,
+ * never the sign-in address. PERSONAL DATA for the member who asked: no module logs it or puts it
+ * in an event, an audit row, a cache, an outbox or an error body; rendered as escaped text only.
+ */
+export interface TeamMemberLabel {
+  readonly accountId: Id<'Account'>;
+  readonly displayName: string | null;
+  /**
+   * `seedCode` labels a system or default role (a translation key); `name` a custom one. Null for
+   * a member without a role this seller can see.
+   */
+  readonly role: {
+    readonly kind: 'system' | 'default' | 'custom';
+    readonly seedCode: string | null;
+    readonly name: string | null;
+  } | null;
+}
+
 /** A request the facade refused before any read: a code and the field, never its value. */
 export interface IdentityValidationFailed {
   readonly code: 'validation.failed';
@@ -151,6 +170,19 @@ export interface IdentityFacade {
     context: CallContext,
     accountIds: readonly Id<'Account'>[],
   ): Promise<Result<readonly CustomerShortName[], AccessDenied | IdentityValidationFailed>>;
+
+  /**
+   * The name and role of each requested account that is a current member of the actor's own
+   * team, for a seller page that shows who changed something (sellers' minimum-order history).
+   * Rule `own-resources`, seller scope, denied while the seller is not approved; the actor is read
+   * again in the read. At most 100 ids, duplicates answered once; a removed member, another
+   * seller's member, another population's, another Market's and an unknown account are all
+   * absent. Not exposed over HTTP.
+   */
+  teamMemberLabels(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<Result<readonly TeamMemberLabel[], AccessDenied | IdentityValidationFailed>>;
 }
 
 /** Nest token of the {@link IdentityFacade}, provided and exported by `IdentityModule`. */

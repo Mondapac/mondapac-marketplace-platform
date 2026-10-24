@@ -8,8 +8,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from 'react';
+import * as api from '../account/customer-api.ts';
 import {
   addOne,
   lineLimit,
@@ -27,7 +30,11 @@ import type {
   DeliverySpeed,
   Money,
 } from '../storefront/types.ts';
+import { PALETTE_COOKIE, TEXT_SIZE_COOKIE, savePreference } from '../preferences/preferences.ts';
 import { checkReachable, reachable } from './connection.ts';
+
+/** How a live sign-in ended; the log-in form shows a message for each refusal. */
+export type SignInOutcome = 'ok' | 'wrong' | 'unverified' | 'disabled' | 'throttled' | 'failed';
 
 /** What the confirmation shows of the order just placed. */
 export interface PlacedOrder {
@@ -79,7 +86,16 @@ interface StoreState {
   readonly setCartOpen: (open: boolean) => void;
   /** The signed-in customer at checkout; a sample log-in sets it until sessions are wired. */
   readonly customer: CheckoutCustomer | null;
-  readonly setCustomer: (customer: CheckoutCustomer | null) => void;
+  readonly setCustomer: Dispatch<SetStateAction<CheckoutCustomer | null>>;
+  /** The storefront talks to the API: the session below is real; otherwise it is the sample one. */
+  readonly live: boolean;
+  /** False until the first session read has answered (live mode); the account pages wait for it. */
+  readonly sessionReady: boolean;
+  /** Live sign-in: signs in, reads the session and sets `customer`. */
+  readonly signIn: (email: string, password: string) => Promise<SignInOutcome>;
+  /** Ends the session (live) and clears `customer`. */
+  /** False when the API could not end the session: the buyer stays signed in. */
+  readonly signOut: () => Promise<boolean>;
   /** The delivery address chosen at checkout, as one line. */
   readonly deliveryAddress: string;
   readonly setDeliveryAddress: (address: string) => void;
@@ -120,6 +136,7 @@ export function StoreProvider({
   initialCart = {},
   initialDeliverTo = null,
   initialCustomer = null,
+  live = false,
   children,
 }: {
   readonly cartSource?: CartSource;
@@ -129,11 +146,14 @@ export function StoreProvider({
   readonly initialDeliverTo?: DeliverTo | null;
   /** The signed-in customer to start with (tests; the session once it is read). */
   readonly initialCustomer?: CheckoutCustomer | null;
+  /** The storefront talks to the API (`API_BASE_URL` is set). */
+  readonly live?: boolean;
   readonly children: ReactNode;
 }) {
   const [cart, setCart] = useState<Cart>(initialCart);
   const [cartOpen, setCartOpen] = useState(false);
   const [customer, setCustomer] = useState<CheckoutCustomer | null>(initialCustomer);
+  const [sessionReady, setSessionReady] = useState(!live);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [saved, setSaved] = useState<readonly string[]>([]);
   const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
@@ -216,6 +236,43 @@ export function StoreProvider({
       setDeliveryWishes((current) => ({ ...current, [sellerId]: speed })),
     [],
   );
+  // Live: the first load asks the API who is signed in (401 means nobody).
+  useEffect(() => {
+    if (!live) return;
+    let current = true;
+    void readCustomer().then((read) => {
+      if (!current) return;
+      if (read) setCustomer(read);
+      setSessionReady(true);
+    });
+    return () => {
+      current = false;
+    };
+  }, [live]);
+  const signIn = useCallback(async (email: string, password: string): Promise<SignInOutcome> => {
+    const result = await api.signIn(email, password);
+    if (result.kind === 'signed-out') return 'wrong';
+    if (result.kind === 'throttled') return 'throttled';
+    if (result.kind === 'invalid') {
+      if (result.code === 'email-verification-required') return 'unverified';
+      return result.code === 'account.disabled' ? 'disabled' : 'failed';
+    }
+    if (result.kind !== 'ok') return 'failed';
+    const read = await readCustomer();
+    if (!read) return 'failed';
+    setCustomer(read);
+    return 'ok';
+  }, []);
+  // The buyer is logged out here only once the API ended the session (or it had already ended):
+  // on a shared computer a live cookie would sign them back in on the next page.
+  const signOut = useCallback(async (): Promise<boolean> => {
+    if (live) {
+      const result = await api.signOut();
+      if (result.kind !== 'ok' && result.kind !== 'signed-out') return false;
+    }
+    setCustomer(null);
+    return true;
+  }, [live]);
   const value = useMemo(
     () => ({
       cart,
@@ -240,6 +297,10 @@ export function StoreProvider({
       setCartOpen,
       customer,
       setCustomer,
+      live,
+      sessionReady,
+      signIn,
+      signOut,
       deliveryAddress,
       setDeliveryAddress,
       placedOrder,
@@ -282,6 +343,10 @@ export function StoreProvider({
       delivery,
       cartOpen,
       customer,
+      live,
+      sessionReady,
+      signIn,
+      signOut,
       deliveryAddress,
       placedOrder,
       browseOpen,
@@ -297,6 +362,21 @@ export function StoreProvider({
     ],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
+}
+
+/**
+ * Reads the session and the address book: the customer, with the account's look applied (so it
+ * follows the buyer to any device); null when signed out or when a read fails.
+ */
+async function readCustomer(): Promise<CheckoutCustomer | null> {
+  const session = await api.readSession();
+  if (session.kind !== 'ok') return null;
+  const book = await api.listAddresses();
+  if (book.kind !== 'ok') return null;
+  const look = session.value.appearance;
+  if (look?.palette) savePreference(PALETTE_COOKIE, 'palette', look.palette);
+  if (look?.textSize) savePreference(TEXT_SIZE_COOKIE, 'textSize', look.textSize);
+  return api.customerOf(session.value, book.value);
 }
 
 export function useStore(): StoreState {

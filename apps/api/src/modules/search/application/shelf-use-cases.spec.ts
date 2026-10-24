@@ -9,6 +9,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import type { OfferHit } from '../domain/offer-document';
 import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
+import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { PublishedVariants } from './ports/published-variants';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
@@ -60,6 +61,19 @@ class MemoryShelves implements ShelfDocumentsReader {
         .slice(0, limit),
     );
   }
+  browseBySeller() {
+    return Promise.resolve([]);
+  }
+  byProductIds(_market: MarketContext, productIds: readonly Id<'Product'>[], perProduct: number) {
+    return Promise.resolve(
+      productIds.flatMap((productId) =>
+        this.documents
+          .filter((d) => d.productId === productId)
+          .sort((a, b) => (a.offerId < b.offerId ? -1 : 1))
+          .slice(0, perProduct),
+      ),
+    );
+  }
   browseAll(_market: MarketContext, limit: number) {
     this.browsed.push(limit);
     return Promise.resolve(
@@ -102,6 +116,14 @@ class StubVisibility implements PublicVisibility {
   }
 }
 
+class StubImages implements ProductImages {
+  images_ = new Map<Id<'Product'>, PublicImage[]>();
+  failing = false;
+  of() {
+    return Promise.resolve(this.failing ? null : new Map(this.images_));
+  }
+}
+
 class StubVariants implements PublishedVariants {
   unpublished = new Set<Id<'Variant'>>();
   failing = false;
@@ -130,6 +152,7 @@ describe.each([
   let sources: StubSources;
   let visibility: StubVisibility;
   let variants: StubVariants;
+  let images: StubImages;
   let deps: ShelfDependencies;
 
   beforeEach(() => {
@@ -138,6 +161,7 @@ describe.each([
     sources = new StubSources();
     visibility = new StubVisibility();
     variants = new StubVariants();
+    images = new StubImages();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       reader,
@@ -146,6 +170,7 @@ describe.each([
       visibility,
       policy: new ConfigSearchPolicy(markets),
       variants,
+      images,
     };
   });
 
@@ -173,7 +198,15 @@ describe.each([
         value: {
           items: [3, 1, 2, 4].map((n) => {
             const { offerId, productId, sellerId, name, shortText, categoryIds } = hit(n);
-            return { offerId, productId, sellerId, name, shortText, categoryIds };
+            return {
+              offerId,
+              productId,
+              sellerId,
+              name,
+              shortText,
+              categoryIds,
+              primaryImage: null,
+            };
           }),
         },
       });
@@ -181,6 +214,23 @@ describe.each([
         { kind: 'bestsellers', actor: 'anonymous', limit: RANKED_DEPTH },
       ]);
       expect(shelves.browsed).toEqual([FILL_DEPTH]);
+    });
+
+    it('gives each item its first public photo, and none when the photo source fails', async () => {
+      shelves.documents = [hit(1), hit(2)];
+      sources.ranked = [offer(1), offer(2)];
+      const PHOTO = id<'ProductImage'>(0x701);
+      images.images_.set(hit(1).productId, [{ imageId: PHOTO, width: 640, height: 480 }]);
+
+      const withPhoto = await run({});
+      images.failing = true;
+      const without = await run({});
+
+      expect(withPhoto.ok && withPhoto.value.items.map((i) => i.primaryImage)).toEqual([
+        { imageId: PHOTO, width: 640, height: 480, alt: 'Product 1' },
+        null,
+      ]);
+      expect(without.ok && without.value.items.map((i) => i.primaryImage)).toEqual([null, null]);
     });
 
     it('keeps only the category, and fills from that category in browse order', async () => {
@@ -267,6 +317,22 @@ describe.each([
       expect(sources.asked).toEqual([
         { kind: 'specials', actor: 'anonymous', limit: SPECIALS_DEPTH },
       ]);
+    });
+
+    it('gives each special its first public photo', async () => {
+      shelves.documents = [hit(1)];
+      sources.specials_ = [special(1)];
+      const PHOTO = id<'ProductImage'>(0x701);
+      images.images_.set(hit(1).productId, [{ imageId: PHOTO, width: 640, height: 480 }]);
+
+      const result = await run({});
+
+      expect(result.ok && result.value.items[0]?.primaryImage).toEqual({
+        imageId: PHOTO,
+        width: 640,
+        height: 480,
+        alt: 'Product 1',
+      });
     });
 
     it('leaves out unindexed, other-category and hidden Offers', async () => {

@@ -331,7 +331,7 @@ describe('checkout', () => {
         }),
     );
     renderWith(<CheckoutPage source={SAMPLE_CHECKOUT} />, MET, true);
-    fireEvent.click(screen.getByRole('radio', { name: /^Work/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /^Sam Nguyen/ }));
     await waitFor(() => expect(answers.work).toBeDefined());
     act(() =>
       answers.work!({
@@ -361,14 +361,14 @@ describe('checkout', () => {
       kedron: { kind: 'quote', express: aud(1590) },
       paddington: { kind: 'quote', express: null },
     });
-    fireEvent.click(screen.getByRole('radio', { name: /^Work/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /^Sam Nguyen/ }));
     await waitFor(() => expect(payButtons()[0]!.textContent).toBe('Pay A$76.30 with Stripe'));
     // A failed quote shows Scheduled only and holds Pay; Try again brings Express back.
     deliveryQuotesFor.mockResolvedValueOnce({
       kedron: { kind: 'failed' },
       paddington: { kind: 'quote', express: null },
     });
-    fireEvent.click(screen.getByRole('radio', { name: /^Home/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /^Alex Nguyen/ }));
     const failed = await screen.findByRole('alert');
     expect(screen.queryByRole('radio', { name: /Express.*A\$/ })).toBeNull();
     expect(payOff()).toBe(true);

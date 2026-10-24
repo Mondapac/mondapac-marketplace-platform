@@ -75,6 +75,7 @@ describe.each(TEST_MARKETS)('publishedProduct in market %s', (code) => {
       publishedProductReader: reader,
       policy,
     }),
+    publishedProductImages: undefined as never,
     pendingProductRevisions: undefined as never,
     sellerProductOwners: undefined as never,
   });

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { viewCart, type CartView } from '../cart/cart.ts';
 import { DiscountBox, ItemThumb, SummaryTotals, TrustLines } from '../cart/cart-parts.tsx';
+import { addressLine as savedLine, recipientName } from '../account/address-line.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
@@ -90,7 +91,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   if (!view || blocked) return null;
 
   const addressLine = saved
-    ? `${saved.label}: ${saved.line}`
+    ? `${recipientName(saved)}: ${savedLine(saved, source.serviceArea.regionCode)}`
     : newAddressLine(fresh, source.serviceArea, t('new-address-summary'));
   const ready = quotesReady(quotes);
   const block: PayBlock = !online

@@ -1,6 +1,8 @@
 import 'server-only';
 import { formatMoney } from '../format/money.ts';
 import { apiGet, type ApiRead } from './api.ts';
+import { photoUrls } from './photo-source.ts';
+import { imageIdOf, type PhotoUrl } from './photos.ts';
 import { PRODUCTS, SAMPLE_CONTENT } from './sample-home.ts';
 import type {
   Category,
@@ -20,7 +22,7 @@ import type {
 // fallback is on (STOREFRONT_SAMPLE_DATA, below); with it off the section is left out.
 //
 // Not in the API yet, so left off the cards: seller names, prices of best sellers and category
-// shelves (no add button either), photos, certification seals, store delivery windows and logos.
+// shelves (no add button either), certification seals, store delivery windows and logos.
 // The info strip, text block and image-text modules have no design on the buyer site yet and are
 // skipped.
 
@@ -69,10 +71,10 @@ const DEFAULT_TITLE = {
 
 type Json = Readonly<Record<string, unknown>>;
 
-const isObject = (value: unknown): value is Json =>
+export const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const textOf = (value: unknown, max: number): string | undefined =>
+export const textOf = (value: unknown, max: number): string | undefined =>
   typeof value === 'string' && value.trim() !== ''
     ? Array.from(value).slice(0, max).join('')
     : undefined;
@@ -148,7 +150,11 @@ export function categoriesOf(body: unknown): {
  * never built here (AI rule R1: it comes only from evaluateClaim, and the shelf routes do not
  * carry it).
  */
-export function cardOf(item: unknown, slugs: ReadonlyMap<string, string>): ShelfCard | null {
+export function cardOf(
+  item: unknown,
+  slugs: ReadonlyMap<string, string>,
+  photo: PhotoUrl | null = null,
+): ShelfCard | null {
   if (!isObject(item) || typeof item.productId !== 'string') return null;
   const name = textOf(item.name, 200);
   const price = moneyOf(item.price);
@@ -164,6 +170,11 @@ export function cardOf(item: unknown, slugs: ReadonlyMap<string, string>): Shelf
   const firstCategory: unknown = Array.isArray(item.categoryIds)
     ? (item.categoryIds as unknown[])[0]
     : undefined;
+  // The card's photo: the item's `primaryImage` when it is a well-formed reference and photos are
+  // on; otherwise the card keeps its category illustration.
+  const imageId = imageIdOf(item.primaryImage);
+  const imageUrl =
+    photo === null || imageId === undefined ? undefined : photo(item.productId, imageId, 'medium');
   return {
     id: item.productId,
     name,
@@ -172,16 +183,21 @@ export function cardOf(item: unknown, slugs: ReadonlyMap<string, string>): Shelf
     ...(price === undefined ? {} : { price }),
     ...(wasPrice === undefined ? {} : { wasPrice }),
     certifications: [],
+    ...(imageUrl === undefined ? {} : { imageUrl }),
   };
 }
 
 /** The cards of a shelf answer, one per product, in shelf order. */
-export function cardsOf(body: unknown, slugs: ReadonlyMap<string, string>): ShelfCard[] {
+export function cardsOf(
+  body: unknown,
+  slugs: ReadonlyMap<string, string>,
+  photo: PhotoUrl | null = null,
+): ShelfCard[] {
   if (!isObject(body) || !Array.isArray(body.items)) return [];
   const seen = new Set<string>();
   const cards: ShelfCard[] = [];
   for (const item of body.items as unknown[]) {
-    const card = cardOf(item, slugs);
+    const card = cardOf(item, slugs, photo);
     if (card === null || seen.has(card.id)) continue;
     seen.add(card.id);
     cards.push(card);
@@ -334,7 +350,11 @@ export function shelfPaths(page: ApiRead<unknown>, tree: ApiRead<unknown>): stri
 }
 
 /** The home content from the API's answers, with sample data where they hold nothing. */
-export function homeFrom(reads: HomeReads, fallback: boolean): HomeContent {
+export function homeFrom(
+  reads: HomeReads,
+  fallback: boolean,
+  photo: PhotoUrl | null = null,
+): HomeContent {
   const placed = reads.page.kind === 'ok' ? placedModules(reads.page.body) : null;
   if (placed === null) return fallback ? SAMPLE_HOME : EMPTY_HOME;
   const categories = categoriesOf(reads.tree.kind === 'ok' ? reads.tree.body : null);
@@ -370,7 +390,7 @@ export function homeFrom(reads: HomeReads, fallback: boolean): HomeContent {
         const plan = shelfPlan(m.config, categories);
         if (plan === null) break;
         const read = reads.shelves.get(plan.path);
-        const cards = read?.kind === 'ok' ? cardsOf(read.body, categories.slugs) : [];
+        const cards = read?.kind === 'ok' ? cardsOf(read.body, categories.slugs, photo) : [];
         const limit = limitOf(m.config.limit, 12, SHELF_LIMIT_MAX);
         const products =
           cards.length > 0 || !fallback || plan.kind === 'category'
@@ -418,6 +438,7 @@ export function sampleFallback(env: Readonly<Record<string, string | undefined>>
 export async function loadHome(
   read: HomeReader = apiGet,
   env: Readonly<Record<string, string | undefined>> = process.env,
+  photos: () => Promise<PhotoUrl | null> = photoUrls,
 ): Promise<HomeContent> {
   const [page, tree] = await Promise.all([
     read('storefront/pages/home'),
@@ -427,5 +448,5 @@ export async function loadHome(
   const paths = shelfPaths(page, tree);
   const answers = await Promise.all(paths.map((path) => read(path)));
   const shelves = new Map(paths.map((path, i) => [path, answers[i]!]));
-  return homeFrom({ page, tree, shelves }, sampleFallback(env));
+  return homeFrom({ page, tree, shelves }, sampleFallback(env), await photos());
 }

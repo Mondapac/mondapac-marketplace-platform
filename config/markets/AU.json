@@ -37,6 +37,7 @@
   },
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,
+    "publicMediaPerMinute": 1500,
     "defaultPerMinute": 300
   },
   "customers": {
@@ -50,7 +51,7 @@
   "allowedOrigins": {
     "admin": [],
     "seller": [],
-    "customer": []
+    "customer": ["https://storefront.au.mondapac.test"]
   },
   "identity": {
     "password": {

@@ -16,7 +16,7 @@ import type { SearchProductsRequest } from '../domain/search-query';
 import { SearchProducts } from '../application/use-cases/search-products.use-case';
 import { ProductSearchPageBody } from './search.dto';
 
-const ALLOWED = ['q', 'category', 'page', 'pageSize'] as const;
+const ALLOWED = ['q', 'category', 'store', 'page', 'pageSize'] as const;
 const WHOLE_NUMBER = /^[0-9]{1,6}$/u;
 
 const fail = (status: number, code: string, details?: object): HttpException =>
@@ -57,6 +57,7 @@ function requestOf(query: Record<string, unknown>): SearchProductsRequest {
   const request = {
     q: text('q'),
     category: text('category'),
+    store: text('store'),
     page: whole('page'),
     pageSize: whole('pageSize'),
   };
@@ -84,12 +85,17 @@ export class SearchController {
     summary: 'Search products (public)',
     description:
       'No session needed. `q` is 2 to 100 characters, in web-search syntax; with a `category` and ' +
-      'no `q` the route lists that category by name. Text matches are ranked, ties by Offer id, ' +
+      'no `q` the route lists that category by name; with a `store` (a store address) and no `q` it lists the Offers of that store by name, in one category if `category` is also given, and an unknown, retired or not-selling store answers an empty page. Text matches are ranked, ties by Offer id, ' +
       'so pages are stable. `pageSize` is 1 to 48 (default 24), `page` 1 to 100. Only Offers ' +
       'that are sellable now and whose seller may sell are returned.',
   })
   @ApiQuery({ name: 'q', required: false, description: '2 to 100 characters.' })
   @ApiQuery({ name: 'category', required: false, description: 'A platform category id.' })
+  @ApiQuery({
+    name: 'store',
+    required: false,
+    description: 'A store address (slug), 3 to 50 characters. Not with `q`.',
+  })
   @ApiQuery({ name: 'page', required: false, description: '1 to 100, default 1.' })
   @ApiQuery({ name: 'pageSize', required: false, description: '1 to 48, default 24.' })
   @ApiOkResponse({ type: ProductSearchPageBody })

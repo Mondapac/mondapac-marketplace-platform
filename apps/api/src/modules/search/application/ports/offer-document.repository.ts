@@ -15,6 +15,8 @@ export interface OfferDocumentRepository {
     market: MarketContext,
     productId: Id<'Product'>,
   ): Promise<readonly Id<'Offer'>[]>;
+  /** The Offers of this seller that have a document (so a suspension can drop them). */
+  offerIdsOfSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<readonly Id<'Offer'>[]>;
   /** Removes up to `limit` documents last written before `before`; returns how many. */
   deleteIndexedBefore(
     market: MarketContext,

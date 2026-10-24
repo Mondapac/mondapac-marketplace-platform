@@ -20,14 +20,17 @@ export interface SyncCounts {
 
 /**
  * The document of an Offer, or null when it must not be indexed: catalog says it is not
- * sellable, or the published revision has no text in the Market's locale. Pure.
+ * sellable, its seller may not sell now (suspended, for one), or the published revision has no
+ * text in the Market's locale. Pure.
  */
 export function documentOf(
   offerId: Id<'Offer'>,
   facts: FeedFacts | undefined,
   settings: { readonly locale: string; readonly textSearchConfig: string },
+  eligibleSellers: ReadonlySet<Id<'Seller'>>,
 ): OfferDocument | null {
   if (facts === undefined || !facts.sellable || facts.name === null) return null;
+  if (!eligibleSellers.has(facts.sellerId)) return null;
   const name = clip(facts.name, MAX_NAME);
   if (name === '') return null;
   const shortText = facts.shortText === null ? '' : clip(facts.shortText, MAX_SHORT_TEXT);
@@ -44,9 +47,10 @@ export function documentOf(
 }
 
 /**
- * Brings the documents of these Offers in line with catalog: re-reads each Offer's current state
- * through the index facade (never trusts an event's payload for content), then upserts the
- * sellable ones and deletes the others in one write unit. Idempotent, so a repeated or
+ * Brings the documents of these Offers in line with catalog and sellers: re-reads each Offer's
+ * current state through the index facade (never trusts an event's payload for content) and asks
+ * the may-sell contract about their sellers, then upserts the sellable ones and deletes the
+ * others in one write unit. Idempotent, so a repeated or
  * out-of-order delivery converges. A failed read or write throws (the delivery is retried).
  */
 export async function syncOffers(
@@ -63,10 +67,18 @@ export async function syncOffers(
     const batch = unique.slice(at, at + SYNC_BATCH);
     const facts = await deps.feed.facts(context, batch, settings.locale);
     if (facts === null) throw new Error('search: catalog facts unavailable');
+    const sellerIds = [
+      ...new Set([...facts.values()].filter((f) => f.sellable).map((f) => f.sellerId)),
+    ];
+    const eligible =
+      sellerIds.length === 0
+        ? new Set<Id<'Seller'>>()
+        : await deps.sellers.eligible(context, sellerIds);
+    if (eligible === null) throw new Error('search: seller eligibility unavailable');
     const documents: OfferDocument[] = [];
     const removals: Id<'Offer'>[] = [];
     for (const offerId of batch) {
-      const document = documentOf(offerId, facts.get(offerId), settings);
+      const document = documentOf(offerId, facts.get(offerId), settings, eligible);
       if (document === null) removals.push(offerId);
       else documents.push(document);
     }
