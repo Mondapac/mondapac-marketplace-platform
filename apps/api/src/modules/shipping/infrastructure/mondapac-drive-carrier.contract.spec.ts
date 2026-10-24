@@ -249,13 +249,20 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
     expect(drive.seen).toHaveLength(3);
   });
 
-  it('retries a 429 and counts it towards the circuit, and drops an oversized answer', async () => {
+  it('retries a 429 on a booking but not on a quote, counts it towards the circuit, and drops an oversized answer', async () => {
     for (let n = 0; n < configured.maxAttempts; n += 1) drive.script.push({ status: 429 });
     expect(await carrier.book(market, request)).toEqual({
       ok: false,
       error: { code: 'carrier.unavailable' },
     });
     expect(drive.seen).toHaveLength(configured.maxAttempts);
+    // A quote is not retried after a 429: checkout falls back to the flat fee at once.
+    drive.script.push({ status: 429 });
+    expect(await carrier.quote(market, quote)).toEqual({
+      ok: false,
+      error: { code: 'carrier.unavailable' },
+    });
+    expect(drive.seen).toHaveLength(configured.maxAttempts + 1);
     drive.script.push({
       status: 200,
       body: { total: { amount: '1250', currency: 'AUD' }, padding: 'x'.repeat(MAX_ANSWER_BYTES) },

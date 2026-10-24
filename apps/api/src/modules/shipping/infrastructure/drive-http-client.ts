@@ -64,8 +64,8 @@ export type DriveCallFailure = 'unavailable' | 'refused';
 
 /**
  * The HTTP client of the Mondapac Drive API: JSON over HTTPS with the Market in `x-market-id`
- * and the merchant API key as a bearer token. Each attempt has a timeout; a 5xx, a 429, a timeout or a
- * network fault is retried with exponential backoff (every Drive call the marketplace makes is
+ * and the merchant API key as a bearer token. Each attempt has a timeout; a 5xx, a timeout or a network
+ * fault is retried (a 429 too, except on a quote) with exponential backoff (every Drive call the marketplace makes is
  * idempotent), a 4xx never is. A circuit breaker per Market stops calls while Drive is down.
  * The key and Drive's answer bodies never reach a log or an error: a failure is a code.
  */
@@ -99,7 +99,9 @@ export class DriveHttpClient {
           ? ok({ status: answer.status, body: answer.body })
           : err('refused');
       }
-      if (attempt >= endpoint.maxAttempts) {
+      // A quote waits on a customer at checkout: a 429 falls back to the flat fee at once
+      // instead of adding retries while Drive sheds load (Hassan, SHP-02/03 re-check).
+      if (attempt >= endpoint.maxAttempts || (answer.throttled && call === 'quote')) {
         this.breaker.failed(key, endpoint.circuit);
         return err('unavailable');
       }
@@ -111,7 +113,9 @@ export class DriveHttpClient {
     endpoint: DriveEndpoint,
     url: string,
     payload: string,
-  ): Promise<{ kind: 'answer'; status: number; body: unknown } | { kind: 'fault' }> {
+  ): Promise<
+    { kind: 'answer'; status: number; body: unknown } | { kind: 'fault'; throttled: boolean }
+  > {
     try {
       const response = await this.fetchFn(url, {
         method: 'POST',
@@ -125,15 +129,15 @@ export class DriveHttpClient {
         signal: AbortSignal.timeout(endpoint.timeoutMs),
         redirect: 'error',
       });
-      // A 429 is Drive shedding load, not a judgement of the request: it is retried and counts
-      // towards the circuit, like a 5xx (Hassan, SHP-02/03).
+      // A 429 is Drive shedding load, not a judgement of the request: it counts towards the
+      // circuit like a 5xx and is retried on bookings and cancels (Hassan, SHP-02/03).
       if (response.status >= 500 || response.status === 429) {
         await response.body?.cancel();
-        return { kind: 'fault' };
+        return { kind: 'fault', throttled: response.status === 429 };
       }
       return { kind: 'answer', status: response.status, body: await boundedJson(response.body) };
     } catch {
-      return { kind: 'fault' };
+      return { kind: 'fault', throttled: false };
     }
   }
 }

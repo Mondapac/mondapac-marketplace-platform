@@ -320,7 +320,7 @@ seller ships as in SHP-01.
 - `mode` (required): `on_demand` or `scheduled`.
 - `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.failureThreshold` and
   `circuitBreaker.cooldownSeconds` (required): one attempt's timeout, attempts per call (a 5xx,
-  timeout, network fault or 429 is retried; any other 4xx never), the first backoff (doubled per
+  timeout, network fault or 429 is retried, but a quote is not retried after a 429; any other 4xx never), the first backoff (doubled per
   retry), and the failures in a row that stop calls for the cooldown (AU 2500 ms, 2, 250 ms, 5,
   30 s). The whole call must fit in 6 s.
 - `quoteBounds.minMinor` and `quoteBounds.maxMinor` (required): the range, in minor units of the

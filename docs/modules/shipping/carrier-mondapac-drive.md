@@ -80,7 +80,7 @@ seller order, and the seller's flat fee everywhere else.
   is taken as not cancellable.
 - No merchant field: Drive's merchant is the API key's, and its schemas reject unknown fields.
 - Headers: `Authorization: Bearer <MONDAPAC_DRIVE_API_KEY of the Market>` and `x-market-id`.
-- Client: a timeout per attempt (the whole call at most 6 s); retries with backoff (`backoffMs * 2^(n-1)`) on a 5xx, a 429, a timeout
+- Client: a timeout per attempt (the whole call at most 6 s); retries with backoff (`backoffMs * 2^(n-1)`) on a 5xx, a 429 (not on a quote, which falls back to the flat fee at once), a timeout
   or a network fault, never on a 4xx; redirects refused; a circuit breaker per Market, endpoint and kind of call (book, cancel, quote), so failing
   quotes never stop bookings.
   Only the delivery id and status are read from an answer; the echoed stops are dropped.
