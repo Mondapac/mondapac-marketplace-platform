@@ -4,6 +4,7 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { HANDLER_BUDGET_MS, type EventDelivery } from '../../../platform/events/event-delivery';
 import { OrderShipped } from '../domain/events';
 import { markDelivered, markShipped, parseShipment } from '../domain/order';
+import { refundedInFull } from '../domain/refund';
 import type { OrderingDependencies } from './checkout-flow';
 import { openShipTo } from './read-flow';
 
@@ -85,6 +86,24 @@ export async function bookCarrierDeliveries(
             correlationId: context.correlationId,
           });
           return err({ code: 'ordering.try-again' });
+        }
+        // A seller order refunded in full (or on its way to it) is never handed to a carrier,
+        // whichever of the refund and this delivery came first (Hassan H1).
+        const target = await deps.unitOfWork.run(
+          market,
+          async () => ok(await deps.refunds.findTarget(market, sellerOrder.id, order.id)),
+          { readOnly: true },
+        );
+        if (!target.ok) return err({ code: 'ordering.try-again' });
+        if (target.value !== null && refundedInFull(target.value, 'not-failed')) {
+          logger.log({
+            msg: 'ordering.carrier-booking-skipped-refunded',
+            orderId: order.id,
+            sellerOrderId: sellerOrder.id,
+            marketId: market.marketId,
+            correlationId: context.correlationId,
+          });
+          continue;
         }
         const answer = await deps.shipping.bookCarrierDelivery(context, {
           orderId: order.id,
@@ -218,4 +237,71 @@ export async function recordCarrierProgress(
   );
   if (!marked.ok) return marked;
   return ok(output(marked.value.handled, marked.value.handled && marked.value.value));
+}
+
+/**
+ * `cancel-carrier-after-refund`, for `ordering.refund-succeeded.v1` (Hassan M2): once every unit
+ * of a seller order is refunded, its real-time carrier delivery is cancelled if the carrier has
+ * not picked it up yet. A partial refund leaves the delivery as it is. When the carrier can no
+ * longer cancel (picked up meanwhile), the parcel is on its way although the money is back: that
+ * is logged at warn with ids only for an admin. The inbox mark is written last.
+ */
+export async function cancelCarrierAfterRefund(
+  deps: OrderingDependencies,
+  context: CallContext,
+  input: {
+    readonly delivery: EventDelivery;
+    readonly orderId: unknown;
+    readonly sellerOrderId: unknown;
+  },
+): Promise<Result<CarrierStepOutput, CarrierStepFailure>> {
+  const orderId = typeof input?.orderId === 'string' ? parseId<'Order'>(input.orderId) : null;
+  const sellerOrderId =
+    typeof input?.sellerOrderId === 'string' ? parseId<'SellerOrder'>(input.sellerOrderId) : null;
+  if (orderId === null || !orderId.ok || sellerOrderId === null || !sellerOrderId.ok) {
+    return err({ code: 'validation.failed' });
+  }
+  const { market } = context;
+  const read = await deps.unitOfWork.run(
+    market,
+    async () => ok(await deps.refunds.findTarget(market, sellerOrderId.value, orderId.value)),
+    { readOnly: true },
+  );
+  if (!read.ok) return err({ code: 'ordering.try-again' });
+  const target = read.value;
+  if (target === null) return err({ code: 'validation.failed' });
+  let cancelled = false;
+  // Only refunds Stripe confirmed count: a pending one may still fail, and the goods are owed.
+  if (refundedInFull(target, 'succeeded')) {
+    const answer = await deps.shipping.cancelCarrierDelivery(context, sellerOrderId.value);
+    if (!answer.ok) {
+      if (answer.error.code === 'validation.failed') return err({ code: 'validation.failed' });
+      return err({ code: 'ordering.try-again' });
+    }
+    if (answer.value === 'not-cancellable') {
+      logger.warn({
+        msg: 'ordering.carrier-delivery-not-cancelled-after-refund',
+        orderId: orderId.value,
+        sellerOrderId: sellerOrderId.value,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+    }
+    if (answer.value === 'none') {
+      // No booking (yet): the booking step skips a seller order refunded in full.
+      logger.log({
+        msg: 'ordering.carrier-delivery-none-after-refund',
+        orderId: orderId.value,
+        sellerOrderId: sellerOrderId.value,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+    }
+    cancelled = answer.value === 'cancelled';
+  }
+  const marked = await deps.unitOfWork.runOnce(market, input.delivery, () =>
+    Promise.resolve(ok(undefined)),
+  );
+  if (!marked.ok) return err({ code: 'ordering.try-again' });
+  return ok(output(marked.value.handled, cancelled));
 }

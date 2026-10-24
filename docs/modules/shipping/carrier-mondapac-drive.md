@@ -20,8 +20,12 @@ other seller order stays `seller_managed` (SHP-01): the seller ships and types i
    `ordering.record-carrier-progress` reads the current state and records picked up as shipped
    (carrier name and Drive's delivery id as the tracking reference, with `ordering.order-shipped.v1`)
    and delivered as delivered.
-4. `shipping.cancelCarrierDelivery` cancels a booking not yet picked up. It is not wired to an
-   order event yet, because a paid order cannot be cancelled today (only refunded).
+4. `shipping.cancelCarrierDelivery` cancels a booking not yet picked up. A paid order cannot be
+   cancelled (only refunded), so the trigger is a refund: when Stripe confirms one, ordering
+   writes `ordering.refund-succeeded.v1` (ids only) and its subscriber
+   `ordering.cancel-carrier-after-refund` cancels the delivery once every unit of the seller order
+   is refunded. A partial refund leaves the delivery. If the carrier has already picked it up,
+   `ordering.carrier-delivery-not-cancelled-after-refund` is logged at warn for an admin.
 
 | Drive status | Progress | Seller order |
 |---|---|---|
@@ -87,10 +91,9 @@ in an event or an error.
   budget. The booking handler starts a next seller order only while one more booking and the
   inbox unit still fit; otherwise the delivery is retried and the seller orders already booked
   answer at once.
-- Before the secrets are set for a production Market:
-  - wire `cancelCarrierDelivery` to the refund path. Until then, a refund before pickup does not
-    stop the delivery; the progress is logged at warn as
-    `ordering.carrier-progress-on-unconfirmed-order` for an admin;
-  - replace the placeholder `baseUrl` and `merchantId` in `config/markets/AU.json`.
+- A refund in full before pickup cancels the delivery (step 4). Progress on an order that is no
+  longer confirmed is logged at warn as `ordering.carrier-progress-on-unconfirmed-order`.
+- Before the secrets are set for a production Market, replace the placeholder `baseUrl` and
+  `merchantId` in `config/markets/AU.json`.
 - Follow-ups: cap the size of Drive's answer body; key the circuit breaker per call as well as per
   endpoint; a retention job for `shipping.carrier_events`.

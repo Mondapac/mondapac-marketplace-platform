@@ -611,6 +611,15 @@
     }
   },
   {
+    "type": "ordering.refund-succeeded.v1",
+    "aggregateType": "refund",
+    "fields": {
+      "orderId": "id",
+      "sellerOrderId": "id",
+      "refundId": "id"
+    }
+  },
+  {
     "type": "pricing.effective-price-changed.v1",
     "aggregateType": "price-series",
     "fields": {
