@@ -110,6 +110,46 @@ export class MemorySlides implements SlideRepository {
         })),
     );
   }
+  servedAt(m: MarketContext, position: string, after: Temporal.Instant, limit: number) {
+    return Promise.resolve(
+      this.placements
+        .filter(
+          (p) =>
+            p.marketId === m.marketId &&
+            p.position === position &&
+            p.endsAt.epochMilliseconds > after.epochMilliseconds,
+        )
+        .flatMap((p) => {
+          const slide = this.slides.get(p.slideId);
+          if (
+            slide === undefined ||
+            slide.marketId !== m.marketId ||
+            slide.state !== 'approved' ||
+            slide.liveVersionId === null
+          ) {
+            return [];
+          }
+          return [
+            {
+              slideId: p.slideId,
+              kind: slide.kind,
+              liveVersionId: slide.liveVersionId,
+              scope: p.scope as SlideScope,
+              scopeId: p.scopeId,
+              includeSubcategories: p.includeSubcategories,
+              sortOrder: p.sortOrder,
+              autoplay: p.autoplay,
+              startsAt: p.startsAt,
+              endsAt: p.endsAt,
+              pinned: slide.pinned,
+              sponsored: slide.sponsored,
+            },
+          ];
+        })
+        .sort((a, b) => a.startsAt.epochMilliseconds - b.startsAt.epochMilliseconds)
+        .slice(0, limit),
+    );
+  }
   placementsOf(m: MarketContext, slideId: Id<'StorefrontSlide'>) {
     return Promise.resolve(
       this.placements.filter((p) => p.marketId === m.marketId && p.slideId === slideId),

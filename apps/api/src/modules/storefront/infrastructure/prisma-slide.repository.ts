@@ -277,6 +277,34 @@ export class PrismaSlideRepository implements SlideRepository {
     }));
   }
 
+  async servedAt(market: MarketContext, position: string, after: Temporal.Instant, limit: number) {
+    const rows = await this.prisma.tx(market).storefrontSlidePlacement.findMany({
+      where: {
+        marketId: market.marketId,
+        positionKey: position,
+        endsAt: { gt: toDate(after) },
+        slide: { marketId: market.marketId, state: 'approved', liveVersionId: { not: null } },
+      },
+      include: { slide: true },
+      orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map((row) => ({
+      slideId: row.slideId,
+      kind: row.slide.kind as SlideKind,
+      liveVersionId: row.slide.liveVersionId!,
+      scope: row.scope as SlideScope,
+      scopeId: row.scopeId,
+      includeSubcategories: row.includeSubcategories,
+      sortOrder: row.sortOrder,
+      autoplay: row.autoplay,
+      startsAt: toInstant(row.startsAt),
+      endsAt: toInstant(row.endsAt),
+      pinned: row.slide.pinned,
+      sponsored: row.slide.sponsored,
+    }));
+  }
+
   async placementsOf(market: MarketContext, slideId: Id<'StorefrontSlide'>) {
     const rows = await this.prisma.tx(market).storefrontSlidePlacement.findMany({
       where: { marketId: market.marketId, slideId },

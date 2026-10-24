@@ -132,6 +132,7 @@ describe.each([
       unitOfWork: new FakeUnitOfWork(),
       pages: undefined as never,
       slides,
+      links: undefined as never,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,

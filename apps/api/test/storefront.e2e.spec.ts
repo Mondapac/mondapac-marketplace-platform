@@ -12,6 +12,7 @@ import { ReplaceStorefrontNavigationDraft } from '../src/modules/storefront/appl
 import { ViewPublishedLandingPage } from '../src/modules/storefront/application/use-cases/view-published-landing-page.use-case';
 import { ViewPublishedStorefrontNavigation } from '../src/modules/storefront/application/use-cases/view-published-navigation.use-case';
 import { ViewPublishedStorefrontPage } from '../src/modules/storefront/application/use-cases/view-published-page.use-case';
+import { ViewPublishedStorefrontSlides } from '../src/modules/storefront/application/use-cases/view-published-slides.use-case';
 import { ArchiveStorefrontSlide } from '../src/modules/storefront/application/use-cases/archive-slide.use-case';
 import { ApproveStorefrontSlide } from '../src/modules/storefront/application/use-cases/approve-slide.use-case';
 import { PauseStorefrontSlide } from '../src/modules/storefront/application/use-cases/pause-slide.use-case';
@@ -132,6 +133,8 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
           .useValue(stub('approve'))
           .overrideProvider(ViewPublishedStorefrontPage)
           .useValue(stub('published-page'))
+          .overrideProvider(ViewPublishedStorefrontSlides)
+          .useValue(stub('published-slides'))
           .overrideProvider(ViewPublishedLandingPage)
           .useValue(stub('landing'))
           .overrideProvider(ViewPublishedStorefrontNavigation)
@@ -560,5 +563,76 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
       { name: 'landing', input: { slug: 'nope' } },
       { name: 'published-navigation', input: {} },
     ]);
+  });
+
+  describe('the public slides read', () => {
+    const slide = {
+      id: '01990000-0000-7000-8000-000000001001',
+      kind: 'promotion',
+      title: 'Fresh this week',
+      body: null,
+      ctaLabel: null,
+      image: null,
+      textPosition: 'start',
+      textTone: 'light',
+      href: '/offers',
+      sponsored: false,
+    };
+    const view = (over: object) => ({
+      position: 'home.hero',
+      autoplay: true,
+      slides: [slide],
+      nextChangeAt: null,
+      maxAgeSeconds: 60,
+      ...over,
+    });
+
+    it('needs no session, caches for at most 60 s and varies by Market', async () => {
+      await boot();
+      next = ok(view({}));
+      const res = await http()
+        .get('/storefront/slides?position=home.hero')
+        .set({ 'x-market-id': code });
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('public, max-age=60');
+      expect(res.headers.vary?.toLowerCase()).toContain('x-market-id');
+      expect(res.body).toEqual({
+        position: 'home.hero',
+        autoplay: true,
+        slides: [slide],
+        nextChangeAt: null,
+      });
+      expect(calls).toEqual([{ name: 'published-slides', input: { position: 'home.hero' } }]);
+    });
+
+    it('never lets the cache outlive the next change', async () => {
+      await boot();
+      next = ok(view({ maxAgeSeconds: 12, nextChangeAt: START.add({ seconds: 12 }) }));
+      const soon = await http()
+        .get('/storefront/slides?position=home.hero')
+        .set({ 'x-market-id': code });
+      expect(soon.headers['cache-control']).toBe('public, max-age=12');
+      expect((soon.body as { nextChangeAt: string }).nextChangeAt).toBe(
+        START.add({ seconds: 12 }).toString(),
+      );
+      next = ok(view({ maxAgeSeconds: 0 }));
+      const now = await http()
+        .get('/storefront/slides?position=home.hero')
+        .set({ 'x-market-id': code });
+      expect(now.headers['cache-control']).toBe('no-store');
+    });
+
+    it('answers a refused request with 400 and no caching', async () => {
+      await boot();
+      next = err({ code: 'validation.failed', fields: [{ path: 'position', code: 'enum' }] });
+      const res = await http().get('/storefront/slides?position=nope').set({ 'x-market-id': code });
+      expect(res.status).toBe(400);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body).toEqual({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'position', code: 'enum' }] },
+      });
+    });
   });
 });

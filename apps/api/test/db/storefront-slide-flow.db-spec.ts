@@ -71,6 +71,7 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
       unitOfWork: db.unitOfWork,
       pages: undefined as never,
       slides,
+      links: undefined as never,
       audit: {
         record: (_c, entry) => {
           recorded.push(entry.action);
@@ -197,5 +198,26 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
     });
     expect(updated.versions.map((v) => v.versionNo)).toEqual([2, 1]);
     expect((await projected(market, live.id)).map((p) => p.position)).toEqual([POSITION]);
+  });
+
+  it('serves only approved slides of the request Market to the public read, and not a paused one', async () => {
+    const served = (target: typeof market) =>
+      db.unitOfWork
+        .run(target, async () => ({
+          ok: true as const,
+          value: await slides.servedAt(target, POSITION, start, 100),
+        }))
+        .then((r) => (r.ok ? r.value : []));
+    const live = await approved(context, 24 * 120);
+    const theirs = await approved(otherContext, 24 * 120);
+    expect((await served(market)).map((p) => p.slideId)).toContain(live.id);
+    expect((await served(market)).map((p) => p.slideId)).not.toContain(theirs.id);
+    expect((await served(other)).map((p) => p.slideId)).toContain(theirs.id);
+    expect((await served(other)).map((p) => p.slideId)).not.toContain(live.id);
+    const row = (await served(market)).find((p) => p.slideId === live.id)!;
+    expect(row).toMatchObject({ kind: 'announcement', scope: 'all', pinned: false });
+    expect(row.liveVersionId).toBe(live.live?.id);
+    ok(await pauseSlide(deps, context, { slide: live.id }));
+    expect((await served(market)).map((p) => p.slideId)).not.toContain(live.id);
   });
 });
