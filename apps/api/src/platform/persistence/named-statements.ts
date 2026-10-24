@@ -43,6 +43,15 @@ export function isApprovedStatement(request: RawStatementRequest, market: Market
         typeof values[2] === 'string'
       );
     }
+    if (sql === LOCK_ENGAGEMENT_ACCOUNT_SHARED_TEXT || sql === LOCK_ENGAGEMENT_ACCOUNT_TEXT) {
+      return (
+        values.length === 3 &&
+        values[0] === market.marketId &&
+        values[1] === market.tenantId &&
+        typeof values[2] === 'string' &&
+        UUID.test(values[2])
+      );
+    }
     return (
       sql === LOCK_STOCK_ITEMS_TEXT &&
       values.length === 3 &&
@@ -103,6 +112,11 @@ export interface SharedCertificationIssuer {
   readonly typeId: string;
 }
 
+/** The answer of `engagement.lock-account`: the lock is held until the unit ends. */
+export interface LockedEngagementAccount {
+  readonly locked: true;
+}
+
 /** The checked-in list: statement name to its input and its rows. */
 export interface NamedStatements {
   /**
@@ -144,6 +158,21 @@ export interface NamedStatements {
   readonly 'certification.share-issuer': {
     readonly params: { readonly issuerId: string };
     readonly row: SharedCertificationIssuer;
+  };
+  /**
+   * Takes a transaction-scoped advisory lock on one account's behaviour in the unit's Market and
+   * tenant (engagement): `shared` for recording an event, `exclusive` for switching
+   * personalization or forgetting the account. Records do not block each other; a switch waits
+   * for the records in flight and they wait for it, so no event read as "on" commits after a
+   * switch-off deleted the events, without SERIALIZABLE and its 40001 aborts. The key is
+   * `hashtext` of Market, tenant and account under a class of its own; a collision only makes
+   * two accounts wait for each other. Released at COMMIT or ROLLBACK; one row always. A wait
+   * past the role's `lock_timeout` (55P03) ends the unit as a conflict (409), never a 500.
+   * Advisory class 1701 is this statement's alone; the scheduler uses the one-bigint form.
+   */
+  readonly 'engagement.lock-account': {
+    readonly params: { readonly accountId: string; readonly mode: 'shared' | 'exclusive' };
+    readonly row: LockedEngagementAccount;
   };
 }
 
@@ -308,6 +337,58 @@ const SHARE_PENDING_SUBMISSION_TEXT = sharePendingSubmissionStatement(
   '',
 ).sql;
 
+/** The advisory-lock class of `engagement.lock-account` (the first key of the two-key form). */
+export const ENGAGEMENT_ACCOUNT_LOCK_CLASS = 1701;
+
+/** The statement of `engagement.lock-account`: Market, tenant, then the account. */
+export function lockEngagementAccountStatement(
+  market: MarketContext,
+  accountId: string,
+  mode: 'shared' | 'exclusive',
+): Prisma.Sql {
+  const key = Prisma.sql`hashtext(${market.marketId}::text || ':' || ${market.tenantId}::text || ':' || ${accountId}::text)`;
+  return mode === 'shared'
+    ? Prisma.sql`
+    SELECT true AS locked
+      FROM pg_advisory_xact_lock_shared(${Prisma.raw(String(ENGAGEMENT_ACCOUNT_LOCK_CLASS))}::int4, ${key})`
+    : Prisma.sql`
+    SELECT true AS locked
+      FROM pg_advisory_xact_lock(${Prisma.raw(String(ENGAGEMENT_ACCOUNT_LOCK_CLASS))}::int4, ${key})`;
+}
+
+async function lockEngagementAccount(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'engagement.lock-account'>,
+): Promise<LockedEngagementAccount[]> {
+  const name = 'engagement.lock-account';
+  if (typeof params.accountId !== 'string' || !UUID.test(params.accountId)) {
+    throw new NamedStatementRefusedError(name, 'ids-malformed');
+  }
+  if (params.mode !== 'shared' && params.mode !== 'exclusive') {
+    throw new NamedStatementRefusedError(name, 'mode-malformed');
+  }
+  const rows = (await runner.query(
+    lockEngagementAccountStatement(market, params.accountId, params.mode),
+  )) as { locked: boolean }[];
+  if (rows.length !== 1 || rows[0]!.locked !== true) {
+    throw new NamedStatementRefusedError(name, 'rows-missing');
+  }
+  return [{ locked: true }];
+}
+
+const LOCK_ENGAGEMENT_ACCOUNT_SHARED_TEXT = lockEngagementAccountStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+  'shared',
+).sql;
+
+const LOCK_ENGAGEMENT_ACCOUNT_TEXT = lockEngagementAccountStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+  'exclusive',
+).sql;
+
 /** The text the guard recognises for `inventory.lock-stock-items`, taken from the builder itself. */
 const LOCK_STOCK_ITEMS_TEXT = lockStockItemsStatement(
   { marketId: 'XX', tenantId: 'x' } as MarketContext,
@@ -345,6 +426,12 @@ export async function runNamedStatement<K extends NamedStatementName>(
         runner,
         market,
         params as NamedStatementParams<'certification.share-issuer'>,
+      );
+    case 'engagement.lock-account':
+      return await lockEngagementAccount(
+        runner,
+        market,
+        params as NamedStatementParams<'engagement.lock-account'>,
       );
     default:
       throw new Error('Unknown named statement');
