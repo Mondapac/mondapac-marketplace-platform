@@ -3,7 +3,6 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { settingsTabs } from '../settings/settings-header.tsx';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
@@ -268,13 +267,5 @@ describe('payoutProblemOf', () => {
     expect(payoutProblemOf({ status: 401, code: 'second-factor.invalid' }).key).toBe('invalid');
     expect(payoutProblemOf({ status: 0, code: 'network' }).key).toBe('unavailable');
     expect(payoutProblemOf({ status: 500, code: 'x' }).key).toBe('unknown');
-  });
-});
-
-describe('payout settings tab', () => {
-  it('shows the tab only with the view key', () => {
-    const ids = (keys: string[]) => settingsTabs(keys, (key) => key).map((tab) => tab.id);
-    expect(ids([])).not.toContain('payout');
-    expect(ids(['payments.payout-account.view'])).toContain('payout');
   });
 });

@@ -30,12 +30,21 @@
     "home": "Dashboard",
     "team": "Roles & permissions",
     "customers": "Customers",
-    "sellers": "Sellers",
+    "sellers": "All sellers",
     "orders": "Orders",
     "price-holds": "Held prices",
     "offer-reviews": "Offer reviews",
     "payout-accounts": "Connected accounts",
-    "settings": "Settings"
+    "settings": "Settings",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "group": {
+      "reviews": "Reviews",
+      "sellers": "Sellers",
+      "orders": "Orders & customers",
+      "money": "Money",
+      "platform": "Platform"
+    }
   },
   "home": {
     "title": "Dashboard",
