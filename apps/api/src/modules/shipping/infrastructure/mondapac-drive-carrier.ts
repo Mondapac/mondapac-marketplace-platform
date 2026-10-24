@@ -46,9 +46,10 @@ function deliveryOf(body: unknown, externalReference: string | null): CarrierBoo
 /**
  * The Mondapac Drive adapter of the carrier port (SHP-02/03; Drive ADR-0001 decision 3). Books
  * with `POST /delivery/deliveries`, idempotent on the merchant and the seller order id as
- * `externalReference` (a repeat answers 200 with the first delivery); cancels with the
- * `cancelled` event of `POST /delivery/deliveries/:id/events`. The merchant id and the endpoint
- * come from the Market's carrier settings, the API key from the Region Stack's secrets.
+ * `externalReference` (a repeat answers 200 with the first delivery); cancels with
+ * `POST /delivery/deliveries/:id/cancel`. The merchant is the API key's (Drive takes no merchant
+ * field). The endpoint comes from the Market's carrier settings, the API key from the Region
+ * Stack's secrets.
  */
 export class MondapacDriveCarrier implements CarrierGateway {
   constructor(
@@ -64,7 +65,6 @@ export class MondapacDriveCarrier implements CarrierGateway {
     const target = this.target(market);
     if (target === null) return err(NOT_CONFIGURED);
     const answer = await this.http.post(target.endpoint, '/delivery/deliveries', {
-      merchantId: target.merchantId,
       externalReference: request.externalReference,
       pickup: stopBody(request.pickup),
       dropoff: stopBody(request.dropoff),
@@ -85,8 +85,8 @@ export class MondapacDriveCarrier implements CarrierGateway {
     if (!UUID.test(carrierReference)) return err(REFUSED);
     const answer = await this.http.post(
       target.endpoint,
-      `/delivery/deliveries/${carrierReference}/events`,
-      { type: 'cancelled', reason: 'Cancelled by the marketplace' },
+      `/delivery/deliveries/${carrierReference}/cancel`,
+      { reason: 'Cancelled by the marketplace' },
     );
     if (!answer.ok) return err(answer.error === 'refused' ? REFUSED : UNAVAILABLE);
     const delivery = deliveryOf(answer.value.body, null);
@@ -95,17 +95,14 @@ export class MondapacDriveCarrier implements CarrierGateway {
     return ok({ carrierStatus: delivery.carrierStatus });
   }
 
-  /** The endpoint and merchant of the Market, or null when the carrier is off for it. */
-  private target(
-    market: MarketContext,
-  ): { readonly endpoint: DriveEndpoint; readonly merchantId: string } | null {
+  /** The endpoint of the Market, or null when the carrier is off for it. */
+  private target(market: MarketContext): { readonly endpoint: DriveEndpoint } | null {
     const settings = this.policy.config(market.marketId);
     const apiKey = Object.hasOwn(this.apiKeys, market.marketId)
       ? this.apiKeys[market.marketId]
       : undefined;
     if (settings === null || apiKey === undefined) return null;
     return {
-      merchantId: settings.merchantId,
       endpoint: {
         baseUrl: settings.baseUrl,
         apiKey,

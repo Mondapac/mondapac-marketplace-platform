@@ -34,6 +34,7 @@ import { ConfigOrderingPolicy } from '../infrastructure/config-ordering-policy';
 import type { OrderingDependencies } from './checkout-flow';
 import { AdminListOrders } from './use-cases/admin-list-orders.use-case';
 import { BookCarrierDeliveries } from './use-cases/book-carrier-deliveries.use-case';
+import { CancelCarrierAfterRefund } from './use-cases/cancel-carrier-after-refund.use-case';
 import { AdminViewOrderDocument } from './use-cases/admin-view-order-document.use-case';
 import { AdminViewOrder } from './use-cases/admin-view-order.use-case';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
@@ -1405,6 +1406,17 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     });
 
     describe('the real-time carrier (SHP-02/03)', () => {
+      /** Refund targets by seller order id; a seller order not listed has no refund. */
+      const refundTargets = new Map<string, unknown>();
+      beforeEach(() => {
+        refundTargets.clear();
+        deps = {
+          ...deps,
+          refunds: {
+            findTarget: (_m: unknown, so: string) => Promise.resolve(refundTargets.get(so) ?? null),
+          } as never,
+        };
+      });
       const delivery = (n: number, subscriber: string) => ({
         eventId: id<'event'>(0xe00 + n),
         subscriber,
@@ -1481,6 +1493,100 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         } finally {
           clock.set(T0);
         }
+      });
+
+      it('hands no seller order refunded in full to the carrier (Hassan H1)', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        const line = id<'OrderLine'>(0x0e2);
+        refundTargets.set(a, {
+          lines: [{ id: line, quantity: 1 }],
+          refundedUnits: new Map([[line, 1]]),
+          succeededUnits: new Map(),
+        });
+
+        shipping.carrierBookings.set(a, ok('booked'));
+
+        // Nothing else was booked, so the delivery is taken as not applicable.
+        expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+        const asked = shipping.carrierRequests.map((r) => r.sellerOrderId);
+        expect(asked).not.toContain(a);
+        expect(asked).toHaveLength(order.sellerOrders.length - 1);
+      });
+
+      describe('after a refund (Hassan M2)', () => {
+        const LINE = id<'OrderLine'>(0x0e1);
+        /**
+         * A refund target of one line of two units: `refunded` of them in refunds not failed,
+         * `succeeded` of those confirmed by the payment provider.
+         */
+        const withRefunded = (
+          orderId: string,
+          sellerOrderId: string,
+          refunded: number,
+          succeeded = refunded,
+        ) => {
+          deps = {
+            ...deps,
+            refunds: {
+              findTarget: (_m: unknown, so: string, o: string) =>
+                Promise.resolve(
+                  so === sellerOrderId && o === orderId
+                    ? ({
+                        lines: [{ id: LINE, quantity: 2 }],
+                        refundedUnits: new Map([[LINE, refunded]]),
+                        succeededUnits: new Map([[LINE, succeeded]]),
+                      } as never)
+                    : null,
+                ),
+            } as never,
+          };
+        };
+        const cancel = (orderId: string, sellerOrderId: string, n = 1) =>
+          new CancelCarrierAfterRefund(gate, deps).execute(system, {
+            delivery: delivery(n, 'ordering.cancel-carrier-after-refund'),
+            orderId,
+            sellerOrderId,
+          });
+        const ORDER_ID = id<'Order'>(0x0a1);
+        const SO = id<'SellerOrder'>(0x0a2);
+
+        it('cancels the delivery once every unit is refunded, and not after a partial refund', async () => {
+          withRefunded(ORDER_ID, SO, 1);
+          expect(await cancel(ORDER_ID, SO, 1)).toEqual(
+            ok({ code: 'ordering.carrier.not-applicable' }),
+          );
+          expect(shipping.carrierCancels).toEqual([]);
+
+          // A refund still pending at the provider does not count (Hassan M1).
+          withRefunded(ORDER_ID, SO, 2, 1);
+          expect(await cancel(ORDER_ID, SO, 3)).toEqual(
+            ok({ code: 'ordering.carrier.not-applicable' }),
+          );
+          expect(shipping.carrierCancels).toEqual([]);
+
+          withRefunded(ORDER_ID, SO, 2);
+          shipping.cancelAnswer = ok('cancelled');
+          expect(await cancel(ORDER_ID, SO, 2)).toEqual(ok({ code: 'ordering.carrier.handled' }));
+          expect(shipping.carrierCancels).toEqual([SO]);
+          expect(await cancel(ORDER_ID, SO, 2)).toEqual(
+            ok({ code: 'ordering.carrier.already-handled' }),
+          );
+        });
+
+        it('takes a delivery the carrier can no longer cancel, and retries while shipping is down', async () => {
+          withRefunded(ORDER_ID, SO, 2);
+          shipping.cancelAnswer = err({ code: 'shipping.carrier-unavailable' });
+          expect(await cancel(ORDER_ID, SO, 1)).toEqual(err({ code: 'ordering.try-again' }));
+          shipping.cancelAnswer = ok('not-cancellable');
+          expect(await cancel(ORDER_ID, SO, 1)).toEqual(
+            ok({ code: 'ordering.carrier.not-applicable' }),
+          );
+          expect(await cancel(ORDER_ID, id<'SellerOrder'>(0x0a9), 2)).toEqual(
+            err({ code: 'validation.failed' }),
+          );
+          expect(await cancel('nope', SO, 3)).toEqual(err({ code: 'validation.failed' }));
+        });
       });
 
       it('books nothing for an order that is not paid', async () => {

@@ -362,7 +362,6 @@
       "carrier": "mondapac-drive",
       "displayName": "Mondapac Drive",
       "baseUrl": "https://drive-api.mondapac.test",
-      "merchantId": "mondapac-marketplace",
       "serviceAreas": ["greater-brisbane"],
       "parcel": { "weightGrams": 5000, "volumeLitres": 20, "temperature": "ambient" },
       "mode": "on_demand",

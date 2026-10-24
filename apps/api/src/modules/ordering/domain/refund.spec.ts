@@ -38,6 +38,7 @@ const inclusive: RefundTarget = {
     },
   ],
   refundedUnits: new Map(),
+  succeededUnits: new Map(),
   refundedShipping: 0n,
 };
 

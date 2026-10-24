@@ -2223,7 +2223,6 @@ describe('the shipping section (the real-time carrier, SHP-02/03)', () => {
     carrier: 'mondapac-drive',
     displayName: 'Mondapac Drive',
     baseUrl: 'https://drive-api.qq.test',
-    merchantId: 'mondapac-marketplace',
     serviceAreas: ['qq-central'],
     parcel: { weightGrams: 5000, volumeLitres: 20, temperature: 'ambient' },
     mode: 'on_demand',

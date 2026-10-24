@@ -1,5 +1,5 @@
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Id } from '@mondapac/shared-kernel';
+import type { CallContext, Id, PendingEvent } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   testAuthenticatedActor,
@@ -266,6 +266,37 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     expect(await rowsOf(o.sellerOrderId)).toEqual({ refunded: '0', refunds: [], notes: [] });
     const settled = await new SettleRefunds(gate, off).execute(system, {});
     expect(settled).toEqual(ok({ succeeded: 0, failed: 0, stuck: [] }));
+  });
+
+  it('announces each refund Stripe confirmed, once, with ids only, and none it refused', async () => {
+    const written: PendingEvent[] = [];
+    const recording: OrderingDependencies = {
+      ...deps,
+      outbox: {
+        append: (_context, events) => {
+          written.push(...events);
+          return Promise.resolve();
+        },
+      },
+    };
+    const o = await paidOrder();
+
+    const done = await refund(o, 1, undefined, recording);
+    expect(done.ok).toBe(true);
+    expect(written).toEqual([
+      expect.objectContaining({
+        type: 'ordering.refund-succeeded.v1',
+        payload: {
+          orderId: o.orderId,
+          sellerOrderId: o.sellerOrderId,
+          refundId: done.ok ? done.value.refundId : '',
+        },
+      }),
+    ]);
+
+    gateway.refundFails = { code: 'payment.provider-rejected' };
+    expect((await refund(o, 1, undefined, recording)).ok).toBe(false);
+    expect(written).toHaveLength(1);
   });
 
   it('refunds in parts from the frozen values and reverses exactly the frozen tax', async () => {

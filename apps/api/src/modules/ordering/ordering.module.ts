@@ -39,6 +39,7 @@ import { SellerOrderCustomerNames } from './application/use-cases/seller-order-c
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
 import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deliveries.use-case';
 import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
+import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier-after-refund.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
@@ -149,9 +150,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     // SHP-02/03: the real-time carrier's booking and progress (ordering.inbox).
     registerSubscriptionsFrom(
       'ordering',
-      [BookCarrierDeliveries, RecordCarrierProgress],
-      (book: BookCarrierDeliveries, record: RecordCarrierProgress) =>
-        carrierSubscriptions(book, record),
+      [BookCarrierDeliveries, RecordCarrierProgress, CancelCarrierAfterRefund],
+      (
+        book: BookCarrierDeliveries,
+        record: RecordCarrierProgress,
+        cancel: CancelCarrierAfterRefund,
+      ) => carrierSubscriptions(book, record, cancel),
     ),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
     ...orderingProviders,
@@ -177,6 +181,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerOrderCustomerNames,
       BookCarrierDeliveries,
       RecordCarrierProgress,
+      CancelCarrierAfterRefund,
       AdminRefundOrder,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
