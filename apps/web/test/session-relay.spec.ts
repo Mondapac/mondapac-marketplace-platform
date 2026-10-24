@@ -92,7 +92,7 @@ describe('storefront session relay: what may cross', () => {
     expect(isSessionPathAllowed('PUT', ['cart', 'items', 'not-a-uuid'])).toBe(false);
     expect(isSessionPathAllowed('PUT', ['cart', 'items', LINE, 'x'])).toBe(false);
     expect(isSessionPathAllowed('GET', ['identity', 'seller', 'session'])).toBe(false);
-    expect(isSessionPathAllowed('POST', ['identity', 'customer', 'change-password'])).toBe(false);
+    expect(isSessionPathAllowed('GET', ['identity', 'customer', 'change-password'])).toBe(false);
     expect(isSessionPathAllowed('GET', ['ordering', 'orders'])).toBe(false);
     expect(isSessionPathAllowed('PATCH', ['cart', 'items', LINE])).toBe(false);
   });

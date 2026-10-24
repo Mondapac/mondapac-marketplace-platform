@@ -1,7 +1,8 @@
-// The buyer site's relay to the API for the routes that carry the buyer's session or guest cart
-// (storefront session design, approved 2026-10-20; the same rules as the panels' relay,
-// apps/seller/src/server/bff.ts). Pure functions over `Request` and `Response`, so they are
-// tested without a server. Only a closed list of cart and customer-session paths crosses, only
+// The buyer site's one relay to the API for the routes that carry the buyer's session or guest
+// cart (ADR-0034 decision 3; storefront session design, approved 2026-10-20; the same rules as
+// the panels' relay, apps/seller/src/server/bff.ts). Pure functions over `Request` and
+// `Response`, so they are tested without a server. Only a closed list of cart, customer-session
+// and customer-account paths crosses, only
 // the two cookies of the host's Market go to the API and only those two come back, and an unsafe
 // request must be same-origin before it is sent on.
 
@@ -13,22 +14,37 @@ import {
 } from '@mondapac/panel-server/signer';
 import { storefrontHostFor, type StorefrontApiConfig, type StorefrontHost } from './config.ts';
 
-/** The paths the buyer site may reach with cookies, by method. */
+/** The paths the buyer site may reach with cookies, by method: the cart and the customer's own
+ * session and account. */
 const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
-  GET: new Set(['cart', 'identity/customer/session']),
+  GET: new Set([
+    'cart',
+    'identity/customer/session',
+    // The customer's own address book (customers package 1).
+    'customers/me/addresses',
+  ]),
   POST: new Set([
     'cart/items',
     'cart/merge',
     'identity/customer/sign-in',
     'identity/customer/sign-out',
     'identity/customer/confirm-email',
+    // The customer's own password: the current one and the new one.
+    'identity/customer/change-password',
+    'customers/me/addresses',
+  ]),
+  PUT: new Set([
+    // The customer's own display name and storefront look (buyer account backend).
+    'identity/customer/profile/display-name',
+    'identity/customer/profile/appearance',
   ]),
 };
 
-/** Paths with one line id (`:id`, a UUID), by method. */
+/** Paths with one resource id (`:id`, a UUID), by method. */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
-  PUT: ['cart/items/:id'],
-  DELETE: ['cart/items/:id'],
+  POST: ['customers/me/addresses/:id/default'],
+  PUT: ['cart/items/:id', 'customers/me/addresses/:id'],
+  DELETE: ['cart/items/:id', 'customers/me/addresses/:id'],
 };
 
 /** The answers that start a customer session; a guest cart is merged into it right after. */

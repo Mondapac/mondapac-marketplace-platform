@@ -174,11 +174,12 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
     target: typeof market,
     productId: Id<'Product'>,
     state: 'draft' | 'published',
+    sellerId: Id<'Seller'> = uuid7() as Id<'Seller'>,
   ): Promise<Id<'Offer'>> {
     const created = Offer.create({
       id: uuid7() as Id<'Offer'>,
       marketId: target.marketId,
-      sellerId: uuid7() as Id<'Seller'>,
+      sellerId,
       productId,
       sellerSku: `SKU-${uuid7().slice(-12)}`,
       conditionCode: 'new',
@@ -285,5 +286,22 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
     expect(all.filter((offerId) => wanted.includes(offerId))).toEqual(wanted);
     expect([...all].sort()).toEqual(all);
     expect(ofProduct).toEqual([a, b].sort());
+  });
+
+  it("lists one seller's published Offers only, in id order", async () => {
+    const sellerId = uuid7() as Id<'Seller'>;
+    const a = await offer(market, await product(market), 'published', sellerId);
+    const b = await offer(market, await product(market), 'published', sellerId);
+    await offer(market, await product(market), 'draft', sellerId);
+    await offer(market, await product(market), 'published');
+    await offer(other, await product(other), 'published', sellerId);
+
+    const ofSeller = await run(
+      market,
+      () => reader.publishedOfferIds(market, { sellerId, limit: 10 }),
+      true,
+    );
+
+    expect(ofSeller).toEqual([a, b].sort());
   });
 });

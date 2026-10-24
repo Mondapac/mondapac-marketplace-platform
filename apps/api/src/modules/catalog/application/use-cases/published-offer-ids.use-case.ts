@@ -21,7 +21,7 @@ const invalid = (path: string, code: string): CatalogValidationFailed => ({
 
 /**
  * `publishedOfferIds` of the index facade: rule `system`. Keyset pages of the ids of Offers
- * with `status = 'published'`, for a read model's backfill, or all of one product's Offers.
+ * with `status = 'published'`, for a read model's backfill, or all of one product's or one seller's Offers.
  */
 export class PublishedOfferIdsQuery extends UseCase<
   PublishedOfferIdsInput,
@@ -49,6 +49,7 @@ export class PublishedOfferIdsQuery extends UseCase<
     }
     for (const [path, value] of [
       ['productId', input.productId],
+      ['sellerId', input.sellerId],
       ['after', input.after],
     ] as const) {
       if (value !== undefined && (typeof value !== 'string' || !parseId(value).ok)) {

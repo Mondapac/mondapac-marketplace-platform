@@ -279,7 +279,7 @@ describe('Deliver to modal', () => {
     renderHeader({ signedIn: true });
     const dialog = await openModal();
     expect(dialog.textContent).toContain('Your delivery location is saved to your account.');
-    const work = within(dialog).getByRole('radio', { name: /Work/ });
+    const work = within(dialog).getByRole('radio', { name: /Sam Nguyen/ });
     await settle(() => fireEvent.click(work));
     expect((work as HTMLInputElement).checked).toBe(true);
     expect(summary(dialog).textContent).toContain(

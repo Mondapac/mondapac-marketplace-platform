@@ -9,13 +9,14 @@ import type { Palette, TextSize } from '../preferences/preferences.ts';
 import { TextSizeToggle } from '../preferences/text-size-toggle.tsx';
 import type { EmailChoices } from '../storefront/types.ts';
 import { AccountFrame } from './account-area.tsx';
-import { useAccount, type Profile } from './account-state.tsx';
+import { useAccount, type PasswordOutcome, type Profile } from './account-state.tsx';
 import { AcField, PasswordField } from './fields.tsx';
 
 /**
  * Settings: Profile, Password (always open), Appearance (saved to the account, john 19 Oct; the
  * browser keeps a copy for first paint), Emails and Privacy. There is no Delete account (john).
- * Sample: saving changes this tab's state only until the account backend exists.
+ * Live: the name, password and look go to the API; the email is read-only and the mobile field is
+ * hidden (no backend yet). Sample: saving changes this tab's state only.
  */
 export function AccountSettings({
   palette,
@@ -46,6 +47,8 @@ function AppearanceCard({
   const t = useTranslations('account.settings');
   const { saveAppearance } = useAccount();
   const [saved, setSaved] = useState(false);
+  // Both values go to the API on each choice, so the other one is kept.
+  const [look, setLook] = useState({ palette, textSize });
   // Cleared first, so a second choice is read out again.
   const announce = () => {
     setSaved(false);
@@ -57,14 +60,16 @@ function AppearanceCard({
       <PalettePicker
         initial={palette}
         onChoose={(choice) => {
-          saveAppearance({ palette: choice });
+          setLook({ ...look, palette: choice });
+          saveAppearance({ ...look, palette: choice });
           announce();
         }}
       />
       <TextSizeToggle
         initial={textSize}
         onChoose={(choice) => {
-          saveAppearance({ textSize: choice });
+          setLook({ ...look, textSize: choice });
+          saveAppearance({ ...look, textSize: choice });
           announce();
         }}
       />
@@ -81,11 +86,14 @@ function AppearanceCard({
 
 function ProfileCard() {
   const t = useTranslations('account.settings');
-  const { profile, setProfile } = useAccount();
+  const { profile, saveProfile, source } = useAccount();
+  const live = source.live;
   const [draft, setDraft] = useState<Profile>(profile);
   const [saved, setSaved] = useState(false);
+  const [problem, setProblem] = useState<string | undefined>(undefined);
   const set = (key: keyof Profile) => (text: string) => {
     setSaved(false);
+    setProblem(undefined);
     setDraft({ ...draft, [key]: text });
   };
   return (
@@ -95,12 +103,17 @@ function ProfileCard() {
         className="ac-f"
         onSubmit={(event) => {
           event.preventDefault();
-          setProfile({
+          void saveProfile({
             fullName: draft.fullName.trim() || profile.fullName,
             email: draft.email.trim() || profile.email,
             mobile: draft.mobile.trim(),
+          }).then((result) => {
+            if (result.ok) return setSaved(true);
+            const code = result.fields.find((f) => f.path === 'displayName')?.code;
+            setProblem(
+              code === 'length' || code === 'characters' ? t(`name-${code}`) : t('save-failed'),
+            );
           });
-          setSaved(true);
         }}
       >
         <AcField
@@ -108,24 +121,29 @@ function ProfileCard() {
           autoComplete="name"
           value={draft.fullName}
           onText={set('fullName')}
+          hint={t('name-hint')}
+          error={problem}
           required
         />
         <AcField
           label={t('email')}
           type="email"
           autoComplete="email"
-          value={draft.email}
+          value={live ? profile.email : draft.email}
           onText={set('email')}
-          hint={t('email-hint')}
+          hint={live ? t('email-later') : t('email-hint')}
+          readOnly={live}
           required
         />
-        <AcField
-          label={t('mobile')}
-          autoComplete="tel"
-          inputMode="tel"
-          value={draft.mobile}
-          onText={set('mobile')}
-        />
+        {live ? null : (
+          <AcField
+            label={t('mobile')}
+            autoComplete="tel"
+            inputMode="tel"
+            value={draft.mobile}
+            onText={set('mobile')}
+          />
+        )}
         <div className="ac-acts ac-mid">
           <button className="btn" type="submit">
             {t('save')}
@@ -146,18 +164,27 @@ function ProfileCard() {
 
 function PasswordCard() {
   const t = useTranslations('account.settings');
+  const { changePassword } = useAccount();
+  // What the API refused (live): shown beside the field it is about, or as a note.
+  const [refused, setRefused] = useState<Exclude<PasswordOutcome, 'ok'> | null>(null);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
   const [tried, setTried] = useState(false);
   const [done, setDone] = useState(false);
   const errors = {
-    current: current === '' ? t('current-missing') : undefined,
-    next: next.length < 10 ? t('too-short') : undefined,
+    current:
+      current === ''
+        ? t('current-missing')
+        : refused === 'current-incorrect'
+          ? t('current-incorrect')
+          : undefined,
+    next: next.length < 10 ? t('too-short') : refused === 'rejected' ? t('rejected') : undefined,
     again: again !== next ? t('mismatch') : undefined,
   };
   const edit = (setter: (text: string) => void) => (text: string) => {
     setDone(false);
+    setRefused(null);
     setter(text);
   };
   return (
@@ -170,11 +197,14 @@ function PasswordCard() {
           event.preventDefault();
           setTried(true);
           if (errors.current ?? errors.next ?? errors.again) return;
-          setCurrent('');
-          setNext('');
-          setAgain('');
-          setTried(false);
-          setDone(true);
+          void changePassword(current, next).then((outcome) => {
+            if (outcome !== 'ok') return setRefused(outcome);
+            setCurrent('');
+            setNext('');
+            setAgain('');
+            setTried(false);
+            setDone(true);
+          });
         }}
       >
         <PasswordField
@@ -207,6 +237,12 @@ function PasswordCard() {
             </p>
           ) : null}
         </div>
+        {refused === 'throttled' || refused === 'failed' || refused === 'invalid' ? (
+          <p className="ac-note ac-warn" role="alert">
+            <Icon name="info" />
+            <span>{t(`password-${refused}`)}</span>
+          </p>
+        ) : null}
         <div className="ac-acts">
           <button className="btn" type="submit">
             {t('update')}
