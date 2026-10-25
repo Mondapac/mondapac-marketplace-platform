@@ -10,6 +10,7 @@ export type JournalKind =
 export interface WalletAccountRecord {
   readonly id: Id<'WalletAccount'>;
   readonly status: 'active' | 'frozen' | 'closed';
+  readonly currency: string;
 }
 
 export interface BalanceRecord {

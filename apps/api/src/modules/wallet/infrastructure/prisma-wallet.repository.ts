@@ -74,6 +74,7 @@ export class PrismaWalletRepository implements WalletRepository {
       : ({
           id: row.id as Id<'WalletAccount'>,
           status: row.status as WalletAccountRecord['status'],
+          currency: row.currency,
         } satisfies WalletAccountRecord);
   }
 

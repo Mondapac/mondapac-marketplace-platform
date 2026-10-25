@@ -2,7 +2,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { isExpired } from '../domain/lots';
 import { refusalFor } from '../domain/wallet-status';
-import { actorOf, releaseInUnit, type WalletFailure } from './wallet-flow';
+import { actorOf, INTERNAL_KEY_PREFIX, releaseInUnit, type WalletFailure } from './wallet-flow';
 import type { WalletDependencies } from './wallet-dependencies';
 
 // The worker's two sweeps (customer wallet package 1): holds past their expiry are released, and
@@ -91,7 +91,7 @@ async function expireHold(
       hold,
       balance,
       status: 'expired',
-      idempotencyKey: `hold-expire:${holdId}`,
+      idempotencyKey: `${INTERNAL_KEY_PREFIX}hold-expire:${holdId}`,
       fingerprint: `hold-expire|${holdId}`,
       reasonCode: 'hold-expired',
       currency: policy.currency,
@@ -128,7 +128,7 @@ async function expireLot(
       kind: 'expire',
       // The lock above serialises sweeps of this wallet, and `remaining` is re-read, so a lot is
       // never expired twice for the same credit; a restored remainder gets a new key.
-      idempotencyKey: `expire:${lotId}:${journalId}`,
+      idempotencyKey: `${INTERNAL_KEY_PREFIX}expire:${lotId}:${journalId}`,
       fingerprint: `expire|${lotId}|${lot.remaining}`,
       actor: actorOf(context),
       reasonCode: 'promo-expired',

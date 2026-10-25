@@ -168,42 +168,73 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
   describe('tables', () => {
     // A scratch Market id: the raw rows below must not count as history of the Market under test.
     const mk = `T${code}`;
+    beforeAll(async () => {
+      await sql.query(
+        `INSERT INTO wallet.market_settings (market_id, tenant_id, status, reason_code, updated_at, updated_by_account_id)
+         VALUES ($1, 'default', 'active', NULL, now(), $2) ON CONFLICT (market_id) DO NOTHING`,
+        [mk, ids.next()],
+      );
+    });
+    /**
+     * Runs the statements in one transaction as the given role and rolls it back: the answer is
+     * the code of the first error, or 'allowed'. The deferred ledger checks, which run at COMMIT,
+     * never run, so this probes the row guards alone.
+     */
+    const probe = async (
+      statements: readonly [string, unknown[]][],
+      url: string = testDatabaseUrl(),
+    ) => {
+      const client = new Client({ connectionString: url });
+      await client.connect();
+      try {
+        await client.query('BEGIN');
+        for (const statement of statements) await client.query(...statement);
+        return 'allowed';
+      } catch (error) {
+        return (error as { code?: string }).code;
+      } finally {
+        await client.query('ROLLBACK').catch(() => undefined);
+        await client.end();
+      }
+    };
     const accountRow = async (
       kind = 'credit_liability',
       customer: string | null = ids.next<'Account'>(),
+      market_id = mk,
     ) => {
       const id = ids.next<'WalletAccount'>();
       await sql.query(
         `INSERT INTO wallet.accounts (id, market_id, tenant_id, kind, customer_account_id, currency, status, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, 'active', now())`,
-        [id, mk, 'default', kind, customer, currency],
+        [id, market_id, 'default', kind, customer, currency],
       );
       return id;
     };
-    const journalSql = (id: string, key_: string): [string, unknown[]] => [
+    const journalSql = (id: string, key_: string, market_id = mk): [string, unknown[]] => [
       `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, result, created_at)
        VALUES ($1, $2, $3, 'grant-promo', $4, 'fp', 'system', NULL, 'welcome', NULL, NULL, '{}'::jsonb, now())`,
-      [id, mk, 'default', key_],
+      [id, market_id, 'default', key_],
     ];
     const postingSql = (
       journalId: string,
       accountId: string,
       minor: bigint,
+      market_id = mk,
     ): [string, unknown[]] => [
       `INSERT INTO wallet.postings (id, market_id, tenant_id, journal_id, account_id, amount_minor, currency)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [ids.next(), mk, 'default', journalId, accountId, minor, currency],
+      [ids.next(), market_id, 'default', journalId, accountId, minor, currency],
     ];
     /** One transaction of a journal with the given legs; the deferred constraint fires at COMMIT. */
-    const writeJournal = async (legs: readonly [string, bigint][]) => {
+    const writeJournal = async (legs: readonly [string, bigint][], market_id = mk) => {
       const journalId = ids.next<'WalletJournal'>();
       const client = new Client({ connectionString: testDatabaseUrl() });
       await client.connect();
       try {
         await client.query('BEGIN');
-        await client.query(...journalSql(journalId, key('raw')));
+        await client.query(...journalSql(journalId, key('raw'), market_id));
         for (const [accountId, minor] of legs)
-          await client.query(...postingSql(journalId, accountId, minor));
+          await client.query(...postingSql(journalId, accountId, minor, market_id));
         await client.query('COMMIT');
         return journalId;
       } catch (error) {
@@ -212,6 +243,23 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       } finally {
         await client.end();
       }
+    };
+
+    let scratchCount = 0;
+    /**
+     * A fresh scratch Market with the switch on and two internal accounts, for journals whose legs
+     * are not customer wallets (a wallet's postings must agree with its balance and lots).
+     */
+    const scratch = async () => {
+      const market_id = `${mk}${(scratchCount += 1)}`;
+      await sql.query(
+        `INSERT INTO wallet.market_settings (market_id, tenant_id, status, reason_code, updated_at, updated_by_account_id)
+         VALUES ($1, 'default', 'active', NULL, now(), $2)`,
+        [market_id, ids.next()],
+      );
+      const a = await accountRow('promo_expense', null, market_id);
+      const b = await accountRow('refund_clearing', null, market_id);
+      return { market_id, a, b };
     };
 
     it('has no card or bank vocabulary in any wallet column', async () => {
@@ -246,27 +294,27 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
     });
 
     it('commits a balanced journal and refuses an unbalanced one, a lone leg and a journal with no legs', async () => {
-      const a = await accountRow();
-      const b = await accountRow();
+      const { market_id: m, a, b } = await scratch();
+      const write = (legs: readonly [string, bigint][]) => writeJournal(legs, m);
       await expect(
-        writeJournal([
+        write([
           [a, 500n],
           [b, -500n],
         ]),
       ).resolves.toBeDefined();
       expect(
         await code_(
-          writeJournal([
+          write([
             [a, 500n],
             [b, -400n],
           ]),
         ),
       ).toBe(CHECK);
-      expect(await code_(writeJournal([[a, 500n]]))).toBe(CHECK);
-      expect(await code_(writeJournal([]))).toBe(CHECK);
+      expect(await code_(write([[a, 500n]]))).toBe(CHECK);
+      expect(await code_(write([]))).toBe(CHECK);
       expect(
         await code_(
-          writeJournal([
+          write([
             [a, 500n],
             [b, -300n],
             [a, -100n],
@@ -275,7 +323,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       ).toBe(CHECK);
       // Three legs that do sum to zero are fine.
       await expect(
-        writeJournal([
+        write([
           [a, 500n],
           [b, -300n],
           [b, -200n],
@@ -284,7 +332,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       // A leg of zero is never written.
       expect(
         await code_(
-          writeJournal([
+          write([
             [a, 0n],
             [b, 0n],
           ]),
@@ -293,9 +341,9 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
     });
 
     it('never changes or removes a journal, a leg or a hold lot, for the application or the owner', async () => {
-      const a = await accountRow();
-      const b = await accountRow();
-      const journalId = await writeJournal([
+      const { market_id: m, a, b } = await scratch();
+      const write = (legs: readonly [string, bigint][]) => writeJournal(legs, m);
+      const journalId = await write([
         [a, 5n],
         [b, -5n],
       ]);
@@ -346,43 +394,49 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
 
     it('refuses a negative balance, a lot over its original and promo credit that never expires', async () => {
       const customer = ids.next<'Account'>();
-      const wallet = await accountRow('credit_liability', customer);
+      const { market_id: m, a, b: other } = await scratch();
+      const wallet = await accountRow('credit_liability', customer, m);
       const bad = (available: bigint, held: bigint) =>
         sql.query(
           `INSERT INTO wallet.balances (wallet_account_id, market_id, tenant_id, currency, available_minor, held_minor, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, now())`,
-          [wallet, mk, 'default', currency, available, held],
+          [wallet, m, 'default', currency, available, held],
         );
       expect(await code_(bad(-1n, 0n))).toBe(CHECK);
       expect(await code_(bad(0n, -1n))).toBe(CHECK);
-      const journal = await writeJournal([
-        [await accountRow('promo_expense', null), -100n],
-        [wallet, 100n],
-      ]);
+      const journal = await writeJournal(
+        [
+          [a, -100n],
+          [other, 100n],
+        ],
+        m,
+      );
       const lot = (source: string, original: bigint, remaining: bigint, expires: string | null) =>
-        sql.query(
-          `INSERT INTO wallet.lots (id, market_id, tenant_id, wallet_account_id, source, journal_id, original_minor, remaining_minor, currency, expires_at, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())`,
+        probe([
           [
-            ids.next(),
-            mk,
-            'default',
-            wallet,
-            source,
-            journal,
-            original,
-            remaining,
-            currency,
-            expires,
+            `INSERT INTO wallet.lots (id, market_id, tenant_id, wallet_account_id, source, journal_id, original_minor, remaining_minor, currency, expires_at, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())`,
+            [
+              ids.next(),
+              m,
+              'default',
+              wallet,
+              source,
+              journal,
+              original,
+              remaining,
+              currency,
+              expires,
+            ],
           ],
-        );
-      expect(await code_(lot('promo', 100n, 101n, '2027-01-01T00:00:00Z'))).toBe(CHECK);
-      expect(await code_(lot('promo', 100n, -1n, '2027-01-01T00:00:00Z'))).toBe(CHECK);
-      expect(await code_(lot('promo', 0n, 0n, '2027-01-01T00:00:00Z'))).toBe(CHECK);
-      expect(await code_(lot('promo', 100n, 100n, null))).toBe(CHECK);
-      expect(await code_(lot('refund', 100n, 100n, '2027-01-01T00:00:00Z'))).toBe(CHECK);
-      expect(await code_(lot('gift', 100n, 100n, null))).toBe(CHECK);
-      expect(await code_(lot('promo', 100n, 100n, '2027-01-01T00:00:00Z'))).toBe('allowed');
+        ]);
+      expect(await lot('promo', 100n, 101n, '2027-01-01T00:00:00Z')).toBe(CHECK);
+      expect(await lot('promo', 100n, -1n, '2027-01-01T00:00:00Z')).toBe(CHECK);
+      expect(await lot('promo', 0n, 0n, '2027-01-01T00:00:00Z')).toBe(CHECK);
+      expect(await lot('promo', 100n, 100n, null)).toBe(CHECK);
+      expect(await lot('refund', 100n, 100n, '2027-01-01T00:00:00Z')).toBe(CHECK);
+      expect(await lot('gift', 100n, 100n, null)).toBe(CHECK);
+      expect(await lot('promo', 100n, 100n, '2027-01-01T00:00:00Z')).toBe('allowed');
     });
 
     it('refuses a row that points at nothing, or at another Market, and a delete of a parent (composite foreign keys)', async () => {
@@ -390,7 +444,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       const other = await accountRow('order_clearing', null);
       const journal = await writeJournal([
         [other, -100n],
-        [wallet, 100n],
+        [await accountRow('refund_clearing', null), 100n],
       ]);
       const FK = '23503';
       const ghost = ids.next();
@@ -476,104 +530,16 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expect(await code_(accountRow('breakage_income', null))).toBe(UNIQUE);
     });
 
-    it('guards a lot (only remaining, only down unless a settled hold gives credit back) and a hold (leaves held once)', async () => {
-      const customer = ids.next<'Account'>();
-      const wallet = await accountRow('credit_liability', customer);
-      const lotId = ids.next<'WalletLot'>();
-      const holdId = ids.next<'WalletHold'>();
-      const grantJournal = await writeJournal([
-        [await accountRow('refund_clearing', null), -100n],
-        [wallet, 100n],
-      ]);
-      await sql.query(
-        `INSERT INTO wallet.lots (id, market_id, tenant_id, wallet_account_id, source, journal_id, original_minor, remaining_minor, currency, expires_at, created_at)
-         VALUES ($1, $2, $3, $4, 'refund', $5, 100, 100, $6, NULL, now())`,
-        [lotId, mk, 'default', wallet, grantJournal, currency],
-      );
-      expect(
-        await code_(
-          sql.query(`UPDATE wallet.lots SET remaining_minor = 40 WHERE id = $1`, [lotId]),
-        ),
-      ).toBe('allowed');
-      expect(
-        await code_(
-          sql.query(`UPDATE wallet.lots SET remaining_minor = 50 WHERE id = $1`, [lotId]),
-        ),
-      ).toBe(RESTRICT);
-      expect(
-        await code_(
-          sql.query(`UPDATE wallet.lots SET original_minor = 500 WHERE id = $1`, [lotId]),
-        ),
-      ).toBe(NO_PRIVILEGE);
-      expect(
-        await code_(owner.query(`UPDATE wallet.lots SET source = 'promo' WHERE id = $1`, [lotId])),
-      ).toBe(RESTRICT);
-      await sql.query(
+    it('keeps a single hold per order, per Market', async () => {
+      const wallet = await accountRow('credit_liability', ids.next<'Account'>());
+      const order = ids.next<'Order'>();
+      const insertHold = (): [string, unknown[]] => [
         `INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at)
          VALUES ($1, $2, $3, $4, $5, 60, $6, 'held', now(), now())`,
-        [holdId, mk, 'default', wallet, ids.next(), currency],
-      );
-      await sql.query(
-        `INSERT INTO wallet.hold_lots (hold_id, lot_id, market_id, tenant_id, amount_minor) VALUES ($1, $2, $3, $4, 60)`,
-        [holdId, lotId, mk, 'default'],
-      );
-      // A held hold gives nothing back yet.
-      expect(
-        await code_(
-          sql.query(`UPDATE wallet.lots SET remaining_minor = 100 WHERE id = $1`, [lotId]),
-        ),
-      ).toBe(RESTRICT);
-      expect(
-        await code_(
-          sql.query(
-            `UPDATE wallet.holds SET status = 'released', resolved_at = now() WHERE id = $1`,
-            [holdId],
-          ),
-        ),
-      ).toBe('allowed');
-      expect(
-        await code_(
-          sql.query(`UPDATE wallet.lots SET remaining_minor = 100 WHERE id = $1`, [lotId]),
-        ),
-      ).toBe('allowed');
-      expect(
-        await code_(
-          sql.query(`UPDATE wallet.lots SET remaining_minor = 100 WHERE id = $1`, [lotId]),
-        ),
-      ).toBe('allowed');
-      // A settled hold never changes again, and its amount never does.
-      expect(
-        await code_(
-          sql.query(`UPDATE wallet.holds SET status = 'captured' WHERE id = $1`, [holdId]),
-        ),
-      ).toBe(RESTRICT);
-      expect(
-        await code_(sql.query(`UPDATE wallet.holds SET amount_minor = 1 WHERE id = $1`, [holdId])),
-      ).toBe(NO_PRIVILEGE);
-      expect(
-        await code_(
-          sql.query(`UPDATE wallet.accounts SET status = 'frozen' WHERE id = $1`, [wallet]),
-        ),
-      ).toBe('allowed');
-      expect(
-        await code_(
-          owner.query(`UPDATE wallet.accounts SET kind = 'holds' WHERE id = $1`, [wallet]),
-        ),
-      ).toBe(RESTRICT);
-    });
-
-    it('keeps a single hold per order and a single journal per idempotency key, per Market', async () => {
-      const customer = ids.next<'Account'>();
-      const wallet = await accountRow('credit_liability', customer);
-      const order = ids.next<'Order'>();
-      const insertHold = (market_id = mk) =>
-        sql.query(
-          `INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at)
-           VALUES ($1, $2, $3, $4, $5, 60, $6, 'held', now(), now())`,
-          [ids.next(), market_id, 'default', wallet, order, currency],
-        );
-      expect(await code_(insertHold())).toBe('allowed');
-      expect(await code_(insertHold())).toBe(UNIQUE);
+        [ids.next(), mk, 'default', wallet, order, currency],
+      ];
+      expect(await probe([insertHold()])).toBe('allowed');
+      expect(await probe([insertHold(), insertHold()])).toBe(UNIQUE);
     });
 
     it('moves the switch only to the four states, with a reason exactly for paused and frozen', async () => {
@@ -610,7 +576,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       }
       await client.query(
         `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, result, created_at)
-         VALUES ($1, $2, 'default', 'grant-promo', $3, 'fp', 'system', NULL, 'welcome', NULL, NULL, '{}'::jsonb, now())`,
+         VALUES ($1, $2, 'default', 'release', $3, 'fp', 'system', NULL, 'welcome', NULL, NULL, '{}'::jsonb, now())`,
         [journalId, scratch, key('scratch')],
       );
       for (const [accountId, minor] of [
@@ -630,6 +596,494 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
     });
   });
 
+  // ---- the books at COMMIT, the row guards and the switch fence (raw SQL, scratch Markets) ----
+
+  describe('books and fence', () => {
+    type Statement = [string, unknown[]];
+    const bk = `B${code}`;
+    const url = testDatabaseUrl();
+
+    const connect = async (connectionString: string = url) => {
+      const client = new Client({ connectionString });
+      await client.connect();
+      return client;
+    };
+    /** The statements in one transaction, committed; the error of the first failure otherwise. */
+    const commit = async (statements: readonly Statement[], connectionString: string = url) => {
+      const client = await connect(connectionString);
+      try {
+        await client.query('BEGIN');
+        for (const statement of statements) await client.query(...statement);
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        await client.end();
+      }
+    };
+    /** The same, always rolled back: the code of the first error or 'allowed' (row guards only). */
+    const probe = async (statements: readonly Statement[], connectionString: string = url) => {
+      const client = await connect(connectionString);
+      try {
+        await client.query('BEGIN');
+        for (const statement of statements) await client.query(...statement);
+        return 'allowed';
+      } catch (error) {
+        return (error as { code?: string }).code;
+      } finally {
+        await client.query('ROLLBACK').catch(() => undefined);
+        await client.end();
+      }
+    };
+
+    const setting = (market_id: string, status: string): Statement => [
+      `INSERT INTO wallet.market_settings (market_id, tenant_id, status, reason_code, updated_at, updated_by_account_id)
+       VALUES ($1, 'default', $2, NULL, now(), $3) ON CONFLICT (market_id) DO NOTHING`,
+      [market_id, status, ids.next()],
+    ];
+    const account = (
+      market_id: string,
+      id: string,
+      kind: string,
+      customer: string | null,
+      cur = currency,
+    ): Statement => [
+      `INSERT INTO wallet.accounts (id, market_id, tenant_id, kind, customer_account_id, currency, status, created_at)
+       VALUES ($1, $2, 'default', $3, $4, $5, 'active', now())`,
+      [id, market_id, kind, customer, cur],
+    ];
+    const journal = (
+      market_id: string,
+      id: string,
+      kind: string,
+      wallet: string | null,
+      order: string | null = null,
+    ): Statement => [
+      `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, result, created_at)
+       VALUES ($1, $2, 'default', $3, $4, 'fp', 'system', NULL, 'welcome', $5, $6, '{}'::jsonb, now())`,
+      [id, market_id, kind, key('raw'), order, wallet],
+    ];
+    const posting = (
+      market_id: string,
+      journalId: string,
+      accountId: string,
+      minor: bigint,
+      cur = currency,
+    ): Statement => [
+      `INSERT INTO wallet.postings (id, market_id, tenant_id, journal_id, account_id, amount_minor, currency)
+       VALUES ($1, $2, 'default', $3, $4, $5, $6)`,
+      [ids.next(), market_id, journalId, accountId, minor, cur],
+    ];
+    const balance = (
+      market_id: string,
+      wallet: string,
+      available: bigint,
+      held: bigint,
+    ): Statement => [
+      `INSERT INTO wallet.balances (wallet_account_id, market_id, tenant_id, currency, available_minor, held_minor, updated_at)
+       VALUES ($1, $2, 'default', $3, $4, $5, now())`,
+      [wallet, market_id, currency, available, held],
+    ];
+    const setBalance = (wallet: string, available: bigint, held: bigint): Statement => [
+      `UPDATE wallet.balances SET available_minor = $2, held_minor = $3 WHERE wallet_account_id = $1`,
+      [wallet, available, held],
+    ];
+    const lot = (
+      market_id: string,
+      id: string,
+      wallet: string,
+      source: string,
+      journalId: string,
+      minor: bigint,
+      expires: string | null,
+    ): Statement => [
+      `INSERT INTO wallet.lots (id, market_id, tenant_id, wallet_account_id, source, journal_id, original_minor, remaining_minor, currency, expires_at, created_at)
+       VALUES ($1, $2, 'default', $3, $4, $5, $6, $6, $7, $8, now())`,
+      [id, market_id, wallet, source, journalId, minor, currency, expires],
+    ];
+    const setLot = (id: string, remaining: bigint): Statement => [
+      `UPDATE wallet.lots SET remaining_minor = $2 WHERE id = $1`,
+      [id, remaining],
+    ];
+    const holdRow = (
+      market_id: string,
+      id: string,
+      wallet: string,
+      order: string,
+      minor: bigint,
+    ): Statement => [
+      `INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at)
+       VALUES ($1, $2, 'default', $3, $4, $5, $6, 'held', now() + interval '1 day', now())`,
+      [id, market_id, wallet, order, minor, currency],
+    ];
+    const holdLot = (market_id: string, hold: string, lotId: string, minor: bigint): Statement => [
+      `INSERT INTO wallet.hold_lots (hold_id, lot_id, market_id, tenant_id, amount_minor) VALUES ($1, $2, $3, 'default', $4)`,
+      [hold, lotId, market_id, minor],
+    ];
+    const settleHoldRow = (id: string, status: string): Statement => [
+      `UPDATE wallet.holds SET status = $2, resolved_at = now() WHERE id = $1`,
+      [id, status],
+    ];
+
+    /** A wallet with 100 of credit in one lot and a hold of 40 on it, all through journals. */
+    const wallets = async (
+      market_id: string,
+      source: 'promo' | 'refund',
+      expires: string | null,
+    ) => {
+      const w = {
+        wallet: ids.next<'WalletAccount'>(),
+        lot: ids.next<'WalletLot'>(),
+        hold: ids.next<'WalletHold'>(),
+        order: ids.next<'Order'>(),
+        grant: ids.next<'WalletJournal'>(),
+        placed: ids.next<'WalletJournal'>(),
+      };
+      const internal = await rows(
+        `SELECT kind, id FROM wallet.accounts WHERE market_id = $1 AND customer_account_id IS NULL`,
+        [market_id],
+      );
+      const idOfKind = (kind: string) => String(internal.find((r) => r.kind === kind)!.id);
+      const origin = idOfKind(source === 'promo' ? 'promo_expense' : 'refund_clearing');
+      const holdsAccount = idOfKind('holds');
+      await commit([
+        account(market_id, w.wallet, 'credit_liability', ids.next()),
+        journal(market_id, w.grant, source === 'promo' ? 'grant-promo' : 'grant-refund', w.wallet),
+        posting(market_id, w.grant, w.wallet, 100n),
+        posting(market_id, w.grant, origin, -100n),
+        balance(market_id, w.wallet, 100n, 0n),
+        lot(market_id, w.lot, w.wallet, source, w.grant, 100n, expires),
+      ]);
+      await commit([
+        journal(market_id, w.placed, 'hold', w.wallet, w.order),
+        posting(market_id, w.placed, w.wallet, -40n),
+        posting(market_id, w.placed, holdsAccount, 40n),
+        holdRow(market_id, w.hold, w.wallet, w.order, 40n),
+        holdLot(market_id, w.hold, w.lot, 40n),
+        setLot(w.lot, 60n),
+        setBalance(w.wallet, 60n, 40n),
+      ]);
+      return { ...w, origin, holdsAccount, breakage: idOfKind('breakage_income') };
+    };
+
+    /** The statements of a release journal for the seeded hold. */
+    const releaseOf = (market_id: string, w: Awaited<ReturnType<typeof wallets>>): Statement[] => {
+      const id = ids.next<'WalletJournal'>();
+      return [
+        journal(market_id, id, 'release', w.wallet, w.order),
+        posting(market_id, id, w.holdsAccount, -40n),
+        posting(market_id, id, w.wallet, 40n),
+        settleHoldRow(w.hold, 'released'),
+        setLot(w.lot, 100n),
+        setBalance(w.wallet, 100n, 0n),
+      ];
+    };
+
+    let plain: Awaited<ReturnType<typeof wallets>>;
+    let expiring: Awaited<ReturnType<typeof wallets>>;
+    const expiringMarket = `E${code}`;
+
+    beforeAll(async () => {
+      const internals = (market_id: string) => {
+        const ids_ = [
+          ids.next<'WalletAccount'>(),
+          ids.next<'WalletAccount'>(),
+          ids.next<'WalletAccount'>(),
+        ] as const;
+        return [
+          setting(market_id, 'active'),
+          account(market_id, ids_[0], 'refund_clearing', null),
+          account(market_id, ids_[1], 'holds', null),
+          account(market_id, ids_[2], 'breakage_income', null),
+        ] satisfies Statement[];
+      };
+      await commit(internals(bk));
+      plain = await wallets(bk, 'refund', null);
+      const promo = internals(expiringMarket);
+      promo[1] = account(expiringMarket, ids.next(), 'promo_expense', null);
+      await commit(promo);
+      expiring = await wallets(expiringMarket, 'promo', '2020-01-01T00:00:00Z');
+    });
+
+    it('refuses a direct UPDATE of a balance, a lot or a hold without its journal, at commit, as the application', async () => {
+      const w = plain;
+      // The balance zeroed or inflated.
+      expect(await code_(commit([setBalance(w.wallet, 0n, 40n)]))).toBe(CHECK);
+      expect(await code_(commit([setBalance(w.wallet, 49_999n, 40n)]))).toBe(CHECK);
+      // A lot zeroed, with or without the balance following.
+      expect(await code_(commit([setLot(w.lot, 0n)]))).toBe(CHECK);
+      expect(await code_(commit([setLot(w.lot, 0n), setBalance(w.wallet, 0n, 40n)]))).toBe(CHECK);
+      // A hold settled by hand: held credit gone with no ledger entry.
+      expect(await code_(commit([settleHoldRow(w.hold, 'captured')]))).toBe(CHECK);
+      // Even with the balance made to agree, a hold that leaves `held` needs its journal.
+      const noJournal = await commit([
+        settleHoldRow(w.hold, 'captured'),
+        setBalance(w.wallet, 60n, 0n),
+      ]).then(
+        () => 'committed',
+        (error: { code?: string; message?: string }) => `${error.code}: ${error.message}`,
+      );
+      expect(noJournal).toContain(CHECK);
+      expect(noJournal).toContain('left held without a captured journal');
+      // The books are untouched by all of it.
+      expect(
+        await rows(
+          `SELECT available_minor::text AS a, held_minor::text AS h FROM wallet.balances WHERE wallet_account_id = $1`,
+          [w.wallet],
+        ),
+      ).toEqual([{ a: '60', h: '40' }]);
+    });
+
+    it('guards a lot, a hold and an account row by row', async () => {
+      const w = plain;
+      const owner_ = ownerTestDatabaseUrl();
+      // A lot only decreases while a hold is held; and nothing but remaining_minor changes.
+      expect(await probe([setLot(w.lot, 10n)])).toBe('allowed');
+      expect(await probe([setLot(w.lot, 90n)])).toBe(RESTRICT);
+      expect(
+        await probe([[`UPDATE wallet.lots SET original_minor = 500 WHERE id = $1`, [w.lot]]]),
+      ).toBe(NO_PRIVILEGE);
+      expect(
+        await probe([[`UPDATE wallet.lots SET source = 'promo' WHERE id = $1`, [w.lot]]], owner_),
+      ).toBe(RESTRICT);
+      // A settled hold gives credit back, once, and never changes again.
+      expect(await probe([settleHoldRow(w.hold, 'released'), setLot(w.lot, 100n)])).toBe('allowed');
+      expect(await probe([settleHoldRow(w.hold, 'released'), setLot(w.lot, 101n)])).toBe(RESTRICT);
+      expect(
+        await probe([settleHoldRow(w.hold, 'released'), settleHoldRow(w.hold, 'captured')]),
+      ).toBe(RESTRICT);
+      expect(
+        await probe([[`UPDATE wallet.holds SET amount_minor = 1 WHERE id = $1`, [w.hold]]]),
+      ).toBe(NO_PRIVILEGE);
+      // An account freezes but a closed one never reopens, and nothing else about it changes.
+      const statusOf = (status: string): Statement => [
+        `UPDATE wallet.accounts SET status = $2 WHERE id = $1`,
+        [w.wallet, status],
+      ];
+      expect(await probe([statusOf('frozen')])).toBe('allowed');
+      expect(await probe([statusOf('closed'), statusOf('active')])).toBe(RESTRICT);
+      expect(
+        await probe(
+          [[`UPDATE wallet.accounts SET kind = 'holds' WHERE id = $1`, [w.wallet]]],
+          owner_,
+        ),
+      ).toBe(RESTRICT);
+    });
+
+    it('refuses a leg in another currency than its account or its journal', async () => {
+      const w = plain;
+      const id = ids.next<'WalletJournal'>();
+      expect(
+        await probe([journal(bk, id, 'release', w.wallet), posting(bk, id, w.wallet, 5n, 'XXX')]),
+      ).toBe(CHECK);
+      expect(
+        await probe([
+          journal(bk, id, 'release', w.wallet),
+          posting(bk, id, w.wallet, 5n),
+          posting(bk, id, w.holdsAccount, -5n, 'XXX'),
+        ]),
+      ).toBe(CHECK);
+      expect(
+        await probe([
+          journal(bk, id, 'release', w.wallet),
+          posting(bk, id, w.wallet, 5n),
+          posting(bk, id, w.holdsAccount, -5n),
+        ]),
+      ).toBe('allowed');
+    });
+
+    it('lets a hold release into an already-expired lot in the same transaction, and expired credit then never comes back', async () => {
+      const w = expiring;
+      const owner_ = ownerTestDatabaseUrl();
+      // The promo lot expired in 2020: the release restores it, in the same transaction as the hold.
+      await commit(releaseOf(expiringMarket, w));
+      expect(
+        await rows(`SELECT remaining_minor::text AS r FROM wallet.lots WHERE id = $1`, [w.lot]),
+      ).toEqual([{ r: '100' }]);
+      // The sweep expires it again: a journal to breakage income.
+      const expire = ids.next<'WalletJournal'>();
+      await commit([
+        journal(expiringMarket, expire, 'expire', w.wallet),
+        posting(expiringMarket, expire, w.wallet, -100n),
+        posting(expiringMarket, expire, w.breakage, 100n),
+        setLot(w.lot, 0n),
+        setBalance(w.wallet, 0n, 0n),
+      ]);
+      // Credit that expired does not come back by an UPDATE, even though a hold of it was released.
+      expect(await code_(commit([setLot(w.lot, 100n)]))).toBe(RESTRICT);
+      expect(await code_(commit([setLot(w.lot, 100n), setBalance(w.wallet, 100n, 0n)]))).toBe(
+        RESTRICT,
+      );
+      expect(
+        await code_(commit([setLot(w.lot, 100n), setBalance(w.wallet, 100n, 0n)], owner_)),
+      ).toBe(RESTRICT);
+      expect(
+        await rows(`SELECT remaining_minor::text AS r FROM wallet.lots WHERE id = $1`, [w.lot]),
+      ).toEqual([{ r: '0' }]);
+    });
+
+    it('commits a legitimate release of a hold and then refuses a second settlement of it', async () => {
+      const w = plain;
+      await commit(releaseOf(bk, w));
+      expect(await code_(commit([settleHoldRow(w.hold, 'captured')]))).toBe(RESTRICT);
+      expect(
+        await rows(
+          `SELECT available_minor::text AS a, held_minor::text AS h FROM wallet.balances WHERE wallet_account_id = $1`,
+          [w.wallet],
+        ),
+      ).toEqual([{ a: '100', h: '0' }]);
+    });
+
+    // ---- the switch fence ----------------------------------------------------------------
+
+    /** True while the promise is still waiting after a short pause. */
+    const stillWaiting = async (promise: Promise<unknown>) => {
+      const marker = Symbol('waiting');
+      const first = await Promise.race([
+        promise.then(
+          () => 'done',
+          () => 'done',
+        ),
+        new Promise((resolve) => setTimeout(() => resolve(marker), 400)),
+      ]);
+      return first === marker;
+    };
+    const fenceMarket = async (
+      suffix: string,
+      internalKinds: readonly string[] = ['promo_expense', 'refund_clearing'],
+    ) => {
+      const market_id = `${suffix}${code}`;
+      const accountIds = internalKinds.map(() => ids.next<'WalletAccount'>());
+      await commit([
+        setting(market_id, 'active'),
+        ...internalKinds.map((kind, index) => account(market_id, accountIds[index]!, kind, null)),
+      ]);
+      return { market_id, a: accountIds[0]!, b: accountIds[1]! };
+    };
+    const grantStatements = (
+      m: { market_id: string; a: string; b: string },
+      kind = 'grant-promo',
+    ): Statement[] => {
+      const id = ids.next<'WalletJournal'>();
+      return [
+        journal(m.market_id, id, kind, null),
+        posting(m.market_id, id, m.a, 1n),
+        posting(m.market_id, id, m.b, -1n),
+      ];
+    };
+    const statusUpdate = (market_id: string, status: string): Statement => [
+      `UPDATE wallet.market_settings SET status = $2, reason_code = $3, updated_at = now() WHERE market_id = $1`,
+      [market_id, status, status === 'frozen' || status === 'paused' ? 'maintenance' : null],
+    ];
+    const open = async (statements: readonly Statement[]) => {
+      const client = await connect();
+      try {
+        await client.query('BEGIN');
+        for (const statement of statements) await client.query(...statement);
+        return client;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        await client.end();
+        throw error;
+      }
+    };
+
+    it('a freeze waits for a journal in flight, and a journal in flight waits for the freeze and is then refused', async () => {
+      const m = await fenceMarket('F');
+      // A journal is in flight (it has read the status FOR SHARE): the freeze queues behind it.
+      const inFlight = await open(grantStatements(m));
+      const freeze = code_(commit([statusUpdate(m.market_id, 'frozen')]));
+      expect(await stillWaiting(freeze)).toBe(true);
+      await inFlight.query('COMMIT');
+      await inFlight.end();
+      expect(await freeze).toBe('allowed');
+      // Frozen: new work is refused by the database, release and expiry still go through.
+      expect(await code_(commit(grantStatements(m)))).toBe(RESTRICT);
+      expect(await code_(commit(grantStatements(m, 'hold')))).toBe(RESTRICT);
+      expect(await code_(commit(grantStatements(m, 'capture')))).toBe(RESTRICT);
+      expect(await code_(commit(grantStatements(m, 'release')))).toBe('allowed');
+      expect(await code_(commit(grantStatements(m, 'expire')))).toBe('allowed');
+      // The other way round: the freeze is in flight, a journal waits for it and is refused.
+      await commit([statusUpdate(m.market_id, 'active')]);
+      const freezing = await open([statusUpdate(m.market_id, 'frozen')]);
+      const late = open(grantStatements(m)).then(
+        async (client) => {
+          await client.end();
+          return 'allowed';
+        },
+        (error: { code?: string }) => error.code,
+      );
+      expect(await stillWaiting(late)).toBe(true);
+      await freezing.query('COMMIT');
+      await freezing.end();
+      expect(await late).toBe(RESTRICT);
+    });
+
+    it('paused allows capture, release and expiry but no grant or hold; off allows nothing', async () => {
+      const m = await fenceMarket('P');
+      await commit([statusUpdate(m.market_id, 'paused')]);
+      expect(await code_(commit(grantStatements(m, 'grant-refund')))).toBe(RESTRICT);
+      expect(await code_(commit(grantStatements(m, 'hold')))).toBe(RESTRICT);
+      expect(await code_(commit(grantStatements(m, 'reverse')))).toBe(RESTRICT);
+      for (const kind of ['capture', 'release', 'expire']) {
+        expect(await code_(commit(grantStatements(m, kind)))).toBe('allowed');
+      }
+      // No settings row at all is `off`.
+      const none = `N${code}`;
+      const noneAccounts = [ids.next<'WalletAccount'>(), ids.next<'WalletAccount'>()];
+      await commit([
+        account(none, noneAccounts[0]!, 'promo_expense', null),
+        account(none, noneAccounts[1]!, 'refund_clearing', null),
+      ]);
+      expect(
+        await code_(
+          commit(
+            grantStatements(
+              { market_id: none, a: noneAccounts[0]!, b: noneAccounts[1]! },
+              'release',
+            ),
+          ),
+        ),
+      ).toBe(RESTRICT);
+    });
+
+    it('never goes back to off with history, whichever of the two transactions comes first', async () => {
+      // The first journal is in flight when the Market is turned off: the switch waits, then sees it.
+      const m1 = await fenceMarket('G');
+      const first = await open(grantStatements(m1));
+      const turnOff = code_(commit([statusUpdate(m1.market_id, 'off')]));
+      expect(await stillWaiting(turnOff)).toBe(true);
+      await first.query('COMMIT');
+      await first.end();
+      expect(await turnOff).toBe(RESTRICT);
+      expect(
+        await rows(`SELECT status FROM wallet.market_settings WHERE market_id = $1`, [
+          m1.market_id,
+        ]),
+      ).toEqual([{ status: 'active' }]);
+      // The switch to off is in flight (no journal yet): the first journal waits, then is refused.
+      const m2 = await fenceMarket('H');
+      const switching = await open([statusUpdate(m2.market_id, 'off')]);
+      const firstJournal = open(grantStatements(m2)).then(
+        async (client) => {
+          await client.end();
+          return 'allowed';
+        },
+        (error: { code?: string }) => error.code,
+      );
+      expect(await stillWaiting(firstJournal)).toBe(true);
+      await switching.query('COMMIT');
+      await switching.end();
+      expect(await firstJournal).toBe(RESTRICT);
+      expect(
+        await rows(`SELECT count(*)::int AS n FROM wallet.journals WHERE market_id = $1`, [
+          m2.market_id,
+        ]),
+      ).toEqual([{ n: 0 }]);
+    });
+  });
+
   // ---- the use cases on the real stores -----------------------------------------------------
 
   describe('use cases', () => {
@@ -639,7 +1093,9 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expect(await new ViewMyWallet(gate, deps).execute(customerCtx(customer), {})).toEqual(
         err({ code: 'wallet.disabled' }),
       );
-      expect((await turn('active')).ok).toBe(true);
+      // Two first PUTs at once queue on the seeded row; neither fails.
+      const firstPuts = await Promise.all([turn('active'), turn('active')]);
+      expect(firstPuts.every((r) => r.ok)).toBe(true);
       expect((await turn('active')).ok).toBe(true);
       expect((await turn('off')).ok).toBe(true);
       expect(await grant(customer, 100n)).toEqual(err({ code: 'wallet.disabled' }));
@@ -939,16 +1395,63 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expect(await balanceOf(a)).toEqual([400n, 0n]);
     });
 
+    it('a freeze racing a grant never fails: the grant commits before it or is refused', async () => {
+      for (let round = 0; round < 5; round += 1) {
+        expect((await turn('active')).ok).toBe(true);
+        const customer = ids.next<'Account'>();
+        const [granted, frozen] = await Promise.all([
+          grant(customer, 10n),
+          turn('frozen', 'maintenance'),
+        ]);
+        expect(frozen.ok).toBe(true);
+        expect(granted.ok || granted.error.code === 'wallet.frozen').toBe(true);
+        expect(await grant(customer, 10n)).toEqual(err({ code: 'wallet.frozen' }));
+      }
+      expect((await turn('active')).ok).toBe(true);
+      expect(await reconcile()).toEqual(ok([]));
+    });
+
+    it('two requests with one key for different customers: one wins, the other is told the key is taken', async () => {
+      const shared = key('shared');
+      const results = await Promise.all([
+        grant(ids.next<'Account'>(), 50n, 'promo', shared),
+        grant(ids.next<'Account'>(), 50n, 'promo', shared),
+      ]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results.find((r) => !r.ok)).toEqual(err({ code: 'idempotency.key-reused' }));
+      expect(await reconcile()).toEqual(ok([]));
+    });
+
+    it('refuses to capture a hold past its expiry; the sweep then releases it', async () => {
+      expect((await turn('active')).ok).toBe(true);
+      const customer = ids.next<'Account'>();
+      await grant(customer, 300n, 'refund');
+      const order = ids.next<'Order'>();
+      expect((await hold(customer, order, 100n, 1)).ok).toBe(true);
+      clock.advance(Temporal.Duration.from({ hours: 2 }));
+      expect(await settle('capture', customer, order)).toEqual(
+        err({ code: 'wallet.hold-expired' }),
+      );
+      expect(await sweep()).toMatchObject({ ok: true, value: { failed: [] } });
+      expect(await settle('capture', customer, order)).toEqual(
+        err({ code: 'wallet.hold-not-held' }),
+      );
+      expect(await balanceOf(customer)).toEqual([300n, 0n]);
+    });
+
     it('reports a balance that drifted from the postings, and nothing once it is put back', async () => {
       const customer = ids.next<'Account'>();
       await grant(customer, 100n, 'refund');
       expect(await reconcile()).toEqual(ok([]));
-      await owner.query(
-        `UPDATE wallet.balances SET available_minor = available_minor + 7
-          WHERE wallet_account_id = (SELECT id FROM wallet.accounts WHERE market_id = $1 AND customer_account_id = $2)`,
-        [market.marketId, customer],
-      );
+      const wallet = `(SELECT id FROM wallet.accounts WHERE market_id = $1 AND customer_account_id = $2)`;
+      // The commit-time check refuses such a drift, so it is let through for this test only, by
+      // the owner switching the check off around it.
+      await owner.query(`ALTER TABLE wallet.balances DISABLE TRIGGER balances_books`);
       try {
+        await owner.query(
+          `UPDATE wallet.balances SET available_minor = available_minor + 7 WHERE wallet_account_id = ${wallet}`,
+          [market.marketId, customer],
+        );
         const drift = await reconcile();
         expect(drift.ok && drift.value).toEqual(
           expect.arrayContaining([
@@ -960,12 +1463,12 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
             expect.objectContaining({ check: 'lots-vs-available', expected: 107n, actual: 100n }),
           ]),
         );
-      } finally {
         await owner.query(
-          `UPDATE wallet.balances SET available_minor = available_minor - 7
-            WHERE wallet_account_id = (SELECT id FROM wallet.accounts WHERE market_id = $1 AND customer_account_id = $2)`,
+          `UPDATE wallet.balances SET available_minor = available_minor - 7 WHERE wallet_account_id = ${wallet}`,
           [market.marketId, customer],
         );
+      } finally {
+        await owner.query(`ALTER TABLE wallet.balances ENABLE TRIGGER balances_books`);
       }
       expect(await reconcile()).toEqual(ok([]));
     });

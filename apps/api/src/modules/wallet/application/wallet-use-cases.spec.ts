@@ -515,6 +515,61 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
 
   // ---- the states in use ------------------------------------------------------------------
 
+  describe('review hardening', () => {
+    beforeEach(async () => {
+      await open();
+    });
+
+    it('keeps the sys: prefix for the keys the worker generates', async () => {
+      const refused = err({
+        code: 'validation.failed',
+        fields: [{ path: 'idempotencyKey', code: 'format' }],
+      });
+      expect(await grant(10n, 'promo', 'sys:hold-expire:abcdef')).toEqual(refused);
+      expect(await hold(10n, ORDER_1, 'sys:hold-expire:abcdef')).toEqual(refused);
+      await grant(100n);
+      await hold(50n, ORDER_1, 'caller-key-1');
+      clock.advance(Temporal.Duration.from({ hours: 3 }));
+      expect(await sweep()).toMatchObject({ ok: true, value: { expiredHolds: 1, failed: [] } });
+      expect(
+        wallet.journals.map((j) => j.idempotencyKey).filter((k) => k.startsWith('sys:')),
+      ).toHaveLength(1);
+    });
+
+    it('refuses to capture a hold past its expiry, until the sweep releases it', async () => {
+      await grant(500n);
+      await hold(200n, ORDER_1, 'caller-key-1', 1);
+      expect((await settle('capture', ORDER_1)).ok).toBe(true);
+      await hold(100n, ORDER_2, 'caller-key-2', 1);
+      clock.advance(Temporal.Duration.from({ hours: 2 }));
+      expect(await settle('capture', ORDER_2)).toEqual(err({ code: 'wallet.hold-expired' }));
+      expect((await settle('release', ORDER_2)).ok).toBe(true);
+      expect(await settle('capture', ORDER_2)).toEqual(err({ code: 'wallet.hold-not-held' }));
+    });
+
+    it('answers a replayed placeHold with the hold as it is now', async () => {
+      await grant(500n);
+      const first = await hold(200n, ORDER_1, 'caller-key-1');
+      expect(first).toMatchObject({ ok: true, value: { status: 'held' } });
+      expect(await hold(200n, ORDER_1, 'caller-key-1')).toEqual(first);
+      await settle('capture', ORDER_1);
+      expect(await hold(200n, ORDER_1, 'caller-key-1')).toMatchObject({
+        ok: true,
+        value: { status: 'captured' },
+      });
+    });
+
+    it('fails closed when the wallet is not in the Market currency', async () => {
+      await grant(500n);
+      for (const account of wallet.accounts.values()) {
+        if (account.customer !== null)
+          wallet.accounts.set(account.id, { ...account, currency: 'XXX' });
+      }
+      expect(await grant(10n)).toEqual(err({ code: 'wallet.unavailable' }));
+      expect(await hold(10n, ORDER_1)).toEqual(err({ code: 'wallet.unavailable' }));
+    });
+  });
+
   describe('paused and frozen', () => {
     beforeEach(async () => {
       await open();

@@ -69,6 +69,37 @@ Known gaps (to settle before package 2):
 - Refunds that would exceed the cap go to the original card (owner decision); the caller handles
   `wallet.cap-exceeded`.
 
+M3, tracked blocker: the missing admin step-up (above) blocks package 2 (the admin toggle page) and
+blocks setting any production Market to `active` or `frozen` through this endpoint, whichever
+comes first. Open an issue that names both; it closes when identity offers an admin step-up and
+`setStatus` calls it before `save`.
+
+`down.sql` must never run in production after launch: it drops every wallet table, and with them
+every balance, lot and journal. It exists for development and for the reversibility check only.
+
+The switch is a fence at the database. Prisma has no `FOR SHARE` and modules may not use raw SQL,
+so the use cases read the status with a plain read for the friendly answer (`wallet.paused`,
+`wallet.frozen`, `wallet.disabled`), and a `BEFORE INSERT` trigger on `journals`
+(`check_market_status`) reads `market_settings` `FOR SHARE` and refuses a kind the status does not
+allow (active: all; paused: capture, release, expire; frozen: release, expire; off or no row:
+none). A status change takes the row lock `FOR UPDATE` (a no-change update after a seed
+`INSERT ... ON CONFLICT DO NOTHING` of an `off` row, so two first PUTs queue instead of failing),
+so it waits for every journal in flight, and a journal in flight waits for it and then reads the
+new status. A use case that loses that race gets the trigger's refusal, runs once more, and
+answers from the new status. The same lock makes "never back to off with history" race-free.
+
+Books at COMMIT: deferred constraint triggers on `balances`, `lots`, `holds` and `postings` check,
+per customer wallet, that available = postings on the wallet account = the lots' remaining credit
+and held = the held holds; a hold that leaves `held` needs a capture or release journal for its
+order; an expired promo lot is restored only in the transaction that releases a hold that took
+from it; a leg has the currency of its account and of its journal; a closed account never
+reopens. A direct UPDATE of a balance, lot or hold, by any role, fails the commit.
+
+Idempotency keys starting with `sys:` are the worker's; a facade caller may not send them. A
+unique violation on `(market_id, idempotency_key)` between two parallel requests is answered
+from the first journal (its result, or `idempotency.key-reused`). Facade callers must derive keys
+on the server (`<module>:<orderId>:<operation>`) and never pass a client-supplied key unchanged.
+
 Idempotent replay: a retried request with a known key returns its first answer even if the Market
 status changed since. `grantCredit`, `placeHold`, `captureHold` and `releaseHold` look the journal
 up (under the balance lock) before the switch gate; only new work meets the gate.

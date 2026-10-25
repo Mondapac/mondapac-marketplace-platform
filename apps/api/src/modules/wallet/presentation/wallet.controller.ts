@@ -167,7 +167,7 @@ export class AdminWalletController {
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({
     ...ERROR,
-    description: 'access.denied, request.csrf or second-factor.required',
+    description: 'access.denied or request.csrf',
   })
   @ApiConflictResponse({ ...ERROR, description: 'wallet.cannot-turn-off-with-history' })
   async put(

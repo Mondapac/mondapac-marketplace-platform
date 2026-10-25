@@ -255,8 +255,9 @@ ALTER TABLE "wallet"."market_settings"
   ADD CONSTRAINT "market_settings_reason_code_check" CHECK ("reason_code" IS NULL OR "reason_code" ~ '^[a-z][a-z0-9-]{1,39}$');
 
 -- Hand-written: insert-only tables. No row of the journal, its legs or a hold's lots is ever
--- changed or removed, whoever asks. No wallet table is ever deleted from or truncated, so a
--- balance or a lot cannot be removed or zeroed by a switch or by anyone.
+-- changed or removed, whoever asks. No wallet table is ever deleted from or truncated. A balance,
+-- a lot or a hold can be updated (the columns granted below), but never without the journal that
+-- explains it: the deferred constraint triggers further down check the books at COMMIT.
 CREATE FUNCTION "wallet"."reject_mutation"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
@@ -352,6 +353,17 @@ BEGIN
     IF NEW."remaining_minor" + outstanding > NEW."original_minor" THEN
       RAISE EXCEPTION 'wallet.lots: restore exceeds what the holds took' USING ERRCODE = 'restrict_violation';
     END IF;
+    -- Expired promo credit does not come back, unless this same transaction is releasing a hold
+    -- that took from the lot (the next sweep expires the restored credit again).
+    IF NEW."expires_at" IS NOT NULL AND NEW."expires_at" <= now() AND NOT EXISTS (
+      SELECT 1 FROM "wallet"."hold_lots" hl JOIN "wallet"."holds" h
+          ON h."market_id" = hl."market_id" AND h."id" = hl."hold_id"
+       WHERE hl."market_id" = NEW."market_id" AND hl."lot_id" = NEW."id"
+         AND h."status" IN ('released', 'expired')
+         AND h."xmin"::text = pg_current_xact_id()::xid::text
+    ) THEN
+      RAISE EXCEPTION 'wallet.lots: expired credit does not come back' USING ERRCODE = 'restrict_violation';
+    END IF;
   END IF;
   RETURN NEW;
 END; $$;
@@ -375,12 +387,15 @@ END; $$;
 CREATE TRIGGER "holds_guard_update" BEFORE UPDATE ON "wallet"."holds"
   FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_hold_update"();
 
--- Hand-written: an account changes only its status; a balance only its amounts.
+-- Hand-written: an account changes only its status, and a closed account never reopens.
 CREATE FUNCTION "wallet"."guard_account_update"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   IF (to_jsonb(NEW) - 'status') <> (to_jsonb(OLD) - 'status') THEN
     RAISE EXCEPTION 'wallet.accounts: only status may change' USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF OLD."status" = 'closed' AND NEW."status" <> 'closed' THEN
+    RAISE EXCEPTION 'wallet.accounts: a closed account does not reopen' USING ERRCODE = 'restrict_violation';
   END IF;
   RETURN NEW;
 END; $$;
@@ -402,6 +417,116 @@ END; $$;
 
 CREATE TRIGGER "market_settings_guard_update" BEFORE UPDATE ON "wallet"."market_settings"
   FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_market_setting_update"();
+
+-- Hand-written: a balance, a lot or a hold changes only together with the journal that explains it.
+-- Checked at COMMIT (DEFERRABLE INITIALLY DEFERRED), per affected customer wallet, from the
+-- balance, lot, hold and posting rows: available = the postings on the wallet account = the
+-- lots' remaining credit, and held = the held holds. A direct UPDATE of one of them, by anyone,
+-- fails the commit.
+CREATE FUNCTION "wallet"."check_wallet_books"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  wallet_id uuid;
+  account_kind text;
+  available numeric;
+  held numeric;
+  posted numeric;
+  lotted numeric;
+  holding numeric;
+BEGIN
+  IF TG_TABLE_NAME = 'postings' THEN wallet_id := NEW."account_id";
+  ELSE wallet_id := NEW."wallet_account_id"; END IF;
+  SELECT a."kind" INTO account_kind FROM "wallet"."accounts" a
+   WHERE a."market_id" = NEW."market_id" AND a."id" = wallet_id;
+  IF account_kind IS DISTINCT FROM 'credit_liability' THEN RETURN NULL; END IF;
+  SELECT COALESCE(MAX(b."available_minor"), 0), COALESCE(MAX(b."held_minor"), 0) INTO available, held
+    FROM "wallet"."balances" b WHERE b."market_id" = NEW."market_id" AND b."wallet_account_id" = wallet_id;
+  SELECT COALESCE(SUM(p."amount_minor"), 0) INTO posted FROM "wallet"."postings" p
+   WHERE p."market_id" = NEW."market_id" AND p."account_id" = wallet_id;
+  SELECT COALESCE(SUM(l."remaining_minor"), 0) INTO lotted FROM "wallet"."lots" l
+   WHERE l."market_id" = NEW."market_id" AND l."wallet_account_id" = wallet_id;
+  SELECT COALESCE(SUM(h."amount_minor"), 0) INTO holding FROM "wallet"."holds" h
+   WHERE h."market_id" = NEW."market_id" AND h."wallet_account_id" = wallet_id AND h."status" = 'held';
+  IF available <> posted OR available <> lotted OR held <> holding THEN
+    RAISE EXCEPTION 'wallet.books of %: available % postings % lots %, held % holds %',
+      wallet_id, available, posted, lotted, held, holding USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END; $$;
+
+CREATE CONSTRAINT TRIGGER "balances_books" AFTER INSERT OR UPDATE ON "wallet"."balances"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_wallet_books"();
+CREATE CONSTRAINT TRIGGER "lots_books" AFTER INSERT OR UPDATE ON "wallet"."lots"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_wallet_books"();
+CREATE CONSTRAINT TRIGGER "holds_books" AFTER INSERT OR UPDATE ON "wallet"."holds"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_wallet_books"();
+CREATE CONSTRAINT TRIGGER "postings_books" AFTER INSERT ON "wallet"."postings"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_wallet_books"();
+
+-- Hand-written: a hold leaves `held` only with a capture (for captured) or release (for released
+-- and expired) journal for the same order and wallet. Checked at COMMIT.
+CREATE FUNCTION "wallet"."check_hold_settled"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF OLD."status" = 'held' AND NEW."status" <> 'held' AND NOT EXISTS (
+    SELECT 1 FROM "wallet"."journals" j
+     WHERE j."market_id" = NEW."market_id" AND j."order_id" = NEW."order_id"
+       AND j."wallet_account_id" = NEW."wallet_account_id"
+       AND j."kind" = CASE WHEN NEW."status" = 'captured' THEN 'capture' ELSE 'release' END
+  ) THEN
+    RAISE EXCEPTION 'wallet.holds %: left held without a % journal', NEW."id", NEW."status"
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END; $$;
+
+CREATE CONSTRAINT TRIGGER "holds_settled" AFTER UPDATE ON "wallet"."holds"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_hold_settled"();
+
+-- Hand-written: a leg is in the currency of its account and of the other legs of its journal.
+CREATE FUNCTION "wallet"."check_posting_currency"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM "wallet"."accounts" a
+              WHERE a."market_id" = NEW."market_id" AND a."id" = NEW."account_id"
+                AND a."currency" <> NEW."currency")
+     OR EXISTS (SELECT 1 FROM "wallet"."postings" p
+                 WHERE p."market_id" = NEW."market_id" AND p."journal_id" = NEW."journal_id"
+                   AND p."currency" <> NEW."currency") THEN
+    RAISE EXCEPTION 'wallet.postings: currency % differs from its account or its journal', NEW."currency"
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "postings_currency" BEFORE INSERT ON "wallet"."postings"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."check_posting_currency"();
+
+-- Hand-written: the switch is a fence at the database. A journal is inserted only if the Market's
+-- status allows its kind, and the status row is read FOR SHARE: a status change waits for the
+-- journals in flight, and a journal waits for a status change in flight and then reads the new
+-- status. The same lock makes "never back to off with history" race-free, together with the
+-- guard above. A Market with no settings row is `off`.
+--   active: everything; paused: capture, release, expire; frozen: release, expire; off: nothing.
+CREATE FUNCTION "wallet"."check_market_status"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  current_status text;
+BEGIN
+  SELECT s."status" INTO current_status FROM "wallet"."market_settings" s
+   WHERE s."market_id" = NEW."market_id" FOR SHARE;
+  current_status := COALESCE(current_status, 'off');
+  IF current_status = 'active'
+     OR (current_status = 'paused' AND NEW."kind" IN ('capture', 'release', 'expire'))
+     OR (current_status = 'frozen' AND NEW."kind" IN ('release', 'expire')) THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'wallet.market_status: % refuses a % journal', current_status, NEW."kind"
+    USING ERRCODE = 'restrict_violation';
+END; $$;
+
+CREATE TRIGGER "journals_market_status" BEFORE INSERT ON "wallet"."journals"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."check_market_status"();
 
 -- Grants. Journals, legs and a hold's lots are read and appended to only; every other table
 -- changes only the columns named. Nothing is ever deleted.

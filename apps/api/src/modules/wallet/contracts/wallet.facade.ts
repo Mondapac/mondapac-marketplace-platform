@@ -25,6 +25,8 @@ export type WalletFailure =
   | { readonly code: 'wallet.hold-exists' }
   /** Capture or release of a hold that is no longer `held`. */
   | { readonly code: 'wallet.hold-not-held' }
+  /** Capture of a hold past its expiry; the sweep releases it. */
+  | { readonly code: 'wallet.hold-expired' }
   /** The same idempotency key was used for a different request. */
   | { readonly code: 'idempotency.key-reused' };
 
@@ -66,7 +68,7 @@ export interface HoldResult {
   readonly holdId: Id<'WalletHold'>;
   readonly journalId: Id<'WalletJournal'>;
   readonly amount: Money;
-  readonly status: 'held' | 'captured' | 'released';
+  readonly status: 'held' | 'captured' | 'released' | 'expired';
 }
 
 export interface SettleHoldRequest {

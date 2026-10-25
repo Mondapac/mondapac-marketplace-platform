@@ -55,8 +55,11 @@ function amountProblem(value: Money | undefined, currency: string): boolean {
   );
 }
 
+/** The prefix of the keys the worker generates; a caller of the facade may not use it. */
+export const INTERNAL_KEY_PREFIX = 'sys:';
+
 export const keyOk = (value: unknown): value is string =>
-  typeof value === 'string' && KEY.test(value);
+  typeof value === 'string' && KEY.test(value) && !value.startsWith(INTERNAL_KEY_PREFIX);
 
 /** Who is recorded on the journal. The facade is for the system; admins join in package 2. */
 export function actorOf(context: CallContext): NewJournal['actor'] {
@@ -89,12 +92,60 @@ async function replayOf<T>(
   context: CallContext,
   key: string,
   fingerprint: string,
-  decode: (result: Readonly<Record<string, string>>) => T,
+  decode: (result: Readonly<Record<string, string>>) => T | Promise<T>,
 ): Promise<Result<T, WalletFailure> | null> {
   const found = await deps.wallet.findJournal(context.market, key);
   if (found === null) return null;
   if (found.fingerprint !== fingerprint) return err({ code: 'idempotency.key-reused' });
-  return ok(decode(found.result));
+  return ok(await decode(found.result));
+}
+
+/** The error text with the database's own message, which Prisma keeps in `meta`. */
+const messageOf = (error: unknown): string => {
+  if (!(error instanceof Error)) return '';
+  const meta = (error as { meta?: unknown }).meta;
+  return meta === undefined ? error.message : `${error.message} ${JSON.stringify(meta)}`;
+};
+
+/** Two requests with one key met in the unique index of `(market_id, idempotency_key)`. */
+const isKeyConflict = (error: unknown): boolean =>
+  messageOf(error).includes('journals_market_id_idempotency_key_key');
+
+/** The database refused a journal because the Market status changed after the gate read it. */
+const isStatusFence = (error: unknown): boolean =>
+  messageOf(error).includes('wallet.market_status');
+
+/**
+ * Runs a write unit and turns its two expected races into answers. A unique violation on the
+ * idempotency key (the other request won) is answered from the first journal: its result or
+ * `idempotency.key-reused`. A refusal by the status fence (an admin switched the Market between
+ * the gate and the insert) runs the unit once more, where the gate now sees the new status.
+ */
+async function guarded<T>(
+  deps: WalletDependencies,
+  context: CallContext,
+  key: string,
+  fingerprint: string,
+  decode: (result: Readonly<Record<string, string>>) => T | Promise<T>,
+  attempt: () => Promise<Result<T, WalletFailure>>,
+): Promise<Result<T, WalletFailure>> {
+  for (let tries = 0; ; tries += 1) {
+    try {
+      return await attempt();
+    } catch (error) {
+      if (isKeyConflict(error)) {
+        return deps.unitOfWork.run<T, WalletFailure>(
+          context.market,
+          async () =>
+            (await replayOf(deps, context, key, fingerprint, decode)) ??
+            err({ code: 'wallet.unavailable' } as const),
+          { readOnly: true },
+        );
+      }
+      if (isStatusFence(error) && tries === 0) continue;
+      throw error;
+    }
+  }
 }
 
 async function internalIds(
@@ -111,8 +162,12 @@ async function internalIds(
   });
 }
 
-const accountGate = (wallet: WalletAccountRecord): WalletFailure | null =>
-  wallet.status === 'active' ? null : { code: 'wallet.account-not-active' };
+const accountGate = (wallet: WalletAccountRecord, currency: string): WalletFailure | null =>
+  wallet.currency !== currency
+    ? { code: 'wallet.unavailable' }
+    : wallet.status === 'active'
+      ? null
+      : { code: 'wallet.account-not-active' };
 
 /** Grants store credit (a lot) to a customer wallet, within the Market cap. */
 export async function grantCredit(
@@ -150,93 +205,97 @@ export async function grantCredit(
     orderId ?? '',
   ].join('|');
   const now = deps.clock.now();
-  return deps.unitOfWork.run<GrantCreditResult, WalletFailure>(context.market, async () => {
-    // A retry with a known key gets its first answer whatever the switch says now: the journal
-    // is looked up, under the balance lock, before the gate. Only new work meets the gate.
-    const decode = (r: Readonly<Record<string, string>>): GrantCreditResult => ({
-      journalId: r.journalId as Id<'WalletJournal'>,
-      lotId: r.lotId as Id<'WalletLot'>,
-      balance: {
-        available: money(BigInt(r.availableMinor!), policy.currency),
-        held: money(BigInt(r.heldMinor!), policy.currency),
-      },
-    });
-    let wallet = await deps.wallet.findWallet(context.market, customer);
-    let balance: BalanceRecord | null = null;
-    if (wallet !== null) balance = await deps.wallet.lockBalance(context.market, wallet.id);
-    // The key is unique in the Market, so it is looked up even where this customer has no wallet.
-    const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, decode);
-    if (replay !== null) return replay;
-    const closed = await gate(deps, context, 'grant');
-    if (closed !== null) return err(closed);
-    if (wallet === null || balance === null) {
-      wallet = await deps.wallet.ensureWallet(context.market, {
-        newAccountId: deps.ids.next<'WalletAccount'>(),
-        customerAccountId: customer,
-        currency: policy.currency,
-        now,
-      });
-      balance = await deps.wallet.lockBalance(context.market, wallet.id);
-      // A parallel request with the same key may have created the wallet and finished first.
-      const raced = await replayOf(deps, context, request.idempotencyKey, fingerprint, decode);
-      if (raced !== null) return raced;
-    }
-    const notActive = accountGate(wallet);
-    if (notActive !== null) return err(notActive);
-    if (balance.availableMinor + balance.heldMinor + amount > policy.balanceCapMinor) {
-      return err({ code: 'wallet.cap-exceeded' });
-    }
-
-    const accounts = await internalIds(
-      deps,
-      context,
-      [request.source === 'promo' ? 'promo_expense' : 'refund_clearing'],
-      policy.currency,
-      now,
-    );
-    const source = accounts.get(request.source === 'promo' ? 'promo_expense' : 'refund_clearing')!;
-    const journalId = deps.ids.next<'WalletJournal'>();
-    const lotId = deps.ids.next<'WalletLot'>();
-    const next = { ...balance, availableMinor: balance.availableMinor + amount };
-    const kind: JournalKind = request.source === 'promo' ? 'grant-promo' : 'grant-refund';
-    await deps.wallet.appendJournal(context.market, {
-      id: journalId,
-      kind,
-      idempotencyKey: request.idempotencyKey,
-      fingerprint,
-      actor: actorOf(context),
-      reasonCode: request.reasonCode,
-      orderId,
-      walletAccountId: wallet.id,
-      currency: policy.currency,
-      createdAt: now,
-      result: {
-        journalId,
-        lotId,
-        availableMinor: next.availableMinor.toString(),
-        heldMinor: next.heldMinor.toString(),
-      },
-      postings: [
-        { accountId: wallet.id, amountMinor: amount },
-        { accountId: source, amountMinor: -amount },
-      ],
-    });
-    await deps.wallet.createLot(context.market, {
-      id: lotId,
-      walletAccountId: wallet.id,
-      source: request.source,
-      journalId,
-      amountMinor: amount,
-      currency: policy.currency,
-      expiresAt:
-        request.source === 'promo'
-          ? promoExpiry(now, policy.promoExpiryMonths, policy.timeZone)
-          : null,
-      createdAt: now,
-    });
-    await deps.wallet.saveBalance(context.market, next, now);
-    return ok({ journalId, lotId, balance: balanceOfRecord(next, policy.currency) });
+  // A retry with a known key gets its first answer whatever the switch says now: the journal
+  // is looked up, under the balance lock, before the gate. Only new work meets the gate.
+  const decode = (r: Readonly<Record<string, string>>): GrantCreditResult => ({
+    journalId: r.journalId as Id<'WalletJournal'>,
+    lotId: r.lotId as Id<'WalletLot'>,
+    balance: {
+      available: money(BigInt(r.availableMinor!), policy.currency),
+      held: money(BigInt(r.heldMinor!), policy.currency),
+    },
   });
+  const attempt = () =>
+    deps.unitOfWork.run<GrantCreditResult, WalletFailure>(context.market, async () => {
+      let wallet = await deps.wallet.findWallet(context.market, customer);
+      let balance: BalanceRecord | null = null;
+      if (wallet !== null) balance = await deps.wallet.lockBalance(context.market, wallet.id);
+      // The key is unique in the Market, so it is looked up even where this customer has no wallet.
+      const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, decode);
+      if (replay !== null) return replay;
+      const closed = await gate(deps, context, 'grant');
+      if (closed !== null) return err(closed);
+      if (wallet === null || balance === null) {
+        wallet = await deps.wallet.ensureWallet(context.market, {
+          newAccountId: deps.ids.next<'WalletAccount'>(),
+          customerAccountId: customer,
+          currency: policy.currency,
+          now,
+        });
+        balance = await deps.wallet.lockBalance(context.market, wallet.id);
+        // A parallel request with the same key may have created the wallet and finished first.
+        const raced = await replayOf(deps, context, request.idempotencyKey, fingerprint, decode);
+        if (raced !== null) return raced;
+      }
+      const notActive = accountGate(wallet, policy.currency);
+      if (notActive !== null) return err(notActive);
+      if (balance.availableMinor + balance.heldMinor + amount > policy.balanceCapMinor) {
+        return err({ code: 'wallet.cap-exceeded' });
+      }
+
+      const accounts = await internalIds(
+        deps,
+        context,
+        [request.source === 'promo' ? 'promo_expense' : 'refund_clearing'],
+        policy.currency,
+        now,
+      );
+      const source = accounts.get(
+        request.source === 'promo' ? 'promo_expense' : 'refund_clearing',
+      )!;
+      const journalId = deps.ids.next<'WalletJournal'>();
+      const lotId = deps.ids.next<'WalletLot'>();
+      const next = { ...balance, availableMinor: balance.availableMinor + amount };
+      const kind: JournalKind = request.source === 'promo' ? 'grant-promo' : 'grant-refund';
+      await deps.wallet.appendJournal(context.market, {
+        id: journalId,
+        kind,
+        idempotencyKey: request.idempotencyKey,
+        fingerprint,
+        actor: actorOf(context),
+        reasonCode: request.reasonCode,
+        orderId,
+        walletAccountId: wallet.id,
+        currency: policy.currency,
+        createdAt: now,
+        result: {
+          journalId,
+          lotId,
+          availableMinor: next.availableMinor.toString(),
+          heldMinor: next.heldMinor.toString(),
+        },
+        postings: [
+          { accountId: wallet.id, amountMinor: amount },
+          { accountId: source, amountMinor: -amount },
+        ],
+      });
+      await deps.wallet.createLot(context.market, {
+        id: lotId,
+        walletAccountId: wallet.id,
+        source: request.source,
+        journalId,
+        amountMinor: amount,
+        currency: policy.currency,
+        expiresAt:
+          request.source === 'promo'
+            ? promoExpiry(now, policy.promoExpiryMonths, policy.timeZone)
+            : null,
+        createdAt: now,
+      });
+      await deps.wallet.saveBalance(context.market, next, now);
+      return ok({ journalId, lotId, balance: balanceOfRecord(next, policy.currency) });
+    });
+  return guarded(deps, context, request.idempotencyKey, fingerprint, decode, attempt);
 }
 
 /** Sets `amount` aside for an order, taking the soonest-expiring lots first. */
@@ -274,81 +333,87 @@ export async function placeHold(
     request.amount.currency,
     request.expiresAt.epochMilliseconds,
   ].join('|');
-  return deps.unitOfWork.run<HoldResult, WalletFailure>(context.market, async () => {
-    const wallet = await deps.wallet.findWallet(context.market, customer);
-    // Replay before the gate, under the balance lock (see grantCredit).
-    const balance =
-      wallet === null ? null : await deps.wallet.lockBalance(context.market, wallet.id);
-    const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, (r) => ({
-      holdId: r.holdId as Id<'WalletHold'>,
-      journalId: r.journalId as Id<'WalletJournal'>,
-      amount: money(BigInt(r.amountMinor!), policy.currency),
-      status: 'held' as const,
-    }));
-    if (replay !== null) return replay;
-    const closed = await gate(deps, context, 'hold');
-    if (closed !== null) return err(closed);
-    if (wallet === null || balance === null) return err({ code: 'wallet.insufficient-funds' });
-    const notActive = accountGate(wallet);
-    if (notActive !== null) return err(notActive);
-    if ((await deps.wallet.findHold(context.market, orderId)) !== null) {
-      return err({ code: 'wallet.hold-exists' });
-    }
-    const lots = await deps.wallet.lotsWithCredit(context.market, wallet.id);
-    const takes = amount <= balance.availableMinor ? allocate(lots, amount, now) : null;
-    if (takes === null) return err({ code: 'wallet.insufficient-funds' });
+  // The replay answers with the hold's state now, not the state it had when first placed.
+  const decode = async (r: Readonly<Record<string, string>>): Promise<HoldResult> => ({
+    holdId: r.holdId as Id<'WalletHold'>,
+    journalId: r.journalId as Id<'WalletJournal'>,
+    amount: money(BigInt(r.amountMinor!), policy.currency),
+    status:
+      (await deps.wallet.findHoldById(context.market, r.holdId as Id<'WalletHold'>))?.status ??
+      'held',
+  });
+  const attempt = () =>
+    deps.unitOfWork.run<HoldResult, WalletFailure>(context.market, async () => {
+      const wallet = await deps.wallet.findWallet(context.market, customer);
+      // Replay before the gate, under the balance lock (see grantCredit).
+      const balance =
+        wallet === null ? null : await deps.wallet.lockBalance(context.market, wallet.id);
+      const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, decode);
+      if (replay !== null) return replay;
+      const closed = await gate(deps, context, 'hold');
+      if (closed !== null) return err(closed);
+      if (wallet === null || balance === null) return err({ code: 'wallet.insufficient-funds' });
+      const notActive = accountGate(wallet, policy.currency);
+      if (notActive !== null) return err(notActive);
+      if ((await deps.wallet.findHold(context.market, orderId)) !== null) {
+        return err({ code: 'wallet.hold-exists' });
+      }
+      const lots = await deps.wallet.lotsWithCredit(context.market, wallet.id);
+      const takes = amount <= balance.availableMinor ? allocate(lots, amount, now) : null;
+      if (takes === null) return err({ code: 'wallet.insufficient-funds' });
 
-    const accounts = await internalIds(deps, context, ['holds'], policy.currency, now);
-    const holdsAccount = accounts.get('holds')!;
-    const journalId = deps.ids.next<'WalletJournal'>();
-    const holdId = deps.ids.next<'WalletHold'>();
-    const next = {
-      ...balance,
-      availableMinor: balance.availableMinor - amount,
-      heldMinor: balance.heldMinor + amount,
-    };
-    await deps.wallet.appendJournal(context.market, {
-      id: journalId,
-      kind: 'hold',
-      idempotencyKey: request.idempotencyKey,
-      fingerprint,
-      actor: actorOf(context),
-      reasonCode: 'order-hold',
-      orderId,
-      walletAccountId: wallet.id,
-      currency: policy.currency,
-      createdAt: now,
-      result: { journalId, holdId, amountMinor: amount.toString() },
-      postings: [
-        { accountId: wallet.id, amountMinor: -amount },
-        { accountId: holdsAccount, amountMinor: amount },
-      ],
-    });
-    await deps.wallet.createHold(
-      context.market,
-      {
-        id: holdId,
-        walletAccountId: wallet.id,
+      const accounts = await internalIds(deps, context, ['holds'], policy.currency, now);
+      const holdsAccount = accounts.get('holds')!;
+      const journalId = deps.ids.next<'WalletJournal'>();
+      const holdId = deps.ids.next<'WalletHold'>();
+      const next = {
+        ...balance,
+        availableMinor: balance.availableMinor - amount,
+        heldMinor: balance.heldMinor + amount,
+      };
+      await deps.wallet.appendJournal(context.market, {
+        id: journalId,
+        kind: 'hold',
+        idempotencyKey: request.idempotencyKey,
+        fingerprint,
+        actor: actorOf(context),
+        reasonCode: 'order-hold',
         orderId,
-        amountMinor: amount,
-        status: 'held',
-        expiresAt: request.expiresAt,
+        walletAccountId: wallet.id,
         currency: policy.currency,
         createdAt: now,
-      },
-      takes,
-    );
-    const byId = new Map(lots.map((lot) => [lot.id, lot]));
-    for (const take of takes) {
-      await deps.wallet.setLotRemaining(
+        result: { journalId, holdId, amountMinor: amount.toString() },
+        postings: [
+          { accountId: wallet.id, amountMinor: -amount },
+          { accountId: holdsAccount, amountMinor: amount },
+        ],
+      });
+      await deps.wallet.createHold(
         context.market,
-        take.lotId,
-        byId.get(take.lotId)!.remaining - take.amount,
+        {
+          id: holdId,
+          walletAccountId: wallet.id,
+          orderId,
+          amountMinor: amount,
+          status: 'held',
+          expiresAt: request.expiresAt,
+          currency: policy.currency,
+          createdAt: now,
+        },
+        takes,
       );
-    }
-    await deps.wallet.saveBalance(context.market, next, now);
-    return ok({ holdId, journalId, amount: money(amount, policy.currency), status: 'held' });
-  });
+      const byId = new Map(lots.map((lot) => [lot.id, lot]));
+      for (const take of takes) {
+        await deps.wallet.setLotRemaining(
+          context.market,
+          take.lotId,
+          byId.get(take.lotId)!.remaining - take.amount,
+        );
+      }
+      await deps.wallet.saveBalance(context.market, next, now);
+      return ok({ holdId, journalId, amount: money(amount, policy.currency), status: 'held' });
+    });
+  return guarded(deps, context, request.idempotencyKey, fingerprint, decode, attempt);
 }
 
 /**
@@ -430,76 +495,83 @@ async function settleHold(
 
   const fingerprint = [how, customer, orderId].join('|');
   const now = deps.clock.now();
-  return deps.unitOfWork.run<HoldResult, WalletFailure>(context.market, async () => {
-    const wallet = await deps.wallet.findWallet(context.market, customer);
-    // Replay before the gate, under the balance lock (see grantCredit).
-    const balance =
-      wallet === null ? null : await deps.wallet.lockBalance(context.market, wallet.id);
-    const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, (r) => ({
-      holdId: r.holdId as Id<'WalletHold'>,
-      journalId: r.journalId as Id<'WalletJournal'>,
-      amount: money(BigInt(r.amountMinor!), policy.currency),
-      status: how === 'capture' ? ('captured' as const) : ('released' as const),
-    }));
-    if (replay !== null) return replay;
-    const closed = await gate(deps, context, how);
-    if (closed !== null) return err(closed);
-    if (wallet === null || balance === null) return err({ code: 'wallet.not-found' });
-    const hold = await deps.wallet.findHold(context.market, orderId, wallet.id);
-    if (hold === null) return err({ code: 'wallet.not-found' });
-    if (hold.status !== 'held') return err({ code: 'wallet.hold-not-held' });
+  const decode = (r: Readonly<Record<string, string>>): HoldResult => ({
+    holdId: r.holdId as Id<'WalletHold'>,
+    journalId: r.journalId as Id<'WalletJournal'>,
+    amount: money(BigInt(r.amountMinor!), policy.currency),
+    status: how === 'capture' ? 'captured' : 'released',
+  });
+  const attempt = () =>
+    deps.unitOfWork.run<HoldResult, WalletFailure>(context.market, async () => {
+      const wallet = await deps.wallet.findWallet(context.market, customer);
+      // Replay before the gate, under the balance lock (see grantCredit).
+      const balance =
+        wallet === null ? null : await deps.wallet.lockBalance(context.market, wallet.id);
+      const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, decode);
+      if (replay !== null) return replay;
+      const closed = await gate(deps, context, how);
+      if (closed !== null) return err(closed);
+      if (wallet === null || balance === null) return err({ code: 'wallet.not-found' });
+      const hold = await deps.wallet.findHold(context.market, orderId, wallet.id);
+      if (hold === null) return err({ code: 'wallet.not-found' });
+      if (hold.status !== 'held') return err({ code: 'wallet.hold-not-held' });
+      // A hold past its expiry is not captured while the sweep has not yet released it.
+      if (how === 'capture' && hold.expiresAt.epochMilliseconds <= now.epochMilliseconds) {
+        return err({ code: 'wallet.hold-expired' });
+      }
 
-    if (how === 'release') {
-      const released = await releaseInUnit(deps, context, {
-        hold,
-        balance,
-        status: 'released',
+      if (how === 'release') {
+        const released = await releaseInUnit(deps, context, {
+          hold,
+          balance,
+          status: 'released',
+          idempotencyKey: request.idempotencyKey,
+          fingerprint,
+          reasonCode: 'order-release',
+          currency: policy.currency,
+          now,
+        });
+        return ok(released);
+      }
+      const accounts = await internalIds(
+        deps,
+        context,
+        ['holds', 'order_clearing'],
+        policy.currency,
+        now,
+      );
+      const journalId = deps.ids.next<'WalletJournal'>();
+      await deps.wallet.appendJournal(context.market, {
+        id: journalId,
+        kind: 'capture',
         idempotencyKey: request.idempotencyKey,
         fingerprint,
-        reasonCode: 'order-release',
+        actor: actorOf(context),
+        reasonCode: 'order-capture',
+        orderId,
+        walletAccountId: wallet.id,
         currency: policy.currency,
-        now,
+        createdAt: now,
+        result: { journalId, holdId: hold.id, amountMinor: hold.amountMinor.toString() },
+        postings: [
+          { accountId: accounts.get('holds')!, amountMinor: -hold.amountMinor },
+          { accountId: accounts.get('order_clearing')!, amountMinor: hold.amountMinor },
+        ],
       });
-      return ok(released);
-    }
-    const accounts = await internalIds(
-      deps,
-      context,
-      ['holds', 'order_clearing'],
-      policy.currency,
-      now,
-    );
-    const journalId = deps.ids.next<'WalletJournal'>();
-    await deps.wallet.appendJournal(context.market, {
-      id: journalId,
-      kind: 'capture',
-      idempotencyKey: request.idempotencyKey,
-      fingerprint,
-      actor: actorOf(context),
-      reasonCode: 'order-capture',
-      orderId,
-      walletAccountId: wallet.id,
-      currency: policy.currency,
-      createdAt: now,
-      result: { journalId, holdId: hold.id, amountMinor: hold.amountMinor.toString() },
-      postings: [
-        { accountId: accounts.get('holds')!, amountMinor: -hold.amountMinor },
-        { accountId: accounts.get('order_clearing')!, amountMinor: hold.amountMinor },
-      ],
+      await deps.wallet.settleHold(context.market, hold.id, 'captured', now);
+      await deps.wallet.saveBalance(
+        context.market,
+        { ...balance, heldMinor: balance.heldMinor - hold.amountMinor },
+        now,
+      );
+      return ok({
+        holdId: hold.id,
+        journalId,
+        amount: money(hold.amountMinor, policy.currency),
+        status: 'captured',
+      });
     });
-    await deps.wallet.settleHold(context.market, hold.id, 'captured', now);
-    await deps.wallet.saveBalance(
-      context.market,
-      { ...balance, heldMinor: balance.heldMinor - hold.amountMinor },
-      now,
-    );
-    return ok({
-      holdId: hold.id,
-      journalId,
-      amount: money(hold.amountMinor, policy.currency),
-      status: 'captured',
-    });
-  });
+  return guarded(deps, context, request.idempotencyKey, fingerprint, decode, attempt);
 }
 
 export const captureHold = (

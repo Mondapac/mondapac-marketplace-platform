@@ -43,7 +43,9 @@ export class MemoryWallet implements WalletRepository {
 
   findWallet(_m: MarketContext, customer: Id<'Account'>) {
     const found = [...this.accounts.values()].find((a) => a.customer === customer);
-    return Promise.resolve(found === undefined ? null : { id: found.id, status: found.status });
+    return Promise.resolve(
+      found === undefined ? null : { id: found.id, status: found.status, currency: found.currency },
+    );
   }
   async ensureWallet(
     m: MarketContext,
@@ -58,6 +60,7 @@ export class MemoryWallet implements WalletRepository {
       this.accounts.set(input.newAccountId, {
         id: input.newAccountId,
         status: 'active',
+        currency: input.currency,
         customer: input.customerAccountId,
         kind: 'credit_liability',
       });
@@ -72,14 +75,14 @@ export class MemoryWallet implements WalletRepository {
   ensureInternalAccounts(
     _m: MarketContext,
     kinds: readonly InternalAccountKind[],
-    input: { newId: () => Id<'WalletAccount'> },
+    input: { newId: () => Id<'WalletAccount'>; currency: string },
   ) {
     const out = new Map<InternalAccountKind, Id<'WalletAccount'>>();
     for (const kind of kinds) {
       let found = [...this.accounts.values()].find((a) => a.kind === kind);
       if (found === undefined) {
         const id = input.newId();
-        found = { id, status: 'active', customer: null, kind };
+        found = { id, status: 'active', currency: input.currency, customer: null, kind };
         this.accounts.set(id, found);
       }
       out.set(kind, found.id);
