@@ -46,6 +46,7 @@ import { RestoreStorefrontSlideVersion } from './application/use-cases/restore-s
 import { UpdateStorefrontSlideDraft } from './application/use-cases/update-slide-draft.use-case';
 import { ViewStorefrontSlide } from './application/use-cases/view-slide.use-case';
 import { ViewServedPlacements } from './application/use-cases/view-served-placements.use-case';
+import { ViewStorefrontSlideOrder } from './application/use-cases/view-slide-order.use-case';
 import { STOREFRONT_FACADE, STOREFRONT_PERMISSIONS } from './contracts';
 import { STOREFRONT_AUDIT_ACTIONS } from './domain/audit';
 import { storefrontProviders } from './infrastructure/storefront-providers';
@@ -133,6 +134,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RestoreStorefrontSlideVersion,
       UpdateStorefrontSlideDraft,
       ViewStorefrontSlide,
+      ViewStorefrontSlideOrder,
       ApproveStorefrontSlide,
       PauseStorefrontSlide,
       ResumeStorefrontSlide,

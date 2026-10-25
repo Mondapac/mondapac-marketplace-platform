@@ -239,6 +239,25 @@ with no published version, and an archived or not-yet-live page, so a caller can
 apart. `engagement` uses it to count a block's impressions and clicks only for placements that are
 really served. storefront does not depend on `engagement`.
 
+## Buyer site languages (web i18n base, W2, 25 Oct 2026)
+The buyer site launches in English only. Another language (Arabic, Persian first, both right to
+left) is published per Market by an admin (W3) and chosen only in the signed-in buyer's profile
+(W5): no URL prefix, no public switcher, no Accept-Language; guests and crawlers always get English.
+- `apps/web/src/i18n/locale.ts`: `resolveLocale(profileLocale, published)` returns the profile
+  language only when it is published, else `en`. Two seams: `publishedLocales()` (a constant
+  `['en']`; W3 replaces it with the Market's list) and `profileLocale()` in `src/i18n/request.ts`
+  (returns null; W5 reads the customer profile `locale`, which `GET identity/customer/session`
+  does not return yet). A catalogue is added by listing `messages/<locale>.json` in
+  `src/i18n/messages.ts`; missing keys read in English.
+- Latin digits and the Gregorian calendar in every language: the request locale carries
+  `-u-ca-gregory-nu-latn` (`intlLocale`), and `formatMoney`, `formatClock` and `formatDate` apply
+  it. New Intl code must go through them.
+- `<html lang dir>` come from the locale (`directionOf`); the stylesheet uses logical properties
+  and mirrors the rest under `:dir(rtl)`. Persian loads Vazirmatn and Arabic Noto Sans Arabic,
+  after the Latin brand fonts, only on their own pages (`src/i18n/fonts.ts`).
+- A page in a non-default language must never be cached shared: once `publishedLocales()` lists
+  more than English, the proxy sets `Cache-Control: private, no-store` on every document.
+
 ## Not in v1 (follow-ups)
 
 Read routes for product detail, seller page and list, and the `category`, `seller`, `tag` and

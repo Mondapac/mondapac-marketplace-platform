@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { proxy } from '../proxy.ts';
 import { makeNonce, policyPath, storefrontCsp } from '../src/security/storefront-csp.ts';
 
@@ -56,5 +56,26 @@ describe('storefront Content-Security-Policy', () => {
     expect(proxy(at('/_next/static/chunks/app.js')).headers.has('Content-Security-Policy')).toBe(
       false,
     );
+  });
+});
+
+describe('cache headers by language', () => {
+  it('leaves the default (English only) response to the framework', () => {
+    const response = proxy(at('/'));
+    expect(response.headers.get('Cache-Control')).toBeNull();
+  });
+
+  it('makes documents private and uncacheable once a Market publishes another language', async () => {
+    vi.resetModules();
+    vi.doMock('../src/i18n/locale.ts', async (importOriginal) => ({
+      ...(await importOriginal<object>()),
+      publishedLocales: () => ['en', 'fa'],
+    }));
+    const { proxy: multilingual } = await import('../proxy.ts');
+    const page = multilingual(at('/'));
+    expect(page.headers.get('Cache-Control')).toBe('private, no-store');
+    // Build files stay cacheable.
+    expect(multilingual(at('/_next/static/a.js')).headers.get('Cache-Control')).toBeNull();
+    vi.doUnmock('../src/i18n/locale.ts');
   });
 });
