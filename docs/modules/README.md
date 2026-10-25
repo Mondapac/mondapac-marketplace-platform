@@ -46,6 +46,7 @@
 | ordering | A | ۵ | [`ordering/brief.md`](ordering/brief.md) | تأیید (2026-10-08) | — |
 | payments | A | ۵ | [`payments/brief.md`](payments/brief.md) | تأیید (2026-10-08) | — |
 | commission-payouts | A | ۵ | [`commission-payouts/brief.md`](commission-payouts/brief.md) | تأیید (2026-10-08) | — |
+| wallet (کیف پول مشتری، اعتبار فروشگاهی) | A | بسته ۱: هستهٔ دفتر کل | [`wallet/notes.md`](wallet/notes.md) | بدون G1 (speed mode؛ تصمیم‌های مالک 2026-10-25 در یادداشت) | بدون G2 (speed mode) |
 | tax | A | ۵ | [`tax/brief.md`](tax/brief.md) | تأیید (2026-10-08) | — |
 | shipping | B | ۵ (فقط SHP-01) و ۶ | [`shipping/brief.md`](shipping/brief.md) | دروازهٔ ترکیبی، بخش دامنه: تأیید محصولی برای SHP-01 (2026-10-08)؛ بقیهٔ ماژول فاز ۶ | بخش طراحی: در انتظار |
 | notifications | B | ۶ | — | — | — |
