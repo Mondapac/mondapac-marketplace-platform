@@ -140,6 +140,11 @@
         "sale": "Sale",
         "shipping": "Delivery fee",
         "commission": "Commission",
+        "refund-sale": "Refund of sale",
+        "refund-shipping": "Refund of shipping",
+        "refund-commission": "Commission returned",
+        "dispute-debit": "Dispute debit",
+        "dispute-reinstate": "Dispute reinstated",
         "unknown": "Other"
       }
     },
@@ -1236,13 +1241,16 @@
   },
   "earnings": {
     "title": "Earnings",
-    "intro": "What your store has sold on paid orders, the delivery fees, the platform commission and your balance. Newest rows first.",
+    "intro": "What your store has sold on paid orders, the delivery fees, the platform commission, what refunds took back and your balance. A refund can take your balance below zero. Newest rows first.",
     "ledger": "Ledger",
     "totals": {
       "sales": "Sales",
       "shipping": "Shipping",
       "commission": "Commission",
-      "balance": "Balance"
+      "balance": "Balance",
+      "refunds": "Refunds",
+      "refunded-commission": "Commission returned",
+      "disputes": "Disputes"
     },
     "col": {
       "when": "Date",
@@ -1253,7 +1261,12 @@
     "kind": {
       "sale": "Sale",
       "shipping": "Shipping",
-      "commission": "Commission"
+      "commission": "Commission",
+      "refund-sale": "Refund of sale",
+      "refund-shipping": "Refund of shipping",
+      "refund-commission": "Commission returned",
+      "dispute-debit": "Dispute debit",
+      "dispute-reinstate": "Dispute reinstated"
     },
     "more": "Load more",
     "more-failed": "More rows could not be loaded. Try again.",
