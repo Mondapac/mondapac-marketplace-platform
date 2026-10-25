@@ -1202,8 +1202,7 @@ const catalogSchema = z
  * The `shipping` section (SHP-02/03, the `real_time_delivery` FulfillmentStrategy).
  * `realTimeCarrier`: the Market's real-time carrier; only `mondapac-drive` exists. `displayName`
  * is what the customer and the seller see as the carrier; `baseUrl` the carrier API (https, http
- * only for a loopback host); `merchantId` the marketplace's merchant id at the carrier;
- * `serviceAreas` the ServiceArea codes (config/service-areas) it serves: a seller order goes to
+ * only for a loopback host); `serviceAreas` the ServiceArea codes (config/service-areas) it serves: a seller order goes to
  * the carrier only when both its pickup and its drop-off fall in one of them. `parcel` and `mode`
  * describe every booking until offers carry their own sizes and cold-chain needs. `timeoutMs`,
  * `maxAttempts`, `backoffMs` and `circuitBreaker` shape the HTTP client. The API key and the
@@ -1236,7 +1235,6 @@ const shippingSchema = z.strictObject({
           'must be 1 to 60 letters, digits or spaces',
         ),
       baseUrl: pageUrl,
-      merchantId: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/),
       serviceAreas: z
         .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
         .min(1)
@@ -1255,7 +1253,19 @@ const shippingSchema = z.strictObject({
         failureThreshold: z.number().int().min(1).max(50),
         cooldownSeconds: z.number().int().min(1).max(600),
       }),
+      /**
+       * The range a live quote must fall in, in minor units of the Market's currency, to be
+       * charged at checkout (Hassan, SHP-02/03): outside it the seller's flat fee is charged.
+       */
+      quoteBounds: z.strictObject({
+        minMinor: z.number().int().min(1).max(1_000_000_000),
+        maxMinor: z.number().int().min(1).max(1_000_000_000),
+      }),
     })
+    .refine(
+      (carrier) => carrier.quoteBounds.minMinor <= carrier.quoteBounds.maxMinor,
+      'quoteBounds.minMinor must not exceed maxMinor',
+    )
     .refine(
       (carrier) => carrierCallBudgetMs(carrier) <= MAX_CARRIER_CALL_MS,
       `timeoutMs × maxAttempts plus the backoffs must fit in ${MAX_CARRIER_CALL_MS} ms`,

@@ -5,24 +5,24 @@
 /// One row per sellable (published and listed) Offer of a Market: what a storefront result
 /// shows. A projection of catalog's state, rebuilt from it at any time; never a source of truth.
 model SearchOfferDocument {
-  marketId         String                    @map("market_id") @db.VarChar(8)
-  tenantId         String                    @map("tenant_id")
-  offerId          String                    @map("offer_id") @db.Uuid
-  productId        String                    @map("product_id") @db.Uuid
-  sellerId         String                    @map("seller_id") @db.Uuid
+  marketId         String                   @map("market_id") @db.VarChar(8)
+  tenantId         String                   @map("tenant_id")
+  offerId          String                   @map("offer_id") @db.Uuid
+  productId        String                   @map("product_id") @db.Uuid
+  sellerId         String                   @map("seller_id") @db.Uuid
   /// The locale of name and shortText: the Market's default locale at indexing time.
   locale           String
   name             String
-  shortText        String?                   @map("short_text")
+  shortText        String?                  @map("short_text")
   /// The platform categories of the published revision (ids only).
-  categoryIds      String[]                  @map("category_ids") @db.Uuid
+  categoryIds      String[]                 @map("category_ids") @db.Uuid
   /// The PostgreSQL text search configuration the vector was built with (Market config).
-  textSearchConfig String                    @map("text_search_config")
+  textSearchConfig String                   @map("text_search_config")
   /// Set by the trigger offer_documents_set_vector from name (weight A) and shortText (B); the
   /// CHECK offer_documents_search_vector_check keeps it from being empty.
-  searchVector     Unsupported("tsvector")?  @map("search_vector")
+  searchVector     Unsupported("tsvector")? @map("search_vector")
   /// The last write of this row; a rebuild deletes the rows it did not touch.
-  indexedAt        DateTime                  @map("indexed_at") @db.Timestamptz(6)
+  indexedAt        DateTime                 @map("indexed_at") @db.Timestamptz(6)
 
   @@id([marketId, offerId])
   @@index([marketId, productId])

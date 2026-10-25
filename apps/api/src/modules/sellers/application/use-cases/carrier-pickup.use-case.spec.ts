@@ -102,6 +102,7 @@ describe.each(['AU', 'ZZ'] as const)('carrierPickup in Market %s', (code) => {
         },
         contentHash: sealed.value.contentHash,
         register: { outcome: 'not-performed', mismatches: [], checkedAt: null },
+        operatingPostcode: '4109',
         now: START,
       }),
       status,

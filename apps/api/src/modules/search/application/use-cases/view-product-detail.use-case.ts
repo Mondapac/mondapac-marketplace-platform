@@ -5,12 +5,14 @@ import type { SearchValidationFailed } from '../../domain/search-query';
 import type { ProductDetailDependencies } from '../product-detail-dependencies';
 import type { ImageRef } from '../../domain/image-ref';
 import { imageRefsOf } from '../product-images';
-import { detailKeyOf, type DetailKey } from '../ports/product-detail-sources';
+import { detailKeyOf, type DetailBadge, type DetailKey } from '../ports/product-detail-sources';
 
 /** How many Offers of one product a page reads: a product with more is shown its first 20 by id. */
 export const MAX_DETAIL_OFFERS = 20;
 /** The most (Offer, Variant) keys asked of pricing and inventory: both refuse more than 200. */
 export const MAX_DETAIL_KEYS = 200;
+/** How long the page waits for the badge source: past it the page answers with no badge. */
+export const BADGES_DEADLINE_MS = 1500;
 
 export interface ProductDetailRequest {
   readonly productId: string;
@@ -29,11 +31,16 @@ export interface ProductDetailUnit {
   };
 }
 
+/** A certification badge of an Offer (catalog's live answer, copied); display only. */
+export type ProductDetailBadge = DetailBadge;
+
 export interface ProductDetailOffer {
   readonly offerId: Id<'Offer'>;
   readonly sellerId: Id<'Seller'>;
   readonly seller: { readonly storeName: string | null; readonly minimumOrder?: Money | null };
   readonly units: readonly ProductDetailUnit[];
+  /** Certification badges asked live in this request; empty when none or when they cannot be had. */
+  readonly badges: readonly ProductDetailBadge[];
 }
 
 export interface ProductDetail {
@@ -82,6 +89,8 @@ const UNAVAILABLE = { code: 'search.unavailable' } as const;
  * `search.product-not-found`; a source or check that cannot be made is `search.unavailable`.
  * The product's public photos (catalog's published revision only, taken down ones skipped, at
  * most 8) come with the answer; a photo source that cannot answer gives none, never an error.
+ * Each Offer carries the certification badges catalog answers live for it (`offerBadges`); a badge
+ * source that cannot answer leaves `badges` empty on every Offer and never fails the page.
  * Prices are always Money (amount and currency); never Cost.
  */
 export class ViewProductDetail extends UseCase<
@@ -147,11 +156,15 @@ export class ViewProductDetail extends UseCase<
     }
     const keys = [...keysOf.values()].flat();
     const offers = candidates.filter((hit) => keysOf.has(hit.offerId));
-    const [prices, availability, sellers, imageRefs] = await Promise.all([
+    const [prices, availability, sellers, imageRefs, badges] = await Promise.all([
       this.deps.sources.prices(context, keys),
       this.deps.sources.availability(context, keys),
       this.deps.sources.sellers(context, [...new Set(offers.map((hit) => hit.sellerId))]),
       imageRefsOf(this.deps.images, context, [{ productId, name: product.name }]),
+      this.badgesOf(
+        context,
+        offers.map((hit) => hit.offerId),
+      ),
     ]);
     if (prices === null || availability === null || sellers === null) return err(UNAVAILABLE);
 
@@ -180,6 +193,7 @@ export class ViewProductDetail extends UseCase<
           sellerId: hit.sellerId,
           seller: seller ?? { storeName: null },
           units,
+          badges: badges.get(hit.offerId) ?? [],
         },
       ];
     });
@@ -194,5 +208,26 @@ export class ViewProductDetail extends UseCase<
       images: imageRefs.get(productId) ?? [],
       offers: [first, ...rest],
     });
+  }
+
+  /**
+   * The badges per Offer. Badges fail closed and the page does not: a source that cannot answer,
+   * throws, or is slower than {@link BADGES_DEADLINE_MS} gives no badge for any Offer.
+   */
+  private async badgesOf(
+    context: CallContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<ReadonlyMap<Id<'Offer'>, readonly ProductDetailBadge[]>> {
+    let timer: NodeJS.Timeout | undefined;
+    const none = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), BADGES_DEADLINE_MS);
+    });
+    try {
+      return (await Promise.race([this.deps.sources.badges(context, offerIds), none])) ?? new Map();
+    } catch {
+      return new Map();
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

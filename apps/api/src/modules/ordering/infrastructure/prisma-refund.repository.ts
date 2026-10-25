@@ -114,12 +114,16 @@ export class PrismaRefundRepository implements RefundRepository {
     });
     if (row === null) return null;
     const refundedUnits = new Map<Id<'OrderLine'>, number>();
+    const succeededUnits = new Map<Id<'OrderLine'>, number>();
     let refundedShipping = 0n;
     for (const refund of row.refunds) {
       refundedShipping += refund.shippingGrossAmount;
       for (const line of refund.lines) {
         const id = line.orderLineId as Id<'OrderLine'>;
         refundedUnits.set(id, (refundedUnits.get(id) ?? 0) + line.quantity);
+        if (refund.state === 'succeeded') {
+          succeededUnits.set(id, (succeededUnits.get(id) ?? 0) + line.quantity);
+        }
       }
     }
     return {
@@ -148,6 +152,7 @@ export class PrismaRefundRepository implements RefundRepository {
           taxAmount: l.taxAmount,
         })),
       refundedUnits,
+      succeededUnits,
       refundedShipping,
     };
   }

@@ -1,10 +1,11 @@
 import 'server-only';
 import { headers } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
-import { apiGet, type ApiRead } from './api.ts';
+import { apiGet, apiGetBytes, type ApiRead } from './api.ts';
 import { sessionGet } from './session.ts';
 import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
 import {
+  flatFeeOf,
   publicStoreOf,
   publicStorePageOf,
   sellerResultsOf,
@@ -18,7 +19,7 @@ import { loadSlides as readSlides, type SlideScope } from './slides-source.ts';
 import { loadShellContent } from './shell-source.ts';
 import { storeProductsOf, storeProductsPath } from './store-products.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
-import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
+import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT, sampleQuotes } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
@@ -35,7 +36,10 @@ import type {
   ClosedStore,
   DeliveryAreaAnswer,
   DeliveryLocatorSource,
+  DeliveryQuote,
+  Money,
   ProductDetail,
+  QuoteAddress,
   SellerQuery,
   SellerResults,
   SellerShop,
@@ -160,6 +164,18 @@ export async function checkDeliveryArea(postcode: string): Promise<DeliveryAreaA
 }
 
 /**
+ * Each seller's delivery quote for an address (Scheduled is the seller's flat fee; Express is the
+ * courier's live price). SAMPLE: no courier is connected yet (delivery plan: Uber Direct, Zoom2u
+ * as the fallback), so every seller gets its sample price; the address is not used until then.
+ */
+export async function quoteDelivery(
+  _address: QuoteAddress,
+  sellerIds: readonly string[],
+): Promise<Readonly<Record<string, DeliveryQuote>>> {
+  return Promise.resolve(sampleQuotes(sellerIds));
+}
+
+/**
  * The Deliver to modal's service area and, until the map and address-lookup provider is chosen,
  * the sample places of its stubbed lookup (handoffs/deliver-to-modal.md).
  */
@@ -193,7 +209,10 @@ const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 export async function loadSeller(slug: string, page = 1): Promise<SellerShop | undefined> {
   // No sample or real store has any other slug; nothing else reaches the API path.
   if (slug.length > 50 || !STORE_SLUG.test(slug)) return undefined;
-  const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`);
+  const [answer, fee] = await Promise.all([
+    apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`),
+    apiGet<unknown>(`shipping/stores/${encodeURIComponent(slug)}/flat-fee`),
+  ]);
   if (answer.kind === 'off') return sampleSeller(slug);
   if (answer.kind === 'failed') {
     // Only the store module's own answer means "no such store"; a bare 404 is a missing route.
@@ -205,7 +224,27 @@ export async function loadSeller(slug: string, page = 1): Promise<SellerShop | u
     areaNames(),
     loadStoreProducts(store.slug, page),
   ]);
-  return { ...shopOf(store, areaName(store.serviceAreaCode)), storeProducts };
+  return {
+    ...shopOf(store, areaName(store.serviceAreaCode)),
+    storeProducts,
+    ...deliveryFeeOf(slug, fee),
+  };
+}
+
+/**
+ * The store's flat delivery fee as a part of the page, or nothing. The page never fails for it: a
+ * store with no fee set (the module's own 404), a failed read and an answer of the wrong shape all
+ * leave the fee line out, so no fee is ever guessed. Only a shape fault is logged here (the read
+ * itself logs its own refusal).
+ */
+function deliveryFeeOf(slug: string, read: ApiRead<unknown>): { readonly deliveryFee?: Money } {
+  if (read.kind !== 'ok') return {};
+  try {
+    return { deliveryFee: flatFeeOf(read.body) };
+  } catch {
+    console.log(JSON.stringify({ msg: 'storefront.seller-flat-fee-unusable', slug }));
+    return {};
+  }
 }
 
 /** One page of a store's products; any failure is `failed`, never an exception. */
@@ -383,6 +422,45 @@ export async function loadClosedStore(slug: string): Promise<ClosedStore | undef
  */
 export async function loadAssistant(): Promise<AssistantSetup | null> {
   return Promise.resolve(null);
+}
+
+/** A store picture (logo or banner) as the buyer site's image route serves it. */
+export type StoreImageRead =
+  /** No store or no such image, or API_BASE_URL is empty (the sample stores have no picture). */
+  | { readonly kind: 'none' }
+  | { readonly kind: 'ok'; readonly bytes: Uint8Array }
+  | { readonly kind: 'unavailable' };
+
+const IMAGE_ID_PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * One size of a store's logo or banner, from `sellers/stores/:slug/images/:id/:size`. Only the
+ * API's own "image not found" answer means there is no such picture; any other fault is
+ * `unavailable`, so a cache never keeps a missing picture for an outage. Anything that is not a
+ * JPEG is refused: the route serves only what the API wrote.
+ */
+export async function loadStoreImage(
+  slug: string,
+  imageId: string,
+  size: string,
+): Promise<StoreImageRead> {
+  if (slug.length > 50 || !STORE_SLUG.test(slug)) return { kind: 'none' };
+  if (!IMAGE_ID_PATH.test(imageId) || (size !== 'small' && size !== 'large')) {
+    return { kind: 'none' };
+  }
+  const answer = await apiGetBytes(
+    `sellers/stores/${encodeURIComponent(slug)}/images/${imageId}/${size}`,
+  );
+  if (answer.kind === 'off') return { kind: 'none' };
+  if (answer.kind === 'failed') {
+    return answer.status === 404 && answer.code === 'image.not-found'
+      ? { kind: 'none' }
+      : { kind: 'unavailable' };
+  }
+  const type = answer.body.contentType.split(';', 1)[0]?.trim().toLowerCase();
+  return type === 'image/jpeg' && answer.body.bytes.length > 0
+    ? { kind: 'ok', bytes: answer.body.bytes }
+    : { kind: 'unavailable' };
 }
 
 /** Who is shopping, as the API sees this browser's cookies (storefront session design 2). */

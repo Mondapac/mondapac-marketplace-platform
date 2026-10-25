@@ -1,0 +1,14 @@
+ALTER TABLE "sellers"."store_profiles"
+  DROP CONSTRAINT "store_profiles_delivery_set_changed_check",
+  DROP CONSTRAINT "store_profiles_delivery_changed_check",
+  DROP CONSTRAINT "store_profiles_delivery_cutoff_check",
+  DROP CONSTRAINT "store_profiles_delivery_window_check",
+  DROP CONSTRAINT "store_profiles_delivery_day_check",
+  DROP CONSTRAINT "store_profiles_delivery_set_check";
+ALTER TABLE "sellers"."store_profiles"
+  DROP COLUMN "delivery_changed_by_account_id",
+  DROP COLUMN "delivery_changed_at",
+  DROP COLUMN "order_cutoff_minute",
+  DROP COLUMN "delivery_to_minute",
+  DROP COLUMN "delivery_from_minute",
+  DROP COLUMN "delivery_day";

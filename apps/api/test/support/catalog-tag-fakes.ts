@@ -1,6 +1,7 @@
 import { Temporal, err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, PendingEvent, Result } from '@mondapac/shared-kernel';
 import type {
+  CertificationTypeName,
   ClaimCheckUnavailable,
   ClaimEvaluator,
 } from '../../src/modules/catalog/application/ports/claim-evaluator';
@@ -82,6 +83,8 @@ export function refusedDecision(query: TagClaimQuery, reason: string): TagDecisi
 /** An evaluator that answers each query with `decide`, or is unavailable; records each call. */
 export class FakeClaimEvaluator implements ClaimEvaluator {
   readonly calls: TagClaimQuery[][] = [];
+  /** The context of each `evaluate` call, as received. */
+  readonly contexts: CallContext[] = [];
   unavailable = false;
   activeUnavailable = false;
 
@@ -91,9 +94,10 @@ export class FakeClaimEvaluator implements ClaimEvaluator {
   ) {}
 
   evaluate(
-    _context: CallContext,
+    context: CallContext,
     queries: readonly TagClaimQuery[],
   ): Promise<Result<readonly TagDecision[], ClaimCheckUnavailable>> {
+    this.contexts.push(context);
     this.calls.push([...queries]);
     if (this.unavailable) return Promise.resolve(err({ code: 'claim.check-unavailable' }));
     return Promise.resolve(ok(queries.map((query) => this.decide(query))));
@@ -107,6 +111,22 @@ export class FakeClaimEvaluator implements ClaimEvaluator {
   /** Type ids to codes for `typeCodeOf` (slice 14); `typesUnavailable` makes it unavailable. */
   readonly typeCodes = new Map<string, string>();
   typesUnavailable = false;
+
+  /** Type names for `typeNames` by code; `namesUnavailable` makes it unavailable. */
+  readonly names = new Map<string, CertificationTypeName>();
+  namesUnavailable = false;
+  readonly nameLocales: string[] = [];
+  readonly nameContexts: CallContext[] = [];
+
+  typeNames(
+    context: CallContext,
+    locale: string,
+  ): Promise<Result<ReadonlyMap<string, CertificationTypeName>, ClaimCheckUnavailable>> {
+    this.nameContexts.push(context);
+    this.nameLocales.push(locale);
+    if (this.namesUnavailable) return Promise.resolve(err({ code: 'claim.check-unavailable' }));
+    return Promise.resolve(ok(new Map(this.names)));
+  }
 
   typeCodeOf(
     _context: CallContext,

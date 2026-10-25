@@ -1,6 +1,6 @@
 SET lock_timeout = '5s';
 
--- Reverses 20261024213000_storefront_slides: the grants first, then the tables. Every slide, version
+-- Reverses 20261025060000_storefront_slides: the grants first, then the tables. Every slide, version
 -- and placement is lost with it. The schema "storefront" stays (the pages tables use it).
 REVOKE SELECT, INSERT, UPDATE ("touched_at") ON TABLE "storefront"."slide_position_locks" FROM "mondapac_app";
 REVOKE SELECT, INSERT, DELETE ON TABLE "storefront"."slide_placements" FROM "mondapac_app";

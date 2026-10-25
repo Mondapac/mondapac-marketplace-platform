@@ -32,5 +32,24 @@ export const OrderShipped = defineEvent({
   },
 });
 
+/**
+ * Stripe confirmed a refund of one seller order (tax step 3), once per refund, in the unit that
+ * marks it succeeded. Ids only: no amount, reason or line reaches the event. Ordering's own
+ * subscriber cancels the real-time carrier delivery of a seller order refunded in full (SHP-03).
+ */
+export const RefundSucceeded = defineEvent({
+  type: 'ordering.refund-succeeded.v1',
+  aggregateType: 'refund',
+  payload: {
+    orderId: eventField.id(),
+    sellerOrderId: eventField.id(),
+    refundId: eventField.id(),
+  },
+});
+
 /** Every event type ordering publishes, registered with the event catalogue at boot. */
-export const ORDERING_EVENTS: readonly EventDefinition[] = [OrderPaid, OrderShipped];
+export const ORDERING_EVENTS: readonly EventDefinition[] = [
+  OrderPaid,
+  OrderShipped,
+  RefundSucceeded,
+];

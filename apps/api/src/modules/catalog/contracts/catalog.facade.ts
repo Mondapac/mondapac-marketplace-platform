@@ -111,6 +111,34 @@ export interface OfferListing {
 /** The answer of `offerListings`, keyed by {@link sellUnitKey}. */
 export type OfferListingsMap = ReadonlyMap<string, OfferListing>;
 
+/** At most this many distinct Offers per `offerBadges` call; above it the call is refused whole. */
+export const MAX_BADGE_OFFERS = 20;
+
+/**
+ * One certification badge a buyer may see on an Offer (`offerBadges`). An allow-listed copy of
+ * certification's live decision (field by field), never the decision itself: no certificate,
+ * version or revision id, no certificate number, holder, document, file link, reviewer, scope
+ * text or policy id. `typeName` is the type's name in the Market's default locale. The text
+ * fields come from certification's registries: escape them.
+ */
+export interface OfferBadge {
+  readonly typeCode: string;
+  readonly typeName: string;
+  readonly basis: 'SELLER' | 'MANUFACTURER';
+  /** True when the claim is the seller's own declaration (not a third party's certificate). */
+  readonly sellerClaim: boolean;
+  readonly issuerName: string | null;
+  /** An ISO calendar date (`YYYY-MM-DD`) in the certificate's zone, or null. */
+  readonly validUntilLocalDate: string | null;
+  readonly verifiedWithIssuer: boolean;
+}
+
+/**
+ * The answer of `offerBadges`: per Offer that carries at least one badge, its badges in type-code
+ * order. An Offer with no badge, an unknown Offer, another Market's and a failure are all absent.
+ */
+export type OfferBadgesMap = ReadonlyMap<Id<'Offer'>, readonly OfferBadge[]>;
+
 /** One Variant of a published product, as a buyer sees it. */
 export interface PublishedProductVariant {
   readonly variantId: Id<'Variant'>;
@@ -243,6 +271,19 @@ export interface CatalogFacade {
   ): Promise<
     Result<OfferListingsMap, AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge>
   >;
+
+  /**
+   * The certification badges of each requested Offer (at most {@link MAX_BADGE_OFFERS} distinct
+   * ids, else `validation.failed`). Rule `anonymous`. Built only from certification's
+   * `evaluateClaims` answer asked live in this call, for the Offers that are published and on
+   * sale and only for their stored `active` tags (a stored copy can only restrict, ADR-0028 d3).
+   * Fail closed: any failure to ask or read answers an empty map, never a badge from stored data.
+   * See {@link OfferBadge}. In-process only; not exposed over HTTP.
+   */
+  offerBadges(
+    context: CallContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<Result<OfferBadgesMap, AccessDenied | CatalogValidationFailed>>;
 
   /**
    * The published content of one product, for the buyer's product page. Rule `anonymous`: only

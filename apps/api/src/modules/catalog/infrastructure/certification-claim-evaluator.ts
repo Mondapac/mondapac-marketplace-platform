@@ -7,7 +7,11 @@ import type {
   ClaimDecision,
   ClaimQuery,
 } from '../../certification';
-import type { ClaimCheckUnavailable, ClaimEvaluator } from '../application/ports/claim-evaluator';
+import type {
+  CertificationTypeName,
+  ClaimCheckUnavailable,
+  ClaimEvaluator,
+} from '../application/ports/claim-evaluator';
 import {
   isTagTypeCode,
   type TagBadge,
@@ -101,6 +105,48 @@ export class CertificationClaimEvaluator implements ClaimEvaluator {
         if (id === typeId) found = code;
       }
       return ok(found);
+    } catch (error) {
+      this.#warn(context, 'catalog.claims.types-failed', error);
+      return UNAVAILABLE;
+    }
+  }
+
+  async typeNames(
+    context: CallContext,
+    locale: string,
+  ): Promise<Result<ReadonlyMap<string, CertificationTypeName>, ClaimCheckUnavailable>> {
+    try {
+      const answer = await this.certification.certificationTypes(context, { status: 'active' });
+      if (!answer.ok) {
+        this.#warn(context, 'catalog.claims.types-refused', answer.error.code);
+        return UNAVAILABLE;
+      }
+      const names = new Map<string, CertificationTypeName>();
+      for (const type of answer.value as readonly unknown[]) {
+        const { code, status, publishedRevisionId, locales } = (type ?? {}) as {
+          code?: unknown;
+          status?: unknown;
+          publishedRevisionId?: unknown;
+          locales?: unknown;
+        };
+        const revisionId = idOf(publishedRevisionId);
+        if (
+          !isTagTypeCode(code) ||
+          status !== 'active' ||
+          revisionId === null ||
+          typeof locales !== 'object' ||
+          locales === null
+        ) {
+          this.#warn(context, 'catalog.claims.types-malformed', 'shape');
+          return UNAVAILABLE;
+        }
+        // Own property only, and a plain non-empty text: anything else is no name (fail closed).
+        if (!Object.hasOwn(locales, locale)) continue;
+        const name = (locales as Record<string, { name?: unknown } | null>)[locale]?.name;
+        if (typeof name !== 'string' || name.trim().length === 0 || name.length > 200) continue;
+        names.set(code, { typeRevisionId: revisionId, name });
+      }
+      return ok(names);
     } catch (error) {
       this.#warn(context, 'catalog.claims.types-failed', error);
       return UNAVAILABLE;

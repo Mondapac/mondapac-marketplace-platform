@@ -15,7 +15,9 @@ export {
   type CarrierDeliveryRequest,
   type CarrierDeliveryFailure,
   type CarrierShipment,
+  type CheckoutShippingFees,
   type FlatFeeMap,
+  type QuoteDropoff,
   type ShippingFacade,
   type ShippingFailure,
 } from './shipping.facade';

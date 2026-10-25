@@ -89,6 +89,7 @@ function submitted(
     },
     contentHash: `hmac-sha256:${'a'.repeat(64)}` as never,
     register: { outcome: 'not-performed', mismatches: [], checkedAt: null },
+    operatingPostcode: '4109',
     now: START,
   });
   const revision = {
