@@ -89,8 +89,16 @@ const UNAVAILABLE: CarrierFailure = Object.freeze({ code: 'carrier.unavailable' 
 const REFUSED: CarrierFailure = Object.freeze({ code: 'carrier.refused' as const });
 const UNAUTHORIZED: CarrierFailure = Object.freeze({ code: 'carrier.unauthorized' as const });
 
+const NOT_SENT: CarrierFailure = Object.freeze({ code: 'carrier.not-sent' as const });
+
 const failureOf = (error: AusPostCallFailure): CarrierFailure =>
-  error === 'refused' ? REFUSED : error === 'unauthorized' ? UNAUTHORIZED : UNAVAILABLE;
+  error === 'refused'
+    ? REFUSED
+    : error === 'unauthorized'
+      ? UNAUTHORIZED
+      : error === 'not-sent'
+        ? NOT_SENT
+        : UNAVAILABLE;
 
 /** The API's field bounds: a name, an address line. */
 const MAX_NAME = 40;
@@ -196,10 +204,10 @@ const quoteAddressOf = (stop: CarrierQuoteStop) => ({ ...placeOf(stop), postcode
  * `DELETE shipments/{id}` (before a label or order exists) and reads a status with
  * `GET track?tracking_ids=`. Only the `scheduled` mode is served, and it has no buyer window:
  * delivery takes days, so a window on a booking is ignored (the capabilities say
- * `supportsWindow: false`, so the router never offers a windowed order to this fleet). A trip
- * that is `on_demand`, a parcel that is not ambient, or one beyond the fleet's limits is refused
+ * `supportsWindow: false`, so the router never offers a windowed order to this fleet). A request
+ * whose `method` is not `scheduled`, a parcel that is not ambient, or one beyond the fleet's limits is refused
  * without a call. The credentials come from the Region Stack's secrets and the switch from the
- * Market's `shipping.auspost`; with either missing every call answers `carrier.not-configured`
+ * Market's `shipping.auspost`; an open circuit answers `carrier.not-sent` (nothing left); with either missing every call answers `carrier.not-configured`
  * and sends nothing, and `capabilities` is null (the router never offers it a trip).
  */
 export class AusPostCarrier implements CarrierGateway {
@@ -224,7 +232,7 @@ export class AusPostCarrier implements CarrierGateway {
     const target = this.target(market);
     if (target === null) return err(NOT_CONFIGURED);
     // `request.window` is deliberately not read: a scheduled parcel has no buyer window here.
-    if (!this.accepts(target.config, request.mode, request.parcel, target.currency)) {
+    if (!this.accepts(target.config, request.method, request.parcel, target.currency)) {
       return err(REFUSED);
     }
     const answer = await this.http.post(
@@ -278,7 +286,7 @@ export class AusPostCarrier implements CarrierGateway {
   ): Promise<Result<CarrierQuote, CarrierFailure>> {
     const target = this.target(market);
     if (target === null) return err(NOT_CONFIGURED);
-    if (!this.accepts(target.config, request.mode, request.parcel, target.currency)) {
+    if (!this.accepts(target.config, request.method, request.parcel, target.currency)) {
       return err(REFUSED);
     }
     const productId = target.config.productId;
@@ -351,20 +359,20 @@ export class AusPostCarrier implements CarrierGateway {
   }
 
   /**
-   * Whether the fleet takes this mode and parcel: scheduled only (Australia Post delivers in
-   * days, never on demand), ambient only, and the Market's limits. The same rule as the
+   * Whether the fleet takes this method and parcel: `scheduled` only (Australia Post delivers in
+   * days, never instant or same day), ambient only, and the Market's limits. The same rule as the
    * capabilities, and a window is neither required nor looked at.
    */
   private accepts(
     config: AusPostConfig,
-    mode: 'on_demand' | 'scheduled',
+    method: CarrierBookingRequest['method'],
     parcel: CarrierParcel,
     currency: string,
   ): boolean {
     const { limits } = config;
     return (
-      mode === 'scheduled' &&
-      config.modes.includes(mode) &&
+      method === 'scheduled' &&
+      config.modes.includes('scheduled') &&
       parcel.temperature === 'ambient' &&
       parcel.weightGrams <= limits.maxItemWeightGrams &&
       parcel.itemCount <= limits.maxItems &&

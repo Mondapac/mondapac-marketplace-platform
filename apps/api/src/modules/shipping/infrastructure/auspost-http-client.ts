@@ -43,7 +43,8 @@ export interface AusPostEndpoint {
 }
 
 /** `unauthorized`: Australia Post rejected the credentials (401, 403); nothing was created. */
-export type AusPostCallFailure = 'unavailable' | 'refused' | 'unauthorized';
+/** `not-sent`: the circuit is open, so nothing left; `unavailable`: the request may have left. */
+export type AusPostCallFailure = 'unavailable' | 'refused' | 'unauthorized' | 'not-sent';
 export type AusPostCallKind = 'quote' | 'book' | 'cancel' | 'status';
 export type AusPostAnswer = Result<
   { readonly status: number; readonly body: unknown },
@@ -97,7 +98,7 @@ export class AusPostHttpClient {
     call: AusPostCallKind,
   ): Promise<AusPostAnswer> {
     const key = `${endpoint.marketId}|${call}`;
-    if (!this.breaker.allow(key)) return err('unavailable');
+    if (!this.breaker.allow(key)) return err('not-sent');
     const url = `${endpoint.apiUrl.replace(/\/+$/, '')}${AUSPOST_API_PREFIX}/${path}`;
     const maxAttempts = call === 'book' ? 1 : endpoint.maxAttempts;
     for (let attempt = 1; ; attempt += 1) {

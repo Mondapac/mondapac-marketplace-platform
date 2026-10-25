@@ -209,6 +209,7 @@ describe.each([['AU'], ['ZZ']] as const)('AusPostCarrier in market %s', (code) =
       itemCount: 2,
       declaredValue: { amount: 12_000n, currency: real.defaultCurrency },
     },
+    method: 'scheduled',
     mode: 'scheduled',
     window: null,
   };
@@ -216,6 +217,7 @@ describe.each([['AU'], ['ZZ']] as const)('AusPostCarrier in market %s', (code) =
     pickup: { postcode: request.pickup.postcode, locality: null, region: null },
     dropoff: { postcode: request.dropoff.postcode, locality: null, region: null },
     parcel: request.parcel,
+    method: 'scheduled',
     mode: 'scheduled',
   };
   const other: CarrierQuoteRequest = {
@@ -225,6 +227,7 @@ describe.each([['AU'], ['ZZ']] as const)('AusPostCarrier in market %s', (code) =
   const window = { start: T0.add({ hours: 48 }), end: T0.add({ hours: 72 }) };
   const unauthorized = { ok: false, error: { code: 'carrier.unauthorized' } };
   const unavailable = { ok: false, error: { code: 'carrier.unavailable' } };
+  const notSent = { ok: false, error: { code: 'carrier.not-sent' } };
   const refused = { ok: false, error: { code: 'carrier.refused' } };
   // Prices are decimals in the Market's currency: 12.50 AUD is 1250 minor units, 12.5 JPY is not
   // a price at all (JPY has no minor unit), so the fake quotes a whole amount there.
@@ -435,7 +438,8 @@ describe.each([['AU'], ['ZZ']] as const)('AusPostCarrier in market %s', (code) =
       parcel: { ...request.parcel, ...parcel },
     });
     const cases: CarrierBookingRequest[] = [
-      { ...request, mode: 'on_demand' },
+      { ...request, method: 'instant', mode: 'on_demand' },
+      { ...request, method: 'same_day', mode: 'on_demand' },
       over({ temperature: 'chilled' }),
       over({ temperature: 'frozen' }),
       over({ weightGrams: limits.maxItemWeightGrams + 1 }),
@@ -457,6 +461,7 @@ describe.each([['AU'], ['ZZ']] as const)('AusPostCarrier in market %s', (code) =
           pickup: quote.pickup,
           dropoff: quote.dropoff,
           parcel: refusedRequest.parcel,
+          method: refusedRequest.method,
           mode: refusedRequest.mode,
         }),
       ).toEqual(refused);
@@ -692,7 +697,7 @@ describe.each([['AU'], ['ZZ']] as const)('AusPostCarrier in market %s', (code) =
       expect((await carrier.book(market, request)).ok).toBe(false);
     }
     expect(post.seen).toHaveLength(failureThreshold);
-    expect(await carrier.book(market, request)).toEqual(unavailable);
+    expect(await carrier.book(market, request)).toEqual(notSent);
     expect(post.seen).toHaveLength(failureThreshold);
     // Quotes have their own circuit.
     expect((await carrier.quote(market, other)).ok).toBe(true);
@@ -765,7 +770,7 @@ describe.each([['AU'], ['ZZ']] as const)('AusPostCarrier in market %s', (code) =
 
   it('keeps capabilities and what it accepts in agreement', async () => {
     const caps = carrier.capabilities(market)!;
-    const instant = await carrier.quote(market, { ...quote, mode: 'on_demand' });
+    const instant = await carrier.quote(market, { ...quote, method: 'instant', mode: 'on_demand' });
     expect(caps.methods.includes('instant') || caps.methods.includes('same_day')).toBe(false);
     expect(instant).toEqual(refused);
     // A scheduled order with no window (what the capabilities admit) is accepted ...
@@ -783,7 +788,7 @@ describe.each([['AU'], ['ZZ']] as const)('AusPostCarrier in market %s', (code) =
         post.script.push({ status: 401, body: { echo: API_KEY } });
         return carrier.book(market, request);
       })(),
-      await carrier.quote(market, { ...quote, mode: 'on_demand' }),
+      await carrier.quote(market, { ...quote, method: 'instant', mode: 'on_demand' }),
       await (async () => {
         post.script.push({ status: 500 });
         return carrier.book(market, request);
