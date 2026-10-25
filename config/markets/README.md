@@ -326,3 +326,19 @@ seller ships as in SHP-01.
 - `quoteBounds.minMinor` and `quoteBounds.maxMinor` (required): the range, in minor units of the
   Market's currency, a live quote must fall in to be charged at checkout; outside it the seller's
   flat fee is charged (AU 500 to 10000, that is 5 to 100 AUD).
+
+### `shipping.uberDirect` (optional, Phase 6 package 5b)
+
+The external fleet Uber Direct. Off unless `enabled` is `true` AND the Region Stack holds all three
+credentials for the Market (`UBER_DIRECT_CUSTOMER_ID`, `UBER_DIRECT_CLIENT_ID`,
+`UBER_DIRECT_CLIENT_SECRET`); the adapter then answers `carrier.not-configured` and sends nothing.
+Its API hosts are fixed in the adapter. The country sent to Uber is `customers.address.countryCode`.
+
+- `enabled` (required): the Market switch; ship `false`.
+- `serviceAreas` (required) and `modes` (required, `on_demand` and/or `scheduled`):
+  what the fleet serves. `scheduledLeadMinutes` (required, 15 to 1440): how far ahead a scheduled
+  pickup is asked for.
+- `limits` (required): `maxItemWeightGrams`, `maxItems` and `maxOrderValueMinor` (minor units of
+  the Market's default currency; AU 20000 g, 8 items, 50000 = A$500).
+- `prohibitedClasses` (required, may be empty): kinds of goods the fleet refuses, as lower-case slugs.
+- `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
