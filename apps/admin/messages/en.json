@@ -1170,21 +1170,25 @@
       "edit": "Edit",
       "edit-named": "Edit {name}",
       "used": "Active for: {methods}",
-      "unused": "Not active for any method"
+      "unused": "Not active for any method",
+      "active-note": "This model is active for {methods}. Saving applies it to every new order of that method."
     },
     "model": {
       "name": "Name",
       "name-help": "Up to 60 characters. Each name is used once.",
       "kind": "Kind",
       "save": "Save model",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "option": "{name} ({kind})"
     },
     "weight": {
       "title": "Weights",
       "help": "Whole numbers from 0 to 100. They do not need to add up to 100, but they cannot all be 0.",
       "price": "Price",
       "eta": "Arrival time",
-      "reliability": "Reliability"
+      "reliability": "Reliability",
+      "share": "{value} of {total} ({percent}%)",
+      "total": "Total: {total}"
     },
     "order": {
       "title": "Fleet order",
@@ -1195,7 +1199,11 @@
       "up-short": "Up",
       "down-short": "Down",
       "remove-short": "Remove",
-      "add": "Add {fleet}"
+      "add": "Add {fleet}",
+      "moved": "{fleet} moved to position {position}",
+      "removed": "{fleet} removed from the list",
+      "add-off": "Add {fleet} (off in this Market)",
+      "add-group": "Fleets that can be added"
     },
     "fleets": {
       "title": "Fleets",
@@ -1218,7 +1226,9 @@
       "name": "Enter a name of 1 to 60 characters.",
       "weights": "Enter whole numbers from 0 to 100, not all 0.",
       "order": "Choose at least one fleet.",
-      "score": "Enter a whole number from 0 to 100."
+      "score": "Enter a whole number from 0 to 100.",
+      "weight-range": "Whole number from 0 to 100",
+      "weight-zero": "At least one weight must be above 0"
     },
     "error": {
       "invalid": "That was refused. Check it and try again.",
@@ -1230,6 +1240,15 @@
       "denied": "Your role cannot change delivery fleets.",
       "unavailable": "Delivery fleets are not available right now. Try again shortly.",
       "unknown": "Something went wrong. Try again."
+    },
+    "viewer-only": "You can view but not change delivery fleets.",
+    "confirm": {
+      "title": "Change the active models?",
+      "edit-title": "Save a model that is in use?",
+      "line": "{method}: {from} → {to}. Every new {method} order will use this rule.",
+      "edit-body": "{name} is active for {methods}. Saving applies the new rule to every new order of that method.",
+      "go": "Confirm",
+      "cancel": "Go back"
     }
   },
   "commission": {
