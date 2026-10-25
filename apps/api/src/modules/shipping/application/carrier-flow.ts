@@ -212,6 +212,7 @@ export async function bookCarrierDelivery(
       pickup: pickupStop.stop,
       dropoff: dropoff.stop,
       parcel: parcel.parcel,
+      method: service.service.method,
       mode: carrierModeOf(service.service),
       window: service.service.window,
     },

@@ -54,9 +54,9 @@ const SELLER = id<'Seller'>(0x51);
 const MODEL = id<'FleetSelectionModel'>(0x201);
 
 describe.each([
-  ['AU', 'AUD', '4109', '4000', '2000'],
-  ['ZZ', 'JPY', '1000001', '1000002', '2000500'],
-] as const)('the fleet router in market %s', (code, currency, served, servedToo, unserved) => {
+  ['AU', 'AUD', '4109', '4000'],
+  ['ZZ', 'JPY', '1000001', '1000002'],
+] as const)('the fleet router in market %s', (code, currency, served, servedToo) => {
   const market = testMarketContext(code, 'default');
   const system = testCallContext(market, 'system', 'router-0001-abcd');
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
@@ -149,7 +149,7 @@ describe.each([
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       fees: undefined as never,
-      policy: { currency: () => currency, deliversTo: () => true } as never,
+      policy: { currency: () => currency, deliversTo: () => true },
       sellers: undefined as never,
       stores: undefined as never,
       audit: undefined as never,
@@ -222,6 +222,7 @@ describe.each([
         pickup,
         dropoff: { postcode: served, locality: 'Example Town', region: 'QQ', location: null },
         parcel: { weightGrams: 3000, itemCount: 4, declaredValue: money(7500) },
+        method: 'instant',
         mode: 'on_demand',
         window: null,
       });
@@ -314,7 +315,8 @@ describe.each([
       expect(drive.quoted[0]).toEqual({
         pickup: { postcode: servedToo, locality: 'Shop Town', region: null },
         dropoff: { postcode: served, locality: 'Example Town', region: 'QQ' },
-        parcel: expect.objectContaining({ itemCount: 1 }),
+        parcel: expect.objectContaining({ itemCount: 1 }) as unknown,
+        method: 'instant',
         mode: 'on_demand',
       });
     });
@@ -383,6 +385,20 @@ describe.each([
       drive.declared = capabilities('mondapac_drive', { idempotentBooking: false });
       expect(await book()).toEqual(ok('booked'));
       expect(bookedBy()).toBe('uber_direct');
+      expect(bookings.attempts.size).toBe(0);
+    });
+
+    it('falls back on not-sent even from a fleet that is not idempotent: nothing reached it', async () => {
+      drive.bookFailures = [{ code: 'carrier.not-sent' }];
+      drive.declared = capabilities('mondapac_drive', { idempotentBooking: false });
+      expect(await book()).toEqual(ok('booked'));
+      expect(bookedBy()).toBe('uber_direct');
+      expect(bookings.attempts.size).toBe(0);
+    });
+
+    it('answers no-carrier, not unknown, when every fleet said not-sent', async () => {
+      for (const fleet of [drive, uber, zoom]) fleet.bookFailures = [{ code: 'carrier.not-sent' }];
+      expect(await book()).toEqual(ok('no-carrier'));
       expect(bookings.attempts.size).toBe(0);
     });
 
@@ -479,6 +495,8 @@ describe.each([
       expect(await cancel()).toEqual(err({ code: 'shipping.carrier-unavailable' }));
       drive.cancelAnswer = err({ code: 'carrier.unauthorized' });
       expect(await cancel()).toEqual(err({ code: 'shipping.carrier-unavailable' }));
+      drive.cancelAnswer = err({ code: 'carrier.not-sent' });
+      expect(await cancel()).toEqual(err({ code: 'shipping.carrier-unavailable' }));
     });
   });
 });
@@ -524,7 +542,7 @@ describe.each([['ZZ', 'JPY', '1000001', '1000002']] as const)(
       const deps: ShippingDependencies = {
         unitOfWork: new FakeUnitOfWork(),
         fees: undefined as never,
-        policy: { currency: () => currency, deliversTo: () => true } as never,
+        policy: { currency: () => currency, deliversTo: () => true },
         sellers: undefined as never,
         stores: undefined as never,
         audit: undefined as never,

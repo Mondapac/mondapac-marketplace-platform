@@ -225,6 +225,7 @@ describe.each([
           itemCount: 1,
           declaredValue: { amount: 0n, currency: markets.get(market.marketId).defaultCurrency },
         },
+        method: 'instant',
         mode: 'on_demand',
         window: null,
       });
@@ -266,7 +267,11 @@ describe.each([
 
     it('books a same-day order on demand and a scheduled one for the chosen window', async () => {
       expect(await book({ service: { method: 'same_day', window: null } })).toEqual(ok('booked'));
-      expect(carrier.booked[0]).toMatchObject({ mode: 'on_demand', window: null });
+      expect(carrier.booked[0]).toMatchObject({
+        method: 'same_day',
+        mode: 'on_demand',
+        window: null,
+      });
 
       const start = '2026-10-26T01:00:00Z';
       const end = '2026-10-26T03:00:00Z';
@@ -276,7 +281,7 @@ describe.each([
           service: { method: 'scheduled', window: { start, end } },
         }),
       ).toEqual(ok('booked'));
-      expect(carrier.booked[1]).toMatchObject({ mode: 'scheduled' });
+      expect(carrier.booked[1]).toMatchObject({ method: 'scheduled', mode: 'scheduled' });
       expect(carrier.booked[1]!.window!.start.toString()).toBe('2026-10-26T01:00:00Z');
       expect(carrier.booked[1]!.window!.end.toString()).toBe('2026-10-26T03:00:00Z');
     });
@@ -539,6 +544,10 @@ describe.each([
             itemCount: 1,
             declaredValue: { amount: 0n, currency },
           },
+          method:
+            markets.get(market.marketId).shipping!.realTimeCarrier!.mode === 'scheduled'
+              ? 'scheduled'
+              : 'instant',
           mode: markets.get(market.marketId).shipping!.realTimeCarrier!.mode,
         },
       ]);

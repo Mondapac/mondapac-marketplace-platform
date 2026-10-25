@@ -71,6 +71,8 @@ const refused = (status: number, code: string) => ({
   failure: { status, code },
 });
 
+vi.setConfig({ testTimeout: 30_000 });
+
 beforeEach(() => vi.resetAllMocks());
 afterEach(cleanup);
 

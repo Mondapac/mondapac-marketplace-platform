@@ -1,4 +1,4 @@
-import type { Id, MarketContext, Money, Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Money } from '@mondapac/shared-kernel';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
 import type { CarrierBookingRepository } from '../../src/modules/shipping/application/ports/carrier-booking.repository';
@@ -9,10 +9,7 @@ import type {
   CarrierStop,
 } from '../../src/modules/shipping/application/ports/carrier-gateway';
 import type { FleetRegistry } from '../../src/modules/shipping/application/ports/fleet-registry';
-import type {
-  ActorId,
-  FleetSelectionRepository,
-} from '../../src/modules/shipping/application/ports/fleet-selection.repository';
+import type { FleetSelectionRepository } from '../../src/modules/shipping/application/ports/fleet-selection.repository';
 import type { PickupDirectory } from '../../src/modules/shipping/application/ports/pickup-directory';
 import type { CarrierGateway } from '../../src/modules/shipping/application/ports/carrier-gateway';
 import type { CarrierMethod } from '../../src/modules/shipping/domain/booking-service';
@@ -86,12 +83,7 @@ export class MemoryBookings implements CarrierBookingRepository {
   findAttempt(m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(this.attempts.get(`${m.marketId}|${sellerOrderId}`) ?? null);
   }
-  markAttempt(
-    m: MarketContext,
-    sellerOrderId: Id<'SellerOrder'>,
-    fleet: FleetCode,
-    _at: Temporal.Instant,
-  ) {
+  markAttempt(m: MarketContext, sellerOrderId: Id<'SellerOrder'>, fleet: FleetCode) {
     this.attempts.set(`${m.marketId}|${sellerOrderId}`, fleet);
     return Promise.resolve();
   }
@@ -124,12 +116,12 @@ export class MemorySelection implements FleetSelectionRepository {
         x.marketId === m.marketId && x.id !== except && x.name.toLowerCase() === name.toLowerCase(),
     );
   }
-  insertModel(m: MarketContext, model: FleetSelectionModel, _by: ActorId) {
+  insertModel(m: MarketContext, model: FleetSelectionModel) {
     if (this.taken(m, model.name, null)) return Promise.resolve('name-taken' as const);
     this.models.set(model.id, { ...model, marketId: m.marketId });
     return Promise.resolve('inserted' as const);
   }
-  saveModel(m: MarketContext, model: FleetSelectionModel, expectedVersion: number, _by: ActorId) {
+  saveModel(m: MarketContext, model: FleetSelectionModel, expectedVersion: number) {
     if (this.taken(m, model.name, model.id)) return Promise.resolve('name-taken' as const);
     if (this.models.get(model.id)?.version !== expectedVersion) {
       return Promise.resolve('conflict' as const);
@@ -145,13 +137,7 @@ export class MemorySelection implements FleetSelectionRepository {
     }
     return Promise.resolve(map);
   }
-  assign(
-    m: MarketContext,
-    method: CarrierMethod,
-    modelId: Id<'FleetSelectionModel'> | null,
-    _by: ActorId,
-    _at: Temporal.Instant,
-  ) {
+  assign(m: MarketContext, method: CarrierMethod, modelId: Id<'FleetSelectionModel'> | null) {
     this.active.set(`${m.marketId}|${method}`, modelId);
     return Promise.resolve();
   }
@@ -167,13 +153,7 @@ export class MemorySelection implements FleetSelectionRepository {
     }
     return Promise.resolve(map);
   }
-  setReliability(
-    m: MarketContext,
-    fleet: FleetCode,
-    score: number,
-    _by: ActorId,
-    _at: Temporal.Instant,
-  ) {
+  setReliability(m: MarketContext, fleet: FleetCode, score: number) {
     this.scores.set(`${m.marketId}|${fleet}`, score);
     return Promise.resolve();
   }

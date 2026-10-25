@@ -38,7 +38,8 @@ export interface Zoom2uEndpoint {
 }
 
 /** `unauthorized`: Zoom2u rejected the API key (401, 403); nothing was booked. */
-export type Zoom2uCallFailure = 'unavailable' | 'refused' | 'unauthorized';
+/** `not-sent`: the circuit is open, so nothing left; `unavailable`: the request may have left. */
+export type Zoom2uCallFailure = 'unavailable' | 'refused' | 'unauthorized' | 'not-sent';
 export type Zoom2uCallKind = 'quote' | 'book' | 'cancel' | 'status';
 export type Zoom2uAnswer = Result<
   { readonly status: number; readonly body: unknown },
@@ -94,7 +95,7 @@ export class Zoom2uHttpClient {
     call: Zoom2uCallKind,
   ): Promise<Zoom2uAnswer> {
     const key = `${endpoint.marketId}|${call}`;
-    if (!this.breaker.allow(key)) return err('unavailable');
+    if (!this.breaker.allow(key)) return err('not-sent');
     const url = `${endpoint.apiUrl.replace(/\/+$/, '')}${ZOOM2U_API_PREFIX}/${path}`;
     const maxAttempts = call === 'book' ? 1 : endpoint.maxAttempts;
     for (let attempt = 1; ; attempt += 1) {

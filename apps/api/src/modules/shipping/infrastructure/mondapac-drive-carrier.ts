@@ -13,7 +13,7 @@ import { addressLineOf } from '../domain/carrier-stop';
 import { toFleetStatus } from '../domain/drive-webhook-event';
 import type { FleetCapabilities, FleetDeliveryStatus } from '../domain/fleet';
 import type { ConfigCarrierPolicy } from './config-carrier-policy';
-import type { DriveEndpoint, DriveHttpClient } from './drive-http-client';
+import type { DriveCallFailure, DriveEndpoint, DriveHttpClient } from './drive-http-client';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const STATUS = /^[A-Z][A-Z_]{1,39}$/;
@@ -32,13 +32,20 @@ const QUOTE_CACHE_SIZE = 1000;
 const NOT_CONFIGURED: CarrierFailure = Object.freeze({ code: 'carrier.not-configured' as const });
 const UNAVAILABLE: CarrierFailure = Object.freeze({ code: 'carrier.unavailable' as const });
 const REFUSED: CarrierFailure = Object.freeze({ code: 'carrier.refused' as const });
+const NOT_SENT: CarrierFailure = Object.freeze({ code: 'carrier.not-sent' as const });
 const UNAUTHORIZED: CarrierFailure = Object.freeze({ code: 'carrier.unauthorized' as const });
 
 /** The adapter's pure mapping of Drive's status words to the common fleet status. */
 export { toFleetStatus };
 
-const failureOf = (error: 'unavailable' | 'refused' | 'unauthorized'): CarrierFailure =>
-  error === 'refused' ? REFUSED : error === 'unauthorized' ? UNAUTHORIZED : UNAVAILABLE;
+const failureOf = (error: DriveCallFailure): CarrierFailure =>
+  error === 'refused'
+    ? REFUSED
+    : error === 'unauthorized'
+      ? UNAUTHORIZED
+      : error === 'not-sent'
+        ? NOT_SENT
+        : UNAVAILABLE;
 
 /** Drive's parcel: size and temperature only (its schema rejects any other field). */
 const parcelBody = (parcel: CarrierBookingRequest['parcel']) => ({

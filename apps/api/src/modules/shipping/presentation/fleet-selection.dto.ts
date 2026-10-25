@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { FleetSelectionView } from '../application/fleet-selection-flow';
-import type { FleetSelectionModel } from '../domain/fleet-selection';
+import type { FleetSelectionModel, FleetSelectionView } from '../domain/fleet-selection';
 
 // Bodies of the fleet-selection routes (delivery models, package 3). Ids, names, whole numbers
 // and fleet codes only.
