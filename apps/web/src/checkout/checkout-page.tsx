@@ -57,6 +57,8 @@ export { inServiceArea } from './address-section.tsx';
 
 export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const t = useTranslations('checkout');
+  const methodName = (method: string | undefined) =>
+    t('method-label', { method: method ?? 'other' });
   const locale = useLocale();
   const router = useRouter();
   const reason = useId();
@@ -198,6 +200,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
         kind: 'price-changed',
         changes: answer.changes.map((c) => ({
           seller: cartSource.sellers[c.sellerId]?.name ?? c.sellerId,
+          method: methodName(choices[c.sellerId]?.method),
           was: c.was,
           now: c.now,
         })),

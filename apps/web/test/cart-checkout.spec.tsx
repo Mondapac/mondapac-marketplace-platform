@@ -98,7 +98,7 @@ const quotedPrice = (id: string, total: number): MethodPrice => ({
 /** Picks Instant (A$12.90 each in the sample) for every seller that offers it. */
 async function pickInstant() {
   for (const radio of await screen.findAllByRole('radio', { name: /^Instant/ }))
-    if (!(radio as HTMLInputElement).disabled) fireEvent.click(radio);
+    if (radio.getAttribute('aria-disabled') !== 'true') fireEvent.click(radio);
 }
 
 /** A line as the store holds it, priced from the sample source. */
@@ -585,7 +585,7 @@ describe('checkout', () => {
       name: 'Delivery method for Kedron Halal Butchers',
     });
     const instant = within(kedron).getByRole('radio', { name: /^Instant/ });
-    expect(instant).toHaveProperty('disabled', true);
+    expect(instant.getAttribute('aria-disabled')).toBe('true');
     expect(within(kedron).getByText("This store doesn't support instant delivery")).toBeTruthy();
     expect(payOff()).toBe(true);
   });
@@ -628,7 +628,7 @@ describe('checkout', () => {
     fireEvent.click(payButtons()[0]!);
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toBe(
-      'A delivery price changed. Kedron Halal Butchers: A$12.90 is now A$14.90. Your new total is shown. Nothing has been charged.',
+      'A delivery price changed. Kedron Halal Butchers, Instant: A$12.90 → A$14.90. Your delivery choices are kept and your new total is shown. Nothing has been charged.',
     );
     expect(payButtons()[0]!.textContent).toBe('Pay A$83.20');
     expect(document.activeElement?.textContent).toBe('Payment method');
@@ -737,12 +737,15 @@ describe('checkout', () => {
       name: 'Delivery method for Paddington Bakehouse',
     });
     const sameDay = within(paddington).getByRole('radio', { name: /^Same day/ });
-    expect(sameDay).toHaveProperty('disabled', true);
-    expect(within(paddington).getByText('Same-day delivery closes at 12:00 pm')).toBeTruthy();
-    expect(within(paddington).getByRole('radio', { name: /^Instant/ })).toHaveProperty(
-      'disabled',
-      false,
-    );
+    expect(sameDay.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      within(paddington).getByText('Same-day delivery closes at 12:00 pm (Brisbane time)'),
+    ).toBeTruthy();
+    expect(
+      within(paddington)
+        .getByRole('radio', { name: /^Instant/ })
+        .getAttribute('aria-disabled'),
+    ).toBe(null);
     // The GST is shown inside the price and in the summary, apart from it.
     fireEvent.click(within(kedron).getByRole('radio', { name: /^Instant/ }));
     fireEvent.click(within(paddington).getByRole('radio', { name: /^Pickup/ }));
@@ -767,10 +770,11 @@ describe('checkout', () => {
       name: 'Delivery method for Paddington Bakehouse',
     });
     expect(within(paddington).getByText("Pickup isn't offered by this store")).toBeTruthy();
-    expect(within(paddington).getByRole('radio', { name: /^Pickup/ })).toHaveProperty(
-      'disabled',
-      true,
-    );
+    expect(
+      within(paddington)
+        .getByRole('radio', { name: /^Pickup/ })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
   });
 
   it('disables a method no courier can carry or price now', async () => {
@@ -794,14 +798,16 @@ describe('checkout', () => {
     });
     expect(within(kedron).getByText('No courier can deliver this to your address')).toBeTruthy();
     expect(within(kedron).getByText('Price not available right now')).toBeTruthy();
-    expect(within(kedron).getByRole('radio', { name: /^Scheduled/ })).toHaveProperty(
-      'disabled',
-      true,
-    );
-    expect(within(kedron).getByRole('radio', { name: /^Instant/ })).toHaveProperty(
-      'disabled',
-      true,
-    );
+    expect(
+      within(kedron)
+        .getByRole('radio', { name: /^Scheduled/ })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
+    expect(
+      within(kedron)
+        .getByRole('radio', { name: /^Instant/ })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
   });
 
   it('holds Pay while prices load, and offers Try again when they could not be asked', async () => {

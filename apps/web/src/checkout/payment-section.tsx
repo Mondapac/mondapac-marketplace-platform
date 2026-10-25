@@ -27,6 +27,8 @@ export type PayNotice =
       readonly kind: 'price-changed';
       readonly changes: readonly {
         readonly seller: string;
+        /** The delivery method the buyer chose with this seller, by its label. */
+        readonly method: string;
         readonly was: Money;
         readonly now: Money;
       }[];
@@ -240,6 +242,7 @@ function Notice({ notice }: { readonly notice: PayNotice }) {
             .map((c) =>
               t('notice-price-line', {
                 seller: c.seller,
+                method: c.method,
                 was: formatMoney(c.was, locale),
                 now: formatMoney(c.now, locale),
               }),

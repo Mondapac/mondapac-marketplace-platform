@@ -4999,6 +4999,7 @@ svg {
   grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
 }
 .dopt {
+  scroll-margin-top: calc(var(--sf-header-height) + 16px);
   position: relative;
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) auto;
@@ -5020,7 +5021,7 @@ svg {
   outline: 3px solid var(--sf-teal);
   outline-offset: 2px;
 }
-.dopt:has(input:disabled) {
+.dopt:has(input[aria-disabled='true']) {
   cursor: not-allowed;
 }
 .dopt input {
@@ -5066,6 +5067,7 @@ svg {
 }
 .dopt .fee {
   text-align: end;
+  white-space: nowrap;
 }
 .dopt .fee .gstl {
   display: block;
@@ -5131,7 +5133,32 @@ svg {
   cursor: not-allowed;
 }
 .dopt.off .dot {
-  border-color: var(--sf-line);
+  border: 2px dashed var(--sf-slate);
+}
+.dopt.off .dtx small {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  color: var(--sf-ink);
+}
+.dopt.off .dtx small .ico {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--sf-slate);
+}
+.dopt.off .dtx b {
+  color: var(--sf-slate);
+}
+.dsrow .dwh {
+  grid-column: 1 / -1;
+}
+.dunp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
 }
 .dtag {
   padding: 2px 8px;
@@ -5143,6 +5170,7 @@ svg {
   font-weight: 800;
 }
 .dwarn2 {
+  scroll-margin-top: calc(var(--sf-header-height) + 16px);
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
   gap: 8px 10px;

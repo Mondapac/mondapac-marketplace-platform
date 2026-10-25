@@ -18,7 +18,14 @@ import type {
   SellerDeliveryOptions,
 } from '../storefront/types.ts';
 import { deliveryOptionsFor } from './actions.ts';
-import { clockLabel, dayLabel, scheduleDays, windowLabel, windowOf } from './schedule.ts';
+import {
+  clockLabel,
+  dayLabel,
+  scheduleDays,
+  windowLabel,
+  windowOf,
+  zoneLabel,
+} from './schedule.ts';
 
 // The checkout's Delivery method section: one card per seller with the Market's methods (Pickup,
 // Instant, Same day, Scheduled). A method the seller or the time rules out is shown disabled with
@@ -251,6 +258,11 @@ function DeliveryCard({
   const { deliveryWish, setDeliveryWish } = useStore();
   const { seller } = group;
   const money = (m: Money) => formatMoney(m, locale);
+  const unpriced =
+    state.kind === 'options' &&
+    state.options.methods.some(
+      (m) => m.available && (m.price?.state === 'failed' || m.price?.state === 'no-fleet'),
+    );
   const wish = Object.hasOwn(deliveryWish, seller.id) ? deliveryWish[seller.id] : undefined;
   return (
     <div className="dcard">
@@ -305,6 +317,16 @@ function DeliveryCard({
           )}
         </div>
       )}
+      {state.kind === 'options' && unpriced ? (
+        <p className="dhint dunp">
+          {t('methods-unpriced')}{' '}
+          {state.options.methods.some((m) => m.price?.state === 'failed') ? (
+            <button className="lnk" type="button" onClick={onRetry}>
+              {t('try-again-short')}
+            </button>
+          ) : null}
+        </p>
+      ) : null}
       {state.kind === 'options' && wish?.method === 'scheduled' ? (
         <SchedulePicker
           sellerId={seller.id}
@@ -333,7 +355,14 @@ function MethodDetail({
   if (!option.available) {
     switch (option.reason) {
       case 'past-cut-off':
-        return <>{t('reason-past-cut-off', { time: clockLabel(options.sameDayCutoff, locale) })}</>;
+        return (
+          <>
+            {t('reason-past-cut-off', {
+              time: clockLabel(options.sameDayCutoff, locale),
+              zone: zoneLabel(options.zone, locale),
+            })}
+          </>
+        );
       case 'no-pickup-address':
         return <>{t('reason-no-pickup-address')}</>;
       default:
@@ -356,6 +385,12 @@ function MethodDetail({
   if (option.method === 'instant' && price?.state === 'quoted' && price.etaMinutes !== null)
     return <>{t('detail-instant-eta', { minutes: price.etaMinutes })}</>;
   return <>{t(`detail-${METHOD_KEY[option.method]}`)}</>;
+}
+
+/** The cue beside a reason, so a method that is off is not told by colour alone. */
+function offIcon(option: MethodOption): 'clock' | 'lock' | 'info' {
+  if (!option.available) return option.reason === 'past-cut-off' ? 'clock' : 'lock';
+  return 'info';
 }
 
 function MethodRow({
@@ -382,15 +417,21 @@ function MethodRow({
         type="radio"
         name={`method-${sellerId}`}
         checked={open && checked}
-        disabled={!open}
+        aria-disabled={open ? undefined : true}
         aria-describedby={detailId}
-        onChange={onPick}
+        onChange={() => {
+          // A method that is off stays focusable so its reason is read; it cannot be picked.
+          if (open) onPick();
+        }}
       />
       <span className="dot" aria-hidden="true" />
       <span className="dtx">
         <b>{t(`method-${METHOD_KEY[option.method]}`)}</b>
         <small id={detailId}>
-          <MethodDetail options={options} option={option} />
+          {open ? null : <Icon name={offIcon(option)} />}
+          <span>
+            <MethodDetail options={options} option={option} />
+          </span>
         </small>
       </span>
       <span className="fee num">
@@ -425,9 +466,10 @@ function SchedulePicker({
   const [now] = useState(() => new Date());
   const days = useMemo(() => scheduleOf(options, now), [options, now]);
   const day = days.find((d) => d.day === wish.day);
-  const zone = options.zone.split('/').pop()!.replaceAll('_', ' ');
+  const zone = zoneLabel(options.zone, locale);
+  const hintId = `${id}-hint`;
   return (
-    <fieldset className="dsched" data-seller={sellerId}>
+    <fieldset className="dsched" data-seller={sellerId} aria-live="polite">
       <legend>{t('schedule-title', { zone })}</legend>
       {days.length === 0 ? (
         <p className="dhint">{t('schedule-none')}</p>
@@ -460,6 +502,7 @@ function SchedulePicker({
                   : ''
               }
               disabled={day === undefined}
+              aria-describedby={day === undefined ? hintId : undefined}
               onChange={(event) =>
                 onChange({ method: 'scheduled', day: wish.day, windowStart: event.target.value })
               }
@@ -474,6 +517,11 @@ function SchedulePicker({
               ))}
             </select>
           </label>
+          {day === undefined ? (
+            <small className="dhint dwh" id={hintId}>
+              {t('schedule-window-hint')}
+            </small>
+          ) : null}
         </div>
       )}
     </fieldset>

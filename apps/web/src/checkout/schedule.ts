@@ -153,3 +153,26 @@ export function dayLabel(day: string, locale: string): string {
 export function windowLabel(start: string, minutes: number, locale: string): string {
   return `${clockLabel(start, locale)} – ${clockLabel(addMinutes(start, minutes), locale)}`;
 }
+
+/**
+ * A short name of a seller's zone for the buyer: the city of an `Area/City` or
+ * `Area/Region/City` zone ("Buenos Aires" for America/Argentina/Buenos_Aires), and the zone's own
+ * generic name where it has no city ("Coordinated Universal Time" for UTC or Etc/UTC).
+ */
+export function zoneLabel(zone: string, locale: string): string {
+  const parts = zone.split('/');
+  const city = parts.length > 1 && parts[0] !== 'Etc' ? parts[parts.length - 1]! : null;
+  if (city !== null) return city.replaceAll('_', ' ');
+  try {
+    const name = new Intl.DateTimeFormat(intlLocale(locale), {
+      timeZone: zone,
+      timeZoneName: 'longGeneric',
+    })
+      .formatToParts(0)
+      .find((part) => part.type === 'timeZoneName')?.value;
+    if (name !== undefined) return name;
+  } catch {
+    // An unknown zone falls through to its id.
+  }
+  return zone.replaceAll('_', ' ');
+}

@@ -254,10 +254,12 @@ describe('the delivery picker', () => {
       paddington: { kind: 'options', options: sampleOptionsOf('paddington') },
     });
     expect(screen.getByText("This store doesn't support instant delivery")).toBeTruthy();
-    expect(screen.getByText('Same-day delivery closes at 12:00 pm')).toBeTruthy();
+    expect(screen.getByText('Same-day delivery closes at 12:00 pm (Brisbane time)')).toBeTruthy();
     for (const name of [/^Instant/, /^Same day/])
       expect(
-        screen.getAllByRole('radio', { name }).filter((r) => (r as HTMLInputElement).disabled),
+        screen
+          .getAllByRole('radio', { name })
+          .filter((r) => r.getAttribute('aria-disabled') === 'true'),
       ).toHaveLength(1);
     cleanup();
     renderPicker({
@@ -375,5 +377,20 @@ describe('reading the delivery options through the relay', () => {
     expect((await readDeliveryOptions('a')).kind).toBe('signed-out');
     answerWith(503, {});
     expect((await readDeliveryOptions('a')).kind).toBe('failed');
+  });
+});
+
+describe('a method that is off', () => {
+  it('stays focusable with its reason, and cannot be picked', () => {
+    renderPicker({
+      kedron: { kind: 'options', options: sampleOptionsOf('sunnybank') },
+      paddington: { kind: 'options', options: sampleOptionsOf('paddington') },
+    });
+    const off = screen.getAllByRole('radio', { name: /^Instant/ })[0]!;
+    expect(off.getAttribute('aria-disabled')).toBe('true');
+    expect(off.hasAttribute('disabled')).toBe(false);
+    expect(off.getAttribute('aria-describedby')).not.toBeNull();
+    fireEvent.click(off);
+    expect((off as HTMLInputElement).checked).toBe(false);
   });
 });
