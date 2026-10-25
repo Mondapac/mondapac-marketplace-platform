@@ -572,6 +572,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'shipping.carrier_events': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'shipping.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    // Delivery models, package 2: the pickup code of a seller order handed over in person. A code is
+    // created, counted against (failures, lock) and replaced; never deleted.
+    'ordering.pickup_codes': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['code_hash', 'code_sealed', 'failed_attempts', 'issued_at', 'locked_at'],
+    },
     'ordering.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Phase 6 package 1: the order emails. Ordering writes `ordering.order-paid.v1` (the relay marks
     // it published); notifications records each event it handled, once per handler.
