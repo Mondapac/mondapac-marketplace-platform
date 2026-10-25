@@ -13,7 +13,12 @@ import {
   wholeNumber,
   type Problems,
 } from './fields';
-import { positionOf, SLIDE_SCOPES, type SlideScope } from './slide-positions';
+import {
+  positionOf,
+  SLIDE_SCOPES,
+  type PositionDefinition,
+  type SlideScope,
+} from './slide-positions';
 
 // The slide library (john, 23 Oct): a slide is plain text over an optional image, with one typed
 // internal link that makes the whole slide clickable. Content is data: no markup, no URL, no
@@ -505,25 +510,57 @@ export interface ReorderInput {
   readonly slideIds: readonly string[];
 }
 
-export function parseReorder(body: unknown): Parsed<ReorderInput> {
-  const problems: Problems = [];
-  if (!closedObject(problems, '', body, ['position', 'scope', 'scopeId', 'slideIds'])) {
-    return { ok: false, problems };
-  }
-  const positionKey = typeof body.position === 'string' ? body.position : null;
+/** Where a list of slides sits: one position, one scope and (but for `all`) the scope's id. */
+interface OrderPlace {
+  readonly position: PositionDefinition | null;
+  readonly scope: SlideScope | null;
+  readonly scopeId: string | null;
+}
+
+/** The place named by a reorder body or an order query: the same rules for both. */
+function parsePlace(problems: Problems, raw: Record<string, unknown>): OrderPlace {
+  const positionKey = typeof raw.position === 'string' ? raw.position : null;
   const position = positionKey === null ? null : positionOf(positionKey);
   if (position === null)
-    problem(problems, 'position', body.position === undefined ? 'required' : 'enum');
-  const scope = oneOf(problems, 'scope', body.scope ?? 'all', SLIDE_SCOPES);
+    problem(problems, 'position', raw.position === undefined ? 'required' : 'enum');
+  const scope = oneOf(problems, 'scope', raw.scope ?? 'all', SLIDE_SCOPES);
   let scopeId: string | null = null;
   if (scope !== null && scope !== 'all') {
-    scopeId = uuid(problems, 'scopeId', body.scopeId);
-  } else if (body.scopeId !== undefined && body.scopeId !== null) {
+    scopeId = uuid(problems, 'scopeId', raw.scopeId);
+  } else if (raw.scopeId !== undefined && raw.scopeId !== null) {
     problem(problems, 'scopeId', 'not-allowed');
   }
   if (position !== null && scope !== null && !position.scopes.includes(scope)) {
     problem(problems, 'scope', 'not-allowed-here');
   }
+  return { position, scope, scopeId };
+}
+
+/** The query of the read of the order: `position`, `scope` and `scopeId`, no other key. */
+export interface OrderQuery {
+  readonly position: PositionDefinition;
+  readonly scope: SlideScope;
+  readonly scopeId: string | null;
+}
+
+export function parseOrderQuery(input: unknown): Parsed<OrderQuery> {
+  const problems: Problems = [];
+  if (!closedObject(problems, '', input, ['position', 'scope', 'scopeId'])) {
+    return { ok: false, problems };
+  }
+  const { position, scope, scopeId } = parsePlace(problems, input);
+  if (problems.length > 0 || position === null || scope === null) {
+    return { ok: false, problems };
+  }
+  return { ok: true, value: { position, scope, scopeId } };
+}
+
+export function parseReorder(body: unknown): Parsed<ReorderInput> {
+  const problems: Problems = [];
+  if (!closedObject(problems, '', body, ['position', 'scope', 'scopeId', 'slideIds'])) {
+    return { ok: false, problems };
+  }
+  const { position, scope, scopeId } = parsePlace(problems, body);
   const seen = new Set<string>();
   const slideIds = list(
     problems,
