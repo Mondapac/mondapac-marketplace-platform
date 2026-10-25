@@ -1,5 +1,7 @@
+import { STORE_SETTINGS_EDIT_PERMISSION } from './delivery/types.ts';
 import { PAYOUT_VIEW_PERMISSION } from './payout/types.ts';
 import { STOCK_VIEW_PERMISSION } from './stock/types.ts';
+import { STORE_PROFILE_VIEW_PERMISSION } from './store-profile/types.ts';
 import { visibleNavItems, type NavConfig, type NavItem } from '@mondapac/ui';
 
 // Seller nav config (panels IA 3.2). Items of a phase that has not shipped are absent, not
@@ -9,6 +11,7 @@ export const sellerNav: NavConfig = {
   groups: [
     { id: 'orders', labelKey: 'nav.group.orders', icon: 'clipboard' },
     { id: 'catalogue', labelKey: 'nav.group.catalogue', icon: 'store' },
+    { id: 'store', labelKey: 'nav.group.store', icon: 'briefcase' },
     { id: 'money', labelKey: 'nav.group.money', icon: 'wallet' },
     { id: 'team', labelKey: 'nav.group.team', icon: 'users' },
   ],
@@ -45,6 +48,22 @@ export const sellerNav: NavConfig = {
       href: '/stock-locations',
       group: 'catalogue',
       anyOf: [STOCK_VIEW_PERMISSION],
+    },
+    {
+      id: 's_store_profile',
+      icon: 'user',
+      labelKey: 'nav.store-profile',
+      href: '/store-profile',
+      group: 'store',
+      anyOf: [STORE_PROFILE_VIEW_PERMISSION],
+    },
+    {
+      id: 's_delivery',
+      icon: 'clock',
+      labelKey: 'nav.delivery',
+      href: '/delivery',
+      group: 'store',
+      anyOf: [STORE_SETTINGS_EDIT_PERMISSION],
     },
     {
       id: 's_earnings',

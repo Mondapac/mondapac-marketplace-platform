@@ -33,35 +33,35 @@ model PaymentsStripeEvent {
 /// stored before Stripe is called, so a repeated request reuses the same Stripe idempotency key.
 /// Holds the state Stripe reported, never a bank number, name or identity document (VER-10).
 model PaymentsConnectedAccount {
-  marketId            String    @map("market_id") @db.VarChar(8)
-  sellerId            String    @map("seller_id") @db.Uuid
-  tenantId            String    @map("tenant_id")
+  marketId               String                        @map("market_id") @db.VarChar(8)
+  sellerId               String                        @map("seller_id") @db.Uuid
+  tenantId               String                        @map("tenant_id")
   /// Stripe's account id (acct_...); null until Stripe has answered the create call.
-  accountRef          String?   @map("account_ref")
+  accountRef             String?                       @map("account_ref")
   /// not-started, pending, enabled, restricted or rejected (CHECK).
-  status              String
-  detailsSubmitted    Boolean   @map("details_submitted")
-  transfersActive     Boolean   @map("transfers_active")
-  payoutsEnabled      Boolean   @map("payouts_enabled")
+  status                 String
+  detailsSubmitted       Boolean                       @map("details_submitted")
+  transfersActive        Boolean                       @map("transfers_active")
+  payoutsEnabled         Boolean                       @map("payouts_enabled")
   /// How many requirements Stripe still lists: a count, never their content.
-  requirementsDue     Int       @map("requirements_due")
-  requirementsPastDue Boolean   @map("requirements_past_due")
-  createdAt           DateTime  @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime  @map("updated_at") @db.Timestamptz(6)
+  requirementsDue        Int                           @map("requirements_due")
+  requirementsPastDue    Boolean                       @map("requirements_past_due")
+  createdAt              DateTime                      @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                      @map("updated_at") @db.Timestamptz(6)
   /// When the state was last read from Stripe; an older read never replaces a newer one.
-  lastReadAt          DateTime? @map("last_read_at") @db.Timestamptz(6)
+  lastReadAt             DateTime?                     @map("last_read_at") @db.Timestamptz(6)
   /// End of the waiting period after the latest bank change (VER-10); null when none.
-  coolingOffUntil     DateTime? @map("cooling_off_until") @db.Timestamptz(6)
+  coolingOffUntil        DateTime?                     @map("cooling_off_until") @db.Timestamptz(6)
   /// Stripe payouts are kept manual until this instant; null when never paused.
-  payoutsPausedUntil  DateTime? @map("payouts_paused_until") @db.Timestamptz(6)
+  payoutsPausedUntil     DateTime?                     @map("payouts_paused_until") @db.Timestamptz(6)
   /// manual or normal: the schedule payments last wrote to Stripe (or marked to write again);
   /// null while payments never touched it.
-  payoutScheduleApplied String? @map("payout_schedule_applied")
+  payoutScheduleApplied  String?                       @map("payout_schedule_applied")
   /// Bumped when a read finds the pause undone, so the next write has its own idempotency key.
-  payoutScheduleRevision Int    @default(0) @map("payout_schedule_revision")
+  payoutScheduleRevision Int                           @default(0) @map("payout_schedule_revision")
   /// The latest row of payout_account_changes for this account.
-  lastChangeId        String?   @map("last_change_id") @db.Uuid
-  changes             PaymentsPayoutAccountChange[]
+  lastChangeId           String?                       @map("last_change_id") @db.Uuid
+  changes                PaymentsPayoutAccountChange[]
 
   @@id([marketId, sellerId])
   @@unique([marketId, accountRef])
@@ -72,18 +72,18 @@ model PaymentsConnectedAccount {
 /// Append-only history of changes of a seller's payout destination (Phase 5 package 3 leftovers).
 /// Kind and times only: never a bank number, a name or a Stripe bank-account id (VER-10).
 model PaymentsPayoutAccountChange {
-  marketId      String    @map("market_id") @db.VarChar(8)
-  id            String    @db.Uuid
-  tenantId      String    @map("tenant_id")
-  sellerId      String    @map("seller_id") @db.Uuid
+  marketId        String                   @map("market_id") @db.VarChar(8)
+  id              String                   @db.Uuid
+  tenantId        String                   @map("tenant_id")
+  sellerId        String                   @map("seller_id") @db.Uuid
   /// initial, added, updated or removed (CHECK).
-  kind          String
-  detectedAt    DateTime  @map("detected_at") @db.Timestamptz(6)
+  kind            String
+  detectedAt      DateTime                 @map("detected_at") @db.Timestamptz(6)
   /// The waiting period this change started or extended to; null for the initial destination.
-  coolingOffUntil DateTime? @map("cooling_off_until") @db.Timestamptz(6)
+  coolingOffUntil DateTime?                @map("cooling_off_until") @db.Timestamptz(6)
   /// The Stripe event that reported it (evt_...): stored once, so a repeated event adds nothing.
-  sourceEventId String    @map("source_event_id")
-  account       PaymentsConnectedAccount @relation(fields: [marketId, sellerId], references: [marketId, sellerId])
+  sourceEventId   String                   @map("source_event_id")
+  account         PaymentsConnectedAccount @relation(fields: [marketId, sellerId], references: [marketId, sellerId])
 
   @@id([marketId, id])
   @@unique([marketId, sourceEventId])

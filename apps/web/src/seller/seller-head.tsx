@@ -3,11 +3,14 @@ import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
 import type { SellerShop } from '../storefront/types.ts';
+import { useDeliveryLine } from './delivery-line.ts';
+import { BannerPicture } from './store-picture.tsx';
 import { Ring } from './rings.tsx';
 import { ShareMenu } from './share-menu.tsx';
 
 // The seller page's header card (approved design v9): the neutral banner with the Share pill, the
-// logo, the name and its line, the performance rings and the facts as chips. The logo overlaps
+// logo, the name and its line (the logo and the banner are decoration beside the h1, so their alt
+// text is empty), the performance rings and the facts as chips. The logo overlaps
 // the banner from the tablet layout up and sits below it on a phone.
 
 export function SellerHead({
@@ -20,14 +23,15 @@ export function SellerHead({
   const t = useTranslations('seller');
   const tp = useTranslations('product');
   const locale = useLocale();
+  const deliveryLine = useDeliveryLine(shop);
   const rated = shop.ratings !== undefined && shop.ratings.count > 0;
   return (
     <header className="shop-head">
-      <div className="shop-banner" aria-hidden="true" />
+      <BannerPicture image={shop.banner} />
       <ShareMenu name={shop.name} path={`/s/${shop.id}`} />
       <div className="shop-body">
         <div className="shop-id">
-          <SellerLogo logo={shop.logo} />
+          <SellerLogo logo={shop.logo} image={shop.logoImage} />
           <div className="shop-title">
             <h1>{shop.name}</h1>
             <p className="shop-meta">
@@ -62,10 +66,10 @@ export function SellerHead({
               {t('new-seller')}
             </li>
           )}
-          {shop.deliveryWindow === undefined ? null : (
+          {deliveryLine === undefined ? null : (
             <li>
               <Icon name="truck" />
-              {shop.deliveryWindow}
+              {deliveryLine}
             </li>
           )}
           {shop.minimumUnknown ? null : (
@@ -80,7 +84,9 @@ export function SellerHead({
             <li>
               <Icon name="truck" />
               <span className="num">
-                {t('delivery-fee', { fee: formatMoney(shop.deliveryFee, locale) })}
+                {shop.deliveryFee.amount === 0
+                  ? t('free-delivery')
+                  : t('delivery-fee', { fee: formatMoney(shop.deliveryFee, locale) })}
               </span>
             </li>
           )}

@@ -602,12 +602,30 @@
     }
   },
   {
+    "type": "ordering.seller-order-ready.v1",
+    "aggregateType": "seller-order",
+    "fields": {
+      "orderId": "id",
+      "sellerOrderId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "ordering.order-shipped.v1",
     "aggregateType": "seller-order",
     "fields": {
       "orderId": "id",
       "sellerOrderId": "id",
       "sellerId": "id"
+    }
+  },
+  {
+    "type": "ordering.refund-succeeded.v1",
+    "aggregateType": "refund",
+    "fields": {
+      "orderId": "id",
+      "sellerOrderId": "id",
+      "refundId": "id"
     }
   },
   {
@@ -673,9 +691,26 @@
     }
   },
   {
+    "type": "sellers.store-profile-published.v1",
+    "aggregateType": "store-profile",
+    "fields": {
+      "sellerId": "id",
+      "revisionId": "id"
+    }
+  },
+  {
     "type": "sellers.tax-registration-recorded.v1",
     "aggregateType": "seller-tax-profile",
     "fields": {
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "shipping.carrier-delivery-progressed.v1",
+    "aggregateType": "carrier-booking",
+    "fields": {
+      "orderId": "id",
+      "sellerOrderId": "id",
       "sellerId": "id"
     }
   }

@@ -1,3 +1,4 @@
+import type { IncomingHttpHeaders } from 'node:http';
 import type { NestApplicationOptions } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule } from '@nestjs/swagger';
@@ -10,6 +11,7 @@ import { APP_CONFIG } from './platform/config/config.module';
 import { answerBodyError } from './platform/http/body-errors';
 import { clientAddressResolver } from './platform/http/client-address';
 import { securityHeaders } from './platform/http/security-headers';
+import { CSRF_HEADER } from './platform/call-context/csrf';
 import { HTTP_LOGGER } from './platform/logging/logging.module';
 
 /**
@@ -22,13 +24,22 @@ export const APP_OPTIONS = {
   bodyParser: false,
 } as const satisfies NestApplicationOptions;
 
-/** The path prefix of the Stripe webhook routes (`payments`), the only raw-body routes. */
+/** The path prefix of the Stripe webhook routes (`payments`), a raw-body route. */
 export const STRIPE_WEBHOOK_PATH = '/payments/stripe/webhook/';
 
 /** True for a request to the Stripe webhook, query string ignored. */
 export function isStripeWebhookPath(url: string | undefined): boolean {
   const path = (url ?? '').split('?', 1)[0] ?? '';
   return path.startsWith(STRIPE_WEBHOOK_PATH);
+}
+
+/** The real-time carrier webhook routes (`shipping`, SHP-03): signed over the raw body too. */
+const CARRIER_WEBHOOK_PATH = /^\/shipping\/carriers\/[a-z0-9-]{1,32}\/webhook\//;
+
+/** True for a request to a carrier webhook, query string ignored. */
+export function isCarrierWebhookPath(url: string | undefined): boolean {
+  const path = (url ?? '').split('?', 1)[0] ?? '';
+  return CARRIER_WEBHOOK_PATH.test(path);
 }
 
 /** A base64 photo of 4 MiB is 5.6 million characters; the rest is the JSON around it. */
@@ -40,6 +51,33 @@ export function isProductImageUploadRequest(
   url: string | undefined,
 ): boolean {
   return method === 'POST' && url !== undefined && PRODUCT_IMAGE_PATH.test(url);
+}
+
+/** A base64 store logo or banner of 4 MiB is 5.6 million characters; the rest is the JSON around it. */
+const STORE_IMAGE_PATH = /^\/sellers\/store-profile\/(?:logo|banner)\/?(?:\?.*)?$/;
+
+/** A seller session cookie of any Market: `__Host-session-seller-<MARKET>=...`. */
+const SELLER_SESSION_COOKIE = /(?:^|;\s*)__Host-session-seller-[A-Z][A-Z0-9_]{1,7}=[^;\s]/;
+
+/**
+ * True for a logo or banner upload that may carry the large body: a PUT to the route that holds a
+ * seller session cookie and the CSRF header. Anything else gets the 64 KiB JSON parser, so an
+ * anonymous or cross-site request cannot make the server read 5.8 MB before it is refused. This
+ * is a cheap pre-filter only: the actor guard still checks the session and the CSRF token itself.
+ */
+export function isStoreImageUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'PUT' || url === undefined || !STORE_IMAGE_PATH.test(url)) return false;
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    SELLER_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
 }
 
 /** A base64 certificate file of 10 MiB is 14 million characters; the rest is the JSON around it. */
@@ -91,10 +129,11 @@ export function configureApp(app: NestExpressApplication): void {
   // JSON only, at most 64 KiB, objects and arrays only. No CORS middleware until origins exist.
   // inflate: false - a compressed body is refused with 415, never decompressed (Hassan L1).
   // The Stripe webhook alone gets its body as raw bytes, because its signature is computed over
-  // the exact bytes (Phase 5 package 2). Same limit and no decompression; the JSON parser then
-  // skips that request, since this parser has already read it.
+  // the exact bytes (Phase 5 package 2); so does a carrier's status webhook (SHP-03). Same limit
+  // and no decompression; the JSON parser then skips that request, since this parser has already
+  // read it.
   app.useBodyParser('raw', {
-    type: (request) => isStripeWebhookPath(request.url),
+    type: (request) => isStripeWebhookPath(request.url) || isCarrierWebhookPath(request.url),
     limit: '64kb',
     inflate: false,
   });
@@ -103,6 +142,13 @@ export function configureApp(app: NestExpressApplication): void {
   // skips that request, as it does for the webhook.
   app.useBodyParser('raw', {
     type: (request) => isProductImageUploadRequest(request.method, request.url),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
+    inflate: false,
+  });
+  // The store logo and banner routes take the same larger body (sellers slice 12 part 2), but only
+  // for a request that carries a seller session cookie and the CSRF header (Hassan H4).
+  app.useBodyParser('raw', {
+    type: (request) => isStoreImageUploadRequest(request.method, request.url, request.headers),
     limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });

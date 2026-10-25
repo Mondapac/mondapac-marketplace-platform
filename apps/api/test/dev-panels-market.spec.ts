@@ -30,7 +30,8 @@ describe('scripts/dev-panels-market.mjs', () => {
     expect(market.allowedOrigins).toEqual({
       admin: ['http://admin.localhost:3002'],
       seller: ['http://seller.localhost:3001'],
-      customer: [],
+      // Without STOREFRONT_ORIGIN the committed storefront list stays.
+      customer: ['https://storefront.au.mondapac.test'],
     });
     expect(market.identity.links.targets.seller?.['sign-in']).toMatch(
       /^http:\/\/seller\.localhost:3001\//,

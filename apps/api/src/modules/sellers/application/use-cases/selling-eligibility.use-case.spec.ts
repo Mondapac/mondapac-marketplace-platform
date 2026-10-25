@@ -159,6 +159,7 @@ describe.each([
     jobs = new SellingEligibilitySystem(gate, deps);
     facade = new SellersFacadeImplementation({
       sellerSummaries: undefined as never,
+      publishedStoreSlugs: undefined as never,
       sellerSummariesSystem: undefined as never,
       sellingEligibility: request,
       sellingEligibilitySystem: jobs,
@@ -169,6 +170,8 @@ describe.each([
       }),
       reviewerBusinessDetails: undefined as never,
       publishedStoreSellerId: undefined as never,
+      carrierPickup: undefined as never,
+      pickupPostcodes: undefined as never,
     });
   });
 

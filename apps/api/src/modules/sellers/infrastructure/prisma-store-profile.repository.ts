@@ -1,6 +1,7 @@
 import { money } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, Money } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
+import { termsOfStored, type DeliveryTerms } from '../domain/delivery-terms';
 import type {
   StoreProfileRepository,
   StoreSettings,
@@ -15,6 +16,26 @@ const minimumOf = (row: {
   row.minimumOrderAmount === null || row.minimumOrderCurrency === null
     ? null
     : money(row.minimumOrderAmount, row.minimumOrderCurrency);
+
+const deliveryOf = (row: {
+  deliveryDay: string | null;
+  deliveryFromMinute: number | null;
+  deliveryToMinute: number | null;
+  orderCutoffMinute: number | null;
+}): DeliveryTerms | null =>
+  termsOfStored({
+    day: row.deliveryDay,
+    fromMinute: row.deliveryFromMinute,
+    toMinute: row.deliveryToMinute,
+    cutoffMinute: row.orderCutoffMinute,
+  });
+
+const DELIVERY_COLUMNS = {
+  deliveryDay: true,
+  deliveryFromMinute: true,
+  deliveryToMinute: true,
+  orderCutoffMinute: true,
+} as const;
 
 /**
  * {@link StoreProfileRepository} on `sellers.store_profiles`, joined to its seller file for the
@@ -38,6 +59,29 @@ export class PrismaStoreProfileRepository implements StoreProfileRepository {
       select: { sellerId: true, minimumOrderAmount: true, minimumOrderCurrency: true },
     });
     return new Map(rows.map((row) => [row.sellerId as Id<'Seller'>, minimumOf(row)] as const));
+  }
+
+  async approvedDeliveryTerms(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, DeliveryTerms>> {
+    if (sellerIds.length === 0) return new Map();
+    if (sellerIds.length > MAX_IDS) throw new RangeError('approvedDeliveryTerms: at most 100 ids');
+    const rows = await this.prisma.tx(market).sellersStoreProfile.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId: { in: [...sellerIds] },
+        deliveryDay: { not: null },
+        sellerFile: { approvedRevisionId: { not: null } },
+      },
+      select: { sellerId: true, ...DELIVERY_COLUMNS },
+    });
+    const terms = new Map<Id<'Seller'>, DeliveryTerms>();
+    for (const row of rows) {
+      const stored = deliveryOf(row);
+      if (stored !== null) terms.set(row.sellerId as Id<'Seller'>, stored);
+    }
+    return terms;
   }
 
   async approvedStoreNames(
@@ -71,6 +115,7 @@ export class PrismaStoreProfileRepository implements StoreProfileRepository {
         version: true,
         minimumOrderAmount: true,
         minimumOrderCurrency: true,
+        ...DELIVERY_COLUMNS,
         sellerFile: { select: { approvedRevisionId: true } },
       },
     });
@@ -79,6 +124,7 @@ export class PrismaStoreProfileRepository implements StoreProfileRepository {
       version: row.version,
       approved: row.sellerFile.approvedRevisionId !== null,
       minimumOrder: minimumOf(row),
+      delivery: deliveryOf(row),
     };
   }
 
@@ -94,6 +140,27 @@ export class PrismaStoreProfileRepository implements StoreProfileRepository {
         minimumOrderCurrency: change.minimumOrder?.currency ?? null,
         minimumOrderChangedAt: new Date(change.changedAt.epochMilliseconds),
         minimumOrderChangedByAccountId: change.changedByAccountId,
+        version: { increment: 1 },
+      },
+    });
+    return result.count === 1 ? change.expectedVersion + 1 : null;
+  }
+
+  async saveDeliveryTerms(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    change: Parameters<StoreProfileRepository['saveDeliveryTerms']>[2],
+  ): Promise<number | null> {
+    const { delivery } = change;
+    const result = await this.prisma.tx(market).sellersStoreProfile.updateMany({
+      where: { marketId: market.marketId, sellerId, version: change.expectedVersion },
+      data: {
+        deliveryDay: delivery?.day ?? null,
+        deliveryFromMinute: delivery?.fromMinute ?? null,
+        deliveryToMinute: delivery?.toMinute ?? null,
+        orderCutoffMinute: delivery?.cutoffMinute ?? null,
+        deliveryChangedAt: new Date(change.changedAt.epochMilliseconds),
+        deliveryChangedByAccountId: change.changedByAccountId,
         version: { increment: 1 },
       },
     });

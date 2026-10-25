@@ -338,6 +338,7 @@ export class InMemoryRevisions implements BusinessFileRevisionRepository, Snapsh
         found.set(sellerId, {
           operatingTimezone: approved.operatingTimezone,
           addressTimezone: approved.addressTimezone,
+          operatingPostcode: approved.operatingPostcode,
         });
       }
     }

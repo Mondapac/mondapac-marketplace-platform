@@ -1,5 +1,6 @@
 import { money as makeMoney } from '@mondapac/shared-kernel';
 import type { Id, Money, Temporal } from '@mondapac/shared-kernel';
+import type { DeliveryAttention, DeliveryMethod } from './delivery-method';
 import { linesTax, shippingTaxOf } from './order';
 import type {
   CancelReason,
@@ -48,6 +49,17 @@ export interface SellerOrderView {
   readonly trackingRef: string | null;
   readonly shippedAt: Temporal.Instant | null;
   readonly deliveredAt: Temporal.Instant | null;
+  /** The buyer's delivery method. */
+  readonly deliveryMethod: DeliveryMethod;
+  /** The buyer's window for a scheduled delivery; null for every other method. */
+  readonly deliveryWindow: {
+    readonly start: Temporal.Instant;
+    readonly end: Temporal.Instant;
+  } | null;
+  /** When the seller said the order is ready; null until then. */
+  readonly readyAt: Temporal.Instant | null;
+  /** Set when the platform must look at the delivery (no carrier could take it). */
+  readonly deliveryAttention: DeliveryAttention | null;
   readonly lines: readonly OrderLineView[];
 }
 
@@ -211,6 +223,10 @@ export function sellerOrderDetailView(record: {
     trackingRef: seller.trackingRef,
     shippedAt: seller.shippedAt,
     deliveredAt: seller.deliveredAt,
+    deliveryMethod: seller.deliveryMethod,
+    deliveryWindow: seller.deliveryWindow,
+    readyAt: seller.readyAt,
+    deliveryAttention: seller.deliveryAttention,
     lines: lines.map((line) => lineView(line, currency)),
   };
 }
@@ -247,6 +263,10 @@ export function orderView(order: OrderState): OrderView {
         trackingRef: seller.trackingRef,
         shippedAt: seller.shippedAt,
         deliveredAt: seller.deliveredAt,
+        deliveryMethod: seller.deliveryMethod,
+        deliveryWindow: seller.deliveryWindow,
+        readyAt: seller.readyAt,
+        deliveryAttention: seller.deliveryAttention,
         lines: lines.map((line) => lineView(line, currency)),
       };
     }),

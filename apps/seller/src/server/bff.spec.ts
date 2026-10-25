@@ -409,6 +409,49 @@ describe('signed client address (ADR-0037)', () => {
   });
 });
 
+describe('relay allowlist for the store settings', () => {
+  const request = (method: string, path: string) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers: sameOrigin,
+      ...(method === 'GET' ? {} : { body: '{}' }),
+    });
+
+  it('relays the settings read (GET) and the delivery write (PUT) on their exact paths', async () => {
+    const upstream = upstreamOk();
+    const read = await relay(
+      config,
+      request('GET', 'sellers/store-settings'),
+      ['sellers', 'store-settings'],
+      upstream,
+    );
+    const write = await relay(
+      config,
+      request('PUT', 'sellers/store-settings/delivery'),
+      ['sellers', 'store-settings', 'delivery'],
+      upstream,
+    );
+    expect([read.status, write.status]).toEqual([200, 200]);
+  });
+
+  it('refuses every other method and shape near them', async () => {
+    const upstream = upstreamOk();
+    for (const [method, path] of [
+      ['POST', ['sellers', 'store-settings']],
+      ['PUT', ['sellers', 'store-settings']],
+      ['GET', ['sellers', 'store-settings', 'delivery']],
+      ['POST', ['sellers', 'store-settings', 'delivery']],
+      ['DELETE', ['sellers', 'store-settings', 'delivery']],
+      ['PUT', ['sellers', 'store-settings', 'delivery', 'x']],
+      // The minimum order has no panel route yet: it stays closed until its tab is built.
+      ['PUT', ['sellers', 'store-settings', 'minimum-order']],
+    ] as const) {
+      const response = await relay(config, request(method, path.join('/')), [...path], upstream);
+      expect([method, path.join('/'), response.status]).toEqual([method, path.join('/'), 404]);
+    }
+  });
+});
+
 describe('relay allowlist for stock locations', () => {
   const put = (path: string) =>
     new Request(`http://seller.localhost:3001/api/${path}`, {
@@ -813,5 +856,87 @@ describe('relay of the seller notice routes', () => {
     ]) {
       expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
     }
+  });
+});
+
+describe('relay of the store profile', () => {
+  const IMAGE = '01990000-0000-7000-8000-00000000d001';
+  const call = (
+    method: string,
+    path: string,
+    body?: string,
+    headers: Record<string, string> = sameOrigin,
+  ) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers,
+      ...(body === undefined ? {} : { body }),
+    });
+  const send = (method: string, path: string, body?: string) =>
+    relay(config, call(method, path, body), path.split('/'), upstreamOk());
+
+  it('relays the read, the About save, the two image saves and the two removes', async () => {
+    expect((await send('GET', 'sellers/store-profile')).status).toBe(200);
+    expect((await send('PUT', 'sellers/store-profile/about', '{}')).status).toBe(200);
+    for (const kind of ['logo', 'banner']) {
+      expect((await send('PUT', `sellers/store-profile/${kind}`, '{}')).status).toBe(200);
+      expect((await send('DELETE', `sellers/store-profile/${kind}`)).status).toBe(200);
+    }
+  });
+
+  it('refuses other shapes under it: the wrong method, an unknown image kind, a seller id', async () => {
+    const refused: [string, string][] = [
+      ['POST', 'sellers/store-profile'],
+      ['PUT', 'sellers/store-profile'],
+      ['POST', 'sellers/store-profile/about'],
+      ['DELETE', 'sellers/store-profile/about'],
+      ['PUT', 'sellers/store-profile/avatar'],
+      ['DELETE', 'sellers/store-profile/avatar'],
+      ['GET', `sellers/store-profile/${IMAGE}`],
+      ['GET', 'sellers/store-profile/logo'],
+    ];
+    for (const [method, path] of refused) {
+      const upstream = upstreamOk();
+      const body = method === 'GET' ? undefined : '{}';
+      const response = await relay(config, call(method, path, body), path.split('/'), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    }
+  });
+
+  it('takes a logo or banner body of 1 MiB, where the About save stops at 16 KB', async () => {
+    const big = JSON.stringify({ data: 'A'.repeat(1024 * 1024) });
+    expect((await send('PUT', 'sellers/store-profile/logo', big)).status).toBe(200);
+    expect((await send('PUT', 'sellers/store-profile/banner', big)).status).toBe(200);
+    expect((await send('PUT', 'sellers/store-profile/about', big)).status).toBe(413);
+    expect(
+      (await send('PUT', 'sellers/store-profile/logo', 'A'.repeat(5800 * 1024 + 1))).status,
+    ).toBe(413);
+  });
+
+  it('relays an image read for small and large by UUID, and refuses other sizes and ids', async () => {
+    for (const size of ['small', 'large']) {
+      const path = `sellers/store-profile/images/${IMAGE}/${size}`;
+      expect((await send('GET', path)).status).toBe(200);
+    }
+    for (const path of [
+      `sellers/store-profile/images/${IMAGE}/huge`,
+      'sellers/store-profile/images/not-a-uuid/small',
+    ]) {
+      expect((await send('GET', path)).status).toBe(404);
+    }
+  });
+
+  it('refuses an unsafe request that is not same-origin', async () => {
+    const upstream = upstreamOk();
+    const path = 'sellers/store-profile/about';
+    const response = await relay(
+      config,
+      call('PUT', path, '{}', { ...sameOrigin, 'sec-fetch-site': 'cross-site' }),
+      path.split('/'),
+      upstream,
+    );
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(upstream).not.toHaveBeenCalled();
   });
 });

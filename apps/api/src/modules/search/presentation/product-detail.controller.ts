@@ -58,7 +58,7 @@ export class ProductDetailController {
       'No session needed. The published product text and categories and its sellable Offers, ' +
       'lowest unit price first, and the public photos of the product (ids and sizes; the storefront builds the photo URLs by code). Each Offer lists its priced Variants with the buyer price (Money: ' +
       'minor units as a string and the currency), the public stock state (never the exact count) ' +
-      'and the seller public store name and minimum order. Only Offers that are sellable now and ' +
+      'the seller public store name and minimum order, and its certification badges (decided live by certification; empty when none). Only Offers that are sellable now and ' +
       'whose seller may sell are returned. Takes no query string.',
   })
   @ApiParam({ name: 'productId', format: 'uuid' })
@@ -105,6 +105,15 @@ export class ProductDetailController {
           taxInclusive: unit.taxInclusive,
           special: unit.special === null ? null : { endsAt: unit.special.endsAt.toString() },
           stock: { status: unit.stock.status, onlyLeft: unit.stock.onlyLeft },
+        })),
+        badges: offer.badges.map((badge) => ({
+          typeCode: badge.typeCode,
+          typeName: badge.typeName,
+          basis: badge.basis,
+          sellerClaim: badge.sellerClaim,
+          issuerName: badge.issuerName,
+          validUntilLocalDate: badge.validUntilLocalDate,
+          verifiedWithIssuer: badge.verifiedWithIssuer,
         })),
       })),
     };

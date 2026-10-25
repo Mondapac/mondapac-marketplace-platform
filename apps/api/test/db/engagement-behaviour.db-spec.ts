@@ -205,6 +205,33 @@ describe.each(TEST_MARKETS)('behaviour store in market %s (database)', (code) =>
     expect(await rowsOf('account_id', dana)).toEqual([]);
   });
 
+  it('keeps every call ok and no event after an off, over 20 rounds of the race', async () => {
+    // The account lock (engagement.lock-account) instead of SERIALIZABLE: no 40001 to lose, so
+    // every call of every round succeeds, and an off still leaves nothing behind.
+    const erin = ids.next<'Account'>();
+    const record = new RecordEvent(gate, deps());
+    const set = new SetPersonalization(gate, deps());
+    const event = { kind: 'product-viewed', productId: ids.next() };
+    const records = (count: number) =>
+      Array.from({ length: count }, () =>
+        record.execute(customer(market, erin), { event, ...quiet }),
+      );
+    for (let round = 0; round < 20; round += 1) {
+      const off = await Promise.all([
+        ...records(4),
+        set.execute(customer(market, erin), { enabled: false }),
+        ...records(4),
+      ]);
+      expect(off.every((result) => result.ok)).toBe(true);
+      expect(await rowsOf('account_id', erin)).toEqual([]);
+      const on = await Promise.all([
+        set.execute(customer(market, erin), { enabled: true }),
+        ...records(4),
+      ]);
+      expect(on.every((result) => result.ok)).toBe(true);
+    }
+  });
+
   it('purges account events after 12 months and guest events after 30 days, per Market', async () => {
     const carol = ids.next<'Account'>();
     const record = new RecordEvent(gate, deps());

@@ -1180,6 +1180,24 @@
     }
   },
   {
+    "action": "sellers.delivery-terms.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "cutoffMinute": "optional(integer)",
+      "day": "optional(enumOf(same-day|next-day))",
+      "fromMinute": "optional(integer)",
+      "toMinute": "optional(integer)"
+    },
+    "after": {
+      "cutoffMinute": "optional(integer)",
+      "day": "optional(enumOf(same-day|next-day))",
+      "fromMinute": "optional(integer)",
+      "toMinute": "optional(integer)"
+    }
+  },
+  {
     "action": "sellers.minimum-order.changed",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -1192,6 +1210,17 @@
     }
   },
   {
+    "action": "sellers.pickup-details.read-for-carrier",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "sellerOrderId": "id"
+    }
+  },
+  {
     "action": "sellers.register.manual-check-recorded",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -1200,6 +1229,30 @@
     "after": {
       "observedOutcome": "enumOf(active|not-found|cancelled)",
       "revisionId": "id"
+    }
+  },
+  {
+    "action": "sellers.store-image.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "imageId": "optional(id)"
+    },
+    "after": {
+      "imageId": "optional(id)",
+      "kind": "enumOf(logo|banner)"
+    }
+  },
+  {
+    "action": "sellers.store-profile.saved",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "revisionNo": "integer"
     }
   },
   {
@@ -1272,6 +1325,98 @@
     }
   },
   {
+    "action": "storefront.slide.archive",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "wasApproved": "boolean"
+    }
+  },
+  {
+    "action": "storefront.slide.create",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(announcement|promotion|link)",
+      "placementCount": "integer",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.draft-change",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "operation": "enumOf(update|restore)",
+      "placementCount": "integer",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.pause",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.publish",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "placementCount": "integer",
+      "selfApproved": "boolean",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.reorder",
+    "targetType": "storefront.slide-order",
+    "targetId": "enumOf(home.hero|home.mid|category.top|product.below-details|cart.below-lines|landing.top)",
+    "actors": ["authenticated"],
+    "before": {
+      "order": "listOf(id, max 50)",
+      "scope": "enumOf(all|category|product|seller|page)",
+      "scopeId": "optional(id)"
+    },
+    "after": {
+      "order": "listOf(id, max 50)",
+      "scope": "enumOf(all|category|product|seller|page)",
+      "scopeId": "optional(id)"
+    }
+  },
+  {
+    "action": "storefront.slide.resume",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.submit",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "versionNo": "integer"
+    }
+  },
+  {
     "action": "tax.strategy.activate",
     "targetType": "tax.strategy",
     "targetId": "id",
@@ -1331,6 +1476,20 @@
       "categoryCount": "integer",
       "kind": "enumOf(flat-rate|by-category)",
       "rateBps": "integer"
+    }
+  },
+  {
+    "action": "wallet.market-status.changed",
+    "targetType": "wallet.market-settings",
+    "targetId": "enumOf(wallet-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "reason": "optional(enumOf(wind-down|security-incident|fraud-suspected|legal-hold|maintenance|owner-decision))",
+      "status": "enumOf(off|active|paused|frozen)"
+    },
+    "after": {
+      "reason": "optional(enumOf(wind-down|security-incident|fraud-suspected|legal-hold|maintenance|owner-decision))",
+      "status": "enumOf(off|active|paused|frozen)"
     }
   }
 ]

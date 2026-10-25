@@ -44,6 +44,12 @@
   --sf-info-soft: #e0eef5;
   --sf-info-ink: #124a66;
   --sf-scrim: rgb(20 33 31 / 0.5);
+  /* Slider: the scrim that keeps the text readable over any image (tone light: light text on a dark
+     scrim; tone dark: dark text on a light scrim). Strong behind the text, clear at the far side. */
+  --sf-slide-scrim-dark: color-mix(in srgb, var(--sf-ink) 94%, transparent);
+  --sf-slide-scrim-dark-clear: color-mix(in srgb, var(--sf-ink) 10%, transparent);
+  --sf-slide-scrim-light: color-mix(in srgb, var(--sf-white) 94%, transparent);
+  --sf-slide-scrim-light-clear: color-mix(in srgb, var(--sf-white) 8%, transparent);
   --sf-shadow: rgb(20 33 31 / 0.25);
   --sf-shadow-soft: rgb(20 33 31 / 0.06);
   --sf-shadow-strong: rgb(20 33 31 / 0.35);
@@ -64,10 +70,17 @@
   --sf-radius-card: 5px;
   --sf-radius-tile: 14px;
   --sf-radius-pill: 999px;
+  --sf-radius-hero: 18px;
+  /* Slider: the gap between its rows and texts, and the padding of a slide (phone, then tablet up). */
+  --sf-slide-gap: 8px;
+  --sf-slide-pad-block: 16px;
+  --sf-slide-pad-inline: 20px;
   --sf-header-height: 72px;
   /* Side gutters; widen from the tablet breakpoint. */
   --gl: max(16px, env(safe-area-inset-left, 0px));
   --gr: max(16px, env(safe-area-inset-right, 0px));
+  /* The notch inset at the end side of the page: the right in LTR, the left in RTL. */
+  --sa-end: env(safe-area-inset-right, 0px);
   /* Text scale: Large from the desktop breakpoint, Small below; the footer toggle overrides it. */
   --fs: 1.15;
   color-scheme: light;
@@ -254,7 +267,8 @@ svg {
   background: var(--sf-surface);
   border: 1.5px solid transparent;
   border-radius: var(--sf-radius-pill);
-  padding: 0 6px 0 16px;
+  padding-block: 0;
+  padding-inline: 16px 6px;
   min-height: 46px;
   color: var(--sf-slate);
 }
@@ -302,7 +316,8 @@ svg {
   background: var(--sf-surface);
   border-radius: var(--sf-radius-pill);
   height: 44px;
-  padding: 0 14px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 14px;
   font-weight: 600;
   color: var(--sf-ink);
   white-space: nowrap;
@@ -346,7 +361,8 @@ svg {
   align-items: center;
   gap: 8px;
   height: 44px;
-  padding: 0 14px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 14px;
   border-radius: var(--sf-radius-pill);
   border: 0;
   background: var(--sf-teal);
@@ -744,31 +760,31 @@ svg {
   object-fit: contain;
 }
 .pimgs.primary .i0 {
-  right: -4%;
+  inset-inline-end: -4%;
   bottom: -6%;
   width: 78%;
   height: 78%;
 }
 .pimgs.primary .i1 {
-  right: 52%;
+  inset-inline-end: 52%;
   bottom: -4%;
   width: 46%;
   height: 46%;
 }
 .pimgs.primary .i2 {
-  right: 34%;
+  inset-inline-end: 34%;
   top: -4%;
   width: 46%;
   height: 46%;
 }
 .pimgs.secondary .i0 {
-  right: -8%;
+  inset-inline-end: -8%;
   bottom: -8%;
   width: 62%;
   height: 62%;
 }
 .pimgs.secondary .i1 {
-  right: 36%;
+  inset-inline-end: 36%;
   bottom: -6%;
   width: 40%;
   height: 40%;
@@ -795,7 +811,7 @@ svg {
 }
 @media (min-width: 900px) {
   .promos {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
   .promo {
     min-height: 220px;
@@ -808,6 +824,305 @@ svg {
   .promo.secondary {
     padding: 28px;
   }
+}
+
+/* Slider (storefront slider PR 2): text over an image with one link for the whole slide. Server
+   rendered; the track scrolls sideways with scroll-snap, so it works without JavaScript. The
+   frame has a fixed aspect ratio per position (no layout shift) that is also its minimum: when
+   the text is larger than the frame (Large text on a phone) the frame grows to fit it, so
+   nothing is clipped. The controls row keeps its height whether or not the script has added the
+   buttons (without JavaScript it is an empty strip). */
+.slider {
+  --slider-ratio: 4 / 3;
+  --slider-controls: 44px;
+  display: grid;
+  gap: var(--sf-slide-gap);
+  min-width: 0;
+  position: relative;
+}
+@media (min-width: 700px) {
+  .slider {
+    --slider-ratio: 5 / 2;
+    --sf-slide-pad-block: 24px;
+    --sf-slide-pad-inline: 36px;
+  }
+}
+@media (min-width: 1100px) {
+  .slider[data-position='home.hero'],
+  .slider[data-position='landing.top'] {
+    --slider-ratio: 3 / 1;
+  }
+}
+/* On a phone the picker sits in its own row below the arrows; eight slides need two rows. */
+@media (max-width: 699.98px) {
+  .slider[data-count] {
+    --slider-ratio: 6 / 5;
+    --slider-controls: 96px;
+  }
+  .slider[data-count='8'] {
+    --slider-controls: 140px;
+  }
+}
+.slider-track {
+  grid-row: 1;
+  display: flex;
+  aspect-ratio: var(--slider-ratio);
+  min-height: min-content;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  border-radius: var(--sf-radius-hero);
+  background: var(--sf-mist-soft);
+}
+.slider[data-ready] .slider-track {
+  scrollbar-width: none;
+}
+.slider[data-ready] .slider-track::-webkit-scrollbar {
+  display: none;
+}
+.slider[data-count='1'] .slider-track {
+  overflow: hidden;
+}
+.slide {
+  position: relative;
+  flex: 0 0 100%;
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--sf-radius-hero);
+  /* Outlines paint above the scrim, so pale slides keep a visible frame edge. */
+  outline: 1px solid var(--sf-mist);
+  outline-offset: -1px;
+  scroll-snap-align: start;
+  background: var(--sf-mist-soft);
+  color: var(--sf-ink);
+  --scrim: var(--sf-slide-scrim-light);
+  --scrim-clear: var(--sf-slide-scrim-light-clear);
+  --scrim-dir: to right;
+  --art-position: 100% 50%;
+}
+.slide[data-tone='light'] {
+  background: var(--sf-teal);
+  color: var(--sf-white);
+  --scrim: var(--sf-slide-scrim-dark);
+  --scrim-clear: var(--sf-slide-scrim-dark-clear);
+}
+.slide[data-placement='end'] {
+  --scrim-dir: to left;
+  --art-position: 0% 50%;
+}
+:dir(rtl) .slide {
+  --scrim-dir: to left;
+  --art-position: 0% 50%;
+}
+:dir(rtl) .slide[data-placement='end'] {
+  --scrim-dir: to right;
+  --art-position: 100% 50%;
+}
+.slide-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: var(--sf-slide-pad-block) var(--sf-slide-pad-inline);
+  border-radius: var(--sf-radius-hero);
+  color: inherit;
+  text-decoration: none;
+}
+/* The scrim is solid behind the text (the text is at most 60% wide, plus its padding) and only
+   then clears towards the picture, so no pixel of the art ever sits under a word. */
+.slide-inner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    var(--scrim-dir),
+    var(--scrim) 0%,
+    var(--scrim) 65%,
+    var(--scrim-clear) 100%
+  );
+}
+.slide[data-placement='center'] .slide-inner {
+  justify-content: center;
+}
+.slide[data-placement='center'] .slide-inner::before {
+  background: var(--scrim);
+}
+.slide[data-placement='end'] .slide-inner {
+  justify-content: flex-end;
+}
+/* On a phone the text spans the frame, so the scrim covers all of it and the art is faded. */
+@media (max-width: 699.98px) {
+  .slide-inner::before,
+  .slide[data-placement='center'] .slide-inner::before {
+    background: var(--scrim);
+  }
+  .slide-img.art {
+    opacity: 0.35;
+  }
+}
+.slide-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* The ready-made art is a square picture on white: it sits at the far side, blended into the tint. */
+.slide-img.art {
+  object-fit: contain;
+  object-position: var(--art-position);
+  mix-blend-mode: multiply;
+}
+.slide-text {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: var(--sf-slide-gap);
+  justify-items: start;
+  max-width: min(100%, 36rem);
+  text-align: start;
+}
+.slide[data-placement='center'] .slide-text {
+  justify-items: center;
+  text-align: center;
+}
+.slide-text h2 {
+  font-size: calc(22px * var(--fs));
+  line-height: calc(28px * var(--fs));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.slide-text p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.slide[data-tone='dark'] .slide-text p {
+  color: var(--sf-ink);
+}
+@media (min-width: 700px) {
+  .slide-text {
+    max-width: 54%;
+  }
+  .slide-text h2 {
+    font-size: calc(28px * var(--fs));
+    line-height: calc(34px * var(--fs));
+  }
+}
+@media (min-width: 900px) {
+  .slide-text {
+    max-width: 60%;
+  }
+  .slide-text h2 {
+    font-size: calc(30px * var(--fs));
+    line-height: calc(36px * var(--fs));
+  }
+  .slide-text p {
+    -webkit-line-clamp: 2;
+  }
+}
+.slide-tag {
+  font-size: calc(12px * var(--fs));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+/* The button look is only for a slide that is a link; a label without a link is not drawn. */
+.slide-cta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: calc(var(--sf-slide-gap) / 2);
+  padding: 0 var(--sf-slide-pad-inline);
+  border-radius: var(--sf-radius-pill);
+  font-weight: 700;
+  background: var(--sf-ink);
+  color: var(--sf-white);
+}
+.slide[data-tone='light'] .slide-cta {
+  background: var(--sf-white);
+  color: var(--sf-ink);
+}
+/* Focus: a 3px ink ring (3:1 on the light slides) with a white 2px ring inside it (so it is also
+   3:1 on the teal ones), on the rounded link itself, inside the frame, so nothing clips it. It is
+   drawn by the last child so the scrim cannot paint over it. */
+.slide-inner:focus-visible {
+  outline: none;
+}
+.slide-inner:focus-visible::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  outline: 3px solid var(--sf-ink);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 5px var(--sf-white);
+  pointer-events: none;
+}
+.slider-controls {
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  align-content: flex-start;
+  gap: 0 calc(var(--sf-slide-gap) / 2);
+  min-height: var(--slider-controls);
+}
+.slider[data-count='1'] .slider-controls {
+  display: none;
+}
+.slider-btn,
+.slider-dot {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--sf-radius-pill);
+  background: transparent;
+  color: var(--sf-ink);
+  cursor: pointer;
+}
+.slider-btn:hover,
+.slider-dot:hover {
+  background: var(--sf-mist-soft);
+}
+.slider-btn:focus-visible,
+.slider-dot:focus-visible {
+  outline: 3px solid var(--sf-teal);
+  outline-offset: -3px;
+}
+.slider-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+@media (max-width: 699.98px) {
+  .slider-dots {
+    flex-basis: 100%;
+  }
+}
+.slider-dot span {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--sf-radius-pill);
+  background: color-mix(in srgb, var(--sf-ink) 30%, var(--sf-white));
+}
+.slider-dot[aria-selected='true'] span {
+  width: 22px;
+  background: var(--sf-teal);
+}
+:dir(rtl) .slider-arrow {
+  transform: scaleX(-1);
 }
 
 /* Category strip */
@@ -1273,7 +1588,8 @@ svg {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .ftrust > li {
-    padding: 16px 12px 16px 0;
+    padding-block: 16px;
+    padding-inline: 0 12px;
   }
   .ftrust > li:nth-child(2) {
     border-top: 0;
@@ -1622,7 +1938,8 @@ svg {
   align-items: center;
   gap: 8px;
   min-height: 64px;
-  padding: 0 12px 0 20px;
+  padding-block: 0;
+  padding-inline: 20px 12px;
   border-bottom: 1px solid var(--sf-line);
   flex: none;
 }
@@ -2189,7 +2506,8 @@ svg {
   align-items: center;
   gap: 6px;
   min-height: 36px;
-  padding: 0 10px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 10px;
   border-radius: var(--sf-radius-pill);
   background: var(--sf-mist-soft);
   color: var(--sf-teal);
@@ -2229,7 +2547,8 @@ svg {
 .sortw select {
   appearance: none;
   min-height: 34px;
-  padding: 0 32px 0 10px;
+  padding-block: 0;
+  padding-inline: 10px 32px;
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-radius-card);
   background: var(--sf-white);
@@ -2914,7 +3233,7 @@ svg {
 .certbox {
   display: flex;
   gap: 16px;
-  align-items: center;
+  align-items: flex-start;
   border: 1px solid var(--sf-line);
   border-radius: 10px;
   padding: 16px;
@@ -2931,6 +3250,27 @@ svg {
 }
 .certbox p {
   color: var(--sf-slate);
+}
+.certbox .certmeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 16px;
+  margin-top: 4px;
+  font-size: calc(13px * var(--fs));
+  line-height: calc(18px * var(--fs));
+}
+.certbox .certok {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--sf-ok-ink);
+  font-weight: 600;
+}
+.certbox .certok .ico {
+  width: 14px;
+  height: 14px;
+  flex: none;
 }
 .offs {
   display: grid;
@@ -2956,6 +3296,12 @@ svg {
 .badge.hl {
   background: var(--sf-mist);
   color: var(--sf-teal);
+}
+.badge.decl {
+  background: transparent;
+  border: 1px solid var(--sf-line);
+  color: var(--sf-slate);
+  font-weight: 600;
 }
 .ofa {
   grid-column: 1;
@@ -3214,6 +3560,7 @@ svg {
 .spop.asmodal {
   position: fixed;
   top: 50%;
+  /* Centred on the page with the translate below, so it stays physical in both directions. */
   left: 50%;
   transform: translate(-50%, -50%);
   width: min(420px, calc(100% - 32px));
@@ -3312,7 +3659,8 @@ svg {
     background: var(--sf-white);
     border: 1px solid var(--sf-line);
     border-radius: var(--sf-radius-tile);
-    padding: 10px 12px 10px 16px;
+    padding-block: 10px;
+    padding-inline: 16px 12px;
     box-shadow: 0 4px 14px var(--sf-shadow-bar);
   }
   .buybar b {
@@ -3520,7 +3868,7 @@ svg {
   border-bottom: 1px solid var(--sf-line);
 }
 .cgh .lg,
-.dsel .lg {
+.dcard > header .lg {
   width: 36px;
   height: 36px;
   border-radius: 10px;
@@ -3537,8 +3885,7 @@ svg {
   overflow-wrap: anywhere;
 }
 .cgh small,
-.dgh small,
-.dsel small {
+.dgh small {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -3546,8 +3893,7 @@ svg {
   font-size: calc(12px * var(--fs));
 }
 .cgh small .ico,
-.dgh small .ico,
-.dsel small .ico {
+.dgh small .ico {
   width: 14px;
   height: 14px;
   flex: none;
@@ -3743,7 +4089,8 @@ svg {
   background: var(--sf-white);
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-radius-tile);
-  padding: 10px 12px 10px 16px;
+  padding-block: 10px;
+  padding-inline: 16px 12px;
   box-shadow: 0 4px 14px var(--sf-shadow-bar);
 }
 .cbar b {
@@ -4025,25 +4372,6 @@ svg {
   color: var(--sf-teal);
   border-bottom-color: var(--sf-teal);
 }
-.dsel {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--sf-line);
-  border-radius: 12px;
-  padding: 12px 14px;
-}
-.dsel div {
-  flex: 1;
-  min-width: 140px;
-}
-.dsel b {
-  display: block;
-}
-.dsel .fee {
-  font-weight: 800;
-}
 .infob {
   display: flex;
   gap: 10px;
@@ -4166,7 +4494,8 @@ svg {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 8px 8px 20px;
+  padding-block: 8px;
+  padding-inline: 20px 8px;
   border-bottom: 1px solid var(--sf-line);
 }
 .dh h2 {
@@ -4363,6 +4692,617 @@ svg {
   }
 }
 
+/* Checkout redesign (cart-a-teal, approved 21 Oct 2026): progress bar, one page with Delivery
+   address, Delivery method and Payment method, and a right column with the summary and help. */
+.ckst {
+  display: flex;
+  max-width: 640px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ckst li {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+  line-height: 1.25;
+  text-align: center;
+}
+/* The line joining a step to the one before it. */
+.ckst li::before {
+  content: '';
+  position: absolute;
+  top: 13px;
+  inset-inline-end: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--sf-line);
+  z-index: 0;
+}
+.ckst li:first-child::before {
+  display: none;
+}
+.ckst li.dn::before,
+.ckst li.cur::before {
+  background: var(--sf-teal);
+}
+.ckst .n {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--sf-surface);
+  box-shadow: 0 0 0 4px var(--sf-white);
+  font-weight: 800;
+}
+.ckst .n .ico {
+  width: 16px;
+  height: 16px;
+}
+.ckst .cur {
+  color: var(--sf-ink);
+  font-weight: 800;
+}
+.ckst .cur .n {
+  background: var(--sf-teal);
+  color: var(--sf-white);
+}
+.ckst .dn .n {
+  background: var(--sf-mist);
+  color: var(--sf-teal);
+}
+@media (min-width: 900px) {
+  .ckst {
+    max-width: none;
+    align-items: center;
+  }
+  .ckst li {
+    flex: 0 0 auto;
+    flex-direction: row;
+    gap: 12px;
+    font-size: calc(14px * var(--fs));
+    text-align: start;
+    white-space: nowrap;
+  }
+  .ckst li + li {
+    flex: 1 1 auto;
+  }
+  .ckst li::before {
+    position: static;
+    flex: 1 1 24px;
+    width: auto;
+    min-width: 24px;
+    margin-inline: 12px 0;
+  }
+  .ckst .n {
+    box-shadow: none;
+  }
+}
+.cklist {
+  display: grid;
+  gap: 28px;
+  min-width: 0;
+}
+.cks {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.cks > h2 {
+  outline: 0;
+  font-size: calc(20px * var(--fs));
+  line-height: calc(26px * var(--fs));
+  font-weight: 800;
+}
+.adg {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+}
+.adg .aopt {
+  align-items: center;
+}
+.adg .aopt input {
+  margin: 0;
+}
+@media (min-width: 700px) {
+  .adg .aopt {
+    grid-template-columns: 24px minmax(130px, 170px) minmax(0, 1fr) auto;
+    gap: 4px 14px;
+    padding: 14px 16px;
+  }
+  .adg .aopt b {
+    grid-column: 2;
+  }
+  .adg .aopt span:not(.badge) {
+    grid-column: 3;
+  }
+  .adg .aopt span + span:not(.badge) {
+    grid-column: 4;
+    color: var(--sf-ink);
+  }
+  .adg .aopt:last-child span:not(.badge) {
+    grid-column: 3 / -1;
+  }
+}
+.fld.ac,
+.acw {
+  position: relative;
+}
+.aclist {
+  position: absolute;
+  top: calc(100% + 4px);
+  inset-inline-end: 0;
+  inset-inline-start: 0;
+  z-index: 5;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  background: var(--sf-white);
+  border: 1px solid var(--sf-line);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px var(--sf-shadow-bar);
+}
+.aclist:empty {
+  display: none;
+}
+.fld.ac:has(.aclist:not(:empty)) > small,
+.fld.ac:has(.aclist:not(:empty)) > .acm {
+  visibility: hidden;
+}
+.aclist li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.aclist li + li {
+  border-top: 1px solid var(--sf-line);
+}
+.aclist li.on,
+.aclist li:hover {
+  background: var(--sf-mist-soft);
+}
+.aclist li .ico {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--sf-teal);
+}
+.aclist li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.aclist li small {
+  display: block;
+  color: var(--sf-slate);
+}
+.acst:empty {
+  display: none;
+}
+.acst {
+  margin: 0;
+  color: var(--sf-slate);
+}
+.acm {
+  justify-self: start;
+}
+.acchip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--sf-mist);
+  color: var(--sf-teal);
+  font-weight: 700;
+}
+.acchip span {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.acchip .ico {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.acsel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--sf-teal);
+  border-radius: 12px;
+  background: var(--sf-mist-soft);
+}
+.acsel > .lnk {
+  margin-inline-start: auto;
+}
+.acsel.bad {
+  border-color: var(--sf-error);
+}
+.acsel > .ico {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--sf-teal);
+}
+.acsel > div {
+  flex: 1;
+  min-width: 150px;
+}
+.acsel b {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.acsel small {
+  color: var(--sf-slate);
+}
+.acok {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--sf-teal);
+  font-weight: 700;
+  font-size: calc(13px * var(--fs));
+}
+.acok .ico {
+  width: 16px;
+  height: 16px;
+}
+.dcard {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--sf-line);
+  border-radius: 12px;
+  background: var(--sf-white);
+}
+.dcard > header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.dcard > header div {
+  min-width: 0;
+}
+.dcard > header b {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.dcard > header small {
+  color: var(--sf-slate);
+}
+.dgrp {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
+}
+.dopt {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 56px;
+  padding: 12px 14px;
+  border: 1px solid var(--sf-line);
+  border-radius: 12px;
+  background: var(--sf-white);
+  cursor: pointer;
+}
+.dopt:has(input:checked) {
+  border-color: var(--sf-teal);
+  background: var(--sf-mist-soft);
+  box-shadow: 0 0 0 1px var(--sf-teal);
+}
+.dopt:has(input:focus-visible) {
+  outline: 3px solid var(--sf-teal);
+  outline-offset: 2px;
+}
+.dopt:has(input:disabled) {
+  cursor: progress;
+}
+.dopt input {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  opacity: 0;
+}
+.dopt .dot {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--sf-slate);
+  border-radius: 50%;
+}
+.dopt:has(input:checked) .dot {
+  border-color: var(--sf-teal);
+}
+.dopt:has(input:checked) .dot::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--sf-teal);
+}
+.dopt .dtx {
+  min-width: 0;
+}
+.dopt .dtx b {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.dopt .dtx small {
+  display: block;
+  color: var(--sf-slate);
+}
+.dopt .fee {
+  font-weight: 800;
+}
+.dopt.off {
+  background: var(--sf-surface);
+  color: var(--sf-slate);
+  cursor: not-allowed;
+}
+.dopt.off .dot {
+  border-color: var(--sf-line);
+}
+.dtag {
+  padding: 2px 8px;
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-mist);
+  color: var(--sf-teal);
+  font-style: normal;
+  font-size: calc(11px * var(--fs));
+  font-weight: 800;
+}
+.dwarn2 {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--sf-error-line);
+  border-radius: 10px;
+  background: var(--sf-error-soft);
+  color: var(--sf-error-ink);
+  font-size: calc(13px * var(--fs));
+}
+.dwarn2 .ico {
+  width: 20px;
+  height: 20px;
+}
+.dwarn2 .dwa {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+.dwarn2 .lnk {
+  color: inherit;
+}
+.sk {
+  display: inline-block;
+  width: 52px;
+  height: 16px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--sf-surface), var(--sf-mist), var(--sf-surface));
+  background-size: 200% 100%;
+  vertical-align: middle;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sk {
+    animation: sk 1.2s linear infinite;
+  }
+}
+@keyframes sk {
+  to {
+    background-position: -200% 0;
+  }
+}
+.ckpm {
+  display: grid;
+  gap: 8px;
+}
+.btn[data-pay] {
+  white-space: nowrap;
+}
+.ckside {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+.cks2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.ckit {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0 0 12px;
+  list-style: none;
+  border-bottom: 1px solid var(--sf-line);
+}
+.ckit li {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+.ckit .cim {
+  width: 48px;
+  height: 48px;
+  grid-row: auto;
+}
+.ckit div {
+  min-width: 0;
+}
+.ckit b {
+  display: block;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.ckit small {
+  color: var(--sf-slate);
+}
+.ckit .num {
+  font-weight: 800;
+}
+.ckit .nw {
+  white-space: nowrap;
+}
+.ckl {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+}
+.ckl .ico {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--sf-teal);
+}
+.ptl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.pt {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 2px;
+  min-height: 84px;
+  padding: 14px 10px;
+  border: 1px solid var(--sf-line);
+  border-radius: 12px;
+  background: var(--sf-white);
+  text-align: center;
+  cursor: pointer;
+}
+.pt input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.pt:has(input:checked) {
+  border-color: var(--sf-teal);
+  background: var(--sf-mist-soft);
+  box-shadow: 0 0 0 1px var(--sf-teal);
+}
+.pt:has(input:focus-visible) {
+  outline: 3px solid var(--sf-teal);
+  outline-offset: 2px;
+}
+.pt .pti {
+  color: var(--sf-teal);
+}
+.pt .pti .ico {
+  width: 24px;
+  height: 24px;
+}
+.pt small {
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+}
+.cfm {
+  display: grid;
+  gap: 12px;
+}
+/* Stripe's card frames keep their own height; nothing is drawn here while they load. */
+.sfr:empty {
+  display: none;
+}
+/* Wraps the sections Pay locks while it waits; the grid keeps laying out what is inside. */
+.ckwait {
+  display: contents;
+}
+.ckdc {
+  padding: 4px 16px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-white);
+}
+.ckhelp {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-white);
+}
+.ckhelp h2 {
+  margin-bottom: 4px;
+  font-size: calc(15px * var(--fs));
+  font-weight: 800;
+}
+.ckhelp a {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 48px;
+  color: inherit;
+  text-decoration: none;
+}
+.ckhelp a:hover b {
+  text-decoration: underline;
+}
+.ckhelp .ico {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--sf-teal);
+}
+.ckhelp span {
+  min-width: 0;
+}
+.ckhelp b {
+  display: block;
+}
+.ckhelp small {
+  color: var(--sf-slate);
+  overflow-wrap: anywhere;
+}
+@media (min-width: 1000px) {
+  .ckdc,
+  .ckpm {
+    display: none;
+  }
+}
+
 /* Cart v4: save for later, discount code, seller note. */
 .cact {
   display: flex;
@@ -4549,7 +5489,8 @@ svg {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 8px 8px 20px;
+  padding-block: 8px;
+  padding-inline: 20px 8px;
   border-bottom: 1px solid var(--sf-line);
 }
 .lmh h2 {
@@ -4594,7 +5535,8 @@ svg {
   align-items: center;
   gap: 8px;
   min-height: 46px;
-  padding: 0 1px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 1px;
   border: 1.5px solid var(--sf-line);
   border-radius: 12px;
   background: var(--sf-white);
@@ -4639,8 +5581,8 @@ svg {
 }
 .lmlist {
   position: absolute;
-  left: 0;
-  right: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
   top: 100%;
   z-index: 3;
   max-height: 240px;
@@ -4688,8 +5630,8 @@ svg {
 }
 .lmnone {
   position: absolute;
-  left: 0;
-  right: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
   top: 100%;
   z-index: 3;
   margin-top: 4px;
@@ -4893,7 +5835,7 @@ svg {
 .lmzoom {
   position: absolute;
   top: 12px;
-  right: 12px;
+  inset-inline-end: 12px;
   display: grid;
   overflow: hidden;
   border-radius: 10px;
@@ -4928,8 +5870,8 @@ svg {
 .lmhint {
   position: absolute;
   top: 12px;
-  left: 12px;
-  right: 68px;
+  inset-inline-start: 12px;
+  inset-inline-end: 68px;
   padding: 8px 12px;
   border-radius: 10px;
   background: var(--sf-white);
@@ -4939,7 +5881,7 @@ svg {
 }
 .lmlegend {
   position: absolute;
-  right: 12px;
+  inset-inline-end: 12px;
   bottom: 12px;
   display: flex;
   align-items: center;
@@ -4960,7 +5902,7 @@ svg {
 }
 .lmatt {
   position: absolute;
-  left: 8px;
+  inset-inline-start: 8px;
   bottom: 6px;
   padding: 2px 6px;
   border-radius: 4px;
@@ -4998,7 +5940,7 @@ svg {
   .lmx {
     position: absolute;
     top: 8px;
-    left: 8px;
+    inset-inline-start: 8px;
     z-index: 2;
     display: grid;
     background: var(--sf-white);
@@ -5104,7 +6046,7 @@ svg {
   display: flex;
   flex: 0 0 auto;
   gap: 12px;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .shop-ring {
   display: grid;
@@ -5172,7 +6114,7 @@ svg {
 .shop-share {
   position: absolute;
   top: 12px;
-  right: 12px;
+  inset-inline-end: 12px;
   z-index: 3;
 }
 .shop-share > button {
@@ -5197,7 +6139,7 @@ svg {
 .shop-share-menu {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  inset-inline-end: 0;
   display: grid;
   gap: 2px;
   width: min(280px, calc(100vw - 56px));
@@ -5224,7 +6166,7 @@ svg {
   color: var(--sf-ink);
   font-size: calc(15px * var(--fs));
   font-weight: 600;
-  text-align: left;
+  text-align: start;
   text-decoration: none;
 }
 .shop-share-menu a:hover,
@@ -5465,7 +6407,7 @@ svg {
 }
 .shop-facts dd {
   font-weight: 600;
-  text-align: right;
+  text-align: end;
   overflow-wrap: anywhere;
 }
 .shop-ok {
@@ -5586,7 +6528,8 @@ button.login {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 12px 12px 12px 16px;
+  margin-block: 12px;
+  margin-inline: 16px 12px;
   text-transform: none;
   letter-spacing: 0;
   font-size: calc(15px * var(--fs));
@@ -5663,7 +6606,7 @@ button.login {
   width: min(360px, 88%);
   height: 100%;
   padding-top: env(safe-area-inset-top, 0px);
-  padding-inline-end: env(safe-area-inset-right, 0px);
+  padding-inline-end: var(--sa-end);
   background: var(--sf-white);
   box-shadow: -12px 0 40px var(--sf-shadow);
   transform: translateX(102%);
@@ -5686,7 +6629,8 @@ button.login {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 8px 12px 16px;
+  padding-block: 12px;
+  padding-inline: 16px 8px;
   border-bottom: 1px solid var(--sf-line);
 }
 .adn {
@@ -6142,8 +7086,8 @@ button.login {
   content: '';
   position: absolute;
   top: 13px;
-  left: -50%;
-  right: 50%;
+  inset-inline-start: -50%;
+  inset-inline-end: 50%;
   height: 2px;
   background: var(--sf-line);
 }
@@ -6344,7 +7288,7 @@ button.login {
   content: '';
   position: absolute;
   top: 4px;
-  left: 4px;
+  inset-inline-start: 4px;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -7451,7 +8395,8 @@ button.login {
   width: 100%;
   max-width: 440px;
   min-height: 48px;
-  padding: 0 6px 0 16px;
+  padding-block: 0;
+  padding-inline: 16px 6px;
   border: 1.5px solid transparent;
   border-radius: var(--sf-radius-pill);
   background: var(--sf-surface);
@@ -7628,7 +8573,7 @@ button.login {
 .aslaunch {
   position: fixed;
   z-index: 22;
-  right: var(--as-right, max(20px, env(safe-area-inset-right, 0px)));
+  inset-inline-end: var(--as-end, max(20px, var(--sa-end)));
   bottom: var(--as-lift);
   display: grid;
   place-items: center;
@@ -7662,7 +8607,7 @@ button.login {
 .aspanel {
   position: fixed;
   z-index: 22;
-  right: max(20px, env(safe-area-inset-right, 0px));
+  inset-inline-end: max(20px, var(--sa-end));
   bottom: calc(var(--as-dock) + 20px);
   width: min(400px, calc(100vw - 40px));
   /* Never over the header: 20px clear of it and of the dock. */
@@ -7681,7 +8626,7 @@ button.login {
 }
 @media (max-width: 700px) {
   .aslaunch {
-    right: var(--as-right, max(16px, env(safe-area-inset-right, 0px)));
+    inset-inline-end: var(--as-end, max(16px, var(--sa-end)));
   }
   .aspanel {
     z-index: 30;
@@ -7697,7 +8642,8 @@ button.login {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 6px 8px 14px;
+  padding-block: 8px;
+  padding-inline: 14px 6px;
   border-bottom: 2px solid var(--sf-saffron);
   min-height: 60px;
 }
@@ -7783,7 +8729,7 @@ button.login {
 }
 .asinfo ul {
   margin: 0;
-  padding-left: 18px;
+  padding-inline-start: 18px;
   display: grid;
   gap: 2px;
 }
@@ -7823,12 +8769,12 @@ button.login {
 .asm.u .asb {
   background: var(--sf-saffron);
   color: var(--sf-on-accent);
-  border-bottom-right-radius: 4px;
+  border-end-end-radius: 4px;
 }
 .asm.a .asb {
   background: var(--sf-surface);
   color: var(--sf-ink);
-  border-bottom-left-radius: 4px;
+  border-end-start-radius: 4px;
   max-width: 92%;
   justify-self: start;
 }
@@ -8173,4 +9119,49 @@ button.login {
 }
 .asfoot .aslk {
   flex: none;
+}
+
+/* Right-to-left (a language the Market publishes, read from <html dir>): what is physical on
+   purpose is mirrored here. Spacing and positions above are logical and follow the direction. */
+:root:dir(rtl) {
+  --sa-end: env(safe-area-inset-left, 0px);
+}
+/* Arrows and chevrons that point along the reading direction. */
+:dir(rtl) .ico-flip {
+  scale: -1 1;
+}
+/* "Show more" turns the chevron down; it must not mirror on top of that. */
+:dir(rtl) .dmore .ico {
+  scale: none;
+}
+/* Drawers wait off the edge they open from; the start drawer sits at the right in RTL. */
+:dir(rtl) .panel {
+  box-shadow: -8px 0 28px var(--sf-shadow-panel);
+  transform: translateX(102%);
+}
+:dir(rtl) .fpanel {
+  box-shadow: 8px 0 28px var(--sf-shadow-panel);
+  transform: translateX(-102%);
+}
+:dir(rtl) .adp {
+  box-shadow: 12px 0 40px var(--sf-shadow);
+  transform: translateX(-102%);
+}
+:dir(rtl) .ac-sw2 input:checked + i::after {
+  transform: translateX(-20px);
+}
+:dir(rtl) .cbp {
+  mask-image: linear-gradient(to left, transparent, var(--sf-black) 25%);
+}
+
+/* Fonts for scripts the brand fonts do not cover. Figtree and Plus Jakarta Sans stay first, so
+   Latin digits and brand text keep the brand look; the script font fills the other glyphs. The
+   stylesheet for it loads only in these languages (src/i18n/fonts.ts). */
+:root:lang(fa) {
+  --sf-font-head: 'Plus Jakarta Sans', 'Vazirmatn', system-ui, sans-serif;
+  --sf-font-body: 'Figtree', 'Vazirmatn', system-ui, sans-serif;
+}
+:root:lang(ar) {
+  --sf-font-head: 'Plus Jakarta Sans', 'Noto Sans Arabic', system-ui, sans-serif;
+  --sf-font-body: 'Figtree', 'Noto Sans Arabic', system-ui, sans-serif;
 }

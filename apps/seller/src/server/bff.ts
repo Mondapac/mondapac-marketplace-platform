@@ -21,7 +21,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/roles',
     'sellers/my-file',
     'sellers/own-zone',
+    // The store profile page: the About text, the logo and banner references (slice 12 part 2).
+    'sellers/store-profile',
     'sellers/my-file/form-descriptors',
+    // The store's settings (delivery terms; the minimum order is in the same answer).
+    'sellers/store-settings',
     'payments/seller/payout-account',
     'ordering/seller/orders',
     'commission-payouts/seller/ledger',
@@ -39,8 +43,15 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/address',
     'sellers/my-file/slug',
     'sellers/my-file/identifier',
+    // The delivery day, window and order cut-off (package e).
+    'sellers/store-settings/delivery',
     'inventory/seller/sources-order',
+    // The About text, the logo and the banner of the store (slice 12 part 2).
+    'sellers/store-profile/about',
+    'sellers/store-profile/logo',
+    'sellers/store-profile/banner',
   ]),
+  DELETE: new Set(['sellers/store-profile/logo', 'sellers/store-profile/banner']),
   POST: new Set([
     // The signed-in member's other sessions are ended; this one stays (profile).
     'identity/seller/profile/sessions/sign-out-others',
@@ -104,7 +115,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   DELETE: ['catalog/seller/offers/:id', 'catalog/seller/products/:id/images/:id'],
   // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
-  GET: ['catalog/seller/products/:id/images/:id/:size'],
+  GET: ['catalog/seller/products/:id/images/:id/:size', 'sellers/store-profile/images/:id/:size'],
 };
 
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
@@ -133,8 +144,8 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
   return text === '' ? '' : `?${text}`;
 }
 
-/** The photo sizes the panel may ask for; the API names the same three. */
-const PHOTO_SIZES: ReadonlySet<string> = new Set(['thumb', 'medium', 'large']);
+/** The picture sizes the panel may ask for: a product photo's three, and a store image's small. */
+const PHOTO_SIZES: ReadonlySet<string> = new Set(['thumb', 'medium', 'large', 'small']);
 
 function matches(template: string, path: readonly string[]): boolean {
   const parts = template.split('/');
@@ -159,8 +170,13 @@ function isAllowed(method: string, path: readonly string[]): boolean {
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_PHOTO_BODY_BYTES = 5800 * 1024;
 const PHOTO_UPLOAD = 'catalog/seller/products/:id/images';
+const STORE_IMAGE_UPLOADS: ReadonlySet<string> = new Set([
+  'sellers/store-profile/logo',
+  'sellers/store-profile/banner',
+]);
 
 function bodyLimitFor(method: string, path: readonly string[]): number {
+  if (method === 'PUT' && STORE_IMAGE_UPLOADS.has(path.join('/'))) return MAX_PHOTO_BODY_BYTES;
   return method === 'POST' && matches(PHOTO_UPLOAD, path) ? MAX_PHOTO_BODY_BYTES : MAX_BODY_BYTES;
 }
 

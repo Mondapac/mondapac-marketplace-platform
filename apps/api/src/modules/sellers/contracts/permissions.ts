@@ -60,10 +60,34 @@ export const SELLERS_BUSINESS_DETAILS_VIEW = definePermission('sellers', {
  * order (design 6.1, 18 decision 5; slice 20). Seller scope, not protected (default Store
  * Manager; the Seller Owner holds every seller key). It blocks checkout for that seller, so it
  * has its own key (least privilege). Approved sellers only. This build reads the settings under
- * the same key; a separate `sellers.store-profile.view` joins with the rest of the profile.
+ * the same key; the profile texts and images have their own pair, `sellers.store-profile.view`
+ * and `.edit` (slice 12 part 2).
  */
 export const SELLERS_STORE_SETTINGS_EDIT = definePermission('sellers', {
   key: 'sellers.store-settings.edit',
+  scope: 'seller',
+  protected: false,
+});
+
+/**
+ * Read the public store profile: the About text, the logo and the banner (design 6.1, 6.2
+ * `my-store-profile.read`; slice 12 part 2). Seller scope, not protected; the Seller Owner holds
+ * every seller key. Approved sellers only. The default role mapping (Store Manager, Customer
+ * Service) is `identity`'s seed.
+ */
+export const SELLERS_STORE_PROFILE_VIEW = definePermission('sellers', {
+  key: 'sellers.store-profile.view',
+  scope: 'seller',
+  protected: false,
+});
+
+/**
+ * Save the About text and set, replace or remove the logo and the banner (design 6.1, 6.2
+ * `my-store-profile.save`; slice 12 part 2). Seller scope, not protected; every save is public at
+ * once (design 3.7), so the key is separate from the read. Approved sellers only.
+ */
+export const SELLERS_STORE_PROFILE_EDIT = definePermission('sellers', {
+  key: 'sellers.store-profile.edit',
   scope: 'seller',
   protected: false,
 });
@@ -73,5 +97,7 @@ export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,
   SELLERS_SELLER_VIEW,
+  SELLERS_STORE_PROFILE_EDIT,
+  SELLERS_STORE_PROFILE_VIEW,
   SELLERS_STORE_SETTINGS_EDIT,
 ]);

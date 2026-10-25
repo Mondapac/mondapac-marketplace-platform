@@ -19,9 +19,9 @@ export const ORDERING_SELLER_ORDER_VIEW = definePermission('ordering', {
   protected: false,
 });
 
-/** Record the shipment (carrier and tracking reference) of a paid seller order. */
-export const ORDERING_SELLER_ORDER_SHIP = definePermission('ordering', {
-  key: 'ordering.seller-order.ship',
+/** Tell the platform that a paid seller order is ready (the seller never delivers). */
+export const ORDERING_SELLER_ORDER_MARK_READY = definePermission('ordering', {
+  key: 'ordering.seller-order.mark-ready',
   scope: 'seller',
   protected: false,
 });
@@ -44,6 +44,6 @@ export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
   ORDERING_ORDER_REFUND,
   ORDERING_ORDER_VIEW,
   ORDERING_SELLER_ORDER_MARK_DELIVERED,
-  ORDERING_SELLER_ORDER_SHIP,
+  ORDERING_SELLER_ORDER_MARK_READY,
   ORDERING_SELLER_ORDER_VIEW,
 ]);
