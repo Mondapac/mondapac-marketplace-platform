@@ -11,7 +11,8 @@ REVOKE SELECT, INSERT ON TABLE "wallet"."postings" FROM "mondapac_app";
 REVOKE SELECT, INSERT ON TABLE "wallet"."journals" FROM "mondapac_app";
 REVOKE USAGE ON SCHEMA "wallet" FROM "mondapac_app";
 
--- Dropping a table drops its triggers.
+-- Dropping a table drops its triggers, its indexes and the foreign keys it holds; the tables are dropped
+-- children first, so no table is dropped while another still references it.
 DROP TABLE "wallet"."market_settings";
 DROP TABLE "wallet"."balances";
 DROP TABLE "wallet"."hold_lots";

@@ -151,24 +151,36 @@ export async function grantCredit(
   ].join('|');
   const now = deps.clock.now();
   return deps.unitOfWork.run<GrantCreditResult, WalletFailure>(context.market, async () => {
-    const closed = await gate(deps, context, 'grant');
-    if (closed !== null) return err(closed);
-    const wallet = await deps.wallet.ensureWallet(context.market, {
-      newAccountId: deps.ids.next<'WalletAccount'>(),
-      customerAccountId: customer,
-      currency: policy.currency,
-      now,
-    });
-    const balance = await deps.wallet.lockBalance(context.market, wallet.id);
-    const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, (r) => ({
+    // A retry with a known key gets its first answer whatever the switch says now: the journal
+    // is looked up, under the balance lock, before the gate. Only new work meets the gate.
+    const decode = (r: Readonly<Record<string, string>>): GrantCreditResult => ({
       journalId: r.journalId as Id<'WalletJournal'>,
       lotId: r.lotId as Id<'WalletLot'>,
       balance: {
         available: money(BigInt(r.availableMinor!), policy.currency),
         held: money(BigInt(r.heldMinor!), policy.currency),
       },
-    }));
+    });
+    let wallet = await deps.wallet.findWallet(context.market, customer);
+    let balance: BalanceRecord | null = null;
+    if (wallet !== null) balance = await deps.wallet.lockBalance(context.market, wallet.id);
+    // The key is unique in the Market, so it is looked up even where this customer has no wallet.
+    const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, decode);
     if (replay !== null) return replay;
+    const closed = await gate(deps, context, 'grant');
+    if (closed !== null) return err(closed);
+    if (wallet === null || balance === null) {
+      wallet = await deps.wallet.ensureWallet(context.market, {
+        newAccountId: deps.ids.next<'WalletAccount'>(),
+        customerAccountId: customer,
+        currency: policy.currency,
+        now,
+      });
+      balance = await deps.wallet.lockBalance(context.market, wallet.id);
+      // A parallel request with the same key may have created the wallet and finished first.
+      const raced = await replayOf(deps, context, request.idempotencyKey, fingerprint, decode);
+      if (raced !== null) return raced;
+    }
     const notActive = accountGate(wallet);
     if (notActive !== null) return err(notActive);
     if (balance.availableMinor + balance.heldMinor + amount > policy.balanceCapMinor) {
@@ -263,11 +275,10 @@ export async function placeHold(
     request.expiresAt.epochMilliseconds,
   ].join('|');
   return deps.unitOfWork.run<HoldResult, WalletFailure>(context.market, async () => {
-    const closed = await gate(deps, context, 'hold');
-    if (closed !== null) return err(closed);
     const wallet = await deps.wallet.findWallet(context.market, customer);
-    if (wallet === null) return err({ code: 'wallet.insufficient-funds' });
-    const balance = await deps.wallet.lockBalance(context.market, wallet.id);
+    // Replay before the gate, under the balance lock (see grantCredit).
+    const balance =
+      wallet === null ? null : await deps.wallet.lockBalance(context.market, wallet.id);
     const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, (r) => ({
       holdId: r.holdId as Id<'WalletHold'>,
       journalId: r.journalId as Id<'WalletJournal'>,
@@ -275,6 +286,9 @@ export async function placeHold(
       status: 'held' as const,
     }));
     if (replay !== null) return replay;
+    const closed = await gate(deps, context, 'hold');
+    if (closed !== null) return err(closed);
+    if (wallet === null || balance === null) return err({ code: 'wallet.insufficient-funds' });
     const notActive = accountGate(wallet);
     if (notActive !== null) return err(notActive);
     if ((await deps.wallet.findHold(context.market, orderId)) !== null) {
@@ -417,11 +431,10 @@ async function settleHold(
   const fingerprint = [how, customer, orderId].join('|');
   const now = deps.clock.now();
   return deps.unitOfWork.run<HoldResult, WalletFailure>(context.market, async () => {
-    const closed = await gate(deps, context, how);
-    if (closed !== null) return err(closed);
     const wallet = await deps.wallet.findWallet(context.market, customer);
-    if (wallet === null) return err({ code: 'wallet.not-found' });
-    const balance = await deps.wallet.lockBalance(context.market, wallet.id);
+    // Replay before the gate, under the balance lock (see grantCredit).
+    const balance =
+      wallet === null ? null : await deps.wallet.lockBalance(context.market, wallet.id);
     const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, (r) => ({
       holdId: r.holdId as Id<'WalletHold'>,
       journalId: r.journalId as Id<'WalletJournal'>,
@@ -429,6 +442,9 @@ async function settleHold(
       status: how === 'capture' ? ('captured' as const) : ('released' as const),
     }));
     if (replay !== null) return replay;
+    const closed = await gate(deps, context, how);
+    if (closed !== null) return err(closed);
+    if (wallet === null || balance === null) return err({ code: 'wallet.not-found' });
     const hold = await deps.wallet.findHold(context.market, orderId, wallet.id);
     if (hold === null) return err({ code: 'wallet.not-found' });
     if (hold.status !== 'held') return err({ code: 'wallet.hold-not-held' });

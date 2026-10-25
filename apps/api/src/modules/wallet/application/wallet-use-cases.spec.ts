@@ -535,6 +535,36 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       });
     });
 
+    it('a retry with a known key gets its first answer after the switch changed; a new key meets the gate', async () => {
+      const order3 = id<'Order'>(0x104);
+      const first = {
+        grant: await grant(50n, 'promo', 'replay-grant-1'),
+        hold: await hold(40n, order3, 'replay-hold-1'),
+        capture: await settle('capture', ORDER_1, 'replay-capture-1'),
+        release: await settle('release', ORDER_2, 'replay-release-1'),
+      };
+      for (const result of Object.values(first)) expect(result.ok).toBe(true);
+      const before = snapshot();
+      await turn('paused', 'wind-down');
+      expect(await grant(50n, 'promo', 'replay-grant-1')).toEqual(first.grant);
+      expect(await hold(40n, order3, 'replay-hold-1')).toEqual(first.hold);
+      expect(await settle('capture', ORDER_1, 'replay-capture-1')).toEqual(first.capture);
+      expect(await settle('release', ORDER_2, 'replay-release-1')).toEqual(first.release);
+      await turn('frozen', 'security-incident');
+      expect(await grant(50n, 'promo', 'replay-grant-1')).toEqual(first.grant);
+      expect(await hold(40n, order3, 'replay-hold-1')).toEqual(first.hold);
+      expect(await settle('capture', ORDER_1, 'replay-capture-1')).toEqual(first.capture);
+      expect(snapshot()).toBe(before);
+      expect(await grant(50n, 'promo', 'replay-grant-2')).toEqual(err({ code: 'wallet.frozen' }));
+      expect(await hold(40n, id<'Order'>(0x105), 'replay-hold-2')).toEqual(
+        err({ code: 'wallet.frozen' }),
+      );
+      expect(await settle('capture', order3, 'replay-capture-2')).toEqual(
+        err({ code: 'wallet.frozen' }),
+      );
+      expect(await wallet.reconcile()).toEqual([]);
+    });
+
     it('frozen: no grants, holds or capture; release still works; reads work', async () => {
       await turn('frozen', 'security-incident');
       expect(await grant(10n)).toEqual(err({ code: 'wallet.frozen' }));

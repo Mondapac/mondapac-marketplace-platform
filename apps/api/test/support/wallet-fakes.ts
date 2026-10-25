@@ -14,6 +14,7 @@ import type {
   JournalRecord,
   NewJournal,
   NewLot,
+  ReconcileMismatch,
   WalletAccountRecord,
   WalletRepository,
 } from '../../src/modules/wallet/application/ports/wallet.repository';
@@ -235,6 +236,40 @@ export class MemoryWallet implements WalletRepository {
         .slice(0, limit)
         .map((l) => ({ lotId: l.id, walletAccountId: l.wallet })),
     );
+  }
+  reconcile(): Promise<readonly ReconcileMismatch[]> {
+    const out: ReconcileMismatch[] = [];
+    const posted = new Map<string, bigint>();
+    for (const journal of this.journals) {
+      const total = journal.postings.reduce((sum, leg) => sum + leg.amountMinor, 0n);
+      if (total !== 0n) {
+        out.push({ check: 'journal-unbalanced', subject: journal.id, expected: 0n, actual: total });
+      }
+      for (const leg of journal.postings) {
+        posted.set(leg.accountId, (posted.get(leg.accountId) ?? 0n) + leg.amountMinor);
+      }
+    }
+    const heldOf = (wallet: string) =>
+      [...this.holds.values()]
+        .filter((h) => h.status === 'held' && h.walletAccountId === wallet)
+        .reduce((sum, h) => sum + h.amountMinor, 0n);
+    for (const account of this.accounts.values()) {
+      if (account.kind !== 'credit_liability') continue;
+      const balance = this.balances.get(account.id);
+      const available = balance?.availableMinor ?? 0n;
+      const lotted = [...this.lots.values()]
+        .filter((l) => l.wallet === account.id)
+        .reduce((sum, l) => sum + l.remaining, 0n);
+      const checks: [ReconcileMismatch['check'], bigint, bigint][] = [
+        ['postings-vs-available', available, posted.get(account.id) ?? 0n],
+        ['lots-vs-available', available, lotted],
+        ['held-holds-vs-held', balance?.heldMinor ?? 0n, heldOf(account.id)],
+      ];
+      for (const [check, expected, actual] of checks) {
+        if (expected !== actual) out.push({ check, subject: account.id, expected, actual });
+      }
+    }
+    return Promise.resolve(out);
   }
   dueHolds(_m: MarketContext, now: Temporal.Instant, limit: number): Promise<readonly DueHold[]> {
     return Promise.resolve(

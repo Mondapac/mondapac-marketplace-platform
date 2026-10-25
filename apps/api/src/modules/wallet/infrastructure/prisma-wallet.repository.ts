@@ -5,6 +5,7 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import type {
   BalanceRecord,
   DueHold,
+  ReconcileMismatch,
   DueLot,
   HistoryPage,
   HistoryRow,
@@ -441,5 +442,101 @@ export class PrismaWalletRepository implements WalletRepository {
       holdId: row.id as Id<'WalletHold'>,
       walletAccountId: row.walletAccountId as Id<'WalletAccount'>,
     }));
+  }
+
+  async reconcile(market: MarketContext) {
+    const tx = this.prisma.tx(market);
+    const marketId = market.marketId;
+    const sums = <K extends string>(
+      rows: readonly ({ [P in K]: string } & { _sum: Record<string, bigint | null> })[],
+      key: K,
+      field: string,
+    ) => new Map(rows.map((row) => [row[key], row._sum[field] ?? 0n]));
+    const [accounts, balances, postings, lots, held, unbalanced] = await Promise.all([
+      tx.walletAccount.findMany({
+        where: { marketId, kind: { in: ['credit_liability', 'holds'] } },
+      }),
+      tx.walletBalance.findMany({ where: { marketId } }),
+      tx.walletPosting.groupBy({
+        by: ['accountId'],
+        where: { marketId },
+        _sum: { amountMinor: true },
+      }),
+      tx.walletLot.groupBy({
+        by: ['walletAccountId'],
+        where: { marketId },
+        _sum: { remainingMinor: true },
+      }),
+      tx.walletHold.groupBy({
+        by: ['walletAccountId'],
+        where: { marketId, status: 'held' },
+        _sum: { amountMinor: true },
+      }),
+      tx.walletPosting.groupBy({
+        by: ['journalId'],
+        where: { marketId },
+        having: { amountMinor: { _sum: { not: 0n } } },
+        _sum: { amountMinor: true },
+      }),
+    ]);
+    const postingSum = sums(postings, 'accountId', 'amountMinor');
+    const lotSum = sums(lots, 'walletAccountId', 'remainingMinor');
+    const heldSum = sums(held, 'walletAccountId', 'amountMinor');
+    const balanceOf = new Map(balances.map((row) => [row.walletAccountId, row]));
+    const out: ReconcileMismatch[] = [];
+    for (const account of accounts) {
+      if (account.kind === 'holds') {
+        const total = [...heldSum.values()].reduce((a, b) => a + b, 0n);
+        const actual = postingSum.get(account.id) ?? 0n;
+        if (actual !== total) {
+          out.push({
+            check: 'holds-account-vs-held-holds',
+            subject: account.id,
+            expected: total,
+            actual,
+          });
+        }
+        continue;
+      }
+      const balance = balanceOf.get(account.id);
+      const available = balance?.availableMinor ?? 0n;
+      const heldMinor = balance?.heldMinor ?? 0n;
+      const posted = postingSum.get(account.id) ?? 0n;
+      const lotted = lotSum.get(account.id) ?? 0n;
+      const holding = heldSum.get(account.id) ?? 0n;
+      if (posted !== available) {
+        out.push({
+          check: 'postings-vs-available',
+          subject: account.id,
+          expected: available,
+          actual: posted,
+        });
+      }
+      if (lotted !== available) {
+        out.push({
+          check: 'lots-vs-available',
+          subject: account.id,
+          expected: available,
+          actual: lotted,
+        });
+      }
+      if (holding !== heldMinor) {
+        out.push({
+          check: 'held-holds-vs-held',
+          subject: account.id,
+          expected: heldMinor,
+          actual: holding,
+        });
+      }
+    }
+    for (const row of unbalanced) {
+      out.push({
+        check: 'journal-unbalanced',
+        subject: row.journalId,
+        expected: 0n,
+        actual: row._sum.amountMinor ?? 0n,
+      });
+    }
+    return out;
   }
 }

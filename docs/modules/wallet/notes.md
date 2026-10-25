@@ -62,13 +62,30 @@ two-step policy screen). So the PUT is guarded by the protected key, the CSRF an
 checks, the acting-as refusal and the audit row, and has no extra confirmation. An admin step-up
 belongs to identity and is a separate PR; wallet adds the call in `settings-flow.ts` when it exists.
 
+Known gaps (to settle before package 2):
+
+- Admin step-up on `PUT /wallet/admin/settings` must exist before the admin toggle page
+  (package 2) merges; Hassan to confirm.
+- Refunds that would exceed the cap go to the original card (owner decision); the caller handles
+  `wallet.cap-exceeded`.
+
+Idempotent replay: a retried request with a known key returns its first answer even if the Market
+status changed since. `grantCredit`, `placeHold`, `captureHold` and `releaseHold` look the journal
+up (under the balance lock) before the switch gate; only new work meets the gate.
+
+Reconciliation: `WalletRepository.reconcile(market)` is read-only and returns the mismatches
+(postings = available = lots per wallet, held holds = held, every journal sums to zero, the
+`holds` account = all held holds). No endpoint yet; it is the base of the nightly reconciliation.
+
 ## What exists in package 1
 
 - Schema `wallet`: `accounts`, `journals` (insert-only, unique `(market_id, idempotency_key)`),
   `postings` (insert-only, deferred trigger: legs of a journal sum to zero, at least two), `lots`
   (only `remaining_minor` changes; only decreases, except a released or expired hold restores it),
   `holds` and `hold_lots` (release restores the exact lots), `balances` (CHECK >= 0, locked
-  with a no-change update before every change), `market_settings`.
+  with a no-change update before every change), `market_settings`. Composite, market-scoped
+  foreign keys (`ON DELETE RESTRICT`) tie postings, lots, holds, hold lots, balances and
+  journals to their parents inside the schema.
 - Facade `WALLET_FACADE` for system callers only (no ordering wiring yet): `grantCredit`,
   `placeHold`, `captureHold`, `releaseHold`, `balanceOf`.
 - Customer HTTP: `GET /wallet/me` and `GET /wallet/me/history` (own resources; reads are allowed

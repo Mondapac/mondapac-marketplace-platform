@@ -89,6 +89,20 @@ export interface DueHold {
   readonly walletAccountId: Id<'WalletAccount'>;
 }
 
+/** One place where the books of a Market disagree with themselves. */
+export interface ReconcileMismatch {
+  readonly check:
+    | 'postings-vs-available'
+    | 'lots-vs-available'
+    | 'held-holds-vs-held'
+    | 'journal-unbalanced'
+    | 'holds-account-vs-held-holds';
+  /** The wallet account id, the journal id, or the Market's `holds` account id. */
+  readonly subject: string;
+  readonly expected: bigint;
+  readonly actual: bigint;
+}
+
 /**
  * The wallet ledger of one Market (`wallet.*`). Every method runs inside the caller's unit.
  * Journals, postings and hold lots are insert-only; the database refuses anything else.
@@ -183,6 +197,13 @@ export interface WalletRepository {
     after: Temporal.Instant,
     limit: number,
   ): Promise<readonly Lot[]>;
+
+  /**
+   * Read-only. The mismatches between postings, lots, holds and the cached balances (empty when
+   * the books agree): per wallet, postings = available = lots and held holds = held; every journal
+   * sums to zero; the `holds` account = all held holds. The base of the nightly reconciliation.
+   */
+  reconcile(market: MarketContext): Promise<readonly ReconcileMismatch[]>;
 
   dueLots(market: MarketContext, now: Temporal.Instant, limit: number): Promise<readonly DueLot[]>;
   dueHolds(

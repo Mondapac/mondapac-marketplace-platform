@@ -154,6 +154,45 @@ CREATE INDEX "hold_lots_market_id_lot_id_idx" ON "wallet"."hold_lots"("market_id
 -- CreateIndex
 CREATE INDEX "balances_market_id_idx" ON "wallet"."balances"("market_id");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "accounts_market_id_id_key" ON "wallet"."accounts"("market_id", "id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "journals_market_id_id_key" ON "wallet"."journals"("market_id", "id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "lots_market_id_id_key" ON "wallet"."lots"("market_id", "id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "holds_market_id_id_key" ON "wallet"."holds"("market_id", "id");
+
+-- AddForeignKey
+ALTER TABLE "wallet"."postings" ADD CONSTRAINT "postings_market_id_journal_id_fkey" FOREIGN KEY ("market_id", "journal_id") REFERENCES "wallet"."journals"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."postings" ADD CONSTRAINT "postings_market_id_account_id_fkey" FOREIGN KEY ("market_id", "account_id") REFERENCES "wallet"."accounts"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."lots" ADD CONSTRAINT "lots_market_id_wallet_account_id_fkey" FOREIGN KEY ("market_id", "wallet_account_id") REFERENCES "wallet"."accounts"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."lots" ADD CONSTRAINT "lots_market_id_journal_id_fkey" FOREIGN KEY ("market_id", "journal_id") REFERENCES "wallet"."journals"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."holds" ADD CONSTRAINT "holds_market_id_wallet_account_id_fkey" FOREIGN KEY ("market_id", "wallet_account_id") REFERENCES "wallet"."accounts"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."hold_lots" ADD CONSTRAINT "hold_lots_market_id_hold_id_fkey" FOREIGN KEY ("market_id", "hold_id") REFERENCES "wallet"."holds"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."hold_lots" ADD CONSTRAINT "hold_lots_market_id_lot_id_fkey" FOREIGN KEY ("market_id", "lot_id") REFERENCES "wallet"."lots"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."balances" ADD CONSTRAINT "balances_market_id_wallet_account_id_fkey" FOREIGN KEY ("market_id", "wallet_account_id") REFERENCES "wallet"."accounts"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."journals" ADD CONSTRAINT "journals_market_id_wallet_account_id_fkey" FOREIGN KEY ("market_id", "wallet_account_id") REFERENCES "wallet"."accounts"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
 -- Hand-written: scope and value checks.
 ALTER TABLE "wallet"."accounts"
   ADD CONSTRAINT "accounts_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),

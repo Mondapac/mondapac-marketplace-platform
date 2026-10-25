@@ -1,4 +1,4 @@
-import { err, money, Temporal } from '@mondapac/shared-kernel';
+import { err, money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -355,7 +355,10 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
         );
       expect(await code_(bad(-1n, 0n))).toBe(CHECK);
       expect(await code_(bad(0n, -1n))).toBe(CHECK);
-      const journal = ids.next<'WalletJournal'>();
+      const journal = await writeJournal([
+        [await accountRow('promo_expense', null), -100n],
+        [wallet, 100n],
+      ]);
       const lot = (source: string, original: bigint, remaining: bigint, expires: string | null) =>
         sql.query(
           `INSERT INTO wallet.lots (id, market_id, tenant_id, wallet_account_id, source, journal_id, original_minor, remaining_minor, currency, expires_at, created_at)
@@ -382,6 +385,85 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expect(await code_(lot('promo', 100n, 100n, '2027-01-01T00:00:00Z'))).toBe('allowed');
     });
 
+    it('refuses a row that points at nothing, or at another Market, and a delete of a parent (composite foreign keys)', async () => {
+      const wallet = await accountRow('credit_liability', ids.next<'Account'>());
+      const other = await accountRow('order_clearing', null);
+      const journal = await writeJournal([
+        [other, -100n],
+        [wallet, 100n],
+      ]);
+      const FK = '23503';
+      const ghost = ids.next();
+      // A posting needs its journal and its account, in the same Market.
+      expect(
+        await code_(
+          writeJournal([
+            [ghost, 100n],
+            [other, -100n],
+          ]),
+        ),
+      ).toBe(FK);
+      expect(
+        await code_(
+          sql.query(
+            `INSERT INTO wallet.postings (id, market_id, tenant_id, journal_id, account_id, amount_minor, currency)
+             VALUES ($1, $2, 'default', $3, $4, 5, $5)`,
+            [ids.next(), mk, ghost, other, currency],
+          ),
+        ),
+      ).toBe(FK);
+      // Another Market's account id does not satisfy the Market-scoped key.
+      expect(
+        await code_(
+          sql.query(
+            `INSERT INTO wallet.lots (id, market_id, tenant_id, wallet_account_id, source, journal_id, original_minor, remaining_minor, currency, expires_at, created_at)
+             VALUES ($1, $2, 'default', $3, 'refund', $4, 100, 100, $5, NULL, now())`,
+            [ids.next(), `${mk}X`.slice(0, 8), wallet, journal, currency],
+          ),
+        ),
+      ).toBe(FK);
+      expect(
+        await code_(
+          sql.query(
+            `INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at)
+             VALUES ($1, $2, 'default', $3, $4, 60, $5, 'held', now(), now())`,
+            [ids.next(), mk, ghost, ids.next(), currency],
+          ),
+        ),
+      ).toBe(FK);
+      expect(
+        await code_(
+          sql.query(
+            `INSERT INTO wallet.balances (wallet_account_id, market_id, tenant_id, currency, available_minor, held_minor, updated_at)
+             VALUES ($1, $2, 'default', $3, 0, 0, now())`,
+            [ghost, mk, currency],
+          ),
+        ),
+      ).toBe(FK);
+      expect(
+        await code_(
+          sql.query(
+            `INSERT INTO wallet.hold_lots (hold_id, lot_id, market_id, tenant_id, amount_minor) VALUES ($1, $2, $3, 'default', 1)`,
+            [ghost, ids.next(), mk],
+          ),
+        ),
+      ).toBe(FK);
+      // A journal for a wallet that does not exist is refused; one for a real wallet is fine.
+      expect(
+        await code_(
+          sql.query(
+            `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, result, created_at)
+             VALUES ($1, $2, 'default', 'hold', $3, 'fp', 'system', NULL, 'welcome', NULL, $4, '{}'::jsonb, now())`,
+            [ids.next(), mk, key('fk'), ghost],
+          ),
+        ),
+      ).toBe(FK);
+      // The owner cannot delete a parent that still has rows.
+      expect(await code_(owner.query(`DELETE FROM wallet.journals WHERE id = $1`, [journal]))).toBe(
+        RESTRICT,
+      );
+    });
+
     it('keeps a customer wallet one per customer and the internal accounts one per kind', async () => {
       const customer = ids.next<'Account'>();
       await accountRow('credit_liability', customer);
@@ -399,10 +481,14 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       const wallet = await accountRow('credit_liability', customer);
       const lotId = ids.next<'WalletLot'>();
       const holdId = ids.next<'WalletHold'>();
+      const grantJournal = await writeJournal([
+        [await accountRow('refund_clearing', null), -100n],
+        [wallet, 100n],
+      ]);
       await sql.query(
         `INSERT INTO wallet.lots (id, market_id, tenant_id, wallet_account_id, source, journal_id, original_minor, remaining_minor, currency, expires_at, created_at)
          VALUES ($1, $2, $3, $4, 'refund', $5, 100, 100, $6, NULL, now())`,
-        [lotId, mk, 'default', wallet, ids.next(), currency],
+        [lotId, mk, 'default', wallet, grantJournal, currency],
       );
       expect(
         await code_(
@@ -742,6 +828,146 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
           market.marketId,
         ]),
       ).toEqual([{ status: 'active' }]);
+    });
+  });
+
+  // ---- the books agree after every step ------------------------------------------------------
+
+  describe('ledger invariants', () => {
+    const sweep = () => new ExpireWalletCredit(gate, deps).execute(system, {});
+    const num = (value: unknown) => BigInt(typeof value === 'string' ? value : '0');
+    const reconcile = () =>
+      deps.unitOfWork.run<readonly unknown[], never>(
+        market,
+        async () => ok(await deps.wallet.reconcile(market)),
+        { readOnly: true },
+      );
+
+    /** The same checks as `reconcile`, written as plain SQL so the two can be compared. */
+    const assertBooks = async (step: string, customers: readonly Id<'Account'>[]) => {
+      const where = `step "${step}"`;
+      for (const customer of customers) {
+        const [row] = await rows(
+          `SELECT a.id,
+                  b.available_minor::text AS available,
+                  b.held_minor::text AS held,
+                  (SELECT COALESCE(sum(amount_minor), 0) FROM wallet.postings WHERE account_id = a.id)::text AS posted,
+                  (SELECT COALESCE(sum(remaining_minor), 0) FROM wallet.lots WHERE wallet_account_id = a.id)::text AS lotted,
+                  (SELECT COALESCE(sum(amount_minor), 0) FROM wallet.holds WHERE wallet_account_id = a.id AND status = 'held')::text AS holding
+             FROM wallet.accounts a JOIN wallet.balances b ON b.wallet_account_id = a.id
+            WHERE a.market_id = $1 AND a.customer_account_id = $2`,
+          [market.marketId, customer],
+        );
+        if (row === undefined) continue; // the wallet is created by its first grant
+        expect({ where, ...row }).toMatchObject({
+          posted: row.available,
+          lotted: row.available,
+          holding: row.held,
+        });
+      }
+      const unbalanced = await rows(
+        `SELECT journal_id FROM wallet.postings WHERE market_id = $1 GROUP BY journal_id HAVING sum(amount_minor) <> 0`,
+        [market.marketId],
+      );
+      expect({ where, unbalanced }).toEqual({ where, unbalanced: [] });
+      const [holds] = await rows(
+        `SELECT (SELECT COALESCE(sum(p.amount_minor), 0) FROM wallet.postings p JOIN wallet.accounts a ON a.id = p.account_id
+                  WHERE a.market_id = $1 AND a.kind = 'holds')::text AS account,
+                (SELECT COALESCE(sum(amount_minor), 0) FROM wallet.holds WHERE market_id = $1 AND status = 'held')::text AS held`,
+        [market.marketId],
+      );
+      expect({ where, account: num(holds!.account) }).toEqual({ where, account: num(holds!.held) });
+      expect({ where, mismatches: await reconcile() }).toEqual({
+        where,
+        mismatches: ok([]),
+      });
+    };
+
+    it('postings, lots, holds and balances agree after every step of a mixed sequence on two wallets', async () => {
+      expect((await turn('active')).ok).toBe(true);
+      const a = ids.next<'Account'>();
+      const b = ids.next<'Account'>();
+      const both = [a, b] as const;
+      const [a1, a2, a3, b1] = [1, 2, 3, 4].map(() => ids.next<'Order'>()) as [
+        Id<'Order'>,
+        Id<'Order'>,
+        Id<'Order'>,
+        Id<'Order'>,
+      ];
+      const ok_ = <T>(r: { ok: boolean } & T) => expect(r.ok).toBe(true);
+      const afterLotExpiryHours = 24 * 31 * promoMonths;
+
+      ok_(await grant(a, 600n, 'promo'));
+      await assertBooks('grant promo A', both);
+      ok_(await grant(a, 400n, 'refund'));
+      await assertBooks('grant refund A', both);
+      ok_(await grant(b, 300n, 'promo'));
+      ok_(await grant(b, 200n, 'refund'));
+      await assertBooks('grants on B', both);
+
+      ok_(await hold(a, a1, 300n, 1));
+      await assertBooks('hold A a1', both);
+      ok_(await hold(a, a2, 200n, 24));
+      await assertBooks('hold A a2', both);
+      ok_(await settle('capture', a, a2));
+      await assertBooks('capture A a2', both);
+      ok_(await settle('release', a, a1));
+      await assertBooks('release A a1', both);
+
+      // A hold that runs out: the sweep gives it back.
+      ok_(await hold(a, a3, 150n, 1));
+      ok_(await hold(b, b1, 250n, afterLotExpiryHours + 24 * 5));
+      await assertBooks('holds A a3 and B b1', both);
+      clock.advance(Temporal.Duration.from({ hours: 2 }));
+      expect(await sweep()).toMatchObject({ ok: true, value: { expiredHolds: 1, failed: [] } });
+      await assertBooks('hold expiry of a3', both);
+
+      // The promo lots run out while b1 still holds 250 of B's promo lot.
+      clock.advance(Temporal.Duration.from({ hours: afterLotExpiryHours }));
+      expect(await sweep()).toMatchObject({ ok: true, value: { failed: [] } });
+      await assertBooks('lot expiry', both);
+      expect(await balanceOf(b)).toEqual([200n, 250n]);
+
+      // b1 is released into a lot that is already expired; the next sweep expires it again.
+      ok_(await settle('release', b, b1));
+      expect(await balanceOf(b)).toEqual([450n, 0n]);
+      await assertBooks('release into an expired lot', both);
+      const again = await sweep();
+      expect(again).toMatchObject({ ok: true, value: { expiredLots: 1, failed: [] } });
+      expect(await balanceOf(b)).toEqual([200n, 0n]);
+      await assertBooks('re-expiry', both);
+      expect(await balanceOf(a)).toEqual([400n, 0n]);
+    });
+
+    it('reports a balance that drifted from the postings, and nothing once it is put back', async () => {
+      const customer = ids.next<'Account'>();
+      await grant(customer, 100n, 'refund');
+      expect(await reconcile()).toEqual(ok([]));
+      await owner.query(
+        `UPDATE wallet.balances SET available_minor = available_minor + 7
+          WHERE wallet_account_id = (SELECT id FROM wallet.accounts WHERE market_id = $1 AND customer_account_id = $2)`,
+        [market.marketId, customer],
+      );
+      try {
+        const drift = await reconcile();
+        expect(drift.ok && drift.value).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              check: 'postings-vs-available',
+              expected: 107n,
+              actual: 100n,
+            }),
+            expect.objectContaining({ check: 'lots-vs-available', expected: 107n, actual: 100n }),
+          ]),
+        );
+      } finally {
+        await owner.query(
+          `UPDATE wallet.balances SET available_minor = available_minor - 7
+            WHERE wallet_account_id = (SELECT id FROM wallet.accounts WHERE market_id = $1 AND customer_account_id = $2)`,
+          [market.marketId, customer],
+        );
+      }
+      expect(await reconcile()).toEqual(ok([]));
     });
   });
 });

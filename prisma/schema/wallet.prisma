@@ -19,7 +19,15 @@ model WalletAccount {
   status            String
   createdAt         DateTime @map("created_at") @db.Timestamptz(6)
 
-  /// One account per kind and customer; internal accounts have no customer (NULLS NOT DISTINCT in the migration).
+  lots     WalletLot[]
+  holds    WalletHold[]
+  postings WalletPosting[]
+  journals WalletJournal[]
+  balances WalletBalance[]
+
+  // The target of the composite, market-scoped foreign keys of the other tables.
+  @@unique([marketId, id])
+  // One account per kind and customer; internal accounts have no customer (NULLS NOT DISTINCT in the migration).
   @@unique([marketId, kind, customerAccountId])
   @@map("accounts")
   @@schema("wallet")
@@ -46,6 +54,11 @@ model WalletJournal {
   result          Json
   createdAt       DateTime @map("created_at") @db.Timestamptz(6)
 
+  wallet   WalletAccount? @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  postings WalletPosting[]
+  lots     WalletLot[]
+
+  @@unique([marketId, id])
   @@unique([marketId, idempotencyKey])
   @@index([marketId, walletAccountId, createdAt(sort: Desc), id(sort: Desc)])
   @@map("journals")
@@ -63,6 +76,9 @@ model WalletPosting {
   /// Signed minor units, never zero (CHECK).
   amountMinor BigInt @map("amount_minor")
   currency    String @db.VarChar(3)
+
+  journal WalletJournal @relation(fields: [marketId, journalId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  account WalletAccount @relation(fields: [marketId, accountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([marketId, journalId])
   @@index([marketId, accountId])
@@ -87,6 +103,11 @@ model WalletLot {
   expiresAt       DateTime? @map("expires_at") @db.Timestamptz(6)
   createdAt       DateTime  @map("created_at") @db.Timestamptz(6)
 
+  wallet   WalletAccount   @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  journal  WalletJournal   @relation(fields: [marketId, journalId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  holdLots WalletHoldLot[]
+
+  @@unique([marketId, id])
   @@index([marketId, walletAccountId, remainingMinor])
   @@index([marketId, source, expiresAt])
   @@map("lots")
@@ -109,6 +130,10 @@ model WalletHold {
   createdAt       DateTime  @map("created_at") @db.Timestamptz(6)
   resolvedAt      DateTime? @map("resolved_at") @db.Timestamptz(6)
 
+  wallet   WalletAccount   @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  holdLots WalletHoldLot[]
+
+  @@unique([marketId, id])
   @@unique([marketId, orderId])
   @@index([marketId, status, expiresAt])
   @@map("holds")
@@ -122,6 +147,9 @@ model WalletHoldLot {
   marketId    String @map("market_id") @db.VarChar(8)
   tenantId    String @map("tenant_id")
   amountMinor BigInt @map("amount_minor")
+
+  hold WalletHold @relation(fields: [marketId, holdId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  lot  WalletLot  @relation(fields: [marketId, lotId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, holdId, lotId])
   @@index([marketId, lotId])
@@ -139,6 +167,8 @@ model WalletBalance {
   availableMinor  BigInt   @map("available_minor")
   heldMinor       BigInt   @map("held_minor")
   updatedAt       DateTime @map("updated_at") @db.Timestamptz(6)
+
+  wallet WalletAccount @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([marketId])
   @@map("balances")
