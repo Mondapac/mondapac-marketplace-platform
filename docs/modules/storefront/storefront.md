@@ -16,7 +16,9 @@ go live only after a platform admin approves them.
   `info-page`. System pages have their own template each (`system.home`, ...); checkout, order
   confirmation and account are `locked`.
 - **Module catalogue (closed)**: banner, category-circles, sellers-near-you, product-shelf
-  (sources: bestsellers, specials, category, seller, tag, manual, linked), info-strip,
+  (sources: bestsellers, specials, category, seller, tag, manual, linked, recently-viewed,
+  for-you, bought-together; the last three are read per buyer or per product with `no-store`,
+  and `bought-together` is allowed only on `system.product` or a page linkable to a product), info-strip,
   text-block, image-text, faq, brand-header, product-spotlight, nav-link, nav-category. Every
   module checks its settings; texts are plain text (no control or format characters, no HTML),
   rich text is data (heading level 2 or 3, paragraph, list), links are site paths or `https:`
