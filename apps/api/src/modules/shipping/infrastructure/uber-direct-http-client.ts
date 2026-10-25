@@ -49,8 +49,10 @@ type Attempt =
  * bearer token (scope `eats.deliveries`) that is kept per Market until shortly before it expires
  * and replaced once when a call is answered 401. Each attempt has a timeout; a 5xx, a timeout or
  * a network fault is retried (a 429 too, except on a quote) with exponential backoff, a 4xx never
- * is. Every call the marketplace makes is idempotent (a booking carries the seller order id as
- * `external_id`). A circuit breaker per Market and kind of call stops calls while Uber is down.
+ * is. A booking (`POST deliveries`) is a single attempt: Uber's dedupe by `external_id` is not
+ * verified (see `idempotentBooking` in the policy), so a timeout, a 5xx or a 429 on it is never
+ * retried here and answers "unavailable" (the router then marks the booking unknown). Quotes,
+ * cancels and status reads may retry (a cancel and a status are idempotent by delivery id). A circuit breaker per Market and kind of call stops calls while Uber is down.
  * The secret, the token and Uber's answer bodies never reach a log or an error: a failure is a
  * code.
  */
@@ -124,9 +126,11 @@ export class UberDirectHttpClient {
           ? ok({ status: answer.status, body: answer.body })
           : err('refused');
       }
-      // A quote waits on a customer at checkout: a 429 falls back at once instead of adding
-      // retries while Uber sheds load.
-      if (attempt >= endpoint.maxAttempts || (answer.throttled && call === 'quote')) {
+      // A booking is one attempt, whatever the fault: the request may have created the delivery
+      // and only the answer was lost. A 429 on a quote falls back at once (the router can try
+      // another fleet) instead of adding retries while Uber sheds load.
+      const attempts = call === 'book' ? 1 : endpoint.maxAttempts;
+      if (attempt >= attempts || (answer.throttled && call === 'quote')) {
         this.breaker.failed(key, endpoint.circuit);
         return err('unavailable');
       }
@@ -177,11 +181,15 @@ export class UberDirectHttpClient {
       if (answer.kind === 'answer') {
         const granted = this.grantOf(answer.status, answer.body);
         if (granted === null) {
+          if (answer.status === 401 || answer.status === 403) {
+            // Wrong credentials are an operations problem, not a fault of Uber: they must not
+            // open the circuit (which would turn "unauthorized" into "unavailable"), and a
+            // half-open trial is settled.
+            this.breaker.succeeded(key);
+            return err('unauthorized');
+          }
           this.breaker.failed(key, endpoint.circuit);
-          // Wrong credentials are an operations problem, and nothing was sent: not "unavailable".
-          return err(
-            answer.status === 401 || answer.status === 403 ? 'unauthorized' : 'unavailable',
-          );
+          return err('unavailable');
         }
         this.breaker.succeeded(key);
         this.#tokens.set(cacheKey, {
@@ -202,7 +210,12 @@ export class UberDirectHttpClient {
   /** The token and its life from Uber's answer, or null when it is not a usable grant. */
   private grantOf(status: number, body: unknown): { token: string; expiresInMs: number } | null {
     if (status >= 400 || typeof body !== 'object' || body === null) return null;
-    const { access_token: token, expires_in: expiresIn } = body as Record<string, unknown>;
+    const {
+      access_token: token,
+      expires_in: expiresIn,
+      token_type: type,
+    } = body as Record<string, unknown>;
+    if (typeof type !== 'string' || type.toLowerCase() !== 'bearer') return null;
     if (typeof token !== 'string' || !/^[\x21-\x7e]{8,4096}$/.test(token)) return null;
     // A life that does not outlast the early refresh would loop on tokens: not a usable grant.
     if (

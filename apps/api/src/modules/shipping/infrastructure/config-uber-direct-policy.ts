@@ -91,7 +91,10 @@ export class ConfigUberDirectPolicy {
         currency: this.markets.get(market.marketId).defaultCurrency,
       },
       prohibitedClasses: [...config.prohibitedClasses],
-      idempotentBooking: true,
+      // Uber's dedupe of `POST deliveries` by `external_id` is not verified, so booking is a
+      // single attempt and a lost answer is "carrier-unknown". Switch to true only after Uber's
+      // documented dedupe field is confirmed on the test account (and the client may retry then).
+      idempotentBooking: false,
       supportsWindow: true,
     };
   }

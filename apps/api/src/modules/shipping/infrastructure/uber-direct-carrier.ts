@@ -165,14 +165,21 @@ function etaMinutesOf(body: Record<string, unknown>, now: Temporal.Instant): num
  * estimate in minutes (`duration`, or the time to `dropoff_eta`) and the quote's `expires`, each
  * null when absent or not valid. Every other field is dropped.
  */
-function quoteOf(body: unknown, now: Temporal.Instant): CarrierQuote | null {
+function quoteOf(
+  body: unknown,
+  now: Temporal.Instant,
+  marketCurrency: string,
+): CarrierQuote | null {
   if (!isObject(body)) return null;
   const { fee } = body;
-  if (typeof fee !== 'number' || !Number.isSafeInteger(fee) || fee < 0) return null;
+  // A free quote (0) is not a price the router can trust: require a positive fee.
+  if (typeof fee !== 'number' || !Number.isSafeInteger(fee) || fee <= 0) return null;
   const raw = typeof body.currency_type === 'string' ? body.currency_type : body.currency;
   if (typeof raw !== 'string') return null;
   const currency = raw.toUpperCase();
   if (!CURRENCY.test(currency)) return null;
+  // A price in another currency than the Market's cannot be compared or charged: no quote.
+  if (currency !== marketCurrency) return null;
   let expiresAt: Temporal.Instant | null = null;
   if (typeof body.expires === 'string') {
     try {
@@ -189,6 +196,30 @@ function quoteOf(body: unknown, now: Temporal.Instant): CarrierQuote | null {
 }
 
 /**
+ * Hosts a tracking link may point to: `uber.com` and its subdomains. This allow-list comes from
+ * Uber's public documentation (tracking links are on Uber's own domains), not from a contract;
+ * widen it only on evidence from the test account.
+ */
+export const UBER_TRACKING_HOSTS = Object.freeze({ exact: 'uber.com', suffix: '.uber.com' });
+
+/** The tracking link re-serialised when it is a plain https URL on an Uber host, else null. */
+function trackingUrlOf(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 500) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return null;
+  const host = url.hostname.toLowerCase();
+  if (host !== UBER_TRACKING_HOSTS.exact && !host.endsWith(UBER_TRACKING_HOSTS.suffix)) {
+    return null;
+  }
+  return url.toString();
+}
+
+/**
  * Uber's delivery as an id and status code. Only those two fields (and `external_id`, checked)
  * are read: the answer also echoes both stops, which never leave this function. An answer for
  * another reference is not one.
@@ -199,18 +230,17 @@ function deliveryOf(body: unknown, externalReference: string | null): CarrierBoo
   if (typeof id !== 'string' || !UBER_ID.test(id) || typeof status !== 'string') return null;
   if (!Object.hasOwn(STATUS_CODES, status)) return null;
   if (externalReference !== null && body.external_id !== externalReference) return null;
-  const link = typeof body.tracking_url === 'string' ? body.tracking_url : null;
   return {
     carrierReference: id,
     carrierStatus: STATUS_CODES[status]!,
-    trackingUrl: link !== null && /^https:\/\/[^\s]{1,500}$/u.test(link) ? link : null,
+    trackingUrl: trackingUrlOf(body.tracking_url),
   };
 }
 
 /**
  * The Uber Direct adapter of the fleet port (Phase 6 package 5b, an external fleet). Quotes with
- * `POST delivery_quotes`, books with `POST deliveries` (the seller order id is `external_id`, the
- * retry key, so booking is idempotent), cancels with `POST deliveries/{id}/cancel` and reads a
+ * `POST delivery_quotes`, books with `POST deliveries` (the seller order id is `external_id`; its
+ * dedupe by Uber is unverified, so a booking is a single attempt and `idempotentBooking` is false), cancels with `POST deliveries/{id}/cancel` and reads a
  * status with `GET deliveries/{id}`. An on-demand trip (instant, same day) carries no timing; a
  * scheduled one is booked for the buyer's window, sent as Uber's drop-off window. Credentials
  * come from the Market's `shipping.uberDirect` switch and the Region Stack's secrets; with the
@@ -300,7 +330,7 @@ export class UberDirectCarrier implements CarrierGateway {
     }
     const answer = await this.http.post(target.endpoint, 'delivery_quotes', stops, 'quote');
     if (!answer.ok) return err(failureOf(answer.error));
-    const quote = quoteOf(answer.value.body, now);
+    const quote = quoteOf(answer.value.body, now, target.currency);
     if (quote === null) return err(UNAVAILABLE);
     this.#quotes.delete(key);
     if (this.#quotes.size >= QUOTE_CACHE_SIZE) {

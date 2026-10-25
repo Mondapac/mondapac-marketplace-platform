@@ -63,6 +63,8 @@ class FakeUber {
   quoteExpires = '2026-10-24T10:15:00Z';
   /** When set, the API answers 401 whatever the token. */
   rejectEveryToken = false;
+  /** When set, the next created delivery is created but its answer never arrives (a timeout). */
+  loseNextBookingAnswer = false;
   #tokens = 0;
   #deliveries = 0;
 
@@ -131,21 +133,27 @@ class FakeUber {
       });
     }
     if (init.method === 'POST' && path === '/deliveries') {
+      // Deliberately no dedupe by external_id: Uber's behaviour there is unverified, so every
+      // POST creates a delivery.
       const reference = String(json.external_id);
-      const existing = this.deliveries.get(reference);
-      if (existing !== undefined) return send(200, existing);
       this.#deliveries += 1;
       const delivery = {
         id: `del_${String(this.#deliveries).padStart(10, '0')}`,
         status: 'pending',
         external_id: reference,
-        tracking_url: `https://track.example.test/${reference}`,
+        tracking_url: `https://track.uber.com/${reference}`,
         // Uber echoes the stops: the adapter must not read them.
         pickup_name: json.pickup_name,
         dropoff_name: json.dropoff_name,
         dropoff_phone_number: json.dropoff_phone_number,
       };
-      this.deliveries.set(reference, delivery);
+      this.deliveries.set(`${reference}#${this.#deliveries}`, delivery);
+      if (this.loseNextBookingAnswer) {
+        this.loseNextBookingAnswer = false;
+        return new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => reject(new Error('aborted')));
+        });
+      }
       return send(200, delivery);
     }
     const cancel = /^\/deliveries\/(del_[0-9]+)\/cancel$/.exec(path);
@@ -275,6 +283,7 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     uber.tokenLifeSeconds = 2_592_000;
     uber.quoteCurrency = real.defaultCurrency;
     uber.rejectEveryToken = false;
+    uber.loseNextBookingAnswer = false;
     clock = new FixedClock(T0);
     slept = [];
     carrier = build();
@@ -356,6 +365,38 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     uber.script.push({ status: 503 }, { status: 503 });
     expect(await carrier.book(market, request)).toEqual(unavailable);
     expect(uber.api).toHaveLength(0);
+  });
+
+  it('keeps answering unauthorized for bad credentials past the circuit threshold', async () => {
+    const { failureThreshold } = configured.circuitBreaker;
+    for (let n = 0; n < failureThreshold + 3; n += 1) {
+      uber.script.push({ status: n % 2 === 0 ? 401 : 403, body: { error: 'invalid_client' } });
+      expect(await carrier.book(market, request)).toEqual(unauthorized);
+    }
+    // No API call was made, every attempt reached the token endpoint (the circuit never opened),
+    // and once the credentials are good the call goes through.
+    expect(uber.api).toHaveLength(0);
+    expect(uber.tokenCalls).toHaveLength(failureThreshold + 3);
+    expect((await carrier.book(market, request)).ok).toBe(true);
+  });
+
+  it('refuses a token grant whose type is not Bearer, and accepts any case of it', async () => {
+    uber.script.push({
+      status: 200,
+      body: { access_token: 'token-abcdefgh', token_type: 'MAC', expires_in: 2_592_000 },
+    });
+    expect(await carrier.quote(market, quote)).toEqual(unavailable);
+    uber.script.push({
+      status: 200,
+      body: { access_token: 'token-abcdefgh', expires_in: 2_592_000 },
+    });
+    expect(await carrier.quote(market, quote)).toEqual(unavailable);
+    uber.script.push({
+      status: 200,
+      body: { access_token: 'token-abcdefgh', token_type: 'bearer', expires_in: 2_592_000 },
+    });
+    // Accepted (the fake then renews the token, as it does not know this one).
+    expect((await carrier.quote(market, quote)).ok).toBe(true);
   });
 
   it('quotes with the Market country and the postcode only, and reads the price, ETA and expiry', async () => {
@@ -457,6 +498,7 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     ['a decimal fee', { fee: 12.5, currency_type: 'AUD' }],
     ['a text fee', { fee: '1250', currency_type: 'AUD' }],
     ['a negative fee', { fee: -1, currency_type: 'AUD' }],
+    ['a zero fee', { fee: 0, currency_type: 'AUD' }],
     ['a huge fee', { fee: 1e30, currency_type: 'AUD' }],
     ['no fee', { currency_type: 'AUD' }],
     ['no currency', { fee: 1250 }],
@@ -471,11 +513,27 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
 
   it('reads a lower-case `currency` when `currency_type` is absent', async () => {
     await warm();
-    uber.script.push({ status: 200, body: { fee: 900, currency: 'jpy' } });
+    uber.script.push({
+      status: 200,
+      body: { fee: 900, currency: real.defaultCurrency.toLowerCase() },
+    });
     expect(await carrier.quote(market, quote)).toEqual({
       ok: true,
-      value: { price: { amount: 900n, currency: 'JPY' }, etaMinutes: null, expiresAt: null },
+      value: {
+        price: { amount: 900n, currency: real.defaultCurrency },
+        etaMinutes: null,
+        expiresAt: null,
+      },
     });
+  });
+
+  it("refuses a quote in a currency other than the Market's, and a zero fee", async () => {
+    await warm();
+    const foreign = real.defaultCurrency === 'USD' ? 'EUR' : 'USD';
+    uber.script.push({ status: 200, body: { fee: 900, currency_type: foreign } });
+    expect(await carrier.quote(market, quote)).toEqual(unavailable);
+    uber.script.push({ status: 200, body: { fee: 0, currency_type: real.defaultCurrency } });
+    expect(await carrier.quote(market, quote)).toEqual(unavailable);
   });
 
   it('books with external_id, the manifest, names, phones, structured addresses and coordinates', async () => {
@@ -485,7 +543,7 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
       value: {
         carrierReference: 'del_0000000001',
         carrierStatus: 'PENDING',
-        trackingUrl: `https://track.example.test/${request.externalReference}`,
+        trackingUrl: `https://track.uber.com/${request.externalReference}`,
       },
     });
     const [call] = uber.api;
@@ -518,9 +576,47 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     });
   });
 
-  it('gives no tracking link when Uber gives none or one that is not https', async () => {
+  it('gives no tracking link unless it is plain https on an Uber host, and re-serialises it', async () => {
     await warm();
-    for (const tracking_url of [undefined, 'http://track.example.test/x', 'javascript:alert(1)']) {
+    const rejected = [
+      undefined,
+      'http://track.uber.com/x',
+      'javascript:alert(1)',
+      'https://track.example.test/x',
+      'https://evil-uber.com/x',
+      'https://uber.com.evil.test/x',
+      'https://user:pw@track.uber.com/x',
+      'https://user@uber.com/x',
+      'not a url',
+      `https://track.uber.com/${'a'.repeat(600)}`,
+    ];
+    uber.script.push({
+      status: 200,
+      body: {
+        id: 'del_0000000076',
+        status: 'pending',
+        external_id: request.externalReference,
+        tracking_url: 'https://TRACK.Uber.com/a b',
+      },
+    });
+    expect(await carrier.book(market, request)).toMatchObject({
+      ok: true,
+      value: { trackingUrl: 'https://track.uber.com/a%20b' },
+    });
+    uber.script.push({
+      status: 200,
+      body: {
+        id: 'del_0000000075',
+        status: 'pending',
+        external_id: request.externalReference,
+        tracking_url: 'https://uber.com/track/1',
+      },
+    });
+    expect(await carrier.book(market, request)).toMatchObject({
+      ok: true,
+      value: { trackingUrl: 'https://uber.com/track/1' },
+    });
+    for (const tracking_url of rejected) {
       uber.script.push({
         status: 200,
         body: {
@@ -551,15 +647,32 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     expect(Object.keys(uber.api[0]!.json).filter((key) => key.includes('_dt'))).toEqual([]);
   });
 
-  it('books once per reference: a repeat answers the first delivery', async () => {
-    const first = await carrier.book(market, request);
-    const again = await carrier.book(market, request);
-    expect(again).toEqual(first);
+  it('sends exactly one booking request, even on a timeout, a 5xx or a 429', async () => {
+    carrier = build({ timeoutMs: 20, maxAttempts: 3, backoffMs: 100 });
+    await warm();
+    for (const fault of ['hang', 'network', { status: 503 }, { status: 429 }] as const) {
+      uber.seen.length = 0;
+      uber.script.push(fault);
+      expect(await carrier.book(market, request)).toEqual(unavailable);
+      expect(uber.api).toHaveLength(1);
+    }
+    expect(slept).toEqual([]);
+    expect(uber.script).toEqual([]);
+  });
+
+  it('answers unavailable for a lost answer, with exactly one delivery created', async () => {
+    carrier = build({ timeoutMs: 20, maxAttempts: 3 });
+    await warm();
+    uber.loseNextBookingAnswer = true;
+    expect(await carrier.book(market, request)).toEqual(unavailable);
+    expect(uber.api).toHaveLength(1);
     expect(uber.deliveries.size).toBe(1);
-    expect(uber.api.map((call) => call.json.external_id)).toEqual([
-      request.externalReference,
-      request.externalReference,
-    ]);
+  });
+
+  it('does not rely on Uber to dedupe: a repeated booking is a second delivery', async () => {
+    expect((await carrier.book(market, request)).ok).toBe(true);
+    expect((await carrier.book(market, request)).ok).toBe(true);
+    expect(uber.deliveries.size).toBe(2);
   });
 
   it('refuses, without a call, a parcel beyond the limits, a mode or temperature not served, or a scheduled trip with no window', async () => {
@@ -689,12 +802,17 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     carrier = build({ maxAttempts: 3, backoffMs: 100 });
     await warm();
     for (let n = 0; n < 3; n += 1) uber.script.push({ status: 503 });
-    expect(await carrier.book(market, request)).toEqual(unavailable);
+    expect(await carrier.quote(market, quote)).toEqual(unavailable);
     expect(uber.api).toHaveLength(3);
     expect(slept).toEqual([100, 200]);
     uber.seen.length = 0;
     uber.script.push({ status: 502 });
-    expect((await carrier.book(market, { ...request, externalReference: 'second' })).ok).toBe(true);
+    expect((await carrier.quote(market, quote)).ok).toBe(true);
+    expect(uber.api).toHaveLength(2);
+    // A status read is idempotent by id and retries too.
+    uber.seen.length = 0;
+    uber.script.push({ status: 502 });
+    expect(await carrier.status(market, 'del_0000000001')).toEqual(refused);
     expect(uber.api).toHaveLength(2);
   });
 
@@ -702,16 +820,16 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     carrier = build({ timeoutMs: 20, maxAttempts: 2 });
     await warm();
     uber.script.push('hang', 'network');
-    expect(await carrier.book(market, request)).toEqual(unavailable);
+    expect(await carrier.quote(market, quote)).toEqual(unavailable);
     expect(uber.api).toHaveLength(2);
     uber.script.push('hang');
-    expect((await carrier.book(market, request)).ok).toBe(true);
+    expect((await carrier.quote(market, quote)).ok).toBe(true);
   });
 
-  it('retries a 429 on a booking but answers a quote unavailable at once', async () => {
+  it('retries a 429 on a status read but answers a quote unavailable at once', async () => {
     await warm();
     uber.script.push({ status: 429 }, { status: 429 });
-    expect(await carrier.book(market, request)).toEqual(unavailable);
+    expect(await carrier.status(market, 'del_0000000001')).toEqual(unavailable);
     expect(uber.api).toHaveLength(2);
     uber.seen.length = 0;
     uber.script.push({ status: 429 });
@@ -787,7 +905,7 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
       maxItems: 8,
       maxOrderValue: { amount: 50_000n, currency: real.defaultCurrency },
       prohibitedClasses: ['alcohol', 'tobacco', 'firearms', 'hazardous-materials', 'live-animals'],
-      idempotentBooking: true,
+      idempotentBooking: false,
       supportsWindow: true,
     });
     const caps = build({
