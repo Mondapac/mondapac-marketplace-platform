@@ -1,0 +1,1269 @@
+import { parseId, Temporal } from '@mondapac/shared-kernel';
+import type { AuditEntry, CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
+import {
+  FixedClock,
+  SequenceIdGenerator,
+  testAuthenticatedActor,
+  testCallContext,
+  testMarketContext,
+} from '@mondapac/shared-kernel/testing';
+import { MemorySlides } from '../../../../test/support/memory-slide-repository';
+import { MemoryTargets } from '../../../../test/support/memory-slide-targets';
+import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
+import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
+import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { AccessDeclaration } from '../../../platform/authz';
+import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
+import { loadMarketConfigs } from '../../../platform/market-config/market-config';
+import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import {
+  STOREFRONT_SLIDE_EDIT,
+  STOREFRONT_SLIDE_PAUSE,
+  STOREFRONT_SLIDE_PUBLISH,
+  STOREFRONT_SLIDE_READ,
+} from '../contracts/permissions';
+import { STOREFRONT_AUDIT_ACTIONS } from '../domain/audit';
+import type { SlideCopyPackage, SlideDetailView, SlideSummaryView } from './slide-flow';
+import type { StorefrontDependencies } from './storefront-dependencies';
+import { ApproveStorefrontSlide } from './use-cases/approve-slide.use-case';
+import { ArchiveStorefrontSlide } from './use-cases/archive-slide.use-case';
+import { CreateStorefrontSlide } from './use-cases/create-slide.use-case';
+import { ListStorefrontSlides } from './use-cases/list-slides.use-case';
+import { PrepareStorefrontSlideCopy } from './use-cases/prepare-slide-copy.use-case';
+import { ReorderStorefrontSlides } from './use-cases/reorder-slides.use-case';
+import { PauseStorefrontSlide } from './use-cases/pause-slide.use-case';
+import { ResumeStorefrontSlide } from './use-cases/resume-slide.use-case';
+import { SubmitStorefrontSlide } from './use-cases/submit-slide.use-case';
+import { RestoreStorefrontSlideVersion } from './use-cases/restore-slide-version.use-case';
+import { UpdateStorefrontSlideDraft } from './use-cases/update-slide-draft.use-case';
+import { ViewStorefrontSlide } from './use-cases/view-slide.use-case';
+
+// The slide library use cases in memory on both Market fixtures, behind a gate that grants each
+// actor only its own keys: a reader sees slides; an editor also creates, changes, restores,
+// copies out, archives and submits for approval; a pauser (an editor with the pause key) stops a
+// live slide; only the platform admin approves and resumes. Every slide belongs to one Market, and one Market never finds another's.
+
+const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+const T0 = Temporal.Instant.from('2026-10-23T00:00:00Z');
+const id = <T extends string>(n: number): Id<T> => {
+  const parsed = parseId(`01990000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`);
+  if (!parsed.ok) throw new Error('bad id');
+  return parsed.value as Id<T>;
+};
+const READER = id<'Account'>(0x5e);
+const EDITOR = id<'Account'>(0xed);
+const PAUSER = id<'Account'>(0xfa);
+const ADMIN = id<'Account'>(0xad);
+const CATEGORY = id<'Category'>(0xca).toString();
+const ACTIONS = new Set<string>(STOREFRONT_AUDIT_ACTIONS.map((a) => a.action));
+const KEYS = new Map<string, string[]>([
+  [READER, [STOREFRONT_SLIDE_READ.key]],
+  [EDITOR, [STOREFRONT_SLIDE_READ.key, STOREFRONT_SLIDE_EDIT.key]],
+  [PAUSER, [STOREFRONT_SLIDE_READ.key, STOREFRONT_SLIDE_PAUSE.key]],
+  [
+    ADMIN,
+    [
+      STOREFRONT_SLIDE_READ.key,
+      STOREFRONT_SLIDE_EDIT.key,
+      STOREFRONT_SLIDE_PAUSE.key,
+      STOREFRONT_SLIDE_PUBLISH.key,
+    ],
+  ],
+]);
+
+class RecordingAudit implements AuditWriter {
+  readonly entries: AuditEntry[] = [];
+  record(_context: CallContext, entry: AuditEntry): Promise<void> {
+    if (!ACTIONS.has(entry.action)) throw new Error(`audit: unknown action ${entry.action}`);
+    this.entries.push(entry);
+    return Promise.resolve();
+  }
+}
+
+describe.each([
+  ['AU', 'ZZ'],
+  ['ZZ', 'AU'],
+] as const)('storefront slides in market %s (other market %s)', (code, otherCode) => {
+  const market = testMarketContext(code, 'default');
+  const otherMarket = testMarketContext(otherCode, 'default');
+  const clock = new FixedClock(T0);
+  const gate = createUseCaseGate(markets, {
+    check: (context: CallContext, declaration: AccessDeclaration) => {
+      const actor = context.actor;
+      const held = (actor.kind === 'authenticated' ? KEYS.get(actor.accountId) : undefined) ?? [];
+      const rule = declaration.rule;
+      const allowed = rule.kind !== 'permissions' || rule.allOf.every((key) => held.includes(key));
+      return Promise.resolve(
+        allowed ? { allowed: true } : { allowed: false, denial: { code: 'access.denied' } },
+      );
+    },
+  });
+  const actorIn = (
+    target: MarketContext,
+    accountId: Id<'Account'>,
+    population: 'admin' | 'seller' = 'admin',
+  ) =>
+    testCallContext(
+      target,
+      testAuthenticatedActor(target, {
+        population,
+        accountId,
+        sessionId: id<'Session'>(0x61),
+        sellerId: population === 'seller' ? id<'Seller'>(0x51) : null,
+      }),
+      `sl-${accountId.slice(-4)}-${target.marketId.toLowerCase()}-abcd`,
+    );
+  const reader = actorIn(market, READER);
+  const editor = actorIn(market, EDITOR);
+  const pauser = actorIn(market, PAUSER);
+  const admin = actorIn(market, ADMIN);
+  const otherEditor = actorIn(otherMarket, EDITOR);
+  const otherAdmin = actorIn(otherMarket, ADMIN);
+  const otherReader = actorIn(otherMarket, READER);
+  const buyer = testCallContext(market, 'anonymous');
+  const seller = actorIn(market, EDITOR, 'seller');
+
+  let slides: MemorySlides;
+  let targets: MemoryTargets;
+  let pageIds: Map<string, { archivedAt: Temporal.Instant | null }>;
+  let audit: RecordingAudit;
+  let deps: StorefrontDependencies;
+  beforeEach(() => {
+    clock.set(T0);
+    slides = new MemorySlides();
+    audit = new RecordingAudit();
+    targets = new MemoryTargets();
+    pageIds = new Map();
+    // Both Markets know the categories the specs scope to; products, sellers and pages are added
+    // by the cases that need them.
+    for (const m of [market, otherMarket]) {
+      for (const n of [0xca, 0xca1, 0xca2]) {
+        targets.add(m.marketId, 'category', id<'Category'>(n).toString());
+      }
+    }
+    deps = {
+      unitOfWork: new FakeUnitOfWork(),
+      // Only `findPage` is read by the slide flow: a page of this Market, archived or not.
+      pages: {
+        findPage: (m: MarketContext, pageId: string) =>
+          Promise.resolve(m.marketId === market.marketId ? (pageIds.get(pageId) ?? null) : null),
+      } as never,
+      targets,
+      slides,
+      links: undefined as never,
+      audit,
+      ids: new SequenceIdGenerator(clock),
+      clock,
+    };
+  });
+
+  type Answer =
+    | { readonly ok: true; readonly value: unknown }
+    | { readonly ok: false; readonly error: unknown };
+  type Runnable = new (
+    g: typeof gate,
+    d: StorefrontDependencies,
+  ) => { execute(c: CallContext, i: never): Promise<Answer> };
+  const run = (type: Runnable, context: CallContext, input: unknown): Promise<Answer> =>
+    new type(gate, deps).execute(context, input as never);
+  const value = async <T>(promise: Promise<Answer>): Promise<T> => {
+    const result = await promise;
+    if (!result.ok) throw new Error(`refused: ${JSON.stringify(result.error)}`);
+    return result.value as T;
+  };
+  const errorOf = async (promise: Promise<Answer>) => {
+    const result = await promise;
+    return result.ok ? 'allowed' : result.error;
+  };
+  const DENIED = { code: 'access.denied' };
+  const NOT_FOUND = { code: 'storefront.slide-not-found' };
+
+  const body = (overrides: object = {}) => ({
+    internalName: `Eid ${code}`,
+    content: { title: 'Eid Mubarak', body: 'Fresh dates and sweets', textPosition: 'center' },
+    startsAt: T0.toString(),
+    endsAt: T0.add({ hours: 24 * 30 }).toString(),
+    placements: [{ position: 'home.hero', sortOrder: 1, autoplay: true }],
+    ...overrides,
+  });
+  const create = (context: CallContext = editor, kind = 'announcement', extra = {}) =>
+    run(CreateStorefrontSlide, context, { kind, ...body(extra) });
+  const made = (context: CallContext = editor, kind = 'announcement', extra = {}) =>
+    value<SlideDetailView>(create(context, kind, extra));
+
+  describe('create', () => {
+    it('creates a draft with its first version and audits it', async () => {
+      const slide = await made();
+      expect(slide).toMatchObject({
+        kind: 'announcement',
+        status: 'draft',
+        hasDraft: true,
+        pending: false,
+        positions: ['home.hero'],
+        live: null,
+        draft: {
+          versionNo: 1,
+          content: { title: 'Eid Mubarak', textPosition: 'center', textTone: 'light', link: null },
+        },
+      });
+      expect(audit.entries.map((e) => [e.action, e.targetId])).toEqual([
+        ['storefront.slide.create', slide.id],
+      ]);
+      expect(slides.placements).toEqual([]);
+    });
+
+    it('creates each kind; a link slide needs its typed link', async () => {
+      expect((await made(editor, 'promotion')).kind).toBe('promotion');
+      expect(await errorOf(create(editor, 'link'))).toMatchObject({
+        code: 'validation.failed',
+        fields: [{ path: 'content.link', code: 'required' }],
+      });
+      const link = { type: 'category', id: CATEGORY };
+      const slide = await made(editor, 'link', { content: { title: 'Dates', link } });
+      expect(slide.draft?.content?.link).toEqual(link);
+    });
+
+    it('refuses a bad body with the problems, a window over 90 days and an unknown kind', async () => {
+      expect(
+        await errorOf(
+          create(editor, 'announcement', { endsAt: T0.add({ hours: 24 * 91 }).toString() }),
+        ),
+      ).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'endsAt', code: 'too-long' }],
+      });
+      expect(await errorOf(create(editor, 'banner'))).toMatchObject({ code: 'validation.failed' });
+      expect(
+        await errorOf(create(editor, 'announcement', { content: { title: 'x', body: '<b>' } })),
+      ).toMatchObject({ fields: [{ path: 'content.body', code: 'markup' }] });
+      expect(audit.entries).toEqual([]);
+    });
+
+    it('is refused without storefront.slide.edit, for a buyer and for a seller account', async () => {
+      expect(await errorOf(create(reader))).toEqual(DENIED);
+      expect(await errorOf(create(buyer))).toMatchObject({ code: 'access.unauthenticated' });
+      expect(await errorOf(create(seller))).toEqual(DENIED);
+      expect(slides.slides.size).toBe(0);
+    });
+  });
+
+  describe('view and list', () => {
+    it('shows a slide to a reader, and lists the Market newest first', async () => {
+      const first = await made();
+      const second = await made(editor, 'promotion', {
+        placements: [{ position: 'home.mid' }],
+      });
+      const seen = await value<SlideDetailView>(
+        run(ViewStorefrontSlide, reader, { slide: first.id }),
+      );
+      expect(seen.id).toBe(first.id);
+      const list = await value<SlideSummaryView[]>(run(ListStorefrontSlides, reader, {}));
+      expect(list.map((s) => s.id)).toEqual([second.id, first.id]);
+    });
+
+    it('filters by status and by position, and refuses an unknown filter', async () => {
+      const hero = await made();
+      const mid = await made(editor, 'announcement', { placements: [{ position: 'home.mid' }] });
+      const ids = async (input: object) =>
+        (await value<SlideSummaryView[]>(run(ListStorefrontSlides, reader, input))).map(
+          (s) => s.id,
+        );
+      expect(await ids({ position: 'home.mid' })).toEqual([mid.id]);
+      expect(await ids({ position: 'home.hero' })).toEqual([hero.id]);
+      expect(await ids({ state: 'draft' })).toEqual([mid.id, hero.id]);
+      expect(await ids({ state: 'live' })).toEqual([]);
+      await value(run(ArchiveStorefrontSlide, editor, { slide: mid.id }));
+      expect(await ids({ state: 'archived' })).toEqual([mid.id]);
+      expect(await errorOf(run(ListStorefrontSlides, reader, { state: 'sleeping' }))).toMatchObject(
+        {
+          fields: [{ path: 'state', code: 'enum' }],
+        },
+      );
+      expect(
+        await errorOf(run(ListStorefrontSlides, reader, { position: 'checkout.top' })),
+      ).toMatchObject({
+        fields: [{ path: 'position', code: 'enum' }],
+      });
+    });
+
+    it('is refused without storefront.slide.read, for a buyer and for a seller account', async () => {
+      const slide = await made();
+      const nobody = actorIn(market, id<'Account'>(0x99));
+      for (const context of [nobody, buyer, seller]) {
+        expect(
+          await errorOf(run(ViewStorefrontSlide, context, { slide: slide.id })),
+        ).toHaveProperty('code');
+        expect(await errorOf(run(ListStorefrontSlides, context, {}))).toHaveProperty('code');
+        expect(
+          await errorOf(run(PrepareStorefrontSlideCopy, context, { slide: slide.id })),
+        ).toHaveProperty('code');
+      }
+      expect(await errorOf(run(ViewStorefrontSlide, nobody, { slide: slide.id }))).toEqual(DENIED);
+      expect(await errorOf(run(ViewStorefrontSlide, seller, { slide: slide.id }))).toEqual(DENIED);
+    });
+  });
+
+  describe('update, restore and archive', () => {
+    it('saves every change as a new version and keeps the earlier ones', async () => {
+      const slide = await made();
+      const changed = await value<SlideDetailView>(
+        run(UpdateStorefrontSlideDraft, editor, {
+          slide: slide.id,
+          body: body({ internalName: 'Eid v2', content: { title: 'Eid Sale' } }),
+        }),
+      );
+      expect(changed).toMatchObject({
+        internalName: 'Eid v2',
+        draft: { versionNo: 2, content: { title: 'Eid Sale' } },
+      });
+      expect(changed.versions.map((v) => v.versionNo)).toEqual([2, 1]);
+      expect(slides.versionRows.size).toBe(2);
+      expect(audit.entries.map((e) => e.action)).toEqual([
+        'storefront.slide.create',
+        'storefront.slide.draft-change',
+      ]);
+      expect(slides.locks).toContain(slide.id);
+    });
+
+    it('refuses a bad update and an unknown field, leaving the draft as it was', async () => {
+      const slide = await made();
+      const update = (patch: object) =>
+        run(UpdateStorefrontSlideDraft, editor, { slide: slide.id, body: body(patch) });
+      expect(
+        await errorOf(update({ placements: [{ position: 'home.mid', autoplay: true }] })),
+      ).toMatchObject({
+        fields: [{ path: 'placements[0].autoplay', code: 'not-allowed-here' }],
+      });
+      expect(await errorOf(update({ kind: 'link' }))).toMatchObject({
+        fields: [{ path: 'kind', code: 'unknown-field' }],
+      });
+      expect(slides.versionRows.size).toBe(1);
+    });
+
+    it('refuses the 101st version of a slide', async () => {
+      const slide = await made();
+      for (let n = 2; n <= 100; n += 1) {
+        await value(run(UpdateStorefrontSlideDraft, editor, { slide: slide.id, body: body() }));
+      }
+      expect(
+        await errorOf(run(UpdateStorefrontSlideDraft, editor, { slide: slide.id, body: body() })),
+      ).toEqual({
+        code: 'storefront.slide-version-limit',
+      });
+    });
+
+    it('restores an earlier version as a new draft version, the old one untouched', async () => {
+      const slide = await made();
+      const v1 = slide.versions[0]!.id;
+      await value(
+        run(UpdateStorefrontSlideDraft, editor, {
+          slide: slide.id,
+          body: body({ content: { title: 'Changed' } }),
+        }),
+      );
+      const restored = await value<SlideDetailView>(
+        run(RestoreStorefrontSlideVersion, editor, { slide: slide.id, versionId: v1 }),
+      );
+      expect(restored.draft).toMatchObject({ versionNo: 3, content: { title: 'Eid Mubarak' } });
+      expect(slides.versionRows.get(v1)!.content).toMatchObject({ title: 'Eid Mubarak' });
+      expect(audit.entries.at(-1)).toMatchObject({ action: 'storefront.slide.draft-change' });
+      expect(
+        await errorOf(
+          run(RestoreStorefrontSlideVersion, editor, { slide: slide.id, versionId: id(0xdead) }),
+        ),
+      ).toEqual({ code: 'storefront.slide-version-not-found' });
+      expect(
+        await errorOf(
+          run(RestoreStorefrontSlideVersion, editor, { slide: slide.id, versionId: 'nope' }),
+        ),
+      ).toMatchObject({ code: 'validation.failed' });
+    });
+
+    it('archives a slide: it takes no further change and is listed as archived', async () => {
+      const slide = await made();
+      const archived = await value<SlideDetailView>(
+        run(ArchiveStorefrontSlide, editor, { slide: slide.id }),
+      );
+      expect(archived).toMatchObject({ status: 'archived', hasDraft: false });
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'storefront.slide.archive',
+        after: { wasApproved: false },
+      });
+      for (const [type, input] of [
+        [UpdateStorefrontSlideDraft, { slide: slide.id, body: body() }],
+        [RestoreStorefrontSlideVersion, { slide: slide.id, versionId: slide.versions[0]!.id }],
+        [ArchiveStorefrontSlide, { slide: slide.id }],
+      ] as const) {
+        expect(await errorOf(run(type, editor, input))).toEqual({
+          code: 'storefront.slide-archived',
+        });
+      }
+    });
+
+    it('is refused without storefront.slide.edit', async () => {
+      const slide = await made();
+      for (const [type, input] of [
+        [UpdateStorefrontSlideDraft, { slide: slide.id, body: body() }],
+        [RestoreStorefrontSlideVersion, { slide: slide.id, versionId: slide.versions[0]!.id }],
+        [ArchiveStorefrontSlide, { slide: slide.id }],
+      ] as const) {
+        expect(await errorOf(run(type, reader, input))).toEqual(DENIED);
+        expect(await errorOf(run(type, buyer, input))).toMatchObject({
+          code: 'access.unauthenticated',
+        });
+        expect(await errorOf(run(type, seller, input))).toEqual(DENIED);
+      }
+      expect(slides.versionRows.size).toBe(1);
+      expect(audit.entries).toHaveLength(1);
+    });
+  });
+
+  describe('the Market of a slide', () => {
+    it('never finds a slide of the other Market, for any use case', async () => {
+      const theirs = await made(otherEditor);
+      const mine = await made();
+      expect(theirs.id).not.toBe(mine.id);
+      const inputs: [Runnable, CallContext, object][] = [
+        [ViewStorefrontSlide, editor, { slide: theirs.id }],
+        [UpdateStorefrontSlideDraft, editor, { slide: theirs.id, body: body() }],
+        [
+          RestoreStorefrontSlideVersion,
+          editor,
+          { slide: theirs.id, versionId: theirs.versions[0]!.id },
+        ],
+        [ArchiveStorefrontSlide, editor, { slide: theirs.id }],
+        [PrepareStorefrontSlideCopy, editor, { slide: theirs.id }],
+        // And the other way round.
+        [ViewStorefrontSlide, otherEditor, { slide: mine.id }],
+        [ArchiveStorefrontSlide, otherEditor, { slide: mine.id }],
+      ];
+      for (const [type, context, input] of inputs) {
+        expect(await errorOf(run(type, context, input))).toEqual(NOT_FOUND);
+      }
+      expect(
+        (await value<SlideDetailView>(run(ViewStorefrontSlide, otherReader, { slide: theirs.id })))
+          .status,
+      ).toBe('draft');
+      expect(slides.slides.get(theirs.id)!.state).toBe('draft');
+      expect(slides.versionRows.size).toBe(2);
+    });
+
+    it('lists only the slides of the request Market', async () => {
+      const mine = await made();
+      await made(otherEditor);
+      await made(otherEditor);
+      const list = await value<SlideSummaryView[]>(run(ListStorefrontSlides, reader, {}));
+      expect(list.map((s) => s.id)).toEqual([mine.id]);
+      expect(
+        await value<SlideSummaryView[]>(run(ListStorefrontSlides, otherReader, {})),
+      ).toHaveLength(2);
+    });
+
+    it('cannot even build a call context that crosses the Markets', () => {
+      expect(() => testCallContext(otherMarket, editor.actor)).toThrow('market-mismatch');
+    });
+  });
+
+  describe('submit, approve, pause and resume', () => {
+    const submit = (context: CallContext, slide: string) =>
+      run(SubmitStorefrontSlide, context, { slide });
+    const approve = (context: CallContext, slide: string, versionNo = 1) =>
+      run(ApproveStorefrontSlide, context, { slide, body: { versionNo } });
+    const pause = (context: CallContext, slide: string) =>
+      run(PauseStorefrontSlide, context, { slide });
+    const resume = (context: CallContext, slide: string) =>
+      run(ResumeStorefrontSlide, context, { slide });
+    const view = (slide: string, context: CallContext = admin) =>
+      value<SlideDetailView>(run(ViewStorefrontSlide, context, { slide }));
+    /** A slide at `position`, drafted by the editor, submitted and approved by the admin. */
+    const live = async (
+      position = 'home.hero',
+      window: { startsAt?: string; endsAt?: string } = {},
+      context: CallContext = editor,
+      approver: CallContext = admin,
+    ) => {
+      const slide = await made(context, 'announcement', {
+        placements: [{ position }],
+        ...window,
+      });
+      await value(submit(context, slide.id));
+      return value<SlideDetailView>(approve(approver, slide.id));
+    };
+    const placedPositions = (slideId: string) =>
+      slides.placements.filter((p) => p.slideId === slideId).map((p) => p.position);
+
+    it('lets an editor submit, but only a platform admin approve and publish', async () => {
+      const slide = await made();
+      expect(await errorOf(approve(admin, slide.id))).toEqual({
+        code: 'storefront.slide-not-submitted',
+      });
+      const pending = await value<SlideDetailView>(submit(editor, slide.id));
+      expect(pending).toMatchObject({ status: 'pending', pending: true });
+      expect(await errorOf(approve(editor, slide.id))).toEqual(DENIED);
+      expect(await errorOf(approve(pauser, slide.id))).toEqual(DENIED);
+      expect(slides.placements).toEqual([]);
+
+      const done = await value<SlideDetailView>(approve(admin, slide.id));
+      expect(done).toMatchObject({
+        status: 'live',
+        hasDraft: false,
+        pending: false,
+        draft: null,
+        live: { versionNo: 1, approvedAt: T0 },
+      });
+      const version = slides.versionRows.get(done.live!.id)!;
+      expect(version.approvedBy).toBe(ADMIN);
+      expect(version.approvedAt).toEqual(T0);
+      expect(slides.placements).toMatchObject([
+        { slideId: slide.id, position: 'home.hero', autoplay: true, sortOrder: 1 },
+      ]);
+      expect(audit.entries.map((e) => e.action)).toEqual([
+        'storefront.slide.create',
+        'storefront.slide.submit',
+        'storefront.slide.publish',
+      ]);
+      expect(slides.locks).toContain('home.hero');
+    });
+
+    it('derives scheduled, live and ended from the clock and the window', async () => {
+      const start = T0.add({ hours: 10 });
+      const slide = await live('home.hero', {
+        startsAt: start.toString(),
+        endsAt: start.add({ hours: 5 }).toString(),
+      });
+      expect(slide.status).toBe('scheduled');
+      clock.set(start);
+      expect((await view(slide.id)).status).toBe('live');
+      clock.set(start.add({ hours: 5 }));
+      expect((await view(slide.id)).status).toBe('ended');
+      const list = await value<SlideSummaryView[]>(
+        run(ListStorefrontSlides, reader, { state: 'ended' }),
+      );
+      expect(list.map((s) => s.id)).toEqual([slide.id]);
+    });
+
+    it('checks what the admin reviewed: the draft version, a submission, an open window', async () => {
+      const slide = await made();
+      await value(submit(editor, slide.id));
+      expect(await errorOf(approve(admin, slide.id, 2))).toEqual({
+        code: 'storefront.slide-draft-changed',
+      });
+      expect(
+        await errorOf(run(ApproveStorefrontSlide, admin, { slide: slide.id, body: {} })),
+      ).toMatchObject({
+        fields: [{ path: 'versionNo', code: 'required' }],
+      });
+      // Changing the draft after submitting withdraws the submission.
+      await value(run(UpdateStorefrontSlideDraft, editor, { slide: slide.id, body: body() }));
+      expect((await view(slide.id)).status).toBe('draft');
+      expect(await errorOf(approve(admin, slide.id, 2))).toEqual({
+        code: 'storefront.slide-not-submitted',
+      });
+      expect(await errorOf(approve(admin, slide.id, 1))).toEqual({
+        code: 'storefront.slide-draft-changed',
+      });
+      // A window that has ended is neither submitted nor approved.
+      await value(submit(editor, slide.id));
+      clock.set(T0.add({ hours: 24 * 31 }));
+      expect(await errorOf(submit(editor, slide.id))).toEqual({ code: 'storefront.slide-ended' });
+      expect(await errorOf(approve(admin, slide.id, 2))).toEqual({
+        code: 'storefront.slide-ended',
+      });
+      expect(slides.placements).toEqual([]);
+    });
+
+    it('refuses to submit with no draft, and a slide that is archived', async () => {
+      const slide = await live();
+      expect(await errorOf(submit(editor, slide.id))).toEqual({
+        code: 'storefront.slide-no-draft',
+      });
+      await value(run(ArchiveStorefrontSlide, editor, { slide: slide.id }));
+      expect(await errorOf(submit(editor, slide.id))).toEqual({
+        code: 'storefront.slide-archived',
+      });
+      expect(await errorOf(approve(admin, slide.id))).toEqual({
+        code: 'storefront.slide-archived',
+      });
+      expect(await errorOf(pause(pauser, slide.id))).toEqual({ code: 'storefront.slide-archived' });
+      expect(await errorOf(resume(admin, slide.id))).toEqual({ code: 'storefront.slide-archived' });
+      // Archiving a live slide takes it off the buyer site at once.
+      expect(slides.placements).toEqual([]);
+      expect(audit.entries.at(-1)).toMatchObject({ after: { wasApproved: true } });
+    });
+
+    it('lets a new version replace the live one only when approved; the live one keeps serving', async () => {
+      const slide = await live();
+      const v1 = slide.live!.id;
+      await value(
+        run(UpdateStorefrontSlideDraft, editor, {
+          slide: slide.id,
+          body: body({ content: { title: 'Eid Sale' }, placements: [{ position: 'home.mid' }] }),
+        }),
+      );
+      expect(await view(slide.id)).toMatchObject({
+        status: 'live',
+        hasDraft: true,
+        draft: { versionNo: 2 },
+        live: { versionNo: 1, content: { title: 'Eid Mubarak' } },
+      });
+      expect(placedPositions(slide.id)).toEqual(['home.hero']);
+      await value(submit(editor, slide.id));
+      await value(approve(admin, slide.id, 2));
+      expect(await view(slide.id)).toMatchObject({
+        live: { versionNo: 2, content: { title: 'Eid Sale' } },
+        draft: null,
+      });
+      expect(placedPositions(slide.id)).toEqual(['home.mid']);
+      expect(slides.versionRows.get(v1)!.content).toMatchObject({ title: 'Eid Mubarak' });
+      // The earlier approved version can come back as a draft and be approved again.
+      await value(run(RestoreStorefrontSlideVersion, editor, { slide: slide.id, versionId: v1 }));
+      await value(submit(editor, slide.id));
+      await value(approve(admin, slide.id, 3));
+      expect(placedPositions(slide.id)).toEqual(['home.hero']);
+      expect(slides.versionRows.get(v1)!.approvedAt).toEqual(T0);
+    });
+
+    it('lets an editor with the pause key stop a live slide at once, without approval', async () => {
+      const slide = await live();
+      expect(await errorOf(pause(editor, slide.id))).toEqual(DENIED);
+      expect(await errorOf(pause(reader, slide.id))).toEqual(DENIED);
+      expect(await errorOf(pause(buyer, slide.id))).toMatchObject({
+        code: 'access.unauthenticated',
+      });
+      expect(await errorOf(pause(seller, slide.id))).toEqual(DENIED);
+      const paused = await value<SlideDetailView>(pause(pauser, slide.id));
+      expect(paused.status).toBe('paused');
+      expect(placedPositions(slide.id)).toEqual([]);
+      expect(audit.entries.at(-1)).toMatchObject({ action: 'storefront.slide.pause' });
+      // Not live any more, so a second pause finds nothing to stop.
+      expect(await errorOf(pause(pauser, slide.id))).toEqual({ code: 'storefront.slide-not-live' });
+    });
+
+    it('cannot pause a draft, a slide that has ended or one that is archived', async () => {
+      const draft = await made();
+      expect(await errorOf(pause(pauser, draft.id))).toEqual({ code: 'storefront.slide-not-live' });
+      const slide = await live();
+      clock.set(T0.add({ hours: 24 * 30 }));
+      expect(await errorOf(pause(pauser, slide.id))).toEqual({ code: 'storefront.slide-not-live' });
+    });
+
+    it('needs the publish key to resume: a pauser cannot, an editor cannot, the admin can', async () => {
+      const slide = await live();
+      await value(pause(pauser, slide.id));
+      expect(await errorOf(resume(pauser, slide.id))).toEqual(DENIED);
+      expect(await errorOf(resume(editor, slide.id))).toEqual(DENIED);
+      expect(await errorOf(resume(reader, slide.id))).toEqual(DENIED);
+      expect(placedPositions(slide.id)).toEqual([]);
+      const resumed = await value<SlideDetailView>(resume(admin, slide.id));
+      expect(resumed.status).toBe('live');
+      expect(placedPositions(slide.id)).toEqual(['home.hero']);
+      expect(audit.entries.map((e) => e.action).slice(-2)).toEqual([
+        'storefront.slide.pause',
+        'storefront.slide.resume',
+      ]);
+      expect(await errorOf(resume(admin, slide.id))).toEqual({
+        code: 'storefront.slide-not-paused',
+      });
+      // A paused slide whose window ended cannot be resumed.
+      await value(pause(pauser, slide.id));
+      clock.set(T0.add({ hours: 24 * 31 }));
+      expect(await errorOf(resume(admin, slide.id))).toEqual({ code: 'storefront.slide-ended' });
+    });
+
+    it('keeps a paused slide paused when a new version is approved; resuming serves it', async () => {
+      const slide = await live();
+      await value(pause(pauser, slide.id));
+      await value(
+        run(UpdateStorefrontSlideDraft, editor, {
+          slide: slide.id,
+          body: body({ placements: [{ position: 'home.mid' }] }),
+        }),
+      );
+      await value(submit(editor, slide.id));
+      expect((await value<SlideDetailView>(approve(admin, slide.id, 2))).status).toBe('paused');
+      expect(placedPositions(slide.id)).toEqual([]);
+      await value(resume(admin, slide.id));
+      expect(placedPositions(slide.id)).toEqual(['home.mid']);
+    });
+
+    describe('the maximum of active slides in a position', () => {
+      it('refuses the approval that would exceed the position, then admits it when room appears', async () => {
+        const first = await live('home.mid');
+        for (let n = 1; n < 4; n += 1) await live('home.mid');
+        const over = await made(editor, 'announcement', { placements: [{ position: 'home.mid' }] });
+        await value(submit(editor, over.id));
+        expect(await errorOf(approve(admin, over.id))).toEqual({
+          code: 'storefront.slide-position-full',
+          fields: [{ path: 'placements[0].position', code: 'full' }],
+        });
+        expect(placedPositions(over.id)).toEqual([]);
+        expect((await view(over.id)).status).toBe('pending');
+        // Another position is not full.
+        const other = await live('category.top');
+        expect(other.status).toBe('live');
+        await value(pause(pauser, first.id));
+        expect((await value<SlideDetailView>(approve(admin, over.id))).status).toBe('live');
+        // Resuming the paused one would now be the fifth.
+        expect(await errorOf(resume(admin, first.id))).toMatchObject({
+          code: 'storefront.slide-position-full',
+        });
+        expect((await view(first.id)).status).toBe('paused');
+      });
+
+      it('holds the maximums: hero 8, mid 4, category 4, product 3, cart 3, landing 8', async () => {
+        for (const [position, max] of [
+          ['home.hero', 8],
+          ['home.mid', 4],
+          ['category.top', 4],
+          ['product.below-details', 3],
+          ['cart.below-lines', 3],
+          ['landing.top', 8],
+        ] as const) {
+          for (let n = 0; n < max; n += 1) await live(position);
+          const over = await made(editor, 'announcement', { placements: [{ position }] });
+          await value(submit(editor, over.id));
+          expect(await errorOf(approve(admin, over.id))).toMatchObject({
+            code: 'storefront.slide-position-full',
+          });
+        }
+      });
+
+      it('counts only overlapping windows', async () => {
+        const day = (n: number) => T0.add({ hours: 24 * n }).toString();
+        for (let n = 0; n < 4; n += 1)
+          await live('home.mid', { startsAt: day(0), endsAt: day(10) });
+        const later = await live('home.mid', { startsAt: day(10), endsAt: day(20) });
+        expect(later.status).toBe('scheduled');
+        const overlapping = await made(editor, 'announcement', {
+          placements: [{ position: 'home.mid' }],
+          startsAt: day(9),
+          endsAt: day(12),
+        });
+        await value(submit(editor, overlapping.id));
+        expect(await errorOf(approve(admin, overlapping.id))).toMatchObject({
+          code: 'storefront.slide-position-full',
+        });
+      });
+
+      it('counts a scoped placement only against placements that can show on the same page', async () => {
+        const cat = (scopeId: string) => ({
+          placements: [{ position: 'category.top', scope: 'category', scopeId }],
+        });
+        const slideIn = async (scopeId: string) => {
+          const slide = await made(editor, 'announcement', cat(scopeId));
+          await value(submit(editor, slide.id));
+          return slide;
+        };
+        const a = id<'Category'>(0xca1).toString();
+        const b = id<'Category'>(0xca2).toString();
+        for (let n = 0; n < 4; n += 1) await value(approve(admin, (await slideIn(a)).id));
+        // Category b has its own room; one more for category a does not fit.
+        expect((await value<SlideDetailView>(approve(admin, (await slideIn(b)).id))).status).toBe(
+          'live',
+        );
+        expect(await errorOf(approve(admin, (await slideIn(a)).id))).toMatchObject({
+          code: 'storefront.slide-position-full',
+        });
+      });
+
+      it('counts per Market: a full position in one Market leaves the other open', async () => {
+        for (let n = 0; n < 4; n += 1) await live('home.mid');
+        const theirs = await live('home.mid', {}, otherEditor, otherAdmin);
+        expect(theirs.status).toBe('live');
+        expect(slides.slides.get(theirs.id)!.marketId).toBe(otherMarket.marketId);
+      });
+    });
+
+    it('never finds a slide of the other Market to submit, approve, pause or resume', async () => {
+      const theirs = await live('home.hero', {}, otherEditor, otherAdmin);
+      await value(pause(actorIn(otherMarket, ADMIN), theirs.id));
+      const mine = await made();
+      await value(submit(editor, mine.id));
+      for (const [type, context, input] of [
+        [SubmitStorefrontSlide, editor, { slide: theirs.id }],
+        [ApproveStorefrontSlide, admin, { slide: theirs.id, body: { versionNo: 1 } }],
+        [PauseStorefrontSlide, pauser, { slide: theirs.id }],
+        [ResumeStorefrontSlide, admin, { slide: theirs.id }],
+        [ApproveStorefrontSlide, otherAdmin, { slide: mine.id, body: { versionNo: 1 } }],
+        [SubmitStorefrontSlide, otherEditor, { slide: mine.id }],
+      ] as const) {
+        expect(await errorOf(run(type, context, input))).toEqual(NOT_FOUND);
+      }
+      expect(slides.slides.get(theirs.id)!.state).toBe('paused');
+      expect(slides.slides.get(mine.id)!.state).toBe('draft');
+    });
+
+    it('is refused for a buyer and a seller account, on every approval use case', async () => {
+      const slide = await made();
+      for (const context of [buyer, seller]) {
+        for (const [type, input] of [
+          [SubmitStorefrontSlide, { slide: slide.id }],
+          [ApproveStorefrontSlide, { slide: slide.id, body: { versionNo: 1 } }],
+          [PauseStorefrontSlide, { slide: slide.id }],
+          [ResumeStorefrontSlide, { slide: slide.id }],
+        ] as const) {
+          expect(await errorOf(run(type, context, input))).toHaveProperty('code');
+        }
+      }
+      expect(await errorOf(submit(reader, slide.id))).toEqual(DENIED);
+      expect(await errorOf(submit(pauser, slide.id))).toEqual(DENIED);
+      expect(audit.entries).toHaveLength(1);
+    });
+  });
+
+  describe('reordering the live slides', () => {
+    const approve = (context: CallContext, slide: string, versionNo = 1) =>
+      run(ApproveStorefrontSlide, context, { slide, body: { versionNo } });
+    const reorder = (context: CallContext, input: unknown) =>
+      run(ReorderStorefrontSlides, context, input);
+    /** A slide placed at `placement`, drafted by the editor and approved by the admin. */
+    const live = async (placement: object = { position: 'home.hero' }, extra: object = {}) => {
+      const slide = await made(editor, 'announcement', { placements: [placement], ...extra });
+      await value(run(SubmitStorefrontSlide, editor, { slide: slide.id }));
+      return value<SlideDetailView>(approve(admin, slide.id));
+    };
+    const hero = (...ids: string[]) => ({ position: 'home.hero', slideIds: ids });
+    /** The slides of a position as the projection holds them, best first. */
+    const orderOf = async (
+      where: object = { position: 'home.hero', scope: 'all', scopeId: null },
+    ) =>
+      (await slides.livePlacementsAt(market, where as never, clock.now())).map(
+        (p) => p.slideId as string,
+      );
+    const three = async (): Promise<string[]> => {
+      const slidesMade = [await live(), await live(), await live()];
+      return slidesMade.map((slide) => slide.id);
+    };
+
+    it('lets an editor without the publish key save the order, at once and audited', async () => {
+      const [a, b, c] = await three();
+      const before = await orderOf();
+      expect(before).toHaveLength(3);
+      const versionsBefore = slides.versionRows.size;
+      audit.entries.length = 0;
+
+      const answer = await value<{ slideIds: string[] }>(reorder(editor, hero(c!, a!, b!)));
+      expect(answer.slideIds).toEqual([c, a, b]);
+      expect(await orderOf()).toEqual([c, a, b]);
+      // No version, no approval, no change to the slides themselves.
+      expect(slides.versionRows.size).toBe(versionsBefore);
+      expect(
+        (await value<SlideDetailView>(run(ViewStorefrontSlide, editor, { slide: a }))).status,
+      ).toBe('live');
+
+      expect(audit.entries).toHaveLength(1);
+      expect(audit.entries[0]).toMatchObject({
+        action: 'storefront.slide.reorder',
+        targetType: 'storefront.slide-order',
+        targetId: 'home.hero',
+        before: { scope: 'all', scopeId: null, order: before },
+        after: { scope: 'all', scopeId: null, order: [c, a, b] },
+      });
+    });
+
+    it('is refused without storefront.slide.edit, for a buyer and a seller account', async () => {
+      const [a, b] = await three();
+      for (const context of [reader, pauser, buyer, seller]) {
+        const refused = await errorOf(reorder(context, hero(b!, a!)));
+        if (context === seller || context === buyer) expect(refused).toHaveProperty('code');
+        else expect(refused).toEqual(DENIED);
+      }
+      expect(await orderOf()).toHaveLength(3);
+      expect((await orderOf())[0]).toBe(a);
+    });
+
+    it('needs the whole list: partial, duplicate, unknown and malformed lists are refused', async () => {
+      const [a, b, c] = await three();
+      const was = await orderOf();
+      const partial = await errorOf(reorder(editor, hero(c!, a!)));
+      expect(partial).toEqual({
+        code: 'storefront.slide-order-mismatch',
+        fields: [{ path: 'slideIds', code: 'incomplete' }],
+      });
+      expect(await errorOf(reorder(editor, hero(a!, a!, b!, c!)))).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'slideIds[1]', code: 'duplicate' }],
+      });
+      expect(
+        await errorOf(reorder(editor, hero(a!, b!, c!, id<'StorefrontSlide'>(0x999)))),
+      ).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'slideIds[3]', code: 'not-found' }],
+      });
+      for (const bad of [
+        {},
+        { position: 'home.hero' },
+        { position: 'home.hero', slideIds: [] },
+        { position: 'home.hero', slideIds: ['x'] },
+        { position: 'nowhere', slideIds: [a] },
+        { position: 'home.hero', scope: 'category', slideIds: [a] },
+        { position: 'home.hero', slideIds: [a, b, c], sortOrder: 1 },
+        null,
+      ]) {
+        expect(await errorOf(reorder(editor, bad))).toMatchObject({ code: 'validation.failed' });
+      }
+      expect(await orderOf()).toEqual(was);
+      expect(audit.entries.filter((e) => e.action === 'storefront.slide.reorder')).toHaveLength(0);
+    });
+
+    it('never finds a slide of the other Market, and the other Market keeps its own order', async () => {
+      const [a, b] = await three();
+      // The same position in the other Market, with its own slides.
+      const foreign = await value<SlideDetailView>(
+        run(CreateStorefrontSlide, otherEditor, { kind: 'announcement', ...body() }),
+      );
+      await value(run(SubmitStorefrontSlide, otherEditor, { slide: foreign.id }));
+      await value(approve(otherAdmin, foreign.id));
+
+      // A foreign id in this Market's list reads as an unknown one.
+      expect(await errorOf(reorder(editor, hero(a!, b!, foreign.id)))).toMatchObject({
+        code: 'validation.failed',
+        fields: expect.arrayContaining([{ path: 'slideIds[2]', code: 'not-found' }]) as unknown,
+      });
+      // And this Market's ids are unknown to the other Market's editor.
+      expect(await errorOf(reorder(otherEditor, hero(foreign.id, a!)))).toMatchObject({
+        code: 'validation.failed',
+      });
+      expect(await errorOf(reorder(otherReader, hero(foreign.id)))).toEqual(DENIED);
+      // The other Market can reorder its own single slide; nothing in this Market moves.
+      const was = await orderOf();
+      await value(reorder(otherEditor, hero(foreign.id)));
+      expect(await orderOf()).toEqual(was);
+      expect(
+        (
+          await slides.livePlacementsAt(
+            otherMarket,
+            { position: 'home.hero', scope: 'all', scopeId: null },
+            T0,
+          )
+        ).map((p) => p.slideId),
+      ).toEqual([foreign.id]);
+    });
+
+    it('refuses slides of another position or scope, and names the live ones left out', async () => {
+      const [a, b] = [await live(), await live()];
+      const mid = await live({ position: 'home.mid' });
+      const scoped = await live({ position: 'category.top', scope: 'category', scopeId: CATEGORY });
+      const everywhere = await live({ position: 'category.top' });
+      const was = await orderOf();
+
+      expect(await errorOf(reorder(editor, hero(a.id, b.id, mid.id)))).toEqual({
+        code: 'storefront.slide-order-mismatch',
+        fields: [{ path: 'slideIds[2]', code: 'not-live-here' }],
+      });
+      // category.top / all holds only `everywhere`; the category-scoped slide is a different list.
+      expect(
+        await errorOf(
+          reorder(editor, { position: 'category.top', slideIds: [everywhere.id, scoped.id] }),
+        ),
+      ).toEqual({
+        code: 'storefront.slide-order-mismatch',
+        fields: [{ path: 'slideIds[1]', code: 'not-live-here' }],
+      });
+      expect(await orderOf()).toEqual(was);
+
+      // Each list is saved on its own.
+      await value(reorder(editor, { position: 'category.top', slideIds: [everywhere.id] }));
+      await value(
+        reorder(editor, {
+          position: 'category.top',
+          scope: 'category',
+          scopeId: CATEGORY,
+          slideIds: [scoped.id],
+        }),
+      );
+      expect(
+        await errorOf(
+          reorder(editor, { position: 'category.top', scope: 'category', slideIds: [scoped.id] }),
+        ),
+      ).toEqual({ code: 'validation.failed', fields: [{ path: 'scopeId', code: 'required' }] });
+      expect(await errorOf(reorder(editor, { ...hero(a.id, b.id), scopeId: CATEGORY }))).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'scopeId', code: 'not-allowed' }],
+      });
+    });
+
+    it('refuses paused, draft, ended and archived slides', async () => {
+      const [a, b] = await three();
+      const c = (await three())[0]!;
+      const draft = await made(editor, 'announcement', { placements: [{ position: 'home.hero' }] });
+      await value(run(PauseStorefrontSlide, pauser, { slide: c }));
+      const liveIds = [a!, b!, ...(await orderOf()).filter((x) => ![a, b, c].includes(x))];
+      const mismatch = (ids: string[]) => errorOf(reorder(editor, hero(...ids)));
+
+      expect(await mismatch([...liveIds, c])).toMatchObject({
+        code: 'storefront.slide-order-mismatch',
+        fields: [{ code: 'not-live-here' }],
+      });
+      expect(await mismatch([...liveIds, draft.id])).toMatchObject({
+        code: 'storefront.slide-order-mismatch',
+        fields: [{ code: 'not-live-here' }],
+      });
+      await value(run(ArchiveStorefrontSlide, editor, { slide: a }));
+      expect(await mismatch(liveIds)).toMatchObject({ code: 'storefront.slide-order-mismatch' });
+      // A slide whose window is over is not live any more: the rest are the whole list.
+      clock.set(T0.add({ hours: 24 * 31 }));
+      expect(await orderOf()).toEqual([]);
+      expect(await mismatch(liveIds)).toMatchObject({ code: 'storefront.slide-order-mismatch' });
+    });
+
+    it('keeps the saved order when a slide is approved again, paused and resumed', async () => {
+      const [a, b, c] = await three();
+      await value(reorder(editor, hero(c!, a!, b!)));
+
+      // A new version of the middle slide asks for sort order 0 again; it is approved.
+      await value(
+        run(UpdateStorefrontSlideDraft, editor, {
+          slide: a,
+          body: body({
+            internalName: 'Eid 2',
+            placements: [{ position: 'home.hero', sortOrder: 0 }],
+          }),
+        }),
+      );
+      await value(run(SubmitStorefrontSlide, editor, { slide: a }));
+      await value(approve(admin, a!, 2));
+      expect(await orderOf()).toEqual([c, a, b]);
+
+      // Pausing removes the rows; resuming puts the slide back in its place.
+      await value(run(PauseStorefrontSlide, pauser, { slide: c }));
+      expect(await orderOf()).toEqual([a, b]);
+      await value(run(ResumeStorefrontSlide, admin, { slide: c }));
+      expect(await orderOf()).toEqual([c, a, b]);
+
+      // Approved while paused, then resumed.
+      await value(run(PauseStorefrontSlide, pauser, { slide: b }));
+      await value(
+        run(UpdateStorefrontSlideDraft, editor, {
+          slide: b,
+          body: body({ internalName: 'Eid 3' }),
+        }),
+      );
+      await value(run(SubmitStorefrontSlide, editor, { slide: b }));
+      await value(approve(admin, b!, 2));
+      await value(run(ResumeStorefrontSlide, admin, { slide: b }));
+      expect(await orderOf()).toEqual([c, a, b]);
+    });
+
+    it('lets a newly approved version win when it asks for another sort order than the one it replaces', async () => {
+      const [a, b, c] = await three();
+      await value(reorder(editor, hero(c!, a!, b!)));
+      const newVersion = async (slide: string, sortOrder: number, versionNo: number) => {
+        await value(
+          run(UpdateStorefrontSlideDraft, editor, {
+            slide,
+            body: body({ placements: [{ position: 'home.hero', sortOrder }] }),
+          }),
+        );
+        await value(run(SubmitStorefrontSlide, editor, { slide }));
+        await value(approve(admin, slide, versionNo));
+      };
+      // `a` was saved at 1; its version said 0 and now says 7: the version wins, its saved row goes.
+      await newVersion(a!, 7, 2);
+      expect(slides.saved.filter((o) => o.slideId === a)).toEqual([]);
+      expect(await orderOf()).toEqual([c, b, a]);
+      // The other slides keep their saved orders.
+      expect(slides.saved.filter((o) => o.slideId === c)).toHaveLength(1);
+
+      // Paused: the change is final at approval, so a resume does not bring the saved order back.
+      await value(run(PauseStorefrontSlide, pauser, { slide: b }));
+      await newVersion(b!, 4, 2);
+      expect(slides.saved.filter((o) => o.slideId === b)).toEqual([]);
+      await value(run(ResumeStorefrontSlide, admin, { slide: b }));
+      expect(slides.placements.find((p) => p.slideId === b)?.sortOrder).toBe(4);
+    });
+
+    it('forgets the saved order of a placement that a new version no longer has', async () => {
+      const [a, b] = [await live(), await live()];
+      await value(reorder(editor, hero(b.id, a.id)));
+      await value(
+        run(UpdateStorefrontSlideDraft, editor, {
+          slide: b.id,
+          body: body({ placements: [{ position: 'home.mid', sortOrder: 5 }] }),
+        }),
+      );
+      await value(run(SubmitStorefrontSlide, editor, { slide: b.id }));
+      await value(approve(admin, b.id, 2));
+      expect(slides.saved.filter((o) => o.slideId === b.id)).toEqual([]);
+      // At its new position it starts from the sort order of its version.
+      expect(
+        slides.placements.filter((p) => p.slideId === b.id).map((p) => [p.position, p.sortOrder]),
+      ).toEqual([['home.mid', 5]]);
+    });
+
+    it('locks the named slides in id order, then the position', async () => {
+      const [a, b, c] = await three();
+      slides.locks.length = 0;
+      await value(reorder(editor, hero(c!, a!, b!)));
+      expect(slides.locks).toEqual([...[a!, b!, c!].sort(), 'home.hero']);
+    });
+  });
+
+  describe('approving checks what the slide points at', () => {
+    const PRODUCT = id<'Product'>(0x9d1).toString();
+    const SELLER = id<'Seller'>(0x5e1).toString();
+    const PAGE = id<'StorefrontPage'>(0x9a1).toString();
+    const submitted = async (extra: object, kind = 'promotion') => {
+      const slide = await made(editor, kind, extra);
+      await value(run(SubmitStorefrontSlide, editor, { slide: slide.id }));
+      return slide;
+    };
+    const approveIt = (slide: string, context: CallContext = admin) =>
+      run(ApproveStorefrontSlide, context, { slide, body: { versionNo: 1 } });
+    const withLink = (link: object) => ({
+      content: { title: 'Dates', link, ctaLabel: 'Shop' },
+    });
+
+    it('approves a link and scopes that are live in this Market', async () => {
+      targets.add(market.marketId, 'product', PRODUCT);
+      targets.add(market.marketId, 'seller', SELLER);
+      pageIds.set(PAGE, { archivedAt: null });
+      for (const link of [
+        { type: 'product', id: PRODUCT },
+        { type: 'seller', id: SELLER },
+        { type: 'page', id: PAGE },
+        { type: 'category', id: CATEGORY },
+        { type: 'search', id: 'halal-snacks' },
+      ]) {
+        const slide = await submitted(withLink(link));
+        expect((await value<SlideDetailView>(approveIt(slide.id))).status).toBe('live');
+      }
+      const scoped = await submitted({
+        placements: [
+          { position: 'product.below-details', scope: 'seller', scopeId: SELLER },
+          { position: 'landing.top', scope: 'page', scopeId: PAGE },
+        ],
+      });
+      expect((await value<SlideDetailView>(approveIt(scoped.id))).status).toBe('live');
+    });
+
+    it('refuses a product of the other Market, naming the field, and changes nothing', async () => {
+      targets.add(otherMarket.marketId, 'product', PRODUCT);
+      const slide = await submitted(withLink({ type: 'product', id: PRODUCT }));
+      const before = audit.entries.length;
+      expect(await errorOf(approveIt(slide.id))).toEqual({
+        code: 'storefront.slide-link-invalid',
+        fields: [{ path: 'content.link', code: 'not-found' }],
+      });
+      expect(slides.placements).toEqual([]);
+      expect(slides.slides.get(slide.id)).toMatchObject({
+        liveVersionId: null,
+        submittedVersionId: expect.any(String) as unknown,
+      });
+      expect(audit.entries).toHaveLength(before);
+      // The same product id is fine in the Market that has it.
+      const theirs = await made(
+        otherEditor,
+        'promotion',
+        withLink({ type: 'product', id: PRODUCT }),
+      );
+      await value(run(SubmitStorefrontSlide, otherEditor, { slide: theirs.id }));
+      expect((await value<SlideDetailView>(approveIt(theirs.id, otherAdmin))).status).toBe('live');
+    });
+
+    it('refuses an unknown or archived target and lists every field', async () => {
+      pageIds.set(PAGE, { archivedAt: T0 });
+      const slide = await submitted({
+        ...withLink({ type: 'page', id: PAGE }),
+        placements: [
+          {
+            position: 'category.top',
+            scope: 'category',
+            scopeId: id<'Category'>(0xdead).toString(),
+          },
+          { position: 'product.below-details', scope: 'seller', scopeId: SELLER },
+          { position: 'home.hero' },
+        ],
+      });
+      expect(await errorOf(approveIt(slide.id))).toEqual({
+        code: 'storefront.slide-link-invalid',
+        fields: [
+          { path: 'content.link', code: 'not-found' },
+          { path: 'placements[0].scopeId', code: 'not-found' },
+          { path: 'placements[1].scopeId', code: 'not-found' },
+        ],
+      });
+    });
+
+    it('refuses a page of the other Market', async () => {
+      pageIds.set(PAGE, { archivedAt: null });
+      const theirs = await made(otherEditor, 'promotion', withLink({ type: 'page', id: PAGE }));
+      await value(run(SubmitStorefrontSlide, otherEditor, { slide: theirs.id }));
+      expect(await errorOf(approveIt(theirs.id, otherAdmin))).toMatchObject({
+        code: 'storefront.slide-link-invalid',
+      });
+    });
+
+    it('fails closed when the facades cannot answer', async () => {
+      targets.add(market.marketId, 'product', PRODUCT);
+      targets.unavailable = true;
+      const slide = await submitted(withLink({ type: 'product', id: PRODUCT }));
+      expect(await errorOf(approveIt(slide.id))).toEqual({
+        code: 'storefront.slide-link-invalid',
+        fields: [{ path: 'content.link', code: 'unverifiable' }],
+      });
+    });
+
+    it('records on the publish entry whether the author approved their own version', async () => {
+      const mine = await made(admin, 'announcement');
+      await value(run(SubmitStorefrontSlide, admin, { slide: mine.id }));
+      await value(approveIt(mine.id));
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'storefront.slide.publish',
+        after: { selfApproved: true },
+      });
+      const theirs = await submitted({}, 'announcement');
+      await value(approveIt(theirs.id));
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'storefront.slide.publish',
+        after: { selfApproved: false },
+      });
+    });
+  });
+
+  describe('copy to another Market', () => {
+    it('hands out a package that an editor of the other Market creates a draft from', async () => {
+      const link = { type: 'category', id: CATEGORY };
+      const source = await made(editor, 'promotion', {
+        content: { title: 'Dates', link, image: { ref: 'dates', alt: 'Dates' } },
+        placements: [
+          {
+            position: 'category.top',
+            scope: 'category',
+            scopeId: CATEGORY,
+            includeSubcategories: true,
+          },
+          { position: 'home.hero', autoplay: true },
+        ],
+        pinned: true,
+      });
+      const pack = await value<SlideCopyPackage>(
+        run(PrepareStorefrontSlideCopy, reader, { slide: source.id }),
+      );
+      expect(pack).toMatchObject({
+        kind: 'promotion',
+        pinned: true,
+        content: { title: 'Dates', link: null, ctaLabel: null },
+        placements: [
+          { position: 'category.top', scope: 'all', scopeId: null, includeSubcategories: false },
+          { position: 'home.hero', scope: 'all', autoplay: true },
+        ],
+      });
+      // The other Market's editor needs its own storefront.slide.edit; a reader there cannot.
+      const { kind, ...rest } = pack;
+      const input = { kind, ...rest };
+      expect(await errorOf(run(CreateStorefrontSlide, otherReader, input))).toEqual(DENIED);
+      const copy = await value<SlideDetailView>(run(CreateStorefrontSlide, otherEditor, input));
+      expect(copy).toMatchObject({
+        kind: 'promotion',
+        status: 'draft',
+        internalName: source.internalName,
+      });
+      expect(slides.slides.get(copy.id)!.marketId).toBe(otherMarket.marketId);
+      expect(slides.slides.get(source.id)!.marketId).toBe(market.marketId);
+      expect(
+        (await value<SlideSummaryView[]>(run(ListStorefrontSlides, reader, {}))).map((s) => s.id),
+      ).toEqual([source.id]);
+    });
+  });
+});

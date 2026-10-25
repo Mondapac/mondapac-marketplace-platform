@@ -1,9 +1,11 @@
-import { Controller, Get, Logger, Param, Res } from '@nestjs/common';
+import { Controller, Get, Logger, Param, Query, Res } from '@nestjs/common';
 import {
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiBadRequestResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
@@ -17,7 +19,9 @@ import type {
 import { ViewPublishedLandingPage } from '../application/use-cases/view-published-landing-page.use-case';
 import { ViewPublishedStorefrontNavigation } from '../application/use-cases/view-published-navigation.use-case';
 import { ViewPublishedStorefrontPage } from '../application/use-cases/view-published-page.use-case';
+import { ViewPublishedStorefrontSlides } from '../application/use-cases/view-published-slides.use-case';
 import { refusal } from './http-answers';
+import { PublishedSlidesBody, publishedSlidesBody } from './public-slide.dto';
 import { PublishedBody, publishedBody } from './storefront.dto';
 
 const ERROR = { type: Object };
@@ -38,6 +42,7 @@ export class PublicStorefrontController {
     private readonly page: ViewPublishedStorefrontPage,
     private readonly landing: ViewPublishedLandingPage,
     private readonly navigation: ViewPublishedStorefrontNavigation,
+    private readonly slides: ViewPublishedStorefrontSlides,
   ) {}
 
   private answer(
@@ -119,5 +124,45 @@ export class PublicStorefrontController {
       context,
       await this.navigation.execute(context, {}),
     );
+  }
+
+  @Get('slides')
+  @ApiOperation({
+    summary: 'The live slides of a slider position (public)',
+    description:
+      'No session needed. Only approved slides of the request Market that are inside their window, ' +
+      'whose scope covers the page asked for and whose link target is alive (a suspended seller or ' +
+      'a dead link drops the slide), sorted and capped per position. `Cache-Control: public, ' +
+      'max-age` is at most 60 and never past `nextChangeAt`; the answer varies by `X-Market-Id`.',
+  })
+  @ApiQuery({ name: 'position', description: 'home.hero, home.mid, category.top, ...' })
+  @ApiQuery({ name: 'category', required: false })
+  @ApiQuery({ name: 'product', required: false })
+  @ApiQuery({ name: 'seller', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiOkResponse({ type: PublishedSlidesBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  async publishedSlides(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.vary('X-Market-Id');
+    const result = await this.slides.execute(context, query);
+    this.#logger.log({
+      msg: 'storefront.view-published-slides-route',
+      outcome: result.ok ? `${result.value.slides.length}` : result.error.code,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (!result.ok) {
+      response.setHeader('Cache-Control', 'no-store');
+      throw refusal(result.error, context, this.#logger);
+    }
+    response.setHeader(
+      'Cache-Control',
+      result.value.maxAgeSeconds > 0 ? `public, max-age=${result.value.maxAgeSeconds}` : 'no-store',
+    );
+    return publishedSlidesBody(result.value);
   }
 }

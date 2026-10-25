@@ -15,6 +15,7 @@ import {
 import type { AssistantSetup } from '../assistant/assistant.ts';
 import { categoriesOf, loadHome, type HomeContent } from './home-source.ts';
 import { photoUrls } from './photo-source.ts';
+import { loadSlides as readSlides, type SlideScope } from './slides-source.ts';
 import { loadShellContent } from './shell-source.ts';
 import { storeProductsOf, storeProductsPath } from './store-products.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
@@ -23,7 +24,7 @@ import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { SAMPLE_SELLER_SIGN_UP } from './sample-seller-sign-up.ts';
-import { storefrontApiConfig, storefrontHostFor } from './config.ts';
+import { cardSetup, storefrontApiConfig, storefrontHostFor } from './config.ts';
 import { sellerSignInUrls } from './seller-sign-in.ts';
 import { callSellerSignUp, type SellerSignUpCall } from './seller-sign-up-api.ts';
 import { sampleSellers } from './sample-sellers.ts';
@@ -36,6 +37,8 @@ import type {
   DeliveryAreaAnswer,
   DeliveryLocatorSource,
   DeliveryQuote,
+  PayAnswer,
+  PayRequest,
   Money,
   ProductDetail,
   QuoteAddress,
@@ -44,6 +47,7 @@ import type {
   SellerShop,
   SellerSignUpAnswer,
   SellerSignUpSetup,
+  SlideSet,
   StorefrontContent,
   StoreProducts,
   UnavailableProduct,
@@ -73,6 +77,16 @@ export async function loadStorefrontContent(): Promise<StorefrontContent> {
  */
 export async function loadHomeContent(): Promise<HomeContent> {
   return loadHome();
+}
+
+/**
+ * The slides of one slider position for a page (`GET storefront/slides`), each checked here: plain
+ * text, site-path links, images from this app or our media origin only. Sample slides stand in
+ * while API_BASE_URL is empty or the read fails (unless STOREFRONT_SAMPLE_DATA is off). See
+ * ./slides-source.ts. The home hero is read with the home page (loadHomeContent).
+ */
+export async function loadSlides(position: string, scope?: SlideScope): Promise<SlideSet> {
+  return readSlides(position, scope);
 }
 
 /**
@@ -121,6 +135,7 @@ export async function loadCheckout(): Promise<CheckoutSource> {
   return Promise.resolve({
     ...SAMPLE_CHECKOUT,
     areaCheck: storefrontApiConfig() === null ? 'sample' : 'api',
+    card: cardSetup(),
   });
 }
 
@@ -161,6 +176,44 @@ export async function quoteDelivery(
   sellerIds: readonly string[],
 ): Promise<Readonly<Record<string, DeliveryQuote>>> {
   return Promise.resolve(sampleQuotes(sellerIds));
+}
+
+/**
+ * Pay: checks the order again (Express prices, stock) and then takes the payment, or answers what
+ * changed with nothing charged. SAMPLE until the ordering API takes payments (the next package:
+ * a manual-capture PaymentIntent from the card tile's confirmation token, refusing any brand but
+ * Visa and Mastercard; the hosted Checkout Session for the Stripe tile). Until then a Stripe
+ * confirmation token has nothing to go to and answers `failed`; the sample charges nothing.
+ */
+export async function takePayment(request: PayRequest): Promise<PayAnswer> {
+  const source = SAMPLE_CART_SOURCE;
+  const sellerIds = Object.keys(request.delivery);
+  const quotes = await quoteDelivery(request.address, sellerIds);
+  const changes = sellerIds.flatMap((id) => {
+    const choice = request.delivery[id];
+    const quote = Object.hasOwn(quotes, id) ? quotes[id] : undefined;
+    if (choice?.speed !== 'express' || quote?.kind !== 'quote') return [];
+    // No Express any more: the seller's Scheduled fee applies.
+    const now =
+      quote.express ??
+      (Object.hasOwn(source.sellers, id) ? source.sellers[id]?.deliveryFee : undefined);
+    if (!now) return [];
+    if (now.amount === choice.fee.amount && now.currency === choice.fee.currency) return [];
+    return [{ sellerId: id, was: choice.fee, now }];
+  });
+  // A seller the courier no longer reaches, or no answer: nothing is charged.
+  if (sellerIds.some((id) => quotes[id]?.kind !== 'quote')) return { kind: 'failed' };
+  if (changes.length > 0) return { kind: 'price-changed', changes, quotes };
+  const known = (id: string) => Object.hasOwn(source.items, id);
+  if (Object.keys(request.lines).some((id) => !known(id))) return { kind: 'failed' };
+  const stock = Object.entries(request.lines).flatMap(([id, quantity]) => {
+    const left = source.items[id]?.lowStock;
+    return left !== undefined && quantity > left ? [{ itemId: id, was: quantity, now: left }] : [];
+  });
+  if (stock.length > 0) return { kind: 'stock-changed', changes: stock };
+  if (request.method === 'stripe') return { kind: 'redirect', url: '/checkout/payment' };
+  if (request.confirmationToken !== null) return { kind: 'failed' };
+  return { kind: 'paid', reference: SAMPLE_CHECKOUT.orderReference };
 }
 
 /**

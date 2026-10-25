@@ -1,5 +1,11 @@
 import 'server-only';
-import type { CertificationBadge, Money, ProductCard, StorefrontContent } from './types.ts';
+import type {
+  CertificationBadge,
+  Money,
+  ProductCard,
+  SlideSet,
+  StorefrontContent,
+} from './types.ts';
 
 // Sample content of the approved home page design (v29). It stands in at the API boundary until
 // the pages-and-content API (PR #401) and storefront package 2 are on main; the shapes follow
@@ -9,6 +15,47 @@ import type { CertificationBadge, Money, ProductCard, StorefrontContent } from '
 const CURRENCY = 'AUD';
 const money = (amount: number): Money => ({ amount, currency: CURRENCY });
 const certified: CertificationBadge = { type: 'halal', label: 'Halal certified' };
+
+/** The sample home hero: the old top banner as the first slide, and two more to show a slider. */
+export const SAMPLE_HERO: SlideSet = {
+  position: 'home.hero',
+  autoplay: true,
+  slides: [
+    {
+      id: 'sample-fresh',
+      title: 'Fresh from Brisbane sellers you can trust',
+      body: 'Halal butchers, bakers and pantry makers, all in one cart. Every price includes GST.',
+      ctaLabel: 'Shop special prices',
+      href: '/offers',
+      image: { src: '/placeholders/fruits.jpg', alt: '', decorative: true },
+      placement: 'start',
+      tone: 'dark',
+      sponsored: false,
+    },
+    {
+      id: 'sample-bread',
+      title: 'Baked this morning, at your door today',
+      body: 'Order from local bakers before noon for same-day delivery.',
+      ctaLabel: 'See express delivery',
+      href: '/express',
+      image: { src: '/placeholders/bread.jpg', alt: '', decorative: true },
+      placement: 'start',
+      tone: 'dark',
+      sponsored: false,
+    },
+    {
+      id: 'sample-certified',
+      title: 'Halal certification, clearly shown',
+      body: 'Every seal on a product comes from a certificate we have checked.',
+      ctaLabel: 'See certified products',
+      href: '/certified',
+      image: { src: '/placeholders/salmon.jpg', alt: '', decorative: true },
+      placement: 'start',
+      tone: 'light',
+      sponsored: false,
+    },
+  ],
+};
 
 type Row = [
   id: string,
@@ -238,20 +285,12 @@ export const SAMPLE_CONTENT: StorefrontContent = {
   ],
   home: [
     {
+      kind: 'hero',
+      set: SAMPLE_HERO,
+    },
+    {
       kind: 'promos',
       banners: [
-        {
-          id: 'fresh',
-          variant: 'primary',
-          title: 'Fresh from Brisbane sellers you can trust',
-          body: 'Halal butchers, bakers and pantry makers, all in one cart. Every price includes GST.',
-          action: { label: 'Shop special prices', href: '/offers' },
-          images: [
-            '/placeholders/fruits.jpg',
-            '/placeholders/bread.jpg',
-            '/placeholders/salmon.jpg',
-          ],
-        },
         {
           id: 'sell',
           variant: 'secondary',

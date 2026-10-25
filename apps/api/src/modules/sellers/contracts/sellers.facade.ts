@@ -126,6 +126,19 @@ export interface SellersFacade {
   ): Promise<Result<Id<'Seller'> | null, AccessDenied | SellersUnavailable>>;
 
   /**
+   * `publishedStoreSlugs` (storefront slider): the held store address of each requested seller
+   * (at most 100 ids), only under the published-store rules of the public store page (approved
+   * revision, `held` slug, the may-sell contract says yes). A seller that is unknown, of another
+   * Market, not approved or not selling is absent from the map, byte-identical. A request actor
+   * only (rule `anonymous`); ids and slugs only. A fault is `sellers.unavailable`: the caller
+   * fails closed. In-process only.
+   */
+  publishedStoreSlugs(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, AccessDenied | SellersUnavailable>>;
+
+  /**
    * `reviewerBusinessDetails` (sellers design 7.1; board 13 item 3): legal name, trading name and
    * the operating and registered addresses of the seller's **approved** revision, for a
    * certification reviewer. Rule `permissions [sellers.business-details.view]` (Hassan M4): a

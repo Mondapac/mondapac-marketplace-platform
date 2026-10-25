@@ -44,6 +44,12 @@
   --sf-info-soft: #e0eef5;
   --sf-info-ink: #124a66;
   --sf-scrim: rgb(20 33 31 / 0.5);
+  /* Slider: the scrim that keeps the text readable over any image (tone light: light text on a dark
+     scrim; tone dark: dark text on a light scrim). Strong behind the text, clear at the far side. */
+  --sf-slide-scrim-dark: color-mix(in srgb, var(--sf-ink) 94%, transparent);
+  --sf-slide-scrim-dark-clear: color-mix(in srgb, var(--sf-ink) 10%, transparent);
+  --sf-slide-scrim-light: color-mix(in srgb, var(--sf-white) 94%, transparent);
+  --sf-slide-scrim-light-clear: color-mix(in srgb, var(--sf-white) 8%, transparent);
   --sf-shadow: rgb(20 33 31 / 0.25);
   --sf-shadow-soft: rgb(20 33 31 / 0.06);
   --sf-shadow-strong: rgb(20 33 31 / 0.35);
@@ -64,6 +70,11 @@
   --sf-radius-card: 5px;
   --sf-radius-tile: 14px;
   --sf-radius-pill: 999px;
+  --sf-radius-hero: 18px;
+  /* Slider: the gap between its rows and texts, and the padding of a slide (phone, then tablet up). */
+  --sf-slide-gap: 8px;
+  --sf-slide-pad-block: 16px;
+  --sf-slide-pad-inline: 20px;
   --sf-header-height: 72px;
   /* Side gutters; widen from the tablet breakpoint. */
   --gl: max(16px, env(safe-area-inset-left, 0px));
@@ -795,7 +806,7 @@ svg {
 }
 @media (min-width: 900px) {
   .promos {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
   .promo {
     min-height: 220px;
@@ -808,6 +819,305 @@ svg {
   .promo.secondary {
     padding: 28px;
   }
+}
+
+/* Slider (storefront slider PR 2): text over an image with one link for the whole slide. Server
+   rendered; the track scrolls sideways with scroll-snap, so it works without JavaScript. The
+   frame has a fixed aspect ratio per position (no layout shift) that is also its minimum: when
+   the text is larger than the frame (Large text on a phone) the frame grows to fit it, so
+   nothing is clipped. The controls row keeps its height whether or not the script has added the
+   buttons (without JavaScript it is an empty strip). */
+.slider {
+  --slider-ratio: 4 / 3;
+  --slider-controls: 44px;
+  display: grid;
+  gap: var(--sf-slide-gap);
+  min-width: 0;
+  position: relative;
+}
+@media (min-width: 700px) {
+  .slider {
+    --slider-ratio: 5 / 2;
+    --sf-slide-pad-block: 24px;
+    --sf-slide-pad-inline: 36px;
+  }
+}
+@media (min-width: 1100px) {
+  .slider[data-position='home.hero'],
+  .slider[data-position='landing.top'] {
+    --slider-ratio: 3 / 1;
+  }
+}
+/* On a phone the picker sits in its own row below the arrows; eight slides need two rows. */
+@media (max-width: 699.98px) {
+  .slider[data-count] {
+    --slider-ratio: 6 / 5;
+    --slider-controls: 96px;
+  }
+  .slider[data-count='8'] {
+    --slider-controls: 140px;
+  }
+}
+.slider-track {
+  grid-row: 1;
+  display: flex;
+  aspect-ratio: var(--slider-ratio);
+  min-height: min-content;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  border-radius: var(--sf-radius-hero);
+  background: var(--sf-mist-soft);
+}
+.slider[data-ready] .slider-track {
+  scrollbar-width: none;
+}
+.slider[data-ready] .slider-track::-webkit-scrollbar {
+  display: none;
+}
+.slider[data-count='1'] .slider-track {
+  overflow: hidden;
+}
+.slide {
+  position: relative;
+  flex: 0 0 100%;
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--sf-radius-hero);
+  /* Outlines paint above the scrim, so pale slides keep a visible frame edge. */
+  outline: 1px solid var(--sf-mist);
+  outline-offset: -1px;
+  scroll-snap-align: start;
+  background: var(--sf-mist-soft);
+  color: var(--sf-ink);
+  --scrim: var(--sf-slide-scrim-light);
+  --scrim-clear: var(--sf-slide-scrim-light-clear);
+  --scrim-dir: to right;
+  --art-position: 100% 50%;
+}
+.slide[data-tone='light'] {
+  background: var(--sf-teal);
+  color: var(--sf-white);
+  --scrim: var(--sf-slide-scrim-dark);
+  --scrim-clear: var(--sf-slide-scrim-dark-clear);
+}
+.slide[data-placement='end'] {
+  --scrim-dir: to left;
+  --art-position: 0% 50%;
+}
+:dir(rtl) .slide {
+  --scrim-dir: to left;
+  --art-position: 0% 50%;
+}
+:dir(rtl) .slide[data-placement='end'] {
+  --scrim-dir: to right;
+  --art-position: 100% 50%;
+}
+.slide-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: var(--sf-slide-pad-block) var(--sf-slide-pad-inline);
+  border-radius: var(--sf-radius-hero);
+  color: inherit;
+  text-decoration: none;
+}
+/* The scrim is solid behind the text (the text is at most 60% wide, plus its padding) and only
+   then clears towards the picture, so no pixel of the art ever sits under a word. */
+.slide-inner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    var(--scrim-dir),
+    var(--scrim) 0%,
+    var(--scrim) 65%,
+    var(--scrim-clear) 100%
+  );
+}
+.slide[data-placement='center'] .slide-inner {
+  justify-content: center;
+}
+.slide[data-placement='center'] .slide-inner::before {
+  background: var(--scrim);
+}
+.slide[data-placement='end'] .slide-inner {
+  justify-content: flex-end;
+}
+/* On a phone the text spans the frame, so the scrim covers all of it and the art is faded. */
+@media (max-width: 699.98px) {
+  .slide-inner::before,
+  .slide[data-placement='center'] .slide-inner::before {
+    background: var(--scrim);
+  }
+  .slide-img.art {
+    opacity: 0.35;
+  }
+}
+.slide-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* The ready-made art is a square picture on white: it sits at the far side, blended into the tint. */
+.slide-img.art {
+  object-fit: contain;
+  object-position: var(--art-position);
+  mix-blend-mode: multiply;
+}
+.slide-text {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: var(--sf-slide-gap);
+  justify-items: start;
+  max-width: min(100%, 36rem);
+  text-align: start;
+}
+.slide[data-placement='center'] .slide-text {
+  justify-items: center;
+  text-align: center;
+}
+.slide-text h2 {
+  font-size: calc(22px * var(--fs));
+  line-height: calc(28px * var(--fs));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.slide-text p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.slide[data-tone='dark'] .slide-text p {
+  color: var(--sf-ink);
+}
+@media (min-width: 700px) {
+  .slide-text {
+    max-width: 54%;
+  }
+  .slide-text h2 {
+    font-size: calc(28px * var(--fs));
+    line-height: calc(34px * var(--fs));
+  }
+}
+@media (min-width: 900px) {
+  .slide-text {
+    max-width: 60%;
+  }
+  .slide-text h2 {
+    font-size: calc(30px * var(--fs));
+    line-height: calc(36px * var(--fs));
+  }
+  .slide-text p {
+    -webkit-line-clamp: 2;
+  }
+}
+.slide-tag {
+  font-size: calc(12px * var(--fs));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+/* The button look is only for a slide that is a link; a label without a link is not drawn. */
+.slide-cta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: calc(var(--sf-slide-gap) / 2);
+  padding: 0 var(--sf-slide-pad-inline);
+  border-radius: var(--sf-radius-pill);
+  font-weight: 700;
+  background: var(--sf-ink);
+  color: var(--sf-white);
+}
+.slide[data-tone='light'] .slide-cta {
+  background: var(--sf-white);
+  color: var(--sf-ink);
+}
+/* Focus: a 3px ink ring (3:1 on the light slides) with a white 2px ring inside it (so it is also
+   3:1 on the teal ones), on the rounded link itself, inside the frame, so nothing clips it. It is
+   drawn by the last child so the scrim cannot paint over it. */
+.slide-inner:focus-visible {
+  outline: none;
+}
+.slide-inner:focus-visible::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  outline: 3px solid var(--sf-ink);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 5px var(--sf-white);
+  pointer-events: none;
+}
+.slider-controls {
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  align-content: flex-start;
+  gap: 0 calc(var(--sf-slide-gap) / 2);
+  min-height: var(--slider-controls);
+}
+.slider[data-count='1'] .slider-controls {
+  display: none;
+}
+.slider-btn,
+.slider-dot {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--sf-radius-pill);
+  background: transparent;
+  color: var(--sf-ink);
+  cursor: pointer;
+}
+.slider-btn:hover,
+.slider-dot:hover {
+  background: var(--sf-mist-soft);
+}
+.slider-btn:focus-visible,
+.slider-dot:focus-visible {
+  outline: 3px solid var(--sf-teal);
+  outline-offset: -3px;
+}
+.slider-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+@media (max-width: 699.98px) {
+  .slider-dots {
+    flex-basis: 100%;
+  }
+}
+.slider-dot span {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--sf-radius-pill);
+  background: color-mix(in srgb, var(--sf-ink) 30%, var(--sf-white));
+}
+.slider-dot[aria-selected='true'] span {
+  width: 22px;
+  background: var(--sf-teal);
+}
+:dir(rtl) .slider-arrow {
+  transform: scaleX(-1);
 }
 
 /* Category strip */
@@ -4868,6 +5178,64 @@ svg {
   height: 16px;
   flex: none;
   color: var(--sf-teal);
+}
+.ptl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.pt {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 2px;
+  min-height: 84px;
+  padding: 14px 10px;
+  border: 1px solid var(--sf-line);
+  border-radius: 12px;
+  background: var(--sf-white);
+  text-align: center;
+  cursor: pointer;
+}
+.pt input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.pt:has(input:checked) {
+  border-color: var(--sf-teal);
+  background: var(--sf-mist-soft);
+  box-shadow: 0 0 0 1px var(--sf-teal);
+}
+.pt:has(input:focus-visible) {
+  outline: 3px solid var(--sf-teal);
+  outline-offset: 2px;
+}
+.pt .pti {
+  color: var(--sf-teal);
+}
+.pt .pti .ico {
+  width: 24px;
+  height: 24px;
+}
+.pt small {
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+}
+.cfm {
+  display: grid;
+  gap: 12px;
+}
+/* Stripe's card frames keep their own height; nothing is drawn here while they load. */
+.sfr:empty {
+  display: none;
+}
+/* Wraps the sections Pay locks while it waits; the grid keeps laying out what is inside. */
+.ckwait {
+  display: contents;
 }
 .ckdc {
   padding: 4px 16px;
