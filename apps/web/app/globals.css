@@ -79,6 +79,8 @@
   /* Side gutters; widen from the tablet breakpoint. */
   --gl: max(16px, env(safe-area-inset-left, 0px));
   --gr: max(16px, env(safe-area-inset-right, 0px));
+  /* The notch inset at the end side of the page: the right in LTR, the left in RTL. */
+  --sa-end: env(safe-area-inset-right, 0px);
   /* Text scale: Large from the desktop breakpoint, Small below; the footer toggle overrides it. */
   --fs: 1.15;
   color-scheme: light;
@@ -265,7 +267,8 @@ svg {
   background: var(--sf-surface);
   border: 1.5px solid transparent;
   border-radius: var(--sf-radius-pill);
-  padding: 0 6px 0 16px;
+  padding-block: 0;
+  padding-inline: 16px 6px;
   min-height: 46px;
   color: var(--sf-slate);
 }
@@ -313,7 +316,8 @@ svg {
   background: var(--sf-surface);
   border-radius: var(--sf-radius-pill);
   height: 44px;
-  padding: 0 14px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 14px;
   font-weight: 600;
   color: var(--sf-ink);
   white-space: nowrap;
@@ -357,7 +361,8 @@ svg {
   align-items: center;
   gap: 8px;
   height: 44px;
-  padding: 0 14px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 14px;
   border-radius: var(--sf-radius-pill);
   border: 0;
   background: var(--sf-teal);
@@ -755,31 +760,31 @@ svg {
   object-fit: contain;
 }
 .pimgs.primary .i0 {
-  right: -4%;
+  inset-inline-end: -4%;
   bottom: -6%;
   width: 78%;
   height: 78%;
 }
 .pimgs.primary .i1 {
-  right: 52%;
+  inset-inline-end: 52%;
   bottom: -4%;
   width: 46%;
   height: 46%;
 }
 .pimgs.primary .i2 {
-  right: 34%;
+  inset-inline-end: 34%;
   top: -4%;
   width: 46%;
   height: 46%;
 }
 .pimgs.secondary .i0 {
-  right: -8%;
+  inset-inline-end: -8%;
   bottom: -8%;
   width: 62%;
   height: 62%;
 }
 .pimgs.secondary .i1 {
-  right: 36%;
+  inset-inline-end: 36%;
   bottom: -6%;
   width: 40%;
   height: 40%;
@@ -1583,7 +1588,8 @@ svg {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .ftrust > li {
-    padding: 16px 12px 16px 0;
+    padding-block: 16px;
+    padding-inline: 0 12px;
   }
   .ftrust > li:nth-child(2) {
     border-top: 0;
@@ -1932,7 +1938,8 @@ svg {
   align-items: center;
   gap: 8px;
   min-height: 64px;
-  padding: 0 12px 0 20px;
+  padding-block: 0;
+  padding-inline: 20px 12px;
   border-bottom: 1px solid var(--sf-line);
   flex: none;
 }
@@ -2499,7 +2506,8 @@ svg {
   align-items: center;
   gap: 6px;
   min-height: 36px;
-  padding: 0 10px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 10px;
   border-radius: var(--sf-radius-pill);
   background: var(--sf-mist-soft);
   color: var(--sf-teal);
@@ -2539,7 +2547,8 @@ svg {
 .sortw select {
   appearance: none;
   min-height: 34px;
-  padding: 0 32px 0 10px;
+  padding-block: 0;
+  padding-inline: 10px 32px;
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-radius-card);
   background: var(--sf-white);
@@ -3551,6 +3560,7 @@ svg {
 .spop.asmodal {
   position: fixed;
   top: 50%;
+  /* Centred on the page with the translate below, so it stays physical in both directions. */
   left: 50%;
   transform: translate(-50%, -50%);
   width: min(420px, calc(100% - 32px));
@@ -3649,7 +3659,8 @@ svg {
     background: var(--sf-white);
     border: 1px solid var(--sf-line);
     border-radius: var(--sf-radius-tile);
-    padding: 10px 12px 10px 16px;
+    padding-block: 10px;
+    padding-inline: 16px 12px;
     box-shadow: 0 4px 14px var(--sf-shadow-bar);
   }
   .buybar b {
@@ -4078,7 +4089,8 @@ svg {
   background: var(--sf-white);
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-radius-tile);
-  padding: 10px 12px 10px 16px;
+  padding-block: 10px;
+  padding-inline: 16px 12px;
   box-shadow: 0 4px 14px var(--sf-shadow-bar);
 }
 .cbar b {
@@ -4482,7 +4494,8 @@ svg {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 8px 8px 20px;
+  padding-block: 8px;
+  padding-inline: 20px 8px;
   border-bottom: 1px solid var(--sf-line);
 }
 .dh h2 {
@@ -4706,7 +4719,7 @@ svg {
   content: '';
   position: absolute;
   top: 13px;
-  right: 50%;
+  inset-inline-end: 50%;
   width: 100%;
   height: 2px;
   background: var(--sf-line);
@@ -4829,8 +4842,8 @@ svg {
 .aclist {
   position: absolute;
   top: calc(100% + 4px);
-  right: 0;
-  left: 0;
+  inset-inline-end: 0;
+  inset-inline-start: 0;
   z-index: 5;
   margin: 0;
   padding: 0;
@@ -5537,7 +5550,8 @@ svg {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 8px 8px 20px;
+  padding-block: 8px;
+  padding-inline: 20px 8px;
   border-bottom: 1px solid var(--sf-line);
 }
 .lmh h2 {
@@ -5582,7 +5596,8 @@ svg {
   align-items: center;
   gap: 8px;
   min-height: 46px;
-  padding: 0 1px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 1px;
   border: 1.5px solid var(--sf-line);
   border-radius: 12px;
   background: var(--sf-white);
@@ -5627,8 +5642,8 @@ svg {
 }
 .lmlist {
   position: absolute;
-  left: 0;
-  right: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
   top: 100%;
   z-index: 3;
   max-height: 240px;
@@ -5676,8 +5691,8 @@ svg {
 }
 .lmnone {
   position: absolute;
-  left: 0;
-  right: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
   top: 100%;
   z-index: 3;
   margin-top: 4px;
@@ -5881,7 +5896,7 @@ svg {
 .lmzoom {
   position: absolute;
   top: 12px;
-  right: 12px;
+  inset-inline-end: 12px;
   display: grid;
   overflow: hidden;
   border-radius: 10px;
@@ -5916,8 +5931,8 @@ svg {
 .lmhint {
   position: absolute;
   top: 12px;
-  left: 12px;
-  right: 68px;
+  inset-inline-start: 12px;
+  inset-inline-end: 68px;
   padding: 8px 12px;
   border-radius: 10px;
   background: var(--sf-white);
@@ -5927,7 +5942,7 @@ svg {
 }
 .lmlegend {
   position: absolute;
-  right: 12px;
+  inset-inline-end: 12px;
   bottom: 12px;
   display: flex;
   align-items: center;
@@ -5948,7 +5963,7 @@ svg {
 }
 .lmatt {
   position: absolute;
-  left: 8px;
+  inset-inline-start: 8px;
   bottom: 6px;
   padding: 2px 6px;
   border-radius: 4px;
@@ -5986,7 +6001,7 @@ svg {
   .lmx {
     position: absolute;
     top: 8px;
-    left: 8px;
+    inset-inline-start: 8px;
     z-index: 2;
     display: grid;
     background: var(--sf-white);
@@ -6092,7 +6107,7 @@ svg {
   display: flex;
   flex: 0 0 auto;
   gap: 12px;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .shop-ring {
   display: grid;
@@ -6160,7 +6175,7 @@ svg {
 .shop-share {
   position: absolute;
   top: 12px;
-  right: 12px;
+  inset-inline-end: 12px;
   z-index: 3;
 }
 .shop-share > button {
@@ -6185,7 +6200,7 @@ svg {
 .shop-share-menu {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  inset-inline-end: 0;
   display: grid;
   gap: 2px;
   width: min(280px, calc(100vw - 56px));
@@ -6212,7 +6227,7 @@ svg {
   color: var(--sf-ink);
   font-size: calc(15px * var(--fs));
   font-weight: 600;
-  text-align: left;
+  text-align: start;
   text-decoration: none;
 }
 .shop-share-menu a:hover,
@@ -6453,7 +6468,7 @@ svg {
 }
 .shop-facts dd {
   font-weight: 600;
-  text-align: right;
+  text-align: end;
   overflow-wrap: anywhere;
 }
 .shop-ok {
@@ -6574,7 +6589,8 @@ button.login {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 12px 12px 12px 16px;
+  margin-block: 12px;
+  margin-inline: 16px 12px;
   text-transform: none;
   letter-spacing: 0;
   font-size: calc(15px * var(--fs));
@@ -6651,7 +6667,7 @@ button.login {
   width: min(360px, 88%);
   height: 100%;
   padding-top: env(safe-area-inset-top, 0px);
-  padding-inline-end: env(safe-area-inset-right, 0px);
+  padding-inline-end: var(--sa-end);
   background: var(--sf-white);
   box-shadow: -12px 0 40px var(--sf-shadow);
   transform: translateX(102%);
@@ -6674,7 +6690,8 @@ button.login {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 8px 12px 16px;
+  padding-block: 12px;
+  padding-inline: 16px 8px;
   border-bottom: 1px solid var(--sf-line);
 }
 .adn {
@@ -7130,8 +7147,8 @@ button.login {
   content: '';
   position: absolute;
   top: 13px;
-  left: -50%;
-  right: 50%;
+  inset-inline-start: -50%;
+  inset-inline-end: 50%;
   height: 2px;
   background: var(--sf-line);
 }
@@ -7368,7 +7385,7 @@ button.login {
   content: '';
   position: absolute;
   top: 4px;
-  left: 4px;
+  inset-inline-start: 4px;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -8475,7 +8492,8 @@ button.login {
   width: 100%;
   max-width: 440px;
   min-height: 48px;
-  padding: 0 6px 0 16px;
+  padding-block: 0;
+  padding-inline: 16px 6px;
   border: 1.5px solid transparent;
   border-radius: var(--sf-radius-pill);
   background: var(--sf-surface);
@@ -8652,7 +8670,7 @@ button.login {
 .aslaunch {
   position: fixed;
   z-index: 22;
-  right: var(--as-right, max(20px, env(safe-area-inset-right, 0px)));
+  inset-inline-end: var(--as-end, max(20px, var(--sa-end)));
   bottom: var(--as-lift);
   display: grid;
   place-items: center;
@@ -8686,7 +8704,7 @@ button.login {
 .aspanel {
   position: fixed;
   z-index: 22;
-  right: max(20px, env(safe-area-inset-right, 0px));
+  inset-inline-end: max(20px, var(--sa-end));
   bottom: calc(var(--as-dock) + 20px);
   width: min(400px, calc(100vw - 40px));
   /* Never over the header: 20px clear of it and of the dock. */
@@ -8705,7 +8723,7 @@ button.login {
 }
 @media (max-width: 700px) {
   .aslaunch {
-    right: var(--as-right, max(16px, env(safe-area-inset-right, 0px)));
+    inset-inline-end: var(--as-end, max(16px, var(--sa-end)));
   }
   .aspanel {
     z-index: 30;
@@ -8721,7 +8739,8 @@ button.login {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 6px 8px 14px;
+  padding-block: 8px;
+  padding-inline: 14px 6px;
   border-bottom: 2px solid var(--sf-saffron);
   min-height: 60px;
 }
@@ -8807,7 +8826,7 @@ button.login {
 }
 .asinfo ul {
   margin: 0;
-  padding-left: 18px;
+  padding-inline-start: 18px;
   display: grid;
   gap: 2px;
 }
@@ -8847,12 +8866,12 @@ button.login {
 .asm.u .asb {
   background: var(--sf-saffron);
   color: var(--sf-on-accent);
-  border-bottom-right-radius: 4px;
+  border-end-end-radius: 4px;
 }
 .asm.a .asb {
   background: var(--sf-surface);
   color: var(--sf-ink);
-  border-bottom-left-radius: 4px;
+  border-end-start-radius: 4px;
   max-width: 92%;
   justify-self: start;
 }
@@ -9197,4 +9216,49 @@ button.login {
 }
 .asfoot .aslk {
   flex: none;
+}
+
+/* Right-to-left (a language the Market publishes, read from <html dir>): what is physical on
+   purpose is mirrored here. Spacing and positions above are logical and follow the direction. */
+:root:dir(rtl) {
+  --sa-end: env(safe-area-inset-left, 0px);
+}
+/* Arrows and chevrons that point along the reading direction. */
+:dir(rtl) .ico-flip {
+  scale: -1 1;
+}
+/* "Show more" turns the chevron down; it must not mirror on top of that. */
+:dir(rtl) .dmore .ico {
+  scale: none;
+}
+/* Drawers wait off the edge they open from; the start drawer sits at the right in RTL. */
+:dir(rtl) .panel {
+  box-shadow: -8px 0 28px var(--sf-shadow-panel);
+  transform: translateX(102%);
+}
+:dir(rtl) .fpanel {
+  box-shadow: 8px 0 28px var(--sf-shadow-panel);
+  transform: translateX(-102%);
+}
+:dir(rtl) .adp {
+  box-shadow: 12px 0 40px var(--sf-shadow);
+  transform: translateX(-102%);
+}
+:dir(rtl) .ac-sw2 input:checked + i::after {
+  transform: translateX(-20px);
+}
+:dir(rtl) .cbp {
+  mask-image: linear-gradient(to left, transparent, var(--sf-black) 25%);
+}
+
+/* Fonts for scripts the brand fonts do not cover. Figtree and Plus Jakarta Sans stay first, so
+   Latin digits and brand text keep the brand look; the script font fills the other glyphs. The
+   stylesheet for it loads only in these languages (src/i18n/fonts.ts). */
+:root:lang(fa) {
+  --sf-font-head: 'Plus Jakarta Sans', 'Vazirmatn', system-ui, sans-serif;
+  --sf-font-body: 'Figtree', 'Vazirmatn', system-ui, sans-serif;
+}
+:root:lang(ar) {
+  --sf-font-head: 'Plus Jakarta Sans', 'Noto Sans Arabic', system-ui, sans-serif;
+  --sf-font-body: 'Figtree', 'Noto Sans Arabic', system-ui, sans-serif;
 }

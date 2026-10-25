@@ -4,6 +4,8 @@
 // `HH:MM`; the zone is the seller's IANA zone, so a daylight-saving change moves the instant and
 // not the local time. Pure functions over an injected `now`.
 
+import { intlLocale } from '../i18n/locale.ts';
+
 /** Windows are offered between these local hours (the seller's day for deliveries). */
 export const FIRST_WINDOW_HOUR = 8;
 export const LAST_WINDOW_HOUR = 20;
@@ -128,7 +130,7 @@ const spaces = (text: string): string => text.replace(/[\u00a0\u202f]/g, ' ');
 export function clockLabel(time: string, locale: string): string {
   const [hh, mm] = time.split(':').map(Number) as [number, number];
   return spaces(
-    new Intl.DateTimeFormat(locale, {
+    new Intl.DateTimeFormat(intlLocale(locale), {
       timeZone: 'UTC',
       hour: 'numeric',
       minute: '2-digit',
@@ -139,7 +141,7 @@ export function clockLabel(time: string, locale: string): string {
 /** "Tue, 27 Oct" for a local day. */
 export function dayLabel(day: string, locale: string): string {
   const [y, m, d] = day.split('-').map(Number) as [number, number, number];
-  return new Intl.DateTimeFormat(locale, {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone: 'UTC',
     weekday: 'short',
     day: 'numeric',

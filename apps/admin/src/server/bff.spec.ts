@@ -528,6 +528,20 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('DELETE', base)).status).toBe(404);
     expect((await call('PUT', `${base}/extra`)).status).toBe(404);
     expect((await call('PUT', `shipping/admin/sellers/${ID}/delivery-methods`)).status).toBe(200);
+    const readSeller = new Request(
+      `http://admin.localhost:3002/api/shipping/admin/sellers/${ID}/delivery-methods`,
+      { headers: sameOrigin },
+    );
+    expect(
+      (
+        await relay(
+          config,
+          readSeller,
+          ['shipping', 'admin', 'sellers', ID, 'delivery-methods'],
+          fetchImpl,
+        )
+      ).status,
+    ).toBe(200);
     expect((await call('PUT', 'shipping/admin/sellers/nope/delivery-methods')).status).toBe(404);
     expect((await call('POST', `shipping/admin/sellers/${ID}/delivery-methods`)).status).toBe(404);
     expect((await call('DELETE', `shipping/admin/sellers/${ID}/delivery-methods`)).status).toBe(

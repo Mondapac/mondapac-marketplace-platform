@@ -1,4 +1,5 @@
-import { inputOf, minorOf } from '../shipping/money.ts';
+import { numberFormat } from '../shared/intl.ts';
+import { exponentOf, inputOf, minorOf } from '../shipping/money.ts';
 import {
   MAX_DAYS,
   MIN_DAYS,
@@ -129,4 +130,73 @@ export function priceOf(quote: number, margin: Margin, roundingStep: number): Pr
   const before = quote + added;
   const total = Math.ceil(before / roundingStep) * roundingStep;
   return { quote, margin: total - quote, total };
+}
+
+/**
+ * Minor units with the ISO currency code ("AUD 12.34", "JPY 1,234"), never a bare "$" or a yen
+ * sign: the code names the Market currency whatever the viewer's locale draws for the symbol.
+ */
+export function moneyOf(minor: number, currency: string, locale: string): string {
+  return numberFormat(locale, { style: 'currency', currency, currencyDisplay: 'code' }).format(
+    minor / 10 ** exponentOf(currency),
+  );
+}
+
+/** One thing a save changes, for the confirm step: a message key and its values. */
+export interface Impact {
+  readonly key: string;
+  readonly values: Readonly<Record<string, string | number>>;
+}
+
+/**
+ * What saving would change, in the order of the page. A method turned off or on, the cut-off, the
+ * scheduled days and window, and the margin with its rounding. Nothing for what stays the same.
+ */
+export function impactOf(
+  before: DeliverySettings,
+  body: Extract<Checked, { ok: true }>['body'],
+  show: { readonly method: (m: Method) => string; readonly money: (minor: number) => string },
+): readonly Impact[] {
+  const out: Impact[] = [];
+  for (const method of ['pickup', 'instant', 'same_day', 'scheduled'] as const) {
+    if (before.enabled[method] !== body.enabled[method]) {
+      out.push({
+        key: body.enabled[method] ? 'method-on' : 'method-off',
+        values: { method: show.method(method) },
+      });
+    }
+  }
+  if (before.sameDayCutoff !== body.sameDayCutoff) {
+    out.push({ key: 'cutoff', values: { time: body.sameDayCutoff, was: before.sameDayCutoff } });
+  }
+  if (before.scheduledDaysAhead !== body.scheduledDaysAhead) {
+    out.push({
+      key: 'days',
+      values: { days: body.scheduledDaysAhead, was: before.scheduledDaysAhead },
+    });
+  }
+  if (before.scheduledWindowMinutes !== body.scheduledWindowMinutes) {
+    out.push({
+      key: 'window',
+      values: { minutes: body.scheduledWindowMinutes, was: before.scheduledWindowMinutes },
+    });
+  }
+  const a = before.margin;
+  const b = body.margin;
+  const marginSame =
+    a.kind === b.kind &&
+    (a.basisPoints ?? 0) === (b.basisPoints ?? 0) &&
+    (a.amountMinor ?? 0) === (b.amountMinor ?? 0);
+  if (!marginSame || before.roundingStepMinor !== body.roundingStepMinor) {
+    out.push({
+      key: `margin-${b.kind}`,
+      values: {
+        percent: percentText(b.basisPoints ?? 0),
+        amount: show.money(b.amountMinor ?? 0),
+        rounded: body.roundingStepMinor > 1 ? 'yes' : 'no',
+        step: show.money(body.roundingStepMinor),
+      },
+    });
+  }
+  return out;
 }

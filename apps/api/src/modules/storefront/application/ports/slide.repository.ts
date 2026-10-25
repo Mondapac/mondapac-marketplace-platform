@@ -62,6 +62,25 @@ export interface PlacementRow {
   readonly endsAt: Temporal.Instant;
 }
 
+/** A placement of an approved slide that is not over yet, as the reorder reads it. */
+export interface LivePlacement {
+  readonly slideId: Id<'StorefrontSlide'>;
+  readonly sortOrder: number;
+  readonly startsAt: Temporal.Instant;
+}
+
+/** The place of one slide in the order of one position and scope. */
+export interface PlacementOrder {
+  readonly position: string;
+  readonly scope: string;
+  readonly scopeId: string | null;
+}
+
+/** The saved order of one placement of a slide: it outlives the projection rows. */
+export interface SavedOrder extends PlacementOrder {
+  readonly sortOrder: number;
+}
+
 export type SlideChange = Partial<
   Pick<
     SlideRecord,
@@ -158,6 +177,42 @@ export interface SlideRepository {
     market: MarketContext,
     slideId: Id<'StorefrontSlide'>,
   ): Promise<readonly PlacementRow[]>;
+  /**
+   * The projected placements at one position and scope (`scopeId` null for `all`) of slides that
+   * are approved now and whose window ends after `after`: the slides a reorder must name. Best
+   * first: sort order, then start, then slide id.
+   */
+  livePlacementsAt(
+    market: MarketContext,
+    where: PlacementOrder,
+    after: Temporal.Instant,
+  ): Promise<readonly LivePlacement[]>;
+  /**
+   * Gives the placement of each slide at `where` the sort order named, and saves that order for
+   * the slide (see `savedOrdersOf`). Writes nothing else.
+   */
+  setLiveOrder(
+    market: MarketContext,
+    where: PlacementOrder,
+    orders: readonly {
+      readonly slideId: Id<'StorefrontSlide'>;
+      readonly sortOrder: number;
+      /** False when the projection row already holds this sort order: only the saved order is written. */
+      readonly rewrite: boolean;
+    }[],
+    stamp: SlideStamp,
+  ): Promise<void>;
+  /** The orders saved for a slide by earlier reorders (also while it is paused). */
+  savedOrdersOf(
+    market: MarketContext,
+    slideId: Id<'StorefrontSlide'>,
+  ): Promise<readonly SavedOrder[]>;
+  /** Forgets the slide's saved orders except those of these placements (a changed or removed one). */
+  keepSavedOrders(
+    market: MarketContext,
+    slideId: Id<'StorefrontSlide'>,
+    keep: readonly PlacementOrder[],
+  ): Promise<void>;
   /** Replaces the slide's projection with these rows (none: removes it). */
   replacePlacements(
     market: MarketContext,

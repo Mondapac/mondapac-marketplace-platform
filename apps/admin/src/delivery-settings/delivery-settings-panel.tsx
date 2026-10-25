@@ -1,17 +1,28 @@
 'use client';
 
-import { ActionRow, Banner, Button, Card, CheckboxRow, Select, TextField } from '@mondapac/ui';
+import {
+  ActionRow,
+  Banner,
+  Button,
+  Card,
+  CheckboxRow,
+  Dialog,
+  Select,
+  TextField,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
-import { formatMinor } from '../shipping/money.ts';
 import { deliveryProblemOf } from './errors.ts';
 import {
   checkForm,
   EXAMPLE_QUOTE_MINOR,
   formOf,
+  impactOf,
   marginOf,
+  moneyOf,
   priceOf,
+  type Checked,
   type FormField,
   type SettingsForm,
 } from './form.ts';
@@ -28,6 +39,13 @@ import {
 
 const P = 'deliverySettings';
 const KINDS: readonly MarginKind[] = ['none', 'percent', 'fixed'];
+/** The form control that carries each field the check can flag, in page order. */
+const CONTROL: Readonly<Record<FormField, string>> = {
+  cutoff: 'cutoff',
+  daysAhead: 'days-ahead',
+  marginValue: 'margin-value',
+};
+type Body = Extract<Checked, { ok: true }>['body'];
 
 export function DeliverySettingsPanel({
   initial,
@@ -46,9 +64,11 @@ export function DeliverySettingsPanel({
   const [problem, setProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<'saved' | 'reloaded' | null>(null);
   const [pending, setPending] = useState(false);
+  const [confirm, setConfirm] = useState<Body | null>(null);
   const busy = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const { currency } = settings;
-  const money = (minor: number) => formatMinor(String(minor), currency, locale);
+  const money = (minor: number) => moneyOf(minor, currency, locale);
   const errorOf = (field: FormField) =>
     invalid.includes(field) ? t(`${P}.invalid.${field}`) : undefined;
   const edit = (patch: Partial<SettingsForm>) => setForm((current) => ({ ...current, ...patch }));
@@ -59,7 +79,7 @@ export function DeliverySettingsPanel({
     setForm(formOf(next));
   }
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
     if (busy.current || readOnly) return;
     setNotice(null);
@@ -67,15 +87,25 @@ export function DeliverySettingsPanel({
     const checked = checkForm(form, currency);
     if (!checked.ok) {
       setInvalid(checked.invalid);
+      const first = checked.invalid[0];
+      if (first !== undefined) {
+        formRef.current?.querySelector<HTMLElement>(`[name="${CONTROL[first]}"]`)?.focus();
+      }
       return;
     }
     setInvalid([]);
+    // A save that changes nothing needs no confirmation; any change is listed first.
+    if (impactOf(settings, checked.body, show).length === 0) void save(checked.body);
+    else setConfirm(checked.body);
+  }
+
+  async function save(body: Body) {
     busy.current = true;
     setPending(true);
     const result = await callApi<DeliverySettings>(
       'PUT',
       DELIVERY_SETTINGS_PATH,
-      { ...checked.body, expectedVersion: settings.version },
+      { ...body, expectedVersion: settings.version },
       csrfToken,
     );
     if (result.ok) {
@@ -98,13 +128,20 @@ export function DeliverySettingsPanel({
     setPending(false);
   }
 
+  const show = { method: (m: Method) => t(`${P}.method.${m}`), money };
+  const impacts = confirm === null ? [] : impactOf(settings, confirm, show);
   const margin = marginOf(form, currency);
   const step = Number(form.roundingStep);
   const example = margin === null ? null : priceOf(EXAMPLE_QUOTE_MINOR, margin, step);
 
   return (
-    <form className="flex flex-col gap-6" onSubmit={(e) => void submit(e)} noValidate>
-      {notice === null ? null : <Banner tone="success">{t(`${P}.notice.${notice}`)}</Banner>}
+    <form ref={formRef} className="flex flex-col gap-6" onSubmit={submit} noValidate>
+      {readOnly ? <Banner tone="info">{t(`${P}.viewer-only`)}</Banner> : null}
+      {notice === null ? null : (
+        <Banner tone={notice === 'saved' ? 'success' : 'attention'}>
+          {t(`${P}.notice.${notice}`)}
+        </Banner>
+      )}
       {problem === null ? null : <Banner tone="critical">{t(`${P}.error.${problem}`)}</Banner>}
       {settings.version === 0 ? <Banner tone="info">{t(`${P}.defaults`)}</Banner> : null}
 
@@ -227,20 +264,19 @@ export function DeliverySettingsPanel({
             onChange={(event) => edit({ roundingStep: event.target.value })}
           />
         </div>
-        <div className="rounded-md border border-line bg-subtle p-4" aria-live="polite">
-          <h3 className="text-sm font-medium text-fg-muted">{t(`${P}.example.title`)}</h3>
+        <Banner tone="info" title={t(`${P}.example.title`)}>
           {example === null ? (
-            <p className="mt-1">{t(`${P}.example.unavailable`)}</p>
+            <p>{t(`${P}.example.unavailable`)}</p>
           ) : (
-            <p className="mt-1" data-testid="margin-example">
-              {t(`${P}.example.line`, {
+            <p data-testid="margin-example">
+              {t(example.margin === 0 ? `${P}.example.line-none` : `${P}.example.line`, {
                 quote: money(example.quote),
                 total: money(example.total),
                 margin: money(example.margin),
               })}
             </p>
           )}
-        </div>
+        </Banner>
       </Card>
 
       {canManage ? (
@@ -249,9 +285,42 @@ export function DeliverySettingsPanel({
             {t(`${P}.save`)}
           </Button>
         </ActionRow>
-      ) : (
-        <p className="text-sm text-fg-muted">{t(`${P}.read-only`)}</p>
-      )}
+      ) : null}
+
+      <Dialog
+        open={confirm !== null}
+        title={t(`${P}.confirm.title`)}
+        onClose={() => setConfirm(null)}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setConfirm(null)}>
+              {t(`${P}.confirm.cancel`)}
+            </Button>
+            <Button
+              onClick={() => {
+                const body = confirm;
+                setConfirm(null);
+                if (body !== null) void save(body);
+              }}
+            >
+              {t(`${P}.confirm.go`)}
+            </Button>
+          </>
+        }
+      >
+        <p className="mb-3">{t(`${P}.confirm.intro`)}</p>
+        <ul className="flex flex-col gap-3">
+          {impacts.map((impact) => (
+            <li key={impact.key + String(impact.values.method ?? '')}>
+              <p>{t(`${P}.confirm.line.${impact.key}`, impact.values)}</p>
+              <p className="text-sm text-fg-muted">
+                <span className="font-medium">{t(`${P}.confirm.sellers`)}: </span>
+                {t(`${P}.confirm.seller.${impact.key}`, impact.values)}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </Dialog>
     </form>
   );
 }

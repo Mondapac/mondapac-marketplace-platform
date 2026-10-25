@@ -60,6 +60,16 @@ import { StartCheckout } from './application/use-cases/start-checkout.use-case';
 import { ViewOrder } from './application/use-cases/view-order.use-case';
 import { ViewOrderDocument } from './application/use-cases/view-order-document.use-case';
 import { ORDERING_FACADE, ORDERING_PERMISSIONS, ORDERING_RANKING_FACADE } from './contracts';
+import { OFFER_PAIR_STORE } from './application/ports/offer-pairs.store';
+import {
+  BoughtTogetherQuery,
+  type BoughtTogetherDependencies,
+} from './application/use-cases/bought-together.use-case';
+import {
+  RebuildOfferPairs,
+  type RebuildOfferPairsDependencies,
+} from './application/use-cases/rebuild-offer-pairs.use-case';
+import { rebuildOfferPairsJob } from './presentation/jobs/rebuild-offer-pairs.job';
 import { SALES_RANKING_READER } from './application/ports/sales-ranking.reader';
 import {
   BestSellingOffersQuery,
@@ -234,18 +244,43 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ) => new BestSellingOffersQuery(gate, { unitOfWork, ranking, clock }),
     },
     {
+      provide: BoughtTogetherQuery,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, OFFER_PAIR_STORE],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: BoughtTogetherDependencies['unitOfWork'],
+        pairs: BoughtTogetherDependencies['pairs'],
+      ) => new BoughtTogetherQuery(gate, { unitOfWork, pairs }),
+    },
+    {
+      provide: RebuildOfferPairs,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, OFFER_PAIR_STORE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: RebuildOfferPairsDependencies['unitOfWork'],
+        pairs: RebuildOfferPairsDependencies['pairs'],
+        clock: RebuildOfferPairsDependencies['clock'],
+      ) => new RebuildOfferPairs(gate, { unitOfWork, pairs, clock }),
+    },
+    {
       provide: ORDERING_RANKING_FACADE,
-      inject: [BestSellingOffersQuery],
-      useFactory: (bestSelling: BestSellingOffersQuery) =>
-        new OrderingRankingFacadeImplementation(bestSelling),
+      inject: [BestSellingOffersQuery, BoughtTogetherQuery],
+      useFactory: (bestSelling: BestSellingOffersQuery, boughtTogether: BoughtTogetherQuery) =>
+        new OrderingRankingFacadeImplementation(bestSelling, boughtTogether),
     },
     registerJobsFrom(
       'ordering',
-      [RecordShipments, RecordLedger, SettleRefunds],
-      (shipments: RecordShipments, ledger: RecordLedger, refunds: SettleRefunds) => [
+      [RecordShipments, RecordLedger, SettleRefunds, RebuildOfferPairs],
+      (
+        shipments: RecordShipments,
+        ledger: RecordLedger,
+        refunds: SettleRefunds,
+        pairs: RebuildOfferPairs,
+      ) => [
         recordShipmentsJob(shipments),
         recordLedgerJob(ledger),
         settleRefundsJob(refunds),
+        rebuildOfferPairsJob(pairs),
       ],
     ),
   ],

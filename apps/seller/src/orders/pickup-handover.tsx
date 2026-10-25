@@ -41,9 +41,11 @@ export function PickupHandover({
   const busy = useRef(false);
   const labelId = useId();
   const hintId = useId();
+  const problemId = useId();
   const locked = status.locked;
   const code = digits.join('');
   const complete = code.length === DIGITS;
+  const showsProblem = locked || problem !== null;
 
   function focusBox(index: number) {
     boxes.current[Math.max(0, Math.min(DIGITS - 1, index))]?.focus();
@@ -135,11 +137,17 @@ export function PickupHandover({
         {t('hint')}
       </p>
       {locked ? (
-        <Banner tone="critical">{t('locked')}</Banner>
+        <div id={problemId}>
+          <Banner tone="critical">{t('locked')}</Banner>
+        </div>
       ) : problem?.kind === 'wrong' ? (
-        <Banner tone="critical">{t('wrong', { count: problem.attemptsLeft })}</Banner>
+        <div id={problemId}>
+          <Banner tone="critical">{t('wrong', { count: problem.attemptsLeft })}</Banner>
+        </div>
       ) : problem?.kind === 'other' ? (
-        <Banner tone="critical">{t(`error.${problem.key}`)}</Banner>
+        <div id={problemId}>
+          <Banner tone="critical">{t(`error.${problem.key}`)}</Banner>
+        </div>
       ) : null}
       {/* Digits always read left to right, in any page direction. */}
       <div role="group" aria-labelledby={labelId} dir="ltr" className="flex gap-2">
@@ -160,13 +168,13 @@ export function PickupHandover({
             maxLength={DIGITS}
             disabled={locked || pending}
             aria-label={t('digit', { n: index + 1, total: DIGITS })}
-            aria-describedby={hintId}
+            aria-describedby={showsProblem ? `${hintId} ${problemId}` : hintId}
             aria-invalid={problem?.kind === 'wrong' ? true : undefined}
             className="h-14 w-12 rounded-md border border-line-control bg-surface text-center text-2xl font-semibold tabular-nums text-fg outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
           />
         ))}
       </div>
-      {locked ? null : (
+      {locked || problem?.kind === 'wrong' ? null : (
         <p className="text-sm text-fg-muted" role="status">
           {t('attempts', { count: status.attemptsLeft })}
         </p>

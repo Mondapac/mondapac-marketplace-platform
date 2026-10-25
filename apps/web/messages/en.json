@@ -285,9 +285,11 @@
       "pickup": {
         "title": "Pickup code for {seller}",
         "hint": "You collect this part in person. Show this code to the seller when you pick it up, and not before. MondaPac never asks for it.",
-        "tries": "{count, plural, one {# try left} other {# tries left}} for the seller to enter it.",
+        "tries": "The seller has {count, plural, one {# try} other {# tries}} left to enter this code.",
         "locked": "The seller entered a wrong code too many times, so this code is locked. Get a new code to collect your order.",
-        "renew": "Get a new code"
+        "renew": "Get a new code",
+        "renew-note": "A new code replaces the old one. The old code stops working.",
+        "renewed": "New code ready. The old one no longer works."
       }
     },
     "addresses": {
