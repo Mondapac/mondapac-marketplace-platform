@@ -13,7 +13,12 @@ import {
   wholeNumber,
   type Problems,
 } from './fields';
-import { positionOf, SLIDE_SCOPES, type SlideScope } from './slide-positions';
+import {
+  positionOf,
+  SLIDE_SCOPES,
+  type PositionDefinition,
+  type SlideScope,
+} from './slide-positions';
 
 // The slide library (john, 23 Oct): a slide is plain text over an optional image, with one typed
 // internal link that makes the whole slide clickable. Content is data: no markup, no URL, no
@@ -35,6 +40,14 @@ export const MAX_PLACEMENTS = 10;
 /** A slide runs for at most 90 days: 2160 hours, in absolute time (no daylight-saving drift). */
 export const MAX_WINDOW_HOURS = 90 * 24;
 export const MAX_VERSIONS_PER_SLIDE = 100;
+/**
+ * Most slides one reorder names: the approved placements of one position and scope that have not
+ * ended, scheduled ones included. A position shows at most 8 at once and a window is at most 90
+ * days, so 50 means about six windows' worth of scheduled slides queued at one list (a year and a
+ * half); a list longer than that is a content-planning problem, and the request is refused as
+ * `slideIds: count` rather than written.
+ */
+export const MAX_REORDER_SLIDES = 50;
 
 export interface SlideLink {
   readonly type: LinkType;
@@ -485,3 +498,112 @@ export function capExceeded(
       max,
   );
 }
+
+// ---- order of the live slides ---------------------------------------------------------------
+
+/** Where and in which order: the whole list of the live slides of one position and scope. */
+export interface ReorderInput {
+  readonly position: string;
+  readonly scope: SlideScope;
+  readonly scopeId: string | null;
+  /** Ids as the store writes them (lower case), first shown first. */
+  readonly slideIds: readonly string[];
+}
+
+/** Where a list of slides sits: one position, one scope and (but for `all`) the scope's id. */
+interface OrderPlace {
+  readonly position: PositionDefinition | null;
+  readonly scope: SlideScope | null;
+  readonly scopeId: string | null;
+}
+
+/** The place named by a reorder body or an order query: the same rules for both. */
+function parsePlace(problems: Problems, raw: Record<string, unknown>): OrderPlace {
+  const positionKey = typeof raw.position === 'string' ? raw.position : null;
+  const position = positionKey === null ? null : positionOf(positionKey);
+  if (position === null)
+    problem(problems, 'position', raw.position === undefined ? 'required' : 'enum');
+  const scope = oneOf(problems, 'scope', raw.scope ?? 'all', SLIDE_SCOPES);
+  let scopeId: string | null = null;
+  if (scope !== null && scope !== 'all') {
+    scopeId = uuid(problems, 'scopeId', raw.scopeId);
+  } else if (raw.scopeId !== undefined && raw.scopeId !== null) {
+    problem(problems, 'scopeId', 'not-allowed');
+  }
+  if (position !== null && scope !== null && !position.scopes.includes(scope)) {
+    problem(problems, 'scope', 'not-allowed-here');
+  }
+  return { position, scope, scopeId };
+}
+
+/** The query of the read of the order: `position`, `scope` and `scopeId`, no other key. */
+export interface OrderQuery {
+  readonly position: PositionDefinition;
+  readonly scope: SlideScope;
+  readonly scopeId: string | null;
+}
+
+export function parseOrderQuery(input: unknown): Parsed<OrderQuery> {
+  const problems: Problems = [];
+  if (!closedObject(problems, '', input, ['position', 'scope', 'scopeId'])) {
+    return { ok: false, problems };
+  }
+  const { position, scope, scopeId } = parsePlace(problems, input);
+  if (problems.length > 0 || position === null || scope === null) {
+    return { ok: false, problems };
+  }
+  return { ok: true, value: { position, scope, scopeId } };
+}
+
+export function parseReorder(body: unknown): Parsed<ReorderInput> {
+  const problems: Problems = [];
+  if (!closedObject(problems, '', body, ['position', 'scope', 'scopeId', 'slideIds'])) {
+    return { ok: false, problems };
+  }
+  const { position, scope, scopeId } = parsePlace(problems, body);
+  const seen = new Set<string>();
+  const slideIds = list(
+    problems,
+    'slideIds',
+    body.slideIds,
+    1,
+    MAX_REORDER_SLIDES,
+    (path, entry) => {
+      const id = uuid(problems, path, entry);
+      if (id === null) return null;
+      if (seen.has(id)) {
+        problem(problems, path, 'duplicate');
+        return null;
+      }
+      seen.add(id);
+      return id;
+    },
+  );
+  if (problems.length > 0 || position === null || scope === null || slideIds === null) {
+    return { ok: false, problems };
+  }
+  return { ok: true, value: { position: position.key, scope, scopeId, slideIds } };
+}
+
+/**
+ * Whether the requested order names exactly the live slides of the position and scope: every
+ * live one, none else. A slide that is not live there (paused, a draft, ended, at another
+ * position or scope) and a live one left out are both named.
+ */
+export function reorderMismatch(requested: readonly string[], live: readonly string[]): Problems {
+  const problems: Problems = [];
+  const liveSet = new Set(live);
+  for (const [index, id] of requested.entries()) {
+    if (!liveSet.has(id)) problem(problems, `slideIds[${index}]`, 'not-live-here');
+  }
+  const wanted = new Set(requested);
+  if (live.some((id) => !wanted.has(id))) problem(problems, 'slideIds', 'incomplete');
+  return problems;
+}
+
+/** The key under which a slide's saved live order is kept: one per position, scope and scope id. */
+export const orderKey = (placement: {
+  readonly position: string;
+  readonly scope: string;
+  readonly scopeId: string | null;
+}): string => `${placement.position}|${placement.scope}|${placement.scopeId ?? ''}`;

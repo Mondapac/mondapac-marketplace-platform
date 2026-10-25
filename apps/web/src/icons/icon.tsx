@@ -8,8 +8,14 @@ export function Icon({
   readonly name: IconName;
   readonly className?: string;
 }) {
+  // Chevrons point along the reading direction: the sheet mirrors them in right-to-left pages.
+  const flip = name === 'chevl' || name === 'chevr' ? ' ico-flip' : '';
   return (
-    <svg className={className ? `ico ${className}` : 'ico'} viewBox="0 0 24 24" aria-hidden="true">
+    <svg
+      className={`ico${flip}${className ? ` ${className}` : ''}`}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
       {ICON_PATHS[name]}
     </svg>
   );

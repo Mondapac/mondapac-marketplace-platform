@@ -490,7 +490,14 @@ describe('Pickup handover', () => {
     type('9999');
     fireEvent.click(screen.getByRole('button', { name: 'Confirm pickup' }));
     await waitFor(() => expect(screen.getByText(/That code is not right/)).toBeTruthy());
-    expect(screen.getAllByText(/2 tries left/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/2 tries left/)).toHaveLength(1);
+    expect(
+      screen.queryAllByRole('status').filter((node) => /tries left/.test(node.textContent ?? '')),
+    ).toHaveLength(0);
+    const banner = screen.getByText(/That code is not right/).closest('div[id]')!;
+    for (const box of boxes()) {
+      expect(box.getAttribute('aria-describedby')).toContain(banner.id);
+    }
     expect(boxes().every((box) => box.value === '')).toBe(true);
   });
 
@@ -501,6 +508,7 @@ describe('Pickup handover', () => {
     });
     mountDetail(readyPickup({ pickup: { attemptsLeft: 1, locked: true } }));
     expect(screen.getByText(/This order is locked/)).toBeTruthy();
+    expect(screen.getByText(/old code stops working/)).toBeTruthy();
     expect(boxes().every((box) => box.disabled)).toBe(true);
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Confirm pickup' }).disabled).toBe(
       true,

@@ -39,6 +39,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     catalog: ['USAGE'],
     certification: ['USAGE'],
     commission_payouts: ['USAGE'],
+    wallet: ['USAGE'],
     customers: ['USAGE'],
     engagement: ['USAGE'],
     assistant: ['USAGE'],
@@ -470,6 +471,23 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['rate_bps', 'updated_at', 'updated_by'],
     },
     'commission_payouts.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Wallet (customer wallet package 1): journals, their legs and a hold's lots are insert-only
+    // (triggers refuse more for every role); the rest change only the columns named and are never
+    // deleted (a trigger refuses DELETE and TRUNCATE for every role).
+    'wallet.journals': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'wallet.postings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'wallet.hold_lots': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'wallet.accounts': { table: ['INSERT', 'SELECT'], columnUpdate: ['status'] },
+    'wallet.lots': { table: ['INSERT', 'SELECT'], columnUpdate: ['remaining_minor'] },
+    'wallet.holds': { table: ['INSERT', 'SELECT'], columnUpdate: ['resolved_at', 'status'] },
+    'wallet.balances': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['available_minor', 'held_minor', 'updated_at'],
+    },
+    'wallet.market_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['reason_code', 'status', 'updated_at', 'updated_by_account_id'],
+    },
     // Storefront: a page is created and changed (never its kind, key or template) and never
     // deleted; a version's content and state change; a redirect is removed when its page takes the
     // old slug back.
@@ -526,7 +544,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['approved_at', 'approved_by'],
     },
-    'storefront.slide_placements': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // The reorder of live slides rewrites only the sort order of a projection row, and replaces
+    // the saved order of a placement (deleted and inserted).
+    'storefront.slide_placements': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['sort_order'],
+    },
+    'storefront.slide_saved_orders': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_position_locks': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['touched_at'],
@@ -670,6 +694,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'settled_at', 'state', 'stripe_refund_id'],
     },
+    // Personalization 1d-2: the nightly job deletes a Market's pairs and inserts the new ones.
+    'ordering.offer_pairs': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.refund_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.credit_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
