@@ -92,8 +92,15 @@ what it records through methods it will add to `ENGAGEMENT_FACADE`.
   fixed order so concurrent requests do not deadlock); the day is the UTC day of the injected Clock.
 - Job `engagement.purge-expired-block-counts`, daily per Market (rule `system`): deletes rows of
   days before today minus 13 months.
-- No read method on `ENGAGEMENT_FACADE` yet: the admin stats read (with its permission) comes with
-  the stats package.
+- Part C, admin read: `GET /engagement/admin/block-stats?page=&from=&to=` (admin session,
+  `no-store`), use case `engagement.view-block-stats` with storefront's permission
+  `storefront.page.stats` (declared and registered by storefront; engagement only checks it, so
+  storefront does not depend on engagement). One page, UTC days `from` to `to` both included, at
+  most 92 days; answers each block's totals and its days with a count, most shown first, and
+  `truncated` when the span holds more than 5,000 rows. A page with no counts or of another
+  Market answers no blocks. Read-only unit. The numbers are unverified (anyone can send valid
+  ids, clicks may exceed impressions): shown to admins as such, never an input to automatic
+  ranking, selection or payouts without an anti-abuse review. No admin screen yet.
 
 ## Privacy impact note (PIA)
 

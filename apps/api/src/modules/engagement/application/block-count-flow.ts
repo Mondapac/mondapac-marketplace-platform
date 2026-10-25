@@ -1,12 +1,15 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Result, Temporal } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
   blockCountDay,
   blockCountRetentionEdge,
+  blockStatsOf,
   incrementsOf,
   readBlockEvents,
+  readBlockStatsQuery,
   type BlockEvent,
+  type BlockStats,
   type BlockFieldProblem,
 } from '../domain/block-count';
 import type { BlockCountRepository } from './ports/block-count.repository';
@@ -85,5 +88,49 @@ export async function purgeExpiredBlockCounts(
   const edge = blockCountRetentionEdge(deps.clock.now());
   return deps.unitOfWork.run(context.market, async () =>
     ok({ blockCounts: await deps.counts.purgeBefore(context.market, edge) }),
+  );
+}
+
+/** The most rows one stats read loads (about 54 blocks over the longest span). */
+export const MAX_STATS_ROWS = 5000;
+
+export type ViewBlockStatsFailure = RecordBlockEventsFailure;
+
+export interface BlockStatsView {
+  readonly pageId: string;
+  readonly from: Temporal.PlainDate;
+  readonly to: Temporal.PlainDate;
+  /** True when the span holds more rows than one read loads; the numbers are then partial. */
+  readonly truncated: boolean;
+  readonly blocks: readonly BlockStats[];
+}
+
+/**
+ * An admin reads how often each block of one page was shown and clicked, per UTC day, in the
+ * caller's Market (rule: `storefront.page.stats`). Aggregate numbers only. A page with no counts,
+ * or of another Market, answers no blocks: the read does not say whether the page exists.
+ */
+export async function viewBlockStats(
+  deps: Pick<BlockCountDependencies, 'unitOfWork' | 'counts'>,
+  context: CallContext,
+  input: { readonly query: Readonly<Record<string, unknown>> },
+): Promise<Result<BlockStatsView, ViewBlockStatsFailure>> {
+  const read = readBlockStatsQuery(input?.query ?? {});
+  if (!read.ok) return err({ code: 'validation.failed', fields: read.fields });
+  const { pageId, from, to } = read.query;
+  return deps.unitOfWork.run(
+    context.market,
+    async () => {
+      const rows = await deps.counts.daily(context.market, pageId, from, to, MAX_STATS_ROWS + 1);
+      const truncated = rows.length > MAX_STATS_ROWS;
+      return ok({
+        pageId,
+        from,
+        to,
+        truncated,
+        blocks: blockStatsOf(truncated ? rows.slice(0, MAX_STATS_ROWS) : rows),
+      });
+    },
+    { readOnly: true },
   );
 }

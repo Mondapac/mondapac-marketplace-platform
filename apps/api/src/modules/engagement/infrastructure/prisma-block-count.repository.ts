@@ -1,7 +1,8 @@
-import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { BlockCountRepository } from '../application/ports/block-count.repository';
-import type { BlockCountIncrement } from '../domain/block-count';
+import type { BlockCountIncrement, BlockCountRow } from '../domain/block-count';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 /** A DATE column as Prisma takes it: midnight UTC of the calendar day. */
@@ -52,6 +53,27 @@ export class PrismaBlockCountRepository implements BlockCountRepository {
         },
       });
     }
+  }
+
+  async daily(
+    market: MarketContext,
+    pageId: Id<'StorefrontPage'>,
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+    limit: number,
+  ): Promise<BlockCountRow[]> {
+    const rows = await this.prisma.tx(market).engagementBlockCount.findMany({
+      where: { marketId: market.marketId, pageId, day: { gte: toDay(from), lte: toDay(to) } },
+      select: { placementId: true, day: true, impressions: true, clicks: true },
+      orderBy: [{ placementId: 'asc' }, { day: 'asc' }],
+      take: limit,
+    });
+    return rows.map((row) => ({
+      placementId: row.placementId,
+      day: Temporal.PlainDate.from(row.day.toISOString().slice(0, 10)),
+      impressions: row.impressions,
+      clicks: row.clicks,
+    }));
   }
 
   async purgeBefore(market: MarketContext, day: Temporal.PlainDate): Promise<number> {

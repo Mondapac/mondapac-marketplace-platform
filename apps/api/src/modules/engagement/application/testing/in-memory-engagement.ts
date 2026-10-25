@@ -1,5 +1,6 @@
-import type { CallContext, Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { BlockCountIncrement } from '../../domain/block-count';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
+import type { BlockCountIncrement, BlockCountRow } from '../../domain/block-count';
 import type { BlockCountRepository } from '../ports/block-count.repository';
 import type { ServedPlacements } from '../ports/served-placements';
 import type {
@@ -168,6 +169,36 @@ export class InMemoryBlockCounts implements BlockCountRepository {
       this.rows.set(key, current);
     }
     return Promise.resolve();
+  }
+
+  daily(
+    market: MarketContext,
+    pageId: Id<'StorefrontPage'>,
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+    limit: number,
+  ): Promise<BlockCountRow[]> {
+    const rows = [...this.rows.values()]
+      .filter(
+        (row) =>
+          row.marketId === market.marketId &&
+          row.pageId === pageId &&
+          row.day >= from.toString() &&
+          row.day <= to.toString(),
+      )
+      .sort((a, b) =>
+        a.placementId === b.placementId
+          ? a.day.localeCompare(b.day)
+          : a.placementId.localeCompare(b.placementId),
+      )
+      .slice(0, limit)
+      .map((row) => ({
+        placementId: row.placementId,
+        day: Temporal.PlainDate.from(row.day),
+        impressions: row.impressions,
+        clicks: row.clicks,
+      }));
+    return Promise.resolve(rows);
   }
 
   purgeBefore(market: MarketContext, day: Temporal.PlainDate) {

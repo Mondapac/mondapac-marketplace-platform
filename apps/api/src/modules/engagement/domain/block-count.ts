@@ -1,5 +1,5 @@
-import { parseId } from '@mondapac/shared-kernel';
-import type { Id, Temporal } from '@mondapac/shared-kernel';
+import { parseId, Temporal } from '@mondapac/shared-kernel';
+import type { Id } from '@mondapac/shared-kernel';
 
 // Block counts (personalization package 1d-3, part B). How often each storefront block (a module
 // placement on a published page) was shown and clicked, as two numbers per (Market, page,
@@ -134,4 +134,111 @@ export function incrementsOf(events: readonly BlockEvent[]): BlockCountIncrement
   return [...byBlock.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([, row]) => row);
+}
+
+// The admin read of the counts (1d-3, part C): one page's daily numbers over a span of days.
+
+/** The longest span of days one stats read may ask for, so one read stays small. */
+export const MAX_STATS_DAYS = 92;
+
+/** The query fields of a stats read; any other is refused. */
+export const BLOCK_STATS_FIELDS: readonly string[] = ['page', 'from', 'to'];
+
+/** One page's counts from `from` to `to`, both UTC days included. */
+export interface BlockStatsQuery {
+  readonly pageId: Id<'StorefrontPage'>;
+  readonly from: Temporal.PlainDate;
+  readonly to: Temporal.PlainDate;
+}
+
+/** The counts of one block on one UTC day, as stored. */
+export interface BlockCountRow {
+  readonly placementId: string;
+  readonly day: Temporal.PlainDate;
+  readonly impressions: number;
+  readonly clicks: number;
+}
+
+/** One block's numbers over the span: the totals and each day that has a count. */
+export interface BlockStats {
+  readonly placementId: string;
+  readonly impressions: number;
+  readonly clicks: number;
+  readonly days: readonly {
+    readonly day: Temporal.PlainDate;
+    readonly impressions: number;
+    readonly clicks: number;
+  }[];
+}
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+function dayOf(value: unknown, path: string, fields: BlockFieldProblem[]) {
+  if (value === undefined) {
+    fields.push({ path, code: 'required' });
+    return null;
+  }
+  if (typeof value !== 'string' || !DAY.test(value)) {
+    fields.push({ path, code: 'format' });
+    return null;
+  }
+  try {
+    return Temporal.PlainDate.from(value, { overflow: 'reject' });
+  } catch {
+    fields.push({ path, code: 'format' });
+    return null;
+  }
+}
+
+/**
+ * Reads a stats query: a canonical UUIDv7 `page` and two calendar days `from` and `to`
+ * (YYYY-MM-DD, UTC), `from` not after `to` and at most {@link MAX_STATS_DAYS} days apart,
+ * both included. Each field is given once.
+ */
+export function readBlockStatsQuery(
+  query: Readonly<Record<string, unknown>>,
+):
+  | { readonly ok: true; readonly query: BlockStatsQuery }
+  | { readonly ok: false; readonly fields: BlockFieldProblem[] } {
+  const fields: BlockFieldProblem[] = [];
+  if (Object.keys(query).some((key) => !BLOCK_STATS_FIELDS.includes(key))) {
+    fields.push({ path: '', code: 'unknown-field' });
+  }
+  for (const key of BLOCK_STATS_FIELDS) {
+    if (Array.isArray(query[key])) fields.push({ path: key, code: 'type' });
+  }
+  if (fields.length > 0) return { ok: false, fields };
+  const pageId = idOf<'StorefrontPage'>(query.page, 'page', fields);
+  const from = dayOf(query.from, 'from', fields);
+  const to = dayOf(query.to, 'to', fields);
+  if (pageId === null || from === null || to === null) return { ok: false, fields };
+  if (Temporal.PlainDate.compare(from, to) > 0) {
+    return { ok: false, fields: [{ path: 'to', code: 'before-from' }] };
+  }
+  if (from.until(to).days + 1 > MAX_STATS_DAYS) {
+    return { ok: false, fields: [{ path: 'to', code: 'span-too-long' }] };
+  }
+  return { ok: true, query: { pageId, from, to } };
+}
+
+/** Groups the rows by block: totals first, days in order; blocks by most impressions, then id. */
+export function blockStatsOf(rows: readonly BlockCountRow[]): BlockStats[] {
+  const byBlock = new Map<string, BlockCountRow[]>();
+  for (const row of rows)
+    byBlock.set(row.placementId, [...(byBlock.get(row.placementId) ?? []), row]);
+  return [...byBlock.entries()]
+    .map(([placementId, days]) => {
+      const sorted = [...days].sort((a, b) => Temporal.PlainDate.compare(a.day, b.day));
+      return {
+        placementId,
+        impressions: sorted.reduce((sum, row) => sum + row.impressions, 0),
+        clicks: sorted.reduce((sum, row) => sum + row.clicks, 0),
+        days: sorted.map(({ day, impressions, clicks }) => ({ day, impressions, clicks })),
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.impressions - a.impressions ||
+        (a.placementId < b.placementId ? -1 : a.placementId > b.placementId ? 1 : 0),
+    );
 }
