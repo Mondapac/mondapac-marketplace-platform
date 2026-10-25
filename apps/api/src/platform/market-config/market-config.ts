@@ -1333,6 +1333,54 @@ const shippingSchema = z.strictObject({
       return url.search === '' && url.hash === '';
     }, 'baseUrl must have no query or fragment')
     .optional(),
+  /**
+   * Uber Direct, an external fleet adapter (Phase 6 package 5b). `enabled` is the Market switch:
+   * an absent section or `false` leaves it off (nothing is sent), and so does any missing
+   * credential (UBER_DIRECT_CUSTOMER_ID, UBER_DIRECT_CLIENT_ID, UBER_DIRECT_CLIENT_SECRET: server
+   * secrets, never here). The API hosts are fixed in the adapter, not settable. `serviceAreas`
+   * and `modes` say what the fleet serves (`on_demand` offers the instant and same-day methods,
+   * `scheduled` the buyer's window); `temperatures` what it keeps. `limits` are the fleet's caps (the order value is in the Market's default
+   * currency, in minor units) and `prohibitedClasses` the kinds of goods it refuses. The rest
+   * shapes the HTTP client like `realTimeCarrier`'s.
+   */
+  uberDirect: z
+    .strictObject({
+      enabled: z.boolean(),
+      serviceAreas: z
+        .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
+        .min(1)
+        .max(50)
+        .refine((codes) => new Set(codes).size === codes.length, 'an area must not repeat'),
+      modes: z
+        .array(z.enum(['on_demand', 'scheduled']))
+        .min(1)
+        .refine((modes) => new Set(modes).size === modes.length, 'a mode must not repeat'),
+      temperatures: z
+        .array(z.enum(['ambient', 'chilled', 'frozen']))
+        .min(1)
+        .refine((items) => new Set(items).size === items.length, 'a temperature must not repeat'),
+      limits: z.strictObject({
+        maxItemWeightGrams: z.number().int().min(1).max(100_000),
+        maxItems: z.number().int().min(1).max(100),
+        maxOrderValueMinor: z.number().int().min(1).max(1_000_000_000),
+      }),
+      prohibitedClasses: z
+        .array(z.string().regex(/^[a-z][a-z0-9-]{0,39}$/u))
+        .max(50)
+        .refine((classes) => new Set(classes).size === classes.length, 'a class must not repeat'),
+      timeoutMs: z.number().int().min(500).max(15_000),
+      maxAttempts: z.number().int().min(1).max(5),
+      backoffMs: z.number().int().min(0).max(5000),
+      circuitBreaker: z.strictObject({
+        failureThreshold: z.number().int().min(1).max(50),
+        cooldownSeconds: z.number().int().min(1).max(600),
+      }),
+    })
+    .refine(
+      (fleet) => carrierCallBudgetMs(fleet) <= MAX_CARRIER_CALL_MS,
+      `timeoutMs × maxAttempts plus the backoffs must fit in ${MAX_CARRIER_CALL_MS} ms`,
+    )
+    .optional(),
 });
 
 const marketSchema = z
