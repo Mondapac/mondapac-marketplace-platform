@@ -27,6 +27,13 @@ export const adminNav: NavConfig = {
       anyOf: ['ordering.order.view'],
     },
     {
+      id: 'fleet-selection',
+      icon: 'package',
+      labelKey: 'nav.fleet-selection',
+      href: '/fleet-selection',
+      anyOf: ['shipping.fleet-selection.view'],
+    },
+    {
       id: 'price-holds',
       icon: 'clock',
       labelKey: 'nav.price-holds',

@@ -504,6 +504,22 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('DELETE', `shipping/admin/sellers/${ID}/flat-fee`)).status).toBe(404);
   });
 
+  it('relays the fleet-selection routes on their exact paths and methods only', async () => {
+    const base = 'shipping/admin/fleet-selection';
+    const read = new Request(`http://admin.localhost:3002/api/${base}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, base.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('POST', `${base}/models`)).status).toBe(200);
+    expect((await call('PUT', `${base}/models/${ID}`)).status).toBe(200);
+    expect((await call('PUT', `${base}/models/nope`)).status).toBe(404);
+    expect((await call('PUT', `${base}/active/same_day`)).status).toBe(200);
+    expect((await call('PUT', `${base}/active/weekly`)).status).toBe(404);
+    expect((await call('PUT', `${base}/fleets/zoom2u/reliability`)).status).toBe(200);
+    expect((await call('PUT', `${base}/fleets/other/reliability`)).status).toBe(404);
+    expect((await call('DELETE', `${base}/models/${ID}`)).status).toBe(404);
+    expect((await call('PUT', `${base}/models`)).status).toBe(404);
+  });
+
   it('relays the commission rate for a seller UUID (GET, PUT, DELETE) and the ledger (GET)', async () => {
     const send = (method: string, path: string) =>
       relay(
