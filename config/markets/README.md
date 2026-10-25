@@ -364,3 +364,28 @@ without a currency: they are read in the Market's default currency.
 - `prohibitedClasses` (required, may be empty): kinds of goods the fleet refuses, as lower-case slugs.
 - `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
   A booking is sent once whatever `maxAttempts` says: Zoom2u documents no idempotency key.
+
+### `shipping.auspost` (optional, Phase 6 package 5d)
+
+The external fleet Australia Post (MyPost Business, Shipping and Tracking API): scheduled,
+multi-day parcels only, for addresses the city fleets do not serve. Off unless `enabled` is `true`
+AND the Region Stack holds `AUSPOST_API_KEY`, `AUSPOST_API_PASSWORD` and `AUSPOST_ACCOUNT_NUMBER`
+for the Market (`MARKET=value` pairs, names only in `.env.example`); the adapter then answers
+`carrier.not-configured` and sends nothing. Its API hosts (production and the documented testbed)
+are fixed in the adapter; `environment` picks one. Prices come in the Market's default currency.
+
+- `enabled` (required): the Market switch; ship `false`. `environment` (required): `testbed` or
+  `production`.
+- `outsideCityAreasOnly` (required): when `true` the fleet serves every address OUTSIDE the areas
+  in `serviceAreas` (the city fleets' areas), not only inside them; this is how a wildcard
+  "outside the city areas" is modelled as configuration. `serviceAreas` (required, may be empty).
+- `modes` (required): `scheduled` (an `on_demand` trip is refused without a call, whatever
+  this says).
+- `productId` (required): the Australia Post product code shipments are priced and created with.
+- `limits` (required): `maxItemWeightGrams` (AU 22000, Australia Post's 22 kg parcel limit),
+  `maxItems` and `maxOrderValueMinor` (minor units of the Market's default currency).
+- `prohibitedClasses` (required, may be empty): kinds of goods the fleet refuses, as lower-case
+  slugs; perishable, chilled and frozen goods are not carried (a parcel whose temperature is not
+  ambient is refused without a call).
+- `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
+  A shipment is created once whatever `maxAttempts` says: no idempotency key is documented.
