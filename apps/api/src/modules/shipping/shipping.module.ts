@@ -24,6 +24,7 @@ import { CancelCarrierDelivery } from './application/use-cases/cancel-carrier-de
 import { CarrierShipmentQuery } from './application/use-cases/carrier-shipment.use-case';
 import { DeliveryArea } from './application/use-cases/delivery-area.use-case';
 import { FlatFees } from './application/use-cases/flat-fees.use-case';
+import { ShippingFees } from './application/use-cases/shipping-fees.use-case';
 import { ReceiveCarrierWebhook } from './application/use-cases/receive-carrier-webhook.use-case';
 import { SetFlatFee } from './application/use-cases/set-flat-fee.use-case';
 import { ViewFlatFee } from './application/use-cases/view-flat-fee.use-case';
@@ -108,6 +109,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewFlatFee,
       ViewOwnFlatFee,
       FlatFees,
+      ShippingFees,
       DeliveryArea,
       BookCarrierDelivery,
       CarrierShipmentQuery,
@@ -119,6 +121,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       provide: SHIPPING_FACADE,
       inject: [
         FlatFees,
+        ShippingFees,
         DeliveryArea,
         BookCarrierDelivery,
         CarrierShipmentQuery,
@@ -126,11 +129,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ],
       useFactory: (
         fees: FlatFees,
+        shippingFees: ShippingFees,
         area: DeliveryArea,
         book: BookCarrierDelivery,
         shipment: CarrierShipmentQuery,
         cancel: CancelCarrierDelivery,
-      ) => new ShippingFacadeImplementation({ fees, area, book, shipment, cancel }),
+      ) => new ShippingFacadeImplementation({ fees, shippingFees, area, book, shipment, cancel }),
     },
   ],
   exports: [SHIPPING_FACADE],

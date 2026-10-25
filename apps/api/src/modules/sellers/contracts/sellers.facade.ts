@@ -161,6 +161,23 @@ export interface SellersFacade {
       AccessDenied | SellersValidationFailed | SellerDetailsNotFound | SellersUnavailable
     >
   >;
+
+  /**
+   * `pickupPostcodes` (SHP-02/03): the postcode of each seller's **approved** operating address,
+   * for shipping to quote the real-time carrier at checkout. A clear column copied at submission
+   * (like the ServiceArea code): no decryption and no audit row. Rule `anonymous`. A seller with
+   * no approved revision, of another Market, or whose revision predates the column is absent from
+   * the map. At most 100 ids. Not exposed over HTTP.
+   */
+  pickupPostcodes(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Seller'>, string>,
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  >;
 }
 
 /** Nest token of the {@link SellersFacade}, provided and exported by `SellersModule`. */

@@ -1,9 +1,17 @@
 import { createHmac } from 'node:crypto';
 import { encodePayload, err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext, PendingEvent, Result } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Id,
+  MarketContext,
+  Money,
+  PendingEvent,
+  Result,
+} from '@mondapac/shared-kernel';
 import {
   FixedClock,
   SequenceIdGenerator,
+  testAuthenticatedActor,
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
@@ -27,6 +35,7 @@ import type {
   CarrierBookingRequest,
   CarrierFailure,
   CarrierGateway,
+  CarrierQuoteRequest,
   CarrierStop,
 } from './ports/carrier-gateway';
 import type { PickupDirectory } from './ports/pickup-directory';
@@ -35,6 +44,8 @@ import { BookCarrierDelivery } from './use-cases/book-carrier-delivery.use-case'
 import { CancelCarrierDelivery } from './use-cases/cancel-carrier-delivery.use-case';
 import { CarrierShipmentQuery } from './use-cases/carrier-shipment.use-case';
 import { ReceiveCarrierWebhook } from './use-cases/receive-carrier-webhook.use-case';
+import { MAX_QUOTES_PER_CHECKOUT } from './shipping-fee-flow';
+import { ShippingFees } from './use-cases/shipping-fees.use-case';
 
 // The `real_time_delivery` flows in memory on both Market fixtures (AU: Mondapac Drive around
 // greater-brisbane; ZZ: "Zed Courier" in zz-central only): the strategy, one booking per seller
@@ -101,6 +112,12 @@ class FakeCarrier implements CarrierGateway {
     this.cancelled.push(reference);
     return Promise.resolve(this.cancelAnswer);
   }
+  readonly quoted: CarrierQuoteRequest[] = [];
+  quoteAnswer: Result<Money, CarrierFailure> = err({ code: 'carrier.unavailable' });
+  quote(_m: MarketContext, request: CarrierQuoteRequest) {
+    this.quoted.push(request);
+    return Promise.resolve(this.quoteAnswer);
+  }
 }
 
 class FakePickups implements PickupDirectory {
@@ -109,6 +126,11 @@ class FakePickups implements PickupDirectory {
   });
   pickupOf() {
     return Promise.resolve(this.answer);
+  }
+  postcodes: Result<ReadonlyMap<Id<'Seller'>, string>, { readonly code: 'pickup.unavailable' }> =
+    ok(new Map());
+  postcodesOf() {
+    return Promise.resolve(this.postcodes);
   }
 }
 
@@ -409,6 +431,147 @@ describe.each([
       const [key, row] = [...bookings.rows.entries()][0]!;
       bookings.rows.set(key, { ...row, progress: 'picked-up' });
       expect(await cancel()).toEqual(ok('not-cancellable'));
+    });
+  });
+  describe('shipping-fees (the live quote at checkout)', () => {
+    const currency = markets.get(market.marketId).defaultCurrency;
+    const customer = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'customer',
+        accountId: id<'Account'>(0x61),
+        sessionId: id<'Session'>(0x62),
+        sellerId: null,
+      }),
+      'carrier-0003-abcd',
+    );
+    const OTHER = id<'Seller'>(0x52);
+    const flat = (amount: bigint): Money => ({ amount, currency });
+    let flatFees: Map<string, Money>;
+
+    beforeEach(() => {
+      withSecrets(true);
+      flatFees = new Map([
+        [SELLER, flat(1000n)],
+        [OTHER, flat(900n)],
+      ]);
+      deps = {
+        ...deps,
+        policy: { currency: () => currency, deliversTo: () => true },
+        fees: {
+          findMany: (_m: MarketContext, ids: readonly Id<'Seller'>[]) =>
+            Promise.resolve(
+              ids.flatMap((sellerId) => {
+                const fee = flatFees.get(sellerId);
+                return fee === undefined ? [] : [{ sellerId, fee, updatedAt: T0 }];
+              }),
+            ),
+        } as never,
+      };
+      pickups.postcodes = ok(new Map([[SELLER, servedToo]]));
+      carrier.quoteAnswer = ok({ amount: 1250n, currency });
+    });
+
+    const fees = (
+      sellerIds: readonly string[] = [SELLER, OTHER],
+      dropoffPostcode: string = served,
+      context: CallContext = customer,
+    ) =>
+      new ShippingFees(gate, deps).execute(context, {
+        sellerIds,
+        dropoff: { postcode: dropoffPostcode },
+      });
+
+    it('charges the quote where the carrier carries it, the flat fee elsewhere', async () => {
+      expect(await fees()).toEqual(
+        ok({
+          fees: new Map([
+            [SELLER, { amount: 1250n, currency }],
+            [OTHER, flat(900n)],
+          ]),
+          quoted: new Set([SELLER]),
+        }),
+      );
+      // Postcodes only: never a street, a suburb the customer typed, a name or a phone.
+      expect(carrier.quoted).toEqual([
+        {
+          pickup: { postcode: servedToo },
+          dropoff: { postcode: served },
+          parcel: markets.get(market.marketId).shipping!.realTimeCarrier!.parcel,
+          mode: markets.get(market.marketId).shipping!.realTimeCarrier!.mode,
+        },
+      ]);
+    });
+
+    it('quotes a seller without a flat fee, and keeps the flat fee when a quote fails', async () => {
+      flatFees.delete(SELLER);
+      expect(await fees()).toEqual(
+        ok({
+          fees: new Map([
+            [OTHER, flat(900n)],
+            [SELLER, { amount: 1250n, currency }],
+          ]),
+          quoted: new Set([SELLER]),
+        }),
+      );
+      flatFees.set(SELLER, flat(1000n));
+      const { minMinor, maxMinor } = markets.get(market.marketId).shipping!.realTimeCarrier!
+        .quoteBounds;
+      for (const answer of [
+        err({ code: 'carrier.unavailable' } as const),
+        err({ code: 'carrier.refused' } as const),
+        ok({ amount: 1250n, currency: currency === 'AUD' ? 'JPY' : 'AUD' }),
+        // A quote outside the Market's bounds is never charged: free, or absurdly high.
+        ok({ amount: BigInt(minMinor) - 1n, currency }),
+        ok({ amount: BigInt(maxMinor) + 1n, currency }),
+      ]) {
+        carrier.quoteAnswer = answer;
+        const result = await fees();
+        expect(result.ok && result.value.fees.get(SELLER)).toEqual(flat(1000n));
+        expect(result.ok && result.value.quoted.size).toBe(0);
+      }
+    });
+
+    it('asks no quote when the carrier is off, the drop-off or the pickup is not served, or the pickup is unknown', async () => {
+      const flatOnly = ok({
+        fees: new Map([
+          [SELLER, flat(1000n)],
+          [OTHER, flat(900n)],
+        ]),
+        quoted: new Set(),
+      });
+      expect(await fees([SELLER, OTHER], unserved)).toEqual(flatOnly);
+      pickups.postcodes = ok(new Map([[SELLER, unserved]]));
+      expect(await fees()).toEqual(flatOnly);
+      pickups.postcodes = err({ code: 'pickup.unavailable' });
+      expect(await fees()).toEqual(flatOnly);
+      pickups.postcodes = ok(new Map([[SELLER, servedToo]]));
+      withSecrets(false);
+      expect(await fees()).toEqual(flatOnly);
+      expect(carrier.quoted).toEqual([]);
+    });
+
+    it('quotes at most the per-checkout cap, and refuses a malformed request or another actor', async () => {
+      const many = Array.from({ length: MAX_QUOTES_PER_CHECKOUT + 2 }, (_, n) =>
+        id<'Seller'>(0x700 + n),
+      );
+      pickups.postcodes = ok(new Map(many.map((sellerId) => [sellerId, servedToo])));
+      const result = await fees(many);
+      expect(carrier.quoted).toHaveLength(MAX_QUOTES_PER_CHECKOUT);
+      expect(result.ok && result.value.fees.size).toBe(MAX_QUOTES_PER_CHECKOUT);
+
+      expect(await fees([SELLER], '')).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(await fees(['nope'])).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(await fees([SELLER], served, anonymous)).toMatchObject({
+        ok: false,
+        error: { code: 'access.unauthenticated' },
+      });
     });
   });
 });

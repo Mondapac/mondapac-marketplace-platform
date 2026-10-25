@@ -27,6 +27,8 @@ export interface ApprovedZones {
   readonly operatingTimezone: string;
   /** Null for a revision backfilled without an address (data design 3.2). */
   readonly addressTimezone: string | null;
+  /** The operating address's clear postcode (SHP-02/03); null for an older revision. */
+  readonly operatingPostcode: string | null;
 }
 
 export interface BusinessFileRevisionRepository {

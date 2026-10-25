@@ -928,6 +928,19 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(stored.sellerOrders[0]).toMatchObject({ shipping: 500n, total: 2599n });
     });
 
+    it('charges the real-time carrier quote as a tax-inclusive price, asked with the postcode only', async () => {
+      shipping.quotes.set(SELLER_A, money(1_250n, currency));
+      const first = await start();
+      if (!first.ok) throw new Error('checkout failed');
+
+      const stored = orders.rows.get(first.value.orderId)!;
+      expect(stored.sellerOrders[0]).toMatchObject({
+        shipping: 1_250n,
+        shippingTaxInclusive: true,
+      });
+      expect(shipping.quoteDropoffs).toEqual([{ postcode: '4109' }]);
+    });
+
     it('confirms against the total with delivery, and voids a payment of the goods only', async () => {
       const order = await placed();
       expect(order.total.amount).toBe(2000n + 750n + 99n + 500n);

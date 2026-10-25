@@ -324,6 +324,7 @@ describe.each(FIXTURES)('revision status rules in $marketId', (f) => {
       },
       contentHash: HASH,
       register: { outcome: 'not-performed', mismatches: [], checkedAt: null },
+      operatingPostcode: '4109',
       now: T0,
       ...overrides,
     });

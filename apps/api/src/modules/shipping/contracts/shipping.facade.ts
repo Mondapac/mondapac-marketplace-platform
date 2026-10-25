@@ -58,6 +58,20 @@ export type CarrierDeliveryFailure =
   | { readonly code: 'shipping.carrier-unavailable' }
   | { readonly code: 'shipping.carrier-delivery-not-found' };
 
+/** The customer's drop-off as a quote takes it: the postcode of the chosen address only. */
+export interface QuoteDropoff {
+  readonly postcode: string;
+}
+
+/**
+ * The fee per seller at checkout, and the sellers whose fee is the carrier's quote: a quote is a
+ * tax-inclusive price, whatever the basis of the seller's goods.
+ */
+export interface CheckoutShippingFees {
+  readonly fees: FlatFeeMap;
+  readonly quoted: ReadonlySet<Id<'Seller'>>;
+}
+
 /** The flat fee of each requested seller that has one; a seller without a fee is absent. */
 export type FlatFeeMap = ReadonlyMap<Id<'Seller'>, Money>;
 
@@ -74,6 +88,21 @@ export interface ShippingFacade {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<FlatFeeMap, ShippingFailure>>;
+
+  /**
+   * The shipping fee per seller that checkout charges (SHP-02/03): the real-time carrier's live
+   * quote for a seller order it will carry (the Market's carrier on, the seller's approved pickup
+   * postcode and the drop-off in its areas), else the flat fee. A failed, slow or foreign-currency
+   * quote, or one outside the Market's `quoteBounds`, falls back to the flat fee; a seller with
+   * neither is absent (ordering refuses it). Only postcodes go to the carrier. Rule
+   * `own-resources`, for checkout under the customer's context. At most 100 distinct ids, and at
+   * most 10 quotes per call (the rest keep the flat fee).
+   */
+  shippingFees(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+    dropoff: QuoteDropoff,
+  ): Promise<Result<CheckoutShippingFees, ShippingFailure>>;
 
   /**
    * Whether the Market delivers to the postcode: in a ServiceArea open for delivery. Anyone may

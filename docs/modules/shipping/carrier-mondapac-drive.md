@@ -27,16 +27,45 @@ other seller order stays `seller_managed` (SHP-01): the seller ships and types i
    is refunded. A partial refund leaves the delivery. If the carrier has already picked it up,
    `ordering.carrier-delivery-not-cancelled-after-refund` is logged at warn for an admin.
 
-| Drive status | Progress | Seller order |
-|---|---|---|
-| SCHEDULED, DISPATCHING, ASSIGNED, AT_PICKUP | booked | to ship |
-| PICKED_UP, AT_DROPOFF | picked-up | shipped |
-| DELIVERED | delivered | delivered |
-| DELIVERY_FAILED, RETURNING, RETURNED | exception | unchanged (an admin follows up) |
-| CANCELLED | cancelled | unchanged |
+| Drive status                                | Progress  | Seller order                    |
+| ------------------------------------------- | --------- | ------------------------------- |
+| SCHEDULED, DISPATCHING, ASSIGNED, AT_PICKUP | booked    | to ship                         |
+| PICKED_UP, AT_DROPOFF                       | picked-up | shipped                         |
+| DELIVERED                                   | delivered | delivered                       |
+| DELIVERY_FAILED, RETURNING, RETURNED        | exception | unchanged (an admin follows up) |
+| CANCELLED                                   | cancelled | unchanged                       |
 
 An unknown status is recorded as taken and changes nothing. A final state is never left, and a
 cancellation after pickup is ignored.
+
+## The fee at checkout (live quote)
+
+Owner decision 2026-10-24: the customer pays the carrier's live price where Drive will carry the
+seller order, and the seller's flat fee everywhere else.
+
+- `ordering.start-checkout` calls `shipping.shippingFees(sellerIds, { postcode, locality })` in
+  place of the flat fees. The cart still shows the flat fees (`shipping.flatFees`).
+- `shipping.shipping-fees` (rule `own-resources`) reads the flat fees, then quotes each seller
+  whose approved pickup postcode and the drop-off both fall in a ServiceArea the Market's carrier
+  serves (at most 10 quotes per checkout; the rest keep the flat fee).
+- The pickup postcode is `sellers.business_file_revisions.operating_postcode`, a clear column
+  copied at submission like `service_area_code` (sellers' `pickupPostcodes`, rule `anonymous`,
+  no decryption and no audit row). A revision written before the column has none: that seller
+  keeps the flat fee until its next approved revision.
+- A quote sends the two postcodes only, never a street, a suburb the customer typed, a name or a
+  phone (free text would let a customer move the quoted place). The street, names and phones go
+  to Drive only at booking.
+- A quote that fails, is refused, times out, comes in another currency or falls outside the
+  Market's `quoteBounds` falls back to the flat fee (out of bounds is logged at warn as
+  `shipping.shipping-fees-quote-out-of-bounds`); a seller with neither a quote nor a flat fee is
+  refused as before (`ordering.shipping-unavailable`).
+- A quote is kept 5 minutes per Market, postcode pair, parcel and mode, so a checkout repeated in a
+  loop asks Drive once.
+- Drive's `total` includes tax, so a quoted fee is taxed as tax-inclusive, whatever the basis of
+  the seller's goods.
+- The quoted fee is frozen on the seller order like the flat fee. The booking does not send
+  `expectedTotal`: Drive books at its price at that moment (the street address against the
+  postcode), and the difference from the quote is the marketplace's.
 
 ## Drive API calls
 
@@ -44,12 +73,16 @@ cancellation after pickup is ignored.
   (`address` as one line, `postcode`, `contactName`, `contactPhone`, optional `notes`), and
   `parcel` and `mode` from the Market config. No `point`: the marketplace stores no coordinates,
   so Drive geocodes the address.
+- `POST /delivery/quotes` with `pickup` and `dropoff` as `{ postcode, address }` (both the
+  postcode), `parcel` and `mode`. Only `total` (`{ amount, currency }`, minor units
+  as decimal text) is read.
 - `POST /delivery/deliveries/:id/cancel` with `{ "reason": "..." }`. A 409 (picked up already)
   is taken as not cancellable.
 - No merchant field: Drive's merchant is the API key's, and its schemas reject unknown fields.
 - Headers: `Authorization: Bearer <MONDAPAC_DRIVE_API_KEY of the Market>` and `x-market-id`.
-- Client: a timeout per attempt (the whole call at most 6 s); retries with backoff (`backoffMs * 2^(n-1)`) on a 5xx, a timeout
-  or a network fault, never on a 4xx; redirects refused; a circuit breaker per Market and endpoint.
+- Client: a timeout per attempt (the whole call at most 6 s); retries with backoff (`backoffMs * 2^(n-1)`) on a 5xx, a 429 (not on a quote, which falls back to the flat fee at once), a timeout
+  or a network fault, never on a 4xx; redirects refused; a circuit breaker per Market, endpoint and kind of call (book, cancel, quote), so failing
+  quotes never stop bookings.
   Only the delivery id and status are read from an answer; the echoed stops are dropped.
 
 ## Webhook
@@ -63,7 +96,7 @@ the format Drive's notifications package emits (Drive `docs/notifications/webhoo
 - The request is accepted when the timestamp is within 300 seconds of now and one `v1` matches
   (constant-time comparison).
 - Body: `{ id (UUID), type, occurredAt, marketId, data: { deliveryId, externalReference, status,
-  ... } }`. The types `delivery.booked`, `delivery.status-changed` and `delivery.cancelled` are
+... } }`. The types `delivery.booked`, `delivery.status-changed` and `delivery.cancelled` are
   applied; any other type answers 200 and is dropped.
 - Each event is taken once by `id` (`shipping.carrier_events`), in the same unit as the booking
   change and its outbox event.
@@ -97,5 +130,5 @@ in an event or an error.
   longer confirmed is logged at warn as `ordering.carrier-progress-on-unconfirmed-order`.
 - Before the secrets are set for a production Market, replace the placeholder `baseUrl` in
   `config/markets/AU.json`.
-- Follow-ups: cap the size of Drive's answer body; key the circuit breaker per call as well as per
-  endpoint; a retention job for `shipping.carrier_events`.
+- An answer body over 64 KiB is not read and counts as no answer.
+- Follow-up: a retention job for `shipping.carrier_events`.
