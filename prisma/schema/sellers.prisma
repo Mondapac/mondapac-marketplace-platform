@@ -332,6 +332,16 @@ model SellersStoreProfile {
   /// the first save. Every save inserts a revision and moves this pointer in one unit; the
   /// revision named is of this seller (composite foreign key).
   publishedRevisionId            String?                       @map("published_revision_id") @db.Uuid
+  /// The delivery terms (package e): `same-day` or `next-day`, the window and the daily order
+  /// cut-off as minutes since local midnight in the seller's zone. All four set or all NULL (CHECK);
+  /// half-hour steps; a same-day cut-off is before the window closes. Clear: public terms.
+  deliveryDay                    String?                       @map("delivery_day") @db.VarChar(8)
+  deliveryFromMinute             Int?                          @map("delivery_from_minute") @db.SmallInt
+  deliveryToMinute               Int?                          @map("delivery_to_minute") @db.SmallInt
+  orderCutoffMinute              Int?                          @map("order_cutoff_minute") @db.SmallInt
+  /// When and by whom the terms were last changed; both NULL until the first change.
+  deliveryChangedAt              DateTime?                     @map("delivery_changed_at") @db.Timestamptz(6)
+  deliveryChangedByAccountId     String?                       @map("delivery_changed_by_account_id") @db.Uuid
   sellerFile                     SellersSellerFile             @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
   publishedRevision              SellersStoreProfileRevision?  @relation("StoreProfilePublishedRevision", fields: [marketId, sellerId, publishedRevisionId], references: [marketId, sellerId, id], onDelete: Restrict, onUpdate: Restrict)
   revisions                      SellersStoreProfileRevision[] @relation("StoreProfileRevisions")
@@ -427,57 +437,57 @@ model SellersStoreImageRendition {
 /// columns (column-level UPDATE grant, hand-written in the migration with every CHECK, the
 /// partial unique indexes "one pending" and "one approved", and the reviewer-queue index).
 model SellersBusinessFileRevision {
-  id                   String              @id @db.Uuid
-  marketId             String              @map("market_id") @db.VarChar(8)
-  tenantId             String              @map("tenant_id")
-  sellerId             String              @map("seller_id") @db.Uuid
+  id                   String                   @id @db.Uuid
+  marketId             String                   @map("market_id") @db.VarChar(8)
+  tenantId             String                   @map("tenant_id")
+  sellerId             String                   @map("seller_id") @db.Uuid
   /// onboarding | identity-change (CHECK).
   kind                 String
   /// 1, 2, ... per seller (CHECK >= 1); unique per seller.
-  revisionNo           Int                 @map("revision_no")
+  revisionNo           Int                      @map("revision_no")
   /// pending | approved | rejected | withdrawn | superseded (CHECK).
   status               String
   /// seller | admin (CHECK).
-  authorKind           String              @map("author_kind")
+  authorKind           String                   @map("author_kind")
   /// A plain id (C4): a revision is only created from a person's submission.
-  authorAccountId      String              @map("author_account_id") @db.Uuid
+  authorAccountId      String                   @map("author_account_id") @db.Uuid
   /// Personal, Enc, label sellers.business-file-revision.content: the sorted-key JSON of the
   /// content, sealed under the seller's key. Never queried; the reviewer reads it whole.
-  contentCiphertext    String              @map("content_ciphertext")
+  contentCiphertext    String                   @map("content_ciphertext")
   /// The JSON shape of the content (CHECK >= 1), not the envelope version.
-  contentSchemaVersion Int                 @map("content_schema_version") @db.SmallInt
+  contentSchemaVersion Int                      @map("content_schema_version") @db.SmallInt
   /// hmac-sha256:<64 hex> over the canonical content (CHECK), keyed by the seller's subject key.
-  contentHash          String              @map("content_hash")
+  contentHash          String                   @map("content_hash")
   /// Personal (pseudonymous), S5: the submitted identifier's index; NULL when none was given.
-  identifierIndex      Bytes?              @map("identifier_index")
+  identifierIndex      Bytes?                   @map("identifier_index")
   /// Clear IANA zone and ServiceArea code of the operating address at submission.
-  operatingTimezone    String              @map("operating_timezone")
-  serviceAreaCode      String              @map("service_area_code")
+  operatingTimezone    String                   @map("operating_timezone")
+  serviceAreaCode      String                   @map("service_area_code")
   /// Clear postcode of the operating address at submission (CHECK), the real-time carrier's
   /// quote pickup (SHP-02/03); NULL for a revision written before it existed. Never updated.
-  operatingPostcode    String?             @map("operating_postcode")
+  operatingPostcode    String?                  @map("operating_postcode")
   /// Clear IANA zone derived from the operating address only, copied at submit; NULL for a
   /// backfill revision (fail closed for the claim path).
-  addressTimezone      String?             @map("address_timezone")
+  addressTimezone      String?                  @map("address_timezone")
   /// Snapshot of the register check at submission (CHECKs: outcome list, mismatch subset).
-  registerOutcome      String              @map("register_outcome")
-  registerMismatches   String[]            @map("register_mismatches")
-  registerCheckedAt    DateTime?           @map("register_checked_at") @db.Timestamptz(6)
-  createdAt            DateTime            @map("created_at") @db.Timestamptz(6)
-  statusChangedAt      DateTime            @map("status_changed_at") @db.Timestamptz(6)
-  decidedAt            DateTime?           @map("decided_at") @db.Timestamptz(6)
-  decidedByAccountId   String?             @map("decided_by_account_id") @db.Uuid
-  identityDecisionId   String?             @map("identity_decision_id") @db.Uuid
+  registerOutcome      String                   @map("register_outcome")
+  registerMismatches   String[]                 @map("register_mismatches")
+  registerCheckedAt    DateTime?                @map("register_checked_at") @db.Timestamptz(6)
+  createdAt            DateTime                 @map("created_at") @db.Timestamptz(6)
+  statusChangedAt      DateTime                 @map("status_changed_at") @db.Timestamptz(6)
+  decidedAt            DateTime?                @map("decided_at") @db.Timestamptz(6)
+  decidedByAccountId   String?                  @map("decided_by_account_id") @db.Uuid
+  identityDecisionId   String?                  @map("identity_decision_id") @db.Uuid
   /// A code from the Market's reject reasons, never text (S8 pattern CHECK).
-  rejectReasonCode     String?             @map("reject_reason_code")
+  rejectReasonCode     String?                  @map("reject_reason_code")
   /// edited | cancelled | reapply-refused (CHECK).
-  withdrawCause        String?             @map("withdraw_cause")
+  withdrawCause        String?                  @map("withdraw_cause")
   /// seller | admin (CHECK).
-  withdrawnByKind      String?             @map("withdrawn_by_kind")
-  withdrawnAt          DateTime?           @map("withdrawn_at") @db.Timestamptz(6)
-  sellerFile           SellersSellerFile   @relation("SellerFileRevisions", fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
-  approvedFor          SellersSellerFile[] @relation("SellerFileApprovedRevision")
-  decisionFor          SellersSellerFile[] @relation("SellerFileDecisionRevision")
+  withdrawnByKind      String?                  @map("withdrawn_by_kind")
+  withdrawnAt          DateTime?                @map("withdrawn_at") @db.Timestamptz(6)
+  sellerFile           SellersSellerFile        @relation("SellerFileRevisions", fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  approvedFor          SellersSellerFile[]      @relation("SellerFileApprovedRevision")
+  decisionFor          SellersSellerFile[]      @relation("SellerFileDecisionRevision")
   reviewChecks         SellersReviewCheck[]
   identifierClaims     SellersIdentifierClaim[]
 

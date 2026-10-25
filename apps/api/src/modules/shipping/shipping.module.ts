@@ -16,6 +16,7 @@ import { CARRIER_WEBHOOK_SIGNATURE } from './application/ports/carrier-webhook-s
 import { FLAT_FEE_REPOSITORY } from './application/ports/flat-fee.repository';
 import { PICKUP_DIRECTORY } from './application/ports/pickup-directory';
 import { SELLER_DIRECTORY } from './application/ports/seller-directory';
+import { STORE_DIRECTORY } from './application/ports/store-directory';
 import { SHIPPING_POLICY } from './application/ports/shipping-policy';
 import type { ShippingDependencies } from './application/shipping-dependencies';
 import { BookCarrierDelivery } from './application/use-cases/book-carrier-delivery.use-case';
@@ -28,6 +29,7 @@ import { ReceiveCarrierWebhook } from './application/use-cases/receive-carrier-w
 import { SetFlatFee } from './application/use-cases/set-flat-fee.use-case';
 import { ViewFlatFee } from './application/use-cases/view-flat-fee.use-case';
 import { ViewOwnFlatFee } from './application/use-cases/view-own-flat-fee.use-case';
+import { ViewStoreFlatFee } from './application/use-cases/view-store-flat-fee.use-case';
 import { SHIPPING_FACADE, SHIPPING_PERMISSIONS } from './contracts';
 import { SHIPPING_AUDIT_ACTIONS } from './domain/audit';
 import { SHIPPING_EVENTS } from './domain/events';
@@ -38,6 +40,7 @@ import {
 } from './presentation/flat-fee.controller';
 import { CarrierWebhookController } from './presentation/carrier-webhook.controller';
 import { DeliveryAreaController } from './presentation/delivery-area.controller';
+import { StoreFlatFeeController } from './presentation/store-flat-fee.controller';
 import { ShippingFacadeImplementation } from './presentation/shipping.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: ShippingDependencies) => U;
@@ -47,6 +50,7 @@ const PORTS: readonly [keyof ShippingDependencies, InjectionToken][] = [
   ['fees', FLAT_FEE_REPOSITORY],
   ['policy', SHIPPING_POLICY],
   ['sellers', SELLER_DIRECTORY],
+  ['stores', STORE_DIRECTORY],
   ['audit', AUDIT_WRITER],
   ['clock', CLOCK],
   ['ids', ID_GENERATOR],
@@ -90,6 +94,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminFlatFeeController,
     SellerFlatFeeController,
     DeliveryAreaController,
+    StoreFlatFeeController,
     CarrierWebhookController,
   ],
   providers: [
@@ -110,6 +115,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CarrierShipmentQuery,
       CancelCarrierDelivery,
       ReceiveCarrierWebhook,
+      ViewStoreFlatFee,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: SHIPPING_FACADE,
