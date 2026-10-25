@@ -1,4 +1,4 @@
-import type { MarketContext, Money, Result } from '@mondapac/shared-kernel';
+import type { MarketContext, Money, Result, Temporal } from '@mondapac/shared-kernel';
 import type { CarrierStopInput } from '../../domain/carrier-stop';
 
 /**
@@ -22,6 +22,8 @@ export interface CarrierBookingRequest {
   readonly dropoff: CarrierStop;
   readonly parcel: CarrierParcel;
   readonly mode: 'on_demand' | 'scheduled';
+  /** The buyer's chosen window for a `scheduled` trip (UTC instants); null otherwise. */
+  readonly window: { readonly start: Temporal.Instant; readonly end: Temporal.Instant } | null;
 }
 
 /**

@@ -4,18 +4,21 @@ import {
 } from '../../../../platform/events/event-subscriptions';
 import { CarrierDeliveryProgressed } from '../../../shipping';
 import type { CancelCarrierAfterRefund } from '../../application/use-cases/cancel-carrier-after-refund.use-case';
+import type { BookReadyCarrierDelivery } from '../../application/use-cases/book-ready-carrier-delivery.use-case';
 import type { BookCarrierDeliveries } from '../../application/use-cases/book-carrier-deliveries.use-case';
 import type { RecordCarrierProgress } from '../../application/use-cases/record-carrier-progress.use-case';
-import { OrderPaid, RefundSucceeded } from '../../domain/events';
+import { OrderPaid, RefundSucceeded, SellerOrderReady } from '../../domain/events';
 
 /** The subscriber names: also the `handler` of `ordering.inbox`. */
 export const BOOK_CARRIER_DELIVERIES_SUBSCRIBER = 'ordering.book-carrier-deliveries';
+export const BOOK_READY_CARRIER_DELIVERY_SUBSCRIBER = 'ordering.book-ready-carrier-delivery';
 export const RECORD_CARRIER_PROGRESS_SUBSCRIBER = 'ordering.record-carrier-progress';
 export const CANCEL_CARRIER_AFTER_REFUND_SUBSCRIBER = 'ordering.cancel-carrier-after-refund';
 
 /**
  * Ordering's subscriptions for the real-time carrier (SHP-02/03): its own
- * `ordering.order-paid.v1` hands each seller order to shipping's strategy, and shipping's
+ * `ordering.order-paid.v1` hands the scheduled seller orders to shipping's strategy, its own
+ * `ordering.seller-order-ready.v1` does the same for instant and same-day ones, and shipping's
  * `shipping.carrier-delivery-progressed.v1` records the shipment and the delivery, and its own
  * `ordering.refund-succeeded.v1` cancels the delivery of a seller order refunded in full. Each passes
  * the decoded ids, the delivery and the Market's system-actor context unchanged to one `system`
@@ -24,6 +27,7 @@ export const CANCEL_CARRIER_AFTER_REFUND_SUBSCRIBER = 'ordering.cancel-carrier-a
  */
 export function carrierSubscriptions(
   book: BookCarrierDeliveries,
+  bookReady: BookReadyCarrierDelivery,
   record: RecordCarrierProgress,
   cancel: CancelCarrierAfterRefund,
 ): RegisteredSubscription[] {
@@ -35,6 +39,22 @@ export function carrierSubscriptions(
         const result = await book.execute(context, { delivery, orderId: event.payload.orderId });
         if (!result.ok) {
           throw new Error(`${BOOK_CARRIER_DELIVERIES_SUBSCRIBER} refused: ${result.error.code}`);
+        }
+      },
+    }),
+    subscription({
+      name: BOOK_READY_CARRIER_DELIVERY_SUBSCRIBER,
+      event: SellerOrderReady,
+      handle: async (event, delivery, context) => {
+        const result = await bookReady.execute(context, {
+          delivery,
+          orderId: event.payload.orderId,
+          sellerOrderId: event.payload.sellerOrderId,
+        });
+        if (!result.ok) {
+          throw new Error(
+            `${BOOK_READY_CARRIER_DELIVERY_SUBSCRIBER} refused: ${result.error.code}`,
+          );
         }
       },
     }),

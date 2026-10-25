@@ -41,6 +41,11 @@ const order = (n: number, fulfilment: SellerOrderView['fulfilment']): SellerOrde
   trackingRef: null,
   shippedAt: null,
   deliveredAt: null,
+  deliveryMethod: 'instant',
+  deliveryWindowStart: null,
+  deliveryWindowEnd: null,
+  readyAt: null,
+  deliveryAttention: null,
   lines: [],
 });
 const offer = (n: number, status: string): OfferView => ({

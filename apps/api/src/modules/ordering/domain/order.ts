@@ -1,4 +1,5 @@
 import type { Id, MarketId, Money, Temporal } from '@mondapac/shared-kernel';
+import type { DeliveryAttention, DeliveryMethod, DeliveryWindow } from './delivery-method';
 
 // The order aggregate and the pure rules around it (ordering design, simplified for speed mode).
 // Money is integer minor units plus a currency; prices are GST-inclusive as pricing gives them.
@@ -87,6 +88,17 @@ export interface SellerOrder {
   /** When inventory was told the lines left the warehouse; null until the worker did it. */
   readonly inventoryRecordedAt: Temporal.Instant | null;
   readonly ledgerState: LedgerState;
+  /** The buyer's delivery method, chosen at checkout; the seller cannot change it. */
+  readonly deliveryMethod: DeliveryMethod;
+  /** The buyer's window for a `scheduled` delivery (UTC instants); null for every other method. */
+  readonly deliveryWindow: DeliveryWindow | null;
+  /** When the seller told the platform the order is ready; null until then. */
+  readonly readyAt: Temporal.Instant | null;
+  /**
+   * Set by the platform when no carrier could take the order: it needs the platform's attention.
+   * The seller is never asked to deliver instead.
+   */
+  readonly deliveryAttention: DeliveryAttention | null;
 }
 
 /**
@@ -371,6 +383,25 @@ export function cancelOrder(
 export interface ShipmentInput {
   readonly carrier: string;
   readonly trackingRef: string | null;
+}
+
+/**
+ * The seller tells the platform the order is ready (packed, waiting). Only a paid order still
+ * `to-ship` that is not ready yet can become ready; anything else is null. The seller picks no
+ * method and no provider here: the buyer's method and the fleet decide.
+ */
+export function markReady(sellerOrder: SellerOrder, now: Temporal.Instant): SellerOrder | null {
+  if (sellerOrder.fulfilment !== 'to-ship' || sellerOrder.readyAt !== null) return null;
+  return { ...sellerOrder, readyAt: now };
+}
+
+/** Records that no carrier could take the order (once; null when already recorded or shipped). */
+export function markNeedsAttention(
+  sellerOrder: SellerOrder,
+  reason: DeliveryAttention,
+): SellerOrder | null {
+  if (sellerOrder.fulfilment !== 'to-ship' || sellerOrder.deliveryAttention === reason) return null;
+  return { ...sellerOrder, deliveryAttention: reason };
 }
 
 /** `to-ship` to `shipped`. Anything else is refused (null): a shipment is recorded once. */

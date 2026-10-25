@@ -1158,7 +1158,7 @@
   },
   "orders": {
     "title": "Orders",
-    "intro": "Paid orders for your store, newest first. Open an order to ship it, then mark it delivered when it arrives.",
+    "intro": "Paid orders for your store, newest first. Open an order and mark it ready when it is packed. MondaPac arranges the delivery.",
     "not-found": {
       "title": "Order not found",
       "body": "This order does not exist, or it belongs to another store."
@@ -1180,6 +1180,7 @@
     "filter": {
       "label": "Filter orders by fulfilment",
       "all": "All",
+      "to-ship": "To ship",
       "empty": {
         "title": "No orders in this state",
         "body": "Orders appear here as they move on.",
@@ -1201,7 +1202,6 @@
     },
     "totals": "Totals",
     "fulfilment": "Fulfilment",
-    "not-shipped": "This order has not been shipped yet.",
     "shipped-on": "Shipped",
     "delivered-on": "Delivered",
     "subtotal": "Items",
@@ -1209,34 +1209,46 @@
     "delivery-free": "Free",
     "total": "Total",
     "status": {
-      "to-ship": "To ship",
+      "to-ship": "Awaiting you",
+      "ready": "Ready",
       "shipped": "Shipped",
       "delivered": "Delivered"
     },
-    "ship": {
-      "carrier": "Carrier",
-      "tracking": "Tracking reference",
-      "hint": "The customer gets an email with the carrier and tracking reference.",
-      "submit": "Mark as shipped"
-    },
     "deliver": "Mark as delivered",
-    "validation": {
-      "required": "Enter the carrier.",
-      "invalid": "Check this value. Use letters, numbers and simple punctuation."
-    },
     "error": {
       "conflict": "This order has already moved on. Reload the page to see its current state.",
       "not-found": "We could not find this order.",
-      "invalid": "Check the carrier and tracking reference.",
+      "invalid": "Something in this request was not accepted. Reload the page and try again.",
       "throttled": "Too many attempts. Wait a moment and try again.",
       "csrf": "Your session needs a refresh. Reload the page and try again.",
-      "denied": "Your role cannot do this.",
+      "denied": "Your role cannot do this. Ask the Seller Owner to do it or to change your role.",
       "unavailable": "Orders are not available right now. Try again shortly.",
       "unknown": "Something went wrong. Try again."
     },
     "empty-state": {
       "title": "No paid orders yet",
       "body": "They appear here as soon as a customer pays."
+    },
+    "ready": {
+      "submit": "Mark ready",
+      "hint": "Tell MondaPac this order is packed. MondaPac chooses the courier and delivers it, so you don't need to.",
+      "done": "You marked this order ready {when}.",
+      "pickup": "The customer collects it from you in person. They will show you a pickup code.",
+      "arranged": "MondaPac is arranging the delivery. You do not need to do anything else.",
+      "attention": "MondaPac is still assigning a courier. Keep the order packed and ready. No action needed."
+    },
+    "not-ready": "This order is not marked ready yet.",
+    "method": {
+      "label": "Delivery chosen by the customer",
+      "pickup": "Pickup in person",
+      "instant": "Instant, under 2 hours",
+      "same_day": "Same day",
+      "scheduled": "Scheduled",
+      "window-label": "Window"
+    },
+    "ship": {
+      "carrier": "Carrier",
+      "tracking": "Tracking reference"
     }
   },
   "earnings": {

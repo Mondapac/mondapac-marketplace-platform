@@ -100,7 +100,7 @@ export class OrdersController {
     ...ERROR,
     description:
       'validation.failed (details.fields: addressId required or format; sellerNotes type, ' +
-      'range, format or length)',
+      'range, format or length; deliveryMethods.<sellerId>.method, windowStart or windowEnd)',
   })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -115,7 +115,8 @@ export class OrdersController {
     description:
       "ordering.address-not-found (not one of the customer's addresses), " +
       'ordering.outside-delivery-area (the Market does not deliver to its postcode), ' +
-      'ordering.cart-empty or ' +
+      'ordering.delivery-method-unavailable (details.methodSellerIds: the seller does not offer ' +
+      'the chosen method), ordering.cart-empty or ' +
       'ordering.cart-not-purchasable (details.lineIndexes)',
   })
   @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
@@ -131,10 +132,14 @@ export class OrdersController {
     @Body() body: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, body, ['addressId', 'sellerNotes']);
+    const invalid = closedBody(request, body, ['addressId', 'sellerNotes', 'deliveryMethods']);
     if (invalid !== null) throw this.refused(invalid, context);
-    const { addressId, sellerNotes } = body as { addressId?: unknown; sellerNotes?: unknown };
-    const result = await this.start.execute(context, { addressId, sellerNotes });
+    const { addressId, sellerNotes, deliveryMethods } = body as {
+      addressId?: unknown;
+      sellerNotes?: unknown;
+      deliveryMethods?: unknown;
+    };
+    const result = await this.start.execute(context, { addressId, sellerNotes, deliveryMethods });
     this.log('ordering.start-checkout-route', context, result.ok ? 'started' : result.error.code);
     if (!result.ok) {
       if (result.error.code === 'request.throttled') {

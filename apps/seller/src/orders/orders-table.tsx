@@ -2,7 +2,7 @@ import { Badge, CARD_TABLE } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { shortInstant } from '../catalog/format.ts';
 import { formatMinor } from '../price/money.ts';
-import { shortId, TONE } from './status.ts';
+import { shortId, statusOf, TONE } from './status.ts';
 import type { SellerOrderView } from './types.ts';
 
 const COLUMNS = ['order', 'status', 'paid', 'items', 'total'] as const;
@@ -52,7 +52,7 @@ export function OrdersTable({ orders }: { readonly orders: readonly SellerOrderV
                   </a>
                 </td>
                 <td className={CARD_TABLE.corner}>
-                  <Badge tone={TONE[order.fulfilment]}>{t(`status.${order.fulfilment}`)}</Badge>
+                  <Badge tone={TONE[statusOf(order)]}>{t(`status.${statusOf(order)}`)}</Badge>
                 </td>
                 <td className={CARD_TABLE.labelled} data-label={label('paid')}>
                   <time dateTime={order.paidAt}>{shortInstant(order.paidAt, locale, zone)}</time>

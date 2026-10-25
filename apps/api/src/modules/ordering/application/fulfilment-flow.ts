@@ -1,8 +1,9 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
-import { OrderShipped } from '../domain/events';
-import { markDelivered, markShipped, parseShipment, type Fulfilment } from '../domain/order';
+import { SellerOrderReady } from '../domain/events';
+import { markDelivered, markReady, type Fulfilment } from '../domain/order';
 import {
   sellerOrderDetailView,
   type LabelledSellerOrderPageView,
@@ -16,11 +17,14 @@ import { labelSellerOrders } from './order-labels';
 import type { SellerOrderPage, SellerOrderRecord } from './ports/order.repository';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, openShipTo } from './read-flow';
 
-// The seller's side of an order once it is paid: see it, record the shipment (carrier and an
-// optional tracking reference, SHP-01), record the delivery. Each step happens once and in that
-// order; the seller sees only the seller orders of its own shop. Inventory learns of a shipment
+// The seller's side of an order once it is paid: see it and tell the platform it is ready; the
+// platform books the delivery, the seller never delivers or names a carrier. The delivery is
+// recorded from the carrier's progress (or, until pickup codes exist, by the seller marking it
+// delivered). The seller sees only the seller orders of its own shop. Inventory learns of a shipment
 // from the worker (`recordShipments`), not from the seller's request. One seller order's page
 // (view, ship, deliver) carries the delivery address copied at checkout; the list does not.
+
+const logger = new Logger('OrderingFulfilmentFlow');
 
 /** A seller order's detail and the sealed address it is shipped to, read in one unit. */
 interface Detailed {
@@ -167,59 +171,79 @@ export async function viewSellerOrder(
   );
 }
 
-/** Records the shipment of a paid seller order: carrier, optional tracking reference. */
-export async function shipSellerOrder(
+/**
+ * The seller tells the platform that a paid seller order is ready. That is all the seller does:
+ * it picks no delivery method and no provider and never delivers (owner decision). The buyer's
+ * method and the fleet decide what happens next, in the subscriber of `SellerOrderReady`:
+ * instant and same-day orders are booked with a carrier, a pickup waits for the buyer, a
+ * scheduled order was booked at payment. Ownership: only the session's own seller orders are
+ * found (another shop's id answers exactly as an unknown one). Idempotent: a repeat answers the
+ * current state and writes no second event.
+ */
+export async function markSellerOrderReady(
   deps: OrderingDependencies,
   context: CallContext,
-  input: {
-    readonly sellerOrderId: unknown;
-    readonly carrier: unknown;
-    readonly trackingRef: unknown;
-  },
+  input: { readonly sellerOrderId: unknown },
 ): Promise<Result<LabelledSellerOrderShipView, FulfilmentFailure>> {
   const sellerId = sellerOf(context);
   if (sellerId === null) return err({ code: 'access.denied' });
   const sellerOrderId = parseSellerOrderId(input?.sellerOrderId);
-  const shipment = parseShipment({ carrier: input?.carrier, trackingRef: input?.trackingRef });
-  const fields = [
-    ...(sellerOrderId.ok ? [] : [{ path: 'sellerOrderId', code: 'format' }]),
-    ...(shipment.ok ? [] : shipment.fields),
-  ];
-  if (!sellerOrderId.ok || !shipment.ok) return err({ code: 'validation.failed', fields });
+  if (!sellerOrderId.ok) return sellerOrderId;
   const now = deps.clock.now();
+  let outcome = 'ready';
   const done = await deps.unitOfWork.run<Detailed, FulfilmentFailure>(context.market, async () => {
     const record = await deps.orders.findForSeller(context.market, sellerId, sellerOrderId.value);
-    if (record === null) return err({ code: 'ordering.seller-order-not-found' } as const);
-    const shipped = markShipped(record.sellerOrder, shipment.shipment, now);
-    if (shipped === null) return err({ code: 'ordering.fulfilment-conflict' } as const);
-    const saved = await deps.orders.saveFulfilment(
-      context.market,
-      shipped,
-      record.sellerOrder.fulfilment,
-    );
-    if (saved !== 'saved') return err({ code: 'ordering.fulfilment-conflict' } as const);
-    // Written with the shipment, once per seller order (a repeat finds it shipped and conflicts).
-    // A refused event rolls the shipment back: the seller sees a conflict and tries again.
+    if (record === null) {
+      outcome = 'ordering.seller-order-not-found';
+      return err({ code: 'ordering.seller-order-not-found' } as const);
+    }
+    const already = (current: SellerOrderRecord) => {
+      outcome = 'already-ready';
+      return ok({ view: sellerOrderDetailView(current), record: current });
+    };
+    if (record.sellerOrder.readyAt !== null) return already(record);
+    const ready = markReady(record.sellerOrder, now);
+    if (ready === null) {
+      outcome = 'ordering.fulfilment-conflict';
+      return err({ code: 'ordering.fulfilment-conflict' } as const);
+    }
+    if ((await deps.orders.saveReady(context.market, ready)) !== 'saved') {
+      // A second tab won the race: if it said ready, this is a repeat, else the order moved on.
+      const fresh = await deps.orders.findForSeller(context.market, sellerId, sellerOrderId.value);
+      if (fresh !== null && fresh.sellerOrder.readyAt !== null) return already(fresh);
+      outcome = 'ordering.fulfilment-conflict';
+      return err({ code: 'ordering.fulfilment-conflict' } as const);
+    }
+    // Written with the ready time, once per seller order (a repeat finds it ready). A refused
+    // event rolls the change back: the seller sees a conflict and tries again.
     try {
       await deps.outbox.append(context, [
-        OrderShipped.record({
-          aggregateId: shipped.id,
+        SellerOrderReady.record({
+          aggregateId: ready.id,
           aggregateVersion: 1,
           occurredAt: now,
           payload: {
             orderId: record.orderId,
-            sellerOrderId: shipped.id,
-            sellerId: shipped.sellerId,
+            sellerOrderId: ready.id,
+            sellerId: ready.sellerId,
           },
         }),
       ]);
     } catch (error) {
       if (error instanceof OutboxWriteRefusedError) {
+        outcome = 'ordering.fulfilment-conflict';
         return err({ code: 'ordering.fulfilment-conflict' } as const);
       }
       throw error;
     }
-    return ok({ view: sellerOrderDetailView({ ...record, sellerOrder: shipped }), record });
+    return ok({ view: sellerOrderDetailView({ ...record, sellerOrder: ready }), record });
+  });
+  logger.log({
+    msg: 'ordering.seller-order-ready',
+    outcome,
+    sellerOrderId: sellerOrderId.value,
+    marketId: context.market.marketId,
+    correlationId: context.correlationId,
   });
   return labelled(deps, context, done);
 }

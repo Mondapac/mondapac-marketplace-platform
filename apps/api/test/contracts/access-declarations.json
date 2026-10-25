@@ -393,6 +393,7 @@
   { "name": "notifications.view-unsubscribe-link", "rule": "anonymous" },
   { "name": "ordering.best-selling-offers", "rule": "anonymous" },
   { "name": "ordering.book-carrier-deliveries", "rule": "system" },
+  { "name": "ordering.book-ready-carrier-delivery", "rule": "system" },
   { "name": "ordering.bought-together", "rule": "anonymous" },
   { "name": "ordering.cancel-carrier-after-refund", "rule": "system" },
   { "name": "ordering.cancel-payment", "rule": "system" },

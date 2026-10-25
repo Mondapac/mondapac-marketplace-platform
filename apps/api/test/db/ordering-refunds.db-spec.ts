@@ -46,6 +46,7 @@ import {
   FakeTax,
   FakeTaxCategories,
 } from '../support/ordering-fakes';
+import { AllowAllDeliveryMethods } from '../../src/modules/ordering/infrastructure/allow-all-delivery-methods';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { orderingRefundsTestDatabaseUrl } from './test-database';
@@ -160,6 +161,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       ids,
       clock,
       labels: new FakeLabels(),
+      deliveryMethods: new AllowAllDeliveryMethods(),
     };
   });
 
@@ -214,6 +216,10 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           deliveredAt: null,
           inventoryRecordedAt: null,
           ledgerState: 'pending',
+          deliveryMethod: 'instant',
+          deliveryWindow: null,
+          readyAt: null,
+          deliveryAttention: null,
         },
       ],
       lines: [
