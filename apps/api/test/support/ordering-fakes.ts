@@ -443,13 +443,14 @@ export class FakeShipping implements ShippingFacade {
   }
   /** The seller order ids `cancelCarrierDelivery` was asked for, and its answer. */
   carrierCancels: string[] = [];
-  cancelAnswer: Result<'cancelled' | 'not-cancellable' | 'none', CarrierDeliveryFailure> = ok(
-    'none' as const,
-  );
+  cancelAnswer: Result<
+    'cancelled' | 'not-cancellable' | 'none' | 'unknown',
+    CarrierDeliveryFailure
+  > = ok('none' as const);
   cancelCarrierDelivery(
     _c: CallContext,
     sellerOrderId: string,
-  ): Promise<Result<'cancelled' | 'not-cancellable' | 'none', CarrierDeliveryFailure>> {
+  ): Promise<Result<'cancelled' | 'not-cancellable' | 'none' | 'unknown', CarrierDeliveryFailure>> {
     this.carrierCancels.push(sellerOrderId);
     return Promise.resolve(this.cancelAnswer);
   }

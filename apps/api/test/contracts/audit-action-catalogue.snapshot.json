@@ -1268,6 +1268,67 @@
     }
   },
   {
+    "action": "shipping.fleet-model.activated",
+    "targetType": "shipping.fleet-selection-assignment",
+    "targetId": "enumOf(instant|same-day|scheduled)",
+    "actors": ["authenticated"],
+    "before": {
+      "modelId": "optional(id)"
+    },
+    "after": {
+      "modelId": "optional(id)"
+    }
+  },
+  {
+    "action": "shipping.fleet-model.created",
+    "targetType": "shipping.fleet-selection-model",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(cheapest|weighted|fixed-priority)",
+      "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|auspost|fake-test), max 8)",
+      "version": "integer",
+      "weightEta": "optional(integer)",
+      "weightPrice": "optional(integer)",
+      "weightReliability": "optional(integer)"
+    }
+  },
+  {
+    "action": "shipping.fleet-model.edited",
+    "targetType": "shipping.fleet-selection-model",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "kind": "enumOf(cheapest|weighted|fixed-priority)",
+      "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|auspost|fake-test), max 8)",
+      "version": "integer",
+      "weightEta": "optional(integer)",
+      "weightPrice": "optional(integer)",
+      "weightReliability": "optional(integer)"
+    },
+    "after": {
+      "kind": "enumOf(cheapest|weighted|fixed-priority)",
+      "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|auspost|fake-test), max 8)",
+      "version": "integer",
+      "weightEta": "optional(integer)",
+      "weightPrice": "optional(integer)",
+      "weightReliability": "optional(integer)"
+    }
+  },
+  {
+    "action": "shipping.fleet-reliability.set",
+    "targetType": "shipping.fleet-reliability",
+    "targetId": "enumOf(mondapac-drive|uber-direct|zoom2u|auspost|fake-test)",
+    "actors": ["authenticated"],
+    "before": {
+      "score": "optional(integer)"
+    },
+    "after": {
+      "score": "integer"
+    }
+  },
+  {
     "action": "storefront.draft.change",
     "targetType": "storefront.page",
     "targetId": "id",
