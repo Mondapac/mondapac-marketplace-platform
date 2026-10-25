@@ -158,6 +158,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "commission-payouts.record-refund", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
   {
     "name": "commission-payouts.view-own-ledger",

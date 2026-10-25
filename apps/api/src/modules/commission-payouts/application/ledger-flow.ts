@@ -1,8 +1,15 @@
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import type { PaidSellerOrder } from '../contracts/commission-payouts.facade';
+import type { PaidSellerOrder, RefundedSellerOrder } from '../contracts/commission-payouts.facade';
 import { commissionBase, commissionOn, isRateBps } from '../domain/commission';
-import { totalsOf, type LedgerEntry, type LedgerKind, type LedgerTotals } from '../domain/ledger';
+import {
+  isCredit,
+  totalsOf,
+  type LedgerEntry,
+  type LedgerKind,
+  type LedgerTotals,
+} from '../domain/ledger';
+import { reverseLine, reverseShipping } from '../domain/reversal';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
 import type { LedgerPage } from './ports/ledger.repository';
 import { sellerIdOf } from './rate-flow';
@@ -11,6 +18,10 @@ import { sellerIdOf } from './rate-flow';
 // one `commission` row per line (on the line amount without GST, at the rate frozen at
 // placement) and one `shipping` row for a non-zero delivery fee. Rows are only ever inserted.
 // The seller sees its own ledger; an admin sees any seller's of the Market.
+// Package 6a: a succeeded refund the seller bears adds reversal rows (`refund-sale`,
+// `refund-commission` per refunded line, `refund-shipping` for a shipping part), each worked out
+// from the stored rows of the seller order, never from a price. A refund the platform bears
+// posts nothing (owner decision Q-O2).
 
 export type LedgerFailure =
   | { readonly code: 'access.denied' }
@@ -18,7 +29,9 @@ export type LedgerFailure =
       readonly code: 'validation.failed';
       readonly fields: readonly { path: string; code: string }[];
     }
-  | { readonly code: 'commission-payouts.rate-unavailable' };
+  | { readonly code: 'commission-payouts.rate-unavailable' }
+  /** The stored rows of the seller order are missing or do not fit the refund: nothing is posted. */
+  | { readonly code: 'commission-payouts.ledger-inconsistent' };
 
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 100;
@@ -35,6 +48,8 @@ export interface LedgerEntryView {
   readonly amount: bigint;
   readonly rateBps: number | null;
   readonly baseAmount: bigint | null;
+  /** The refund (or dispute) a reversal row comes from; null for the original kinds. */
+  readonly sourceId: string | null;
   readonly occurredAt: Temporal.Instant;
   readonly recordedAt: Temporal.Instant;
 }
@@ -92,10 +107,11 @@ const view = (entry: LedgerEntry): LedgerEntryView => ({
   sellerOrderId: entry.sellerOrderId,
   orderLineId: entry.orderLineId,
   kind: entry.kind,
-  direction: entry.kind === 'commission' ? 'debit' : 'credit',
+  direction: isCredit(entry.kind) ? 'credit' : 'debit',
   amount: entry.amount.amount,
   rateBps: entry.rateBps,
   baseAmount: entry.baseAmount,
+  sourceId: entry.sourceId,
   occurredAt: entry.occurredAt,
   recordedAt: entry.recordedAt,
 });
@@ -249,6 +265,7 @@ export async function recordSellerOrderPaid(
       amount: money(line.lineAmount, paid.currency),
       rateBps: null,
       baseAmount: null,
+      sourceId: null,
     });
     const base = commissionBase(line.lineAmount, line.taxInclusive, settings.provisionalTaxRateBps);
     entries.push({
@@ -259,6 +276,7 @@ export async function recordSellerOrderPaid(
       amount: money(commissionOn(base, line.commissionRateBps), paid.currency),
       rateBps: line.commissionRateBps,
       baseAmount: base,
+      sourceId: null,
     });
   }
   if (paid.shipping > 0n) {
@@ -270,6 +288,7 @@ export async function recordSellerOrderPaid(
       amount: money(paid.shipping, paid.currency),
       rateBps: null,
       baseAmount: null,
+      sourceId: null,
     });
   }
   return deps.unitOfWork.run<'recorded' | 'already-recorded', LedgerFailure>(
@@ -278,6 +297,183 @@ export async function recordSellerOrderPaid(
       if (await deps.ledger.hasSellerOrder(context.market, paid.sellerOrderId)) {
         return ok('already-recorded' as const);
       }
+      const inserted = await deps.ledger.append(context.market, entries);
+      return ok(inserted === 0 ? ('already-recorded' as const) : ('recorded' as const));
+    },
+  );
+}
+
+const MAX_LINE_QUANTITY = 999;
+const LOSS_BEARERS: readonly string[] = ['seller', 'platform'];
+
+/** Checks the facts ordering sends for a refund; anything malformed refuses the whole refund. */
+function checkRefund(refund: RefundedSellerOrder, currency: string): readonly string[] {
+  const bad: string[] = [];
+  if (idOf(refund?.refundId) === null) bad.push('refundId');
+  if (idOf(refund?.orderId) === null) bad.push('orderId');
+  if (idOf(refund?.sellerOrderId) === null) bad.push('sellerOrderId');
+  if (idOf(refund?.sellerId) === null) bad.push('sellerId');
+  if (refund?.currency !== currency) bad.push('currency');
+  if (!LOSS_BEARERS.includes(refund?.lossBearer)) bad.push('lossBearer');
+  if (!(refund?.settledAt instanceof Temporal.Instant)) bad.push('settledAt');
+  const lines = refund?.lines;
+  if (!Array.isArray(lines) || lines.length > MAX_LINES) {
+    bad.push('lines');
+  } else {
+    const seen = new Set<string>();
+    for (const line of lines as readonly RefundedSellerOrder['lines'][number][]) {
+      const lineId = idOf(line?.orderLineId);
+      if (
+        lineId === null ||
+        seen.has(lineId) ||
+        !Number.isSafeInteger(line.lineQuantity) ||
+        line.lineQuantity < 1 ||
+        line.lineQuantity > MAX_LINE_QUANTITY ||
+        !Number.isSafeInteger(line.unitsBefore) ||
+        line.unitsBefore < 0 ||
+        !Number.isSafeInteger(line.units) ||
+        line.units < 1 ||
+        line.unitsBefore + line.units > line.lineQuantity
+      ) {
+        bad.push('lines');
+        break;
+      }
+      seen.add(lineId);
+    }
+  }
+  const shipping = refund?.shipping;
+  if (shipping !== null && shipping !== undefined) {
+    if (
+      !isAmount(shipping.refundedBefore) ||
+      !isAmount(shipping.refundedAfter) ||
+      !isAmount(shipping.charge) ||
+      shipping.refundedAfter <= shipping.refundedBefore ||
+      shipping.refundedAfter > shipping.charge
+    ) {
+      bad.push('shipping');
+    }
+  } else if (shipping === undefined) bad.push('shipping');
+  if (bad.length === 0 && refund.lines.length === 0 && (shipping ?? null) === null) {
+    bad.push('lines');
+  }
+  return bad;
+}
+
+/**
+ * The system use case behind the facade: writes the reversal rows of one succeeded refund, in one
+ * unit. Seller-borne refunds only: `platform` posts nothing. Per refunded line a `refund-sale` and
+ * a `refund-commission` row, for a shipping part a `refund-shipping` row, each the cumulative
+ * proportional reversal of the stored row (see domain/reversal.ts). The rows are inserted with
+ * ON CONFLICT DO NOTHING on (seller order, kind, line, refund), so a replay writes nothing.
+ */
+export async function recordRefund(
+  deps: CommissionPayoutsDependencies,
+  context: CallContext,
+  refund: RefundedSellerOrder,
+): Promise<Result<'recorded' | 'already-recorded' | 'nothing-to-post', LedgerFailure>> {
+  const settings = deps.policy.settings(context.market);
+  if (settings === null) return err({ code: 'commission-payouts.rate-unavailable' });
+  const bad = checkRefund(refund, settings.currency);
+  if (bad.length > 0) {
+    return err({
+      code: 'validation.failed',
+      fields: bad.map((path) => ({ path, code: 'value' })),
+    });
+  }
+  // The platform bears the loss: the seller keeps its full share and the ledger is untouched.
+  if (refund.lossBearer === 'platform') return ok('nothing-to-post' as const);
+  const inconsistent = err({ code: 'commission-payouts.ledger-inconsistent' } as const);
+  return deps.unitOfWork.run<'recorded' | 'already-recorded' | 'nothing-to-post', LedgerFailure>(
+    context.market,
+    async () => {
+      const stored = await deps.ledger.listSellerOrder(context.market, refund.sellerOrderId);
+      const original = (kind: LedgerKind, lineId: Id<'OrderLine'> | null) =>
+        stored.find(
+          (row) => row.kind === kind && row.orderLineId === lineId && row.sourceId === null,
+        );
+      if (
+        stored.length === 0 ||
+        stored.some((row) => row.sellerId !== refund.sellerId || row.orderId !== refund.orderId)
+      ) {
+        return inconsistent;
+      }
+      const common = {
+        sellerId: refund.sellerId,
+        orderId: refund.orderId,
+        sellerOrderId: refund.sellerOrderId,
+        sourceId: refund.refundId,
+        occurredAt: refund.settledAt,
+        recordedAt: deps.clock.now(),
+      };
+      const entries: LedgerEntry[] = [];
+      for (const line of refund.lines) {
+        const sale = original('sale', line.orderLineId);
+        const commission = original('commission', line.orderLineId);
+        // A fully discounted line wrote no rows, so there is nothing of it to give back.
+        if (sale === undefined && commission === undefined) continue;
+        if (
+          sale === undefined ||
+          commission === undefined ||
+          commission.rateBps === null ||
+          commission.baseAmount === null
+        ) {
+          return inconsistent;
+        }
+        const reversed = reverseLine(
+          {
+            sale: sale.amount.amount,
+            commission: commission.amount.amount,
+            commissionBase: commission.baseAmount,
+          },
+          line.unitsBefore,
+          line.units,
+          line.lineQuantity,
+        );
+        // A sale row is never zero; a share that rounds to zero writes none (the commission row
+        // below is still written, and may be zero).
+        if (reversed.sale > 0n) {
+          entries.push({
+            ...common,
+            id: deps.ids.next<'LedgerEntry'>(),
+            orderLineId: line.orderLineId,
+            kind: 'refund-sale',
+            amount: money(reversed.sale, refund.currency),
+            rateBps: null,
+            baseAmount: null,
+          });
+        }
+        entries.push({
+          ...common,
+          id: deps.ids.next<'LedgerEntry'>(),
+          orderLineId: line.orderLineId,
+          kind: 'refund-commission',
+          amount: money(reversed.commission, refund.currency),
+          rateBps: commission.rateBps,
+          baseAmount: reversed.base,
+        });
+      }
+      if (refund.shipping !== null) {
+        const row = original('shipping', null);
+        if (row === undefined) return inconsistent;
+        const reversed = reverseShipping(
+          row.amount.amount,
+          refund.shipping.refundedBefore,
+          refund.shipping.refundedAfter,
+          refund.shipping.charge,
+        );
+        if (reversed > 0n) {
+          entries.push({
+            ...common,
+            id: deps.ids.next<'LedgerEntry'>(),
+            orderLineId: null,
+            kind: 'refund-shipping',
+            amount: money(reversed, refund.currency),
+            rateBps: null,
+            baseAmount: null,
+          });
+        }
+      }
+      if (entries.length === 0) return ok('nothing-to-post' as const);
       const inserted = await deps.ledger.append(context.market, entries);
       return ok(inserted === 0 ? ('already-recorded' as const) : ('recorded' as const));
     },
