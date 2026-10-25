@@ -9,6 +9,7 @@ import { viewCart } from '../cart/cart.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
+import { CheckoutProgress } from './progress.tsx';
 
 /** A page heading that takes the focus when the page opens (after the redirect back). */
 function PageTitle({
@@ -37,11 +38,21 @@ function PageTitle({
 export function SamplePayment({ reference }: { readonly reference: string }) {
   const t = useTranslations('checkout');
   const router = useRouter();
-  const { cart, cartSource, discount, notes, clearCart, deliveryAddress, setPlacedOrder } =
-    useStore();
-  const view = viewCart(cart, cartSource, discount);
+  const {
+    cart,
+    cartSource,
+    discount,
+    delivery,
+    notes,
+    clearCart,
+    customer,
+    deliveryAddress,
+    setPlacedOrder,
+  } = useStore();
+  const view = viewCart(cart, cartSource, discount, delivery);
   return (
     <div className="cwrap">
+      <CheckoutProgress current="pay" signedIn={customer !== null} />
       <div className="done">
         <div className="cnote" role="status">
           <Icon name="info" />
@@ -80,8 +91,10 @@ export function SamplePayment({ reference }: { readonly reference: string }) {
 
 export function PaymentNotCompleted() {
   const t = useTranslations('checkout');
+  const { customer } = useStore();
   return (
     <div className="cwrap">
+      <CheckoutProgress current="pay" signedIn={customer !== null} />
       <div className="done">
         <div className="cnote" role="alert">
           <Icon name="info" />
@@ -122,6 +135,7 @@ export function Confirmation() {
     );
   return (
     <div className="cwrap">
+      <CheckoutProgress current="done" signedIn />
       <div className="done">
         <div className="okc">
           <span className="tk">
@@ -155,10 +169,12 @@ export function Confirmation() {
               <span className="badge">{t('waiting-seller')}</span>
             </header>
             <small className="legal">
-              {t('part', {
-                reference: `${order.reference}-${n + 1}`,
-                window: g.seller.deliveryWindow,
-              })}
+              {g.speed === 'express'
+                ? t('part-express', { reference: `${order.reference}-${n + 1}` })
+                : t('part', {
+                    reference: `${order.reference}-${n + 1}`,
+                    window: g.seller.deliveryWindow,
+                  })}
             </small>
             <ul>
               {g.lines.map((l) => (

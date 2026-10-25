@@ -216,9 +216,40 @@ export interface SellerTerms {
   readonly deliveryWindow: string;
   /** The seller's minimum order; absent when it has none. */
   readonly minimumOrder?: Money;
-  /** The seller's flat delivery fee for one order. */
+  /** The seller's flat delivery fee for one order (Scheduled delivery). */
   readonly deliveryFee: Money;
+  /** Whether the seller takes Express orders now; absent: it does not offer Express. */
+  readonly express?: ExpressTerms;
 }
+
+/**
+ * Express delivery of one seller (within 2 hours once the seller has the order ready, booked by
+ * the platform with a courier). The cut-off is evaluated by the backend in the seller's time zone
+ * (ADR-0005); the storefront only shows it.
+ */
+export type ExpressTerms =
+  | { readonly kind: 'offered' }
+  | { readonly kind: 'not-offered' }
+  /** Today's cut-off has passed: `cutoff` is the instant, `timeZone` the seller's IANA zone. */
+  | { readonly kind: 'closed'; readonly cutoff: string; readonly timeZone: string };
+
+/** How one seller's part is delivered; Scheduled (the seller's window) is the default. */
+export type DeliverySpeed = 'scheduled' | 'express';
+
+/** The address a delivery quote is asked for: a saved address, or a new address's postcode. */
+export type QuoteAddress =
+  | { readonly kind: 'saved'; readonly id: string }
+  | { readonly kind: 'new'; readonly postcode: string };
+
+/**
+ * The courier's answer for one seller and one address: the live Express price (null when the
+ * seller takes no Express order now), or that its couriers do not reach the address, or no answer.
+ * Quotes are checked again when the buyer pays.
+ */
+export type DeliveryQuote =
+  | { readonly kind: 'quote'; readonly express: Money | null }
+  | { readonly kind: 'out-of-range' }
+  | { readonly kind: 'failed' };
 
 /**
  * How the cart shows the tax a GST-inclusive total holds ("Includes A$x GST"). A PLACEHOLDER
@@ -289,10 +320,26 @@ export interface CheckoutSource {
   /** Sample only: the order Pay creates gives its reference when checkout is wired. */
   readonly orderReference: string;
   /**
+   * Sample only: the places the stubbed address search knows (suburbs and street addresses in the
+   * service area). The address-lookup provider replaces this list.
+   */
+  readonly places: readonly CheckoutPlace[];
+  /**
    * Who answers whether a new address's postcode is delivered to: `sample` checks
    * `serviceArea.postcodes` in the browser; `api` asks the API's delivery area (API_BASE_URL set).
    */
   readonly areaCheck: 'sample' | 'api';
+}
+
+/** A suburb (no street) or a street address the checkout's address search suggests. */
+export interface CheckoutPlace {
+  readonly id: string;
+  /** The street part ("12 Example Street"); empty for a suburb. */
+  readonly street: string;
+  readonly suburb: string;
+  /** The state or region as written in an address ("QLD"). */
+  readonly regionCode: string;
+  readonly postcode: string;
 }
 
 /** The API's answer for one postcode: `off` while the storefront reads sample data. */
