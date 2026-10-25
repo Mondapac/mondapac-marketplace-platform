@@ -47,6 +47,11 @@ const order = (over: Partial<SellerOrderView> = {}): SellerOrderView => ({
   trackingRef: null,
   shippedAt: null,
   deliveredAt: null,
+  deliveryMethod: 'instant',
+  deliveryWindowStart: null,
+  deliveryWindowEnd: null,
+  readyAt: null,
+  deliveryAttention: null,
   lines: [line()],
   ...over,
 });
@@ -59,10 +64,15 @@ const fee: OwnFee = { sellerId: 's', amount: '500', currency: 'AUD' };
 const mountList = (initial = page([order()]), flatFee: OwnFee | null = fee) =>
   render(wrap(<SellerOrders initial={initial} fee={flatFee} />));
 
-const mountDetail = (initial = order(), { canShip = true, canDeliver = true } = {}) =>
+const mountDetail = (initial = order(), { canMarkReady = true, canDeliver = true } = {}) =>
   render(
     wrap(
-      <OrderDetail initial={initial} csrfToken="csrf" canShip={canShip} canDeliver={canDeliver} />,
+      <OrderDetail
+        initial={initial}
+        csrfToken="csrf"
+        canMarkReady={canMarkReady}
+        canDeliver={canDeliver}
+      />,
     ),
   );
 
@@ -88,7 +98,7 @@ describe('SellerOrders list', () => {
     expect(screen.getByText('2')).toBeTruthy();
     expect(screen.getByText(/14 Oct.*10:00 am/)).toBeTruthy();
     expect(screen.getByText(/Delivery fee on every order: \$5\.00/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Mark as shipped' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mark ready' })).toBeNull();
   });
 
   it('shows the paid time in the seller zone', () => {
@@ -169,7 +179,7 @@ describe('OrderDetail', () => {
   it('shows times in the seller zone the provider carries', () => {
     render(
       <NextIntlClientProvider locale="en-AU" timeZone="Australia/Brisbane" messages={messages}>
-        <OrderDetail initial={order()} csrfToken="csrf" canShip={true} canDeliver={true} />
+        <OrderDetail initial={order()} csrfToken="csrf" canMarkReady={true} canDeliver={true} />
       </NextIntlClientProvider>,
     );
     expect(screen.getByText(/^Paid 14 Oct 2026, 8:00 pm AEST · 2 items$/)).toBeTruthy();
@@ -221,7 +231,7 @@ describe('OrderDetail', () => {
             lines: [line({ unitPrice: nzd('1500'), lineAmount: nzd('3000') })],
           })}
           csrfToken="csrf"
-          canShip={true}
+          canMarkReady={true}
           canDeliver={true}
         />
       </NextIntlClientProvider>,
@@ -231,40 +241,66 @@ describe('OrderDetail', () => {
     expect(screen.getByText(/^Paid 14 Oct 2026, 11:00 pm NZDT · 2 items$/)).toBeTruthy();
   });
 
-  it('ships with a carrier and an optional tracking reference, then shows the shipment', async () => {
+  it('has one action on a paid order, "Mark ready", and no carrier or tracking form', () => {
+    mountDetail();
+    expect(screen.getByRole('button', { name: 'Mark ready' })).toBeTruthy();
+    expect(screen.queryByLabelText('Carrier')).toBeNull();
+    expect(screen.queryByLabelText(/Tracking reference/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mark as shipped' })).toBeNull();
+    expect(screen.getByText('Delivery chosen by the customer')).toBeTruthy();
+    expect(screen.getByText('Instant, under 2 hours')).toBeTruthy();
+  });
+
+  it('marks the order ready with an empty body, then shows it as ready and arranged by MondaPac', async () => {
     call.mockResolvedValue({
       ok: true,
       status: 200,
-      body: shippedOrder({ carrier: 'Australia Post', trackingRef: 'AP1' }),
+      body: order({ readyAt: '2026-10-14T11:00:00.000Z' }),
     });
     mountDetail();
-    fireEvent.change(screen.getByLabelText('Carrier'), { target: { value: ' Australia Post ' } });
-    fireEvent.change(screen.getByLabelText(/Tracking reference/), { target: { value: 'AP1' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Mark as shipped' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mark ready' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith(
       'POST',
-      'ordering/seller/orders/0190a000-0000-7000-8000-0000000000a1/ship',
-      { carrier: 'Australia Post', trackingRef: 'AP1' },
+      'ordering/seller/orders/0190a000-0000-7000-8000-0000000000a1/ready',
+      {},
       'csrf',
     );
-    expect(await screen.findByText('Shipped', { selector: 'span' })).toBeTruthy();
-    expect(screen.getByText('Australia Post')).toBeTruthy();
-    expect(screen.getByText('AP1')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Mark as delivered' })).toBeTruthy();
-    expect(screen.queryByLabelText('Carrier')).toBeNull();
+    expect(await screen.findByText('Ready', { selector: 'span' })).toBeTruthy();
+    expect(screen.getByText(/You marked this order ready 14 Oct.*11:00 am/)).toBeTruthy();
+    expect(screen.getByText(/MondaPac is arranging the delivery/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Mark ready' })).toBeNull();
   });
 
-  it('leaves the tracking reference out when it is empty and refuses an empty carrier', async () => {
-    call.mockResolvedValue({ ok: true, status: 200, body: shippedOrder() });
-    mountDetail();
-    fireEvent.click(screen.getByRole('button', { name: 'Mark as shipped' }));
-    expect(screen.getByText('Enter the carrier.')).toBeTruthy();
-    expect(call).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText('Carrier'), { target: { value: 'Post' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Mark as shipped' }));
-    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
-    expect(call.mock.calls[0]?.[2]).toEqual({ carrier: 'Post' });
+  it('tells a seller of a pickup order that the customer collects it', () => {
+    mountDetail(order({ deliveryMethod: 'pickup', readyAt: '2026-10-14T11:00:00.000Z' }));
+    expect(screen.getByText('Pickup in person')).toBeTruthy();
+    expect(screen.getByText(/The customer collects it from you in person/)).toBeTruthy();
+    expect(screen.queryByText(/arranging the delivery/)).toBeNull();
+  });
+
+  it('shows a scheduled window in the seller zone and never asks the seller to deliver when no carrier is found', () => {
+    render(
+      <NextIntlClientProvider locale="en-AU" timeZone="Australia/Brisbane" messages={messages}>
+        <OrderDetail
+          initial={order({
+            deliveryMethod: 'scheduled',
+            deliveryWindowStart: '2026-10-16T01:00:00.000Z',
+            deliveryWindowEnd: '2026-10-16T03:00:00.000Z',
+            readyAt: '2026-10-14T11:00:00.000Z',
+            deliveryAttention: 'no-carrier',
+          })}
+          csrfToken="csrf"
+          canMarkReady={true}
+          canDeliver={true}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(
+      screen.getByText(/Scheduled · 16 Oct.*11:00 am AEST to 16 Oct.*1:00 pm AEST/),
+    ).toBeTruthy();
+    expect(screen.getByText(/MondaPac is sorting out a courier/)).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
   it('shows carrier, tracking and timestamps once shipped and marks it delivered', async () => {
@@ -289,24 +325,41 @@ describe('OrderDetail', () => {
     expect(screen.queryByRole('button', { name: 'Mark as delivered' })).toBeNull();
   });
 
-  it('shows a conflict in words and keeps the form', async () => {
+  it('shows a conflict in words and keeps the button', async () => {
     call.mockResolvedValue({
       ok: false,
       failure: { status: 409, code: 'ordering.fulfilment-conflict' },
     });
     mountDetail();
-    fireEvent.change(screen.getByLabelText('Carrier'), { target: { value: 'Post' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Mark as shipped' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mark ready' }));
     expect(await screen.findByText(/already moved on/)).toBeTruthy();
-    expect(screen.getByLabelText('Carrier')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Mark ready' })).toBeTruthy();
+  });
+
+  it('sends one request for a double click', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: order({ readyAt: '2026-10-14T11:00:00.000Z' }),
+    });
+    mountDetail();
+    const button = screen.getByRole('button', { name: 'Mark ready' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+  });
+
+  it('shows a ready order as Ready in the list', () => {
+    mountList(page([order({ readyAt: '2026-10-14T11:00:00.000Z' })]));
+    expect(screen.getAllByText('Ready').length).toBeGreaterThan(0);
   });
 
   it('hides the actions without the permissions', () => {
-    const { unmount } = mountDetail(order(), { canShip: false, canDeliver: false });
+    const { unmount } = mountDetail(order(), { canMarkReady: false, canDeliver: false });
     expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.getByText('This order has not been shipped yet.')).toBeTruthy();
+    expect(screen.getByText('This order is not marked ready yet.')).toBeTruthy();
     unmount();
-    mountDetail(shippedOrder(), { canShip: false, canDeliver: false });
+    mountDetail(shippedOrder(), { canMarkReady: false, canDeliver: false });
     expect(screen.queryByRole('button')).toBeNull();
   });
 });

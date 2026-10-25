@@ -1,63 +1,52 @@
 'use client';
 
-import {
-  BackLink,
-  Badge,
-  Banner,
-  Button,
-  Card,
-  CARD_TABLE,
-  DataList,
-  TextField,
-} from '@mondapac/ui';
+import { BackLink, Badge, Banner, Button, Card, CARD_TABLE, DataList } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { formatInstant, shortInstant } from '../catalog/format.ts';
 import { formatMinor } from '../price/money.ts';
 import { orderProblemOf } from './errors.ts';
-import { shortId, TONE } from './status.ts';
+import { shortId, statusOf, TONE } from './status.ts';
 import type { SellerOrderView } from './types.ts';
 
 /**
  * One paid order on its own page: summary, its lines with product names, the totals and the
- * fulfilment: the shipment form, the shipment details once shipped and "Mark as delivered".
+ * fulfilment. The shop's one action is "Mark ready": it tells MondaPac the order is packed. The
+ * shop never picks a courier, a method or a provider; the customer's method is shown for
+ * information, and the shipment details appear once the platform's courier has picked it up.
  */
 export function OrderDetail({
   initial,
   csrfToken,
-  canShip,
+  canMarkReady,
   canDeliver,
 }: {
   readonly initial: SellerOrderView;
   readonly csrfToken: string;
-  readonly canShip: boolean;
+  readonly canMarkReady: boolean;
   readonly canDeliver: boolean;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
   const zone = useTimeZone();
   const [order, setOrder] = useState(initial);
-  const [carrier, setCarrier] = useState('');
-  const [tracking, setTracking] = useState('');
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [fieldError, setFieldError] = useState<Record<string, string>>({});
   const busy = useRef(false);
   const money = (amount: { amount: string; currency: string }) =>
     formatMinor(amount.amount, amount.currency, locale);
 
   /** One step at a time; the answer is the new state of this order. */
-  async function step(action: 'ship' | 'deliver', body: unknown) {
+  async function step(action: 'ready' | 'deliver') {
     if (busy.current) return;
     busy.current = true;
     setPending(true);
     setProblem(null);
-    setFieldError({});
     const result = await callApi<SellerOrderView>(
       'POST',
       `ordering/seller/orders/${order.sellerOrderId}/${action}`,
-      body,
+      {},
       csrfToken,
     );
     busy.current = false;
@@ -70,23 +59,19 @@ export function OrderDetail({
       window.location.assign('/session-ended');
       return;
     }
-    const fields: Record<string, string> = {};
-    for (const entry of result.failure.details?.fields ?? []) fields[entry.path] = 'invalid';
-    setFieldError(fields);
     setProblem(orderProblemOf(result.failure));
   }
 
-  function ship(event: FormEvent) {
-    event.preventDefault();
-    const name = carrier.trim();
-    if (name === '') {
-      setFieldError({ carrier: 'required' });
-      return;
-    }
-    const ref = tracking.trim();
-    void step('ship', ref === '' ? { carrier: name } : { carrier: name, trackingRef: ref });
-  }
-
+  const method = t(`method.${order.deliveryMethod}`);
+  const methodText =
+    order.deliveryMethod === 'scheduled' &&
+    order.deliveryWindowStart !== null &&
+    order.deliveryWindowEnd !== null
+      ? `${method} · ${t('method.window', {
+          start: shortInstant(order.deliveryWindowStart, locale, zone),
+          end: shortInstant(order.deliveryWindowEnd, locale, zone),
+        })}`
+      : method;
   const reference = shortId(order.sellerOrderId);
   const count = order.lines.reduce((sum, line) => sum + line.quantity, 0);
   const lineHead = (col: 'item' | 'quantity' | 'unit' | 'amount') => t(`line.col.${col}`);
@@ -98,7 +83,7 @@ export function OrderDetail({
           <h1 className="min-w-0 break-words text-2xl font-semibold">
             {t('detail-title', { id: reference })}
           </h1>
-          <Badge tone={TONE[order.fulfilment]}>{t(`status.${order.fulfilment}`)}</Badge>
+          <Badge tone={TONE[statusOf(order)]}>{t(`status.${statusOf(order)}`)}</Badge>
         </div>
         <p className="text-sm text-fg-muted">
           {t('paid-line', { when: formatInstant(order.paidAt, locale, zone) })}
@@ -188,96 +173,87 @@ export function OrderDetail({
             />
           </Card>
           <Card title={t('fulfilment')}>
-            {order.fulfilment === 'to-ship' ? (
-              canShip ? (
-                <form className="flex flex-col gap-4" onSubmit={ship} noValidate>
-                  {problem === null ? null : (
-                    <Banner tone="critical">{t(`error.${problem}`)}</Banner>
-                  )}
-                  <TextField
-                    name="carrier"
-                    label={t('ship.carrier')}
-                    value={carrier}
-                    maxLength={60}
-                    error={
-                      fieldError.carrier === undefined
-                        ? undefined
-                        : t(`validation.${fieldError.carrier}`)
-                    }
-                    onChange={(event) => setCarrier(event.target.value)}
-                  />
-                  <TextField
-                    name="trackingRef"
-                    label={t('ship.tracking')}
-                    optionalLabel={t('optional')}
-                    value={tracking}
-                    maxLength={80}
-                    error={
-                      fieldError.trackingRef === undefined
-                        ? undefined
-                        : t(`validation.${fieldError.trackingRef}`)
-                    }
-                    onChange={(event) => setTracking(event.target.value)}
-                  />
-                  <p className="text-sm text-balance text-fg-muted">{t('ship.hint')}</p>
-                  <div>
-                    <Button type="submit" loading={pending}>
-                      {t('ship.submit')}
-                    </Button>
-                  </div>
-                </form>
-              ) : (
-                <p className="text-sm text-fg-muted">{t('not-shipped')}</p>
-              )
-            ) : (
-              <>
-                <DataList
-                  variant="stacked"
-                  missing={t('not-given')}
-                  rows={[
-                    { label: t('ship.carrier'), value: order.carrier },
-                    {
-                      label: t('ship.tracking'),
-                      value:
-                        order.trackingRef === null ? null : (
-                          <span className="break-all">{order.trackingRef}</span>
-                        ),
-                    },
-                    {
-                      label: t('shipped-on'),
-                      value:
-                        order.shippedAt === null
-                          ? null
-                          : shortInstant(order.shippedAt, locale, zone),
-                    },
-                    ...(order.deliveredAt === null
-                      ? []
-                      : [
-                          {
-                            label: t('delivered-on'),
-                            value: shortInstant(order.deliveredAt, locale, zone),
-                          },
-                        ]),
-                  ]}
-                />
-                {order.fulfilment === 'shipped' && canDeliver ? (
+            <div className="flex flex-col gap-4">
+              <DataList
+                variant="stacked"
+                missing={t('not-given')}
+                rows={[
+                  { label: t('method.label'), value: methodText },
+                  ...(order.fulfilment === 'to-ship'
+                    ? []
+                    : [
+                        { label: t('ship.carrier'), value: order.carrier },
+                        {
+                          label: t('ship.tracking'),
+                          value:
+                            order.trackingRef === null ? null : (
+                              <span className="break-all">{order.trackingRef}</span>
+                            ),
+                        },
+                        {
+                          label: t('shipped-on'),
+                          value:
+                            order.shippedAt === null
+                              ? null
+                              : shortInstant(order.shippedAt, locale, zone),
+                        },
+                      ]),
+                  ...(order.deliveredAt === null
+                    ? []
+                    : [
+                        {
+                          label: t('delivered-on'),
+                          value: shortInstant(order.deliveredAt, locale, zone),
+                        },
+                      ]),
+                ]}
+              />
+              {order.fulfilment === 'to-ship' && order.readyAt === null ? (
+                canMarkReady ? (
                   <>
                     {problem === null ? null : (
                       <Banner tone="critical">{t(`error.${problem}`)}</Banner>
                     )}
+                    <p className="text-sm text-balance text-fg-muted">{t('ready.hint')}</p>
                     <div>
-                      <Button
-                        variant="secondary"
-                        loading={pending}
-                        onClick={() => void step('deliver', {})}
-                      >
-                        {t('deliver')}
+                      <Button loading={pending} onClick={() => void step('ready')}>
+                        {t('ready.submit')}
                       </Button>
                     </div>
                   </>
-                ) : null}
-              </>
-            )}
+                ) : (
+                  <p className="text-sm text-fg-muted">{t('not-ready')}</p>
+                )
+              ) : null}
+              {order.fulfilment === 'to-ship' && order.readyAt !== null ? (
+                <div className="flex flex-col gap-2 text-sm text-fg-muted">
+                  <p className="text-fg">
+                    {t('ready.done', { when: shortInstant(order.readyAt, locale, zone) })}
+                  </p>
+                  <p>
+                    {order.deliveryMethod === 'pickup'
+                      ? t('ready.pickup')
+                      : t(order.deliveryAttention === null ? 'ready.arranged' : 'ready.attention')}
+                  </p>
+                </div>
+              ) : null}
+              {order.fulfilment === 'shipped' && canDeliver ? (
+                <>
+                  {problem === null ? null : (
+                    <Banner tone="critical">{t(`error.${problem}`)}</Banner>
+                  )}
+                  <div>
+                    <Button
+                      variant="secondary"
+                      loading={pending}
+                      onClick={() => void step('deliver')}
+                    >
+                      {t('deliver')}
+                    </Button>
+                  </div>
+                </>
+              ) : null}
+            </div>
           </Card>
         </div>
       </div>

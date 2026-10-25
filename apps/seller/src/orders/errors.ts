@@ -9,7 +9,7 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'access.denied': 'denied',
 };
 
-/** The message key (under `orders.error`) for a failed ship or deliver step. */
+/** The message key (under `orders.error`) for a failed ready or deliver step. */
 export function orderProblemOf(failure: ApiFailure): string {
   const named = BY_CODE[failure.code];
   if (named !== undefined) return named;
