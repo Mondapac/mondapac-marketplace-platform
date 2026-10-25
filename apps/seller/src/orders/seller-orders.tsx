@@ -71,7 +71,7 @@ export function SellerOrders({
             onSelect={(id) => setFilter(id as FulfilmentFilter)}
             items={FULFILMENT_FILTERS.map((id) => ({
               id,
-              label: t(id === 'all' ? 'filter.all' : `status.${id}`),
+              label: t(id === 'all' || id === 'to-ship' ? `filter.${id}` : `status.${id}`),
             }))}
           />
           {shown.length === 0 ? (

@@ -29,6 +29,34 @@ export function shortInstant(iso: string, locale: string, zone?: string | null):
   return `${text} ${zoneName(date, locale, timeZone)}`;
 }
 
+/**
+ * A time window in the seller's zone, collapsed when it sits on one day ("26 Oct, 1:00 to 3:00 pm
+ * AEST") and spelled out in full when it crosses midnight. The year shows only when it is not this one.
+ */
+export function windowRange(
+  startIso: string,
+  endIso: string,
+  locale: string,
+  zone?: string | null,
+): string {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '-';
+  const timeZone = resolveZone(zone);
+  const yearIn = (instant: Date) =>
+    dateFormat('en', { year: 'numeric', numberingSystem: 'latn', timeZone }).format(instant);
+  const sameYear = yearIn(start) === yearIn(new Date());
+  const range = dateFormat(locale, {
+    day: 'numeric',
+    month: 'short',
+    ...(sameYear ? {} : { year: 'numeric' }),
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone,
+  }).formatRange(start, end);
+  return `${range} ${zoneName(end, locale, timeZone)}`;
+}
+
 /** A status or code from the API as a translation key suffix; unknown values map to `unknown`. */
 export function known(value: string, allowed: readonly string[]): string {
   return allowed.includes(value) ? value : 'unknown';

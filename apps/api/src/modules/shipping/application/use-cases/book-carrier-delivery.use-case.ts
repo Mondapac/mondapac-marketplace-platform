@@ -10,7 +10,7 @@ import type { ShippingDependencies } from '../shipping-dependencies';
 
 /**
  * `shipping.book-carrier-delivery`: the `real_time_delivery` FulfillmentStrategy for one paid
- * seller order (SHP-02/03). Rule `system`: only ordering's handler of `ordering.order-paid.v1`
+ * seller order (SHP-02/03). Rule `system`: only ordering's handlers of `ordering.order-paid.v1` (scheduled) and `ordering.seller-order-ready.v1` (instant, same day)
  * calls it, through the shipping facade; not exposed over HTTP.
  */
 export class BookCarrierDelivery extends UseCase<
