@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result, Temporal } from '@mondapac/shared-kernel';
+import type { StepUpRefusal } from '../../../platform/authz';
 import { TransactionConflictError } from '../../../platform/unit-of-work/errors';
 import { WALLET_SETTINGS_CHANGE_STEP_UP } from '../contracts/step-up';
 import { WalletStatusChanged } from '../domain/audit';
@@ -15,9 +16,11 @@ import type { WalletDependencies } from './wallet-dependencies';
 // The wallet switch of a Market (owner decisions of 2026-10-25): an admin moves it between off,
 // active, paused and frozen. The switch never deletes or zeroes a balance or a lot. Going back to
 // `off` is refused once the Market has any journal (use paused). The change is refused in an acting-as session, is audited with before and after, and is idempotent:
-// asking for the state the Market is already in changes nothing and writes no audit row. It
-// needs a fresh two-step proof of the admin's session for `wallet.settings.change` (issue #491,
-// closes M3), asked of identity here as well as by the route guard (ADR-0018).
+// asking for the state the Market is already in changes nothing and writes no audit row. A change
+// spends a fresh two-step proof of the admin's session for `wallet.settings.change` (issue #491,
+// closes M3; Hassan L1, L2): the proof is taken in the same unit as the save, so it serves one
+// change only, and no fresh proof left at that moment means the unit commits nothing. The route
+// guard checks the same proof (read-only) before the body is read.
 
 const LOCK_TIMEOUT_MS = 3000;
 
@@ -73,6 +76,17 @@ export async function viewSettings(
   );
 }
 
+/** identity's refusal of the step-up, as the switch answers it; anything else stays closed. */
+function stepUpFailure(refusal: StepUpRefusal): SettingsFailure {
+  if (
+    refusal.code === 'second-factor.required' ||
+    refusal.code === 'second-factor.enrolment-required'
+  ) {
+    return { code: refusal.code, actionKey: refusal.actionKey };
+  }
+  return { code: refusal.code === 'access.unavailable' ? 'access.unavailable' : 'access.denied' };
+}
+
 export async function setStatus(
   deps: WalletDependencies,
   context: CallContext,
@@ -99,22 +113,6 @@ export async function setStatus(
   if (fields.length > 0 || !isWalletStatus(status))
     return err({ code: 'validation.failed', fields });
 
-  // The admin step-up, before any change (issue #491). Any other refusal from identity keeps the
-  // switch closed.
-  const stepUp = await deps.identity.requireStepUp(context, WALLET_SETTINGS_CHANGE_STEP_UP);
-  if (!stepUp.ok) {
-    const refusal = stepUp.error;
-    if (
-      refusal.code === 'second-factor.required' ||
-      refusal.code === 'second-factor.enrolment-required'
-    ) {
-      return err({ code: refusal.code, actionKey: refusal.actionKey });
-    }
-    return err({
-      code: refusal.code === 'access.unavailable' ? 'access.unavailable' : 'access.denied',
-    });
-  }
-
   const now = deps.clock.now();
   // The change waits for the journals in flight; it gives up after 3 s instead of queueing the
   // whole Market's wallet writes behind it.
@@ -134,6 +132,9 @@ export async function setStatus(
         if (status === 'off' && (await deps.wallet.hasJournals(context.market))) {
           return err({ code: 'wallet.cannot-turn-off-with-history' } as const);
         }
+        // The admin step-up, spent here and only here (ADR-0018: authorization in the use case).
+        const spent = await deps.stepUp.consume(context, WALLET_SETTINGS_CHANGE_STEP_UP);
+        if (!spent.ok) return err(stepUpFailure(spent.error));
         await deps.settings.save(context.market, {
           status,
           reason,
@@ -144,7 +145,12 @@ export async function setStatus(
           context,
           WalletStatusChanged.entry('wallet-settings', {
             before: { status: was, reason: before?.reason ?? null },
-            after: { status, reason },
+            after: {
+              status,
+              reason,
+              stepUpSessionId: spent.value.sessionId,
+              stepUpVerifiedAt: spent.value.verifiedAt,
+            },
           }),
         );
         return ok({ status, reason, updatedAt: now });

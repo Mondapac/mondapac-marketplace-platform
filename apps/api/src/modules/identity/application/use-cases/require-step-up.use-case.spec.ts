@@ -49,6 +49,7 @@ describe.each(['AU', 'ZZ'] as const)('RequireStepUp in market %s', (code) => {
       proofSessions.push(session);
       return Promise.resolve(proofs.get(`${session}:${key}`) ?? proofs.get(key) ?? null);
     },
+    takeProof: () => Promise.resolve(null),
     recordProof: () => Promise.resolve(),
   };
   const factors = {

@@ -270,6 +270,23 @@ export const AdminStepUpVerifiedAudit = defineAuditAction({
   after: { sessionId: auditField.id(), actionKey: auditField.enumOf(STEP_UP_ACTION_KEYS) },
 });
 
+/**
+ * A platform admin presented a wrong two-step code for an admin action (issue #491; Hassan L3).
+ * Target: the admin's own account. `cause` is `locked` for the wrong code that reached the
+ * account's limit and locked the factor (for sign-in too), `invalid` otherwise. Bounded by that
+ * lock-out; a request refused before the code is checked (already locked) writes no row.
+ */
+export const AdminStepUpRefusedAudit = defineAuditAction({
+  action: 'identity.admin-step-up.refused',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: {
+    sessionId: auditField.id(),
+    actionKey: auditField.enumOf(STEP_UP_ACTION_KEYS),
+    cause: auditField.enumOf(['invalid', 'locked'] as const),
+  },
+});
+
 /** The account statuses (identity design 3.1), as an audit row names them. */
 const ACCOUNT_STATUSES = ['active', 'disabled'] as const;
 
@@ -562,6 +579,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   SellerMemberRemovedAudit,
   SellerStepUpPolicyChangedAudit,
   AdminStepUpVerifiedAudit,
+  AdminStepUpRefusedAudit,
   AccountDisabledAudit,
   AccountEnabledAudit,
   InvitationIssuedAudit,

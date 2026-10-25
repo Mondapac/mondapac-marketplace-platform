@@ -7,7 +7,7 @@ import {
   type StepUpActionRegistry,
   type UseCaseGate,
 } from '../../../../platform/authz';
-import { AdminStepUpVerifiedAudit } from '../../domain/audit';
+import { AdminStepUpRefusedAudit, AdminStepUpVerifiedAudit } from '../../domain/audit';
 import { STEP_UP_ACTION_KEYS, stepUpAudienceOf } from '../../domain/step-up';
 import { spendCode } from '../second-factor/code-check';
 import {
@@ -49,7 +49,8 @@ type AdminStepUpKey = (typeof STEP_UP_ACTION_KEYS)[number];
  * ({@link SignedInFactorStep} with population `admin`: counted on the account's
  * `second-factor.account` counter, the same one admin sign-in uses, and locked after too many
  * wrong ones). In the unit that spends it the session gets a proof for this action only, and
- * `identity.admin-step-up.verified` is audited; `RequireStepUp` accepts the proof for
+ * `identity.admin-step-up.verified` is audited; a wrong code is audited
+ * `identity.admin-step-up.refused` in the unit that counts it; `RequireStepUp` accepts the proof for
  * `STEP_UP_PROOF_MINUTES`. An acting-as session is refused. Refusals: `step-up.action-unknown`
  * (not a registered admin action), `second-factor.invalid`, `second-factor.locked`,
  * `second-factor.unavailable` (no active two-step).
@@ -107,6 +108,14 @@ export class VerifyAdminStepUp extends UseCase<
       secretOf: (factor) => factor.state.secretCiphertext,
       spend: (factor, check, now) =>
         spendCode(this.deps.factors, market, factor.state.id, check, now),
+      failed: async ({ account, locked }) => {
+        await this.deps.audit.record(
+          context,
+          AdminStepUpRefusedAudit.entry(account.state.id, {
+            after: { sessionId, actionKey, cause: locked ? 'locked' : 'invalid' },
+          }),
+        );
+      },
       succeed: async ({ account, now }) => {
         await this.deps.stepUp.recordProof(market, sessionId, actionKey, now);
         await this.deps.audit.record(

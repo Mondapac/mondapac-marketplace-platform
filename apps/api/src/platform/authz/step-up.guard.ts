@@ -9,7 +9,7 @@ import {
   type ExecutionContext,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import { callContextOf } from '../call-context/call-context.decorator';
 import { ACCESS_DENIED_STATUS } from './access-denied';
 
@@ -32,10 +32,34 @@ export interface StepUpCheck {
   check(context: CallContext, actionKey: string): Promise<Result<void, StepUpRefusal>>;
 }
 
+/** What a consumed proof was: the session it belonged to and when its code was verified. */
+export interface ConsumedStepUp {
+  readonly sessionId: Id<'Session'>;
+  readonly verifiedAt: Temporal.Instant;
+}
+
+/**
+ * Spends the fresh proof of an admin action once (issue #491, single use), implemented by
+ * `identity`. Call it inside the caller's own open read-write unit, right before the change the
+ * proof allows, as `AuditWriter` is called: it opens no unit and passes no gate (the guarded use
+ * case has passed its own). It deletes the proof of this session for this action and answers
+ * when its code was verified, or the refusal (`second-factor.required` when no fresh proof is
+ * left, `second-factor.enrolment-required`, `access.denied`, `access.unavailable`). Fail closed:
+ * on any refusal the caller returns `err`, so its unit commits nothing. Two units with one proof
+ * are serialised on the proof's row and exactly one gets it.
+ */
+export interface StepUpProofConsumer {
+  consume(context: CallContext, actionKey: string): Promise<Result<ConsumedStepUp, StepUpRefusal>>;
+}
+
 /** What `identity` exports; `AuthzModule` binds it to {@link STEP_UP_CHECK}. */
 export const STEP_UP_SOURCE = Symbol('STEP_UP_SOURCE');
 /** What the guard injects; global through `AuthzModule`. */
 export const STEP_UP_CHECK = Symbol('STEP_UP_CHECK');
+/** What `identity` exports; `AuthzModule` binds it to {@link STEP_UP_CONSUMER}. */
+export const STEP_UP_CONSUMER_SOURCE = Symbol('STEP_UP_CONSUMER_SOURCE');
+/** What a use case injects to spend an admin proof in its own unit; global through `AuthzModule`. */
+export const STEP_UP_CONSUMER = Symbol('STEP_UP_CONSUMER');
 
 const REQUIRES_STEP_UP = 'requires-step-up-action';
 

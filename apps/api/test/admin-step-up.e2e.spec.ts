@@ -21,6 +21,7 @@ import { TOTP } from '../src/modules/identity/domain/totp';
 import { hotp } from '../src/modules/identity/infrastructure/second-factor/totp';
 import { SetWalletStatus } from '../src/modules/wallet/application/use-cases/set-wallet-status.use-case';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
+import { AUTHENTICATOR, type Authenticator } from '../src/platform/authz/authenticator';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { loadMarketConfigs } from '../src/platform/market-config/market-config';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
@@ -224,6 +225,90 @@ describe.each(TEST_MARKETS)('the admin step-up over HTTP in market %s', (code) =
     expect(noToken.body).toEqual({ statusCode: 403, code: 'request.csrf' });
     expect((await turnOn(session)).status).toBe(403);
     expect(fakes.audits.filter((a) => a.action === 'identity.admin-step-up.verified')).toEqual([]);
+  });
+
+  it('refuses the code the admin just signed in with, within the same time step', async () => {
+    const secret = await acceptedAdmin();
+    const session = await signedIn(secret);
+
+    // signedIn spent the code of this step; the clock has not moved.
+    const replay = await verify(session, { actionKey: ACTION, code: codeFor(secret) });
+    expect(replay.status).toBe(400);
+    expect(replay.body).toMatchObject({ code: 'second-factor.invalid' });
+    expect((await turnOn(session)).status).toBe(403);
+    clock.advance(STEP);
+    expect((await verify(session, { actionKey: ACTION, code: codeFor(secret) })).status).toBe(200);
+  });
+
+  it('audits a wrong code as identity.admin-step-up.refused, never the code', async () => {
+    const secret = await acceptedAdmin();
+    const session = await signedIn(secret);
+
+    expect((await verify(session, { actionKey: ACTION, code: '000000' })).status).toBe(400);
+    const refused = fakes.audits.filter((a) => a.action === 'identity.admin-step-up.refused');
+    expect(refused.map((a) => a.after)).toEqual([
+      {
+        sessionId: [...fakes.sessions.values()].at(-1)!.session.id,
+        actionKey: ACTION,
+        cause: 'invalid',
+      },
+    ]);
+    expect(JSON.stringify(refused)).not.toContain('000000');
+  });
+
+  it('ends a proof when the factor is enrolled again after it', async () => {
+    const secret = await acceptedAdmin();
+    const session = await signedIn(secret);
+    clock.advance(STEP);
+    expect((await verify(session, { actionKey: ACTION, code: codeFor(secret) })).status).toBe(200);
+    expect((await turnOn(session)).status).toBe(200);
+
+    // A re-enrolment activates a new factor after the proof (a real reset also ends every
+    // session of the account, and the proof with it; this is the check behind that).
+    clock.advance(STEP);
+    const account = [...fakes.accounts.values()].find((a) => a.population === 'admin')!;
+    const factor = fakes.factors.get(account.id)!;
+    fakes.factors.set(account.id, { ...factor, activatedAt: clock.now() });
+
+    const refused = await turnOn(session);
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ code: 'second-factor.required' });
+  });
+
+  it('refuses an acting-as session on the verify route and on the PUT', async () => {
+    const secret = await acceptedAdmin();
+    const session = await signedIn(secret);
+    clock.advance(STEP);
+    expect((await verify(session, { actionKey: ACTION, code: codeFor(secret) })).status).toBe(200);
+    const proofs = new Map(fakes.stepUpProofs);
+    const audits = fakes.audits.length;
+
+    // The session as an acting-as session (Login as Seller) would present it: the reserved
+    // marker on the actor. No session carries it yet (SEL-08), so the authenticator adds it.
+    const authenticator = app.get<Authenticator>(AUTHENTICATOR);
+    const real = authenticator.authenticate.bind(authenticator);
+    const spy = jest.spyOn(authenticator, 'authenticate').mockImplementation(async (m, c) => {
+      const result = await real(m, c);
+      return result.ok
+        ? ok({ ...result.value, actingAs: { sellerId: '01990000-0000-7000-8000-0000000000aa' } })
+        : result;
+    });
+    try {
+      clock.advance(STEP);
+      const verified = await verify(session, { actionKey: ACTION, code: codeFor(secret) });
+      // Today the actor guard refuses any actor that identity did not mint, which an actor with
+      // the marker is not: the request never reaches a use case. RequireStepUp, VerifyAdminStepUp,
+      // the consumer and setStatus refuse the marker again (unit specs), for when SEL-08 mints it.
+      expect(verified.body).toEqual({ statusCode: 401, code: 'session.invalid' });
+      const put = await turnOn(session);
+      expect(put.body).toEqual({ statusCode: 401, code: 'session.invalid' });
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(saves).toEqual([]);
+    expect(fakes.stepUpProofs).toEqual(proofs);
+    expect(fakes.audits.length).toBe(audits);
   });
 
   it('counts wrong codes on the sign-in lock-out: at the limit the factor is locked', async () => {

@@ -189,6 +189,16 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
     );
     return { status: rows[0]?.status ?? 'off', by: rows[0]?.updated_by_account_id ?? null };
   };
+  const proofRows = async (context: CallContext) =>
+    Number(
+      (
+        await sql.query<{ n: string }>(
+          `SELECT count(*) AS n FROM identity.step_up_proofs WHERE market_id = $1
+           AND session_id = $2`,
+          [code, sessionIdOf(context)],
+        )
+      ).rows[0]!.n,
+    );
   const auditsBy = async (actorId: string) =>
     (
       await sql.query<{ action: string; target_id: string; after: Record<string, unknown> }>(
@@ -227,14 +237,103 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
 
     expect(await turnOn(context)).toMatchObject({ ok: true, value: { status: 'active' } });
     expect(await switchOf()).toEqual({ status: 'active', by: accountId });
-    expect((await auditsBy(accountId)).map((row) => [row.action, row.target_id])).toEqual([
+    const audits = await auditsBy(accountId);
+    expect(audits.map((row) => [row.action, row.target_id])).toEqual([
+      ['identity.admin-step-up.refused', accountId],
       ['identity.admin-step-up.verified', accountId],
       ['wallet.market-status.changed', 'wallet-settings'],
     ]);
-    expect((await auditsBy(accountId))[0]!.after).toEqual({
+    expect(audits[0]!.after).toEqual({
       sessionId: sessionIdOf(context),
       actionKey: ACTION,
+      cause: 'invalid',
     });
+    expect(audits[1]!.after).toEqual({ sessionId: sessionIdOf(context), actionKey: ACTION });
+    // The change names the proof it spent (Hassan L3).
+    const { rows: proofTimes } = await sql.query<{ verified_at: Date }>(
+      `SELECT occurred_at AS verified_at FROM platform.audit_log WHERE market_id = $1
+       AND actor_id = $2 AND action = 'identity.admin-step-up.verified'`,
+      [code, accountId],
+    );
+    expect(audits[2]!.after).toMatchObject({
+      status: 'active',
+      stepUpSessionId: sessionIdOf(context),
+    });
+    // The proof's instant is the verify's: the same unit wrote the proof and that audit row.
+    expect(
+      Temporal.Instant.from(audits[2]!.after['stepUpVerifiedAt'] as string).epochMilliseconds,
+    ).toBeLessThanOrEqual(proofTimes[0]!.verified_at.getTime() + 1000);
+  });
+
+  it('spends the proof with the change: the next change needs a new code (Hassan L1)', async () => {
+    const { accountId } = await administrator();
+    const context = await sessionOf(accountId);
+    const proofs = app.get<StepUpRepository>(STEP_UP_REPOSITORY);
+    await inUnit(() =>
+      proofs.recordProof(market, sessionIdOf(context), ACTION, Temporal.Now.instant()),
+    );
+
+    expect(await turnOn(context)).toMatchObject({ ok: true, value: { status: 'active' } });
+    expect(await proofRows(context)).toBe(0);
+    expect(
+      await app
+        .get(SetWalletStatus)
+        .execute(context, { status: 'paused', reasonCode: 'maintenance' }),
+    ).toEqual({ ok: false, error: { code: 'second-factor.required', actionKey: ACTION } });
+    expect((await switchOf()).status).toBe('active');
+  });
+
+  it('lets exactly one of two concurrent changes spend one proof (Hassan L1, L2)', async () => {
+    const { accountId } = await administrator();
+    const context = await sessionOf(accountId);
+    const proofs = app.get<StepUpRepository>(STEP_UP_REPOSITORY);
+    await inUnit(() =>
+      proofs.recordProof(market, sessionIdOf(context), ACTION, Temporal.Now.instant()),
+    );
+
+    const results = await Promise.all([
+      app.get(SetWalletStatus).execute(context, { status: 'active' }),
+      app.get(SetWalletStatus).execute(context, { status: 'paused', reasonCode: 'maintenance' }),
+    ]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toEqual([
+      { ok: false, error: { code: 'second-factor.required', actionKey: ACTION } },
+    ]);
+    expect(await proofRows(context)).toBe(0);
+    const changes = (await auditsBy(accountId)).filter(
+      (row) => row.action === 'wallet.market-status.changed',
+    );
+    expect(changes).toHaveLength(1);
+  });
+
+  it('keeps the proof when the change is refused, and ends it when the factor is enrolled again', async () => {
+    const { accountId } = await administrator();
+    const context = await sessionOf(accountId);
+    const proofs = app.get<StepUpRepository>(STEP_UP_REPOSITORY);
+    await inUnit(() =>
+      proofs.recordProof(
+        market,
+        sessionIdOf(context),
+        ACTION,
+        Temporal.Now.instant().subtract({ seconds: 2 }),
+      ),
+    );
+    // A refusal before the spend (bad body) leaves the proof where it was.
+    expect((await app.get(SetWalletStatus).execute(context, { status: 'paused' })).ok).toBe(false);
+    expect(await proofRows(context)).toBe(1);
+
+    // A re-enrolment activates the factor after the proof was made.
+    await sql.query(
+      `UPDATE identity.second_factors SET activated_at = $3, version = version + 1
+       WHERE market_id = $1 AND account_id = $2`,
+      [code, accountId, Temporal.Now.instant().toString()],
+    );
+    expect(await turnOn(context)).toEqual({
+      ok: false,
+      error: { code: 'second-factor.required', actionKey: ACTION },
+    });
+    expect((await switchOf()).status).toBe('off');
   });
 
   it('does not accept a proof of another session, of another action, or an expired one', async () => {

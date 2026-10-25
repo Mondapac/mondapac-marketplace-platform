@@ -57,14 +57,18 @@ Admin endpoints (no UI in this package; the toggle page comes in package 2):
 
 Admin step-up (issue #491, closes M3): `wallet.settings.change` is registered as an admin
 step-up action (`contracts/step-up.ts`, `audience: 'admin'`, locked). The PUT carries
-`@RequiresStepUp('wallet.settings.change')`, and `setStatus` asks `IdentityFacade.requireStepUp`
-again after validation and before the change (ADR-0018: authorization in the use case). Without a
-proof of this admin session for this action from the last 5 minutes the answer is
-`403 second-factor.required` with `details.actionKey: "wallet.settings.change"`; an admin without
-an active second factor gets `403 second-factor.enrolment-required`. The panel then calls
-`POST /identity/admin/step-up/verify {actionKey, code}` and repeats the PUT. A refused request
-changes nothing and writes no audit row; the verify itself writes
-`identity.admin-step-up.verified`.
+`@RequiresStepUp('wallet.settings.change')` (a read-only check before the body is read). The
+proof is single use (Hassan L1, L2): `setStatus` spends it through the platform port
+`STEP_UP_CONSUMER` inside the same unit that saves the switch, right before the save, so one
+verified code moves the switch once. No fresh proof left at that moment means the unit commits
+nothing. A refused change (bad body, `wallet.cannot-turn-off-with-history`) and a no-op (the
+same state) spend no proof. Without a proof the answer is `403 second-factor.required` with
+`details.actionKey: "wallet.settings.change"`; an admin without an active second factor gets
+`403 second-factor.enrolment-required`. The panel then calls
+`POST /identity/admin/step-up/verify {actionKey, code}` and repeats the PUT. The
+`wallet.market-status.changed` row names the proof it spent (`stepUpSessionId`,
+`stepUpVerifiedAt`; Hassan L3). Credit issuance (package 2) spends its own admin action the same
+way.
 
 Remaining gap (to settle before package 2):
 

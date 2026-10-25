@@ -8,6 +8,7 @@ import {
   registerPermissions,
   registerStepUpActions,
   STEP_UP_SOURCE,
+  STEP_UP_CONSUMER_SOURCE,
   StepUpActionRegistry,
   type StepUpCheck,
   USE_CASE_GATE,
@@ -198,6 +199,9 @@ import { reviewerProviders } from './infrastructure/reviewers/reviewer-providers
 import { roleProviders } from './infrastructure/roles/role-providers';
 import { secondFactorProviders } from './infrastructure/second-factor/second-factor-providers';
 import { STEP_UP_REPOSITORY } from './application/ports/step-up.repository';
+import type { StepUpRepository } from './application/ports/step-up.repository';
+import type { SecondFactorRepository } from './application/ports/second-factor.repository';
+import { AdminStepUpConsumer } from './application/step-up/admin-step-up-consumer';
 import { IDENTITY_STEP_UP_ACTIONS } from './contracts/step-up';
 import { ListSellerStepUpPolicy } from './application/use-cases/list-seller-step-up-policy.use-case';
 import { RequireStepUp } from './application/use-cases/require-step-up.use-case';
@@ -1620,6 +1624,18 @@ function useCaseProvider<D, U>(
       stepUpActions: true,
     }),
     {
+      // What `platform/authz` binds to STEP_UP_CONSUMER: the single-use spend of an admin proof
+      // inside the guarded use case's own unit (issue #491).
+      provide: STEP_UP_CONSUMER_SOURCE,
+      inject: [STEP_UP_REPOSITORY, StepUpActionRegistry, SECOND_FACTOR_REPOSITORY, CLOCK],
+      useFactory: (
+        stepUp: StepUpRepository,
+        stepUpActions: StepUpActionRegistry,
+        factors: SecondFactorRepository,
+        clock: Clock,
+      ) => new AdminStepUpConsumer({ stepUp, stepUpActions, factors, clock }),
+    },
+    {
       // What `platform/authz` binds to the route guard `@RequiresStepUp(...)`: the same use case as
       // the facade's `requireStepUp`, through the gate.
       provide: STEP_UP_SOURCE,
@@ -1764,6 +1780,7 @@ function useCaseProvider<D, U>(
     IDENTITY_FACADE,
     SELLER_ACCESS_CONTRACT,
     STEP_UP_SOURCE,
+    STEP_UP_CONSUMER_SOURCE,
   ],
 })
 export class IdentityModule {}

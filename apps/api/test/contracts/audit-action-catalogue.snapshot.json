@@ -622,6 +622,18 @@
     }
   },
   {
+    "action": "identity.admin-step-up.refused",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.settings.change)",
+      "cause": "enumOf(invalid|locked)",
+      "sessionId": "id"
+    }
+  },
+  {
     "action": "identity.admin-step-up.verified",
     "targetType": "identity.account",
     "targetId": "id",
@@ -1500,7 +1512,9 @@
     },
     "after": {
       "reason": "optional(enumOf(wind-down|security-incident|fraud-suspected|legal-hold|maintenance|owner-decision))",
-      "status": "enumOf(off|active|paused|frozen)"
+      "status": "enumOf(off|active|paused|frozen)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
     }
   }
 ]
