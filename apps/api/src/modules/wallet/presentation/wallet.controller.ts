@@ -169,7 +169,10 @@ export class AdminWalletController {
     ...ERROR,
     description: 'access.denied or request.csrf',
   })
-  @ApiConflictResponse({ ...ERROR, description: 'wallet.cannot-turn-off-with-history' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'wallet.cannot-turn-off-with-history or wallet.busy',
+  })
   async put(
     @Call() context: CallContext,
     @Req() request: Request,

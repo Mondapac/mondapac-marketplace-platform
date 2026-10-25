@@ -15,6 +15,7 @@ import type { AccessDecision } from '../../../platform/authz';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { TransactionConflictError } from '../../../platform/unit-of-work/errors';
 import { WALLET_AUDIT_ACTIONS } from '../domain/audit';
 import { ConfigWalletPolicy } from '../infrastructure/config-wallet-policy';
 import { WalletFacadeImplementation } from '../presentation/wallet.facade';
@@ -518,6 +519,16 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
   describe('review hardening', () => {
     beforeEach(async () => {
       await open();
+    });
+
+    it('answers wallet.busy when the switch cannot be locked in time', async () => {
+      deps = {
+        ...deps,
+        unitOfWork: {
+          run: () => Promise.reject(new TransactionConflictError('55P03')),
+        } as unknown as WalletDependencies['unitOfWork'],
+      };
+      expect(await turn('paused', 'maintenance')).toEqual(err({ code: 'wallet.busy' }));
     });
 
     it('keeps the sys: prefix for the keys the worker generates', async () => {

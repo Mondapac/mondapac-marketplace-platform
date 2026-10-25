@@ -25,12 +25,12 @@ decisions and records what the code does. The source of the decisions is the han
 There is no `wallet.enabled` in `config/markets/*.json`. The state of the wallet in a Market is
 the row of `wallet.market_settings` (no row = `off`), set by an admin:
 
-| state | grants and new holds | capture | release and hold expiry | promo expiry job | customer reads |
-|---|---|---|---|---|---|
-| `off` (default; never launched) | `wallet.disabled` | `wallet.disabled` | `wallet.disabled` | does not run | `wallet.disabled` |
-| `active` | allowed | allowed | allowed | runs | allowed |
-| `paused` (wind-down) | `wallet.paused` | allowed | allowed | runs | allowed |
-| `frozen` (emergency) | `wallet.frozen` | `wallet.frozen` | allowed | runs | allowed |
+| state                           | grants and new holds | capture           | release and hold expiry | promo expiry job | customer reads    |
+| ------------------------------- | -------------------- | ----------------- | ----------------------- | ---------------- | ----------------- |
+| `off` (default; never launched) | `wallet.disabled`    | `wallet.disabled` | `wallet.disabled`       | does not run     | `wallet.disabled` |
+| `active`                        | allowed              | allowed           | allowed                 | runs             | allowed           |
+| `paused` (wind-down)            | `wallet.paused`      | allowed           | allowed                 | runs             | allowed           |
+| `frozen` (emergency)            | `wallet.frozen`      | `wallet.frozen`   | allowed                 | runs             | allowed           |
 
 Hard rules, each with tests:
 
@@ -94,6 +94,14 @@ and held = the held holds; a hold that leaves `held` needs a capture or release 
 order; an expired promo lot is restored only in the transaction that releases a hold that took
 from it; a leg has the currency of its account and of its journal; a closed account never
 reopens. A direct UPDATE of a balance, lot or hold, by any role, fails the commit.
+
+A hold is born `held` (insert trigger) and its lots are written in the transaction that creates
+it. It leaves `held` only with a capture or release journal of that very hold (`result.holdId`)
+written in the same transaction, and a wallet's legs on the Market's `holds` account must equal its
+held holds at commit. The admin status change sets a 3 s lock timeout and answers `wallet.busy`
+(409) instead of queueing the Market's wallet writes behind it. Still open: schedule `reconcile()`
+nightly with alerting before the facade gets a caller, and measure the books triggers (they
+aggregate a wallet's history per touched row) before checkout wiring.
 
 Idempotency keys starting with `sys:` are the worker's; a facade caller may not send them. A
 unique violation on `(market_id, idempotency_key)` between two parallel requests is answered

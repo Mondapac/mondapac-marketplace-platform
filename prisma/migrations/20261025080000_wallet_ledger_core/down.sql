@@ -23,6 +23,8 @@ DROP TABLE "wallet"."postings";
 DROP TABLE "wallet"."journals";
 DROP TABLE "wallet"."accounts";
 DROP FUNCTION "wallet"."check_market_status"();
+DROP FUNCTION "wallet"."guard_hold_lot_insert"();
+DROP FUNCTION "wallet"."guard_hold_insert"();
 DROP FUNCTION "wallet"."check_posting_currency"();
 DROP FUNCTION "wallet"."check_hold_settled"();
 DROP FUNCTION "wallet"."check_wallet_books"();

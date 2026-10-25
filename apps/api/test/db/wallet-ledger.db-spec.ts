@@ -501,7 +501,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
             [ghost, ids.next(), mk],
           ),
         ),
-      ).toBe(FK);
+      ).toBe(RESTRICT); // lots are written only with a hold created in the same transaction
       // A journal for a wallet that does not exist is refused; one for a real wallet is fine.
       expect(
         await code_(
@@ -659,10 +659,11 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       kind: string,
       wallet: string | null,
       order: string | null = null,
+      holdId: string | null = null,
     ): Statement => [
       `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, result, created_at)
-       VALUES ($1, $2, 'default', $3, $4, 'fp', 'system', NULL, 'welcome', $5, $6, '{}'::jsonb, now())`,
-      [id, market_id, kind, key('raw'), order, wallet],
+       VALUES ($1, $2, 'default', $3, $4, 'fp', 'system', NULL, 'welcome', $5, $6, jsonb_build_object('holdId', $7::text), now())`,
+      [id, market_id, kind, key('raw'), order, wallet, holdId],
     ];
     const posting = (
       market_id: string,
@@ -756,7 +757,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
         lot(market_id, w.lot, w.wallet, source, w.grant, 100n, expires),
       ]);
       await commit([
-        journal(market_id, w.placed, 'hold', w.wallet, w.order),
+        journal(market_id, w.placed, 'hold', w.wallet, w.order, w.hold),
         posting(market_id, w.placed, w.wallet, -40n),
         posting(market_id, w.placed, holdsAccount, 40n),
         holdRow(market_id, w.hold, w.wallet, w.order, 40n),
@@ -771,7 +772,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
     const releaseOf = (market_id: string, w: Awaited<ReturnType<typeof wallets>>): Statement[] => {
       const id = ids.next<'WalletJournal'>();
       return [
-        journal(market_id, id, 'release', w.wallet, w.order),
+        journal(market_id, id, 'release', w.wallet, w.order, w.hold),
         posting(market_id, id, w.holdsAccount, -40n),
         posting(market_id, id, w.wallet, 40n),
         settleHoldRow(w.hold, 'released'),
@@ -825,7 +826,6 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
         (error: { code?: string; message?: string }) => `${error.code}: ${error.message}`,
       );
       expect(noJournal).toContain(CHECK);
-      expect(noJournal).toContain('left held without a captured journal');
       // The books are untouched by all of it.
       expect(
         await rows(
@@ -921,6 +921,70 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expect(
         await rows(`SELECT remaining_minor::text AS r FROM wallet.lots WHERE id = $1`, [w.lot]),
       ).toEqual([{ r: '0' }]);
+    });
+
+    it('refuses a hold inserted already settled, with lots, a release journal and balance edits (the review reproduction)', async () => {
+      const w = expiring; // its promo lot expired in 2020 and was moved to breakage income
+      const order = ids.next<'Order'>();
+      const hold = ids.next<'WalletHold'>();
+      const journalId = ids.next<'WalletJournal'>();
+      const attack: Statement[] = [
+        [
+          `INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at, resolved_at)
+           VALUES ($1, $2, 'default', $3, $4, 100, $5, 'released', now(), now(), now())`,
+          [hold, expiringMarket, w.wallet, order, currency],
+        ],
+        holdLot(expiringMarket, hold, w.lot, 100n),
+        journal(expiringMarket, journalId, 'release', w.wallet, order, hold),
+        posting(expiringMarket, journalId, w.holdsAccount, -100n),
+        posting(expiringMarket, journalId, w.wallet, 100n),
+        setLot(w.lot, 100n),
+        setBalance(w.wallet, 100n, 0n),
+      ];
+      expect(await code_(commit(attack))).toBe(RESTRICT);
+      // Lots cannot be given to a hold that was not created in this transaction, either.
+      expect(await code_(commit([holdLot(expiringMarket, w.hold, w.lot, 1n)]))).toBe(RESTRICT);
+      // And the books are as they were.
+      expect(
+        await rows(`SELECT remaining_minor::text AS r FROM wallet.lots WHERE id = $1`, [w.lot]),
+      ).toEqual([{ r: '0' }]);
+    });
+
+    it('refuses to settle a hold with a journal from an earlier transaction or of another hold, and a stray holds-account leg', async () => {
+      // A held hold of 40 on a fresh wallet.
+      const fresh = await wallets(bk, 'refund', null);
+      const stray = ids.next<'WalletJournal'>();
+      const other = ids.next<'WalletJournal'>();
+      // A release journal that names another hold does not settle this one.
+      const settleWith = (journalId: string, holdId: string | null): Statement[] => [
+        journal(bk, journalId, 'release', fresh.wallet, fresh.order, holdId),
+        posting(bk, journalId, fresh.holdsAccount, -40n),
+        posting(bk, journalId, fresh.wallet, 40n),
+        settleHoldRow(fresh.hold, 'released'),
+        setLot(fresh.lot, 100n),
+        setBalance(fresh.wallet, 100n, 0n),
+      ];
+      const named = await commit(settleWith(other, ids.next<'WalletHold'>())).then(
+        () => 'committed',
+        (error: Error) => error.message,
+      );
+      expect(named).toContain('left held without a released journal in this transaction');
+      expect(await code_(commit(settleWith(stray, null)))).toBe(CHECK);
+      // A leg on the holds account with no hold behind it breaks the wallet's books.
+      const extra = ids.next<'WalletJournal'>();
+      expect(
+        await code_(
+          commit([
+            journal(bk, extra, 'hold', fresh.wallet),
+            posting(bk, extra, fresh.holdsAccount, 5n),
+            posting(bk, extra, fresh.wallet, -5n),
+            setLot(fresh.lot, 55n),
+            setBalance(fresh.wallet, 55n, 40n),
+          ]),
+        ),
+      ).toBe(CHECK);
+      // The honest settlement still commits.
+      await commit(releaseOf(bk, fresh));
     });
 
     it('commits a legitimate release of a hold and then refuses a second settlement of it', async () => {
@@ -1409,6 +1473,27 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       }
       expect((await turn('active')).ok).toBe(true);
       expect(await reconcile()).toEqual(ok([]));
+    });
+
+    it('gives up after 3 s when journals in flight hold the switch, and answers wallet.busy', async () => {
+      expect((await turn('active')).ok).toBe(true);
+      const inFlight = new Client({ connectionString: testDatabaseUrl() });
+      await inFlight.connect();
+      try {
+        await inFlight.query('BEGIN');
+        await inFlight.query(
+          `SELECT 1 FROM wallet.market_settings WHERE market_id = $1 FOR SHARE`,
+          [market.marketId],
+        );
+        const started = Date.now();
+        expect(await turn('paused', 'maintenance')).toEqual(err({ code: 'wallet.busy' }));
+        expect(Date.now() - started).toBeGreaterThanOrEqual(2500);
+      } finally {
+        await inFlight.query('ROLLBACK').catch(() => undefined);
+        await inFlight.end();
+      }
+      expect((await turn('paused', 'maintenance')).ok).toBe(true);
+      expect((await turn('active')).ok).toBe(true);
     });
 
     it('two requests with one key for different customers: one wins, the other is told the key is taken', async () => {

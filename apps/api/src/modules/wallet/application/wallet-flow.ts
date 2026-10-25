@@ -100,20 +100,37 @@ async function replayOf<T>(
   return ok(await decode(found.result));
 }
 
-/** The error text with the database's own message, which Prisma keeps in `meta`. */
-const messageOf = (error: unknown): string => {
-  if (!(error instanceof Error)) return '';
+/**
+ * What Prisma reports of a database error that came from a statement on one model: the model and
+ * the SQLSTATE, read from the two documented places only (`meta.modelName` and
+ * `meta.driverAdapterError.cause.originalCode`). Never decided from message text.
+ */
+function databaseErrorOf(error: unknown): { model?: string; sqlState?: string } {
+  if (typeof error !== 'object' || error === null) return {};
   const meta = (error as { meta?: unknown }).meta;
-  return meta === undefined ? error.message : `${error.message} ${JSON.stringify(meta)}`;
+  if (typeof meta !== 'object' || meta === null) return {};
+  const { modelName, driverAdapterError } = meta as {
+    modelName?: unknown;
+    driverAdapterError?: { cause?: { originalCode?: unknown } };
+  };
+  const sqlState = driverAdapterError?.cause?.originalCode;
+  return {
+    ...(typeof modelName === 'string' ? { model: modelName } : {}),
+    ...(typeof sqlState === 'string' ? { sqlState } : {}),
+  };
+}
+
+/** Two requests with one key met in the unique index of `(market_id, idempotency_key)`: 23505 on a journal. */
+const isKeyConflict = (error: unknown): boolean => {
+  const { model, sqlState } = databaseErrorOf(error);
+  return model === 'WalletJournal' && sqlState === '23505';
 };
 
-/** Two requests with one key met in the unique index of `(market_id, idempotency_key)`. */
-const isKeyConflict = (error: unknown): boolean =>
-  messageOf(error).includes('journals_market_id_idempotency_key_key');
-
-/** The database refused a journal because the Market status changed after the gate read it. */
-const isStatusFence = (error: unknown): boolean =>
-  messageOf(error).includes('wallet.market_status');
+/** The status fence (`restrict_violation`, 23001) refused the insert of a journal. */
+const isStatusFence = (error: unknown): boolean => {
+  const { model, sqlState } = databaseErrorOf(error);
+  return model === 'WalletJournal' && sqlState === '23001';
+};
 
 /**
  * Runs a write unit and turns its two expected races into answers. A unique violation on the

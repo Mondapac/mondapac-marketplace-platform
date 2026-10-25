@@ -387,6 +387,37 @@ END; $$;
 CREATE TRIGGER "holds_guard_update" BEFORE UPDATE ON "wallet"."holds"
   FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_hold_update"();
 
+-- Hand-written: a hold is born `held`, and its lots are written in the transaction that creates
+-- it. So a hold cannot be inserted already settled, nor given lots later.
+CREATE FUNCTION "wallet"."guard_hold_insert"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF NEW."status" <> 'held' OR NEW."resolved_at" IS NOT NULL THEN
+    RAISE EXCEPTION 'wallet.holds: a hold is created held' USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "holds_guard_insert" BEFORE INSERT ON "wallet"."holds"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_hold_insert"();
+
+CREATE FUNCTION "wallet"."guard_hold_lot_insert"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM "wallet"."holds" h
+     WHERE h."market_id" = NEW."market_id" AND h."id" = NEW."hold_id" AND h."status" = 'held'
+       AND h."xmin"::text = pg_current_xact_id()::xid::text
+  ) THEN
+    RAISE EXCEPTION 'wallet.hold_lots: lots are written with the held hold that takes them'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "hold_lots_guard_insert" BEFORE INSERT ON "wallet"."hold_lots"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_hold_lot_insert"();
+
 -- Hand-written: an account changes only its status, and a closed account never reopens.
 CREATE FUNCTION "wallet"."guard_account_update"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
@@ -433,12 +464,30 @@ DECLARE
   posted numeric;
   lotted numeric;
   holding numeric;
+  held_posted numeric;
 BEGIN
-  IF TG_TABLE_NAME = 'postings' THEN wallet_id := NEW."account_id";
-  ELSE wallet_id := NEW."wallet_account_id"; END IF;
-  SELECT a."kind" INTO account_kind FROM "wallet"."accounts" a
-   WHERE a."market_id" = NEW."market_id" AND a."id" = wallet_id;
-  IF account_kind IS DISTINCT FROM 'credit_liability' THEN RETURN NULL; END IF;
+  IF TG_TABLE_NAME = 'postings' THEN
+    SELECT a."kind" INTO account_kind FROM "wallet"."accounts" a
+     WHERE a."market_id" = NEW."market_id" AND a."id" = NEW."account_id";
+    IF account_kind = 'credit_liability' THEN
+      wallet_id := NEW."account_id";
+    ELSIF account_kind = 'holds' THEN
+      -- A leg on the Market's holds account belongs to the journal of one customer wallet.
+      SELECT j."wallet_account_id" INTO wallet_id FROM "wallet"."journals" j
+       WHERE j."market_id" = NEW."market_id" AND j."id" = NEW."journal_id";
+      IF wallet_id IS NULL THEN
+        RAISE EXCEPTION 'wallet.books: a holds leg needs a journal of a customer wallet'
+          USING ERRCODE = 'check_violation';
+      END IF;
+    ELSE
+      RETURN NULL;
+    END IF;
+  ELSE
+    wallet_id := NEW."wallet_account_id";
+    SELECT a."kind" INTO account_kind FROM "wallet"."accounts" a
+     WHERE a."market_id" = NEW."market_id" AND a."id" = wallet_id;
+    IF account_kind IS DISTINCT FROM 'credit_liability' THEN RETURN NULL; END IF;
+  END IF;
   SELECT COALESCE(MAX(b."available_minor"), 0), COALESCE(MAX(b."held_minor"), 0) INTO available, held
     FROM "wallet"."balances" b WHERE b."market_id" = NEW."market_id" AND b."wallet_account_id" = wallet_id;
   SELECT COALESCE(SUM(p."amount_minor"), 0) INTO posted FROM "wallet"."postings" p
@@ -447,9 +496,15 @@ BEGIN
    WHERE l."market_id" = NEW."market_id" AND l."wallet_account_id" = wallet_id;
   SELECT COALESCE(SUM(h."amount_minor"), 0) INTO holding FROM "wallet"."holds" h
    WHERE h."market_id" = NEW."market_id" AND h."wallet_account_id" = wallet_id AND h."status" = 'held';
-  IF available <> posted OR available <> lotted OR held <> holding THEN
-    RAISE EXCEPTION 'wallet.books of %: available % postings % lots %, held % holds %',
-      wallet_id, available, posted, lotted, held, holding USING ERRCODE = 'check_violation';
+  -- What this wallet's journals put on the Market's holds account is what its held holds hold.
+  SELECT COALESCE(SUM(p."amount_minor"), 0) INTO held_posted
+    FROM "wallet"."journals" j
+    JOIN "wallet"."postings" p ON p."market_id" = j."market_id" AND p."journal_id" = j."id"
+    JOIN "wallet"."accounts" a ON a."market_id" = p."market_id" AND a."id" = p."account_id"
+   WHERE j."market_id" = NEW."market_id" AND j."wallet_account_id" = wallet_id AND a."kind" = 'holds';
+  IF available <> posted OR available <> lotted OR held <> holding OR held <> held_posted THEN
+    RAISE EXCEPTION 'wallet.books of %: available % postings % lots %, held % holds % holds-account %',
+      wallet_id, available, posted, lotted, held, holding, held_posted USING ERRCODE = 'check_violation';
   END IF;
   RETURN NULL;
 END; $$;
@@ -464,7 +519,7 @@ CREATE CONSTRAINT TRIGGER "postings_books" AFTER INSERT ON "wallet"."postings"
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_wallet_books"();
 
 -- Hand-written: a hold leaves `held` only with a capture (for captured) or release (for released
--- and expired) journal for the same order and wallet. Checked at COMMIT.
+-- and expired) journal of this very hold, written in the same transaction. Checked at COMMIT.
 CREATE FUNCTION "wallet"."check_hold_settled"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
@@ -473,8 +528,10 @@ BEGIN
      WHERE j."market_id" = NEW."market_id" AND j."order_id" = NEW."order_id"
        AND j."wallet_account_id" = NEW."wallet_account_id"
        AND j."kind" = CASE WHEN NEW."status" = 'captured' THEN 'capture' ELSE 'release' END
+       AND j."result" ->> 'holdId' = NEW."id"::text
+       AND j."xmin"::text = pg_current_xact_id()::xid::text
   ) THEN
-    RAISE EXCEPTION 'wallet.holds %: left held without a % journal', NEW."id", NEW."status"
+    RAISE EXCEPTION 'wallet.holds %: left held without a % journal in this transaction', NEW."id", NEW."status"
       USING ERRCODE = 'check_violation';
   END IF;
   RETURN NULL;

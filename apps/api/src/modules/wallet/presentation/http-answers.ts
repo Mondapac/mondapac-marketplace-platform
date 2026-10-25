@@ -11,6 +11,7 @@ export const WALLET_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'wallet.disabled': 404,
   'wallet.unavailable': 503,
   'wallet.cannot-turn-off-with-history': 409,
+  'wallet.busy': 409,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {

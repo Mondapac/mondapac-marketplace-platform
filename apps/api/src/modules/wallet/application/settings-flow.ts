@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result, Temporal } from '@mondapac/shared-kernel';
+import { TransactionConflictError } from '../../../platform/unit-of-work/errors';
 import { WalletStatusChanged } from '../domain/audit';
 import {
   isStatusReason,
@@ -15,12 +16,16 @@ import type { WalletDependencies } from './wallet-dependencies';
 // `off` is refused once the Market has any journal (use paused). The change is refused in an acting-as session, is audited with before and after, and is idempotent:
 // asking for the state the Market is already in changes nothing and writes no audit row.
 
+const LOCK_TIMEOUT_MS = 3000;
+
 export type SettingsFailure =
   | {
       readonly code: 'validation.failed';
       readonly fields: readonly { path: string; code: string }[];
     }
   | { readonly code: 'wallet.cannot-turn-off-with-history' }
+  /** Journals in flight held the switch for too long (lock timeout); try again. */
+  | { readonly code: 'wallet.busy' }
   | { readonly code: 'access.denied' };
 
 export interface SettingsView {
@@ -87,32 +92,45 @@ export async function setStatus(
     return err({ code: 'validation.failed', fields });
 
   const now = deps.clock.now();
-  return deps.unitOfWork.run<SettingsView, SettingsFailure>(context.market, async () => {
-    const before = await deps.settings.findForUpdate(context.market);
-    const was = before?.status ?? 'off';
-    if (was === status) {
-      return ok({
-        status: was,
-        reason: before?.reason ?? null,
-        updatedAt: before?.updatedAt ?? null,
-      });
-    }
-    if (status === 'off' && (await deps.wallet.hasJournals(context.market))) {
-      return err({ code: 'wallet.cannot-turn-off-with-history' } as const);
-    }
-    await deps.settings.save(context.market, {
-      status,
-      reason,
-      updatedAt: now,
-      updatedBy: actor.accountId,
-    });
-    await deps.audit.record(
-      context,
-      WalletStatusChanged.entry('wallet-settings', {
-        before: { status: was, reason: before?.reason ?? null },
-        after: { status, reason },
-      }),
+  // The change waits for the journals in flight; it gives up after 3 s instead of queueing the
+  // whole Market's wallet writes behind it.
+  const attempt = () =>
+    deps.unitOfWork.run<SettingsView, SettingsFailure>(
+      context.market,
+      async () => {
+        const before = await deps.settings.findForUpdate(context.market);
+        const was = before?.status ?? 'off';
+        if (was === status) {
+          return ok({
+            status: was,
+            reason: before?.reason ?? null,
+            updatedAt: before?.updatedAt ?? null,
+          });
+        }
+        if (status === 'off' && (await deps.wallet.hasJournals(context.market))) {
+          return err({ code: 'wallet.cannot-turn-off-with-history' } as const);
+        }
+        await deps.settings.save(context.market, {
+          status,
+          reason,
+          updatedAt: now,
+          updatedBy: actor.accountId,
+        });
+        await deps.audit.record(
+          context,
+          WalletStatusChanged.entry('wallet-settings', {
+            before: { status: was, reason: before?.reason ?? null },
+            after: { status, reason },
+          }),
+        );
+        return ok({ status, reason, updatedAt: now });
+      },
+      { lockTimeoutMs: LOCK_TIMEOUT_MS },
     );
-    return ok({ status, reason, updatedAt: now });
-  });
+  try {
+    return await attempt();
+  } catch (error) {
+    if (error instanceof TransactionConflictError) return err({ code: 'wallet.busy' });
+    throw error;
+  }
 }

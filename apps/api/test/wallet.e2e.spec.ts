@@ -39,6 +39,7 @@ it('maps every refusal code of the wallet routes to its exact status', () => {
     'validation.failed': 400,
     'wallet.disabled': 404,
     'wallet.unavailable': 503,
+    'wallet.busy': 409,
     'wallet.cannot-turn-off-with-history': 409,
   });
 });
