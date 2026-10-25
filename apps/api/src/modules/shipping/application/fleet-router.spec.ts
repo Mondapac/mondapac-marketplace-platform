@@ -54,9 +54,9 @@ const SELLER = id<'Seller'>(0x51);
 const MODEL = id<'FleetSelectionModel'>(0x201);
 
 describe.each([
-  ['AU', 'AUD', '4109', '4000', '2000'],
-  ['ZZ', 'JPY', '1000001', '1000002', '2000500'],
-] as const)('the fleet router in market %s', (code, currency, served, servedToo, unserved) => {
+  ['AU', 'AUD', '4109', '4000'],
+  ['ZZ', 'JPY', '1000001', '1000002'],
+] as const)('the fleet router in market %s', (code, currency, served, servedToo) => {
   const market = testMarketContext(code, 'default');
   const system = testCallContext(market, 'system', 'router-0001-abcd');
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
@@ -149,7 +149,7 @@ describe.each([
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       fees: undefined as never,
-      policy: { currency: () => currency, deliversTo: () => true } as never,
+      policy: { currency: () => currency, deliversTo: () => true },
       sellers: undefined as never,
       stores: undefined as never,
       audit: undefined as never,
@@ -313,7 +313,7 @@ describe.each([
       expect(drive.quoted[0]).toEqual({
         pickup: { postcode: servedToo, locality: 'Shop Town', region: null },
         dropoff: { postcode: served, locality: 'Example Town', region: 'QQ' },
-        parcel: expect.objectContaining({ itemCount: 1 }),
+        parcel: expect.objectContaining({ itemCount: 1 }) as unknown,
         mode: 'on_demand',
       });
     });
@@ -523,7 +523,7 @@ describe.each([['ZZ', 'JPY', '1000001', '1000002']] as const)(
       const deps: ShippingDependencies = {
         unitOfWork: new FakeUnitOfWork(),
         fees: undefined as never,
-        policy: { currency: () => currency, deliversTo: () => true } as never,
+        policy: { currency: () => currency, deliversTo: () => true },
         sellers: undefined as never,
         stores: undefined as never,
         audit: undefined as never,

@@ -26,7 +26,7 @@ export class ViewFleetSelection extends UseCase<
     super(gate);
   }
 
-  protected handle(context: CallContext, _input: Record<string, never>) {
+  protected handle(context: CallContext) {
     return viewFleetSelection(this.deps, context);
   }
 }

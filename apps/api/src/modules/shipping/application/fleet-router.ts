@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { CarrierMethod } from '../domain/booking-service';
 import {
   mismatchOf,
@@ -181,7 +181,7 @@ export async function routeBooking(
       ...c,
       quote: quotes.has(c.fleet)
         ? {
-            price: quotes.get(c.fleet)!.price as Money,
+            price: quotes.get(c.fleet)!.price,
             etaMinutes: quotes.get(c.fleet)!.etaMinutes,
           }
         : null,

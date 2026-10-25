@@ -18,8 +18,12 @@ import {
   parseSelectionRule,
   type Field,
   type FleetSelectionModel,
+  type FleetSelectionView,
+  type FleetStatusView,
   type SelectionRule,
 } from '../domain/fleet-selection';
+
+export type { FleetSelectionView, FleetStatusView } from '../domain/fleet-selection';
 import type { ActorId } from './ports/fleet-selection.repository';
 import type { ShippingDependencies } from './shipping-dependencies';
 
@@ -38,31 +42,9 @@ export type FleetSelectionFailure =
   /** The model changed since the admin read it: read again and retry. */
   | { readonly code: 'shipping.fleet-model-conflict' };
 
-/** One fleet as the admin page shows it for the Market. */
-export interface FleetStatusView {
-  readonly fleet: FleetCode;
-  readonly displayName: string;
-  /** False when no adapter is installed or the Market switched it off (it is never a candidate). */
-  readonly enabled: boolean;
-  readonly methods: readonly CarrierMethod[];
-  /** The admin-set score, or null when none was set (the router then uses the neutral default). */
-  readonly reliability: number | null;
-  readonly effectiveReliability: number;
-}
-
-export interface FleetSelectionView {
-  readonly models: readonly FleetSelectionModel[];
-  /** The active model id per method, or null for the built-in default order. */
-  readonly active: Readonly<Record<CarrierMethod, Id<'FleetSelectionModel'> | null>>;
-  readonly defaultOrder: readonly FleetCode[];
-  readonly fleets: readonly FleetStatusView[];
-}
-
 const adminOf = (context: CallContext): ActorId | null => {
   const actor = context.actor;
-  return actor.kind === 'authenticated' && actor.population === 'admin'
-    ? (actor.accountId as ActorId)
-    : null;
+  return actor.kind === 'authenticated' && actor.population === 'admin' ? actor.accountId : null;
 };
 
 const modelIdOf = (value: unknown): Id<'FleetSelectionModel'> | null => {

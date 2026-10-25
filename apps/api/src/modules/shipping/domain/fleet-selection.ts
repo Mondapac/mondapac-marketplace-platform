@@ -208,3 +208,23 @@ export function rankFleets(rule: SelectionRule, candidates: readonly Candidate[]
   scored.sort((a, b) => (a.s !== b.s ? (a.s > b.s ? -1 : 1) : byTie(a.c, b.c)));
   return [...scored.map(({ c }) => c.fleet), ...rest];
 }
+
+/** One fleet as the admin page shows it for the Market. */
+export interface FleetStatusView {
+  readonly fleet: FleetCode;
+  readonly displayName: string;
+  /** False when no adapter is installed or the Market switched it off (it is never a candidate). */
+  readonly enabled: boolean;
+  readonly methods: readonly CarrierMethod[];
+  /** The admin-set score, or null when none was set (the router then uses the neutral default). */
+  readonly reliability: number | null;
+  readonly effectiveReliability: number;
+}
+
+export interface FleetSelectionView {
+  readonly models: readonly FleetSelectionModel[];
+  /** The active model id per method, or null for the built-in default order. */
+  readonly active: Readonly<Record<CarrierMethod, Id<'FleetSelectionModel'> | null>>;
+  readonly defaultOrder: readonly FleetCode[];
+  readonly fleets: readonly FleetStatusView[];
+}

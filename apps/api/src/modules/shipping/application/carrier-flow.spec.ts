@@ -172,7 +172,7 @@ describe.each([
       policy: {
         currency: () => markets.get(market.marketId).defaultCurrency,
         deliversTo: () => true,
-      } as never,
+      },
       sellers: undefined as never,
       stores: undefined as never,
       audit: undefined as never,

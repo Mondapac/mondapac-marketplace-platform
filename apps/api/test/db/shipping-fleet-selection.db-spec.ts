@@ -1,5 +1,5 @@
 import { ok, Temporal } from '@mondapac/shared-kernel';
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import type { FleetSelectionModel } from '../../src/modules/shipping/domain/fleet-selection';
@@ -165,12 +165,7 @@ describe.each(TEST_MARKETS)('fleet selection repository in market %s (database)'
       await attempt(
         `INSERT INTO shipping.fleet_selection_models (id, market_id, tenant_id, name, kind, rule, version, created_by, updated_by, created_at, updated_at)
          VALUES ($1, $2, $3, 'x', 'cheapest', '{"kind":"weighted"}', 1, $4, $4, now(), now())`,
-        [
-          ids.next<'FleetSelectionModel'>() as Id<'FleetSelectionModel'>,
-          market.marketId,
-          market.tenantId,
-          admin,
-        ],
+        [ids.next<'FleetSelectionModel'>(), market.marketId, market.tenantId, admin],
       ),
     ).toBe(CHECK);
     expect(await attempt(`DELETE FROM shipping.fleet_selection_models`, [])).toBe(DENIED);
