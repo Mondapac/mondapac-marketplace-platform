@@ -90,8 +90,18 @@ const UNAVAILABLE: CarrierFailure = Object.freeze({ code: 'carrier.unavailable' 
 const REFUSED: CarrierFailure = Object.freeze({ code: 'carrier.refused' as const });
 const UNAUTHORIZED: CarrierFailure = Object.freeze({ code: 'carrier.unauthorized' as const });
 
+const NOT_SENT: CarrierFailure = Object.freeze({ code: 'carrier.not-sent' as const });
+
 const failureOf = (error: Zoom2uCallFailure): CarrierFailure =>
-  error === 'refused' ? REFUSED : error === 'unauthorized' ? UNAUTHORIZED : UNAVAILABLE;
+  error === 'refused'
+    ? REFUSED
+    : error === 'unauthorized'
+      ? UNAUTHORIZED
+      : error === 'not-sent'
+        ? NOT_SENT
+        : UNAVAILABLE;
+
+type Method = CarrierBookingRequest['method'];
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -189,11 +199,11 @@ const quoteLocationOf = (stop: CarrierQuoteStop, country: string) => ({
  * `POST quote`, books with `POST create` (`PurchaseOrderNumber` is the seller order id, a label
  * only: Zoom2u documents no idempotency key, so a booking is sent once and never retried and
  * `idempotentBooking` is false), cancels with `POST cancel/{reference}` and reads a status with
- * `GET status/{reference}`. The service (`DeliverySpeed`) of an on-demand trip is the Market's
- * `instantSpeed`, `VIP` or `3 hour`; a scheduled one is `Same day` with the buyer's window start
+ * `GET status/{reference}`. The service (`DeliverySpeed`) follows the request's `method`: instant is the Market's
+ * `instantSpeed`, `VIP` or `3 hour`; same day is `Same day`; scheduled is `Same day` with the buyer's window start
  * as `ReadyDateTime` (the API documents no deadline field, so the window end is not sent). The
  * key comes from the Region Stack's secrets and the switch from the Market's `shipping.zoom2u`;
- * with either missing every call answers `carrier.not-configured` and sends nothing, and
+ * an open circuit answers `carrier.not-sent` (nothing left); with either missing every call answers `carrier.not-configured` and sends nothing, and
  * `capabilities` is null (the router never offers it a trip). A parcel beyond the fleet's limits
  * is refused without a call.
  */
@@ -219,17 +229,17 @@ export class Zoom2uCarrier implements CarrierGateway {
     const target = this.target(market);
     if (target === null) return err(NOT_CONFIGURED);
     // What the fleet is known to refuse is not sent. A scheduled trip needs its window.
-    if (!this.accepts(target.config, request.mode, request.parcel, target.currency)) {
+    if (!this.accepts(target.config, request.method, request.parcel, target.currency)) {
       return err(REFUSED);
     }
-    if (request.mode === 'scheduled' && request.window === null) return err(REFUSED);
+    if (request.method === 'scheduled' && request.window === null) return err(REFUSED);
     const answer = await this.http.post(
       target.endpoint,
       'create',
       {
         PurchaseOrderNumber: request.externalReference,
-        DeliverySpeed: this.speedOf(target.config, request.mode),
-        ...this.timing(request.mode, request.window),
+        DeliverySpeed: this.speedOf(target.config, request.method),
+        ...this.timing(request.method, request.window),
         PackageDescription: 'Order',
         Pickup: locationOf(request.pickup, target.country),
         Dropoff: locationOf(request.dropoff, target.country),
@@ -253,16 +263,16 @@ export class Zoom2uCarrier implements CarrierGateway {
   ): Promise<Result<CarrierQuote, CarrierFailure>> {
     const target = this.target(market);
     if (target === null) return err(NOT_CONFIGURED);
-    if (!this.accepts(target.config, request.mode, request.parcel, target.currency)) {
+    if (!this.accepts(target.config, request.method, request.parcel, target.currency)) {
       return err(REFUSED);
     }
-    const speed = this.speedOf(target.config, request.mode);
+    const speed = this.speedOf(target.config, request.method);
     const stops = {
       Pickup: quoteLocationOf(request.pickup, target.country),
       Dropoff: quoteLocationOf(request.dropoff, target.country),
     };
     // A quote has no window to price: a scheduled one is an estimate from the stops alone.
-    const key = `${market.marketId}|${JSON.stringify({ ...stops, parcel: request.parcel, mode: request.mode }, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v))}`;
+    const key = `${market.marketId}|${JSON.stringify({ ...stops, parcel: request.parcel, speed }, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v))}`;
     const now = this.clock.now();
     const cached = this.#quotes.get(key);
     if (cached !== undefined && now.epochMilliseconds - cached.at < QUOTE_CACHE_MS) {
@@ -338,11 +348,13 @@ export class Zoom2uCarrier implements CarrierGateway {
   /** Whether the fleet takes this mode and parcel: the Market's modes and limits. */
   private accepts(
     config: Zoom2uConfig,
-    mode: 'on_demand' | 'scheduled',
+    method: Method,
     parcel: CarrierParcel,
     currency: string,
   ): boolean {
     const { limits } = config;
+    // Instant and same day are the on-demand modes; scheduled needs the window to be supported.
+    const mode = method === 'scheduled' ? 'scheduled' : 'on_demand';
     return (
       config.modes.includes(mode) &&
       (mode === 'on_demand' || config.supportsWindow) &&
@@ -355,20 +367,23 @@ export class Zoom2uCarrier implements CarrierGateway {
     );
   }
 
-  /** On demand uses the configured instant service; a scheduled trip is a `Same day` one. */
-  private speedOf(config: Zoom2uConfig, mode: 'on_demand' | 'scheduled'): string {
-    return mode === 'on_demand' ? config.instantSpeed : 'Same day';
+  /**
+   * Instant uses the configured service (`VIP` or `3 hour`); same day and scheduled are Zoom2u's
+   * `Same day` service.
+   */
+  private speedOf(config: Zoom2uConfig, method: Method): string {
+    return method === 'instant' ? config.instantSpeed : 'Same day';
   }
 
   /**
-   * On demand adds nothing. A scheduled trip is asked for the buyer's window start as the pickup
+   * Instant and same day add nothing. A scheduled trip is asked for the buyer's window start as the pickup
    * time (`ReadyDateTime`), not for a configured lead time. Zoom2u documents no deadline field.
    */
   private timing(
-    mode: 'on_demand' | 'scheduled',
+    method: Method,
     window: CarrierBookingRequest['window'],
   ): { ReadyDateTime?: string } {
-    return mode === 'scheduled' && window !== null
+    return method === 'scheduled' && window !== null
       ? { ReadyDateTime: utcSeconds(window.start) }
       : {};
   }
