@@ -624,6 +624,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'settled_at', 'state', 'stripe_refund_id'],
     },
+    // Personalization 1d-2: the nightly job deletes a Market's pairs and inserts the new ones.
+    'ordering.offer_pairs': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.refund_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.credit_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts

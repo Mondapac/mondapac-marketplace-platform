@@ -23,6 +23,9 @@ export {
 } from './ordering.facade';
 export {
   BESTSELLER_WINDOW_DAYS,
+  BOUGHT_TOGETHER_MIN_ORDERS,
+  BOUGHT_TOGETHER_WINDOW_DAYS,
+  MAX_BOUGHT_TOGETHER,
   MAX_RANKED_OFFERS,
   ORDERING_RANKING_FACADE,
   type OrderingRankingFacade,

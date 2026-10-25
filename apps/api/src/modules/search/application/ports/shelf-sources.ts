@@ -18,6 +18,12 @@ export interface ShelfSpecial {
 export interface ShelfSources {
   bestSellingOfferIds(context: CallContext, limit: number): Promise<readonly Id<'Offer'>[] | null>;
   specials(context: CallContext, limit: number): Promise<readonly ShelfSpecial[] | null>;
+  /** Ordering's Offers bought with `offerId`, most orders first (ids only), or null as above. */
+  boughtTogetherOfferIds(
+    context: CallContext,
+    offerId: Id<'Offer'>,
+    limit: number,
+  ): Promise<readonly Id<'Offer'>[] | null>;
 }
 
 export const SHELF_SOURCES = Symbol('SHELF_SOURCES');
