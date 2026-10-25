@@ -26,6 +26,7 @@ import { loadMarketConfigs } from '../../src/platform/market-config/market-confi
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { PersistenceModule } from '../../src/platform/persistence/persistence.module';
 import {
+  AllowAllDeliveryMethods,
   FakeCart,
   FakeCommission,
   FakeCustomers,
@@ -38,7 +39,6 @@ import {
   FakeTaxCategories,
   FakePickupVault,
 } from '../support/ordering-fakes';
-import { AllowAllDeliveryMethods } from '../../src/modules/ordering/infrastructure/allow-all-delivery-methods';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';

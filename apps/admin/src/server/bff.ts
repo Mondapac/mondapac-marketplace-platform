@@ -28,6 +28,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The fleet-selection models, the active model per method and the fleets (shipping), read
     // again after a save.
     'shipping/admin/fleet-selection',
+    // The delivery settings of the Market (shipping), read again after a conflict.
+    'shipping/admin/delivery-settings',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -48,6 +50,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'shipping/admin/fleet-selection/active/instant',
     'shipping/admin/fleet-selection/active/same_day',
     'shipping/admin/fleet-selection/active/scheduled',
+    // The delivery settings of the Market (shipping): the whole set, with `expectedVersion`.
+    'shipping/admin/delivery-settings',
   ]),
   DELETE: new Set([]),
   POST: new Set([
@@ -101,8 +105,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PUT: [
     'identity/admin/roles/:id',
     'sellers/admin/:id/review/manual-register-check',
-    // The seller's flat delivery fee (shipping), set from the seller review page.
+    // The seller's flat delivery fee and the delivery methods the seller supports (shipping), set
+    // from the seller review page.
     'shipping/admin/sellers/:id/flat-fee',
+    'shipping/admin/sellers/:id/delivery-methods',
     // A fleet-selection model edited by its id (shipping).
     'shipping/admin/fleet-selection/models/:id',
     // The seller's own commission rate (commission-payouts), set from the seller review page.

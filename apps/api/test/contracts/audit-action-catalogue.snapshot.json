@@ -1256,6 +1256,32 @@
     }
   },
   {
+    "action": "shipping.delivery-settings.changed",
+    "targetType": "shipping.delivery-settings",
+    "targetId": "enumOf(market)",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)",
+      "marginKind": "enumOf(none|percent|fixed)",
+      "marginValue": "integer",
+      "roundingStepMinor": "integer",
+      "sameDayCutoffMinutes": "integer",
+      "scheduledDaysAhead": "integer",
+      "scheduledWindowMinutes": "integer",
+      "version": "integer"
+    },
+    "after": {
+      "enabled": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)",
+      "marginKind": "enumOf(none|percent|fixed)",
+      "marginValue": "integer",
+      "roundingStepMinor": "integer",
+      "sameDayCutoffMinutes": "integer",
+      "scheduledDaysAhead": "integer",
+      "scheduledWindowMinutes": "integer",
+      "version": "integer"
+    }
+  },
+  {
     "action": "shipping.flat-fee.set",
     "targetType": "shipping.seller-flat-fee",
     "targetId": "id",
@@ -1326,6 +1352,18 @@
     },
     "after": {
       "score": "integer"
+    }
+  },
+  {
+    "action": "shipping.seller-delivery-methods.set",
+    "targetType": "shipping.seller-delivery-methods",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "unsupported": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)"
+    },
+    "after": {
+      "unsupported": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)"
     }
   },
   {

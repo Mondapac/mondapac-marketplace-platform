@@ -136,6 +136,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       bookings: undefined as never,
       fleets: new ListRegistry([drive]),
       selection,
+      deliverySettings: undefined as never,
       carrierPolicy: new ConfigCarrierPolicy(markets, areas, { apiKeys: {}, webhookSecrets: {} }),
       pickups: undefined as never,
       webhookSignature: undefined as never,

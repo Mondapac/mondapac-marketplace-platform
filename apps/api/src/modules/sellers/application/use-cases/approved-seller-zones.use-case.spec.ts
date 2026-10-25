@@ -19,6 +19,7 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import { ApprovedSellerZonesReaderImplementation } from '../../presentation/approved-seller-zones.reader';
 import { ApprovedSellerZonesSystem } from './approved-seller-zones-system.use-case';
 import { ApprovedSellerZones } from './approved-seller-zones.use-case';
+import { OperatingZones } from './operating-zones.use-case';
 import { PickupPostcodes } from './pickup-postcodes.use-case';
 
 // The contract of approvedSellerZones (sellers design 7.1a; certification #124): one entry per
@@ -371,5 +372,53 @@ describe.each(['AU', 'ZZ'])('pickupPostcodes, Market %s', (code) => {
     expect(
       (await postcodes.execute(testCallContext(market(), 'system'), { sellerIds: [] })).ok,
     ).toBe(false);
+  });
+});
+
+// operatingZones (delivery models, package 4) reads the same approved pointer: the zone only.
+describe.each(['AU', 'ZZ'])('operatingZones, Market %s', (code) => {
+  const market = () => testMarketContext(code, 'default');
+  const anonymous = () => testCallContext(market(), 'anonymous');
+  const zones = new OperatingZones(gate, deps);
+  const zone = {
+    operatingTimezone: code === 'AU' ? 'Australia/Sydney' : 'Asia/Tokyo',
+    addressTimezone: code === 'AU' ? 'Australia/Sydney' : 'Asia/Tokyo',
+  };
+
+  it('answers the approved operating zone only, to any request actor', async () => {
+    const approved = ids.next<'Seller'>();
+    const pending = ids.next<'Seller'>();
+    const unknown = ids.next<'Seller'>();
+    revision(code, approved, 'approved', zone, '4000');
+    revision(code, pending, 'pending', zone, '9999');
+
+    expect(
+      await zones.execute(anonymous(), { sellerIds: [approved, pending, unknown, approved] }),
+    ).toEqual({
+      ok: true,
+      value: new Map([[approved, zone.operatingTimezone]]),
+    });
+    const other = testCallContext(
+      testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default'),
+      'anonymous',
+    );
+    expect(await zones.execute(other, { sellerIds: [approved] })).toEqual({
+      ok: true,
+      value: new Map(),
+    });
+  });
+
+  it('answers nothing for no ids and refuses malformed ids and the system actor', async () => {
+    expect(await zones.execute(anonymous(), { sellerIds: [] })).toEqual({
+      ok: true,
+      value: new Map(),
+    });
+    expect(await zones.execute(anonymous(), { sellerIds: ['nope'] })).toMatchObject({
+      ok: false,
+      error: { code: 'validation.failed' },
+    });
+    expect((await zones.execute(testCallContext(market(), 'system'), { sellerIds: [] })).ok).toBe(
+      false,
+    );
   });
 });

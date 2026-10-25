@@ -149,7 +149,11 @@ describe.each([
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       fees: undefined as never,
-      policy: { currency: () => currency, deliversTo: () => true },
+      policy: {
+        currency: () => currency,
+        timeZone: () => 'Australia/Brisbane',
+        deliversTo: () => true,
+      },
       sellers: undefined as never,
       stores: undefined as never,
       audit: undefined as never,
@@ -169,6 +173,7 @@ describe.each([
       bookings,
       fleets: registry,
       selection,
+      deliverySettings: undefined as never,
       carrierPolicy: new ConfigCarrierPolicy(markets, areas, { apiKeys: {}, webhookSecrets: {} }),
       pickups,
       webhookSignature: undefined as never,
@@ -541,7 +546,11 @@ describe.each([['ZZ', 'JPY', '1000001', '1000002']] as const)(
       const deps: ShippingDependencies = {
         unitOfWork: new FakeUnitOfWork(),
         fees: undefined as never,
-        policy: { currency: () => currency, deliversTo: () => true },
+        policy: {
+          currency: () => currency,
+          timeZone: () => 'Australia/Brisbane',
+          deliversTo: () => true,
+        },
         sellers: undefined as never,
         stores: undefined as never,
         audit: undefined as never,
@@ -551,6 +560,7 @@ describe.each([['ZZ', 'JPY', '1000001', '1000002']] as const)(
         bookings,
         fleets: new ListRegistry([fake]),
         selection: new MemorySelection(),
+        deliverySettings: undefined as never,
         carrierPolicy: policy,
         pickups,
         webhookSignature: undefined as never,

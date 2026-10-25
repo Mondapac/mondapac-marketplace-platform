@@ -586,6 +586,31 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['score', 'updated_at', 'updated_by'],
     },
+    // Delivery models, package 4: the Market's delivery settings and the methods taken away from a
+    // seller are written once and changed; never deleted.
+    'shipping.delivery_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'instant_enabled',
+        'margin_basis_points',
+        'margin_fixed_minor',
+        'margin_kind',
+        'pickup_enabled',
+        'rounding_step_minor',
+        'same_day_cutoff_minutes',
+        'same_day_enabled',
+        'scheduled_days_ahead',
+        'scheduled_enabled',
+        'scheduled_window_minutes',
+        'updated_at',
+        'updated_by',
+        'version',
+      ],
+    },
+    'shipping.seller_delivery_methods': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['unsupported', 'updated_at', 'updated_by'],
+    },
     'shipping.fleet_booking_attempts': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['attempted_at', 'fleet'],

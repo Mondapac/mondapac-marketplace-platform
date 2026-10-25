@@ -87,8 +87,60 @@ export const FleetReliabilitySet = defineAuditAction({
   after: { score: auditField.integer() },
 });
 
+// Delivery settings (delivery models, package 4). `same_day` is `same-day` in an audit enum.
+
+const DELIVERY_METHOD_FIELD = auditField.enumOf([
+  'pickup',
+  'instant',
+  'same-day',
+  'scheduled',
+] as const);
+
+/** What the settings of a Market are, for an audit row: ids, whole numbers and codes only. */
+const SETTINGS_SHAPE = {
+  enabled: auditField.listOf(DELIVERY_METHOD_FIELD, 4),
+  sameDayCutoffMinutes: auditField.integer(),
+  scheduledDaysAhead: auditField.integer(),
+  scheduledWindowMinutes: auditField.integer(),
+  marginKind: auditField.enumOf(['none', 'percent', 'fixed'] as const),
+  /** Basis points for `percent`, minor units for `fixed`, 0 for `none`. */
+  marginValue: auditField.integer(),
+  roundingStepMinor: auditField.integer(),
+  version: auditField.integer(),
+} as const;
+
+/** The audit target type of a Market's delivery settings (the id is `market`). */
+export const DELIVERY_SETTINGS_TARGET = 'shipping.delivery-settings';
+/** The audit target type of the methods a seller supports (the id is the seller). */
+export const SELLER_DELIVERY_METHODS_TARGET = 'shipping.seller-delivery-methods';
+
+/**
+ * An admin saved the delivery settings of the Market: the methods on, the same-day cut-off, the
+ * scheduled days ahead and window length, the margin and its rounding. `before` of the first save
+ * is the defaults (version 0).
+ */
+export const DeliverySettingsChanged = defineAuditAction({
+  action: 'shipping.delivery-settings.changed',
+  targetType: DELIVERY_SETTINGS_TARGET,
+  targetId: auditField.enumOf(['market'] as const),
+  actors: ['authenticated'],
+  before: SETTINGS_SHAPE,
+  after: SETTINGS_SHAPE,
+});
+
+/** An admin set the delivery methods a seller does not support (empty: it supports every one). */
+export const SellerDeliveryMethodsSet = defineAuditAction({
+  action: 'shipping.seller-delivery-methods.set',
+  targetType: SELLER_DELIVERY_METHODS_TARGET,
+  actors: ['authenticated'],
+  before: { unsupported: auditField.listOf(DELIVERY_METHOD_FIELD, 4) },
+  after: { unsupported: auditField.listOf(DELIVERY_METHOD_FIELD, 4) },
+});
+
 export const SHIPPING_AUDIT_ACTIONS = [
   FlatFeeSet,
+  DeliverySettingsChanged,
+  SellerDeliveryMethodsSet,
   FleetModelCreated,
   FleetModelEdited,
   FleetModelActivated,

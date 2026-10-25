@@ -191,6 +191,23 @@ export interface SellersFacade {
       AccessDenied | SellersValidationFailed | SellersUnavailable
     >
   >;
+
+  /**
+   * `operatingZones` (delivery models, package 4): the IANA operating zone of each seller's
+   * **approved** revision, so shipping evaluates a same-day cut-off and a delivery window in the
+   * seller's zone (ADR-0005). A clear column: no decryption and no audit row. Rule `anonymous`.
+   * A seller with no approved revision, or of another Market, is absent from the map (the caller
+   * falls back to the Market zone). At most 100 ids. Not exposed over HTTP.
+   */
+  operatingZones(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Seller'>, string>,
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  >;
 }
 
 /** Nest token of the {@link SellersFacade}, provided and exported by `SellersModule`. */

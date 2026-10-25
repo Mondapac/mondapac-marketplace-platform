@@ -159,6 +159,7 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
       bookings: undefined as never,
       fleets: undefined as never,
       selection: undefined as never,
+      deliverySettings: undefined as never,
       carrierPolicy: undefined as never,
       pickups: undefined as never,
       webhookSignature: undefined as never,

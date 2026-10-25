@@ -55,6 +55,7 @@ import {
   pickupStatusOf,
   type PickupCodeRecord,
 } from '../../src/modules/ordering/domain/pickup-code';
+import type { DeliveryMethodPolicy } from '../../src/modules/ordering/application/ports/delivery-method-policy';
 import type { OrderTaxCategories } from '../../src/modules/ordering/application/ports/order-tax-categories';
 import type { RefundRepository } from '../../src/modules/ordering/application/ports/refund.repository';
 import type { TaxAnswer, TaxFacade, TaxFailure, TaxLineInput } from '../../src/modules/tax';
@@ -64,8 +65,11 @@ import type {
   CarrierDeliveryRequest,
   CarrierShipment,
   CheckoutShippingFees,
+  ChoiceRefusal,
   FlatFeeMap,
+  PricedDelivery,
   QuoteDropoff,
+  SellerDeliveryAvailability,
   ShippingFacade,
   ShippingFailure,
 } from '../../src/modules/shipping';
@@ -372,6 +376,39 @@ export class FakeShipping implements ShippingFacade {
     this.pickupAsked.push(sellerIds);
     if (this.pickupDown) return Promise.resolve(err({ code: 'shipping.unavailable' }));
     return Promise.resolve(ok(new Set(sellerIds.filter((id) => this.pickupApproved.has(id)))));
+  }
+  /** The delivery choices `deliveryChoice` refuses, by `sellerId|method`, with the reason. */
+  deliveryRefused = new Map<string, ChoiceRefusal>();
+  deliveryChoiceDown = false;
+  deliveryChoicesAsked: {
+    readonly sellerId: string;
+    readonly method: string;
+    readonly window: { readonly start: string; readonly end: string } | null;
+  }[] = [];
+  deliveryAvailability(): Promise<
+    Result<ReadonlyMap<Id<'Seller'>, SellerDeliveryAvailability>, ShippingFailure>
+  > {
+    return Promise.resolve(ok(new Map()));
+  }
+  deliveryChoice(
+    _c: CallContext,
+    request: {
+      readonly sellerId: Id<'Seller'>;
+      readonly method: string;
+      readonly window: { readonly start: string; readonly end: string } | null;
+    },
+  ): Promise<
+    Result<{ readonly allowed: boolean; readonly reason: ChoiceRefusal | null }, ShippingFailure>
+  > {
+    this.deliveryChoicesAsked.push(request);
+    if (this.deliveryChoiceDown) return Promise.resolve(err({ code: 'shipping.unavailable' }));
+    const reason = this.deliveryRefused.get(`${request.sellerId}|${request.method}`) ?? null;
+    return Promise.resolve(ok({ allowed: reason === null, reason }));
+  }
+  priceDelivery(_c: CallContext, quote: Money): Promise<Result<PricedDelivery, ShippingFailure>> {
+    return Promise.resolve(
+      ok({ quote, margin: { amount: 0n, currency: quote.currency }, total: quote }),
+    );
   }
   deliversTo(_c: CallContext, postcode: string): Promise<Result<boolean, ShippingFailure>> {
     if (this.down) return Promise.resolve(err({ code: 'shipping.unavailable' }));
@@ -921,5 +958,12 @@ export class FakePickupVault implements PickupCodeVault {
     const prefix = `sealed:${sellerOrderId}:`;
     if (!sealed.startsWith(prefix)) throw new Error('sealed for another seller order');
     return Promise.resolve(ok(sealed.slice(prefix.length)));
+  }
+}
+
+/** A {@link DeliveryMethodPolicy} for the unit tests of ordering: every method is allowed. */
+export class AllowAllDeliveryMethods implements DeliveryMethodPolicy {
+  allows(): Promise<boolean> {
+    return Promise.resolve(true);
   }
 }

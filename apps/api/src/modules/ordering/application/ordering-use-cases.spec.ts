@@ -15,6 +15,7 @@ import {
   FakeCustomers,
   FakeLabels,
   FakePickupVault,
+  AllowAllDeliveryMethods,
   FakeShipping,
   FakeShipToCipher,
   FakeTax,
@@ -52,7 +53,6 @@ import { SellerListOrders } from './use-cases/seller-list-orders.use-case';
 import type { OrderState } from '../domain/order';
 import { SellerMarkOrderReady } from './use-cases/seller-mark-order-ready.use-case';
 import { BookReadyCarrierDelivery } from './use-cases/book-ready-carrier-delivery.use-case';
-import { AllowAllDeliveryMethods } from '../infrastructure/allow-all-delivery-methods';
 import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
 import { SellerViewOrderDocument } from './use-cases/seller-view-order-document.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
@@ -451,6 +451,44 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         deliveryMethods: { [SELLER_B]: { method: 'pickup' } },
       });
       expect(other.ok).toBe(true);
+    });
+
+    it('gives the policy the scheduled window and null for every other method', async () => {
+      const seen: [string, string, string | null][] = [];
+      deps = {
+        ...deps,
+        deliveryMethods: {
+          allows: (_c, sellerId, method, window) => {
+            seen.push([
+              sellerId,
+              method,
+              window === null || window === undefined
+                ? null
+                : `${window.start.toString()}/${window.end.toString()}`,
+            ]);
+            return Promise.resolve(true);
+          },
+        },
+      };
+      const windowStart = T0.add({ hours: 30 });
+      const windowEnd = T0.add({ hours: 32 });
+
+      const started = await start(customer, {
+        addressId: ADDRESS,
+        deliveryMethods: {
+          [SELLER_A]: {
+            method: 'scheduled',
+            windowStart: windowStart.toString(),
+            windowEnd: windowEnd.toString(),
+          },
+        },
+      });
+
+      expect(started.ok).toBe(true);
+      expect(seen).toEqual([
+        [SELLER_A, 'scheduled', `${windowStart.toString()}/${windowEnd.toString()}`],
+        [SELLER_B, 'instant', null],
+      ]);
     });
   });
 

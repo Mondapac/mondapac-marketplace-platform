@@ -167,3 +167,54 @@ model ShippingFleetBookingAttempt {
   @@map("fleet_booking_attempts")
   @@schema("shipping")
 }
+
+/// The delivery settings of a Market (delivery models, package 4): which methods are on, the
+/// same-day cut-off, the scheduled days ahead and window length, and the margin on a fleet's
+/// quote. One row per Market; no row means the defaults of the domain (every method on, 12:00,
+/// 7 days, 120 minutes, no margin). `version` rises with each save (optimistic concurrency).
+/// Value ranges are CHECKs in the migration. Rows are never deleted.
+model ShippingDeliverySettings {
+  marketId               String   @id @map("market_id") @db.VarChar(8)
+  tenantId               String   @map("tenant_id")
+  pickupEnabled          Boolean  @map("pickup_enabled")
+  instantEnabled         Boolean  @map("instant_enabled")
+  sameDayEnabled         Boolean  @map("same_day_enabled")
+  scheduledEnabled       Boolean  @map("scheduled_enabled")
+  /// Minutes after local midnight, 0 to 1439 (CHECK).
+  sameDayCutoffMinutes   Int      @map("same_day_cutoff_minutes")
+  scheduledDaysAhead     Int      @map("scheduled_days_ahead")
+  scheduledWindowMinutes Int      @map("scheduled_window_minutes")
+  /// none | percent | fixed (CHECK); the amount column of the kind is set, the other is null.
+  marginKind             String   @map("margin_kind")
+  marginBasisPoints      Int?     @map("margin_basis_points")
+  /// Minor units of the Market currency.
+  marginFixedMinor       Int?     @map("margin_fixed_minor")
+  /// 1 (none), 5, 10, 50 or 100 minor units, rounded up (CHECK).
+  roundingStepMinor      Int      @map("rounding_step_minor")
+  version                Int
+  updatedAt              DateTime @map("updated_at") @db.Timestamptz(6)
+  /// The admin account that last saved it (a plain id, no foreign key).
+  updatedBy              String   @map("updated_by") @db.Uuid
+
+  @@map("delivery_settings")
+  @@schema("shipping")
+}
+
+/// The delivery methods an admin took away from a seller (for example one without the capacity
+/// for instant delivery). No row, or an empty list, means the seller supports every method the
+/// Market has on. The list holds what is NOT supported, so a method the Market switches on later
+/// is also open to sellers that never opted out. Rows are never deleted.
+model ShippingSellerDeliveryMethods {
+  marketId    String   @map("market_id") @db.VarChar(8)
+  sellerId    String   @map("seller_id") @db.Uuid
+  tenantId    String   @map("tenant_id")
+  /// Subset of pickup, instant, same_day, scheduled (CHECK); the domain stores each once.
+  unsupported String[]
+  updatedAt   DateTime @map("updated_at") @db.Timestamptz(6)
+  /// The admin account that last set it (a plain id, no foreign key).
+  updatedBy   String   @map("updated_by") @db.Uuid
+
+  @@id([marketId, sellerId])
+  @@map("seller_delivery_methods")
+  @@schema("shipping")
+}
