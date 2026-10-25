@@ -292,16 +292,17 @@ model OrderingInbox {
 }
 
 /// "Bought together" (personalization 1d-2): for one Offer, the other Offers that appeared with it
-/// on at least 3 distinct paid orders over the last 90 days. Rebuilt in full each night by
+/// on at least 3 distinct buyer accounts (one paid order each) over the last 90 days. Rebuilt in full each night by
 /// `ordering.rebuild-offer-pairs` (delete and insert per Market, one transaction); both directions
-/// are stored, so a read is one primary-key range. Offer ids and an order count only: no account,
+/// are stored, so a read is one primary-key range. Offer ids and a buyer count only (the buyer ids live in the job's memory): no account,
 /// customer, seller or amount. Plain ids, no foreign keys (the Offers are catalog's).
 model OrderingOfferPair {
   marketId      String   @map("market_id") @db.VarChar(8)
   tenantId      String   @map("tenant_id")
   offerId       String   @map("offer_id") @db.Uuid
   pairedOfferId String   @map("paired_offer_id") @db.Uuid
-  /// The distinct paid orders that contain both Offers (3 or more, CHECK).
+  /// The distinct buyer accounts that bought both Offers in one order each (3 or more, CHECK).
+  /// The column keeps its name from #489 (a merged migration is not edited) but counts buyers.
   orders        Int
   computedAt    DateTime @map("computed_at") @db.Timestamptz(6)
 

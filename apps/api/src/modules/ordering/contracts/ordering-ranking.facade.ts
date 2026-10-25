@@ -1,8 +1,8 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
-import { BOUGHT_TOGETHER_MIN_ORDERS } from '../domain/offer-pairs';
+import { BOUGHT_TOGETHER_MIN_BUYERS } from '../domain/offer-pairs';
 
-export { BOUGHT_TOGETHER_MIN_ORDERS };
+export { BOUGHT_TOGETHER_MIN_BUYERS };
 
 /** The window the best sellers are counted over, ending now (storefront reads package). */
 export const BESTSELLER_WINDOW_DAYS = 30;
@@ -39,8 +39,9 @@ export interface OrderingRankingFacade {
 
   /**
    * The Offers most often on the same paid order as `offerId` in the context's Market, most
-   * orders first, ties by Offer id; at most `limit` (1 to {@link MAX_BOUGHT_TOGETHER}). Only
-   * pairs of at least {@link BOUGHT_TOGETHER_MIN_ORDERS} distinct orders over the last
+   * distinct buyers first, ties by Offer id; at most `limit` (1 to {@link MAX_BOUGHT_TOGETHER}).
+   * Only pairs that at least {@link BOUGHT_TOGETHER_MIN_BUYERS} distinct buyer accounts bought
+   * together (in one order each) over the last
    * {@link BOUGHT_TOGETHER_WINDOW_DAYS} days exist, as of the last nightly rebuild. Offer ids
    * only: no count leaves ordering. Rule `anonymous`.
    */

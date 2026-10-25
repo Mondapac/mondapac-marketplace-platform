@@ -7,11 +7,15 @@ export interface OrderCursor {
   readonly orderId: string;
 }
 
-/** One page of confirmed orders: each order's keys and the Offer ids of its lines (repeats allowed). */
+/** One page of confirmed orders: each order's keys, its buyer account id and the Offer ids of its lines (repeats allowed).
+ * Every order has an account (`ordering.orders.account_id` is NOT NULL; checkout needs a signed-in
+ * customer), so there is no guest order to skip. The account id is for counting distinct buyers in
+ * memory and must never be stored or logged. */
 export interface ConfirmedOrderPage {
   readonly orders: readonly {
     readonly orderId: string;
     readonly confirmedAt: Temporal.Instant;
+    readonly accountId: string;
     readonly offerIds: readonly string[];
   }[];
 }
