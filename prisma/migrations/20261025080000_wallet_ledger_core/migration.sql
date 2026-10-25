@@ -243,7 +243,9 @@ ALTER TABLE "wallet"."journals"
   ADD CONSTRAINT "journals_wallet_check" CHECK ("kind" = 'reverse' OR "wallet_account_id" IS NOT NULL),
   -- A hold, its capture and its release name the hold.
   ADD CONSTRAINT "journals_hold_check" CHECK (("kind" IN ('hold', 'capture', 'release')) = ("hold_id" IS NOT NULL)),
-  -- An expiry names the lot it expires (one journal per lot).
+  -- An expiry names the lot it expires. A lot may have several (the sweep writes one per
+  -- remainder it expires: a release can restore an expired lot, and the next sweep expires it
+  -- again).
   ADD CONSTRAINT "journals_lot_check" CHECK (("kind" = 'expire') = ("lot_id" IS NOT NULL));
 
 ALTER TABLE "wallet"."postings"
@@ -462,6 +464,16 @@ BEGIN
     RAISE EXCEPTION 'wallet.hold_lots: lots are written with the held hold that takes them'
       USING ERRCODE = 'restrict_violation';
   END IF;
+  -- A hold takes only from lots of its own wallet, in its currency.
+  IF NOT EXISTS (
+    SELECT 1 FROM "wallet"."holds" h JOIN "wallet"."lots" l
+        ON l."market_id" = h."market_id" AND l."wallet_account_id" = h."wallet_account_id"
+       AND l."currency" = h."currency"
+     WHERE h."market_id" = NEW."market_id" AND h."id" = NEW."hold_id" AND l."id" = NEW."lot_id"
+  ) THEN
+    RAISE EXCEPTION 'wallet.hold_lots: a hold takes only from lots of its own wallet'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
   RETURN NEW;
 END; $$;
 
@@ -592,8 +604,9 @@ CREATE CONSTRAINT TRIGGER "postings_books" AFTER INSERT ON "wallet"."postings"
 -- holds still on it took (held or captured, from `hold_lots`) plus what its expire journals moved
 -- off the wallet:
 --   original_minor - remaining_minor = held and captured hold_lots + expired
--- The check runs for a lot whose remaining changes, for the lots of a new hold_lots row, for the
--- lots of a hold that changes status, and for the lot of an expire journal. It compares states, not
+-- The check runs for a new lot, for a lot whose remaining changes, for the lots of a new
+-- hold_lots row, for the lots of a hold that changes status, and for the lot of an expire journal
+-- (which must name an expired promo lot of its wallet and take credit off it). It compares states, not
 -- steps, so the order of the writes and repeated updates in one transaction do not matter, and it
 -- does not depend on `xmin`. With the books check (lots = available) it ties every credit movement
 -- to the lot that a hold or an expiry names: credit cannot move from one lot to another.
@@ -610,12 +623,21 @@ BEGIN
   ELSIF TG_TABLE_NAME = 'hold_lots' THEN
     lot_ids := ARRAY[NEW."lot_id"];
   ELSIF TG_TABLE_NAME = 'journals' THEN
+    -- An expiry names an expired promo lot of its own wallet ("expired" by the database clock,
+    -- like guard_lot_update) and moves credit off the wallet, never onto it.
     IF NOT EXISTS (
       SELECT 1 FROM "wallet"."lots" l
        WHERE l."market_id" = NEW."market_id" AND l."id" = NEW."lot_id"
          AND l."wallet_account_id" = NEW."wallet_account_id"
+         AND l."source" = 'promo' AND l."expires_at" <= now()
     ) THEN
-      RAISE EXCEPTION 'wallet.journal %: expires no lot of its wallet', NEW."id"
+      RAISE EXCEPTION 'wallet.journal %: expires no expired promo lot of its wallet', NEW."id"
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF (SELECT COALESCE(SUM(p."amount_minor"), 0) FROM "wallet"."postings" p
+         WHERE p."market_id" = NEW."market_id" AND p."journal_id" = NEW."id"
+           AND p."account_id" = NEW."wallet_account_id") >= 0 THEN
+      RAISE EXCEPTION 'wallet.journal %: an expiry takes credit off the wallet', NEW."id"
         USING ERRCODE = 'check_violation';
     END IF;
     lot_ids := ARRAY[NEW."lot_id"];
@@ -647,6 +669,8 @@ BEGIN
   RETURN NULL;
 END; $$;
 
+CREATE CONSTRAINT TRIGGER "lots_ledger_insert" AFTER INSERT ON "wallet"."lots"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_lot_ledger"();
 CREATE CONSTRAINT TRIGGER "lots_ledger" AFTER UPDATE ON "wallet"."lots"
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
   WHEN (OLD."remaining_minor" IS DISTINCT FROM NEW."remaining_minor")

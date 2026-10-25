@@ -157,7 +157,15 @@ its rows through an index that leads with it (a db test checks the plans after A
   the books check (lots = available) this ties every movement of credit to the lot a hold or an
   expiry names, so credit cannot move between a wallet's lots (refund credit into an expired
   promo lot, or promo credit spent in place of refund credit). It compares states, so the order
-  of the writes does not matter and it does not rely on `xmin`.
+  of the writes does not matter and it does not rely on `xmin`. It also runs for a new lot
+  (remaining must equal original). An expire journal must name an expired promo lot of its own
+  wallet and post a negative sum to the wallet; a hold lot must name a lot of the hold's wallet
+  and currency.
+- "Expired" in the database means `expires_at <= now()` (the transaction's start time), the same
+  clock as `guard_lot_update`. The sweep decides by the injected Clock; if the application clock
+  runs ahead of the database's, an expiry within that skew is refused and retried by the next
+  sweep (fails closed). The db tests start their fixed clock in 2020 so that it stays behind the
+  database clock.
 - The sweeps (`dueLots`, `dueHolds`) are Prisma queries with bound parameters
   (`source = $`, `status = $`, `remaining_minor > $`), so their partial indexes can be used only
   in custom plans. Generic plans for them are unsupported: `plan_cache_mode` must stay `auto` (or
