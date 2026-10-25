@@ -48,7 +48,7 @@ import {
 } from '../support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
-import { testDatabaseUrl } from './test-database';
+import { orderingRefundsTestDatabaseUrl } from './test-database';
 
 // Refunds of a paid seller order by an admin on PostgreSQL, as the application role, for both
 // Market fixtures (tax step 3): off by the Market switch until it is turned on; the refund is
@@ -86,8 +86,8 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
   let audit: AuditWriter;
 
   beforeAll(async () => {
-    db = createPersistence();
-    sql = new Client({ connectionString: testDatabaseUrl() });
+    db = createPersistence({ databaseUrl: orderingRefundsTestDatabaseUrl() });
+    sql = new Client({ connectionString: orderingRefundsTestDatabaseUrl() });
     await sql.connect();
     admin = testCallContext(
       market,
@@ -113,13 +113,38 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     await db.close();
     await sql.end();
   });
+  /**
+   * The seller orders this file created. The ledger steps (`RecordLedger`, `RecordRefundLedger`)
+   * work through a Market-wide queue, and other spec files write paid seller orders and refunds
+   * into the same database at the same time: unscoped, a step here would record (or count a
+   * refusal on) another file's rows, and another file could find its own queued row already taken.
+   */
+  const owned = new Set<string>();
+  /** Larger than every queue a run builds, so filtering after the read drops none of ours. */
+  const QUEUE_SCAN = 100_000;
+  /** The two repositories, with their ledger queues narrowed to `owned`, in the same order. */
+  const ownLedgerQueues = (orders: PrismaOrderRepository, refunds: PrismaRefundRepository) => {
+    const ownOrders = Object.create(orders) as PrismaOrderRepository;
+    ownOrders.findUnrecordedLedger = async (m, limit) =>
+      (await orders.findUnrecordedLedger(m, QUEUE_SCAN))
+        .filter((r) => owned.has(r.sellerOrder.id))
+        .slice(0, limit);
+    const ownRefunds = Object.create(refunds) as PrismaRefundRepository;
+    ownRefunds.findUnrecordedLedger = async (m, limit) =>
+      (await refunds.findUnrecordedLedger(m, QUEUE_SCAN))
+        .filter((r) => owned.has(r.refund.sellerOrderId))
+        .slice(0, limit);
+    return { orders: ownOrders, refunds: ownRefunds };
+  };
   beforeEach(() => {
     gateway = new FakeGateway();
     commission = new FakeCommission();
     deps = {
       unitOfWork: db.unitOfWork,
-      orders: new PrismaOrderRepository(db.service),
-      refunds: new PrismaRefundRepository(db.service),
+      ...ownLedgerQueues(
+        new PrismaOrderRepository(db.service),
+        new PrismaRefundRepository(db.service),
+      ),
       gateway,
       policy: new RefundsOn(markets),
       cart: new FakeCart(),
@@ -152,6 +177,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     const sellerOrderId = ids.next<'SellerOrder'>();
     const sellerId = ids.next<'Seller'>();
     const lineId = ids.next<'OrderLine'>();
+    owned.add(sellerOrderId);
     const order: OrderState = {
       id: orderId,
       marketId: market.marketId,
@@ -740,7 +766,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       }
     };
     const step = () => new RecordRefundLedger(gate, deps).execute(system, {});
-    /** Runs the step until it has nothing left to do (earlier tests leave refunds behind). */
+    /** Runs the step until it has nothing of this file's left to do (earlier tests leave refunds). */
     const drain = async () => {
       for (let run = 0; run < 20; run += 1) {
         const result = await step();
@@ -1047,7 +1073,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
 
 describe('the closed lists of refunds (database catalog)', () => {
   it('equal the CHECKs of ordering.refunds, value for value', async () => {
-    const sql = new Client({ connectionString: testDatabaseUrl() });
+    const sql = new Client({ connectionString: orderingRefundsTestDatabaseUrl() });
     await sql.connect();
     try {
       const rows = await sql.query<{ conname: string; def: string }>(
