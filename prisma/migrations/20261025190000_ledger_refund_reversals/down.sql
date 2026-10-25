@@ -1,7 +1,7 @@
 -- Safety: a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';
 
--- Reverses 20261025140000_ledger_refund_reversals. The ordering side goes first: the grant, the
+-- Reverses 20261025190000_ledger_refund_reversals. The ordering side goes first: the grant, the
 -- queue index, the checks and the four columns, and the settle guard returns to its first body.
 REVOKE UPDATE ("ledger_attempts", "ledger_recorded_at") ON TABLE "ordering"."refunds" FROM "mondapac_app";
 
