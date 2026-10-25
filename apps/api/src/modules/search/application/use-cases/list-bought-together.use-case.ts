@@ -15,7 +15,7 @@ import { itemOf, type ShelfFailure, type ShelfPage } from './list-bestsellers.us
  * (the product page's shelf). Rule `anonymous`: no session, the request's Market, nothing about
  * the shopper. Ordering gives the partner Offer ids in rank order (3 or more distinct paid orders
  * over 90 days); the asked Offer itself is dropped, the rest that are indexed keep that order and
- * every one is re-checked with catalog and sellers before it is shown. A source or check that
+ * every one, and the asked Offer too (not shown: an empty shelf), is re-checked with catalog and sellers before it is shown. A source or check that
  * cannot be made is `search.unavailable`, never an unchecked list. A short or empty shelf is not
  * filled. Same item shape as the other shelves.
  */
@@ -52,18 +52,22 @@ export class ListBoughtTogether extends UseCase<BoughtTogetherRequest, ShelfPage
 
     const read = await this.deps.unitOfWork.run(
       market,
-      async () => ok(await this.deps.shelves.byOfferIds(market, ranked)),
+      async () => ok(await this.deps.shelves.byOfferIds(market, [offerId, ...ranked])),
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'search.unavailable' });
 
     const byId = new Map(read.value.map((hit) => [hit.offerId, hit] as const));
+    const asked = byId.get(offerId);
+    // The asked Offer is re-checked too: a shelf under an Offer that is not shown is not shown.
+    if (asked === undefined) return ok({ items: [] });
     const candidates = ranked.flatMap((id) => {
       const hit = byId.get(id);
       return hit === undefined ? [] : [hit];
     });
-    const visible = await this.deps.visibility.visible(context, candidates);
+    const visible = await this.deps.visibility.visible(context, [asked, ...candidates]);
     if (visible === null) return err({ code: 'search.unavailable' });
+    if (!visible.has(offerId)) return ok({ items: [] });
     const items = await withPrimaryImages(
       this.deps.images,
       context,

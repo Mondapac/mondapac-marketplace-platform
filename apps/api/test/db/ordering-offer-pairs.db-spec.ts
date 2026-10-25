@@ -286,7 +286,7 @@ describe.each(TEST_MARKETS)('offer pairs in market %s (database)', (code) => {
     ]);
   });
 
-  it('is idempotent: a second run leaves the same table', async () => {
+  it('is idempotent: a second run leaves the same pairs of this test', async () => {
     const [a, b, c] = [offer(), offer(), offer()] as const;
     await place(
       market,
@@ -297,21 +297,77 @@ describe.each(TEST_MARKETS)('offer pairs in market %s (database)', (code) => {
       (
         await sql.query<Record<string, unknown>>(
           `SELECT offer_id, paired_offer_id, orders, computed_at FROM ordering.offer_pairs
-            WHERE market_id = $1 ORDER BY offer_id, paired_offer_id`,
-          [market.marketId],
+            WHERE market_id = $1 AND offer_id = ANY($2::uuid[]) ORDER BY offer_id, paired_offer_id`,
+          [market.marketId, [a, b, c]],
         )
       ).rows;
 
-    const one = await run();
+    await run();
     const before = await dump();
-    const two = await run();
+    await run();
 
-    expect(two).toEqual(one);
+    expect(before).toHaveLength(4);
     expect(await dump()).toEqual(before);
     expect(await pairsOf(market, b)).toEqual([
       { paired: a, orders: 4 },
       { paired: c, orders: 3 },
     ]);
+  });
+
+  it('counts only orders confirmed at or before the Clock: now is in, one millisecond later is out', async () => {
+    const [a, b, c, d] = [offer(), offer(), offer(), offer()] as const;
+    await place(
+      market,
+      order(market, [a, b], 'confirmed', NOW),
+      order(market, [a, b], 'confirmed', NOW.subtract({ milliseconds: 1 })),
+      order(market, [a, b], 'confirmed', NOW.add({ milliseconds: 1 })),
+      order(market, [c, d], 'confirmed', NOW),
+      order(market, [c, d], 'confirmed', NOW.subtract({ milliseconds: 1 })),
+      order(market, [c, d], 'confirmed', NOW.subtract({ hours: 1 })),
+    );
+
+    await run();
+
+    expect(await pairsOf(market, a)).toEqual([]);
+    expect(await pairsOf(market, c)).toEqual([{ paired: d, orders: 3 }]);
+  });
+
+  it('pages orders by (confirmed_at, id) without a gap or a repeat across equal times', async () => {
+    const T = Temporal.Instant.from('2026-09-01T00:00:00Z');
+    const at = [0, 0, 0, 1, 2].map((ms) => T.add({ milliseconds: ms }));
+    const placed = at.map((when) => order(market, [offer(), offer()], 'confirmed', when));
+    await place(market, ...placed);
+    const window = { since: T, until: T.add({ milliseconds: 2 }) };
+    const pages: string[][] = [];
+    let after: { confirmedAt: Temporal.Instant; orderId: string } | null = null;
+    for (;;) {
+      const page = await value(market, () => store.confirmedOrders(market, window, after, 2));
+      pages.push(page.orders.map((o) => o.orderId));
+      const last = page.orders.at(-1);
+      if (last === undefined || page.orders.length < 2) break;
+      after = { confirmedAt: last.confirmedAt, orderId: last.orderId };
+    }
+
+    const expected = [...placed]
+      .sort(
+        (x, y) =>
+          x.confirmedAt!.epochMilliseconds - y.confirmedAt!.epochMilliseconds ||
+          (x.id < y.id ? -1 : 1),
+      )
+      .map((o) => o.id);
+    expect(pages.flat()).toEqual(expected);
+    expect(pages.map((p) => p.length)).toEqual([2, 2, 1]);
+  });
+
+  it('leaves out an order with more than 20 distinct Offers', async () => {
+    const [a, b] = [offer(), offer()] as const;
+    const crowd = Array.from({ length: 19 }, () => offer());
+    await place(market, ...times(3, () => order(market, [a, b, ...crowd, offer()])));
+
+    const result = await run();
+
+    expect(result.skippedLargeOrders).toBeGreaterThanOrEqual(3);
+    expect(await pairsOf(market, a)).toEqual([]);
   });
 
   it('answers the partners most orders first, ties by Offer id, within the limit, ids only', async () => {

@@ -151,6 +151,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'ordering.seller_orders_unrecorded_shipments_idx':
     "CREATE INDEX seller_orders_unrecorded_shipments_idx ON ordering.seller_orders USING btree (market_id, shipped_at) WHERE ((inventory_recorded_at IS NULL) AND (fulfilment <> 'to-ship'::text))",
   // Phase 5 package 1: a Stripe session or payment intent belongs to one order.
+  'ordering.orders_market_id_confirmed_at_id_idx':
+    "CREATE INDEX orders_market_id_confirmed_at_id_idx ON ordering.orders USING btree (market_id, confirmed_at, id) WHERE (status = 'confirmed'::text)",
   'ordering.orders_stripe_payment_intent_id_key':
     'CREATE UNIQUE INDEX orders_stripe_payment_intent_id_key ON ordering.orders USING btree (stripe_payment_intent_id) WHERE (stripe_payment_intent_id IS NOT NULL)',
   'ordering.orders_stripe_session_id_key':

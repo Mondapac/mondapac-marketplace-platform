@@ -48,6 +48,8 @@ model OrderingOrder {
   @@unique([marketId, stripeIdempotencyKey])
   @@index([marketId, accountId, createdAt(sort: Desc)])
   @@index([marketId, status, createdAt(sort: Desc)])
+  /// The partial index (market_id, confirmed_at, id) WHERE status = 'confirmed' (nightly bought-together
+  /// job) is hand-written in its own migration, built CONCURRENTLY; Prisma cannot declare it.
   @@map("orders")
   @@schema("ordering")
 }

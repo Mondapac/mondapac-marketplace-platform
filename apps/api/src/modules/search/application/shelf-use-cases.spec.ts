@@ -320,6 +320,17 @@ describe.each([
       expect(shelves.browsed).toEqual([]);
     });
 
+    it('answers an empty shelf when the asked Offer is no longer shown or not indexed', async () => {
+      shelves.documents = [hit(1), hit(2), hit(3)];
+      sources.partners = [offer(2), offer(3)];
+      visibility.hidden.add(offer(1));
+      expect(await run({ offer: offer(1) })).toEqual({ ok: true, value: { items: [] } });
+
+      visibility.hidden.clear();
+      shelves.documents = [hit(2), hit(3)];
+      expect(await run({ offer: offer(1) })).toEqual({ ok: true, value: { items: [] } });
+    });
+
     it('answers an empty shelf when nothing is paired', async () => {
       shelves.documents = [hit(1)];
 
@@ -327,7 +338,7 @@ describe.each([
     });
 
     it('drops what catalog or sellers no longer show, and caps at the limit', async () => {
-      shelves.documents = [hit(2), hit(3), hit(4)];
+      shelves.documents = [hit(1), hit(2), hit(3), hit(4)];
       sources.partners = [offer(2), offer(3), offer(4)];
       visibility.hidden.add(offer(2));
 
@@ -337,7 +348,7 @@ describe.each([
     });
 
     it('is unavailable when the source or the check fails, never an unchecked list', async () => {
-      shelves.documents = [hit(2)];
+      shelves.documents = [hit(1), hit(2)];
       sources.partners = null;
       expect(await run({ offer: offer(1) })).toEqual({
         ok: false,

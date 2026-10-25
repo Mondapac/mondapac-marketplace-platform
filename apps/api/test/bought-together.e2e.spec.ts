@@ -152,6 +152,19 @@ describe('bought together over HTTP', () => {
       expect(offersOf(one.body)).toEqual([offer(2)]);
     });
 
+    it('answers an empty list, not an error, when the asked Offer itself is no longer shown', async () => {
+      await boot();
+      hidden.add(offer(1));
+
+      const response = await http()
+        .get(path(`offer=${offer(1)}`))
+        .set(base);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ items: [] });
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
     it('answers an empty list when nothing is paired', async () => {
       await boot();
       partners = [];
@@ -194,6 +207,8 @@ describe('bought together over HTTP', () => {
       [`offer=${offer(1)}&category=${offer(2)}`, [{ path: 'category', code: 'unknown-field' }]],
       [`offer=${offer(1)}&accountId=${offer(2)}`, [{ path: 'accountId', code: 'unknown-field' }]],
       [`offer=${offer(1)}&offer=${offer(2)}`, [{ path: 'offer', code: 'type' }]],
+      [`offer=${offer(1)}&limit=1&limit=2`, [{ path: 'limit', code: 'type' }]],
+      ['offer=', [{ path: 'offer', code: 'format' }]],
     ])('refuses ?%s with 400, no-store, before any read', async (query, fields) => {
       await boot();
 
@@ -211,7 +226,7 @@ describe('bought together over HTTP', () => {
 
     it('bounds limit to 1 to 24 and defaults it to 12', async () => {
       await boot();
-      documents = [...Array(30).keys()].map((n) => hit(10 + n));
+      documents = [hit(1), ...[...Array(30).keys()].map((n) => hit(10 + n))];
       partners = [...Array(24).keys()].map((n) => offer(10 + n));
 
       const dflt = await http()

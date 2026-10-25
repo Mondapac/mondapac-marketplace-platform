@@ -23,7 +23,16 @@ export function rebuildOfferPairsJob(rebuild: RebuildOfferPairs): JobDefinition 
     maxRunMs: MAX_RUN_MS,
     async run(context: JobContext): Promise<void> {
       const result = await rebuild.execute(context, {});
-      if (!result.ok) throw new Error(`${REBUILD_OFFER_PAIRS_JOB} refused: ${result.error.code}`);
+      if (!result.ok) {
+        // The old table stays; the counter's ceiling was hit.
+        logger.error({
+          msg: `${REBUILD_OFFER_PAIRS_JOB}.refused`,
+          marketId: context.market.marketId,
+          correlationId: context.correlationId,
+          code: result.error.code,
+        });
+        throw new Error(`${REBUILD_OFFER_PAIRS_JOB} refused: ${result.error.code}`);
+      }
       logger.log({
         msg: REBUILD_OFFER_PAIRS_JOB,
         marketId: context.market.marketId,
