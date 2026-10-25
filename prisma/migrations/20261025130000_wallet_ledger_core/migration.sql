@@ -1,0 +1,786 @@
+-- Safety: a blocked statement fails instead of queueing.
+SET lock_timeout = '5s';
+
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "wallet";
+
+-- CreateTable
+CREATE TABLE "wallet"."accounts" (
+    "id" UUID NOT NULL,
+    "market_id" VARCHAR(8) NOT NULL,
+    "tenant_id" TEXT NOT NULL,
+    "kind" TEXT NOT NULL,
+    "customer_account_id" UUID,
+    "currency" VARCHAR(3) NOT NULL,
+    "status" TEXT NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "accounts_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "wallet"."journals" (
+    "id" UUID NOT NULL,
+    "market_id" VARCHAR(8) NOT NULL,
+    "tenant_id" TEXT NOT NULL,
+    "kind" TEXT NOT NULL,
+    "idempotency_key" TEXT NOT NULL,
+    "fingerprint" TEXT NOT NULL,
+    "actor_kind" TEXT NOT NULL,
+    "actor_id" UUID,
+    "reason_code" TEXT NOT NULL,
+    "order_id" UUID,
+    "wallet_account_id" UUID,
+    "hold_id" UUID,
+    "lot_id" UUID,
+    "result" JSONB NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "journals_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "wallet"."postings" (
+    "id" UUID NOT NULL,
+    "market_id" VARCHAR(8) NOT NULL,
+    "tenant_id" TEXT NOT NULL,
+    "journal_id" UUID NOT NULL,
+    "account_id" UUID NOT NULL,
+    "amount_minor" BIGINT NOT NULL,
+    "currency" VARCHAR(3) NOT NULL,
+    "wallet_account_id" UUID,
+
+    CONSTRAINT "postings_pkey" PRIMARY KEY ("id")
+);
+
+-- Hand-written storage settings (as platform.rate_limit_counters): `balances` is updated in every
+-- operation (the lock and the new amounts) and `lots` and `holds` a few times in their life, so
+-- the pages keep room for HOT updates and autovacuum runs early.
+-- CreateTable
+CREATE TABLE "wallet"."lots" (
+    "id" UUID NOT NULL,
+    "market_id" VARCHAR(8) NOT NULL,
+    "tenant_id" TEXT NOT NULL,
+    "wallet_account_id" UUID NOT NULL,
+    "source" TEXT NOT NULL,
+    "journal_id" UUID NOT NULL,
+    "original_minor" BIGINT NOT NULL,
+    "remaining_minor" BIGINT NOT NULL,
+    "currency" VARCHAR(3) NOT NULL,
+    "expires_at" TIMESTAMPTZ(6),
+    "created_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "lots_pkey" PRIMARY KEY ("id")
+) WITH (fillfactor = 70, autovacuum_vacuum_scale_factor = 0.02);
+
+-- CreateTable
+CREATE TABLE "wallet"."holds" (
+    "id" UUID NOT NULL,
+    "market_id" VARCHAR(8) NOT NULL,
+    "tenant_id" TEXT NOT NULL,
+    "wallet_account_id" UUID NOT NULL,
+    "order_id" UUID NOT NULL,
+    "amount_minor" BIGINT NOT NULL,
+    "currency" VARCHAR(3) NOT NULL,
+    "status" TEXT NOT NULL,
+    "expires_at" TIMESTAMPTZ(6) NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL,
+    "resolved_at" TIMESTAMPTZ(6),
+
+    CONSTRAINT "holds_pkey" PRIMARY KEY ("id")
+) WITH (fillfactor = 80);
+
+-- CreateTable
+CREATE TABLE "wallet"."hold_lots" (
+    "hold_id" UUID NOT NULL,
+    "lot_id" UUID NOT NULL,
+    "market_id" VARCHAR(8) NOT NULL,
+    "tenant_id" TEXT NOT NULL,
+    "amount_minor" BIGINT NOT NULL,
+
+    CONSTRAINT "hold_lots_pkey" PRIMARY KEY ("market_id","hold_id","lot_id")
+);
+
+-- CreateTable
+CREATE TABLE "wallet"."balances" (
+    "wallet_account_id" UUID NOT NULL,
+    "market_id" VARCHAR(8) NOT NULL,
+    "tenant_id" TEXT NOT NULL,
+    "currency" VARCHAR(3) NOT NULL,
+    "available_minor" BIGINT NOT NULL,
+    "held_minor" BIGINT NOT NULL,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "balances_pkey" PRIMARY KEY ("wallet_account_id")
+) WITH (fillfactor = 70, autovacuum_vacuum_scale_factor = 0.02);
+
+-- CreateTable
+CREATE TABLE "wallet"."market_settings" (
+    "market_id" VARCHAR(8) NOT NULL,
+    "tenant_id" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "reason_code" TEXT,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+    "updated_by_account_id" UUID NOT NULL,
+
+    CONSTRAINT "market_settings_pkey" PRIMARY KEY ("market_id")
+);
+
+-- CreateIndex
+-- Hand-written: NULLS NOT DISTINCT, so each internal account kind exists once per Market.
+CREATE UNIQUE INDEX "accounts_market_id_kind_customer_account_id_key" ON "wallet"."accounts"("market_id", "kind", "customer_account_id") NULLS NOT DISTINCT;
+
+-- CreateIndex
+CREATE INDEX "journals_market_id_wallet_account_id_created_at_id_idx" ON "wallet"."journals"("market_id", "wallet_account_id", "created_at" DESC, "id" DESC);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "journals_market_id_idempotency_key_key" ON "wallet"."journals"("market_id", "idempotency_key");
+
+-- CreateIndex
+CREATE INDEX "postings_market_id_journal_id_idx" ON "wallet"."postings"("market_id", "journal_id");
+
+-- CreateIndex
+-- The amount is the last key column (Prisma has no INCLUDE): the per-account sums (reconcile,
+-- history legs) read the index only.
+CREATE INDEX "postings_market_id_account_id_amount_minor_idx" ON "wallet"."postings"("market_id", "account_id", "amount_minor");
+
+-- CreateIndex
+-- The books check sums one wallet's legs on its own account and on the Market's holds account
+-- from this index alone (amount last), whatever the size of the Market's ledger.
+CREATE INDEX "postings_market_id_wallet_account_id_account_id_amount_mino_idx" ON "wallet"."postings"("market_id", "wallet_account_id", "account_id", "amount_minor");
+
+-- CreateIndex
+CREATE INDEX "lots_market_id_wallet_account_id_remaining_minor_idx" ON "wallet"."lots"("market_id", "wallet_account_id", "remaining_minor");
+
+-- CreateIndex
+-- Hand-written partial: the expiry sweep's due promo lots, oldest first; a drained lot leaves the
+-- index. Every spend changes `remaining_minor`, so lot updates are not HOT: a lot is updated a
+-- few times in its life, which is acceptable.
+CREATE INDEX "lots_market_id_expires_at_id_idx" ON "wallet"."lots"("market_id", "expires_at", "id") WHERE "source" = 'promo' AND "remaining_minor" > 0;
+
+-- CreateIndex
+-- Hand-written partial: the expiry sweep's held holds, oldest first; a settled hold leaves it.
+CREATE INDEX "holds_market_id_expires_at_id_idx" ON "wallet"."holds"("market_id", "expires_at", "id") WHERE "status" = 'held';
+
+-- CreateIndex
+-- Hand-written partial: the held holds of one wallet, summed by the books check (amount last).
+CREATE INDEX "holds_market_id_wallet_account_id_amount_minor_idx" ON "wallet"."holds"("market_id", "wallet_account_id", "amount_minor") WHERE "status" = 'held';
+
+-- CreateIndex
+-- Hand-written partial: the journals of one hold (the settle check at commit).
+CREATE INDEX "journals_market_id_hold_id_idx" ON "wallet"."journals"("market_id", "hold_id") WHERE "hold_id" IS NOT NULL;
+
+-- CreateIndex
+-- Hand-written partial: the expire journals of one lot (the lot ledger check at commit).
+CREATE INDEX "journals_market_id_lot_id_idx" ON "wallet"."journals"("market_id", "lot_id") WHERE "lot_id" IS NOT NULL;
+
+-- CreateIndex
+CREATE UNIQUE INDEX "holds_market_id_order_id_key" ON "wallet"."holds"("market_id", "order_id");
+
+-- CreateIndex
+CREATE INDEX "hold_lots_market_id_lot_id_idx" ON "wallet"."hold_lots"("market_id", "lot_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "accounts_market_id_id_key" ON "wallet"."accounts"("market_id", "id");
+
+-- CreateIndex
+-- The target of the foreign keys that tie a lot, a hold or a balance to its wallet's currency.
+CREATE UNIQUE INDEX "accounts_market_id_id_currency_key" ON "wallet"."accounts"("market_id", "id", "currency");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "journals_market_id_id_key" ON "wallet"."journals"("market_id", "id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "lots_market_id_id_key" ON "wallet"."lots"("market_id", "id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "holds_market_id_id_key" ON "wallet"."holds"("market_id", "id");
+
+-- AddForeignKey
+ALTER TABLE "wallet"."postings" ADD CONSTRAINT "postings_market_id_journal_id_fkey" FOREIGN KEY ("market_id", "journal_id") REFERENCES "wallet"."journals"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."postings" ADD CONSTRAINT "postings_market_id_account_id_fkey" FOREIGN KEY ("market_id", "account_id") REFERENCES "wallet"."accounts"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."lots" ADD CONSTRAINT "lots_market_id_wallet_account_id_currency_fkey" FOREIGN KEY ("market_id", "wallet_account_id", "currency") REFERENCES "wallet"."accounts"("market_id", "id", "currency") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."lots" ADD CONSTRAINT "lots_market_id_journal_id_fkey" FOREIGN KEY ("market_id", "journal_id") REFERENCES "wallet"."journals"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."holds" ADD CONSTRAINT "holds_market_id_wallet_account_id_currency_fkey" FOREIGN KEY ("market_id", "wallet_account_id", "currency") REFERENCES "wallet"."accounts"("market_id", "id", "currency") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."hold_lots" ADD CONSTRAINT "hold_lots_market_id_hold_id_fkey" FOREIGN KEY ("market_id", "hold_id") REFERENCES "wallet"."holds"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."hold_lots" ADD CONSTRAINT "hold_lots_market_id_lot_id_fkey" FOREIGN KEY ("market_id", "lot_id") REFERENCES "wallet"."lots"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."balances" ADD CONSTRAINT "balances_market_id_wallet_account_id_currency_fkey" FOREIGN KEY ("market_id", "wallet_account_id", "currency") REFERENCES "wallet"."accounts"("market_id", "id", "currency") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "wallet"."journals" ADD CONSTRAINT "journals_market_id_wallet_account_id_fkey" FOREIGN KEY ("market_id", "wallet_account_id") REFERENCES "wallet"."accounts"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- Hand-written: scope and value checks.
+ALTER TABLE "wallet"."accounts"
+  ADD CONSTRAINT "accounts_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
+  ADD CONSTRAINT "accounts_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  ADD CONSTRAINT "accounts_kind_check" CHECK ("kind" IN ('credit_liability', 'promo_expense', 'refund_clearing', 'order_clearing', 'holds', 'breakage_income')),
+  ADD CONSTRAINT "accounts_currency_check" CHECK ("currency" ~ '^[A-Z]{3}$'),
+  ADD CONSTRAINT "accounts_status_check" CHECK ("status" IN ('active', 'frozen', 'closed')),
+  ADD CONSTRAINT "accounts_customer_check" CHECK (("kind" = 'credit_liability') = ("customer_account_id" IS NOT NULL));
+
+ALTER TABLE "wallet"."journals"
+  ADD CONSTRAINT "journals_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
+  ADD CONSTRAINT "journals_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  ADD CONSTRAINT "journals_kind_check" CHECK ("kind" IN ('grant-promo', 'grant-refund', 'hold', 'capture', 'release', 'expire', 'reverse')),
+  ADD CONSTRAINT "journals_actor_check" CHECK (("actor_kind" IN ('admin', 'customer') AND "actor_id" IS NOT NULL) OR ("actor_kind" = 'system' AND "actor_id" IS NULL)),
+  ADD CONSTRAINT "journals_idempotency_key_check" CHECK (char_length("idempotency_key") BETWEEN 8 AND 128),
+  ADD CONSTRAINT "journals_reason_code_check" CHECK ("reason_code" ~ '^[a-z][a-z0-9-]{1,39}$'),
+  -- Every kind but `reverse` belongs to one customer wallet.
+  ADD CONSTRAINT "journals_wallet_check" CHECK ("kind" = 'reverse' OR "wallet_account_id" IS NOT NULL),
+  -- A hold, its capture and its release name the hold.
+  ADD CONSTRAINT "journals_hold_check" CHECK (("kind" IN ('hold', 'capture', 'release')) = ("hold_id" IS NOT NULL)),
+  -- An expiry names the lot it expires. A lot may have several (the sweep writes one per
+  -- remainder it expires: a release can restore an expired lot, and the next sweep expires it
+  -- again).
+  ADD CONSTRAINT "journals_lot_check" CHECK (("kind" = 'expire') = ("lot_id" IS NOT NULL));
+
+ALTER TABLE "wallet"."postings"
+  ADD CONSTRAINT "postings_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
+  ADD CONSTRAINT "postings_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  ADD CONSTRAINT "postings_currency_check" CHECK ("currency" ~ '^[A-Z]{3}$'),
+  ADD CONSTRAINT "postings_amount_check" CHECK ("amount_minor" <> 0);
+
+ALTER TABLE "wallet"."lots"
+  ADD CONSTRAINT "lots_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
+  ADD CONSTRAINT "lots_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  ADD CONSTRAINT "lots_currency_check" CHECK ("currency" ~ '^[A-Z]{3}$'),
+  ADD CONSTRAINT "lots_source_check" CHECK ("source" IN ('promo', 'refund')),
+  ADD CONSTRAINT "lots_original_check" CHECK ("original_minor" > 0),
+  ADD CONSTRAINT "lots_remaining_check" CHECK ("remaining_minor" >= 0 AND "remaining_minor" <= "original_minor"),
+  -- Promo credit expires; refund credit never does.
+  ADD CONSTRAINT "lots_expiry_check" CHECK (("source" = 'promo') = ("expires_at" IS NOT NULL)),
+  ADD CONSTRAINT "lots_expires_after_created_check" CHECK ("expires_at" > "created_at");
+
+ALTER TABLE "wallet"."holds"
+  ADD CONSTRAINT "holds_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
+  ADD CONSTRAINT "holds_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  ADD CONSTRAINT "holds_currency_check" CHECK ("currency" ~ '^[A-Z]{3}$'),
+  ADD CONSTRAINT "holds_amount_check" CHECK ("amount_minor" > 0),
+  ADD CONSTRAINT "holds_status_check" CHECK ("status" IN ('held', 'captured', 'released', 'expired')),
+  ADD CONSTRAINT "holds_resolved_check" CHECK (("status" = 'held') = ("resolved_at" IS NULL)),
+  ADD CONSTRAINT "holds_expires_after_created_check" CHECK ("expires_at" > "created_at");
+
+ALTER TABLE "wallet"."hold_lots"
+  ADD CONSTRAINT "hold_lots_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
+  ADD CONSTRAINT "hold_lots_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  ADD CONSTRAINT "hold_lots_amount_check" CHECK ("amount_minor" > 0);
+
+ALTER TABLE "wallet"."balances"
+  ADD CONSTRAINT "balances_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
+  ADD CONSTRAINT "balances_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  ADD CONSTRAINT "balances_currency_check" CHECK ("currency" ~ '^[A-Z]{3}$'),
+  ADD CONSTRAINT "balances_available_check" CHECK ("available_minor" >= 0),
+  ADD CONSTRAINT "balances_held_check" CHECK ("held_minor" >= 0);
+
+ALTER TABLE "wallet"."market_settings"
+  ADD CONSTRAINT "market_settings_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
+  ADD CONSTRAINT "market_settings_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  ADD CONSTRAINT "market_settings_status_check" CHECK ("status" IN ('off', 'active', 'paused', 'frozen')),
+  -- A wind-down or an emergency always says why.
+  ADD CONSTRAINT "market_settings_reason_check" CHECK (("status" IN ('paused', 'frozen')) = ("reason_code" IS NOT NULL)),
+  ADD CONSTRAINT "market_settings_reason_code_check" CHECK ("reason_code" IS NULL OR "reason_code" ~ '^[a-z][a-z0-9-]{1,39}$');
+
+-- Hand-written: insert-only tables. No row of the journal, its legs or a hold's lots is ever
+-- changed or removed, whoever asks. No wallet table is ever deleted from or truncated. A balance,
+-- a lot or a hold can be updated (the columns granted below), but never without the journal that
+-- explains it: the deferred constraint triggers further down check the books at COMMIT.
+CREATE FUNCTION "wallet"."reject_mutation"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  RAISE EXCEPTION 'wallet.%: % is not allowed', TG_TABLE_NAME, TG_OP
+    USING ERRCODE = 'restrict_violation';
+END; $$;
+
+CREATE TRIGGER "journals_no_update" BEFORE UPDATE ON "wallet"."journals"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "journals_no_delete" BEFORE DELETE ON "wallet"."journals"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "journals_no_truncate" BEFORE TRUNCATE ON "wallet"."journals"
+  FOR EACH STATEMENT EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "postings_no_update" BEFORE UPDATE ON "wallet"."postings"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "postings_no_delete" BEFORE DELETE ON "wallet"."postings"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "postings_no_truncate" BEFORE TRUNCATE ON "wallet"."postings"
+  FOR EACH STATEMENT EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "hold_lots_no_update" BEFORE UPDATE ON "wallet"."hold_lots"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "hold_lots_no_delete" BEFORE DELETE ON "wallet"."hold_lots"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "hold_lots_no_truncate" BEFORE TRUNCATE ON "wallet"."hold_lots"
+  FOR EACH STATEMENT EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "accounts_no_delete" BEFORE DELETE ON "wallet"."accounts"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "accounts_no_truncate" BEFORE TRUNCATE ON "wallet"."accounts"
+  FOR EACH STATEMENT EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "lots_no_delete" BEFORE DELETE ON "wallet"."lots"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "lots_no_truncate" BEFORE TRUNCATE ON "wallet"."lots"
+  FOR EACH STATEMENT EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "holds_no_delete" BEFORE DELETE ON "wallet"."holds"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "holds_no_truncate" BEFORE TRUNCATE ON "wallet"."holds"
+  FOR EACH STATEMENT EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "balances_no_delete" BEFORE DELETE ON "wallet"."balances"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "balances_no_truncate" BEFORE TRUNCATE ON "wallet"."balances"
+  FOR EACH STATEMENT EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "market_settings_no_delete" BEFORE DELETE ON "wallet"."market_settings"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."reject_mutation"();
+CREATE TRIGGER "market_settings_no_truncate" BEFORE TRUNCATE ON "wallet"."market_settings"
+  FOR EACH STATEMENT EXECUTE FUNCTION "wallet"."reject_mutation"();
+
+-- Hand-written: the legs of one journal sum to zero and are at least two. Checked at commit
+-- (DEFERRABLE INITIALLY DEFERRED), from the journal row and from every posting row, so a journal
+-- with no legs is refused too.
+CREATE FUNCTION "wallet"."check_journal_balanced"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  target uuid;
+  total numeric;
+  legs integer;
+BEGIN
+  IF TG_TABLE_NAME = 'journals' THEN target := NEW."id"; ELSE target := NEW."journal_id"; END IF;
+  SELECT COALESCE(SUM("amount_minor"), 0), COUNT(*) INTO total, legs
+    FROM "wallet"."postings" WHERE "market_id" = NEW."market_id" AND "journal_id" = target;
+  IF legs < 2 OR total <> 0 THEN
+    RAISE EXCEPTION 'wallet.journal %: unbalanced (% legs, sum %)', target, legs, total
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END; $$;
+
+CREATE CONSTRAINT TRIGGER "journals_balanced" AFTER INSERT ON "wallet"."journals"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_journal_balanced"();
+CREATE CONSTRAINT TRIGGER "postings_balanced" AFTER INSERT ON "wallet"."postings"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_journal_balanced"();
+
+-- Hand-written: a lot changes only in `remaining_minor`, which only decreases, except that a
+-- released or expired hold gives back what it took (never more than the lot's original less what
+-- other holds still hold or have captured). "Expired" is judged by the database clock (`now()`),
+-- a backstop to the domain's injected Clock: within clock skew of `expires_at` the two may
+-- disagree, and the next sweep expires a restored lot again either way.
+-- "Written in this transaction" is `xmin = pg_current_xact_id()`: a row written inside a SAVEPOINT
+-- (or a PL/pgSQL EXCEPTION block) carries the subtransaction's id and fails the test, so wallet
+-- units must not use savepoints; such a write is refused (fails closed), never let through.
+CREATE FUNCTION "wallet"."guard_lot_update"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  outstanding numeric;
+BEGIN
+  IF (to_jsonb(NEW) - 'remaining_minor') <> (to_jsonb(OLD) - 'remaining_minor') THEN
+    RAISE EXCEPTION 'wallet.lots: only remaining_minor may change' USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW."remaining_minor" > OLD."remaining_minor" THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM "wallet"."hold_lots" hl JOIN "wallet"."holds" h
+          ON h."market_id" = hl."market_id" AND h."id" = hl."hold_id"
+       WHERE hl."market_id" = NEW."market_id" AND hl."lot_id" = NEW."id"
+         AND h."status" IN ('released', 'expired')
+    ) THEN
+      RAISE EXCEPTION 'wallet.lots: remaining_minor only decreases' USING ERRCODE = 'restrict_violation';
+    END IF;
+    SELECT COALESCE(SUM(hl."amount_minor"), 0) INTO outstanding
+      FROM "wallet"."hold_lots" hl JOIN "wallet"."holds" h
+        ON h."market_id" = hl."market_id" AND h."id" = hl."hold_id"
+     WHERE hl."market_id" = NEW."market_id" AND hl."lot_id" = NEW."id"
+       AND h."status" IN ('held', 'captured');
+    IF NEW."remaining_minor" + outstanding > NEW."original_minor" THEN
+      RAISE EXCEPTION 'wallet.lots: restore exceeds what the holds took' USING ERRCODE = 'restrict_violation';
+    END IF;
+    -- Expired promo credit does not come back, unless this same transaction is releasing a hold
+    -- that took from the lot (the next sweep expires the restored credit again).
+    IF NEW."expires_at" IS NOT NULL AND NEW."expires_at" <= now() AND NOT EXISTS (
+      SELECT 1 FROM "wallet"."hold_lots" hl JOIN "wallet"."holds" h
+          ON h."market_id" = hl."market_id" AND h."id" = hl."hold_id"
+       WHERE hl."market_id" = NEW."market_id" AND hl."lot_id" = NEW."id"
+         AND h."status" IN ('released', 'expired')
+         AND h."xmin"::text = pg_current_xact_id()::xid::text
+    ) THEN
+      RAISE EXCEPTION 'wallet.lots: expired credit does not come back' USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "lots_guard_update" BEFORE UPDATE ON "wallet"."lots"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_lot_update"();
+
+-- Hand-written: a hold leaves `held` once, for captured, released or expired; nothing else changes.
+CREATE FUNCTION "wallet"."guard_hold_update"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF (to_jsonb(NEW) - 'status' - 'resolved_at') <> (to_jsonb(OLD) - 'status' - 'resolved_at') THEN
+    RAISE EXCEPTION 'wallet.holds: only status may change' USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF OLD."status" <> 'held' OR NEW."status" = 'held' THEN
+    RAISE EXCEPTION 'wallet.holds: a settled hold does not change' USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "holds_guard_update" BEFORE UPDATE ON "wallet"."holds"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_hold_update"();
+
+-- Hand-written: a hold is born `held`, and its lots are written in the transaction that creates
+-- it. So a hold cannot be inserted already settled, nor given lots later.
+-- "Written in this transaction" is `xmin = pg_current_xact_id()`: a row written inside a SAVEPOINT
+-- (or a PL/pgSQL EXCEPTION block) carries the subtransaction's id and fails the test, so wallet
+-- units must not use savepoints; such a write is refused (fails closed), never let through.
+CREATE FUNCTION "wallet"."guard_hold_insert"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF NEW."status" <> 'held' OR NEW."resolved_at" IS NOT NULL THEN
+    RAISE EXCEPTION 'wallet.holds: a hold is created held' USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "holds_guard_insert" BEFORE INSERT ON "wallet"."holds"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_hold_insert"();
+
+CREATE FUNCTION "wallet"."guard_hold_lot_insert"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM "wallet"."holds" h
+     WHERE h."market_id" = NEW."market_id" AND h."id" = NEW."hold_id" AND h."status" = 'held'
+       AND h."xmin"::text = pg_current_xact_id()::xid::text
+  ) THEN
+    RAISE EXCEPTION 'wallet.hold_lots: lots are written with the held hold that takes them'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  -- A hold takes only from lots of its own wallet, in its currency.
+  IF NOT EXISTS (
+    SELECT 1 FROM "wallet"."holds" h JOIN "wallet"."lots" l
+        ON l."market_id" = h."market_id" AND l."wallet_account_id" = h."wallet_account_id"
+       AND l."currency" = h."currency"
+     WHERE h."market_id" = NEW."market_id" AND h."id" = NEW."hold_id" AND l."id" = NEW."lot_id"
+  ) THEN
+    RAISE EXCEPTION 'wallet.hold_lots: a hold takes only from lots of its own wallet'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "hold_lots_guard_insert" BEFORE INSERT ON "wallet"."hold_lots"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_hold_lot_insert"();
+
+-- Hand-written: a lot, a hold and a balance belong to a customer wallet (`credit_liability`); the
+-- composite foreign keys tie them to its Market and currency.
+CREATE FUNCTION "wallet"."guard_wallet_row_insert"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM "wallet"."accounts" a
+     WHERE a."market_id" = NEW."market_id" AND a."id" = NEW."wallet_account_id"
+       AND a."kind" = 'credit_liability'
+  ) THEN
+    RAISE EXCEPTION 'wallet.%: the account is not a customer wallet', TG_TABLE_NAME
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "lots_guard_wallet" BEFORE INSERT ON "wallet"."lots"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_wallet_row_insert"();
+CREATE TRIGGER "holds_guard_wallet" BEFORE INSERT ON "wallet"."holds"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_wallet_row_insert"();
+CREATE TRIGGER "balances_guard_wallet" BEFORE INSERT ON "wallet"."balances"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_wallet_row_insert"();
+
+-- Hand-written: an account changes only its status, and a closed account never reopens.
+CREATE FUNCTION "wallet"."guard_account_update"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF (to_jsonb(NEW) - 'status') <> (to_jsonb(OLD) - 'status') THEN
+    RAISE EXCEPTION 'wallet.accounts: only status may change' USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF OLD."status" = 'closed' AND NEW."status" <> 'closed' THEN
+    RAISE EXCEPTION 'wallet.accounts: a closed account does not reopen' USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "accounts_guard_update" BEFORE UPDATE ON "wallet"."accounts"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_account_update"();
+
+-- Hand-written: the Market switch may not go back to `off` once the Market has any journal;
+-- the wind-down state is `paused`.
+CREATE FUNCTION "wallet"."guard_market_setting_update"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF NEW."status" = 'off' AND OLD."status" <> 'off'
+     AND EXISTS (SELECT 1 FROM "wallet"."journals" WHERE "market_id" = NEW."market_id") THEN
+    RAISE EXCEPTION 'wallet.market_settings: cannot turn off with history' USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "market_settings_guard_update" BEFORE UPDATE ON "wallet"."market_settings"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_market_setting_update"();
+
+-- Hand-written: a balance, a lot or a hold changes only together with the journal that explains it.
+-- Checked at COMMIT (DEFERRABLE INITIALLY DEFERRED), per affected customer wallet: available =
+-- the wallet's legs on its own account = the lots' remaining credit, and held = the held holds =
+-- the wallet's legs on the Market's holds account. A direct UPDATE of one of them, by anyone,
+-- fails the commit. Every sum is one wallet's, read from an index that carries the amount
+-- (postings by wallet and account, held holds by wallet, lots by wallet), so the cost follows the
+-- wallet's own history, never the Market's. An UPDATE that changes no amount (the balance lock)
+-- queues no check (the WHEN clauses). Each queued row runs the check once; de-duplicating per
+-- wallet with a transaction marker was left out on purpose: any marker is session state the
+-- writer can set itself, which would let it skip the check.
+CREATE FUNCTION "wallet"."check_wallet_books"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  wallet_id uuid := NEW."wallet_account_id";
+  holds_id uuid;
+  available numeric;
+  held numeric;
+  posted numeric;
+  lotted numeric;
+  holding numeric;
+  held_posted numeric;
+BEGIN
+  SELECT COALESCE(MAX(b."available_minor"), 0), COALESCE(MAX(b."held_minor"), 0) INTO available, held
+    FROM "wallet"."balances" b WHERE b."market_id" = NEW."market_id" AND b."wallet_account_id" = wallet_id;
+  SELECT COALESCE(SUM(p."amount_minor"), 0) INTO posted FROM "wallet"."postings" p
+   WHERE p."market_id" = NEW."market_id" AND p."wallet_account_id" = wallet_id AND p."account_id" = wallet_id;
+  SELECT COALESCE(SUM(l."remaining_minor"), 0) INTO lotted FROM "wallet"."lots" l
+   WHERE l."market_id" = NEW."market_id" AND l."wallet_account_id" = wallet_id;
+  SELECT COALESCE(SUM(h."amount_minor"), 0) INTO holding FROM "wallet"."holds" h
+   WHERE h."market_id" = NEW."market_id" AND h."wallet_account_id" = wallet_id AND h."status" = 'held';
+  SELECT a."id" INTO holds_id FROM "wallet"."accounts" a
+   WHERE a."market_id" = NEW."market_id" AND a."kind" = 'holds' AND a."customer_account_id" IS NULL;
+  SELECT COALESCE(SUM(p."amount_minor"), 0) INTO held_posted FROM "wallet"."postings" p
+   WHERE p."market_id" = NEW."market_id" AND p."wallet_account_id" = wallet_id AND p."account_id" = holds_id;
+  IF available <> posted OR available <> lotted OR held <> holding OR held <> held_posted THEN
+    RAISE EXCEPTION 'wallet.books of %: available % postings % lots %, held % holds % holds-account %',
+      wallet_id, available, posted, lotted, held, holding, held_posted USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END; $$;
+
+CREATE CONSTRAINT TRIGGER "balances_books_insert" AFTER INSERT ON "wallet"."balances"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_wallet_books"();
+CREATE CONSTRAINT TRIGGER "balances_books_update" AFTER UPDATE ON "wallet"."balances"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  WHEN (OLD."available_minor" IS DISTINCT FROM NEW."available_minor"
+        OR OLD."held_minor" IS DISTINCT FROM NEW."held_minor"
+        OR OLD."wallet_account_id" IS DISTINCT FROM NEW."wallet_account_id")
+  EXECUTE FUNCTION "wallet"."check_wallet_books"();
+CREATE CONSTRAINT TRIGGER "lots_books_insert" AFTER INSERT ON "wallet"."lots"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_wallet_books"();
+CREATE CONSTRAINT TRIGGER "lots_books_update" AFTER UPDATE ON "wallet"."lots"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  WHEN (OLD."remaining_minor" IS DISTINCT FROM NEW."remaining_minor")
+  EXECUTE FUNCTION "wallet"."check_wallet_books"();
+CREATE CONSTRAINT TRIGGER "holds_books_insert" AFTER INSERT ON "wallet"."holds"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_wallet_books"();
+CREATE CONSTRAINT TRIGGER "holds_books_update" AFTER UPDATE ON "wallet"."holds"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  WHEN (OLD."status" IS DISTINCT FROM NEW."status")
+  EXECUTE FUNCTION "wallet"."check_wallet_books"();
+-- A leg of a customer wallet's journal (the wallet is on the leg, see guard_posting_insert).
+CREATE CONSTRAINT TRIGGER "postings_books" AFTER INSERT ON "wallet"."postings"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW."wallet_account_id" IS NOT NULL)
+  EXECUTE FUNCTION "wallet"."check_wallet_books"();
+
+-- Hand-written: the ledger of one lot, checked at COMMIT. What a lot has lost is exactly what the
+-- holds still on it took (held or captured, from `hold_lots`) plus what its expire journals moved
+-- off the wallet:
+--   original_minor - remaining_minor = held and captured hold_lots + expired
+-- The check runs for a new lot, for a lot whose remaining changes, for the lots of a new
+-- hold_lots row, for the lots of a hold that changes status, and for the lot of an expire journal
+-- (which must name an expired promo lot of its wallet and take credit off it). It compares states, not
+-- steps, so the order of the writes and repeated updates in one transaction do not matter, and it
+-- does not depend on `xmin`. With the books check (lots = available) it ties every credit movement
+-- to the lot that a hold or an expiry names: credit cannot move from one lot to another.
+CREATE FUNCTION "wallet"."check_lot_ledger"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  lot_ids uuid[];
+  lot record;
+  taken numeric;
+  expired numeric;
+BEGIN
+  IF TG_TABLE_NAME = 'lots' THEN
+    lot_ids := ARRAY[NEW."id"];
+  ELSIF TG_TABLE_NAME = 'hold_lots' THEN
+    lot_ids := ARRAY[NEW."lot_id"];
+  ELSIF TG_TABLE_NAME = 'journals' THEN
+    -- An expiry names an expired promo lot of its own wallet ("expired" by the database clock,
+    -- like guard_lot_update) and moves credit off the wallet, never onto it.
+    IF NOT EXISTS (
+      SELECT 1 FROM "wallet"."lots" l
+       WHERE l."market_id" = NEW."market_id" AND l."id" = NEW."lot_id"
+         AND l."wallet_account_id" = NEW."wallet_account_id"
+         AND l."source" = 'promo' AND l."expires_at" <= now()
+    ) THEN
+      RAISE EXCEPTION 'wallet.journal %: expires no expired promo lot of its wallet', NEW."id"
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF (SELECT COALESCE(SUM(p."amount_minor"), 0) FROM "wallet"."postings" p
+         WHERE p."market_id" = NEW."market_id" AND p."journal_id" = NEW."id"
+           AND p."account_id" = NEW."wallet_account_id") >= 0 THEN
+      RAISE EXCEPTION 'wallet.journal %: an expiry takes credit off the wallet', NEW."id"
+        USING ERRCODE = 'check_violation';
+    END IF;
+    lot_ids := ARRAY[NEW."lot_id"];
+  ELSE
+    SELECT array_agg(hl."lot_id") INTO lot_ids FROM "wallet"."hold_lots" hl
+     WHERE hl."market_id" = NEW."market_id" AND hl."hold_id" = NEW."id";
+  END IF;
+  FOR lot IN
+    SELECT l."id", l."wallet_account_id", l."original_minor", l."remaining_minor"
+      FROM "wallet"."lots" l
+     WHERE l."market_id" = NEW."market_id" AND l."id" = ANY (lot_ids)
+  LOOP
+    SELECT COALESCE(SUM(hl."amount_minor"), 0) INTO taken
+      FROM "wallet"."hold_lots" hl JOIN "wallet"."holds" h
+        ON h."market_id" = hl."market_id" AND h."id" = hl."hold_id"
+     WHERE hl."market_id" = NEW."market_id" AND hl."lot_id" = lot."id"
+       AND h."status" IN ('held', 'captured');
+    SELECT COALESCE(-SUM(p."amount_minor"), 0) INTO expired
+      FROM "wallet"."journals" j JOIN "wallet"."postings" p
+        ON p."market_id" = j."market_id" AND p."journal_id" = j."id"
+     WHERE j."market_id" = NEW."market_id" AND j."lot_id" = lot."id" AND j."kind" = 'expire'
+       AND p."account_id" = lot."wallet_account_id";
+    IF lot."original_minor" - lot."remaining_minor" <> taken + expired THEN
+      RAISE EXCEPTION 'wallet.lot %: original % remaining %, but holds took % and expiry moved %',
+        lot."id", lot."original_minor", lot."remaining_minor", taken, expired
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END LOOP;
+  RETURN NULL;
+END; $$;
+
+CREATE CONSTRAINT TRIGGER "lots_ledger_insert" AFTER INSERT ON "wallet"."lots"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_lot_ledger"();
+CREATE CONSTRAINT TRIGGER "lots_ledger" AFTER UPDATE ON "wallet"."lots"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  WHEN (OLD."remaining_minor" IS DISTINCT FROM NEW."remaining_minor")
+  EXECUTE FUNCTION "wallet"."check_lot_ledger"();
+CREATE CONSTRAINT TRIGGER "hold_lots_ledger" AFTER INSERT ON "wallet"."hold_lots"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_lot_ledger"();
+CREATE CONSTRAINT TRIGGER "holds_ledger" AFTER UPDATE ON "wallet"."holds"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (OLD."status" IS DISTINCT FROM NEW."status")
+  EXECUTE FUNCTION "wallet"."check_lot_ledger"();
+CREATE CONSTRAINT TRIGGER "journals_lot_ledger" AFTER INSERT ON "wallet"."journals"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW."lot_id" IS NOT NULL)
+  EXECUTE FUNCTION "wallet"."check_lot_ledger"();
+
+-- Hand-written: a hold leaves `held` only with a capture (for captured) or release (for released
+-- and expired) journal of this very hold (`journals.hold_id`), written in the same transaction.
+-- Checked at COMMIT.
+-- "Written in this transaction" is `xmin = pg_current_xact_id()`: a row written inside a SAVEPOINT
+-- (or a PL/pgSQL EXCEPTION block) carries the subtransaction's id and fails the test, so wallet
+-- units must not use savepoints; such a write is refused (fails closed), never let through.
+CREATE FUNCTION "wallet"."check_hold_settled"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF OLD."status" = 'held' AND NEW."status" <> 'held' AND NOT EXISTS (
+    SELECT 1 FROM "wallet"."journals" j
+     WHERE j."market_id" = NEW."market_id" AND j."hold_id" = NEW."id"
+       AND j."kind" = CASE WHEN NEW."status" = 'captured' THEN 'capture' ELSE 'release' END
+       AND j."order_id" = NEW."order_id" AND j."wallet_account_id" = NEW."wallet_account_id"
+       AND j."xmin"::text = pg_current_xact_id()::xid::text
+  ) THEN
+    RAISE EXCEPTION 'wallet.holds %: left held without a % journal in this transaction', NEW."id", NEW."status"
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END; $$;
+
+CREATE CONSTRAINT TRIGGER "holds_settled" AFTER UPDATE ON "wallet"."holds"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (OLD."status" IS DISTINCT FROM NEW."status")
+  EXECUTE FUNCTION "wallet"."check_hold_settled"();
+
+-- Hand-written: a leg carries the customer wallet of its journal (`wallet_account_id`, null for a
+-- journal of no wallet), is in the currency of its account and of the other legs of its journal,
+-- a leg on a customer wallet belongs to that wallet's own journal, and a leg on the Market's holds
+-- account belongs to the journal of a customer wallet.
+CREATE FUNCTION "wallet"."guard_posting_insert"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  journal_wallet uuid;
+  account_kind text;
+  account_currency text;
+BEGIN
+  SELECT j."wallet_account_id" INTO journal_wallet FROM "wallet"."journals" j
+   WHERE j."market_id" = NEW."market_id" AND j."id" = NEW."journal_id";
+  IF NEW."wallet_account_id" IS DISTINCT FROM journal_wallet THEN
+    RAISE EXCEPTION 'wallet.postings: wallet_account_id differs from its journal''s'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  SELECT a."kind", a."currency" INTO account_kind, account_currency FROM "wallet"."accounts" a
+   WHERE a."market_id" = NEW."market_id" AND a."id" = NEW."account_id";
+  IF (account_kind = 'credit_liability' AND NEW."wallet_account_id" IS DISTINCT FROM NEW."account_id")
+     OR (account_kind = 'holds' AND NEW."wallet_account_id" IS NULL) THEN
+    RAISE EXCEPTION 'wallet.postings: a % leg belongs to the journal of its wallet', account_kind
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF account_currency <> NEW."currency"
+     OR EXISTS (SELECT 1 FROM "wallet"."postings" p
+                 WHERE p."market_id" = NEW."market_id" AND p."journal_id" = NEW."journal_id"
+                   AND p."currency" <> NEW."currency") THEN
+    RAISE EXCEPTION 'wallet.postings: currency % differs from its account or its journal', NEW."currency"
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER "postings_guard_insert" BEFORE INSERT ON "wallet"."postings"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."guard_posting_insert"();
+
+-- Hand-written: the switch is a fence at the database. A journal is inserted only if the Market's
+-- status allows its kind, and the status row is read FOR SHARE: a status change waits for the
+-- journals in flight, and a journal waits for a status change in flight and then reads the new
+-- status. The same lock makes "never back to off with history" race-free, together with the
+-- guard above. A Market with no settings row is `off`.
+--   active: everything; paused: capture, release, expire; frozen: release, expire; off: nothing.
+CREATE FUNCTION "wallet"."check_market_status"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  current_status text;
+BEGIN
+  SELECT s."status" INTO current_status FROM "wallet"."market_settings" s
+   WHERE s."market_id" = NEW."market_id" FOR SHARE;
+  current_status := COALESCE(current_status, 'off');
+  IF current_status = 'active'
+     OR (current_status = 'paused' AND NEW."kind" IN ('capture', 'release', 'expire'))
+     OR (current_status = 'frozen' AND NEW."kind" IN ('release', 'expire')) THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'wallet.market_status: % refuses a % journal', current_status, NEW."kind"
+    USING ERRCODE = 'restrict_violation';
+END; $$;
+
+CREATE TRIGGER "journals_market_status" BEFORE INSERT ON "wallet"."journals"
+  FOR EACH ROW EXECUTE FUNCTION "wallet"."check_market_status"();
+
+-- Grants. Journals, legs and a hold's lots are read and appended to only; every other table
+-- changes only the columns named. Nothing is ever deleted.
+GRANT USAGE ON SCHEMA "wallet" TO "mondapac_app";
+GRANT SELECT, INSERT ON TABLE "wallet"."journals" TO "mondapac_app";
+GRANT SELECT, INSERT ON TABLE "wallet"."postings" TO "mondapac_app";
+GRANT SELECT, INSERT ON TABLE "wallet"."hold_lots" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("status") ON TABLE "wallet"."accounts" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("remaining_minor") ON TABLE "wallet"."lots" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("status", "resolved_at") ON TABLE "wallet"."holds" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("available_minor", "held_minor", "updated_at") ON TABLE "wallet"."balances" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("status", "reason_code", "updated_at", "updated_by_account_id") ON TABLE "wallet"."market_settings" TO "mondapac_app";

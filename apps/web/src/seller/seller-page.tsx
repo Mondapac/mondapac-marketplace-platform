@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { useId, useRef, useState, type KeyboardEvent } from 'react';
+import { arrowInReadingOrder } from '../i18n/locale.ts';
 import type { SellerShop } from '../storefront/types.ts';
 import { AboutPane, CertificatesPane } from './seller-panes.tsx';
 import { ProductsPane } from './seller-products.tsx';
@@ -42,10 +43,11 @@ export function SellerPage({
   // Arrow keys, Home and End move between the tabs and select them (automatic activation).
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const at = tabs.indexOf(tab);
+    const key = arrowInReadingOrder(event);
     const next =
-      event.key === 'ArrowRight'
+      key === 'ArrowRight'
         ? (at + 1) % tabs.length
-        : event.key === 'ArrowLeft'
+        : key === 'ArrowLeft'
           ? (at - 1 + tabs.length) % tabs.length
           : event.key === 'Home'
             ? 0

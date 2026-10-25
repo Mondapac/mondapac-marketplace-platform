@@ -62,6 +62,19 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   you" falls back to the plain best sellers. Four use cases (`search.list-for-you`,
   `search.list-recently-viewed`: `own-resources`; the `-guest` pair: `anonymous`, in
   `http-reachable-anonymous-system.json`). Items carry `primaryImage` like the other shelves.
+- **Bought together (personalization 1d-2):** `GET /search/bought-together?offer=<uuid>&limit=` (limit 1
+  to 24, default 12; `offer` required; no other query field, a bad uuid or limit is 400; `no-store`
+  on every answer; customer route population, no session read). Use case `search.list-bought-together`
+  (`anonymous`, in `http-reachable-anonymous-system.json`). Ordering's
+  `OrderingRankingFacade.boughtTogether` answers Offer ids (most distinct buyers first, ties by Offer id)
+  from `ordering.offer_pairs`, which the nightly job `ordering.rebuild-offer-pairs` (`system`, per
+  hosted Market) rebuilds in one transaction: pairs that at least 3 distinct buyer accounts bought together
+  (one paid order each, confirmed in the last 90 days, counted by confirmation time like the best
+  sellers; the job reads the account id in memory only, every order has an account so none is
+  skipped, and the table keeps no account; the `orders` column holds the distinct-buyer count), both directions stored, no count
+  leaves ordering. Search drops the asked Offer, keeps the indexed ones in rank order, re-checks each
+  with catalog and sellers, and does not fill a short shelf; a failed source or check is
+  `search.unavailable` (503). The same item shape as the other shelves.
 - **Best sellers:** ordering's `OrderingRankingFacade.bestSellingOffers` (rule anonymous) ranks Offers
   by order lines on orders confirmed in the last 30 days (ids only, no count leaves ordering); search
   takes the top 100, keeps the indexed ones (in the category when asked) in rank order, and fills a
