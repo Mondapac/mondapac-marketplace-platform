@@ -27,6 +27,8 @@ model WalletAccount {
 
   // The target of the composite, market-scoped foreign keys of the other tables.
   @@unique([marketId, id])
+  // Ties a lot, a hold or a balance to its wallet's currency.
+  @@unique([marketId, id, currency])
   // One account per kind and customer; internal accounts have no customer (NULLS NOT DISTINCT in the migration).
   @@unique([marketId, kind, customerAccountId])
   @@map("accounts")
@@ -49,8 +51,11 @@ model WalletJournal {
   actorId         String?  @map("actor_id") @db.Uuid
   reasonCode      String   @map("reason_code")
   orderId         String?  @map("order_id") @db.Uuid
-  /// The wallet this journal belongs to (the customer side), for history.
+  /// The wallet this journal belongs to (the customer side), for history. Null only for
+  /// `reverse` (CHECK); the foreign key is then skipped (MATCH SIMPLE), as intended.
   walletAccountId String?  @map("wallet_account_id") @db.Uuid
+  /// The hold of a hold, capture or release journal; null for every other kind (CHECK).
+  holdId          String?  @map("hold_id") @db.Uuid
   result          Json
   createdAt       DateTime @map("created_at") @db.Timestamptz(6)
 
@@ -61,6 +66,8 @@ model WalletJournal {
   @@unique([marketId, id])
   @@unique([marketId, idempotencyKey])
   @@index([marketId, walletAccountId, createdAt(sort: Desc), id(sort: Desc)])
+  /// Partial (hold_id IS NOT NULL) in the migration: the journals of one hold.
+  @@index([marketId, holdId])
   @@map("journals")
   @@schema("wallet")
 }
@@ -74,14 +81,20 @@ model WalletPosting {
   journalId   String @map("journal_id") @db.Uuid
   accountId   String @map("account_id") @db.Uuid
   /// Signed minor units, never zero (CHECK).
-  amountMinor BigInt @map("amount_minor")
-  currency    String @db.VarChar(3)
+  amountMinor     BigInt  @map("amount_minor")
+  currency        String  @db.VarChar(3)
+  /// The customer wallet of the journal, copied onto every leg (trigger-checked), so the books
+  /// check sums one wallet's legs from an index.
+  walletAccountId String? @map("wallet_account_id") @db.Uuid
 
   journal WalletJournal @relation(fields: [marketId, journalId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   account WalletAccount @relation(fields: [marketId, accountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([marketId, journalId])
-  @@index([marketId, accountId])
+  /// The amount last, so the per-account sums read the index only.
+  @@index([marketId, accountId, amountMinor])
+  /// One wallet's legs by account, amount last: the books check reads the index only.
+  @@index([marketId, walletAccountId, accountId, amountMinor])
   @@map("postings")
   @@schema("wallet")
 }
@@ -103,13 +116,14 @@ model WalletLot {
   expiresAt       DateTime? @map("expires_at") @db.Timestamptz(6)
   createdAt       DateTime  @map("created_at") @db.Timestamptz(6)
 
-  wallet   WalletAccount   @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  wallet   WalletAccount   @relation(fields: [marketId, walletAccountId, currency], references: [marketId, id, currency], onDelete: Restrict, onUpdate: Restrict)
   journal  WalletJournal   @relation(fields: [marketId, journalId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   holdLots WalletHoldLot[]
 
   @@unique([marketId, id])
   @@index([marketId, walletAccountId, remainingMinor])
-  @@index([marketId, source, expiresAt])
+  /// Partial (source = 'promo' AND remaining_minor > 0) in the migration: the due promo lots.
+  @@index([marketId, expiresAt, id])
   @@map("lots")
   @@schema("wallet")
 }
@@ -130,12 +144,15 @@ model WalletHold {
   createdAt       DateTime  @map("created_at") @db.Timestamptz(6)
   resolvedAt      DateTime? @map("resolved_at") @db.Timestamptz(6)
 
-  wallet   WalletAccount   @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  wallet   WalletAccount   @relation(fields: [marketId, walletAccountId, currency], references: [marketId, id, currency], onDelete: Restrict, onUpdate: Restrict)
   holdLots WalletHoldLot[]
 
   @@unique([marketId, id])
   @@unique([marketId, orderId])
-  @@index([marketId, status, expiresAt])
+  /// Partial (status = 'held') in the migration: the held holds, oldest first.
+  @@index([marketId, expiresAt, id])
+  /// Partial (status = 'held') in the migration: one wallet's held holds, amount last.
+  @@index([marketId, walletAccountId, amountMinor])
   @@map("holds")
   @@schema("wallet")
 }
@@ -168,9 +185,8 @@ model WalletBalance {
   heldMinor       BigInt   @map("held_minor")
   updatedAt       DateTime @map("updated_at") @db.Timestamptz(6)
 
-  wallet WalletAccount @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  wallet WalletAccount @relation(fields: [marketId, walletAccountId, currency], references: [marketId, id, currency], onDelete: Restrict, onUpdate: Restrict)
 
-  @@index([marketId])
   @@map("balances")
   @@schema("wallet")
 }

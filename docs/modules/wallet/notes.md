@@ -96,12 +96,11 @@ from it; a leg has the currency of its account and of its journal; a closed acco
 reopens. A direct UPDATE of a balance, lot or hold, by any role, fails the commit.
 
 A hold is born `held` (insert trigger) and its lots are written in the transaction that creates
-it. It leaves `held` only with a capture or release journal of that very hold (`result.holdId`)
+it. It leaves `held` only with a capture or release journal of that very hold (`journals.hold_id`)
 written in the same transaction, and a wallet's legs on the Market's `holds` account must equal its
 held holds at commit. The admin status change sets a 3 s lock timeout and answers `wallet.busy`
 (409) instead of queueing the Market's wallet writes behind it. Still open: schedule `reconcile()`
-nightly with alerting before the facade gets a caller, and measure the books triggers (they
-aggregate a wallet's history per touched row) before checkout wiring.
+nightly with alerting before the facade gets a caller, after its rewrite (see "Database design").
 
 Idempotency keys starting with `sys:` are the worker's; a facade caller may not send them. A
 unique violation on `(market_id, idempotency_key)` between two parallel requests is answered
@@ -115,6 +114,76 @@ up (under the balance lock) before the switch gate; only new work meets the gate
 Reconciliation: `WalletRepository.reconcile(market)` is read-only and returns the mismatches
 (postings = available = lots per wallet, held holds = held, every journal sums to zero, the
 `holds` account = all held holds). No endpoint yet; it is the base of the nightly reconciliation.
+
+## Database design (review of PR #490, 2026-10-25)
+
+Access paths. Every trigger query and every repository query filters on `market_id` and reaches
+its rows through an index that leads with it (a db test checks the plans after ANALYZE):
+
+| Query | Index |
+|---|---|
+| journal balanced, leg currency | `postings (market_id, journal_id)` |
+| books: postings on the wallet / on the `holds` account | `postings (market_id, wallet_account_id, account_id, amount_minor)`, index-only |
+| books: lots | `lots (market_id, wallet_account_id, remaining_minor)`, index-only |
+| books: held holds | `holds (market_id, wallet_account_id, amount_minor) WHERE status = 'held'` |
+| lot restore checks | `hold_lots (market_id, lot_id)` |
+| hold settled by its journal | `journals (market_id, hold_id) WHERE hold_id IS NOT NULL` |
+| expiry sweep: promo lots, held holds | `lots (market_id, expires_at, id) WHERE source = 'promo' AND remaining_minor > 0`, `holds (market_id, expires_at, id) WHERE status = 'held'` |
+| history | `journals (market_id, wallet_account_id, created_at DESC, id DESC)` |
+
+- Each leg carries its journal's wallet (`postings.wallet_account_id`, checked equal on insert), so
+  the books sum a wallet's own legs on the `holds` account without a join. A leg on a customer
+  wallet belongs to that wallet's journal; a leg on the `holds` account needs a wallet.
+- "INCLUDE amount" is written as a trailing key column: Prisma cannot express INCLUDE and
+  `db:check-reversible` compares the migration with the schema. The scans are index-only either way.
+- `balances_market_id_idx` was dropped: the primary key is the wallet and no query reads the
+  balances of a whole Market.
+- Lots and balances are updated in place on every spend: `fillfactor = 70` and
+  `autovacuum_vacuum_scale_factor = 0.02`; holds `fillfactor = 80` (HOT updates).
+- Lots, holds and balances reference `accounts (market_id, id, currency)`, and an insert trigger
+  requires the account to be a customer wallet (`credit_liability`). Lots and holds expire after
+  they are created; a journal names its wallet unless it is a `reverse`, and its hold exactly for
+  `hold`, `capture` and `release`.
+- Savepoints: the "written in this transaction" checks compare `xmin` with the top-level
+  transaction id. A row written inside a SAVEPOINT (or a PL/pgSQL EXCEPTION block) carries a
+  subtransaction id, so the check refuses it (fails closed). Wallet units must not use savepoints;
+  a db test documents the behaviour.
+- The books check runs at COMMIT once per touched row (balance, lot, hold, wallet leg), and an
+  UPDATE that changes nothing the books read queues no check, so `lockBalance` (a no-change
+  update) costs no books work. It stays a Prisma update: modules have no `$queryRaw`, and
+  `SELECT ... FOR UPDATE` would have to be a platform named statement. A per-transaction "already
+  checked this wallet" marker was not added: any session marker (`set_config`) can be set by the
+  same transaction that edits the rows, so it would let a crafted transaction skip the check.
+
+Measured on a throwaway database (PostgreSQL 16, 4 cores, 128 MB shared buffers), seeded with the
+row triggers off and then VACUUM ANALYZE: Market AU with 1,000 wallets, 500,000 journals and
+1,000,000 postings; Market HV with one wallet of 100,000 journals and 200,000 postings.
+
+| Books query | AU wallet (500 journals) | HV wallet (100,000 journals) |
+|---|---|---|
+| postings on the wallet | index-only, 500 rows, 0.13 ms | index-only, 100,000 rows, 22 ms |
+| postings on the `holds` account | index-only, 250 rows, 0.06 ms | index-only, 50,000 rows, 11 ms |
+| lots | index-only, 250 rows, 0.13 ms | index-only, 50,000 rows, 6 ms |
+| held holds | index-only, 250 rows, 0.06 ms | index-only, 50,000 rows, 6 ms |
+| journal balanced | index scan, 2 rows, 0.07 ms | index scan, 2 rows, 0.07 ms |
+
+All with `Heap Fetches: 0` and no sequential scan. A 3-lot hold (one journal, two legs, a hold,
+three hold lots, three lot updates, one balance update; seven books checks at COMMIT), as the
+application role: COMMIT 8 to 11 ms warm (247 ms cold) on the AU wallet, and 210 to 241 ms on the
+HV wallet. The books cost grows linearly with a wallet's history, about 45 ms per check per
+100,000 journals.
+
+Required before the nightly reconciliation job (S6): rewrite `reconcile()` as one set-based SQL
+statement per Market (one snapshot, CTEs), with a `LIMIT` on the mismatches returned and the
+unbalanced-journal check run in `created_at` chunks; run it on the worker with a
+`statement_timeout`. Today it runs six statements with separate snapshots (false drift under
+load) and loads every account and journal into Node.
+
+Growth: `journals` and `postings` are append-only. No partitioning at launch; the composite keys
+`(market_id, id)` make time-partitioning of `journals` awkward, so the likely path is archiving
+the ledgers of closed orders, never deleting them. Revisit when `postings` passes 50M rows, the
+commit-time books check passes 50 ms p95, or one wallet passes 20,000 journals (then add a
+checked running total so the books stop summing the whole history).
 
 ## What exists in package 1
 

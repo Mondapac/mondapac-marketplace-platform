@@ -212,7 +212,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
     };
     const journalSql = (id: string, key_: string, market_id = mk): [string, unknown[]] => [
       `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, result, created_at)
-       VALUES ($1, $2, $3, 'grant-promo', $4, 'fp', 'system', NULL, 'welcome', NULL, NULL, '{}'::jsonb, now())`,
+       VALUES ($1, $2, $3, 'reverse', $4, 'fp', 'system', NULL, 'welcome', NULL, NULL, '{}'::jsonb, now())`,
       [id, market_id, 'default', key_],
     ];
     const postingSql = (
@@ -221,8 +221,8 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       minor: bigint,
       market_id = mk,
     ): [string, unknown[]] => [
-      `INSERT INTO wallet.postings (id, market_id, tenant_id, journal_id, account_id, amount_minor, currency)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO wallet.postings (id, market_id, tenant_id, journal_id, account_id, amount_minor, currency, wallet_account_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, (SELECT wallet_account_id FROM wallet.journals WHERE market_id = $2::varchar AND id = $4::uuid))`,
       [ids.next(), market_id, 'default', journalId, accountId, minor, currency],
     ];
     /** One transaction of a journal with the given legs; the deferred constraint fires at COMMIT. */
@@ -437,6 +437,40 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expect(await lot('refund', 100n, 100n, '2027-01-01T00:00:00Z')).toBe(CHECK);
       expect(await lot('gift', 100n, 100n, null)).toBe(CHECK);
       expect(await lot('promo', 100n, 100n, '2027-01-01T00:00:00Z')).toBe('allowed');
+      // Credit and holds expire after they are created (N10).
+      expect(await lot('promo', 100n, 100n, '2020-01-01T00:00:00Z')).toBe(CHECK);
+      const hold = (expires: string) =>
+        probe([
+          [
+            `INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at)
+             VALUES ($1, $2, 'default', $3, $4, 60, $5, 'held', now() + $6::interval, now())`,
+            [ids.next(), m, wallet, ids.next(), currency, expires],
+          ],
+        ]);
+      expect(await hold('0 seconds')).toBe(CHECK);
+      expect(await hold('1 hour')).toBe('allowed');
+      // A journal names its wallet unless it is a reversal, and its hold exactly for the three
+      // hold kinds.
+      const journal_ = (kind: string, walletId: string | null, holdId: string | null) =>
+        probe([
+          [
+            `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, hold_id, result, created_at)
+             VALUES ($1, $2, 'default', $3, $4, 'fp', 'system', NULL, 'welcome', NULL, $5, $6, '{}'::jsonb, now())`,
+            [ids.next(), m, kind, key('n10'), walletId, holdId],
+          ],
+        ]);
+      for (const kind of ['grant-promo', 'grant-refund', 'hold', 'capture', 'release', 'expire'])
+        expect(
+          await journal_(
+            kind,
+            null,
+            kind.startsWith('grant') || kind === 'expire' ? null : ids.next(),
+          ),
+        ).toBe(CHECK);
+      expect(await journal_('hold', wallet, null)).toBe(CHECK);
+      expect(await journal_('grant-promo', wallet, ids.next())).toBe(CHECK);
+      expect(await journal_('grant-promo', wallet, null)).toBe('allowed');
+      expect(await journal_('release', wallet, ids.next())).toBe('allowed');
     });
 
     it('refuses a row that points at nothing, or at another Market, and a delete of a parent (composite foreign keys)', async () => {
@@ -475,16 +509,16 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
             [ids.next(), `${mk}X`.slice(0, 8), wallet, journal, currency],
           ),
         ),
-      ).toBe(FK);
+      ).toBe(RESTRICT); // the wallet guard looks the account up in the row's own Market first
       expect(
         await code_(
           sql.query(
             `INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at)
-             VALUES ($1, $2, 'default', $3, $4, 60, $5, 'held', now(), now())`,
+             VALUES ($1, $2, 'default', $3, $4, 60, $5, 'held', now() + interval '1 day', now())`,
             [ids.next(), mk, ghost, ids.next(), currency],
           ),
         ),
-      ).toBe(FK);
+      ).toBe(RESTRICT);
       expect(
         await code_(
           sql.query(
@@ -493,7 +527,31 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
             [ghost, mk, currency],
           ),
         ),
-      ).toBe(FK);
+      ).toBe(RESTRICT);
+      // A lot, hold or balance of a real wallet in another currency fails the (Market, id,
+      // currency) key; one on an internal account fails the wallet guard.
+      const otherCurrency = currency === 'AUD' ? 'NZD' : 'AUD';
+      const rowsFor = (account: string, currency_: string): [string, unknown[]][] => [
+        [
+          `INSERT INTO wallet.lots (id, market_id, tenant_id, wallet_account_id, source, journal_id, original_minor, remaining_minor, currency, expires_at, created_at)
+           VALUES ($1, $2, 'default', $3, 'refund', $4, 100, 100, $5, NULL, now())`,
+          [ids.next(), mk, account, journal, currency_],
+        ],
+        [
+          `INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at)
+           VALUES ($1, $2, 'default', $3, $4, 60, $5, 'held', now() + interval '1 day', now())`,
+          [ids.next(), mk, account, ids.next(), currency_],
+        ],
+        [
+          `INSERT INTO wallet.balances (wallet_account_id, market_id, tenant_id, currency, available_minor, held_minor, updated_at)
+           VALUES ($1, $2, 'default', $3, 0, 0, now())`,
+          [account, mk, currency_],
+        ],
+      ];
+      for (const statement of rowsFor(wallet, otherCurrency))
+        expect(await probe([statement])).toBe(FK);
+      for (const statement of rowsFor(other, currency))
+        expect(await probe([statement])).toBe(RESTRICT);
       expect(
         await code_(
           sql.query(
@@ -507,7 +565,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
         await code_(
           sql.query(
             `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, result, created_at)
-             VALUES ($1, $2, 'default', 'hold', $3, 'fp', 'system', NULL, 'welcome', NULL, $4, '{}'::jsonb, now())`,
+             VALUES ($1, $2, 'default', 'reverse', $3, 'fp', 'system', NULL, 'welcome', NULL, $4, '{}'::jsonb, now())`,
             [ids.next(), mk, key('fk'), ghost],
           ),
         ),
@@ -535,7 +593,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       const order = ids.next<'Order'>();
       const insertHold = (): [string, unknown[]] => [
         `INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at)
-         VALUES ($1, $2, $3, $4, $5, 60, $6, 'held', now(), now())`,
+         VALUES ($1, $2, $3, $4, $5, 60, $6, 'held', now() + interval '1 day', now())`,
         [ids.next(), mk, 'default', wallet, order, currency],
       ];
       expect(await probe([insertHold()])).toBe('allowed');
@@ -557,6 +615,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expect(await code_(upsert(scratch, 'active', 'wind-down'))).toBe(CHECK);
       expect(await code_(upsert(scratch, 'off', 'wind-down'))).toBe(CHECK);
       expect(await code_(upsert(scratch, 'paused', 'wind-down'))).toBe('allowed');
+      expect(await code_(upsert(scratch, 'active', null))).toBe('allowed');
       // With a journal in that Market the row cannot go back to off, whoever asks.
       const client = new Client({ connectionString: testDatabaseUrl() });
       await client.connect();
@@ -576,7 +635,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       }
       await client.query(
         `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, result, created_at)
-         VALUES ($1, $2, 'default', 'release', $3, 'fp', 'system', NULL, 'welcome', NULL, NULL, '{}'::jsonb, now())`,
+         VALUES ($1, $2, 'default', 'reverse', $3, 'fp', 'system', NULL, 'welcome', NULL, NULL, '{}'::jsonb, now())`,
         [journalId, scratch, key('scratch')],
       );
       for (const [accountId, minor] of [
@@ -584,8 +643,8 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
         [legB, -1n],
       ] as const) {
         await client.query(
-          `INSERT INTO wallet.postings (id, market_id, tenant_id, journal_id, account_id, amount_minor, currency)
-           VALUES ($1, $2, 'default', $3, $4, $5, $6)`,
+          `INSERT INTO wallet.postings (id, market_id, tenant_id, journal_id, account_id, amount_minor, currency, wallet_account_id)
+           VALUES ($1, $2, 'default', $3, $4, $5, $6, NULL)`,
           [ids.next(), scratch, journalId, accountId, minor, currency],
         );
       }
@@ -661,8 +720,8 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       order: string | null = null,
       holdId: string | null = null,
     ): Statement => [
-      `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, result, created_at)
-       VALUES ($1, $2, 'default', $3, $4, 'fp', 'system', NULL, 'welcome', $5, $6, jsonb_build_object('holdId', $7::text), now())`,
+      `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, hold_id, result, created_at)
+       VALUES ($1, $2, 'default', $3, $4, 'fp', 'system', NULL, 'welcome', $5, $6, $7::uuid, jsonb_build_object('holdId', $7::text), now())`,
       [id, market_id, kind, key('raw'), order, wallet, holdId],
     ];
     const posting = (
@@ -672,8 +731,8 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       minor: bigint,
       cur = currency,
     ): Statement => [
-      `INSERT INTO wallet.postings (id, market_id, tenant_id, journal_id, account_id, amount_minor, currency)
-       VALUES ($1, $2, 'default', $3, $4, $5, $6)`,
+      `INSERT INTO wallet.postings (id, market_id, tenant_id, journal_id, account_id, amount_minor, currency, wallet_account_id)
+       VALUES ($1, $2, 'default', $3, $4, $5, $6, (SELECT wallet_account_id FROM wallet.journals WHERE market_id = $2::varchar AND id = $3::uuid))`,
       [ids.next(), market_id, journalId, accountId, minor, cur],
     ];
     const balance = (
@@ -700,7 +759,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expires: string | null,
     ): Statement => [
       `INSERT INTO wallet.lots (id, market_id, tenant_id, wallet_account_id, source, journal_id, original_minor, remaining_minor, currency, expires_at, created_at)
-       VALUES ($1, $2, 'default', $3, $4, $5, $6, $6, $7, $8, now())`,
+       VALUES ($1, $2, 'default', $3, $4, $5, $6, $6, $7, $8, LEAST(now(), $8::timestamptz - interval '1 day'))`,
       [id, market_id, wallet, source, journalId, minor, currency, expires],
     ];
     const setLot = (id: string, remaining: bigint): Statement => [
@@ -875,18 +934,21 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       const w = plain;
       const id = ids.next<'WalletJournal'>();
       expect(
-        await probe([journal(bk, id, 'release', w.wallet), posting(bk, id, w.wallet, 5n, 'XXX')]),
+        await probe([
+          journal(bk, id, 'release', w.wallet, w.order, w.hold),
+          posting(bk, id, w.wallet, 5n, 'XXX'),
+        ]),
       ).toBe(CHECK);
       expect(
         await probe([
-          journal(bk, id, 'release', w.wallet),
+          journal(bk, id, 'release', w.wallet, w.order, w.hold),
           posting(bk, id, w.wallet, 5n),
           posting(bk, id, w.holdsAccount, -5n, 'XXX'),
         ]),
       ).toBe(CHECK);
       expect(
         await probe([
-          journal(bk, id, 'release', w.wallet),
+          journal(bk, id, 'release', w.wallet, w.order, w.hold),
           posting(bk, id, w.wallet, 5n),
           posting(bk, id, w.holdsAccount, -5n),
         ]),
@@ -931,7 +993,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       const attack: Statement[] = [
         [
           `INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at, resolved_at)
-           VALUES ($1, $2, 'default', $3, $4, 100, $5, 'released', now(), now(), now())`,
+           VALUES ($1, $2, 'default', $3, $4, 100, $5, 'released', now() + interval '1 day', now(), now())`,
           [hold, expiringMarket, w.wallet, order, currency],
         ],
         holdLot(expiringMarket, hold, w.lot, 100n),
@@ -975,7 +1037,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expect(
         await code_(
           commit([
-            journal(bk, extra, 'hold', fresh.wallet),
+            journal(bk, extra, 'hold', fresh.wallet, null, ids.next()),
             posting(bk, extra, fresh.holdsAccount, 5n),
             posting(bk, extra, fresh.wallet, -5n),
             setLot(fresh.lot, 55n),
@@ -999,6 +1061,240 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       ).toEqual([{ a: '100', h: '0' }]);
     });
 
+    /**
+     * Seeds $3 journals (half grants, half holds of one unit) over the customer wallets of Market $1
+     * in currency $2, with their legs, lots, holds and hold lots, in one statement. Run by the owner
+     * with the row triggers off: the rows are for query plans, not for the books.
+     */
+    const seedSql = `
+      WITH w AS (
+        SELECT id, row_number() OVER (ORDER BY id) - 1 AS n, count(*) OVER () AS total
+          FROM wallet.accounts WHERE market_id = $1 AND kind = 'credit_liability'
+      ), internal AS (
+        SELECT (SELECT id FROM wallet.accounts WHERE market_id = $1 AND kind = 'holds') AS holds,
+               (SELECT id FROM wallet.accounts WHERE market_id = $1 AND kind = 'refund_clearing') AS origin
+      ), pairs AS (
+        SELECT k, w.id AS wallet, gen_random_uuid() AS grant_j, gen_random_uuid() AS hold_j,
+               gen_random_uuid() AS lot, gen_random_uuid() AS hold
+          FROM generate_series(1, $3::int / 2) k JOIN w ON w.n = k % w.total
+      ), ij AS (
+        INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, hold_id, result, created_at)
+        SELECT grant_j, $1, 'default', 'grant-refund', 'seed:grant:' || k, 'fp', 'system', NULL::uuid, 'seed', NULL::uuid, wallet, NULL::uuid, '{}'::jsonb, now() FROM pairs
+        UNION ALL
+        SELECT hold_j, $1, 'default', 'hold', 'seed:hold:' || k, 'fp', 'system', NULL::uuid, 'seed', NULL::uuid, wallet, hold, '{}'::jsonb, now() FROM pairs
+      ), ip AS (
+        INSERT INTO wallet.postings (id, market_id, tenant_id, journal_id, account_id, amount_minor, currency, wallet_account_id)
+        SELECT gen_random_uuid(), $1, 'default', grant_j, wallet, 2, $2, wallet FROM pairs
+        UNION ALL SELECT gen_random_uuid(), $1, 'default', grant_j, internal.origin, -2, $2, wallet FROM pairs, internal
+        UNION ALL SELECT gen_random_uuid(), $1, 'default', hold_j, wallet, -1, $2, wallet FROM pairs
+        UNION ALL SELECT gen_random_uuid(), $1, 'default', hold_j, internal.holds, 1, $2, wallet FROM pairs, internal
+      ), il AS (
+        INSERT INTO wallet.lots (id, market_id, tenant_id, wallet_account_id, source, journal_id, original_minor, remaining_minor, currency, expires_at, created_at)
+        SELECT lot, $1, 'default', wallet, 'refund', grant_j, 2, 1, $2, NULL::timestamptz, now() FROM pairs
+      ), ih AS (
+        INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at, resolved_at)
+        SELECT hold, $1, 'default', wallet, gen_random_uuid(), 1, $2,
+               CASE WHEN k % 4 = 0 THEN 'held' ELSE 'released' END, now() + interval '1 day', now(),
+               CASE WHEN k % 4 = 0 THEN NULL ELSE now() END
+          FROM pairs
+      ), ib AS (
+        INSERT INTO wallet.balances (wallet_account_id, market_id, tenant_id, currency, available_minor, held_minor, updated_at)
+        SELECT id, $1, 'default', $2, 0, 0, now() FROM w
+        ON CONFLICT DO NOTHING
+      )
+      INSERT INTO wallet.hold_lots (hold_id, lot_id, market_id, tenant_id, amount_minor)
+      SELECT hold, lot, $1, 'default', 1 FROM pairs`;
+
+    it('refuses a leg whose wallet differs from its journal, a wallet leg of another wallet and a holds leg of no wallet', async () => {
+      const w = plain;
+      const other = await wallets(bk, 'refund', null);
+      const id = ids.next<'WalletJournal'>();
+      const leg = (accountId: string, minor: bigint, wallet: string | null): Statement => [
+        `INSERT INTO wallet.postings (id, market_id, tenant_id, journal_id, account_id, amount_minor, currency, wallet_account_id)
+         VALUES ($1, $2, 'default', $3, $4, $5, $6, $7)`,
+        [ids.next(), bk, id, accountId, minor, currency, wallet],
+      ];
+      const release = journal(bk, id, 'release', w.wallet, w.order, w.hold);
+      expect(await probe([release, leg(w.holdsAccount, -5n, null)])).toBe(CHECK);
+      expect(await probe([release, leg(w.holdsAccount, -5n, other.wallet)])).toBe(CHECK);
+      expect(await probe([release, leg(other.wallet, 5n, w.wallet)])).toBe(CHECK);
+      const reversal = journal(bk, id, 'reverse', null);
+      expect(await probe([reversal, leg(w.holdsAccount, -5n, null)])).toBe(CHECK);
+      expect(await probe([release, leg(w.holdsAccount, -5n, w.wallet)])).toBe('allowed');
+    });
+
+    it('refuses hold lots written inside a savepoint: wallet units must not use savepoints', async () => {
+      const w = await wallets(bk, 'refund', null);
+      const hold = ids.next<'WalletHold'>();
+      const order = ids.next<'Order'>();
+      const placed = ids.next<'WalletJournal'>();
+      const place: Statement[] = [
+        journal(bk, placed, 'hold', w.wallet, order, hold),
+        posting(bk, placed, w.wallet, -10n),
+        posting(bk, placed, w.holdsAccount, 10n),
+        holdRow(bk, hold, w.wallet, order, 10n),
+        holdLot(bk, hold, w.lot, 10n),
+      ];
+      expect(await probe(place)).toBe('allowed');
+      // The hold row written inside a savepoint carries the subtransaction id, not the
+      // transaction's, so the "same transaction" test fails closed.
+      expect(await probe([['SAVEPOINT unit', []], ...place])).toBe(RESTRICT);
+      expect(await probe([...place.slice(0, 4), ['SAVEPOINT unit', []], place[4]!])).toBe(
+        'allowed',
+      );
+    });
+
+    it('lets a lock-only update of a balance commit without checking the books again', async () => {
+      const w = await wallets(bk, 'refund', null);
+      const lockOnly: Statement = [
+        `UPDATE wallet.balances SET available_minor = available_minor + 0, updated_at = updated_at WHERE market_id = $1 AND wallet_account_id = $2`,
+        [bk, w.wallet],
+      ];
+      // The owner drifts the balance with the check switched off; the check is then on again.
+      await owner.query('BEGIN');
+      await owner.query(`ALTER TABLE wallet.balances DISABLE TRIGGER balances_books_update`);
+      await owner.query(
+        `UPDATE wallet.balances SET available_minor = available_minor + 1 WHERE wallet_account_id = $1`,
+        [w.wallet],
+      );
+      await owner.query(`ALTER TABLE wallet.balances ENABLE TRIGGER balances_books_update`);
+      await owner.query('COMMIT');
+      try {
+        // A row that does not change queues no books check, so the drift does not block it ...
+        expect(await code_(commit([lockOnly]))).toBe('allowed');
+        // ... while a row that changes is checked, and the drift is caught.
+        expect(await code_(commit([setBalance(w.wallet, 61n, 39n)]))).toBe(CHECK);
+      } finally {
+        await owner.query('BEGIN');
+        await owner.query(`ALTER TABLE wallet.balances DISABLE TRIGGER balances_books_update`);
+        await owner.query(
+          `UPDATE wallet.balances SET available_minor = available_minor - 1 WHERE wallet_account_id = $1`,
+          [w.wallet],
+        );
+        await owner.query(`ALTER TABLE wallet.balances ENABLE TRIGGER balances_books_update`);
+        await owner.query('COMMIT');
+      }
+      expect(
+        await rows(
+          `SELECT available_minor::text AS a, held_minor::text AS h FROM wallet.balances WHERE wallet_account_id = $1`,
+          [w.wallet],
+        ),
+      ).toEqual([{ a: '60', h: '40' }]);
+    });
+
+    it('reaches postings, hold lots and journals in the ledger checks through a Market-scoped index, never a full scan', async () => {
+      // A modest ledger in a Market of its own, seeded by the owner with the row checks off.
+      const seeded = `X${code}`;
+      const tables = ['journals', 'postings', 'lots', 'holds', 'hold_lots', 'balances'];
+      await owner.query('BEGIN');
+      try {
+        for (const table of tables)
+          await owner.query(`ALTER TABLE wallet.${table} DISABLE TRIGGER USER`);
+        await owner.query(
+          `INSERT INTO wallet.accounts (id, market_id, tenant_id, kind, customer_account_id, currency, status, created_at)
+           SELECT gen_random_uuid(), $1, 'default', 'credit_liability', gen_random_uuid(), $2, 'active', now()
+             FROM generate_series(1, 100)
+           UNION ALL SELECT gen_random_uuid(), $1, 'default', 'holds', NULL, $2, 'active', now()
+           UNION ALL SELECT gen_random_uuid(), $1, 'default', 'refund_clearing', NULL, $2, 'active', now()`,
+          [seeded, currency],
+        );
+        await owner.query(seedSql, [seeded, currency, 10_000]);
+        for (const table of tables)
+          await owner.query(`ALTER TABLE wallet.${table} ENABLE TRIGGER USER`);
+        await owner.query('COMMIT');
+      } catch (error) {
+        await owner.query('ROLLBACK');
+        throw error;
+      }
+      for (const table of [...tables, 'accounts']) await owner.query(`ANALYZE wallet.${table}`);
+      const [sample] = await rows(
+        `SELECT j.id AS journal, j.wallet_account_id AS wallet, j.hold_id AS hold, hl.lot_id AS lot,
+                (SELECT id FROM wallet.accounts WHERE market_id = $1 AND kind = 'holds') AS holds
+           FROM wallet.journals j JOIN wallet.hold_lots hl ON hl.market_id = j.market_id AND hl.hold_id = j.hold_id
+          WHERE j.market_id = $1 LIMIT 1`,
+        [seeded],
+      );
+      // The statements of the ledger triggers (check_journal_balanced, guard_posting_insert,
+      // guard_lot_update, check_wallet_books, check_hold_settled), with their parameters.
+      const statements: [string, string, unknown[]][] = [
+        [
+          'balanced',
+          `SELECT COALESCE(SUM(amount_minor), 0), COUNT(*) FROM wallet.postings WHERE market_id = $1 AND journal_id = $2`,
+          [seeded, sample!.journal],
+        ],
+        [
+          'leg currency',
+          `SELECT 1 FROM wallet.postings p WHERE p.market_id = $1 AND p.journal_id = $2 AND p.currency <> $3`,
+          [seeded, sample!.journal, currency],
+        ],
+        [
+          'lot restore',
+          `SELECT COALESCE(SUM(hl.amount_minor), 0) FROM wallet.hold_lots hl JOIN wallet.holds h
+              ON h.market_id = hl.market_id AND h.id = hl.hold_id
+           WHERE hl.market_id = $1 AND hl.lot_id = $2 AND h.status IN ('held', 'captured')`,
+          [seeded, sample!.lot],
+        ],
+        [
+          'posted',
+          `SELECT COALESCE(SUM(p.amount_minor), 0) FROM wallet.postings p
+            WHERE p.market_id = $1 AND p.wallet_account_id = $2 AND p.account_id = $2`,
+          [seeded, sample!.wallet],
+        ],
+        [
+          'holds account',
+          `SELECT COALESCE(SUM(p.amount_minor), 0) FROM wallet.postings p
+            WHERE p.market_id = $1 AND p.wallet_account_id = $2 AND p.account_id = $3`,
+          [seeded, sample!.wallet, sample!.holds],
+        ],
+        [
+          'hold settled',
+          `SELECT 1 FROM wallet.journals j WHERE j.market_id = $1 AND j.hold_id = $2 AND j.kind = 'release'`,
+          [seeded, sample!.hold],
+        ],
+      ];
+      type PlanNode = {
+        'Node Type': string;
+        'Relation Name'?: string;
+        'Index Name'?: string;
+        'Index Cond'?: string;
+        Plans?: PlanNode[];
+      };
+      const scans = (node: PlanNode): PlanNode[] => [node, ...(node.Plans ?? []).flatMap(scans)];
+      const guarded = /^(postings|hold_lots|journals)/;
+      const client = await connect();
+      try {
+        // Custom plans (literal parameters) and the generic plan PL/pgSQL settles on.
+        for (const mode of ['force_custom_plan', 'force_generic_plan']) {
+          await client.query(`SET plan_cache_mode = ${mode}`);
+          for (const [name, text, values] of statements) {
+            await client.query(`PREPARE probe_plan AS ${text}`);
+            const literals = values.map((value) => client.escapeLiteral(String(value))).join(', ');
+            const { rows: plan } = await client.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+              `EXPLAIN (FORMAT JSON) EXECUTE probe_plan(${literals})`,
+            );
+            await client.query('DEALLOCATE probe_plan');
+            const nodes = scans(plan[0]!['QUERY PLAN'][0].Plan);
+            const touched = nodes.filter(
+              (n) => guarded.test(n['Relation Name'] ?? '') || guarded.test(n['Index Name'] ?? ''),
+            );
+            expect({
+              name,
+              mode,
+              seq: touched.filter((n) => n['Node Type'] === 'Seq Scan'),
+            }).toEqual({ name, mode, seq: [] });
+            const conditions = touched.flatMap((n) => (n['Index Cond'] ? [n['Index Cond']] : []));
+            expect({
+              name,
+              mode,
+              scoped: conditions.length > 0 && conditions.every((c) => c.includes('market_id')),
+            }).toEqual({ name, mode, scoped: true });
+          }
+        }
+      } finally {
+        await client.end();
+      }
+    });
+
     // ---- the switch fence ----------------------------------------------------------------
 
     /** True while the promise is still waiting after a short pause. */
@@ -1019,19 +1315,26 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
     ) => {
       const market_id = `${suffix}${code}`;
       const accountIds = internalKinds.map(() => ids.next<'WalletAccount'>());
+      const w = ids.next<'WalletAccount'>();
       await commit([
         setting(market_id, 'active'),
         ...internalKinds.map((kind, index) => account(market_id, accountIds[index]!, kind, null)),
+        account(market_id, w, 'credit_liability', ids.next()),
       ]);
-      return { market_id, a: accountIds[0]!, b: accountIds[1]! };
+      return { market_id, a: accountIds[0]!, b: accountIds[1]!, w };
     };
+    /**
+     * A balanced journal of the given kind between two internal accounts. It names the Market's
+     * wallet (its books stay at zero) unless it is a reversal, and a hold for the hold kinds.
+     */
     const grantStatements = (
-      m: { market_id: string; a: string; b: string },
+      m: { market_id: string; a: string; b: string; w: string },
       kind = 'grant-promo',
     ): Statement[] => {
       const id = ids.next<'WalletJournal'>();
+      const holdId = ['hold', 'capture', 'release'].includes(kind) ? ids.next() : null;
       return [
-        journal(m.market_id, id, kind, null),
+        journal(m.market_id, id, kind, kind === 'reverse' ? null : m.w, null, holdId),
         posting(m.market_id, id, m.a, 1n),
         posting(m.market_id, id, m.b, -1n),
       ];
@@ -1095,16 +1398,21 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       }
       // No settings row at all is `off`.
       const none = `N${code}`;
-      const noneAccounts = [ids.next<'WalletAccount'>(), ids.next<'WalletAccount'>()];
+      const noneAccounts = [
+        ids.next<'WalletAccount'>(),
+        ids.next<'WalletAccount'>(),
+        ids.next<'WalletAccount'>(),
+      ];
       await commit([
         account(none, noneAccounts[0]!, 'promo_expense', null),
         account(none, noneAccounts[1]!, 'refund_clearing', null),
+        account(none, noneAccounts[2]!, 'credit_liability', ids.next()),
       ]);
       expect(
         await code_(
           commit(
             grantStatements(
-              { market_id: none, a: noneAccounts[0]!, b: noneAccounts[1]! },
+              { market_id: none, a: noneAccounts[0]!, b: noneAccounts[1]!, w: noneAccounts[2]! },
               'release',
             ),
           ),
@@ -1531,7 +1839,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       const wallet = `(SELECT id FROM wallet.accounts WHERE market_id = $1 AND customer_account_id = $2)`;
       // The commit-time check refuses such a drift, so it is let through for this test only, by
       // the owner switching the check off around it.
-      await owner.query(`ALTER TABLE wallet.balances DISABLE TRIGGER balances_books`);
+      await owner.query(`ALTER TABLE wallet.balances DISABLE TRIGGER balances_books_update`);
       try {
         await owner.query(
           `UPDATE wallet.balances SET available_minor = available_minor + 7 WHERE wallet_account_id = ${wallet}`,
@@ -1553,7 +1861,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
           [market.marketId, customer],
         );
       } finally {
-        await owner.query(`ALTER TABLE wallet.balances ENABLE TRIGGER balances_books`);
+        await owner.query(`ALTER TABLE wallet.balances ENABLE TRIGGER balances_books_update`);
       }
       expect(await reconcile()).toEqual(ok([]));
     });

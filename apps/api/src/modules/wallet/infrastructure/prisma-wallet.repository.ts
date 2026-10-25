@@ -222,6 +222,7 @@ export class PrismaWalletRepository implements WalletRepository {
         reasonCode: journal.reasonCode,
         orderId: journal.orderId,
         walletAccountId: journal.walletAccountId,
+        holdId: journal.holdId,
         result: journal.result as Prisma.InputJsonObject,
         createdAt: toDate(journal.createdAt),
       },
@@ -235,6 +236,7 @@ export class PrismaWalletRepository implements WalletRepository {
         accountId: posting.accountId,
         amountMinor: posting.amountMinor,
         currency: journal.currency,
+        walletAccountId: journal.walletAccountId,
       })),
     });
   }

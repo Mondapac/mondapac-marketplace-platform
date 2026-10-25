@@ -277,6 +277,7 @@ export async function grantCredit(
       await deps.wallet.appendJournal(context.market, {
         id: journalId,
         kind,
+        holdId: null,
         idempotencyKey: request.idempotencyKey,
         fingerprint,
         actor: actorOf(context),
@@ -391,6 +392,7 @@ export async function placeHold(
       await deps.wallet.appendJournal(context.market, {
         id: journalId,
         kind: 'hold',
+        holdId,
         idempotencyKey: request.idempotencyKey,
         fingerprint,
         actor: actorOf(context),
@@ -463,6 +465,7 @@ export async function releaseInUnit(
   await deps.wallet.appendJournal(context.market, {
     id: journalId,
     kind: 'release',
+    holdId: hold.id,
     idempotencyKey: input.idempotencyKey,
     fingerprint: input.fingerprint,
     actor: actorOf(context),
@@ -561,6 +564,7 @@ async function settleHold(
       await deps.wallet.appendJournal(context.market, {
         id: journalId,
         kind: 'capture',
+        holdId: hold.id,
         idempotencyKey: request.idempotencyKey,
         fingerprint,
         actor: actorOf(context),

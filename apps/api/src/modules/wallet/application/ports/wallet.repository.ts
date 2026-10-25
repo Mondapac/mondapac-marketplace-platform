@@ -29,6 +29,8 @@ export interface JournalRecord {
 export interface NewJournal {
   readonly id: Id<'WalletJournal'>;
   readonly kind: JournalKind;
+  /** The hold of a hold, capture or release journal; null otherwise. */
+  readonly holdId: Id<'WalletHold'> | null;
   readonly idempotencyKey: string;
   readonly fingerprint: string;
   readonly actor: { readonly kind: 'system' | 'admin' | 'customer'; readonly id: string | null };
