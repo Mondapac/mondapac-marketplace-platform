@@ -6,7 +6,8 @@ import {
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
-import { SellerShipOrder } from '../../src/modules/ordering/application/use-cases/seller-ship-order.use-case';
+import { SellerMarkOrderReady } from '../../src/modules/ordering/application/use-cases/seller-mark-order-ready.use-case';
+import { AllowAllDeliveryMethods } from '../../src/modules/ordering/infrastructure/allow-all-delivery-methods';
 import { ConfirmPayment } from '../../src/modules/ordering/application/use-cases/confirm-payment.use-case';
 import type { OrderingDependencies } from '../../src/modules/ordering/application/checkout-flow';
 import { ORDERING_EVENTS } from '../../src/modules/ordering/domain/events';
@@ -97,6 +98,7 @@ describe.each(TEST_MARKETS)(
         ids,
         clock,
         labels: new FakeLabels(),
+        deliveryMethods: new AllowAllDeliveryMethods(),
       };
       system = testCallContext(market, 'system', `order-paid-${ids.next()}`);
     });
@@ -144,6 +146,10 @@ describe.each(TEST_MARKETS)(
           deliveredAt: null,
           inventoryRecordedAt: null,
           ledgerState: 'pending' as const,
+          deliveryMethod: 'instant' as const,
+          deliveryWindow: null,
+          readyAt: null,
+          deliveryAttention: null,
         })),
         lines: sellerOrderIds.map((sellerOrderId) => ({
           id: ids.next<'OrderLine'>(),
@@ -238,8 +244,12 @@ describe.each(TEST_MARKETS)(
       expect(await eventsOf(order.id)).toEqual([]);
     });
 
-    describe('recording a shipment', () => {
-      const shipAs = (use: OrderingDependencies, order: OrderState) => {
+    describe('marking a seller order ready', () => {
+      const readyAs = (
+        use: OrderingDependencies,
+        order: OrderState,
+        sellerOverride?: Id<'Seller'>,
+      ) => {
         const sellerOrder = order.sellerOrders[0]!;
         const seller = testCallContext(
           market,
@@ -247,38 +257,37 @@ describe.each(TEST_MARKETS)(
             population: 'seller',
             accountId: ids.next<'Account'>(),
             sessionId: ids.next<'Session'>(),
-            sellerId: sellerOrder.sellerId,
+            sellerId: sellerOverride ?? sellerOrder.sellerId,
           }),
-          `ship-${ids.next()}`,
+          `ready-${ids.next()}`,
         );
         return {
           sellerOrder,
-          result: new SellerShipOrder(gate, use).execute(seller, {
+          result: new SellerMarkOrderReady(gate, use).execute(seller, {
             sellerOrderId: sellerOrder.id,
-            carrier: 'Australia Post',
-            trackingRef: 'AP123456789',
           }),
         };
       };
-      const fulfilmentOf = async (sellerOrderId: string) =>
+      const readyAtOf = async (sellerOrderId: string) =>
         (
-          await sql.query<{ fulfilment: string }>(
-            'SELECT fulfilment FROM ordering.seller_orders WHERE market_id = $1 AND id = $2',
+          await sql.query<{ ready_at: Date | null }>(
+            'SELECT ready_at FROM ordering.seller_orders WHERE market_id = $1 AND id = $2',
             [market.marketId, sellerOrderId],
           )
-        ).rows[0]?.fulfilment;
+        ).rows[0]?.ready_at;
 
-      it('writes one order-shipped event with ids only in the unit that records it', async () => {
+      it('writes one seller-order-ready event with ids only, in the unit that records it', async () => {
         const order = await placeOrder();
         expect(await confirm(deps, order)).toEqual(ok('confirmed'));
 
-        const { sellerOrder, result } = shipAs(deps, order);
+        const { sellerOrder, result } = readyAs(deps, order);
         expect((await result).ok).toBe(true);
 
-        expect(await fulfilmentOf(sellerOrder.id)).toBe('shipped');
-        const events = await eventsOf(sellerOrder.id as unknown as Id<'Order'>);
+        expect(await readyAtOf(sellerOrder.id)).toBeInstanceOf(Date);
+        const events = (await eventsOf(sellerOrder.id as unknown as Id<'Order'>)).filter(
+          (event) => event.type === 'ordering.seller-order-ready.v1',
+        );
         expect(events).toHaveLength(1);
-        expect(events[0]!.type).toBe('ordering.order-shipped.v1');
         expect(events[0]!.payload).toEqual({
           orderId: order.id,
           sellerOrderId: sellerOrder.id,
@@ -286,18 +295,47 @@ describe.each(TEST_MARKETS)(
         });
       });
 
-      it('leaves the seller order to-ship and writes no event when the outbox refuses', async () => {
+      it('is idempotent: a second call writes no second event', async () => {
+        const order = await placeOrder();
+        expect(await confirm(deps, order)).toEqual(ok('confirmed'));
+
+        const first = readyAs(deps, order);
+        expect((await first.result).ok).toBe(true);
+        const again = readyAs(deps, order);
+        expect((await again.result).ok).toBe(true);
+
+        const events = (await eventsOf(first.sellerOrder.id as unknown as Id<'Order'>)).filter(
+          (event) => event.type === 'ordering.seller-order-ready.v1',
+        );
+        expect(events).toHaveLength(1);
+      });
+
+      it("answers not found for another shop's seller order and changes nothing", async () => {
+        const order = await placeOrder();
+        expect(await confirm(deps, order)).toEqual(ok('confirmed'));
+
+        const { sellerOrder, result } = readyAs(deps, order, ids.next<'Seller'>());
+        expect(await result).toEqual(err({ code: 'ordering.seller-order-not-found' }));
+
+        expect(await readyAtOf(sellerOrder.id)).toBeNull();
+      });
+
+      it('leaves the seller order not ready and writes no event when the outbox refuses', async () => {
         const order = await placeOrder();
         expect(await confirm(deps, order)).toEqual(ok('confirmed'));
         const refusing: OutboxWriter = {
           append: () => Promise.reject(new OutboxWriteRefusedError('payload-invalid')),
         };
 
-        const { sellerOrder, result } = shipAs({ ...deps, outbox: refusing }, order);
+        const { sellerOrder, result } = readyAs({ ...deps, outbox: refusing }, order);
         expect(await result).toEqual(err({ code: 'ordering.fulfilment-conflict' }));
 
-        expect(await fulfilmentOf(sellerOrder.id)).toBe('to-ship');
-        expect(await eventsOf(sellerOrder.id as unknown as Id<'Order'>)).toEqual([]);
+        expect(await readyAtOf(sellerOrder.id)).toBeNull();
+        expect(
+          (await eventsOf(sellerOrder.id as unknown as Id<'Order'>)).filter(
+            (event) => event.type === 'ordering.seller-order-ready.v1',
+          ),
+        ).toEqual([]);
       });
     });
   },

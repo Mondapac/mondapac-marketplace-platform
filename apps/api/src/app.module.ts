@@ -2,7 +2,7 @@ import { AiModule } from './platform/ai/ai.module';
 import { Module, type DynamicModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import type { DestinationStream } from 'pino';
-import { CORE_MODULES } from './modules';
+import { BINDING_MODULES, CORE_MODULES } from './modules';
 import { IdentityModule } from './modules/identity';
 import { AuditModule } from './platform/audit/audit.module';
 import { AuthzModule } from './platform/authz/authz.module';
@@ -83,6 +83,7 @@ export class AppModule {
         WorkerModule,
         HealthModule,
         ...CORE_MODULES,
+        ...BINDING_MODULES,
       ],
       providers: [
         ...GLOBAL_GUARDS.map((guard) => ({ provide: APP_GUARD, useClass: guard })),

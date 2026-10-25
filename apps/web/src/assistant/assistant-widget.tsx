@@ -94,13 +94,14 @@ function useLift(root: HTMLElement | null) {
         if (rect.height > 0 && rect.top < height - dock && rect.bottom > 0) {
           lift = Math.max(lift, height - rect.top + 12);
           // Lifted above back-to-top, the launcher lines up with it.
-          right = `${Math.round(document.documentElement.clientWidth - rect.right)}px`;
+          const rtl = getComputedStyle(document.documentElement).direction === 'rtl';
+          right = `${Math.round(rtl ? rect.left : document.documentElement.clientWidth - rect.right)}px`;
         }
       }
       root.style.setProperty('--as-dock', `${dock}px`);
       root.style.setProperty('--as-lift', `${lift}px`);
-      if (right === null) root.style.removeProperty('--as-right');
-      else root.style.setProperty('--as-right', right);
+      if (right === null) root.style.removeProperty('--as-end');
+      else root.style.setProperty('--as-end', right);
     };
     place();
     window.addEventListener('scroll', place, { passive: true });

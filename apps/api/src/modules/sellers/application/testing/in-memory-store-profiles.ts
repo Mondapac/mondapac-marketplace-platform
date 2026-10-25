@@ -1,4 +1,5 @@
 import type { Id, MarketContext, Money } from '@mondapac/shared-kernel';
+import type { DeliveryTerms } from '../../domain/delivery-terms';
 import type { StoreProfileRepository, StoreSettings } from '../ports/store-profile.repository';
 
 /** A store profile held in memory by a test; `approved` stands for the file's approved pointer. */
@@ -6,6 +7,7 @@ export interface StoredProfile {
   version: number;
   approved: boolean;
   minimumOrder: Money | null;
+  delivery: DeliveryTerms | null;
   /** The approved revision's public store name; null when the test sets none. */
   publicStoreName?: string | null;
 }
@@ -21,6 +23,7 @@ export class InMemoryStoreProfiles implements StoreProfileRepository {
       version: 1,
       approved: true,
       minimumOrder: null,
+      delivery: null,
       ...profile,
     });
   }
@@ -38,6 +41,21 @@ export class InMemoryStoreProfiles implements StoreProfileRepository {
     for (const sellerId of sellerIds) {
       const profile = this.at(market, sellerId);
       if (profile?.approved === true) found.set(sellerId, profile.minimumOrder);
+    }
+    return Promise.resolve(found);
+  }
+
+  approvedDeliveryTerms(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, DeliveryTerms>> {
+    if (this.failReads) return Promise.reject(new Error('store profiles down'));
+    const found = new Map<Id<'Seller'>, DeliveryTerms>();
+    for (const sellerId of sellerIds) {
+      const profile = this.at(market, sellerId);
+      if (profile?.approved === true && profile.delivery !== null) {
+        found.set(sellerId, profile.delivery);
+      }
     }
     return Promise.resolve(found);
   }
@@ -74,6 +92,21 @@ export class InMemoryStoreProfiles implements StoreProfileRepository {
     this.saves += 1;
     profile.version += 1;
     profile.minimumOrder = change.minimumOrder;
+    return Promise.resolve(profile.version);
+  }
+
+  saveDeliveryTerms(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    change: { expectedVersion: number; delivery: DeliveryTerms | null },
+  ): Promise<number | null> {
+    const profile = this.at(market, sellerId);
+    if (profile === undefined || profile.version !== change.expectedVersion) {
+      return Promise.resolve(null);
+    }
+    this.saves += 1;
+    profile.version += 1;
+    profile.delivery = change.delivery;
     return Promise.resolve(profile.version);
   }
 }

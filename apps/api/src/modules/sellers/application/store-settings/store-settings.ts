@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import type { CallContext, Clock, Money } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import type { DeliveryTerms, DeliveryTermsRefusal } from '../../domain/delivery-terms';
 import type { MinimumOrderRefusal, MinimumOrderRule } from '../../domain/minimum-order';
 import type {
   AccessUnavailable,
@@ -30,6 +31,8 @@ export interface StoreSettingsView {
   readonly currency: string;
   /** The largest amount, in minor units of that currency. */
   readonly maximumAmount: bigint;
+  /** As stored; null is "no delivery terms set". */
+  readonly delivery: DeliveryTerms | null;
 }
 
 export type StoreSettingsFailure =
@@ -39,6 +42,13 @@ export type MinimumOrderSaveFailure =
   | StoreSettingsFailure
   | DraftValidationFailed
   | MinimumOrderRefusal
+  | RequestThrottled
+  | DraftConflict;
+
+export type DeliverySaveFailure =
+  | StoreSettingsFailure
+  | DraftValidationFailed
+  | DeliveryTermsRefusal
   | RequestThrottled
   | DraftConflict;
 

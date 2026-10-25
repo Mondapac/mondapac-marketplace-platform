@@ -103,6 +103,9 @@ class StubSources implements ShelfSources {
   specials() {
     return Promise.resolve([]);
   }
+  boughtTogetherOfferIds() {
+    return Promise.resolve([]);
+  }
 }
 
 class StubVisibility implements PublicVisibility {

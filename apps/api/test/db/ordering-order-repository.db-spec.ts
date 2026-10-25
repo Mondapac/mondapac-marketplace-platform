@@ -93,6 +93,10 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           deliveredAt: null,
           inventoryRecordedAt: null,
           ledgerState: 'pending',
+          deliveryMethod: 'instant',
+          deliveryWindow: null,
+          readyAt: null,
+          deliveryAttention: null,
         },
       ],
       lines: [
@@ -338,8 +342,8 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
 
     expect(
       await attempt(
-        `INSERT INTO ordering.seller_orders (id, market_id, tenant_id, order_id, seller_id, subtotal_amount, shipping_amount, total_amount, fulfilment, ledger_state)
-         VALUES ($1, $2, $3, $4, $5, 100, 0, 1, 'to-ship', 'pending')`,
+        `INSERT INTO ordering.seller_orders (id, market_id, tenant_id, order_id, seller_id, subtotal_amount, shipping_amount, total_amount, fulfilment, ledger_state, delivery_method)
+         VALUES ($1, $2, $3, $4, $5, 100, 0, 1, 'to-ship', 'pending', 'instant')`,
         [ids.next(), market.marketId, market.tenantId, order.id, ids.next()],
       ),
     ).toBe(CHECK);
@@ -582,5 +586,73 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(await attempt(`carrier = 'Post'`)).toBe(CHECK);
     expect(await attempt(`fulfilment = 'lost'`)).toBe(CHECK);
     expect(await attempt(`subtotal_amount = 1`)).toBe('42501');
+  });
+
+  describe('delivery method, ready time and attention', () => {
+    const withMethod = (
+      base: OrderState,
+      deliveryMethod: 'pickup' | 'instant' | 'same_day' | 'scheduled',
+      deliveryWindow: { start: Temporal.Instant; end: Temporal.Instant } | null,
+    ): OrderState => ({
+      ...base,
+      sellerOrders: base.sellerOrders.map((s) => ({ ...s, deliveryMethod, deliveryWindow })),
+    });
+
+    it.each(['pickup', 'instant', 'same_day'] as const)(
+      'round-trips the %s method with no window',
+      async (method) => {
+        const order = withMethod(newOrder(), method, null);
+        await value(market, () => repository.insert(market, order));
+        expect(await value(market, () => repository.findById(market, order.id))).toEqual(order);
+      },
+    );
+
+    it('round-trips a scheduled method with its window as UTC instants', async () => {
+      const window = { start: T0.add({ hours: 26 }), end: T0.add({ hours: 28 }) };
+      const order = withMethod(newOrder(), 'scheduled', window);
+      await value(market, () => repository.insert(market, order));
+      const read = await value(market, () => repository.findById(market, order.id));
+      expect(read?.sellerOrders[0]?.deliveryWindow).toEqual(window);
+    });
+
+    it('refuses a method without its window, a window on another method and an empty window', async () => {
+      const insert = (order: OrderState) =>
+        value(market, () => repository.insert(market, order)).then(
+          () => 'allowed',
+          (error: { code?: string; meta?: { code?: string } }) =>
+            error.meta?.code ?? error.code ?? 'error',
+        );
+      const window = { start: T0.add({ hours: 2 }), end: T0.add({ hours: 3 }) };
+      expect(await insert(withMethod(newOrder(), 'scheduled', null))).not.toBe('allowed');
+      expect(await insert(withMethod(newOrder(), 'instant', window))).not.toBe('allowed');
+      expect(
+        await insert(withMethod(newOrder(), 'scheduled', { start: window.end, end: window.start })),
+      ).not.toBe('allowed');
+    });
+
+    it('saves ready once, only while to-ship, and then answers stale', async () => {
+      const order = newOrder();
+      await value(market, () => repository.insert(market, order));
+      const seller = order.sellerOrders[0]!;
+      const ready = { ...seller, readyAt: T0.add({ minutes: 5 }) };
+
+      expect(await value(market, () => repository.saveReady(market, ready))).toBe('saved');
+      expect(await value(market, () => repository.saveReady(market, ready))).toBe('stale');
+      const read = await value(market, () => repository.findById(market, order.id));
+      expect(read?.sellerOrders[0]?.readyAt).toEqual(ready.readyAt);
+      // Another Market's id of the same value finds nothing.
+      expect(await value(other, () => repository.saveReady(other, ready))).toBe('stale');
+    });
+
+    it('saves the platform-attention state once', async () => {
+      const order = newOrder();
+      await value(market, () => repository.insert(market, order));
+      const flagged = { ...order.sellerOrders[0]!, deliveryAttention: 'no-carrier' as const };
+
+      expect(await value(market, () => repository.saveAttention(market, flagged))).toBe('saved');
+      expect(await value(market, () => repository.saveAttention(market, flagged))).toBe('stale');
+      const read = await value(market, () => repository.findById(market, order.id));
+      expect(read?.sellerOrders[0]?.deliveryAttention).toBe('no-carrier');
+    });
   });
 });

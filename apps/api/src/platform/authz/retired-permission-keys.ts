@@ -5,4 +5,7 @@
  * explicit edit (R10). The use-case CI check refuses a retired key from slice 1c; the
  * permission registry also refuses it at boot from slice 8a. Entries are never removed.
  */
-export const RETIRED_PERMISSION_KEYS: readonly string[] = Object.freeze([]);
+export const RETIRED_PERMISSION_KEYS: readonly string[] = Object.freeze([
+  // Delivery models: the seller no longer ships or names a carrier; "ready" replaces it.
+  'ordering.seller-order.ship',
+]);

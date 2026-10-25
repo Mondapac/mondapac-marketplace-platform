@@ -29,6 +29,7 @@ import { PUBLISHED_VARIANTS } from './application/ports/published-variants';
 import type { ProductDetailDependencies } from './application/product-detail-dependencies';
 import type { RecommendationDependencies } from './application/recommendation-dependencies';
 import type { ShelfDependencies } from './application/shelf-dependencies';
+import { ListBoughtTogether } from './application/use-cases/list-bought-together.use-case';
 import { ListBestsellers } from './application/use-cases/list-bestsellers.use-case';
 import { ListForYouGuest } from './application/use-cases/list-for-you-guest.use-case';
 import { ListForYou } from './application/use-cases/list-for-you.use-case';
@@ -46,6 +47,7 @@ import { ForYouController } from './presentation/for-you.controller';
 import { RecentlyViewedController } from './presentation/recently-viewed.controller';
 import { ProductDetailController } from './presentation/product-detail.controller';
 import { SearchController } from './presentation/search.controller';
+import { BoughtTogetherController } from './presentation/bought-together.controller';
 import { ShelfController } from './presentation/shelf.controller';
 import { catalogIndexSubscriptions } from './presentation/subscribers/catalog-index.subscriptions';
 import { sellerAccessIndexSubscriptions } from './presentation/subscribers/seller-access-index.subscriptions';
@@ -187,6 +189,7 @@ function productDetailProvider<U>(
   controllers: [
     SearchController,
     ShelfController,
+    BoughtTogetherController,
     ProductDetailController,
     ForYouController,
     RecentlyViewedController,
@@ -199,6 +202,7 @@ function productDetailProvider<U>(
     ),
     shelfProvider(ListBestsellers),
     shelfProvider(ListSpecials),
+    shelfProvider(ListBoughtTogether),
     recommendationProvider(ListForYou),
     recommendationProvider(ListForYouGuest),
     recommendationProvider(ListRecentlyViewed),

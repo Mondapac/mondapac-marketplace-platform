@@ -11,6 +11,7 @@ import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import type { DeliveryTerms } from '../../domain/delivery-terms';
 import type { ApprovedStoreFacts } from '../../domain/published-store';
 import type { AccessState } from '../../domain/seller-status';
 import { MarketConfigMinimumOrderPolicy } from '../../infrastructure/market-config-minimum-order-policy';
@@ -22,9 +23,21 @@ import type {
   SellingFactsRepository,
 } from '../ports/selling-facts.repository';
 import type { StoreProfileRepository } from '../ports/store-profile.repository';
+import { PublishedAboutCache } from '../store-profile/published-about-cache';
+import { PublishedStoreContentReader } from '../store-profile/published-store-content';
+import { MarketConfigStoreProfileLocales } from '../../infrastructure/market-config-store-profile-locales';
+import {
+  FakeContentSealer,
+  InMemoryStoreContent,
+  InMemoryStoreImages,
+  MapObjectStore,
+} from '../testing/in-memory-store-profile';
+import { contentOf } from '../../domain/store-profile-content';
+import { PublishedStoreImageRead } from './published-store-image-read.use-case';
 import { PublishedStoreList } from './published-store-list.use-case';
 import { PublishedStoreRead } from './published-store-read.use-case';
 import { PublishedStoreSellerId } from './published-store-seller-id.use-case';
+import { PublishedStoreSlugs } from './published-store-slugs.use-case';
 
 // The public store reads (slice 12) with in-memory ports, on both Market fixtures (AU in AUD, ZZ
 // in JPY): only stores that may sell now, allow-listed fields only, sorts and pages, the minimum
@@ -52,6 +65,7 @@ describe.each([
   let stores: ApprovedStoreFacts[];
   let facts: Map<string, ApprovedSellingFacts>;
   let states: Map<string, AccessState>;
+  let deliveries: Map<string, DeliveryTerms>;
   let minimums: Map<string, Money | null>;
   let failStores: boolean;
   let identityCalls: number;
@@ -59,13 +73,18 @@ describe.each([
   let clock: FixedClock;
   let list: PublishedStoreList;
   let read: PublishedStoreRead;
-  let sellerId: PublishedStoreSellerId;
+  let sellerIdRead: PublishedStoreSellerId;
+  let imageRead: PublishedStoreImageRead;
+  let storeContent: InMemoryStoreContent;
+  let storeImages: InMemoryStoreImages;
+  let objectStore: MapObjectStore;
+  let slugs: PublishedStoreSlugs;
 
   const addStore = (
     slug: string,
     name: string,
     firstApprovedAt: string,
-    options: { state?: AccessState; minimum?: Money | null } = {},
+    options: { state?: AccessState; minimum?: Money | null; delivery?: DeliveryTerms } = {},
   ): Id<'Seller'> => {
     const sellerId = ids.next<'Seller'>();
     stores.push({
@@ -79,6 +98,7 @@ describe.each([
     facts.set(sellerId, { hasIdentifier: true, operatingTimezone: zone, openClaimConflict: false });
     states.set(sellerId, options.state ?? 'approved');
     if (options.minimum !== undefined) minimums.set(sellerId, options.minimum);
+    if (options.delivery !== undefined) deliveries.set(sellerId, options.delivery);
     return sellerId;
   };
 
@@ -87,6 +107,7 @@ describe.each([
     facts = new Map();
     states = new Map();
     minimums = new Map();
+    deliveries = new Map();
     failStores = false;
     identityCalls = 0;
     identityDown = false;
@@ -134,10 +155,30 @@ describe.each([
             ),
           ),
         ),
+      approvedDeliveryTerms: (_market: MarketContext, sellerIds: readonly Id<'Seller'>[]) =>
+        Promise.resolve(
+          new Map(
+            sellerIds.flatMap((id) => {
+              const terms = deliveries.get(id);
+              return terms === undefined ? [] : [[id, terms] as const];
+            }),
+          ),
+        ),
     } as unknown as StoreProfileRepository;
     const policy = {
       businessIdentifier: () => ({ scheme: 'x', required: true, labelKey: 'x' }),
     } as unknown as SellerMarketPolicy;
+    storeContent = new InMemoryStoreContent();
+    storeImages = new InMemoryStoreImages();
+    objectStore = new MapObjectStore();
+    const publishedContent = new PublishedStoreContentReader({
+      unitOfWork,
+      storeContent,
+      storeImages,
+      contentSealer: new FakeContentSealer(),
+      localesPolicy: new MarketConfigStoreProfileLocales(markets),
+      aboutCache: new PublishedAboutCache(clock),
+    });
     const deps = {
       unitOfWork,
       sellingFacts,
@@ -146,11 +187,14 @@ describe.each([
       publishedStores,
       storeProfiles,
       minimumOrderPolicy,
+      publishedContent,
       clock,
     };
     list = new PublishedStoreList(gate, deps);
     read = new PublishedStoreRead(gate, deps);
-    sellerId = new PublishedStoreSellerId(gate, deps);
+    sellerIdRead = new PublishedStoreSellerId(gate, deps);
+    imageRead = new PublishedStoreImageRead(gate, { ...deps, objectStore });
+    slugs = new PublishedStoreSlugs(gate, deps);
   });
 
   const page = async (input: Parameters<PublishedStoreList['execute']>[1] = {}) => {
@@ -176,6 +220,7 @@ describe.each([
           serviceAreaCode: 'area-1',
           sellingSince: 2026,
           minimumOrder: { amount: 3000n, currency },
+          logo: null,
         },
         {
           slug: 'zeta-foods',
@@ -183,6 +228,7 @@ describe.each([
           serviceAreaCode: 'area-1',
           sellingSince: 2025,
           minimumOrder: null,
+          logo: null,
         },
       ],
       total: 2,
@@ -294,8 +340,33 @@ describe.each([
         serviceAreaCode: 'area-1',
         sellingSince: 2026,
         minimumOrder: null,
+        about: null,
+        logo: null,
+        banner: null,
       }),
     );
+  });
+
+  it('shows the delivery terms a store has set, and leaves the field out of a store that has none', async () => {
+    const terms: DeliveryTerms = {
+      day: 'same-day',
+      fromMinute: 540,
+      toMinute: 720,
+      cutoffMinute: 480,
+    };
+    addStore('with-terms', 'With', '2026-01-10T00:00:00Z', { delivery: terms });
+    addStore('without-terms', 'Without', '2026-01-11T00:00:00Z');
+
+    expect(await read.execute(anonymous(), { slug: 'with-terms' })).toMatchObject(
+      ok({ slug: 'with-terms', delivery: terms }),
+    );
+    const bare = await read.execute(anonymous(), { slug: 'without-terms' });
+    expect(bare.ok && 'delivery' in bare.value).toBe(false);
+    const listed = await page();
+    expect(listed.items.map((store) => [store.slug, store.delivery])).toEqual([
+      ['with-terms', terms],
+      ['without-terms', undefined],
+    ]);
   });
 
   it.each([
@@ -314,6 +385,178 @@ describe.each([
     });
   });
 
+  const defaultLocale = code === 'AU' ? 'en-AU' : 'ja-JP';
+
+  const setAbout = async (sellerId: Id<'Seller'>, text: string): Promise<void> => {
+    storeContent.addProfile(market(), sellerId);
+    const sealed = await new FakeContentSealer().seal(
+      market(),
+      sellerId,
+      contentOf({ [defaultLocale]: text }),
+    );
+    if (!sealed.ok) throw new Error('fixture failed');
+    await storeContent.publish(market(), sellerId, {
+      id: ids.next<'StoreProfileRevision'>(),
+      expectedRevisionNo: 0,
+      ciphertext: sealed.value.ciphertext,
+      schemaVersion: 1,
+      contentHash: sealed.value.contentHash,
+      authorAccountId: ids.next<'Account'>(),
+      createdAt: Temporal.Instant.from('2026-10-20T00:00:00Z'),
+    });
+  };
+
+  const setImage = async (
+    sellerId: Id<'Seller'>,
+    kind: 'logo' | 'banner',
+  ): Promise<{ id: Id<'StoreImage'>; keys: string[] }> => {
+    const id = ids.next<'StoreImage'>();
+    const renditions = (['large', 'small'] as const).map((size) => ({
+      size,
+      objectKey: `${sellerId}/store-images/${id}/${size}`,
+      sha256: Buffer.alloc(32),
+      byteSize: 3,
+      width: size === 'large' ? 512 : 128,
+      height: size === 'large' ? 512 : 128,
+    }));
+    for (const rendition of renditions) {
+      await objectStore.put(rendition.objectKey, Buffer.from(`${id}:${rendition.size}`));
+    }
+    await storeImages.replace(market(), sellerId, {
+      id,
+      kind,
+      uploaderAccountId: ids.next<'Account'>(),
+      width: 512,
+      height: 512,
+      uploadedBytes: 10,
+      createdAt: Temporal.Instant.from('2026-10-20T00:00:00Z'),
+      renditions,
+    });
+    return { id, keys: renditions.map((r) => r.objectKey) };
+  };
+
+  const imageOf = (slug: string, imageId: string, size = 'large') =>
+    imageRead.execute(anonymous(), { slug, imageId, size });
+  const NOT_FOUND = { ok: false, error: { code: 'image.not-found' } };
+
+  it('adds the About text, logo and banner to one store, and only the logo to the list', async () => {
+    const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    await setAbout(sellerId, 'We bake.\nEvery day.');
+    const logo = await setImage(sellerId, 'logo');
+    const banner = await setImage(sellerId, 'banner');
+
+    const one = await read.execute(anonymous(), { slug: 'alpha-market' });
+    const all = await page();
+
+    expect(one).toMatchObject({
+      ok: true,
+      value: {
+        about: 'We bake.\nEvery day.',
+        logo: { id: logo.id, width: 512, height: 512 },
+        banner: { id: banner.id, width: 512, height: 512 },
+      },
+    });
+    expect(all.items[0]).toMatchObject({ logo: { id: logo.id } });
+    expect(all.items[0]).not.toHaveProperty('about');
+    expect(all.items[0]).not.toHaveProperty('banner');
+  });
+
+  it('shows no store page text for a store that may not sell, and no logo in the list', async () => {
+    const sellerId = addStore('held-back', 'Held', '2026-01-10T00:00:00Z', { state: 'suspended' });
+    await setAbout(sellerId, 'Hidden');
+    await setImage(sellerId, 'logo');
+
+    expect((await page()).items).toEqual([]);
+    expect(await read.execute(anonymous(), { slug: 'held-back' })).toEqual({
+      ok: false,
+      error: { code: 'sellers.store-not-found' },
+    });
+  });
+
+  it('answers sellers.unavailable, not a store without its text, when the content cannot be read', async () => {
+    const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+    storeContent.addProfile(market(), sellerId);
+    await setImage(sellerId, 'logo');
+    objectStore.objects.clear();
+    storeImages.currentOf = () => Promise.reject(new Error('images down'));
+    storeImages.logosOf = () => Promise.reject(new Error('images down'));
+
+    expect(await read.execute(anonymous(), { slug: 'alpha-market' })).toEqual({
+      ok: false,
+      error: { code: 'sellers.unavailable' },
+    });
+    expect(await list.execute(anonymous(), {})).toEqual({
+      ok: false,
+      error: { code: 'sellers.unavailable' },
+    });
+  });
+
+  describe('the public image bytes', () => {
+    it('serves the current logo or banner of a store that may sell, both sizes, as JPEG', async () => {
+      const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const logo = await setImage(sellerId, 'logo');
+
+      const large = await imageOf('alpha-market', logo.id, 'large');
+      const small = await imageOf('alpha-market', logo.id, 'small');
+
+      expect(large).toEqual({
+        ok: true,
+        value: { bytes: Buffer.from(`${logo.id}:large`), contentType: 'image/jpeg' },
+      });
+      expect(small).toMatchObject({ ok: true, value: { bytes: Buffer.from(`${logo.id}:small`) } });
+    });
+
+    it('answers one identical not-found for every other case', async () => {
+      const mine = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const theirs = addStore('beta-market', 'Beta', '2026-01-10T00:00:00Z');
+      const suspended = addStore('held-back', 'Held', '2026-01-10T00:00:00Z', {
+        state: 'suspended',
+      });
+      const first = await setImage(mine, 'logo');
+      const other = await setImage(theirs, 'logo');
+      const held = await setImage(suspended, 'logo');
+      const second = await setImage(mine, 'logo'); // replaces `first`
+
+      const cases = [
+        await imageOf('alpha-market', first.id), // replaced
+        await imageOf('alpha-market', other.id), // another store's
+        await imageOf('beta-market', second.id), // the other way round
+        await imageOf('held-back', held.id), // a store that may not sell
+        await imageOf('no-such-store', second.id), // unknown slug
+        await imageOf('Alpha-Market', second.id), // slug in another case
+        await imageOf('alpha-market', 'not-an-id'), // malformed id
+        await imageOf('alpha-market', second.id, 'huge'), // unknown size
+        await imageOf('alpha-market', second.id, 'thumb'),
+        await imageOf('alpha-market', '0199dddd-0000-7000-8000-000000000999'), // unknown id
+      ];
+
+      for (const answer of cases) expect(answer).toEqual(NOT_FOUND);
+      expect(await imageOf('alpha-market', second.id)).toMatchObject({ ok: true });
+    });
+
+    it('never serves a removed image, and says not-found when the object is missing', async () => {
+      const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const banner = await setImage(sellerId, 'banner');
+      objectStore.objects.delete(banner.keys[0]!);
+      expect(await imageOf('alpha-market', banner.id, 'large')).toEqual(NOT_FOUND);
+
+      await storeImages.remove(market(), sellerId, 'banner');
+
+      expect(await imageOf('alpha-market', banner.id, 'small')).toEqual(NOT_FOUND);
+    });
+
+    it('answers not-found, never an image, while identity is down (fail closed)', async () => {
+      const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const logo = await setImage(sellerId, 'logo');
+      identityDown = true;
+
+      expect(await imageOf('alpha-market', logo.id)).toEqual({
+        ok: false,
+        error: { code: 'image.not-found' },
+      });
+    });
+  });
+
   describe('the seller of a store address (for the storefront product list)', () => {
     it('declares the anonymous rule under its own name', () => {
       expect(PublishedStoreSellerId.access).toEqual({
@@ -325,7 +568,7 @@ describe.each([
     it('gives the seller that holds the exact slug while it may sell, and nothing else', async () => {
       const id = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
 
-      const result = await sellerId.execute(anonymous(), { slug: 'alpha-market' });
+      const result = await sellerIdRead.execute(anonymous(), { slug: 'alpha-market' });
 
       expect(result).toEqual(ok(id));
       expect(JSON.stringify(result)).not.toContain('Alpha');
@@ -342,21 +585,21 @@ describe.each([
         state: asked === stored ? 'suspended' : 'approved',
       });
 
-      expect(await sellerId.execute(anonymous(), { slug: asked })).toEqual(ok(null));
+      expect(await sellerIdRead.execute(anonymous(), { slug: asked })).toEqual(ok(null));
     });
 
     it('answers null while identity is down (the may-sell contract fails closed)', async () => {
       addStore('a-store', 'A', '2026-01-01T00:00:00Z');
       identityDown = true;
 
-      expect(await sellerId.execute(anonymous(), { slug: 'a-store' })).toEqual(ok(null));
+      expect(await sellerIdRead.execute(anonymous(), { slug: 'a-store' })).toEqual(ok(null));
     });
 
     it('answers sellers.unavailable when the store read fails, never a guess', async () => {
       addStore('a-store', 'A', '2026-01-01T00:00:00Z');
       failStores = true;
 
-      expect(await sellerId.execute(anonymous(), { slug: 'a-store' })).toEqual({
+      expect(await sellerIdRead.execute(anonymous(), { slug: 'a-store' })).toEqual({
         ok: false,
         error: { code: 'sellers.unavailable' },
       });
@@ -365,11 +608,50 @@ describe.each([
     it('is not for the system actor (rule anonymous)', async () => {
       addStore('a-store', 'A', '2026-01-01T00:00:00Z');
 
-      const result = await sellerId.execute(
+      const result = await sellerIdRead.execute(
         testCallContext(market(), 'system', 'store-system-abcd'),
         { slug: 'a-store' },
       );
 
+      expect(result.ok).toBe(false);
+    });
+  });
+
+  describe('the store addresses of sellers (for the storefront slider links)', () => {
+    it('declares the anonymous rule under its own name', () => {
+      expect(PublishedStoreSlugs.access).toEqual({
+        name: 'sellers.published-store-slugs',
+        rule: { kind: 'anonymous' },
+      });
+    });
+
+    it('gives the slug of each requested seller that may sell, and leaves a suspended one out', async () => {
+      const a = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const held = addStore('held-back', 'Held', '2026-01-10T00:00:00Z', { state: 'suspended' });
+      const unrequested = addStore('beta-market', 'Beta', '2026-01-10T00:00:00Z');
+      const unknown = ids.next<'Seller'>();
+
+      const result = await slugs.execute(anonymous(), { sellerIds: [a, held, unknown] });
+
+      expect(result).toEqual(ok(new Map([[a, 'alpha-market']])));
+      expect(result.ok && result.value.has(unrequested)).toBe(false);
+    });
+
+    it('answers sellers.unavailable when the store read fails, never a partial answer', async () => {
+      const a = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      failStores = true;
+
+      expect(await slugs.execute(anonymous(), { sellerIds: [a] })).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+    });
+
+    it('is not for the system actor (rule anonymous)', async () => {
+      const a = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const result = await slugs.execute(testCallContext(market(), 'system', 'store-system-abcd'), {
+        sellerIds: [a],
+      });
       expect(result.ok).toBe(false);
     });
   });

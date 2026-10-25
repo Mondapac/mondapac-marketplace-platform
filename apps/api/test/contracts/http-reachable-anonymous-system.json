@@ -185,6 +185,11 @@
     "reason": "The storefront best-sellers shelf for a visitor with no session: Offer ids, text and category ids in rank order (no sales figure), each re-checked against catalog and sellers; rate limited per origin."
   },
   {
+    "name": "search.list-bought-together",
+    "rule": "anonymous",
+    "reason": "The product page's bought-together shelf for a visitor with no session: Offer ids, text and category ids in rank order (no order count), from pairs of at least 3 distinct paid orders over 90 days, the asked Offer never included, each re-checked against catalog and sellers; nothing about the shopper is read; no-store; rate limited per origin."
+  },
+  {
     "name": "search.list-for-you-guest",
     "rule": "anonymous",
     "reason": "The storefront for-you shelf for a guest: a guest has no account or session. The guest is the engagement guest cookie's token, read only with Engagement-Consent: granted and without Sec-GPC: 1; otherwise the shelf is the Market's best sellers. Offer ids, text and category ids only, each re-checked against catalog and sellers; no-store, never sets a cookie; rate limited per origin."
@@ -210,6 +215,11 @@
     "reason": "The storefront product page for a visitor with no session: the published product text and variants and its sellable Offers with buyer price (never Cost), public stock state (never the exact count) and the seller's public store name; re-checked against catalog and sellers; rate limited per origin."
   },
   {
+    "name": "sellers.published-store-image-read",
+    "rule": "anonymous",
+    "reason": "The buyer site's store logo and banner for a visitor with no session: the current image of a store that may sell now, as the JPEG the server wrote (no metadata, no upload kept); an unknown slug, a replaced or removed image, another store's image and a store that may not sell all answer the same not-found."
+  },
+  {
     "name": "sellers.published-store-list",
     "rule": "anonymous",
     "reason": "The buyer site's sellers page for a visitor with no session: the allow-listed public fields (slug, store name, ServiceArea code, year of first approval, minimum order) of stores that may sell now; no address, contact or identifier, nothing about a seller that may not sell, no key unwrapped."
@@ -225,6 +235,16 @@
     "reason": "The buyer site asks whether the Market delivers to a postcode before sign-in (cart, checkout, Deliver to): the answer is the public ServiceArea configuration; nothing about a person is read or stored."
   },
   {
+    "name": "shipping.receive-carrier-webhook",
+    "rule": "anonymous",
+    "reason": "Mondapac Drive's status webhook: the caller is the carrier, which holds no session. The use case refuses anything without a valid HMAC-SHA256 signature of the timestamp and the raw body under the Market's webhook secret, within a 300-second replay window; each event is taken once by its id, and it only moves a seller order's carrier delivery forward."
+  },
+  {
+    "name": "shipping.view-store-flat-fee",
+    "rule": "anonymous",
+    "reason": "The buyer site's store page for a visitor with no session: the flat shipping fee of one store by its public address, only while the seller may sell; an unknown, retired or not-selling store and a store with no fee answer the same not-found."
+  },
+  {
     "name": "storefront.view-published-landing-page",
     "rule": "anonymous",
     "reason": "A visitor with no session reads a live landing page at /l/<slug>: only a published, unarchived page inside its live window, or the site path an old or archived slug now sends to; layout and settings only, no product data."
@@ -238,5 +258,10 @@
     "name": "storefront.view-published-page",
     "rule": "anonymous",
     "reason": "The buyer site draws a system page (home, cart, ...) for a visitor with no session: only the published layout, or the template's code defaults; layout and settings only, no product data."
+  },
+  {
+    "name": "storefront.view-published-slides",
+    "rule": "anonymous",
+    "reason": "The buyer site draws the slider of a position (home hero, ...) for a visitor with no session: only approved slides of the request's Market inside their window whose link target is alive in that Market (a suspended seller or a dead link drops the slide); plain texts, ready-made image keys and site paths only; cache-control at most 60 seconds and never past the next start or end."
   }
 ]

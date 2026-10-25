@@ -75,7 +75,7 @@ Owner decisions 4 and 5 of 2026-10-18; Australian Privacy Principles (APP 1, 3, 
 | Why | To show recently viewed items and better recommendations (package 1d). Not sold, not shared with a third party, no third-party pixel or SDK. |
 | Sensitive information | Purchases or views are never used to infer religion, diet or health (decision 5; halal is sensitive information). No code reads events to label a shopper; an explicit buyer preference or filter is the only source for that. The search text can still contain such words, so it is never logged and never leaves the module except to package 1d's own ranking. |
 | Retention | 12 months for a signed-in customer, 30 days for a guest (the guest cookie lives 30 days too), deleted by the daily purge. |
-| Choice | Off switch in the account (`PUT customers/me/personalization`); switching off deletes what was recorded and stops recording (recording and the switch run serializable, so no event survives a racing switch-off). A guest is recorded only after accepting the behaviour cookie in the cookie bar (`Engagement-Consent: granted`). `Sec-GPC: 1` (Global Privacy Control) records nothing for anyone, sets no cookie and expires a guest cookie sent. |
+| Choice | Off switch in the account (`PUT customers/me/personalization`); switching off deletes what was recorded and stops recording (recording takes the account's lock shared and the switch takes it exclusive, `engagement.lock-account`, so no event survives a racing switch-off). A guest is recorded only after accepting the behaviour cookie in the cookie bar (`Engagement-Consent: granted`). `Sec-GPC: 1` (Global Privacy Control) records nothing for anyone, sets no cookie and expires a guest cookie sent. |
 | Deletion | With the account through `forgetAccount` (to be called by customers package 5). |
 | Security | Only the guest token's SHA-256 is stored; the token is only in `Set-Cookie`. Logs carry the route, outcome code, Market and correlation id only: never the body, the search text, an id of the shopper or the cookie. The app role may select, insert and delete events, never update them. |
 | Notice | The storefront privacy policy and the account page must say what is recorded, why, for how long, and how to switch it off, before the storefront goes live (storefront design thread). |
@@ -109,3 +109,15 @@ Open, before the storefront sends real traffic:
 - Mojtaba 2: purge in batches (for example 5,000 rows a unit), per-table autovacuum tuning, and a
   written volume threshold for partitioning (by subject, then by month, so purge drops partitions).
 - Mojtaba 5: `kind` as `text` with the CHECK (house standard), next time the table changes.
+
+## Account lock instead of SERIALIZABLE (flaky-test sweep, 2026-10-24)
+
+Recording, the switch and forget-account ran SERIALIZABLE (Hassan M1). Several events of one
+customer at once plus a switch-off made Postgres abort some with 40001; after three attempts the
+call failed (a 500), which also showed as the flaky `engagement-behaviour.db-spec.ts` race test.
+Now each of these units takes the named statement `engagement.lock-account` first: a
+transaction advisory lock on `hashtext(market:tenant:account)` under class 1701, shared to
+record and exclusive to switch or forget, at READ COMMITTED. M1 still holds: a record that locks
+first commits before the switch's delete runs; a record after the switch reads the new setting.
+Under a heavy burst for one account a wait can pass the role's `lock_timeout` (3 s); the unit then
+ends as a conflict (409), where it used to fail with a 500 after three 40001 aborts.

@@ -5,6 +5,8 @@ import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import sharp from 'sharp';
+import { IMAGE_PROCESSOR } from '../src/modules/catalog/application/ports/image-processor';
+import { SharpImageProcessor } from '../src/modules/catalog/infrastructure/sharp-image-processor';
 import { PRODUCT_IMAGE_REPOSITORY } from '../src/modules/catalog/application/ports/product-image.repository';
 import type {
   ProductImage,
@@ -87,6 +89,8 @@ describe('seller photo routes over HTTP (integration)', () => {
   let reserve: unknown;
   let images: MemoryImages;
   let store: MemoryObjectStore;
+  // When true the picture processor answers busy, as a saturated decode queue does.
+  let busy = false;
   const http = () => request(app.getHttpServer());
 
   async function boot() {
@@ -104,6 +108,13 @@ describe('seller photo routes over HTTP (integration)', () => {
           .useValue(images)
           .overrideProvider(OBJECT_STORE)
           .useValue(store)
+          .overrideProvider(IMAGE_PROCESSOR)
+          .useValue({
+            process: (bytes: Buffer) =>
+              busy
+                ? Promise.resolve({ ok: false, error: { code: 'file.busy' } })
+                : new SharpImageProcessor().process(bytes),
+          })
           .overrideProvider(SELLER_ELIGIBILITY_READER)
           .useValue({ isEligible: () => Promise.resolve(true) })
           .overrideProvider(SaveWorkingCopy)
@@ -229,6 +240,7 @@ describe('seller photo routes over HTTP (integration)', () => {
     reserve = null;
     images = new MemoryImages();
     store = new MemoryObjectStore();
+    busy = false;
   });
   afterEach(async () => {
     await app?.close();
@@ -291,6 +303,23 @@ describe('seller photo routes over HTTP (integration)', () => {
         .send({ data: 'A'.repeat(6_200_000) });
       expect(response.status).toBe(413);
       expect(store.objects.size).toBe(0);
+    });
+
+    it('answers 503 access.unavailable with Retry-After when the decode queue is full, and stores nothing', async () => {
+      await boot();
+      await seeded(code);
+      busy = true;
+
+      const response = await http()
+        .post(base(PRODUCT))
+        .set(headers(code, sessionOf(code)))
+        .send({ data: await photo(800, 600) });
+
+      expect(response.status).toBe(503);
+      expect(response.body).toMatchObject({ code: 'access.unavailable' });
+      expect(response.headers['retry-after']).toBe('2');
+      expect(store.objects.size).toBe(0);
+      expect(images.rows).toHaveLength(0);
     });
 
     it('keeps the 64 KiB limit on every other JSON route', async () => {

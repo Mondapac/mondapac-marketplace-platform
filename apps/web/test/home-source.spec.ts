@@ -140,9 +140,13 @@ describe('home source: configuration', () => {
   });
 
   it('answers the sample home and reads no shelf while API_BASE_URL is empty', async () => {
-    serve({ 'storefront/pages/home': OFF, 'catalog/categories': OFF });
+    serve({ 'storefront/pages/home': OFF, 'catalog/categories': OFF, 'storefront/slides': OFF });
     const result = await loadWith(NO_SAMPLE);
-    expect(calls.sort()).toEqual(['catalog/categories', 'storefront/pages/home']);
+    expect(calls.sort()).toEqual([
+      'catalog/categories',
+      'storefront/pages/home',
+      'storefront/slides?position=home.hero',
+    ]);
     expect(result.sections).toBe(SAMPLE_CONTENT.home);
   });
 });
@@ -158,26 +162,35 @@ describe('home source: real data', () => {
       'search/specials?limit=12',
       'sellers/stores?pageSize=8',
       'storefront/pages/home',
+      'storefront/slides?position=home.hero',
     ]);
 
+    // The layout's first banner is the hero's stand-in while the library holds no live slide.
     expect(home.sections.map((s) => s.kind)).toEqual([
-      'promos',
+      'hero',
       'categories',
       'products',
       'products',
     ]);
     expect(home.sections[0]).toEqual({
-      kind: 'promos',
-      banners: [
-        {
-          id: 'b1',
-          variant: 'primary',
-          title: 'Ramadan specials',
-          body: 'Dates, lamb and sweets',
-          action: { label: 'Shop now', href: '/offers' },
-          images: ['/placeholders/fruits.jpg'],
-        },
-      ],
+      kind: 'hero',
+      set: {
+        position: 'home.hero',
+        autoplay: false,
+        slides: [
+          {
+            id: 'b1',
+            title: 'Ramadan specials',
+            body: 'Dates, lamb and sweets',
+            ctaLabel: 'Shop now',
+            href: '/offers',
+            image: { src: '/placeholders/fruits.jpg', alt: 'Fruit', decorative: false },
+            placement: 'start',
+            tone: 'dark',
+            sponsored: false,
+          },
+        ],
+      },
     });
     expect(home.categories).toEqual([
       {
@@ -263,7 +276,7 @@ describe('home source: empty data', () => {
   it('leaves out every empty section when the sample fallback is off', async () => {
     serve(EMPTY);
     const home = await loadWith(NO_SAMPLE);
-    expect(home.sections.map((s) => s.kind)).toEqual(['promos']);
+    expect(home.sections.map((s) => s.kind)).toEqual(['hero']);
     expect(home.categories).toEqual([]);
   });
 
@@ -272,7 +285,7 @@ describe('home source: empty data', () => {
     const home = await loadWith(ENV);
     expect(home.categories).toBe(SAMPLE_CONTENT.categories);
     expect(home.sections.map((s) => s.kind)).toEqual([
-      'promos',
+      'hero',
       'categories',
       'products',
       'products',
@@ -298,7 +311,7 @@ describe('home source: API error', () => {
     const result = await loadWith(NO_SAMPLE);
     // The categories and specials are gone; the best sellers still show.
     expect(result.sections.map((s) => [s.kind, s.kind === 'products' ? s.title : ''])).toEqual([
-      ['promos', ''],
+      ['hero', ''],
       ['products', 'Best sellers'],
     ]);
   });
@@ -339,7 +352,7 @@ describe('home source: checks on each answer', () => {
     });
   });
 
-  it('drops a banner link that is not a site path or https, and an unknown image', async () => {
+  it('drops a banner link that is not a site path, with its button, and an unknown image', async () => {
     const page = structuredClone(PAGE);
     page.page.slots[0]!.modules[0]!.config = {
       title: 'Hello',
@@ -350,8 +363,12 @@ describe('home source: checks on each answer', () => {
     serve({ ...REAL, 'storefront/pages/home': page });
     const home = await loadWith(NO_SAMPLE);
     expect(home.sections[0]).toEqual({
-      kind: 'promos',
-      banners: [{ id: 'b1', variant: 'primary', title: 'Hello', body: '', images: [] }],
+      kind: 'hero',
+      set: {
+        position: 'home.hero',
+        autoplay: false,
+        slides: [{ id: 'b1', title: 'Hello', placement: 'start', tone: 'dark', sponsored: false }],
+      },
     });
   });
 });
@@ -430,5 +447,126 @@ describe('home source: sellers near you', () => {
     const failed = await loadWith(ENV);
     expect(failed.sections.map((s) => s.kind)).not.toContain('sellers');
     expect(failed.sellers).toEqual([]);
+  });
+});
+
+describe('home source: the hero slider', () => {
+  const SLIDE = {
+    id: '01990000-0000-7000-8000-000000001001',
+    kind: 'promotion',
+    title: 'Fresh this week',
+    body: null,
+    ctaLabel: null,
+    image: null,
+    textPosition: 'start',
+    textTone: 'light',
+    href: '/offers',
+    sponsored: false,
+  };
+  const SLIDES = {
+    position: 'home.hero',
+    autoplay: true,
+    slides: [SLIDE, { ...SLIDE, id: 'second', title: 'Second' }],
+    nextChangeAt: null,
+  };
+  const hero = (sections: readonly HomeSection[]) => {
+    const first = sections[0];
+    return first?.kind === 'hero' ? first.set : undefined;
+  };
+
+  it('asks for the hero slides of the position with the rest of the page', async () => {
+    serve({ ...REAL, 'storefront/slides': SLIDES });
+    await loadWith(NO_SAMPLE);
+    expect(calls).toContain('storefront/slides?position=home.hero');
+  });
+
+  it('shows the live slides in place of the layout banner', async () => {
+    serve({ ...REAL, 'storefront/slides': SLIDES });
+    const home = await loadWith(NO_SAMPLE);
+    const set = hero(home.sections);
+    expect(set?.slides.map((s) => s.title)).toEqual(['Fresh this week', 'Second']);
+    expect(set?.autoplay).toBe(true);
+    // The layout's banner is the stand-in only: it is neither a promo nor a slide here.
+    expect(home.sections.map((s) => s.kind)).toEqual([
+      'hero',
+      'categories',
+      'products',
+      'products',
+    ]);
+  });
+
+  it('drops an invalid slide and keeps the rest', async () => {
+    serve({
+      ...REAL,
+      'storefront/slides': {
+        ...SLIDES,
+        slides: [
+          { ...SLIDE, href: 'https://evil.test' },
+          { ...SLIDE, id: 'ok', title: 'Kept' },
+        ],
+      },
+    });
+    expect(hero((await loadWith(NO_SAMPLE)).sections)?.slides.map((s) => s.title)).toEqual([
+      'Kept',
+    ]);
+  });
+
+  it('falls back to the layout banner as a one-slide slider while the library holds no live slide', async () => {
+    serve({ ...REAL, 'storefront/slides': { ...SLIDES, slides: [] } });
+    const set = hero((await loadWith(NO_SAMPLE)).sections);
+    expect(set?.slides.map((s) => s.title)).toEqual(['Ramadan specials']);
+    expect(set?.autoplay).toBe(false);
+  });
+
+  it('leaves the later banners of the layout as promos', async () => {
+    const page = structuredClone(PAGE);
+    page.page.slots[0]!.modules.push({
+      id: 'b2',
+      module: 'banner',
+      config: { title: 'Sell with us', href: '/sell', ctaLabel: 'Join' } as never,
+    });
+    serve({
+      ...REAL,
+      'storefront/pages/home': page,
+      'storefront/slides': { ...SLIDES, slides: [] },
+    });
+    const home = await loadWith(NO_SAMPLE);
+    expect(home.sections.map((s) => s.kind).slice(0, 2)).toEqual(['hero', 'promos']);
+    const promos = home.sections[1];
+    expect(promos?.kind === 'promos' && promos.banners.map((b) => [b.id, b.variant])).toEqual([
+      ['b2', 'secondary'],
+    ]);
+  });
+
+  it('draws no hero when there is no live slide and no layout banner', async () => {
+    const page = structuredClone(PAGE);
+    page.page.slots[0]!.modules = [];
+    serve({
+      ...REAL,
+      'storefront/pages/home': page,
+      'storefront/slides': { ...SLIDES, slides: [] },
+    });
+    expect((await loadWith(NO_SAMPLE)).sections.map((s) => s.kind)).not.toContain('hero');
+  });
+
+  it('uses the sample hero when the slides read fails and the fallback is on, not when it is off', async () => {
+    const page = structuredClone(PAGE);
+    page.page.slots[0]!.modules = [];
+    serve({ ...REAL, 'storefront/pages/home': page, 'storefront/slides': 503 });
+    expect(hero((await loadWith(ENV)).sections)?.slides.length).toBeGreaterThan(1);
+    expect((await loadWith(NO_SAMPLE)).sections.map((s) => s.kind)).not.toContain('hero');
+  });
+
+  it('shows the live slides even when the layout read fails', async () => {
+    serve({ ...REAL, 'storefront/pages/home': 503, 'storefront/slides': SLIDES });
+    const home = await loadWith(NO_SAMPLE);
+    expect(home.sections.map((s) => s.kind)).toEqual(['hero']);
+    expect((await loadWith(ENV)).sections.filter((s) => s.kind === 'hero')).toHaveLength(1);
+  });
+
+  it('has the sample slider while API_BASE_URL is empty', async () => {
+    serve({ 'storefront/pages/home': OFF, 'catalog/categories': OFF, 'storefront/slides': OFF });
+    const set = hero((await loadWith(NO_SAMPLE)).sections);
+    expect(set?.slides.map((s) => s.href)).toEqual(['/offers', '/express', '/certified']);
   });
 });

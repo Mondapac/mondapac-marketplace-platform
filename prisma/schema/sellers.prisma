@@ -311,27 +311,124 @@ model SellersRegisterCheck {
 }
 
 /// The root of a seller's public store profile (data design 3.8; V1), created empty. The
-/// published-revision pointer arrives in slice 12. The minimum order (slice 20, design 18) is
+/// published-revision pointer arrived in slice 12 part 2. The minimum order (slice 20, design 18) is
 /// four nullable columns: NULL amount and currency mean "no minimum". The CHECKs are hand-written
 /// in the migration; equality with the Market currency and the upper bound are the use case's.
 model SellersStoreProfile {
-  sellerId                       String            @id @map("seller_id") @db.Uuid
-  marketId                       String            @map("market_id") @db.VarChar(8)
-  tenantId                       String            @map("tenant_id")
+  sellerId                       String                        @id @map("seller_id") @db.Uuid
+  marketId                       String                        @map("market_id") @db.VarChar(8)
+  tenantId                       String                        @map("tenant_id")
   version                        Int
-  createdAt                      DateTime          @map("created_at") @db.Timestamptz(6)
+  createdAt                      DateTime                      @map("created_at") @db.Timestamptz(6)
   /// Minor units (ADR-0007), > 0 (CHECK); NULL = no minimum. Clear: a public commercial value.
-  minimumOrderAmount             BigInt?           @map("minimum_order_amount")
+  minimumOrderAmount             BigInt?                       @map("minimum_order_amount")
   /// ISO 4217, set exactly when the amount is (CHECK).
-  minimumOrderCurrency           String?           @map("minimum_order_currency") @db.Char(3)
+  minimumOrderCurrency           String?                       @map("minimum_order_currency") @db.Char(3)
   /// When and by whom the minimum was last changed; both NULL until the first change. A plain id
   /// (ADR-0004 decision 3), no foreign key.
-  minimumOrderChangedAt          DateTime?         @map("minimum_order_changed_at") @db.Timestamptz(6)
-  minimumOrderChangedByAccountId String?           @map("minimum_order_changed_by_account_id") @db.Uuid
-  sellerFile                     SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  minimumOrderChangedAt          DateTime?                     @map("minimum_order_changed_at") @db.Timestamptz(6)
+  minimumOrderChangedByAccountId String?                       @map("minimum_order_changed_by_account_id") @db.Uuid
+  /// The published revision of the profile texts (data design 3.8, slice 12 part 2): NULL until
+  /// the first save. Every save inserts a revision and moves this pointer in one unit; the
+  /// revision named is of this seller (composite foreign key).
+  publishedRevisionId            String?                       @map("published_revision_id") @db.Uuid
+  /// The delivery terms (package e): `same-day` or `next-day`, the window and the daily order
+  /// cut-off as minutes since local midnight in the seller's zone. All four set or all NULL (CHECK);
+  /// half-hour steps; a same-day cut-off is before the window closes. Clear: public terms.
+  deliveryDay                    String?                       @map("delivery_day") @db.VarChar(8)
+  deliveryFromMinute             Int?                          @map("delivery_from_minute") @db.SmallInt
+  deliveryToMinute               Int?                          @map("delivery_to_minute") @db.SmallInt
+  orderCutoffMinute              Int?                          @map("order_cutoff_minute") @db.SmallInt
+  /// When and by whom the terms were last changed; both NULL until the first change.
+  deliveryChangedAt              DateTime?                     @map("delivery_changed_at") @db.Timestamptz(6)
+  deliveryChangedByAccountId     String?                       @map("delivery_changed_by_account_id") @db.Uuid
+  sellerFile                     SellersSellerFile             @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  publishedRevision              SellersStoreProfileRevision?  @relation("StoreProfilePublishedRevision", fields: [marketId, sellerId, publishedRevisionId], references: [marketId, sellerId, id], onDelete: Restrict, onUpdate: Restrict)
+  revisions                      SellersStoreProfileRevision[] @relation("StoreProfileRevisions")
+  images                         SellersStoreImage[]
 
   @@unique([marketId, sellerId])
   @@map("store_profiles")
+  @@schema("sellers")
+}
+
+/// One revision of a seller's public store profile texts (data design 3.8; sellers design 3.7):
+/// the About text per Market locale, sealed as one JSON object under the seller's subject key
+/// (label sellers.store-profile-revision.content). Insert-only: the application role has no
+/// UPDATE or DELETE grant. Every save publishes at once (no review state), so the pointer on
+/// `store_profiles` is the whole publication state. CHECKs and grants are hand-written.
+model SellersStoreProfileRevision {
+  id                   String                @id @db.Uuid
+  marketId             String                @map("market_id") @db.VarChar(8)
+  tenantId             String                @map("tenant_id")
+  sellerId             String                @map("seller_id") @db.Uuid
+  /// 1, 2, ... per seller (CHECK >= 1); unique per seller. The "version" a save must name.
+  revisionNo           Int                   @map("revision_no")
+  /// Personal, Enc: the sorted-key JSON `{ about: { <locale>: <text> } }` sealed under the
+  /// seller's key. Never queried; read whole.
+  contentCiphertext    String                @map("content_ciphertext")
+  /// The JSON shape of the content (CHECK >= 1), not the envelope version.
+  contentSchemaVersion Int                   @map("content_schema_version") @db.SmallInt
+  /// hmac-sha256:<64 hex> over the canonical content (CHECK), keyed by the seller's subject key.
+  contentHash          String                @map("content_hash")
+  /// A plain id (C4): the account that saved the revision.
+  authorAccountId      String                @map("author_account_id") @db.Uuid
+  createdAt            DateTime              @map("created_at") @db.Timestamptz(6)
+  storeProfile         SellersStoreProfile   @relation("StoreProfileRevisions", fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  publishedFor         SellersStoreProfile[] @relation("StoreProfilePublishedRevision")
+
+  @@unique([marketId, sellerId, revisionNo])
+  /// The target of the pointer foreign key of store_profiles.
+  @@unique([marketId, sellerId, id])
+  @@map("store_profile_revisions")
+  @@schema("sellers")
+}
+
+/// The current logo or banner of a store (slice 12 part 2). At most one row per (market, seller,
+/// kind): a replace deletes the old row and inserts the new one in one unit, so "the current image"
+/// is simply the row that exists, and a replaced or removed image can no longer be served. Clear
+/// (pixels only, every metadata block dropped at upload); the raw upload is never stored.
+model SellersStoreImage {
+  marketId          String                       @map("market_id") @db.VarChar(8)
+  tenantId          String                       @map("tenant_id")
+  id                String                       @db.Uuid
+  sellerId          String                       @map("seller_id") @db.Uuid
+  /// logo | banner (CHECK).
+  kind              String
+  uploaderAccountId String                       @map("uploader_account_id") @db.Uuid
+  /// The size of the largest rendition.
+  pixelWidth        Int                          @map("pixel_width")
+  pixelHeight       Int                          @map("pixel_height")
+  /// The size of the upload in bytes (abuse review); the upload itself is not kept.
+  byteSize          Int                          @map("byte_size")
+  createdAt         DateTime                     @map("created_at") @db.Timestamptz(6)
+  storeProfile      SellersStoreProfile          @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  renditions        SellersStoreImageRendition[]
+
+  @@id([marketId, id])
+  @@unique([marketId, sellerId, kind])
+  @@unique([marketId, id, sellerId])
+  @@map("store_images")
+  @@schema("sellers")
+}
+
+/// One size of a store image: small or large JPEG. The key starts with the seller id (CHECK).
+model SellersStoreImageRendition {
+  marketId    String            @map("market_id") @db.VarChar(8)
+  tenantId    String            @map("tenant_id")
+  imageId     String            @map("image_id") @db.Uuid
+  sellerId    String            @map("seller_id") @db.Uuid
+  sizeCode    String            @map("size_code")
+  objectKey   String            @map("object_key")
+  sha256      Bytes
+  byteSize    Int               @map("byte_size")
+  pixelWidth  Int               @map("pixel_width")
+  pixelHeight Int               @map("pixel_height")
+  image       SellersStoreImage @relation(fields: [marketId, imageId, sellerId], references: [marketId, id, sellerId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, imageId, sizeCode])
+  @@unique([marketId, objectKey])
+  @@map("store_image_renditions")
   @@schema("sellers")
 }
 
@@ -340,54 +437,57 @@ model SellersStoreProfile {
 /// columns (column-level UPDATE grant, hand-written in the migration with every CHECK, the
 /// partial unique indexes "one pending" and "one approved", and the reviewer-queue index).
 model SellersBusinessFileRevision {
-  id                   String              @id @db.Uuid
-  marketId             String              @map("market_id") @db.VarChar(8)
-  tenantId             String              @map("tenant_id")
-  sellerId             String              @map("seller_id") @db.Uuid
+  id                   String                   @id @db.Uuid
+  marketId             String                   @map("market_id") @db.VarChar(8)
+  tenantId             String                   @map("tenant_id")
+  sellerId             String                   @map("seller_id") @db.Uuid
   /// onboarding | identity-change (CHECK).
   kind                 String
   /// 1, 2, ... per seller (CHECK >= 1); unique per seller.
-  revisionNo           Int                 @map("revision_no")
+  revisionNo           Int                      @map("revision_no")
   /// pending | approved | rejected | withdrawn | superseded (CHECK).
   status               String
   /// seller | admin (CHECK).
-  authorKind           String              @map("author_kind")
+  authorKind           String                   @map("author_kind")
   /// A plain id (C4): a revision is only created from a person's submission.
-  authorAccountId      String              @map("author_account_id") @db.Uuid
+  authorAccountId      String                   @map("author_account_id") @db.Uuid
   /// Personal, Enc, label sellers.business-file-revision.content: the sorted-key JSON of the
   /// content, sealed under the seller's key. Never queried; the reviewer reads it whole.
-  contentCiphertext    String              @map("content_ciphertext")
+  contentCiphertext    String                   @map("content_ciphertext")
   /// The JSON shape of the content (CHECK >= 1), not the envelope version.
-  contentSchemaVersion Int                 @map("content_schema_version") @db.SmallInt
+  contentSchemaVersion Int                      @map("content_schema_version") @db.SmallInt
   /// hmac-sha256:<64 hex> over the canonical content (CHECK), keyed by the seller's subject key.
-  contentHash          String              @map("content_hash")
+  contentHash          String                   @map("content_hash")
   /// Personal (pseudonymous), S5: the submitted identifier's index; NULL when none was given.
-  identifierIndex      Bytes?              @map("identifier_index")
+  identifierIndex      Bytes?                   @map("identifier_index")
   /// Clear IANA zone and ServiceArea code of the operating address at submission.
-  operatingTimezone    String              @map("operating_timezone")
-  serviceAreaCode      String              @map("service_area_code")
+  operatingTimezone    String                   @map("operating_timezone")
+  serviceAreaCode      String                   @map("service_area_code")
+  /// Clear postcode of the operating address at submission (CHECK), the real-time carrier's
+  /// quote pickup (SHP-02/03); NULL for a revision written before it existed. Never updated.
+  operatingPostcode    String?                  @map("operating_postcode")
   /// Clear IANA zone derived from the operating address only, copied at submit; NULL for a
   /// backfill revision (fail closed for the claim path).
-  addressTimezone      String?             @map("address_timezone")
+  addressTimezone      String?                  @map("address_timezone")
   /// Snapshot of the register check at submission (CHECKs: outcome list, mismatch subset).
-  registerOutcome      String              @map("register_outcome")
-  registerMismatches   String[]            @map("register_mismatches")
-  registerCheckedAt    DateTime?           @map("register_checked_at") @db.Timestamptz(6)
-  createdAt            DateTime            @map("created_at") @db.Timestamptz(6)
-  statusChangedAt      DateTime            @map("status_changed_at") @db.Timestamptz(6)
-  decidedAt            DateTime?           @map("decided_at") @db.Timestamptz(6)
-  decidedByAccountId   String?             @map("decided_by_account_id") @db.Uuid
-  identityDecisionId   String?             @map("identity_decision_id") @db.Uuid
+  registerOutcome      String                   @map("register_outcome")
+  registerMismatches   String[]                 @map("register_mismatches")
+  registerCheckedAt    DateTime?                @map("register_checked_at") @db.Timestamptz(6)
+  createdAt            DateTime                 @map("created_at") @db.Timestamptz(6)
+  statusChangedAt      DateTime                 @map("status_changed_at") @db.Timestamptz(6)
+  decidedAt            DateTime?                @map("decided_at") @db.Timestamptz(6)
+  decidedByAccountId   String?                  @map("decided_by_account_id") @db.Uuid
+  identityDecisionId   String?                  @map("identity_decision_id") @db.Uuid
   /// A code from the Market's reject reasons, never text (S8 pattern CHECK).
-  rejectReasonCode     String?             @map("reject_reason_code")
+  rejectReasonCode     String?                  @map("reject_reason_code")
   /// edited | cancelled | reapply-refused (CHECK).
-  withdrawCause        String?             @map("withdraw_cause")
+  withdrawCause        String?                  @map("withdraw_cause")
   /// seller | admin (CHECK).
-  withdrawnByKind      String?             @map("withdrawn_by_kind")
-  withdrawnAt          DateTime?           @map("withdrawn_at") @db.Timestamptz(6)
-  sellerFile           SellersSellerFile   @relation("SellerFileRevisions", fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
-  approvedFor          SellersSellerFile[] @relation("SellerFileApprovedRevision")
-  decisionFor          SellersSellerFile[] @relation("SellerFileDecisionRevision")
+  withdrawnByKind      String?                  @map("withdrawn_by_kind")
+  withdrawnAt          DateTime?                @map("withdrawn_at") @db.Timestamptz(6)
+  sellerFile           SellersSellerFile        @relation("SellerFileRevisions", fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  approvedFor          SellersSellerFile[]      @relation("SellerFileApprovedRevision")
+  decisionFor          SellersSellerFile[]      @relation("SellerFileDecisionRevision")
   reviewChecks         SellersReviewCheck[]
   identifierClaims     SellersIdentifierClaim[]
 

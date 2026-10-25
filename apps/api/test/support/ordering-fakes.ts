@@ -47,7 +47,17 @@ import type {
 import type { OrderTaxCategories } from '../../src/modules/ordering/application/ports/order-tax-categories';
 import type { RefundRepository } from '../../src/modules/ordering/application/ports/refund.repository';
 import type { TaxAnswer, TaxFacade, TaxFailure, TaxLineInput } from '../../src/modules/tax';
-import type { FlatFeeMap, ShippingFacade, ShippingFailure } from '../../src/modules/shipping';
+import type {
+  CarrierBookingOutcome,
+  CarrierDeliveryFailure,
+  CarrierDeliveryRequest,
+  CarrierShipment,
+  CheckoutShippingFees,
+  FlatFeeMap,
+  QuoteDropoff,
+  ShippingFacade,
+  ShippingFailure,
+} from '../../src/modules/shipping';
 import type {
   CommitFailure,
   InventoryOrderingPort,
@@ -245,6 +255,38 @@ export class MemoryOrders implements OrderRepository {
     }
     return Promise.resolve('stale' as const);
   }
+  private patchSeller(
+    sellerOrder: SellerOrder,
+    allowed: (current: SellerOrder) => boolean,
+    apply: (current: SellerOrder) => SellerOrder,
+  ) {
+    for (const [orderId, order] of this.rows) {
+      const index = order.sellerOrders.findIndex((seller) => seller.id === sellerOrder.id);
+      if (index < 0) continue;
+      const current = order.sellerOrders[index]!;
+      if (!allowed(current)) return Promise.resolve('stale' as const);
+      const sellerOrders = order.sellerOrders.map((seller, i) =>
+        i === index ? apply(seller) : seller,
+      );
+      this.rows.set(orderId, { ...order, sellerOrders });
+      return Promise.resolve('saved' as const);
+    }
+    return Promise.resolve('stale' as const);
+  }
+  saveReady(_m: MarketContext, sellerOrder: SellerOrder) {
+    return this.patchSeller(
+      sellerOrder,
+      (current) => current.fulfilment === 'to-ship' && current.readyAt === null,
+      (current) => ({ ...current, readyAt: sellerOrder.readyAt }),
+    );
+  }
+  saveAttention(_m: MarketContext, sellerOrder: SellerOrder) {
+    return this.patchSeller(
+      sellerOrder,
+      (current) => current.fulfilment === 'to-ship' && current.deliveryAttention === null,
+      (current) => ({ ...current, deliveryAttention: sellerOrder.deliveryAttention }),
+    );
+  }
   findUnrecordedShipments(_m: MarketContext, limit: number) {
     return Promise.resolve(
       this.paid(null)
@@ -326,6 +368,66 @@ export class FakeShipping implements ShippingFacade {
         ),
       ),
     );
+  }
+  /** Live quotes per seller id, in place of the flat fee; the drop-offs `shippingFees` was given. */
+  quotes = new Map<string, Money>();
+  quoteDropoffs: QuoteDropoff[] = [];
+  async shippingFees(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+    dropoff: QuoteDropoff,
+  ): Promise<Result<CheckoutShippingFees, ShippingFailure>> {
+    this.quoteDropoffs.push(dropoff);
+    const flat = await this.flatFees(context, sellerIds);
+    if (!flat.ok) return flat;
+    const fees = new Map(flat.value);
+    const quoted = new Set<Id<'Seller'>>();
+    for (const sellerId of sellerIds) {
+      const quote = this.quotes.get(sellerId);
+      if (quote !== undefined) {
+        fees.set(sellerId, quote);
+        quoted.add(sellerId);
+      }
+    }
+    return ok({ fees, quoted });
+  }
+  /** What `bookCarrierDelivery` answers per seller order id; `no-carrier` when absent. */
+  carrierBookings = new Map<string, Result<CarrierBookingOutcome, CarrierDeliveryFailure>>();
+  /** Every booking request, as shipping received it (personal data of fixtures only). */
+  carrierRequests: CarrierDeliveryRequest[] = [];
+  /** The carrier delivery of each seller order id. */
+  carrierShipments = new Map<string, CarrierShipment>();
+  carrierDown = false;
+  bookCarrierDelivery(
+    _c: CallContext,
+    request: CarrierDeliveryRequest,
+  ): Promise<Result<CarrierBookingOutcome, CarrierDeliveryFailure>> {
+    this.carrierRequests.push(request);
+    return Promise.resolve(
+      this.carrierBookings.get(request.sellerOrderId) ?? ok('no-carrier' as const),
+    );
+  }
+  carrierShipment(
+    _c: CallContext,
+    sellerOrderId: string,
+  ): Promise<Result<CarrierShipment, CarrierDeliveryFailure>> {
+    if (this.carrierDown) return Promise.resolve(err({ code: 'shipping.carrier-unavailable' }));
+    const shipment = this.carrierShipments.get(sellerOrderId);
+    return Promise.resolve(
+      shipment === undefined ? err({ code: 'shipping.carrier-delivery-not-found' }) : ok(shipment),
+    );
+  }
+  /** The seller order ids `cancelCarrierDelivery` was asked for, and its answer. */
+  carrierCancels: string[] = [];
+  cancelAnswer: Result<'cancelled' | 'not-cancellable' | 'none', CarrierDeliveryFailure> = ok(
+    'none' as const,
+  );
+  cancelCarrierDelivery(
+    _c: CallContext,
+    sellerOrderId: string,
+  ): Promise<Result<'cancelled' | 'not-cancellable' | 'none', CarrierDeliveryFailure>> {
+    this.carrierCancels.push(sellerOrderId);
+    return Promise.resolve(this.cancelAnswer);
   }
 }
 
