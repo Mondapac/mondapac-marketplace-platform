@@ -22,6 +22,7 @@ import { SHIPPING_FACADE, ShippingModule } from '../shipping';
 import { TAX_FACADE, TaxModule } from '../tax';
 import type { OrderingDependencies } from './application/checkout-flow';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
+import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-policy';
 import { ORDER_LABELS } from './application/ports/order-labels';
 import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
@@ -46,7 +47,8 @@ import { RecordLedger } from './application/use-cases/record-ledger.use-case';
 import { RecordShipments } from './application/use-cases/record-shipments.use-case';
 import { SellerDeliverOrder } from './application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './application/use-cases/seller-list-orders.use-case';
-import { SellerShipOrder } from './application/use-cases/seller-ship-order.use-case';
+import { SellerMarkOrderReady } from './application/use-cases/seller-mark-order-ready.use-case';
+import { BookReadyCarrierDelivery } from './application/use-cases/book-ready-carrier-delivery.use-case';
 import { SellerViewOrder } from './application/use-cases/seller-view-order.use-case';
 import { SellerViewOrderDocument } from './application/use-cases/seller-view-order-document.use-case';
 import { StartCheckout } from './application/use-cases/start-checkout.use-case';
@@ -102,6 +104,7 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
   ['labels', ORDER_LABELS],
+  ['deliveryMethods', DELIVERY_METHOD_POLICY],
 ];
 
 /** Every ordering use case shares one dependency object, built from the same ports. */
@@ -160,12 +163,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     // SHP-02/03: the real-time carrier's booking and progress (ordering.inbox).
     registerSubscriptionsFrom(
       'ordering',
-      [BookCarrierDeliveries, RecordCarrierProgress, CancelCarrierAfterRefund],
+      [
+        BookCarrierDeliveries,
+        BookReadyCarrierDelivery,
+        RecordCarrierProgress,
+        CancelCarrierAfterRefund,
+      ],
       (
         book: BookCarrierDeliveries,
+        bookReady: BookReadyCarrierDelivery,
         record: RecordCarrierProgress,
         cancel: CancelCarrierAfterRefund,
-      ) => carrierSubscriptions(book, record, cancel),
+      ) => carrierSubscriptions(book, bookReady, record, cancel),
     ),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
     ...orderingProviders,
@@ -182,7 +191,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerListOrders,
       SellerViewOrder,
       SellerViewOrderDocument,
-      SellerShipOrder,
+      SellerMarkOrderReady,
       SellerDeliverOrder,
       RecordShipments,
       RecordLedger,
@@ -190,6 +199,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
       BookCarrierDeliveries,
+      BookReadyCarrierDelivery,
       RecordCarrierProgress,
       CancelCarrierAfterRefund,
       AdminRefundOrder,

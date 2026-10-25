@@ -206,6 +206,10 @@ describe.each(TEST_MARKETS)('storefront reads in market %s (database)', (code) =
             deliveredAt: null,
             inventoryRecordedAt: null,
             ledgerState: 'pending',
+            deliveryMethod: 'instant',
+            deliveryWindow: null,
+            readyAt: null,
+            deliveryAttention: null,
           },
         ],
         lines: offerIds.map((offerId) => ({

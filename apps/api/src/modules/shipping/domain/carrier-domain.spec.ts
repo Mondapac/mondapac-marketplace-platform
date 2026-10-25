@@ -9,7 +9,7 @@ import {
 } from './carrier-booking';
 import { addressLineOf, parseCarrierStop } from './carrier-stop';
 import { parseDriveWebhook } from './drive-webhook-event';
-import { fulfilmentStrategyFor, REAL_TIME_DELIVERY, SELLER_MANAGED } from './real-time-delivery';
+import { fulfilmentStrategyFor, REAL_TIME_DELIVERY, NO_CARRIER } from './real-time-delivery';
 
 // The pure rules of the real-time carrier (SHP-02/03): Drive status to progress, forward-only
 // progress, the strategy, the checks on a stop and on a webhook body. Market-free; the flows
@@ -110,11 +110,11 @@ describe('fulfilmentStrategyFor', () => {
     expect(fulfilmentStrategyFor(coverage, 'greater-brisbane', 'greater-brisbane')).toBe(
       REAL_TIME_DELIVERY,
     );
-    expect(fulfilmentStrategyFor(coverage, 'zz-central', 'zz-coast')).toBe(SELLER_MANAGED);
-    expect(fulfilmentStrategyFor(coverage, null, 'zz-central')).toBe(SELLER_MANAGED);
-    expect(fulfilmentStrategyFor(null, 'zz-central', 'zz-central')).toBe(SELLER_MANAGED);
+    expect(fulfilmentStrategyFor(coverage, 'zz-central', 'zz-coast')).toBe(NO_CARRIER);
+    expect(fulfilmentStrategyFor(coverage, null, 'zz-central')).toBe(NO_CARRIER);
+    expect(fulfilmentStrategyFor(null, 'zz-central', 'zz-central')).toBe(NO_CARRIER);
     expect(fulfilmentStrategyFor({ serviceAreas: [] }, 'zz-central', 'zz-central')).toBe(
-      SELLER_MANAGED,
+      NO_CARRIER,
     );
   });
 });

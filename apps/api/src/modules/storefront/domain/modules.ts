@@ -39,7 +39,12 @@ export type ModuleKey = (typeof MODULE_KEYS)[number];
 
 export type ModuleConfig = Readonly<Record<string, unknown>>;
 
-/** Where a product shelf takes its products from; `linked` is the page's linked entity. */
+/**
+ * Where a product shelf takes its products from; `linked` is the page's linked entity.
+ * `recently-viewed`, `for-you` and `bought-together` are personal or product-relative: the buyer
+ * app reads them per request with no-store, so the page config itself stays shareable.
+ * `bought-together` pairs with a product, so it needs a product page (see placements).
+ */
 export const SHELF_SOURCES = [
   'bestsellers',
   'specials',
@@ -48,6 +53,9 @@ export const SHELF_SOURCES = [
   'tag',
   'manual',
   'linked',
+  'recently-viewed',
+  'for-you',
+  'bought-together',
 ] as const;
 export const INFO_ICONS = ['delivery', 'tax', 'certified', 'support', 'returns', 'local'] as const;
 
@@ -264,6 +272,9 @@ function shelfSource(problems: Problems, path: string, value: unknown) {
     case 'bestsellers':
     case 'specials':
     case 'linked':
+    case 'recently-viewed':
+    case 'for-you':
+    case 'bought-together':
       none(['id', 'code', 'productIds']);
       return { kind };
     case 'category':

@@ -14,6 +14,7 @@ import {
   progressOfDriveStatus,
   type CarrierBooking,
 } from '../domain/carrier-booking';
+import { carrierModeOf, parseBookingService } from '../domain/booking-service';
 import { parseCarrierStop } from '../domain/carrier-stop';
 import { parseDriveWebhook } from '../domain/drive-webhook-event';
 import { CarrierDeliveryProgressed } from '../domain/events';
@@ -62,7 +63,8 @@ const log = (context: CallContext, msg: string, fields: Record<string, unknown>)
  * each in one of its ServiceAreas), then one booking per seller order. An existing booking
  * answers `already-booked` without a call. The carrier books once per `externalReference` (the
  * seller order id), so a retry after a lost answer finds the first delivery. A refusal (4xx)
- * answers `refused`: the seller ships it the usual way.
+ * answers `refused`; no carrier for the trip answers `no-carrier`. The seller never delivers
+ * instead: ordering records that the platform must look at the order.
  */
 export async function bookCarrierDelivery(
   deps: ShippingDependencies,
@@ -72,19 +74,28 @@ export async function bookCarrierDelivery(
     readonly sellerOrderId: unknown;
     readonly sellerId: unknown;
     readonly dropoff: unknown;
+    readonly service: unknown;
   },
 ): Promise<Result<CarrierBookingOutcome, CarrierDeliveryFailure>> {
   const orderId = idOf<'Order'>(input?.orderId);
   const sellerOrderId = idOf<'SellerOrder'>(input?.sellerOrderId);
   const sellerId = idOf<'Seller'>(input?.sellerId);
   const dropoff = parseCarrierStop(input?.dropoff, 'dropoff');
+  const service = parseBookingService(input?.service);
   const fields = [
     ...(orderId === null ? [{ path: 'orderId', code: 'format' }] : []),
     ...(sellerOrderId === null ? [{ path: 'sellerOrderId', code: 'format' }] : []),
     ...(sellerId === null ? [{ path: 'sellerId', code: 'format' }] : []),
     ...(dropoff.ok ? [] : dropoff.fields),
+    ...(service.ok ? [] : service.fields),
   ];
-  if (orderId === null || sellerOrderId === null || sellerId === null || !dropoff.ok) {
+  if (
+    orderId === null ||
+    sellerOrderId === null ||
+    sellerId === null ||
+    !dropoff.ok ||
+    !service.ok
+  ) {
     return err({ code: 'validation.failed', fields });
   }
   const { market } = context;
@@ -92,8 +103,8 @@ export async function bookCarrierDelivery(
   const dropoffArea = deps.carrierPolicy.serviceAreaOf(market, dropoff.stop.postcode);
   // Without a carrier or a served drop-off nothing is read; the pickup is checked below.
   if (settings === null || dropoffArea === null || !settings.serviceAreas.includes(dropoffArea)) {
-    log(context, 'shipping.carrier-booking', { outcome: 'seller-managed', sellerOrderId });
-    return ok('seller-managed');
+    log(context, 'shipping.carrier-booking', { outcome: 'no-carrier', sellerOrderId });
+    return ok('no-carrier');
   }
   const existing = await deps.unitOfWork.run(
     market,
@@ -106,22 +117,22 @@ export async function bookCarrierDelivery(
   const pickup = await deps.pickups.pickupOf(context, { sellerId, sellerOrderId });
   if (!pickup.ok) {
     if (pickup.error.code === 'pickup.unavailable') return err(UNAVAILABLE);
-    log(context, 'shipping.carrier-booking', { outcome: 'seller-managed', reason: 'no-pickup' });
-    return ok('seller-managed');
+    log(context, 'shipping.carrier-booking', { outcome: 'no-carrier', reason: 'no-pickup' });
+    return ok('no-carrier');
   }
   const pickupStop = parseCarrierStop(pickup.value, 'pickup');
   if (!pickupStop.ok) {
     // The seller's file holds a phone or an address the carrier would refuse.
     log(context, 'shipping.carrier-booking', {
-      outcome: 'seller-managed',
+      outcome: 'no-carrier',
       reason: 'pickup-invalid',
     });
-    return ok('seller-managed');
+    return ok('no-carrier');
   }
   const pickupArea = deps.carrierPolicy.serviceAreaOf(market, pickupStop.stop.postcode);
   if (fulfilmentStrategyFor(settings, pickupArea, dropoffArea) !== REAL_TIME_DELIVERY) {
-    log(context, 'shipping.carrier-booking', { outcome: 'seller-managed', sellerOrderId });
-    return ok('seller-managed');
+    log(context, 'shipping.carrier-booking', { outcome: 'no-carrier', sellerOrderId });
+    return ok('no-carrier');
   }
 
   const answer = await deps.carrier.book(market, {
@@ -129,7 +140,8 @@ export async function bookCarrierDelivery(
     pickup: pickupStop.stop,
     dropoff: dropoff.stop,
     parcel: settings.parcel,
-    mode: settings.mode,
+    mode: carrierModeOf(service.service),
+    window: service.service.window,
   });
   if (!answer.ok) {
     log(context, 'shipping.carrier-booking', { outcome: answer.error.code, sellerOrderId });
