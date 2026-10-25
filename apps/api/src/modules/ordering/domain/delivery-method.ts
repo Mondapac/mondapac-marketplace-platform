@@ -25,6 +25,12 @@ export interface DeliveryWindow {
 export interface DeliveryChoice {
   readonly method: DeliveryMethod;
   readonly window: DeliveryWindow | null;
+  /**
+   * The id of the delivery quote the buyer saw (never a price): checkout charges that stored
+   * quote while it holds, and tells the buyer when the price has moved. Absent for a pickup and
+   * when the client names none.
+   */
+  readonly quoteId?: string | null;
 }
 
 /** When a carrier is booked for a method: at payment, when the seller marks ready, or never. */
@@ -57,6 +63,8 @@ const instantOf = (value: unknown): Temporal.Instant | null => {
 
 type Field = { path: string; code: string };
 
+const QUOTE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Parses the `deliveryMethods` of a checkout: absent, or an object of seller id to
  * `{ method, windowStart?, windowEnd? }`. `scheduled` needs both instants, the start after
@@ -85,7 +93,8 @@ export function parseDeliveryChoices(
     }
     const entry = raw as Record<string, unknown>;
     const extra = Object.keys(entry).find(
-      (key) => key !== 'method' && key !== 'windowStart' && key !== 'windowEnd',
+      (key) =>
+        key !== 'method' && key !== 'windowStart' && key !== 'windowEnd' && key !== 'quoteId',
     );
     if (extra !== undefined) {
       fields.push({ path: `${path}.field`, code: 'unknown-field' });
@@ -96,10 +105,22 @@ export function parseDeliveryChoices(
       fields.push({ path: `${path}.method`, code: 'value' });
       continue;
     }
+    let quoteId: string | null = null;
+    if (entry.quoteId !== undefined && entry.quoteId !== null) {
+      if (method === 'pickup') {
+        fields.push({ path: `${path}.quoteId`, code: 'not-allowed' });
+        continue;
+      }
+      if (typeof entry.quoteId !== 'string' || !QUOTE_ID.test(entry.quoteId)) {
+        fields.push({ path: `${path}.quoteId`, code: 'format' });
+        continue;
+      }
+      quoteId = entry.quoteId;
+    }
     if (method !== 'scheduled') {
       if (entry.windowStart !== undefined || entry.windowEnd !== undefined) {
         fields.push({ path: `${path}.window`, code: 'not-allowed' });
-      } else choices.set(sellerId, { method, window: null });
+      } else choices.set(sellerId, { method, window: null, quoteId });
       continue;
     }
     const start = instantOf(entry.windowStart);
@@ -111,7 +132,7 @@ export function parseDeliveryChoices(
       fields.push({ path: `${path}.windowStart`, code: 'past' });
     } else if (Temporal.Instant.compare(end, start) <= 0) {
       fields.push({ path: `${path}.windowEnd`, code: 'range' });
-    } else choices.set(sellerId, { method, window: { start, end } });
+    } else choices.set(sellerId, { method, window: { start, end }, quoteId });
   }
   return fields.length > 0 ? { ok: false, fields } : { ok: true, choices };
 }

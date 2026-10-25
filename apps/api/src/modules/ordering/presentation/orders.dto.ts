@@ -11,6 +11,10 @@ import type {
   OwnPickupCodeView,
 } from '../domain/order-views';
 import type { ShipTo } from '../domain/order';
+import type {
+  MethodPrice,
+  SellerDeliveryOptions,
+} from '../application/use-cases/delivery-quotes.use-case';
 import { moneyBody } from './http-answers';
 
 // Bodies and answers of the ordering routes. Ids, codes, minor-unit strings and instants only.
@@ -255,7 +259,10 @@ export class CheckoutRequest {
       'windowStart and windowEnd as ISO instants, start in the future and end after it). A ' +
       'seller without an entry gets instant. The seller has no say in the method.',
   })
-  deliveryMethods?: Record<string, { method: string; windowStart?: string; windowEnd?: string }>;
+  deliveryMethods?: Record<
+    string,
+    { method: string; windowStart?: string; windowEnd?: string; quoteId?: string }
+  >;
 }
 
 export class LabelledOrderLineBody extends OrderLineBody {
@@ -520,4 +527,130 @@ export const pageBody = <V, B>(
 ): { orders: B[]; nextCursor: string | null } => ({
   orders: page.orders.map(map),
   nextCursor: page.nextCursor,
+});
+
+export class DeliveryQuoteRequest {
+  @ApiProperty({
+    format: 'uuid',
+    description: "The id of one of the customer's own addresses (GET /customers/me/addresses).",
+  })
+  addressId!: string;
+}
+
+export class DeliveryPriceBody {
+  @ApiProperty({
+    enum: ['free', 'quoted', 'no-fleet', 'failed'],
+    description:
+      'free: an in-person pickup. quoted: the price below, held until validUntil. no-fleet: no ' +
+      'courier can carry this order the way it is asked. failed: no courier gave a price now; ' +
+      'ask again.',
+  })
+  state!: string;
+  @ApiProperty({
+    required: false,
+    format: 'uuid',
+    description: 'Send it back in checkout as `deliveryMethods.<sellerId>.quoteId`.',
+  })
+  quoteId?: string;
+  @ApiProperty({
+    required: false,
+    type: MoneyView,
+    description: 'What the buyer pays for delivery, tax included.',
+  })
+  total?: MoneyView;
+  @ApiProperty({
+    required: false,
+    type: MoneyView,
+    description: 'The tax inside `total`, to show apart (the Market tax strategy, never fixed).',
+  })
+  tax?: MoneyView;
+  @ApiProperty({ required: false, description: 'The tax rate of `tax` in basis points.' })
+  taxRateBps?: number;
+  @ApiProperty({ required: false, nullable: true, type: Number })
+  etaMinutes?: number | null;
+  @ApiProperty({ required: false, format: 'date-time' }) validUntil?: string;
+}
+
+export class DeliveryMethodOptionBody {
+  @ApiProperty({ enum: ['pickup', 'instant', 'same_day', 'scheduled'] }) method!: string;
+  @ApiProperty({ description: 'False: show the method disabled with the reason.' })
+  available!: boolean;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    enum: ['platform-off', 'seller-unsupported', 'past-cut-off', 'no-pickup-address'],
+    description: 'Why the method cannot be chosen; platform-off methods are not shown at all.',
+  })
+  reason!: string | null;
+  @ApiProperty({ nullable: true, type: DeliveryPriceBody })
+  price!: DeliveryPriceBody | null;
+}
+
+export class SellerDeliveryOptionsBody {
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ description: "The seller's IANA zone: same-day and scheduled use its clock." })
+  zone!: string;
+  @ApiProperty({ example: '12:00', description: 'Same-day orders close at this local time.' })
+  sameDayCutoff!: string;
+  @ApiProperty({ description: 'A scheduled window may start up to this many days ahead.' })
+  scheduledDaysAhead!: number;
+  @ApiProperty({ description: 'The length of a scheduled window, in minutes.' })
+  scheduledWindowMinutes!: number;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The postcode where a pickup is collected (never the street); null: no pickup.',
+  })
+  pickupPostcode!: string | null;
+  @ApiProperty({ type: [DeliveryMethodOptionBody] }) methods!: DeliveryMethodOptionBody[];
+}
+
+export class DeliveryQuotesView {
+  @ApiProperty({ type: [SellerDeliveryOptionsBody] }) sellers!: SellerDeliveryOptionsBody[];
+}
+
+const priceBody = (price: MethodPrice): DeliveryPriceBody =>
+  price.state === 'quoted'
+    ? {
+        state: 'quoted',
+        quoteId: price.price.quoteId,
+        total: moneyBody(price.price.total),
+        tax: moneyBody(price.price.tax),
+        taxRateBps: price.price.taxRateBps,
+        etaMinutes: price.price.etaMinutes,
+        validUntil: price.price.validUntil,
+      }
+    : { state: price.state };
+
+export const deliveryQuotesBody = (
+  sellers: readonly SellerDeliveryOptions[],
+): DeliveryQuotesView => ({
+  sellers: sellers.map((seller) => ({
+    sellerId: seller.sellerId,
+    zone: seller.availability.zone,
+    sameDayCutoff: seller.availability.sameDayCutoff,
+    scheduledDaysAhead: seller.availability.scheduledDaysAhead,
+    scheduledWindowMinutes: seller.availability.scheduledWindowMinutes,
+    pickupPostcode: seller.pickupPostcode,
+    // A method the Market switched off is not part of the answer: the buyer never sees it.
+    methods: seller.availability.methods
+      .filter((entry) => entry.reason !== 'platform-off')
+      .map((entry) => {
+        const price =
+          entry.method === 'pickup'
+            ? entry.available
+              ? ({ state: 'free' } as const)
+              : null
+            : entry.available
+              ? (seller.prices[entry.method] ?? null)
+              : null;
+        return {
+          method: entry.method,
+          available: entry.available,
+          reason: entry.reason,
+          price:
+            price === null ? null : price.state === 'free' ? { state: 'free' } : priceBody(price),
+        };
+      }),
+  })),
 });

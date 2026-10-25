@@ -492,10 +492,10 @@ async function showcasePrices(sessions, offerIdsBySeller) {
 // 5b. Shipping fee and minimum order ----------------------------------------------------------------
 /** Minor units (cents) per seller key; a null minimum leaves the seller without one. */
 const STORE_TERMS = {
-  alnoor: { fee: 800, minimum: 3000 },
-  sunnybank: { fee: 600, minimum: 2500 },
-  valley: { fee: 0, minimum: null },
-  spice: { fee: 1000, minimum: 2000 },
+  alnoor: { minimum: 3000 },
+  sunnybank: { minimum: 2500 },
+  valley: { minimum: null },
+  spice: { minimum: 2000 },
 };
 
 /** Every row of the approved tab, following `next` page by page. */
@@ -517,14 +517,11 @@ async function ensureStoreTerms(admin, sessions) {
     const row = approved.find((item) => item.slug === seller.slug);
     if (!terms) continue;
     if (!row) {
-      log(`  ${seller.key}: not in the approved list, shipping fee and minimum not set`);
+      log(`  ${seller.key}: not in the approved list, minimum not set`);
       continue;
     }
     // One seller's failure must not skip the others; the demo is complete without these terms.
     try {
-      await admin.ok('PUT', `/shipping/admin/sellers/${row.sellerId}/flat-fee`, {
-        amount: terms.fee,
-      });
       if (terms.minimum === null) continue;
       const session = sessions.get(seller.key);
       const settings = await session.ok('GET', '/sellers/store-settings');
@@ -533,7 +530,7 @@ async function ensureStoreTerms(admin, sessions) {
         minimumOrder: { amount: terms.minimum, currency: settings.currency },
       });
     } catch (error) {
-      log(`  ${seller.key}: shipping fee or minimum not set (${error.message})`);
+      log(`  ${seller.key}: minimum not set (${error.message})`);
     }
   }
 }

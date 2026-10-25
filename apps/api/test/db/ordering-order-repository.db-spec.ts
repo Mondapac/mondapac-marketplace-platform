@@ -97,6 +97,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           deliveryWindow: null,
           readyAt: null,
           deliveryAttention: null,
+          deliveryQuote: null,
         },
       ],
       lines: [
@@ -182,6 +183,71 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
         order.sellerOrders[0]!.id,
       ]),
     ).rejects.toMatchObject({ code: '42501' });
+  });
+
+  describe('the charged delivery quote', () => {
+    const withQuote = (base: OrderState): OrderState => ({
+      ...base,
+      total: money(2500n + 1150n, currency),
+      sellerOrders: base.sellerOrders.map((seller) => ({
+        ...seller,
+        shipping: 1150n,
+        shippingTaxRateBps: 1000,
+        shippingTax: 105n,
+        shippingTaxInclusive: true,
+        total: 2500n + 1150n,
+        deliveryQuote: {
+          quoteId: ids.next<'DeliveryQuote'>(),
+          fleet: 'uber_direct',
+          quoteAmount: 1000n,
+          marginAmount: 150n,
+          quotedAt: T0,
+          expiresAt: T0.add({ minutes: 10 }),
+        },
+      })),
+    });
+
+    it('round-trips the fleet, the fleet price, the margin and the expiry of a seller order', async () => {
+      const order = withQuote(newOrder());
+      await value(market, () => repository.insert(market, order));
+      const read = await value(market, () => repository.findById(market, order.id));
+      expect(read).toEqual(order);
+      expect(read?.sellerOrders[0]?.deliveryQuote).toMatchObject({
+        fleet: 'uber_direct',
+        quoteAmount: 1000n,
+        marginAmount: 150n,
+      });
+    });
+
+    it('holds a pickup and an older order without a quote', async () => {
+      const order = newOrder();
+      await value(market, () => repository.insert(market, order));
+      const read = await value(market, () => repository.findById(market, order.id));
+      expect(read?.sellerOrders[0]?.deliveryQuote).toBeNull();
+    });
+
+    it('refuses a quote that is not all there, a fleet that is not one, or a price that does not add up', async () => {
+      const order = withQuote(newOrder());
+      await value(market, () => repository.insert(market, order));
+      const id = order.sellerOrders[0]!.id;
+      const attempt = (set: string) =>
+        owner.query(`UPDATE ordering.seller_orders SET ${set} WHERE id = '${id}'`).then(
+          () => 'allowed',
+          (error: { code?: string }) => error.code,
+        );
+      expect(await attempt('delivery_quote_fleet = NULL')).toBe(CHECK);
+      expect(await attempt("delivery_quote_fleet = 'other-courier'")).toBe(CHECK);
+      expect(await attempt('delivery_margin_amount = 151')).toBe(CHECK);
+      expect(await attempt('delivery_quote_amount = -1, delivery_margin_amount = 1151')).toBe(
+        CHECK,
+      );
+      // The application role cannot change a charged quote at all.
+      await expect(
+        sql.query(`UPDATE ordering.seller_orders SET delivery_margin_amount = 0 WHERE id = $1`, [
+          id,
+        ]),
+      ).rejects.toMatchObject({ code: '42501' });
+    });
   });
 
   it('saves under the version and refuses a stale write', async () => {

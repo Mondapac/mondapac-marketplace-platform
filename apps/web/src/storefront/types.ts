@@ -56,18 +56,16 @@ export interface SellerSummary {
   readonly id: string;
   readonly name: string;
   readonly initials: string;
-  readonly deliveryWindow: string;
   readonly minimumOrder: string;
   /** Key of a sample logo; real sellers' logos arrive with media. */
   readonly logo?: string;
 }
 
 /**
- * A "Sellers near you" tile. The public store list has no delivery window yet, and its minimum
- * order is absent when it cannot be told, so both lines are optional here.
+ * A "Sellers near you" tile. The minimum order is absent when it cannot be told, so the line is
+ * optional here. A seller sets no delivery window or fee: delivery is priced at checkout.
  */
-export type HomeSeller = Omit<SellerSummary, 'deliveryWindow' | 'minimumOrder'> & {
-  readonly deliveryWindow?: string;
+export type HomeSeller = Omit<SellerSummary, 'minimumOrder'> & {
   readonly minimumOrder?: string;
 };
 
@@ -198,8 +196,6 @@ export interface ProductOffer {
   /** Badges built by certification from evaluateClaim for this offer. */
   readonly certifications: readonly CertificationBadge[];
   readonly lowStock?: number;
-  /** Absent until the backend has delivery promises (real data); the page leaves it out. */
-  readonly deliveryWindow?: string;
   /** Absent when the seller's minimum order cannot be told; the page leaves it out. */
   readonly minimumOrder?: string;
 }
@@ -237,47 +233,76 @@ export interface CartItem {
   readonly addedAt?: Money;
 }
 
-/**
- * A seller's delivery terms as the seller set them: orders placed before `cutoff` arrive the same
- * day or the next, in the window `from` to `to`. Clock times (`HH:MM` on the half hour, `24:00` for
- * the end of the day) on the seller's own wall clock, shown without a time zone.
- */
-export interface DeliveryTerms {
-  readonly day: 'same-day' | 'next-day';
-  readonly from: string;
-  readonly to: string;
-  readonly cutoff: string;
-}
-
-/** A seller's delivery terms as the cart and checkout show them. */
+/** A seller as the cart and checkout show it. Delivery is priced at checkout, not set by the seller. */
 export interface SellerTerms {
   readonly id: string;
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;
-  /** Set by the seller; the buyer does not choose it. */
-  readonly deliveryWindow: string;
   /** The seller's minimum order; absent when it has none. */
   readonly minimumOrder?: Money;
-  /** The seller's flat delivery fee for one order (Scheduled delivery). */
-  readonly deliveryFee: Money;
-  /** Whether the seller takes Express orders now; absent: it does not offer Express. */
-  readonly express?: ExpressTerms;
 }
 
-/**
- * Express delivery of one seller (within 2 hours once the seller has the order ready, booked by
- * the platform with a courier). The cut-off is evaluated by the backend in the seller's time zone
- * (ADR-0005); the storefront only shows it.
- */
-export type ExpressTerms =
-  | { readonly kind: 'offered' }
-  | { readonly kind: 'not-offered' }
-  /** Today's cut-off has passed: `cutoff` is the instant, `timeZone` the seller's IANA zone. */
-  | { readonly kind: 'closed'; readonly cutoff: string; readonly timeZone: string };
+/** The four ways a buyer can have a seller's part of an order delivered (or collect it). */
+export type DeliveryMethod = 'pickup' | 'instant' | 'same_day' | 'scheduled';
 
-/** How one seller's part is delivered; Scheduled (the seller's window) is the default. */
-export type DeliverySpeed = 'scheduled' | 'express';
+/**
+ * What the buyer picked for one seller at checkout. A scheduled delivery adds the local day
+ * (`YYYY-MM-DD` in the seller's zone) and the window's start (`HH:MM`, the seller's clock).
+ */
+export interface DeliveryWish {
+  readonly method: DeliveryMethod;
+  readonly day?: string;
+  readonly windowStart?: string;
+}
+
+/** Why a method cannot be chosen for a seller; a method the Market switched off is not sent. */
+export type MethodReason = 'seller-unsupported' | 'past-cut-off' | 'no-pickup-address';
+
+/**
+ * What a method costs the buyer, from the server's stored quote (never from the browser): `free`
+ * is a pickup; `quoted` carries the price with its GST apart and the quote to send back at
+ * checkout; `no-fleet` no courier can carry it; `failed` no courier gave a price now.
+ */
+export type MethodPrice =
+  | { readonly state: 'free' }
+  | {
+      readonly state: 'quoted';
+      /** Names the stored quote; checkout charges it. */
+      readonly quoteId: string;
+      /** What the buyer pays, GST included. */
+      readonly total: Money;
+      /** The GST inside `total`. */
+      readonly tax: Money;
+      readonly etaMinutes: number | null;
+      /** ISO instant; the quote is asked again after it. */
+      readonly validUntil: string;
+    }
+  | { readonly state: 'no-fleet' }
+  | { readonly state: 'failed' };
+
+export interface MethodOption {
+  readonly method: DeliveryMethod;
+  readonly available: boolean;
+  readonly reason: MethodReason | null;
+  /** Null while the method is unavailable. */
+  readonly price: MethodPrice | null;
+}
+
+/** One seller's delivery options for an address. */
+export interface SellerDeliveryOptions {
+  /** The seller's IANA zone: same day and the scheduled windows use its clock. */
+  readonly zone: string;
+  /** `HH:MM` local: same-day orders close then. */
+  readonly sameDayCutoff: string;
+  /** A scheduled window may start up to this many days ahead (today included). */
+  readonly scheduledDaysAhead: number;
+  readonly scheduledWindowMinutes: number;
+  /** Where a pickup is collected: the postcode only; null when the seller offers none. */
+  readonly pickupPostcode: string | null;
+  /** The Market's methods in the fixed order; a method the Market switched off is absent. */
+  readonly methods: readonly MethodOption[];
+}
 
 /** The address a delivery quote is asked for: a saved address, or a new address's postcode. */
 export type QuoteAddress =
@@ -285,13 +310,12 @@ export type QuoteAddress =
   | { readonly kind: 'new'; readonly postcode: string };
 
 /**
- * The courier's answer for one seller and one address: the live Express price (null when the
- * seller takes no Express order now), or that its couriers do not reach the address, or no answer.
- * Quotes are checked again when the buyer pays.
+ * The delivery options of every seller of the basket for an address, or why there are none.
+ * `signed-out`: the session ended. `failed`: the quotes could not be asked now (try again).
  */
-export type DeliveryQuote =
-  | { readonly kind: 'quote'; readonly express: Money | null }
-  | { readonly kind: 'out-of-range' }
+export type DeliveryOptionsAnswer =
+  | { readonly kind: 'ok'; readonly sellers: Readonly<Record<string, SellerDeliveryOptions>> }
+  | { readonly kind: 'signed-out' }
   | { readonly kind: 'failed' };
 
 /** How the buyer pays: card fields on the page (Visa, Mastercard) or Stripe's hosted page. */
@@ -312,11 +336,20 @@ export interface PayRequest {
   readonly address: QuoteAddress;
   /** Quantity per item id. */
   readonly lines: Readonly<Record<string, number>>;
-  /** Speed per seller id, with the Express fee the buyer saw. */
+  /**
+   * The method per seller id, the stored quote the buyer saw (never a price the server trusts)
+   * and, for a scheduled delivery, the window.
+   */
   readonly delivery: Readonly<
     Record<
       string,
-      { readonly speed: 'scheduled' } | { readonly speed: 'express'; readonly fee: Money }
+      {
+        readonly method: DeliveryMethod;
+        readonly quoteId: string | null;
+        readonly window: { readonly start: string; readonly end: string } | null;
+        /** The price the buyer saw, for the "price changed" comparison only. */
+        readonly total: Money;
+      }
     >
   >;
   readonly discountCode: string | null;
@@ -326,7 +359,7 @@ export interface PayRequest {
 
 /**
  * The answer to Pay. Nothing is charged unless it is `paid` or `redirect` (Stripe's page then
- * takes the payment): a changed Express price or stock, or a declined card, says so first.
+ * takes the payment): a changed delivery price or stock, or a declined card, says so first.
  */
 export type PayAnswer =
   | { readonly kind: 'paid'; readonly reference: string }
@@ -339,8 +372,8 @@ export type PayAnswer =
         readonly was: Money;
         readonly now: Money;
       }[];
-      /** The new quotes, for the page to show. */
-      readonly quotes: Readonly<Record<string, DeliveryQuote>>;
+      /** The new options, for the page to show. */
+      readonly options: Readonly<Record<string, SellerDeliveryOptions>>;
     }
   | {
       readonly kind: 'stock-changed';
@@ -355,13 +388,12 @@ export type PayAnswer =
 
 /**
  * How the cart shows the tax a GST-inclusive total holds ("Includes A$x GST"). A PLACEHOLDER
- * until the tax module gives the figure: whether tax applies to delivery fees, and tax-exclusive
- * prices, are not settled (tax adviser, 19 Oct 2026), so nothing here is a rule.
+ * until the tax module gives the figure for the items; the GST of a delivery comes from its quote,
+ * which the Market tax strategy computed.
  */
 export interface IncludedTaxPreview {
   /** Share of a tax-inclusive amount that is tax, as a fraction. */
   readonly share: { readonly numerator: number; readonly denominator: number };
-  readonly includesDelivery: boolean;
 }
 
 /** A discount code applied to the cart: a share off the items, never off delivery. */
@@ -555,12 +587,6 @@ export interface SellerShop {
   readonly about?: string;
   /** What the platform checked of the business, e.g. "ABN checked by Mondapac". Not known yet when absent. */
   readonly businessCheck?: string;
-  /** Not known yet when absent. */
-  readonly deliveryWindow?: string;
-  /** The seller's own delivery terms; the page words them. Absent when the seller set none. */
-  readonly delivery?: DeliveryTerms;
-  /** Not known yet when absent. */
-  readonly deliveryFee?: Money;
   /** Absent when the seller has no minimum order (unless `minimumUnknown`). */
   readonly minimumOrder?: Money;
   /** The minimum order cannot be told now: no minimum line is shown. */
@@ -602,14 +628,7 @@ export type CompleteSellerShop = SellerShop &
   Required<
     Pick<
       SellerShop,
-      | 'about'
-      | 'businessCheck'
-      | 'deliveryWindow'
-      | 'deliveryFee'
-      | 'deliversTo'
-      | 'certificates'
-      | 'categories'
-      | 'products'
+      'about' | 'businessCheck' | 'deliversTo' | 'certificates' | 'categories' | 'products'
     >
   >;
 
@@ -650,10 +669,11 @@ export interface OrderPart {
   readonly sellerId: string;
   readonly sellerName: string;
   readonly status: OrderPartStatus;
-  /** The delivery window promised, as the seller wrote it. */
-  readonly deliveryWindow: string;
+  /** How the part is delivered, as the buyer chose it. */
+  readonly deliveryMethod: DeliveryMethod;
   /** The day the part was delivered (ISO date), once it is. */
   readonly deliveredOn?: string;
+  /** What the buyer paid for delivery, GST included; zero for a pickup. */
   readonly deliveryFee: Money;
   /** The buyer's note to this seller at checkout. */
   readonly note?: string;
@@ -719,16 +739,12 @@ export interface SellerListing {
   /** The labels evaluateClaim allows the seller (CERT-*); never free text. */
   readonly certifications: readonly { readonly type: string; readonly name: string }[];
   readonly categories: readonly { readonly code: string; readonly name: string }[];
-  /** Not known yet when absent. */
-  readonly deliveryWindow?: string;
   /** Whether it delivers today to the buyer's location. */
   readonly sameDay: boolean;
   /** Absent when the seller has no minimum order (unless `minimumUnknown`). */
   readonly minimumOrder?: Money;
   /** The minimum order cannot be told now: no minimum line is shown. */
   readonly minimumUnknown?: true;
-  /** Not known yet when absent. */
-  readonly deliveryFee?: Money;
   /** Not known yet when absent. */
   readonly productCount?: number;
   /** Up to three products for the card's footer. */

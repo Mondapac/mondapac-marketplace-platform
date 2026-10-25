@@ -55,56 +55,66 @@ model OrderingOrder {
 /// The part of an order that belongs to one seller (the sub-order). `shippingAmount` is the
 /// seller's flat fee at placement (SHP-01). The seller records the shipment and then the delivery.
 model OrderingSellerOrder {
-  id                   String              @id @db.Uuid
-  marketId             String              @map("market_id") @db.VarChar(8)
-  tenantId             String              @map("tenant_id")
-  orderId              String              @map("order_id") @db.Uuid
-  sellerId             String              @map("seller_id") @db.Uuid
-  subtotalAmount       BigInt              @map("subtotal_amount")
-  shippingAmount       BigInt              @map("shipping_amount")
+  id                     String              @id @db.Uuid
+  marketId               String              @map("market_id") @db.VarChar(8)
+  tenantId               String              @map("tenant_id")
+  orderId                String              @map("order_id") @db.Uuid
+  sellerId               String              @map("seller_id") @db.Uuid
+  subtotalAmount         BigInt              @map("subtotal_amount")
+  shippingAmount         BigInt              @map("shipping_amount")
   /// The tax on the flat shipping fee, frozen at placement beside the rate and the price basis
   /// (ADR-0039 decision 4). All three are null on orders placed before it was recorded (CHECK).
-  shippingTaxRateBps   Int?                @map("shipping_tax_rate_bps")
-  shippingTaxAmount    BigInt?             @map("shipping_tax_amount")
-  shippingTaxInclusive Boolean?            @map("shipping_tax_inclusive")
-  totalAmount          BigInt              @map("total_amount")
+  shippingTaxRateBps     Int?                @map("shipping_tax_rate_bps")
+  shippingTaxAmount      BigInt?             @map("shipping_tax_amount")
+  shippingTaxInclusive   Boolean?            @map("shipping_tax_inclusive")
+  totalAmount            BigInt              @map("total_amount")
   /// to-ship, shipped or delivered (CHECK). Moves only forward.
-  fulfilment           String
+  fulfilment             String
   /// The carrier the seller named when shipping (1 to 60 characters, CHECK).
-  carrier              String?
+  carrier                String?
   /// The tracking reference, if the seller had one (1 to 80 characters, CHECK).
-  trackingRef          String?             @map("tracking_ref")
-  shippedAt            DateTime?           @map("shipped_at") @db.Timestamptz(6)
-  deliveredAt          DateTime?           @map("delivered_at") @db.Timestamptz(6)
+  trackingRef            String?             @map("tracking_ref")
+  shippedAt              DateTime?           @map("shipped_at") @db.Timestamptz(6)
+  deliveredAt            DateTime?           @map("delivered_at") @db.Timestamptz(6)
   /// Set by the worker once inventory has recorded the lines as shipped.
-  inventoryRecordedAt  DateTime?           @map("inventory_recorded_at") @db.Timestamptz(6)
+  inventoryRecordedAt    DateTime?           @map("inventory_recorded_at") @db.Timestamptz(6)
   /// pending, recorded or not-applicable (CHECK): whether the worker has written the seller
   /// order into the seller ledger (commission-payouts). Orders placed before the commission rate
   /// was frozen on their lines are not-applicable.
-  ledgerState          String              @map("ledger_state")
+  ledgerState            String              @map("ledger_state")
   /// How many times the ledger refused this seller order; the worker takes the fewest first.
-  ledgerAttempts       Int                 @default(0) @map("ledger_attempts")
+  ledgerAttempts         Int                 @default(0) @map("ledger_attempts")
   /// The gross of the refunds not failed (pending or succeeded); never above the total (CHECK).
   /// Raised under the value read, so two refunds of one seller order cannot both pass (tax step 3).
-  refundedAmount       BigInt              @default(0) @map("refunded_amount")
+  refundedAmount         BigInt              @default(0) @map("refunded_amount")
   /// The buyer's delivery method, chosen at checkout: pickup, instant, same_day or scheduled
   /// (CHECK). Orders placed before it was recorded are instant (they were booked at payment).
-  deliveryMethod       String              @map("delivery_method")
+  deliveryMethod         String              @map("delivery_method")
   /// The buyer's window for a scheduled delivery, UTC instants; both set exactly when the method
   /// is scheduled, and the end is after the start (CHECK).
-  deliveryWindowStart  DateTime?           @map("delivery_window_start") @db.Timestamptz(6)
-  deliveryWindowEnd    DateTime?           @map("delivery_window_end") @db.Timestamptz(6)
+  deliveryWindowStart    DateTime?           @map("delivery_window_start") @db.Timestamptz(6)
+  deliveryWindowEnd      DateTime?           @map("delivery_window_end") @db.Timestamptz(6)
   /// When the seller told the platform the order is ready; set once, while the order is to-ship.
-  readyAt              DateTime?           @map("ready_at") @db.Timestamptz(6)
+  readyAt                DateTime?           @map("ready_at") @db.Timestamptz(6)
   /// Set by the platform when the order needs an admin: no-carrier (nothing can serve it),
   /// carrier-unknown (a booking whose answer was lost, so it may exist) or cancel-unknown (a
   /// cancel whose answer was lost) (CHECK). The seller
   /// never delivers instead; an admin follows it up.
-  deliveryAttention    String?             @map("delivery_attention")
-  order                OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  lines                OrderingOrderLine[]
-  refunds              OrderingRefund[]
-  pickupCode           OrderingPickupCode?
+  deliveryAttention      String?             @map("delivery_attention")
+  /// The delivery quote charged for this seller order (delivery models, package 5), frozen at
+  /// placement: shipping's quote id (a plain id), the fleet quoted, the fleet's price, the
+  /// platform's margin and when the quote stopped holding. `shipping_amount` is what the buyer paid
+  /// (price + margin). All null for a pickup and for orders placed before quotes were kept (CHECK).
+  deliveryQuoteId        String?             @map("delivery_quote_id") @db.Uuid
+  deliveryQuoteFleet     String?             @map("delivery_quote_fleet")
+  deliveryQuoteAmount    BigInt?             @map("delivery_quote_amount")
+  deliveryMarginAmount   BigInt?             @map("delivery_margin_amount")
+  deliveryQuotedAt       DateTime?           @map("delivery_quoted_at") @db.Timestamptz(6)
+  deliveryQuoteExpiresAt DateTime?           @map("delivery_quote_expires_at") @db.Timestamptz(6)
+  order                  OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  lines                  OrderingOrderLine[]
+  refunds                OrderingRefund[]
+  pickupCode             OrderingPickupCode?
 
   @@unique([marketId, id])
   @@unique([marketId, orderId, sellerId])

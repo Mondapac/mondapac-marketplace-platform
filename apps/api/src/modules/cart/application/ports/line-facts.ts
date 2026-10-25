@@ -49,16 +49,6 @@ export interface LineFactsSource {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<ReadonlyMap<Id<'Seller'>, SellerMinimum>>;
-
-  /**
-   * The flat delivery fee of each of the distinct sellers, from `shipping.flatFees` (one batch
-   * per 100 ids). A seller without a fee, or a failed call, is absent: the cart shows no fee and
-   * checkout refuses that seller. Never throws.
-   */
-  sellerDeliveryFees(
-    context: CallContext,
-    sellerIds: readonly Id<'Seller'>[],
-  ): Promise<ReadonlyMap<Id<'Seller'>, Money>>;
 }
 
 export const LINE_FACTS_SOURCE = Symbol('LINE_FACTS_SOURCE');

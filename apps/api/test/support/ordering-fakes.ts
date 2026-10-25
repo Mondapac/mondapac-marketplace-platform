@@ -64,12 +64,17 @@ import type {
   CarrierDeliveryFailure,
   CarrierDeliveryRequest,
   CarrierShipment,
-  CheckoutShippingFees,
+  ChargeFailure,
   ChoiceRefusal,
-  FlatFeeMap,
+  FleetFeeFailure,
+  MethodQuote,
   PricedDelivery,
+  QuotedDelivery,
   QuoteDropoff,
+  QuoteFailure,
+  QuoteSeller,
   SellerDeliveryAvailability,
+  SellerDeliveryQuotes,
   ShippingFacade,
   ShippingFailure,
 } from '../../src/modules/shipping';
@@ -357,11 +362,10 @@ export class MemoryOrders implements OrderRepository {
 }
 
 /**
- * The flat fees `ordering` reads at checkout (a seller without an entry has no fee) and the
- * delivery area: every postcode is delivered to except those in `outside`.
+ * The delivery quotes `ordering` charges at checkout (a seller without a quote has no courier) and
+ * the delivery area: every postcode is delivered to except those in `outside`.
  */
 export class FakeShipping implements ShippingFacade {
-  fees = new Map<string, Money>();
   outside = new Set<string>();
   down = false;
   /** The sellers with an approved pickup address (delivery models, package 2). */
@@ -414,43 +418,131 @@ export class FakeShipping implements ShippingFacade {
     if (this.down) return Promise.resolve(err({ code: 'shipping.unavailable' }));
     return Promise.resolve(ok(!this.outside.has(postcode)));
   }
-  flatFees(
+  /**
+   * The delivery quotes shipping gives (a seller without an entry has no courier: no-fleet). The
+   * total is what `chargeDelivery` charges; `margins` is the part of it that is the platform's.
+   */
+  quotedTotals = new Map<string, Money>();
+  margins = new Map<string, bigint>();
+  /** Sellers whose quote the buyer saw has since moved to this total. */
+  moved = new Map<string, Money>();
+  /** The quote ids `chargeDelivery` does not know. */
+  unknownQuoteIds = new Set<string>();
+  /** Every charge request, as checkout sent it (the stops carry the saved address only). */
+  chargeRequests: {
+    readonly sellerId: string;
+    readonly method: string;
+    readonly quoteId: string | null;
+    readonly dropoff: QuoteDropoff;
+    readonly itemCount: number;
+    readonly declaredValueMinor: number;
+  }[] = [];
+  quoteRequests: { readonly sellers: readonly QuoteSeller[]; readonly dropoff: QuoteDropoff }[] =
+    [];
+  private quoteSeq = 0;
+  private quoteOf(sellerId: string, total: Money): QuotedDelivery {
+    const margin = this.margins.get(sellerId) ?? 0n;
+    this.quoteSeq += 1;
+    return {
+      quoteId:
+        `00000000-0000-4000-8000-${String(this.quoteSeq).padStart(12, '0')}` as Id<'DeliveryQuote'>,
+      fleet: 'fake_test',
+      quote: { amount: total.amount - margin, currency: total.currency },
+      margin: { amount: margin, currency: total.currency },
+      total,
+      etaMinutes: 45,
+      quotedAt: Temporal.Instant.from('2026-01-01T00:00:00Z'),
+      validUntil: Temporal.Instant.from('2026-01-01T00:10:00Z'),
+    };
+  }
+  quoteDeliveries(
     _c: CallContext,
-    sellerIds: readonly Id<'Seller'>[],
-  ): Promise<Result<FlatFeeMap, ShippingFailure>> {
+    request: { readonly sellers: readonly QuoteSeller[]; readonly dropoff: QuoteDropoff },
+  ): Promise<Result<ReadonlyMap<Id<'Seller'>, SellerDeliveryQuotes>, QuoteFailure>> {
+    this.quoteRequests.push(request);
     if (this.down) return Promise.resolve(err({ code: 'shipping.unavailable' }));
     return Promise.resolve(
       ok(
         new Map(
-          sellerIds.flatMap((sellerId) => {
-            const fee = this.fees.get(sellerId);
-            return fee === undefined ? [] : [[sellerId, fee] as const];
+          request.sellers.map(({ sellerId }) => {
+            const total = this.quotedTotals.get(sellerId);
+            const quoted = (): MethodQuote =>
+              total === undefined
+                ? { kind: 'no-fleet' }
+                : { kind: 'quoted', quote: this.quoteOf(sellerId, total) };
+            const availability: SellerDeliveryAvailability = {
+              sellerId,
+              zone: 'Australia/Brisbane',
+              methods: ['pickup', 'instant', 'same_day', 'scheduled'].map((method) =>
+                method === 'pickup' && !this.pickupApproved.has(sellerId)
+                  ? { method, available: false, reason: 'no-pickup-address' }
+                  : { method, available: true, reason: null },
+              ) as SellerDeliveryAvailability['methods'],
+              sameDayCutoff: '12:00',
+              scheduledDaysAhead: 7,
+              scheduledWindowMinutes: 120,
+            };
+            return [
+              sellerId,
+              {
+                availability,
+                pickupPostcode: this.pickupApproved.has(sellerId) ? '4000' : null,
+                quotes: { instant: quoted(), same_day: quoted(), scheduled: quoted() },
+              },
+            ] as const;
           }),
         ),
       ),
     );
   }
-  /** Live quotes per seller id, in place of the flat fee; the drop-offs `shippingFees` was given. */
-  quotes = new Map<string, Money>();
-  quoteDropoffs: QuoteDropoff[] = [];
-  async shippingFees(
-    context: CallContext,
-    sellerIds: readonly Id<'Seller'>[],
-    dropoff: QuoteDropoff,
-  ): Promise<Result<CheckoutShippingFees, ShippingFailure>> {
-    this.quoteDropoffs.push(dropoff);
-    const flat = await this.flatFees(context, sellerIds);
-    if (!flat.ok) return flat;
-    const fees = new Map(flat.value);
-    const quoted = new Set<Id<'Seller'>>();
-    for (const sellerId of sellerIds) {
-      const quote = this.quotes.get(sellerId);
-      if (quote !== undefined) {
-        fees.set(sellerId, quote);
-        quoted.add(sellerId);
-      }
+  chargeDelivery(
+    _c: CallContext,
+    request: {
+      readonly seller: QuoteSeller;
+      readonly method: string;
+      readonly quoteId: string | null;
+      readonly dropoff: QuoteDropoff;
+    },
+  ): Promise<Result<QuotedDelivery, ChargeFailure>> {
+    const { seller } = request;
+    this.chargeRequests.push({
+      sellerId: seller.sellerId,
+      method: request.method,
+      quoteId: request.quoteId,
+      dropoff: request.dropoff,
+      itemCount: seller.itemCount,
+      declaredValueMinor: seller.declaredValueMinor,
+    });
+    if (this.down) return Promise.resolve(err({ code: 'shipping.unavailable' }));
+    if (request.quoteId !== null && this.unknownQuoteIds.has(request.quoteId)) {
+      return Promise.resolve(err({ code: 'shipping.quote-not-found' }));
     }
-    return ok({ fees, quoted });
+    const moved = this.moved.get(seller.sellerId);
+    if (moved !== undefined) {
+      return Promise.resolve(
+        err({ code: 'shipping.quote-changed', quote: this.quoteOf(seller.sellerId, moved) }),
+      );
+    }
+    const total = this.quotedTotals.get(seller.sellerId);
+    if (total === undefined) return Promise.resolve(err({ code: 'shipping.quote-unavailable' }));
+    return Promise.resolve(ok(this.quoteOf(seller.sellerId, total)));
+  }
+  /** The fees reported to the ledger. */
+  fleetFees: { readonly fleet: string; readonly sellerOrderId: string; readonly amount: string }[] =
+    [];
+  recordFleetFee(
+    _c: CallContext,
+    report: {
+      readonly fleet: string;
+      readonly sellerOrderId: string;
+      readonly reason: 'cancel' | 'waiting' | 'return' | 'other';
+      readonly amount: string;
+      readonly externalRef: string;
+      readonly occurredAt: string;
+    },
+  ): Promise<Result<'recorded' | 'duplicate', FleetFeeFailure>> {
+    this.fleetFees.push(report);
+    return Promise.resolve(ok('recorded' as const));
   }
   /** What `bookCarrierDelivery` answers per seller order id; `no-carrier` when absent. */
   carrierBookings = new Map<string, Result<CarrierBookingOutcome, CarrierDeliveryFailure>>();

@@ -36,6 +36,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { DeliveryQuotes } from '../application/use-cases/delivery-quotes.use-case';
 import { ListOrders } from '../application/use-cases/list-orders.use-case';
 import { RegeneratePickupCode } from '../application/use-cases/regenerate-pickup-code.use-case';
 import { StartCheckout } from '../application/use-cases/start-checkout.use-case';
@@ -46,6 +47,9 @@ import { closedBody, moneyBody, refusal } from './http-answers';
 import {
   CheckoutRequest,
   CheckoutStartedView,
+  DeliveryQuoteRequest,
+  DeliveryQuotesView,
+  deliveryQuotesBody,
   OrderPageBody,
   OwnOrderBody,
   OwnPickupCodeBody,
@@ -80,11 +84,64 @@ export class OrdersController {
 
   constructor(
     private readonly start: StartCheckout,
+    private readonly quotes: DeliveryQuotes,
     private readonly view: ViewOrder,
     private readonly list: ListOrders,
     private readonly documentOf: ViewOrderDocument,
     private readonly regenerate: RegeneratePickupCode,
   ) {}
+
+  @Post('delivery-quotes')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "The delivery methods and prices of the customer's basket for a saved address",
+    description:
+      'For each seller of the basket: the delivery methods open now (or the reason one is not), ' +
+      'the price of each delivering method (the courier quote plus the Market margin, tax ' +
+      'included, with the tax apart), the scheduled-window facts and the pickup postcode. The ' +
+      'prices are stored on the server and held for ten minutes; send the `quoteId` back in ' +
+      'checkout. The client never sends a price. Only the postcode, suburb and region of the ' +
+      'saved address reach a courier.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: DeliveryQuoteRequest })
+  @ApiOkResponse({ type: DeliveryQuotesView })
+  @ApiBadRequestResponse({
+    ...ERROR,
+    description: 'validation.failed (addressId required or format)',
+  })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'ordering.cart-not-ready (details.sellers) or conflict.retry',
+  })
+  @ApiUnprocessableEntityResponse({
+    ...ERROR,
+    description:
+      'ordering.address-not-found, ordering.outside-delivery-area, ordering.cart-empty or ' +
+      'ordering.cart-not-purchasable',
+  })
+  @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'ordering.check-unavailable or access.unavailable',
+  })
+  async deliveryQuotes(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, ['addressId']);
+    if (invalid !== null) throw this.refused(invalid, context);
+    const { addressId } = body as { addressId?: unknown };
+    const result = await this.quotes.execute(context, { addressId });
+    this.log('ordering.delivery-quotes-route', context, result.ok ? 'quoted' : result.error.code);
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return deliveryQuotesBody(result.value);
+  }
 
   @Post('checkout')
   @HttpCode(200)
@@ -104,7 +161,7 @@ export class OrdersController {
     ...ERROR,
     description:
       'validation.failed (details.fields: addressId required or format; sellerNotes type, ' +
-      'range, format or length; deliveryMethods.<sellerId>.method, windowStart or windowEnd)',
+      'range, format or length; deliveryMethods.<sellerId>.method, windowStart, windowEnd or quoteId)',
   })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -112,7 +169,7 @@ export class OrdersController {
     ...ERROR,
     description:
       'ordering.stock-insufficient (details.lines), ordering.cart-not-ready (details.sellers: ' +
-      'sellerId, reason below-minimum or check-unavailable, minimum) or conflict.retry',
+      'sellerId, reason below-minimum or check-unavailable, minimum), ordering.delivery-quote-changed (details.quotes: sellerId, quoteId, total, validUntil; the delivery price moved, nothing was charged) or conflict.retry',
   })
   @ApiUnprocessableEntityResponse({
     ...ERROR,
@@ -127,8 +184,7 @@ export class OrdersController {
   @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
   @ApiServiceUnavailableResponse({
     ...ERROR,
-    description:
-      'ordering.check-unavailable, ordering.shipping-unavailable (a seller has no delivery fee yet), ordering.payment-unavailable or access.unavailable',
+    description: 'ordering.check-unavailable, ordering.payment-unavailable or access.unavailable',
   })
   async checkout(
     @Call() context: CallContext,
@@ -289,7 +345,7 @@ export class OrdersController {
   }
 
   private refused(error: HttpException, context: CallContext): HttpException {
-    this.log('ordering.start-checkout-route', context, 'refused-before-use-case');
+    this.log('ordering.checkout-route', context, 'refused-before-use-case');
     return error;
   }
 

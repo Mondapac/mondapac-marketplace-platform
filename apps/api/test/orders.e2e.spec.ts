@@ -94,7 +94,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'conflict.retry': 409,
     'request.throttled': 429,
     'ordering.check-unavailable': 503,
-    'ordering.shipping-unavailable': 503,
+    'ordering.delivery-quote-changed': 409,
     'ordering.seller-order-not-found': 404,
     'ordering.fulfilment-conflict': 409,
     'ordering.pickup-code-invalid': 422,
@@ -139,7 +139,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     const customers = new FakeCustomers();
     customers.addresses.set(ADDRESS, { accountId: CUSTOMER, address: TEST_DELIVERY_ADDRESS });
     // The seller delivers for a flat 5.00.
-    shipping.fees.set(SELLER, money(500n, currency));
+    shipping.quotedTotals.set(SELLER, money(500n, currency));
     cart.lines = [
       {
         offerId: OFFER,
@@ -334,6 +334,55 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(pickupCode).toMatch(/^[0-9]{4}$/);
       const stranger = await at().set(customer(OTHER_CUSTOMER, 2)).send({});
       expect(stranger.status).toBe(404);
+    });
+  });
+
+  describe('delivery quotes', () => {
+    const quotes = (headers: Record<string, string>, body: unknown = { addressId: ADDRESS }) =>
+      http()
+        .post('/orders/delivery-quotes')
+        .set({ 'x-market-id': code, ...headers })
+        .send(body as object);
+
+    it('answers the methods and server-side prices of the basket for a saved address, no-store', async () => {
+      const res = await quotes(customer());
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      const seller = (
+        res.body as { sellers: { sellerId: string; methods: { method: string }[] }[] }
+      ).sellers[0]!;
+      expect(seller.sellerId).toBe(SELLER);
+      expect(seller.methods.map((m) => m.method)).toEqual([
+        'pickup',
+        'instant',
+        'same_day',
+        'scheduled',
+      ]);
+      const instant = (
+        res.body as { sellers: { methods: { method: string; price: unknown }[] }[] }
+      ).sellers[0]!.methods.find((m) => m.method === 'instant');
+      expect(instant?.price).toMatchObject({
+        state: 'quoted',
+        total: { amount: '500', currency },
+        tax: { amount: '45', currency },
+      });
+      // The stops reach shipping from the saved address, never from the request.
+      expect(shipping.quoteRequests).toHaveLength(1);
+    });
+
+    it('needs a session and the CSRF token, and takes the address id only', async () => {
+      const { cookie } = customer();
+
+      expect((await quotes({})).status).toBe(401);
+      expect((await quotes({ cookie })).status).toBe(403);
+      const extra = await quotes(customer(), { addressId: ADDRESS, price: 1 });
+      expect(extra.status).toBe(400);
+      expect(extra.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'price', code: 'unknown-field' }] },
+      });
+      expect(shipping.quoteRequests).toEqual([]);
     });
   });
 
@@ -537,14 +586,17 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       const payment = await checkout(headers);
 
       gateway.createFails = null;
-      shipping.fees.clear();
+      shipping.quotedTotals.clear();
       const noFee = await checkout(headers);
 
       expect(
         [empty, unbuyable, down, stock, throttled, payment, noFee].map((r) => r.status),
-      ).toEqual([422, 422, 503, 409, 429, 503, 503]);
-      // The customer learns that delivery is unavailable, never which seller lacks a fee.
-      expect(noFee.body).toEqual({ statusCode: 503, code: 'ordering.shipping-unavailable' });
+      ).toEqual([422, 422, 503, 409, 429, 503, 422]);
+      // No courier can carry the order: a coded 422 naming the sellers whose method is unavailable.
+      expect(noFee.body).toMatchObject({
+        statusCode: 422,
+        code: 'ordering.delivery-method-unavailable',
+      });
       expect(body(empty).code).toBe('ordering.cart-empty');
       // A cart that is not ready (a seller below its minimum order) is a 409 with the sellers.
       cart.notReady = {

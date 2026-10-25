@@ -1180,24 +1180,6 @@
     }
   },
   {
-    "action": "sellers.delivery-terms.changed",
-    "targetType": "sellers.seller",
-    "targetId": "id",
-    "actors": ["authenticated"],
-    "before": {
-      "cutoffMinute": "optional(integer)",
-      "day": "optional(enumOf(same-day|next-day))",
-      "fromMinute": "optional(integer)",
-      "toMinute": "optional(integer)"
-    },
-    "after": {
-      "cutoffMinute": "optional(integer)",
-      "day": "optional(enumOf(same-day|next-day))",
-      "fromMinute": "optional(integer)",
-      "toMinute": "optional(integer)"
-    }
-  },
-  {
     "action": "sellers.minimum-order.changed",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -1279,18 +1261,6 @@
       "scheduledDaysAhead": "integer",
       "scheduledWindowMinutes": "integer",
       "version": "integer"
-    }
-  },
-  {
-    "action": "shipping.flat-fee.set",
-    "targetType": "shipping.seller-flat-fee",
-    "targetId": "id",
-    "actors": ["authenticated"],
-    "before": {
-      "feeMinor": "optional(integer)"
-    },
-    "after": {
-      "feeMinor": "integer"
     }
   },
   {

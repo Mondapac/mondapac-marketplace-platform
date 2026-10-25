@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
-import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import { err, money, ok, parseId } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
 import type {
   CarrierBookingOutcome,
@@ -16,10 +16,12 @@ import {
 import { carrierModeOf, parseBookingService } from '../domain/booking-service';
 import { parseCarrierStop } from '../domain/carrier-stop';
 import { parseDriveWebhook, toFleetStatus } from '../domain/drive-webhook-event';
-import { CarrierDeliveryProgressed } from '../domain/events';
-import { TEMPERATURES, type FleetNeed } from '../domain/fleet';
-import { capableFleets, routeBooking } from './fleet-router';
-import type { CarrierBookingRequest } from './ports/carrier-gateway';
+import { assessFallback } from '../domain/delivery-fallback';
+import { CarrierDeliveryProgressed, DeliveryFallbackOverCap } from '../domain/events';
+import { isFleetCode, TEMPERATURES, type FleetCode, type FleetNeed } from '../domain/fleet';
+import { capableFleets, quoteFleets, quoteRequestOf, routeBooking } from './fleet-router';
+import type { CarrierBookingRequest, CarrierGateway } from './ports/carrier-gateway';
+import type { DeliveryFallbackRecord } from './ports/fleet-ledger.repository';
 import type { ShippingDependencies } from './shipping-dependencies';
 
 // The `real_time_delivery` FulfillmentStrategy (SHP-02/03): book a paid seller order with the
@@ -109,6 +111,73 @@ function parcelOf(
   };
 }
 
+/** The fleet and the fleet price the buyer was charged for, as ordering froze them on the seller order. */
+function chargedOf(
+  deps: ShippingDependencies,
+  context: CallContext,
+  raw: unknown,
+):
+  | {
+      readonly ok: true;
+      readonly charged: { readonly fleet: FleetCode; readonly quote: Money } | null;
+    }
+  | { readonly ok: false; readonly fields: { path: string; code: string }[] } {
+  if (raw === undefined || raw === null) return { ok: true, charged: null };
+  const value = (typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const minor = value.quoteMinor;
+  const fields = [
+    ...(isFleetCode(value.fleet) ? [] : [{ path: 'charged.fleet', code: 'value' }]),
+    ...(Number.isSafeInteger(minor) && (minor as number) >= 0
+      ? []
+      : [{ path: 'charged.quoteMinor', code: 'range' }]),
+  ];
+  if (fields.length > 0 || !isFleetCode(value.fleet)) return { ok: false, fields };
+  return {
+    ok: true,
+    charged: {
+      fleet: value.fleet,
+      quote: money(BigInt(minor as number), deps.policy.currency(context.market)),
+    },
+  };
+}
+
+/**
+ * What a booking that replaced the charged fleet costs: the price the fleet's booking answer gave,
+ * else the fleet's quote of the same trip. Null when neither can be read (an admin looks).
+ */
+async function bookedPriceOf(
+  deps: ShippingDependencies,
+  context: CallContext,
+  gateway: CarrierGateway | undefined,
+  answerPrice: Money | null | undefined,
+  request: CarrierBookingRequest,
+): Promise<Money | null> {
+  if (answerPrice !== undefined && answerPrice !== null) return answerPrice;
+  const capabilities = gateway?.capabilities(context.market) ?? null;
+  if (gateway === undefined || capabilities === null) return null;
+  // The booking already happened: the lookup is bounded, so it cannot eat the handler's budget.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), FALLBACK_PRICE_LOOKUP_MS);
+  });
+  try {
+    const lookup = quoteFleets(
+      deps,
+      context,
+      [{ gateway, capabilities }],
+      quoteRequestOf(request),
+    ).then((quotes) => quotes.get(gateway.fleet)?.price ?? null);
+    return await Promise.race([lookup, limit]);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The longest the price of a fallback fleet is looked up for after it booked the order. */
+const FALLBACK_PRICE_LOOKUP_MS = 3_000;
+
 /**
  * `book-carrier-delivery`: the router first (the fleets that are on for the Market and can carry
  * the order, ranked by the admin's active model for the buyer's method), then one booking per
@@ -129,6 +198,7 @@ export async function bookCarrierDelivery(
     readonly dropoff: unknown;
     readonly service: unknown;
     readonly parcel?: unknown;
+    readonly charged?: unknown;
   },
 ): Promise<Result<CarrierBookingOutcome, CarrierDeliveryFailure>> {
   const orderId = idOf<'Order'>(input?.orderId);
@@ -137,6 +207,7 @@ export async function bookCarrierDelivery(
   const dropoff = parseCarrierStop(input?.dropoff, 'dropoff');
   const service = parseBookingService(input?.service);
   const parcel = parcelOf(deps, context, input?.parcel);
+  const charged = chargedOf(deps, context, input?.charged);
   const fields = [
     ...(orderId === null ? [{ path: 'orderId', code: 'format' }] : []),
     ...(sellerOrderId === null ? [{ path: 'sellerOrderId', code: 'format' }] : []),
@@ -144,6 +215,7 @@ export async function bookCarrierDelivery(
     ...(dropoff.ok ? [] : dropoff.fields),
     ...(service.ok ? [] : service.fields),
     ...(parcel.ok ? [] : parcel.fields),
+    ...(charged.ok ? [] : charged.fields),
   ];
   if (
     orderId === null ||
@@ -151,7 +223,8 @@ export async function bookCarrierDelivery(
     sellerId === null ||
     !dropoff.ok ||
     !service.ok ||
-    !parcel.ok
+    !parcel.ok ||
+    !charged.ok
   ) {
     return err({ code: 'validation.failed', fields });
   }
@@ -202,19 +275,21 @@ export async function bookCarrierDelivery(
     return ok('no-carrier');
   }
 
+  const routedRequest: CarrierBookingRequest = {
+    externalReference: sellerOrderId,
+    pickup: pickupStop.stop,
+    dropoff: dropoff.stop,
+    parcel: parcel.parcel,
+    method: service.service.method,
+    mode: carrierModeOf(service.service),
+    window: service.service.window,
+  };
   const routed = await routeBooking(deps, context, {
     sellerOrderId,
     method: service.service.method,
     need,
-    request: {
-      externalReference: sellerOrderId,
-      pickup: pickupStop.stop,
-      dropoff: dropoff.stop,
-      parcel: parcel.parcel,
-      method: service.service.method,
-      mode: carrierModeOf(service.service),
-      window: service.service.window,
-    },
+    charged: charged.charged?.fleet ?? null,
+    request: routedRequest,
   });
   switch (routed.kind) {
     case 'store-unavailable':
@@ -237,6 +312,36 @@ export async function bookCarrierDelivery(
     case 'booked':
       break;
   }
+  // A booking that replaced the fleet the buyer was charged for: the platform absorbs what the
+  // booked fleet costs above the quote the buyer paid; the buyer is never charged more. A
+  // difference above the Market's cap, or a price that cannot be read, is flagged for an admin.
+  let fallback: DeliveryFallbackRecord | null = null;
+  if (charged.charged !== null && charged.charged.fleet !== routed.fleet) {
+    const bookedPrice = await bookedPriceOf(
+      deps,
+      context,
+      deps.fleets.get(routed.fleet),
+      routed.answer.price,
+      routedRequest,
+    );
+    const capMinor = deps.policy.fleetFallbackCapMinor(market);
+    const assessed = assessFallback({
+      chargedQuote: charged.charged.quote,
+      bookedPrice,
+      capMinor,
+    });
+    fallback = {
+      sellerOrderId,
+      chargedFleet: charged.charged.fleet,
+      bookedFleet: routed.fleet,
+      chargedQuote: charged.charged.quote,
+      bookedPrice: assessed.kind === 'known' ? bookedPrice : null,
+      difference: assessed.kind === 'known' ? assessed.difference : null,
+      capMinor,
+      overCap: assessed.overCap,
+      recordedAt: deps.clock.now(),
+    };
+  }
   const booking = newBooking({
     id: deps.ids.next<'CarrierBooking'>(),
     sellerOrderId,
@@ -253,8 +358,23 @@ export async function bookCarrierDelivery(
       await deps.bookings.clearAttempt(market, sellerOrderId);
       // A concurrent call booked the same reference first: the fleet holds one delivery.
       if ((await deps.bookings.insert(market, booking)) === 'exists') return ok('already-booked');
+      if (fallback !== null) {
+        await deps.ledger.recordFallback(market, fallback);
+      }
       try {
-        await deps.outbox.append(context, [progressed(booking)]);
+        await deps.outbox.append(context, [
+          progressed(booking),
+          ...(fallback !== null && fallback.overCap
+            ? [
+                DeliveryFallbackOverCap.record({
+                  aggregateId: sellerOrderId,
+                  aggregateVersion: 1,
+                  occurredAt: booking.updatedAt,
+                  payload: { orderId, sellerOrderId, sellerId },
+                }),
+              ]
+            : []),
+        ]);
       } catch (error) {
         if (error instanceof OutboxWriteRefusedError) return err(UNAVAILABLE);
         throw error;
@@ -267,6 +387,9 @@ export async function bookCarrierDelivery(
     fleet: routed.fleet,
     sellerOrderId,
     bookingId: booking.id,
+    ...(fallback === null
+      ? {}
+      : { fallbackFrom: fallback.chargedFleet, fallbackOverCap: fallback.overCap }),
   });
   return stored;
 }

@@ -103,15 +103,9 @@ export function ProductPage({
                         </span>
                       ))}
                     </div>
-                    {o.deliveryWindow === undefined && o.minimumOrder === undefined ? null : (
+                    {o.minimumOrder === undefined ? null : (
                       <div className="ofa">
-                        {o.deliveryWindow === undefined ? null : (
-                          <span>
-                            <Icon name="clock" />
-                            {o.deliveryWindow}
-                          </span>
-                        )}
-                        {o.minimumOrder === undefined ? null : <span>{o.minimumOrder}</span>}
+                        <span>{o.minimumOrder}</span>
                       </div>
                     )}
                     <div className="opr num">
@@ -192,17 +186,8 @@ function BuyBox({
       <div className="bctl">
         <BuyControl offer={offer} variant="wide" />
       </div>
-      {offer.deliveryWindow === undefined && offer.minimumOrder === undefined ? null : (
+      {offer.minimumOrder === undefined ? null : (
         <ul className="bfacts">
-          {offer.deliveryWindow === undefined ? null : (
-            <li>
-              <Icon name="truck" />
-              <span>
-                <b>{offer.deliveryWindow}</b>
-                <small>{t('delivery-from')}</small>
-              </span>
-            </li>
-          )}
           {offer.minimumOrder === undefined ? null : (
             <li>
               <Icon name="receipt" />

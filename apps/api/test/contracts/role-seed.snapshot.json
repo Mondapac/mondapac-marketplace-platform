@@ -647,5 +647,29 @@
       "shipping.flat-fee.view",
       "shipping.fleet-selection.view"
     ]
+  },
+  {
+    "entry": "platform:viewer@17",
+    "kind": "default",
+    "permissionKeys": [
+      "assistant.settings.view",
+      "catalog.product.view",
+      "certification.claim-policy.view",
+      "certification.product-certificate.view",
+      "certification.seller-certificate.view",
+      "certification.type.view",
+      "commission-payouts.settlement.view",
+      "identity.admin-account.view",
+      "identity.customer-account.view",
+      "identity.platform-role.view",
+      "identity.seller-access.view",
+      "notifications.support-contact.view",
+      "ordering.order.view",
+      "payments.connected-account.view",
+      "pricing.price-hold.view",
+      "sellers.seller.view",
+      "shipping.delivery-settings.view",
+      "shipping.fleet-selection.view"
+    ]
   }
 ]

@@ -142,12 +142,6 @@ function Sellers({
                   {art ? <svg viewBox="0 0 64 64">{art}</svg> : s.initials}
                 </span>
                 <b>{s.name}</b>
-                {s.deliveryWindow === undefined ? null : (
-                  <span className="eta">
-                    <Icon name="clock" />
-                    {s.deliveryWindow}
-                  </span>
-                )}
                 {s.minimumOrder === undefined ? null : <span className="mn">{s.minimumOrder}</span>}
               </Link>
             );

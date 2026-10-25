@@ -131,6 +131,16 @@ async function bookSellerOrders(
         region: shipTo.region,
         notes: shipTo.deliveryNotes,
       },
+      // The fleet and price the buyer was charged for: a booking with another fleet is absorbed
+      // by the platform up to the Market's cap (the buyer is never charged more).
+      ...(sellerOrder.deliveryQuote === null
+        ? {}
+        : {
+            charged: {
+              fleet: sellerOrder.deliveryQuote.fleet,
+              quoteMinor: Number(sellerOrder.deliveryQuote.quoteAmount),
+            },
+          }),
       parcel: {
         itemCount: order.lines
           .filter((line) => line.sellerOrderId === sellerOrder.id)

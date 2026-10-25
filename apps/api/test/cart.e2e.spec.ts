@@ -119,10 +119,6 @@ describe('cart routes over HTTP', () => {
     const facts: LineFactsSource = {
       sellerMinimums: (_c, sellerIds) =>
         Promise.resolve(new Map(sellerIds.map((sellerId) => [sellerId, sellerMinimum] as const))),
-      sellerDeliveryFees: (_c, sellerIds) =>
-        Promise.resolve(
-          new Map(sellerIds.map((sellerId) => [sellerId, money(500n, currency)] as const)),
-        ),
       evaluate: (_c, refs) =>
         Promise.resolve(
           new Map(
@@ -217,7 +213,6 @@ describe('cart routes over HTTP', () => {
       subtotal: unknown;
       sellerId: string;
       minimumOrder: { state: string; minimum: unknown };
-      deliveryFee: unknown;
     }[];
     details: { fields: unknown };
   }
@@ -308,8 +303,8 @@ describe('cart routes over HTTP', () => {
         state: 'below-minimum',
         minimum: { amount: '4000', currency },
       });
-      // The seller's flat delivery fee is shown to a guest before sign-in.
-      expect(json(below).groups[0]!.deliveryFee).toEqual({ amount: '500', currency });
+      // No delivery fee is part of the cart: delivery is priced at checkout from a live quote.
+      expect(json(below).groups[0]).not.toHaveProperty('deliveryFee');
 
       await http()
         .post('/cart/items')

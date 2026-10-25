@@ -7,7 +7,7 @@ import type { ShippingDependencies } from '../shipping-dependencies';
 /**
  * `shipping.delivery-availability`: for each asked seller, the delivery methods open now and the
  * reason for each that is not (`platform-off`, `seller-unsupported`, `past-cut-off`,
- * `no-pickup-address`). Public configuration, the same answer for every caller, as `flat-fees`;
+ * `no-pickup-address`). Public configuration, the same answer for every caller;
  * the basket and checkout read it under the buyer's context. Not exposed over HTTP.
  */
 export class DeliveryAvailability extends UseCase<

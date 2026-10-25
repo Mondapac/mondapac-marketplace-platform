@@ -713,5 +713,14 @@
       "sellerOrderId": "id",
       "sellerId": "id"
     }
+  },
+  {
+    "type": "shipping.delivery-fallback-over-cap.v1",
+    "aggregateType": "seller-order",
+    "fields": {
+      "orderId": "id",
+      "sellerOrderId": "id",
+      "sellerId": "id"
+    }
   }
 ]

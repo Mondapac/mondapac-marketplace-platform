@@ -1,5 +1,14 @@
 import type { Palette, TextSize } from '../preferences/preferences.ts';
-import type { CheckoutCustomer, SavedAddress } from '../storefront/types.ts';
+import type {
+  CheckoutCustomer,
+  DeliveryMethod,
+  MethodOption,
+  MethodPrice,
+  MethodReason,
+  Money,
+  SavedAddress,
+  SellerDeliveryOptions,
+} from '../storefront/types.ts';
 
 // The buyer's own API calls, made from the browser through the same-origin relay (`/api/...`,
 // src/storefront/session-relay.ts). Only used in live mode. Bodies, passwords and tokens are never logged.
@@ -305,4 +314,112 @@ export function deleteAddress(id: string): Promise<ApiResult<true>> {
 /** Makes an address the default; answers the whole book. */
 export function makeDefaultAddress(id: string): Promise<ApiResult<readonly SavedAddress[]>> {
   return call('POST', `customers/me/addresses/${id}/default`, undefined, bookOf);
+}
+
+// The delivery options of the basket for a saved address (`POST orders/delivery-quotes`). The
+// server asks the couriers and stores each quote; the browser only shows the answer and sends the
+// quote id back at checkout. A saved address is the only stop that is ever quoted.
+
+const METHODS: readonly DeliveryMethod[] = ['pickup', 'instant', 'same_day', 'scheduled'];
+const REASONS: readonly MethodReason[] = [
+  'seller-unsupported',
+  'past-cut-off',
+  'no-pickup-address',
+];
+const DIGITS = /^[0-9]{1,15}$/u;
+const CURRENCY = /^[A-Z]{3}$/u;
+const CLOCK = /^([01][0-9]|2[0-3]):[0-5][0-9]$/u;
+
+function moneyOf(json: unknown): Money | undefined {
+  if (!isRecord(json)) return undefined;
+  const { amount, currency } = json;
+  if (typeof amount !== 'string' || !DIGITS.test(amount)) return undefined;
+  if (typeof currency !== 'string' || !CURRENCY.test(currency)) return undefined;
+  return { amount: Number(amount), currency };
+}
+
+function priceOf(json: unknown): MethodPrice | null | undefined {
+  if (json === null) return null;
+  if (!isRecord(json)) return undefined;
+  const { state } = json;
+  if (state === 'free' || state === 'no-fleet' || state === 'failed') return { state };
+  if (state !== 'quoted') return undefined;
+  const total = moneyOf(json.total);
+  const tax = moneyOf(json.tax);
+  const quoteId = text(json.quoteId);
+  const validUntil = text(json.validUntil);
+  const eta = json.etaMinutes;
+  if (total === undefined || tax === undefined || quoteId === undefined) return undefined;
+  if (validUntil === undefined || Number.isNaN(Date.parse(validUntil))) return undefined;
+  if (eta !== null && eta !== undefined && !Number.isSafeInteger(eta)) return undefined;
+  return {
+    state,
+    quoteId,
+    total,
+    tax,
+    etaMinutes: typeof eta === 'number' ? eta : null,
+    validUntil,
+  };
+}
+
+function optionOf(json: unknown): MethodOption | undefined {
+  if (!isRecord(json)) return undefined;
+  const method = METHODS.find((m) => m === json.method);
+  const price = priceOf(json.price);
+  if (method === undefined || typeof json.available !== 'boolean' || price === undefined)
+    return undefined;
+  const reason = json.reason === null ? null : REASONS.find((r) => r === json.reason);
+  if (reason === undefined) return undefined;
+  return { method, available: json.available, reason, price };
+}
+
+function optionsOf(
+  json: Record<string, unknown>,
+): Record<string, SellerDeliveryOptions> | undefined {
+  if (!Array.isArray(json.sellers)) return undefined;
+  const found: Record<string, SellerDeliveryOptions> = Object.create(null) as Record<
+    string,
+    SellerDeliveryOptions
+  >;
+  for (const seller of json.sellers as unknown[]) {
+    if (!isRecord(seller)) return undefined;
+    const id = text(seller.sellerId);
+    const zone = text(seller.zone);
+    const cutoff = text(seller.sameDayCutoff);
+    const days = seller.scheduledDaysAhead;
+    const minutes = seller.scheduledWindowMinutes;
+    const pickup = seller.pickupPostcode;
+    if (
+      id === undefined ||
+      zone === undefined ||
+      cutoff === undefined ||
+      !CLOCK.test(cutoff) ||
+      typeof days !== 'number' ||
+      !Number.isSafeInteger(days) ||
+      typeof minutes !== 'number' ||
+      !Number.isSafeInteger(minutes) ||
+      minutes <= 0 ||
+      !(pickup === null || typeof pickup === 'string') ||
+      !Array.isArray(seller.methods)
+    )
+      return undefined;
+    const methods = (seller.methods as unknown[]).map(optionOf);
+    if (!methods.every((m): m is MethodOption => m !== undefined)) return undefined;
+    found[id] = {
+      zone,
+      sameDayCutoff: cutoff,
+      scheduledDaysAhead: days,
+      scheduledWindowMinutes: minutes,
+      pickupPostcode: pickup,
+      methods,
+    };
+  }
+  return found;
+}
+
+/** `POST orders/delivery-quotes`: every seller's methods and prices for a saved address. */
+export function readDeliveryOptions(
+  addressId: string,
+): Promise<ApiResult<Readonly<Record<string, SellerDeliveryOptions>>>> {
+  return call('POST', 'orders/delivery-quotes', { addressId }, optionsOf);
 }

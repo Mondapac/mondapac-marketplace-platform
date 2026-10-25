@@ -5008,7 +5008,7 @@ svg {
   outline-offset: 2px;
 }
 .dopt:has(input:disabled) {
-  cursor: progress;
+  cursor: not-allowed;
 }
 .dopt input {
   position: absolute;
@@ -5050,6 +5050,67 @@ svg {
 }
 .dopt .fee {
   font-weight: 800;
+}
+.dopt .fee {
+  text-align: end;
+}
+.dopt .fee .gstl {
+  display: block;
+  color: var(--sf-slate);
+  font-size: calc(11px * var(--fs));
+  font-weight: 600;
+}
+.dhint {
+  margin: 0;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+}
+.dsched {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--sf-line);
+  border-radius: 12px;
+}
+.dsched legend {
+  padding: 0 6px;
+  font-weight: 700;
+  font-size: calc(13px * var(--fs));
+}
+.dsrow {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+}
+.dsrow label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+}
+.dsrow select {
+  min-height: 44px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--sf-line);
+  border-radius: 10px;
+  background: var(--sf-white);
+  color: var(--sf-ink);
+  font: inherit;
+}
+.dsrow select:focus-visible {
+  outline: 3px solid var(--sf-teal);
+  outline-offset: 2px;
+}
+.cs .gst {
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+}
+.cs .gst dd {
+  font-weight: 600;
 }
 .dopt.off {
   background: var(--sf-surface);

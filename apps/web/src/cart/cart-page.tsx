@@ -199,10 +199,6 @@ function SellerGroup({ group, notice }: { readonly group: CartGroup; readonly no
         <SellerLogo logo={seller.logo} />
         <div>
           <h2 id={heading}>{seller.name}</h2>
-          <small>
-            <Icon name="truck" />
-            {t('delivery-window', { window: seller.deliveryWindow })}
-          </small>
         </div>
       </header>
       {minimum && minimum.amount > 0 ? (
@@ -253,7 +249,9 @@ function SellerGroup({ group, notice }: { readonly group: CartGroup; readonly no
           <Icon name="truck" />
           {t('delivery-from-seller')}
         </span>
-        <b className="num">{money(seller.deliveryFee)}</b>
+        <b className="num">
+          {group.delivery ? money(group.delivery.total) : t('delivery-at-checkout')}
+        </b>
       </div>
     </section>
   );

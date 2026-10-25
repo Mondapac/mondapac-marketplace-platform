@@ -5,7 +5,6 @@ import { apiGet, apiGetBytes, type ApiRead } from './api.ts';
 import { sessionGet } from './session.ts';
 import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
 import {
-  flatFeeOf,
   publicStoreOf,
   publicStorePageOf,
   sellerResultsOf,
@@ -19,7 +18,8 @@ import { loadSlides as readSlides, type SlideScope } from './slides-source.ts';
 import { loadShellContent } from './shell-source.ts';
 import { storeProductsOf, storeProductsPath } from './store-products.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
-import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT, sampleQuotes } from './sample-cart.ts';
+import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
+import { sampleDeliveryOptions } from './sample-delivery-options.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
@@ -36,10 +36,9 @@ import type {
   ClosedStore,
   DeliveryAreaAnswer,
   DeliveryLocatorSource,
-  DeliveryQuote,
+  DeliveryOptionsAnswer,
   PayAnswer,
   PayRequest,
-  Money,
   ProductDetail,
   QuoteAddress,
   SellerQuery,
@@ -167,15 +166,15 @@ export async function checkDeliveryArea(postcode: string): Promise<DeliveryAreaA
 }
 
 /**
- * Each seller's delivery quote for an address (Scheduled is the seller's flat fee; Express is the
- * courier's live price). SAMPLE: no courier is connected yet (delivery plan: Uber Direct, Zoom2u
- * as the fallback), so every seller gets its sample price; the address is not used until then.
+ * SAMPLE delivery options, for a checkout whose session is not live. With the API configured the
+ * browser asks `POST orders/delivery-quotes` through the same-origin session relay, which is the
+ * storefront's BFF to the real quotes; this stand-in is used only without it.
  */
-export async function quoteDelivery(
+export async function sampleDeliveryOptionsFor(
   _address: QuoteAddress,
   sellerIds: readonly string[],
-): Promise<Readonly<Record<string, DeliveryQuote>>> {
-  return Promise.resolve(sampleQuotes(sellerIds));
+): Promise<DeliveryOptionsAnswer> {
+  return Promise.resolve({ kind: 'ok', sellers: sampleDeliveryOptions(sellerIds) });
 }
 
 /**
@@ -185,25 +184,34 @@ export async function quoteDelivery(
  * Visa and Mastercard; the hosted Checkout Session for the Stripe tile). Until then a Stripe
  * confirmation token has nothing to go to and answers `failed`; the sample charges nothing.
  */
-export async function takePayment(request: PayRequest): Promise<PayAnswer> {
+export function takePayment(request: PayRequest): Promise<PayAnswer> {
+  return Promise.resolve(samplePayment(request));
+}
+
+function samplePayment(request: PayRequest): PayAnswer {
   const source = SAMPLE_CART_SOURCE;
   const sellerIds = Object.keys(request.delivery);
-  const quotes = await quoteDelivery(request.address, sellerIds);
+  const options = sampleDeliveryOptions(sellerIds);
   const changes = sellerIds.flatMap((id) => {
     const choice = request.delivery[id];
-    const quote = Object.hasOwn(quotes, id) ? quotes[id] : undefined;
-    if (choice?.speed !== 'express' || quote?.kind !== 'quote') return [];
-    // No Express any more: the seller's Scheduled fee applies.
-    const now =
-      quote.express ??
-      (Object.hasOwn(source.sellers, id) ? source.sellers[id]?.deliveryFee : undefined);
-    if (!now) return [];
-    if (now.amount === choice.fee.amount && now.currency === choice.fee.currency) return [];
-    return [{ sellerId: id, was: choice.fee, now }];
+    const price = options[id]?.methods.find((m) => m.method === choice?.method)?.price;
+    if (!choice || !price) return [];
+    const now = price.state === 'quoted' ? price.total : { ...choice.total, amount: 0 };
+    if (now.amount === choice.total.amount && now.currency === choice.total.currency) return [];
+    return [{ sellerId: id, was: choice.total, now }];
   });
-  // A seller the courier no longer reaches, or no answer: nothing is charged.
-  if (sellerIds.some((id) => quotes[id]?.kind !== 'quote')) return { kind: 'failed' };
-  if (changes.length > 0) return { kind: 'price-changed', changes, quotes };
+  // A method that is off or cannot be priced now: nothing is charged.
+  if (
+    sellerIds.some((id) => {
+      const choice = request.delivery[id];
+      const found = options[id]?.methods.find((m) => m.method === choice?.method);
+      return (
+        !found?.available || (found.price?.state !== 'quoted' && found.price?.state !== 'free')
+      );
+    })
+  )
+    return { kind: 'failed' };
+  if (changes.length > 0) return { kind: 'price-changed', changes, options };
   const known = (id: string) => Object.hasOwn(source.items, id);
   if (Object.keys(request.lines).some((id) => !known(id))) return { kind: 'failed' };
   const stock = Object.entries(request.lines).flatMap(([id, quantity]) => {
@@ -250,10 +258,7 @@ const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 export async function loadSeller(slug: string, page = 1): Promise<SellerShop | undefined> {
   // No sample or real store has any other slug; nothing else reaches the API path.
   if (slug.length > 50 || !STORE_SLUG.test(slug)) return undefined;
-  const [answer, fee] = await Promise.all([
-    apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`),
-    apiGet<unknown>(`shipping/stores/${encodeURIComponent(slug)}/flat-fee`),
-  ]);
+  const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`);
   if (answer.kind === 'off') return sampleSeller(slug);
   if (answer.kind === 'failed') {
     // Only the store module's own answer means "no such store"; a bare 404 is a missing route.
@@ -268,24 +273,7 @@ export async function loadSeller(slug: string, page = 1): Promise<SellerShop | u
   return {
     ...shopOf(store, areaName(store.serviceAreaCode)),
     storeProducts,
-    ...deliveryFeeOf(slug, fee),
   };
-}
-
-/**
- * The store's flat delivery fee as a part of the page, or nothing. The page never fails for it: a
- * store with no fee set (the module's own 404), a failed read and an answer of the wrong shape all
- * leave the fee line out, so no fee is ever guessed. Only a shape fault is logged here (the read
- * itself logs its own refusal).
- */
-function deliveryFeeOf(slug: string, read: ApiRead<unknown>): { readonly deliveryFee?: Money } {
-  if (read.kind !== 'ok') return {};
-  try {
-    return { deliveryFee: flatFeeOf(read.body) };
-  } catch {
-    console.log(JSON.stringify({ msg: 'storefront.seller-flat-fee-unusable', slug }));
-    return {};
-  }
 }
 
 /** One page of a store's products; any failure is `failed`, never an exception. */

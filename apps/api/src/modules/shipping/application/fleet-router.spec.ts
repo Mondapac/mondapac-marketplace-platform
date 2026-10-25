@@ -148,14 +148,14 @@ describe.each([
     registry = new ListRegistry([post, zoom, uber, drive]);
     deps = {
       unitOfWork: new FakeUnitOfWork(),
-      fees: undefined as never,
       policy: {
         currency: () => currency,
         timeZone: () => 'Australia/Brisbane',
         deliversTo: () => true,
+        fleetFallbackCapMinor: () => 1000,
+        quoteBounds: () => null,
       },
       sellers: undefined as never,
-      stores: undefined as never,
       audit: undefined as never,
       clock,
       ids: new SequenceIdGenerator(clock),
@@ -175,6 +175,8 @@ describe.each([
       selection,
       deliverySettings: undefined as never,
       carrierPolicy: new ConfigCarrierPolicy(markets, areas, { apiKeys: {}, webhookSecrets: {} }),
+      quotes: undefined as never,
+      ledger: undefined as never,
       pickups,
       webhookSignature: undefined as never,
     };
@@ -545,14 +547,14 @@ describe.each([['ZZ', 'JPY', '1000001', '1000002']] as const)(
       });
       const deps: ShippingDependencies = {
         unitOfWork: new FakeUnitOfWork(),
-        fees: undefined as never,
         policy: {
           currency: () => currency,
           timeZone: () => 'Australia/Brisbane',
           deliversTo: () => true,
+          fleetFallbackCapMinor: () => 1000,
+          quoteBounds: () => null,
         },
         sellers: undefined as never,
-        stores: undefined as never,
         audit: undefined as never,
         clock,
         ids: new SequenceIdGenerator(clock),
@@ -562,6 +564,8 @@ describe.each([['ZZ', 'JPY', '1000001', '1000002']] as const)(
         selection: new MemorySelection(),
         deliverySettings: undefined as never,
         carrierPolicy: policy,
+        quotes: undefined as never,
+        ledger: undefined as never,
         pickups,
         webhookSignature: undefined as never,
       };

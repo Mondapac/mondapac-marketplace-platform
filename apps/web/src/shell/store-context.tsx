@@ -28,7 +28,7 @@ import type {
   AppliedDiscount,
   CartSource,
   CheckoutCustomer,
-  DeliverySpeed,
+  DeliveryWish,
   Money,
 } from '../storefront/types.ts';
 import { PALETTE_COOKIE, TEXT_SIZE_COOKIE, savePreference } from '../preferences/preferences.ts';
@@ -50,7 +50,7 @@ export interface PlacedOrder {
 const NO_SOURCE: CartSource = {
   items: {},
   sellers: {},
-  tax: { share: { numerator: 0, denominator: 1 }, includesDelivery: false },
+  tax: { share: { numerator: 0, denominator: 1 } },
   sampleDiscounts: {},
 };
 
@@ -82,11 +82,12 @@ interface StoreState {
   readonly notes: Readonly<Record<string, string>>;
   readonly setNote: (sellerId: string, note: string) => void;
   /**
-   * The speed the buyer picked per seller id at checkout (their wish: Express counts only while
-   * the courier quotes a price for it). A seller without one is delivered Scheduled.
+   * What the buyer picked per seller id at checkout: the method and, for a scheduled delivery, the
+   * day and window. A pick counts only while the method is open and priced for the seller; a
+   * seller without one has no delivery chosen yet.
    */
-  readonly deliveryWish: Readonly<Record<string, DeliverySpeed>>;
-  readonly setDeliveryWish: (sellerId: string, speed: DeliverySpeed) => void;
+  readonly deliveryWish: Readonly<Record<string, DeliveryWish>>;
+  readonly setDeliveryWish: (sellerId: string, wish: DeliveryWish) => void;
   /** The delivery per seller id checkout paid for (fees included), set when Pay is pressed. */
   readonly delivery: Readonly<Record<string, DeliveryChoice>>;
   readonly setDelivery: (delivery: Readonly<Record<string, DeliveryChoice>>) => void;
@@ -174,7 +175,7 @@ export function StoreProvider({
   const [saved, setSaved] = useState<readonly string[]>([]);
   const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
   const [notes, setNotes] = useState<Readonly<Record<string, string>>>({});
-  const [deliveryWish, setDeliveryWishes] = useState<Readonly<Record<string, DeliverySpeed>>>({});
+  const [deliveryWish, setDeliveryWishes] = useState<Readonly<Record<string, DeliveryWish>>>({});
   const [delivery, setDelivery] = useState<Readonly<Record<string, DeliveryChoice>>>({});
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
   const [browseOpen, setBrowseOpen] = useState(false);
@@ -254,8 +255,8 @@ export function StoreProvider({
     [],
   );
   const setDeliveryWish = useCallback(
-    (sellerId: string, speed: DeliverySpeed) =>
-      setDeliveryWishes((current) => ({ ...current, [sellerId]: speed })),
+    (sellerId: string, wish: DeliveryWish) =>
+      setDeliveryWishes((current) => ({ ...current, [sellerId]: wish })),
     [],
   );
   // Live: the first load asks the API who is signed in (401 means nobody).

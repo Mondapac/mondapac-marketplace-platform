@@ -4,8 +4,9 @@ import type { ServiceAreaDirectory } from '../../../platform/market-config/servi
 import type { ShippingPolicy } from '../application/ports/shipping-policy';
 
 /**
- * The Market's settings for shipping: the flat fee is in the Market's default currency, and the
- * delivery area is the ServiceAreas open for delivery.
+ * The Market's settings for shipping: delivery prices are in the Market's default currency, the
+ * delivery area is the ServiceAreas open for delivery, and the cap on a fallback fleet's extra cost
+ * and the sanity range of a quote come from the `shipping` section.
  */
 export class ConfigShippingPolicy implements ShippingPolicy {
   constructor(
@@ -23,5 +24,13 @@ export class ConfigShippingPolicy implements ShippingPolicy {
 
   deliversTo(market: MarketContext, postcode: string): boolean {
     return this.areas.areaFor(market.marketId, postcode)?.deliveryEnabled === true;
+  }
+
+  fleetFallbackCapMinor(market: MarketContext): number {
+    return this.markets.get(market.marketId).shipping?.fleetFallbackAbsorbCapMinor ?? 0;
+  }
+
+  quoteBounds(market: MarketContext) {
+    return this.markets.get(market.marketId).shipping?.realTimeCarrier?.quoteBounds ?? null;
   }
 }

@@ -32,6 +32,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The customer's own password: the current one and the new one.
     'identity/customer/change-password',
     'customers/me/addresses',
+    // The delivery methods and prices of the basket for a saved address (delivery models, pkg 5).
+    'orders/delivery-quotes',
   ]),
   PUT: new Set([
     // The customer's own display name and storefront look (buyer account backend).

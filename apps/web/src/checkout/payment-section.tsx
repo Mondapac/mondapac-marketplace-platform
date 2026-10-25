@@ -15,7 +15,8 @@ import type { CardFieldsState } from './stripe-card.ts';
 // and Google Pay are offered). Above the tiles, what Pay found when it checked the order again.
 
 /** Why Pay is off, for the line under it; null when the buyer can pay. */
-export type PayBlock = 'address' | 'loading' | 'delivery' | 'offline' | 'stock' | 'card' | null;
+export type PayBlock =
+  'address' | 'loading' | 'delivery' | 'choose' | 'offline' | 'stock' | 'card' | null;
 
 /** The stock notice says why Pay is held; both Pay buttons point to it. */
 const NOTICE_ID = 'checkout-pay-notice';

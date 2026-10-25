@@ -1,5 +1,4 @@
 import type { Id, Money, Temporal } from '@mondapac/shared-kernel';
-import type { DeliveryTerms } from './delivery-terms';
 import type { StoreImageRef } from './store-image';
 
 /**
@@ -34,8 +33,6 @@ export interface PublishedStore {
   /** The calendar year of the first approval, in the seller's own zone (ADR-0005). */
   readonly sellingSince: number;
   readonly minimumOrder?: Money | null;
-  /** The seller's delivery terms; absent when the seller has set none. */
-  readonly delivery?: DeliveryTerms;
   /**
    * The About text in the Market's default locale (slice 12 part 2): a store page only, `null`
    * when the store wrote none, plain text that is never HTML. Absent on the list.

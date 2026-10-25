@@ -19,6 +19,7 @@ import type { CatalogFacade } from '../../catalog';
 import type { OrderingFacade, OrderNotice } from '../../ordering';
 import {
   ADMIN_NOTICES_PER_MARKET,
+  ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
@@ -237,6 +238,11 @@ describe('parseNoticeParams', () => {
       'an admin notice with an unknown enum',
       ADMIN_PRICE_HOLD_OPENED,
       { recordId: id(1), offerId: id(2), direction: 'sideways' },
+    ],
+    [
+      'a delivery fallback notice without its order',
+      ADMIN_DELIVERY_FALLBACK_OVER_CAP,
+      { sellerId: id(1) },
     ],
   ])('refuses %s', (_label, kind, raw) => {
     expect(parseNoticeParams(kind, raw)).toBeNull();
@@ -703,6 +709,11 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
         offerId: id(0x31),
         direction: 'up',
       },
+      deliveryFallback: {
+        kind: ADMIN_DELIVERY_FALLBACK_OVER_CAP,
+        sellerOrderId: id(0x75),
+        sellerId: SELLER_A,
+      },
     };
     const review = (item: AdminReviewItem, eventNo = nextEvent++) =>
       new RecordAdminReviewNotice(gate, deps).execute(system, {
@@ -716,6 +727,7 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
         'catalog.product.approve',
         'sellers.seller-file.review',
         'pricing.price-hold.decide',
+        'shipping.delivery-settings.view',
       ]);
       adminKeys.set(ADMIN_PRICES, ['pricing.price-hold.decide']);
     });
@@ -759,6 +771,13 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
           sellerId: null,
           kind: ADMIN_PRICE_HOLD_OPENED,
           params: { recordId: id(0x74), offerId: id(0x31), direction: 'up' },
+          m: code,
+        },
+        {
+          audience: 'admin',
+          sellerId: null,
+          kind: ADMIN_DELIVERY_FALLBACK_OVER_CAP,
+          params: { sellerOrderId: id(0x75), sellerId: SELLER_A },
           m: code,
         },
       ]);
@@ -821,6 +840,7 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
       it('shows an admin each kind only while they hold its permission', async () => {
         const all = await list(admin(ADMIN_ALL));
         expect(all.ok && all.value.items.map((item) => item.kind)).toEqual([
+          ADMIN_DELIVERY_FALLBACK_OVER_CAP,
           ADMIN_PRICE_HOLD_OPENED,
           ADMIN_SELLER_FILE_SUBMITTED,
           ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -852,8 +872,8 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
       it('reads per admin: one admin marking all leaves the others unread', async () => {
         expect(await mark(admin(ADMIN_PRICES), { all: true })).toEqual(ok({ marked: 1 }));
         const all = await count(admin(ADMIN_ALL));
-        expect(all.ok && all.value.unread).toBe(4);
-        expect(all.ok && all.value.newest?.kind).toBe(ADMIN_PRICE_HOLD_OPENED);
+        expect(all.ok && all.value.unread).toBe(5);
+        expect(all.ok && all.value.newest?.kind).toBe(ADMIN_DELIVERY_FALLBACK_OVER_CAP);
 
         const certificate = notices.rows.find(
           (row) => row.kind === ADMIN_SELLER_CERTIFICATE_SUBMITTED,

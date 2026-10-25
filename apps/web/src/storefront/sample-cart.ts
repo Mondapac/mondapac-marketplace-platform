@@ -7,8 +7,6 @@ import type {
   CartSource,
   CheckoutPlace,
   CheckoutSource,
-  DeliveryQuote,
-  ExpressTerms,
   Money,
   SellerTerms,
 } from './types.ts';
@@ -21,78 +19,33 @@ import type {
 
 const money = (amount: number): Money => ({ amount, currency: 'AUD' });
 
-/** Minimum order and delivery fee per seller (sample values of the prototype). */
-export const SAMPLE_TERMS: Readonly<Record<string, { minimum?: number; fee: number }>> = {
-  kedron: { minimum: 4000, fee: 750 },
-  paddington: { fee: 500 },
-  sunnybank: { minimum: 3000, fee: 600 },
-  inala: { fee: 500 },
-  moorooka: { minimum: 2500, fee: 550 },
-  'mt-gravatt': { minimum: 3000, fee: 600 },
-  'logan-road': { fee: 650 },
+/** Minimum order per seller (sample values of the prototype). A seller sets no delivery terms. */
+export const SAMPLE_TERMS: Readonly<Record<string, { minimum?: number }>> = {
+  kedron: { minimum: 4000 },
+  paddington: {},
+  sunnybank: { minimum: 3000 },
+  inala: {},
+  moorooka: { minimum: 2500 },
+  'mt-gravatt': { minimum: 3000 },
+  'logan-road': {},
 };
-
-/**
- * Express per seller (sample): the courier's price for the sellers that take Express orders now.
- * Paddington's cut-off has passed (3pm in Brisbane); the others do not offer Express.
- */
-const SAMPLE_EXPRESS: Readonly<Record<string, number | 'closed'>> = {
-  kedron: 1290,
-  paddington: 'closed',
-  sunnybank: 1150,
-  inala: 1190,
-  'logan-road': 1350,
-};
-
-const SELLER_ZONE = 'Australia/Brisbane';
-
-/** Today's 3pm in Brisbane (UTC+10 all year), as an instant: the sample cut-off. */
-function sampleCutoff(): string {
-  const brisbane = new Date(Date.now() + 10 * 3_600_000).toISOString().slice(0, 10);
-  return `${brisbane}T05:00:00Z`;
-}
-
-function expressTerms(id: string): ExpressTerms {
-  const express = SAMPLE_EXPRESS[id];
-  if (express === undefined) return { kind: 'not-offered' };
-  if (express === 'closed')
-    return { kind: 'closed', cutoff: sampleCutoff(), timeZone: SELLER_ZONE };
-  return { kind: 'offered' };
-}
-
-/**
- * The sample courier: an Express price for each seller that takes Express orders now, whatever
- * the address (every sample address is in the service area). The live courier quote replaces it.
- */
-export function sampleQuotes(sellerIds: readonly string[]): Record<string, DeliveryQuote> {
-  return Object.fromEntries(
-    sellerIds.map((id) => {
-      const express = SAMPLE_EXPRESS[id];
-      return [id, { kind: 'quote', express: typeof express === 'number' ? money(express) : null }];
-    }),
-  );
-}
 
 /** The price a line had when it was added, for the lines whose price changed since (sample). */
 const ADDED_AT: Readonly<Record<string, number>> = { brisket: 4890 };
 
-function terms(id: string, name: string, deliveryWindow: string, logo?: string): SellerTerms {
-  const { minimum, fee } = SAMPLE_TERMS[id] ?? { fee: 500 };
+function terms(id: string, name: string, logo?: string): SellerTerms {
+  const { minimum } = SAMPLE_TERMS[id] ?? {};
   return {
     id,
     name,
     ...(logo === undefined ? {} : { logo }),
-    deliveryWindow,
     ...(minimum === undefined ? {} : { minimumOrder: money(minimum) }),
-    deliveryFee: money(fee),
-    express: expressTerms(id),
   };
 }
 
 function build(): CartSource {
   const sellers: Record<string, SellerTerms> = {};
-  for (const s of SAMPLE_CONTENT.sellers)
-    sellers[s.id] = terms(s.id, s.name, s.deliveryWindow, s.logo);
+  for (const s of SAMPLE_CONTENT.sellers) sellers[s.id] = terms(s.id, s.name, s.logo);
   const items: Record<string, CartItem> = {};
   for (const product of SAMPLE_PRODUCTS) {
     const sellerId = sampleSellerId(product);
@@ -109,12 +62,7 @@ function build(): CartSource {
     };
     // Other sellers' offers of the product page (only the rich sample product has them).
     for (const offer of sampleProduct(product.id)?.offers.slice(1) ?? []) {
-      sellers[offer.seller.id] ??= terms(
-        offer.seller.id,
-        offer.seller.name,
-        offer.deliveryWindow ?? '',
-        offer.seller.logo,
-      );
+      sellers[offer.seller.id] ??= terms(offer.seller.id, offer.seller.name, offer.seller.logo);
       items[offer.id] = {
         name: product.name,
         sellerId: offer.seller.id,
@@ -128,9 +76,9 @@ function build(): CartSource {
   return {
     items,
     sellers,
-    // PLACEHOLDER (not a rule): the prototype's "Includes A$x GST" on the whole total. The tax
-    // module gives this figure when the cart is wired; tax on delivery fees is not settled.
-    tax: { share: { numerator: 1, denominator: 11 }, includesDelivery: true },
+    // PLACEHOLDER (not a rule): the prototype's "Includes A$x GST" on the items. The tax module
+    // gives this figure when the cart is wired; a delivery's GST comes from its quote.
+    tax: { share: { numerator: 1, denominator: 11 } },
     sampleDiscounts: { HALAL10: { code: 'HALAL10', percentOff: 10 } },
   };
 }

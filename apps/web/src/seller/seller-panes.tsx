@@ -1,7 +1,6 @@
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
-import { useDeliveryLine } from './delivery-line.ts';
 import type { SellerCertificate, SellerShop } from '../storefront/types.ts';
 
 // The About and Certificates tabs of the seller page. No seller contact details: orders, delivery
@@ -41,7 +40,6 @@ function Facts({
 export function AboutPane({ shop }: { readonly shop: SellerShop }) {
   const t = useTranslations('seller');
   const locale = useLocale();
-  const deliveryLine = useDeliveryLine(shop);
   return (
     <div className="shop-boxes">
       {shop.about === undefined ? null : (
@@ -57,12 +55,6 @@ export function AboutPane({ shop }: { readonly shop: SellerShop }) {
             [t('business'), shop.businessCheck],
             [t('location-label'), shop.location],
             [t('since-label'), String(shop.sellingSince)],
-            [t('delivery'), deliveryLine],
-            [
-              t('fee-label'),
-              shop.deliveryFee ? formatMoney(shop.deliveryFee, locale) : undefined,
-              true,
-            ],
             [
               t('minimum-label'),
               shop.minimumUnknown

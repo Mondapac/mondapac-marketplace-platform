@@ -143,7 +143,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // `assistant.settings.view`, likewise unprotected (buyer assistant settings).
     // Version 15 adds `shipping.fleet-selection.view` and version 16 adds
     // `shipping.delivery-settings.view`, likewise unprotected (delivery models, packages 3 and 4).
-    seedVersion: 16,
+    // Version 17 drops `shipping.flat-fee.view`, a retired key (delivery models, package 5): a stored
+    // role keeps it harmlessly, as the registry still knows it.
+    seedVersion: 17,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -154,7 +156,6 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'sellers.seller.view',
       'pricing.price-hold.view',
       'ordering.order.view',
-      'shipping.flat-fee.view',
       'commission-payouts.settlement.view',
       'payments.connected-account.view',
       'notifications.support-contact.view',

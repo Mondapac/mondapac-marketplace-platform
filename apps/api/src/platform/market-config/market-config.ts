@@ -1274,6 +1274,13 @@ const fleetSchema = z
 
 const shippingSchema = z.strictObject({
   /**
+   * The most the platform absorbs, in minor units of the Market currency, when the router books a
+   * different fleet than the one the buyer was quoted and charged, and that fleet costs more
+   * (delivery models, package 5). The buyer is never charged more after payment; a difference above
+   * this cap is recorded for an admin. Absent: 0, so every difference alerts. AU: 1000 (A$10.00).
+   */
+  fleetFallbackAbsorbCapMinor: z.number().int().min(0).max(1_000_000_000).optional(),
+  /**
    * The fleets of the Market, by fleet code. When absent, the legacy `realTimeCarrier` below
    * declares Mondapac Drive alone (every method, its service areas, its parcel temperature).
    */
@@ -1313,7 +1320,7 @@ const shippingSchema = z.strictObject({
       }),
       /**
        * The range a live quote must fall in, in minor units of the Market's currency, to be
-       * charged at checkout (Hassan, SHP-02/03): outside it the seller's flat fee is charged.
+       * charged at checkout (Hassan, SHP-02/03): a fleet quote outside it is never charged, and that fleet is not offered.
        */
       quoteBounds: z.strictObject({
         minMinor: z.number().int().min(1).max(1_000_000_000),
