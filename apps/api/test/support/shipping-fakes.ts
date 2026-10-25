@@ -1,4 +1,4 @@
-import type { Id, MarketContext, Money } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Money, Temporal } from '@mondapac/shared-kernel';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
 import type { CarrierBookingRepository } from '../../src/modules/shipping/application/ports/carrier-booking.repository';
