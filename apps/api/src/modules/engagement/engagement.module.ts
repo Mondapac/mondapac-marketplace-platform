@@ -10,6 +10,7 @@ import type { EngagementDependencies } from './application/engagement-dependenci
 import { BLOCK_COUNT_REPOSITORY } from './application/ports/block-count.repository';
 import { SERVED_PLACEMENTS } from './application/ports/served-placements';
 import { PurgeExpiredBlockCounts } from './application/use-cases/purge-expired-block-counts.use-case';
+import { ViewBlockStats } from './application/use-cases/view-block-stats.use-case';
 import { RecordBlockEvents } from './application/use-cases/record-block-events.use-case';
 import { BEHAVIOUR_EVENT_REPOSITORY } from './application/ports/behaviour-event.repository';
 import { ENGAGEMENT_GUEST_TOKENS } from './application/ports/guest-tokens';
@@ -25,6 +26,7 @@ import { ViewPersonalization } from './application/use-cases/view-personalizatio
 import { ENGAGEMENT_FACADE } from './contracts/engagement.facade';
 import { engagementProviders } from './infrastructure/engagement-providers';
 import { BehaviourEventsController } from './presentation/behaviour-events.controller';
+import { AdminBlockStatsController } from './presentation/admin-block-stats.controller';
 import { BlockEventsController } from './presentation/block-events.controller';
 import { purgeExpiredBlockCountsJob } from './presentation/jobs/purge-expired-block-counts.job';
 import { EngagementFacadeImplementation } from './presentation/engagement.facade';
@@ -88,11 +90,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * its retention. The customer can switch it off, which deletes what was recorded. No permission
  * key; no event published. Package 1d-3: anonymous, aggregate-only daily counts of how often each
  * storefront block was shown and clicked (no person, cookie or address; 13 months), counted only
- * for placements storefront serves now.
+ * for placements storefront serves now, read by admins holding storefront's `storefront.page.stats`.
  */
 @Module({
   imports: [StorefrontModule],
-  controllers: [BehaviourEventsController, PersonalizationController, BlockEventsController],
+  controllers: [
+    BehaviourEventsController,
+    PersonalizationController,
+    BlockEventsController,
+    AdminBlockStatsController,
+  ],
   providers: [
     ...engagementProviders,
     ...[
@@ -105,7 +112,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RecentViewsOfCustomer,
       RecentViewsOfGuest,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
-    ...[RecordBlockEvents, PurgeExpiredBlockCounts].map((type) =>
+    ...[RecordBlockEvents, PurgeExpiredBlockCounts, ViewBlockStats].map((type) =>
       blockUseCaseProvider(type as BlockUseCaseClass<unknown>),
     ),
     {

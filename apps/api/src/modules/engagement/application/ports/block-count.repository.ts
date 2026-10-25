@@ -1,5 +1,5 @@
-import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { BlockCountIncrement } from '../../domain/block-count';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { BlockCountIncrement, BlockCountRow } from '../../domain/block-count';
 
 /**
  * `engagement.block_counts`: the daily impression and click counts of storefront blocks, in the
@@ -16,6 +16,18 @@ export interface BlockCountRepository {
     at: Temporal.Instant,
     increments: readonly BlockCountIncrement[],
   ): Promise<void>;
+
+  /**
+   * The Market's rows of one page from `from` to `to` (UTC days, both included), at most
+   * `limit` of them, by placement then day. Read-only.
+   */
+  daily(
+    market: MarketContext,
+    pageId: Id<'StorefrontPage'>,
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+    limit: number,
+  ): Promise<BlockCountRow[]>;
 
   /** Deletes the Market's rows of days before `day`; answers how many went. */
   purgeBefore(market: MarketContext, day: Temporal.PlainDate): Promise<number>;

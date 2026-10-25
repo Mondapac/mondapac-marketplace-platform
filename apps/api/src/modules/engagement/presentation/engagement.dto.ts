@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { BLOCK_EVENT_TYPES, MAX_BLOCK_EVENTS } from '../domain/block-count';
+import { BLOCK_EVENT_TYPES, MAX_BLOCK_EVENTS, MAX_STATS_DAYS } from '../domain/block-count';
 import { BEHAVIOUR_KINDS, MAX_SEARCH_QUERY_LENGTH } from '../domain/behaviour-event';
+import type { BlockStatsView } from '../application/use-cases/view-block-stats.use-case';
 import type { PersonalizationView } from '../application/use-cases/view-personalization.use-case';
 
 // Bodies of the engagement routes.
@@ -78,4 +79,58 @@ export class PersonalizationBody {
 export const personalizationBody = (view: PersonalizationView): PersonalizationBody => ({
   enabled: view.enabled,
   changedAt: view.changedAt?.toString() ?? null,
+});
+
+export class BlockDayBody {
+  @ApiProperty({ format: 'date', description: 'A UTC calendar day.' })
+  day!: string;
+  @ApiProperty()
+  impressions!: number;
+  @ApiProperty()
+  clicks!: number;
+}
+
+export class BlockStatsBody {
+  @ApiProperty({ description: 'The id of the module placement (the block).' })
+  placementId!: string;
+  @ApiProperty({ description: 'Times shown over the span.' })
+  impressions!: number;
+  @ApiProperty({ description: 'Times clicked over the span.' })
+  clicks!: number;
+  @ApiProperty({ type: [BlockDayBody], description: 'Only the days that have a count, in order.' })
+  days!: BlockDayBody[];
+}
+
+export class PageBlockStatsBody {
+  @ApiProperty({ format: 'uuid' })
+  pageId!: string;
+  @ApiProperty({ format: 'date' })
+  from!: string;
+  @ApiProperty({ format: 'date', description: `At most ${MAX_STATS_DAYS} days after from.` })
+  to!: string;
+  @ApiProperty({ description: 'true: the span holds more rows than one read loads.' })
+  truncated!: boolean;
+  @ApiProperty({
+    type: [BlockStatsBody],
+    description:
+      'Blocks with a count, most shown first. A placement no longer on the page may appear.',
+  })
+  blocks!: BlockStatsBody[];
+}
+
+export const pageBlockStatsBody = (view: BlockStatsView): PageBlockStatsBody => ({
+  pageId: view.pageId,
+  from: view.from.toString(),
+  to: view.to.toString(),
+  truncated: view.truncated,
+  blocks: view.blocks.map((block) => ({
+    placementId: block.placementId,
+    impressions: block.impressions,
+    clicks: block.clicks,
+    days: block.days.map((d) => ({
+      day: d.day.toString(),
+      impressions: d.impressions,
+      clicks: d.clicks,
+    })),
+  })),
 });

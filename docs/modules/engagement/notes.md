@@ -104,8 +104,15 @@ granted` or a well-formed cookie. Reads only: no event, no token, no cookie. Two
   `rate_limit_counters_key_check` migration and its own per-minute limit), and a web that batches
   events (one request per page view plus one per click), are to be added before package 1d-4 wires
   the buyer web; not in this PR.
-- No read method on `ENGAGEMENT_FACADE` yet: the admin stats read (with its permission) comes with
-  the stats package.
+- Part C, admin read: `GET /engagement/admin/block-stats?page=&from=&to=` (admin session,
+  `no-store`), use case `engagement.view-block-stats` with storefront's permission
+  `storefront.page.stats` (declared and registered by storefront; engagement only checks it, so
+  storefront does not depend on engagement). One page, UTC days `from` to `to` both included, at
+  most 92 days; answers each block's totals and its days with a count, most shown first, and
+  `truncated` when the span holds more than 5,000 rows. A page with no counts or of another
+  Market answers no blocks. Read-only unit. The numbers are unverified (anyone can send valid
+  ids, clicks may exceed impressions): shown to admins as such, never an input to automatic
+  ranking, selection or payouts without an anti-abuse review. No admin screen yet.
 
 ## Privacy impact note (PIA)
 

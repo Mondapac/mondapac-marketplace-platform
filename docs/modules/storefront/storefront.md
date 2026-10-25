@@ -51,6 +51,7 @@ go live only after a platform admin approves them.
 | `storefront.page.create` | no | create a landing page |
 | `storefront.page.publish` | yes | publish a page's draft |
 | `storefront.page.archive` | yes | archive a landing page |
+| `storefront.page.stats` | no | block impression and click counts of a page (read in engagement, `GET /engagement/admin/block-stats`) |
 | `storefront.navigation.edit` | no | replace the navigation draft, restore a version |
 | `storefront.navigation.approve` | yes | approve the navigation draft |
 | `storefront.slide.read` | no | slide list, detail, copy package |
