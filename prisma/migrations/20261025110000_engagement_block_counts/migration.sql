@@ -12,15 +12,15 @@ CREATE TABLE "engagement"."block_counts" (
     "clicks" INTEGER NOT NULL DEFAULT 0,
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
 
-    CONSTRAINT "block_counts_pkey" PRIMARY KEY ("market_id","page_id","placement_id","day")
+    CONSTRAINT "block_counts_pkey" PRIMARY KEY ("market_id","page_id","day","placement_id")
 );
 
 -- CreateIndex
 CREATE INDEX "block_counts_market_id_day_idx" ON "engagement"."block_counts"("market_id", "day");
 
--- Hand-written: scope and non-negative counts. The primary key starts with (market_id, page_id), so
--- the admin read of one page's blocks over a range of days is a primary-key range (the page has
--- tens of placements, at most one row per day each); the index above serves the retention purge.
+-- Hand-written: scope and non-negative counts. The primary key is (market_id, page_id, day,
+-- placement_id), so the admin read of one page's blocks over a range of days is a tight
+-- primary-key range; the index above serves the retention purge.
 -- Aggregate only: the table has no account, guest token, cookie, IP address or user agent column.
 ALTER TABLE "engagement"."block_counts"
   ADD CONSTRAINT "block_counts_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),

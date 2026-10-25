@@ -153,6 +153,73 @@ describe.each([['AU'], ['ZZ']] as const)('block counts in market %s', (code) => 
     expect(counts.calls).toEqual([[`${PAGE}|${HERO}`, `${PAGE}|${SHELF}`, `${PAGE_2}|${HERO}`]]);
   });
 
+  it('counts on the UTC day: 23:59:59.999Z and 00:00:00.000Z are different days', async () => {
+    clock.set(Temporal.Instant.from('2026-10-25T23:59:59.999Z'));
+    await record.execute(anonymous, { events: [event('impression')], ...quiet });
+    clock.set(Temporal.Instant.from('2026-10-26T00:00:00.000Z'));
+    await record.execute(anonymous, { events: [event('impression')], ...quiet });
+    expect(rows().map((row) => [row.day, row.impressions])).toEqual([
+      ['2026-10-25', 1],
+      ['2026-10-26', 1],
+    ]);
+  });
+
+  it('keeps the same placement on two pages, an impression and a click on one block', async () => {
+    served.serve(code, PAGE_2, [HERO]);
+    await record.execute(anonymous, {
+      events: [
+        event('impression'),
+        event('impression', HERO, PAGE_2),
+        event('click'),
+        event('impression'),
+        event('impression', HERO, PAGE_2),
+      ],
+      ...quiet,
+    });
+    expect(rows().map((row) => [row.pageId, row.impressions, row.clicks])).toEqual([
+      [PAGE, 1, 1],
+      [PAGE_2, 1, 0],
+    ]);
+  });
+
+  it('answers a duplicate of an unserved event like any other, and counts nothing', async () => {
+    const result = await record.execute(anonymous, {
+      events: [event('click', UNSERVED), event('click', UNSERVED)],
+      ...quiet,
+    });
+    expect(result).toEqual({ ok: true, value: { recorded: false } });
+    expect(counts.rows.size).toBe(0);
+  });
+
+  it('accepts 20 events with duplicates and refuses 21 with one duplicate', async () => {
+    const twenty = Array.from({ length: 20 }, (_, n) =>
+      event(n % 2 === 0 ? 'impression' : 'click'),
+    );
+    expect((await record.execute(anonymous, { events: twenty, ...quiet })).ok).toBe(true);
+    expect(only()).toMatchObject({ impressions: 1, clicks: 1 });
+    const result = await record.execute(anonymous, {
+      events: [...twenty, event('click', SHELF)],
+      ...quiet,
+    });
+    expect(result).toMatchObject({ ok: false, error: { fields: [{ code: 'too-many' }] } });
+  });
+
+  it('refuses a request naming more than 2 pages before asking storefront', async () => {
+    const result = await record.execute(anonymous, {
+      events: [
+        event('impression'),
+        event('impression', HERO, PAGE_2),
+        event('impression', HERO, id<'StorefrontPage'>(0xa3)),
+      ],
+      ...quiet,
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'events', code: 'too-many-pages' }] },
+    });
+    expect(served.asked).toEqual([]);
+  });
+
   it('counts nothing, and asks storefront nothing, with Global Privacy Control', async () => {
     const result = await record.execute(anonymous, {
       events: [event('impression')],
@@ -228,6 +295,35 @@ describe.each([['AU'], ['ZZ']] as const)('block counts in market %s', (code) => 
       3,
     );
     expect(await purge.execute(system, {})).toEqual({ ok: true, value: { blockCounts: 0 } });
+  });
+
+  const seedRows = (marketId: string, days: string[]) => {
+    for (const day of days) {
+      counts.rows.set(`${marketId}|${PAGE}|${HERO}|${day}`, {
+        marketId,
+        pageId: PAGE,
+        placementId: HERO,
+        day,
+        impressions: 1,
+        clicks: 0,
+        updatedAt: T0,
+      });
+    }
+  };
+
+  it('clamps the edge at a month end: on 2026-03-31 rows of 2025-02-27 go, 2025-02-28 stays', async () => {
+    seedRows(code, ['2025-02-27', '2025-02-28', '2025-03-01']);
+    clock.set(Temporal.Instant.from('2026-03-31T12:00:00Z'));
+    expect(await purge.execute(system, {})).toEqual({ ok: true, value: { blockCounts: 1 } });
+    expect(rows().map((row) => row.day)).toEqual(['2025-02-28', '2025-03-01']);
+  });
+
+  it('moves the purge edge at midnight UTC, not before', async () => {
+    seedRows(code, ['2025-09-25']);
+    clock.set(Temporal.Instant.from('2026-10-25T23:59:59Z'));
+    expect(await purge.execute(system, {})).toEqual({ ok: true, value: { blockCounts: 0 } });
+    clock.set(Temporal.Instant.from('2026-10-26T00:00:00Z'));
+    expect(await purge.execute(system, {})).toEqual({ ok: true, value: { blockCounts: 1 } });
   });
 
   it('lets only the system purge', async () => {

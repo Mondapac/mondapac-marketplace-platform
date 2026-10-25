@@ -28,7 +28,7 @@ export class PrismaBlockCountRepository implements BlockCountRepository {
       await tx.engagementBlockCount.upsert({
         where: {
           marketId: market.marketId,
-          marketId_pageId_placementId_day: {
+          marketId_pageId_day_placementId: {
             marketId: market.marketId,
             pageId: row.pageId,
             placementId: row.placementId,
