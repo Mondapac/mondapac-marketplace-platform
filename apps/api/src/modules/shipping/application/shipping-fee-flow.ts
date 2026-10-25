@@ -102,6 +102,8 @@ export async function readShippingFees(
         pickup: { postcode, locality: null, region: null },
         dropoff,
         parcel: { ...settings.parcel, itemCount: 1, declaredValue: { amount: 0n, currency } },
+        // The checkout quote is Drive's alone until package 5 quotes per delivery method.
+        method: settings.mode === 'scheduled' ? 'scheduled' : 'instant',
         mode: settings.mode,
       });
       if (!quote.ok) {

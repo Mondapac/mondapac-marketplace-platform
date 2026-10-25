@@ -29,7 +29,7 @@ import type { ShippingDependencies } from './shipping-dependencies';
 // The fleet router (delivery models, package 3): which fleet books a seller order. The fleets
 // that can carry it (by what each declares for the Market) are ranked by the admin's active
 // model for the Market and the buyer's method, and booked in that order. The next fleet is tried
-// only when the one before said nothing was booked: not configured, refused, unauthorized (all
+// only when the one before said nothing was booked: not configured, refused, unauthorized, not-sent (all
 // guaranteed to mean nothing was booked). When a fleet that cannot dedupe a repeated booking
 // (`idempotentBooking: false`) goes quiet, the order may already be booked there: the router
 // never repeats it and never tries another fleet, and the order needs an admin.
@@ -107,6 +107,7 @@ async function quotesOf(
         pickup: quoteStopOf(request.pickup),
         dropoff: quoteStopOf(request.dropoff),
         parcel: request.parcel,
+        method: request.method,
         mode: request.mode,
       });
       if (quote.ok) taken.set(gateway.fleet, quote.value);
@@ -224,7 +225,7 @@ export async function routeBooking(
     }
     if (code === 'carrier.unauthorized') warnUnauthorized(context, fleet, 'book');
     if (code === 'carrier.refused') refused = true;
-    // Not configured, refused, unauthorized: nothing was booked. Drop the note, try the next.
+    // Not configured, refused, unauthorized, not-sent: nothing was booked. Drop the note, try the next.
     const cleared = await deps.unitOfWork.run(market, async () => {
       await deps.bookings.clearAttempt(market, sellerOrderId);
       return ok(true);

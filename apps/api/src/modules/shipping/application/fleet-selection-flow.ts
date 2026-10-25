@@ -1,6 +1,5 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
-import type { CarrierMethod } from '../domain/booking-service';
 import { CARRIER_METHODS } from '../domain/booking-service';
 import {
   auditCode,
@@ -9,7 +8,7 @@ import {
   FleetModelEdited,
   FleetReliabilitySet,
 } from '../domain/audit';
-import { DEFAULT_FLEET_ORDER, FLEET_CODES, isFleetCode, type FleetCode } from '../domain/fleet';
+import { DEFAULT_FLEET_ORDER, FLEET_CODES, isFleetCode } from '../domain/fleet';
 import {
   DEFAULT_RELIABILITY,
   parseMethod,

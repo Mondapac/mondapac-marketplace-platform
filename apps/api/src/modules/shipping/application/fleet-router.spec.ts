@@ -221,6 +221,7 @@ describe.each([
         pickup,
         dropoff: { postcode: served, locality: 'Example Town', region: 'QQ', location: null },
         parcel: { weightGrams: 3000, itemCount: 4, declaredValue: money(7500) },
+        method: 'instant',
         mode: 'on_demand',
         window: null,
       });
@@ -314,6 +315,7 @@ describe.each([
         pickup: { postcode: servedToo, locality: 'Shop Town', region: null },
         dropoff: { postcode: served, locality: 'Example Town', region: 'QQ' },
         parcel: expect.objectContaining({ itemCount: 1 }) as unknown,
+        method: 'instant',
         mode: 'on_demand',
       });
     });
@@ -382,6 +384,20 @@ describe.each([
       drive.declared = capabilities('mondapac_drive', { idempotentBooking: false });
       expect(await book()).toEqual(ok('booked'));
       expect(bookedBy()).toBe('uber_direct');
+      expect(bookings.attempts.size).toBe(0);
+    });
+
+    it('falls back on not-sent even from a fleet that is not idempotent: nothing reached it', async () => {
+      drive.bookFailures = [{ code: 'carrier.not-sent' }];
+      drive.declared = capabilities('mondapac_drive', { idempotentBooking: false });
+      expect(await book()).toEqual(ok('booked'));
+      expect(bookedBy()).toBe('uber_direct');
+      expect(bookings.attempts.size).toBe(0);
+    });
+
+    it('answers no-carrier, not unknown, when every fleet said not-sent', async () => {
+      for (const fleet of [drive, uber, zoom]) fleet.bookFailures = [{ code: 'carrier.not-sent' }];
+      expect(await book()).toEqual(ok('no-carrier'));
       expect(bookings.attempts.size).toBe(0);
     });
 
@@ -477,6 +493,8 @@ describe.each([
       drive.cancelAnswer = err({ code: 'carrier.unavailable' });
       expect(await cancel()).toEqual(err({ code: 'shipping.carrier-unavailable' }));
       drive.cancelAnswer = err({ code: 'carrier.unauthorized' });
+      expect(await cancel()).toEqual(err({ code: 'shipping.carrier-unavailable' }));
+      drive.cancelAnswer = err({ code: 'carrier.not-sent' });
       expect(await cancel()).toEqual(err({ code: 'shipping.carrier-unavailable' }));
     });
   });
