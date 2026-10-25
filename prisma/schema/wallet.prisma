@@ -54,8 +54,13 @@ model WalletJournal {
   /// The wallet this journal belongs to (the customer side), for history. Null only for
   /// `reverse` (CHECK); the foreign key is then skipped (MATCH SIMPLE), as intended.
   walletAccountId String?  @map("wallet_account_id") @db.Uuid
-  /// The hold of a hold, capture or release journal; null for every other kind (CHECK).
+  /// The hold of a hold, capture or release journal; null for every other kind (CHECK). No
+  /// foreign key by design: the journal is written before its hold row. Consistency is kept by
+  /// the CHECK and the commit-time checks (check_hold_settled, books, lot ledger).
   holdId          String?  @map("hold_id") @db.Uuid
+  /// The lot an expire journal expires; null for every other kind (CHECK). No foreign key, like
+  /// holdId; the lot ledger check at commit requires a lot of the journal's wallet.
+  lotId           String?  @map("lot_id") @db.Uuid
   result          Json
   createdAt       DateTime @map("created_at") @db.Timestamptz(6)
 
@@ -68,6 +73,8 @@ model WalletJournal {
   @@index([marketId, walletAccountId, createdAt(sort: Desc), id(sort: Desc)])
   /// Partial (hold_id IS NOT NULL) in the migration: the journals of one hold.
   @@index([marketId, holdId])
+  /// Partial (lot_id IS NOT NULL) in the migration: the expire journals of one lot.
+  @@index([marketId, lotId])
   @@map("journals")
   @@schema("wallet")
 }

@@ -28,6 +28,7 @@ DROP FUNCTION "wallet"."guard_hold_insert"();
 DROP FUNCTION "wallet"."guard_wallet_row_insert"();
 DROP FUNCTION "wallet"."guard_posting_insert"();
 DROP FUNCTION "wallet"."check_hold_settled"();
+DROP FUNCTION "wallet"."check_lot_ledger"();
 DROP FUNCTION "wallet"."check_wallet_books"();
 DROP FUNCTION "wallet"."guard_market_setting_update"();
 DROP FUNCTION "wallet"."guard_account_update"();

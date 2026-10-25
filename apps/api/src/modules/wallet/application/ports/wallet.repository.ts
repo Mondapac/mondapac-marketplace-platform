@@ -31,6 +31,8 @@ export interface NewJournal {
   readonly kind: JournalKind;
   /** The hold of a hold, capture or release journal; null otherwise. */
   readonly holdId: Id<'WalletHold'> | null;
+  /** The lot an `expire` journal expires; null for every other kind. */
+  readonly lotId: Id<'WalletLot'> | null;
   readonly idempotencyKey: string;
   readonly fingerprint: string;
   readonly actor: { readonly kind: 'system' | 'admin' | 'customer'; readonly id: string | null };

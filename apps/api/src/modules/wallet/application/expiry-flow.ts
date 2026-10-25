@@ -127,6 +127,7 @@ async function expireLot(
       id: journalId,
       kind: 'expire',
       holdId: null,
+      lotId,
       // The lock above serialises sweeps of this wallet, and `remaining` is re-read, so a lot is
       // never expired twice for the same credit; a restored remainder gets a new key.
       idempotencyKey: `${INTERNAL_KEY_PREFIX}expire:${lotId}:${journalId}`,

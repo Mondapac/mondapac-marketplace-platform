@@ -451,12 +451,17 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expect(await hold('1 hour')).toBe('allowed');
       // A journal names its wallet unless it is a reversal, and its hold exactly for the three
       // hold kinds.
-      const journal_ = (kind: string, walletId: string | null, holdId: string | null) =>
+      const journal_ = (
+        kind: string,
+        walletId: string | null,
+        holdId: string | null,
+        lotId: string | null = kind === 'expire' ? ids.next() : null,
+      ) =>
         probe([
           [
-            `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, hold_id, result, created_at)
-             VALUES ($1, $2, 'default', $3, $4, 'fp', 'system', NULL, 'welcome', NULL, $5, $6, '{}'::jsonb, now())`,
-            [ids.next(), m, kind, key('n10'), walletId, holdId],
+            `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, hold_id, lot_id, result, created_at)
+             VALUES ($1, $2, 'default', $3, $4, 'fp', 'system', NULL, 'welcome', NULL, $5, $6, $7, '{}'::jsonb, now())`,
+            [ids.next(), m, kind, key('n10'), walletId, holdId, lotId],
           ],
         ]);
       for (const kind of ['grant-promo', 'grant-refund', 'hold', 'capture', 'release', 'expire'])
@@ -471,6 +476,10 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       expect(await journal_('grant-promo', wallet, ids.next())).toBe(CHECK);
       expect(await journal_('grant-promo', wallet, null)).toBe('allowed');
       expect(await journal_('release', wallet, ids.next())).toBe('allowed');
+      // An expiry names its lot, and only an expiry does.
+      expect(await journal_('expire', wallet, null, null)).toBe(CHECK);
+      expect(await journal_('grant-promo', wallet, null, ids.next())).toBe(CHECK);
+      expect(await journal_('expire', wallet, null, ids.next())).toBe('allowed'); // row guards only
     });
 
     it('refuses a row that points at nothing, or at another Market, and a delete of a parent (composite foreign keys)', async () => {
@@ -719,10 +728,11 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       wallet: string | null,
       order: string | null = null,
       holdId: string | null = null,
+      lotId: string | null = null,
     ): Statement => [
-      `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, hold_id, result, created_at)
-       VALUES ($1, $2, 'default', $3, $4, 'fp', 'system', NULL, 'welcome', $5, $6, $7::uuid, jsonb_build_object('holdId', $7::text), now())`,
-      [id, market_id, kind, key('raw'), order, wallet, holdId],
+      `INSERT INTO wallet.journals (id, market_id, tenant_id, kind, idempotency_key, fingerprint, actor_kind, actor_id, reason_code, order_id, wallet_account_id, hold_id, lot_id, result, created_at)
+       VALUES ($1, $2, 'default', $3, $4, 'fp', 'system', NULL, 'welcome', $5, $6, $7::uuid, $8::uuid, jsonb_build_object('holdId', $7::text), now())`,
+      [id, market_id, kind, key('raw'), order, wallet, holdId, lotId],
     ];
     const posting = (
       market_id: string,
@@ -966,7 +976,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       // The sweep expires it again: a journal to breakage income.
       const expire = ids.next<'WalletJournal'>();
       await commit([
-        journal(expiringMarket, expire, 'expire', w.wallet),
+        journal(expiringMarket, expire, 'expire', w.wallet, null, null, w.lot),
         posting(expiringMarket, expire, w.wallet, -100n),
         posting(expiringMarket, expire, w.breakage, 100n),
         setLot(w.lot, 0n),
@@ -1061,6 +1071,152 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       ).toEqual([{ a: '100', h: '0' }]);
     });
 
+    /** A wallet with a promo lot and a refund lot of 100 each, through journals. */
+    const twoLots = async (market_id: string, promoExpires: string) => {
+      const internal = await rows(
+        `SELECT kind, id FROM wallet.accounts WHERE market_id = $1 AND customer_account_id IS NULL`,
+        [market_id],
+      );
+      const idOfKind = (kind: string) => String(internal.find((r) => r.kind === kind)!.id);
+      const origin = String(internal.find((r) => r.kind !== 'holds')!.id);
+      const w = {
+        wallet: ids.next<'WalletAccount'>(),
+        promo: ids.next<'WalletLot'>(),
+        refund: ids.next<'WalletLot'>(),
+        holdsAccount: idOfKind('holds'),
+        breakage: idOfKind('breakage_income'),
+        origin,
+      };
+      const promoGrant = ids.next<'WalletJournal'>();
+      const refundGrant = ids.next<'WalletJournal'>();
+      await commit([
+        account(market_id, w.wallet, 'credit_liability', ids.next()),
+        journal(market_id, promoGrant, 'grant-promo', w.wallet),
+        posting(market_id, promoGrant, w.wallet, 100n),
+        posting(market_id, promoGrant, origin, -100n),
+        journal(market_id, refundGrant, 'grant-refund', w.wallet),
+        posting(market_id, refundGrant, w.wallet, 100n),
+        posting(market_id, refundGrant, origin, -100n),
+        balance(market_id, w.wallet, 200n, 0n),
+        lot(market_id, w.promo, w.wallet, 'promo', promoGrant, 100n, promoExpires),
+        lot(market_id, w.refund, w.wallet, 'refund', refundGrant, 100n, null),
+      ]);
+      return w;
+    };
+    const lotsOf = (w: { promo: string; refund: string }) =>
+      rows(
+        `SELECT source, remaining_minor::text AS r FROM wallet.lots WHERE id = ANY($1::uuid[]) ORDER BY source`,
+        [[w.promo, w.refund]],
+      );
+    /** A hold of 10 whose hold lot names one lot while the other lot is decreased. */
+    const placeHold10 = (
+      market_id: string,
+      w: Awaited<ReturnType<typeof twoLots>>,
+      named: string,
+      decreased: string,
+      remainingAfter: bigint,
+      balanceAfter: [bigint, bigint],
+    ) => {
+      const hold = ids.next<'WalletHold'>();
+      const order = ids.next<'Order'>();
+      const placed = ids.next<'WalletJournal'>();
+      return {
+        hold,
+        order,
+        statements: [
+          journal(market_id, placed, 'hold', w.wallet, order, hold),
+          posting(market_id, placed, w.wallet, -10n),
+          posting(market_id, placed, w.holdsAccount, 10n),
+          holdRow(market_id, hold, w.wallet, order, 10n),
+          holdLot(market_id, hold, named, 10n),
+          setLot(decreased, remainingAfter),
+          setBalance(w.wallet, ...balanceAfter),
+        ] satisfies Statement[],
+      };
+    };
+
+    it('refuses refund credit moved into an expired promo lot by a hold that names the wrong lot (N1b)', async () => {
+      const w = await twoLots(expiringMarket, '2020-01-01T00:00:00Z');
+      // The sweep expires the promo lot.
+      const expire = ids.next<'WalletJournal'>();
+      await commit([
+        journal(expiringMarket, expire, 'expire', w.wallet, null, null, w.promo),
+        posting(expiringMarket, expire, w.wallet, -100n),
+        posting(expiringMarket, expire, w.breakage, 100n),
+        setLot(w.promo, 0n),
+        setBalance(w.wallet, 100n, 0n),
+      ]);
+      // Hassan's reproduction: the hold says it took 10 from the expired promo lot, the refund lot
+      // pays it, and the release gives the 10 back to the promo lot. The books balance throughout.
+      const forged = placeHold10(expiringMarket, w, w.promo, w.refund, 90n, [90n, 10n]);
+      const release = ids.next<'WalletJournal'>();
+      const attack: Statement[] = [
+        ...forged.statements,
+        journal(expiringMarket, release, 'release', w.wallet, forged.order, forged.hold),
+        posting(expiringMarket, release, w.holdsAccount, -10n),
+        posting(expiringMarket, release, w.wallet, 10n),
+        settleHoldRow(forged.hold, 'released'),
+        setLot(w.promo, 10n),
+        setBalance(w.wallet, 100n, 0n),
+      ];
+      expect(await code_(commit(attack))).toBe(CHECK);
+      // The placement alone is refused too: the refund lot lost 10 that no hold took from it.
+      expect(await code_(commit(forged.statements))).toBe(CHECK);
+      expect(await lotsOf(w)).toEqual([
+        { source: 'promo', r: '0' },
+        { source: 'refund', r: '100' },
+      ]);
+    });
+
+    it('refuses promo credit spent in place of refund credit by a hold that names the wrong lot (N1b)', async () => {
+      const w = await twoLots(bk, '2099-01-01T00:00:00Z');
+      // The hold says it took 10 from the refund lot; the promo lot pays it.
+      const forged = placeHold10(bk, w, w.refund, w.promo, 90n, [190n, 10n]);
+      expect(await code_(commit(forged.statements))).toBe(CHECK);
+      // And with a capture in the same transaction, which never restores a lot.
+      const capture = ids.next<'WalletJournal'>();
+      expect(
+        await code_(
+          commit([
+            ...forged.statements,
+            journal(bk, capture, 'capture', w.wallet, forged.order, forged.hold),
+            posting(bk, capture, w.holdsAccount, -10n),
+            posting(bk, capture, w.origin, 10n),
+            settleHoldRow(forged.hold, 'captured'),
+            setBalance(w.wallet, 190n, 0n),
+          ]),
+        ),
+      ).toBe(CHECK);
+      expect(await lotsOf(w)).toEqual([
+        { source: 'promo', r: '100' },
+        { source: 'refund', r: '100' },
+      ]);
+      // The honest hold, from the lot it names, commits.
+      const honest = placeHold10(bk, w, w.refund, w.refund, 90n, [190n, 10n]);
+      expect(await code_(commit(honest.statements))).toBe('allowed');
+    });
+
+    it('refuses an expiry journal that names a lot of another wallet', async () => {
+      const w = await twoLots(bk, '2099-01-01T00:00:00Z');
+      const other = await twoLots(bk, '2099-01-01T00:00:00Z');
+      const expire = ids.next<'WalletJournal'>();
+      expect(
+        await code_(
+          commit([
+            journal(bk, expire, 'expire', w.wallet, null, null, other.promo),
+            posting(bk, expire, w.wallet, -100n),
+            posting(bk, expire, w.breakage, 100n),
+            setLot(w.promo, 0n),
+            setBalance(w.wallet, 100n, 0n),
+          ]),
+        ),
+      ).toBe(CHECK);
+      expect(await lotsOf(w)).toEqual([
+        { source: 'promo', r: '100' },
+        { source: 'refund', r: '100' },
+      ]);
+    });
+
     /**
      * Seeds $3 journals (half grants, half holds of one unit) over the customer wallets of Market $1
      * in currency $2, with their legs, lots, holds and hold lots, in one statement. Run by the owner
@@ -1090,7 +1246,9 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
         UNION ALL SELECT gen_random_uuid(), $1, 'default', hold_j, internal.holds, 1, $2, wallet FROM pairs, internal
       ), il AS (
         INSERT INTO wallet.lots (id, market_id, tenant_id, wallet_account_id, source, journal_id, original_minor, remaining_minor, currency, expires_at, created_at)
-        SELECT lot, $1, 'default', wallet, 'refund', grant_j, 2, 1, $2, NULL::timestamptz, now() FROM pairs
+        SELECT lot, $1, 'default', wallet, CASE WHEN k % 3 = 0 THEN 'promo' ELSE 'refund' END, grant_j, 2, 1, $2,
+               CASE WHEN k % 3 = 0 THEN now() + (1 + k % 60) * interval '1 day' END, now()
+          FROM pairs
       ), ih AS (
         INSERT INTO wallet.holds (id, market_id, tenant_id, wallet_account_id, order_id, amount_minor, currency, status, expires_at, created_at, resolved_at)
         SELECT hold, $1, 'default', wallet, gen_random_uuid(), 1, $2,
@@ -1290,6 +1448,66 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
             }).toEqual({ name, mode, scoped: true });
           }
         }
+        // The books sums on lots and held holds, and the two sweeps, through the index each is
+        // built for. The sweeps (dueLots, dueHolds) are Prisma queries with bound parameters, so
+        // their partial indexes are usable in custom plans only: generic plans are unsupported
+        // (plan_cache_mode stays auto, see docs/modules/wallet/notes.md).
+        const indexed: {
+          name: string;
+          text: string;
+          values: unknown[];
+          index: string;
+          modes: string[];
+        }[] = [
+          {
+            name: 'books lots',
+            text: `SELECT COALESCE(SUM(l.remaining_minor), 0) FROM wallet.lots l WHERE l.market_id = $1 AND l.wallet_account_id = $2`,
+            values: [seeded, sample!.wallet],
+            index: 'lots_market_id_wallet_account_id_remaining_minor_idx',
+            modes: ['force_custom_plan', 'force_generic_plan'],
+          },
+          {
+            name: 'books held holds',
+            text: `SELECT COALESCE(SUM(h.amount_minor), 0) FROM wallet.holds h WHERE h.market_id = $1 AND h.wallet_account_id = $2 AND h.status = 'held'`,
+            values: [seeded, sample!.wallet],
+            index: 'holds_market_id_wallet_account_id_amount_minor_idx',
+            modes: ['force_custom_plan', 'force_generic_plan'],
+          },
+          {
+            name: 'due lots',
+            text: `SELECT id, wallet_account_id FROM wallet.lots WHERE market_id = $1 AND source = $2 AND remaining_minor > $3 AND expires_at <= $4 ORDER BY expires_at ASC, id ASC LIMIT $5`,
+            values: [seeded, 'promo', 0, new Date().toISOString(), 100],
+            index: 'lots_market_id_expires_at_id_idx',
+            modes: ['force_custom_plan'],
+          },
+          {
+            name: 'due holds',
+            text: `SELECT id, wallet_account_id FROM wallet.holds WHERE market_id = $1 AND status = $2 AND expires_at <= $3 ORDER BY expires_at ASC, id ASC LIMIT $4`,
+            values: [seeded, 'held', new Date().toISOString(), 100],
+            index: 'holds_market_id_expires_at_id_idx',
+            modes: ['force_custom_plan'],
+          },
+        ];
+        for (const { name, text, values, index, modes } of indexed) {
+          for (const mode of modes) {
+            await client.query(`SET plan_cache_mode = ${mode}`);
+            await client.query(`PREPARE probe_plan AS ${text}`);
+            const literals = values.map((value) => client.escapeLiteral(String(value))).join(', ');
+            const { rows: plan } = await client.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+              `EXPLAIN (FORMAT JSON) EXECUTE probe_plan(${literals})`,
+            );
+            await client.query('DEALLOCATE probe_plan');
+            const nodes = scans(plan[0]!['QUERY PLAN'][0].Plan);
+            expect({
+              name,
+              mode,
+              seq: nodes.filter((n) => n['Node Type'] === 'Seq Scan'),
+              used: nodes.some(
+                (n) => n['Index Name'] === index && (n['Index Cond'] ?? '').includes('market_id'),
+              ),
+            }).toEqual({ name, mode, seq: [], used: true });
+          }
+        }
       } finally {
         await client.end();
       }
@@ -1309,32 +1527,53 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       ]);
       return first === marker;
     };
-    const fenceMarket = async (
-      suffix: string,
-      internalKinds: readonly string[] = ['promo_expense', 'refund_clearing'],
-    ) => {
+    /**
+     * A fresh Market with two internal accounts and a customer wallet; with `withLot`, the wallet
+     * also has a promo lot of 1 (for expire journals), which is history in that Market.
+     */
+    const fenceMarket = async (suffix: string, withLot = true) => {
+      const internalKinds = ['promo_expense', 'refund_clearing'];
       const market_id = `${suffix}${code}`;
       const accountIds = internalKinds.map(() => ids.next<'WalletAccount'>());
       const w = ids.next<'WalletAccount'>();
+      const lotId = ids.next<'WalletLot'>();
+      const grantId = ids.next<'WalletJournal'>();
       await commit([
         setting(market_id, 'active'),
         ...internalKinds.map((kind, index) => account(market_id, accountIds[index]!, kind, null)),
         account(market_id, w, 'credit_liability', ids.next()),
+        ...(withLot
+          ? [
+              journal(market_id, grantId, 'grant-promo', w),
+              posting(market_id, grantId, w, 1n),
+              posting(market_id, grantId, accountIds[0]!, -1n),
+              balance(market_id, w, 1n, 0n),
+              lot(market_id, lotId, w, 'promo', grantId, 1n, '2099-01-01T00:00:00Z'),
+            ]
+          : []),
       ]);
-      return { market_id, a: accountIds[0]!, b: accountIds[1]!, w };
+      return { market_id, a: accountIds[0]!, b: accountIds[1]!, w, lot: lotId };
     };
     /**
      * A balanced journal of the given kind between two internal accounts. It names the Market's
      * wallet (its books stay at zero) unless it is a reversal, and a hold for the hold kinds.
      */
     const grantStatements = (
-      m: { market_id: string; a: string; b: string; w: string },
+      m: { market_id: string; a: string; b: string; w: string; lot: string },
       kind = 'grant-promo',
     ): Statement[] => {
       const id = ids.next<'WalletJournal'>();
       const holdId = ['hold', 'capture', 'release'].includes(kind) ? ids.next() : null;
       return [
-        journal(m.market_id, id, kind, kind === 'reverse' ? null : m.w, null, holdId),
+        journal(
+          m.market_id,
+          id,
+          kind,
+          kind === 'reverse' ? null : m.w,
+          null,
+          holdId,
+          kind === 'expire' ? m.lot : null,
+        ),
         posting(m.market_id, id, m.a, 1n),
         posting(m.market_id, id, m.b, -1n),
       ];
@@ -1412,7 +1651,13 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
         await code_(
           commit(
             grantStatements(
-              { market_id: none, a: noneAccounts[0]!, b: noneAccounts[1]!, w: noneAccounts[2]! },
+              {
+                market_id: none,
+                a: noneAccounts[0]!,
+                b: noneAccounts[1]!,
+                w: noneAccounts[2]!,
+                lot: ids.next(),
+              },
               'release',
             ),
           ),
@@ -1422,7 +1667,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
 
     it('never goes back to off with history, whichever of the two transactions comes first', async () => {
       // The first journal is in flight when the Market is turned off: the switch waits, then sees it.
-      const m1 = await fenceMarket('G');
+      const m1 = await fenceMarket('G', false);
       const first = await open(grantStatements(m1));
       const turnOff = code_(commit([statusUpdate(m1.market_id, 'off')]));
       expect(await stillWaiting(turnOff)).toBe(true);
@@ -1435,7 +1680,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
         ]),
       ).toEqual([{ status: 'active' }]);
       // The switch to off is in flight (no journal yet): the first journal waits, then is refused.
-      const m2 = await fenceMarket('H');
+      const m2 = await fenceMarket('H', false);
       const switching = await open([statusUpdate(m2.market_id, 'off')]);
       const firstJournal = open(grantStatements(m2)).then(
         async (client) => {

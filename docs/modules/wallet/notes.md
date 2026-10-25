@@ -128,6 +128,7 @@ its rows through an index that leads with it (a db test checks the plans after A
 | books: held holds | `holds (market_id, wallet_account_id, amount_minor) WHERE status = 'held'` |
 | lot restore checks | `hold_lots (market_id, lot_id)` |
 | hold settled by its journal | `journals (market_id, hold_id) WHERE hold_id IS NOT NULL` |
+| lot ledger: takes on a lot, expire journals of a lot | `hold_lots (market_id, lot_id)`, `journals (market_id, lot_id) WHERE lot_id IS NOT NULL` |
 | expiry sweep: promo lots, held holds | `lots (market_id, expires_at, id) WHERE source = 'promo' AND remaining_minor > 0`, `holds (market_id, expires_at, id) WHERE status = 'held'` |
 | history | `journals (market_id, wallet_account_id, created_at DESC, id DESC)` |
 
@@ -144,6 +145,24 @@ its rows through an index that leads with it (a db test checks the plans after A
   requires the account to be a customer wallet (`credit_liability`). Lots and holds expire after
   they are created; a journal names its wallet unless it is a `reverse`, and its hold exactly for
   `hold`, `capture` and `release`.
+- `journals.hold_id` and `journals.lot_id` have no foreign key by design: the journal is written
+  before its hold, and the unit orders the inserts. The CHECKs (`hold_id` exactly for hold,
+  capture and release; `lot_id` exactly for expire) and the commit-time checks keep them
+  consistent.
+- `reverse` journals have no wallet and cannot post to a customer wallet account today (the
+  posting guard refuses it); package 2 defines what a reversal of a wallet journal writes.
+- Lot ledger (security re-check N1b): at COMMIT, every lot whose remaining changes, that gains a
+  hold lot, whose hold changes status, or that an expire journal names must satisfy
+  `original - remaining = held and captured hold_lots + expired by its expire journals`. With
+  the books check (lots = available) this ties every movement of credit to the lot a hold or an
+  expiry names, so credit cannot move between a wallet's lots (refund credit into an expired
+  promo lot, or promo credit spent in place of refund credit). It compares states, so the order
+  of the writes does not matter and it does not rely on `xmin`.
+- The sweeps (`dueLots`, `dueHolds`) are Prisma queries with bound parameters
+  (`source = $`, `status = $`, `remaining_minor > $`), so their partial indexes can be used only
+  in custom plans. Generic plans for them are unsupported: `plan_cache_mode` must stay `auto` (or
+  `force_custom_plan`), and a pooler in transaction mode needs this revisited first. The plan
+  test checks them under `force_custom_plan`.
 - Savepoints: the "written in this transaction" checks compare `xmin` with the top-level
   transaction id. A row written inside a SAVEPOINT (or a PL/pgSQL EXCEPTION block) carries a
   subtransaction id, so the check refuses it (fails closed). Wallet units must not use savepoints;

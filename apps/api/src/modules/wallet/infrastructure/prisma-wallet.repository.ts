@@ -223,6 +223,7 @@ export class PrismaWalletRepository implements WalletRepository {
         orderId: journal.orderId,
         walletAccountId: journal.walletAccountId,
         holdId: journal.holdId,
+        lotId: journal.lotId,
         result: journal.result as Prisma.InputJsonObject,
         createdAt: toDate(journal.createdAt),
       },

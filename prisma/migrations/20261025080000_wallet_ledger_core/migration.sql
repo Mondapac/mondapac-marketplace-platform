@@ -32,6 +32,7 @@ CREATE TABLE "wallet"."journals" (
     "order_id" UUID,
     "wallet_account_id" UUID,
     "hold_id" UUID,
+    "lot_id" UUID,
     "result" JSONB NOT NULL,
     "created_at" TIMESTAMPTZ(6) NOT NULL,
 
@@ -170,6 +171,10 @@ CREATE INDEX "holds_market_id_wallet_account_id_amount_minor_idx" ON "wallet"."h
 CREATE INDEX "journals_market_id_hold_id_idx" ON "wallet"."journals"("market_id", "hold_id") WHERE "hold_id" IS NOT NULL;
 
 -- CreateIndex
+-- Hand-written partial: the expire journals of one lot (the lot ledger check at commit).
+CREATE INDEX "journals_market_id_lot_id_idx" ON "wallet"."journals"("market_id", "lot_id") WHERE "lot_id" IS NOT NULL;
+
+-- CreateIndex
 CREATE UNIQUE INDEX "holds_market_id_order_id_key" ON "wallet"."holds"("market_id", "order_id");
 
 -- CreateIndex
@@ -237,7 +242,9 @@ ALTER TABLE "wallet"."journals"
   -- Every kind but `reverse` belongs to one customer wallet.
   ADD CONSTRAINT "journals_wallet_check" CHECK ("kind" = 'reverse' OR "wallet_account_id" IS NOT NULL),
   -- A hold, its capture and its release name the hold.
-  ADD CONSTRAINT "journals_hold_check" CHECK (("kind" IN ('hold', 'capture', 'release')) = ("hold_id" IS NOT NULL));
+  ADD CONSTRAINT "journals_hold_check" CHECK (("kind" IN ('hold', 'capture', 'release')) = ("hold_id" IS NOT NULL)),
+  -- An expiry names the lot it expires (one journal per lot).
+  ADD CONSTRAINT "journals_lot_check" CHECK (("kind" = 'expire') = ("lot_id" IS NOT NULL));
 
 ALTER TABLE "wallet"."postings"
   ADD CONSTRAINT "postings_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
@@ -580,6 +587,78 @@ CREATE CONSTRAINT TRIGGER "holds_books_update" AFTER UPDATE ON "wallet"."holds"
 CREATE CONSTRAINT TRIGGER "postings_books" AFTER INSERT ON "wallet"."postings"
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW."wallet_account_id" IS NOT NULL)
   EXECUTE FUNCTION "wallet"."check_wallet_books"();
+
+-- Hand-written: the ledger of one lot, checked at COMMIT. What a lot has lost is exactly what the
+-- holds still on it took (held or captured, from `hold_lots`) plus what its expire journals moved
+-- off the wallet:
+--   original_minor - remaining_minor = held and captured hold_lots + expired
+-- The check runs for a lot whose remaining changes, for the lots of a new hold_lots row, for the
+-- lots of a hold that changes status, and for the lot of an expire journal. It compares states, not
+-- steps, so the order of the writes and repeated updates in one transaction do not matter, and it
+-- does not depend on `xmin`. With the books check (lots = available) it ties every credit movement
+-- to the lot that a hold or an expiry names: credit cannot move from one lot to another.
+CREATE FUNCTION "wallet"."check_lot_ledger"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  lot_ids uuid[];
+  lot record;
+  taken numeric;
+  expired numeric;
+BEGIN
+  IF TG_TABLE_NAME = 'lots' THEN
+    lot_ids := ARRAY[NEW."id"];
+  ELSIF TG_TABLE_NAME = 'hold_lots' THEN
+    lot_ids := ARRAY[NEW."lot_id"];
+  ELSIF TG_TABLE_NAME = 'journals' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM "wallet"."lots" l
+       WHERE l."market_id" = NEW."market_id" AND l."id" = NEW."lot_id"
+         AND l."wallet_account_id" = NEW."wallet_account_id"
+    ) THEN
+      RAISE EXCEPTION 'wallet.journal %: expires no lot of its wallet', NEW."id"
+        USING ERRCODE = 'check_violation';
+    END IF;
+    lot_ids := ARRAY[NEW."lot_id"];
+  ELSE
+    SELECT array_agg(hl."lot_id") INTO lot_ids FROM "wallet"."hold_lots" hl
+     WHERE hl."market_id" = NEW."market_id" AND hl."hold_id" = NEW."id";
+  END IF;
+  FOR lot IN
+    SELECT l."id", l."wallet_account_id", l."original_minor", l."remaining_minor"
+      FROM "wallet"."lots" l
+     WHERE l."market_id" = NEW."market_id" AND l."id" = ANY (lot_ids)
+  LOOP
+    SELECT COALESCE(SUM(hl."amount_minor"), 0) INTO taken
+      FROM "wallet"."hold_lots" hl JOIN "wallet"."holds" h
+        ON h."market_id" = hl."market_id" AND h."id" = hl."hold_id"
+     WHERE hl."market_id" = NEW."market_id" AND hl."lot_id" = lot."id"
+       AND h."status" IN ('held', 'captured');
+    SELECT COALESCE(-SUM(p."amount_minor"), 0) INTO expired
+      FROM "wallet"."journals" j JOIN "wallet"."postings" p
+        ON p."market_id" = j."market_id" AND p."journal_id" = j."id"
+     WHERE j."market_id" = NEW."market_id" AND j."lot_id" = lot."id" AND j."kind" = 'expire'
+       AND p."account_id" = lot."wallet_account_id";
+    IF lot."original_minor" - lot."remaining_minor" <> taken + expired THEN
+      RAISE EXCEPTION 'wallet.lot %: original % remaining %, but holds took % and expiry moved %',
+        lot."id", lot."original_minor", lot."remaining_minor", taken, expired
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END LOOP;
+  RETURN NULL;
+END; $$;
+
+CREATE CONSTRAINT TRIGGER "lots_ledger" AFTER UPDATE ON "wallet"."lots"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  WHEN (OLD."remaining_minor" IS DISTINCT FROM NEW."remaining_minor")
+  EXECUTE FUNCTION "wallet"."check_lot_ledger"();
+CREATE CONSTRAINT TRIGGER "hold_lots_ledger" AFTER INSERT ON "wallet"."hold_lots"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "wallet"."check_lot_ledger"();
+CREATE CONSTRAINT TRIGGER "holds_ledger" AFTER UPDATE ON "wallet"."holds"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (OLD."status" IS DISTINCT FROM NEW."status")
+  EXECUTE FUNCTION "wallet"."check_lot_ledger"();
+CREATE CONSTRAINT TRIGGER "journals_lot_ledger" AFTER INSERT ON "wallet"."journals"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW."lot_id" IS NOT NULL)
+  EXECUTE FUNCTION "wallet"."check_lot_ledger"();
 
 -- Hand-written: a hold leaves `held` only with a capture (for captured) or release (for released
 -- and expired) journal of this very hold (`journals.hold_id`), written in the same transaction.

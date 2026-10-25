@@ -225,6 +225,18 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Tax: at most one active strategy per Market.
   'tax.tax_strategies_one_active_key':
     'CREATE UNIQUE INDEX tax_strategies_one_active_key ON tax.tax_strategies USING btree (market_id) WHERE active',
+  // Customer wallet (package 1): the expiry sweeps, the held holds of one wallet for the books
+  // check, and the journals of one hold or one lot for the commit-time checks.
+  'wallet.holds_market_id_expires_at_id_idx':
+    "CREATE INDEX holds_market_id_expires_at_id_idx ON wallet.holds USING btree (market_id, expires_at, id) WHERE (status = 'held'::text)",
+  'wallet.holds_market_id_wallet_account_id_amount_minor_idx':
+    "CREATE INDEX holds_market_id_wallet_account_id_amount_minor_idx ON wallet.holds USING btree (market_id, wallet_account_id, amount_minor) WHERE (status = 'held'::text)",
+  'wallet.journals_market_id_hold_id_idx':
+    'CREATE INDEX journals_market_id_hold_id_idx ON wallet.journals USING btree (market_id, hold_id) WHERE (hold_id IS NOT NULL)',
+  'wallet.journals_market_id_lot_id_idx':
+    'CREATE INDEX journals_market_id_lot_id_idx ON wallet.journals USING btree (market_id, lot_id) WHERE (lot_id IS NOT NULL)',
+  'wallet.lots_market_id_expires_at_id_idx':
+    "CREATE INDEX lots_market_id_expires_at_id_idx ON wallet.lots USING btree (market_id, expires_at, id) WHERE ((source = 'promo'::text) AND (remaining_minor > 0))",
 };
 
 const OUTBOX_COLUMNS = `
