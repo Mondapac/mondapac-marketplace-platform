@@ -39,6 +39,7 @@ describe('loadAppConfig', () => {
       },
       googleSignIn: null,
       mondapacDrive: { apiKeys: {}, webhookSecrets: {} },
+      auspost: { apiKeys: {}, apiPasswords: {}, accountNumbers: {} },
     });
   });
 
@@ -82,6 +83,39 @@ describe('loadAppConfig', () => {
           MONDAPAC_DRIVE_WEBHOOK_SECRET: `AU=${KEY}`,
         }),
       ).toThrow('must differ from MONDAPAC_DRIVE_API_KEY');
+    });
+  });
+
+  describe('the Australia Post credentials (per Market)', () => {
+    const KEY = 'auspost.key_0123456789';
+    const PASSWORD = 'auspost.password_0123456789';
+
+    it('reads the three values per hosted Market, and none when unset', () => {
+      const config = loadAppConfig({
+        HOSTED_MARKETS: 'AU,ZZ',
+        AUSPOST_API_KEY: `AU=${KEY}`,
+        AUSPOST_API_PASSWORD: `AU=${PASSWORD}`,
+        AUSPOST_ACCOUNT_NUMBER: 'AU=1234567890',
+      });
+      expect(config.auspost).toEqual({
+        apiKeys: { AU: KEY },
+        apiPasswords: { AU: PASSWORD },
+        accountNumbers: { AU: '1234567890' },
+      });
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).auspost.apiKeys).toEqual({});
+    });
+
+    it('refuses a short password and an unhosted Market without echoing the value', () => {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', AUSPOST_API_PASSWORD: 'AU=short' }),
+      ).toThrow('AUSPOST_API_PASSWORD');
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', AUSPOST_API_KEY: `NZ=${KEY}` });
+        throw new Error('should have thrown');
+      } catch (error) {
+        expect((error as Error).message).toContain('NZ is not in HOSTED_MARKETS');
+        expect((error as Error).message).not.toContain(KEY);
+      }
     });
   });
 

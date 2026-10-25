@@ -29,6 +29,11 @@ const MARKET_VALUE = (value: string): string => `[A-Z][A-Z0-9_]{1,7}=${value}`;
 /** A carrier key or webhook secret: long enough to be guessed by no one, in a URL-safe alphabet. */
 const CARRIER_SECRET = '[A-Za-z0-9_-]{24,200}';
 
+/** An Australia Post API key or password: printable token characters, no colon (Basic auth). */
+const AUSPOST_SECRET = '[A-Za-z0-9._~+/-]{8,200}';
+/** An Australia Post account number (MyPost Business): letters and digits. */
+const AUSPOST_ACCOUNT = '[A-Za-z0-9]{6,20}';
+
 const hostedMarkets = z
   .string({ error: 'HOSTED_MARKETS is required; there is no default market (ADR-0003)' })
   .transform((value) =>
@@ -117,6 +122,31 @@ const envSchema = z.object({
     .regex(
       new RegExp(`^${MARKET_VALUE(CARRIER_SECRET)}(,${MARKET_VALUE(CARRIER_SECRET)})*$`),
       'must be MARKET=secret pairs separated by commas (a secret is 24 to 200 of A-Z a-z 0-9 _ -)',
+    )
+    .optional(),
+  // Phase 6 package 5d, the external fleet Australia Post: its API key, API password and account
+  // number, each as MARKET=value pairs separated by commas (each Market at most once and only
+  // hosted ones). A Market without all three has Australia Post off, whatever its
+  // `shipping.auspost.enabled` says. Server secrets, never echoed; checked in parseMarketValues.
+  AUSPOST_API_KEY: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(AUSPOST_SECRET)}(,${MARKET_VALUE(AUSPOST_SECRET)})*$`),
+      'must be MARKET=key pairs separated by commas (a key is 8 to 200 of A-Z a-z 0-9 . _ ~ + / -)',
+    )
+    .optional(),
+  AUSPOST_API_PASSWORD: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(AUSPOST_SECRET)}(,${MARKET_VALUE(AUSPOST_SECRET)})*$`),
+      'must be MARKET=password pairs separated by commas (a password is 8 to 200 of A-Z a-z 0-9 . _ ~ + / -)',
+    )
+    .optional(),
+  AUSPOST_ACCOUNT_NUMBER: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(AUSPOST_ACCOUNT)}(,${MARKET_VALUE(AUSPOST_ACCOUNT)})*$`),
+      'must be MARKET=number pairs separated by commas (an account number is 6 to 20 of A-Z a-z 0-9)',
     )
     .optional(),
   // ADR-0037: the BFF networks and their keys. Both empty or unset: the feature is off. Parsed
@@ -283,6 +313,16 @@ export interface AppConfig {
   readonly mondapacDrive: Readonly<{
     apiKeys: Readonly<Record<string, string>>;
     webhookSecrets: Readonly<Record<string, string>>;
+  }>;
+  /**
+   * The Australia Post credentials of each hosted Market (`AUSPOST_API_KEY`,
+   * `AUSPOST_API_PASSWORD`, `AUSPOST_ACCOUNT_NUMBER`). Holds secrets: read by shipping's
+   * Australia Post adapter alone.
+   */
+  readonly auspost: Readonly<{
+    apiKeys: Readonly<Record<string, string>>;
+    apiPasswords: Readonly<Record<string, string>>;
+    accountNumbers: Readonly<Record<string, string>>;
   }>;
 }
 
@@ -469,6 +509,16 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       );
     }
   }
+  const auspostValues = (
+    variable: 'AUSPOST_API_KEY' | 'AUSPOST_API_PASSWORD' | 'AUSPOST_ACCOUNT_NUMBER',
+  ) =>
+    parsed.success
+      ? parseMarketValues(parsed.data[variable], parsed.data.HOSTED_MARKETS, variable)
+      : { values: {}, issues: [] };
+  const auspostKeys = auspostValues('AUSPOST_API_KEY');
+  const auspostPasswords = auspostValues('AUSPOST_API_PASSWORD');
+  const auspostAccounts = auspostValues('AUSPOST_ACCOUNT_NUMBER');
+  issues.push(...auspostKeys.issues, ...auspostPasswords.issues, ...auspostAccounts.issues);
   const assistant = parsed.success
     ? assistantModelConfig(parsed.data)
     : { config: null, issues: [] };
@@ -512,6 +562,11 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     mondapacDrive: Object.freeze({
       apiKeys: driveKeys.values,
       webhookSecrets: driveSecrets.values,
+    }),
+    auspost: Object.freeze({
+      apiKeys: auspostKeys.values,
+      apiPasswords: auspostPasswords.values,
+      accountNumbers: auspostAccounts.values,
     }),
   });
 }
