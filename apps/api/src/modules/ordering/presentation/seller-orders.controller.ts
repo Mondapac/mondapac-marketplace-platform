@@ -35,7 +35,7 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { SellerDeliverOrder } from '../application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from '../application/use-cases/seller-list-orders.use-case';
-import { SellerShipOrder } from '../application/use-cases/seller-ship-order.use-case';
+import { SellerMarkOrderReady } from '../application/use-cases/seller-mark-order-ready.use-case';
 import { SellerViewOrderDocument } from '../application/use-cases/seller-view-order-document.use-case';
 import { SellerViewOrder } from '../application/use-cases/seller-view-order.use-case';
 import { OrderDocumentBody, orderDocumentBody } from './documents.dto';
@@ -43,7 +43,6 @@ import { closedBody, refusal } from './http-answers';
 import {
   SellerOrderPageBody,
   SellerOrderShipBody,
-  ShipSellerOrderRequest,
   sellerOrderPageBody,
   sellerOrderShipBody,
 } from './orders.dto';
@@ -59,8 +58,8 @@ const parseLimit = (value: unknown): number | undefined =>
       : -1;
 
 /**
- * The shop's paid orders over HTTP (SHP-01): the list, one order, the shipment (carrier and an
- * optional tracking reference) and the delivery. The seller comes from the session, never from
+ * The shop's paid orders over HTTP (SHP-01): the list, one order, the ready signal and the
+ * delivery. The seller comes from the session, never from
  * the request; an order of another shop answers exactly as an unknown id. Every answer is
  * `Cache-Control: no-store`.
  */
@@ -74,7 +73,7 @@ export class SellerOrdersController {
   constructor(
     private readonly list: SellerListOrders,
     private readonly view: SellerViewOrder,
-    private readonly ship: SellerShipOrder,
+    private readonly markReady: SellerMarkOrderReady,
     private readonly deliver: SellerDeliverOrder,
     private readonly documentOf: SellerViewOrderDocument,
   ) {}
@@ -171,24 +170,29 @@ export class SellerOrdersController {
     return orderDocumentBody(result.value);
   }
 
-  @Post(':sellerOrderId/ship')
+  @Post(':sellerOrderId/ready')
   @HttpCode(200)
   @ApiOperation({
-    summary: 'Record the shipment of a paid order',
+    summary: 'Tell the platform a paid order is ready',
     description:
-      'Needs ordering.seller-order.ship. The carrier is required, the tracking reference is ' +
-      'optional. A shipment is recorded once; a second call answers 409 ordering.fulfilment-conflict.',
+      'Needs ordering.seller-order.mark-ready. The body is an empty JSON object. The seller ' +
+      'chooses no delivery method and no provider and never delivers: the platform books the ' +
+      "delivery from the buyer's method (instant and same_day when the seller says ready, " +
+      'scheduled at payment, pickup never). Idempotent: a repeat answers the current state.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
-  @ApiBody({ type: ShipSellerOrderRequest })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false } })
   @ApiOkResponse({ type: SellerOrderShipBody })
-  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
   @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found' })
-  @ApiConflictResponse({ ...ERROR, description: 'ordering.fulfilment-conflict' })
-  async shipOrder(
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'ordering.fulfilment-conflict (the order has already shipped)',
+  })
+  async readyOrder(
     @Call() context: CallContext,
     @Param('sellerOrderId') sellerOrderId: string,
     @Req() request: Request,
@@ -196,14 +200,13 @@ export class SellerOrdersController {
     @Body() body: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, body, ['carrier', 'trackingRef']);
+    const invalid = closedBody(request, body);
     if (invalid !== null) throw invalid;
-    const { carrier, trackingRef } = body as { carrier?: unknown; trackingRef?: unknown };
-    const result = await this.ship.execute(context, { sellerOrderId, carrier, trackingRef });
+    const result = await this.markReady.execute(context, { sellerOrderId });
     this.log(
-      'ordering.seller-ship-order-route',
+      'ordering.seller-mark-order-ready-route',
       context,
-      result.ok ? 'shipped' : result.error.code,
+      result.ok ? 'ready' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return sellerOrderShipBody(result.value);

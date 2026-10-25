@@ -129,6 +129,18 @@ export interface OrderRepository {
     from: Fulfilment,
   ): Promise<'saved' | 'stale'>;
 
+  /**
+   * Writes the ready time of one seller order only if it is still `to-ship` and not ready yet;
+   * `stale` writes nothing (a double click, a second tab, or an order that has moved on).
+   */
+  saveReady(market: MarketContext, sellerOrder: SellerOrder): Promise<'saved' | 'stale'>;
+
+  /**
+   * Writes the platform-attention state of one seller order only if it is still `to-ship` with no
+   * attention recorded; `stale` writes nothing.
+   */
+  saveAttention(market: MarketContext, sellerOrder: SellerOrder): Promise<'saved' | 'stale'>;
+
   /** Shipped or delivered seller orders whose lines inventory has not recorded yet. */
   findUnrecordedShipments(
     market: MarketContext,

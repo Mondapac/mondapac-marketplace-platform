@@ -1,9 +1,17 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { HANDLER_BUDGET_MS, type EventDelivery } from '../../../platform/events/event-delivery';
+import { bookingMomentOf } from '../domain/delivery-method';
 import { OrderShipped } from '../domain/events';
-import { markDelivered, markShipped, parseShipment } from '../domain/order';
+import {
+  markDelivered,
+  markNeedsAttention,
+  markShipped,
+  parseShipment,
+  type OrderState,
+  type SellerOrder,
+} from '../domain/order';
 import { refundedInFull } from '../domain/refund';
 import type { OrderingDependencies } from './checkout-flow';
 import { openShipTo } from './read-flow';
@@ -47,11 +55,140 @@ const output = (handled: boolean, applied: boolean): CarrierStepOutput => ({
 });
 
 /**
- * `book-carrier-deliveries`, for `ordering.order-paid.v1`: each seller order still to ship goes
- * to `shipping.bookCarrierDelivery` with the opened delivery address. Shipping decides whether the
- * carrier takes it (and books once per seller order), so a repeated delivery is harmless. A
- * temporary fault for any seller order fails the whole delivery, which comes due again; the ones
- * already booked answer `already-booked` the next time. The inbox mark is written last.
+ * Books each of the seller orders with shipping's `real_time_delivery` strategy, in order, while
+ * the handler budget lasts. Shipping decides whether a carrier takes one (and books once per seller
+ * order), so a repeated call is harmless. A temporary fault stops the run and the delivery is
+ * retried; the ones already booked answer `already-booked` the next time. An order no carrier can
+ * take (`no-carrier`, `refused`) gets the platform-attention state: the seller never delivers
+ * instead. Returns how many seller orders were newly booked.
+ */
+async function bookSellerOrders(
+  deps: OrderingDependencies,
+  context: CallContext,
+  order: OrderState,
+  sellerOrders: readonly SellerOrder[],
+): Promise<Result<number, CarrierStepFailure>> {
+  const { market } = context;
+  let booked = 0;
+  const shipTo = await openShipTo(deps, context, order.accountId, order.shipToSealed);
+  // An erased account has no address left: nothing can be handed to a carrier.
+  if (shipTo === null) return ok(booked);
+  const started = deps.clock.now().epochMilliseconds;
+  for (const [index, sellerOrder] of sellerOrders.entries()) {
+    const elapsed = deps.clock.now().epochMilliseconds - started;
+    if (index > 0 && elapsed + ONE_BOOKING_MS + INBOX_UNIT_MS > HANDLER_BUDGET_MS) {
+      logger.warn({
+        msg: 'ordering.carrier-booking-deferred',
+        orderId: order.id,
+        remaining: sellerOrders.length - index,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'ordering.try-again' });
+    }
+    // A seller order refunded in full (or on its way to it) is never handed to a carrier,
+    // whichever of the refund and this delivery came first (Hassan H1).
+    const target = await deps.unitOfWork.run(
+      market,
+      async () => ok(await deps.refunds.findTarget(market, sellerOrder.id, order.id)),
+      { readOnly: true },
+    );
+    if (!target.ok) return err({ code: 'ordering.try-again' });
+    if (target.value !== null && refundedInFull(target.value, 'not-failed')) {
+      logger.log({
+        msg: 'ordering.carrier-booking-skipped-refunded',
+        orderId: order.id,
+        sellerOrderId: sellerOrder.id,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      continue;
+    }
+    const method = sellerOrder.deliveryMethod;
+    // A pickup is never carried; the callers filter, this keeps the type honest.
+    if (method === 'pickup') continue;
+    const answer = await deps.shipping.bookCarrierDelivery(context, {
+      orderId: order.id,
+      sellerOrderId: sellerOrder.id,
+      sellerId: sellerOrder.sellerId,
+      service: {
+        method,
+        window:
+          sellerOrder.deliveryWindow === null
+            ? null
+            : {
+                start: sellerOrder.deliveryWindow.start.toString(),
+                end: sellerOrder.deliveryWindow.end.toString(),
+              },
+      },
+      dropoff: {
+        contactName: `${shipTo.recipientFirstName} ${shipTo.recipientLastName}`.trim(),
+        contactPhone: shipTo.phone,
+        addressLines: [shipTo.line1, shipTo.line2 ?? '', shipTo.suburb, shipTo.region ?? ''],
+        postcode: shipTo.postcode,
+        notes: shipTo.deliveryNotes,
+      },
+    });
+    if (!answer.ok) {
+      logger.warn({
+        msg: 'ordering.carrier-booking-failed',
+        code: answer.error.code,
+        orderId: order.id,
+        sellerOrderId: sellerOrder.id,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      // A refused request will not pass later either: only a temporary fault is retried.
+      if (answer.error.code === 'shipping.carrier-unavailable') {
+        return err({ code: 'ordering.try-again' });
+      }
+      await recordAttention(deps, context, order.id, sellerOrder.id);
+      continue;
+    }
+    if (answer.value === 'booked') booked += 1;
+    if (answer.value === 'no-carrier' || answer.value === 'refused') {
+      await recordAttention(deps, context, order.id, sellerOrder.id);
+    }
+  }
+  return ok(booked);
+}
+
+/**
+ * No carrier can take the seller order: it gets the "needs platform attention" state and a warn
+ * line with ids only, for an admin to follow up. The seller is not asked to deliver. Written once
+ * (a repeat finds it recorded); a failed write is logged and the delivery moves on, because a
+ * retry would only ask the carrier the same question.
+ */
+async function recordAttention(
+  deps: OrderingDependencies,
+  context: CallContext,
+  orderId: Id<'Order'>,
+  sellerOrderId: Id<'SellerOrder'>,
+): Promise<void> {
+  const { market } = context;
+  logger.warn({
+    msg: 'ordering.delivery-needs-platform-attention',
+    reason: 'no-carrier',
+    orderId,
+    sellerOrderId,
+    marketId: market.marketId,
+    correlationId: context.correlationId,
+  });
+  await deps.unitOfWork.run<true, never>(market, async () => {
+    const fresh = await deps.orders.findById(market, orderId);
+    const current = fresh?.sellerOrders.find((s) => s.id === sellerOrderId);
+    const flagged = current === undefined ? null : markNeedsAttention(current, 'no-carrier');
+    if (flagged !== null) await deps.orders.saveAttention(market, flagged);
+    return ok(true as const);
+  });
+}
+
+/**
+ * `book-carrier-deliveries`, for `ordering.order-paid.v1`: only the seller orders whose buyer
+ * chose `scheduled` are booked now, for the buyer's window. Instant and same-day orders wait for
+ * the seller to mark them ready ({@link bookReadyCarrierDelivery}); a pickup never books a
+ * carrier. A temporary fault for any seller order fails the whole delivery, which comes due
+ * again. The inbox mark is written last.
  */
 export async function bookCarrierDeliveries(
   deps: OrderingDependencies,
@@ -69,72 +206,64 @@ export async function bookCarrierDeliveries(
   if (!read.ok) return err({ code: 'ordering.try-again' });
   const order = read.value;
   let booked = 0;
-  const toShip = order?.sellerOrders.filter((s) => s.fulfilment === 'to-ship') ?? [];
-  if (order !== null && order.status === 'confirmed' && toShip.length > 0) {
-    const shipTo = await openShipTo(deps, context, order.accountId, order.shipToSealed);
-    // An erased account has no address left: nothing can be handed to a carrier.
-    if (shipTo !== null) {
-      const started = deps.clock.now().epochMilliseconds;
-      for (const [index, sellerOrder] of toShip.entries()) {
-        const elapsed = deps.clock.now().epochMilliseconds - started;
-        if (index > 0 && elapsed + ONE_BOOKING_MS + INBOX_UNIT_MS > HANDLER_BUDGET_MS) {
-          logger.warn({
-            msg: 'ordering.carrier-booking-deferred',
-            orderId: order.id,
-            remaining: toShip.length - index,
-            marketId: market.marketId,
-            correlationId: context.correlationId,
-          });
-          return err({ code: 'ordering.try-again' });
-        }
-        // A seller order refunded in full (or on its way to it) is never handed to a carrier,
-        // whichever of the refund and this delivery came first (Hassan H1).
-        const target = await deps.unitOfWork.run(
-          market,
-          async () => ok(await deps.refunds.findTarget(market, sellerOrder.id, order.id)),
-          { readOnly: true },
-        );
-        if (!target.ok) return err({ code: 'ordering.try-again' });
-        if (target.value !== null && refundedInFull(target.value, 'not-failed')) {
-          logger.log({
-            msg: 'ordering.carrier-booking-skipped-refunded',
-            orderId: order.id,
-            sellerOrderId: sellerOrder.id,
-            marketId: market.marketId,
-            correlationId: context.correlationId,
-          });
-          continue;
-        }
-        const answer = await deps.shipping.bookCarrierDelivery(context, {
-          orderId: order.id,
-          sellerOrderId: sellerOrder.id,
-          sellerId: sellerOrder.sellerId,
-          dropoff: {
-            contactName: `${shipTo.recipientFirstName} ${shipTo.recipientLastName}`.trim(),
-            contactPhone: shipTo.phone,
-            addressLines: [shipTo.line1, shipTo.line2 ?? '', shipTo.suburb, shipTo.region ?? ''],
-            postcode: shipTo.postcode,
-            notes: shipTo.deliveryNotes,
-          },
-        });
-        if (!answer.ok) {
-          logger.warn({
-            msg: 'ordering.carrier-booking-failed',
-            code: answer.error.code,
-            orderId: order.id,
-            sellerOrderId: sellerOrder.id,
-            marketId: market.marketId,
-            correlationId: context.correlationId,
-          });
-          // A refused request will not pass later either: only a temporary fault is retried.
-          if (answer.error.code === 'shipping.carrier-unavailable') {
-            return err({ code: 'ordering.try-again' });
-          }
-          continue;
-        }
-        if (answer.value === 'booked') booked += 1;
-      }
-    }
+  const due =
+    order?.sellerOrders.filter(
+      (s) => s.fulfilment === 'to-ship' && bookingMomentOf(s.deliveryMethod) === 'payment',
+    ) ?? [];
+  if (order !== null && order.status === 'confirmed' && due.length > 0) {
+    const done = await bookSellerOrders(deps, context, order, due);
+    if (!done.ok) return done;
+    booked = done.value;
+  }
+  const marked = await deps.unitOfWork.runOnce(market, input.delivery, () =>
+    Promise.resolve(ok(undefined)),
+  );
+  if (!marked.ok) return err({ code: 'ordering.try-again' });
+  return ok(output(marked.value.handled, booked > 0));
+}
+
+/**
+ * `book-ready-carrier-delivery`, for `ordering.seller-order-ready.v1`: the seller said the order
+ * is ready, so an `instant` or `same_day` seller order is booked with the carrier now. `scheduled`
+ * was booked at payment and a pickup never books a carrier, so those are `not-applicable`. The
+ * inbox mark is written last; a temporary fault retries the delivery.
+ */
+export async function bookReadyCarrierDelivery(
+  deps: OrderingDependencies,
+  context: CallContext,
+  input: {
+    readonly delivery: EventDelivery;
+    readonly orderId: unknown;
+    readonly sellerOrderId: unknown;
+  },
+): Promise<Result<CarrierStepOutput, CarrierStepFailure>> {
+  const orderId = typeof input?.orderId === 'string' ? parseId<'Order'>(input.orderId) : null;
+  const sellerOrderId =
+    typeof input?.sellerOrderId === 'string' ? parseId<'SellerOrder'>(input.sellerOrderId) : null;
+  if (orderId === null || !orderId.ok || sellerOrderId === null || !sellerOrderId.ok) {
+    return err({ code: 'validation.failed' });
+  }
+  const { market } = context;
+  const read = await deps.unitOfWork.run(
+    market,
+    async () => ok(await deps.orders.findById(market, orderId.value)),
+    { readOnly: true },
+  );
+  if (!read.ok) return err({ code: 'ordering.try-again' });
+  const order = read.value;
+  const sellerOrder = order?.sellerOrders.find((s) => s.id === sellerOrderId.value);
+  let booked = 0;
+  if (
+    order !== null &&
+    sellerOrder !== undefined &&
+    order.status === 'confirmed' &&
+    sellerOrder.fulfilment === 'to-ship' &&
+    sellerOrder.readyAt !== null &&
+    bookingMomentOf(sellerOrder.deliveryMethod) === 'ready'
+  ) {
+    const done = await bookSellerOrders(deps, context, order, [sellerOrder]);
+    if (!done.ok) return done;
+    booked = done.value;
   }
   const marked = await deps.unitOfWork.runOnce(market, input.delivery, () =>
     Promise.resolve(ok(undefined)),
