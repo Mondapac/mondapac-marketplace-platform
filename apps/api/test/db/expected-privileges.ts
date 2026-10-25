@@ -518,6 +518,41 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'storefront.redirects': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Storefront slides: a slide is created and changed (never its kind) and never deleted; a
+    // version is insert-only except its approval stamp; the placement projection is rebuilt
+    // (inserted and deleted); a position lock is created and touched.
+    'storefront.slides': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'draft_version_id',
+        'ends_at',
+        'internal_name',
+        'live_version_id',
+        'pinned',
+        'row_version',
+        'sponsored',
+        'starts_at',
+        'state',
+        'submitted_version_id',
+        'updated_at',
+        'updated_by',
+      ],
+    },
+    'storefront.slide_versions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['approved_at', 'approved_by'],
+    },
+    // The reorder of live slides rewrites only the sort order of a projection row, and replaces
+    // the saved order of a placement (deleted and inserted).
+    'storefront.slide_placements': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['sort_order'],
+    },
+    'storefront.slide_saved_orders': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'storefront.slide_position_locks': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['touched_at'],
+    },
     // Tax: an admin-defined strategy is inserted, changed (name, parameters, active flag) and
     // removed.
     'tax.tax_strategies': {
@@ -607,6 +642,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'settled_at', 'state', 'stripe_refund_id'],
     },
+    // Personalization 1d-2: the nightly job deletes a Market's pairs and inserts the new ones.
+    'ordering.offer_pairs': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.refund_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.credit_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts

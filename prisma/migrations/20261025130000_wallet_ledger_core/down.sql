@@ -1,5 +1,5 @@
 -- Never run this against production after launch: it drops every wallet row (balances, lots,
--- journals). Reverses 20261025080000_wallet_ledger_core: the grants first, then the triggers, the tables and
+-- journals). Reverses 20261025130000_wallet_ledger_core: the grants first, then the triggers, the tables and
 -- the functions. Every wallet row is lost with them. The empty schema "wallet" stays, without its
 -- USAGE grant, as the leftover check of docs/design/data/platform.md 10.5 (guard 2) expects.
 REVOKE SELECT, INSERT, UPDATE ("status", "reason_code", "updated_at", "updated_by_account_id") ON TABLE "wallet"."market_settings" FROM "mondapac_app";
