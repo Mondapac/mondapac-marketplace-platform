@@ -1,9 +1,11 @@
 import 'server-only';
 import { formatMoney } from '../format/money.ts';
 import { apiGet, type ApiRead } from './api.ts';
+import { storefrontApiConfig } from './config.ts';
 import { photoUrls } from './photo-source.ts';
 import { imageIdOf, type PhotoUrl } from './photos.ts';
-import { PRODUCTS, SAMPLE_CONTENT } from './sample-home.ts';
+import { PRODUCTS, SAMPLE_CONTENT, SAMPLE_HERO } from './sample-home.ts';
+import { emptySet, legacySlideOf, PLACEHOLDER_KEYS, slideSetOf } from './slides.ts';
 import type {
   Category,
   HomeSection,
@@ -12,6 +14,7 @@ import type {
   ShelfCard,
   PromoBanner,
   HomeSeller,
+  SlideSet,
 } from './types.ts';
 
 // The home page's read of the published layout (`GET storefront/pages/home`, PR #401), the live
@@ -33,20 +36,7 @@ export interface HomeContent {
 }
 
 /** The ready-made banner images the buyer app holds, by their layout key. */
-const BANNER_IMAGES: ReadonlySet<string> = new Set([
-  'apple',
-  'banana',
-  'bread',
-  'cheese',
-  'chicken',
-  'coconut',
-  'egg',
-  'fruits',
-  'meat',
-  'orange',
-  'salmon',
-  'watermelon',
-]);
+const BANNER_IMAGES: ReadonlySet<string> = PLACEHOLDER_KEYS;
 
 const SHELF_LIMIT_MAX = 24;
 
@@ -287,6 +277,8 @@ export interface HomeReads {
   readonly tree: ApiRead<unknown>;
   /** Shelf and store-list answers by their path, as {@link shelfPaths} lists them. */
   readonly shelves: ReadonlyMap<string, ApiRead<unknown>>;
+  /** `GET storefront/slides?position=home.hero`; absent in a caller that does not read it. */
+  readonly slides?: ApiRead<unknown>;
 }
 
 const SELLERS_LIMIT_MAX = 12;
@@ -349,23 +341,51 @@ export function shelfPaths(page: ApiRead<unknown>, tree: ApiRead<unknown>): stri
   return [...new Set(paths)];
 }
 
-/** The home content from the API's answers, with sample data where they hold nothing. */
+/** The home layout with `set` as its hero: the first section, replacing any other. */
+function withHero(content: HomeContent, set: SlideSet): HomeContent {
+  const rest = content.sections.filter((section) => section.kind !== 'hero');
+  return { ...content, sections: [{ kind: 'hero', set }, ...rest] };
+}
+
+/**
+ * The home content from the API's answers, with sample data where they hold nothing.
+ *
+ * The hero (the top of the page) is the slider at position `home.hero`. Its slides are the live
+ * slides of the library. While the library holds none, the first `banner` module of the layout
+ * stands in as a one-slide slider (the old top banner, migrated without touching the layout), so
+ * a Market that has not set up slides looks as it did. Banners after the first stay promos.
+ */
 export function homeFrom(
   reads: HomeReads,
   fallback: boolean,
   photo: PhotoUrl | null = null,
+  media: string | null = null,
 ): HomeContent {
   const placed = reads.page.kind === 'ok' ? placedModules(reads.page.body) : null;
-  if (placed === null) return fallback ? SAMPLE_HOME : EMPTY_HOME;
+  const api =
+    reads.slides?.kind === 'ok' ? slideSetOf(reads.slides.body, 'home.hero', media) : null;
+  const apiHero = api !== null && api.slides.length > 0 ? api : null;
+  if (placed === null) {
+    const base = fallback ? SAMPLE_HOME : EMPTY_HOME;
+    return apiHero === null ? base : withHero(base, apiHero);
+  }
   const categories = categoriesOf(reads.tree.kind === 'ok' ? reads.tree.body : null);
   const sections: HomeSection[] = [];
   let shownCategories: readonly Category[] = [];
   let sellers: readonly HomeSeller[] = [];
   let bannerCount = 0;
+  let legacy: SlideSet | null = null;
   for (const m of placed) {
     switch (m.module) {
       case 'banner': {
-        const banner = bannerOf(m.config, m.id, bannerCount === 0);
+        if (bannerCount === 0) {
+          // The first banner is the hero's stand-in; it is not drawn as a promo.
+          bannerCount += 1;
+          const slide = legacySlideOf(m.config, m.id);
+          if (slide !== null) legacy = { ...emptySet('home.hero'), slides: [slide] };
+          break;
+        }
+        const banner = bannerOf(m.config, m.id, false);
         if (banner === null) break;
         bannerCount += 1;
         const last = sections.at(-1);
@@ -416,8 +436,13 @@ export function homeFrom(
         break;
     }
   }
-  if (sections.length === 0 && fallback) return SAMPLE_HOME;
-  return { sections, categories: shownCategories, sellers };
+  // The library's slides win; else the old banner; else (the read failed) the sample hero.
+  const sampleHero: SlideSet | null =
+    fallback && reads.slides?.kind === 'failed' ? SAMPLE_HERO : null;
+  const hero = apiHero ?? legacy ?? sampleHero;
+  if (sections.length === 0 && apiHero === null && legacy === null && fallback) return SAMPLE_HOME;
+  const content: HomeContent = { sections, categories: shownCategories, sellers };
+  return hero === null ? content : withHero(content, hero);
 }
 
 /** A read of one public route, as `apiGet` answers it. */
@@ -439,14 +464,21 @@ export async function loadHome(
   read: HomeReader = apiGet,
   env: Readonly<Record<string, string | undefined>> = process.env,
   photos: () => Promise<PhotoUrl | null> = photoUrls,
+  mediaOrigin: string | null = storefrontApiConfig()?.imageOrigin ?? null,
 ): Promise<HomeContent> {
-  const [page, tree] = await Promise.all([
+  const [page, tree, slides] = await Promise.all([
     read('storefront/pages/home'),
     read('catalog/categories'),
+    read(`storefront/slides?position=${encodeURIComponent('home.hero')}`),
   ]);
   if (page.kind === 'off') return SAMPLE_HOME;
   const paths = shelfPaths(page, tree);
   const answers = await Promise.all(paths.map((path) => read(path)));
   const shelves = new Map(paths.map((path, i) => [path, answers[i]!]));
-  return homeFrom({ page, tree, shelves }, sampleFallback(env), await photos());
+  return homeFrom(
+    { page, tree, shelves, slides },
+    sampleFallback(env),
+    await photos(),
+    mediaOrigin,
+  );
 }

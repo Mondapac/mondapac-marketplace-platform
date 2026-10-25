@@ -11,6 +11,7 @@ import {
   type RefundTarget,
 } from '../domain/refund';
 import { RefundRequested, RefundSettled } from '../domain/audit';
+import { RefundSucceeded } from '../domain/events';
 import { isActingAsSession } from './acting-as';
 import type { OrderingDependencies } from './checkout-flow';
 import type { GatewayFailure, RefundAnswer } from './ports/checkout-gateway';
@@ -268,6 +269,18 @@ async function settle(
           context,
           RefundSettled.entry(refund.id, { after: { outcome: 'succeeded', creditNoteId } }),
         );
+        await deps.outbox.append(context, [
+          RefundSucceeded.record({
+            aggregateId: refund.id,
+            aggregateVersion: 1,
+            occurredAt: at,
+            payload: {
+              orderId: refund.orderId,
+              sellerOrderId: refund.sellerOrderId,
+              refundId: refund.id,
+            },
+          }),
+        ]);
       }
       return ok(marked);
     });

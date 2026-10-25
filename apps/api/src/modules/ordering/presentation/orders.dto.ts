@@ -89,6 +89,37 @@ export class SellerOrderBody {
   @ApiProperty({ type: String, nullable: true }) trackingRef!: string | null;
   @ApiProperty({ format: 'date-time', nullable: true }) shippedAt!: string | null;
   @ApiProperty({ format: 'date-time', nullable: true }) deliveredAt!: string | null;
+  @ApiProperty({
+    enum: ['pickup', 'instant', 'same_day', 'scheduled'],
+    description: "The buyer's delivery method for this part of the order, chosen at checkout.",
+  })
+  deliveryMethod!: string;
+  @ApiProperty({
+    format: 'date-time',
+    nullable: true,
+    description: "Start of the buyer's window (scheduled only), a UTC instant.",
+  })
+  deliveryWindowStart!: string | null;
+  @ApiProperty({
+    format: 'date-time',
+    nullable: true,
+    description: "End of the buyer's window (scheduled only), a UTC instant.",
+  })
+  deliveryWindowEnd!: string | null;
+  @ApiProperty({
+    format: 'date-time',
+    nullable: true,
+    description: 'When the seller said the order is ready; null until then.',
+  })
+  readyAt!: string | null;
+  @ApiProperty({
+    enum: ['no-carrier'],
+    nullable: true,
+    description:
+      'Set when no carrier could take the order and the platform must arrange the delivery. ' +
+      'The seller never delivers instead.',
+  })
+  deliveryAttention!: string | null;
   @ApiProperty({ type: [OrderLineBody] }) lines!: OrderLineBody[];
 }
 
@@ -167,6 +198,26 @@ export class CheckoutRequest {
       'note to a seller who is not in the cart any more.',
   })
   sellerNotes?: Record<string, string>;
+
+  @ApiProperty({
+    required: false,
+    type: Object,
+    additionalProperties: {
+      type: 'object',
+      properties: {
+        method: { type: 'string', enum: ['pickup', 'instant', 'same_day', 'scheduled'] },
+        windowStart: { type: 'string', format: 'date-time' },
+        windowEnd: { type: 'string', format: 'date-time' },
+      },
+      required: ['method'],
+    },
+    description:
+      "The buyer's delivery method per seller, keyed by seller id: pickup (in person), instant " +
+      '(under 2 hours), same_day (before the cut-off) or scheduled (a future window, ' +
+      'windowStart and windowEnd as ISO instants, start in the future and end after it). A ' +
+      'seller without an entry gets instant. The seller has no say in the method.',
+  })
+  deliveryMethods?: Record<string, { method: string; windowStart?: string; windowEnd?: string }>;
 }
 
 export class LabelledOrderLineBody extends OrderLineBody {
@@ -275,6 +326,11 @@ const sellerOrderBody = (seller: SellerOrderLike): SellerOrderBody => ({
   trackingRef: seller.trackingRef,
   shippedAt: seller.shippedAt?.toString() ?? null,
   deliveredAt: seller.deliveredAt?.toString() ?? null,
+  deliveryMethod: seller.deliveryMethod,
+  deliveryWindowStart: seller.deliveryWindow?.start.toString() ?? null,
+  deliveryWindowEnd: seller.deliveryWindow?.end.toString() ?? null,
+  readyAt: seller.readyAt?.toString() ?? null,
+  deliveryAttention: seller.deliveryAttention,
   lines: seller.lines.map(lineBody),
 });
 
@@ -317,16 +373,6 @@ export class SellerOrderPageBody {
     description: "The shop's paid orders per fulfilment step, whatever the page or filter.",
   })
   counts!: SellerOrderCountsBody;
-}
-
-export class ShipSellerOrderRequest {
-  @ApiProperty({
-    description: 'The carrier or courier, 1 to 60 characters.',
-    example: 'Australia Post',
-  })
-  carrier!: string;
-  @ApiProperty({ required: false, description: 'The tracking reference, 1 to 80 characters.' })
-  trackingRef?: string;
 }
 
 export const sellerOrderDetailBody = (

@@ -415,6 +415,7 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
       judgedVersion: current.state.version,
       slugText: slug.value,
       place,
+      postcode,
       sealed,
       plan,
       reusedCheckedAt,
@@ -428,6 +429,8 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
       readonly judgedVersion: number;
       readonly slugText: Parameters<ShopSlugRepository['hold']>[1]['slug'];
       readonly place: SubmissionSnapshot;
+      /** The operating address's postcode, copied to the revision in clear (SHP-02/03). */
+      readonly postcode: string;
       readonly sealed: SealedRevision;
       readonly plan: LookupPlan | null;
       /** The `checkedAt` of the stored row judged reusable for an unchanged draft, or null. */
@@ -492,6 +495,7 @@ export class MyFileSubmit extends UseCase<MyFileSubmitInput, MyFileSubmitted, My
         snapshot: judged.place,
         contentHash: judged.sealed.contentHash,
         register,
+        operatingPostcode: judged.postcode,
         now,
       });
       const added = await revisions.add(market, revision, judged.sealed);

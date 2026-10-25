@@ -62,6 +62,19 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   you" falls back to the plain best sellers. Four use cases (`search.list-for-you`,
   `search.list-recently-viewed`: `own-resources`; the `-guest` pair: `anonymous`, in
   `http-reachable-anonymous-system.json`). Items carry `primaryImage` like the other shelves.
+- **Bought together (personalization 1d-2):** `GET /search/bought-together?offer=<uuid>&limit=` (limit 1
+  to 24, default 12; `offer` required; no other query field, a bad uuid or limit is 400; `no-store`
+  on every answer; customer route population, no session read). Use case `search.list-bought-together`
+  (`anonymous`, in `http-reachable-anonymous-system.json`). Ordering's
+  `OrderingRankingFacade.boughtTogether` answers Offer ids (most distinct buyers first, ties by Offer id)
+  from `ordering.offer_pairs`, which the nightly job `ordering.rebuild-offer-pairs` (`system`, per
+  hosted Market) rebuilds in one transaction: pairs that at least 3 distinct buyer accounts bought together
+  (one paid order each, confirmed in the last 90 days, counted by confirmation time like the best
+  sellers; the job reads the account id in memory only, every order has an account so none is
+  skipped, and the table keeps no account; the `orders` column holds the distinct-buyer count), both directions stored, no count
+  leaves ordering. Search drops the asked Offer, keeps the indexed ones in rank order, re-checks each
+  with catalog and sellers, and does not fill a short shelf; a failed source or check is
+  `search.unavailable` (503). The same item shape as the other shelves.
 - **Best sellers:** ordering's `OrderingRankingFacade.bestSellingOffers` (rule anonymous) ranks Offers
   by order lines on orders confirmed in the last 30 days (ids only, no count leaves ordering); search
   takes the top 100, keeps the indexed ones (in the category when asked) in rank order, and fills a
@@ -81,7 +94,7 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   count) and the seller's public store name and minimum order. Units without a price and Offers
   without a priced unit are left out, Offers come lowest unit price first (ties by Offer id), and at
   most 200 (Offer, Variant) keys are asked. 404 `search.product-not-found` when nothing is left; a
-  failed source or check is 503 `search.unavailable`. Adds `images` (at most 8 public photos in the published revision's order: `imageId`, `width`, `height`, `alt`). No attribute, tag or badge yet.
+  failed source or check is 503 `search.unavailable`. Adds `images` (at most 8 public photos in the published revision's order: `imageId`, `width`, `height`, `alt`). Each Offer adds `badges` (certification badges: `typeCode`, `typeName`, `basis`, `sellerClaim`, `issuerName`, `validUntilLocalDate`, `verifiedWithIssuer`), read in one call of catalog's `offerBadges` for the Offers on the page (rule anonymous, at most 20). Search decides nothing: catalog asks certification's `evaluateClaims` live in the request and copies the badge of the decision (see `catalog.offer-badges` in docs/design/domain/catalog.md, 9.1 "Offer badges"). Badges fail closed and the page does not: a badge source that fails gives `badges: []` on every Offer and a 200. No attribute or tag yet.
 - **Photos:** each item of `search/products`, `bestsellers` and `specials` has `primaryImage` (the same
   `{imageId, width, height, alt}` or `null`). The refs come from catalog's `publishedProductImages`
   (rule anonymous, published revision only, taken-down photos skipped), read for the shown items only;

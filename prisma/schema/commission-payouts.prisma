@@ -47,9 +47,9 @@ model CommissionPayoutsLedgerEntry {
   occurredAt    DateTime @map("occurred_at") @db.Timestamptz(6)
   recordedAt    DateTime @map("recorded_at") @db.Timestamptz(6)
 
-  @@index([marketId, sellerId, recordedAt(sort: Desc), id(sort: Desc)])
   /// One row per fact; the migration creates it NULLS NOT DISTINCT (the shipping row has no line).
   @@unique([marketId, sellerOrderId, kind, orderLineId])
+  @@index([marketId, sellerId, recordedAt(sort: Desc), id(sort: Desc)])
   @@index([marketId, sellerOrderId])
   @@map("ledger_entries")
   @@schema("commission_payouts")

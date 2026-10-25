@@ -4,6 +4,7 @@
 import 'server-only';
 import { parseImageOrigin } from './photos.ts';
 import { parseClientAddressKey, type ClientAddressKey } from '@mondapac/panel-server/signer';
+import type { CardSetup } from './types.ts';
 
 export interface StorefrontHost {
   /** `scheme://host[:port]`, exactly what a browser sends in `Origin`. */
@@ -151,4 +152,26 @@ export function storefrontApiConfig(): StorefrontApiConfig | null {
     cached = { config };
   }
   return cached.config;
+}
+
+const TEST_PUBLISHABLE_KEY = /^pk_test_[A-Za-z0-9]{8,}$/u;
+
+/**
+ * The Card tile's setup from STRIPE_TEST_PUBLISHABLE_KEY. Empty: the sample stand-in. Stripe
+ * stays in test mode until the owner says otherwise, so anything but a `pk_test_` key (a live
+ * key included) stops the site at start-up instead of taking real cards.
+ */
+export function parseCardSetup(raw: string | undefined): CardSetup {
+  const key = raw?.trim() ?? '';
+  if (key === '') return { kind: 'sample' };
+  if (!TEST_PUBLISHABLE_KEY.test(key))
+    throw new Error('STRIPE_TEST_PUBLISHABLE_KEY must be a Stripe test-mode key (pk_test_...)');
+  return { kind: 'stripe', publishableKey: key };
+}
+
+let cachedCard: CardSetup | undefined;
+
+export function cardSetup(): CardSetup {
+  cachedCard ??= parseCardSetup(process.env.STRIPE_TEST_PUBLISHABLE_KEY);
+  return cachedCard;
 }

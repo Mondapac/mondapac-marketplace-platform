@@ -26,6 +26,8 @@ const MODEL_ID = '[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}';
 const API_KEY = '[A-Za-z0-9_-]{20,500}';
 const PRICE = '\\d{1,4}(?:\\.\\d{1,6})?/\\d{1,4}(?:\\.\\d{1,6})?';
 const MARKET_VALUE = (value: string): string => `[A-Z][A-Z0-9_]{1,7}=${value}`;
+/** A carrier key or webhook secret: long enough to be guessed by no one, in a URL-safe alphabet. */
+const CARRIER_SECRET = '[A-Za-z0-9_-]{24,200}';
 
 const hostedMarkets = z
   .string({ error: 'HOSTED_MARKETS is required; there is no default market (ADR-0003)' })
@@ -96,6 +98,25 @@ const envSchema = z.object({
     .regex(
       new RegExp(`^(${WEBHOOK_SECRET}|${MARKET_SECRET}(,${MARKET_SECRET})*)$`),
       'must be a Stripe webhook signing secret (whsec_), or MARKET=whsec_ pairs separated by commas',
+    )
+    .optional(),
+  // SHP-02/03: the marketplace's merchant API key at Mondapac Drive and the secret Drive signs its
+  // status webhooks with, each as MARKET=value pairs separated by commas (each Market at most once
+  // and only hosted ones). A Market without both has its real-time carrier off (sellers ship
+  // themselves) and its carrier webhook answers 503. Server secrets, never echoed; checked in
+  // parseMarketValues below.
+  MONDAPAC_DRIVE_API_KEY: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(CARRIER_SECRET)}(,${MARKET_VALUE(CARRIER_SECRET)})*$`),
+      'must be MARKET=key pairs separated by commas (a key is 24 to 200 of A-Z a-z 0-9 _ -)',
+    )
+    .optional(),
+  MONDAPAC_DRIVE_WEBHOOK_SECRET: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(CARRIER_SECRET)}(,${MARKET_VALUE(CARRIER_SECRET)})*$`),
+      'must be MARKET=secret pairs separated by commas (a secret is 24 to 200 of A-Z a-z 0-9 _ -)',
     )
     .optional(),
   // ADR-0037: the BFF networks and their keys. Both empty or unset: the feature is off. Parsed
@@ -254,6 +275,15 @@ export interface AppConfig {
    * then Google sign-in is off. Holds a secret: read by identity's sign-in providers alone.
    */
   readonly googleSignIn: Readonly<{ clientId: string; clientSecret: string }> | null;
+  /**
+   * The Mondapac Drive merchant API key and webhook secret of each hosted Market
+   * (`MONDAPAC_DRIVE_API_KEY`, `MONDAPAC_DRIVE_WEBHOOK_SECRET`). Holds secrets: read by shipping's
+   * carrier adapter and webhook signature check alone.
+   */
+  readonly mondapacDrive: Readonly<{
+    apiKeys: Readonly<Record<string, string>>;
+    webhookSecrets: Readonly<Record<string, string>>;
+  }>;
 }
 
 /** The log levels a worker may run at: every one that still writes info lines. */
@@ -414,6 +444,31 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       );
     }
   }
+  const driveKeys = parsed.success
+    ? parseMarketValues(
+        parsed.data.MONDAPAC_DRIVE_API_KEY,
+        parsed.data.HOSTED_MARKETS,
+        'MONDAPAC_DRIVE_API_KEY',
+      )
+    : { values: {}, issues: [] };
+  issues.push(...driveKeys.issues);
+  const driveSecrets = parsed.success
+    ? parseMarketValues(
+        parsed.data.MONDAPAC_DRIVE_WEBHOOK_SECRET,
+        parsed.data.HOSTED_MARKETS,
+        'MONDAPAC_DRIVE_WEBHOOK_SECRET',
+      )
+    : { values: {}, issues: [] };
+  issues.push(...driveSecrets.issues);
+  // The key goes out with every call; the secret proves Drive's webhooks. One leaked value must
+  // not give both directions.
+  for (const [market, secret] of Object.entries(driveSecrets.values)) {
+    if (driveKeys.values[market] === secret) {
+      issues.push(
+        `MONDAPAC_DRIVE_WEBHOOK_SECRET: ${market} must differ from MONDAPAC_DRIVE_API_KEY`,
+      );
+    }
+  }
   const assistant = parsed.success
     ? assistantModelConfig(parsed.data)
     : { config: null, issues: [] };
@@ -454,5 +509,9 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
             clientId: parsed.data.GOOGLE_SIGN_IN_CLIENT_ID,
             clientSecret: parsed.data.GOOGLE_SIGN_IN_CLIENT_SECRET,
           }),
+    mondapacDrive: Object.freeze({
+      apiKeys: driveKeys.values,
+      webhookSecrets: driveSecrets.values,
+    }),
   });
 }

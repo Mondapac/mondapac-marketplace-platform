@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Crumbs } from '../catalog/results.tsx';
+import { CheckoutProgress } from '../checkout/progress.tsx';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
-import { useStore } from '../shell/store-context.tsx';
+import { useStore, type StockChange } from '../shell/store-context.tsx';
 import { viewCart, type CartGroup, type CartGroupLine, type CartView } from './cart.ts';
 import {
   DiscountBox,
@@ -37,7 +38,8 @@ export function CartPage() {
   const tc = useTranslations('catalog');
   const locale = useLocale();
   const router = useRouter();
-  const { cart, cartSource, discount, customer, online } = useStore();
+  const { cart, cartSource, discount, customer, online, stockChanges, setStockChanges } =
+    useStore();
   const view = viewCart(cart, cartSource, discount);
   const [notice, setNotice] = useState(true);
 
@@ -63,6 +65,7 @@ export function CartPage() {
         <div className="ctitle">
           <h1>{t('title')}</h1>
         </div>
+        <StockNotice changes={stockChanges} onDismiss={() => setStockChanges(null)} />
         <div className="cempty">
           <Icon name="bag" />
           <h2>{t('empty')}</h2>
@@ -83,6 +86,8 @@ export function CartPage() {
         <h1>{t('title')}</h1>
         <span>{t('summary-line', { count: view.count, sellers: view.groups.length })}</span>
       </div>
+      <CheckoutProgress current="cart" signedIn={customer !== null} />
+      <StockNotice changes={stockChanges} onDismiss={() => setStockChanges(null)} />
       {notice && changed?.item.addedAt ? (
         <div className="cnote" role="status">
           <Icon name="info" />
@@ -321,5 +326,36 @@ function SavedForLater() {
         ))}
       </ul>
     </section>
+  );
+}
+
+/** What Pay lowered for stock at checkout, said again here where the buyer reviews the cart. */
+function StockNotice({
+  changes,
+  onDismiss,
+}: {
+  readonly changes: readonly StockChange[] | null;
+  readonly onDismiss: () => void;
+}) {
+  const t = useTranslations('checkout');
+  const tc = useTranslations('cart');
+  if (!changes || changes.length === 0) return null;
+  return (
+    <div className="cnote" role="status">
+      <Icon name="info" />
+      <p>
+        <b>{t('notice-stock-title')}</b>{' '}
+        {changes
+          .map((c) =>
+            c.now === 0
+              ? t('notice-stock-gone', { item: c.item })
+              : t('notice-stock-line', { item: c.item, was: c.was, now: c.now }),
+          )
+          .join(' ')}
+      </p>
+      <button type="button" onClick={onDismiss}>
+        {tc('dismiss')}
+      </button>
+    </div>
   );
 }

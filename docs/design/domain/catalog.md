@@ -906,6 +906,7 @@ values; none carries a price, a stock number, Cost or "sellable now" (AC 6).
 |---|---|---|---|---|
 | `offerSellUnits(ctx, offerIds)` (≤ 200) | Per Offer id found in the context's Market: `sellerId`, `productId`, `status` (`draft`, `pending-first-publish`, `changes-needed`, `published`, `deleted`), `listed` (catalog's own state, 4.4), and `sellUnits`: the variant ids that may carry a price or stock = the product's non-retired variants (`proposed` and `published`, M-1), each with its state. Unknown and other-Market ids are **absent**; a `deleted` Offer is present with `status: deleted` and no sell units | `anonymous` and `system` pair; in-process only | 7 | `pricing` CF1, `inventory` ownership check (INV 13). The caller compares `sellerId` with its actor (PRC 5.2) |
 | `offerListings(ctx, keys: {offerId, variantId}[])` (≤ 200) | Published state only. Per key: `sellerId`, `productId`, `listed`, `variantBelongs` (the variant is `published` on the product's published revision), display data (product name and variant label in the request locale with the INTL-13 fallback, primary image key of the published revision), `publishedRevisionId`, and per tag of the Offer: `typeCode`, `status`, `basis` and, only for an `active` tag, the copied `BadgeData` (5.4); an `anonymous` caller receives `active` tags only (L3, rules below). Keys whose Offer is unknown, of another Market, deleted, never published, or whose product is not published are **absent** | `anonymous` and `system` pair | 11 | Cart CC1; storefront later; pricing H5 filter for raw ids |
+| `offerBadges(ctx, offerIds)` (≤ 20 distinct, else `validation.failed`) | Per Offer with at least one badge: `{ typeCode, typeName, basis, sellerClaim, issuerName, validUntilLocalDate, verifiedWithIssuer }[]` in type-code order (as built: storefront certification badges, `feat/storefront-certification-badges`). See "Offer badges" below | `anonymous` (no pair; not exposed over HTTP) | storefront | `search` product page |
 | `offerTaxCategories(ctx, offerIds)` (≤ 200) | Per Offer: the tax category code of the product's published revision and its revision id | `system` | Designed now; built with `tax`/`ordering` (Phase 5) | `tax`, `ordering` |
 | `publishedProduct(ctx, productId, locale)` | Published content of one product (name, texts, category ids, published variants with labels) of the **published revision only**; a draft, pending, unpublished, unknown or other-Market product is `null`. No image, attribute or tag | `anonymous` | Built with the product page (#450) | `search` (storefront product page) |
 | `publishedProductImages(ctx, productIds)` (≤ 200) | Per product: its public photos in the published revision's order (at most 8): `imageId` and the pixel size of the largest rendition. Only a `published` product, only photos of its **current published revision**, never a taken-down one; any other product is absent. Ids and sizes only, never a key or URL | `anonymous` | Storefront images package | `search` (cards, product page) |
@@ -924,6 +925,19 @@ Rules for the read methods:
 - **Read targets (Ali):** P95 ≤ 200 ms for `offerListings` (200 keys), the seller's product list
   page and the review-queue page, measured in spike 2 and in the slice tests' timing budget; a breach
   reopens the CQRS question (19.2 item 2).
+
+**Offer badges (`offerBadges`, use case `catalog.offer-badges`).** Built only from `evaluateClaims`
+asked live in the request, never from a stored copy (a stored copy can only restrict, ADR-0028 d3).
+A badge answers for (Offer, type) only when: the Offer is `published` and `listed` with handling; its
+stored tag of the type is `active`; `judgeTag` over the live decisions of all the product's variants
+allows it (echoed inputs equal, one certificate, one badge); the live decision's basis equals the
+stored tag's basis; and certification's active type of that code has a name in the Market's default
+locale (no fallback) whose published revision is the one the badge was decided on. The query is
+built by `ClaimQueryBuilder` as for a re-ask; the ask runs outside any unit (one read-only unit
+before it). The view is copied field by field and carries no id, certificate number, holder,
+document, link, reviewer, scope text or policy id. Any failure (evaluator, facts, type names, a
+fault) answers no badge for every Offer: the facade returns an empty map, never an error and never a
+stored answer. The ClaimEvaluator port gained `typeNames` for the type name.
 
 The facade never says "this Offer is buyable with claim X" (AC 14); `ordering` asks
 `evaluateClaims` itself (ADR-0028 d4). An HTTP route over any of these that takes raw ids is the

@@ -300,3 +300,29 @@ is required; no value has a default. The review checks and reasons are table-sha
   Until a re-ask of each affected type (`claim-policy-changed` cause) or the daily reconciliation
   runs (within 24 h), those tags keep their manufacturer badge. Queue the type re-ask with the
   release, or accept the reconciliation window.
+
+## `shipping` section (optional)
+
+Owned by `shipping` (SHP-02/03, `docs/modules/shipping/carrier-mondapac-drive.md`). One key,
+`realTimeCarrier`; a Market without it, or without both carrier secrets in the Region Stack
+(`MONDAPAC_DRIVE_API_KEY`, `MONDAPAC_DRIVE_WEBHOOK_SECRET`), has no real-time carrier and every
+seller ships as in SHP-01.
+
+- `carrier` (required): `mondapac-drive`, the only carrier.
+- `displayName` (required, 1 to 60 letters, digits, spaces and `.&'-`): the carrier name the
+  customer and the seller see on the shipment (AU "Mondapac Drive").
+- `baseUrl` (required): the carrier API (https; http only for a loopback host).
+- `serviceAreas` (required, 1 to 50 codes of `config/service-areas`): a paid seller order goes to
+  the carrier only when its pickup and its drop-off each fall in one of them (AU
+  `greater-brisbane`).
+- `parcel` (required): `weightGrams`, `volumeLitres` and `temperature` (`ambient`, `chilled`,
+  `frozen`) of every booking until offers carry their own sizes.
+- `mode` (required): `on_demand` or `scheduled`.
+- `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.failureThreshold` and
+  `circuitBreaker.cooldownSeconds` (required): one attempt's timeout, attempts per call (a 5xx,
+  timeout, network fault or 429 is retried, but a quote is not retried after a 429; any other 4xx never), the first backoff (doubled per
+  retry), and the failures in a row that stop calls for the cooldown (AU 2500 ms, 2, 250 ms, 5,
+  30 s). The whole call must fit in 6 s.
+- `quoteBounds.minMinor` and `quoteBounds.maxMinor` (required): the range, in minor units of the
+  Market's currency, a live quote must fall in to be charged at checkout; outside it the seller's
+  flat fee is charged (AU 500 to 10000, that is 5 to 100 AUD).

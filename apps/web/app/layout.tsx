@@ -11,6 +11,8 @@ import {
   textSizeOf,
 } from '../src/preferences/preferences.ts';
 import { CONSENT_COOKIE, consentOf } from '../src/consent/consent.ts';
+import { scriptFontHref } from '../src/i18n/fonts.ts';
+import { directionOf, languageTag } from '../src/i18n/locale.ts';
 import { DELIVER_TO_COOKIE, deliverToOf } from '../src/delivery/deliver-to.ts';
 import { titleTemplate } from '../src/seo/defaults.ts';
 import { indexingOn } from '../src/seo/indexing.ts';
@@ -24,6 +26,8 @@ import {
   storefrontIsLive,
 } from '../src/storefront/source.ts';
 import './globals.css';
+// After globals.css: the store pictures refine the logo tile and the banner it defines.
+import '../src/seller/store-images.css';
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('store');
@@ -49,12 +53,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       loadAssistant(),
       loadDeliveryLocator(),
     ]);
+  const lang = languageTag(locale);
+  const scriptFont = scriptFontHref(lang);
   const palette = paletteOf(jar.get(PALETTE_COOKIE)?.value);
   const textSize = textSizeOf(jar.get(TEXT_SIZE_COOKIE)?.value);
   return (
     <html
-      lang={locale}
-      dir="ltr"
+      lang={lang}
+      dir={directionOf(lang)}
       data-palette={palette === DEFAULT_PALETTE ? undefined : palette}
       data-text-size={textSize === 'auto' ? undefined : textSize}
       suppressHydrationWarning
@@ -66,6 +72,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
         />
+        {scriptFont === null ? null : <link rel="stylesheet" href={scriptFont} />}
       </head>
       <body>
         <NextIntlClientProvider messages={messages}>

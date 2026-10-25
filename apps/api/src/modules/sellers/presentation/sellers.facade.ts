@@ -2,7 +2,10 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
 import type { AllowedProductTypes } from '../application/use-cases/allowed-product-types.use-case';
+import type { CarrierPickupRead } from '../application/use-cases/carrier-pickup.use-case';
+import type { PickupPostcodes } from '../application/use-cases/pickup-postcodes.use-case';
 import type { PublishedStoreSellerId } from '../application/use-cases/published-store-seller-id.use-case';
+import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';
 import type { ReviewerBusinessDetailsRead } from '../application/use-cases/reviewer-business-details.use-case';
 import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
 import type { SellingEligibility } from '../application/use-cases/selling-eligibility.use-case';
@@ -10,6 +13,7 @@ import type { SellerSummariesSystem } from '../application/use-cases/seller-summ
 import type { SellerSummaries } from '../application/use-cases/seller-summaries.use-case';
 import type {
   AllowedProductTypesOf,
+  CarrierPickup,
   ReviewerBusinessDetails,
   SellerDetailsNotFound,
   SellersFacade,
@@ -29,6 +33,9 @@ export interface SellersFacadeUseCases {
   readonly allowedProductTypesSystem: AllowedProductTypesSystem;
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
   readonly publishedStoreSellerId: PublishedStoreSellerId;
+  readonly publishedStoreSlugs: PublishedStoreSlugs;
+  readonly carrierPickup: CarrierPickupRead;
+  readonly pickupPostcodes: PickupPostcodes;
 }
 
 /**
@@ -86,6 +93,13 @@ export class SellersFacadeImplementation implements SellersFacade {
     return this.useCases.publishedStoreSellerId.execute(context, { slug });
   }
 
+  publishedStoreSlugs(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, AccessDenied | SellersUnavailable>> {
+    return this.useCases.publishedStoreSlugs.execute(context, { sellerIds });
+  }
+
   reviewerBusinessDetails(
     context: CallContext,
     sellerId: Id<'Seller'>,
@@ -96,5 +110,32 @@ export class SellersFacadeImplementation implements SellersFacade {
     >
   > {
     return this.useCases.reviewerBusinessDetails.execute(context, { sellerId });
+  }
+
+  carrierPickup(
+    context: CallContext,
+    request: { readonly sellerId: Id<'Seller'>; readonly sellerOrderId: string },
+  ): Promise<
+    Result<
+      CarrierPickup,
+      AccessDenied | SellersValidationFailed | SellerDetailsNotFound | SellersUnavailable
+    >
+  > {
+    return this.useCases.carrierPickup.execute(context, {
+      sellerId: request?.sellerId,
+      sellerOrderId: request?.sellerOrderId,
+    });
+  }
+
+  pickupPostcodes(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Seller'>, string>,
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  > {
+    return this.useCases.pickupPostcodes.execute(context, { sellerIds });
   }
 }

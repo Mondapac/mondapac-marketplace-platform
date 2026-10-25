@@ -1,5 +1,5 @@
 import { HttpException } from '@nestjs/common';
-import type { ShelfRequest } from '../domain/shelf-query';
+import type { BoughtTogetherRequest, ShelfRequest } from '../domain/shelf-query';
 
 const WHOLE_NUMBER = /^[0-9]{1,6}$/u;
 
@@ -15,6 +15,20 @@ export function shelfRequestOf(
   query: Record<string, unknown>,
   allowed: readonly ('category' | 'limit')[],
 ): ShelfRequest {
+  const { category, limit } = readQuery(query, allowed);
+  return { category, limit };
+}
+
+/** The query string of the bought-together route: `offer` and `limit`, nothing else. */
+export function boughtTogetherRequestOf(query: Record<string, unknown>): BoughtTogetherRequest {
+  const { offer, limit } = readQuery(query, ['offer', 'limit']);
+  return { offer, limit };
+}
+
+function readQuery(
+  query: Record<string, unknown>,
+  allowed: readonly ('category' | 'offer' | 'limit')[],
+): { category: string | undefined; offer: string | undefined; limit: number | undefined } {
   const fields = Object.keys(query)
     .filter((key) => !(allowed as readonly string[]).includes(key))
     .sort()
@@ -23,7 +37,7 @@ export function shelfRequestOf(
       path: Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�'),
       code: 'unknown-field',
     }));
-  const text = (name: 'category' | 'limit'): string | undefined => {
+  const text = (name: 'category' | 'offer' | 'limit'): string | undefined => {
     const value = query[name];
     if (value === undefined || !allowed.includes(name)) return undefined;
     if (typeof value !== 'string') {
@@ -33,6 +47,7 @@ export function shelfRequestOf(
     return value;
   };
   const category = text('category');
+  const offer = text('offer');
   const limitText = text('limit');
   let limit: number | undefined;
   if (limitText !== undefined) {
@@ -40,5 +55,5 @@ export function shelfRequestOf(
     else fields.push({ path: 'limit', code: 'range' });
   }
   if (fields.length > 0) throw fail(400, 'validation.failed', { fields });
-  return { category, limit };
+  return { category, offer, limit };
 }

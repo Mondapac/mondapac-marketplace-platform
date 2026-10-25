@@ -21,3 +21,9 @@ export const SELLER_FILE_LABELS: Readonly<Record<SealedField, FieldLabel>> = Obj
   'registered-address': fieldLabel('sellers.seller-file.registered-address'),
   identifier: fieldLabel('sellers.seller-file.identifier'),
 });
+
+/** The label of `store_profile_revisions.content_ciphertext` (data design 3.8; slice 12 part 2). */
+export const STORE_PROFILE_CONTENT_LABEL = fieldLabel('sellers.store-profile-revision.content');
+
+/** The hash purpose of `store_profile_revisions.content_hash` (sellers design 8.1). */
+export const STORE_PROFILE_CONTENT_HASH_PURPOSE = hashPurpose('sellers.store-profile.content');

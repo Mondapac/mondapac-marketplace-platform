@@ -1,5 +1,6 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerEvents } from '../../platform/events/event-catalogue';
+import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -21,6 +22,7 @@ import { SHIPPING_FACADE, ShippingModule } from '../shipping';
 import { TAX_FACADE, TaxModule } from '../tax';
 import type { OrderingDependencies } from './application/checkout-flow';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
+import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-policy';
 import { ORDER_LABELS } from './application/ports/order-labels';
 import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
@@ -36,19 +38,33 @@ import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case';
 import { SellerOrderCustomerNames } from './application/use-cases/seller-order-customer-names.use-case';
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
+import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deliveries.use-case';
+import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
+import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier-after-refund.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
 import { RecordShipments } from './application/use-cases/record-shipments.use-case';
 import { SellerDeliverOrder } from './application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './application/use-cases/seller-list-orders.use-case';
-import { SellerShipOrder } from './application/use-cases/seller-ship-order.use-case';
+import { SellerMarkOrderReady } from './application/use-cases/seller-mark-order-ready.use-case';
+import { BookReadyCarrierDelivery } from './application/use-cases/book-ready-carrier-delivery.use-case';
 import { SellerViewOrder } from './application/use-cases/seller-view-order.use-case';
 import { SellerViewOrderDocument } from './application/use-cases/seller-view-order-document.use-case';
 import { StartCheckout } from './application/use-cases/start-checkout.use-case';
 import { ViewOrder } from './application/use-cases/view-order.use-case';
 import { ViewOrderDocument } from './application/use-cases/view-order-document.use-case';
 import { ORDERING_FACADE, ORDERING_PERMISSIONS, ORDERING_RANKING_FACADE } from './contracts';
+import { OFFER_PAIR_STORE } from './application/ports/offer-pairs.store';
+import {
+  BoughtTogetherQuery,
+  type BoughtTogetherDependencies,
+} from './application/use-cases/bought-together.use-case';
+import {
+  RebuildOfferPairs,
+  type RebuildOfferPairsDependencies,
+} from './application/use-cases/rebuild-offer-pairs.use-case';
+import { rebuildOfferPairsJob } from './presentation/jobs/rebuild-offer-pairs.job';
 import { SALES_RANKING_READER } from './application/ports/sales-ranking.reader';
 import {
   BestSellingOffersQuery,
@@ -65,6 +81,7 @@ import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
 import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
 import { OrderingFacadeImplementation } from './presentation/ordering.facade';
+import { carrierSubscriptions } from './presentation/subscribers/carrier.subscriptions';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: OrderingDependencies) => U;
 
@@ -87,6 +104,7 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
   ['labels', ORDER_LABELS],
+  ['deliveryMethods', DELIVERY_METHOD_POLICY],
 ];
 
 /** Every ordering use case shares one dependency object, built from the same ports. */
@@ -142,6 +160,22 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.auditWriterFor('ordering'),
     registerAuditActions('ordering', ORDERING_AUDIT_ACTIONS),
     registerEvents('ordering', ORDERING_EVENTS),
+    // SHP-02/03: the real-time carrier's booking and progress (ordering.inbox).
+    registerSubscriptionsFrom(
+      'ordering',
+      [
+        BookCarrierDeliveries,
+        BookReadyCarrierDelivery,
+        RecordCarrierProgress,
+        CancelCarrierAfterRefund,
+      ],
+      (
+        book: BookCarrierDeliveries,
+        bookReady: BookReadyCarrierDelivery,
+        record: RecordCarrierProgress,
+        cancel: CancelCarrierAfterRefund,
+      ) => carrierSubscriptions(book, bookReady, record, cancel),
+    ),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
     ...orderingProviders,
     ...[
@@ -157,13 +191,17 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerListOrders,
       SellerViewOrder,
       SellerViewOrderDocument,
-      SellerShipOrder,
+      SellerMarkOrderReady,
       SellerDeliverOrder,
       RecordShipments,
       RecordLedger,
       OrderNoticeQuery,
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
+      BookCarrierDeliveries,
+      BookReadyCarrierDelivery,
+      RecordCarrierProgress,
+      CancelCarrierAfterRefund,
       AdminRefundOrder,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
@@ -195,18 +233,43 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ) => new BestSellingOffersQuery(gate, { unitOfWork, ranking, clock }),
     },
     {
+      provide: BoughtTogetherQuery,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, OFFER_PAIR_STORE],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: BoughtTogetherDependencies['unitOfWork'],
+        pairs: BoughtTogetherDependencies['pairs'],
+      ) => new BoughtTogetherQuery(gate, { unitOfWork, pairs }),
+    },
+    {
+      provide: RebuildOfferPairs,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, OFFER_PAIR_STORE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: RebuildOfferPairsDependencies['unitOfWork'],
+        pairs: RebuildOfferPairsDependencies['pairs'],
+        clock: RebuildOfferPairsDependencies['clock'],
+      ) => new RebuildOfferPairs(gate, { unitOfWork, pairs, clock }),
+    },
+    {
       provide: ORDERING_RANKING_FACADE,
-      inject: [BestSellingOffersQuery],
-      useFactory: (bestSelling: BestSellingOffersQuery) =>
-        new OrderingRankingFacadeImplementation(bestSelling),
+      inject: [BestSellingOffersQuery, BoughtTogetherQuery],
+      useFactory: (bestSelling: BestSellingOffersQuery, boughtTogether: BoughtTogetherQuery) =>
+        new OrderingRankingFacadeImplementation(bestSelling, boughtTogether),
     },
     registerJobsFrom(
       'ordering',
-      [RecordShipments, RecordLedger, SettleRefunds],
-      (shipments: RecordShipments, ledger: RecordLedger, refunds: SettleRefunds) => [
+      [RecordShipments, RecordLedger, SettleRefunds, RebuildOfferPairs],
+      (
+        shipments: RecordShipments,
+        ledger: RecordLedger,
+        refunds: SettleRefunds,
+        pairs: RebuildOfferPairs,
+      ) => [
         recordShipmentsJob(shipments),
         recordLedgerJob(ledger),
         settleRefundsJob(refunds),
+        rebuildOfferPairsJob(pairs),
       ],
     ),
   ],

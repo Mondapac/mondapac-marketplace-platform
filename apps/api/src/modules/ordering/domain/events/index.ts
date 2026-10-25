@@ -32,5 +32,42 @@ export const OrderShipped = defineEvent({
   },
 });
 
+/**
+ * A seller told the platform that its part of a paid order is ready (delivery models, package 1),
+ * once per seller order, in the unit that records it. The seller chooses no method and no provider:
+ * the subscriber reads the buyer's `deliveryMethod` from the order, books a carrier for `instant`
+ * and `same_day` and does nothing for `pickup` or `scheduled`. Ids only: no address, name, window
+ * or amount reaches the event.
+ */
+export const SellerOrderReady = defineEvent({
+  type: 'ordering.seller-order-ready.v1',
+  aggregateType: 'seller-order',
+  payload: {
+    orderId: eventField.id(),
+    sellerOrderId: eventField.id(),
+    sellerId: eventField.id(),
+  },
+});
+
+/**
+ * Stripe confirmed a refund of one seller order (tax step 3), once per refund, in the unit that
+ * marks it succeeded. Ids only: no amount, reason or line reaches the event. Ordering's own
+ * subscriber cancels the real-time carrier delivery of a seller order refunded in full (SHP-03).
+ */
+export const RefundSucceeded = defineEvent({
+  type: 'ordering.refund-succeeded.v1',
+  aggregateType: 'refund',
+  payload: {
+    orderId: eventField.id(),
+    sellerOrderId: eventField.id(),
+    refundId: eventField.id(),
+  },
+});
+
 /** Every event type ordering publishes, registered with the event catalogue at boot. */
-export const ORDERING_EVENTS: readonly EventDefinition[] = [OrderPaid, OrderShipped];
+export const ORDERING_EVENTS: readonly EventDefinition[] = [
+  OrderPaid,
+  OrderShipped,
+  SellerOrderReady,
+  RefundSucceeded,
+];
