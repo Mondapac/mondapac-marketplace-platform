@@ -11,6 +11,19 @@ import { AccountFrame, LineThumb, OrderBadge, PartBadge, useDay } from './accoun
 import { cancellable, orderTotals, useAccount } from './account-state.tsx';
 import { BuyAgain } from './orders.tsx';
 
+/** The tracking link as it may be shown: an absolute https URL, else null (never rendered). */
+export function safeTrackingHref(value: string | undefined): string | null {
+  if (value === undefined || value.length > 500) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.username === '' && url.password === ''
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 const STEPS = ['placed', 'confirmed', 'out-for-delivery', 'delivered'] as const;
 const STEP_OF: Record<Exclude<OrderPart['status'], 'cancelled'>, number> = {
   waiting: 0,
@@ -88,6 +101,20 @@ export function OrderDetails({
                 : part.deliveryWindow}
           </small>
           {part.status === 'cancelled' ? null : <Progress status={part.status} />}
+          {safeTrackingHref(part.trackingUrl) === null ? null : (
+            <p className="ac-track">
+              <a
+                className="btn ghost"
+                href={safeTrackingHref(part.trackingUrl) ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icon name="truck" />
+                {t('order.track')}
+                <span className="sr-only"> {t('order.track-new-tab')}</span>
+              </a>
+            </p>
+          )}
           {part.pickup ? (
             <PickupCodeCard
               pickup={part.pickup}

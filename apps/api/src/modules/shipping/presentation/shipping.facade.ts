@@ -2,6 +2,7 @@ import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { BookCarrierDelivery } from '../application/use-cases/book-carrier-delivery.use-case';
 import type { CancelCarrierDelivery } from '../application/use-cases/cancel-carrier-delivery.use-case';
 import type { CarrierShipmentQuery } from '../application/use-cases/carrier-shipment.use-case';
+import type { CarrierTrackingLinks } from '../application/use-cases/carrier-tracking-links.use-case';
 import type { DeliveryArea } from '../application/use-cases/delivery-area.use-case';
 import type { FlatFees } from '../application/use-cases/flat-fees.use-case';
 import type { PickupAvailability } from '../application/use-cases/pickup-availability.use-case';
@@ -17,6 +18,7 @@ export interface ShippingFacadeUseCases {
   readonly book: BookCarrierDelivery;
   readonly shipment: CarrierShipmentQuery;
   readonly cancel: CancelCarrierDelivery;
+  readonly trackingLinks: CarrierTrackingLinks;
 }
 
 /** Passes the caller's `CallContext` unchanged to one use case each, so the gate runs. */
@@ -67,6 +69,21 @@ export class ShippingFacadeImplementation implements ShippingFacade {
 
   carrierShipment(context: CallContext, sellerOrderId: string) {
     return this.useCases.shipment.execute(context, { sellerOrderId });
+  }
+
+  async carrierTrackingLinks(context: CallContext, sellerOrderIds: readonly string[]) {
+    const result = await this.useCases.trackingLinks.execute(context, { sellerOrderIds });
+    return result.ok
+      ? result
+      : ({
+          ok: false,
+          error:
+            result.error.code === 'access.denied'
+              ? result.error
+              : result.error.code === 'validation.failed'
+                ? ({ code: 'validation.failed' } as const)
+                : ({ code: 'shipping.unavailable' } as const),
+        } as const);
   }
 
   cancelCarrierDelivery(context: CallContext, sellerOrderId: string) {

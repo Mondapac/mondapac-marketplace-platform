@@ -76,6 +76,8 @@ export interface CarrierShipment {
   readonly carrierName: string;
   /** The carrier's id of the delivery: the tracking reference. */
   readonly trackingRef: string;
+  /** The fleet's tracking link for the buyer: a plain https URL, or null when it gave none. */
+  readonly trackingUrl: string | null;
   readonly progress: CarrierDeliveryProgress;
 }
 
@@ -172,6 +174,18 @@ export interface ShippingFacade {
     context: CallContext,
     sellerOrderId: string,
   ): Promise<Result<CarrierShipment, CarrierDeliveryFailure>>;
+
+  /**
+   * The tracking links of the carrier deliveries of some seller orders, for the buyer's own order
+   * page: only a plain https link, only for seller orders that have a carrier delivery with one.
+   * Rule `own-resources`: `ordering` asks under the signed-in customer's context for ids it has
+   * just read from that customer's own order (it owns that check). Not exposed over HTTP. A failed
+   * read is `shipping.unavailable`: the page shows no link.
+   */
+  carrierTrackingLinks(
+    context: CallContext,
+    sellerOrderIds: readonly string[],
+  ): Promise<Result<ReadonlyMap<string, string>, ShippingFailure>>;
 
   /**
    * Asks the carrier to drop the delivery of a seller order that is not picked up yet. Rule

@@ -196,6 +196,15 @@ export class PickupConfirmRequest {
   code!: string;
 }
 
+export class OwnTrackingLinkBody {
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({
+    type: String,
+    description: "The carrier's tracking page: an absolute https URL, shown as a plain link.",
+  })
+  url!: string;
+}
+
 export class OwnOrderBody extends OrderBody {
   @ApiProperty({ type: ShipToBody, nullable: true, description: SHIP_TO_DESCRIPTION })
   shipTo!: ShipToBody | null;
@@ -217,6 +226,14 @@ export class OwnOrderBody extends OrderBody {
       'receives a code.',
   })
   pickupCodes!: OwnPickupCodeBody[];
+
+  @ApiProperty({
+    type: [OwnTrackingLinkBody],
+    description:
+      'The tracking link of each shipped order part that a delivery fleet gave one for. Empty ' +
+      'when there is none.',
+  })
+  trackingLinks!: OwnTrackingLinkBody[];
 }
 
 export class CheckoutRequest {
@@ -491,6 +508,7 @@ export const ownOrderBody = (order: OwnOrderView): OwnOrderBody => ({
   shipTo: shipToBody(order.shipTo),
   sellerNotes: { ...(order.shipTo?.sellerNotes ?? {}) },
   pickupCodes: order.pickupCodes.map(ownPickupCodeBody),
+  trackingLinks: order.trackingLinks.map((link) => ({ sellerId: link.sellerId, url: link.url })),
 });
 
 export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody => ({

@@ -42,6 +42,13 @@ model ShippingCarrierBooking {
   carrierStatus    String   @map("carrier_status")
   /// Raised by each change; the aggregate version of its event.
   version          Int
+  /// A link the buyer can follow, only when the fleet gave one and it is https (CHECK).
+  trackingUrl      String?  @map("tracking_url")
+  /// When the fleet reported that proof of delivery exists. Only the instant: never the photo, the
+  /// signature image or the recipient's name.
+  podRecordedAt    DateTime? @map("pod_recorded_at") @db.Timestamptz(6)
+  /// When the status poll last asked the fleet (null: never). Orders the poll fairly.
+  polledAt         DateTime? @map("polled_at") @db.Timestamptz(6)
   createdAt        DateTime @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime @map("updated_at") @db.Timestamptz(6)
 

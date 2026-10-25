@@ -7093,6 +7093,14 @@ button.login {
   width: 14px;
   height: 14px;
 }
+.ac-track {
+  margin: 0;
+}
+.ac-track .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .ac-pickup {
   display: grid;
   justify-items: start;

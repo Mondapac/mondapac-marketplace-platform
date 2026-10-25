@@ -32,7 +32,12 @@ function part(
   sellerId: string,
   status: OrderPart['status'],
   lines: readonly OrderLine[],
-  extra: { deliveredOn?: string; note?: string; pickup?: PickupCode } = {},
+  extra: {
+    deliveredOn?: string;
+    note?: string;
+    pickup?: PickupCode;
+    trackingUrl?: string;
+  } = {},
 ): OrderPart {
   const seller = SAMPLE_CART_SOURCE.sellers[sellerId];
   if (!seller) throw new Error(`no sample seller ${sellerId}`);
@@ -73,7 +78,9 @@ export const SAMPLE_ACCOUNT: AccountSource = {
         part('kedron', 'confirmed', [line('whole-chicken', 1), line('brisket', 1)], {
           note: 'Please ring the bell twice.',
         }),
-        part('mt-gravatt', 'out-for-delivery', [line('bananas', 2)]),
+        part('mt-gravatt', 'out-for-delivery', [line('bananas', 2)], {
+          trackingUrl: 'https://track.example.com/d/sample',
+        }),
       ],
     }),
     // Collected in person: the seller marked the part ready, so the code is live (a sample).

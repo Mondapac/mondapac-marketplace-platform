@@ -34,6 +34,41 @@ export class MemoryBookings implements CarrierBookingRepository {
   findBySellerOrder(m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(this.rows.get(`${m.marketId}|${sellerOrderId}`) ?? null);
   }
+  findByCarrierReference(m: MarketContext, fleet: FleetCode, carrierReference: string) {
+    return Promise.resolve(
+      [...this.rows.entries()].find(
+        ([key, b]) =>
+          key.startsWith(`${m.marketId}|`) &&
+          b.fleet === fleet &&
+          b.carrierReference === carrierReference,
+      )?.[1] ?? null,
+    );
+  }
+  listOpen(m: MarketContext, fleet: FleetCode, limit: number) {
+    const at = (b: CarrierBooking) => b.polledAt?.epochMilliseconds ?? -1;
+    return Promise.resolve(
+      [...this.rows.entries()]
+        .filter(
+          ([key, b]) =>
+            key.startsWith(`${m.marketId}|`) &&
+            b.fleet === fleet &&
+            (b.progress === 'booked' || b.progress === 'picked-up'),
+        )
+        .map(([, b]) => b)
+        .sort(
+          (a, b) => at(a) - at(b) || a.createdAt.epochMilliseconds - b.createdAt.epochMilliseconds,
+        )
+        .slice(0, limit),
+    );
+  }
+  markPolled(m: MarketContext, bookingId: Id<'CarrierBooking'>, at: Temporal.Instant) {
+    for (const [key, b] of this.rows) {
+      if (key.startsWith(`${m.marketId}|`) && b.id === bookingId) {
+        this.rows.set(key, { ...b, polledAt: at });
+      }
+    }
+    return Promise.resolve();
+  }
   insert(m: MarketContext, booking: CarrierBooking) {
     const key = `${m.marketId}|${booking.sellerOrderId}`;
     if (this.rows.has(key)) return Promise.resolve('exists' as const);
@@ -42,9 +77,10 @@ export class MemoryBookings implements CarrierBookingRepository {
   }
   save(m: MarketContext, booking: CarrierBooking, expectedVersion: number) {
     const key = `${m.marketId}|${booking.sellerOrderId}`;
-    if (this.rows.get(key)?.version !== expectedVersion)
-      return Promise.resolve('conflict' as const);
-    this.rows.set(key, booking);
+    const current = this.rows.get(key);
+    if (current?.version !== expectedVersion) return Promise.resolve('conflict' as const);
+    // As the database: a save writes the business columns, not the poll's own `polledAt`.
+    this.rows.set(key, { ...booking, polledAt: current.polledAt });
     return Promise.resolve('saved' as const);
   }
   findAttempt(m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {

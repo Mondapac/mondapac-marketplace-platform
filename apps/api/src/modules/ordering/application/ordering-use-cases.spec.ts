@@ -1097,6 +1097,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           sellerOrderId: sellerOrderId as Id<'SellerOrder'>,
           carrierName: 'Mondapac Drive',
           trackingRef: trackingOf(sellerOrderId),
+          trackingUrl: null,
           progress: 'picked-up',
         });
         progressN += 1;
@@ -1354,6 +1355,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
             sellerOrderId: a,
             carrier: 'Mondapac Drive',
             trackingRef: trackingOf(a),
+            trackingUrl: null,
           }),
         );
         expect(await notice(system, { orderId: order.id, sellerOrderId: b })).toEqual(
@@ -1363,8 +1365,80 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
             sellerOrderId: b,
             carrier: 'Mondapac Drive',
             trackingRef: trackingOf(b),
+            trackingUrl: null,
           }),
         );
+      });
+
+      it('adds the fleet tracking link to the notice only when it is https, and survives shipping being down', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        const b = sellerOrderIdOf(order.id, SELLER_B);
+        await ship(sellerA, a);
+        await ship(sellerB, b);
+        const shipmentA = shipping.carrierShipments.get(a)!;
+        shipping.carrierShipments.set(a, {
+          ...shipmentA,
+          trackingUrl: 'https://track.example.com/d/1',
+        });
+        shipping.carrierShipments.set(b, {
+          ...shipping.carrierShipments.get(b)!,
+          trackingUrl: 'http://track.example.com/d/2',
+        });
+
+        const withLink = await notice(system, { orderId: order.id, sellerOrderId: a });
+        const insecure = await notice(system, { orderId: order.id, sellerOrderId: b });
+        shipping.carrierDown = true;
+        const down = await notice(system, { orderId: order.id, sellerOrderId: a });
+
+        expect(withLink.ok && withLink.value.trackingUrl).toBe('https://track.example.com/d/1');
+        expect(insecure.ok && insecure.value.trackingUrl).toBeNull();
+        expect(down.ok && down.value.trackingUrl).toBeNull();
+        expect(down.ok && down.value.trackingRef).toBe(trackingOf(a));
+      });
+
+      it("shows the buyer the tracking link of a shipped part, to the buyer's own order only", async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, a);
+        shipping.trackingLinks.set(a, 'https://track.example.com/d/1');
+        shipping.trackingLinks.set(
+          sellerOrderIdOf(order.id, SELLER_B),
+          'https://track.example.com/d/unshipped',
+        );
+        const view = (context: CallContext) =>
+          new ViewOrder(gate, deps).execute(context, { orderId: order.id });
+
+        const own = await view(customer);
+        expect(own.ok && own.value.trackingLinks).toEqual([
+          { sellerId: SELLER_A, url: 'https://track.example.com/d/1' },
+        ]);
+        // Another customer's read of this order is not found, and asks shipping for nothing.
+        const asked: string[][] = [];
+        const original = shipping.carrierTrackingLinks.bind(shipping);
+        shipping.carrierTrackingLinks = (c, ids) => {
+          asked.push([...ids]);
+          return original(c, ids);
+        };
+        const stranger = await view(customerOf(id<'Account'>(0x999)));
+        expect(stranger.ok).toBe(false);
+        expect(asked).toEqual([]);
+      });
+
+      it('shows no link when shipping is down or answers a link that is not https', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        await ship(sellerA, a);
+        const view = () => new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
+
+        shipping.trackingDown = true;
+        const down = await view();
+        shipping.trackingDown = false;
+        shipping.trackingLinks.set(a, 'javascript:alert(1)');
+        const unsafe = await view();
+
+        expect(down.ok && down.value.trackingLinks).toEqual([]);
+        expect(unsafe.ok && unsafe.value.trackingLinks).toEqual([]);
       });
 
       it('answers not-found for an unknown, foreign, unshipped or unpaid seller order', async () => {
@@ -1921,6 +1995,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           sellerOrderId: a,
           carrierName: 'Mondapac Drive',
           trackingRef,
+          trackingUrl: null,
           progress: 'booked',
         });
         expect(await progress(order.id, a, 1)).toEqual(
@@ -1965,6 +2040,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           sellerOrderId: b,
           carrierName: 'Mondapac Drive',
           trackingRef: '01990000-0000-7000-8000-00000000d002',
+          trackingUrl: null,
           progress: 'delivered',
         });
         expect(await progress(order.id, b, 1)).toEqual(ok({ code: 'ordering.carrier.handled' }));

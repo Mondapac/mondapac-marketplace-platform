@@ -11,6 +11,7 @@ import {
   advanceBooking,
   newBooking,
   progressOfFleetStatus,
+  safeTrackingUrl,
   type CarrierBooking,
 } from '../domain/carrier-booking';
 import { carrierModeOf, parseBookingService } from '../domain/booking-service';
@@ -38,7 +39,7 @@ const idOf = <K extends string>(value: unknown): Id<K> | null => {
 const UNAVAILABLE = { code: 'shipping.carrier-unavailable' } as const;
 
 /** The event of a booking at its current version, for the unit that stores the change. */
-const progressed = (booking: CarrierBooking) =>
+export const progressed = (booking: CarrierBooking) =>
   CarrierDeliveryProgressed.record({
     aggregateId: booking.id,
     aggregateVersion: booking.version,
@@ -244,6 +245,7 @@ export async function bookCarrierDelivery(
     fleet: routed.fleet,
     carrierReference: routed.answer.carrierReference,
     carrierStatus: routed.answer.carrierStatus,
+    trackingUrl: routed.answer.trackingUrl,
     now: deps.clock.now(),
   });
   const stored = await deps.unitOfWork.run<CarrierBookingOutcome, CarrierDeliveryFailure>(
@@ -293,8 +295,57 @@ export async function readCarrierShipment(
     sellerOrderId: booking.sellerOrderId,
     carrierName: deps.carrierPolicy.fleetDisplayName(market, booking.fleet),
     trackingRef: booking.carrierReference,
+    // Checked again on the way out: only a plain https link ever leaves shipping.
+    trackingUrl: safeTrackingUrl(booking.trackingUrl),
     progress: booking.progress,
   });
+}
+
+/** The most seller orders one tracking-link read takes: an order has a handful of parts. */
+const MAX_TRACKING_LINKS = 50;
+
+/**
+ * `carrier-tracking-links`: the https tracking links of the carrier deliveries of some seller
+ * orders (a map of the seller order id to the link), for the buyer's own order page. A seller
+ * order with no carrier delivery, or none with a link, is absent. The caller proved the ids are
+ * the buyer's own; nothing else of the booking leaves.
+ */
+export async function readTrackingLinks(
+  deps: ShippingDependencies,
+  context: CallContext,
+  input: { readonly sellerOrderIds: unknown },
+): Promise<
+  Result<
+    ReadonlyMap<string, string>,
+    { readonly code: 'validation.failed' } | { readonly code: 'shipping.unavailable' }
+  >
+> {
+  const raw = input?.sellerOrderIds;
+  if (!Array.isArray(raw) || raw.length > MAX_TRACKING_LINKS) {
+    return err({ code: 'validation.failed' });
+  }
+  const ids: Id<'SellerOrder'>[] = [];
+  for (const value of raw as unknown[]) {
+    const id = idOf<'SellerOrder'>(value);
+    if (id === null) return err({ code: 'validation.failed' });
+    ids.push(id);
+  }
+  const { market } = context;
+  const found = await deps.unitOfWork.run(
+    market,
+    async () => {
+      const links = new Map<string, string>();
+      for (const id of ids) {
+        const url = safeTrackingUrl(
+          (await deps.bookings.findBySellerOrder(market, id))?.trackingUrl,
+        );
+        if (url !== null) links.set(id, url);
+      }
+      return ok(links as ReadonlyMap<string, string>);
+    },
+    { readOnly: true },
+  );
+  return found.ok ? found : err({ code: 'shipping.unavailable' });
 }
 
 /**

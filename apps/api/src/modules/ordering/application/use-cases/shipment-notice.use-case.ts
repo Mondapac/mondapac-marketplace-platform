@@ -12,7 +12,7 @@ interface ShipmentNoticeInput {
 /**
  * `shipment-notice`: the shipped seller order behind `ordering.order-shipped.v1`, for the
  * "Shipped" email. Rule `system`; `notifications` calls it through the ordering facade. It
- * answers the carrier and the tracking number the seller typed in, and ids; no name, address,
+ * answers the carrier, the tracking number the seller typed in or the fleet's tracking page, and ids; no name, address,
  * email or amount. Only a confirmed order whose seller order is shipped (or delivered) answers.
  */
 export class ShipmentNoticeQuery extends UseCase<
@@ -38,7 +38,7 @@ export class ShipmentNoticeQuery extends UseCase<
   ): Promise<Result<ShipmentNotice, ShipmentNoticeFailure>> {
     const orderId = typeof input?.orderId === 'string' ? parseId<'Order'>(input.orderId) : null;
     if (orderId === null || !orderId.ok) return err({ code: 'validation.failed' });
-    return this.deps.unitOfWork.run<ShipmentNotice, ShipmentNoticeFailure>(
+    const read = await this.deps.unitOfWork.run<ShipmentNotice, ShipmentNoticeFailure>(
       context.market,
       async () => {
         const order = await this.deps.orders.findById(context.market, orderId.value);
@@ -58,9 +58,19 @@ export class ShipmentNoticeQuery extends UseCase<
           sellerOrderId: sellerOrder.id,
           carrier: sellerOrder.carrier,
           trackingRef: sellerOrder.trackingRef,
+          trackingUrl: null,
         });
       },
       { readOnly: true },
     );
+    if (!read.ok) return read;
+    // The fleet's tracking page, read after the unit (shipping opens its own). A fleet that gave
+    // none, a seller who shipped alone, or a failed read is no link: the mail still goes.
+    const shipment = await this.deps.shipping.carrierShipment(context, input.sellerOrderId);
+    const url = shipment.ok ? shipment.value.trackingUrl : null;
+    return ok({
+      ...read.value,
+      trackingUrl: url !== null && url.startsWith('https://') ? url : null,
+    });
   }
 }

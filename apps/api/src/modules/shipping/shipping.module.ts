@@ -1,6 +1,7 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
@@ -14,6 +15,7 @@ import { FLEET_REGISTRY } from './application/ports/fleet-registry';
 import { FLEET_SELECTION_REPOSITORY } from './application/ports/fleet-selection.repository';
 import { CARRIER_POLICY } from './application/ports/carrier-policy';
 import { CARRIER_WEBHOOK_SIGNATURE } from './application/ports/carrier-webhook-signature';
+import { UBER_WEBHOOK_SIGNATURE } from './application/ports/fleet-webhook-signature';
 import { FLAT_FEE_REPOSITORY } from './application/ports/flat-fee.repository';
 import { PICKUP_DIRECTORY } from './application/ports/pickup-directory';
 import { SELLER_DIRECTORY } from './application/ports/seller-directory';
@@ -27,11 +29,14 @@ import { UpdateFleetSelectionModel } from './application/use-cases/update-fleet-
 import { ViewFleetSelection } from './application/use-cases/view-fleet-selection.use-case';
 import { BookCarrierDelivery } from './application/use-cases/book-carrier-delivery.use-case';
 import { CancelCarrierDelivery } from './application/use-cases/cancel-carrier-delivery.use-case';
+import { CarrierTrackingLinks } from './application/use-cases/carrier-tracking-links.use-case';
 import { CarrierShipmentQuery } from './application/use-cases/carrier-shipment.use-case';
 import { DeliveryArea } from './application/use-cases/delivery-area.use-case';
 import { FlatFees } from './application/use-cases/flat-fees.use-case';
 import { PickupAvailability } from './application/use-cases/pickup-availability.use-case';
 import { ShippingFees } from './application/use-cases/shipping-fees.use-case';
+import { PollFleetStatus } from './application/use-cases/poll-fleet-status.use-case';
+import { ReceiveUberWebhook } from './application/use-cases/receive-uber-webhook.use-case';
 import { ReceiveCarrierWebhook } from './application/use-cases/receive-carrier-webhook.use-case';
 import { SetFlatFee } from './application/use-cases/set-flat-fee.use-case';
 import { ViewFlatFee } from './application/use-cases/view-flat-fee.use-case';
@@ -45,6 +50,8 @@ import {
   AdminFlatFeeController,
   SellerFlatFeeController,
 } from './presentation/flat-fee.controller';
+import { pollFleetStatusJob } from './presentation/jobs/poll-fleet-status.job';
+import { UberWebhookController } from './presentation/uber-webhook.controller';
 import { CarrierWebhookController } from './presentation/carrier-webhook.controller';
 import { FleetSelectionController } from './presentation/fleet-selection.controller';
 import { DeliveryAreaController } from './presentation/delivery-area.controller';
@@ -69,6 +76,7 @@ const PORTS: readonly [keyof ShippingDependencies, InjectionToken][] = [
   ['carrierPolicy', CARRIER_POLICY],
   ['pickups', PICKUP_DIRECTORY],
   ['webhookSignature', CARRIER_WEBHOOK_SIGNATURE],
+  ['uberWebhookSignature', UBER_WEBHOOK_SIGNATURE],
 ];
 
 /** Every shipping use case shares one dependency object, built from the same ports. */
@@ -108,6 +116,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     DeliveryAreaController,
     StoreFlatFeeController,
     CarrierWebhookController,
+    UberWebhookController,
     FleetSelectionController,
   ],
   providers: [
@@ -117,6 +126,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerEvents('shipping', SHIPPING_EVENTS),
     PersistenceModule.outboxWriterFor('shipping'),
     ...shippingProviders,
+    registerJobsFrom('shipping', [PollFleetStatus], (poll: PollFleetStatus) => [
+      pollFleetStatusJob(poll),
+    ]),
     ...[
       SetFlatFee,
       ViewFlatFee,
@@ -127,8 +139,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       PickupAvailability,
       BookCarrierDelivery,
       CarrierShipmentQuery,
+      CarrierTrackingLinks,
       CancelCarrierDelivery,
       ReceiveCarrierWebhook,
+      ReceiveUberWebhook,
+      PollFleetStatus,
       ViewStoreFlatFee,
       ViewFleetSelection,
       CreateFleetSelectionModel,
@@ -146,6 +161,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         BookCarrierDelivery,
         CarrierShipmentQuery,
         CancelCarrierDelivery,
+        CarrierTrackingLinks,
       ],
       useFactory: (
         fees: FlatFees,
@@ -155,6 +171,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         book: BookCarrierDelivery,
         shipment: CarrierShipmentQuery,
         cancel: CancelCarrierDelivery,
+        trackingLinks: CarrierTrackingLinks,
       ) =>
         new ShippingFacadeImplementation({
           fees,
@@ -164,6 +181,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           book,
           shipment,
           cancel,
+          trackingLinks,
         }),
     },
   ],

@@ -92,6 +92,18 @@ export interface OwnOrderView extends OrderView {
    * and whether the part is locked. SECRET: never logged, never in an event or an error.
    */
   readonly pickupCodes: readonly OwnPickupCodeView[];
+  /**
+   * The carrier's tracking link of each shipped part that has one, for the buyer's page: a plain
+   * https URL, never built from user input. Empty when no part has one or shipping was out of
+   * reach (the page then shows no link).
+   */
+  readonly trackingLinks: readonly OwnTrackingLinkView[];
+}
+
+/** One shipped part's tracking link, in the buyer's own view of an order. */
+export interface OwnTrackingLinkView {
+  readonly sellerId: Id<'Seller'>;
+  readonly url: string;
 }
 
 /** One ready pickup part's code, in the buyer's own view of an order. */

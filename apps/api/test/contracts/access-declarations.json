@@ -500,6 +500,11 @@
   { "name": "shipping.book-carrier-delivery", "rule": "system" },
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },
+  {
+    "name": "shipping.carrier-tracking-links",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "shipping.delivery-area", "rule": "anonymous" },
   { "name": "shipping.flat-fees", "rule": "anonymous" },
   {
@@ -507,7 +512,9 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "shipping.poll-fleet-status", "rule": "system" },
   { "name": "shipping.receive-carrier-webhook", "rule": "anonymous" },
+  { "name": "shipping.receive-uber-webhook", "rule": "anonymous" },
   { "name": "shipping.shipping-fees", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
     "name": "shipping.view-own-flat-fee",

@@ -333,6 +333,10 @@ The external fleet Uber Direct. Off unless `enabled` is `true` AND the Region St
 credentials for the Market (`UBER_DIRECT_CUSTOMER_ID`, `UBER_DIRECT_CLIENT_ID`,
 `UBER_DIRECT_CLIENT_SECRET`); the adapter then answers `carrier.not-configured` and sends nothing.
 Its API hosts are fixed in the adapter. The country sent to Uber is `customers.address.countryCode`.
+Status comes by Uber's signed webhook, `POST /shipping/carriers/uber-direct/webhook/<MARKET>`
+(`x-uber-signature`, secret `UBER_DIRECT_WEBHOOK_SECRET`); the route answers 404 while the fleet is
+off. Zoom2u and Australia Post have no webhook the platform can verify, so the worker job
+`shipping.poll-fleet-status` polls their open bookings.
 
 - `enabled` (required): the Market switch; ship `false`.
 - `serviceAreas` (required) and `modes` (required, `on_demand` and/or `scheduled`):

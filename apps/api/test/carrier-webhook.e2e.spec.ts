@@ -38,6 +38,22 @@ class MemoryBookings implements CarrierBookingRepository {
   findBySellerOrder(m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(this.rows.get(`${m.marketId}|${sellerOrderId}`) ?? null);
   }
+  findByCarrierReference(m: MarketContext, fleet: string, carrierReference: string) {
+    return Promise.resolve(
+      [...this.rows.entries()].find(
+        ([key, b]) =>
+          key.startsWith(`${m.marketId}|`) &&
+          b.fleet === fleet &&
+          b.carrierReference === carrierReference,
+      )?.[1] ?? null,
+    );
+  }
+  listOpen() {
+    return Promise.resolve([]);
+  }
+  markPolled() {
+    return Promise.resolve();
+  }
   insert(m: MarketContext, booking: CarrierBooking) {
     this.rows.set(`${m.marketId}|${booking.sellerOrderId}`, booking);
     return Promise.resolve('inserted' as const);

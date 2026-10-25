@@ -162,6 +162,7 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
       carrierPolicy: undefined as never,
       pickups: undefined as never,
       webhookSignature: undefined as never,
+      uberWebhookSignature: undefined as never,
     };
   });
 

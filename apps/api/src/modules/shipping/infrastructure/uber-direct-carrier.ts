@@ -13,6 +13,7 @@ import type {
   FleetCapabilities,
   FleetDeliveryStatus,
 } from '../application/ports/carrier-gateway';
+import { toFleetStatus } from '../domain/uber-webhook-event';
 import type { ConfigUberDirectPolicy, UberDirectConfig } from './config-uber-direct-policy';
 import {
   UBER_API_URL,
@@ -42,28 +43,9 @@ const STATUS_CODES: Readonly<Record<string, string>> = Object.freeze({
 
 /**
  * The adapter's pure mapping of the status codes above (Uber's words in upper case) to the common
- * fleet status. A word this version does not know is null: it is taken as received and changes
- * nothing.
+ * fleet status. It lives in the domain, beside the webhook body it also reads, and is re-exported.
  */
-export function toFleetStatus(raw: string): FleetDeliveryStatus | null {
-  switch (raw.toUpperCase()) {
-    case 'PENDING':
-      return 'pending';
-    case 'PICKUP':
-      return 'assigned';
-    case 'PICKUP_COMPLETE':
-    case 'DROPOFF':
-      return 'picked_up';
-    case 'DELIVERED':
-      return 'delivered';
-    case 'CANCELED':
-      return 'cancelled';
-    case 'RETURNED':
-      return 'returned';
-    default:
-      return null;
-  }
-}
+export { toFleetStatus };
 
 /**
  * A quote is kept this long per Market, stops, parcel and mode, as for Drive: a checkout repeated
