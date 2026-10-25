@@ -631,6 +631,20 @@ export interface OrderLine {
   readonly imageUrl?: string;
 }
 
+/**
+ * The code a buyer shows the seller when collecting a part in person (pickup). It exists only
+ * while the seller has marked the part ready and it is not collected yet. The buyer sees it;
+ * the seller never does.
+ */
+export interface PickupCode {
+  /** Exactly four digits, leading zeros kept. */
+  readonly code: string;
+  /** Wrong codes the seller may still try before the part is locked. */
+  readonly attemptsLeft: number;
+  /** True after five wrong codes: the buyer must ask for a new code. */
+  readonly locked: boolean;
+}
+
 /** One seller's part of an order: each seller prepares and delivers its own part. */
 export interface OrderPart {
   readonly sellerId: string;
@@ -643,6 +657,8 @@ export interface OrderPart {
   readonly deliveryFee: Money;
   /** The buyer's note to this seller at checkout. */
   readonly note?: string;
+  /** Set for a pickup part that is ready and not collected yet. */
+  readonly pickup?: PickupCode;
   readonly lines: readonly OrderLine[];
 }
 

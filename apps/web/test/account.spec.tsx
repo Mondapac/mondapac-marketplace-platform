@@ -257,7 +257,7 @@ describe('orders', () => {
   it('filters by state and empties a filter with a way back to all', () => {
     renderStore(<AccountOrders />);
     const page = main();
-    expect(within(page).getAllByRole('article')).toHaveLength(4);
+    expect(within(page).getAllByRole('article')).toHaveLength(5);
     fireEvent.click(within(page).getByRole('button', { name: 'Cancelled' }));
     const shown = within(page).getAllByRole('article');
     expect(shown.map((a) => a.getAttribute('aria-label'))).toEqual(['MP-20290']);
@@ -287,6 +287,24 @@ describe('order details', () => {
     expect(within(page).getByText(/can be cancelled only until a seller confirms/)).toBeTruthy();
     expect(within(page).queryByText('Tax invoice (PDF)')).toBeNull();
     expect(TAX_INVOICE_SHOWN).toBe(false);
+  });
+
+  it('shows the pickup code to the buyer, left to right, and renews it', () => {
+    renderStore(<OrderDetails reference="MP-20503" />);
+    const page = main();
+    const group = within(page).getByRole('group', { name: /Pickup code for/ });
+    const code = within(group).getByRole('img', { name: '0 4 2 7' });
+    expect(code.getAttribute('dir')).toBe('ltr');
+    expect(code.textContent).toBe('0427');
+    expect(within(group).getByText(/Show this code to the seller/)).toBeTruthy();
+    fireEvent.click(within(group).getByRole('button', { name: 'Get a new code' }));
+    expect(within(page).queryByRole('img', { name: '0 4 2 7' })).toBeNull();
+    expect(within(page).getByRole('img', { name: '7 3 1 9' }).textContent).toBe('7319');
+  });
+
+  it('shows no pickup code on an order that is not collected in person', () => {
+    renderStore(<OrderDetails reference="MP-20481" />);
+    expect(within(main()).queryByRole('group', { name: /Pickup code/ })).toBeNull();
   });
 
   it('cancels an order no seller has confirmed, after asking', () => {

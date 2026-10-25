@@ -281,7 +281,14 @@
       "cancel-body": "Nothing has been confirmed yet, so your card is not charged.",
       "cancel-yes": "Yes, cancel order",
       "cancel-no": "Keep order",
-      "cancel-late": "An order can be cancelled only until a seller confirms it. After that, use \"Get help with this order\"."
+      "cancel-late": "An order can be cancelled only until a seller confirms it. After that, use \"Get help with this order\".",
+      "pickup": {
+        "title": "Pickup code for {seller}",
+        "hint": "You collect this part in person. Show this code to the seller when you pick it up, and not before. MondaPac never asks for it.",
+        "tries": "{count, plural, one {# try left} other {# tries left}} for the seller to enter it.",
+        "locked": "The seller entered a wrong code too many times, so this code is locked. Get a new code to collect your order.",
+        "renew": "Get a new code"
+      }
     },
     "addresses": {
       "area-note": "We deliver to {area} for now. You can save an address outside it, but we cannot deliver there yet.",

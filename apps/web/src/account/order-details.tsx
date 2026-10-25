@@ -2,11 +2,11 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { TAX_INVOICE_SHOWN } from '../storefront/features.ts';
-import type { OrderPart } from '../storefront/types.ts';
+import type { OrderPart, PickupCode } from '../storefront/types.ts';
 import { AccountFrame, LineThumb, OrderBadge, PartBadge, useDay } from './account-area.tsx';
 import { cancellable, orderTotals, useAccount } from './account-state.tsx';
 import { BuyAgain } from './orders.tsx';
@@ -33,7 +33,7 @@ export function OrderDetails({
   const t = useTranslations('account');
   const locale = useLocale();
   const day = useDay();
-  const { orders, cancelOrder } = useAccount();
+  const { orders, cancelOrder, renewPickupCode } = useAccount();
   const [asking, setAsking] = useState(false);
   const cancelButton = useRef<HTMLButtonElement>(null);
   const wasAsking = useRef(false);
@@ -88,6 +88,13 @@ export function OrderDetails({
                 : part.deliveryWindow}
           </small>
           {part.status === 'cancelled' ? null : <Progress status={part.status} />}
+          {part.pickup ? (
+            <PickupCodeCard
+              pickup={part.pickup}
+              sellerName={part.sellerName}
+              onRenew={() => renewPickupCode(order.reference, part.sellerId)}
+            />
+          ) : null}
           <div>
             {part.lines.map((line) => (
               <div className="ac-li" key={line.offerId}>
@@ -225,5 +232,51 @@ function Progress({ status }: { readonly status: Exclude<OrderPart['status'], 'c
         </li>
       ))}
     </ol>
+  );
+}
+
+/**
+ * The code the buyer shows the seller at the handover, in four boxes. Digits always read left to
+ * right, whatever the page direction. Only this page shows it; it is not sent by email.
+ */
+function PickupCodeCard({
+  pickup,
+  sellerName,
+  onRenew,
+}: {
+  readonly pickup: PickupCode;
+  readonly sellerName: string;
+  readonly onRenew: () => void;
+}) {
+  const t = useTranslations('account.order.pickup');
+  const heading = useId();
+  return (
+    <div className="ac-pickup" role="group" aria-labelledby={heading}>
+      <h3 id={heading}>{t('title', { seller: sellerName })}</h3>
+      <p className="ac-pickup-hint">{t('hint')}</p>
+      <div
+        className="ac-pickup-code"
+        dir="ltr"
+        role="img"
+        aria-label={pickup.code.split('').join(' ')}
+      >
+        {pickup.code.split('').map((digit, k) => (
+          <span key={k} className="num" aria-hidden="true">
+            {digit}
+          </span>
+        ))}
+      </div>
+      {pickup.locked ? (
+        <p className="ac-note ac-warn">
+          <Icon name="info" />
+          <span>{t('locked')}</span>
+        </p>
+      ) : pickup.attemptsLeft < 5 ? (
+        <small className="ac-sub">{t('tries', { count: pickup.attemptsLeft })}</small>
+      ) : null}
+      <button className={pickup.locked ? 'btn' : 'btn ghost'} type="button" onClick={onRenew}>
+        {t('renew')}
+      </button>
+    </div>
   );
 }
