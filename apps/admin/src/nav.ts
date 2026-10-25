@@ -48,6 +48,13 @@ export const adminNav: NavConfig = {
       anyOf: ['payments.connected-account.view'],
     },
     {
+      id: 'content',
+      icon: 'layout',
+      labelKey: 'nav.content',
+      href: '/content',
+      anyOf: ['storefront.slide.read'],
+    },
+    {
       id: 'settings',
       icon: 'sliders',
       labelKey: 'nav.settings',

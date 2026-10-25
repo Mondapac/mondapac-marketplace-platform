@@ -25,6 +25,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // the unread count with the newest unread notice.
     'notifications/admin/notices',
     'notifications/admin/notices/unread-count',
+    // The storefront slide library (storefront), read-only: the list (query: `state`, `position`);
+    // one slide is read by the page server.
+    'storefront/admin/slides',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -56,6 +59,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // A read with the search term in the body, so a POST (sellers design 7.8).
     'sellers/admin/list',
     'notifications/admin/notices/read-all',
+    // A new storefront slide, as a draft (storefront).
+    'storefront/admin/slides',
   ]),
 };
 
@@ -90,6 +95,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'shipping/admin/sellers/:id/flat-fee',
     // The seller's own commission rate (commission-payouts), set from the seller review page.
     'commission-payouts/admin/sellers/:id/commission-rate',
+    // A storefront slide's whole draft (storefront).
+    'storefront/admin/slides/:id',
   ],
   DELETE: ['identity/admin/roles/:id', 'commission-payouts/admin/sellers/:id/commission-rate'],
   // The seller's commission rate and ledger, read from the seller review page.
@@ -106,10 +113,15 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'payments/admin/connected-accounts': ['status', 'cursor'],
   'ordering/admin/orders': ['status', 'cursor'],
   'notifications/admin/notices': ['show', 'before'],
+  'storefront/admin/slides': ['state', 'position'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },
+  'storefront/admin/slides': {
+    state: /^(draft|pending|scheduled|live|ended|paused|archived)$/,
+    position: /^[a-z]+(?:\.[a-z-]+)+$/,
+  },
 };
 /** GET templates with a resource id whose query crosses, and the keys that may cross. */
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {

@@ -1,0 +1,130 @@
+'use client';
+
+import { Button, EmptyState, LinkButton, LoadError, SkeletonRows } from '@mondapac/ui';
+import { useTranslations } from 'next-intl';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { callApi } from '../../api/client.ts';
+import { FilterBar, NO_FILTERS, type FilterValues } from './filter-bar.tsx';
+import { filterSlides } from './slide-filter.ts';
+import {
+  NEW_SLIDE_PATH,
+  SLIDE_EDIT_PERMISSION,
+  SLIDES_API_PATH,
+  sortSlides,
+  type SlideList,
+  type SlideSummary,
+} from './slide-types.ts';
+import { SlidesTable } from './slides-table.tsx';
+
+type Load = 'loading' | 'ready' | 'failed';
+
+/**
+ * The slides of the Market. The position and the status are asked of the API; the type and the
+ * name filter the answer in the browser. Loading, empty, no match and load error each have a state.
+ */
+export function SlidesList({
+  permissionKeys,
+  zone,
+}: {
+  readonly permissionKeys: readonly string[];
+  /** The IANA zone the live windows are shown in. */
+  readonly zone: string;
+}) {
+  const t = useTranslations('content.slides.list');
+  const tn = useTranslations('content.slides');
+  const tl = useTranslations('load');
+  const [filters, setFilters] = useState<FilterValues>(NO_FILTERS);
+  const [slides, setSlides] = useState<readonly SlideSummary[]>([]);
+  const [load, setLoad] = useState<Load>('loading');
+  const latest = useRef(0);
+  const { position, status } = filters;
+
+  const fetchSlides = useCallback(async () => {
+    const ticket = ++latest.current;
+    setLoad('loading');
+    const query = new URLSearchParams();
+    if (status !== '') query.set('state', status);
+    if (position !== '') query.set('position', position);
+    const text = query.toString();
+    const result = await callApi<SlideList>(
+      'GET',
+      `${SLIDES_API_PATH}${text === '' ? '' : `?${text}`}`,
+    );
+    if (ticket !== latest.current) return;
+    if (!result.ok) {
+      if (result.failure.status === 401) {
+        window.location.assign('/session-ended');
+        return;
+      }
+      setSlides([]);
+      setLoad('failed');
+      return;
+    }
+    setSlides(sortSlides(result.body.slides));
+    setLoad('ready');
+  }, [position, status]);
+
+  useEffect(() => {
+    void fetchSlides();
+  }, [fetchSlides]);
+
+  const shown = useMemo(() => filterSlides(slides, filters), [slides, filters]);
+  const canCreate = permissionKeys.includes(SLIDE_EDIT_PERMISSION);
+  const filtered =
+    filters.kind !== 'all' ||
+    filters.position !== '' ||
+    filters.status !== '' ||
+    filters.search.trim() !== '';
+  const newSlide = canCreate ? (
+    <LinkButton href={NEW_SLIDE_PATH}>{tn('new')}</LinkButton>
+  ) : undefined;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <FilterBar values={filters} onChange={setFilters} />
+      {load === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
+      {load === 'failed' ? (
+        <LoadError
+          className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"
+          message={t('error')}
+          retryLabel={tl('retry')}
+          onRetry={() => void fetchSlides()}
+        />
+      ) : null}
+      {load === 'ready' && shown.length > 0 ? (
+        <>
+          <p className="text-sm text-fg-muted" aria-live="polite">
+            {t('count', { count: shown.length })}
+          </p>
+          <SlidesTable rows={shown} permissionKeys={permissionKeys} zone={zone} />
+          <p className="text-sm text-fg-muted">{t('footnote', { zone })}</p>
+        </>
+      ) : null}
+      {load === 'ready' && shown.length === 0 && !filtered ? (
+        <EmptyState
+          icon="layout"
+          title={t('empty-title')}
+          body={t('empty-body')}
+          action={
+            <>
+              {newSlide}
+              <p className="text-sm text-fg-muted">{t('empty-note')}</p>
+            </>
+          }
+        />
+      ) : null}
+      {load === 'ready' && shown.length === 0 && filtered ? (
+        <EmptyState
+          icon="search"
+          title={t('none-title')}
+          body={t('none-body')}
+          action={
+            <Button variant="secondary" onClick={() => setFilters(NO_FILTERS)}>
+              {t('clear')}
+            </Button>
+          }
+        />
+      ) : null}
+    </div>
+  );
+}
