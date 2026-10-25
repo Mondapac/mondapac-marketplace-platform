@@ -171,6 +171,9 @@ export interface BlockStats {
   }[];
 }
 
+/** The earliest year a stats read may name. */
+export const MIN_STATS_YEAR = 2000;
+
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 function dayOf(value: unknown, path: string, fields: BlockFieldProblem[]) {
@@ -182,12 +185,19 @@ function dayOf(value: unknown, path: string, fields: BlockFieldProblem[]) {
     fields.push({ path, code: 'format' });
     return null;
   }
+  let parsed: Temporal.PlainDate;
   try {
-    return Temporal.PlainDate.from(value, { overflow: 'reject' });
+    parsed = Temporal.PlainDate.from(value, { overflow: 'reject' });
   } catch {
     fields.push({ path, code: 'format' });
     return null;
   }
+  // No count is older than the platform; this also keeps two-digit years away from `Date.UTC`.
+  if (parsed.year < MIN_STATS_YEAR) {
+    fields.push({ path, code: 'out-of-range' });
+    return null;
+  }
+  return parsed;
 }
 
 /**

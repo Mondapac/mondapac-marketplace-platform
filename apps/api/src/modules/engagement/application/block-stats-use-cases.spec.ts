@@ -147,6 +147,10 @@ describe.each([['AU'], ['ZZ']] as const)('block stats in market %s', (code) => {
     [{ page: 'nope', from: '2026-10-01', to: '2026-10-02' }, [{ path: 'page', code: 'format' }]],
     [{ page: PAGE, from: '2026-02-30', to: '2026-03-02' }, [{ path: 'from', code: 'format' }]],
     [{ page: PAGE, from: '2026-10-1', to: '2026-10-02' }, [{ path: 'from', code: 'format' }]],
+    [
+      { page: PAGE, from: '0050-01-01', to: '2026-10-01' },
+      [{ path: 'from', code: 'out-of-range' }],
+    ],
     [{ page: PAGE, from: '2026-10-02', to: '2026-10-01' }, [{ path: 'to', code: 'before-from' }]],
     [{ page: PAGE, from: '2026-01-01', to: '2026-04-03' }, [{ path: 'to', code: 'span-too-long' }]],
     [
