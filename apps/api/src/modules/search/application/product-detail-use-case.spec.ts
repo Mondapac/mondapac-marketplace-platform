@@ -11,6 +11,7 @@ import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
 import type { ProductDetailDependencies } from './product-detail-dependencies';
 import {
   detailKeyOf,
+  type DetailBadge,
   type DetailKey,
   type DetailPrice,
   type DetailProduct,
@@ -24,6 +25,7 @@ import type { PublishedVariants } from './ports/published-variants';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
 import {
   MAX_DETAIL_KEYS,
+  BADGES_DEADLINE_MS,
   MAX_DETAIL_OFFERS,
   ViewProductDetail,
 } from './use-cases/view-product-detail.use-case';
@@ -123,6 +125,9 @@ class StubSources implements ProductDetailSources {
   priced = new Map<string, DetailPrice>();
   stock = new Map<string, DetailStock>();
   sellers_: Map<Id<'Seller'>, DetailSeller> | null = new Map();
+  badges_ = new Map<Id<'Offer'>, readonly DetailBadge[]>();
+  badgesFailing: 'null' | 'throw' | 'hang' | null = null;
+  readonly badgesAsked: Id<'Offer'>[][] = [];
   pricesFailing = false;
   stockFailing = false;
   readonly asked: { kind: string; actor: string; locale?: string; keys?: number }[] = [];
@@ -137,6 +142,13 @@ class StubSources implements ProductDetailSources {
   availability(context: CallContext, keys: readonly DetailKey[]) {
     this.asked.push({ kind: 'availability', actor: context.actor.kind, keys: keys.length });
     return Promise.resolve(this.stockFailing ? null : this.stock);
+  }
+  badges(context: CallContext, offerIds: readonly Id<'Offer'>[]) {
+    this.asked.push({ kind: 'badges', actor: context.actor.kind });
+    this.badgesAsked.push([...offerIds]);
+    if (this.badgesFailing === 'throw') return Promise.reject(new Error('badges down'));
+    if (this.badgesFailing === 'hang') return new Promise<never>(() => undefined);
+    return Promise.resolve(this.badgesFailing === 'null' ? null : this.badges_);
   }
   sellers(context: CallContext) {
     this.asked.push({ kind: 'sellers', actor: context.actor.kind });
@@ -297,11 +309,83 @@ describe.each([
     expect(asked).toContainEqual(['product', 'anonymous', locale]);
     expect(asked.map(([kind]) => kind).sort()).toEqual([
       'availability',
+      'badges',
       'prices',
       'product',
       'sellers',
     ]);
     expect(asked.every(([, actor]) => actor === 'anonymous')).toBe(true);
+  });
+
+  describe('certification badges', () => {
+    const halal: DetailBadge = {
+      typeCode: 'halal',
+      typeName: 'Halal',
+      basis: 'SELLER',
+      sellerClaim: false,
+      issuerName: 'Council',
+      validUntilLocalDate: '2027-01-31',
+      verifiedWithIssuer: true,
+    };
+
+    it('puts each Offer its own badges, none for an Offer without, in one ask for the page', async () => {
+      shelves.documents = [hit(1), hit(2)];
+      price(1, 1, 900n);
+      price(2, 1, 800n);
+      sources.badges_ = new Map([[offer(1), [halal]]]);
+
+      const result = await run();
+
+      expect(result.ok && result.value.offers.map((o) => [o.offerId, o.badges])).toEqual([
+        [offer(2), []],
+        [offer(1), [halal]],
+      ]);
+      expect(sources.badgesAsked).toEqual([[offer(1), offer(2)]]);
+    });
+
+    it.each(['null', 'throw'] as const)(
+      'still answers the page, with no badge on any Offer, when the badge source gives %s',
+      async (failing) => {
+        shelves.documents = [hit(1), hit(2)];
+        price(1, 1, 900n);
+        price(2, 1, 800n);
+        sources.badges_ = new Map([[offer(1), [halal]]]);
+        sources.badgesFailing = failing;
+
+        const result = await run();
+
+        expect(result.ok && result.value.offers.map((o) => o.badges)).toEqual([[], []]);
+      },
+    );
+
+    it('answers the page with no badge when the badge source is slower than the deadline', async () => {
+      jest.useFakeTimers();
+      try {
+        shelves.documents = [hit(1), hit(2)];
+        price(1, 1, 900n);
+        price(2, 1, 800n);
+        sources.badges_ = new Map([[offer(1), [halal]]]);
+        sources.badgesFailing = 'hang';
+
+        const pending = run();
+        await jest.advanceTimersByTimeAsync(BADGES_DEADLINE_MS);
+        const result = await pending;
+
+        expect(result.ok && result.value.offers.map((o) => o.badges)).toEqual([[], []]);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('asks no badge for an Offer that is dropped for having no priced unit', async () => {
+      shelves.documents = [hit(1), hit(2)];
+      price(1, 1, 900n);
+      sources.badges_ = new Map([[offer(1), [halal]]]);
+
+      const result = await run();
+
+      expect(result.ok && result.value.offers.map((o) => o.offerId)).toEqual([offer(1)]);
+    });
   });
 
   it('passes the stock status and only-left through, an unanswered key being out, and never the count', async () => {

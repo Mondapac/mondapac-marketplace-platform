@@ -10,6 +10,7 @@ import type {
   HomeSeller,
   ShelfCard,
 } from '../storefront/types.ts';
+import { Slider } from '../slider/slider.tsx';
 import { ProductCard } from './product-card.tsx';
 
 /** The home page middle, in the order the content layout gives (admin-editable later). */
@@ -23,10 +24,11 @@ export function HomeSections({
   readonly sellers: readonly HomeSeller[];
 }) {
   const t = useTranslations('home');
-  // The first promo banner holds the page's one h1; a layout without a banner gets a hidden one.
-  const hasBanner = sections.some((s) => s.kind === 'promos' && s.banners.length > 0);
+  // The page's one h1 is hidden: the slides and the promos below it are all h2 headings.
   const body = sections.map((section, index) => {
     switch (section.kind) {
+      case 'hero':
+        return <Slider key={index} set={section.set} label={t('featured')} />;
       case 'promos':
         return <Promos key={index} banners={section.banners} />;
       case 'categories':
@@ -44,9 +46,7 @@ export function HomeSections({
         );
     }
   });
-  return hasBanner ? (
-    body
-  ) : (
+  return (
     <>
       <h1 className="sr-only">{t('title')}</h1>
       {body}
@@ -58,9 +58,9 @@ function Promos({ banners }: { readonly banners: readonly PromoBanner[] }) {
   const t = useTranslations('home');
   if (banners.length === 0) return null;
   return (
-    <section className="promos" aria-label={t('featured')}>
-      {banners.map((banner, index) => {
-        const Heading = index === 0 ? 'h1' : 'h2';
+    <section className="promos" aria-label={t('promotions')}>
+      {banners.map((banner) => {
+        const Heading = 'h2';
         return (
           <div key={banner.id} className={`promo ${banner.variant}`}>
             <div className={`pimgs ${banner.variant}`} aria-hidden="true">

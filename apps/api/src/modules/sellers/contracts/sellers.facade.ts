@@ -32,6 +32,19 @@ export interface ReviewerBusinessDetails {
   readonly registeredAddress: Readonly<Record<string, string>> | null;
 }
 
+/**
+ * What `carrierPickup` returns: where the real-time carrier collects a seller's parcel, from the
+ * approved revision. PERSONAL DATA: shipping hands it to the carrier and never logs, stores or
+ * forwards it anywhere else.
+ */
+export interface CarrierPickup {
+  readonly sellerId: Id<'Seller'>;
+  readonly storeName: string;
+  readonly phone: string;
+  /** The operating address: the fields of the Market's `address.format`. */
+  readonly operatingAddress: Readonly<Record<string, string>>;
+}
+
 /** The seller is unknown here, or has no approved revision yet. Both answer alike. */
 export interface SellerDetailsNotFound {
   readonly code: 'seller.details-not-found';
@@ -113,6 +126,19 @@ export interface SellersFacade {
   ): Promise<Result<Id<'Seller'> | null, AccessDenied | SellersUnavailable>>;
 
   /**
+   * `publishedStoreSlugs` (storefront slider): the held store address of each requested seller
+   * (at most 100 ids), only under the published-store rules of the public store page (approved
+   * revision, `held` slug, the may-sell contract says yes). A seller that is unknown, of another
+   * Market, not approved or not selling is absent from the map, byte-identical. A request actor
+   * only (rule `anonymous`); ids and slugs only. A fault is `sellers.unavailable`: the caller
+   * fails closed. In-process only.
+   */
+  publishedStoreSlugs(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, AccessDenied | SellersUnavailable>>;
+
+  /**
    * `reviewerBusinessDetails` (sellers design 7.1; board 13 item 3): legal name, trading name and
    * the operating and registered addresses of the seller's **approved** revision, for a
    * certification reviewer. Rule `permissions [sellers.business-details.view]` (Hassan M4): a
@@ -128,6 +154,41 @@ export interface SellersFacade {
     Result<
       ReviewerBusinessDetails,
       AccessDenied | SellersValidationFailed | SellerDetailsNotFound | SellersUnavailable
+    >
+  >;
+
+  /**
+   * `carrierPickup` (SHP-02/03): the store name, phone and operating address of the seller's
+   * **approved** revision, for shipping to hand to the real-time carrier as the pickup of one
+   * paid seller order. Rule `system`. Personal data: one
+   * `sellers.pickup-details.read-for-carrier` audit row (with the seller order id) is written per
+   * read, and a refused row means nothing is returned. An unknown id, another Market's seller and
+   * a seller with no approved revision are `seller.details-not-found`. Not exposed over HTTP.
+   */
+  carrierPickup(
+    context: CallContext,
+    request: { readonly sellerId: Id<'Seller'>; readonly sellerOrderId: string },
+  ): Promise<
+    Result<
+      CarrierPickup,
+      AccessDenied | SellersValidationFailed | SellerDetailsNotFound | SellersUnavailable
+    >
+  >;
+
+  /**
+   * `pickupPostcodes` (SHP-02/03): the postcode of each seller's **approved** operating address,
+   * for shipping to quote the real-time carrier at checkout. A clear column copied at submission
+   * (like the ServiceArea code): no decryption and no audit row. Rule `anonymous`. A seller with
+   * no approved revision, of another Market, or whose revision predates the column is absent from
+   * the map. At most 100 ids. Not exposed over HTTP.
+   */
+  pickupPostcodes(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Seller'>, string>,
+      AccessDenied | SellersValidationFailed | SellersUnavailable
     >
   >;
 }

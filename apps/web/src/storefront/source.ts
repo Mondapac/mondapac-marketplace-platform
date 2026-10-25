@@ -1,10 +1,11 @@
 import 'server-only';
 import { headers } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
-import { apiGet, type ApiRead } from './api.ts';
+import { apiGet, apiGetBytes, type ApiRead } from './api.ts';
 import { sessionGet } from './session.ts';
 import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
 import {
+  flatFeeOf,
   publicStoreOf,
   publicStorePageOf,
   sellerResultsOf,
@@ -14,15 +15,16 @@ import {
 import type { AssistantSetup } from '../assistant/assistant.ts';
 import { categoriesOf, loadHome, type HomeContent } from './home-source.ts';
 import { photoUrls } from './photo-source.ts';
+import { loadSlides as readSlides, type SlideScope } from './slides-source.ts';
 import { loadShellContent } from './shell-source.ts';
 import { storeProductsOf, storeProductsPath } from './store-products.ts';
 import { SAMPLE_ACCOUNT } from './sample-account.ts';
-import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
+import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT, sampleQuotes } from './sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { SAMPLE_SELLER_SIGN_UP } from './sample-seller-sign-up.ts';
-import { storefrontApiConfig, storefrontHostFor } from './config.ts';
+import { cardSetup, storefrontApiConfig, storefrontHostFor } from './config.ts';
 import { sellerSignInUrls } from './seller-sign-in.ts';
 import { callSellerSignUp, type SellerSignUpCall } from './seller-sign-up-api.ts';
 import { sampleSellers } from './sample-sellers.ts';
@@ -34,12 +36,18 @@ import type {
   ClosedStore,
   DeliveryAreaAnswer,
   DeliveryLocatorSource,
+  DeliveryQuote,
+  PayAnswer,
+  PayRequest,
+  Money,
   ProductDetail,
+  QuoteAddress,
   SellerQuery,
   SellerResults,
   SellerShop,
   SellerSignUpAnswer,
   SellerSignUpSetup,
+  SlideSet,
   StorefrontContent,
   StoreProducts,
   UnavailableProduct,
@@ -69,6 +77,16 @@ export async function loadStorefrontContent(): Promise<StorefrontContent> {
  */
 export async function loadHomeContent(): Promise<HomeContent> {
   return loadHome();
+}
+
+/**
+ * The slides of one slider position for a page (`GET storefront/slides`), each checked here: plain
+ * text, site-path links, images from this app or our media origin only. Sample slides stand in
+ * while API_BASE_URL is empty or the read fails (unless STOREFRONT_SAMPLE_DATA is off). See
+ * ./slides-source.ts. The home hero is read with the home page (loadHomeContent).
+ */
+export async function loadSlides(position: string, scope?: SlideScope): Promise<SlideSet> {
+  return readSlides(position, scope);
 }
 
 /**
@@ -117,6 +135,7 @@ export async function loadCheckout(): Promise<CheckoutSource> {
   return Promise.resolve({
     ...SAMPLE_CHECKOUT,
     areaCheck: storefrontApiConfig() === null ? 'sample' : 'api',
+    card: cardSetup(),
   });
 }
 
@@ -145,6 +164,56 @@ export async function checkDeliveryArea(postcode: string): Promise<DeliveryAreaA
       `shipping/delivery-area?postcode=${encodeURIComponent(value)}`,
     ),
   );
+}
+
+/**
+ * Each seller's delivery quote for an address (Scheduled is the seller's flat fee; Express is the
+ * courier's live price). SAMPLE: no courier is connected yet (delivery plan: Uber Direct, Zoom2u
+ * as the fallback), so every seller gets its sample price; the address is not used until then.
+ */
+export async function quoteDelivery(
+  _address: QuoteAddress,
+  sellerIds: readonly string[],
+): Promise<Readonly<Record<string, DeliveryQuote>>> {
+  return Promise.resolve(sampleQuotes(sellerIds));
+}
+
+/**
+ * Pay: checks the order again (Express prices, stock) and then takes the payment, or answers what
+ * changed with nothing charged. SAMPLE until the ordering API takes payments (the next package:
+ * a manual-capture PaymentIntent from the card tile's confirmation token, refusing any brand but
+ * Visa and Mastercard; the hosted Checkout Session for the Stripe tile). Until then a Stripe
+ * confirmation token has nothing to go to and answers `failed`; the sample charges nothing.
+ */
+export async function takePayment(request: PayRequest): Promise<PayAnswer> {
+  const source = SAMPLE_CART_SOURCE;
+  const sellerIds = Object.keys(request.delivery);
+  const quotes = await quoteDelivery(request.address, sellerIds);
+  const changes = sellerIds.flatMap((id) => {
+    const choice = request.delivery[id];
+    const quote = Object.hasOwn(quotes, id) ? quotes[id] : undefined;
+    if (choice?.speed !== 'express' || quote?.kind !== 'quote') return [];
+    // No Express any more: the seller's Scheduled fee applies.
+    const now =
+      quote.express ??
+      (Object.hasOwn(source.sellers, id) ? source.sellers[id]?.deliveryFee : undefined);
+    if (!now) return [];
+    if (now.amount === choice.fee.amount && now.currency === choice.fee.currency) return [];
+    return [{ sellerId: id, was: choice.fee, now }];
+  });
+  // A seller the courier no longer reaches, or no answer: nothing is charged.
+  if (sellerIds.some((id) => quotes[id]?.kind !== 'quote')) return { kind: 'failed' };
+  if (changes.length > 0) return { kind: 'price-changed', changes, quotes };
+  const known = (id: string) => Object.hasOwn(source.items, id);
+  if (Object.keys(request.lines).some((id) => !known(id))) return { kind: 'failed' };
+  const stock = Object.entries(request.lines).flatMap(([id, quantity]) => {
+    const left = source.items[id]?.lowStock;
+    return left !== undefined && quantity > left ? [{ itemId: id, was: quantity, now: left }] : [];
+  });
+  if (stock.length > 0) return { kind: 'stock-changed', changes: stock };
+  if (request.method === 'stripe') return { kind: 'redirect', url: '/checkout/payment' };
+  if (request.confirmationToken !== null) return { kind: 'failed' };
+  return { kind: 'paid', reference: SAMPLE_CHECKOUT.orderReference };
 }
 
 /**
@@ -181,7 +250,10 @@ const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 export async function loadSeller(slug: string, page = 1): Promise<SellerShop | undefined> {
   // No sample or real store has any other slug; nothing else reaches the API path.
   if (slug.length > 50 || !STORE_SLUG.test(slug)) return undefined;
-  const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`);
+  const [answer, fee] = await Promise.all([
+    apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`),
+    apiGet<unknown>(`shipping/stores/${encodeURIComponent(slug)}/flat-fee`),
+  ]);
   if (answer.kind === 'off') return sampleSeller(slug);
   if (answer.kind === 'failed') {
     // Only the store module's own answer means "no such store"; a bare 404 is a missing route.
@@ -193,7 +265,27 @@ export async function loadSeller(slug: string, page = 1): Promise<SellerShop | u
     areaNames(),
     loadStoreProducts(store.slug, page),
   ]);
-  return { ...shopOf(store, areaName(store.serviceAreaCode)), storeProducts };
+  return {
+    ...shopOf(store, areaName(store.serviceAreaCode)),
+    storeProducts,
+    ...deliveryFeeOf(slug, fee),
+  };
+}
+
+/**
+ * The store's flat delivery fee as a part of the page, or nothing. The page never fails for it: a
+ * store with no fee set (the module's own 404), a failed read and an answer of the wrong shape all
+ * leave the fee line out, so no fee is ever guessed. Only a shape fault is logged here (the read
+ * itself logs its own refusal).
+ */
+function deliveryFeeOf(slug: string, read: ApiRead<unknown>): { readonly deliveryFee?: Money } {
+  if (read.kind !== 'ok') return {};
+  try {
+    return { deliveryFee: flatFeeOf(read.body) };
+  } catch {
+    console.log(JSON.stringify({ msg: 'storefront.seller-flat-fee-unusable', slug }));
+    return {};
+  }
 }
 
 /** One page of a store's products; any failure is `failed`, never an exception. */
@@ -371,6 +463,45 @@ export async function loadClosedStore(slug: string): Promise<ClosedStore | undef
  */
 export async function loadAssistant(): Promise<AssistantSetup | null> {
   return Promise.resolve(null);
+}
+
+/** A store picture (logo or banner) as the buyer site's image route serves it. */
+export type StoreImageRead =
+  /** No store or no such image, or API_BASE_URL is empty (the sample stores have no picture). */
+  | { readonly kind: 'none' }
+  | { readonly kind: 'ok'; readonly bytes: Uint8Array }
+  | { readonly kind: 'unavailable' };
+
+const IMAGE_ID_PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * One size of a store's logo or banner, from `sellers/stores/:slug/images/:id/:size`. Only the
+ * API's own "image not found" answer means there is no such picture; any other fault is
+ * `unavailable`, so a cache never keeps a missing picture for an outage. Anything that is not a
+ * JPEG is refused: the route serves only what the API wrote.
+ */
+export async function loadStoreImage(
+  slug: string,
+  imageId: string,
+  size: string,
+): Promise<StoreImageRead> {
+  if (slug.length > 50 || !STORE_SLUG.test(slug)) return { kind: 'none' };
+  if (!IMAGE_ID_PATH.test(imageId) || (size !== 'small' && size !== 'large')) {
+    return { kind: 'none' };
+  }
+  const answer = await apiGetBytes(
+    `sellers/stores/${encodeURIComponent(slug)}/images/${imageId}/${size}`,
+  );
+  if (answer.kind === 'off') return { kind: 'none' };
+  if (answer.kind === 'failed') {
+    return answer.status === 404 && answer.code === 'image.not-found'
+      ? { kind: 'none' }
+      : { kind: 'unavailable' };
+  }
+  const type = answer.body.contentType.split(';', 1)[0]?.trim().toLowerCase();
+  return type === 'image/jpeg' && answer.body.bytes.length > 0
+    ? { kind: 'ok', bytes: answer.body.bytes }
+    : { kind: 'unavailable' };
 }
 
 /** Who is shopping, as the API sees this browser's cookies (storefront session design 2). */

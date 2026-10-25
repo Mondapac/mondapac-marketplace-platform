@@ -24,7 +24,10 @@ export type PublishedStoreReadFailure =
  * buyer site's store page. Rule `anonymous`. Resolves only a `held` slug, never a retired one,
  * and answers `sellers.store-not-found` unless the seller may sell now (Hassan M5): an unknown
  * slug, a malformed one, a retired one and a seller that may not sell answer alike. Allow-listed
- * public fields only (AC 25); clear columns, no key unwrapped.
+ * public fields only (AC 25). The clear columns come first; the About text is the one encrypted
+ * field (sellers design 8.1) and is opened through the bounded cache of Hassan M5 (see
+ * `PublishedAboutCache`), only for a store that may sell now; the logo and the banner are refs
+ * (`id`, `width`, `height`) to the image route, never a URL or an object key.
  */
 export class PublishedStoreRead extends UseCase<
   PublishedStoreReadInput,
@@ -57,7 +60,9 @@ export class PublishedStoreRead extends UseCase<
       const [eligible] = await eligibleOnly(this.deps, context, [store]);
       if (eligible === undefined) return null;
       const [published] = await publishedStoresOf(this.deps, context, [eligible]);
-      return published ?? null;
+      if (published === undefined) return null;
+      const profile = await this.deps.publishedContent.profileOf(context, eligible.sellerId);
+      return { ...published, ...profile };
     });
     if (!read.ok) return read;
     return read.value === null ? err({ code: 'sellers.store-not-found' }) : ok(read.value);

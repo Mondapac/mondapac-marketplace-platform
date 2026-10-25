@@ -33,6 +33,8 @@ import type { CheckoutLine } from '../../cart';
 import { ConfigOrderingPolicy } from '../infrastructure/config-ordering-policy';
 import type { OrderingDependencies } from './checkout-flow';
 import { AdminListOrders } from './use-cases/admin-list-orders.use-case';
+import { BookCarrierDeliveries } from './use-cases/book-carrier-deliveries.use-case';
+import { CancelCarrierAfterRefund } from './use-cases/cancel-carrier-after-refund.use-case';
 import { AdminViewOrderDocument } from './use-cases/admin-view-order-document.use-case';
 import { AdminViewOrder } from './use-cases/admin-view-order.use-case';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
@@ -40,11 +42,15 @@ import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
 import { ShipmentNoticeQuery } from './use-cases/shipment-notice.use-case';
 import { StartCheckout } from './use-cases/start-checkout.use-case';
+import { RecordCarrierProgress } from './use-cases/record-carrier-progress.use-case';
 import { RecordLedger } from './use-cases/record-ledger.use-case';
 import { RecordShipments } from './use-cases/record-shipments.use-case';
 import { SellerDeliverOrder } from './use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './use-cases/seller-list-orders.use-case';
-import { SellerShipOrder } from './use-cases/seller-ship-order.use-case';
+import type { OrderState } from '../domain/order';
+import { SellerMarkOrderReady } from './use-cases/seller-mark-order-ready.use-case';
+import { BookReadyCarrierDelivery } from './use-cases/book-ready-carrier-delivery.use-case';
+import { AllowAllDeliveryMethods } from '../infrastructure/allow-all-delivery-methods';
 import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
 import { SellerViewOrderDocument } from './use-cases/seller-view-order-document.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
@@ -169,12 +175,15 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       ids: new SequenceIdGenerator(clock),
       clock,
       labels,
+      deliveryMethods: new AllowAllDeliveryMethods(),
     };
   });
 
   const start = (
     context: CallContext = customer,
-    input: { readonly addressId: unknown } = { addressId: ADDRESS },
+    input: { readonly addressId: unknown; readonly deliveryMethods?: unknown } = {
+      addressId: ADDRESS,
+    },
   ) => new StartCheckout(gate, deps).execute(context, input);
   /** A pending order from the default cart, read back from the store. */
   const placed = async () => {
@@ -336,6 +345,107 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(await start(anonymous)).toMatchObject({ ok: false });
       expect(inventory.calls).toEqual([]);
     });
+
+    it("stores the buyer's method per seller order, with the window for a scheduled one", async () => {
+      const windowStart = T0.add({ hours: 30 });
+      const windowEnd = T0.add({ hours: 32 });
+      const started = await start(customer, {
+        addressId: ADDRESS,
+        deliveryMethods: {
+          [SELLER_A]: {
+            method: 'scheduled',
+            windowStart: windowStart.toString(),
+            windowEnd: windowEnd.toString(),
+          },
+          [SELLER_B]: { method: 'pickup' },
+          [id<'Seller'>(0xdead)]: { method: 'same_day' },
+        },
+      });
+
+      expect(started.ok).toBe(true);
+      const stored = orders.rows.get(started.ok ? started.value.orderId : '')!;
+      expect(
+        stored.sellerOrders.map((s) => [s.sellerId, s.deliveryMethod, s.deliveryWindow]),
+      ).toEqual([
+        [SELLER_A, 'scheduled', { start: windowStart, end: windowEnd }],
+        [SELLER_B, 'pickup', null],
+      ]);
+      expect(stored.sellerOrders.every((s) => s.readyAt === null)).toBe(true);
+    });
+
+    it('defaults to instant when the buyer names no method', async () => {
+      const order = await placed();
+      expect(order.sellerOrders.map((s) => [s.deliveryMethod, s.deliveryWindow])).toEqual([
+        ['instant', null],
+        ['instant', null],
+      ]);
+    });
+
+    it('refuses an unknown method, a scheduled one without a valid window and a window on another', async () => {
+      const future = T0.add({ hours: 5 });
+      const bad = async (entry: unknown) => {
+        const result = await start(customer, {
+          addressId: ADDRESS,
+          deliveryMethods: { [SELLER_A]: entry },
+        });
+        return result.ok ? 'ok' : (result.error as { fields?: unknown }).fields;
+      };
+      const path = `deliveryMethods.${SELLER_A}`;
+      expect(await bad({ method: 'drone' })).toEqual([{ path: `${path}.method`, code: 'value' }]);
+      expect(await bad({ method: 'scheduled' })).toEqual([
+        { path: `${path}.windowStart`, code: 'format' },
+        { path: `${path}.windowEnd`, code: 'format' },
+      ]);
+      expect(
+        await bad({
+          method: 'scheduled',
+          windowStart: T0.subtract({ hours: 1 }).toString(),
+          windowEnd: future.toString(),
+        }),
+      ).toEqual([{ path: `${path}.windowStart`, code: 'past' }]);
+      expect(
+        await bad({
+          method: 'scheduled',
+          windowStart: future.toString(),
+          windowEnd: future.toString(),
+        }),
+      ).toEqual([{ path: `${path}.windowEnd`, code: 'range' }]);
+      expect(await bad({ method: 'instant', windowStart: future.toString() })).toEqual([
+        { path: `${path}.window`, code: 'not-allowed' },
+      ]);
+      expect(await bad('instant')).toEqual([{ path, code: 'type' }]);
+      expect(orders.rows.size).toBe(0);
+    });
+
+    it('asks the delivery-method policy for every seller order and reserves nothing when refused', async () => {
+      const asked: [string, string][] = [];
+      deps = {
+        ...deps,
+        deliveryMethods: {
+          allows: (_c, sellerId, method) => {
+            asked.push([sellerId, method]);
+            return Promise.resolve(!(sellerId === SELLER_B && method === 'instant'));
+          },
+        },
+      };
+
+      const refused = await start();
+
+      expect(refused).toEqual(
+        err({ code: 'ordering.delivery-method-unavailable', methodSellerIds: [SELLER_B] }),
+      );
+      expect(asked).toEqual([
+        [SELLER_A, 'instant'],
+        [SELLER_B, 'instant'],
+      ]);
+      expect(inventory.reserved ?? []).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+      const other = await start(customer, {
+        addressId: ADDRESS,
+        deliveryMethods: { [SELLER_B]: { method: 'pickup' } },
+      });
+      expect(other.ok).toBe(true);
+    });
   });
 
   describe('delivery address', () => {
@@ -420,13 +530,9 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         'order-seller-damaged',
       );
 
-      const shipped = await new SellerShipOrder(gate, deps).execute(seller, {
-        sellerOrderId,
-        carrier: 'Australia Post',
-        trackingRef: null,
-      });
-      expect(shipped.ok && shipped.value.fulfilment).toBe('shipped');
-      expect(shipped.ok && shipped.value.shipTo).toBeNull();
+      const ready = await new SellerMarkOrderReady(gate, deps).execute(seller, { sellerOrderId });
+      expect(ready.ok && ready.value.readyAt).toEqual(T0);
+      expect(ready.ok && ready.value.shipTo).toBeNull();
     });
   });
 
@@ -925,6 +1031,19 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(stored.sellerOrders[0]).toMatchObject({ shipping: 500n, total: 2599n });
     });
 
+    it('charges the real-time carrier quote as a tax-inclusive price, asked with the postcode only', async () => {
+      shipping.quotes.set(SELLER_A, money(1_250n, currency));
+      const first = await start();
+      if (!first.ok) throw new Error('checkout failed');
+
+      const stored = orders.rows.get(first.value.orderId)!;
+      expect(stored.sellerOrders[0]).toMatchObject({
+        shipping: 1_250n,
+        shippingTaxInclusive: true,
+      });
+      expect(shipping.quoteDropoffs).toEqual([{ postcode: '4109' }]);
+    });
+
     it('confirms against the total with delivery, and voids a payment of the goods only', async () => {
       const order = await placed();
       expect(order.total.amount).toBe(2000n + 750n + 99n + 500n);
@@ -954,13 +1073,39 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     const sellerB = sellerOf(SELLER_B, 0x72);
     const list = (context: CallContext, input = {}) =>
       new SellerListOrders(gate, deps).execute(context, input);
-    const ship = (context: CallContext, sellerOrderId: string, input = {}) =>
-      new SellerShipOrder(gate, deps).execute(context, {
-        sellerOrderId,
-        carrier: 'Australia Post',
-        trackingRef: 'AP123456789',
-        ...input,
-      });
+    const ready = (context: CallContext, sellerOrderId: string) =>
+      new SellerMarkOrderReady(gate, deps).execute(context, { sellerOrderId });
+    /** The tracking reference the carrier gives a seller order in these tests. */
+    const trackingOf = (sellerOrderId: string) => `DRIVE-${sellerOrderId.slice(-6)}`;
+    let progressN = 0x40;
+    /**
+     * The carrier picks the parcel up: the platform records the shipment from the carrier's
+     * progress (the seller never ships). Answers the seller's view of the seller order.
+     */
+    const ship = async (context: CallContext, sellerOrderId: string) => {
+      const order = [...orders.rows.values()].find((o) =>
+        o.sellerOrders.some((s) => s.id === sellerOrderId),
+      );
+      if (order !== undefined) {
+        shipping.carrierShipments.set(sellerOrderId, {
+          sellerOrderId: sellerOrderId as Id<'SellerOrder'>,
+          carrierName: 'Mondapac Drive',
+          trackingRef: trackingOf(sellerOrderId),
+          progress: 'picked-up',
+        });
+        progressN += 1;
+        await new RecordCarrierProgress(gate, deps).execute(system, {
+          delivery: {
+            eventId: id<'event'>(0xf00 + progressN),
+            subscriber: 'ordering.record-carrier-progress',
+            attempt: 1,
+          },
+          orderId: order.id,
+          sellerOrderId,
+        });
+      }
+      return new SellerViewOrder(gate, deps).execute(context, { sellerOrderId });
+    };
     const deliver = (context: CallContext, sellerOrderId: string) =>
       new SellerDeliverOrder(gate, deps).execute(context, { sellerOrderId });
     const sellerOrderIdOf = (orderId: string, sellerId: Id<'Seller'>) =>
@@ -1040,14 +1185,14 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(view.ok && 'accountId' in view.value).toBe(false);
     });
 
-    it('still ships, with null names, when the name lookup fails', async () => {
+    it('still marks ready, with null names, when the name lookup fails', async () => {
       const order = await paid();
       labels.fail.add('units');
 
-      const shipped = await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+      const done = await ready(sellerA, sellerOrderIdOf(order.id, SELLER_A));
 
-      expect(shipped.ok && shipped.value.fulfilment).toBe('shipped');
-      expect(shipped.ok && shipped.value.lines.every((l) => l.productName === null)).toBe(true);
+      expect(done.ok && done.value.readyAt).toEqual(T0);
+      expect(done.ok && done.value.lines.every((l) => l.productName === null)).toBe(true);
     });
 
     it('shows a seller only its own paid orders, and nothing before payment', async () => {
@@ -1089,30 +1234,55 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       });
     });
 
-    it('writes one order-shipped event with ids only, and none for a refused shipment', async () => {
+    it('writes one seller-order-ready event with ids only, and none for a refusal', async () => {
       const order = await paid();
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
       written.length = 0;
 
-      expect(await ship(sellerB, sellerOrderId)).toEqual(
+      expect(await ready(sellerB, sellerOrderId)).toEqual(
         err({ code: 'ordering.seller-order-not-found' }),
       );
-      expect(await ship(sellerA, sellerOrderId, { carrier: '' })).toMatchObject({ ok: false });
+      expect(await ready(sellerA, 'not-an-id')).toMatchObject({ ok: false });
       expect(written).toEqual([]);
 
-      await ship(sellerA, sellerOrderId);
-      await ship(sellerA, sellerOrderId);
+      const first = await ready(sellerA, sellerOrderId);
+      expect(first.ok && first.value).toMatchObject({ readyAt: T0, fulfilment: 'to-ship' });
+      // A repeat is idempotent: the same state, no second event.
+      const again = await ready(sellerA, sellerOrderId);
+      expect(again.ok && again.value.readyAt).toEqual(T0);
       expect(written).toHaveLength(1);
-      expect(written[0]).toMatchObject({ type: 'ordering.order-shipped.v1' });
+      expect(written[0]).toMatchObject({ type: 'ordering.seller-order-ready.v1' });
       expect(written[0]!.payload).toEqual({
         orderId: order.id,
         sellerOrderId,
         sellerId: SELLER_A,
       });
-      expect(JSON.stringify(written[0]!.payload)).not.toMatch(/AP123456789|Australia Post|@/);
+      expect(JSON.stringify(written[0]!.payload)).not.toMatch(/@|Street|Aisha/);
+      // The other seller's part is untouched.
+      expect(orders.rows.get(order.id)!.sellerOrders.map((s) => s.readyAt)).toEqual([T0, null]);
     });
 
-    it('rolls the shipment back as a conflict when the outbox refuses the event', async () => {
+    it('refuses ready once the order has shipped, and keeps the seller out of the method', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      await ship(sellerA, sellerOrderId);
+      written.length = 0;
+
+      expect(await ready(sellerA, sellerOrderId)).toEqual(
+        err({ code: 'ordering.fulfilment-conflict' }),
+      );
+      expect(written).toEqual([]);
+      // The request carries nothing but the id: a method or provider from the seller is ignored.
+      expect(
+        await new SellerMarkOrderReady(gate, deps).execute(sellerB, {
+          sellerOrderId: sellerOrderIdOf(order.id, SELLER_B),
+          deliveryMethod: 'pickup',
+          carrier: 'Own courier',
+        } as never),
+      ).toMatchObject({ ok: true, value: { deliveryMethod: 'instant' } });
+    });
+
+    it('rolls ready back as a conflict when the outbox refuses the event', async () => {
       const order = await paid();
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
       deps = {
@@ -1134,12 +1304,11 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           },
         } as OrderingDependencies['unitOfWork'],
       };
-      expect(await ship(sellerA, sellerOrderId)).toEqual(
+      expect(await ready(sellerA, sellerOrderId)).toEqual(
         err({ code: 'ordering.fulfilment-conflict' }),
       );
       const stored = orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === sellerOrderId)!;
-      expect(stored.fulfilment).toBe('to-ship');
-      expect(stored.carrier).toBeNull();
+      expect(stored.readyAt).toBeNull();
     });
 
     describe('shipment-notice', () => {
@@ -1170,15 +1339,15 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         const a = sellerOrderIdOf(order.id, SELLER_A);
         const b = sellerOrderIdOf(order.id, SELLER_B);
         await ship(sellerA, a);
-        await ship(sellerB, b, { trackingRef: undefined });
+        await ship(sellerB, b);
 
         expect(await notice(system, { orderId: order.id, sellerOrderId: a })).toEqual(
           ok({
             orderId: order.id,
             accountId: order.accountId,
             sellerOrderId: a,
-            carrier: 'Australia Post',
-            trackingRef: 'AP123456789',
+            carrier: 'Mondapac Drive',
+            trackingRef: trackingOf(a),
           }),
         );
         expect(await notice(system, { orderId: order.id, sellerOrderId: b })).toEqual(
@@ -1186,8 +1355,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
             orderId: order.id,
             accountId: order.accountId,
             sellerOrderId: b,
-            carrier: 'Australia Post',
-            trackingRef: null,
+            carrier: 'Mondapac Drive',
+            trackingRef: trackingOf(b),
           }),
         );
       });
@@ -1244,32 +1413,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       });
     });
 
-    it('refuses a carrier or tracking reference that reads as a link', async () => {
-      const order = await paid();
-      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_B);
-      for (const carrier of ['track.evil-example.com/login', 'evil.com', 'a/b']) {
-        expect(await ship(sellerB, sellerOrderId, { carrier })).toMatchObject({
-          ok: false,
-          error: { fields: [{ path: 'carrier', code: 'format' }] },
-        });
-      }
-      for (const trackingRef of [
-        'track.evil-example.com/login',
-        'AP1/2',
-        'evil.com',
-        'track.evil-example.com',
-      ]) {
-        expect(await ship(sellerB, sellerOrderId, { trackingRef })).toMatchObject({
-          ok: false,
-          error: { fields: [{ path: 'trackingRef', code: 'format' }] },
-        });
-      }
-      expect(await ship(sellerB, sellerOrderId, { carrier: 'Aus. Post' })).toMatchObject({
-        ok: true,
-      });
-    });
-
-    it('ships once, then delivers once, in that order', async () => {
+    it('is shipped by the carrier once, then delivered once, in that order', async () => {
       const order = await paid();
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
 
@@ -1279,14 +1423,11 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const shipped = await ship(sellerA, sellerOrderId);
       expect(shipped.ok && shipped.value).toMatchObject({
         fulfilment: 'shipped',
-        carrier: 'Australia Post',
-        trackingRef: 'AP123456789',
+        carrier: 'Mondapac Drive',
+        trackingRef: trackingOf(sellerOrderId),
         shippedAt: T0,
         deliveredAt: null,
       });
-      expect(await ship(sellerA, sellerOrderId)).toEqual(
-        err({ code: 'ordering.fulfilment-conflict' }),
-      );
 
       const delivered = await deliver(sellerA, sellerOrderId);
       expect(delivered.ok && delivered.value).toMatchObject({
@@ -1306,39 +1447,15 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       ]);
     });
 
-    it('takes no tracking reference, and refuses markup or an empty carrier', async () => {
-      const order = await paid();
-      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_B);
-
-      for (const carrier of ['', '<b>Post</b>', 'x'.repeat(61), 42, undefined]) {
-        expect(await ship(sellerB, sellerOrderId, { carrier })).toMatchObject({
-          ok: false,
-          error: { code: 'validation.failed', fields: [{ path: 'carrier', code: 'format' }] },
-        });
-      }
-      expect(
-        await ship(sellerB, sellerOrderId, { trackingRef: 'https://evil.test/?x=1' }),
-      ).toMatchObject({
-        ok: false,
-        error: { code: 'validation.failed', fields: [{ path: 'trackingRef', code: 'format' }] },
-      });
-
-      const shipped = await ship(sellerB, sellerOrderId, { trackingRef: undefined });
-      expect(shipped.ok && shipped.value).toMatchObject({
-        fulfilment: 'shipped',
-        trackingRef: null,
-      });
-    });
-
     it("answers another shop's order exactly as an unknown id, and an unpaid one too", async () => {
       const unpaid = await placed();
       const unpaidId = sellerOrderIdOf(unpaid.id, SELLER_A);
-      expect(await ship(sellerA, unpaidId)).toEqual(
+      expect(await ready(sellerA, unpaidId)).toEqual(
         err({ code: 'ordering.seller-order-not-found' }),
       );
 
       await confirm(unpaid.id);
-      expect(await ship(sellerB, unpaidId)).toEqual(
+      expect(await ready(sellerB, unpaidId)).toEqual(
         err({ code: 'ordering.seller-order-not-found' }),
       );
       expect(await deliver(sellerB, unpaidId)).toEqual(
@@ -1361,7 +1478,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
       for (const context of [customer, anonymous, system]) {
         expect((await list(context)).ok).toBe(false);
-        expect((await ship(context, sellerOrderId)).ok).toBe(false);
+        expect((await ready(context, sellerOrderId)).ok).toBe(false);
         expect((await deliver(context, sellerOrderId)).ok).toBe(false);
       }
       expect(orders.rows.get(order.id)!.sellerOrders[0]!.fulfilment).toBe('to-ship');
@@ -1399,6 +1516,437 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(await new RecordShipments(gate, deps).execute(customer, {})).toMatchObject({
         ok: false,
         error: { code: 'access.denied' },
+      });
+    });
+
+    describe('the real-time carrier (SHP-02/03)', () => {
+      /** Refund targets by seller order id; a seller order not listed has no refund. */
+      const refundTargets = new Map<string, unknown>();
+      beforeEach(() => {
+        refundTargets.clear();
+        deps = {
+          ...deps,
+          refunds: {
+            findTarget: (_m: unknown, so: string) => Promise.resolve(refundTargets.get(so) ?? null),
+          } as never,
+        };
+      });
+      const delivery = (n: number, subscriber: string) => ({
+        eventId: id<'event'>(0xe00 + n),
+        subscriber,
+        attempt: 1,
+      });
+      const book = (orderId: unknown, n = 1) =>
+        new BookCarrierDeliveries(gate, deps).execute(system, {
+          delivery: delivery(n, 'ordering.book-carrier-deliveries'),
+          orderId: orderId as string,
+        });
+      const WINDOW_START = T0.add({ hours: 24 });
+      const WINDOW_END = T0.add({ hours: 26 });
+      const window = { windowStart: WINDOW_START.toString(), windowEnd: WINDOW_END.toString() };
+      const methodsOf = (a: object, b: object = a) => ({ [SELLER_A]: a, [SELLER_B]: b });
+      /** A paid order of both sellers, each with the given method (scheduled by default). */
+      let paidCount = 10;
+      const paidWith = async (deliveryMethods: unknown) => {
+        const result = await start(customer, { addressId: ADDRESS, deliveryMethods });
+        if (!result.ok) throw new Error(`checkout failed: ${result.error.code}`);
+        const order = orders.rows.get(result.value.orderId)!;
+        const confirmed = await new ConfirmPayment(gate, deps).execute(system, {
+          orderId: order.id,
+          paymentIntentId: `pi_test_${(paidCount += 1)}`,
+          sessionId: order.stripeSessionId!,
+          amount: order.total,
+        });
+        expect(confirmed).toEqual(ok('confirmed'));
+        return order;
+      };
+      const paidScheduled = () => paidWith(methodsOf({ method: 'scheduled', ...window }));
+      const progress = (orderId: string, sellerOrderId: string, n: number) =>
+        new RecordCarrierProgress(gate, deps).execute(system, {
+          delivery: delivery(n, 'ordering.record-carrier-progress'),
+          orderId,
+          sellerOrderId,
+        });
+
+      it('books each scheduled seller order at payment, with the opened address and the window, once', async () => {
+        const order = await paidScheduled();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        shipping.carrierBookings.set(a, ok('booked'));
+
+        expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.handled' }));
+        expect(shipping.carrierRequests.map((r) => r.sellerOrderId).sort()).toEqual(
+          order.sellerOrders.map((s) => s.id).sort(),
+        );
+        expect(shipping.carrierRequests[0]).toMatchObject({
+          orderId: order.id,
+          service: {
+            method: 'scheduled',
+            window: { start: WINDOW_START.toString(), end: WINDOW_END.toString() },
+          },
+          dropoff: {
+            contactName: 'Aisha Rahman',
+            contactPhone: '0412345678',
+            addressLines: ['12 Example Street', '', 'Sunnybank', 'QLD'],
+            postcode: '4109',
+            notes: 'Leave at the door',
+          },
+        });
+        // The same delivery again changes nothing.
+        expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.already-handled' }));
+        // Only the system actor may run it.
+        expect(
+          await new BookCarrierDeliveries(gate, deps).execute(customer, {
+            delivery: delivery(9, 'ordering.book-carrier-deliveries'),
+            orderId: order.id,
+          }),
+        ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      });
+
+      it('retries only a temporary carrier fault, and refuses a malformed order id', async () => {
+        const order = await paidScheduled();
+        shipping.carrierBookings.set(
+          sellerOrderIdOf(order.id, SELLER_A),
+          err({ code: 'shipping.carrier-unavailable' }),
+        );
+        expect(await book(order.id)).toEqual(err({ code: 'ordering.try-again' }));
+        shipping.carrierBookings.set(
+          sellerOrderIdOf(order.id, SELLER_A),
+          err({ code: 'validation.failed', fields: [] }),
+        );
+        expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+        expect(await book('not-an-id', 2)).toEqual(err({ code: 'validation.failed' }));
+      });
+
+      it('defers the next seller order when it would not fit in the handler budget', async () => {
+        const order = await paidScheduled();
+        const book6s = shipping.bookCarrierDelivery.bind(shipping);
+        shipping.bookCarrierDelivery = (context, request) => {
+          clock.advance(Temporal.Duration.from({ seconds: 6 }));
+          return book6s(context, request);
+        };
+
+        try {
+          expect(await book(order.id)).toEqual(err({ code: 'ordering.try-again' }));
+          expect(shipping.carrierRequests).toHaveLength(1);
+        } finally {
+          clock.set(T0);
+        }
+      });
+
+      it('hands no seller order refunded in full to the carrier (Hassan H1)', async () => {
+        const order = await paidScheduled();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        const line = id<'OrderLine'>(0x0e2);
+        refundTargets.set(a, {
+          lines: [{ id: line, quantity: 1 }],
+          refundedUnits: new Map([[line, 1]]),
+          succeededUnits: new Map(),
+        });
+
+        shipping.carrierBookings.set(a, ok('booked'));
+
+        // Nothing else was booked, so the delivery is taken as not applicable.
+        expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+        const asked = shipping.carrierRequests.map((r) => r.sellerOrderId);
+        expect(asked).not.toContain(a);
+        expect(asked).toHaveLength(order.sellerOrders.length - 1);
+      });
+
+      it('books nothing at payment for instant, same-day and pickup orders', async () => {
+        const order = await paidWith(methodsOf({ method: 'instant' }, { method: 'pickup' }));
+        expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+        expect(shipping.carrierRequests).toEqual([]);
+        const same = await paidWith(methodsOf({ method: 'same_day' }));
+        expect(await book(same.id, 2)).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+        expect(shipping.carrierRequests).toEqual([]);
+      });
+
+      describe('when the seller says ready', () => {
+        const sellerOf = (sellerId: Id<'Seller'>) =>
+          testCallContext(
+            market,
+            testAuthenticatedActor(market, {
+              population: 'seller',
+              accountId: id<'Account'>(0x75),
+              sessionId: id<'Session'>(0x175),
+              sellerId,
+            }),
+            'order-seller-ready',
+          );
+        const readyAndBook = async (order: OrderState, sellerId: Id<'Seller'>, n = 1) => {
+          const sellerOrderId = sellerOrderIdOf(order.id, sellerId);
+          const said = await new SellerMarkOrderReady(gate, deps).execute(sellerOf(sellerId), {
+            sellerOrderId,
+          });
+          expect(said.ok).toBe(true);
+          return {
+            sellerOrderId,
+            answer: await new BookReadyCarrierDelivery(gate, deps).execute(system, {
+              delivery: delivery(n, 'ordering.book-ready-carrier-delivery'),
+              orderId: order.id,
+              sellerOrderId,
+            }),
+          };
+        };
+
+        it('books an instant order then, with no window, and not before', async () => {
+          const order = await paidWith(methodsOf({ method: 'instant' }));
+          expect(shipping.carrierRequests).toEqual([]);
+          const a = sellerOrderIdOf(order.id, SELLER_A);
+          shipping.carrierBookings.set(a, ok('booked'));
+
+          const { answer } = await readyAndBook(order, SELLER_A);
+
+          expect(answer).toEqual(ok({ code: 'ordering.carrier.handled' }));
+          expect(shipping.carrierRequests).toHaveLength(1);
+          expect(shipping.carrierRequests[0]).toMatchObject({
+            sellerOrderId: a,
+            service: { method: 'instant', window: null },
+          });
+          // Only that seller order: the other seller has not said ready.
+          expect(
+            orders.rows.get(order.id)!.sellerOrders.find((s) => s.sellerId === SELLER_B)!.readyAt,
+          ).toBeNull();
+        });
+
+        it('books a same-day order then', async () => {
+          const order = await paidWith(methodsOf({ method: 'same_day' }));
+          shipping.carrierBookings.set(sellerOrderIdOf(order.id, SELLER_B), ok('booked'));
+          const { answer } = await readyAndBook(order, SELLER_B);
+          expect(answer).toEqual(ok({ code: 'ordering.carrier.handled' }));
+          expect(shipping.carrierRequests[0]).toMatchObject({
+            service: { method: 'same_day', window: null },
+          });
+        });
+
+        it('books a pickup never and a scheduled order not again', async () => {
+          const pickup = await paidWith(methodsOf({ method: 'pickup' }));
+          const picked = await readyAndBook(pickup, SELLER_A);
+          expect(picked.answer).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+          // A pickup becomes ready for pickup: ready, never a carrier, no attention state.
+          expect(
+            orders.rows.get(pickup.id)!.sellerOrders.find((s) => s.sellerId === SELLER_A),
+          ).toMatchObject({ readyAt: T0, deliveryAttention: null });
+
+          const scheduled = await paidScheduled();
+          const done = await readyAndBook(scheduled, SELLER_A, 2);
+          expect(done.answer).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+          expect(shipping.carrierRequests).toEqual([]);
+        });
+
+        it('is taken once per event and retries only a temporary carrier fault', async () => {
+          const order = await paidWith(methodsOf({ method: 'instant' }));
+          const a = sellerOrderIdOf(order.id, SELLER_A);
+          shipping.carrierBookings.set(a, err({ code: 'shipping.carrier-unavailable' }));
+          const first = await readyAndBook(order, SELLER_A);
+          expect(first.answer).toEqual(err({ code: 'ordering.try-again' }));
+
+          shipping.carrierBookings.set(a, ok('booked'));
+          const retried = await new BookReadyCarrierDelivery(gate, deps).execute(system, {
+            delivery: delivery(1, 'ordering.book-ready-carrier-delivery'),
+            orderId: order.id,
+            sellerOrderId: a,
+          });
+          expect(retried).toEqual(ok({ code: 'ordering.carrier.handled' }));
+          const repeat = await new BookReadyCarrierDelivery(gate, deps).execute(system, {
+            delivery: delivery(1, 'ordering.book-ready-carrier-delivery'),
+            orderId: order.id,
+            sellerOrderId: a,
+          });
+          expect(repeat).toEqual(ok({ code: 'ordering.carrier.already-handled' }));
+          expect(
+            await new BookReadyCarrierDelivery(gate, deps).execute(customer, {
+              delivery: delivery(7, 'ordering.book-ready-carrier-delivery'),
+              orderId: order.id,
+              sellerOrderId: a,
+            }),
+          ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+        });
+
+        it('records "needs platform attention" when no carrier can serve, and never asks the seller', async () => {
+          const order = await paidWith(methodsOf({ method: 'instant' }));
+          const a = sellerOrderIdOf(order.id, SELLER_A);
+          // The fake answers `no-carrier` for a seller order it has no booking for.
+          const { answer } = await readyAndBook(order, SELLER_A);
+
+          expect(answer).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+          const stored = orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)!;
+          expect(stored).toMatchObject({
+            fulfilment: 'to-ship',
+            readyAt: T0,
+            deliveryAttention: 'no-carrier',
+            carrier: null,
+          });
+          // A refusal by the carrier is the same state.
+          const refused = await paidWith(methodsOf({ method: 'same_day' }));
+          shipping.carrierBookings.set(sellerOrderIdOf(refused.id, SELLER_B), ok('refused'));
+          await readyAndBook(refused, SELLER_B, 3);
+          expect(
+            orders.rows.get(refused.id)!.sellerOrders.find((s) => s.sellerId === SELLER_B)!
+              .deliveryAttention,
+          ).toBe('no-carrier');
+        });
+
+        it('records the attention state for a scheduled order no carrier can serve at payment', async () => {
+          const order = await paidScheduled();
+          expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+          expect(orders.rows.get(order.id)!.sellerOrders.map((s) => s.deliveryAttention)).toEqual([
+            'no-carrier',
+            'no-carrier',
+          ]);
+        });
+      });
+
+      describe('after a refund (Hassan M2)', () => {
+        const LINE = id<'OrderLine'>(0x0e1);
+        /**
+         * A refund target of one line of two units: `refunded` of them in refunds not failed,
+         * `succeeded` of those confirmed by the payment provider.
+         */
+        const withRefunded = (
+          orderId: string,
+          sellerOrderId: string,
+          refunded: number,
+          succeeded = refunded,
+        ) => {
+          deps = {
+            ...deps,
+            refunds: {
+              findTarget: (_m: unknown, so: string, o: string) =>
+                Promise.resolve(
+                  so === sellerOrderId && o === orderId
+                    ? ({
+                        lines: [{ id: LINE, quantity: 2 }],
+                        refundedUnits: new Map([[LINE, refunded]]),
+                        succeededUnits: new Map([[LINE, succeeded]]),
+                      } as never)
+                    : null,
+                ),
+            } as never,
+          };
+        };
+        const cancel = (orderId: string, sellerOrderId: string, n = 1) =>
+          new CancelCarrierAfterRefund(gate, deps).execute(system, {
+            delivery: delivery(n, 'ordering.cancel-carrier-after-refund'),
+            orderId,
+            sellerOrderId,
+          });
+        const ORDER_ID = id<'Order'>(0x0a1);
+        const SO = id<'SellerOrder'>(0x0a2);
+
+        it('cancels the delivery once every unit is refunded, and not after a partial refund', async () => {
+          withRefunded(ORDER_ID, SO, 1);
+          expect(await cancel(ORDER_ID, SO, 1)).toEqual(
+            ok({ code: 'ordering.carrier.not-applicable' }),
+          );
+          expect(shipping.carrierCancels).toEqual([]);
+
+          // A refund still pending at the provider does not count (Hassan M1).
+          withRefunded(ORDER_ID, SO, 2, 1);
+          expect(await cancel(ORDER_ID, SO, 3)).toEqual(
+            ok({ code: 'ordering.carrier.not-applicable' }),
+          );
+          expect(shipping.carrierCancels).toEqual([]);
+
+          withRefunded(ORDER_ID, SO, 2);
+          shipping.cancelAnswer = ok('cancelled');
+          expect(await cancel(ORDER_ID, SO, 2)).toEqual(ok({ code: 'ordering.carrier.handled' }));
+          expect(shipping.carrierCancels).toEqual([SO]);
+          expect(await cancel(ORDER_ID, SO, 2)).toEqual(
+            ok({ code: 'ordering.carrier.already-handled' }),
+          );
+        });
+
+        it('takes a delivery the carrier can no longer cancel, and retries while shipping is down', async () => {
+          withRefunded(ORDER_ID, SO, 2);
+          shipping.cancelAnswer = err({ code: 'shipping.carrier-unavailable' });
+          expect(await cancel(ORDER_ID, SO, 1)).toEqual(err({ code: 'ordering.try-again' }));
+          shipping.cancelAnswer = ok('not-cancellable');
+          expect(await cancel(ORDER_ID, SO, 1)).toEqual(
+            ok({ code: 'ordering.carrier.not-applicable' }),
+          );
+          expect(await cancel(ORDER_ID, id<'SellerOrder'>(0x0a9), 2)).toEqual(
+            err({ code: 'validation.failed' }),
+          );
+          expect(await cancel('nope', SO, 3)).toEqual(err({ code: 'validation.failed' }));
+        });
+      });
+
+      it('books nothing for an order that is not paid', async () => {
+        const order = await placed();
+        expect(await book(order.id)).toEqual(ok({ code: 'ordering.carrier.not-applicable' }));
+        expect(shipping.carrierRequests).toEqual([]);
+      });
+
+      it('records the pickup as the shipment and the delivery after it', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        const trackingRef = '01990000-0000-7000-8000-00000000d001';
+        shipping.carrierShipments.set(a, {
+          sellerOrderId: a,
+          carrierName: 'Mondapac Drive',
+          trackingRef,
+          progress: 'booked',
+        });
+        expect(await progress(order.id, a, 1)).toEqual(
+          ok({ code: 'ordering.carrier.not-applicable' }),
+        );
+        expect(orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)!.fulfilment).toBe(
+          'to-ship',
+        );
+
+        shipping.carrierShipments.set(a, {
+          ...shipping.carrierShipments.get(a)!,
+          progress: 'picked-up',
+        });
+        expect(await progress(order.id, a, 2)).toEqual(ok({ code: 'ordering.carrier.handled' }));
+        const shipped = orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)!;
+        expect(shipped).toMatchObject({
+          fulfilment: 'shipped',
+          carrier: 'Mondapac Drive',
+          trackingRef,
+        });
+        expect(written.filter((e) => e.type === 'ordering.order-shipped.v1')).toHaveLength(1);
+        // A repeated delivery of the same event changes nothing.
+        expect(await progress(order.id, a, 2)).toEqual(
+          ok({ code: 'ordering.carrier.already-handled' }),
+        );
+
+        shipping.carrierShipments.set(a, {
+          ...shipping.carrierShipments.get(a)!,
+          progress: 'delivered',
+        });
+        expect(await progress(order.id, a, 3)).toEqual(ok({ code: 'ordering.carrier.handled' }));
+        expect(orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === a)!.fulfilment).toBe(
+          'delivered',
+        );
+        expect(written.filter((e) => e.type === 'ordering.order-shipped.v1')).toHaveLength(1);
+      });
+
+      it('ships and delivers at once when the pickup was never reported', async () => {
+        const order = await paid();
+        const b = sellerOrderIdOf(order.id, SELLER_B);
+        shipping.carrierShipments.set(b, {
+          sellerOrderId: b,
+          carrierName: 'Mondapac Drive',
+          trackingRef: '01990000-0000-7000-8000-00000000d002',
+          progress: 'delivered',
+        });
+        expect(await progress(order.id, b, 1)).toEqual(ok({ code: 'ordering.carrier.handled' }));
+        expect(orders.rows.get(order.id)!.sellerOrders.find((s) => s.id === b)!.fulfilment).toBe(
+          'delivered',
+        );
+        expect(written.filter((e) => e.type === 'ordering.order-shipped.v1')).toHaveLength(1);
+      });
+
+      it('retries while shipping is down and drops an event without a booking', async () => {
+        const order = await paid();
+        const a = sellerOrderIdOf(order.id, SELLER_A);
+        shipping.carrierDown = true;
+        expect(await progress(order.id, a, 1)).toEqual(err({ code: 'ordering.try-again' }));
+        shipping.carrierDown = false;
+        expect(await progress(order.id, a, 1)).toEqual(err({ code: 'validation.failed' }));
+        expect(await progress(order.id, 'nope', 2)).toEqual(err({ code: 'validation.failed' }));
       });
     });
   });

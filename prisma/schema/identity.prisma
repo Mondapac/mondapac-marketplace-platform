@@ -271,22 +271,22 @@ model IdentityInbox {
 /// delete the row. The CHECKs and the grants are hand-written in the migration.
 model IdentitySellerAccess {
   /// UUIDv7 minted by identity; the id sellers uses for its record.
-  sellerId       String                     @id @map("seller_id") @db.Uuid
-  marketId       String                     @map("market_id") @db.VarChar(8)
-  tenantId       String                     @map("tenant_id")
+  sellerId       String                       @id @map("seller_id") @db.Uuid
+  marketId       String                       @map("market_id") @db.VarChar(8)
+  tenantId       String                       @map("tenant_id")
   /// self | invitation.
   origin         String
   /// pending | approved | rejected | suspended (D 3.3).
   state          String
   /// Returned by sellerAccessOf; the instant of the latest state change.
-  stateChangedAt DateTime                   @map("state_changed_at") @db.Timestamptz(6)
+  stateChangedAt DateTime                     @map("state_changed_at") @db.Timestamptz(6)
   /// Re-applications since the last approval; the limit is Market policy (D 3.3).
-  reapplyCount   Int                        @map("reapply_count") @db.SmallInt
+  reapplyCount   Int                          @map("reapply_count") @db.SmallInt
   /// When identity.seller-registered.v1 was recorded (M4); NULL while the purge may delete it.
-  registeredAt   DateTime?                  @map("registered_at") @db.Timestamptz(6)
+  registeredAt   DateTime?                    @map("registered_at") @db.Timestamptz(6)
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version        Int
-  createdAt      DateTime                   @map("created_at") @db.Timestamptz(6)
+  createdAt      DateTime                     @map("created_at") @db.Timestamptz(6)
   memberships    IdentitySellerMembership[]
   stepUpPolicies IdentitySellerStepUpPolicy[]
   roles          IdentityRole[]

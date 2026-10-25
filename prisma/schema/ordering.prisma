@@ -48,6 +48,8 @@ model OrderingOrder {
   @@unique([marketId, stripeIdempotencyKey])
   @@index([marketId, accountId, createdAt(sort: Desc)])
   @@index([marketId, status, createdAt(sort: Desc)])
+  /// The partial index (market_id, confirmed_at, id) WHERE status = 'confirmed' (nightly bought-together
+  /// job) is hand-written in its own migration, built CONCURRENTLY; Prisma cannot declare it.
   @@map("orders")
   @@schema("ordering")
 }
@@ -87,6 +89,18 @@ model OrderingSellerOrder {
   /// The gross of the refunds not failed (pending or succeeded); never above the total (CHECK).
   /// Raised under the value read, so two refunds of one seller order cannot both pass (tax step 3).
   refundedAmount       BigInt              @default(0) @map("refunded_amount")
+  /// The buyer's delivery method, chosen at checkout: pickup, instant, same_day or scheduled
+  /// (CHECK). Orders placed before it was recorded are instant (they were booked at payment).
+  deliveryMethod       String              @map("delivery_method")
+  /// The buyer's window for a scheduled delivery, UTC instants; both set exactly when the method
+  /// is scheduled, and the end is after the start (CHECK).
+  deliveryWindowStart  DateTime?           @map("delivery_window_start") @db.Timestamptz(6)
+  deliveryWindowEnd    DateTime?           @map("delivery_window_end") @db.Timestamptz(6)
+  /// When the seller told the platform the order is ready; set once, while the order is to-ship.
+  readyAt              DateTime?           @map("ready_at") @db.Timestamptz(6)
+  /// Set by the platform when no carrier could take the order: no-carrier (CHECK). The seller
+  /// never delivers instead; an admin follows it up.
+  deliveryAttention    String?             @map("delivery_attention")
   order                OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   lines                OrderingOrderLine[]
   refunds              OrderingRefund[]
@@ -270,5 +284,41 @@ model OrderingOutbox {
   /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
   @@unique([marketId, aggregateId, aggregateVersion])
   @@map("outbox")
+  @@schema("ordering")
+}
+
+/// Ordering's inbox (P 6.4): one row per consumed event and handler, so a repeated delivery of
+/// `ordering.order-paid.v1` (carrier booking) or `shipping.carrier-delivery-progressed.v1`
+/// changes nothing. Insert-only.
+model OrderingInbox {
+  eventId     String   @map("event_id") @db.Uuid
+  /// The subscriber's name, "ordering.<handler>".
+  handler     String
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  processedAt DateTime @map("processed_at") @db.Timestamptz(6)
+
+  @@id([eventId, handler])
+  @@map("inbox")
+  @@schema("ordering")
+}
+
+/// "Bought together" (personalization 1d-2): for one Offer, the other Offers that appeared with it
+/// on at least 3 distinct buyer accounts (one paid order each) over the last 90 days. Rebuilt in full each night by
+/// `ordering.rebuild-offer-pairs` (delete and insert per Market, one transaction); both directions
+/// are stored, so a read is one primary-key range. Offer ids and a buyer count only (the buyer ids live in the job's memory): no account,
+/// customer, seller or amount. Plain ids, no foreign keys (the Offers are catalog's).
+model OrderingOfferPair {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  offerId       String   @map("offer_id") @db.Uuid
+  pairedOfferId String   @map("paired_offer_id") @db.Uuid
+  /// The distinct buyer accounts that bought both Offers in one order each (3 or more, CHECK).
+  /// The column keeps its name from #489 (a merged migration is not edited) but counts buyers.
+  orders        Int
+  computedAt    DateTime @map("computed_at") @db.Timestamptz(6)
+
+  @@id([marketId, offerId, pairedOfferId])
+  @@map("offer_pairs")
   @@schema("ordering")
 }

@@ -7,9 +7,17 @@ export {
   SHIPPING_OWN_FEE_VIEW,
   SHIPPING_PERMISSIONS,
 } from './permissions';
+export { CarrierDeliveryProgressed, SHIPPING_EVENTS } from '../domain/events';
 export {
   SHIPPING_FACADE,
+  type CarrierBookingOutcome,
+  type CarrierDeliveryProgress,
+  type CarrierDeliveryRequest,
+  type CarrierDeliveryFailure,
+  type CarrierShipment,
+  type CheckoutShippingFees,
   type FlatFeeMap,
+  type QuoteDropoff,
   type ShippingFacade,
   type ShippingFailure,
 } from './shipping.facade';

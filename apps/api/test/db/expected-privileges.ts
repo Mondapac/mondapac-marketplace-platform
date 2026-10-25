@@ -39,6 +39,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     catalog: ['USAGE'],
     certification: ['USAGE'],
     commission_payouts: ['USAGE'],
+    wallet: ['USAGE'],
     customers: ['USAGE'],
     engagement: ['USAGE'],
     assistant: ['USAGE'],
@@ -347,6 +348,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'withdrawn_by_kind',
       ],
     },
+    // docs/design/data/sellers.md 3.8 (slice 12 part 2): a store profile revision is insert-only; the
+    // current logo or banner row of a kind is replaced by deleting it and inserting the new one,
+    // and its renditions go by the foreign key cascade.
+    'sellers.store_profile_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'sellers.store_images': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'sellers.store_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/inventory.md section 7 (slice 1): the inbox gets DELETE with the prune job;
     // a seller inventory is never deleted and a source has no delete in the brief; the seller,
     // the key columns and the Default flag are immutable, so UPDATE is by column.
@@ -445,10 +452,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [
         'carrier',
         'delivered_at',
+        'delivery_attention',
         'fulfilment',
         'inventory_recorded_at',
         'ledger_attempts',
         'ledger_state',
+        'ready_at',
         'refunded_amount',
         'shipped_at',
         'tracking_ref',
@@ -462,6 +471,23 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['rate_bps', 'updated_at', 'updated_by'],
     },
     'commission_payouts.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Wallet (customer wallet package 1): journals, their legs and a hold's lots are insert-only
+    // (triggers refuse more for every role); the rest change only the columns named and are never
+    // deleted (a trigger refuses DELETE and TRUNCATE for every role).
+    'wallet.journals': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'wallet.postings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'wallet.hold_lots': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'wallet.accounts': { table: ['INSERT', 'SELECT'], columnUpdate: ['status'] },
+    'wallet.lots': { table: ['INSERT', 'SELECT'], columnUpdate: ['remaining_minor'] },
+    'wallet.holds': { table: ['INSERT', 'SELECT'], columnUpdate: ['resolved_at', 'status'] },
+    'wallet.balances': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['available_minor', 'held_minor', 'updated_at'],
+    },
+    'wallet.market_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['reason_code', 'status', 'updated_at', 'updated_by_account_id'],
+    },
     // Storefront: a page is created and changed (never its kind, key or template) and never
     // deleted; a version's content and state change; a redirect is removed when its page takes the
     // old slug back.
@@ -494,6 +520,41 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'storefront.redirects': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Storefront slides: a slide is created and changed (never its kind) and never deleted; a
+    // version is insert-only except its approval stamp; the placement projection is rebuilt
+    // (inserted and deleted); a position lock is created and touched.
+    'storefront.slides': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'draft_version_id',
+        'ends_at',
+        'internal_name',
+        'live_version_id',
+        'pinned',
+        'row_version',
+        'sponsored',
+        'starts_at',
+        'state',
+        'submitted_version_id',
+        'updated_at',
+        'updated_by',
+      ],
+    },
+    'storefront.slide_versions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['approved_at', 'approved_by'],
+    },
+    // The reorder of live slides rewrites only the sort order of a projection row, and replaces
+    // the saved order of a placement (deleted and inserted).
+    'storefront.slide_placements': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['sort_order'],
+    },
+    'storefront.slide_saved_orders': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'storefront.slide_position_locks': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['touched_at'],
+    },
     // Tax: an admin-defined strategy is inserted, changed (name, parameters, active flag) and
     // removed.
     'tax.tax_strategies': {
@@ -526,6 +587,16 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['amount', 'currency', 'updated_at', 'updated_by'],
     },
+    // Shipping, the real-time carrier (SHP-02/03): a booking is stored once the carrier confirms
+    // it and only its progress moves; a carrier webhook event is taken once by its id; shipping
+    // writes `shipping.carrier-delivery-progressed.v1` and ordering records each one it handled.
+    'shipping.carrier_bookings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['carrier_status', 'progress', 'updated_at', 'version'],
+    },
+    'shipping.carrier_events': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'shipping.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'ordering.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Phase 6 package 1: the order emails. Ordering writes `ordering.order-paid.v1` (the relay marks
     // it published); notifications records each event it handled, once per handler.
     'notifications.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
@@ -573,6 +644,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'settled_at', 'state', 'stripe_refund_id'],
     },
+    // Personalization 1d-2: the nightly job deletes a Market's pairs and inserts the new ones.
+    'ordering.offer_pairs': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.refund_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.credit_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts

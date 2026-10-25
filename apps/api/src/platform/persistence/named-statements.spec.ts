@@ -275,3 +275,54 @@ describe.each(['AU', 'ZZ'] as const)(
     });
   },
 );
+
+describe.each(['AU', 'ZZ'] as const)('engagement.lock-account in market %s', (code) => {
+  const market = testMarketContext(code, 'default');
+  const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+
+  it.each([
+    ['shared', 'pg_advisory_xact_lock_shared('],
+    ['exclusive', 'pg_advisory_xact_lock('],
+  ] as const)(
+    'takes the %s account lock keyed on the unit Market and tenant',
+    async (mode, call) => {
+      const { runner, seen } = runnerAnswering([{ locked: true }]);
+      const rows = await runNamedStatement(runner, market, 'engagement.lock-account', {
+        accountId: ID(5),
+        mode,
+      });
+      expect(rows).toEqual([{ locked: true }]);
+      expect(seen[0]!.sql).toContain(call);
+      expect(seen[0]!.sql).toContain('1701::int4');
+      expect(seen[0]!.values).toEqual([market.marketId, market.tenantId, ID(5)]);
+      const request = { operation: '$queryRaw', args: seen[0] };
+      expect(isApprovedStatement(request, market)).toBe(true);
+      expect(isApprovedStatement(request, other)).toBe(false);
+      expect(isApprovedStatement({ operation: '$executeRaw', args: seen[0] }, market)).toBe(false);
+      const forged = { sql: seen[0]!.sql, values: [market.marketId, market.tenantId, "x' OR '1"] };
+      expect(isApprovedStatement({ operation: '$queryRaw', args: forged }, market)).toBe(false);
+    },
+  );
+
+  it('refuses a malformed account id or mode, and a missing row', async () => {
+    const { runner } = runnerAnswering([]);
+    await expect(
+      runNamedStatement(runner, market, 'engagement.lock-account', {
+        accountId: "x' OR '1",
+        mode: 'shared',
+      }),
+    ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+    await expect(
+      runNamedStatement(runner, market, 'engagement.lock-account', {
+        accountId: ID(5),
+        mode: 'update' as never,
+      }),
+    ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+    await expect(
+      runNamedStatement(runner, market, 'engagement.lock-account', {
+        accountId: ID(5),
+        mode: 'exclusive',
+      }),
+    ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+  });
+});

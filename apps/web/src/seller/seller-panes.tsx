@@ -1,6 +1,8 @@
-import { useFormatter, useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
+import { formatDate } from '../format/date.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
+import { useDeliveryLine } from './delivery-line.ts';
 import type { SellerCertificate, SellerShop } from '../storefront/types.ts';
 
 // The About and Certificates tabs of the seller page. No seller contact details: orders, delivery
@@ -40,12 +42,13 @@ function Facts({
 export function AboutPane({ shop }: { readonly shop: SellerShop }) {
   const t = useTranslations('seller');
   const locale = useLocale();
+  const deliveryLine = useDeliveryLine(shop);
   return (
     <div className="shop-boxes">
       {shop.about === undefined ? null : (
         <section className="shop-box">
           <h2>{t('about', { name: shop.name })}</h2>
-          <p className="shop-text">{shop.about}</p>
+          <p className="shop-text shop-about">{shop.about}</p>
         </section>
       )}
       <section className="shop-box">
@@ -55,7 +58,7 @@ export function AboutPane({ shop }: { readonly shop: SellerShop }) {
             [t('business'), shop.businessCheck],
             [t('location-label'), shop.location],
             [t('since-label'), String(shop.sellingSince)],
-            [t('delivery'), shop.deliveryWindow],
+            [t('delivery'), deliveryLine],
             [
               t('fee-label'),
               shop.deliveryFee ? formatMoney(shop.deliveryFee, locale) : undefined,
@@ -87,7 +90,7 @@ export function CertificatesPane({
   readonly certificates: readonly SellerCertificate[];
 }) {
   const t = useTranslations('seller');
-  const format = useFormatter();
+  const locale = useLocale();
   if (certificates.length === 0)
     return (
       <section className="shop-box">
@@ -97,12 +100,7 @@ export function CertificatesPane({
       </section>
     );
   const date = (iso: string) =>
-    format.dateTime(new Date(`${iso}T00:00:00Z`), {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      timeZone: 'UTC',
-    });
+    formatDate(iso, locale, { day: 'numeric', month: 'short', year: 'numeric' });
   return (
     <div className="shop-boxes">
       <div className="shop-certs">

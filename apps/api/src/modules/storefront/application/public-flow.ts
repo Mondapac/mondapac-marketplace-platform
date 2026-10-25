@@ -43,7 +43,7 @@ export type PublishedAnswer =
 
 const notFound = (): Result<never, PublicFailure> => err({ code: 'storefront.page-not-found' });
 
-function live(page: PageRecord, now: Temporal.Instant): boolean {
+export function live(page: PageRecord, now: Temporal.Instant): boolean {
   if (page.archivedAt !== null) return false;
   if (page.startsAt !== null && Temporal.Instant.compare(now, page.startsAt) < 0) return false;
   return page.endsAt === null || Temporal.Instant.compare(now, page.endsAt) < 0;

@@ -99,11 +99,12 @@ function useLift(root: HTMLElement | null) {
       if (alignBackToTop && top) {
         // Lifted above back-to-top, the launcher lines up with it.
         const rect = top.getBoundingClientRect();
+        const rtl = getComputedStyle(document.documentElement).direction === 'rtl';
         root.style.setProperty(
-          '--as-right',
-          `${Math.round(document.documentElement.clientWidth - rect.right)}px`,
+          '--as-end',
+          `${Math.round(rtl ? rect.left : document.documentElement.clientWidth - rect.right)}px`,
         );
-      } else root.style.removeProperty('--as-right');
+      } else root.style.removeProperty('--as-end');
     };
     place();
     window.addEventListener('scroll', place, { passive: true });

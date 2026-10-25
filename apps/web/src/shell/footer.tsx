@@ -277,22 +277,6 @@ function PaymentMarks({ label }: { readonly label: string }) {
           </text>
         </svg>
       </li>
-      <li className="pm">
-        <svg viewBox="0 0 54 32" role="img" aria-label="PayPal">
-          <text
-            x="27"
-            y="21"
-            textAnchor="middle"
-            fontSize="13"
-            fontWeight="800"
-            fontStyle="italic"
-            fontFamily="Arial, Helvetica, sans-serif"
-          >
-            <tspan fill="#003087">Pay</tspan>
-            <tspan fill="#009CDE">Pal</tspan>
-          </text>
-        </svg>
-      </li>
     </ul>
   );
 }

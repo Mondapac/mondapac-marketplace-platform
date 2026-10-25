@@ -5,6 +5,7 @@ import type { PricingFacade } from '../../pricing';
 import type { SellersFacade } from '../../sellers';
 import {
   detailKeyOf,
+  type DetailBadge,
   type DetailKey,
   type DetailPrice,
   type DetailProduct,
@@ -117,6 +118,36 @@ export class FacadeProductDetailSources implements ProductDetailSources {
         });
       }
       return sellers;
+    } catch {
+      return null;
+    }
+  }
+
+  async badges(
+    context: CallContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<ReadonlyMap<Id<'Offer'>, readonly DetailBadge[]> | null> {
+    if (offerIds.length === 0) return new Map();
+    try {
+      const result = await this.catalog.offerBadges(context, offerIds);
+      if (!result.ok) return null;
+      const badges = new Map<Id<'Offer'>, readonly DetailBadge[]>();
+      for (const [offerId, list] of result.value) {
+        // Field by field: nothing catalog might add later reaches the page unreviewed.
+        badges.set(
+          offerId,
+          list.map((badge) => ({
+            typeCode: badge.typeCode,
+            typeName: badge.typeName,
+            basis: badge.basis,
+            sellerClaim: badge.sellerClaim,
+            issuerName: badge.issuerName,
+            validUntilLocalDate: badge.validUntilLocalDate,
+            verifiedWithIssuer: badge.verifiedWithIssuer,
+          })),
+        );
+      }
+      return badges;
     } catch {
       return null;
     }

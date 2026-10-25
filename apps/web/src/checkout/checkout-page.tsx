@@ -3,320 +3,426 @@
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { viewCart, type CartView } from '../cart/cart.ts';
-import { DiscountBox, SummaryTotals, TrustLines } from '../cart/cart-parts.tsx';
+import { DiscountBox, ItemThumb, SummaryTotals, TrustLines } from '../cart/cart-parts.tsx';
 import { addressLine as savedLine, recipientName } from '../account/address-line.ts';
-import { Crumbs } from '../catalog/results.tsx';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
-import { SellerLogo } from '../product/seller-logo.tsx';
 import { useStore } from '../shell/store-context.tsx';
-import type { CheckoutSource, ServiceArea } from '../storefront/types.ts';
-import { deliveryAreaFor } from './actions.ts';
+import type {
+  CheckoutSource,
+  PayAnswer,
+  PaymentMethod,
+  PayRequest,
+  QuoteAddress,
+} from '../storefront/types.ts';
+import {
+  AddressSection,
+  EMPTY_ADDRESS,
+  Field,
+  newAddressComplete,
+  newAddressLine,
+  newPostcode,
+  useDeliveryArea,
+  type NewAddress,
+} from './address-section.tsx';
+import {
+  DeliverySection,
+  deliveryChoices,
+  quotesReady,
+  useDeliveryQuotes,
+} from './delivery-section.tsx';
+import { payOrder } from './actions.ts';
+import {
+  legalLinks,
+  PaymentSection,
+  PayButton,
+  type PayBlock,
+  type PayNotice,
+} from './payment-section.tsx';
+import { CheckoutProgress } from './progress.tsx';
+import { useStripeCard } from './stripe-card.ts';
 
-// Checkout of the approved design: one page with four steps (Account, Delivery address, Delivery
-// by seller, Payment); a finished step shows its answer and a Change link. The order summary sits
-// beside the steps from 1000px and folds on top of them below. An account is required (no guest
-// checkout); the guest cart is kept and merged on log-in. Sample data: the log-in and the address
-// book are not wired yet, and Pay goes to a placeholder instead of Stripe's hosted page.
+export { inServiceArea } from './address-section.tsx';
 
-type Step = 1 | 2 | 3 | 4;
-
-interface NewAddress {
-  readonly name: string;
-  readonly phone: string;
-  readonly street: string;
-  readonly suburb: string;
-  readonly postcode: string;
-  readonly note: string;
-}
-
-const EMPTY: NewAddress = { name: '', phone: '', street: '', suburb: '', postcode: '', note: '' };
-
-/** Whether a postcode is in the sample service area (the API answers once API_BASE_URL is set). */
-export function inServiceArea(area: ServiceArea, postcode: string): boolean {
-  return (
-    /^\d+$/.test(postcode) &&
-    area.postcodes.some(
-      (r) => postcode.length === r.from.length && postcode >= r.from && postcode <= r.to,
-    )
-  );
-}
-
-/** Where a new address's postcode stands: `checking` while the API has not answered. */
-type AreaState = 'in' | 'out' | 'checking' | 'failed';
-
-/** Shortest postcode worth asking about (an AU postcode has four digits). */
-const AREA_CHECK_MIN = 4;
-
-/**
- * The delivery area answer for a postcode: the sample list in the browser, or the API's answer
- * (one read per postcode typed, the last one wins).
- */
-function useDeliveryArea(source: CheckoutSource, postcode: string): AreaState {
-  const api = source.areaCheck === 'api';
-  const value = postcode.trim();
-  const [answer, setAnswer] = useState<{ readonly postcode: string; readonly state: AreaState }>();
-  useEffect(() => {
-    if (!api || value.length < AREA_CHECK_MIN) return;
-    let live = true;
-    const settle = (state: AreaState) => {
-      if (live) setAnswer({ postcode: value, state });
-    };
-    deliveryAreaFor(value).then(
-      (read) =>
-        settle(
-          read.kind === 'off'
-            ? inServiceArea(source.serviceArea, value)
-              ? 'in'
-              : 'out'
-            : read.kind,
-        ),
-      () => settle('failed'),
-    );
-    return () => {
-      live = false;
-    };
-  }, [api, value, source.serviceArea]);
-  if (!api) return inServiceArea(source.serviceArea, postcode) ? 'in' : 'out';
-  if (value.length < AREA_CHECK_MIN) return 'out';
-  return answer?.postcode === value ? answer.state : 'checking';
-}
+// Checkout of the approved design (cart-a-teal, 21 Oct 2026): a guest logs in first; signed in,
+// one page holds Delivery address, Delivery method and Payment method with one Pay button. From
+// 1000px the order summary and a help card sit on the right; below, the summary folds on top, the
+// discount code sits under it and Pay ends the form. An account is required (no guest checkout);
+// the guest cart is kept and merged on log-in. Sample data: the log-in, the address book and the
+// courier are not wired yet. Pay checks the order again on the server (Express prices, stock):
+// the Card tile sends Stripe's confirmation token, the Stripe tile goes to Stripe's hosted page
+// (the sample stand-in until ordering takes payments).
 
 export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const t = useTranslations('checkout');
-  const tc = useTranslations('catalog');
-  const tcart = useTranslations('cart');
   const locale = useLocale();
   const router = useRouter();
-  const { cart, cartSource, discount, customer, setCustomer, setDeliveryAddress, online } =
-    useStore();
-  const view = viewCart(cart, cartSource, discount);
-  const [step, setStep] = useState<Step>(customer ? 2 : 1);
+  const reason = useId();
+  const {
+    cart,
+    cartSource,
+    discount,
+    deliveryWish,
+    setDelivery,
+    customer,
+    setCustomer,
+    setDeliveryAddress,
+    online,
+    notes,
+    limitLines,
+    setStockChanges,
+    clearCart,
+    setPlacedOrder,
+  } = useStore();
+  const sellerIds = viewCart(cart, cartSource)?.groups.map((g) => g.seller.id) ?? [];
+  const addresses = customer?.addresses ?? [];
   const [choice, setChoice] = useState<string>(
     () => source.customer.addresses.find((a) => a.isDefault)?.id ?? 'new',
   );
-  const [fresh, setFresh] = useState<NewAddress>(EMPTY);
-  const areaState = useDeliveryArea(source, fresh.postcode);
+  const [fresh, setFresh] = useState<NewAddress>(EMPTY_ADDRESS);
+  const areaState = useDeliveryArea(source, newPostcode(fresh));
+  const saved = addresses.find((a) => a.id === choice);
+  const freshReady = newAddressComplete(fresh) && areaState === 'in';
+  const quoteAddress: QuoteAddress | null = saved
+    ? { kind: 'saved', id: saved.id }
+    : freshReady
+      ? { kind: 'new', postcode: newPostcode(fresh) }
+      : null;
+  const { quotes, retry, replace } = useDeliveryQuotes(
+    customer ? quoteAddress : null,
+    sellerIds,
+    online,
+  );
+  const choices = deliveryChoices(sellerIds, deliveryWish, quotes);
+  const view = viewCart(cart, cartSource, discount, choices);
+  const [method, setMethod] = useState<PaymentMethod>('card');
+  const [cardName, setCardName] = useState('');
+  const [nameError, setNameError] = useState(false);
+  const [notice, setNotice] = useState<PayNotice | null>(null);
+  const [paying, setPaying] = useState(false);
+  const stripeKey =
+    customer && method === 'card' && source.card.kind === 'stripe'
+      ? source.card.publishableKey
+      : null;
+  const stripeCard = useStripeCard(stripeKey, view?.total ?? null);
 
-  // Signed in (at step 1 or by another tab of the shell): the account step is done.
+  // Back from Stripe's page through the browser's cache: the page is not still paying.
   useEffect(() => {
-    if (customer && step === 1) setStep(2);
-  }, [customer, step]);
-  // Nothing to check out, or a seller below its minimum: back to the cart.
+    const shown = (event: PageTransitionEvent) => {
+      if (event.persisted) setPaying(false);
+    };
+    window.addEventListener('pageshow', shown);
+    return () => window.removeEventListener('pageshow', shown);
+  }, []);
+
+  // Signed in from the Log in step: the address section takes the focus (the form is gone).
+  const wasGuest = useRef(customer === null);
+  useEffect(() => {
+    if (customer === null || !wasGuest.current) return;
+    wasGuest.current = false;
+    document.querySelector<HTMLElement>('#checkout-address h2')?.focus();
+  }, [customer]);
+
+  // Nothing to check out, or a seller below its minimum: back to the cart (not once the order is
+  // placed: the cart is emptied as the confirmation opens).
+  const placed = useRef(false);
   const blocked = !view || view.blocked.length > 0;
   useEffect(() => {
-    if (blocked) router.replace('/cart');
+    if (blocked && !placed.current) router.replace('/cart');
   }, [blocked, router]);
   if (!view || blocked) return null;
 
-  const area = source.serviceArea;
-  const freshValid =
-    fresh.name.trim() !== '' &&
-    fresh.phone.trim() !== '' &&
-    fresh.street.trim() !== '' &&
-    fresh.suburb.trim() !== '' &&
-    areaState === 'in';
-  const addresses = customer?.addresses ?? [];
-  const saved = addresses.find((a) => a.id === choice);
   const addressLine = saved
-    ? `${recipientName(saved)}: ${savedLine(saved, area.regionCode)}`
-    : [
-        fresh.street || t('new-address-summary'),
-        fresh.suburb,
-        fresh.postcode && `${area.region} ${fresh.postcode}`,
-      ]
-        .filter(Boolean)
-        .join(', ');
-  const money = (m: CartView['total']) => formatMoney(m, locale);
+    ? `${recipientName(saved)}: ${savedLine(saved, source.serviceArea.regionCode)}`
+    : newAddressLine(fresh, source.serviceArea, t('new-address-summary'));
+  const ready = quotesReady(quotes);
+  const block: PayBlock = !online
+    ? 'offline'
+    : !saved && !freshReady
+      ? 'address'
+      : ready === 'loading'
+        ? 'loading'
+        : ready === 'problem'
+          ? 'delivery'
+          : notice?.kind === 'stock-changed'
+            ? 'stock'
+            : stripeKey !== null && stripeCard.state !== 'ready'
+              ? 'card'
+              : null;
+
+  /** What Pay found: the order is placed, Stripe's page opens, or the page says what changed. */
+  const settle = (answer: PayAnswer) => {
+    if (answer.kind === 'paid') {
+      placed.current = true;
+      setStockChanges(null);
+      setPlacedOrder({
+        reference: answer.reference,
+        view,
+        address: addressLine,
+        discountCode: discount?.code ?? null,
+        notes,
+      });
+      clearCart();
+      router.push('/checkout/confirmation');
+      return;
+    }
+    if (answer.kind === 'redirect') {
+      // Only Stripe's hosted page or a page of this site; anything else is refused. The URL is
+      // parsed as the browser would (a `/\host` or a tab in the path would leave the site).
+      const to = safeRedirect(answer.url, window.location.origin);
+      if (to !== null) {
+        setDelivery(choices);
+        setDeliveryAddress(addressLine);
+        if (to.own) router.push(to.href);
+        else window.location.assign(to.href);
+        return;
+      }
+      answer = { kind: 'failed' };
+    }
+    setPaying(false);
+    if (answer.kind === 'price-changed') {
+      replace(answer.quotes);
+      setNotice({
+        kind: 'price-changed',
+        changes: answer.changes.map((c) => ({
+          seller: cartSource.sellers[c.sellerId]?.name ?? c.sellerId,
+          was: c.was,
+          now: c.now,
+        })),
+      });
+    } else if (answer.kind === 'stock-changed') {
+      const changes = answer.changes.map((c) => ({
+        item: cartSource.items[c.itemId]?.name ?? c.itemId,
+        was: c.was,
+        now: c.now,
+      }));
+      // The cart says it too: with every line gone, or a seller now below its minimum, checkout
+      // sends the buyer there.
+      setStockChanges(changes);
+      limitLines(Object.fromEntries(answer.changes.map((c) => [c.itemId, c.now])));
+      setNotice({ kind: 'stock-changed', changes });
+    } else setNotice(answer);
+    document.querySelector<HTMLElement>('#checkout-payment h2')?.focus();
+  };
+
+  const pay = async () => {
+    if (paying) return;
+    if (block === null && quoteAddress !== null) {
+      let token: string | null = null;
+      if (method === 'card' && source.card.kind === 'stripe') {
+        if (cardName.trim() === '') {
+          setNameError(true);
+          document.querySelector<HTMLElement>('#checkout-payment .cfm input')?.focus();
+          return;
+        }
+        setPaying(true);
+        const made = await stripeCard.tokenize(cardName.trim());
+        if (made.kind !== 'token') {
+          setPaying(false);
+          if (made.kind === 'invalid') stripeCard.focus();
+          else {
+            setNotice({ kind: 'failed' });
+            document.querySelector<HTMLElement>('#checkout-payment h2')?.focus();
+          }
+          return;
+        }
+        token = made.id;
+      }
+      setPaying(true);
+      setNotice(null);
+      const request: PayRequest = {
+        method,
+        confirmationToken: token,
+        address: quoteAddress,
+        lines: Object.fromEntries(Object.entries(cart).map(([id, line]) => [id, line.quantity])),
+        delivery: choices,
+        discountCode: discount?.code ?? null,
+        total: view.total,
+      };
+      settle(await payOrder(request).catch((): PayAnswer => ({ kind: 'failed' })));
+      return;
+    }
+    // Blocked: the focus goes to the first thing to fix.
+    const target =
+      block === 'address'
+        ? [
+            ...document.querySelectorAll<HTMLInputElement>(
+              '#checkout-address input:not([type=radio]):not([type=checkbox]):not([readonly])',
+            ),
+          ].find((input) => input.value.trim() === '' || input.getAttribute('aria-invalid'))
+        : block === 'delivery'
+          ? document.querySelector<HTMLElement>('.dcard .dwarn2 button, .dcard .dwarn2 a')
+          : null;
+    target?.focus();
+  };
+  const toAddress = () => {
+    const section = document.getElementById('checkout-address');
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    section?.querySelector('h2')?.focus({ preventScroll: true });
+  };
+
+  const title = (
+    <div className="ctitle">
+      <h1>{t('title')}</h1>
+    </div>
+  );
+  if (!customer)
+    return (
+      <div className="cwrap">
+        {title}
+        <CheckoutProgress current="login" signedIn={false} />
+        <div className="cgrid">
+          <div className="clist">
+            <AccountStep
+              // Sample: no sign-in call yet; the session gives the customer when it is wired.
+              onSignedIn={() => setCustomer(source.customer)}
+            />
+          </div>
+          <div className="cs stick alt">
+            <MiniSummary view={view} />
+          </div>
+        </div>
+      </div>
+    );
 
   return (
     <div className="cwrap">
-      <Crumbs
-        trail={[
-          { label: tc('home'), href: '/' },
-          { label: tcart('title'), href: '/cart' },
-        ]}
-        current={t('title')}
-      />
-      <div className="ctitle">
-        <h1>{t('title')}</h1>
-        <span>{t('step-of', { step })}</span>
-      </div>
+      {title}
+      <CheckoutProgress current="pay" signedIn />
       <details className="cmob">
         <summary>
           {t('summary-toggle')}
           <span>
-            <b className="num">{money(view.total)}</b>
+            <b className="num">{formatMoney(view.total, locale)}</b>
             <Icon name="chevd" />
           </span>
         </summary>
         <div className="cs">
-          <OrderSummary view={view} />
+          <MiniSummary view={view} discount={false} />
         </div>
       </details>
+      <div className="ckdc" inert={paying}>
+        <DiscountBox startOpen />
+      </div>
       <div className="cgrid">
-        <div className="clist">
-          <StepCard
-            n={1}
-            step={step}
-            title={t('account')}
-            done={customer ? t('signed-in-as', { email: customer.email }) : undefined}
-            onChange={customer ? undefined : setStep}
-          >
-            <AccountStep
-              onSignedIn={() => {
-                // Sample: no sign-in call yet; the session gives the customer when it is wired.
-                setCustomer(source.customer);
-                setStep(2);
-              }}
+        <div className="cklist">
+          {/* While Pay waits for its answer, the order cannot change under it. */}
+          <div className="ckwait" inert={paying}>
+            <AddressSection
+              source={source}
+              addresses={addresses}
+              choice={choice}
+              onChoice={setChoice}
+              fresh={fresh}
+              onFresh={setFresh}
+              areaState={areaState}
             />
-          </StepCard>
-          <StepCard
-            n={2}
-            step={step}
-            title={t('address')}
-            done={step > 2 ? addressLine : undefined}
-            onChange={setStep}
-          >
-            <div className="stb">
-              <div className="aopts" role="radiogroup" aria-label={t('address')}>
-                {addresses.map((a) => (
-                  <label className="aopt" key={a.id}>
-                    <input
-                      type="radio"
-                      name="address"
-                      value={a.id}
-                      checked={choice === a.id}
-                      onChange={() => setChoice(a.id)}
-                    />
-                    <b>
-                      {recipientName(a)}
-                      {a.isDefault ? <span className="badge">{t('default')}</span> : null}
-                    </b>
-                    <span>{savedLine(a, area.regionCode)}</span>
-                    <span>{a.phone}</span>
-                  </label>
-                ))}
-                <label className="aopt">
-                  <input
-                    type="radio"
-                    name="address"
-                    value="new"
-                    checked={!saved}
-                    onChange={() => setChoice('new')}
-                  />
-                  <b>{t('new-address')}</b>
-                  <span>{t('new-address-note', { area: area.name })}</span>
-                </label>
-              </div>
-              {saved ? null : (
-                <AddressForm area={area} areaState={areaState} value={fresh} onChange={setFresh} />
-              )}
-              <div>
-                <button
-                  className="btn"
-                  type="button"
-                  aria-disabled={!saved && !freshValid ? true : undefined}
-                  onClick={() => {
-                    if (!saved && !freshValid) return;
-                    setDeliveryAddress(addressLine);
-                    setStep(3);
-                  }}
-                >
-                  {t('deliver-here')}
-                </button>
-              </div>
-            </div>
-          </StepCard>
-          <StepCard
-            n={3}
-            step={step}
-            title={t('by-seller')}
-            done={
-              step > 3
-                ? t('deliveries', { count: view.groups.length, fee: money(view.delivery) })
-                : undefined
-            }
-            onChange={setStep}
-          >
-            <div className="stb">
-              <div className="infob">
-                <Icon name="info" />
-                <span>{t('split-note')}</span>
-              </div>
-              {view.groups.map((g) => (
-                <div className="dsel" key={g.seller.id}>
-                  <SellerLogo logo={g.seller.logo} />
-                  <div>
-                    <b>{g.seller.name}</b>
-                    <small>
-                      <Icon name="truck" />
-                      {g.seller.deliveryWindow} · {tcart('items', { count: g.count })}
-                    </small>
-                  </div>
-                  <span className="fee num">{money(g.seller.deliveryFee)}</span>
-                  <div className="dnote">
-                    <SellerNote sellerId={g.seller.id} sellerName={g.seller.name} />
-                  </div>
-                </div>
-              ))}
-              <div>
-                <button className="btn" type="button" onClick={() => setStep(4)}>
-                  {t('continue-payment')}
-                </button>
-              </div>
-            </div>
-          </StepCard>
-          <StepCard n={4} step={step} title={t('payment')}>
-            <div className="stb">
-              <div className="paybox">
-                <div className="payhd">
-                  <Icon name="lock" />
-                  {t('pay-title')}
-                </div>
-                <p>{t('pay-body')}</p>
-              </div>
-              <p className="legal">{t.rich('agree-order', legalLinks)}</p>
-              <div>
-                <Link
-                  className="btn ctl"
-                  href="/checkout/payment"
-                  aria-disabled={online ? undefined : true}
-                  onClick={(event) => {
-                    if (!online) event.preventDefault();
-                  }}
-                >
-                  <Icon name="lock" />
-                  {t('pay', { amount: money(view.total) })}
-                </Link>
-              </div>
-            </div>
-          </StepCard>
+            <DeliverySection
+              view={view}
+              quotes={quotes}
+              onRetry={retry}
+              onChangeAddress={toAddress}
+              addressLine={addressLine.replace(/^[^:]*: /, '')}
+            />
+          </div>
+          <PaymentSection
+            view={view}
+            method={method}
+            onMethod={(next) => {
+              setMethod(next);
+              if (notice?.kind === 'declined') setNotice(null);
+            }}
+            card={{
+              setup: source.card,
+              target: stripeCard.target,
+              state: stripeCard.state,
+              onRetry: stripeCard.retry,
+              name: cardName,
+              onName: setCardName,
+              nameError,
+            }}
+            notice={notice}
+            block={block}
+            paying={paying}
+            onPay={() => void pay()}
+            reasonId={`${reason}-form`}
+          />
         </div>
-        <div className="cs stick alt">
-          <OrderSummary view={view} />
+        <div className="ckside">
+          <div className="cs stick alt">
+            <div className="cks2">
+              <h2>{t('summary-toggle')}</h2>
+              <Link className="lnk" href="/cart">
+                {t('edit-cart')}
+              </Link>
+            </div>
+            <ItemList view={view} />
+            <div className="ckwait" inert={paying}>
+              <DiscountBox startOpen />
+            </div>
+            <SummaryTotals view={view} deliveryLoading={ready === 'loading'} />
+            <PayButton
+              view={view}
+              method={method}
+              block={block}
+              paying={paying}
+              onPay={() => void pay()}
+              className="ckpd"
+              reasonId={`${reason}-side`}
+            />
+            {block !== null && block !== 'stock' ? (
+              <small id={`${reason}-side`}>{t(`pay-block-${block}`)}</small>
+            ) : null}
+            <small className="legal">{t.rich('agree-order', legalLinks)}</small>
+          </div>
+          <HelpCard />
         </div>
       </div>
     </div>
   );
 }
 
-const legalLinks = {
-  terms: (chunks: ReactNode) => <Link href="/terms">{chunks}</Link>,
-  privacy: (chunks: ReactNode) => <Link href="/privacy">{chunks}</Link>,
-};
+/** The right column's items: photo, name, seller and quantity, line total. */
+function ItemList({ view }: { readonly view: CartView }) {
+  const t = useTranslations('checkout');
+  const locale = useLocale();
+  return (
+    <ul className="ckit">
+      {view.groups.flatMap((g) =>
+        g.lines.map((l) => (
+          <li key={l.id}>
+            <ItemThumb item={l.item} />
+            <div>
+              <b>{l.item.name}</b>
+              <small>
+                {g.seller.name} ·{' '}
+                <span className="nw">{t('item-qty', { quantity: l.quantity })}</span>
+              </small>
+            </div>
+            <span className="num">{formatMoney(l.total, locale)}</span>
+          </li>
+        )),
+      )}
+    </ul>
+  );
+}
 
-/** The summary with each seller's lines (checkout and its phone fold). */
-function OrderSummary({ view }: { readonly view: CartView }) {
+/** The folded summary (phone and tablet) and the guest's summary: lines by seller and totals. */
+function MiniSummary({
+  view,
+  discount = true,
+}: {
+  readonly view: CartView;
+  readonly discount?: boolean;
+}) {
   const t = useTranslations('cart');
   const tco = useTranslations('checkout');
   const locale = useLocale();
   return (
     <>
       <h2>{t('summary')}</h2>
-      <DiscountBox />
       <ul className="cmini">
         {view.groups.map((g) => (
           <li key={g.seller.id}>
@@ -332,315 +438,131 @@ function OrderSummary({ view }: { readonly view: CartView }) {
           </li>
         ))}
       </ul>
+      {discount ? <DiscountBox /> : null}
       <SummaryTotals view={view} />
       <TrustLines />
     </>
   );
 }
 
-/** One step: number (a tick when done), title, the answer and Change when done, the body when current. */
-function StepCard({
-  n,
-  step,
-  title,
-  done,
-  onChange,
-  children,
-}: {
-  readonly n: Step;
-  readonly step: Step;
-  readonly title: string;
-  readonly done?: string | undefined;
-  readonly onChange?: ((step: Step) => void) | undefined;
-  readonly children: ReactNode;
-}) {
+/** "Need help?": email and the delivery and returns answers (no chat or phone: not decided). */
+function HelpCard() {
   const t = useTranslations('checkout');
-  const current = step === n;
-  const finished = step > n || (n === 1 && done !== undefined);
-  // The step that becomes current takes the focus: the button that moved on is gone.
-  const heading = useRef<HTMLHeadingElement>(null);
-  const was = useRef(current);
-  useEffect(() => {
-    if (current && !was.current) heading.current?.focus();
-    was.current = current;
-  }, [current]);
+  const email = useTranslations('footer')('email');
   return (
-    <section
-      className={current ? 'stp cur' : finished ? 'stp dn' : 'stp'}
-      aria-current={current ? 'step' : undefined}
-    >
-      <div className="sth">
-        <span className="stn" aria-hidden="true">
-          {finished ? <Icon name="check" /> : n}
+    <div className="ckhelp">
+      <h2>{t('help-title')}</h2>
+      <a href={`mailto:${email}`}>
+        <Icon name="mail" />
+        <span>
+          <b>{t('help-email')}</b>
+          <small>{email}</small>
         </span>
-        <h2 ref={heading} tabIndex={-1}>
-          {title}
-          {finished && done ? <span className="sum">{done}</span> : null}
-        </h2>
-        {finished && onChange ? (
-          <button
-            className="lnk"
-            type="button"
-            aria-label={t('change-step', { step: title })}
-            onClick={() => onChange(n)}
-          >
-            {t('change')}
-          </button>
-        ) : null}
-      </div>
-      {current ? children : null}
-    </section>
+      </a>
+      <Link href="/help/delivery">
+        <Icon name="info" />
+        <span>
+          <b>{t('help-delivery')}</b>
+          <small>{t('help-delivery-note')}</small>
+        </span>
+      </Link>
+    </div>
   );
 }
 
+/** The guest's Log in step: log in or create an account; the cart is kept. */
 function AccountStep({ onSignedIn }: { readonly onSignedIn: () => void }) {
   const t = useTranslations('checkout');
   const [tab, setTab] = useState<'login' | 'new'>('login');
   const login = tab === 'login';
   const id = useId();
   return (
-    <div className="stb">
-      <div className="tabs2" role="group" aria-label={t('account')}>
-        <button
-          type="button"
-          aria-pressed={login}
-          aria-controls={`${id}-form`}
-          onClick={() => setTab('login')}
-        >
-          {t('log-in')}
-        </button>
-        <button
-          type="button"
-          aria-pressed={!login}
-          aria-controls={`${id}-form`}
-          onClick={() => setTab('new')}
-        >
-          {t('create-account')}
-        </button>
+    <section className="stp cur" aria-labelledby={`${id}-h`}>
+      <div className="sth">
+        <span className="stn" aria-hidden="true">
+          1
+        </span>
+        <h2 id={`${id}-h`}>{t('account')}</h2>
       </div>
-      <form
-        className="stb flush"
-        id={`${id}-form`}
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSignedIn();
-        }}
-      >
-        {login ? (
-          <>
-            <Field label={t('email')} type="email" autoComplete="email" />
-            <Field label={t('password')} type="password" autoComplete="current-password" />
-            <Link className="lnk" href="/account">
-              {t('forgot')}
-            </Link>
-          </>
-        ) : (
-          <>
-            <Field label={t('full-name')} autoComplete="name" />
-            <Field label={t('email')} type="email" autoComplete="email" />
-            <Field
-              label={t('password')}
-              type="password"
-              autoComplete="new-password"
-              hint={t('password-hint')}
-            />
-            <p className="legal">{t.rich('agree-account', legalLinks)}</p>
-          </>
-        )}
-        <div className="infob">
-          <Icon name="info" />
-          <span>{t('cart-kept')}</span>
-        </div>
-        <div>
-          <button className="btn" type="submit">
-            {login ? t('log-in-continue') : t('create-continue')}
+      <div className="stb">
+        <div className="tabs2" role="group" aria-label={t('account')}>
+          <button
+            type="button"
+            aria-pressed={login}
+            aria-controls={`${id}-form`}
+            onClick={() => setTab('login')}
+          >
+            {t('log-in')}
+          </button>
+          <button
+            type="button"
+            aria-pressed={!login}
+            aria-controls={`${id}-form`}
+            onClick={() => setTab('new')}
+          >
+            {t('create-account')}
           </button>
         </div>
-      </form>
-    </div>
-  );
-}
-
-function AddressForm({
-  area,
-  areaState,
-  value,
-  onChange,
-}: {
-  readonly area: ServiceArea;
-  readonly areaState: AreaState;
-  readonly value: NewAddress;
-  readonly onChange: (value: NewAddress) => void;
-}) {
-  const t = useTranslations('checkout');
-  const set = (key: keyof NewAddress) => (text: string) => onChange({ ...value, [key]: text });
-  // The postcode error shows once four digits are typed, or when the field is left too short.
-  const [left, setLeft] = useState(false);
-  const shown = value.postcode.length >= AREA_CHECK_MIN || (left && value.postcode !== '');
-  const outside = !shown
-    ? undefined
-    : areaState === 'out'
-      ? t('outside-area', { postcode: value.postcode, area: area.name })
-      : areaState === 'failed'
-        ? t('area-check-failed')
-        : undefined;
-  const noteId = useId();
-  return (
-    <>
-      <div className="frow two">
-        <Field label={t('full-name')} autoComplete="name" value={value.name} onText={set('name')} />
-        <Field
-          label={t('mobile')}
-          type="tel"
-          autoComplete="tel"
-          inputMode="tel"
-          hint={t('mobile-hint')}
-          value={value.phone}
-          onText={set('phone')}
-        />
-      </div>
-      <Field
-        label={t('street')}
-        autoComplete="address-line1"
-        value={value.street}
-        onText={set('street')}
-      />
-      <div className="frow three">
-        <Field
-          label={t('suburb')}
-          autoComplete="address-level2"
-          value={value.suburb}
-          onText={set('suburb')}
-        />
-        <Field label={t('region')} value={area.region} readOnly />
-        <Field
-          label={t('postcode')}
-          autoComplete="postal-code"
-          inputMode="numeric"
-          value={value.postcode}
-          onText={(text) => {
-            setLeft(false);
-            set('postcode')(text);
+        <form
+          className="stb flush"
+          id={`${id}-form`}
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSignedIn();
           }}
-          onLeave={() => setLeft(true)}
-          error={outside}
-        />
+        >
+          {login ? (
+            <>
+              <Field label={t('email')} type="email" autoComplete="email" />
+              <Field label={t('password')} type="password" autoComplete="current-password" />
+              <Link className="lnk" href="/account">
+                {t('forgot')}
+              </Link>
+            </>
+          ) : (
+            <>
+              <Field label={t('full-name')} autoComplete="name" />
+              <Field label={t('email')} type="email" autoComplete="email" />
+              <Field
+                label={t('password')}
+                type="password"
+                autoComplete="new-password"
+                hint={t('password-hint')}
+              />
+              <p className="legal">{t.rich('agree-account', legalLinks)}</p>
+            </>
+          )}
+          <div className="infob">
+            <Icon name="info" />
+            <span>{t('cart-kept')}</span>
+          </div>
+          <div>
+            <button className="btn" type="submit">
+              {login ? t('log-in-continue') : t('create-continue')}
+            </button>
+          </div>
+        </form>
       </div>
-      <div className="fld">
-        <label htmlFor={noteId}>{t('instructions')}</label>
-        <textarea
-          id={noteId}
-          placeholder={t('instructions-placeholder')}
-          value={value.note}
-          onChange={(event) => set('note')(event.target.value)}
-        />
-      </div>
-      <label className="chk">
-        <input type="checkbox" defaultChecked />
-        {t('save-address')}
-      </label>
-    </>
+    </section>
   );
 }
 
-function Field({
-  label,
-  hint,
-  error,
-  value,
-  onText,
-  onLeave,
-  readOnly = false,
-  type = 'text',
-  autoComplete,
-  inputMode,
-}: {
-  readonly label: string;
-  readonly hint?: string;
-  readonly error?: string | undefined;
-  readonly value?: string;
-  readonly onText?: (text: string) => void;
-  readonly onLeave?: () => void;
-  readonly readOnly?: boolean;
-  readonly type?: string;
-  readonly autoComplete?: string;
-  readonly inputMode?: 'tel' | 'numeric';
-}) {
-  const id = useId();
-  const help = error ?? hint;
-  return (
-    <div className={error ? 'fld bad' : 'fld'}>
-      <label htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        type={type}
-        autoComplete={autoComplete}
-        inputMode={inputMode}
-        readOnly={readOnly}
-        aria-invalid={error ? true : undefined}
-        onBlur={onLeave}
-        aria-describedby={help ? `${id}-help` : undefined}
-        {...(onText
-          ? { value: value ?? '', onChange: (event) => onText(event.target.value) }
-          : value === undefined
-            ? {}
-            : { value })}
-      />
-      {error ? (
-        <span className="err" id={`${id}-help`} role="alert">
-          {error}
-        </span>
-      ) : hint ? (
-        <small id={`${id}-help`}>{hint}</small>
-      ) : null}
-    </div>
-  );
-}
-
-const NOTE_MAX = 200;
-
-/** "Add a note for this seller": plain text for delivery or packing, 200 characters at most. */
-function SellerNote({
-  sellerId,
-  sellerName,
-}: {
-  readonly sellerId: string;
-  readonly sellerName: string;
-}) {
-  const t = useTranslations('checkout');
-  const { notes, setNote } = useStore();
-  const value = notes[sellerId] ?? '';
-  const [open, setOpen] = useState(value !== '');
-  const area = useRef<HTMLTextAreaElement>(null);
-  const id = useId();
-  useEffect(() => {
-    // Focus the empty box the link just opened; a note being typed is already focused.
-    if (open && value === '') area.current?.focus();
-  }, [open, value]);
-  if (!open)
-    return (
-      <button className="lnk nbt" type="button" onClick={() => setOpen(true)}>
-        <Icon name="note" />
-        {t('note-open')}
-      </button>
-    );
-  return (
-    <div className="nbox">
-      <label htmlFor={id}>{t('note-label', { seller: sellerName })}</label>
-      <textarea
-        id={id}
-        ref={area}
-        rows={2}
-        maxLength={NOTE_MAX}
-        placeholder={t('note-placeholder')}
-        aria-describedby={`${id}-count ${id}-help`}
-        value={value}
-        onChange={(event) => setNote(sellerId, event.target.value.slice(0, NOTE_MAX))}
-      />
-      <small className="ncnt num" id={`${id}-count`}>
-        {t('note-count', { count: value.length, max: NOTE_MAX })}
-      </small>
-      <small id={`${id}-help`}>{t('note-help')}</small>
-    </div>
-  );
+/**
+ * Where Pay's redirect may go: Stripe's hosted page, or a page of this site (pushed as its path).
+ * Parsed with the browser's own rules, so `/\host`, a tab or `//host` cannot leave the site.
+ */
+export function safeRedirect(
+  url: string,
+  origin: string,
+): { readonly own: boolean; readonly href: string } | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url, origin);
+  } catch {
+    return null;
+  }
+  if (parsed.origin === origin && url.startsWith('/'))
+    return { own: true, href: `${parsed.pathname}${parsed.search}${parsed.hash}` };
+  if (parsed.origin === 'https://checkout.stripe.com') return { own: false, href: parsed.href };
+  return null;
 }

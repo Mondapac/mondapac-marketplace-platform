@@ -46,6 +46,21 @@ export interface DetailSeller {
 }
 
 /**
+ * One certification badge of an Offer, as catalog's `offerBadges` answers it (built from a live
+ * `evaluateClaims` decision there; search adds nothing and decides nothing). Display only.
+ */
+export interface DetailBadge {
+  readonly typeCode: string;
+  readonly typeName: string;
+  readonly basis: 'SELLER' | 'MANUFACTURER';
+  readonly sellerClaim: boolean;
+  readonly issuerName: string | null;
+  /** An ISO calendar date (`YYYY-MM-DD`), or null. */
+  readonly validUntilLocalDate: string | null;
+  readonly verifiedWithIssuer: boolean;
+}
+
+/**
  * Where the product page gets its facts: catalog's published product, pricing's buyer prices,
  * inventory's public stock state and sellers' public summaries. Each is called with the request's
  * context unchanged. A source that refused or failed is `null`: the caller fails closed. A product
@@ -71,6 +86,15 @@ export interface ProductDetailSources {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<ReadonlyMap<Id<'Seller'>, DetailSeller> | null>;
+  /**
+   * The badges of the Offers (at most 20), asked live in this request. An Offer with none is
+   * absent. A failure is `null`: the page then shows no badge (badges fail closed, the page does
+   * not).
+   */
+  badges(
+    context: CallContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<ReadonlyMap<Id<'Offer'>, readonly DetailBadge[]> | null>;
 }
 
 export const PRODUCT_DETAIL_SOURCES = Symbol('PRODUCT_DETAIL_SOURCES');

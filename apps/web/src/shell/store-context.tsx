@@ -15,15 +15,23 @@ import {
 import * as api from '../account/customer-api.ts';
 import {
   addOne,
+  limitLine,
   lineLimit,
   removeLine,
   removeOne,
   type Cart,
   type CartView,
+  type DeliveryChoice,
 } from '../cart/cart.ts';
 import type { DeliverTo } from '../delivery/deliver-to.ts';
+import type {
+  AppliedDiscount,
+  CartSource,
+  CheckoutCustomer,
+  DeliverySpeed,
+  Money,
+} from '../storefront/types.ts';
 import { PALETTE_COOKIE, TEXT_SIZE_COOKIE, savePreference } from '../preferences/preferences.ts';
-import type { AppliedDiscount, CartSource, CheckoutCustomer, Money } from '../storefront/types.ts';
 import { checkReachable, reachable } from './connection.ts';
 
 /** How a live sign-in ended; the log-in form shows a message for each refusal. */
@@ -52,6 +60,14 @@ interface StoreState {
   readonly remove: (id: string) => void;
   /** Removes a whole line (the Remove link). */
   readonly removeLine: (id: string) => void;
+  /** Lowers lines to the stock Pay found left (item id to units left). */
+  readonly limitLines: (left: Readonly<Record<string, number>>) => void;
+  /**
+   * What Pay lowered for stock, by item name, so the cart can say it after checkout sends the
+   * buyer back; null once dismissed or after the next checkout.
+   */
+  readonly stockChanges: readonly StockChange[] | null;
+  readonly setStockChanges: (changes: readonly StockChange[] | null) => void;
   readonly clearCart: () => void;
   readonly cartSource: CartSource;
   /** Saved-for-later offer ids, newest last; not in the cart or its totals. */
@@ -65,6 +81,15 @@ interface StoreState {
   /** Checkout notes to sellers, by seller id. */
   readonly notes: Readonly<Record<string, string>>;
   readonly setNote: (sellerId: string, note: string) => void;
+  /**
+   * The speed the buyer picked per seller id at checkout (their wish: Express counts only while
+   * the courier quotes a price for it). A seller without one is delivered Scheduled.
+   */
+  readonly deliveryWish: Readonly<Record<string, DeliverySpeed>>;
+  readonly setDeliveryWish: (sellerId: string, speed: DeliverySpeed) => void;
+  /** The delivery per seller id checkout paid for (fees included), set when Pay is pressed. */
+  readonly delivery: Readonly<Record<string, DeliveryChoice>>;
+  readonly setDelivery: (delivery: Readonly<Record<string, DeliveryChoice>>) => void;
   /** The cart drawer of the header's cart button. */
   readonly cartOpen: boolean;
   readonly setCartOpen: (open: boolean) => void;
@@ -112,6 +137,13 @@ interface StoreState {
   readonly checkConnection: () => Promise<boolean>;
 }
 
+/** A line Pay lowered because the stock ran out: units before and after (0: removed). */
+export interface StockChange {
+  readonly item: string;
+  readonly was: number;
+  readonly now: number;
+}
+
 const StoreContext = createContext<StoreState | null>(null);
 
 /** Client state shared by the shell and the page: the cart and the overlays. */
@@ -142,6 +174,8 @@ export function StoreProvider({
   const [saved, setSaved] = useState<readonly string[]>([]);
   const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
   const [notes, setNotes] = useState<Readonly<Record<string, string>>>({});
+  const [deliveryWish, setDeliveryWishes] = useState<Readonly<Record<string, DeliverySpeed>>>({});
+  const [delivery, setDelivery] = useState<Readonly<Record<string, DeliveryChoice>>>({});
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
   const [browseOpen, setBrowseOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -184,10 +218,18 @@ export function StoreProvider({
   const dropLine = useCallback((id: string) => {
     if (onlineRef.current) setCart((current) => removeLine(current, id));
   }, []);
+  const [stockChanges, setStockChanges] = useState<readonly StockChange[] | null>(null);
+  const limitLines = useCallback((left: Readonly<Record<string, number>>) => {
+    setCart((current) =>
+      Object.entries(left).reduce((cart, [id, units]) => limitLine(cart, id, units), current),
+    );
+  }, []);
   const clearCart = useCallback(() => {
     setCart({});
     setDiscount(null);
     setNotes({});
+    setDeliveryWishes({});
+    setDelivery({});
   }, []);
   const saveForLater = useCallback((id: string) => {
     if (!onlineRef.current) return;
@@ -209,6 +251,11 @@ export function StoreProvider({
   );
   const setNote = useCallback(
     (sellerId: string, note: string) => setNotes((current) => ({ ...current, [sellerId]: note })),
+    [],
+  );
+  const setDeliveryWish = useCallback(
+    (sellerId: string, speed: DeliverySpeed) =>
+      setDeliveryWishes((current) => ({ ...current, [sellerId]: speed })),
     [],
   );
   // Live: the first load asks the API who is signed in (401 means nobody).
@@ -254,6 +301,9 @@ export function StoreProvider({
       add,
       remove,
       removeLine: dropLine,
+      limitLines,
+      stockChanges,
+      setStockChanges,
       clearCart,
       cartSource,
       saved,
@@ -264,6 +314,10 @@ export function StoreProvider({
       setDiscount,
       notes,
       setNote,
+      deliveryWish,
+      setDeliveryWish,
+      delivery,
+      setDelivery,
       cartOpen,
       setCartOpen,
       customer,
@@ -300,6 +354,8 @@ export function StoreProvider({
       add,
       remove,
       dropLine,
+      limitLines,
+      stockChanges,
       clearCart,
       cartSource,
       saved,
@@ -309,6 +365,9 @@ export function StoreProvider({
       discount,
       notes,
       setNote,
+      deliveryWish,
+      setDeliveryWish,
+      delivery,
       cartOpen,
       customer,
       live,

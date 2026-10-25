@@ -19,6 +19,9 @@ export const MY_FILE_STATUS = {
   'slug.format': 400,
   'minimum-order.currency': 400,
   'minimum-order.amount': 400,
+  'delivery.day': 400,
+  'delivery.window': 400,
+  'delivery.cutoff': 400,
   'slug.reserved': 400,
   'slug.taken': 409,
   'identifier.format': 400,
@@ -67,6 +70,8 @@ export type MyFileError =
         keyof typeof MY_FILE_STATUS,
         'validation.failed' | 'file.incomplete' | 'request.throttled' | 'lookup.limit'
       >;
+      /** Set by an unavailable answer that is worth retrying shortly (a busy picture pipeline). */
+      readonly retryAfterSeconds?: number;
     };
 
 /** The response of a failure: codes, field paths and the retry delay only, never a value. */
@@ -84,6 +89,11 @@ export function errorOf(error: MyFileError, response: Response): HttpException {
       return fail(MY_FILE_STATUS[error.code], error.code, {
         retryAfterSeconds: error.retryAfterSeconds,
       });
+    case 'access.unavailable':
+      if ('retryAfterSeconds' in error && error.retryAfterSeconds !== undefined) {
+        response.setHeader('Retry-After', String(error.retryAfterSeconds));
+      }
+      return fail(MY_FILE_STATUS[error.code], error.code);
     case 'access.seller-not-approved':
       return fail(ACCESS_DENIED_STATUS[error.code], error.code, error.details);
     case 'access.unauthenticated':
