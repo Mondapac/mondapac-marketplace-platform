@@ -434,14 +434,14 @@ describe('Pickup handover', () => {
       pickup: { attemptsLeft: 5, locked: false },
       ...over,
     });
-  const boxes = () => screen.getAllByRole('textbox') as HTMLInputElement[];
+  const boxes = () => screen.getAllByRole<HTMLInputElement>('textbox');
   const type = (code: string) =>
     [...code].forEach((digit, i) => fireEvent.change(boxes()[i]!, { target: { value: digit } }));
 
   it('shows four boxes and a Confirm button that stays off until the code is complete', () => {
     mountDetail(readyPickup());
     expect(boxes()).toHaveLength(4);
-    const confirm = screen.getByRole('button', { name: 'Confirm pickup' }) as HTMLButtonElement;
+    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: 'Confirm pickup' });
     expect(confirm.disabled).toBe(true);
     expect(screen.getByText('5 tries left')).toBeTruthy();
     type('042');
@@ -494,7 +494,7 @@ describe('Pickup handover', () => {
     expect(boxes().every((box) => box.value === '')).toBe(true);
   });
 
-  it('locks the form when the API says the order is locked', async () => {
+  it('locks the form when the API says the order is locked', () => {
     call.mockResolvedValue({
       ok: false,
       failure: { status: 423, code: 'ordering.pickup-code-locked' },
@@ -502,9 +502,9 @@ describe('Pickup handover', () => {
     mountDetail(readyPickup({ pickup: { attemptsLeft: 1, locked: true } }));
     expect(screen.getByText(/This order is locked/)).toBeTruthy();
     expect(boxes().every((box) => box.disabled)).toBe(true);
-    expect(
-      (screen.getByRole('button', { name: 'Confirm pickup' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Confirm pickup' }).disabled).toBe(
+      true,
+    );
   });
 
   it('turns to locked after the fifth wrong code', async () => {

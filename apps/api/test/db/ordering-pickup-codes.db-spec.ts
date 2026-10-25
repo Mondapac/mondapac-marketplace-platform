@@ -253,8 +253,14 @@ describe.each(TEST_MARKETS)('pickup code store in market %s (database)', (code) 
         );
     expect(await set('')).toBe('allowed');
 
-    const shipped = newOrder();
-    shipped.sellerOrders[0] = { ...shipped.sellerOrders[0]!, deliveryMethod: 'same_day' };
+    const base = newOrder();
+    const shipped = {
+      ...base,
+      sellerOrders: base.sellerOrders.map((seller) => ({
+        ...seller,
+        deliveryMethod: 'same_day' as const,
+      })),
+    };
     await value(market, () => orders.insert(market, shipped));
     const refused = await owner
       .query(

@@ -330,7 +330,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(res.status).toBe(200);
       expect(res.headers['cache-control']).toBe('no-store');
       expect(res.body).toMatchObject({ sellerId: SELLER, attemptsLeft: 5, locked: false });
-      expect(String(res.body.code)).toMatch(/^[0-9]{4}$/);
+      expect(String((res.body as { code: unknown }).code)).toMatch(/^[0-9]{4}$/);
       expect(pickupCode).toMatch(/^[0-9]{4}$/);
       const stranger = await at().set(customer(OTHER_CUSTOMER, 2)).send({});
       expect(stranger.status).toBe(404);

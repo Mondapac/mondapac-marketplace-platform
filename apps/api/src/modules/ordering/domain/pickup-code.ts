@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'node:crypto';
 import type { Id, Temporal } from '@mondapac/shared-kernel';
 
 // The pickup code of a seller order whose buyer collects it in person (delivery models, package
@@ -36,13 +35,17 @@ export function parsePickupCode(value: unknown): string | null {
 }
 
 /**
- * Whether two stored hashes are equal, in time that does not depend on where they differ. Hashes
- * of different lengths are never equal (they would not come from the same keyed hash).
+ * Whether two stored hashes are equal, in time that does not depend on where they differ (every
+ * character is compared, the differences are folded together and only then looked at). The domain
+ * stays free of Node modules, so this is plain code rather than `timingSafeEqual`. Hashes of
+ * different lengths are never equal (they would not come from the same keyed hash); their length is
+ * not a secret.
  */
 export function hashesMatch(a: string, b: string): boolean {
-  const left = Buffer.from(a, 'utf8');
-  const right = Buffer.from(b, 'utf8');
-  return left.length === right.length && timingSafeEqual(left, right);
+  if (a.length !== b.length) return false;
+  let difference = 0;
+  for (let i = 0; i < a.length; i += 1) difference |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return difference === 0;
 }
 
 /** A seller order's code as stored: the keyed hash to check, the sealed copy for the buyer. */
