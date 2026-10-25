@@ -232,6 +232,16 @@ it keeps its space so the page does not shift when the script adds the buttons. 
 label is drawn only when the slide has a link (a label without a link is not shown). The sample hero shows
 only when the slides read failed and the sample fallback is on.
 
+## Facade: served placements (personalization 1d-3 B)
+
+`STOREFRONT_FACADE.servedPlacements(context, pageId)` (`storefront.view-served-placements`, rule
+`anonymous`, read only, no HTTP route): the set of placement ids buyers are served now on the page
+in the call's Market, that is the enabled placements of its published version while the page is
+live (not archived, inside its window). Empty for an unknown page, another Market's page, a page
+with no published version, and an archived or not-yet-live page, so a caller cannot tell them
+apart. `engagement` uses it to count a block's impressions and clicks only for placements that are
+really served. storefront does not depend on `engagement`.
+
 ## Buyer site languages (web i18n base, W2, 25 Oct 2026)
 The buyer site launches in English only. Another language (Arabic, Persian first, both right to
 left) is published per Market by an admin (W3) and chosen only in the signed-in buyer's profile

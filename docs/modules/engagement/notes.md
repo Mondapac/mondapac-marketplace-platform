@@ -16,7 +16,7 @@ what it records through methods it will add to `ENGAGEMENT_FACADE`.
   account. No row means on.
 - Route `POST /engagement/events` (customer route population, reads the session, `no-store`):
   the storefront reports an event with a closed body `{ kind, productId?, offerId?, variantId?,
-  categoryId?, query? }` and gets `{ recorded }`. A signed-in customer goes to
+categoryId?, query? }` and gets `{ recorded }`. A signed-in customer goes to
   `engagement.record-event` (`own-resources`, CSRF), anyone else to
   `engagement.record-guest-event` (`anonymous`, listed in
   `test/contracts/http-reachable-anonymous-system.json`). Abuse is bounded by the global
@@ -50,7 +50,7 @@ what it records through methods it will add to `ENGAGEMENT_FACADE`.
   ids only. The subject is the context's customer account or the guest cookie's token (hashed
   here), never a request field, always inside the call's Market. Empty (and nothing read) with
   `Sec-GPC: 1`, with the customer's switch off, and for a guest without `Engagement-Consent:
-  granted` or a well-formed cookie. Reads only: no event, no token, no cookie. Two use cases
+granted` or a well-formed cookie. Reads only: no event, no token, no cookie. Two use cases
   (`engagement.recent-views`, `own-resources`; `engagement.recent-views-guest`, `anonymous`), chosen
   by the actor. `recentViewsRequestOf(headers, marketId)` (contracts) reads the three request
   signals the way the recording route does.
@@ -65,20 +65,63 @@ what it records through methods it will add to `ENGAGEMENT_FACADE`.
   (`CERTIFICATION_FACADE.certifiedCategoryIds`); those categories are left out of "for you".
   Subcategories of a certified category are not followed yet.
 
+## Package 1d-3, part B: block impression and click counts
+
+- Table `engagement.block_counts`: one row per (Market, page, placement, UTC day) with two counters,
+  `impressions` and `clicks` (CHECK >= 0), and `updated_at`. **Aggregate numbers only and no
+  personal data**: no account, guest token, cookie, IP address, user agent, session or any
+  per-visit column, and an event is never stored, so one visit cannot be told from another. The
+  primary key `(market_id, page_id, day, placement_id)` serves the stats read of one page over a
+  range of days as a tight key range (the placement is last, so the upsert pays nothing); the index `(market_id, day)` serves the purge. The app
+  role has `SELECT`, `INSERT`, `DELETE` and `UPDATE` on the counters and `updated_at` only.
+- Route `POST /engagement/blocks` (customer route population, **no session or cookie read**, none
+  set, `no-store`, always 204 once the body is valid): `{ events: [{ pageId, placementId, type }] }`,
+  1 to 20 events, closed objects, `type` is `impression` or `click`, ids are canonical UUIDv7.
+  Identical events of one request count once. `Sec-GPC: 1` counts nothing (still 204). Use case
+  `engagement.record-block-events` (`anonymous`, listed in
+  `test/contracts/http-reachable-anonymous-system.json`). Rate limited per client origin by the
+  platform limiter in the `default` class (300 a minute for AU); neither the body, the ids nor
+  the address are logged.
+- An event is counted only when the placement is served now on that page in the Market:
+  `STOREFRONT_FACADE.servedPlacements(context, pageId)` (storefront contract, rule `anonymous`,
+  read only) answers the ids of the enabled placements of the page's published version, empty for
+  an unknown, unpublished, archived or not-yet-live page, so random ids make no rows and nothing
+  tells a valid id from an invalid one. engagement reaches it through the port `ServedPlacements`
+  (`infrastructure/facade-served-placements.ts`); storefront does not depend on engagement.
+- The count is added to in the database (`upsert` with `increment`, one write unit, blocks in a
+  fixed order so concurrent requests do not deadlock); the day is the UTC day of the injected Clock.
+- Job `engagement.purge-expired-block-counts`, daily per Market (rule `system`): deletes rows of
+  days before today minus 13 months.
+- A request names at most 2 distinct pages (`events`, `too-many-pages`, 400): a beacon reports one
+  page view, and storefront is asked once per distinct page, so a request costs a constant number
+  of reads.
+- **The counts are unverified.** Anyone can send valid served ids (rate limited per origin only), so
+  a block's impressions can be inflated and clicks may exceed impressions. They are for admin
+  statistics, shown as reported. They must not drive automatic ranking, selection or payouts
+  without a separate anti-abuse review. The counters are INTEGER (an increment past 2^31 in one
+  block-day would fail with 22003, unreachable at rate-limited volume).
+- Rate limit: the route uses the shared `default` class. A dedicated `beacon` class (with the
+  `rate_limit_counters_key_check` migration and its own per-minute limit), and a web that batches
+  events (one request per page view plus one per click), are to be added before package 1d-4 wires
+  the buyer web; not in this PR.
+- No read method on `ENGAGEMENT_FACADE` yet: the admin stats read (with its permission) comes with
+  the stats package.
+
 ## Privacy impact note (PIA)
 
 Owner decisions 4 and 5 of 2026-10-18; Australian Privacy Principles (APP 1, 3, 5, 6, 11).
 
-| Question | Answer |
-|---|---|
-| What is collected | Event kind, catalog ids (product, offer, variant, category), the search text as typed (normalized, max 200 characters), the time, the Market, and the account id or the hash of a random guest token. No name, email, address, IP address, user agent or device id is stored with an event. |
-| Why | To show recently viewed items and better recommendations (package 1d). Not sold, not shared with a third party, no third-party pixel or SDK. |
-| Sensitive information | Purchases or views are never used to infer religion, diet or health (decision 5; halal is sensitive information). No code reads events to label a shopper; an explicit buyer preference or filter is the only source for that. The search text can still contain such words, so it is never logged and never leaves the module except to package 1d's own ranking. |
-| Retention | 12 months for a signed-in customer, 30 days for a guest (the guest cookie lives 30 days too), deleted by the daily purge. |
-| Choice | Off switch in the account (`PUT customers/me/personalization`); switching off deletes what was recorded and stops recording (recording takes the account's lock shared and the switch takes it exclusive, `engagement.lock-account`, so no event survives a racing switch-off). A guest is recorded only after accepting the behaviour cookie in the cookie bar (`Engagement-Consent: granted`). `Sec-GPC: 1` (Global Privacy Control) records nothing for anyone, sets no cookie and expires a guest cookie sent. |
-| Deletion | With the account through `forgetAccount` (to be called by customers package 5). |
-| Security | Only the guest token's SHA-256 is stored; the token is only in `Set-Cookie`. Logs carry the route, outcome code, Market and correlation id only: never the body, the search text, an id of the shopper or the cookie. The app role may select, insert and delete events, never update them. |
-| Notice | The storefront privacy policy and the account page must say what is recorded, why, for how long, and how to switch it off, before the storefront goes live (storefront design thread). |
+| Question              | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| What is collected     | Event kind, catalog ids (product, offer, variant, category), the search text as typed (normalized, max 200 characters), the time, the Market, and the account id or the hash of a random guest token. No name, email, address, IP address, user agent or device id is stored with an event.                                                                                                                                                                                                                        |
+| Why                   | To show recently viewed items and better recommendations (package 1d). Not sold, not shared with a third party, no third-party pixel or SDK.                                                                                                                                                                                                                                                                                                                                                                       |
+| Sensitive information | Purchases or views are never used to infer religion, diet or health (decision 5; halal is sensitive information). No code reads events to label a shopper; an explicit buyer preference or filter is the only source for that. The search text can still contain such words, so it is never logged and never leaves the module except to package 1d's own ranking.                                                                                                                                                 |
+| Retention             | 12 months for a signed-in customer, 30 days for a guest (the guest cookie lives 30 days too), deleted by the daily purge.                                                                                                                                                                                                                                                                                                                                                                                          |
+| Choice                | Off switch in the account (`PUT customers/me/personalization`); switching off deletes what was recorded and stops recording (recording takes the account's lock shared and the switch takes it exclusive, `engagement.lock-account`, so no event survives a racing switch-off). A guest is recorded only after accepting the behaviour cookie in the cookie bar (`Engagement-Consent: granted`). `Sec-GPC: 1` (Global Privacy Control) records nothing for anyone, sets no cookie and expires a guest cookie sent. |
+| Deletion              | With the account through `forgetAccount` (to be called by customers package 5).                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Security              | Only the guest token's SHA-256 is stored; the token is only in `Set-Cookie`. Logs carry the route, outcome code, Market and correlation id only: never the body, the search text, an id of the shopper or the cookie. The app role may select, insert and delete events, never update them.                                                                                                                                                                                                                        |
+| Block counts (1d-3 B) | Per storefront block and UTC day, how often it was shown and clicked: two numbers, kept 13 months. Aggregate only; no person, account, guest token, cookie, IP address or user agent is read, stored or logged, so it needs no consent and no switch (the counts are unverified and must not drive ranking, selection or payouts without an anti-abuse review), and `Sec-GPC: 1` is honoured anyway. Cannot be linked to a shopper or deleted per shopper because it holds nothing about one.                      |
+| Notice                | The storefront privacy policy and the account page must say what is recorded, why, for how long, and how to switch it off, before the storefront goes live (storefront design thread).                                                                                                                                                                                                                                                                                                                             |
 
 ## Follow-ups
 
@@ -96,6 +139,7 @@ Fixed in the PR: recording runs serializable like the switch (Hassan M1); `Sec-G
 guest cookie sent (I1); `down.sql` sets `lock_timeout`.
 
 Open, before the storefront sends real traffic:
+
 - Hassan L1: the 30-day guest limit is enforced by the cookie's `Max-Age` only; store the issue
   time of each token hash (or put it in the token) and reissue a token older than 30 days.
 - Hassan L2: a stricter rate class or a per-origin event cap for the anonymous route; every
@@ -105,7 +149,7 @@ Open, before the storefront sends real traffic:
 - Hassan I3: customers package 5 passes `forgetAccount` an account id from its own flow, never
   from user input.
 - Mojtaba 1: partial indexes per subject (`WHERE account_id IS NOT NULL` / `guest_hash IS NOT
-  NULL`) instead of `(market_id, occurred_at)`, so each purge scans only its own subject.
+NULL`) instead of `(market_id, occurred_at)`, so each purge scans only its own subject.
 - Mojtaba 2: purge in batches (for example 5,000 rows a unit), per-table autovacuum tuning, and a
   written volume threshold for partitioning (by subject, then by month, so purge drops partitions).
 - Mojtaba 5: `kind` as `text` with the CHECK (house standard), next time the table changes.
