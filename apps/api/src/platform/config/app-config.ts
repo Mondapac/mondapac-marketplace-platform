@@ -29,6 +29,9 @@ const MARKET_VALUE = (value: string): string => `[A-Z][A-Z0-9_]{1,7}=${value}`;
 /** A carrier key or webhook secret: long enough to be guessed by no one, in a URL-safe alphabet. */
 const CARRIER_SECRET = '[A-Za-z0-9_-]{24,200}';
 
+/** A Zoom2u API key (a bearer token): printable token characters, 20 to 500 of them. */
+const ZOOM2U_KEY = '[A-Za-z0-9._~+/-]{20,500}';
+
 const hostedMarkets = z
   .string({ error: 'HOSTED_MARKETS is required; there is no default market (ADR-0003)' })
   .transform((value) =>
@@ -117,6 +120,17 @@ const envSchema = z.object({
     .regex(
       new RegExp(`^${MARKET_VALUE(CARRIER_SECRET)}(,${MARKET_VALUE(CARRIER_SECRET)})*$`),
       'must be MARKET=secret pairs separated by commas (a secret is 24 to 200 of A-Z a-z 0-9 _ -)',
+    )
+    .optional(),
+  // Phase 6 package 5c, the external fleet Zoom2u: its API key (a bearer token) as MARKET=key
+  // pairs separated by commas (each Market at most once and only hosted ones). A Market without
+  // it has Zoom2u off, whatever its `shipping.zoom2u.enabled` says. A server secret, never
+  // echoed; checked in parseMarketValues.
+  ZOOM2U_API_KEY: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(ZOOM2U_KEY)}(,${MARKET_VALUE(ZOOM2U_KEY)})*$`),
+      'must be MARKET=key pairs separated by commas (a key is 20 to 500 of A-Z a-z 0-9 . _ ~ + / -)',
     )
     .optional(),
   // ADR-0037: the BFF networks and their keys. Both empty or unset: the feature is off. Parsed
@@ -283,6 +297,13 @@ export interface AppConfig {
   readonly mondapacDrive: Readonly<{
     apiKeys: Readonly<Record<string, string>>;
     webhookSecrets: Readonly<Record<string, string>>;
+  }>;
+  /**
+   * The Zoom2u API key of each hosted Market (`ZOOM2U_API_KEY`). Holds secrets: read by
+   * shipping's Zoom2u adapter alone.
+   */
+  readonly zoom2u: Readonly<{
+    apiKeys: Readonly<Record<string, string>>;
   }>;
 }
 
@@ -469,6 +490,10 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       );
     }
   }
+  const zoom2uKeys = parsed.success
+    ? parseMarketValues(parsed.data.ZOOM2U_API_KEY, parsed.data.HOSTED_MARKETS, 'ZOOM2U_API_KEY')
+    : { values: {}, issues: [] };
+  issues.push(...zoom2uKeys.issues);
   const assistant = parsed.success
     ? assistantModelConfig(parsed.data)
     : { config: null, issues: [] };
@@ -513,5 +538,6 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       apiKeys: driveKeys.values,
       webhookSecrets: driveSecrets.values,
     }),
+    zoom2u: Object.freeze({ apiKeys: zoom2uKeys.values }),
   });
 }

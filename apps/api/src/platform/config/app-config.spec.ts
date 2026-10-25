@@ -39,6 +39,7 @@ describe('loadAppConfig', () => {
       },
       googleSignIn: null,
       mondapacDrive: { apiKeys: {}, webhookSecrets: {} },
+      zoom2u: { apiKeys: {} },
     });
   });
 
@@ -82,6 +83,29 @@ describe('loadAppConfig', () => {
           MONDAPAC_DRIVE_WEBHOOK_SECRET: `AU=${KEY}`,
         }),
       ).toThrow('must differ from MONDAPAC_DRIVE_API_KEY');
+    });
+  });
+
+  describe('the Zoom2u API key (per Market)', () => {
+    const KEY = 'zoom2u.key_0123456789abcdefghij';
+
+    it('reads the key per hosted Market, and none when unset', () => {
+      const config = loadAppConfig({ HOSTED_MARKETS: 'AU,ZZ', ZOOM2U_API_KEY: `AU=${KEY}` });
+      expect(config.zoom2u).toEqual({ apiKeys: { AU: KEY } });
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).zoom2u.apiKeys).toEqual({});
+    });
+
+    it('refuses a short key and an unhosted Market without echoing the value', () => {
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', ZOOM2U_API_KEY: 'AU=too-short' })).toThrow(
+        'ZOOM2U_API_KEY',
+      );
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', ZOOM2U_API_KEY: `NZ=${KEY}` });
+        throw new Error('should have thrown');
+      } catch (error) {
+        expect((error as Error).message).toContain('NZ is not in HOSTED_MARKETS');
+        expect((error as Error).message).not.toContain(KEY);
+      }
     });
   });
 
