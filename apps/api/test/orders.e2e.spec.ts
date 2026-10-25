@@ -82,6 +82,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.address-not-found': 422,
     'ordering.outside-delivery-area': 422,
     'ordering.cart-empty': 422,
+    'ordering.delivery-method-unavailable': 422,
     'ordering.cart-not-purchasable': 422,
     'ordering.stock-insufficient': 409,
     'ordering.cart-not-ready': 409,
@@ -295,6 +296,40 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(outside.body).toEqual({ statusCode: 422, code: 'ordering.outside-delivery-area' });
       expect(inventory.calls).toEqual([]);
       expect(orders.rows.size).toBe(0);
+    });
+
+    it("stores the buyer's delivery method per seller, and answers it with the order", async () => {
+      const headers = customer();
+      const whole = Math.floor(Date.now() / 1000) * 1000;
+      const start = new Date(whole + 36 * 3_600_000).toISOString();
+      const end = new Date(whole + 38 * 3_600_000).toISOString();
+
+      const started = await checkout(headers, {
+        addressId: ADDRESS,
+        deliveryMethods: { [SELLER]: { method: 'scheduled', windowStart: start, windowEnd: end } },
+      });
+      expect(started.status).toBe(200);
+      const stored = orders.rows.get(body(started).orderId)!;
+      expect(stored.sellerOrders[0]).toMatchObject({ deliveryMethod: 'scheduled' });
+      expect(stored.sellerOrders[0]!.deliveryWindow?.start.toString()).toBe(
+        new Date(start).toISOString().replace(/\.000Z$/, 'Z'),
+      );
+      const one = await http()
+        .get(`/orders/${body(started).orderId}`)
+        .set({ 'x-market-id': code, cookie: headers.cookie });
+      expect(one.body).toMatchObject({
+        sellerOrders: [{ deliveryMethod: 'scheduled', readyAt: null, deliveryAttention: null }],
+      });
+
+      const bad = await checkout(headers, {
+        addressId: ADDRESS,
+        deliveryMethods: { [SELLER]: { method: 'drone' } },
+      });
+      expect(bad.status).toBe(400);
+      expect(bad.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: `deliveryMethods.${SELLER}.method`, code: 'value' }] },
+      });
     });
 
     it("keeps the customer's note to each seller with the order, and refuses a bad note", async () => {

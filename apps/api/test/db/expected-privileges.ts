@@ -451,10 +451,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [
         'carrier',
         'delivered_at',
+        'delivery_attention',
         'fulfilment',
         'inventory_recorded_at',
         'ledger_attempts',
         'ledger_state',
+        'ready_at',
         'refunded_amount',
         'shipped_at',
         'tracking_ref',

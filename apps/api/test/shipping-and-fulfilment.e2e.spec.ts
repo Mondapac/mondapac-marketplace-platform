@@ -9,7 +9,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { SellerDeliverOrder } from '../src/modules/ordering/application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from '../src/modules/ordering/application/use-cases/seller-list-orders.use-case';
-import { SellerShipOrder } from '../src/modules/ordering/application/use-cases/seller-ship-order.use-case';
+import { SellerMarkOrderReady } from '../src/modules/ordering/application/use-cases/seller-mark-order-ready.use-case';
 import { SellerViewOrderDocument } from '../src/modules/ordering/application/use-cases/seller-view-order-document.use-case';
 import { SellerViewOrder } from '../src/modules/ordering/application/use-cases/seller-view-order.use-case';
 import { sellerOrderDocument } from '../src/modules/ordering/domain/order-document';
@@ -28,7 +28,7 @@ import { TEST_DELIVERY_ADDRESS } from './support/ordering-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
-// The seller order routes (list, one, ship, deliver) and the flat shipping fee routes (admin and
+// The seller order routes (list, one, ready, deliver) and the flat shipping fee routes (admin and
 // seller) over HTTP: the real guards and controllers; the use cases are stubs, so this proves the
 // session, the panel population, CSRF, the closed bodies, the status of each refusal, the answer
 // shape and `no-store`. The use cases have their own specs.
@@ -63,6 +63,10 @@ const detail = (currency: string, patch: object = {}) => ({
   trackingRef: null,
   shippedAt: null,
   deliveredAt: null,
+  deliveryMethod: 'instant',
+  deliveryWindow: null,
+  readyAt: null,
+  deliveryAttention: null,
   lines: [
     {
       lineId: id<'OrderLine'>(0xc030),
@@ -128,8 +132,8 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
           .useValue(stub('view'))
           .overrideProvider(SellerViewOrderDocument)
           .useValue(stub('document'))
-          .overrideProvider(SellerShipOrder)
-          .useValue(stub('ship'))
+          .overrideProvider(SellerMarkOrderReady)
+          .useValue(stub('ready'))
           .overrideProvider(SellerDeliverOrder)
           .useValue(stub('deliver'))
           .overrideProvider(SetFlatFee)
@@ -353,53 +357,56 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
       expect(denied.status).toBe(403);
     });
 
-    it('records the shipment from a closed JSON body and answers the new state', async () => {
+    it('marks an order ready from an empty body and answers the new state', async () => {
       await boot();
       const session = seller();
-      next = ok(
-        detail(currency, {
-          fulfilment: 'shipped',
-          carrier: 'Australia Post',
-          trackingRef: 'AP1',
-          shippedAt: START,
-        }),
-      );
+      next = ok(detail(currency, { readyAt: START }));
 
-      const res = await call('post', 'seller', `${ORDERS}/${SELLER_ORDER}/ship`, session, {
-        carrier: 'Australia Post',
-        trackingRef: 'AP1',
-      });
+      const res = await call('post', 'seller', `${ORDERS}/${SELLER_ORDER}/ready`, session, {});
 
       expect(res.status).toBe(200);
       expect(res.headers['cache-control']).toBe('no-store');
       expect(res.body).toMatchObject({
-        fulfilment: 'shipped',
-        carrier: 'Australia Post',
-        trackingRef: 'AP1',
-        shippedAt: START.toString(),
+        fulfilment: 'to-ship',
+        deliveryMethod: 'instant',
+        deliveryWindowStart: null,
+        readyAt: START.toString(),
+        deliveryAttention: null,
       });
-      expect(calls).toEqual([
-        {
-          name: 'ship',
-          input: { sellerOrderId: SELLER_ORDER, carrier: 'Australia Post', trackingRef: 'AP1' },
-        },
-      ]);
+      expect(calls).toEqual([{ name: 'ready', input: { sellerOrderId: SELLER_ORDER } }]);
     });
 
-    it('refuses a shipment without CSRF or a session, with a stray field, and not as JSON', async () => {
+    it('serialises a scheduled order with its window as UTC instants', async () => {
+      await boot();
+      next = ok(
+        detail(currency, {
+          deliveryMethod: 'scheduled',
+          deliveryWindow: { start: START.add({ hours: 24 }), end: START.add({ hours: 26 }) },
+          deliveryAttention: 'no-carrier',
+        }),
+      );
+
+      const res = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}`, seller());
+
+      expect(res.body).toMatchObject({
+        deliveryMethod: 'scheduled',
+        deliveryWindowStart: START.add({ hours: 24 }).toString(),
+        deliveryWindowEnd: START.add({ hours: 26 }).toString(),
+        deliveryAttention: 'no-carrier',
+      });
+    });
+
+    it('refuses ready without CSRF or a session, with a body field, and not as JSON', async () => {
       await boot();
       const session = seller();
-      const path = `${ORDERS}/${SELLER_ORDER}/ship`;
-      const body = { carrier: 'Post' };
+      const path = `${ORDERS}/${SELLER_ORDER}/ready`;
 
-      expect((await call('post', 'seller', path, { cookie: session.cookie }, body)).status).toBe(
-        403,
-      );
-      const extra = await call('post', 'seller', path, session, { carrier: 'Post', sellerId: 'x' });
+      expect((await call('post', 'seller', path, { cookie: session.cookie }, {})).status).toBe(403);
+      const extra = await call('post', 'seller', path, session, { carrier: 'Post' });
       expect(extra.status).toBe(400);
       expect(extra.body).toMatchObject({
         code: 'validation.failed',
-        details: { fields: [{ path: 'sellerId', code: 'unknown-field' }] },
+        details: { fields: [{ path: 'carrier', code: 'unknown-field' }] },
       });
       const text = await http()
         .post(path)
@@ -410,19 +417,22 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
       expect(calls).toEqual([]);
     });
 
-    it('maps the shipment refusals: invalid fields, not found and a step already taken', async () => {
+    it('maps the ready refusals: bad id, not found (also another shop) and already shipped', async () => {
       await boot();
       const session = seller();
-      const path = `${ORDERS}/${SELLER_ORDER}/ship`;
+      const path = `${ORDERS}/${SELLER_ORDER}/ready`;
 
-      next = err({ code: 'validation.failed', fields: [{ path: 'carrier', code: 'format' }] });
-      const invalid = await call('post', 'seller', path, session, { carrier: '' });
-      expect(invalid.status).toBe(400);
-      expect(invalid.body).toMatchObject({ details: { fields: [{ path: 'carrier' }] } });
+      next = err({
+        code: 'validation.failed',
+        fields: [{ path: 'sellerOrderId', code: 'format' }],
+      });
+      expect((await call('post', 'seller', path, session, {})).status).toBe(400);
       next = err({ code: 'ordering.seller-order-not-found' });
-      expect((await call('post', 'seller', path, session, { carrier: 'Post' })).status).toBe(404);
+      expect((await call('post', 'seller', path, session, {})).status).toBe(404);
+      next = err({ code: 'access.denied' });
+      expect((await call('post', 'seller', path, session, {})).status).toBe(403);
       next = err({ code: 'ordering.fulfilment-conflict' });
-      const conflict = await call('post', 'seller', path, session, { carrier: 'Post' });
+      const conflict = await call('post', 'seller', path, session, {});
       expect(conflict.status).toBe(409);
       expect(conflict.body).toEqual({ statusCode: 409, code: 'ordering.fulfilment-conflict' });
     });

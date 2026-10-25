@@ -87,6 +87,18 @@ model OrderingSellerOrder {
   /// The gross of the refunds not failed (pending or succeeded); never above the total (CHECK).
   /// Raised under the value read, so two refunds of one seller order cannot both pass (tax step 3).
   refundedAmount       BigInt              @default(0) @map("refunded_amount")
+  /// The buyer's delivery method, chosen at checkout: pickup, instant, same_day or scheduled
+  /// (CHECK). Orders placed before it was recorded are instant (they were booked at payment).
+  deliveryMethod       String              @map("delivery_method")
+  /// The buyer's window for a scheduled delivery, UTC instants; both set exactly when the method
+  /// is scheduled, and the end is after the start (CHECK).
+  deliveryWindowStart  DateTime?           @map("delivery_window_start") @db.Timestamptz(6)
+  deliveryWindowEnd    DateTime?           @map("delivery_window_end") @db.Timestamptz(6)
+  /// When the seller told the platform the order is ready; set once, while the order is to-ship.
+  readyAt              DateTime?           @map("ready_at") @db.Timestamptz(6)
+  /// Set by the platform when no carrier could take the order: no-carrier (CHECK). The seller
+  /// never delivers instead; an admin follows it up.
+  deliveryAttention    String?             @map("delivery_attention")
   order                OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   lines                OrderingOrderLine[]
   refunds              OrderingRefund[]

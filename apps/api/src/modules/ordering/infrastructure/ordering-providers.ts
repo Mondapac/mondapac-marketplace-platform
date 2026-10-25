@@ -20,6 +20,11 @@ import { ORDER_REPOSITORY, type OrderRepository } from '../application/ports/ord
 import { ORDERING_POLICY, type OrderingPolicy } from '../application/ports/ordering-policy';
 import { REFUND_REPOSITORY, type RefundRepository } from '../application/ports/refund.repository';
 import { SHIP_TO_CIPHER, type ShipToCipher } from '../application/ports/ship-to-cipher';
+import {
+  DELIVERY_METHOD_POLICY,
+  type DeliveryMethodPolicy,
+} from '../application/ports/delivery-method-policy';
+import { AllowAllDeliveryMethods } from './allow-all-delivery-methods';
 import { ConfigOrderingPolicy } from './config-ordering-policy';
 import { FacadeOrderLabels } from './facade-order-labels';
 import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
@@ -68,6 +73,10 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: ORDERING_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): OrderingPolicy => new ConfigOrderingPolicy(markets),
+  },
+  {
+    provide: DELIVERY_METHOD_POLICY,
+    useFactory: (): DeliveryMethodPolicy => new AllowAllDeliveryMethods(),
   },
   {
     provide: ORDER_TAX_CATEGORIES,
