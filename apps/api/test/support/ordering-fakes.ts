@@ -444,10 +444,14 @@ export class FakeShipping implements ShippingFacade {
   /** The tracking link of each seller order id; `trackingDown` makes the read fail. */
   trackingLinks = new Map<string, string>();
   trackingDown = false;
+  /** The `orderId` of each `carrierTrackingLinks` call, in order. */
+  trackingOrderIds: string[] = [];
   carrierTrackingLinks(
     _c: CallContext,
+    orderId: string,
     sellerOrderIds: readonly string[],
   ): Promise<Result<ReadonlyMap<string, string>, ShippingFailure>> {
+    this.trackingOrderIds.push(orderId);
     if (this.trackingDown) return Promise.resolve(err({ code: 'shipping.unavailable' }));
     return Promise.resolve(
       ok(

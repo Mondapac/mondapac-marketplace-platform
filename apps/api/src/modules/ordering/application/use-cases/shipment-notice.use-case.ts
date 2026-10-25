@@ -66,7 +66,7 @@ export class ShipmentNoticeQuery extends UseCase<
     if (!read.ok) return read;
     // The fleet's tracking page, read after the unit (shipping opens its own). A fleet that gave
     // none, a seller who shipped alone, or a failed read is no link: the mail still goes.
-    const shipment = await this.deps.shipping.carrierShipment(context, input.sellerOrderId);
+    const shipment = await this.deps.shipping.carrierShipment(context, read.value.sellerOrderId);
     const url = shipment.ok ? shipment.value.trackingUrl : null;
     return ok({
       ...read.value,

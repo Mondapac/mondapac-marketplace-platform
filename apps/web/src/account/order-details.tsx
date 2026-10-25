@@ -24,6 +24,9 @@ export function safeTrackingHref(value: string | undefined): string | null {
   }
 }
 
+/** The tracking link is useful while the part is confirmed or on its way, not once it is over. */
+const TRACKABLE: ReadonlySet<OrderPart['status']> = new Set(['confirmed', 'out-for-delivery']);
+
 const STEPS = ['placed', 'confirmed', 'out-for-delivery', 'delivered'] as const;
 const STEP_OF: Record<Exclude<OrderPart['status'], 'cancelled'>, number> = {
   waiting: 0,
@@ -101,7 +104,7 @@ export function OrderDetails({
                 : part.deliveryWindow}
           </small>
           {part.status === 'cancelled' ? null : <Progress status={part.status} />}
-          {safeTrackingHref(part.trackingUrl) === null ? null : (
+          {!TRACKABLE.has(part.status) || safeTrackingHref(part.trackingUrl) === null ? null : (
             <p className="ac-track">
               <a
                 className="btn ghost"
@@ -111,6 +114,7 @@ export function OrderDetails({
               >
                 <Icon name="truck" />
                 {t('order.track')}
+                <Icon name="external" />
                 <span className="sr-only"> {t('order.track-new-tab')}</span>
               </a>
             </p>

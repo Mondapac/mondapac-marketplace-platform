@@ -22,6 +22,7 @@ import { TabBar } from '../src/shell/tab-bar.tsx';
 import { SAMPLE_CART_SOURCE } from '../src/storefront/sample-cart.ts';
 import { SOCIAL_SIGN_IN_SHOWN, TAX_INVOICE_SHOWN } from '../src/storefront/features.ts';
 import { loadAccount } from '../src/storefront/source.ts';
+import type { OrderPart } from '../src/storefront/types.ts';
 
 const nav = vi.hoisted(() => ({ path: '/', push: vi.fn() }));
 vi.mock('next/navigation', () => ({
@@ -309,6 +310,34 @@ describe('order details', () => {
     expect(links[0]!.getAttribute('href')).toBe('https://track.example.com/d/sample');
     expect(links[0]!.getAttribute('rel')).toBe('noopener noreferrer');
     expect(links[0]!.getAttribute('target')).toBe('_blank');
+    // The truck and the trailing external-link arrow are decoration.
+    const icons = [...links[0]!.querySelectorAll('svg')];
+    expect(icons).toHaveLength(2);
+    for (const icon of icons) expect(icon.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('shows the tracking link only while the part is confirmed or out for delivery', () => {
+    const withStatus = (status: OrderPart['status']) => ({
+      ...account,
+      orders: account.orders.map((o) => ({
+        ...o,
+        parts: o.parts.map((p) => ({
+          ...p,
+          status,
+          trackingUrl: 'https://track.example.com/d/x',
+        })) as unknown as typeof o.parts,
+      })),
+    });
+    const shown = (status: OrderPart['status']) => {
+      cleanup();
+      renderStore(<OrderDetails reference="MP-20481" />, true, withStatus(status));
+      return within(main()).queryAllByRole('link', { name: /Track delivery/ }).length > 0;
+    };
+    expect(shown('confirmed')).toBe(true);
+    expect(shown('out-for-delivery')).toBe(true);
+    expect(shown('delivered')).toBe(false);
+    expect(shown('cancelled')).toBe(false);
+    expect(shown('waiting')).toBe(false);
   });
 
   it('shows no tracking link for a part whose link is not https', () => {

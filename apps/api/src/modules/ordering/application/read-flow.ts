@@ -156,6 +156,7 @@ async function trackingLinksOf(
   try {
     const found = await deps.shipping.carrierTrackingLinks(
       context,
+      order.id,
       shipped.map((seller) => seller.id),
     );
     if (!found.ok) return [];
@@ -163,7 +164,7 @@ async function trackingLinksOf(
       const url = found.value.get(seller.id);
       return url === undefined || !url.startsWith('https://')
         ? []
-        : [{ sellerId: seller.sellerId, url }];
+        : [{ sellerOrderId: seller.id, sellerId: seller.sellerId, url }];
     });
   } catch {
     return [];

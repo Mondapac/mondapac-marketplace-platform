@@ -237,7 +237,7 @@
   {
     "name": "shipping.receive-uber-webhook",
     "rule": "anonymous",
-    "reason": "Uber Direct's status webhook: the caller is Uber, which holds no session. The use case answers not-found while the fleet is off for the Market and refuses anything without a valid hex HMAC-SHA256 of the raw body (x-uber-signature) under the Market's webhook secret; each event is taken once by its id, the booking is found by Uber's delivery id within the Market and fleet, and it only moves a seller order's carrier delivery forward."
+    "reason": "Uber Direct's status webhook: the caller is Uber, which holds no session. The use case answers not-found while the fleet is off for the Market or has no webhook secret there (the same answer, so an unsigned caller cannot tell the configuration apart) and refuses anything without a valid hex HMAC-SHA256 of the raw body (x-uber-signature) under the Market's webhook secret; each event is taken once by its id, the booking is found by Uber's delivery id within the Market and fleet, and it only moves a seller order's carrier delivery forward."
   },
   {
     "name": "shipping.view-store-flat-fee",

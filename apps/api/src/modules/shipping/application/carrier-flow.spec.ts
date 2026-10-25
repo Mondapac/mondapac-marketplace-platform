@@ -173,7 +173,7 @@ describe.each([
       policy: {
         currency: () => markets.get(market.marketId).defaultCurrency,
         deliversTo: () => true,
-      } as never,
+      },
       sellers: undefined as never,
       stores: undefined as never,
       audit: undefined as never,
@@ -626,8 +626,8 @@ describe.each([
       }),
       'carrier-0004-abcd',
     );
-    const links = (ids: unknown[], context = customer) =>
-      new CarrierTrackingLinks(gate, deps).execute(context, { sellerOrderIds: ids });
+    const links = (ids: unknown[], context = customer, orderId: unknown = ORDER) =>
+      new CarrierTrackingLinks(gate, deps).execute(context, { orderId, sellerOrderIds: ids });
 
     it('stores the https link the fleet gave and reads it back for ordering and the buyer', async () => {
       carrier.bookAnswer = ok({
@@ -672,6 +672,43 @@ describe.each([
       });
       expect(shipment.ok && shipment.value.trackingUrl).toBeNull();
       expect(await links([SELLER_ORDER])).toEqual(ok(new Map()));
+    });
+
+    it("answers no link for another order's id and refuses an actor that is not a customer", async () => {
+      carrier.bookAnswer = ok({
+        carrierReference: DELIVERY,
+        carrierStatus: 'SCHEDULED',
+        trackingUrl: 'https://track.example.com/d/abc',
+      });
+      expect(await book()).toEqual(ok('booked'));
+
+      // The booking belongs to ORDER: asked under any other order id, nothing leaves.
+      expect(await links([SELLER_ORDER], customer, id<'Order'>(0x0b))).toEqual(ok(new Map()));
+      expect(await links([SELLER_ORDER], customer, 'nope')).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      // A seller, an admin and the system are not the buyer of an order.
+      for (const population of ['seller', 'admin'] as const) {
+        const other = testCallContext(
+          market,
+          testAuthenticatedActor(market, {
+            population,
+            accountId: id<'Account'>(0x63),
+            sessionId: id<'Session'>(0x64),
+            sellerId: population === 'seller' ? SELLER : null,
+          }),
+          'carrier-0005-abcd',
+        );
+        expect(await links([SELLER_ORDER], other)).toMatchObject({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+      }
+      expect(await links([SELLER_ORDER], system)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
     });
 
     it('refuses malformed ids, too many ids and a caller with no session, and reads one Market only', async () => {

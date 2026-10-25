@@ -102,6 +102,7 @@ export interface OwnOrderView extends OrderView {
 
 /** One shipped part's tracking link, in the buyer's own view of an order. */
 export interface OwnTrackingLinkView {
+  readonly sellerOrderId: Id<'SellerOrder'>;
   readonly sellerId: Id<'Seller'>;
   readonly url: string;
 }

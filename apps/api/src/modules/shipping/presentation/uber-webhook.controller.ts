@@ -16,7 +16,6 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
-  ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
   ApiUnsupportedMediaTypeResponse,
@@ -35,7 +34,6 @@ export const UBER_WEBHOOK_STATUS: Readonly<Record<string, number>> = Object.free
   'shipping.signature-invalid': 401,
   'shipping.fleet-off': 404,
   'shipping.carrier-delivery-not-found': 404,
-  'shipping.webhook-unavailable': 503,
   ...ACCESS_DENIED_STATUS,
 });
 
@@ -69,7 +67,7 @@ export class UberWebhookController {
       "event once by its id. A status change moves the seller order's carrier delivery forward: " +
       'picked up is shipped, delivered is delivered, canceled or returned follows the booking ' +
       'rules. Other event kinds are acknowledged and dropped. 404 when Uber Direct is off for ' +
-      'the Market.',
+      'the Market or has no signing secret there.',
   })
   @ApiParam({ name: 'market', description: 'The Market id of this endpoint, as in HOSTED_MARKETS' })
   @ApiHeader({ name: 'x-uber-signature', required: true })
@@ -81,10 +79,10 @@ export class UberWebhookController {
   @ApiUnauthorizedResponse({ ...ERROR, description: 'shipping.signature-invalid' })
   @ApiNotFoundResponse({
     ...ERROR,
-    description: 'shipping.fleet-off, or shipping.carrier-delivery-not-found (retried)',
+    description:
+      'shipping.fleet-off (off, or no signing secret, for the Market), or shipping.carrier-delivery-not-found (retried)',
   })
   @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
-  @ApiServiceUnavailableResponse({ ...ERROR, description: 'shipping.webhook-unavailable' })
   async webhook(
     @Call() context: CallContext,
     @Req() request: Request,

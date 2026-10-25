@@ -45,10 +45,11 @@ export interface ReceiveUberWebhookInput {
 
 export type ReceiveUberWebhookFailure =
   | { readonly code: 'validation.failed' }
-  /** Uber Direct is off for the Market: the route does not exist there (404). */
+  /**
+   * Uber Direct is off for the Market, or has no signing secret there: the route does not exist
+   * (404), so an unsigned caller cannot tell the two apart.
+   */
   | { readonly code: 'shipping.fleet-off' }
-  /** No signing secret for the Market: Uber retries later (503). */
-  | { readonly code: 'shipping.webhook-unavailable' }
   | { readonly code: 'shipping.signature-invalid' }
   /** No booking (yet) under the delivery id: Uber retries, so a race with booking settles. */
   | { readonly code: 'shipping.carrier-delivery-not-found' };
@@ -78,8 +79,8 @@ async function applyReport(
 }
 
 /**
- * `receive-uber-webhook`: Uber Direct's delivery status event. Off for the Market is 404 before
- * anything else. The signature (HMAC-SHA256 of the raw bytes under the Market's secret) is
+ * `receive-uber-webhook`: Uber Direct's delivery status event. Off for the Market, or without a signing
+ * secret there, is 404 before anything else. The signature (HMAC-SHA256 of the raw bytes under the Market's secret) is
  * checked before the body is read; the Market is the route's, never the body's. The booking is
  * found by Uber's delivery id within that Market and fleet, so an event cannot move another
  * fleet's or Market's booking. An event is taken once by its id. A proof of delivery is kept as
@@ -91,11 +92,11 @@ export async function receiveUberWebhook(
   input: ReceiveUberWebhookInput,
 ): Promise<Result<FleetWebhookOutcome, ReceiveUberWebhookFailure>> {
   const { market } = context;
-  if (deps.fleets.get('uber_direct')?.capabilities(market) == null) {
+  if (
+    deps.fleets.get('uber_direct')?.capabilities(market) == null ||
+    !deps.uberWebhookSignature.configuredFor(market.marketId)
+  ) {
     return err({ code: 'shipping.fleet-off' });
-  }
-  if (!deps.uberWebhookSignature.configuredFor(market.marketId)) {
-    return err({ code: 'shipping.webhook-unavailable' });
   }
   if (!(input?.payload instanceof Uint8Array)) return err({ code: 'validation.failed' });
   if (!deps.uberWebhookSignature.verify(market.marketId, input.payload, input.signature)) {

@@ -306,20 +306,30 @@ const MAX_TRACKING_LINKS = 50;
 
 /**
  * `carrier-tracking-links`: the https tracking links of the carrier deliveries of some seller
- * orders (a map of the seller order id to the link), for the buyer's own order page. A seller
- * order with no carrier delivery, or none with a link, is absent. The caller proved the ids are
- * the buyer's own; nothing else of the booking leaves.
+ * orders of one order (a map of the seller order id to the link), for the buyer's own order
+ * page. Only a customer may ask, and a link is returned only when the booking belongs to that
+ * order, so shipping does not rely on the caller alone for ownership: an id of another order
+ * answers nothing. A seller order with no carrier delivery, or none with a link, is absent;
+ * nothing else of the booking leaves.
  */
 export async function readTrackingLinks(
   deps: ShippingDependencies,
   context: CallContext,
-  input: { readonly sellerOrderIds: unknown },
+  input: { readonly orderId: unknown; readonly sellerOrderIds: unknown },
 ): Promise<
   Result<
     ReadonlyMap<string, string>,
-    { readonly code: 'validation.failed' } | { readonly code: 'shipping.unavailable' }
+    | { readonly code: 'access.denied' }
+    | { readonly code: 'validation.failed' }
+    | { readonly code: 'shipping.unavailable' }
   >
 > {
+  const actor = context.actor;
+  if (actor.kind !== 'authenticated' || actor.population !== 'customer') {
+    return err({ code: 'access.denied' });
+  }
+  const orderId = idOf<'Order'>(input?.orderId);
+  if (orderId === null) return err({ code: 'validation.failed' });
   const raw = input?.sellerOrderIds;
   if (!Array.isArray(raw) || raw.length > MAX_TRACKING_LINKS) {
     return err({ code: 'validation.failed' });
@@ -336,10 +346,10 @@ export async function readTrackingLinks(
     async () => {
       const links = new Map<string, string>();
       for (const id of ids) {
-        const url = safeTrackingUrl(
-          (await deps.bookings.findBySellerOrder(market, id))?.trackingUrl,
-        );
-        if (url !== null) links.set(id, url);
+        const booking = await deps.bookings.findBySellerOrder(market, id);
+        if (booking === null || booking.orderId !== orderId) continue;
+        const url = safeTrackingUrl(booking.trackingUrl);
+        if (url !== null) links.set(booking.sellerOrderId, url);
       }
       return ok(links as ReadonlyMap<string, string>);
     },

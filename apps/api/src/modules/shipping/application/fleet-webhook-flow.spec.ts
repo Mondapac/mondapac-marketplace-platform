@@ -232,10 +232,11 @@ describe.each(TEST_MARKETS)('fleet status flows in market %s', (code) => {
       expect(await receive(body, 'garbage')).toEqual(err({ code: 'shipping.fleet-off' }));
     });
 
-    it('is unavailable without a signing secret for the Market', async () => {
+    it('is not found, as when the fleet is off, without a signing secret for the Market', async () => {
       deps = { ...deps, uberWebhookSignature: new UberWebhookSignature({}) };
-      expect(await receive(bodyOf('delivered'))).toEqual(
-        err({ code: 'shipping.webhook-unavailable' }),
+      expect(await receive(bodyOf('delivered'))).toEqual(err({ code: 'shipping.fleet-off' }));
+      expect(await receive(bodyOf('delivered'), 'garbage')).toEqual(
+        err({ code: 'shipping.fleet-off' }),
       );
     });
 

@@ -1411,14 +1411,16 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
 
         const own = await view(customer);
         expect(own.ok && own.value.trackingLinks).toEqual([
-          { sellerId: SELLER_A, url: 'https://track.example.com/d/1' },
+          { sellerOrderId: a, sellerId: SELLER_A, url: 'https://track.example.com/d/1' },
         ]);
+        // Shipping is asked about this order too, so it can check ownership itself.
+        expect(shipping.trackingOrderIds).toEqual([order.id]);
         // Another customer's read of this order is not found, and asks shipping for nothing.
         const asked: string[][] = [];
         const original = shipping.carrierTrackingLinks.bind(shipping);
-        shipping.carrierTrackingLinks = (c, ids) => {
+        shipping.carrierTrackingLinks = (c, orderId, ids) => {
           asked.push([...ids]);
-          return original(c, ids);
+          return original(c, orderId, ids);
         };
         const stranger = await view(customerOf(id<'Account'>(0x999)));
         expect(stranger.ok).toBe(false);

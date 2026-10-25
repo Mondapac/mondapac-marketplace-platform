@@ -41,7 +41,6 @@ it('maps every refusal code of the Uber webhook to its exact status', () => {
     'shipping.signature-invalid': 401,
     'shipping.fleet-off': 404,
     'shipping.carrier-delivery-not-found': 404,
-    'shipping.webhook-unavailable': 503,
     'access.unauthenticated': 401,
     'access.denied': 403,
     'access.seller-not-approved': 403,
@@ -230,12 +229,12 @@ describe.each(TEST_MARKETS)('Uber Direct webhook over HTTP in market %s', (code)
     expect(progress()).toBe('booked');
   });
 
-  it('answers 503 without a signing secret, so Uber retries', async () => {
+  it('answers 404, as when the fleet is off, without a signing secret', async () => {
     await start({});
     const res = await post(bodyOf('pickup'));
 
-    expect(res.status).toBe(503);
-    expect(res.body).toEqual({ statusCode: 503, code: 'shipping.webhook-unavailable' });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ statusCode: 404, code: 'shipping.fleet-off' });
   });
 
   it('answers 404 when Uber Direct is off for the Market (the default), whatever is sent', async () => {

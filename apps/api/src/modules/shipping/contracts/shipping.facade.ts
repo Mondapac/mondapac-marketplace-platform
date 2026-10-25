@@ -176,14 +176,17 @@ export interface ShippingFacade {
   ): Promise<Result<CarrierShipment, CarrierDeliveryFailure>>;
 
   /**
-   * The tracking links of the carrier deliveries of some seller orders, for the buyer's own order
-   * page: only a plain https link, only for seller orders that have a carrier delivery with one.
-   * Rule `own-resources`: `ordering` asks under the signed-in customer's context for ids it has
-   * just read from that customer's own order (it owns that check). Not exposed over HTTP. A failed
-   * read is `shipping.unavailable`: the page shows no link.
+   * The tracking links of the carrier deliveries of some seller orders of one order, for the
+   * buyer's own order page, keyed by seller order id: only a plain https link, only for seller
+   * orders that have a carrier delivery with one that belongs to `orderId`. Rule `own-resources`:
+   * `ordering` asks under the signed-in customer's context for ids it has just read from that
+   * customer's own order, and shipping refuses any actor that is not a customer and any booking
+   * of another order. Not exposed over HTTP. A failed read is `shipping.unavailable`: the page
+   * shows no link.
    */
   carrierTrackingLinks(
     context: CallContext,
+    orderId: string,
     sellerOrderIds: readonly string[],
   ): Promise<Result<ReadonlyMap<string, string>, ShippingFailure>>;
 

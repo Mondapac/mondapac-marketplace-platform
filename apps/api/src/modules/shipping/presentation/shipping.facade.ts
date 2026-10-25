@@ -71,8 +71,12 @@ export class ShippingFacadeImplementation implements ShippingFacade {
     return this.useCases.shipment.execute(context, { sellerOrderId });
   }
 
-  async carrierTrackingLinks(context: CallContext, sellerOrderIds: readonly string[]) {
-    const result = await this.useCases.trackingLinks.execute(context, { sellerOrderIds });
+  async carrierTrackingLinks(
+    context: CallContext,
+    orderId: string,
+    sellerOrderIds: readonly string[],
+  ) {
+    const result = await this.useCases.trackingLinks.execute(context, { orderId, sellerOrderIds });
     return result.ok
       ? result
       : ({

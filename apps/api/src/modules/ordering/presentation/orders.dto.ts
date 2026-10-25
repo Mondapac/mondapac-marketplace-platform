@@ -197,6 +197,7 @@ export class PickupConfirmRequest {
 }
 
 export class OwnTrackingLinkBody {
+  @ApiProperty({ format: 'uuid' }) sellerOrderId!: string;
   @ApiProperty({ format: 'uuid' }) sellerId!: string;
   @ApiProperty({
     type: String,
@@ -508,7 +509,11 @@ export const ownOrderBody = (order: OwnOrderView): OwnOrderBody => ({
   shipTo: shipToBody(order.shipTo),
   sellerNotes: { ...(order.shipTo?.sellerNotes ?? {}) },
   pickupCodes: order.pickupCodes.map(ownPickupCodeBody),
-  trackingLinks: order.trackingLinks.map((link) => ({ sellerId: link.sellerId, url: link.url })),
+  trackingLinks: order.trackingLinks.map((link) => ({
+    sellerOrderId: link.sellerOrderId,
+    sellerId: link.sellerId,
+    url: link.url,
+  })),
 });
 
 export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody => ({
