@@ -18,6 +18,19 @@ export const STOREFRONT_STATUS: Readonly<Record<string, number>> = Object.freeze
   'storefront.slug-taken': 409,
   'storefront.nothing-to-publish': 409,
   'storefront.draft-changed': 409,
+  'storefront.slide-not-found': 404,
+  'storefront.slide-version-not-found': 404,
+  'storefront.slide-archived': 409,
+  'storefront.slide-version-limit': 409,
+  'storefront.slide-no-draft': 409,
+  'storefront.slide-draft-changed': 409,
+  'storefront.slide-not-submitted': 409,
+  'storefront.slide-ended': 409,
+  'storefront.slide-not-live': 409,
+  'storefront.slide-not-paused': 409,
+  'storefront.slide-position-full': 409,
+  'storefront.slide-link-invalid': 409,
+  'storefront.slide-order-mismatch': 409,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {

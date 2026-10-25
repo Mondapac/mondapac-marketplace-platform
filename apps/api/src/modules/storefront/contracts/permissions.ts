@@ -56,6 +56,34 @@ export const STOREFRONT_NAVIGATION_APPROVE = definePermission('storefront', {
   protected: true,
 });
 
+/** See the slide library, a slide's draft and versions. */
+export const STOREFRONT_SLIDE_READ = definePermission('storefront', {
+  key: 'storefront.slide.read',
+  scope: 'platform',
+  protected: false,
+});
+
+/** Create slides, change drafts, submit for approval, restore a version, copy and archive. */
+export const STOREFRONT_SLIDE_EDIT = definePermission('storefront', {
+  key: 'storefront.slide.edit',
+  scope: 'platform',
+  protected: false,
+});
+
+/** Pause a live slide (it stops being served at once, no approval). Resuming needs publish. */
+export const STOREFRONT_SLIDE_PAUSE = definePermission('storefront', {
+  key: 'storefront.slide.pause',
+  scope: 'platform',
+  protected: false,
+});
+
+/** Approve a slide's draft so buyers see it, and resume a paused slide. */
+export const STOREFRONT_SLIDE_PUBLISH = definePermission('storefront', {
+  key: 'storefront.slide.publish',
+  scope: 'platform',
+  protected: true,
+});
+
 export const STOREFRONT_PERMISSIONS = declarePermissions('storefront', [
   STOREFRONT_PAGE_READ,
   STOREFRONT_PAGE_EDIT,
@@ -64,4 +92,8 @@ export const STOREFRONT_PERMISSIONS = declarePermissions('storefront', [
   STOREFRONT_PAGE_ARCHIVE,
   STOREFRONT_NAVIGATION_EDIT,
   STOREFRONT_NAVIGATION_APPROVE,
+  STOREFRONT_SLIDE_READ,
+  STOREFRONT_SLIDE_EDIT,
+  STOREFRONT_SLIDE_PAUSE,
+  STOREFRONT_SLIDE_PUBLISH,
 ]);

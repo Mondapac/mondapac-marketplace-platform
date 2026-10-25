@@ -61,6 +61,7 @@
   "home": {
     "title": "Local food sellers in one cart",
     "featured": "Featured",
+    "promotions": "Promotions",
     "categories": "Product categories",
     "show-all": "Show all",
     "show-all-of": "Show all: {title}",
@@ -75,6 +76,16 @@
     "max-reached": "No more in stock",
     "empty": "Nothing to show here yet. Check back soon.",
     "no-sellers": "No sellers deliver to this area yet."
+  },
+  "slider": {
+    "slide-of": "{n} of {total}",
+    "previous": "Previous slide",
+    "next": "Next slide",
+    "pause": "Pause slideshow",
+    "play": "Start slideshow",
+    "choose": "Choose a slide",
+    "go-to": "Show slide {n} of {total}",
+    "sponsored": "Sponsored"
   },
   "footer": {
     "trust": {
@@ -722,7 +733,32 @@
     "pay-block-offline": "You are offline. Pay works again when your connection is back.",
     "pay-block-offline-above": "You are offline. Pay works again when your connection is back.",
     "express-no-address": "Choose an address to see the price.",
-    "change-suburb": "Change suburb"
+    "change-suburb": "Change suburb",
+    "pay-card": "Pay {amount}",
+    "paying-card": "Paying...",
+    "paying-stripe": "Taking you to Stripe...",
+    "method-card": "Card",
+    "method-card-note": "Visa or Mastercard",
+    "method-stripe": "Stripe",
+    "method-stripe-note": "Apple Pay, Google Pay",
+    "card-name": "Name on card",
+    "card-name-missing": "Enter the name on the card.",
+    "card-secure": "Card details go straight to Stripe in a secure field. Mondapac never sees or stores your card number.",
+    "card-loading": "Loading the secure card fields...",
+    "card-load-failed": "The card fields did not load. Try again, or pay with Stripe.",
+    "card-sample": "Sample: card fields are not connected yet. Pay places a sample order and nothing is charged.",
+    "notice-price-title": "A delivery price changed.",
+    "notice-price-line": "{seller}: {was} is now {now}.",
+    "notice-price-body": "Your new total is shown. Nothing has been charged.",
+    "notice-stock-title": "Stock changed.",
+    "notice-stock-line": "Only {now} of {item} {now, plural, one {is} other {are}} left, so your quantity was lowered from {was} to {now}.",
+    "notice-stock-gone": "{item} is sold out and was removed.",
+    "notice-stock-body": "Review your cart before paying.",
+    "review-cart": "Review cart",
+    "notice-declined": "<b>Your card was declined.</b> Nothing was charged. Check the details, use another card or pay with Stripe.",
+    "notice-failed": "<b>We could not take the payment.</b> Nothing was charged. Try again, or pay with Stripe.",
+    "pay-block-card": "Wait for the card fields, or pay with Stripe.",
+    "pay-block-card-above": "Wait for the card fields above, or pay with Stripe."
   },
   "deliver": {
     "title": "Choose where to deliver",
