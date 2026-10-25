@@ -12,6 +12,12 @@ export type BlockEventType = (typeof BLOCK_EVENT_TYPES)[number];
 /** The most events one request may carry. */
 export const MAX_BLOCK_EVENTS = 20;
 
+/**
+ * The most distinct pages one request may name: a beacon reports one page view (storefront is
+ * asked once per distinct page), so a request cannot fan out into many storefront reads.
+ */
+export const MAX_BLOCK_PAGES = 2;
+
 /** How long the daily counts are kept: older rows are deleted by the daily purge. */
 export const BLOCK_COUNT_RETENTION = { months: 13 } as const;
 
@@ -77,6 +83,12 @@ export function readBlockEvents(
     seen.add(key);
     kept.push({ pageId, placementId, type });
   });
+  if (
+    fields.length === 0 &&
+    new Set(events.map((e) => (e as BlockEvent).pageId)).size > MAX_BLOCK_PAGES
+  ) {
+    return { ok: false, fields: [{ path: 'events', code: 'too-many-pages' }] };
+  }
   return fields.length > 0 ? { ok: false, fields } : { ok: true, events: kept };
 }
 

@@ -66,6 +66,54 @@ describe('reading the events of a request', () => {
     ]);
   });
 
+  it('accepts 20 events with many duplicates, and refuses 21 with one duplicate', () => {
+    const distinct = Array.from({ length: 5 }, (_, n) =>
+      event({
+        placementId: `01990000-0000-7000-8000-${(0x200 + n).toString(16).padStart(12, '0')}`,
+      }),
+    );
+    const twenty = Array.from({ length: MAX_BLOCK_EVENTS }, (_, n) => distinct[n % 5]);
+    const read = readBlockEvents(twenty);
+    expect(read.ok && read.events).toHaveLength(5);
+    // The limit is on what was sent: 21 entries with a single duplicate are still too many.
+    expect(problems([...distinct, ...distinct, ...distinct, ...distinct, distinct[0]])).toEqual([
+      { path: 'events', code: 'too-many' },
+    ]);
+  });
+
+  it('keeps the same placement on two pages, and an impression and a click on one block', () => {
+    const read = readBlockEvents([
+      event(),
+      event({ pageId: PAGE_2 }),
+      event({ type: 'click' }),
+      event({ pageId: PAGE_2 }),
+    ]);
+    expect(read.ok && read.events.map((e) => `${e.pageId}|${e.type}`)).toEqual([
+      `${PAGE}|impression`,
+      `${PAGE_2}|impression`,
+      `${PAGE}|click`,
+    ]);
+  });
+
+  it('names at most 2 distinct pages', () => {
+    const PAGE_3 = '01990000-0000-7000-8000-0000000000a3';
+    expect(readBlockEvents([event(), event({ pageId: PAGE_2 }), event({ type: 'click' })]).ok).toBe(
+      true,
+    );
+    expect(problems([event(), event({ pageId: PAGE_2 }), event({ pageId: PAGE_3 })])).toEqual([
+      { path: 'events', code: 'too-many-pages' },
+    ]);
+    // A malformed event is reported by itself first, not as a page problem.
+    expect(
+      problems([
+        event(),
+        event({ pageId: PAGE_2 }),
+        event({ pageId: PAGE_3 }),
+        event({ type: 'x' }),
+      ]),
+    ).toEqual([{ path: 'events.3.type', code: 'one-of' }]);
+  });
+
   it('refuses an event that is not a closed object, without echoing a key or a value', () => {
     expect(problems([event({ accountId: 'secret-value' })])).toEqual([
       { path: 'events.0', code: 'unknown-field' },

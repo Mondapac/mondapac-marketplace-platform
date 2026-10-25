@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
@@ -104,13 +105,14 @@ describe.each(TEST_MARKETS)('block counts in market %s (database)', (code) => {
     hero: ReturnType<typeof placement>[],
     overrides: Partial<PageRecord> = {},
     target: MarketContext = market,
+    slot = 'hero',
   ): Promise<Id<'StorefrontPage'>> {
     n += 1;
     const page: PageRecord = {
       id: ids.next<'StorefrontPage'>(),
       kind: 'dynamic',
       systemKey: null,
-      slug: `blocks-${code.toLowerCase()}-${n}-${Date.now().toString(36)}`,
+      slug: `blocks-${code.toLowerCase()}-${n}-${randomBytes(6).toString('hex')}`,
       templateKey: 'campaign-landing',
       title: 'Eid',
       seo: {},
@@ -128,7 +130,7 @@ describe.each(TEST_MARKETS)('block counts in market %s (database)', (code) => {
       await pages.insertPage(target, page, by);
       await pages.insertDraft(
         target,
-        { id: draftId, pageId: page.id, versionNo: 1, placements: { hero } },
+        { id: draftId, pageId: page.id, versionNo: 1, placements: { [slot]: hero } },
         stamp,
       );
       await pages.publishDraft(target, page.id, draftId, stamp);
@@ -230,7 +232,7 @@ describe.each(TEST_MARKETS)('block counts in market %s (database)', (code) => {
   it('makes no row for a placement that is not served: unknown, switched off, draft, not live', async () => {
     const hero = placement();
     const off = placement(false);
-    const pageId = await publishedPage([hero, off]);
+    const pageId = await publishedPage([hero, off], {}, market, 'main');
     const lateId = await publishedPage([placement()], { startsAt: T0.add({ hours: 24 }) });
     const lateHero = (await value(market, () => pages.findPublished(market, lateId)))!;
     const archivedId = await publishedPage([placement()], { archivedAt: T0 });
@@ -242,7 +244,7 @@ describe.each(TEST_MARKETS)('block counts in market %s (database)', (code) => {
           id: draftOnly,
           kind: 'dynamic',
           systemKey: null,
-          slug: `draft-${code.toLowerCase()}-${Date.now().toString(36)}`,
+          slug: `draft-${code.toLowerCase()}-${randomBytes(6).toString('hex')}`,
           templateKey: 'campaign-landing',
           title: 'Draft',
           seo: {},
@@ -269,19 +271,22 @@ describe.each(TEST_MARKETS)('block counts in market %s (database)', (code) => {
     });
     const lateBlock = (lateHero.placements as { hero: { id: string }[] }).hero[0]!.id;
 
-    const answer = await record().execute(anonymous, {
-      events: [
-        event(pageId, ids.next<'StorefrontPlacement'>(), 'impression'),
-        event(pageId, off.id, 'impression'),
-        event(draftOnly, hero.id, 'impression'),
-        event(lateId, lateBlock, 'impression'),
-        event(archivedId, ids.next<'StorefrontPlacement'>(), 'click'),
-        event(ids.next<'StorefrontPage'>(), hero.id, 'click'),
-      ],
-      ...quiet,
-    });
+    // A request names at most 2 pages, so the cases go in separate requests.
+    const answers = await Promise.all(
+      [
+        [
+          event(pageId, ids.next<'StorefrontPlacement'>(), 'impression'),
+          event(pageId, off.id, 'impression'),
+        ],
+        [event(draftOnly, hero.id, 'impression'), event(lateId, lateBlock, 'impression')],
+        [
+          event(archivedId, ids.next<'StorefrontPlacement'>(), 'click'),
+          event(ids.next<'StorefrontPage'>(), hero.id, 'click'),
+        ],
+      ].map((events) => record().execute(anonymous, { events, ...quiet })),
+    );
 
-    expect(answer).toEqual({ ok: true, value: { recorded: false } });
+    for (const answer of answers) expect(answer).toEqual({ ok: true, value: { recorded: false } });
     for (const page of [pageId, draftOnly, lateId, archivedId]) {
       expect(await rowsOf(page)).toEqual([]);
     }
@@ -351,38 +356,106 @@ describe.each(TEST_MARKETS)('block counts in market %s (database)', (code) => {
     ]);
   });
 
-  it('purges only this Market’s rows older than 13 months', async () => {
-    const hero = placement();
-    const pageId = await publishedPage([hero]);
-    const old = '2025-09-24';
-    const edge = '2025-09-25';
-    // The database is shared with the other Market's run of this spec: start without old rows.
-    await owner.query("DELETE FROM engagement.block_counts WHERE day < '2025-09-25'");
-    for (const marketId of [code, other.marketId]) {
-      for (const day of [old, edge, '2026-10-25']) {
+  /** Inserts one count row per (Market, day) for the page, as the owner (the purge's input). */
+  const seed = async (pageId: string, placementId: string, marketIds: string[], days: string[]) => {
+    for (const marketId of marketIds) {
+      for (const day of days) {
         await owner.query(
           `INSERT INTO engagement.block_counts
              (market_id, tenant_id, page_id, placement_id, day, impressions, clicks, updated_at)
            VALUES ($1, 'default', $2, $3, $4, 1, 0, now())`,
-          [marketId, pageId, hero.id, day],
+          [marketId, pageId, placementId, day],
         );
       }
     }
+  };
+  const daysOf = async (pageId: string) =>
+    (await rowsOf(pageId)).map((row) => `${row.market_id}:${row.day}`);
+
+  it('purges this Market’s rows older than 13 months, and leaves the other Market’s', async () => {
+    const hero = placement();
+    const pageId = ids.next<'StorefrontPage'>();
+    // Other suites may hold old rows too, so only this test's own page is asserted on.
+    await seed(pageId, hero.id, [code, other.marketId], ['2025-09-24', '2025-09-25', '2026-10-25']);
 
     const first = await purge().execute(system, {});
     const second = await purge().execute(system, {});
 
-    expect(first).toEqual({ ok: true, value: { blockCounts: 1 } });
-    expect(second).toEqual({ ok: true, value: { blockCounts: 0 } });
-    // This Market kept the row on the edge day and the new one; the other Market was not touched.
-    expect((await rowsOf(pageId)).map((row) => `${row.market_id}:${row.day}`)).toEqual(
+    expect(first.ok && first.value.blockCounts).toBeGreaterThanOrEqual(1);
+    expect(second.ok).toBe(true);
+    expect(await daysOf(pageId)).toEqual(
       [code, other.marketId]
         .sort()
         .flatMap((marketId) =>
           marketId === code
-            ? [`${marketId}:${edge}`, `${marketId}:2026-10-25`]
-            : [`${marketId}:${old}`, `${marketId}:${edge}`, `${marketId}:2026-10-25`],
+            ? [`${marketId}:2025-09-25`, `${marketId}:2026-10-25`]
+            : [`${marketId}:2025-09-24`, `${marketId}:2025-09-25`, `${marketId}:2026-10-25`],
         ),
+    );
+  });
+
+  it('clamps the edge at a month end: on 2026-03-31 the row of 2025-02-27 goes, 2025-02-28 stays', async () => {
+    const pageId = ids.next<'StorefrontPage'>();
+    await seed(pageId, placement().id, [code], ['2025-02-27', '2025-02-28', '2025-03-01']);
+    clock.set(Temporal.Instant.from('2026-03-31T12:00:00Z'));
+
+    await purge().execute(system, {});
+
+    expect(await daysOf(pageId)).toEqual([`${code}:2025-02-28`, `${code}:2025-03-01`]);
+  });
+
+  it('moves the purge edge at midnight UTC: 23:59:59Z keeps 2025-09-25, 00:00:00Z removes it', async () => {
+    const pageId = ids.next<'StorefrontPage'>();
+    await seed(pageId, placement().id, [code], ['2025-09-25']);
+    clock.set(Temporal.Instant.from('2026-10-25T23:59:59Z'));
+    await purge().execute(system, {});
+    expect(await daysOf(pageId)).toEqual([`${code}:2025-09-25`]);
+
+    clock.set(Temporal.Instant.from('2026-10-26T00:00:00Z'));
+    await purge().execute(system, {});
+    expect(await daysOf(pageId)).toEqual([]);
+  });
+
+  it('counts 23:59:59.999Z and 00:00:00.000Z on different UTC days', async () => {
+    const hero = placement();
+    const pageId = await publishedPage([hero]);
+
+    clock.set(Temporal.Instant.from('2026-10-25T23:59:59.999Z'));
+    await record().execute(anonymous, { events: [event(pageId, hero.id, 'impression')], ...quiet });
+    clock.set(Temporal.Instant.from('2026-10-26T00:00:00.000Z'));
+    await record().execute(anonymous, { events: [event(pageId, hero.id, 'click')], ...quiet });
+
+    expect((await rowsOf(pageId)).map((row) => [row.day, row.impressions, row.clicks])).toEqual([
+      ['2026-10-25', 1, 0],
+      ['2026-10-26', 0, 1],
+    ]);
+  });
+
+  it('adds exactly when requests carrying the same two blocks in opposite order race on a new day', async () => {
+    const [a, b] = [placement(), placement()];
+    const pageId = await publishedPage([a, b], {}, market, 'main');
+    // A day nobody has counted on, so every request races to create the same two rows.
+    clock.set(Temporal.Instant.from('2026-12-24T10:00:00Z'));
+    const forward = [event(pageId, a.id, 'impression'), event(pageId, b.id, 'click')];
+
+    const answers = await Promise.all(
+      Array.from({ length: 16 }, (_, index) =>
+        record().execute(anonymous, {
+          events: index % 2 === 0 ? forward : [...forward].reverse(),
+          ...quiet,
+        }),
+      ),
+    );
+
+    expect(answers.every((answer) => answer.ok)).toBe(true);
+    expect(await rowsOf(pageId)).toEqual(
+      [a.id, b.id].sort().map((placementId) => ({
+        market_id: code,
+        placement_id: placementId,
+        day: '2026-12-24',
+        impressions: placementId === a.id ? 16 : 0,
+        clicks: placementId === b.id ? 16 : 0,
+      })),
     );
   });
 });

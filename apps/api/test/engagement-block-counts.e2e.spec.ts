@@ -10,6 +10,7 @@ import {
   InMemoryBlockCounts,
 } from '../src/modules/engagement/application/testing/in-memory-engagement';
 import { CLOCK } from '../src/platform/clock/clock.module';
+import { RATE_LIMIT_COUNTERS } from '../src/platform/rate-limit/rate-limit-counters';
 import { IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
 import { TEST_MARKETS } from './support/test-config';
@@ -47,17 +48,33 @@ describe('block counts over HTTP', () => {
   let served: FakeServedPlacements;
   const http = () => request(app!.getHttpServer());
 
-  async function boot(code: string) {
+  /** Counters whose window never ends, so a test crosses no window boundary however slow it runs. */
+  const frozenWindow = () => {
+    const seen = new Map<string, number>();
+    return {
+      consume: (limitClass: string, key: string) => {
+        const count = (seen.get(`${limitClass}|${key}`) ?? 0) + 1;
+        seen.set(`${limitClass}|${key}`, count);
+        return Promise.resolve({ count, msBeforeNext: 60_000 });
+      },
+    };
+  };
+
+  async function boot(code: string, options: { frozenWindow?: boolean } = {}) {
     ({ app, logLines } = await createTestApp({
-      override: (builder) =>
-        fakes
+      override: (builder) => {
+        const configured = fakes
           .override(builder)
           .overrideProvider(CLOCK)
           .useValue(new FixedClock(START))
           .overrideProvider(BLOCK_COUNT_REPOSITORY)
           .useValue(counts)
           .overrideProvider(SERVED_PLACEMENTS)
-          .useValue(served),
+          .useValue(served);
+        return options.frozenWindow
+          ? configured.overrideProvider(RATE_LIMIT_COUNTERS).useValue(frozenWindow())
+          : configured;
+      },
     }));
     served.serve(code, PAGE, [HERO, SHELF]);
   }
@@ -149,6 +166,49 @@ describe('block counts over HTTP', () => {
       expect(served.asked).toEqual([]);
     });
 
+    it('still answers 400 for a malformed body with Sec-GPC: 1, no cookie, no-store', async () => {
+      await boot(code);
+
+      const response = await http()
+        .post(PATH)
+        .set({ ...base, 'sec-gpc': '1' })
+        .send({ events: [event({ pageId: 'nope' })] });
+
+      expect(response.status).toBe(400);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(rows()).toHaveLength(0);
+    });
+
+    it('accepts 20 events with duplicates, refuses 21 with one duplicate, and 3 pages', async () => {
+      await boot(code);
+      const block = (n: number) => event({ placementId: id<'StorefrontPlacement'>(0x700 + n) });
+      const twenty = Array.from({ length: 20 }, (_, n) =>
+        n % 2 === 0 ? event() : event({ type: 'click' }),
+      );
+
+      await http().post(PATH).set(base).send({ events: twenty }).expect(204);
+      expect(rows()).toHaveLength(1);
+      const tooMany = await http()
+        .post(PATH)
+        .set(base)
+        .send({ events: [...Array.from({ length: 20 }, (_, n) => block(n)), block(0)] });
+      const pages = await http()
+        .post(PATH)
+        .set(base)
+        .send({ events: [event(), event({ pageId: id(0xa2) }), event({ pageId: id(0xa3) })] });
+
+      expect(tooMany.status).toBe(400);
+      expect((tooMany.body as { details: { fields: unknown } }).details.fields).toEqual([
+        { path: 'events', code: 'too-many' },
+      ]);
+      expect(pages.status).toBe(400);
+      expect((pages.body as { details: { fields: unknown } }).details.fields).toEqual([
+        { path: 'events', code: 'too-many-pages' },
+      ]);
+      expect(rows()).toHaveLength(1);
+    });
+
     it('counts identical events of one request once', async () => {
       await boot(code);
 
@@ -230,7 +290,7 @@ describe('block counts over HTTP', () => {
     });
 
     it('is rate limited per origin like the other public routes', async () => {
-      await boot(code);
+      await boot(code, { frozenWindow: true });
       // The Market's default limit: 300 a minute for AU, 200 for the synthetic Market.
       const limit = code === 'AU' ? 300 : 200;
       for (let n = 0; n < limit; n += 1) {
