@@ -33,13 +33,10 @@ const id = <T extends string>(n: number): Id<T> => {
 const OWNER = id<'Account'>(0xa101);
 const ADMIN = id<'Account'>(0xa001);
 const SELLER = id<'Seller'>(0xb020);
-const SELLER_ORDER = id<'SellerOrder'>(0xc020);
-const ORDER = id<'Order'>(0xc021);
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
 describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => {
-  const currency = code === 'AU' ? 'AUD' : 'JPY';
   let app: NestExpressApplication | undefined;
   let clock: FixedClock;
   let next: unknown;
@@ -203,12 +200,13 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     await boot();
 
     const res = await call('get', 'admin', BASE, admin());
+    const body = res.body as { active: unknown; models: object[]; fleets: object[] };
 
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
-    expect(res.body.active).toEqual({ instant: MODEL, same_day: null, scheduled: null });
-    expect(res.body.models[0]).toMatchObject({ id: MODEL, version: 1, rule: { kind: 'cheapest' } });
-    expect(res.body.fleets[0]).toMatchObject({ fleet: 'mondapac_drive', reliability: 90 });
+    expect(body.active).toEqual({ instant: MODEL, same_day: null, scheduled: null });
+    expect(body.models[0]).toMatchObject({ id: MODEL, version: 1, rule: { kind: 'cheapest' } });
+    expect(body.fleets[0]).toMatchObject({ fleet: 'mondapac_drive', reliability: 90 });
     expect(calls).toEqual([{ name: 'view', input: {} }]);
   });
 

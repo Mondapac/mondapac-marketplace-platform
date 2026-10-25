@@ -196,6 +196,7 @@ describe.each([['AU'], ['ZZ']] as const)('Zoom2uCarrier in market %s', (code) =>
       itemCount: 2,
       declaredValue: { amount: 12_000n, currency: real.defaultCurrency },
     },
+    method: 'instant',
     mode: 'on_demand',
     window: null,
   };
@@ -203,6 +204,7 @@ describe.each([['AU'], ['ZZ']] as const)('Zoom2uCarrier in market %s', (code) =>
     pickup: { postcode: request.pickup.postcode, locality: null, region: null },
     dropoff: { postcode: request.dropoff.postcode, locality: null, region: null },
     parcel: request.parcel,
+    method: 'instant',
     mode: 'on_demand',
   };
   const other: CarrierQuoteRequest = {
@@ -215,6 +217,7 @@ describe.each([['AU'], ['ZZ']] as const)('Zoom2uCarrier in market %s', (code) =>
   };
   const unauthorized = { ok: false, error: { code: 'carrier.unauthorized' } };
   const unavailable = { ok: false, error: { code: 'carrier.unavailable' } };
+  const notSent = { ok: false, error: { code: 'carrier.not-sent' } };
   const refused = { ok: false, error: { code: 'carrier.refused' } };
   // Prices are decimals in the Market's currency: 12.50 AUD is 1250 minor units, 12.5 JPY is not
   // a price at all (JPY has no minor unit), so the fake quotes a whole amount there.
@@ -304,13 +307,19 @@ describe.each([['AU'], ['ZZ']] as const)('Zoom2uCarrier in market %s', (code) =>
 
   it('prices a scheduled quote from the stops alone at the Same day service, and refuses a mode or window the Market does not serve', async () => {
     carrier = build({ supportsWindow: true });
-    expect((await carrier.quote(market, { ...quote, mode: 'scheduled' })).ok).toBe(true);
+    expect(
+      (await carrier.quote(market, { ...quote, method: 'scheduled', mode: 'scheduled' })).ok,
+    ).toBe(true);
     expect(zoom.seen[0]!.json).not.toHaveProperty('ReadyDateTime');
     expect(zoom.seen[0]!.json.DeliverySpeed).toBe('Same day');
     carrier = build({ modes: ['on_demand'], supportsWindow: true });
-    expect(await carrier.quote(market, { ...quote, mode: 'scheduled' })).toEqual(refused);
+    expect(
+      await carrier.quote(market, { ...quote, method: 'scheduled', mode: 'scheduled' }),
+    ).toEqual(refused);
     carrier = build({ supportsWindow: false });
-    expect(await carrier.quote(market, { ...quote, mode: 'scheduled' })).toEqual(refused);
+    expect(
+      await carrier.quote(market, { ...quote, method: 'scheduled', mode: 'scheduled' }),
+    ).toEqual(refused);
     carrier = build({ instantSpeed: 'VIP' });
     expect((await carrier.quote(market, other)).ok).toBe(true);
     expect(zoom.seen.at(-1)!.json.DeliverySpeed).toBe('VIP');
@@ -385,9 +394,33 @@ describe.each([['AU'], ['ZZ']] as const)('Zoom2uCarrier in market %s', (code) =>
     expect(zoom.bookings.size).toBe(0);
   });
 
+  it('picks the service from the method: instant the configured speed, same day Same day without timing', async () => {
+    carrier = build({ instantSpeed: 'VIP' });
+    expect((await carrier.book(market, request)).ok).toBe(true);
+    expect(zoom.seen[0]!.json.DeliverySpeed).toBe('VIP');
+    zoom.seen.length = 0;
+    expect(
+      (await carrier.book(market, { ...request, method: 'same_day', mode: 'on_demand', window }))
+        .ok,
+    ).toBe(true);
+    expect(zoom.seen[0]!.json.DeliverySpeed).toBe('Same day');
+    expect(zoom.seen[0]!.json.ReadyDateTime).toBeUndefined();
+    zoom.seen.length = 0;
+    expect(
+      (await carrier.quote(market, { ...quote, method: 'same_day', mode: 'on_demand' })).ok,
+    ).toBe(true);
+    expect(zoom.seen[0]!.json.DeliverySpeed).toBe('Same day');
+    // A Market with on-demand switched off serves neither instant nor same day.
+    carrier = build({ modes: ['scheduled'], supportsWindow: true });
+    expect(await carrier.book(market, { ...request, method: 'same_day' })).toEqual(refused);
+  });
+
   it('books a scheduled trip at Same day with the buyer window start as ReadyDateTime, not a lead time', async () => {
     carrier = build({ supportsWindow: true });
-    expect((await carrier.book(market, { ...request, mode: 'scheduled', window })).ok).toBe(true);
+    expect(
+      (await carrier.book(market, { ...request, method: 'scheduled', mode: 'scheduled', window }))
+        .ok,
+    ).toBe(true);
     const body = zoom.seen[0]!.json;
     expect(body.ReadyDateTime).toBe(window.start.toString({ smallestUnit: 'second' }));
     expect(body.DeliverySpeed).toBe('Same day');
@@ -417,7 +450,7 @@ describe.each([['AU'], ['ZZ']] as const)('Zoom2uCarrier in market %s', (code) =>
         declaredValue: { amount: 1n, currency: real.defaultCurrency === 'USD' ? 'EUR' : 'USD' },
       }),
       over({ temperature: 'frozen' }),
-      { ...request, mode: 'scheduled', window: null },
+      { ...request, method: 'scheduled', mode: 'scheduled', window: null },
     ];
     carrier = build({ supportsWindow: true });
     for (const refusedRequest of cases) {
@@ -428,6 +461,7 @@ describe.each([['AU'], ['ZZ']] as const)('Zoom2uCarrier in market %s', (code) =>
           pickup: quote.pickup,
           dropoff: quote.dropoff,
           parcel: refusedRequest.parcel,
+          method: 'instant',
           mode: 'on_demand',
         }),
       ).toEqual(refused);
@@ -435,7 +469,9 @@ describe.each([['AU'], ['ZZ']] as const)('Zoom2uCarrier in market %s', (code) =>
     carrier = build({ modes: ['scheduled'], supportsWindow: true });
     expect(await carrier.book(market, request)).toEqual(refused);
     carrier = build({ supportsWindow: false });
-    expect(await carrier.book(market, { ...request, mode: 'scheduled', window })).toEqual(refused);
+    expect(
+      await carrier.book(market, { ...request, method: 'scheduled', mode: 'scheduled', window }),
+    ).toEqual(refused);
     carrier = build({ temperatures: ['ambient', 'chilled'] });
     expect((await carrier.book(market, over({ temperature: 'chilled' }))).ok).toBe(true);
     zoom.seen.length = 0;
@@ -649,7 +685,7 @@ describe.each([['AU'], ['ZZ']] as const)('Zoom2uCarrier in market %s', (code) =>
       expect((await carrier.book(market, request)).ok).toBe(false);
     }
     expect(zoom.seen).toHaveLength(failureThreshold);
-    expect(await carrier.book(market, request)).toEqual(unavailable);
+    expect(await carrier.book(market, request)).toEqual(notSent);
     expect(zoom.seen).toHaveLength(failureThreshold);
     // Quotes have their own circuit.
     expect((await carrier.quote(market, other)).ok).toBe(true);
@@ -723,7 +759,11 @@ describe.each([['AU'], ['ZZ']] as const)('Zoom2uCarrier in market %s', (code) =>
         zoom.script.push({ status: 401, body: { echo: API_KEY } });
         return carrier.book(market, request);
       })(),
-      await build({ modes: ['on_demand'] }).quote(market, { ...quote, mode: 'scheduled' }),
+      await build({ modes: ['on_demand'] }).quote(market, {
+        ...quote,
+        method: 'scheduled',
+        mode: 'scheduled',
+      }),
       await (async () => {
         zoom.script.push({ status: 500 });
         return carrier.book(market, request);

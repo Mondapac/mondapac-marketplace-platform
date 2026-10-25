@@ -61,7 +61,7 @@ export interface DriveEndpoint {
 }
 
 /** `unauthorized`: a 401 or 403, the key is missing or wrong (nothing was done). */
-export type DriveCallFailure = 'unavailable' | 'refused' | 'unauthorized';
+export type DriveCallFailure = 'unavailable' | 'refused' | 'unauthorized' | 'not-sent';
 
 /**
  * The HTTP client of the Mondapac Drive API: JSON over HTTPS with the Market in `x-market-id`
@@ -106,7 +106,8 @@ export class DriveHttpClient {
     call: 'book' | 'cancel' | 'quote' | 'status',
   ): Promise<Result<{ readonly status: number; readonly body: unknown }, DriveCallFailure>> {
     const key = `${endpoint.marketId}|${endpoint.baseUrl}|${call}`;
-    if (!this.breaker.allow(key)) return err('unavailable');
+    // An open circuit sends nothing: the caller may safely try another fleet.
+    if (!this.breaker.allow(key)) return err('not-sent');
     const url = `${endpoint.baseUrl.replace(/\/+$/, '')}${path}`;
     const payload = body === undefined ? undefined : JSON.stringify(body);
     for (let attempt = 1; ; attempt += 1) {
