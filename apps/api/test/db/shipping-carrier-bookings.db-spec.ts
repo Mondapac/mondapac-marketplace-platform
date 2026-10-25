@@ -93,10 +93,29 @@ describe.each(TEST_MARKETS)('carrier booking repository in market %s (database)'
   });
 
   it('takes a webhook event once per id and Market', async () => {
-    const event = { eventId: ids.next(), carrier: 'mondapac-drive', receivedAt: T0 };
+    const event = { eventId: ids.next(), carrier: 'mondapac_drive', receivedAt: T0 };
     expect(await value(market, () => repository.recordEvent(market, event))).toBe('recorded');
     expect(await value(market, () => repository.recordEvent(market, event))).toBe('duplicate');
     expect(await value(other, () => repository.recordEvent(other, event))).toBe('recorded');
+  });
+
+  it('keeps the fleet a booking was sent to while the answer is unknown, and clears it', async () => {
+    const sellerOrderId = ids.next<'SellerOrder'>();
+    expect(await value(market, () => repository.findAttempt(market, sellerOrderId))).toBeNull();
+
+    await value(market, () => repository.markAttempt(market, sellerOrderId, 'uber_direct', T0));
+    expect(await value(market, () => repository.findAttempt(market, sellerOrderId))).toBe(
+      'uber_direct',
+    );
+    // A second mark replaces the first; another Market sees nothing.
+    await value(market, () => repository.markAttempt(market, sellerOrderId, 'zoom2u', T0));
+    expect(await value(market, () => repository.findAttempt(market, sellerOrderId))).toBe('zoom2u');
+    expect(await value(other, () => repository.findAttempt(other, sellerOrderId))).toBeNull();
+
+    await value(other, () => repository.clearAttempt(other, sellerOrderId));
+    expect(await value(market, () => repository.findAttempt(market, sellerOrderId))).toBe('zoom2u');
+    await value(market, () => repository.clearAttempt(market, sellerOrderId));
+    expect(await value(market, () => repository.findAttempt(market, sellerOrderId))).toBeNull();
   });
 
   it('refuses what the application never writes', async () => {
@@ -105,10 +124,10 @@ describe.each(TEST_MARKETS)('carrier booking repository in market %s (database)'
         () => 'allowed',
         (error: { code?: string }) => error.code,
       );
-    const insert = (overrides: { carrier?: string; reference?: string; progress?: string }) =>
+    const insert = (overrides: { fleet?: string; reference?: string; progress?: string }) =>
       attempt(
         `INSERT INTO shipping.carrier_bookings (id, market_id, tenant_id, seller_order_id, order_id,
-           seller_id, carrier, carrier_reference, progress, carrier_status, version, created_at,
+           seller_id, fleet, carrier_reference, progress, carrier_status, version, created_at,
            updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'SCHEDULED', 1, now(), now())`,
         [
@@ -118,14 +137,14 @@ describe.each(TEST_MARKETS)('carrier booking repository in market %s (database)'
           ids.next(),
           ids.next(),
           ids.next(),
-          overrides.carrier ?? 'mondapac-drive',
+          overrides.fleet ?? 'mondapac_drive',
           overrides.reference ?? ids.next(),
           overrides.progress ?? 'booked',
         ],
       );
 
-    expect(await insert({ carrier: 'other-courier' })).toBe(CHECK);
-    expect(await insert({ reference: 'DRV-1' })).toBe(CHECK);
+    expect(await insert({ fleet: 'other-courier' })).toBe(CHECK);
+    expect(await insert({ reference: 'has a space' })).toBe(CHECK);
     expect(await insert({ progress: 'lost' })).toBe(CHECK);
     expect(await insert({})).toBe('allowed');
     expect(await attempt(`UPDATE shipping.carrier_bookings SET seller_id = $1`, [ids.next()])).toBe(

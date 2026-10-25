@@ -143,7 +143,7 @@ export class PrismaFleetSelectionRepository implements FleetSelectionRepository 
     at: Temporal.Instant,
   ) {
     await this.prisma.tx(market).shippingFleetSelectionAssignment.upsert({
-      where: { marketId_method: { marketId: market.marketId, method } },
+      where: { marketId: market.marketId, marketId_method: { marketId: market.marketId, method } },
       create: {
         marketId: market.marketId,
         tenantId: market.tenantId,
@@ -182,7 +182,7 @@ export class PrismaFleetSelectionRepository implements FleetSelectionRepository 
     at: Temporal.Instant,
   ) {
     await this.prisma.tx(market).shippingFleetReliability.upsert({
-      where: { marketId_fleet: { marketId: market.marketId, fleet } },
+      where: { marketId: market.marketId, marketId_fleet: { marketId: market.marketId, fleet } },
       create: {
         marketId: market.marketId,
         tenantId: market.tenantId,

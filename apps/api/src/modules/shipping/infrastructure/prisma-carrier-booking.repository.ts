@@ -130,7 +130,10 @@ export class PrismaCarrierBookingRepository implements CarrierBookingRepository 
     at: Temporal.Instant,
   ) {
     await this.prisma.tx(market).shippingFleetBookingAttempt.upsert({
-      where: { marketId_sellerOrderId: { marketId: market.marketId, sellerOrderId } },
+      where: {
+        marketId: market.marketId,
+        marketId_sellerOrderId: { marketId: market.marketId, sellerOrderId },
+      },
       create: {
         marketId: market.marketId,
         tenantId: market.tenantId,
