@@ -1,4 +1,4 @@
--- Reverses 20261025110000_engagement_block_counts: the grant first, then the table. The counts are
+-- Reverses 20261025140000_engagement_block_counts: the grant first, then the table. The counts are
 -- aggregate numbers only (no personal data); dropping the table loses the history of block views
 -- and clicks, which nothing else depends on yet.
 SET lock_timeout = '5s';
