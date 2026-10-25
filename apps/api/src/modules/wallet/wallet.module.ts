@@ -1,12 +1,18 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { IDENTITY_FACADE, IdentityModule } from '../identity';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { WALLET_POLICY } from './application/ports/wallet-policy';
 import { WALLET_REPOSITORY } from './application/ports/wallet.repository';
@@ -21,7 +27,12 @@ import { ViewMyHistory } from './application/use-cases/view-my-history.use-case'
 import { ViewMyWallet } from './application/use-cases/view-my-wallet.use-case';
 import { ViewWalletSettings } from './application/use-cases/view-wallet-settings.use-case';
 import type { WalletDependencies } from './application/wallet-dependencies';
-import { WALLET_AUDIT_ACTIONS, WALLET_FACADE, WALLET_PERMISSIONS } from './contracts';
+import {
+  WALLET_AUDIT_ACTIONS,
+  WALLET_FACADE,
+  WALLET_PERMISSIONS,
+  WALLET_STEP_UP_ACTIONS,
+} from './contracts';
 import { walletProviders } from './infrastructure/wallet-providers';
 import { expireWalletCreditJob } from './presentation/jobs/expire-wallet-credit.job';
 import { AdminWalletController, CustomerWalletController } from './presentation/wallet.controller';
@@ -37,6 +48,7 @@ const PORTS: readonly [keyof WalletDependencies, InjectionToken][] = [
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
+  ['identity', IDENTITY_FACADE],
 ];
 
 /** Every wallet use case shares one dependency object, built from the same ports. */
@@ -63,11 +75,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * No card, bank or Stripe call exists here.
  */
 @Module({
+  // identity answers the admin step-up of the wallet switch (issue #491).
+  imports: [IdentityModule],
   controllers: [AdminWalletController, CustomerWalletController],
   providers: [
     PersistenceModule.auditWriterFor('wallet'),
     registerAuditActions('wallet', WALLET_AUDIT_ACTIONS),
     registerPermissions('wallet', WALLET_PERMISSIONS),
+    registerStepUpActions('wallet', WALLET_STEP_UP_ACTIONS),
     ...walletProviders,
     ...[
       GrantCredit,

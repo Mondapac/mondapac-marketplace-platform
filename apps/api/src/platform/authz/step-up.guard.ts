@@ -21,9 +21,12 @@ export type StepUpRefusal =
   | { readonly code: keyof typeof ACCESS_DENIED_STATUS };
 
 /**
- * The port the guard asks, implemented by `identity` (seller OTP policy): may this seller session
- * do this registered action now? It is provided by `AuthzModule` from `identity`'s export, as
- * the gate's `AuthorisationCheck` is (`platform/` imports no module).
+ * The port the guard asks, implemented by `identity` (seller OTP policy; issue #491): may this
+ * session do this registered action now? A seller action follows the shop's rule for a seller
+ * session; an admin action (`audience: 'admin'`) always needs a fresh proof of an admin session.
+ * It is provided by `AuthzModule` from `identity`'s export, as the gate's `AuthorisationCheck` is
+ * (`platform/` imports no module). A use case may inject it ({@link STEP_UP_CHECK}) to check the
+ * same proof in the application layer.
  */
 export interface StepUpCheck {
   check(context: CallContext, actionKey: string): Promise<Result<void, StepUpRefusal>>;
@@ -43,14 +46,21 @@ const STATUS: Readonly<Record<string, number>> = {
 };
 
 /**
- * Guards one unsafe seller route with the shop's two-step rule for a registered action (seller
- * OTP policy): `@RequiresStepUp('pricing.price.change')`. The guard runs after the global guards
+ * Guards one unsafe route with the two-step rule of a registered action (seller OTP policy; issue
+ * #491): `@RequiresStepUp('pricing.price.change')`. The guard runs after the global guards
  * (Market, rate limit, actor, CSRF), so the actor is the verified session's. With a rule that
  * asks for a code and no proof of this session for this action in the last few minutes, the
  * request is refused `403 second-factor.required` with `details.actionKey`: the panel then
- * presents a code (`POST identity/seller/step-up/verify`) and repeats the request. An action
- * the shop does not guard passes at once; a caller that is not a seller session is not subject
- * to a shop's rule. Put it on the route of the action, never on a read.
+ * presents a code and repeats the request.
+ *
+ * - A seller action: the shop's rule. An action the shop does not guard passes at once; a caller
+ *   that is not a seller session is not subject to a shop's rule. The seller panel verifies with
+ *   `POST identity/seller/step-up/verify`.
+ * - An admin action (`audience: 'admin'`): always required for an admin session, refused for any
+ *   other caller. The admin panel verifies with `POST identity/admin/step-up/verify`.
+ *
+ * An unregistered key answers `503 access.unavailable`; an acting-as session is refused. Put it
+ * on the route of the action, never on a read.
  */
 export const RequiresStepUp = (actionKey: string): MethodDecorator & ClassDecorator =>
   applyDecorators(SetMetadata(REQUIRES_STEP_UP, actionKey), UseGuards(StepUpGuard));

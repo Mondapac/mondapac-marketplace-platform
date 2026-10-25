@@ -203,6 +203,8 @@ import { ListSellerStepUpPolicy } from './application/use-cases/list-seller-step
 import { RequireStepUp } from './application/use-cases/require-step-up.use-case';
 import { SetSellerStepUpPolicy } from './application/use-cases/set-seller-step-up-policy.use-case';
 import { VerifySellerStepUp } from './application/use-cases/verify-seller-step-up.use-case';
+import { VerifyAdminStepUp } from './application/use-cases/verify-admin-step-up.use-case';
+import { AdminStepUpController } from './presentation/admin-step-up.controller';
 import { SellerStepUpController } from './presentation/seller-step-up.controller';
 import { sellerProviders } from './infrastructure/sellers/seller-providers';
 import { sessionProviders } from './infrastructure/sessions/session-providers';
@@ -420,6 +422,7 @@ function useCaseProvider<D, U>(
     SellerStepUpController,
     AdminSessionController,
     AdminSecondFactorController,
+    AdminStepUpController,
     AdminPasswordController,
     AdminProfileController,
     AdminTeamController,
@@ -1575,6 +1578,20 @@ function useCaseProvider<D, U>(
       stepUpActions: true,
     }),
     useCaseProvider(VerifySellerStepUp, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
+      audit: true,
+      policy: true,
+      stepUp: true,
+      stepUpActions: true,
+    }),
+    useCaseProvider(VerifyAdminStepUp, {
       unitOfWork: true,
       accounts: true,
       factors: true,

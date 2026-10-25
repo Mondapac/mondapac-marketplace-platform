@@ -622,6 +622,17 @@
     }
   },
   {
+    "action": "identity.admin-step-up.verified",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.settings.change)",
+      "sessionId": "id"
+    }
+  },
+  {
     "action": "identity.invitation.accepted",
     "targetType": "identity.invitation",
     "targetId": "id",
@@ -910,11 +921,11 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change)",
+      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change)",
+      "actionKey": "enumOf(catalog.offer.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.settings.change)",
       "required": "boolean"
     }
   },

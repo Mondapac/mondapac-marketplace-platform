@@ -258,6 +258,18 @@ export const SellerStepUpPolicyChangedAudit = defineAuditAction({
   after: { actionKey: auditField.enumOf(STEP_UP_ACTION_KEYS), required: auditField.boolean() },
 });
 
+/**
+ * A platform admin presented a fresh two-step code for one admin action (issue #491). Target: the
+ * admin's own account. The session that now holds the proof and the action it covers; never the
+ * code. A wrong code is counted on the account's code counter and is not an audit row.
+ */
+export const AdminStepUpVerifiedAudit = defineAuditAction({
+  action: 'identity.admin-step-up.verified',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { sessionId: auditField.id(), actionKey: auditField.enumOf(STEP_UP_ACTION_KEYS) },
+});
+
 /** The account statuses (identity design 3.1), as an audit row names them. */
 const ACCOUNT_STATUSES = ['active', 'disabled'] as const;
 
@@ -549,6 +561,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   AccountRoleChangedAudit,
   SellerMemberRemovedAudit,
   SellerStepUpPolicyChangedAudit,
+  AdminStepUpVerifiedAudit,
   AccountDisabledAudit,
   AccountEnabledAudit,
   InvitationIssuedAudit,

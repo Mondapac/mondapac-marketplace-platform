@@ -78,6 +78,9 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
   let audit: RecordingAudit;
   let deps: WalletDependencies;
   let seq = 0;
+  // identity's answer to the admin step-up (issue #491): satisfied unless a test says otherwise.
+  let stepUpAnswer: Awaited<ReturnType<WalletDependencies['identity']['requireStepUp']>>;
+  let stepUpAsked: string[];
 
   const customerCtx = (accountId = CUSTOMER) =>
     testCallContext(
@@ -124,7 +127,15 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,
+      identity: {
+        requireStepUp: (_context, actionKey) => {
+          stepUpAsked.push(actionKey);
+          return Promise.resolve(stepUpAnswer);
+        },
+      },
     };
+    stepUpAnswer = ok(undefined);
+    stepUpAsked = [];
   });
 
   const key = (label: string) => `${label}-${(seq += 1)}`.padEnd(8, '0');
@@ -277,6 +288,33 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       );
       expect(setting.record).toBeNull();
       expect(audit.entries).toHaveLength(0);
+    });
+
+    it('asks identity for the admin step-up of wallet.settings.change before any change', async () => {
+      await open('active');
+      expect(stepUpAsked).toEqual(['wallet.settings.change']);
+      audit.entries.length = 0;
+      const saves = setting.saves;
+      for (const refusal of [
+        { code: 'second-factor.required', actionKey: 'wallet.settings.change' },
+        { code: 'second-factor.enrolment-required', actionKey: 'wallet.settings.change' },
+      ] as const) {
+        stepUpAnswer = err(refusal);
+        expect(await turn('paused', 'maintenance')).toEqual(err(refusal));
+      }
+      stepUpAnswer = err({ code: 'access.unavailable' });
+      expect(await turn('paused', 'maintenance')).toEqual(err({ code: 'access.unavailable' }));
+      stepUpAnswer = err({ code: 'access.denied' });
+      expect(await turn('paused', 'maintenance')).toEqual(err({ code: 'access.denied' }));
+      expect(setting.saves).toBe(saves);
+      expect(setting.record?.status).toBe('active');
+      expect(audit.entries).toHaveLength(0);
+    });
+
+    it('does not ask for the step-up of an invalid body or a refused caller', async () => {
+      expect((await turn('on')).ok).toBe(false);
+      expect((await turn('active', undefined, customerCtx())).ok).toBe(false);
+      expect(stepUpAsked).toEqual([]);
     });
 
     it('validates the body: a reason is required for paused and frozen and not allowed otherwise', async () => {

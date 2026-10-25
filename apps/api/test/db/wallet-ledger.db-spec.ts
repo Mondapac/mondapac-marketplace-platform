@@ -106,6 +106,8 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       audit,
       ids,
       clock,
+      // The admin step-up is identity's (issue #491; its db spec covers it): satisfied here.
+      identity: { requireStepUp: () => Promise.resolve(ok(undefined)) },
     };
   });
   afterAll(async () => {

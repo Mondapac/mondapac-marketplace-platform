@@ -1,6 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result, Temporal } from '@mondapac/shared-kernel';
 import { TransactionConflictError } from '../../../platform/unit-of-work/errors';
+import { WALLET_SETTINGS_CHANGE_STEP_UP } from '../contracts/step-up';
 import { WalletStatusChanged } from '../domain/audit';
 import {
   isStatusReason,
@@ -14,7 +15,9 @@ import type { WalletDependencies } from './wallet-dependencies';
 // The wallet switch of a Market (owner decisions of 2026-10-25): an admin moves it between off,
 // active, paused and frozen. The switch never deletes or zeroes a balance or a lot. Going back to
 // `off` is refused once the Market has any journal (use paused). The change is refused in an acting-as session, is audited with before and after, and is idempotent:
-// asking for the state the Market is already in changes nothing and writes no audit row.
+// asking for the state the Market is already in changes nothing and writes no audit row. It
+// needs a fresh two-step proof of the admin's session for `wallet.settings.change` (issue #491,
+// closes M3), asked of identity here as well as by the route guard (ADR-0018).
 
 const LOCK_TIMEOUT_MS = 3000;
 
@@ -26,7 +29,12 @@ export type SettingsFailure =
   | { readonly code: 'wallet.cannot-turn-off-with-history' }
   /** Journals in flight held the switch for too long (lock timeout); try again. */
   | { readonly code: 'wallet.busy' }
-  | { readonly code: 'access.denied' };
+  /** The admin has no fresh two-step proof for the switch: verify one, then repeat (issue #491). */
+  | { readonly code: 'second-factor.required'; readonly actionKey: string }
+  /** The admin has no active two-step: set it up first. */
+  | { readonly code: 'second-factor.enrolment-required'; readonly actionKey: string }
+  | { readonly code: 'access.denied' }
+  | { readonly code: 'access.unavailable' };
 
 export interface SettingsView {
   readonly status: WalletStatus;
@@ -90,6 +98,22 @@ export async function setStatus(
   }
   if (fields.length > 0 || !isWalletStatus(status))
     return err({ code: 'validation.failed', fields });
+
+  // The admin step-up, before any change (issue #491). Any other refusal from identity keeps the
+  // switch closed.
+  const stepUp = await deps.identity.requireStepUp(context, WALLET_SETTINGS_CHANGE_STEP_UP);
+  if (!stepUp.ok) {
+    const refusal = stepUp.error;
+    if (
+      refusal.code === 'second-factor.required' ||
+      refusal.code === 'second-factor.enrolment-required'
+    ) {
+      return err({ code: refusal.code, actionKey: refusal.actionKey });
+    }
+    return err({
+      code: refusal.code === 'access.unavailable' ? 'access.unavailable' : 'access.denied',
+    });
+  }
 
   const now = deps.clock.now();
   // The change waits for the journals in flight; it gives up after 3 s instead of queueing the

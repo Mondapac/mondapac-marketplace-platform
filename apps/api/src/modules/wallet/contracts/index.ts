@@ -1,5 +1,5 @@
 // Public contracts of the wallet module (ADR-0008): the facade interface, the permission keys and
-// the audit actions. Other modules may import only what this file exports, through ../index.ts.
+// the audit actions and the step-up actions. Other modules may import only what this file exports, through ../index.ts.
 export { WALLET_AUDIT_ACTIONS } from '../domain/audit';
 export {
   WALLET_STATUS_REASONS,
@@ -8,6 +8,7 @@ export {
   type WalletStatusReason,
 } from '../domain/wallet-status';
 export { WALLET_PERMISSIONS, WALLET_SETTINGS_MANAGE, WALLET_SETTINGS_VIEW } from './permissions';
+export { WALLET_SETTINGS_CHANGE_STEP_UP, WALLET_STEP_UP_ACTIONS } from './step-up';
 export {
   WALLET_FACADE,
   type GrantCreditRequest,
