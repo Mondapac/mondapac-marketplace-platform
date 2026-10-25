@@ -56,7 +56,10 @@ export class ConfigZoom2uPolicy {
     const { config } = settings;
     const methods: CarrierMethod[] = [
       ...(config.modes.includes('on_demand') ? (['instant', 'same_day'] as const) : []),
-      ...(config.modes.includes('scheduled') ? (['scheduled'] as const) : []),
+      // Scheduled needs the buyer's window, so it is declared only when the window is supported.
+      ...(config.modes.includes('scheduled') && config.supportsWindow
+        ? (['scheduled'] as const)
+        : []),
     ];
     return {
       fleet: 'zoom2u',

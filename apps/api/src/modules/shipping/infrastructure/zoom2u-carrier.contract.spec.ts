@@ -684,7 +684,8 @@ describe.each([['AU'], ['ZZ']] as const)('Zoom2uCarrier in market %s', (code) =>
     expect(carrier.fleet).toBe('zoom2u');
     expect(carrier.capabilities(market)).toEqual({
       fleet: 'zoom2u',
-      methods: ['instant', 'same_day', 'scheduled'],
+      // Scheduled is configured but the window is not supported, so it is not declared.
+      methods: ['instant', 'same_day'],
       serviceAreas: configured.serviceAreas,
       outsideCityAreasOnly: false,
       temperatures: ['ambient'],
