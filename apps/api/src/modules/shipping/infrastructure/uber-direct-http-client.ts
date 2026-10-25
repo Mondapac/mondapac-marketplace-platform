@@ -31,8 +31,12 @@ export interface UberDirectEndpoint {
   readonly circuit: CircuitBreakerSettings;
 }
 
-/** `unauthorized`: Uber rejected the credentials or the token (401, 403); nothing was booked. */
-export type UberCallFailure = 'unavailable' | 'refused' | 'unauthorized';
+/**
+ * `unauthorized`: Uber rejected the credentials or the token (401, 403); nothing was booked.
+ * `not-sent`: nothing reached Uber's API (an open circuit, or no token could be had for a reason
+ * other than the credentials). `unavailable`: the request may have left.
+ */
+export type UberCallFailure = 'unavailable' | 'refused' | 'unauthorized' | 'not-sent';
 export type UberCallKind = 'quote' | 'book' | 'cancel' | 'status' | 'token';
 
 interface CachedToken {
@@ -92,9 +96,11 @@ export class UberDirectHttpClient {
     call: UberCallKind,
   ): Promise<Result<{ readonly status: number; readonly body: unknown }, UberCallFailure>> {
     const key = `${endpoint.marketId}|${endpoint.customerId}|${call}`;
-    if (!this.breaker.allow(key)) return err('unavailable');
+    if (!this.breaker.allow(key)) return err('not-sent');
     const url = `${endpoint.apiUrl.replace(/\/+$/, '')}/${encodeURIComponent(endpoint.customerId)}/${path}`;
     let refreshed = false;
+    // Set once an attempt faulted: from then on the request may have reached Uber.
+    let mayHaveLeft = false;
     for (let attempt = 1; ; attempt += 1) {
       const token = await this.token(endpoint);
       if (!token.ok) {
@@ -102,7 +108,8 @@ export class UberDirectHttpClient {
         // this call's circuit must still be settled.
         if (token.error === 'unauthorized') this.breaker.succeeded(key);
         else this.breaker.failed(key, endpoint.circuit);
-        return err(token.error === 'unauthorized' ? 'unauthorized' : 'unavailable');
+        if (token.error === 'unauthorized') return err('unauthorized');
+        return err(mayHaveLeft ? 'unavailable' : 'not-sent');
       }
       const answer = await this.once(endpoint, method, url, payload, {
         accept: 'application/json',
@@ -129,6 +136,7 @@ export class UberDirectHttpClient {
       // A booking is one attempt, whatever the fault: the request may have created the delivery
       // and only the answer was lost. A 429 on a quote falls back at once (the router can try
       // another fleet) instead of adding retries while Uber sheds load.
+      mayHaveLeft = true;
       const attempts = call === 'book' ? 1 : endpoint.maxAttempts;
       if (attempt >= attempts || (answer.throttled && call === 'quote')) {
         this.breaker.failed(key, endpoint.circuit);

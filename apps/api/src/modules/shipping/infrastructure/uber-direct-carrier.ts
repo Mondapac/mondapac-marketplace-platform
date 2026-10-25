@@ -77,9 +77,20 @@ const NOT_CONFIGURED: CarrierFailure = Object.freeze({ code: 'carrier.not-config
 const UNAVAILABLE: CarrierFailure = Object.freeze({ code: 'carrier.unavailable' as const });
 const REFUSED: CarrierFailure = Object.freeze({ code: 'carrier.refused' as const });
 const UNAUTHORIZED: CarrierFailure = Object.freeze({ code: 'carrier.unauthorized' as const });
+const NOT_SENT: CarrierFailure = Object.freeze({ code: 'carrier.not-sent' as const });
 
 const failureOf = (error: UberCallFailure): CarrierFailure =>
-  error === 'refused' ? REFUSED : error === 'unauthorized' ? UNAUTHORIZED : UNAVAILABLE;
+  error === 'refused'
+    ? REFUSED
+    : error === 'unauthorized'
+      ? UNAUTHORIZED
+      : error === 'not-sent'
+        ? NOT_SENT
+        : UNAVAILABLE;
+
+/** Uber's two behaviours: instant and same day are on demand, a scheduled one has its window. */
+const modeOf = (method: CarrierBookingRequest['method']): 'on_demand' | 'scheduled' =>
+  method === 'scheduled' ? 'scheduled' : 'on_demand';
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -240,8 +251,10 @@ function deliveryOf(body: unknown, externalReference: string | null): CarrierBoo
 /**
  * The Uber Direct adapter of the fleet port (Phase 6 package 5b, an external fleet). Quotes with
  * `POST delivery_quotes`, books with `POST deliveries` (the seller order id is `external_id`; its
- * dedupe by Uber is unverified, so a booking is a single attempt and `idempotentBooking` is false), cancels with `POST deliveries/{id}/cancel` and reads a
- * status with `GET deliveries/{id}`. An on-demand trip (instant, same day) carries no timing; a
+ * dedupe by Uber is unverified, so a booking is a single attempt and `idempotentBooking` is false;
+ * an open circuit or a token that could not be had for a non-credential reason answers
+ * `carrier.not-sent`, as nothing left), cancels with `POST deliveries/{id}/cancel` and reads a
+ * status with `GET deliveries/{id}`. The request's `method` picks the behaviour: an on-demand trip (instant, same day) carries no timing; a
  * scheduled one is booked for the buyer's window, sent as Uber's drop-off window. Credentials
  * come from the Market's `shipping.uberDirect` switch and the Region Stack's secrets; with the
  * switch off or a credential missing every call answers `carrier.not-configured` and sends
@@ -270,10 +283,11 @@ export class UberDirectCarrier implements CarrierGateway {
     const target = this.target(market);
     if (target === null) return err(NOT_CONFIGURED);
     // What the fleet is known to refuse is not sent. A scheduled trip needs its window.
-    if (!this.accepts(target.config, request.mode, request.parcel, target.currency)) {
+    const mode = modeOf(request.method);
+    if (!this.accepts(target.config, mode, request.parcel, target.currency)) {
       return err(REFUSED);
     }
-    if (request.mode === 'scheduled' && request.window === null) return err(REFUSED);
+    if (mode === 'scheduled' && request.window === null) return err(REFUSED);
     const answer = await this.http.post(
       target.endpoint,
       'deliveries',
@@ -289,7 +303,7 @@ export class UberDirectCarrier implements CarrierGateway {
           },
         ],
         manifest_total_value: Number(request.parcel.declaredValue.amount),
-        ...this.timing(request.mode, request.window),
+        ...this.timing(mode, request.window),
       },
       'book',
     );
@@ -304,7 +318,8 @@ export class UberDirectCarrier implements CarrierGateway {
   ): Promise<Result<CarrierQuote, CarrierFailure>> {
     const target = this.target(market);
     if (target === null) return err(NOT_CONFIGURED);
-    if (!this.accepts(target.config, request.mode, request.parcel, target.currency)) {
+    const mode = modeOf(request.method);
+    if (!this.accepts(target.config, mode, request.parcel, target.currency)) {
       return err(REFUSED);
     }
     const stops = {
@@ -317,7 +332,7 @@ export class UberDirectCarrier implements CarrierGateway {
       ...stops,
       weight: request.parcel.weightGrams,
       items: request.parcel.itemCount,
-      mode: request.mode,
+      mode,
     })}`;
     const now = this.clock.now();
     const cached = this.#quotes.get(key);

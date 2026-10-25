@@ -246,6 +246,7 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
       itemCount: 2,
       declaredValue: { amount: 12_000n, currency: real.defaultCurrency },
     },
+    method: 'instant',
     mode: 'on_demand',
     window: null,
   };
@@ -253,6 +254,7 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     pickup: { postcode: request.pickup.postcode, locality: null, region: null },
     dropoff: { postcode: request.dropoff.postcode, locality: null, region: null },
     parcel: request.parcel,
+    method: 'instant',
     mode: 'on_demand',
   };
   const elsewhere = (postcode: string): CarrierQuoteRequest => ({
@@ -272,6 +274,7 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     uber.seen.length = 0;
   };
   const unavailable = { ok: false, error: { code: 'carrier.unavailable' } };
+  const notSent = { ok: false, error: { code: 'carrier.not-sent' } };
   const refused = { ok: false, error: { code: 'carrier.refused' } };
   const unauthorized = { ok: false, error: { code: 'carrier.unauthorized' } };
 
@@ -352,7 +355,7 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     expect(uber.api[0]!.url).toBe(`${API}/deliveries`);
   });
 
-  it('answers unauthorized when the token endpoint says 401 or 403, unavailable for other token faults', async () => {
+  it('answers unauthorized when the token endpoint says 401 or 403, not-sent for other token faults', async () => {
     uber.script.push({ status: 401, body: { error: 'invalid_client' } });
     expect(await carrier.book(market, request)).toEqual(unauthorized);
     expect(uber.api).toHaveLength(0);
@@ -361,9 +364,9 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     expect(await carrier.quote(market, quote)).toEqual(unauthorized);
     expect(uber.api).toHaveLength(0);
     uber.script.push({ status: 200, body: { access_token: 'short', expires_in: 3600 } });
-    expect(await carrier.book(market, request)).toEqual(unavailable);
+    expect(await carrier.book(market, request)).toEqual(notSent);
     uber.script.push({ status: 503 }, { status: 503 });
-    expect(await carrier.book(market, request)).toEqual(unavailable);
+    expect(await carrier.book(market, request)).toEqual(notSent);
     expect(uber.api).toHaveLength(0);
   });
 
@@ -385,12 +388,12 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
       status: 200,
       body: { access_token: 'token-abcdefgh', token_type: 'MAC', expires_in: 2_592_000 },
     });
-    expect(await carrier.quote(market, quote)).toEqual(unavailable);
+    expect(await carrier.quote(market, quote)).toEqual(notSent);
     uber.script.push({
       status: 200,
       body: { access_token: 'token-abcdefgh', expires_in: 2_592_000 },
     });
-    expect(await carrier.quote(market, quote)).toEqual(unavailable);
+    expect(await carrier.quote(market, quote)).toEqual(notSent);
     uber.script.push({
       status: 200,
       body: { access_token: 'token-abcdefgh', token_type: 'bearer', expires_in: 2_592_000 },
@@ -487,11 +490,15 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
   });
 
   it('prices a scheduled quote from the stops alone (no window, no lead time) and refuses a mode the Market does not serve', async () => {
-    expect((await carrier.quote(market, { ...quote, mode: 'scheduled' })).ok).toBe(true);
+    expect(
+      (await carrier.quote(market, { ...quote, method: 'scheduled', mode: 'scheduled' })).ok,
+    ).toBe(true);
     const body = uber.api[0]!.json;
     expect(Object.keys(body).filter((key) => key.includes('_dt'))).toEqual([]);
     carrier = build({ modes: ['on_demand'] });
-    expect(await carrier.quote(market, { ...quote, mode: 'scheduled' })).toEqual(refused);
+    expect(
+      await carrier.quote(market, { ...quote, method: 'scheduled', mode: 'scheduled' }),
+    ).toEqual(refused);
   });
 
   it.each([
@@ -633,8 +640,30 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
     }
   });
 
+  it('takes its behaviour from the method: same day is on demand, and a scheduled one needs its window', async () => {
+    expect(
+      (await carrier.book(market, { ...request, method: 'same_day', mode: 'on_demand', window }))
+        .ok,
+    ).toBe(true);
+    expect(uber.api[0]!.json.dropoff_ready_dt).toBeUndefined();
+    // The method wins over a stale mode: scheduled without a window is refused, nothing sent.
+    const sent = uber.api.length;
+    expect(
+      await carrier.book(market, {
+        ...request,
+        method: 'scheduled',
+        mode: 'on_demand',
+        window: null,
+      }),
+    ).toEqual(refused);
+    expect(uber.api).toHaveLength(sent);
+  });
+
   it('books a scheduled trip for the buyer window as the drop-off window, not a lead time', async () => {
-    expect((await carrier.book(market, { ...request, mode: 'scheduled', window })).ok).toBe(true);
+    expect(
+      (await carrier.book(market, { ...request, method: 'scheduled', mode: 'scheduled', window }))
+        .ok,
+    ).toBe(true);
     const body = uber.api[0]!.json;
     expect(body.dropoff_ready_dt).toBe(window.start.toString());
     expect(body.dropoff_deadline_dt).toBe(window.end.toString());
@@ -694,7 +723,7 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
         declaredValue: { amount: 1n, currency: real.defaultCurrency === 'USD' ? 'EUR' : 'USD' },
       }),
       over({ temperature: 'frozen' }),
-      { ...request, mode: 'scheduled', window: null },
+      { ...request, method: 'scheduled', mode: 'scheduled', window: null },
     ];
     for (const refusedRequest of cases) {
       expect(await carrier.book(market, refusedRequest)).toEqual(refused);
@@ -705,6 +734,7 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
           pickup: quote.pickup,
           dropoff: quote.dropoff,
           parcel: refusedRequest.parcel,
+          method: 'instant',
           mode: 'on_demand',
         }),
       ).toEqual(refused);
@@ -859,7 +889,7 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
       expect((await carrier.book(market, request)).ok).toBe(false);
     }
     expect(uber.api).toHaveLength(failureThreshold);
-    expect(await carrier.book(market, request)).toEqual(unavailable);
+    expect(await carrier.book(market, request)).toEqual(notSent);
     expect(uber.api).toHaveLength(failureThreshold);
     // Quotes have their own circuit.
     const other = elsewhere(code === 'AU' ? '4000' : '1000003');
@@ -928,7 +958,11 @@ describe.each([['AU'], ['ZZ']] as const)('UberDirectCarrier in market %s', (code
         uber.script.push({ status: 401, body: { echo: CLIENT_SECRET } });
         return carrier.book(market, request);
       })(),
-      await build({ modes: ['on_demand'] }).quote(market, { ...quote, mode: 'scheduled' }),
+      await build({ modes: ['on_demand'] }).quote(market, {
+        ...quote,
+        method: 'scheduled',
+        mode: 'scheduled',
+      }),
       await (async () => {
         uber.script.push({ status: 500 }, { status: 500 });
         return carrier.book(market, request);
