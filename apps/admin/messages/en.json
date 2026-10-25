@@ -1019,8 +1019,13 @@
         "action": {
           "edit": "Edit",
           "view": "View",
-          "review": "Review"
-        }
+          "review": "Review",
+          "pause": "Pause",
+          "resume": "Resume…"
+        },
+        "done-paused": "Paused “{name}”. Buyers stop seeing it within a minute.",
+        "done-resumed": "Resumed “{name}”. Buyers see it again within a minute.",
+        "stale": "That slide changed while you were looking at it. The list is up to date again."
       },
       "editor": {
         "back": "Slides",
@@ -1120,7 +1125,10 @@
           "version-limit": "This slide has reached its limit of saved versions.",
           "not-found": "This slide no longer exists."
         },
-        "tab-placement": "Where and when"
+        "tab-placement": "Where and when",
+        "tab-versions": "Versions",
+        "pending-title": "Waiting for a platform admin to approve",
+        "pending-body": "Buyers keep seeing the live version until then. You can still edit; a new edit withdraws the request and asks again."
       },
       "preview": {
         "title": "Preview",
@@ -1209,6 +1217,154 @@
           "version-limit": "This slide has reached its limit of saved versions.",
           "not-found": "This slide no longer exists."
         }
+      },
+      "actions": {
+        "submit": "Send for approval",
+        "submit-unsaved": "Save your changes to the draft first",
+        "review": "Review and approve",
+        "more": "More actions",
+        "pause": "Pause",
+        "resume": "Resume…",
+        "copy": "Copy to another Market…",
+        "archive": "Archive",
+        "done": {
+          "submit": "Sent “{name}” for approval. Buyers keep seeing the live version until a platform admin approves.",
+          "pause": "Paused “{name}”. Buyers stop seeing it within a minute.",
+          "resume": "Resumed “{name}”. Buyers see it again within a minute.",
+          "archive": "Archived “{name}”.",
+          "approve": "Approved “{name}”. Buyers see it within a minute."
+        }
+      },
+      "dialog": {
+        "cancel": "Cancel",
+        "close": "Close",
+        "problem": {
+          "network": "No connection. Nothing was changed; try again.",
+          "denied": "You don’t have permission to do this.",
+          "not-found": "This slide no longer exists.",
+          "version-not-found": "That version no longer exists.",
+          "archived": "This slide is archived and can no longer be changed.",
+          "version-limit": "This slide has reached its limit of saved versions.",
+          "no-draft": "There is no draft to send or approve. Someone may have changed this slide.",
+          "draft-changed": "The editor changed the draft after you opened it. Close this window, read the new version and approve again.",
+          "not-submitted": "The draft is not waiting for approval any more. Someone may have changed this slide.",
+          "ended": "This slide’s window has already ended. Change its dates first.",
+          "not-live": "This slide is not live, so it cannot be paused. Someone may have changed it.",
+          "not-paused": "This slide is not paused. Someone may have changed it.",
+          "position-full": "A position already has its most live slides in this window, so nothing was changed.",
+          "link-invalid": "The system found something that buyers could not open, so nothing was approved.",
+          "invalid": "The dates or positions saved with this draft are not valid. Ask the editor to fix them.",
+          "generic": "This could not be done. Nothing was changed; try again."
+        },
+        "findings": {
+          "link": "The link no longer opens something that is live in this Market.",
+          "scope": "{place}: the chosen category, product, seller or page is not live in this Market.",
+          "full": "{place} already has its most live slides in this window."
+        },
+        "pause": {
+          "title": "Pause “{name}”?",
+          "body": "Buyers stop seeing this slide within a minute, on every position it is in.",
+          "note": "Turning it back on needs a platform admin’s approval.",
+          "action": "Pause now"
+        },
+        "resume": {
+          "title": "Resume “{name}”?",
+          "body": "Buyers see the live version again within a minute, once the most live slides of its positions are checked.",
+          "action": "Resume now"
+        },
+        "archive": {
+          "title": "Archive “{name}”?",
+          "body": "Buyers stop seeing this slide and it is never shown again.",
+          "note": "An archived slide cannot be changed. Its versions stay in the list.",
+          "action": "Archive"
+        },
+        "restore": {
+          "title": "Restore version {version}?",
+          "body": "Version {version} is copied into the draft as a new version. The earlier versions are kept.",
+          "note": "Buyers keep seeing the live version until a platform admin approves the draft. A request for approval that is waiting is withdrawn.",
+          "action": "Restore to draft"
+        },
+        "approve": {
+          "title": "Approve “{name}”",
+          "action": "Approve",
+          "no-draft": "There is no draft waiting for approval.",
+          "sent": "Draft version {version}, saved {when}.",
+          "window": "Live {from} – {to} ({zone})",
+          "changes": "What changes for buyers",
+          "no-changes": "Nothing differs from the live version.",
+          "more": "{count, plural, one {and # more change} other {and # more changes}}",
+          "checks": "Checked by the system",
+          "checks-body": "When you approve, the system checks that every link and every page, category, product or seller the slide points at is live in this Market, and that no position goes over its most live slides. Anything it finds is listed here, and the slide stays as it is.",
+          "confirm": "I checked the text and image and they follow the content rules.",
+          "confirm-needed": "Tick the box to confirm before you approve.",
+          "field": {
+            "internalName": "Internal name",
+            "title": "Headline",
+            "body": "Text",
+            "ctaLabel": "Button label"
+          },
+          "change": {
+            "first": "A new slide that buyers have not seen before",
+            "text": "{field} is now “{value}”",
+            "text-removed": "{field} is removed",
+            "link": "Opens: {type} {target}",
+            "link-removed": "Opens nothing",
+            "image": "Image is now {image}",
+            "image-removed": "The image is removed",
+            "alt": "Image description is now “{value}”",
+            "sponsored-on": "Shows a “Sponsored” label",
+            "sponsored-off": "No longer shows a “Sponsored” label",
+            "pinned-on": "Pinned first in its positions",
+            "pinned-off": "No longer pinned first",
+            "window": "{window}",
+            "position-added": "Added to {place}",
+            "position-removed": "Removed from {place}"
+          }
+        },
+        "copy": {
+          "title": "Copy “{name}” to another Market",
+          "body": "This panel works in one Market. It cannot create the copy in another Market, so it hands you the slide as a package. An editor of the other Market creates the slide there from it.",
+          "loading": "Preparing the copy…",
+          "error": "The copy could not be prepared. Check your connection and try again.",
+          "retry": "Try again",
+          "kept": "{count, plural, one {Kept: the text, the picture, the dates, the flags and # position (for every page).} other {Kept: the text, the picture, the dates, the flags and # positions (for every page).}}",
+          "cleared": "Left out: what the slide opens and the button text, because they point at items of this Market. Positions for one category, product, seller or page are reset to every page.",
+          "draft": "It starts as a draft there, and buyers see nothing until a platform admin of that Market approves it.",
+          "copy": "Copy package",
+          "download": "Download file",
+          "done": {
+            "copied": "Package copied.",
+            "copy-failed": "The package could not be copied here. Use Download file instead.",
+            "downloaded": "File downloaded."
+          }
+        }
+      },
+      "versions": {
+        "page-title": "Slide: versions",
+        "read-only": "You can view the versions of this slide but not restore one.",
+        "archived": "This slide is archived. Its versions cannot be restored.",
+        "none": "No versions are saved for this slide.",
+        "caption": "Versions of this slide",
+        "count": "{count, plural, one {# version, newest first.} other {# versions, newest first.}}",
+        "note": "Restoring copies a version into the draft; nothing is lost.",
+        "limit": "Only the latest {count} versions are listed.",
+        "col": {
+          "version": "Version",
+          "saved": "Saved",
+          "state": "State",
+          "actions": "Action"
+        },
+        "version": "Version {version}",
+        "approved": "Approved {when}",
+        "state": {
+          "live": "Live",
+          "draft": "Draft",
+          "draft-pending": "Draft · waiting",
+          "earlier": "Earlier"
+        },
+        "restore": "Restore",
+        "restore-for": "version {version}",
+        "done": "Version {from} was copied into the draft as version {to}. Buyers see it only after a platform admin approves."
       }
     }
   },

@@ -4,6 +4,7 @@
 
 export const SLIDE_READ_PERMISSION = 'storefront.slide.read';
 export const SLIDE_EDIT_PERMISSION = 'storefront.slide.edit';
+export const SLIDE_PAUSE_PERMISSION = 'storefront.slide.pause';
 export const SLIDE_PUBLISH_PERMISSION = 'storefront.slide.publish';
 
 export const SLIDES_API_PATH = 'storefront/admin/slides';
@@ -11,6 +12,21 @@ export const SLIDES_PATH = '/content/slides';
 export const NEW_SLIDE_PATH = `${SLIDES_PATH}/new`;
 /** The tab of one slide that holds its positions and window. */
 export const placementPath = (slideId: string): string => `${SLIDES_PATH}/${slideId}/placement`;
+/** The tab of one slide that lists its saved versions. */
+export const versionsPath = (slideId: string): string => `${SLIDES_PATH}/${slideId}/versions`;
+/** The Review link of the list opens the editor with the approval dialog already open. */
+export const reviewPath = (slideId: string): string => `${SLIDES_PATH}/${slideId}?review=1`;
+/** The commands of a slide, each a POST on `storefront/admin/slides/:id/<command>`. */
+export type SlideCommand = 'submit' | 'approve' | 'pause' | 'resume' | 'archive' | 'restore';
+export const commandPath = (slideId: string, command: SlideCommand): string =>
+  `${SLIDES_API_PATH}/${slideId}/${command}`;
+export const copyPath = (slideId: string): string => `${SLIDES_API_PATH}/${slideId}/copy`;
+
+/**
+ * The most versions the API lists for a slide (storefront `MAX_SLIDE_VERSIONS_SHOWN`); an older
+ * one is not shown.
+ */
+export const MAX_VERSIONS_SHOWN = 50;
 
 export const SLIDE_KINDS = ['announcement', 'promotion', 'link'] as const;
 export type SlideKind = (typeof SLIDE_KINDS)[number];
@@ -195,7 +211,31 @@ export const isKnownStatus = (value: string): value is SlideStatus =>
 export const isKnownKind = (value: string): value is SlideKind =>
   (SLIDE_KINDS as readonly string[]).includes(value);
 
-/** The status chip and button a row or the editor header shows depend on these. */
-export function canReview(permissionKeys: readonly string[], status: SlideStatus): boolean {
-  return status === 'pending' && permissionKeys.includes(SLIDE_PUBLISH_PERMISSION);
+/** What the signed-in admin may do with slides; each control is absent without its key. */
+export interface SlideGates {
+  readonly edit: boolean;
+  readonly pause: boolean;
+  readonly publish: boolean;
+}
+
+export const gatesOf = (permissionKeys: readonly string[]): SlideGates => ({
+  edit: permissionKeys.includes(SLIDE_EDIT_PERMISSION),
+  pause: permissionKeys.includes(SLIDE_PAUSE_PERMISSION),
+  publish: permissionKeys.includes(SLIDE_PUBLISH_PERMISSION),
+});
+
+/** A slide that buyers can see now or will see when its window opens. */
+export const isServed = (status: SlideStatus): boolean =>
+  status === 'live' || status === 'scheduled';
+
+/** The package `GET storefront/admin/slides/:id/copy` returns: the body of a create in another Market. */
+export interface SlideCopyPackage {
+  readonly kind: SlideKind;
+  readonly internalName: string;
+  readonly content: Record<string, unknown>;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly pinned: boolean;
+  readonly sponsored: boolean;
+  readonly placements: readonly SlidePlacement[];
 }

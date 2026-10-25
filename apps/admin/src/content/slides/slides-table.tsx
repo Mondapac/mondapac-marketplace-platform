@@ -1,34 +1,44 @@
-import { CARD_TABLE, LinkButton } from '@mondapac/ui';
+import { CARD_TABLE } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { shortInstantInZone } from '../../shared/format.ts';
 import { SlideKindTile, SlideStatusBadge, usePositionLabel } from './slide-labels.tsx';
+import { SlideRowAction } from './slide-row-action.tsx';
 import {
-  SLIDE_EDIT_PERMISSION,
   SLIDES_PATH,
-  canReview,
+  gatesOf,
   isKnownKind,
+  type SlideDetail,
   type SlideSummary,
 } from './slide-types.ts';
 
 /**
  * The slides of the Market: thumbnail tile, name with a short line, type, positions, live window,
- * status and one action. Below 1024 px every row is a card (the shared CARD_TABLE).
+ * status and one action (Review, Pause, Resume…, Edit or View). Below 1024 px every row is a card
+ * (the shared CARD_TABLE).
  */
 export function SlidesTable({
   rows,
   permissionKeys,
   zone,
+  csrfToken,
+  onChanged,
+  onStale,
 }: {
   readonly rows: readonly SlideSummary[];
   readonly permissionKeys: readonly string[];
   /** The IANA zone the window is shown in. */
   readonly zone: string;
+  readonly csrfToken: string;
+  /** A command on a row worked: the slide as it is now. */
+  readonly onChanged: (detail: SlideDetail) => void;
+  /** A command was refused because the slide changed meanwhile. */
+  readonly onStale: () => void;
 }) {
   const t = useTranslations('content.slides.list');
   const kinds = useTranslations('content.slides.kind');
   const locale = useLocale();
   const positionLabel = usePositionLabel();
-  const canEdit = permissionKeys.includes(SLIDE_EDIT_PERMISSION);
+  const gates = gatesOf(permissionKeys);
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
       <table className={`${CARD_TABLE.table} lg:min-w-240 lg:table-fixed`}>
@@ -39,7 +49,7 @@ export function SlidesTable({
           <col className="w-44" />
           <col className="w-40" />
           <col className="w-44" />
-          <col className="w-28" />
+          <col className="w-36" />
         </colgroup>
         <thead className={CARD_TABLE.head}>
           <tr>
@@ -66,8 +76,6 @@ export function SlidesTable({
         <tbody className={CARD_TABLE.body}>
           {rows.map((slide) => {
             const href = `${SLIDES_PATH}/${slide.id}`;
-            const review = canReview(permissionKeys, slide.status);
-            const action = review ? 'review' : canEdit ? 'edit' : 'view';
             const sublines = [
               slide.pinned ? t('pinned') : null,
               slide.sponsored ? t('sponsored') : null,
@@ -120,10 +128,13 @@ export function SlidesTable({
                   <SlideStatusBadge status={slide.status} />
                 </td>
                 <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-1`}>
-                  <LinkButton variant="secondary" href={href}>
-                    {t(`action.${action}`)}
-                    <span className="sr-only"> {slide.internalName}</span>
-                  </LinkButton>
+                  <SlideRowAction
+                    slide={slide}
+                    gates={gates}
+                    csrfToken={csrfToken}
+                    onChanged={onChanged}
+                    onStale={onStale}
+                  />
                 </td>
               </tr>
             );

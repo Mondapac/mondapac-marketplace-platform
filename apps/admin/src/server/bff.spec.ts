@@ -819,6 +819,42 @@ describe('relay of the storefront slides', () => {
     }
   });
 
+  it('sends each approval, pause, resume, archive and restore command as a POST on a UUID', async () => {
+    for (const action of ['submit', 'approve', 'pause', 'resume', 'archive', 'restore']) {
+      const path = `storefront/admin/slides/${id}/${action}`;
+      const upstream = upstreamOk();
+      expect((await relay(config, request('POST', path), path.split('/'), upstream)).status).toBe(
+        200,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      expect(upstream.mock.calls[0]?.[1]?.method).toBe('POST');
+    }
+  });
+
+  it('reads the copy package of a slide with a GET, with no query crossing', async () => {
+    const path = `storefront/admin/slides/${id}/copy`;
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      request('GET', `${path}?market=NZ`, { host: 'admin.localhost:3002' }),
+      path.split('/'),
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+  });
+
+  it('refuses a command from another site before it reaches the API', async () => {
+    const cross = { ...sameOrigin, origin: 'http://evil.test', 'sec-fetch-site': 'cross-site' };
+    for (const action of ['submit', 'approve', 'pause', 'resume', 'archive', 'restore']) {
+      const path = `storefront/admin/slides/${id}/${action}`;
+      const upstream = upstreamOk();
+      const response = await relay(config, request('POST', path, cross), path.split('/'), upstream);
+      expect(response.status, action).toBe(403);
+      expect(upstream).not.toHaveBeenCalled();
+    }
+  });
+
   it('refuses a write from another site, and every other slide route', async () => {
     const cross = { ...sameOrigin, origin: 'http://evil.test', 'sec-fetch-site': 'cross-site' };
     const blocked = upstreamOk();
@@ -842,8 +878,10 @@ describe('relay of the storefront slides', () => {
       ['PUT', 'storefront/admin/slides'],
       ['PUT', 'storefront/admin/slides/not-a-uuid'],
       ['POST', `storefront/admin/slides/${id}`],
-      ['POST', `storefront/admin/slides/${id}/approve`],
-      ['POST', `storefront/admin/slides/${id}/pause`],
+      ['POST', `storefront/admin/slides/${id}/publish`],
+      ['POST', `storefront/admin/slides/not-a-uuid/pause`],
+      ['GET', `storefront/admin/slides/${id}/approve`],
+      ['PUT', `storefront/admin/slides/${id}/pause`],
       ['DELETE', `storefront/admin/slides/${id}`],
       ['GET', `storefront/admin/slides/${id}`],
     ] as const) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, EmptyState, LinkButton, LoadError, SkeletonRows } from '@mondapac/ui';
+import { Banner, Button, EmptyState, LinkButton, LoadError, SkeletonRows } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
@@ -11,6 +11,7 @@ import {
   SLIDE_EDIT_PERMISSION,
   SLIDES_API_PATH,
   sortSlides,
+  type SlideDetail,
   type SlideList,
   type SlideSummary,
 } from './slide-types.ts';
@@ -25,10 +26,12 @@ type Load = 'loading' | 'ready' | 'failed';
 export function SlidesList({
   permissionKeys,
   zone,
+  csrfToken,
 }: {
   readonly permissionKeys: readonly string[];
   /** The IANA zone the live windows are shown in. */
   readonly zone: string;
+  readonly csrfToken: string;
 }) {
   const t = useTranslations('content.slides.list');
   const tn = useTranslations('content.slides');
@@ -36,6 +39,7 @@ export function SlidesList({
   const [filters, setFilters] = useState<FilterValues>(NO_FILTERS);
   const [slides, setSlides] = useState<readonly SlideSummary[]>([]);
   const [load, setLoad] = useState<Load>('loading');
+  const [notice, setNotice] = useState<{ tone: 'success' | 'info'; text: string } | null>(null);
   const latest = useRef(0);
   const { position, status } = filters;
 
@@ -68,6 +72,39 @@ export function SlidesList({
     void fetchSlides();
   }, [fetchSlides]);
 
+  // A command on a row worked: the row shows the slide as it is now, without reloading the list.
+  const changed = useCallback(
+    (detail: SlideDetail) => {
+      const row: SlideSummary = {
+        id: detail.id,
+        kind: detail.kind,
+        internalName: detail.internalName,
+        status: detail.status,
+        startsAt: detail.startsAt,
+        endsAt: detail.endsAt,
+        pinned: detail.pinned,
+        sponsored: detail.sponsored,
+        hasDraft: detail.hasDraft,
+        positions: detail.positions,
+        updatedAt: detail.updatedAt,
+      };
+      setSlides((previous) =>
+        sortSlides(previous.map((slide) => (slide.id === row.id ? row : slide))),
+      );
+      setNotice({
+        tone: 'success',
+        text: t(row.status === 'paused' ? 'done-paused' : 'done-resumed', {
+          name: row.internalName,
+        }),
+      });
+    },
+    [t],
+  );
+  const stale = useCallback(() => {
+    setNotice({ tone: 'info', text: t('stale') });
+    void fetchSlides();
+  }, [t, fetchSlides]);
+
   const shown = useMemo(() => filterSlides(slides, filters), [slides, filters]);
   const canCreate = permissionKeys.includes(SLIDE_EDIT_PERMISSION);
   const filtered =
@@ -82,6 +119,7 @@ export function SlidesList({
   return (
     <div className="flex flex-col gap-4">
       <FilterBar values={filters} onChange={setFilters} />
+      {notice === null ? null : <Banner tone={notice.tone}>{notice.text}</Banner>}
       {load === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
       {load === 'failed' ? (
         <LoadError
@@ -96,7 +134,14 @@ export function SlidesList({
           <p className="text-sm text-fg-muted" aria-live="polite">
             {t('count', { count: shown.length })}
           </p>
-          <SlidesTable rows={shown} permissionKeys={permissionKeys} zone={zone} />
+          <SlidesTable
+            rows={shown}
+            permissionKeys={permissionKeys}
+            zone={zone}
+            csrfToken={csrfToken}
+            onChanged={changed}
+            onStale={stale}
+          />
           <p className="text-sm text-fg-muted">{t('footnote', { zone })}</p>
         </>
       ) : null}
