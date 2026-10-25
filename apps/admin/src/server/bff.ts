@@ -38,6 +38,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/profile/preferences',
     // The Market's buyer assistant settings (assistant): every field with `expectedVersion`.
     'assistant/admin/settings',
+    // The order of the live slides of one position (storefront). A fixed path, so `order` is never
+    // read as a slide id: the slide route below takes a UUID only.
+    'storefront/admin/slides/order',
   ]),
   DELETE: new Set([]),
   POST: new Set([

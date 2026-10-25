@@ -8,6 +8,7 @@ import type { AdminSession } from '../../../../src/server/session.ts';
 import SlidesPage from './page.tsx';
 import NewSlidePage from './new/page.tsx';
 import SlidePage from './[slideId]/page.tsx';
+import SlidePlacementPage from './[slideId]/placement/page.tsx';
 import ContentPage from '../page.tsx';
 
 const mocks = vi.hoisted(() => ({
@@ -71,6 +72,22 @@ vi.mock('../../../../src/content/slides/slide-editor.tsx', () => ({
   }) => (
     <p data-testid="editor" data-edit={String(canEdit)} data-csrf={csrfToken}>
       editor {slide?.id ?? 'new'}
+    </p>
+  ),
+}));
+
+vi.mock('../../../../src/content/slides/slide-placement-editor.tsx', () => ({
+  SlidePlacementEditor: ({
+    slide,
+    canEdit,
+    zone,
+  }: {
+    readonly slide: { readonly id: string };
+    readonly canEdit: boolean;
+    readonly zone: string;
+  }) => (
+    <p data-testid="placement" data-edit={String(canEdit)} data-zone={zone}>
+      placement {slide.id}
     </p>
   ),
 }));
@@ -204,5 +221,43 @@ describe('slide page', () => {
     render(await SlidePage(params));
     expect(screen.getByRole('alert').textContent).toContain('could not be loaded');
     expect(screen.queryByTestId('editor')).toBeNull();
+  });
+});
+
+describe('where and when page', () => {
+  it('shows no-access without the read permission and does not read the slide', async () => {
+    signIn([EDIT]);
+    render(await SlidePlacementPage(params));
+    expect(screen.getByRole('heading', { name: 'No access to content' })).toBeTruthy();
+    expect(screen.queryByTestId('placement')).toBeNull();
+    expect(mocks.get).not.toHaveBeenCalled();
+  });
+
+  it('reads the slide and opens read-only with only the read permission', async () => {
+    signIn([READ], 'Australia/Brisbane');
+    render(await SlidePlacementPage(params));
+    expect(mocks.get).toHaveBeenCalledWith(`storefront/admin/slides/${ID}`);
+    const tab = screen.getByTestId('placement');
+    expect(tab.getAttribute('data-edit')).toBe('false');
+    expect(tab.getAttribute('data-zone')).toBe('Australia/Brisbane');
+  });
+
+  it('opens for editing with the edit permission', async () => {
+    signIn([READ, EDIT]);
+    render(await SlidePlacementPage(params));
+    expect(screen.getByTestId('placement').getAttribute('data-edit')).toBe('true');
+    expect(screen.getByTestId('placement').textContent).toBe(`placement ${ID}`);
+  });
+
+  it('is not found, signed out or unavailable like the Content tab', async () => {
+    signIn([READ, EDIT]);
+    mocks.get.mockResolvedValue({ kind: 'not-found' });
+    await expect(SlidePlacementPage(params)).rejects.toThrow('not-found');
+    mocks.get.mockResolvedValue({ kind: 'signed-out' });
+    await expect(SlidePlacementPage(params)).rejects.toThrow('redirect:/session-ended');
+    mocks.get.mockResolvedValue({ kind: 'unavailable' });
+    render(await SlidePlacementPage(params));
+    expect(screen.getByRole('alert').textContent).toContain('could not be loaded');
+    expect(screen.queryByTestId('placement')).toBeNull();
   });
 });

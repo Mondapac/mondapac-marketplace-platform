@@ -1037,7 +1037,7 @@
         "form": "Slide content",
         "read-only": "You can view slides but not change them.",
         "archived": "This slide is archived. It cannot be changed.",
-        "new-note": "A new slide is saved as a draft at {position} for {days} days from the moment you save it. Buyers see nothing until a platform admin approves it.",
+        "new-note": "A new slide is saved as a draft at {position} for {days} days from the moment you save it. Change the positions and dates on the Where and when tab. Buyers see nothing until a platform admin approves it.",
         "where": "Shown at {positions}. Live {window} ({zone}).",
         "where-none": "Not placed yet.",
         "kind": "Type",
@@ -1119,7 +1119,8 @@
           "archived": "This slide is archived and can no longer be changed.",
           "version-limit": "This slide has reached its limit of saved versions.",
           "not-found": "This slide no longer exists."
-        }
+        },
+        "tab-placement": "Where and when"
       },
       "preview": {
         "title": "Preview",
@@ -1134,6 +1135,80 @@
       "not-found": {
         "title": "Slide not found",
         "body": "We couldn't find this slide. It may belong to another Market or no longer exist."
+      },
+      "placement": {
+        "form": "Where and when",
+        "read-only": "You can view where and when slides appear but not change it.",
+        "archived": "This slide is archived. It cannot be changed.",
+        "page-title": "Slide: where and when",
+        "where-title": "Where buyers see it",
+        "where-help": "Choose every position where this slide should appear.",
+        "positions": "Positions",
+        "tag-autoplay": "Moves on its own",
+        "help": {
+          "home-hero": "Large slider at the top of the home page. It turns slowly and buyers can pause it.",
+          "home-mid": "Buyers move it with arrows or swipe.",
+          "category-top": "Above the product list of a category page.",
+          "product-below-details": "Never above the price or the Add button.",
+          "cart-below-lines": "Below the items in the cart.",
+          "landing-top": "At the top of a landing page. It turns slowly and buyers can pause it."
+        },
+        "capacity": "{count} of {max} live",
+        "capacity-full": "{count} of {max} live · full",
+        "capacity-unknown": "Live count not available",
+        "capacity-note-unavailable": "Live counts could not be loaded. The places left are checked again when a platform admin approves.",
+        "scope": {
+          "label": "Shown on",
+          "all": "Every page here",
+          "category": "One category",
+          "product": "One product",
+          "seller": "One seller",
+          "page": "One landing page"
+        },
+        "scope-id": {
+          "category": "Category ID",
+          "product": "Product ID",
+          "seller": "Seller ID",
+          "page": "Landing page ID"
+        },
+        "scope-id-help": "The id of the item, as the catalogue shows it.",
+        "subcategories": "Also its subcategories",
+        "more-kept": "{count, plural, one {# more placement at this position is kept as it is.} other {# more placements at this position are kept as they are.}}",
+        "others-kept": "{count, plural, one {# placement at a position this panel does not list is kept as it is.} other {# placements at positions this panel does not list are kept as they are.}}",
+        "locked": "Checkout, order confirmation and account pages never show slides.",
+        "when-title": "When",
+        "starts": "Starts",
+        "ends": "Ends",
+        "ends-help": "Required, at most {days} days after the start.",
+        "zone": "Times in {zone}.",
+        "pin": "Pin first in its positions",
+        "pin-help": "For urgent notices. A pinned slide is shown before the others.",
+        "full-alert": "{positions} is full. If you add this slide there, it waits until a place frees up.",
+        "full-alert-many": "{positions} are full. If you add this slide there, it waits until a place frees up.",
+        "approval-note": "Buyers see these changes only after a platform admin approves.",
+        "discard": "Discard",
+        "save": "Save to draft",
+        "saved": "Saved to draft as version {version}.",
+        "error": {
+          "required": "Fill this in.",
+          "format": "This is not in the right format.",
+          "invalid": "This value is not accepted.",
+          "id-uuid": "Enter a valid id, for example 0190a000-0000-7000-8000-000000000001.",
+          "start-format": "Choose a start date and time.",
+          "end-format": "Choose an end date and time.",
+          "end-required": "Choose when the slide ends.",
+          "before-start": "The end must be after the start.",
+          "too-long": "A slide can run for at most {days} days. Move the end closer to the start.",
+          "none": "Choose at least one position.",
+          "summary": "Some fields need attention. Check the marked fields.",
+          "other": "Some positions saved with this slide were refused. They cannot be changed on this tab.",
+          "generic": "The slide could not be saved. Try again.",
+          "network": "No connection. Your changes are still here; try again.",
+          "denied": "You don't have permission to change slides.",
+          "archived": "This slide is archived and can no longer be changed.",
+          "version-limit": "This slide has reached its limit of saved versions.",
+          "not-found": "This slide no longer exists."
+        }
       }
     }
   },

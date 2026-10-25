@@ -798,6 +798,27 @@ describe('relay of the storefront slides', () => {
     }
   });
 
+  it('saves the order of a position with a PUT on the fixed order path, not as a slide id', async () => {
+    const path = 'storefront/admin/slides/order';
+    const upstream = upstreamOk();
+    expect((await relay(config, request('PUT', path), path.split('/'), upstream)).status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/storefront/admin/slides/order');
+    expect(upstream.mock.calls[0]?.[1]?.method).toBe('PUT');
+    for (const [method, other] of [
+      ['POST', path],
+      ['GET', path],
+      ['DELETE', path],
+      ['PUT', `${path}/extra`],
+      ['PUT', 'storefront/admin/slides/Order'],
+      ['PUT', 'storefront/admin/slides/order%2F..'],
+    ] as const) {
+      const refused = upstreamOk();
+      const response = await relay(config, request(method, other), other.split('/'), refused);
+      expect(response.status, `${method} ${other}`).toBe(404);
+      expect(refused).not.toHaveBeenCalled();
+    }
+  });
+
   it('refuses a write from another site, and every other slide route', async () => {
     const cross = { ...sameOrigin, origin: 'http://evil.test', 'sec-fetch-site': 'cross-site' };
     const blocked = upstreamOk();
@@ -809,9 +830,16 @@ describe('relay of the storefront slides', () => {
     );
     expect(crossResponse.status).toBeGreaterThanOrEqual(400);
     expect(blocked).not.toHaveBeenCalled();
+    const crossOrder = await relay(
+      config,
+      request('PUT', 'storefront/admin/slides/order', cross),
+      ['storefront', 'admin', 'slides', 'order'],
+      blocked,
+    );
+    expect(crossOrder.status).toBeGreaterThanOrEqual(400);
+    expect(blocked).not.toHaveBeenCalled();
     for (const [method, path] of [
       ['PUT', 'storefront/admin/slides'],
-      ['PUT', 'storefront/admin/slides/order'],
       ['PUT', 'storefront/admin/slides/not-a-uuid'],
       ['POST', `storefront/admin/slides/${id}`],
       ['POST', `storefront/admin/slides/${id}/approve`],

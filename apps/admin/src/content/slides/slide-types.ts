@@ -9,6 +9,8 @@ export const SLIDE_PUBLISH_PERMISSION = 'storefront.slide.publish';
 export const SLIDES_API_PATH = 'storefront/admin/slides';
 export const SLIDES_PATH = '/content/slides';
 export const NEW_SLIDE_PATH = `${SLIDES_PATH}/new`;
+/** The tab of one slide that holds its positions and window. */
+export const placementPath = (slideId: string): string => `${SLIDES_PATH}/${slideId}/placement`;
 
 export const SLIDE_KINDS = ['announcement', 'promotion', 'link'] as const;
 export type SlideKind = (typeof SLIDE_KINDS)[number];
@@ -25,15 +27,32 @@ export const SLIDE_STATUSES = [
 ] as const;
 export type SlideStatus = (typeof SLIDE_STATUSES)[number];
 
-/** The closed list of positions of the buyer site, with the most slides active at once. */
-export const SLIDE_POSITIONS = [
-  { key: 'home.hero', max: 8 },
-  { key: 'home.mid', max: 4 },
-  { key: 'category.top', max: 4 },
-  { key: 'product.below-details', max: 3 },
-  { key: 'cart.below-lines', max: 3 },
-  { key: 'landing.top', max: 8 },
-] as const;
+export const SLIDE_SCOPES = ['all', 'category', 'product', 'seller', 'page'] as const;
+export type SlideScope = (typeof SLIDE_SCOPES)[number];
+
+/**
+ * The closed list of positions of the buyer site (apps/api storefront `slide-positions.ts`): the
+ * most slides active at once, whether the position may move on its own, and the scopes a
+ * placement there may have.
+ */
+export const SLIDE_POSITIONS: readonly {
+  readonly key: string;
+  readonly max: number;
+  readonly autoplay: boolean;
+  readonly scopes: readonly SlideScope[];
+}[] = [
+  { key: 'home.hero', max: 8, autoplay: true, scopes: ['all'] },
+  { key: 'home.mid', max: 4, autoplay: false, scopes: ['all'] },
+  { key: 'category.top', max: 4, autoplay: false, scopes: ['all', 'category'] },
+  {
+    key: 'product.below-details',
+    max: 3,
+    autoplay: false,
+    scopes: ['all', 'category', 'product', 'seller'],
+  },
+  { key: 'cart.below-lines', max: 3, autoplay: false, scopes: ['all'] },
+  { key: 'landing.top', max: 8, autoplay: true, scopes: ['all', 'page'] },
+];
 
 /** What a slide may open: a typed internal target, never a URL. */
 export const LINK_TYPES = ['category', 'product', 'seller', 'page', 'search'] as const;
@@ -67,7 +86,7 @@ export const ALT_MAX = 160;
 /** A slide runs for at most 90 days (the API's rule). */
 export const MAX_WINDOW_DAYS = 90;
 
-/** A new slide is saved with this window and position until "Where and when" can change them. */
+/** A new slide is saved with this window and position; the "Where and when" tab changes them. */
 export const DEFAULT_WINDOW_DAYS = 30;
 export const DEFAULT_POSITION = 'home.hero';
 
@@ -94,7 +113,7 @@ export interface SlideContent {
 
 export interface SlidePlacement {
   readonly position: string;
-  readonly scope: 'all' | 'category' | 'product' | 'seller' | 'page';
+  readonly scope: SlideScope;
   readonly scopeId: string | null;
   readonly includeSubcategories: boolean;
   readonly sortOrder: number;
