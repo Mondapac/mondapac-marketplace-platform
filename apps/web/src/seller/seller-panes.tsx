@@ -1,4 +1,5 @@
-import { useFormatter, useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
+import { formatDate } from '../format/date.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { useDeliveryLine } from './delivery-line.ts';
@@ -89,7 +90,7 @@ export function CertificatesPane({
   readonly certificates: readonly SellerCertificate[];
 }) {
   const t = useTranslations('seller');
-  const format = useFormatter();
+  const locale = useLocale();
   if (certificates.length === 0)
     return (
       <section className="shop-box">
@@ -99,12 +100,7 @@ export function CertificatesPane({
       </section>
     );
   const date = (iso: string) =>
-    format.dateTime(new Date(`${iso}T00:00:00Z`), {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      timeZone: 'UTC',
-    });
+    formatDate(iso, locale, { day: 'numeric', month: 'short', year: 'numeric' });
   return (
     <div className="shop-boxes">
       <div className="shop-certs">
