@@ -30,14 +30,18 @@ export class PrismaOfferPairStore implements OfferPairStore {
       where: {
         marketId: market.marketId,
         status: 'confirmed',
-        confirmedAt: { gte: since, lte: until },
+        // The lower bound starts at the cursor, so each page's index scan begins there.
+        confirmedAt: {
+          gte: after === null ? since : new Date(after.confirmedAt.epochMilliseconds),
+          lte: until,
+        },
         // Keyset `(confirmed_at, id) > (cursor)`, served by the partial index of
         // `orders_market_id_confirmed_at_id_idx`.
         ...(after === null
           ? {}
           : {
               OR: [
-                { confirmedAt: { gt: new Date(after.confirmedAt.epochMilliseconds), lte: until } },
+                { confirmedAt: { gt: new Date(after.confirmedAt.epochMilliseconds) } },
                 {
                   confirmedAt: new Date(after.confirmedAt.epochMilliseconds),
                   id: { gt: after.orderId },
