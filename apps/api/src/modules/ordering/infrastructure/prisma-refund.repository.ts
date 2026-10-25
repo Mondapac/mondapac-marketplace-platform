@@ -4,10 +4,18 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import type {
   CreditNoteRecord,
   PendingRefund,
+  RefundForLedger,
   RefundRepository,
 } from '../application/ports/refund.repository';
-import type { OrderStatus, PaymentState } from '../domain/order';
-import type { Refund, RefundReason, RefundState, RefundTarget } from '../domain/refund';
+import type { LedgerState, OrderStatus, PaymentState } from '../domain/order';
+import type {
+  LossBearer,
+  LossReasonCode,
+  Refund,
+  RefundReason,
+  RefundState,
+  RefundTarget,
+} from '../domain/refund';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -26,6 +34,8 @@ interface RefundRow {
   readonly shippingTaxRateBps: number | null;
   readonly shippingTaxInclusive: boolean | null;
   readonly reason: string;
+  readonly lossBearer: string;
+  readonly lossReasonCode: string | null;
   readonly actorPopulation: string;
   readonly actorAccountId: string;
   readonly state: string;
@@ -65,6 +75,8 @@ function toRefund(row: RefundRow): Refund {
             taxInclusive: row.shippingTaxInclusive!,
           },
     reason: row.reason as RefundReason,
+    lossBearer: row.lossBearer as LossBearer,
+    lossReasonCode: row.lossReasonCode as LossReasonCode | null,
     actor: {
       population: row.actorPopulation as 'admin',
       accountId: row.actorAccountId as Id<'Account'>,
@@ -196,6 +208,8 @@ export class PrismaRefundRepository implements RefundRepository {
         shippingTaxRateBps: refund.shipping?.taxRateBps ?? null,
         shippingTaxInclusive: refund.shipping?.taxInclusive ?? null,
         reason: refund.reason,
+        lossBearer: refund.lossBearer,
+        lossReasonCode: refund.lossReasonCode,
         actorPopulation: refund.actor.population,
         actorAccountId: refund.actor.accountId,
         state: refund.state,
@@ -313,6 +327,84 @@ export class PrismaRefundRepository implements RefundRepository {
     return rows.flatMap((row) => {
       const intent = row.sellerOrder.order.stripePaymentIntentId;
       return intent === null ? [] : [{ refund: toRefund(row), paymentIntentId: intent }];
+    });
+  }
+
+  async findUnrecordedLedger(
+    market: MarketContext,
+    limit: number,
+  ): Promise<readonly RefundForLedger[]> {
+    const tx = this.prisma.tx(market);
+    const rows = await tx.orderingRefund.findMany({
+      where: {
+        marketId: market.marketId,
+        state: 'succeeded',
+        ledgerRecordedAt: null,
+        // A refund waits until the paid facts of its seller order are in the ledger.
+        sellerOrder: { is: { ledgerState: { not: 'pending' } } },
+      },
+      include: { lines: true, sellerOrder: true },
+      orderBy: [{ ledgerAttempts: 'asc' }, { requestedAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    const found: RefundForLedger[] = [];
+    for (const row of rows) {
+      // The shipping gross of the refunds before this one that did not fail: refunds of one
+      // seller order are made one after the other, so (requested at, id) is their order.
+      const earlier = await tx.orderingRefund.aggregate({
+        where: {
+          marketId: market.marketId,
+          sellerOrderId: row.sellerOrderId,
+          state: { not: 'failed' },
+          OR: [
+            { requestedAt: { lt: row.requestedAt } },
+            { requestedAt: row.requestedAt, id: { lt: row.id } },
+          ],
+        },
+        _sum: { shippingGrossAmount: true },
+      });
+      const seller = row.sellerOrder;
+      found.push({
+        refund: toRefund(row),
+        sellerOrderLedgerState: seller.ledgerState as LedgerState,
+        shippingCharge:
+          seller.shippingTaxAmount === null || seller.shippingTaxInclusive === null
+            ? null
+            : seller.shippingAmount + (seller.shippingTaxInclusive ? 0n : seller.shippingTaxAmount),
+        shippingBefore: earlier._sum.shippingGrossAmount ?? 0n,
+      });
+    }
+    return found;
+  }
+
+  async countLedgerFailure(market: MarketContext, refundId: Id<'Refund'>): Promise<number> {
+    const tx = this.prisma.tx(market);
+    const updated = await tx.orderingRefund.updateMany({
+      where: { marketId: market.marketId, id: refundId, ledgerRecordedAt: null },
+      data: { ledgerAttempts: { increment: 1 } },
+    });
+    if (updated.count === 0) return 0;
+    // The increment holds the row's lock until the unit ends, so this reads our own count.
+    const row = await tx.orderingRefund.findFirst({
+      where: { marketId: market.marketId, id: refundId },
+      select: { ledgerAttempts: true },
+    });
+    return row?.ledgerAttempts ?? 0;
+  }
+
+  async markLedgerRecorded(
+    market: MarketContext,
+    refundId: Id<'Refund'>,
+    at: Temporal.Instant,
+  ): Promise<void> {
+    await this.prisma.tx(market).orderingRefund.updateMany({
+      where: {
+        marketId: market.marketId,
+        id: refundId,
+        state: 'succeeded',
+        ledgerRecordedAt: null,
+      },
+      data: { ledgerRecordedAt: toDate(at) },
     });
   }
 }

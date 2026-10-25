@@ -18,6 +18,23 @@ export const REFUND_REASONS = [
   'other',
 ] as const;
 export type RefundReason = (typeof REFUND_REASONS)[number];
+
+/**
+ * Who bears the loss of a refund (ordering domain design 3.5). `seller` (the default) has the
+ * refund reversed in the seller ledger; `platform` leaves the seller's share whole (owner decision
+ * Q-O2) and always says why, from Hadi's closed list.
+ */
+export const LOSS_BEARERS = ['seller', 'platform'] as const;
+export type LossBearer = (typeof LOSS_BEARERS)[number];
+export const LOSS_REASON_CODES = [
+  'platform-error',
+  'carrier-loss',
+  'seller-unrecoverable',
+  'fraud-loss',
+  'goodwill',
+  'other',
+] as const;
+export type LossReasonCode = (typeof LOSS_REASON_CODES)[number];
 /** `pending` until Stripe answers; then `succeeded` (with a credit note) or `failed`. */
 export type RefundState = 'pending' | 'succeeded' | 'failed';
 
@@ -51,6 +68,9 @@ export interface Refund {
     readonly taxInclusive: boolean;
   } | null;
   readonly reason: RefundReason;
+  readonly lossBearer: LossBearer;
+  /** Set exactly when the platform bears the loss. */
+  readonly lossReasonCode: LossReasonCode | null;
   readonly actor: { readonly population: 'admin'; readonly accountId: Id<'Account'> };
   readonly state: RefundState;
   readonly stripeIdempotencyKey: string;
@@ -102,6 +122,8 @@ export interface RefundRequest {
   /** The shipping gross to give back, in minor units; 0 for none. */
   readonly shipping: bigint;
   readonly reason: RefundReason;
+  readonly lossBearer: LossBearer;
+  readonly lossReasonCode: LossReasonCode | null;
 }
 
 export type RefundRefusal =
@@ -140,6 +162,8 @@ export function parseRefundRequest(input: {
   readonly lines: unknown;
   readonly shippingAmount: unknown;
   readonly reason: unknown;
+  readonly lossBearer?: unknown;
+  readonly lossReasonCode?: unknown;
 }):
   | { readonly ok: true; readonly request: RefundRequest }
   | { readonly ok: false; readonly fields: readonly { path: string; code: string }[] } {
@@ -185,12 +209,37 @@ export function parseRefundRequest(input: {
   const reason = input?.reason;
   if (!REFUND_REASONS.includes(reason as RefundReason))
     fields.push({ path: 'reason', code: 'value' });
+  // The loss bearer defaults to the seller; the platform needs a reason code from the closed list,
+  // and a seller-borne refund names none.
+  let lossBearer: LossBearer = 'seller';
+  const bearer = input?.lossBearer;
+  if (bearer !== undefined && bearer !== null) {
+    if (LOSS_BEARERS.includes(bearer as LossBearer)) lossBearer = bearer as LossBearer;
+    else fields.push({ path: 'lossBearer', code: 'value' });
+  }
+  let lossReasonCode: LossReasonCode | null = null;
+  const lossReason = input?.lossReasonCode;
+  const hasLossReason = lossReason !== undefined && lossReason !== null;
+  if (lossBearer === 'platform' || hasLossReason) {
+    if (!hasLossReason) {
+      if (fields.every((f) => f.path !== 'lossBearer')) {
+        fields.push({ path: 'lossReasonCode', code: 'required' });
+      }
+    } else if (lossBearer === 'seller' && fields.every((f) => f.path !== 'lossBearer')) {
+      fields.push({ path: 'lossReasonCode', code: 'unexpected' });
+    } else if (!LOSS_REASON_CODES.includes(lossReason as LossReasonCode)) {
+      fields.push({ path: 'lossReasonCode', code: 'value' });
+    } else lossReasonCode = lossReason as LossReasonCode;
+  }
   if (fields.length === 0 && lines.length === 0 && shipping === 0n) {
     fields.push({ path: 'lines', code: 'required' });
   }
   return fields.length > 0
     ? { ok: false, fields }
-    : { ok: true, request: { lines, shipping, reason: reason as RefundReason } };
+    : {
+        ok: true,
+        request: { lines, shipping, reason: reason as RefundReason, lossBearer, lossReasonCode },
+      };
 }
 
 /** The shipping fee as the customer paid it: the fee plus its tax when the fee excluded tax. */
@@ -206,7 +255,7 @@ export function shippingGross(target: RefundTarget): bigint | null {
  */
 export function planRefund(
   target: RefundTarget,
-  request: RefundRequest,
+  request: Omit<RefundRequest, 'lossBearer' | 'lossReasonCode'>,
 ):
   | { readonly ok: true; readonly plan: RefundPlan }
   | { readonly ok: false; readonly error: RefundRefusal } {
@@ -265,7 +314,16 @@ export function priceRefund(
   target: RefundTarget,
   plan: RefundPlan,
   reversed: { readonly lines: readonly bigint[]; readonly charges: readonly bigint[] },
-  details: Pick<Refund, 'id' | 'reason' | 'actor' | 'stripeIdempotencyKey' | 'requestedAt'>,
+  details: Pick<
+    Refund,
+    | 'id'
+    | 'reason'
+    | 'lossBearer'
+    | 'lossReasonCode'
+    | 'actor'
+    | 'stripeIdempotencyKey'
+    | 'requestedAt'
+  >,
 ): Refund | null {
   const lines: RefundLine[] = plan.lines.map(({ line, unitsBefore, units }, index) => {
     const tax = reversed.lines[index]!;

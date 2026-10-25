@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { RefundView } from '../application/use-cases/admin-refund-order.use-case';
-import { REFUND_REASONS } from '../domain/refund';
+import { LOSS_BEARERS, LOSS_REASON_CODES, REFUND_REASONS } from '../domain/refund';
 import { moneyBody } from './http-answers';
 import { MoneyView } from './orders.dto';
 
@@ -23,6 +23,21 @@ export class RefundRequestBody {
   })
   shippingAmount?: string;
   @ApiProperty({ enum: REFUND_REASONS }) reason!: string;
+  @ApiProperty({
+    enum: LOSS_BEARERS,
+    required: false,
+    default: 'seller',
+    description:
+      'Who bears the loss. seller: the refund is reversed in the seller ledger. platform: the ' +
+      'seller keeps its full share and nothing is posted; lossReasonCode is then required.',
+  })
+  lossBearer?: string;
+  @ApiProperty({
+    enum: LOSS_REASON_CODES,
+    required: false,
+    description: 'Required when lossBearer is platform, and refused otherwise.',
+  })
+  lossReasonCode?: string;
 }
 
 export class RefundLineBody {
@@ -51,6 +66,9 @@ export class RefundBody {
   })
   state!: string;
   @ApiProperty({ enum: REFUND_REASONS }) reason!: string;
+  @ApiProperty({ enum: LOSS_BEARERS }) lossBearer!: string;
+  @ApiProperty({ enum: LOSS_REASON_CODES, nullable: true, type: String })
+  lossReasonCode!: string | null;
   @ApiProperty({ type: MoneyView }) amount!: MoneyView;
   @ApiProperty({ type: MoneyView }) tax!: MoneyView;
   @ApiProperty({ type: RefundShippingBody, nullable: true }) shipping!: RefundShippingBody | null;
@@ -61,7 +79,13 @@ export class RefundBody {
   creditNoteId!: string | null;
 }
 
-export const REFUND_BODY_KEYS = ['lines', 'shippingAmount', 'reason'] as const;
+export const REFUND_BODY_KEYS = [
+  'lines',
+  'shippingAmount',
+  'reason',
+  'lossBearer',
+  'lossReasonCode',
+] as const;
 
 export const refundBody = (refund: RefundView): RefundBody => ({
   refundId: refund.refundId,
@@ -69,6 +93,8 @@ export const refundBody = (refund: RefundView): RefundBody => ({
   sellerOrderId: refund.sellerOrderId,
   state: refund.state,
   reason: refund.reason,
+  lossBearer: refund.lossBearer,
+  lossReasonCode: refund.lossReasonCode,
   amount: moneyBody(refund.amount),
   tax: moneyBody(refund.tax),
   shipping:

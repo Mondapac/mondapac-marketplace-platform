@@ -4,6 +4,8 @@ import {
   parseRefundRequest,
   planRefund,
   priceRefund,
+  type LossBearer,
+  type LossReasonCode,
   type Refund,
   type RefundReason,
   type RefundRefusal,
@@ -24,8 +26,10 @@ import type { GatewayFailure, RefundAnswer } from './ports/checkout-gateway';
 // Stripe is called with the stored key; then it settles: succeeded with a credit note, failed
 // (the sum goes back down), or still pending when Stripe's answer is not final: the worker reads
 // a refund Stripe made back by its id, and retries one Stripe never answered with the same key.
-// The request and each outcome are audited (Hassan M3). Commission and the seller ledger are not touched yet (out of scope;
-// GST on commission waits for the tax agent, Q1).
+// The request and each outcome are audited (Hassan M3). The seller ledger is corrected later, by the
+// worker (`record-refund-ledger`, ledger-flow.ts), once the refund succeeded: the admin names who
+// bears the loss (`seller` by default, or `platform` with a reason code) and only a seller-borne
+// refund is reversed there. GST on commission waits for the tax agent (Q1).
 
 export type RefundFailure =
   | { readonly code: 'access.denied' }
@@ -61,6 +65,8 @@ export interface RefundView {
   /** `pending` while Stripe's answer is unknown: the worker retries it. */
   readonly state: RefundState;
   readonly reason: RefundReason;
+  readonly lossBearer: LossBearer;
+  readonly lossReasonCode: LossReasonCode | null;
   readonly amount: Money;
   readonly tax: Money;
   readonly shipping: { readonly amount: Money; readonly tax: Money } | null;
@@ -79,6 +85,8 @@ export function refundView(refund: Refund, creditNoteId: Id<'CreditNote'> | null
     sellerOrderId: refund.sellerOrderId,
     state: refund.state,
     reason: refund.reason,
+    lossBearer: refund.lossBearer,
+    lossReasonCode: refund.lossReasonCode,
     amount: m(refund.gross),
     tax: m(refund.tax),
     shipping:
@@ -104,6 +112,10 @@ export interface RefundInput {
   readonly lines: unknown;
   readonly shippingAmount: unknown;
   readonly reason: unknown;
+  /** `seller` (default) or `platform`. */
+  readonly lossBearer?: unknown;
+  /** Required exactly when the platform bears the loss. */
+  readonly lossReasonCode?: unknown;
 }
 
 const parseIdField = <T extends string>(value: unknown, path: string) => {
@@ -139,6 +151,8 @@ async function refund(
     lines: input?.lines,
     shippingAmount: input?.shippingAmount,
     reason: input?.reason,
+    lossBearer: input?.lossBearer,
+    lossReasonCode: input?.lossReasonCode,
   });
   const fields = [
     ...(typeof orderId === 'string' ? [] : [orderId]),
@@ -185,6 +199,8 @@ async function refund(
   const priced = priceRefund(target, plan, reversed.value, {
     id: refundId,
     reason: parsed.request.reason,
+    lossBearer: parsed.request.lossBearer,
+    lossReasonCode: parsed.request.lossReasonCode,
     actor,
     stripeIdempotencyKey: `refund-${refundId}`,
     requestedAt: deps.clock.now(),
@@ -207,6 +223,8 @@ async function refund(
           amount: money(priced.gross, priced.currency),
           tax: priced.tax === 0n ? null : money(priced.tax, priced.currency),
           reason: priced.reason,
+          lossBearer: priced.lossBearer,
+          lossReasonCode: priced.lossReasonCode,
           lineCount: priced.lines.length,
         },
       }),

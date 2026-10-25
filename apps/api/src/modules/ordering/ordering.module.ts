@@ -43,6 +43,7 @@ import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
+import { RecordRefundLedger } from './application/use-cases/record-refund-ledger.use-case';
 import { RecordShipments } from './application/use-cases/record-shipments.use-case';
 import { SellerDeliverOrder } from './application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './application/use-cases/seller-list-orders.use-case';
@@ -74,6 +75,7 @@ import { ORDERING_EVENTS } from './domain/events';
 import { orderingProviders } from './infrastructure/ordering-providers';
 import { AdminOrdersController } from './presentation/admin-orders.controller';
 import { recordLedgerJob } from './presentation/jobs/record-ledger.job';
+import { recordRefundLedgerJob } from './presentation/jobs/record-refund-ledger.job';
 import { recordShipmentsJob } from './presentation/jobs/record-shipments.job';
 import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
 import { OrdersController } from './presentation/orders.controller';
@@ -186,6 +188,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerDeliverOrder,
       RecordShipments,
       RecordLedger,
+      RecordRefundLedger,
       OrderNoticeQuery,
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
@@ -249,15 +252,17 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     },
     registerJobsFrom(
       'ordering',
-      [RecordShipments, RecordLedger, SettleRefunds, RebuildOfferPairs],
+      [RecordShipments, RecordLedger, RecordRefundLedger, SettleRefunds, RebuildOfferPairs],
       (
         shipments: RecordShipments,
         ledger: RecordLedger,
+        refundLedger: RecordRefundLedger,
         refunds: SettleRefunds,
         pairs: RebuildOfferPairs,
       ) => [
         recordShipmentsJob(shipments),
         recordLedgerJob(ledger),
+        recordRefundLedgerJob(refundLedger),
         settleRefundsJob(refunds),
         rebuildOfferPairsJob(pairs),
       ],
