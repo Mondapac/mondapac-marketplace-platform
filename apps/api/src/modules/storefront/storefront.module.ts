@@ -45,13 +45,15 @@ import { PrepareStorefrontSlideCopy } from './application/use-cases/prepare-slid
 import { RestoreStorefrontSlideVersion } from './application/use-cases/restore-slide-version.use-case';
 import { UpdateStorefrontSlideDraft } from './application/use-cases/update-slide-draft.use-case';
 import { ViewStorefrontSlide } from './application/use-cases/view-slide.use-case';
-import { STOREFRONT_PERMISSIONS } from './contracts';
+import { ViewServedPlacements } from './application/use-cases/view-served-placements.use-case';
+import { STOREFRONT_FACADE, STOREFRONT_PERMISSIONS } from './contracts';
 import { STOREFRONT_AUDIT_ACTIONS } from './domain/audit';
 import { storefrontProviders } from './infrastructure/storefront-providers';
 import { AdminNavigationController } from './presentation/admin-navigation.controller';
 import { AdminSlideController } from './presentation/admin-slide.controller';
 import { AdminStorefrontController } from './presentation/admin-storefront.controller';
 import { PublicStorefrontController } from './presentation/public-storefront.controller';
+import { StorefrontFacadeImplementation } from './presentation/storefront.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: StorefrontDependencies) => U;
 
@@ -136,7 +138,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ResumeStorefrontSlide,
       ReorderStorefrontSlides,
       SubmitStorefrontSlide,
+      ViewServedPlacements,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    {
+      provide: STOREFRONT_FACADE,
+      inject: [ViewServedPlacements],
+      useFactory: (servedPlacements: ViewServedPlacements) =>
+        new StorefrontFacadeImplementation(servedPlacements),
+    },
   ],
+  exports: [STOREFRONT_FACADE],
 })
 export class StorefrontModule {}

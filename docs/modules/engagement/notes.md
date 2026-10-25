@@ -65,6 +65,36 @@ what it records through methods it will add to `ENGAGEMENT_FACADE`.
   (`CERTIFICATION_FACADE.certifiedCategoryIds`); those categories are left out of "for you".
   Subcategories of a certified category are not followed yet.
 
+## Package 1d-3, part B: block impression and click counts
+
+- Table `engagement.block_counts`: one row per (Market, page, placement, UTC day) with two counters,
+  `impressions` and `clicks` (CHECK >= 0), and `updated_at`. **Aggregate numbers only and no
+  personal data**: no account, guest token, cookie, IP address, user agent, session or any
+  per-visit column, and an event is never stored, so one visit cannot be told from another. The
+  primary key `(market_id, page_id, placement_id, day)` also serves the stats read of one page
+  (its prefix is `(market_id, page_id)`); the index `(market_id, day)` serves the purge. The app
+  role has `SELECT`, `INSERT`, `DELETE` and `UPDATE` on the counters and `updated_at` only.
+- Route `POST /engagement/blocks` (customer route population, **no session or cookie read**, none
+  set, `no-store`, always 204 once the body is valid): `{ events: [{ pageId, placementId, type }] }`,
+  1 to 20 events, closed objects, `type` is `impression` or `click`, ids are canonical UUIDv7.
+  Identical events of one request count once. `Sec-GPC: 1` counts nothing (still 204). Use case
+  `engagement.record-block-events` (`anonymous`, listed in
+  `test/contracts/http-reachable-anonymous-system.json`). Rate limited per client origin by the
+  platform limiter in the `default` class (300 a minute for AU); neither the body, the ids nor
+  the address are logged.
+- An event is counted only when the placement is served now on that page in the Market:
+  `STOREFRONT_FACADE.servedPlacements(context, pageId)` (storefront contract, rule `anonymous`,
+  read only) answers the ids of the enabled placements of the page's published version, empty for
+  an unknown, unpublished, archived or not-yet-live page, so random ids make no rows and nothing
+  tells a valid id from an invalid one. engagement reaches it through the port `ServedPlacements`
+  (`infrastructure/facade-served-placements.ts`); storefront does not depend on engagement.
+- The count is added to in the database (`upsert` with `increment`, one write unit, blocks in a
+  fixed order so concurrent requests do not deadlock); the day is the UTC day of the injected Clock.
+- Job `engagement.purge-expired-block-counts`, daily per Market (rule `system`): deletes rows of
+  days before today minus 13 months.
+- No read method on `ENGAGEMENT_FACADE` yet: the admin stats read (with its permission) comes with
+  the stats package.
+
 ## Privacy impact note (PIA)
 
 Owner decisions 4 and 5 of 2026-10-18; Australian Privacy Principles (APP 1, 3, 5, 6, 11).
@@ -78,6 +108,7 @@ Owner decisions 4 and 5 of 2026-10-18; Australian Privacy Principles (APP 1, 3, 
 | Choice | Off switch in the account (`PUT customers/me/personalization`); switching off deletes what was recorded and stops recording (recording takes the account's lock shared and the switch takes it exclusive, `engagement.lock-account`, so no event survives a racing switch-off). A guest is recorded only after accepting the behaviour cookie in the cookie bar (`Engagement-Consent: granted`). `Sec-GPC: 1` (Global Privacy Control) records nothing for anyone, sets no cookie and expires a guest cookie sent. |
 | Deletion | With the account through `forgetAccount` (to be called by customers package 5). |
 | Security | Only the guest token's SHA-256 is stored; the token is only in `Set-Cookie`. Logs carry the route, outcome code, Market and correlation id only: never the body, the search text, an id of the shopper or the cookie. The app role may select, insert and delete events, never update them. |
+| Block counts (1d-3 B) | Per storefront block and UTC day, how often it was shown and clicked: two numbers, kept 13 months. Aggregate only; no person, account, guest token, cookie, IP address or user agent is read, stored or logged, so it needs no consent and no switch, and `Sec-GPC: 1` is honoured anyway. Cannot be linked to a shopper or deleted per shopper because it holds nothing about one. |
 | Notice | The storefront privacy policy and the account page must say what is recorded, why, for how long, and how to switch it off, before the storefront goes live (storefront design thread). |
 
 ## Follow-ups

@@ -1,4 +1,7 @@
-import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { BlockCountIncrement } from '../../domain/block-count';
+import type { BlockCountRepository } from '../ports/block-count.repository';
+import type { ServedPlacements } from '../ports/served-placements';
 import type {
   BehaviourEventRecord,
   BehaviourEventRepository,
@@ -122,6 +125,78 @@ export class InMemoryPersonalizationSettings implements PersonalizationSettingRe
   lockAccount(market: MarketContext, accountId: Id<'Account'>, mode: 'shared' | 'exclusive') {
     this.log.push(`lock:${mode}:${key(market, accountId)}`);
     return Promise.resolve();
+  }
+}
+
+export interface InMemoryBlockCount {
+  readonly marketId: string;
+  readonly pageId: string;
+  readonly placementId: string;
+  readonly day: string;
+  impressions: number;
+  clicks: number;
+  updatedAt: Temporal.Instant;
+}
+
+/** Daily block counts, one row per (Market, page, placement, UTC day) as the primary key keeps them. */
+export class InMemoryBlockCounts implements BlockCountRepository {
+  readonly rows = new Map<string, InMemoryBlockCount>();
+  /** The (page, placement) keys of each `increment` call, in the order given. */
+  readonly calls: string[][] = [];
+
+  increment(
+    market: MarketContext,
+    day: Temporal.PlainDate,
+    at: Temporal.Instant,
+    increments: readonly BlockCountIncrement[],
+  ) {
+    this.calls.push(increments.map((row) => `${row.pageId}|${row.placementId}`));
+    for (const row of increments) {
+      const key = `${market.marketId}|${row.pageId}|${row.placementId}|${day.toString()}`;
+      const current = this.rows.get(key) ?? {
+        marketId: market.marketId,
+        pageId: row.pageId,
+        placementId: row.placementId,
+        day: day.toString(),
+        impressions: 0,
+        clicks: 0,
+        updatedAt: at,
+      };
+      current.impressions += row.impressions;
+      current.clicks += row.clicks;
+      current.updatedAt = at;
+      this.rows.set(key, current);
+    }
+    return Promise.resolve();
+  }
+
+  purgeBefore(market: MarketContext, day: Temporal.PlainDate) {
+    let removed = 0;
+    for (const [key, row] of this.rows) {
+      if (row.marketId === market.marketId && row.day < day.toString()) {
+        this.rows.delete(key);
+        removed += 1;
+      }
+    }
+    return Promise.resolve(removed);
+  }
+}
+
+/** Storefront's served placements per (Market, page), set by the test. */
+export class FakeServedPlacements implements ServedPlacements {
+  readonly served = new Map<string, ReadonlySet<string>>();
+  /** Every page asked about, in order. */
+  readonly asked: string[] = [];
+
+  serve(marketId: string, pageId: string, placementIds: readonly string[]) {
+    this.served.set(`${marketId}|${pageId}`, new Set(placementIds));
+  }
+
+  of(context: CallContext, pageId: Id<'StorefrontPage'>): Promise<ReadonlySet<string>> {
+    this.asked.push(pageId);
+    return Promise.resolve(
+      this.served.get(`${context.market.marketId}|${pageId}`) ?? new Set<string>(),
+    );
   }
 }
 

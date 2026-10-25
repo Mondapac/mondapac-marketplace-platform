@@ -561,6 +561,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['changed_at', 'enabled'],
     },
+    // Engagement (personalization 1d-3): a block count is inserted by its first event of the day,
+    // then only its counters and time change (the upsert); the retention purge deletes it.
+    'engagement.block_counts': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['clicks', 'impressions', 'updated_at'],
+    },
     // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
     // change, the identity never, and no row is deleted.
     'shipping.seller_flat_fees': {

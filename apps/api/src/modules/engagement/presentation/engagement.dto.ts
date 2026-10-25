@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { BLOCK_EVENT_TYPES, MAX_BLOCK_EVENTS } from '../domain/block-count';
 import { BEHAVIOUR_KINDS, MAX_SEARCH_QUERY_LENGTH } from '../domain/behaviour-event';
 import type { PersonalizationView } from '../application/use-cases/view-personalization.use-case';
 
@@ -26,6 +27,25 @@ export class BehaviourEventRequest {
     description: 'The search text as typed; kept normalized, never logged.',
   })
   query?: string;
+}
+
+export class BlockEventRequest {
+  @ApiProperty({ format: 'uuid', description: 'The published page the block is on.' })
+  pageId!: string;
+  @ApiProperty({ format: 'uuid', description: 'The id of the module placement (the block).' })
+  placementId!: string;
+  @ApiProperty({ enum: BLOCK_EVENT_TYPES })
+  type!: string;
+}
+
+export class BlockEventsRequest {
+  @ApiProperty({
+    type: [BlockEventRequest],
+    minItems: 1,
+    maxItems: MAX_BLOCK_EVENTS,
+    description: 'Identical events of one request count once.',
+  })
+  events!: BlockEventRequest[];
 }
 
 export class RecordedBody {
