@@ -6,6 +6,7 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/suppo
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { BOUGHT_TOGETHER_DEPTH } from '../domain/shelf-query';
 import type { OfferHit } from '../domain/offer-document';
 import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
@@ -16,6 +17,7 @@ import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
 import type { ShelfSources, ShelfSpecial } from './ports/shelf-sources';
 import type { ShelfDependencies } from './shelf-dependencies';
 import { FILL_DEPTH, ListBestsellers, RANKED_DEPTH } from './use-cases/list-bestsellers.use-case';
+import { ListBoughtTogether } from './use-cases/list-bought-together.use-case';
 import { ListSpecials, SPECIALS_DEPTH } from './use-cases/list-specials.use-case';
 
 // The two shelf reads in memory on both Market fixtures (AU in AUD, ZZ in JPY): the order comes
@@ -94,7 +96,14 @@ class StubReader implements OfferSearchReader {
 class StubSources implements ShelfSources {
   ranked: Id<'Offer'>[] | null = [];
   specials_: ShelfSpecial[] | null = [];
+  partners: Id<'Offer'>[] | null = [];
   readonly asked: { kind: string; actor: string; limit: number }[] = [];
+  readonly askedFor: Id<'Offer'>[] = [];
+  boughtTogetherOfferIds(context: CallContext, offerId: Id<'Offer'>, limit: number) {
+    this.asked.push({ kind: 'bought-together', actor: context.actor.kind, limit });
+    this.askedFor.push(offerId);
+    return Promise.resolve(this.partners);
+  }
   bestSellingOfferIds(context: CallContext, limit: number) {
     this.asked.push({ kind: 'bestsellers', actor: context.actor.kind, limit });
     return Promise.resolve(this.ranked);
@@ -287,6 +296,84 @@ describe.each([
 
     it('is not for the system actor (rule anonymous)', async () => {
       const result = await run({}, system);
+
+      expect(result.ok).toBe(false);
+      expect(sources.asked).toEqual([]);
+    });
+  });
+
+  describe('ListBoughtTogether', () => {
+    const run = (input: object, context = anonymous) =>
+      new ListBoughtTogether(gate, deps).execute(context, input);
+
+    it('shows the partners in rank order, never the asked Offer, with no fill', async () => {
+      shelves.documents = [hit(1), hit(2), hit(3), hit(4), hit(5)];
+      sources.partners = [offer(3), offer(1), offer(9), offer(2)];
+
+      const result = await run({ offer: offer(1), limit: 12 });
+
+      expect(result.ok && result.value.items.map((i) => i.offerId)).toEqual([offer(3), offer(2)]);
+      expect(sources.asked).toEqual([
+        { kind: 'bought-together', actor: 'anonymous', limit: BOUGHT_TOGETHER_DEPTH },
+      ]);
+      expect(sources.askedFor).toEqual([offer(1)]);
+      expect(shelves.browsed).toEqual([]);
+    });
+
+    it('answers an empty shelf when nothing is paired', async () => {
+      shelves.documents = [hit(1)];
+
+      expect(await run({ offer: offer(1) })).toEqual({ ok: true, value: { items: [] } });
+    });
+
+    it('drops what catalog or sellers no longer show, and caps at the limit', async () => {
+      shelves.documents = [hit(2), hit(3), hit(4)];
+      sources.partners = [offer(2), offer(3), offer(4)];
+      visibility.hidden.add(offer(2));
+
+      const result = await run({ offer: offer(1), limit: 1 });
+
+      expect(result.ok && result.value.items.map((i) => i.offerId)).toEqual([offer(3)]);
+    });
+
+    it('is unavailable when the source or the check fails, never an unchecked list', async () => {
+      shelves.documents = [hit(2)];
+      sources.partners = null;
+      expect(await run({ offer: offer(1) })).toEqual({
+        ok: false,
+        error: { code: 'search.unavailable' },
+      });
+
+      sources.partners = [offer(2)];
+      visibility.failing = true;
+      expect(await run({ offer: offer(1) })).toEqual({
+        ok: false,
+        error: { code: 'search.unavailable' },
+      });
+    });
+
+    it.each([
+      [{}, 'offer'],
+      [{ offer: 'not-a-uuid' }, 'offer'],
+      [{ offer: 42 }, 'offer'],
+      [{ offer: offer(1), limit: 0 }, 'limit'],
+      [{ offer: offer(1), limit: 25 }, 'limit'],
+      [{ offer: offer(1), limit: 1.5 }, 'limit'],
+    ])('refuses %j before any read', async (input, path) => {
+      const result = await run(input);
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path, code: expect.any(String) as unknown }],
+        },
+      });
+      expect(sources.asked).toEqual([]);
+    });
+
+    it('is not for the system actor (rule anonymous)', async () => {
+      const result = await run({ offer: offer(1) }, system);
 
       expect(result.ok).toBe(false);
       expect(sources.asked).toEqual([]);
