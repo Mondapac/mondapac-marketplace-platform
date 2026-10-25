@@ -189,6 +189,7 @@ describe.each([
       fees: undefined as never,
       policy: undefined as never,
       sellers: undefined as never,
+      stores: undefined as never,
       audit: undefined as never,
       clock,
       ids: new SequenceIdGenerator(clock),

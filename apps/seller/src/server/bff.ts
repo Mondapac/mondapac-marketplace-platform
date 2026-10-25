@@ -24,6 +24,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The store profile page: the About text, the logo and banner references (slice 12 part 2).
     'sellers/store-profile',
     'sellers/my-file/form-descriptors',
+    // The store's settings (delivery terms; the minimum order is in the same answer).
+    'sellers/store-settings',
     'payments/seller/payout-account',
     'ordering/seller/orders',
     'commission-payouts/seller/ledger',
@@ -41,6 +43,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/address',
     'sellers/my-file/slug',
     'sellers/my-file/identifier',
+    // The delivery day, window and order cut-off (package e).
+    'sellers/store-settings/delivery',
     'inventory/seller/sources-order',
     // The About text, the logo and the banner of the store (slice 12 part 2).
     'sellers/store-profile/about',

@@ -5,6 +5,7 @@ import { apiGet, apiGetBytes, type ApiRead } from './api.ts';
 import { sessionGet } from './session.ts';
 import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
 import {
+  flatFeeOf,
   publicStoreOf,
   publicStorePageOf,
   sellerResultsOf,
@@ -35,6 +36,7 @@ import type {
   DeliveryAreaAnswer,
   DeliveryLocatorSource,
   DeliveryQuote,
+  Money,
   ProductDetail,
   QuoteAddress,
   SellerQuery,
@@ -195,7 +197,10 @@ const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 export async function loadSeller(slug: string, page = 1): Promise<SellerShop | undefined> {
   // No sample or real store has any other slug; nothing else reaches the API path.
   if (slug.length > 50 || !STORE_SLUG.test(slug)) return undefined;
-  const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`);
+  const [answer, fee] = await Promise.all([
+    apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`),
+    apiGet<unknown>(`shipping/stores/${encodeURIComponent(slug)}/flat-fee`),
+  ]);
   if (answer.kind === 'off') return sampleSeller(slug);
   if (answer.kind === 'failed') {
     // Only the store module's own answer means "no such store"; a bare 404 is a missing route.
@@ -207,7 +212,27 @@ export async function loadSeller(slug: string, page = 1): Promise<SellerShop | u
     areaNames(),
     loadStoreProducts(store.slug, page),
   ]);
-  return { ...shopOf(store, areaName(store.serviceAreaCode)), storeProducts };
+  return {
+    ...shopOf(store, areaName(store.serviceAreaCode)),
+    storeProducts,
+    ...deliveryFeeOf(slug, fee),
+  };
+}
+
+/**
+ * The store's flat delivery fee as a part of the page, or nothing. The page never fails for it: a
+ * store with no fee set (the module's own 404), a failed read and an answer of the wrong shape all
+ * leave the fee line out, so no fee is ever guessed. Only a shape fault is logged here (the read
+ * itself logs its own refusal).
+ */
+function deliveryFeeOf(slug: string, read: ApiRead<unknown>): { readonly deliveryFee?: Money } {
+  if (read.kind !== 'ok') return {};
+  try {
+    return { deliveryFee: flatFeeOf(read.body) };
+  } catch {
+    console.log(JSON.stringify({ msg: 'storefront.seller-flat-fee-unusable', slug }));
+    return {};
+  }
 }
 
 /** One page of a store's products; any failure is `failed`, never an exception. */

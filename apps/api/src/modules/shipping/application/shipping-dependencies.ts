@@ -10,6 +10,7 @@ import type { FlatFeeRepository } from './ports/flat-fee.repository';
 import type { PickupDirectory } from './ports/pickup-directory';
 import type { SellerDirectory } from './ports/seller-directory';
 import type { ShippingPolicy } from './ports/shipping-policy';
+import type { StoreDirectory } from './ports/store-directory';
 
 /** What every shipping use case may need; one object built from the same ports. */
 export interface ShippingDependencies {
@@ -17,6 +18,7 @@ export interface ShippingDependencies {
   readonly fees: FlatFeeRepository;
   readonly policy: ShippingPolicy;
   readonly sellers: SellerDirectory;
+  readonly stores: StoreDirectory;
   readonly audit: AuditWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;

@@ -93,6 +93,7 @@ import { SELLERS_AUDIT_ACTIONS } from './domain/audit';
 import { OwnZoneRead } from './application/use-cases/own-zone-read.use-case';
 import { StoreSettingsMinimumOrderHistory } from './application/use-cases/store-settings-minimum-order-history.use-case';
 import { StoreSettingsRead } from './application/use-cases/store-settings-read.use-case';
+import { StoreSettingsSaveDelivery } from './application/use-cases/store-settings-save-delivery.use-case';
 import { StoreSettingsSaveMinimumOrder } from './application/use-cases/store-settings-save-minimum-order.use-case';
 import { OwnZoneController } from './presentation/own-zone.controller';
 import { StoreSettingsController } from './presentation/store-settings.controller';
@@ -372,6 +373,16 @@ const REVIEW_DECISION_PORTS = {
       teamMembers: true,
     }),
     useCaseProvider(StoreSettingsSaveMinimumOrder, {
+      unitOfWork: true,
+      storeProfiles: true,
+      minimumOrderPolicy: true,
+      audit: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    // Package e, the delivery terms: the same gate and deps as the minimum order.
+    useCaseProvider(StoreSettingsSaveDelivery, {
       unitOfWork: true,
       storeProfiles: true,
       minimumOrderPolicy: true,

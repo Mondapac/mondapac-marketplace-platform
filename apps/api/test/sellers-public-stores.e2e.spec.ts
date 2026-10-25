@@ -95,6 +95,35 @@ describe.each(TEST_MARKETS)('public store reads over HTTP in market %s', (code) 
     ]);
   });
 
+  it('shows delivery terms as clock text on the list and the store page, and none when unset', async () => {
+    const stored = { day: 'same-day', fromMinute: 540, toMinute: 1440, cutoffMinute: 480 };
+    const text = { day: 'same-day', from: '09:00', to: '24:00', cutoff: '08:00' };
+    next.list = ok({
+      items: [
+        { ...STORE, delivery: stored },
+        { ...STORE, slug: 'logan-road', name: 'Logan Road' },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 24,
+    });
+    next.read = ok({ ...STORE, delivery: stored });
+
+    const list = await get('/sellers/stores');
+    const one = await get('/sellers/stores/kedron-halal');
+
+    expect(list.body).toEqual({
+      items: [
+        { ...STORE, delivery: text },
+        { ...STORE, slug: 'logan-road', name: 'Logan Road' },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 24,
+    });
+    expect(one.body).toEqual({ ...STORE, delivery: text });
+  });
+
   it('refuses a market-less request before any use case', async () => {
     const responses = await Promise.all(
       ['/sellers/stores', '/sellers/stores/kedron-halal'].map((path) =>

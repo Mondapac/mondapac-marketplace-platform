@@ -113,26 +113,26 @@ model InventorySource {
 /// design 3.4). Retired, never deleted (C8). A stock write raises `version`; a reservation does
 /// not (C5). The CHECKs and the grants are hand-written in the migration.
 model InventoryStockItem {
-  id        String                   @id @db.Uuid
-  marketId  String                   @map("market_id") @db.VarChar(8)
-  tenantId  String                   @map("tenant_id")
+  id               String                     @id @db.Uuid
+  marketId         String                     @map("market_id") @db.VarChar(8)
+  tenantId         String                     @map("tenant_id")
   /// The catalog's ids (C4: plain ids, no foreign key).
-  offerId   String                   @map("offer_id") @db.Uuid
-  variantId String                   @map("variant_id") @db.Uuid
-  sourceId  String                   @map("source_id") @db.Uuid
+  offerId          String                     @map("offer_id") @db.Uuid
+  variantId        String                     @map("variant_id") @db.Uuid
+  sourceId         String                     @map("source_id") @db.Uuid
   /// The source's seller, proved by the foreign key (C3).
-  sellerId  String                   @map("seller_id") @db.Uuid
+  sellerId         String                     @map("seller_id") @db.Uuid
   /// Units on hand; 0 or more by a CHECK.
-  onHand    Int                      @map("on_hand")
+  onHand           Int                        @map("on_hand")
   /// Set once, never cleared (inventory design 3.3).
-  retiredAt DateTime?                @map("retired_at") @db.Timestamptz(6)
-  version   Int
+  retiredAt        DateTime?                  @map("retired_at") @db.Timestamptz(6)
+  version          Int
   /// Raised by every unit that changes holds on the item (reserve, release, expiry, rekey), never
   /// `version` (C5). A SERIALIZABLE stock unit that locks the row after such a commit gets 40001.
-  holdSeq   Int                      @default(0) @map("hold_seq")
-  createdAt DateTime                 @map("created_at") @db.Timestamptz(6)
-  source    InventorySource          @relation(fields: [marketId, sourceId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
-  movements InventoryStockMovement[]
+  holdSeq          Int                        @default(0) @map("hold_seq")
+  createdAt        DateTime                   @map("created_at") @db.Timestamptz(6)
+  source           InventorySource            @relation(fields: [marketId, sourceId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  movements        InventoryStockMovement[]
   reservationLines InventoryReservationLine[]
 
   /// The inventory key (brief s5, ADR-0010 decision 2); its prefix serves "every item of a sell unit".
@@ -223,21 +223,21 @@ model InventoryRetirement {
 /// CHECKs, the partial unique index "one ACTIVE per holder" and the expiry index are hand-written
 /// in the migration.
 model InventoryReservation {
-  id              String                    @id @db.Uuid
-  marketId        String                    @map("market_id") @db.VarChar(8)
-  tenantId        String                    @map("tenant_id")
+  id              String                     @id @db.Uuid
+  marketId        String                     @map("market_id") @db.VarChar(8)
+  tenantId        String                     @map("tenant_id")
   /// The customer's account id (C4: a plain id, no foreign key).
-  holderAccountId String                    @map("holder_account_id") @db.Uuid
+  holderAccountId String                     @map("holder_account_id") @db.Uuid
   /// Ordering's id for the checkout (C4); commit must match it.
-  checkoutRef     String                    @map("checkout_ref") @db.Uuid
+  checkoutRef     String                     @map("checkout_ref") @db.Uuid
   /// active, released, expired or committed (CHECK).
   status          String
   /// Set exactly when released (and kept on a superseded one later committed) (CHECK).
-  releaseCause    String?                   @map("release_cause")
+  releaseCause    String?                    @map("release_cause")
   /// createdAt plus the Market's duration; never changes.
-  expiresAt       DateTime                  @map("expires_at") @db.Timestamptz(6)
-  createdAt       DateTime                  @map("created_at") @db.Timestamptz(6)
-  statusChangedAt DateTime                  @map("status_changed_at") @db.Timestamptz(6)
+  expiresAt       DateTime                   @map("expires_at") @db.Timestamptz(6)
+  createdAt       DateTime                   @map("created_at") @db.Timestamptz(6)
+  statusChangedAt DateTime                   @map("status_changed_at") @db.Timestamptz(6)
   version         Int
   lines           InventoryReservationLine[]
 
