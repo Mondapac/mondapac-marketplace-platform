@@ -250,6 +250,7 @@ function PickupCodeCard({
 }) {
   const t = useTranslations('account.order.pickup');
   const heading = useId();
+  const [renewed, setRenewed] = useState(false);
   return (
     <div className="ac-pickup" role="group" aria-labelledby={heading}>
       <h3 id={heading}>{t('title', { seller: sellerName })}</h3>
@@ -274,9 +275,20 @@ function PickupCodeCard({
       ) : pickup.attemptsLeft < 5 ? (
         <small className="ac-sub">{t('tries', { count: pickup.attemptsLeft })}</small>
       ) : null}
-      <button className={pickup.locked ? 'btn' : 'btn ghost'} type="button" onClick={onRenew}>
+      <button
+        className={pickup.locked ? 'btn' : 'btn ghost'}
+        type="button"
+        onClick={() => {
+          onRenew();
+          setRenewed(true);
+        }}
+      >
         {t('renew')}
       </button>
+      <small className="ac-sub">{t('renew-note')}</small>
+      <p className="ac-sub" role="status" aria-live="polite">
+        {renewed ? t('renewed') : ''}
+      </p>
     </div>
   );
 }

@@ -297,7 +297,14 @@ describe('order details', () => {
     expect(code.getAttribute('dir')).toBe('ltr');
     expect(code.textContent).toBe('0427');
     expect(within(group).getByText(/Show this code to the seller/)).toBeTruthy();
-    fireEvent.click(within(group).getByRole('button', { name: 'Get a new code' }));
+    expect(within(group).getByText(/A new code replaces the old one/)).toBeTruthy();
+    const renew = within(group).getByRole('button', { name: 'Get a new code' });
+    renew.focus();
+    fireEvent.click(renew);
+    expect(document.activeElement).toBe(renew);
+    expect(within(group).getByRole('status').textContent).toBe(
+      'New code ready. The old one no longer works.',
+    );
     expect(within(page).queryByRole('img', { name: '0 4 2 7' })).toBeNull();
     expect(within(page).getByRole('img', { name: '7 3 1 9' }).textContent).toBe('7319');
   });
