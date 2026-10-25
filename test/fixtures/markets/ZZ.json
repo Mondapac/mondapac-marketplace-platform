@@ -288,14 +288,14 @@
       "carrier": "mondapac-drive",
       "displayName": "Zed Courier",
       "baseUrl": "http://127.0.0.1:9/zz",
-      "merchantId": "zz-marketplace",
       "serviceAreas": ["zz-central"],
       "parcel": { "weightGrams": 2000, "volumeLitres": 10, "temperature": "chilled" },
       "mode": "scheduled",
       "timeoutMs": 1000,
       "maxAttempts": 2,
       "backoffMs": 0,
-      "circuitBreaker": { "failureThreshold": 2, "cooldownSeconds": 10 }
+      "circuitBreaker": { "failureThreshold": 2, "cooldownSeconds": 10 },
+      "quoteBounds": { "minMinor": 300, "maxMinor": 20000 }
     }
   }
 }

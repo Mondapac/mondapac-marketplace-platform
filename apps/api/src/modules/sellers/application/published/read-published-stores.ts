@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Money, Result } from '@mondapac/shared-kernel';
+import type { DeliveryTerms } from '../../domain/delivery-terms';
 import {
   sellingSinceOf,
   type ApprovedStoreFacts,
@@ -14,6 +15,7 @@ import {
   type SellingEligibilityDependencies,
 } from '../use-cases/selling-eligibility.use-case';
 import { MAX_SELLER_SUMMARY_IDS } from '../summaries/read-seller-summaries';
+import type { PublishedStoreContentReader } from '../store-profile/published-store-content';
 
 /**
  * The most stores one list read considers. Above it the list answers the first stores in seller
@@ -26,6 +28,8 @@ export interface PublishedStoresDependencies extends SellingEligibilityDependenc
   readonly publishedStores: PublishedStoreRepository;
   readonly storeProfiles: StoreProfileRepository;
   readonly minimumOrderPolicy: MinimumOrderPolicy;
+  /** The About text, logo and banner of a store (slice 12 part 2). */
+  readonly publishedContent: PublishedStoreContentReader;
   readonly clock: Clock;
 }
 
@@ -106,13 +110,31 @@ export async function publishedStoresOf(
     if (!result.ok) throw new Error('the read unit failed');
     for (const [sellerId, minimum] of result.value) minimums.set(sellerId, minimum);
   }
+  const deliveries = new Map<Id<'Seller'>, DeliveryTerms>();
+  for (const batch of chunks(stores, MAX_SELLER_SUMMARY_IDS)) {
+    const result = await deps.unitOfWork.run(
+      market,
+      async () =>
+        ok(
+          await deps.storeProfiles.approvedDeliveryTerms(
+            market,
+            batch.map((store) => store.sellerId),
+          ),
+        ),
+      { readOnly: true },
+    );
+    if (!result.ok) throw new Error('the read unit failed');
+    for (const [sellerId, terms] of result.value) deliveries.set(sellerId, terms);
+  }
   const rule = deps.minimumOrderPolicy.rule(market);
   return stores.map((store): PublishedStore => {
+    const terms = deliveries.get(store.sellerId);
     const base: PublishedStore = {
       slug: store.slug,
       name: store.name,
       serviceAreaCode: store.serviceAreaCode,
       sellingSince: sellingSinceOf(store),
+      ...(terms === undefined ? {} : { delivery: terms }),
     };
     const minimum = minimums.get(store.sellerId);
     if (minimum === undefined) return base;

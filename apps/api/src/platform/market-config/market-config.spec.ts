@@ -2223,7 +2223,6 @@ describe('the shipping section (the real-time carrier, SHP-02/03)', () => {
     carrier: 'mondapac-drive',
     displayName: 'Mondapac Drive',
     baseUrl: 'https://drive-api.qq.test',
-    merchantId: 'mondapac-marketplace',
     serviceAreas: ['qq-central'],
     parcel: { weightGrams: 5000, volumeLitres: 20, temperature: 'ambient' },
     mode: 'on_demand',
@@ -2231,6 +2230,7 @@ describe('the shipping section (the real-time carrier, SHP-02/03)', () => {
     maxAttempts: 2,
     backoffMs: 250,
     circuitBreaker: { failureThreshold: 5, cooldownSeconds: 30 },
+    quoteBounds: { minMinor: 500, maxMinor: 10000 },
   };
   const load = (carrier: Record<string, unknown>) =>
     loadMarketConfigs(
@@ -2255,6 +2255,9 @@ describe('the shipping section (the real-time carrier, SHP-02/03)', () => {
     ['a base URL with a query', { baseUrl: 'https://drive.qq.test/api?x=1' }],
     ['a plain http base URL', { baseUrl: 'http://drive.qq.test' }],
     ['another carrier', { carrier: 'other-courier' }],
+    ['quote bounds the wrong way round', { quoteBounds: { minMinor: 900, maxMinor: 100 } }],
+    ['a free quote bound', { quoteBounds: { minMinor: 0, maxMinor: 100 } }],
+    ['no quote bounds', { quoteBounds: undefined }],
   ])('rejects %s', (_label, change) => {
     expect(() => load({ ...CARRIER, ...change })).toThrow(InvalidMarketConfigError);
   });

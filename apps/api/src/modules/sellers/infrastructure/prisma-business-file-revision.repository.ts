@@ -55,6 +55,7 @@ const METADATA = {
   operatingTimezone: true,
   serviceAreaCode: true,
   addressTimezone: true,
+  operatingPostcode: true,
   registerOutcome: true,
   registerMismatches: true,
   registerCheckedAt: true,
@@ -83,6 +84,7 @@ interface Row {
   readonly operatingTimezone: string;
   readonly serviceAreaCode: string;
   readonly addressTimezone: string | null;
+  readonly operatingPostcode: string | null;
   readonly registerOutcome: string;
   readonly registerMismatches: string[];
   readonly registerCheckedAt: Date | null;
@@ -152,6 +154,7 @@ function revisionOf(row: Row): BusinessFileRevision {
       mismatches: row.registerMismatches as RegisterMismatch[],
       checkedAt: row.registerCheckedAt === null ? null : toInstant(row.registerCheckedAt),
     },
+    operatingPostcode: row.operatingPostcode,
     createdAt: toInstant(row.createdAt),
     statusChangedAt: toInstant(row.statusChangedAt),
     decidedAt: row.decidedAt === null ? null : toInstant(row.decidedAt),
@@ -205,6 +208,7 @@ export class PrismaBusinessFileRevisionRepository implements BusinessFileRevisio
           operatingTimezone: revision.operatingTimezone,
           serviceAreaCode: revision.serviceAreaCode,
           addressTimezone: revision.addressTimezone,
+          operatingPostcode: revision.operatingPostcode,
           registerOutcome: revision.register.outcome,
           registerMismatches: [...revision.register.mismatches],
           registerCheckedAt:
@@ -365,7 +369,13 @@ export class PrismaBusinessFileRevisionRepository implements BusinessFileRevisio
         sellerId: { in: pointers.map((row) => row.sellerId) },
         id: { in: revisionIds },
       },
-      select: { id: true, sellerId: true, operatingTimezone: true, addressTimezone: true },
+      select: {
+        id: true,
+        sellerId: true,
+        operatingTimezone: true,
+        addressTimezone: true,
+        operatingPostcode: true,
+      },
     });
     const byRevision = new Map(rows.map((row) => [row.id, row]));
     const zones = new Map<Id<'Seller'>, ApprovedZones>();
@@ -377,6 +387,7 @@ export class PrismaBusinessFileRevisionRepository implements BusinessFileRevisio
       zones.set(pointer.sellerId as Id<'Seller'>, {
         operatingTimezone: row.operatingTimezone,
         addressTimezone: row.addressTimezone,
+        operatingPostcode: row.operatingPostcode,
       });
     }
     return zones;

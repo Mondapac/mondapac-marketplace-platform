@@ -19,6 +19,7 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import { ApprovedSellerZonesReaderImplementation } from '../../presentation/approved-seller-zones.reader';
 import { ApprovedSellerZonesSystem } from './approved-seller-zones-system.use-case';
 import { ApprovedSellerZones } from './approved-seller-zones.use-case';
+import { PickupPostcodes } from './pickup-postcodes.use-case';
 
 // The contract of approvedSellerZones (sellers design 7.1a; certification #124): one entry per
 // distinct id; { zone, addressZone } of the approved revision (slice 5b), nulls for any id with
@@ -182,6 +183,7 @@ function revision(
   sellerId: ReturnType<typeof ids.next<'Seller'>>,
   status: 'pending' | 'approved' | 'withdrawn',
   zones: { operatingTimezone: string; addressTimezone: string | null },
+  operatingPostcode = '4109',
 ): void {
   const base = newPendingRevision({
     id: ids.next<'BusinessFileRevision'>(),
@@ -197,6 +199,7 @@ function revision(
     },
     contentHash: `hmac-sha256:${'a'.repeat(64)}` as never,
     register: { outcome: 'not-performed', mismatches: [], checkedAt: null },
+    operatingPostcode,
     now: NOW,
   });
   const market = testMarketContext(code, 'default');
@@ -317,4 +320,56 @@ it('answers the same bytes under AU and ZZ', async () => {
   expect(JSON.stringify([...(au.ok ? au.value : [])])).toBe(
     JSON.stringify([...(zz.ok ? zz.value : [])]),
   );
+});
+
+// pickupPostcodes (SHP-02/03) reads the same approved pointer and clear columns.
+describe.each(['AU', 'ZZ'])('pickupPostcodes, Market %s', (code) => {
+  const market = () => testMarketContext(code, 'default');
+  const anonymous = () => testCallContext(market(), 'anonymous');
+  const customer = () =>
+    testCallContext(
+      market(),
+      testAuthenticatedActor(market(), {
+        population: 'customer',
+        accountId: ids.next<'Account'>(),
+        sessionId: ids.next<'Session'>(),
+        sellerId: null,
+      }),
+    );
+  const postcodes = new PickupPostcodes(gate, deps);
+  const zone = { operatingTimezone: 'Australia/Brisbane', addressTimezone: 'Australia/Brisbane' };
+  const postcode = code === 'AU' ? '4000' : '1000001';
+
+  it('answers the approved postcode only, to any request actor', async () => {
+    const approved = ids.next<'Seller'>();
+    const pending = ids.next<'Seller'>();
+    const unknown = ids.next<'Seller'>();
+    revision(code, approved, 'approved', zone, postcode);
+    revision(code, pending, 'pending', zone, '9999');
+
+    for (const context of [anonymous(), customer()]) {
+      expect(
+        await postcodes.execute(context, { sellerIds: [approved, pending, unknown, approved] }),
+      ).toEqual({ ok: true, value: new Map([[approved, postcode]]) });
+    }
+    // Another Market sees none of it.
+    const other = testCallContext(
+      testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default'),
+      'anonymous',
+    );
+    expect(await postcodes.execute(other, { sellerIds: [approved] })).toEqual({
+      ok: true,
+      value: new Map(),
+    });
+  });
+
+  it('refuses malformed ids and the system actor', async () => {
+    expect(await postcodes.execute(anonymous(), { sellerIds: ['nope'] })).toMatchObject({
+      ok: false,
+      error: { code: 'validation.failed' },
+    });
+    expect(
+      (await postcodes.execute(testCallContext(market(), 'system'), { sellerIds: [] })).ok,
+    ).toBe(false);
+  });
 });

@@ -221,6 +221,7 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
       },
       contentHash: HASH(1) as never,
       register: { outcome: 'not-performed', mismatches: [], checkedAt: null },
+      operatingPostcode: '4109',
       now: T0,
       ...overrides,
     });
@@ -343,6 +344,8 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
           c('identity_decision_id'),
         ],
         [{ reject_reason_code: 'incomplete' }, c('reject_reason_code')],
+        [{ operating_postcode: '4109;--' }, c('operating_postcode')],
+        [{ operating_postcode: '' }, c('operating_postcode')],
         [{ withdraw_cause: 'edited' }, c('withdrawn')],
         [
           { withdraw_cause: 'edited', withdrawn_by_kind: 'seller', withdrawn_at: T0.toString() },
@@ -1208,9 +1211,13 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
           [code, sellerId, id],
         );
       };
-      await make(approved, {});
+      await make(approved, { operating_postcode: '4109' });
       await make(noAddress, { address_timezone: null });
       expect((await add(pendingRevision(pending))).ok).toBe(true);
+      // The pickup postcode is stored as given, and a revision without it reads as null.
+      expect(
+        (await inUnit(code, () => revisions.findPending(market, pending)))?.operatingPostcode,
+      ).toBe('4109');
       const foreign = await newFile(other as typeof code);
 
       const zones = await inUnit(code, () =>
@@ -1221,9 +1228,20 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
         expect.arrayContaining([
           [
             approved,
-            { operatingTimezone: fixture.operatingZone, addressTimezone: fixture.addressZone },
+            {
+              operatingTimezone: fixture.operatingZone,
+              addressTimezone: fixture.addressZone,
+              operatingPostcode: '4109',
+            },
           ],
-          [noAddress, { operatingTimezone: fixture.operatingZone, addressTimezone: null }],
+          [
+            noAddress,
+            {
+              operatingTimezone: fixture.operatingZone,
+              addressTimezone: null,
+              operatingPostcode: null,
+            },
+          ],
         ]),
       );
       expect(zones.size).toBe(2);

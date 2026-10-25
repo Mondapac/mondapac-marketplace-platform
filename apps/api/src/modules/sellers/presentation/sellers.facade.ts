@@ -3,6 +3,7 @@ import type { AccessDenied } from '../../../platform/authz';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
 import type { AllowedProductTypes } from '../application/use-cases/allowed-product-types.use-case';
 import type { CarrierPickupRead } from '../application/use-cases/carrier-pickup.use-case';
+import type { PickupPostcodes } from '../application/use-cases/pickup-postcodes.use-case';
 import type { PublishedStoreSellerId } from '../application/use-cases/published-store-seller-id.use-case';
 import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';
 import type { ReviewerBusinessDetailsRead } from '../application/use-cases/reviewer-business-details.use-case';
@@ -34,6 +35,7 @@ export interface SellersFacadeUseCases {
   readonly publishedStoreSellerId: PublishedStoreSellerId;
   readonly publishedStoreSlugs: PublishedStoreSlugs;
   readonly carrierPickup: CarrierPickupRead;
+  readonly pickupPostcodes: PickupPostcodes;
 }
 
 /**
@@ -123,5 +125,17 @@ export class SellersFacadeImplementation implements SellersFacade {
       sellerId: request?.sellerId,
       sellerOrderId: request?.sellerOrderId,
     });
+  }
+
+  pickupPostcodes(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Seller'>, string>,
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  > {
+    return this.useCases.pickupPostcodes.execute(context, { sellerIds });
   }
 }

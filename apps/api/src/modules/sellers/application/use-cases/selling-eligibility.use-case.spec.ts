@@ -171,6 +171,7 @@ describe.each([
       reviewerBusinessDetails: undefined as never,
       publishedStoreSellerId: undefined as never,
       carrierPickup: undefined as never,
+      pickupPostcodes: undefined as never,
     });
   });
 

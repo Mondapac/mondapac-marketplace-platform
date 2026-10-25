@@ -1180,6 +1180,24 @@
     }
   },
   {
+    "action": "sellers.delivery-terms.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "cutoffMinute": "optional(integer)",
+      "day": "optional(enumOf(same-day|next-day))",
+      "fromMinute": "optional(integer)",
+      "toMinute": "optional(integer)"
+    },
+    "after": {
+      "cutoffMinute": "optional(integer)",
+      "day": "optional(enumOf(same-day|next-day))",
+      "fromMinute": "optional(integer)",
+      "toMinute": "optional(integer)"
+    }
+  },
+  {
     "action": "sellers.minimum-order.changed",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -1211,6 +1229,30 @@
     "after": {
       "observedOutcome": "enumOf(active|not-found|cancelled)",
       "revisionId": "id"
+    }
+  },
+  {
+    "action": "sellers.store-image.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "imageId": "optional(id)"
+    },
+    "after": {
+      "imageId": "optional(id)",
+      "kind": "enumOf(logo|banner)"
+    }
+  },
+  {
+    "action": "sellers.store-profile.saved",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "revisionNo": "integer"
     }
   },
   {

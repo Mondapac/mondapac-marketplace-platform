@@ -17,6 +17,7 @@ import type { SellerOrderDetailView } from '../src/modules/ordering/domain/order
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
 import { SetFlatFee } from '../src/modules/shipping/application/use-cases/set-flat-fee.use-case';
 import { ViewFlatFee } from '../src/modules/shipping/application/use-cases/view-flat-fee.use-case';
+import { ViewStoreFlatFee } from '../src/modules/shipping/application/use-cases/view-store-flat-fee.use-case';
 import { ViewOwnFlatFee } from '../src/modules/shipping/application/use-cases/view-own-flat-fee.use-case';
 import { SHIPPING_STATUS } from '../src/modules/shipping/presentation/http-answers';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -89,6 +90,7 @@ it('maps every refusal code of the shipping and seller order routes to its exact
     'validation.failed': 400,
     'shipping.seller-not-found': 404,
     'shipping.fee-not-set': 404,
+    'shipping.store-fee-not-found': 404,
     'shipping.unavailable': 503,
   });
   expect(ORDERING_STATUS['ordering.seller-order-not-found']).toBe(404);
@@ -132,6 +134,8 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
           .useValue(stub('deliver'))
           .overrideProvider(SetFlatFee)
           .useValue(stub('set-fee'))
+          .overrideProvider(ViewStoreFlatFee)
+          .useValue(stub('store-fee'))
           .overrideProvider(ViewFlatFee)
           .useValue(stub('view-fee'))
           .overrideProvider(ViewOwnFlatFee)
@@ -462,6 +466,43 @@ describe.each(TEST_MARKETS)('seller orders and flat fee over HTTP in market %s',
       expect(outside.body).toEqual({ delivers: false });
       expect(bad.status).toBe(400);
       expect(bad.body).toMatchObject({ code: 'validation.failed' });
+    });
+  });
+
+  describe('store flat fee (public)', () => {
+    it("answers a store's fee to a visitor with no session, as money strings, no-store", async () => {
+      await boot();
+      next = ok(money(995n, currency));
+
+      const response = await http()
+        .get('/shipping/stores/kedron-halal/flat-fee')
+        .set({ 'x-market-id': code, cookie: `__Host-session-customer-${code}=whatever` });
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(response.body).toEqual({ amount: '995', currency });
+      expect(calls).toEqual([{ name: 'store-fee', input: { slug: 'kedron-halal' } }]);
+    });
+
+    it('maps not found and unavailable, and refuses a request with no Market', async () => {
+      await boot();
+      next = err({ code: 'shipping.store-fee-not-found' });
+      const missing = await http()
+        .get('/shipping/stores/nobody/flat-fee')
+        .set({ 'x-market-id': code });
+      next = err({ code: 'shipping.unavailable' });
+      const down = await http()
+        .get('/shipping/stores/kedron-halal/flat-fee')
+        .set({ 'x-market-id': code });
+      const noMarket = await http().get('/shipping/stores/kedron-halal/flat-fee');
+
+      expect(missing.status).toBe(404);
+      expect(missing.body).toEqual({ statusCode: 404, code: 'shipping.store-fee-not-found' });
+      expect(down.status).toBe(503);
+      expect(down.body).toEqual({ statusCode: 503, code: 'shipping.unavailable' });
+      expect(noMarket.status).toBeGreaterThanOrEqual(400);
+      expect(calls).toHaveLength(2);
     });
   });
 

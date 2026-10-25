@@ -15,12 +15,12 @@ import { loadServiceAreas } from '../../../platform/market-config/service-area-c
 import type { CarrierBookingRequest } from '../application/ports/carrier-gateway';
 import { CircuitBreaker } from './circuit-breaker';
 import { ConfigCarrierPolicy, type RealTimeCarrierConfig } from './config-carrier-policy';
-import { DriveHttpClient } from './drive-http-client';
+import { DriveHttpClient, MAX_ANSWER_BYTES } from './drive-http-client';
 import {
   DRIVE_SIGNATURE_TOLERANCE_SECONDS,
   DriveWebhookSignature,
 } from './drive-webhook-signature';
-import { MondapacDriveCarrier } from './mondapac-drive-carrier';
+import { MondapacDriveCarrier, QUOTE_CACHE_MS } from './mondapac-drive-carrier';
 
 // The Mondapac Drive adapter against a fake Drive server on loopback, on both Market fixtures
 // (AU: Mondapac Drive on demand; ZZ: "Zed Courier", chilled and scheduled). The fake speaks
@@ -87,7 +87,9 @@ class FakeDrive {
     if (req.headers.authorization !== `Bearer ${KEY}`) return send(401, { error: 'auth' });
     const market = req.headers['x-market-id'];
     if (req.method === 'POST' && req.url === '/delivery/deliveries') {
-      const key = `${String(market)}|${String(body.merchantId)}|${String(body.externalReference)}`;
+      // Drive's merchant API is strict: the merchant is the key's, never a field.
+      if ('merchantId' in body) return send(400, { code: 'validation.failed' });
+      const key = `${String(market)}|${String(body.externalReference)}`;
       const existing = this.deliveries.get(key);
       if (existing !== undefined) return send(200, existing);
       this.#counter += 1;
@@ -102,8 +104,27 @@ class FakeDrive {
       this.deliveries.set(key, delivery);
       return send(201, delivery);
     }
-    const cancel = /^\/delivery\/deliveries\/([0-9a-f-]{36})\/events$/.exec(req.url ?? '');
-    if (req.method === 'POST' && cancel !== null && body.type === 'cancelled') {
+    if (req.method === 'POST' && req.url === '/delivery/quotes') {
+      // Drive's quoteBody is strict: a stop is its postcode with a point or an address.
+      const stopOk = (stop: unknown) =>
+        typeof stop === 'object' &&
+        stop !== null &&
+        Object.keys(stop).every((key) => key === 'postcode' || key === 'address') &&
+        typeof (stop as { address?: unknown }).address === 'string';
+      if (!stopOk(body.pickup) || !stopOk(body.dropoff)) {
+        return send(400, { code: 'validation.failed' });
+      }
+      return send(200, {
+        serviceArea: 'greater-brisbane',
+        vehicle: 'car',
+        distanceMetres: 8200,
+        breakdown: { base: '700', distance: '550', coldChain: '0', scheduledDiscount: '0' },
+        total: { amount: '1250', currency: String(market) === 'ZZ' ? 'JPY' : 'AUD' },
+        tax: { amount: '114', currency: String(market) === 'ZZ' ? 'JPY' : 'AUD' },
+      });
+    }
+    const cancel = /^\/delivery\/deliveries\/([0-9a-f-]{36})\/cancel$/.exec(req.url ?? '');
+    if (req.method === 'POST' && cancel !== null && typeof body.reason === 'string') {
       const delivery = [...this.deliveries.values()].find((d) => d.id === cancel[1]);
       if (delivery === undefined) return send(404, { error: 'not found' });
       if (delivery.status === 'PICKED_UP') return send(409, { error: 'too late' });
@@ -146,7 +167,7 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       slept.push(ms);
       return Promise.resolve();
     });
-    return new MondapacDriveCarrier(policy, { AU: KEY, ZZ: KEY }, http);
+    return new MondapacDriveCarrier(policy, { AU: KEY, ZZ: KEY }, http, clock);
   };
 
   const request: CarrierBookingRequest = {
@@ -180,7 +201,79 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
     carrier = build();
   });
 
-  it('books with the Market merchant, key and settings, without coordinates', async () => {
+  const quote = {
+    pickup: { postcode: request.pickup.postcode },
+    dropoff: { postcode: request.dropoff.postcode },
+    parcel: configured.parcel,
+    mode: configured.mode,
+  };
+
+  it('quotes with the two postcodes only, reads only the total, and refuses a bad total', async () => {
+    drive.script.push({ status: 200, body: { total: { amount: '12.50', currency: 'AUD' } } });
+    expect(await carrier.quote(market, quote)).toEqual({
+      ok: false,
+      error: { code: 'carrier.unavailable' },
+    });
+    drive.script.push({ status: 422, body: { code: 'address.not-found' } });
+    expect(await carrier.quote(market, quote)).toEqual({
+      ok: false,
+      error: { code: 'carrier.refused' },
+    });
+    drive.seen.length = 0;
+    expect(await carrier.quote(market, quote)).toEqual({
+      ok: true,
+      value: { amount: 1250n, currency: code === 'ZZ' ? 'JPY' : 'AUD' },
+    });
+    expect(drive.seen[0]).toMatchObject({
+      method: 'POST',
+      url: '/delivery/quotes',
+      body: {
+        pickup: { postcode: quote.pickup.postcode, address: quote.pickup.postcode },
+        dropoff: { postcode: quote.dropoff.postcode, address: quote.dropoff.postcode },
+        parcel: configured.parcel,
+        mode: configured.mode,
+      },
+    });
+  });
+
+  it('keeps a quote for five minutes, so a repeated checkout asks Drive once', async () => {
+    expect((await carrier.quote(market, quote)).ok).toBe(true);
+    expect((await carrier.quote(market, quote)).ok).toBe(true);
+    expect(drive.seen).toHaveLength(1);
+    // Another pair of postcodes is its own quote.
+    const other = { ...quote, dropoff: { postcode: code === 'AU' ? '4000' : '1000003' } };
+    expect((await carrier.quote(market, other)).ok).toBe(true);
+    expect(drive.seen).toHaveLength(2);
+    clock.advance(Temporal.Duration.from({ milliseconds: QUOTE_CACHE_MS }));
+    expect((await carrier.quote(market, quote)).ok).toBe(true);
+    expect(drive.seen).toHaveLength(3);
+  });
+
+  it('retries a 429 on a booking but not on a quote, counts it towards the circuit, and drops an oversized answer', async () => {
+    for (let n = 0; n < configured.maxAttempts; n += 1) drive.script.push({ status: 429 });
+    expect(await carrier.book(market, request)).toEqual({
+      ok: false,
+      error: { code: 'carrier.unavailable' },
+    });
+    expect(drive.seen).toHaveLength(configured.maxAttempts);
+    // A quote is not retried after a 429: checkout falls back to the flat fee at once.
+    drive.script.push({ status: 429 });
+    expect(await carrier.quote(market, quote)).toEqual({
+      ok: false,
+      error: { code: 'carrier.unavailable' },
+    });
+    expect(drive.seen).toHaveLength(configured.maxAttempts + 1);
+    drive.script.push({
+      status: 200,
+      body: { total: { amount: '1250', currency: 'AUD' }, padding: 'x'.repeat(MAX_ANSWER_BYTES) },
+    });
+    expect(await carrier.quote(market, quote)).toEqual({
+      ok: false,
+      error: { code: 'carrier.unavailable' },
+    });
+  });
+
+  it('books with the Market key and settings, without coordinates', async () => {
     const answer = await carrier.book(market, request);
     expect(answer).toEqual({
       ok: true,
@@ -197,7 +290,6 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       'content-type': 'application/json',
     });
     expect(call!.body).toEqual({
-      merchantId: configured.merchantId,
       externalReference: request.externalReference,
       pickup: {
         address: '1 Shop Street, Sunnybank',
@@ -261,6 +353,12 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
   });
 
   it('opens the circuit after the threshold, then lets one trial through after the cooldown', async () => {
+    const quote = {
+      pickup: { postcode: request.pickup.postcode },
+      dropoff: { postcode: request.dropoff.postcode },
+      parcel: configured.parcel,
+      mode: configured.mode,
+    };
     const { failureThreshold, cooldownSeconds } = configured.circuitBreaker;
     carrier = build({ maxAttempts: 1 });
     for (let n = 0; n < failureThreshold; n += 1) drive.script.push({ status: 500 });
@@ -274,6 +372,9 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       error: { code: 'carrier.unavailable' },
     });
     expect(drive.seen).toHaveLength(failureThreshold);
+    // Each kind of call has its own circuit: quotes still go out while bookings fail fast.
+    expect((await carrier.quote(market, quote)).ok).toBe(true);
+    drive.seen.pop();
     clock.advance(Temporal.Duration.from({ seconds: cooldownSeconds }));
     expect((await carrier.book(market, request)).ok).toBe(true);
     expect((await carrier.book(market, request)).ok).toBe(true);
@@ -297,7 +398,7 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
     });
   });
 
-  it('cancels with the cancelled event, and refuses a malformed reference without a call', async () => {
+  it('cancels with a reason, and refuses a malformed reference without a call', async () => {
     const booked = await carrier.book(market, request);
     const reference = booked.ok ? booked.value.carrierReference : '';
     expect(await carrier.cancel(market, reference)).toEqual({
@@ -305,8 +406,8 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       value: { carrierStatus: 'CANCELLED' },
     });
     expect(drive.seen[1]).toMatchObject({
-      url: `/delivery/deliveries/${reference}/events`,
-      body: { type: 'cancelled' },
+      url: `/delivery/deliveries/${reference}/cancel`,
+      body: { reason: 'Cancelled by the marketplace' },
     });
     const calls = drive.seen.length;
     expect(await carrier.cancel(market, '../../admin')).toEqual({
@@ -321,6 +422,7 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       new LocalDrivePolicy(() => drive.url, {}, { apiKeys: { [code]: KEY }, webhookSecrets: {} }),
       { [code]: KEY },
       new DriveHttpClient(new CircuitBreaker(clock)),
+      clock,
     );
     expect(await off.book(market, request)).toEqual({
       ok: false,

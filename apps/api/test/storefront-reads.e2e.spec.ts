@@ -36,6 +36,15 @@ const ITEM = {
   categoryIds: [CATEGORY],
   primaryImage: IMAGE,
 };
+const BADGE = {
+  typeCode: 'halal',
+  typeName: 'Halal',
+  basis: 'SELLER',
+  sellerClaim: false,
+  issuerName: 'Council',
+  validUntilLocalDate: '2027-03-01',
+  verifiedWithIssuer: true,
+};
 const ENDS = '2026-10-20T00:00:00Z';
 const PRODUCT = ITEM.productId;
 
@@ -103,6 +112,8 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
               stock: { status: 'low', onlyLeft: 2 },
             },
           ],
+          // Fields beyond the seven the route allows must never reach the body.
+          badges: [{ ...BADGE, certificateId: 'must-not-appear' }],
         },
       ],
     });
@@ -204,14 +215,30 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
               stock: { status: 'low', onlyLeft: 2 },
             },
           ],
+          badges: [BADGE],
         },
       ],
     });
+    expect(JSON.stringify(response.body)).not.toContain('must-not-appear');
     expect(JSON.stringify(response.body)).not.toContain('sellable');
     expect(JSON.stringify(response.body)).not.toMatch(/objectKey|object_key|sha256|uploader|http/);
     expect(calls).toEqual([
       { route: 'detail', actor: 'anonymous', market: code, input: { productId: PRODUCT } },
     ]);
+  });
+
+  it('answers 200 with an empty badges list when the badge source failed (the page does not fail)', async () => {
+    // The use case answers `badges: []` for a failing source (see product-detail-use-case.spec);
+    // the route must carry that through as an empty list, never drop the key or fail the page.
+    const detail = next.detail as { ok: true; value: { offers: { badges: unknown[] }[] } };
+    detail.value.offers[0]!.badges = [];
+
+    const response = await get(`/search/product-detail/${PRODUCT}`);
+
+    expect(response.status).toBe(200);
+    const [offer] = (response.body as { offers: { badges: unknown; units: unknown[] }[] }).offers;
+    expect(offer!.badges).toEqual([]);
+    expect(offer!.units).toHaveLength(1);
   });
 
   it('refuses a market-less request before any use case', async () => {

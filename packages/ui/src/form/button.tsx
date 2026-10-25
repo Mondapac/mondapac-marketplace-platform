@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from 'react';
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes, Ref } from 'react';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'link' | 'destructive';
 
@@ -7,6 +7,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly loading?: boolean;
   /** Fills the width of its container (auth forms). */
   readonly block?: boolean;
+  /** The button element, for a caller that moves focus to it. */
+  readonly ref?: Ref<HTMLButtonElement>;
 }
 
 const VARIANT: Record<ButtonVariant, string> = {

@@ -73,6 +73,7 @@ import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-ca
 import { MyFileValidateIdentifier } from './application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
 import { CarrierPickupRead } from './application/use-cases/carrier-pickup.use-case';
+import { PickupPostcodes } from './application/use-cases/pickup-postcodes.use-case';
 import { ReviewerBusinessDetailsRead } from './application/use-cases/reviewer-business-details.use-case';
 import { ReviewRead } from './application/use-cases/review-read.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
@@ -92,6 +93,7 @@ import { SELLERS_AUDIT_ACTIONS } from './domain/audit';
 import { OwnZoneRead } from './application/use-cases/own-zone-read.use-case';
 import { StoreSettingsMinimumOrderHistory } from './application/use-cases/store-settings-minimum-order-history.use-case';
 import { StoreSettingsRead } from './application/use-cases/store-settings-read.use-case';
+import { StoreSettingsSaveDelivery } from './application/use-cases/store-settings-save-delivery.use-case';
 import { StoreSettingsSaveMinimumOrder } from './application/use-cases/store-settings-save-minimum-order.use-case';
 import { OwnZoneController } from './presentation/own-zone.controller';
 import { StoreSettingsController } from './presentation/store-settings.controller';
@@ -114,6 +116,23 @@ import { PublishedStoreRead } from './application/use-cases/published-store-read
 import { PublishedStoreSellerId } from './application/use-cases/published-store-seller-id.use-case';
 import { PublishedStoreSlugs } from './application/use-cases/published-store-slugs.use-case';
 import { PUBLISHED_STORE_REPOSITORY } from './application/ports/published-store.repository';
+import { OBJECT_STORE } from '../../platform/storage/object-store';
+import { STORE_IMAGE_PROCESSOR } from './application/ports/store-image-processor';
+import { STORE_IMAGE_REPOSITORY } from './application/ports/store-image.repository';
+import { STORE_PROFILE_CONTENT_SEALER } from './application/ports/store-profile-content-sealer';
+import { STORE_PROFILE_CONTENT_REPOSITORY } from './application/ports/store-profile-content.repository';
+import { STORE_PROFILE_LOCALES_POLICY } from './application/ports/store-profile-locales';
+import { STORE_TEXT_CLAIM_CHECK } from './application/ports/store-text-claim-check';
+import { PUBLISHED_STORE_CONTENT } from './application/store-profile/published-store-content';
+import { PublishedStoreImageRead } from './application/use-cases/published-store-image-read.use-case';
+import { StoreImageReadOwn } from './application/use-cases/store-image-read-own.use-case';
+import { StoreImageRemove } from './application/use-cases/store-image-remove.use-case';
+import { StoreImageSave } from './application/use-cases/store-image-save.use-case';
+import { StoreProfileRead } from './application/use-cases/store-profile-read.use-case';
+import { StoreProfileSaveAbout } from './application/use-cases/store-profile-save-about.use-case';
+import { storeProfileProviders } from './infrastructure/store-profile-providers';
+import { PublicStoreImageController } from './presentation/public-store-image.controller';
+import { StoreProfileController } from './presentation/store-profile.controller';
 import { sellerFileSubscriptions } from './presentation/subscribers/seller-file.subscriptions';
 
 /**
@@ -159,6 +178,14 @@ const PORT = {
   storeProfiles: STORE_PROFILE_REPOSITORY,
   publishedStores: PUBLISHED_STORE_REPOSITORY,
   minimumOrderPolicy: MINIMUM_ORDER_POLICY,
+  storeContent: STORE_PROFILE_CONTENT_REPOSITORY,
+  storeImages: STORE_IMAGE_REPOSITORY,
+  contentSealer: STORE_PROFILE_CONTENT_SEALER,
+  localesPolicy: STORE_PROFILE_LOCALES_POLICY,
+  imageProcessor: STORE_IMAGE_PROCESSOR,
+  claimCheck: STORE_TEXT_CLAIM_CHECK,
+  publishedContent: PUBLISHED_STORE_CONTENT,
+  objectStore: OBJECT_STORE,
   decider: SELLER_ACCESS_DECIDER,
   ids: ID_GENERATOR,
   clock: CLOCK,
@@ -198,7 +225,18 @@ const PUBLISHED_STORE_PORTS = {
   publishedStores: true,
   storeProfiles: true,
   minimumOrderPolicy: true,
+  publishedContent: true,
   clock: true,
+} as const;
+
+/** The ports every use case of the seller's own store profile reads with (slice 12 part 2). */
+const STORE_PROFILE_READ_PORTS = {
+  unitOfWork: true,
+  storeProfiles: true,
+  storeContent: true,
+  storeImages: true,
+  contentSealer: true,
+  localesPolicy: true,
 } as const;
 
 /** The ports of the reviewer's approve and reject (slice 7a-decide). */
@@ -241,6 +279,8 @@ const REVIEW_DECISION_PORTS = {
     StoreSettingsController,
     OwnZoneController,
     PublicStoreController,
+    PublicStoreImageController,
+    StoreProfileController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('sellers'),
@@ -252,6 +292,7 @@ const REVIEW_DECISION_PORTS = {
     registerPermissions('sellers', SELLERS_PERMISSIONS),
     registerStepUpActions('sellers', SELLERS_STEP_UP_ACTIONS),
     ...sellerProviders,
+    ...storeProfileProviders,
     useCaseProvider(CreateSellerFile, {
       unitOfWork: true,
       files: true,
@@ -280,6 +321,44 @@ const REVIEW_DECISION_PORTS = {
     // (rule `anonymous`; clear columns only, no key unwrapped).
     useCaseProvider(PublishedStoreList, PUBLISHED_STORE_PORTS),
     useCaseProvider(PublishedStoreRead, PUBLISHED_STORE_PORTS),
+    useCaseProvider(PublishedStoreImageRead, { ...PUBLISHED_STORE_PORTS, objectStore: true }),
+    // Slice 12 part 2, the seller's own store profile (design 3.7, 6.2) over HTTP through
+    // StoreProfileController, under `sellers.store-profile.view` / `.edit`, approved sellers only.
+    useCaseProvider(StoreProfileRead, STORE_PROFILE_READ_PORTS),
+    useCaseProvider(StoreProfileSaveAbout, {
+      ...STORE_PROFILE_READ_PORTS,
+      audit: true,
+      outbox: true,
+      counters: true,
+      counterKeys: true,
+      claimCheck: true,
+      ids: true,
+      clock: true,
+    }),
+    useCaseProvider(StoreImageSave, {
+      ...STORE_PROFILE_READ_PORTS,
+      imageProcessor: true,
+      objectStore: true,
+      audit: true,
+      counters: true,
+      counterKeys: true,
+      ids: true,
+      clock: true,
+    }),
+    useCaseProvider(StoreImageRemove, {
+      ...STORE_PROFILE_READ_PORTS,
+      objectStore: true,
+      audit: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    useCaseProvider(StoreImageReadOwn, {
+      unitOfWork: true,
+      storeProfiles: true,
+      storeImages: true,
+      objectStore: true,
+    }),
     useCaseProvider(PublishedStoreSellerId, PUBLISHED_STORE_PORTS),
     useCaseProvider(PublishedStoreSlugs, PUBLISHED_STORE_PORTS),
     useCaseProvider(OwnZoneRead, { unitOfWork: true, revisions: true }),
@@ -296,6 +375,16 @@ const REVIEW_DECISION_PORTS = {
       teamMembers: true,
     }),
     useCaseProvider(StoreSettingsSaveMinimumOrder, {
+      unitOfWork: true,
+      storeProfiles: true,
+      minimumOrderPolicy: true,
+      audit: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    // Package e, the delivery terms: the same gate and deps as the minimum order.
+    useCaseProvider(StoreSettingsSaveDelivery, {
       unitOfWork: true,
       storeProfiles: true,
       minimumOrderPolicy: true,
@@ -535,6 +624,8 @@ const REVIEW_DECISION_PORTS = {
       sealer: true,
       audit: true,
     }),
+    // The pickup postcode the real-time carrier quotes from at checkout: a clear column, no audit.
+    useCaseProvider(PickupPostcodes, { unitOfWork: true, revisions: true }),
     {
       provide: SELLERS_FACADE,
       inject: [
@@ -548,6 +639,7 @@ const REVIEW_DECISION_PORTS = {
         PublishedStoreSellerId,
         PublishedStoreSlugs,
         CarrierPickupRead,
+        PickupPostcodes,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -560,6 +652,7 @@ const REVIEW_DECISION_PORTS = {
         publishedStoreSellerId: PublishedStoreSellerId,
         publishedStoreSlugs: PublishedStoreSlugs,
         carrierPickup: CarrierPickupRead,
+        pickupPostcodes: PickupPostcodes,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -572,6 +665,7 @@ const REVIEW_DECISION_PORTS = {
           publishedStoreSellerId,
           publishedStoreSlugs,
           carrierPickup,
+          pickupPostcodes,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by
@@ -611,6 +705,7 @@ const REVIEW_DECISION_PORTS = {
       ],
     ),
   ],
-  exports: [SELLERS_FACADE, APPROVED_SELLER_ZONES],
+  // STORE_TEXT_CLAIM_CHECK: SellerStoreProfileModule binds certification to it at start.
+  exports: [SELLERS_FACADE, APPROVED_SELLER_ZONES, STORE_TEXT_CLAIM_CHECK],
 })
 export class SellersModule {}

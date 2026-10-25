@@ -17,6 +17,17 @@ export interface CertificationBadge {
   readonly type: string;
   /** Accessible label of the seal, e.g. "Halal certified". */
   readonly label: string;
+  // The fields below come from the live badge of the product page's read; the samples have none.
+  /** Whose certificate it is: the seller's own, or the product manufacturer's. */
+  readonly basis?: 'SELLER' | 'MANUFACTURER';
+  /** True when this is the seller's own declaration, not an outside body's certificate. */
+  readonly sellerClaim?: boolean;
+  /** The issuing body's name, when there is one. */
+  readonly issuer?: string;
+  /** ISO calendar date (`YYYY-MM-DD`) the certificate is valid until. */
+  readonly validUntil?: string;
+  /** True when the platform confirmed the certificate with its issuer. */
+  readonly verifiedWithIssuer?: boolean;
 }
 
 export interface ProductCard {
@@ -226,6 +237,18 @@ export interface CartItem {
   readonly addedAt?: Money;
 }
 
+/**
+ * A seller's delivery terms as the seller set them: orders placed before `cutoff` arrive the same
+ * day or the next, in the window `from` to `to`. Clock times (`HH:MM` on the half hour, `24:00` for
+ * the end of the day) on the seller's own wall clock, shown without a time zone.
+ */
+export interface DeliveryTerms {
+  readonly day: 'same-day' | 'next-day';
+  readonly from: string;
+  readonly to: string;
+  readonly cutoff: string;
+}
+
 /** A seller's delivery terms as the cart and checkout show them. */
 export interface SellerTerms {
   readonly id: string;
@@ -236,9 +259,40 @@ export interface SellerTerms {
   readonly deliveryWindow: string;
   /** The seller's minimum order; absent when it has none. */
   readonly minimumOrder?: Money;
-  /** The seller's flat delivery fee for one order. */
+  /** The seller's flat delivery fee for one order (Scheduled delivery). */
   readonly deliveryFee: Money;
+  /** Whether the seller takes Express orders now; absent: it does not offer Express. */
+  readonly express?: ExpressTerms;
 }
+
+/**
+ * Express delivery of one seller (within 2 hours once the seller has the order ready, booked by
+ * the platform with a courier). The cut-off is evaluated by the backend in the seller's time zone
+ * (ADR-0005); the storefront only shows it.
+ */
+export type ExpressTerms =
+  | { readonly kind: 'offered' }
+  | { readonly kind: 'not-offered' }
+  /** Today's cut-off has passed: `cutoff` is the instant, `timeZone` the seller's IANA zone. */
+  | { readonly kind: 'closed'; readonly cutoff: string; readonly timeZone: string };
+
+/** How one seller's part is delivered; Scheduled (the seller's window) is the default. */
+export type DeliverySpeed = 'scheduled' | 'express';
+
+/** The address a delivery quote is asked for: a saved address, or a new address's postcode. */
+export type QuoteAddress =
+  | { readonly kind: 'saved'; readonly id: string }
+  | { readonly kind: 'new'; readonly postcode: string };
+
+/**
+ * The courier's answer for one seller and one address: the live Express price (null when the
+ * seller takes no Express order now), or that its couriers do not reach the address, or no answer.
+ * Quotes are checked again when the buyer pays.
+ */
+export type DeliveryQuote =
+  | { readonly kind: 'quote'; readonly express: Money | null }
+  | { readonly kind: 'out-of-range' }
+  | { readonly kind: 'failed' };
 
 /**
  * How the cart shows the tax a GST-inclusive total holds ("Includes A$x GST"). A PLACEHOLDER
@@ -309,10 +363,26 @@ export interface CheckoutSource {
   /** Sample only: the order Pay creates gives its reference when checkout is wired. */
   readonly orderReference: string;
   /**
+   * Sample only: the places the stubbed address search knows (suburbs and street addresses in the
+   * service area). The address-lookup provider replaces this list.
+   */
+  readonly places: readonly CheckoutPlace[];
+  /**
    * Who answers whether a new address's postcode is delivered to: `sample` checks
    * `serviceArea.postcodes` in the browser; `api` asks the API's delivery area (API_BASE_URL set).
    */
   readonly areaCheck: 'sample' | 'api';
+}
+
+/** A suburb (no street) or a street address the checkout's address search suggests. */
+export interface CheckoutPlace {
+  readonly id: string;
+  /** The street part ("12 Example Street"); empty for a suburb. */
+  readonly street: string;
+  readonly suburb: string;
+  /** The state or region as written in an address ("QLD"). */
+  readonly regionCode: string;
+  readonly postcode: string;
 }
 
 /** The API's answer for one postcode: `off` while the storefront reads sample data. */
@@ -414,6 +484,10 @@ export interface SellerShop {
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;
+  /** The logo the store uploaded; it wins over `logo`. Absent: the default tile shows. */
+  readonly logoImage?: StoreImage;
+  /** The banner the store uploaded. Absent: the default banner shows. */
+  readonly banner?: StoreImage;
   /** Suburb and city only, or the ServiceArea's name; the seller's address is never shown. */
   readonly location: string;
   readonly sellingSince: number;
@@ -423,6 +497,8 @@ export interface SellerShop {
   readonly businessCheck?: string;
   /** Not known yet when absent. */
   readonly deliveryWindow?: string;
+  /** The seller's own delivery terms; the page words them. Absent when the seller set none. */
+  readonly delivery?: DeliveryTerms;
   /** Not known yet when absent. */
   readonly deliveryFee?: Money;
   /** Absent when the seller has no minimum order (unless `minimumUnknown`). */
@@ -449,6 +525,16 @@ export interface SellerShop {
    * read is real: the tab then pages through the cards and shows a failed read inside the tab.
    */
   readonly storeProducts?: StoreProducts;
+}
+
+/**
+ * A store picture (logo or banner) the store published: where the buyer site serves it from and
+ * its pixels, so the page can reserve the space. Absent when the store has none.
+ */
+export interface StoreImage {
+  readonly src: string;
+  readonly width: number;
+  readonly height: number;
 }
 
 /** A seller page with every part known: what the sample data gives. */
@@ -547,6 +633,8 @@ export interface SellerListing {
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;
+  /** The logo the store uploaded; it wins over `logo`. Absent: the default tile shows. */
+  readonly logoImage?: StoreImage;
   /** Suburb only; the seller's address is never shown. */
   readonly city: string;
   readonly sellingSince: number;
