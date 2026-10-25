@@ -1,7 +1,8 @@
 'use client';
 
-import { useFormatter, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useMemo, type ReactNode } from 'react';
+import { formatDate } from '../format/date.ts';
 import { Icon, categoryIcon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import type { AccountSource, OrderPartStatus, OrderStatus } from '../storefront/types.ts';
@@ -104,13 +105,12 @@ export function LineThumb({
 
 /** Formats an ISO date of the account pages ("19 Oct 2026", or "13 Oct" without the year). */
 export function useDay(): (iso: string, withYear?: boolean) => string {
-  const format = useFormatter();
+  const locale = useLocale();
   return (iso, withYear = true) =>
-    format.dateTime(new Date(`${iso}T00:00:00Z`), {
+    formatDate(iso, locale, {
       day: 'numeric',
       month: 'short',
       ...(withYear ? { year: 'numeric' } : {}),
-      timeZone: 'UTC',
     });
 }
 

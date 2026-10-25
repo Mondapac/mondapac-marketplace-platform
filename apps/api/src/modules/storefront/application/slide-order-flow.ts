@@ -1,8 +1,8 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import { StorefrontSlideReordered } from '../domain/audit';
 import type { Problems } from '../domain/fields';
-import { parseReorder, reorderMismatch } from '../domain/slides';
+import { parseOrderQuery, parseReorder, reorderMismatch, statusOf } from '../domain/slides';
 import { adminOf } from './page-flow';
 import type { SlideStamp } from './ports/slide.repository';
 import { slideIdOf, type SlideFailure } from './slide-flow';
@@ -96,3 +96,77 @@ export async function reorderLiveSlides(
 
 const byIndex = (a: { path: string }, b: { path: string }): number =>
   Number(/\d+/u.exec(a.path)?.[0]) - Number(/\d+/u.exec(b.path)?.[0]);
+
+// ---- reading the order ------------------------------------------------------------------------
+
+export interface SlideOrderEntry {
+  readonly id: Id<'StorefrontSlide'>;
+  readonly internalName: string;
+  readonly status: 'live' | 'scheduled';
+  readonly pinned: boolean;
+  readonly startsAt: Temporal.Instant;
+  readonly endsAt: Temporal.Instant;
+  /** The slide is live now and past the position's maximum of live slides in this order. */
+  readonly overLimit: boolean;
+}
+
+export interface SlideOrderView {
+  readonly position: string;
+  readonly scope: string;
+  readonly scopeId: string | null;
+  readonly maxActive: number;
+  readonly slides: readonly SlideOrderEntry[];
+}
+
+/**
+ * The list a reorder of this position and scope accepts, in the order a buyer would read it:
+ * pinned slides first, then the saved order (the projection's sort order, which a reorder
+ * writes), start time and id. The set is the reorder's own read (`livePlacementsAt`), so the two
+ * cannot differ. `overLimit` is judged for now: a buyer shows the first `maxActive` slides whose
+ * window holds now, so a live slide beyond that count is over the limit; a scheduled slide is not
+ * shown yet and is never over it.
+ */
+export async function readSlideOrder(
+  deps: StorefrontDependencies,
+  context: CallContext,
+  query: unknown,
+): Promise<Result<SlideOrderView, ReorderFailure>> {
+  if (adminOf(context) === null) return err({ code: 'access.denied' });
+  const parsed = parseOrderQuery(query);
+  if (!parsed.ok) return err({ code: 'validation.failed', fields: parsed.problems });
+  const { position, scope, scopeId } = parsed.value;
+  const now = deps.clock.now();
+  return deps.unitOfWork.run<SlideOrderView, ReorderFailure>(
+    context.market,
+    async () => {
+      const placements = await deps.slides.livePlacementsAt(
+        context.market,
+        { position: position.key, scope, scopeId },
+        now,
+      );
+      const found = await Promise.all(
+        placements.map((placement) => deps.slides.findSlide(context.market, placement.slideId)),
+      );
+      const records = found.flatMap((slide) => (slide === null ? [] : [slide]));
+      // A stable sort keeps the saved order inside the pinned and the unpinned slides.
+      const ordered = [...records].sort((a, b) => Number(b.pinned) - Number(a.pinned));
+      let liveSoFar = 0;
+      const slides = ordered.map((slide): SlideOrderEntry => {
+        const status = statusOf(slide, now) === 'scheduled' ? 'scheduled' : 'live';
+        const overLimit = status === 'live' && liveSoFar >= position.maxActive;
+        if (status === 'live') liveSoFar += 1;
+        return {
+          id: slide.id,
+          internalName: slide.internalName,
+          status,
+          pinned: slide.pinned,
+          startsAt: slide.startsAt,
+          endsAt: slide.endsAt,
+          overLimit,
+        };
+      });
+      return ok({ position: position.key, scope, scopeId, maxActive: position.maxActive, slides });
+    },
+    { readOnly: true },
+  );
+}
