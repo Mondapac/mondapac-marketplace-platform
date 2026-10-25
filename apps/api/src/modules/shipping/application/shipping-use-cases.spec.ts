@@ -140,6 +140,14 @@ describe.each([['AU'], ['ZZ']] as const)('shipping flat fee in market %s', (code
       sellers,
       audit,
       clock,
+      // The flat fee use cases reach none of the carrier ports.
+      ids: undefined as never,
+      outbox: undefined as never,
+      bookings: undefined as never,
+      carrier: undefined as never,
+      carrierPolicy: undefined as never,
+      pickups: undefined as never,
+      webhookSignature: undefined as never,
     };
   });
 

@@ -146,6 +146,9 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.seller-tag-removed-notice',
       'notifications.seller-tag-restored-notice',
       'notifications.seller-tag-suspended-notice',
+      'ordering.book-carrier-deliveries',
+      'ordering.cancel-carrier-after-refund',
+      'ordering.record-carrier-progress',
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
       'search.index-deleted-offer',
@@ -163,6 +166,13 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.order-confirmation-mail',
       'notifications.seller-new-order-mail',
       'notifications.seller-order-notice',
+      'ordering.book-carrier-deliveries',
+    ]);
+    expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
+      'ordering.cancel-carrier-after-refund',
+    ]);
+    expect(subscriptions.subscribersOf('shipping.carrier-delivery-progressed.v1')).toEqual([
+      'ordering.record-carrier-progress',
     ]);
     expect(subscriptions.subscribersOf('ordering.order-shipped.v1')).toEqual([
       'notifications.order-shipped-mail',

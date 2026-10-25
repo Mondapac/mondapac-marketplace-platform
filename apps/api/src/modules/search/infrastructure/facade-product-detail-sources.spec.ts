@@ -123,6 +123,46 @@ describe.each([
     expect(sellers?.get(SELLER)).toEqual({ storeName: 'Corner Store', minimumOrder: price });
   });
 
+  it('passes the seven badge fields only, in one catalog call with the context unchanged', async () => {
+    const calls: unknown[] = [];
+    const badge = {
+      typeCode: 'halal',
+      typeName: 'Halal',
+      basis: 'MANUFACTURER' as const,
+      sellerClaim: false,
+      issuerName: 'Council',
+      validUntilLocalDate: '2027-01-31',
+      verifiedWithIssuer: true,
+      certificateId: 'must-not-pass',
+    };
+    const badges = await sources({
+      catalog: {
+        offerBadges: (ctx, ids) => {
+          calls.push([ctx, ids]);
+          return Promise.resolve(ok(new Map([[OFFER, [badge]]])));
+        },
+      },
+    }).badges(context, [OFFER]);
+    expect(calls).toEqual([[context, [OFFER]]]);
+    const only = badges?.get(OFFER)?.[0];
+    expect(Object.keys(only ?? {}).sort()).toEqual([
+      'basis',
+      'issuerName',
+      'sellerClaim',
+      'typeCode',
+      'typeName',
+      'validUntilLocalDate',
+      'verifiedWithIssuer',
+    ]);
+  });
+
+  it('asks nothing for no Offers, and gives null for a refused or thrown badge call', async () => {
+    const denied = () => Promise.resolve(err({ code: 'access.denied' as const }));
+    expect(await sources({}).badges(context, [])).toEqual(new Map());
+    expect(await sources({ catalog: { offerBadges: denied } }).badges(context, [OFFER])).toBeNull();
+    expect(await sources({ catalog: { offerBadges: boom } }).badges(context, [OFFER])).toBeNull();
+  });
+
   it('is null on every refusal and every throw', async () => {
     const denied = () => Promise.resolve(err({ code: 'access.denied' as const }));
     const refusing = sources({

@@ -1192,6 +1192,17 @@
     }
   },
   {
+    "action": "sellers.pickup-details.read-for-carrier",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "sellerOrderId": "id"
+    }
+  },
+  {
     "action": "sellers.register.manual-check-recorded",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -1200,6 +1211,30 @@
     "after": {
       "observedOutcome": "enumOf(active|not-found|cancelled)",
       "revisionId": "id"
+    }
+  },
+  {
+    "action": "sellers.store-image.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "imageId": "optional(id)"
+    },
+    "after": {
+      "imageId": "optional(id)",
+      "kind": "enumOf(logo|banner)"
+    }
+  },
+  {
+    "action": "sellers.store-profile.saved",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "revisionId": "id",
+      "revisionNo": "integer"
     }
   },
   {

@@ -74,9 +74,6 @@ export type RecentViewsFailure = { readonly code: 'access.denied' };
 
 const NO_VIEWS: RecentViews = { productIds: [], categoryIds: [] };
 
-/** One settings row per account: a first write and a concurrent one must not both insert. */
-const SERIAL = { isolation: 'serializable' } as const;
-
 /** The signed-in customer's account; null for any other actor (fail closed). */
 function customerOf(context: CallContext): Id<'Account'> | null {
   const actor = context.actor;
@@ -117,18 +114,18 @@ export async function recordCustomerEvent(
   if (!read.ok) return err({ code: 'validation.failed', fields: read.fields });
   if (input.globalPrivacyControl) return ok({ recorded: false });
 
-  // Serializable like the switch: an event read as "on" cannot commit after the switch-off
-  // deleted the account's events (Hassan M1, PR #411).
-  return deps.unitOfWork.run<Recorded, RecordFailure>(
-    context.market,
-    async () => {
-      const setting = await deps.settings.find(context.market, accountId);
-      if (!viewOf(setting).enabled) return ok({ recorded: false });
-      await append(deps, context, { kind: 'account', accountId }, read.facts);
-      return ok({ recorded: true });
-    },
-    SERIAL,
-  );
+  // The account's lock, shared, before the setting is read: an event read as "on" cannot commit
+  // after the switch-off deleted the account's events (Hassan M1, PR #411). The switch takes it
+  // exclusive, so it waits for the records in flight and the records after it read the new
+  // setting (READ COMMITTED reads a fresh snapshot per statement). No SERIALIZABLE, so no 40001
+  // when several events of one customer arrive at once.
+  return deps.unitOfWork.run<Recorded, RecordFailure>(context.market, async () => {
+    await deps.settings.lockAccount(context.market, accountId, 'shared');
+    const setting = await deps.settings.find(context.market, accountId);
+    if (!viewOf(setting).enabled) return ok({ recorded: false });
+    await append(deps, context, { kind: 'account', accountId }, read.facts);
+    return ok({ recorded: true });
+  });
 }
 
 /**
@@ -257,9 +254,12 @@ export async function setPersonalization(
     return err({ code: 'validation.failed', fields: [{ path: 'enabled', code: 'type' }] });
   }
 
+  // The account's lock, exclusive, first: one switch at a time per account (so a first write and
+  // a concurrent one cannot both insert the row), and no record of the account in between.
   return deps.unitOfWork.run<PersonalizationView, PersonalizationFailure>(
     context.market,
     async () => {
+      await deps.settings.lockAccount(context.market, accountId, 'exclusive');
       const before = await deps.settings.find(context.market, accountId);
       if (viewOf(before).enabled === enabled) return ok(viewOf(before));
       const now = deps.clock.now();
@@ -274,7 +274,6 @@ export async function setPersonalization(
       if (!enabled) await deps.events.deleteForAccount(context.market, accountId);
       return ok(viewOf(record));
     },
-    SERIAL,
   );
 }
 
@@ -302,6 +301,8 @@ export async function forgetAccount(
   input: { readonly accountId: Id<'Account'> },
 ): Promise<Result<{ readonly events: number }, never>> {
   return deps.unitOfWork.run(context.market, async () => {
+    // Exclusive, like the switch: a record in flight commits first and is deleted here.
+    await deps.settings.lockAccount(context.market, input.accountId, 'exclusive');
     const events = await deps.events.deleteForAccount(context.market, input.accountId);
     await deps.settings.delete(context.market, input.accountId);
     return ok({ events });

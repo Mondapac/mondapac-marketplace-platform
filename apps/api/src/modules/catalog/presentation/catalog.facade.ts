@@ -7,6 +7,7 @@ import type { OfferSellUnitsSystemQuery } from '../application/use-cases/offer-s
 import type { OfferSellUnitsQuery } from '../application/use-cases/offer-sell-units.use-case';
 import type { OfferListingsQuery } from '../application/use-cases/offer-listings.use-case';
 import type { OfferListingsSystemQuery } from '../application/use-cases/offer-listings-system.use-case';
+import type { OfferBadgesQuery } from '../application/use-cases/offer-badges.use-case';
 import type { PublishedProductQuery } from '../application/use-cases/published-product.use-case';
 import type { PublishedProductImagesQuery } from '../application/use-cases/published-product-images.use-case';
 import type { PendingProductRevisionsQuery } from '../application/use-cases/pending-product-revisions.use-case';
@@ -15,6 +16,7 @@ import type {
   CatalogBatchTooLarge,
   CatalogFacade,
   CatalogValidationFailed,
+  OfferBadgesMap,
   OfferListingsMap,
   OfferSellUnitsMap,
   PublishedImageRef,
@@ -32,6 +34,7 @@ export interface CatalogFacadeUseCases {
   readonly sellUnitLabels: SellUnitLabelsQuery;
   readonly offerListings: OfferListingsQuery;
   readonly offerListingsSystem: OfferListingsSystemQuery;
+  readonly offerBadges: OfferBadgesQuery;
   readonly publishedProduct: PublishedProductQuery;
   readonly publishedProductImages: PublishedProductImagesQuery;
   readonly pendingProductRevisions: PendingProductRevisionsQuery;
@@ -107,6 +110,13 @@ export class CatalogFacadeImplementation implements CatalogFacade {
         ? this.useCases.offerListingsSystem
         : this.useCases.offerListings;
     return useCase.execute(context, { keys, locale });
+  }
+
+  offerBadges(
+    context: CallContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<Result<OfferBadgesMap, AccessDenied | CatalogValidationFailed>> {
+    return this.useCases.offerBadges.execute(context, { offerIds });
   }
 
   publishedProduct(

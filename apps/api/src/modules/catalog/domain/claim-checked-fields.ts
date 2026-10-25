@@ -234,6 +234,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   PublishedImageRef: { noCustomerText: 'a photo id and its pixel size; no text' },
   OfferListingTag: { noCustomerText: 'tag status, basis code and the OfferListingBadge copy' },
+  OfferBadge: {
+    noCustomerText:
+      "allow-listed copy of certification's live badge and its type name; never entered here (offerBadges)",
+  },
   OfferListingBadge: {
     noCustomerText:
       "display copy of certification's badge data, written only by certification and never entered here (ADR-0028 d3)",

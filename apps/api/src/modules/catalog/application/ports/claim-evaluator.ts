@@ -38,6 +38,22 @@ export interface ClaimEvaluator {
     context: CallContext,
     typeId: string,
   ): Promise<Result<string | null, ClaimCheckUnavailable>>;
+
+  /**
+   * The names of the Market's active certification types in one locale (no fallback to another
+   * locale), by type code, each with the id of the type revision the name belongs to. A type
+   * without a name in that locale is left out. Display text for `offerBadges`.
+   */
+  typeNames(
+    context: CallContext,
+    locale: string,
+  ): Promise<Result<ReadonlyMap<string, CertificationTypeName>, ClaimCheckUnavailable>>;
+}
+
+/** The display name of a certification type and the published revision it was read from. */
+export interface CertificationTypeName {
+  readonly typeRevisionId: string;
+  readonly name: string;
 }
 
 export const CLAIM_EVALUATOR = Symbol('CLAIM_EVALUATOR');

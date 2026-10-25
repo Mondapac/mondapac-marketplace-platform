@@ -1,5 +1,6 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerEvents } from '../../platform/events/event-catalogue';
+import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -36,6 +37,9 @@ import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case';
 import { SellerOrderCustomerNames } from './application/use-cases/seller-order-customer-names.use-case';
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
+import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deliveries.use-case';
+import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
+import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier-after-refund.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
@@ -65,6 +69,7 @@ import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
 import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
 import { OrderingFacadeImplementation } from './presentation/ordering.facade';
+import { carrierSubscriptions } from './presentation/subscribers/carrier.subscriptions';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: OrderingDependencies) => U;
 
@@ -142,6 +147,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.auditWriterFor('ordering'),
     registerAuditActions('ordering', ORDERING_AUDIT_ACTIONS),
     registerEvents('ordering', ORDERING_EVENTS),
+    // SHP-02/03: the real-time carrier's booking and progress (ordering.inbox).
+    registerSubscriptionsFrom(
+      'ordering',
+      [BookCarrierDeliveries, RecordCarrierProgress, CancelCarrierAfterRefund],
+      (
+        book: BookCarrierDeliveries,
+        record: RecordCarrierProgress,
+        cancel: CancelCarrierAfterRefund,
+      ) => carrierSubscriptions(book, record, cancel),
+    ),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
     ...orderingProviders,
     ...[
@@ -164,6 +179,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OrderNoticeQuery,
       ShipmentNoticeQuery,
       SellerOrderCustomerNames,
+      BookCarrierDeliveries,
+      RecordCarrierProgress,
+      CancelCarrierAfterRefund,
       AdminRefundOrder,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),

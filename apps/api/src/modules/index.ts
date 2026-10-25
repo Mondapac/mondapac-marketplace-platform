@@ -4,6 +4,7 @@ import { IdentityModule } from './identity';
 import { LegalModule } from './legal';
 import { CustomersModule } from './customers';
 import { SellersModule } from './sellers';
+import { SellerStoreProfileModule } from './sellers/store-profile.module';
 import { CertificationModule } from './certification';
 import { CatalogModule } from './catalog';
 import { InventoryModule } from './inventory';
@@ -43,3 +44,11 @@ export const CORE_MODULES = [
   EngagementModule,
   AssistantModule,
 ];
+
+/**
+ * Modules that only bind one core module to another and are not a bounded context of their own
+ * (so they are not in {@link CORE_MODULES}, one per folder). `SellerStoreProfileModule` binds
+ * certification's claim-term matching to the sellers store profile texts; sellers cannot import
+ * certification without a module cycle.
+ */
+export const BINDING_MODULES = [SellerStoreProfileModule];

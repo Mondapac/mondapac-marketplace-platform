@@ -17,6 +17,17 @@ export interface CertificationBadge {
   readonly type: string;
   /** Accessible label of the seal, e.g. "Halal certified". */
   readonly label: string;
+  // The fields below come from the live badge of the product page's read; the samples have none.
+  /** Whose certificate it is: the seller's own, or the product manufacturer's. */
+  readonly basis?: 'SELLER' | 'MANUFACTURER';
+  /** True when this is the seller's own declaration, not an outside body's certificate. */
+  readonly sellerClaim?: boolean;
+  /** The issuing body's name, when there is one. */
+  readonly issuer?: string;
+  /** ISO calendar date (`YYYY-MM-DD`) the certificate is valid until. */
+  readonly validUntil?: string;
+  /** True when the platform confirmed the certificate with its issuer. */
+  readonly verifiedWithIssuer?: boolean;
 }
 
 export interface ProductCard {
@@ -490,6 +501,10 @@ export interface SellerShop {
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;
+  /** The logo the store uploaded; it wins over `logo`. Absent: the default tile shows. */
+  readonly logoImage?: StoreImage;
+  /** The banner the store uploaded. Absent: the default banner shows. */
+  readonly banner?: StoreImage;
   /** Suburb and city only, or the ServiceArea's name; the seller's address is never shown. */
   readonly location: string;
   readonly sellingSince: number;
@@ -525,6 +540,16 @@ export interface SellerShop {
    * read is real: the tab then pages through the cards and shows a failed read inside the tab.
    */
   readonly storeProducts?: StoreProducts;
+}
+
+/**
+ * A store picture (logo or banner) the store published: where the buyer site serves it from and
+ * its pixels, so the page can reserve the space. Absent when the store has none.
+ */
+export interface StoreImage {
+  readonly src: string;
+  readonly width: number;
+  readonly height: number;
 }
 
 /** A seller page with every part known: what the sample data gives. */
@@ -623,6 +648,8 @@ export interface SellerListing {
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;
+  /** The logo the store uploaded; it wins over `logo`. Absent: the default tile shows. */
+  readonly logoImage?: StoreImage;
   /** Suburb only; the seller's address is never shown. */
   readonly city: string;
   readonly sellingSince: number;

@@ -1,11 +1,16 @@
-import { useLocale, useTranslations } from 'next-intl';
+import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { sealArt } from '../certification/certification-seal.tsx';
 import { Crumbs } from '../catalog/results.tsx';
 import { formatMoney } from '../format/money.ts';
 import { ProductCard } from '../home/product-card.tsx';
 import { Icon } from '../icons/icon.tsx';
-import type { Category, ProductDetail, ProductOffer } from '../storefront/types.ts';
+import type {
+  Category,
+  CertificationBadge,
+  ProductDetail,
+  ProductOffer,
+} from '../storefront/types.ts';
 import { BuyControl } from './buy-control.tsx';
 import { Description } from './description.tsx';
 import { Gallery } from './gallery.tsx';
@@ -53,7 +58,7 @@ export function ProductPage({
             category={product.category}
             photos={product.photos}
             thumbs={product.photoThumbs}
-            certifications={offer.certifications}
+            certifications={offer.certifications.filter((badge) => badge.sellerClaim !== true)}
             special={offer.wasPrice !== undefined}
           />
         </div>
@@ -90,8 +95,11 @@ export function ProductPage({
                     <div className="osl">
                       <SellerBlock offer={o} placement="row" />
                       {o.certifications.map((c) => (
-                        <span key={c.type} className="badge hl">
-                          {c.label}
+                        <span
+                          key={c.type}
+                          className={c.sellerClaim === true ? 'badge decl' : 'badge hl'}
+                        >
+                          {c.sellerClaim === true ? t('declared-chip', { name: c.label }) : c.label}
                         </span>
                       ))}
                     </div>
@@ -228,17 +236,77 @@ function Certificates({ offer }: { readonly offer: ProductOffer }) {
       <div className="certs">
         {offer.certifications.map((badge) => (
           <div key={badge.type} className="certbox">
-            <span className="cl" aria-hidden="true">
-              {sealArt(badge.type)}
-            </span>
+            {badge.sellerClaim === true ? null : (
+              <span className="cl" aria-hidden="true">
+                {sealArt(badge.type)}
+              </span>
+            )}
             <div>
-              <b>{badge.label}</b>
-              <p>{t('certificate-issued', { seller: offer.seller.name })}</p>
+              <b>
+                {badge.sellerClaim === true
+                  ? t('declared-badge', { name: badge.label })
+                  : badge.label}
+              </b>
+              <CertificateNote badge={badge} seller={offer.seller.name} />
             </div>
           </div>
         ))}
       </div>
     </section>
+  );
+}
+
+/**
+ * Who stands behind a badge, in words, as a short hierarchy under the type name: one sentence for
+ * who issued it and to whom, then one compact line for when it ends and how it was checked. The
+ * seller's own declaration is never worded as certified. Dates are calendar dates, so they are
+ * formatted in UTC and never shift a day.
+ */
+function CertificateNote({
+  badge,
+  seller,
+}: {
+  readonly badge: CertificationBadge;
+  readonly seller: string;
+}) {
+  const t = useTranslations('product');
+  const format = useFormatter();
+  if (badge.sellerClaim === true) return <p>{t('certificate-declared', { seller })}</p>;
+  const issuer = badge.issuer;
+  const manufacturer = badge.basis === 'MANUFACTURER';
+  const who =
+    issuer === undefined
+      ? manufacturer
+        ? t('certificate-issued-manufacturer')
+        : t('certificate-issued', { seller })
+      : manufacturer
+        ? t('certificate-issued-manufacturer-by', { issuer })
+        : t('certificate-issued-by', { issuer, seller });
+  const verified = badge.verifiedWithIssuer === true;
+  return (
+    <>
+      <p>{who}</p>
+      <p className="certmeta">
+        {badge.validUntil === undefined ? null : (
+          <span>
+            {t('certificate-valid-until', {
+              date: format.dateTime(new Date(`${badge.validUntil}T00:00:00Z`), {
+                dateStyle: 'medium',
+                timeZone: 'UTC',
+              }),
+            })}
+          </span>
+        )}
+        {verified ? (
+          <span className="certok">
+            <Icon name="check" />
+            {t('certificate-verified')}
+          </span>
+        ) : (
+          <span>{t('certificate-reviewed')}</span>
+        )}
+      </p>
+    </>
   );
 }
 

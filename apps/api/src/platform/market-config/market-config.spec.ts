@@ -9,7 +9,12 @@ import {
   TEST_MARKETS,
   testMarketId,
 } from '../../../test/support/test-config';
-import { InvalidMarketConfigError, loadMarketConfigs } from './market-config';
+import {
+  carrierCallBudgetMs,
+  InvalidMarketConfigError,
+  loadMarketConfigs,
+  MAX_CARRIER_CALL_MS,
+} from './market-config';
 import { MarketNotHostedError, MarketRegistry } from './market-registry';
 
 const QQ = testMarketId('QQ');
@@ -2210,5 +2215,46 @@ describe('MarketRegistry', () => {
   it('rejects a market this Region Stack does not host', () => {
     expect(registry.isHosted(testMarketId('NZ'))).toBe(false);
     expect(() => registry.get(testMarketId('NZ'))).toThrow(MarketNotHostedError);
+  });
+});
+
+describe('the shipping section (the real-time carrier, SHP-02/03)', () => {
+  const CARRIER = {
+    carrier: 'mondapac-drive',
+    displayName: 'Mondapac Drive',
+    baseUrl: 'https://drive-api.qq.test',
+    serviceAreas: ['qq-central'],
+    parcel: { weightGrams: 5000, volumeLitres: 20, temperature: 'ambient' },
+    mode: 'on_demand',
+    timeoutMs: 2500,
+    maxAttempts: 2,
+    backoffMs: 250,
+    circuitBreaker: { failureThreshold: 5, cooldownSeconds: 30 },
+  };
+  const load = (carrier: Record<string, unknown>) =>
+    loadMarketConfigs(
+      [directoryWith({ 'QQ.json': { ...VALID, shipping: { realTimeCarrier: carrier } } })],
+      [QQ],
+    ).get(QQ)!.shipping;
+
+  it('configures both Market fixtures within the call budget, and accepts a Market without it', () => {
+    for (const market of loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS).values()) {
+      const carrier = market.shipping!.realTimeCarrier!;
+      expect(carrierCallBudgetMs(carrier)).toBeLessThanOrEqual(MAX_CARRIER_CALL_MS);
+    }
+    expect(load(CARRIER)?.realTimeCarrier?.timeoutMs).toBe(2500);
+    expect(loadMarketConfigs([directoryWith({ 'QQ.json': VALID })], [QQ]).get(QQ)!.shipping).toBe(
+      undefined,
+    );
+  });
+
+  it.each([
+    ['a call longer than the handler allows', { timeoutMs: 4000, maxAttempts: 2 }],
+    ['backoffs that do not fit', { timeoutMs: 1000, maxAttempts: 4, backoffMs: 1000 }],
+    ['a base URL with a query', { baseUrl: 'https://drive.qq.test/api?x=1' }],
+    ['a plain http base URL', { baseUrl: 'http://drive.qq.test' }],
+    ['another carrier', { carrier: 'other-courier' }],
+  ])('rejects %s', (_label, change) => {
+    expect(() => load({ ...CARRIER, ...change })).toThrow(InvalidMarketConfigError);
   });
 });

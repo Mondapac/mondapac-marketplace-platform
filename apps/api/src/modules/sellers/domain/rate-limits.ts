@@ -17,6 +17,8 @@ export const RATE_COUNTER_KINDS = [
   'save.account.minute',
   'slug-check.account.day',
   'slug-check.account.minute',
+  'store-image.account.day',
+  'store-image.account.minute',
   'submit.file',
   'withdraw.file',
 ] as const;
@@ -41,6 +43,16 @@ export const SLUG_CHECK_LIMITS: readonly RateLimit[] = Object.freeze([
 export const SAVE_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'save.account.minute', limit: 60, windowMinutes: 1 },
   { kind: 'save.account.day', limit: 1000, windowMinutes: DAY },
+]);
+
+/**
+ * Store logo and banner saves and removals per account (slice 12 part 2; Hassan H2): each save
+ * decodes a picture, so it has its own, smaller limit than a text save: 10 per minute and 100
+ * per 24 h. A save and a removal share the counters.
+ */
+export const STORE_IMAGE_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'store-image.account.minute', limit: 10, windowMinutes: 1 },
+  { kind: 'store-image.account.day', limit: 100, windowMinutes: DAY },
 ]);
 
 /** Submissions per seller file (design 6.5): submit, submit again, request-change. */

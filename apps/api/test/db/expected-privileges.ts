@@ -347,6 +347,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'withdrawn_by_kind',
       ],
     },
+    // docs/design/data/sellers.md 3.8 (slice 12 part 2): a store profile revision is insert-only; the
+    // current logo or banner row of a kind is replaced by deleting it and inserting the new one,
+    // and its renditions go by the foreign key cascade.
+    'sellers.store_profile_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'sellers.store_images': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'sellers.store_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/inventory.md section 7 (slice 1): the inbox gets DELETE with the prune job;
     // a seller inventory is never deleted and a source has no delete in the brief; the seller,
     // the key columns and the Default flag are immutable, so UPDATE is by column.
@@ -526,6 +532,16 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['amount', 'currency', 'updated_at', 'updated_by'],
     },
+    // Shipping, the real-time carrier (SHP-02/03): a booking is stored once the carrier confirms
+    // it and only its progress moves; a carrier webhook event is taken once by its id; shipping
+    // writes `shipping.carrier-delivery-progressed.v1` and ordering records each one it handled.
+    'shipping.carrier_bookings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['carrier_status', 'progress', 'updated_at', 'version'],
+    },
+    'shipping.carrier_events': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'shipping.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'ordering.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Phase 6 package 1: the order emails. Ordering writes `ordering.order-paid.v1` (the relay marks
     // it published); notifications records each event it handled, once per handler.
     'notifications.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },

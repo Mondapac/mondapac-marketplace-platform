@@ -1333,7 +1333,8 @@
     "tab": {
       "security": "Security",
       "payout": "Payout account",
-      "locations": "Stock locations"
+      "locations": "Stock locations",
+      "store-profile": "Store profile"
     }
   },
   "security": {
@@ -1744,6 +1745,92 @@
       "title": "Set up two-step first",
       "body": "{action} needs a code from an authenticator app, and two-step verification isn't set up on your account yet. Set it up in Security, then try again.",
       "action": "Go to Security"
+    }
+  },
+  "store-profile": {
+    "title": "Store profile",
+    "intro": "What buyers see on your store page: a few words about your store, a logo and a banner. Changes are public as soon as you save them.",
+    "loading": "Loading the store profile",
+    "view-only": "You can see the store profile but not change it. Ask the store owner for access.",
+    "error": {
+      "unavailable": "The store profile is unavailable right now. Try again later."
+    },
+    "about": {
+      "title": "About your store",
+      "help": "Plain text, up to {max} characters. Links and web addresses are not allowed. Certificates are shown as verified badges after our team checks them.",
+      "field": "About your store ({language})",
+      "counter": "{count} of {max} characters",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved. Buyers can see it now.",
+      "loading": "Loading the latest version",
+      "load-latest": "Show the latest version",
+      "error": {
+        "stale": "Someone else saved a newer version first. Your changes are still in the box; show the latest version to compare, then save again.",
+        "throttled": "Too many saves. Wait {seconds, plural, one {# second} other {# seconds}} and try again.",
+        "denied": "You do not have access to change the store profile.",
+        "csrf": "Your session needs refreshing. Reload the page and try again.",
+        "unavailable": "The store profile is unavailable right now. Try again later.",
+        "not-ready": "Your store is not ready yet. Try again in a moment.",
+        "unknown": "Something went wrong. Try again."
+      },
+      "rule": {
+        "length": "Use at most {max} characters.",
+        "characters": "This text has characters that are not allowed.",
+        "url": "Remove web addresses and links, or add a space after a full stop. Buyers contact you through the platform.",
+        "claim-term": "This text claims a certification. Remove that wording. Certificates are shown as verified badges after our team checks them.",
+        "invalid": "This text is not valid."
+      }
+    },
+    "logo": {
+      "title": "Logo",
+      "help": "Shown next to your store name. A square picture works best. At least 128 × 128 px.",
+      "none": "No logo yet.",
+      "alt": "Your store logo",
+      "confirm": "Remove the logo?",
+      "saved": "Logo saved. Buyers can see it now.",
+      "removed": "Logo removed."
+    },
+    "banner": {
+      "title": "Banner",
+      "help": "A wide picture at the top of your store page. Keep the important part in the middle: the edges are cropped on phones and wide screens. The Share button covers the top right, and your logo the lower left from tablet width up. Use 1200 × 300 px or larger.",
+      "none": "No banner yet.",
+      "alt": "Your store banner",
+      "preview": {
+        "label": "Preview",
+        "phone": "Phone",
+        "desktop": "Desktop",
+        "logo-note": "The dashed square is where your logo sits on a computer."
+      },
+      "confirm": "Remove the banner?",
+      "saved": "Banner saved. Buyers can see it now.",
+      "removed": "Banner removed."
+    },
+    "image": {
+      "choose": "Choose a picture",
+      "replace": "Replace",
+      "uploading": "Uploading…",
+      "remove": "Remove",
+      "removing": "Removing…",
+      "remove-yes": "Yes, remove",
+      "cancel": "Cancel",
+      "formats": "JPEG, PNG or WebP.",
+      "error": {
+        "too-large": "That picture is too large. Choose one under 25 MB.",
+        "unsupported": "That file is not a JPEG, PNG or WebP picture.",
+        "too-many-pixels": "That picture has too many pixels. Choose a smaller one.",
+        "unreadable": "We could not read that picture. Try another file.",
+        "too-small": {
+          "logo": "That logo is too small. Use at least 128 × 128 px.",
+          "banner": "That banner is too small. Use at least 1200 × 300 px."
+        },
+        "throttled": "Too many saves. Wait {seconds, plural, one {# second} other {# seconds}} and try again.",
+        "denied": "You do not have access to change the store profile.",
+        "csrf": "Your session needs refreshing. Reload the page and try again.",
+        "not-ready": "Your store is not ready yet. Try again in a moment.",
+        "unavailable": "The store profile is unavailable right now. Try again later.",
+        "unknown": "Something went wrong. Try again."
+      }
     }
   }
 }

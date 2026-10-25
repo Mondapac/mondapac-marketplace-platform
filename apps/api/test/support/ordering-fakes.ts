@@ -47,7 +47,15 @@ import type {
 import type { OrderTaxCategories } from '../../src/modules/ordering/application/ports/order-tax-categories';
 import type { RefundRepository } from '../../src/modules/ordering/application/ports/refund.repository';
 import type { TaxAnswer, TaxFacade, TaxFailure, TaxLineInput } from '../../src/modules/tax';
-import type { FlatFeeMap, ShippingFacade, ShippingFailure } from '../../src/modules/shipping';
+import type {
+  CarrierBookingOutcome,
+  CarrierDeliveryFailure,
+  CarrierDeliveryRequest,
+  CarrierShipment,
+  FlatFeeMap,
+  ShippingFacade,
+  ShippingFailure,
+} from '../../src/modules/shipping';
 import type {
   CommitFailure,
   InventoryOrderingPort,
@@ -326,6 +334,44 @@ export class FakeShipping implements ShippingFacade {
         ),
       ),
     );
+  }
+  /** What `bookCarrierDelivery` answers per seller order id; `seller-managed` when absent. */
+  carrierBookings = new Map<string, Result<CarrierBookingOutcome, CarrierDeliveryFailure>>();
+  /** Every booking request, as shipping received it (personal data of fixtures only). */
+  carrierRequests: CarrierDeliveryRequest[] = [];
+  /** The carrier delivery of each seller order id. */
+  carrierShipments = new Map<string, CarrierShipment>();
+  carrierDown = false;
+  bookCarrierDelivery(
+    _c: CallContext,
+    request: CarrierDeliveryRequest,
+  ): Promise<Result<CarrierBookingOutcome, CarrierDeliveryFailure>> {
+    this.carrierRequests.push(request);
+    return Promise.resolve(
+      this.carrierBookings.get(request.sellerOrderId) ?? ok('seller-managed' as const),
+    );
+  }
+  carrierShipment(
+    _c: CallContext,
+    sellerOrderId: string,
+  ): Promise<Result<CarrierShipment, CarrierDeliveryFailure>> {
+    if (this.carrierDown) return Promise.resolve(err({ code: 'shipping.carrier-unavailable' }));
+    const shipment = this.carrierShipments.get(sellerOrderId);
+    return Promise.resolve(
+      shipment === undefined ? err({ code: 'shipping.carrier-delivery-not-found' }) : ok(shipment),
+    );
+  }
+  /** The seller order ids `cancelCarrierDelivery` was asked for, and its answer. */
+  carrierCancels: string[] = [];
+  cancelAnswer: Result<'cancelled' | 'not-cancellable' | 'none', CarrierDeliveryFailure> = ok(
+    'none' as const,
+  );
+  cancelCarrierDelivery(
+    _c: CallContext,
+    sellerOrderId: string,
+  ): Promise<Result<'cancelled' | 'not-cancellable' | 'none', CarrierDeliveryFailure>> {
+    this.carrierCancels.push(sellerOrderId);
+    return Promise.resolve(this.cancelAnswer);
   }
 }
 

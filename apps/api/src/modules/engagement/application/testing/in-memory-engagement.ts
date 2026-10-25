@@ -100,18 +100,28 @@ const key = (market: MarketContext, accountId: string) => `${market.marketId}|${
 
 export class InMemoryPersonalizationSettings implements PersonalizationSettingRepository {
   readonly rows = new Map<string, PersonalizationSettingRecord>();
+  /** Every call in order, for a test that checks the account lock comes first. */
+  readonly log: string[] = [];
 
   find(market: MarketContext, accountId: Id<'Account'>) {
+    this.log.push('find');
     return Promise.resolve(this.rows.get(key(market, accountId)) ?? null);
   }
 
   save(market: MarketContext, setting: PersonalizationSettingRecord) {
+    this.log.push('save');
     this.rows.set(key(market, setting.accountId), setting);
     return Promise.resolve();
   }
 
   delete(market: MarketContext, accountId: Id<'Account'>) {
+    this.log.push('delete');
     return Promise.resolve(this.rows.delete(key(market, accountId)));
+  }
+
+  lockAccount(market: MarketContext, accountId: Id<'Account'>, mode: 'shared' | 'exclusive') {
+    this.log.push(`lock:${mode}:${key(market, accountId)}`);
+    return Promise.resolve();
   }
 }
 

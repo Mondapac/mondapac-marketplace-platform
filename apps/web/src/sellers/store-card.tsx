@@ -27,7 +27,7 @@ export function StoreCard({
     <article className="slc">
       <div className="slc-h">
         <span className="slc-lg">
-          <SellerLogo logo={store.logo} />
+          <SellerLogo logo={store.logo} image={store.logoImage} />
         </span>
         <div>
           <h3>

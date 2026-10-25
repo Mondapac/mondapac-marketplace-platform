@@ -282,5 +282,19 @@
     "expiryWarningThresholdsDays": [30, 14, 1],
     "renewalSubmitByDays": 2,
     "manufacturerBasisEnabled": true
+  },
+  "shipping": {
+    "realTimeCarrier": {
+      "carrier": "mondapac-drive",
+      "displayName": "Zed Courier",
+      "baseUrl": "http://127.0.0.1:9/zz",
+      "serviceAreas": ["zz-central"],
+      "parcel": { "weightGrams": 2000, "volumeLitres": 10, "temperature": "chilled" },
+      "mode": "scheduled",
+      "timeoutMs": 1000,
+      "maxAttempts": 2,
+      "backoffMs": 0,
+      "circuitBreaker": { "failureThreshold": 2, "cooldownSeconds": 10 }
+    }
   }
 }

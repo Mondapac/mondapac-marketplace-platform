@@ -32,6 +32,19 @@ export interface ReviewerBusinessDetails {
   readonly registeredAddress: Readonly<Record<string, string>> | null;
 }
 
+/**
+ * What `carrierPickup` returns: where the real-time carrier collects a seller's parcel, from the
+ * approved revision. PERSONAL DATA: shipping hands it to the carrier and never logs, stores or
+ * forwards it anywhere else.
+ */
+export interface CarrierPickup {
+  readonly sellerId: Id<'Seller'>;
+  readonly storeName: string;
+  readonly phone: string;
+  /** The operating address: the fields of the Market's `address.format`. */
+  readonly operatingAddress: Readonly<Record<string, string>>;
+}
+
 /** The seller is unknown here, or has no approved revision yet. Both answer alike. */
 export interface SellerDetailsNotFound {
   readonly code: 'seller.details-not-found';
@@ -127,6 +140,24 @@ export interface SellersFacade {
   ): Promise<
     Result<
       ReviewerBusinessDetails,
+      AccessDenied | SellersValidationFailed | SellerDetailsNotFound | SellersUnavailable
+    >
+  >;
+
+  /**
+   * `carrierPickup` (SHP-02/03): the store name, phone and operating address of the seller's
+   * **approved** revision, for shipping to hand to the real-time carrier as the pickup of one
+   * paid seller order. Rule `system`. Personal data: one
+   * `sellers.pickup-details.read-for-carrier` audit row (with the seller order id) is written per
+   * read, and a refused row means nothing is returned. An unknown id, another Market's seller and
+   * a seller with no approved revision are `seller.details-not-found`. Not exposed over HTTP.
+   */
+  carrierPickup(
+    context: CallContext,
+    request: { readonly sellerId: Id<'Seller'>; readonly sellerOrderId: string },
+  ): Promise<
+    Result<
+      CarrierPickup,
       AccessDenied | SellersValidationFailed | SellerDetailsNotFound | SellersUnavailable
     >
   >;
