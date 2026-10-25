@@ -48,4 +48,9 @@ export class SellersPickupDirectory implements PickupDirectory {
       notes: null,
     });
   }
+
+  async postcodesOf(context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
+    const read = await this.sellers.pickupPostcodes(context, sellerIds);
+    return read.ok ? ok(read.value) : err({ code: 'pickup.unavailable' } as const);
+  }
 }

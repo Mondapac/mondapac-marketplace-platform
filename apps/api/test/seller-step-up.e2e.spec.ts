@@ -134,7 +134,13 @@ describe.each(TEST_MARKETS)('seller two-step rules per action in market %s', (co
             execute: (_context: unknown, input: unknown) => {
               saves.push(input);
               return Promise.resolve(
-                ok({ version: 2, minimumOrder: null, currency: 'AUD', maximumAmount: 1n }),
+                ok({
+                  version: 2,
+                  minimumOrder: null,
+                  currency: 'AUD',
+                  maximumAmount: 1n,
+                  delivery: null,
+                }),
               );
             },
           }),

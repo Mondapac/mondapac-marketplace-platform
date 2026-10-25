@@ -1253,7 +1253,19 @@ const shippingSchema = z.strictObject({
         failureThreshold: z.number().int().min(1).max(50),
         cooldownSeconds: z.number().int().min(1).max(600),
       }),
+      /**
+       * The range a live quote must fall in, in minor units of the Market's currency, to be
+       * charged at checkout (Hassan, SHP-02/03): outside it the seller's flat fee is charged.
+       */
+      quoteBounds: z.strictObject({
+        minMinor: z.number().int().min(1).max(1_000_000_000),
+        maxMinor: z.number().int().min(1).max(1_000_000_000),
+      }),
     })
+    .refine(
+      (carrier) => carrier.quoteBounds.minMinor <= carrier.quoteBounds.maxMinor,
+      'quoteBounds.minMinor must not exceed maxMinor',
+    )
     .refine(
       (carrier) => carrierCallBudgetMs(carrier) <= MAX_CARRIER_CALL_MS,
       `timeoutMs × maxAttempts plus the backoffs must fit in ${MAX_CARRIER_CALL_MS} ms`,

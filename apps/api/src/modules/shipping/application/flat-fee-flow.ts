@@ -129,24 +129,31 @@ function readOne(
   );
 }
 
-/** The system read behind the facade: the fees of up to 100 distinct sellers. */
-export async function readFlatFees(
-  deps: ShippingDependencies,
-  context: CallContext,
-  input: { readonly sellerIds: unknown },
-): Promise<Result<ReadonlyMap<Id<'Seller'>, Money>, FlatFeesFailure>> {
-  const raw = input?.sellerIds;
+/** Up to 100 seller ids, parsed, distinct, in first-occurrence order. */
+export function sellerIdsOf(raw: unknown): Result<readonly Id<'Seller'>[], FlatFeesFailure> {
   if (!Array.isArray(raw) || raw.length > MAX_IDS) {
     return err({ code: 'validation.failed', fields: [{ path: 'sellerIds', code: 'range' }] });
   }
   const ids: Id<'Seller'>[] = [];
-  for (const value of raw) {
+  for (const value of raw as unknown[]) {
     const id = sellerIdOf(value);
     if (id === null) {
       return err({ code: 'validation.failed', fields: [{ path: 'sellerIds', code: 'format' }] });
     }
     if (!ids.includes(id)) ids.push(id);
   }
+  return ok(ids);
+}
+
+/** The system read behind the facade: the fees of up to 100 distinct sellers. */
+export async function readFlatFees(
+  deps: ShippingDependencies,
+  context: CallContext,
+  input: { readonly sellerIds: unknown },
+): Promise<Result<ReadonlyMap<Id<'Seller'>, Money>, FlatFeesFailure>> {
+  const parsed = sellerIdsOf(input?.sellerIds);
+  if (!parsed.ok) return parsed;
+  const ids = parsed.value;
   return deps.unitOfWork.run<ReadonlyMap<Id<'Seller'>, Money>, FlatFeesFailure>(
     context.market,
     async () => {

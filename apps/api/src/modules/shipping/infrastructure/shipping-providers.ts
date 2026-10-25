@@ -23,6 +23,7 @@ import {
 } from '../application/ports/flat-fee.repository';
 import { PICKUP_DIRECTORY, type PickupDirectory } from '../application/ports/pickup-directory';
 import { SELLER_DIRECTORY, type SellerDirectory } from '../application/ports/seller-directory';
+import { STORE_DIRECTORY, type StoreDirectory } from '../application/ports/store-directory';
 import { SHIPPING_POLICY, type ShippingPolicy } from '../application/ports/shipping-policy';
 import { CircuitBreaker } from './circuit-breaker';
 import { ConfigCarrierPolicy } from './config-carrier-policy';
@@ -34,6 +35,7 @@ import { PrismaCarrierBookingRepository } from './prisma-carrier-booking.reposit
 import { PrismaFlatFeeRepository } from './prisma-flat-fee.repository';
 import { SellersPickupDirectory } from './sellers-pickup-directory';
 import { SellersSellerDirectory } from './sellers-seller-directory';
+import { SellersStoreDirectory } from './sellers-store-directory';
 
 /** Binds the ports of shipping. Only this layer may reach `PrismaService`. */
 export const shippingProviders: readonly FactoryProvider[] = [
@@ -52,6 +54,11 @@ export const shippingProviders: readonly FactoryProvider[] = [
     provide: SELLER_DIRECTORY,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): SellerDirectory => new SellersSellerDirectory(sellers),
+  },
+  {
+    provide: STORE_DIRECTORY,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): StoreDirectory => new SellersStoreDirectory(sellers),
   },
   {
     provide: CARRIER_BOOKING_REPOSITORY,
@@ -76,6 +83,7 @@ export const shippingProviders: readonly FactoryProvider[] = [
         policy,
         config.mondapacDrive.apiKeys,
         new DriveHttpClient(new CircuitBreaker(clock)),
+        clock,
       ),
   },
   {

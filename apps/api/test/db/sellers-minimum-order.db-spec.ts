@@ -156,7 +156,7 @@ describe.each(TEST_MARKETS)('the seller minimum order in market %s', (code) => {
 
     const found = await inUnit(() => profiles.find(market, sellerId));
 
-    expect(found).toEqual({ version: 1, approved: true, minimumOrder: null });
+    expect(found).toEqual({ version: 1, approved: true, minimumOrder: null, delivery: null });
   });
 
   it('reports a seller without an approved revision as not approved', async () => {
@@ -185,6 +185,7 @@ describe.each(TEST_MARKETS)('the seller minimum order in market %s', (code) => {
       version: 2,
       approved: true,
       minimumOrder: money(2500n, currency),
+      delivery: null,
     });
     // A stale version writes nothing.
     expect(await change(1, money(9999n, currency))).toBeNull();

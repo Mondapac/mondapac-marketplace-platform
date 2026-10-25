@@ -409,6 +409,49 @@ describe('signed client address (ADR-0037)', () => {
   });
 });
 
+describe('relay allowlist for the store settings', () => {
+  const request = (method: string, path: string) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers: sameOrigin,
+      ...(method === 'GET' ? {} : { body: '{}' }),
+    });
+
+  it('relays the settings read (GET) and the delivery write (PUT) on their exact paths', async () => {
+    const upstream = upstreamOk();
+    const read = await relay(
+      config,
+      request('GET', 'sellers/store-settings'),
+      ['sellers', 'store-settings'],
+      upstream,
+    );
+    const write = await relay(
+      config,
+      request('PUT', 'sellers/store-settings/delivery'),
+      ['sellers', 'store-settings', 'delivery'],
+      upstream,
+    );
+    expect([read.status, write.status]).toEqual([200, 200]);
+  });
+
+  it('refuses every other method and shape near them', async () => {
+    const upstream = upstreamOk();
+    for (const [method, path] of [
+      ['POST', ['sellers', 'store-settings']],
+      ['PUT', ['sellers', 'store-settings']],
+      ['GET', ['sellers', 'store-settings', 'delivery']],
+      ['POST', ['sellers', 'store-settings', 'delivery']],
+      ['DELETE', ['sellers', 'store-settings', 'delivery']],
+      ['PUT', ['sellers', 'store-settings', 'delivery', 'x']],
+      // The minimum order has no panel route yet: it stays closed until its tab is built.
+      ['PUT', ['sellers', 'store-settings', 'minimum-order']],
+    ] as const) {
+      const response = await relay(config, request(method, path.join('/')), [...path], upstream);
+      expect([method, path.join('/'), response.status]).toEqual([method, path.join('/'), 404]);
+    }
+  });
+});
+
 describe('relay allowlist for stock locations', () => {
   const put = (path: string) =>
     new Request(`http://seller.localhost:3001/api/${path}`, {

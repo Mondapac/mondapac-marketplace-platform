@@ -11,6 +11,15 @@ export interface PickupDirectory {
     context: CallContext,
     request: { readonly sellerId: Id<'Seller'>; readonly sellerOrderId: Id<'SellerOrder'> },
   ): Promise<Result<CarrierStop, { readonly code: 'pickup.not-found' | 'pickup.unavailable' }>>;
+
+  /**
+   * The pickup postcode of each seller, for a quote (sellers' `pickupPostcodes`, a clear column
+   * with no audit). A seller without one is absent from the map.
+   */
+  postcodesOf(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, { readonly code: 'pickup.unavailable' }>>;
 }
 
 export const PICKUP_DIRECTORY = Symbol('PICKUP_DIRECTORY');

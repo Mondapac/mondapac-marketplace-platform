@@ -278,6 +278,12 @@ export interface BusinessFileRevision extends SubmissionSnapshot {
   readonly contentSchemaVersion: number;
   readonly contentHash: ContentHash;
   readonly register: RegisterSnapshot;
+  /**
+   * The postcode of the operating address at submission, in clear (SHP-02/03): the pickup the
+   * real-time carrier quotes from at checkout, so a quote opens no sealed content. Null for a
+   * revision written before the column existed.
+   */
+  readonly operatingPostcode: string | null;
   readonly createdAt: Temporal.Instant;
   readonly statusChangedAt: Temporal.Instant;
   readonly decidedAt: Temporal.Instant | null;
@@ -317,6 +323,8 @@ export interface NewPendingRevisionInput {
   readonly snapshot: SubmissionSnapshot;
   readonly contentHash: ContentHash;
   readonly register: RegisterSnapshot;
+  /** The operating address's postcode, opened from the draft at submission. */
+  readonly operatingPostcode: string;
   readonly now: Temporal.Instant;
 }
 
@@ -354,6 +362,7 @@ export function newPendingRevision(input: NewPendingRevisionInput): BusinessFile
     contentSchemaVersion: CONTENT_SCHEMA_VERSION,
     contentHash: input.contentHash,
     register,
+    operatingPostcode: input.operatingPostcode,
     createdAt: input.now,
     statusChangedAt: input.now,
     decidedAt: null,

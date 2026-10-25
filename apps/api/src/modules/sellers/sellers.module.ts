@@ -73,6 +73,7 @@ import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-ca
 import { MyFileValidateIdentifier } from './application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
 import { CarrierPickupRead } from './application/use-cases/carrier-pickup.use-case';
+import { PickupPostcodes } from './application/use-cases/pickup-postcodes.use-case';
 import { ReviewerBusinessDetailsRead } from './application/use-cases/reviewer-business-details.use-case';
 import { ReviewRead } from './application/use-cases/review-read.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
@@ -92,6 +93,7 @@ import { SELLERS_AUDIT_ACTIONS } from './domain/audit';
 import { OwnZoneRead } from './application/use-cases/own-zone-read.use-case';
 import { StoreSettingsMinimumOrderHistory } from './application/use-cases/store-settings-minimum-order-history.use-case';
 import { StoreSettingsRead } from './application/use-cases/store-settings-read.use-case';
+import { StoreSettingsSaveDelivery } from './application/use-cases/store-settings-save-delivery.use-case';
 import { StoreSettingsSaveMinimumOrder } from './application/use-cases/store-settings-save-minimum-order.use-case';
 import { OwnZoneController } from './presentation/own-zone.controller';
 import { StoreSettingsController } from './presentation/store-settings.controller';
@@ -379,6 +381,16 @@ const REVIEW_DECISION_PORTS = {
       counterKeys: true,
       clock: true,
     }),
+    // Package e, the delivery terms: the same gate and deps as the minimum order.
+    useCaseProvider(StoreSettingsSaveDelivery, {
+      unitOfWork: true,
+      storeProfiles: true,
+      minimumOrderPolicy: true,
+      audit: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
     // Slice 2, the seller's draft (design 6.2), over HTTP through MyFileController, under
     // `sellers.business-identity.edit`: since identity slice 8a-1 the registry declares it and
     // the Seller Owner holds it through the seller system role; an account without it gets
@@ -610,6 +622,8 @@ const REVIEW_DECISION_PORTS = {
       sealer: true,
       audit: true,
     }),
+    // The pickup postcode the real-time carrier quotes from at checkout: a clear column, no audit.
+    useCaseProvider(PickupPostcodes, { unitOfWork: true, revisions: true }),
     {
       provide: SELLERS_FACADE,
       inject: [
@@ -622,6 +636,7 @@ const REVIEW_DECISION_PORTS = {
         ReviewerBusinessDetailsRead,
         PublishedStoreSellerId,
         CarrierPickupRead,
+        PickupPostcodes,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -633,6 +648,7 @@ const REVIEW_DECISION_PORTS = {
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
         publishedStoreSellerId: PublishedStoreSellerId,
         carrierPickup: CarrierPickupRead,
+        pickupPostcodes: PickupPostcodes,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -644,6 +660,7 @@ const REVIEW_DECISION_PORTS = {
           reviewerBusinessDetails,
           publishedStoreSellerId,
           carrierPickup,
+          pickupPostcodes,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by

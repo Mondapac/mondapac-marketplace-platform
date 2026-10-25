@@ -182,6 +182,7 @@ describe.each(['AU', 'ZZ'] as const)('the reviewer decision in Market %s', (code
       },
       contentHash: sealed.value.contentHash,
       register: { outcome: 'not-performed', mismatches: [], checkedAt: null },
+      operatingPostcode: '4109',
       now: START,
     });
     await revisions.add(market, revision, sealed.value);
