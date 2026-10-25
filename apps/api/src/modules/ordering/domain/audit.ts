@@ -1,5 +1,6 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
-import { LOSS_BEARERS, LOSS_REASON_CODES, REFUND_REASONS } from './refund';
+import { LOSS_BEARERS, LOSS_REASON_CODES } from './reason-codes';
+import { REFUND_REASONS } from './refund';
 
 // The audited actions of refunds (tax step 3; Hassan M3), registered at boot with
 // `registerAuditActions('ordering', ORDERING_AUDIT_ACTIONS)`. Ids, codes, counts and money only:

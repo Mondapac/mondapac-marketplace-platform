@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { RefundView } from '../application/use-cases/admin-refund-order.use-case';
-import { LOSS_BEARERS, LOSS_REASON_CODES, REFUND_REASONS } from '../domain/refund';
+import { LOSS_BEARERS, LOSS_REASON_CODES } from '../domain/reason-codes';
+import { REFUND_REASONS } from '../domain/refund';
 import { moneyBody } from './http-answers';
 import { MoneyView } from './orders.dto';
 

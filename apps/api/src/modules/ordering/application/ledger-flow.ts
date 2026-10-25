@@ -166,8 +166,8 @@ export async function recordRefundLedger(
         refund.shipping === null
           ? null
           : {
-              refundedBefore: item.shippingBefore,
-              refundedAfter: item.shippingBefore + refund.shipping.gross,
+              refundedBefore: refund.shipping.before,
+              refundedAfter: refund.shipping.before + refund.shipping.gross,
               charge: item.shippingCharge!,
             },
     });

@@ -181,6 +181,9 @@ model OrderingRefund {
   ledgerRecordedAt     DateTime?            @map("ledger_recorded_at") @db.Timestamptz(6)
   /// How many times the ledger refused the refund; the worker takes the fewest first.
   ledgerAttempts       Int                  @default(0) @map("ledger_attempts")
+  /// The shipping gross refunded by earlier refunds that had not failed, read under the seller
+  /// order's lock when this refund is written; zero when none.
+  shippingBefore       BigInt               @default(0) @map("shipping_before")
   /// Stored before Stripe is called; the same key on every retry.
   stripeIdempotencyKey String               @map("stripe_idempotency_key")
   /// Kept once Stripe made the refund (also while it is pending there); never changes after.

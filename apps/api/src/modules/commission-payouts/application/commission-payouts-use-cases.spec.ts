@@ -700,7 +700,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       ]);
     });
 
-    it('does nothing for a line that wrote no rows (fully discounted)', async () => {
+    it('refuses a line with no stored rows, fully discounted or not on the seller order', async () => {
       const free = id<'SellerOrder'>(0x2f2);
       await record(
         paid({
@@ -710,14 +710,43 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           ],
         }),
       );
+      const answer = await recordRefund(
+        refunded({
+          sellerOrderId: free,
+          lines: [{ orderLineId: LINE_1, lineQuantity: 1, unitsBefore: 0, units: 1 }],
+        }),
+      );
+      expect(answer).toEqual(err({ code: 'commission-payouts.ledger-inconsistent' }));
+      expect(reversals()).toEqual([]);
+    });
+
+    it('refuses a double reversal: other refunds plus this one would pass the stored row', async () => {
+      // Refund 1 takes all 3 units; refund 2 claims the first unit again (a wrong unitsBefore).
       expect(
         await recordRefund(
-          refunded({
-            sellerOrderId: free,
-            lines: [{ orderLineId: LINE_1, lineQuantity: 1, unitsBefore: 0, units: 1 }],
-          }),
+          refunded({ lines: [{ orderLineId: LINE_1, lineQuantity: 3, unitsBefore: 0, units: 3 }] }),
         ),
-      ).toEqual(ok('nothing-to-post'));
+      ).toEqual(ok('recorded'));
+      const rows = ledger.rows.length;
+      expect(await recordRefund(refunded({ refundId: REFUND_2 }))).toEqual(
+        err({ code: 'commission-payouts.ledger-inconsistent' }),
+      );
+      // The same for the delivery fee: all of it back, then a part again.
+      const fee = (refundId: Id<'Refund'>, before: bigint, after: bigint) =>
+        recordRefund(
+          refunded({
+            refundId,
+            lines: [],
+            shipping: { refundedBefore: before, refundedAfter: after, charge: 550n },
+          }),
+        );
+      expect(await fee(REFUND_1, 0n, 550n)).toEqual(ok('recorded'));
+      expect(await fee(REFUND_3, 0n, 100n)).toEqual(
+        err({ code: 'commission-payouts.ledger-inconsistent' }),
+      );
+      expect(ledger.rows.length).toBe(rows + 1);
+      // Replaying refund 1 itself is not a double reversal.
+      expect(await fee(REFUND_1, 0n, 550n)).toEqual(ok('already-recorded'));
     });
 
     it('refuses facts that do not fit the stored rows, and writes nothing', async () => {
@@ -739,7 +768,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
             ],
           }),
         ),
-      ).toBe('ok'); // a line with no rows is a fully discounted one: nothing of it to give back
+      ).toBe('commission-payouts.ledger-inconsistent');
       // A line with a sale row but no commission row is a ledger the refund cannot be matched to.
       ledger.rows.splice(
         ledger.rows.findIndex((r) => r.kind === 'commission' && r.orderLineId === LINE_2),

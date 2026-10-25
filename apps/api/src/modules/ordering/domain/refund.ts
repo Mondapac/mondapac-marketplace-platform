@@ -1,6 +1,14 @@
 import { parseId } from '@mondapac/shared-kernel';
 import type { Id, Temporal } from '@mondapac/shared-kernel';
 import type { OrderStatus, PaymentState } from './order';
+import {
+  LOSS_BEARERS,
+  LOSS_REASON_CODES,
+  type LossBearer,
+  type LossReasonCode,
+} from './reason-codes';
+
+export { LOSS_BEARERS, LOSS_REASON_CODES, type LossBearer, type LossReasonCode };
 
 // Refunds of a paid seller order by an admin (tax step 3; ADR-0007 decision 11; no seller path,
 // ordering design 97): whole lines, some units of a
@@ -19,22 +27,6 @@ export const REFUND_REASONS = [
 ] as const;
 export type RefundReason = (typeof REFUND_REASONS)[number];
 
-/**
- * Who bears the loss of a refund (ordering domain design 3.5). `seller` (the default) has the
- * refund reversed in the seller ledger; `platform` leaves the seller's share whole (owner decision
- * Q-O2) and always says why, from Hadi's closed list.
- */
-export const LOSS_BEARERS = ['seller', 'platform'] as const;
-export type LossBearer = (typeof LOSS_BEARERS)[number];
-export const LOSS_REASON_CODES = [
-  'platform-error',
-  'carrier-loss',
-  'seller-unrecoverable',
-  'fraud-loss',
-  'goodwill',
-  'other',
-] as const;
-export type LossReasonCode = (typeof LOSS_REASON_CODES)[number];
 /** `pending` until Stripe answers; then `succeeded` (with a credit note) or `failed`. */
 export type RefundState = 'pending' | 'succeeded' | 'failed';
 
@@ -66,6 +58,8 @@ export interface Refund {
     readonly tax: bigint;
     readonly taxRateBps: number;
     readonly taxInclusive: boolean;
+    /** The shipping gross refunded by earlier refunds that had not failed (stored, like units_before). */
+    readonly before: bigint;
   } | null;
   readonly reason: RefundReason;
   readonly lossBearer: LossBearer;
@@ -347,6 +341,7 @@ export function priceRefund(
           tax: reversed.charges[0]!,
           taxRateBps: target.shippingTaxRateBps!,
           taxInclusive: target.shippingTaxInclusive!,
+          before: plan.shipping.before,
         };
   const gross = lines.reduce((sum, l) => sum + l.gross, 0n) + (shipping?.gross ?? 0n);
   const tax = lines.reduce((sum, l) => sum + l.tax, 0n) + (shipping?.tax ?? 0n);

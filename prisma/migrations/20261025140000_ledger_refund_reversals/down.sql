@@ -24,19 +24,24 @@ $$;
 
 DROP INDEX "ordering"."refunds_unrecorded_ledger_idx";
 ALTER TABLE "ordering"."refunds"
+  DROP CONSTRAINT "refunds_shipping_before_check",
   DROP CONSTRAINT "refunds_ledger_check",
   DROP CONSTRAINT "refunds_loss_pair_check",
   DROP CONSTRAINT "refunds_loss_reason_code_check",
   DROP CONSTRAINT "refunds_loss_bearer_check",
+  DROP COLUMN "shipping_before",
   DROP COLUMN "ledger_attempts",
   DROP COLUMN "ledger_recorded_at",
   DROP COLUMN "loss_reason_code",
   DROP COLUMN "loss_bearer";
 
--- The ledger: the rows of the five new kinds are lost (the original kinds stay). The ledger is
--- insert-only, so the delete trigger is switched off for this one statement and back on; this is
--- the same loss the first ledger migration's down accepts, and only a development database has
--- such rows.
+-- The ledger: the rows of the five new kinds are lost (the original kinds stay). DEVELOPMENT ONLY:
+-- no deployed environment exists, and a down of a populated ledger must never run. The ledger is
+-- insert-only, so the delete trigger is switched off for this one statement and back on. That is
+-- safe only because the whole file runs in ONE transaction (the reversibility check sends it as a
+-- single multi-statement query, and the migrate tooling applies a file in one transaction): if
+-- the DELETE fails, the DISABLE rolls back with it and the trigger is never left off. Do not run
+-- these statements by hand outside a transaction.
 ALTER TABLE "commission_payouts"."ledger_entries" DISABLE TRIGGER "ledger_entries_no_delete";
 DELETE FROM "commission_payouts"."ledger_entries" WHERE "source_id" IS NOT NULL;
 ALTER TABLE "commission_payouts"."ledger_entries" ENABLE TRIGGER "ledger_entries_no_delete";

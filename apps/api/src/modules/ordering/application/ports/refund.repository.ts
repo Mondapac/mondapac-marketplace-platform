@@ -15,8 +15,6 @@ export interface RefundForLedger {
   readonly sellerOrderLedgerState: LedgerState;
   /** What the customer paid for delivery on the seller order, tax included; null if unknown. */
   readonly shippingCharge: bigint | null;
-  /** The shipping gross refunded by earlier refunds that had not failed. */
-  readonly shippingBefore: bigint;
 }
 
 /** The credit note written with a successful refund (once; never changed). */

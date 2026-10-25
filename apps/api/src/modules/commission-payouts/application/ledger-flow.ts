@@ -409,8 +409,9 @@ export async function recordRefund(
       for (const line of refund.lines) {
         const sale = original('sale', line.orderLineId);
         const commission = original('commission', line.orderLineId);
-        // A fully discounted line wrote no rows, so there is nothing of it to give back.
-        if (sale === undefined && commission === undefined) continue;
+        // A line with no stored rows is refused, not skipped: a fully discounted line (which wrote
+        // none) cannot be told from a line that is not on this seller order, and nothing is
+        // guessed (Hassan L2).
         if (
           sale === undefined ||
           commission === undefined ||
@@ -472,6 +473,26 @@ export async function recordRefund(
             baseAmount: null,
           });
         }
+      }
+      // Defensive cap (Hassan L2): the reversals of the other refunds plus this one never pass the
+      // stored row. A double reversal (a wrong unitsBefore, a repeated line) stops here.
+      const reversedBefore = new Map<string, bigint>();
+      for (const row of stored) {
+        if (row.sourceId === null || row.sourceId === refund.refundId) continue;
+        const key = `${row.kind}/${row.orderLineId ?? ''}`;
+        reversedBefore.set(key, (reversedBefore.get(key) ?? 0n) + row.amount.amount);
+      }
+      const ORIGINAL_OF: Partial<Record<LedgerKind, LedgerKind>> = {
+        'refund-sale': 'sale',
+        'refund-commission': 'commission',
+        'refund-shipping': 'shipping',
+      };
+      for (const entry of entries) {
+        const row = original(ORIGINAL_OF[entry.kind]!, entry.orderLineId);
+        const total =
+          (reversedBefore.get(`${entry.kind}/${entry.orderLineId ?? ''}`) ?? 0n) +
+          entry.amount.amount;
+        if (row === undefined || total > row.amount.amount) return inconsistent;
       }
       if (entries.length === 0) return ok('nothing-to-post' as const);
       const inserted = await deps.ledger.append(context.market, entries);

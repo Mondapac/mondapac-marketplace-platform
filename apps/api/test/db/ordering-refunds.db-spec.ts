@@ -20,6 +20,7 @@ import { RecordLedger } from '../../src/modules/ordering/application/use-cases/r
 import { RecordRefundLedger } from '../../src/modules/ordering/application/use-cases/record-refund-ledger.use-case';
 import { ConfirmPayment } from '../../src/modules/ordering/application/use-cases/confirm-payment.use-case';
 import { SettleRefunds } from '../../src/modules/ordering/application/use-cases/settle-refunds.use-case';
+import { LOSS_BEARERS, LOSS_REASON_CODES } from '../../src/modules/ordering/domain/reason-codes';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
 import type { OrderState } from '../../src/modules/ordering/domain/order';
 import { ConfigOrderingPolicy } from '../../src/modules/ordering/infrastructure/config-ordering-policy';
@@ -1041,5 +1042,28 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       const sums = await value(() => ledger.sums(market, o.sellerId));
       expect(totalsOf(Object.fromEntries(sums.map((x) => [x.kind, x.amount]))).balance).toBe(-100n);
     });
+  });
+});
+
+describe('the closed lists of refunds (database catalog)', () => {
+  it('equal the CHECKs of ordering.refunds, value for value', async () => {
+    const sql = new Client({ connectionString: testDatabaseUrl() });
+    await sql.connect();
+    try {
+      const rows = await sql.query<{ conname: string; def: string }>(
+        `SELECT c.conname, pg_get_constraintdef(c.oid) AS def FROM pg_constraint c
+           JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace
+          WHERE n.nspname = 'ordering' AND t.relname = 'refunds'
+            AND c.conname IN ('refunds_loss_bearer_check', 'refunds_loss_reason_code_check')`,
+      );
+      const listOf = (name: string) =>
+        [...(rows.rows.find((r) => r.conname === name)?.def ?? '').matchAll(/'([a-z-]+)'::text/g)]
+          .map((m) => m[1])
+          .sort();
+      expect(listOf('refunds_loss_bearer_check')).toEqual([...LOSS_BEARERS].sort());
+      expect(listOf('refunds_loss_reason_code_check')).toEqual([...LOSS_REASON_CODES].sort());
+    } finally {
+      await sql.end();
+    }
   });
 });

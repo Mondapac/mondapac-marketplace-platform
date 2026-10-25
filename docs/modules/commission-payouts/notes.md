@@ -53,3 +53,7 @@ a replay of the same refund conflicts and writes nothing (`INSERT ... ON CONFLIC
   Sale and shipping rows keep the basis they were written in (a tax-inclusive line is reversed
   inclusive, an exclusive one exclusive). A share that rounds to zero writes no `refund-sale` or
   `refund-shipping` row; a `refund-commission` of 0 is still written.
+
+`base_amount` on a `refund-commission` row is **informational**: when a commission share and its base round independently, the base can come out below the commission, and the ledger raises it to the commission so the row still satisfies `amount <= base_amount`. The bases of one line's reversals may therefore sum to slightly more than the original base. Never sum it, and never use it as the tax base of a reversal: tax is reversed from the originals, not from this column.
+
+The ledger step also caps itself: the `refund-*` rows of other refunds plus this one never exceed the stored `sale`, `commission` or `shipping` row, and a refunded line with no stored rows is refused; both answer `commission-payouts.ledger-inconsistent` and write nothing. The shipping position (`shipping_before`) is stored on the refund when it is written, like `units_before`.

@@ -8,6 +8,12 @@ SET lock_timeout = '5s';
 -- writes them before the disputes package). A refund who bears the loss is stored on the ordering
 -- refund (`seller` keeps the reversal, `platform` posts nothing; owner decision Q-O2).
 
+-- No deployed environment exists yet (nothing is deployed), so no ledger row or refund is held
+-- anywhere that matters: like 20261019100000_ordering_refunds, this migration uses plain
+-- CREATE INDEX and ADD CONSTRAINT (no CONCURRENTLY, no NOT VALID). A future migration of a
+-- populated ledger must build the new unique index CONCURRENTLY, alone in its file, and create
+-- ledger_entries_fact_key BEFORE dropping the old index, so no replay is unguarded meanwhile.
+
 -- ---------------------------------------------------------------------------------------------
 -- commission_payouts.ledger_entries
 -- ---------------------------------------------------------------------------------------------
@@ -19,6 +25,9 @@ ALTER TABLE "commission_payouts"."ledger_entries" ADD COLUMN "source_id" UUID;
 -- Hand-written: one row per fact. The key now carries the source, so several partial refunds of one
 -- line each get their own rows, and a replay of the same refund conflicts and is skipped (ON
 -- CONFLICT DO NOTHING). NULLS NOT DISTINCT: a shipping row has no line, an original row no source.
+-- The name is short on purpose: the name Prisma would derive from the five columns
+-- (ledger_entries_market_id_seller_order_id_kind_order_line_id_source_id_key) is over PostgreSQL's
+-- 63-character identifier limit and would be silently truncated; the model maps it with `map:`.
 DROP INDEX "commission_payouts"."ledger_entries_market_id_seller_order_id_kind_order_line_id_key";
 CREATE UNIQUE INDEX "ledger_entries_fact_key"
   ON "commission_payouts"."ledger_entries"
@@ -70,6 +79,10 @@ ALTER TABLE "ordering"."refunds" ADD COLUMN "loss_reason_code" TEXT;
 -- times the ledger refused it: the worker takes the fewest refused first, as for seller orders.
 ALTER TABLE "ordering"."refunds" ADD COLUMN "ledger_recorded_at" TIMESTAMPTZ(6);
 ALTER TABLE "ordering"."refunds" ADD COLUMN "ledger_attempts" INTEGER NOT NULL DEFAULT 0;
+-- The shipping gross refunded by earlier refunds that had not failed, read under the seller order's
+-- lock when the refund is written (like refund_lines.units_before): the ledger step reverses the
+-- shipping row from "before" to "before + shipping_gross_amount", never from a re-sum.
+ALTER TABLE "ordering"."refunds" ADD COLUMN "shipping_before" BIGINT NOT NULL DEFAULT 0;
 
 -- Hand-written: value checks (the table has few rows, so no NOT VALID step).
 ALTER TABLE "ordering"."refunds"
@@ -80,6 +93,7 @@ ALTER TABLE "ordering"."refunds"
   ADD CONSTRAINT "refunds_loss_pair_check" CHECK (
     ("loss_bearer" = 'platform') = ("loss_reason_code" IS NOT NULL)),
   -- Only a refund Stripe confirmed reaches the ledger.
+  ADD CONSTRAINT "refunds_shipping_before_check" CHECK ("shipping_before" >= 0),
   ADD CONSTRAINT "refunds_ledger_check" CHECK (
     "ledger_attempts" >= 0 AND ("ledger_recorded_at" IS NULL OR "state" = 'succeeded'));
 

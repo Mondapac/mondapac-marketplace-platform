@@ -30,6 +30,7 @@ interface RefundRow {
   readonly grossAmount: bigint;
   readonly taxAmount: bigint;
   readonly shippingGrossAmount: bigint;
+  readonly shippingBefore: bigint;
   readonly shippingTaxAmount: bigint;
   readonly shippingTaxRateBps: number | null;
   readonly shippingTaxInclusive: boolean | null;
@@ -73,6 +74,7 @@ function toRefund(row: RefundRow): Refund {
             tax: row.shippingTaxAmount,
             taxRateBps: row.shippingTaxRateBps!,
             taxInclusive: row.shippingTaxInclusive!,
+            before: row.shippingBefore,
           },
     reason: row.reason as RefundReason,
     lossBearer: row.lossBearer as LossBearer,
@@ -204,6 +206,7 @@ export class PrismaRefundRepository implements RefundRepository {
         grossAmount: refund.gross,
         taxAmount: refund.tax,
         shippingGrossAmount: refund.shipping?.gross ?? 0n,
+        shippingBefore: refund.shipping?.before ?? 0n,
         shippingTaxAmount: refund.shipping?.tax ?? 0n,
         shippingTaxRateBps: refund.shipping?.taxRateBps ?? null,
         shippingTaxInclusive: refund.shipping?.taxInclusive ?? null,
@@ -349,20 +352,6 @@ export class PrismaRefundRepository implements RefundRepository {
     });
     const found: RefundForLedger[] = [];
     for (const row of rows) {
-      // The shipping gross of the refunds before this one that did not fail: refunds of one
-      // seller order are made one after the other, so (requested at, id) is their order.
-      const earlier = await tx.orderingRefund.aggregate({
-        where: {
-          marketId: market.marketId,
-          sellerOrderId: row.sellerOrderId,
-          state: { not: 'failed' },
-          OR: [
-            { requestedAt: { lt: row.requestedAt } },
-            { requestedAt: row.requestedAt, id: { lt: row.id } },
-          ],
-        },
-        _sum: { shippingGrossAmount: true },
-      });
       const seller = row.sellerOrder;
       found.push({
         refund: toRefund(row),
@@ -371,7 +360,6 @@ export class PrismaRefundRepository implements RefundRepository {
           seller.shippingTaxAmount === null || seller.shippingTaxInclusive === null
             ? null
             : seller.shippingAmount + (seller.shippingTaxInclusive ? 0n : seller.shippingTaxAmount),
-        shippingBefore: earlier._sum.shippingGrossAmount ?? 0n,
       });
     }
     return found;
