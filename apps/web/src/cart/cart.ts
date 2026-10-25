@@ -57,6 +57,17 @@ export function summarise(cart: Cart): { count: number; total: Money | null } {
   return { count, total: { amount, currency } };
 }
 
+/**
+ * Lowers a line to the units left when stock ran out at payment (0 removes it); the line's limit
+ * follows, so the buyer cannot add back what is not there.
+ */
+export function limitLine(cart: Cart, id: string, left: number): Cart {
+  const line = cart[id];
+  if (!line) return cart;
+  if (left <= 0) return removeLine(cart, id);
+  return { ...cart, [id]: { ...line, quantity: Math.min(line.quantity, left), limit: left } };
+}
+
 /** Removes a line whatever its quantity (the Remove link). */
 export function removeLine(cart: Cart, id: string): Cart {
   if (!(id in cart)) return cart;
