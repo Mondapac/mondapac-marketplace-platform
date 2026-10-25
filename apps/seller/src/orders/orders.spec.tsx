@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { windowRange } from '../catalog/format.ts';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
@@ -270,6 +271,39 @@ describe('OrderDetail', () => {
     expect(screen.getByText(/You marked this order ready 14 Oct.*11:00 am/)).toBeTruthy();
     expect(screen.getByText(/MondaPac is arranging the delivery/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Mark ready' })).toBeNull();
+    // Focus moves to the announced result instead of being lost with the button.
+    const result = screen.getByRole('status');
+    expect(result.textContent).toMatch(/You marked this order ready/);
+    expect(document.activeElement).toBe(result);
+  });
+
+  it('describes the button by its hint and calls the order awaiting the shop', () => {
+    mountDetail();
+    const button = screen.getByRole('button', { name: 'Mark ready' });
+    const hint = document.getElementById(button.getAttribute('aria-describedby') ?? '');
+    expect(hint?.textContent).toBe(
+      "Tell MondaPac this order is packed. MondaPac chooses the courier and delivers it, so you don't need to.",
+    );
+    expect(screen.getByText('Awaiting you', { selector: 'span' })).toBeTruthy();
+  });
+
+  it('spells a window out in full when it crosses midnight', () => {
+    expect(
+      windowRange(
+        '2026-10-16T13:00:00.000Z',
+        '2026-10-16T15:00:00.000Z',
+        'en-AU',
+        'Australia/Sydney',
+      ),
+    ).toMatch(/^17 Oct, 12:00\D+2:00\s+am AEDT$/);
+    expect(
+      windowRange(
+        '2026-10-16T12:00:00.000Z',
+        '2026-10-16T15:00:00.000Z',
+        'en-AU',
+        'Australia/Sydney',
+      ),
+    ).toMatch(/^16 Oct, 11:00\s+pm\D+17 Oct, 2:00\s+am AEDT$/);
   });
 
   it('tells a seller of a pickup order that the customer collects it', () => {
@@ -296,10 +330,16 @@ describe('OrderDetail', () => {
         />
       </NextIntlClientProvider>,
     );
+    expect(screen.getByText('Scheduled')).toBeTruthy();
+    expect(screen.getByText('Window')).toBeTruthy();
+    // One day: the date once, the times collapsed, in the seller's zone (not UTC).
+    expect(screen.getByText(/^16 Oct, 11:00\D+1:00\s+pm AEST$/)).toBeTruthy();
+    expect(screen.queryByText(/UTC/)).toBeNull();
     expect(
-      screen.getByText(/Scheduled · 16 Oct.*11:00 am AEST to 16 Oct.*1:00 pm AEST/),
+      screen.getByText(
+        'MondaPac is still assigning a courier. Keep the order packed and ready. No action needed.',
+      ),
     ).toBeTruthy();
-    expect(screen.getByText(/MondaPac is sorting out a courier/)).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
   });
 

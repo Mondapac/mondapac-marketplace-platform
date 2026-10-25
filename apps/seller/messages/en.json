@@ -1175,6 +1175,7 @@
     "filter": {
       "label": "Filter orders by fulfilment",
       "all": "All",
+      "to-ship": "To ship",
       "empty": {
         "title": "No orders in this state",
         "body": "Orders appear here as they move on.",
@@ -1203,7 +1204,7 @@
     "delivery-free": "Free",
     "total": "Total",
     "status": {
-      "to-ship": "To ship",
+      "to-ship": "Awaiting you",
       "ready": "Ready",
       "shipped": "Shipped",
       "delivered": "Delivered"
@@ -1215,7 +1216,7 @@
       "invalid": "Something in this request was not accepted. Reload the page and try again.",
       "throttled": "Too many attempts. Wait a moment and try again.",
       "csrf": "Your session needs a refresh. Reload the page and try again.",
-      "denied": "Your role cannot do this.",
+      "denied": "Your role cannot do this. Ask the Seller Owner to do it or to change your role.",
       "unavailable": "Orders are not available right now. Try again shortly.",
       "unknown": "Something went wrong. Try again."
     },
@@ -1225,11 +1226,11 @@
     },
     "ready": {
       "submit": "Mark ready",
-      "hint": "Tell MondaPac this order is packed and waiting. You do not choose a courier or arrange delivery: we do that from the customer's choice.",
+      "hint": "Tell MondaPac this order is packed. MondaPac chooses the courier and delivers it, so you don't need to.",
       "done": "You marked this order ready {when}.",
       "pickup": "The customer collects it from you in person. They will show you a pickup code.",
       "arranged": "MondaPac is arranging the delivery. You do not need to do anything else.",
-      "attention": "MondaPac is sorting out a courier for this order. You do not need to do anything else."
+      "attention": "MondaPac is still assigning a courier. Keep the order packed and ready. No action needed."
     },
     "not-ready": "This order is not marked ready yet.",
     "method": {
@@ -1238,7 +1239,7 @@
       "instant": "Instant, under 2 hours",
       "same_day": "Same day",
       "scheduled": "Scheduled",
-      "window": "{start} to {end}"
+      "window-label": "Window"
     },
     "ship": {
       "carrier": "Carrier",
