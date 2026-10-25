@@ -9,6 +9,8 @@ export interface RealTimeCarrierSettings {
   readonly serviceAreas: readonly string[];
   readonly parcel: CarrierParcel;
   readonly mode: 'on_demand' | 'scheduled';
+  /** The range, in minor units of the Market's currency, a live quote must fall in to be charged. */
+  readonly quoteBounds: { readonly minMinor: number; readonly maxMinor: number };
 }
 
 /** The Market settings the carrier flows read. */

@@ -479,6 +479,7 @@
   },
   { "name": "sellers.my-file-withdraw", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "sellers.own-zone-read", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "sellers.pickup-postcodes", "rule": "anonymous" },
   { "name": "sellers.published-store-image-read", "rule": "anonymous" },
   { "name": "sellers.published-store-list", "rule": "anonymous" },
   { "name": "sellers.published-store-read", "rule": "anonymous" },
@@ -495,6 +496,7 @@
   { "name": "shipping.delivery-area", "rule": "anonymous" },
   { "name": "shipping.flat-fees", "rule": "anonymous" },
   { "name": "shipping.receive-carrier-webhook", "rule": "anonymous" },
+  { "name": "shipping.shipping-fees", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
     "name": "shipping.view-own-flat-fee",
     "rule": "permissions",

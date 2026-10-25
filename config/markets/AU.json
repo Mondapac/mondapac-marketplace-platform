@@ -368,7 +368,8 @@
       "timeoutMs": 2500,
       "maxAttempts": 2,
       "backoffMs": 250,
-      "circuitBreaker": { "failureThreshold": 5, "cooldownSeconds": 30 }
+      "circuitBreaker": { "failureThreshold": 5, "cooldownSeconds": 30 },
+      "quoteBounds": { "minMinor": 500, "maxMinor": 10000 }
     }
   }
 }

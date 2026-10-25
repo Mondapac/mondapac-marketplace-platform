@@ -43,6 +43,7 @@ export class ConfigCarrierPolicy implements CarrierPolicy {
       serviceAreas: settings.serviceAreas,
       parcel: settings.parcel,
       mode: settings.mode,
+      quoteBounds: settings.quoteBounds,
     };
   }
 

@@ -73,6 +73,7 @@ import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-ca
 import { MyFileValidateIdentifier } from './application/use-cases/my-file-validate-identifier.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
 import { CarrierPickupRead } from './application/use-cases/carrier-pickup.use-case';
+import { PickupPostcodes } from './application/use-cases/pickup-postcodes.use-case';
 import { ReviewerBusinessDetailsRead } from './application/use-cases/reviewer-business-details.use-case';
 import { ReviewRead } from './application/use-cases/review-read.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
@@ -610,6 +611,8 @@ const REVIEW_DECISION_PORTS = {
       sealer: true,
       audit: true,
     }),
+    // The pickup postcode the real-time carrier quotes from at checkout: a clear column, no audit.
+    useCaseProvider(PickupPostcodes, { unitOfWork: true, revisions: true }),
     {
       provide: SELLERS_FACADE,
       inject: [
@@ -622,6 +625,7 @@ const REVIEW_DECISION_PORTS = {
         ReviewerBusinessDetailsRead,
         PublishedStoreSellerId,
         CarrierPickupRead,
+        PickupPostcodes,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -633,6 +637,7 @@ const REVIEW_DECISION_PORTS = {
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
         publishedStoreSellerId: PublishedStoreSellerId,
         carrierPickup: CarrierPickupRead,
+        pickupPostcodes: PickupPostcodes,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -644,6 +649,7 @@ const REVIEW_DECISION_PORTS = {
           reviewerBusinessDetails,
           publishedStoreSellerId,
           carrierPickup,
+          pickupPostcodes,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by

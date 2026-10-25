@@ -76,6 +76,7 @@ export const shippingProviders: readonly FactoryProvider[] = [
         policy,
         config.mondapacDrive.apiKeys,
         new DriveHttpClient(new CircuitBreaker(clock)),
+        clock,
       ),
   },
   {

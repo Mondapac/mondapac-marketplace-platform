@@ -336,6 +336,8 @@ describe.each(['AU', 'ZZ'] as const)('my-file.submit in %s', (code) => {
         createdAt: START,
         statusChangedAt: START,
       });
+      // The pickup postcode the real-time carrier quotes from is the only clear address field.
+      expect(revision!.operatingPostcode).toBe(code === 'AU' ? '4000' : '1000001');
       expect(revision!.identifierIndex).not.toBeNull();
       expect(revision!.addressTimezone).not.toBeNull();
       // The sealed content holds what the draft held, and nothing of it is in the clear columns.
