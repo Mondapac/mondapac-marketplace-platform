@@ -21,6 +21,7 @@ import { SearchModule } from './search';
 import { StorefrontModule } from './storefront';
 import { EngagementModule } from './engagement';
 import { AssistantModule } from './assistant';
+import { WalletModule } from './wallet';
 
 export const CORE_MODULES = [
   IdentityModule,
@@ -35,6 +36,7 @@ export const CORE_MODULES = [
   OrderingModule,
   PaymentsModule,
   CommissionPayoutsModule,
+  WalletModule,
   TaxModule,
   ShippingModule,
   ReturnsModule,

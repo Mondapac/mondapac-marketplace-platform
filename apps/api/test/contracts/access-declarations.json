@@ -511,5 +511,13 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
-  { "name": "tax.reverse-refund-tax", "rule": "anonymous" }
+  { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
+  { "name": "wallet.balance-of", "rule": "system" },
+  { "name": "wallet.capture-hold", "rule": "system" },
+  { "name": "wallet.expire-wallet-credit", "rule": "system" },
+  { "name": "wallet.grant-credit", "rule": "system" },
+  { "name": "wallet.place-hold", "rule": "system" },
+  { "name": "wallet.release-hold", "rule": "system" },
+  { "name": "wallet.view-my-history", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "wallet.view-my-wallet", "rule": "own-resources", "whenSellerNotApproved": "deny" }
 ]

@@ -1,0 +1,162 @@
+// The wallet module's tables (customer wallet package 1, ledger core; store credit issued by the
+// platform, no card or bank data). Every model is named Wallet<Name> and mapped to its table with
+// @@map. The CHECKs, the insert-only and guard triggers, the balanced-journal constraint trigger
+// and the grants are hand-written in the migration. Money is minor units (BigInt) plus a currency.
+
+/// A wallet account: the customer's own (`credit_liability`, one per customer) or an internal
+/// account of the Market (`promo_expense`, `refund_clearing`, `order_clearing`, `holds`,
+/// `breakage_income`; `customer_account_id` null, one per kind). Only `status` changes.
+model WalletAccount {
+  id                String   @id @db.Uuid
+  marketId          String   @map("market_id") @db.VarChar(8)
+  tenantId          String   @map("tenant_id")
+  /// credit_liability, promo_expense, refund_clearing, order_clearing, holds or breakage_income (CHECK).
+  kind              String
+  /// Set if and only if `kind` is credit_liability (CHECK). A plain id, no foreign key.
+  customerAccountId String?  @map("customer_account_id") @db.Uuid
+  currency          String   @db.VarChar(3)
+  /// active, frozen or closed (CHECK).
+  status            String
+  createdAt         DateTime @map("created_at") @db.Timestamptz(6)
+
+  /// One account per kind and customer; internal accounts have no customer (NULLS NOT DISTINCT in the migration).
+  @@unique([marketId, kind, customerAccountId])
+  @@map("accounts")
+  @@schema("wallet")
+}
+
+/// One money fact. Insert-only. `(market_id, idempotency_key)` is unique; `fingerprint` is the
+/// canonical form of the request, so the same key with another request is refused; `result` is
+/// the first answer, returned again on a replay.
+model WalletJournal {
+  id              String   @id @db.Uuid
+  marketId        String   @map("market_id") @db.VarChar(8)
+  tenantId        String   @map("tenant_id")
+  /// grant-promo, grant-refund, hold, capture, release, expire or reverse (CHECK).
+  kind            String
+  idempotencyKey  String   @map("idempotency_key")
+  fingerprint     String
+  /// system, admin or customer (CHECK); the id is null for the system.
+  actorKind       String   @map("actor_kind")
+  actorId         String?  @map("actor_id") @db.Uuid
+  reasonCode      String   @map("reason_code")
+  orderId         String?  @map("order_id") @db.Uuid
+  /// The wallet this journal belongs to (the customer side), for history.
+  walletAccountId String?  @map("wallet_account_id") @db.Uuid
+  result          Json
+  createdAt       DateTime @map("created_at") @db.Timestamptz(6)
+
+  @@unique([marketId, idempotencyKey])
+  @@index([marketId, walletAccountId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("journals")
+  @@schema("wallet")
+}
+
+/// One signed leg of a journal. Insert-only. The legs of a journal sum to zero and are at least
+/// two (deferred constraint trigger).
+model WalletPosting {
+  id          String @id @db.Uuid
+  marketId    String @map("market_id") @db.VarChar(8)
+  tenantId    String @map("tenant_id")
+  journalId   String @map("journal_id") @db.Uuid
+  accountId   String @map("account_id") @db.Uuid
+  /// Signed minor units, never zero (CHECK).
+  amountMinor BigInt @map("amount_minor")
+  currency    String @db.VarChar(3)
+
+  @@index([marketId, journalId])
+  @@index([marketId, accountId])
+  @@map("postings")
+  @@schema("wallet")
+}
+
+/// One credit grant. Only `remaining_minor` changes (guard trigger: it only decreases, except a
+/// released or expired hold restores what it took).
+model WalletLot {
+  id              String    @id @db.Uuid
+  marketId        String    @map("market_id") @db.VarChar(8)
+  tenantId        String    @map("tenant_id")
+  walletAccountId String    @map("wallet_account_id") @db.Uuid
+  /// promo or refund (CHECK).
+  source          String
+  journalId       String    @map("journal_id") @db.Uuid
+  originalMinor   BigInt    @map("original_minor")
+  remainingMinor  BigInt    @map("remaining_minor")
+  currency        String    @db.VarChar(3)
+  /// Null for refund credit, which never expires; set for promo credit (CHECK).
+  expiresAt       DateTime? @map("expires_at") @db.Timestamptz(6)
+  createdAt       DateTime  @map("created_at") @db.Timestamptz(6)
+
+  @@index([marketId, walletAccountId, remainingMinor])
+  @@index([marketId, source, expiresAt])
+  @@map("lots")
+  @@schema("wallet")
+}
+
+/// The money set aside for one order. Only `status` and `resolved_at` change, and only from `held`.
+model WalletHold {
+  id              String    @id @db.Uuid
+  marketId        String    @map("market_id") @db.VarChar(8)
+  tenantId        String    @map("tenant_id")
+  walletAccountId String    @map("wallet_account_id") @db.Uuid
+  /// A plain ordering id; one hold per order.
+  orderId         String    @map("order_id") @db.Uuid
+  amountMinor     BigInt    @map("amount_minor")
+  currency        String    @db.VarChar(3)
+  /// held, captured, released or expired (CHECK).
+  status          String
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt       DateTime  @map("created_at") @db.Timestamptz(6)
+  resolvedAt      DateTime? @map("resolved_at") @db.Timestamptz(6)
+
+  @@unique([marketId, orderId])
+  @@index([marketId, status, expiresAt])
+  @@map("holds")
+  @@schema("wallet")
+}
+
+/// Which lots a hold took and how much, so a release restores the exact lots. Insert-only.
+model WalletHoldLot {
+  holdId      String @map("hold_id") @db.Uuid
+  lotId       String @map("lot_id") @db.Uuid
+  marketId    String @map("market_id") @db.VarChar(8)
+  tenantId    String @map("tenant_id")
+  amountMinor BigInt @map("amount_minor")
+
+  @@id([marketId, holdId, lotId])
+  @@index([marketId, lotId])
+  @@map("hold_lots")
+  @@schema("wallet")
+}
+
+/// The cached available and held amount of a customer wallet. Changed only in the unit of the
+/// journal, after the row is locked.
+model WalletBalance {
+  walletAccountId String   @id @map("wallet_account_id") @db.Uuid
+  marketId        String   @map("market_id") @db.VarChar(8)
+  tenantId        String   @map("tenant_id")
+  currency        String   @db.VarChar(3)
+  availableMinor  BigInt   @map("available_minor")
+  heldMinor       BigInt   @map("held_minor")
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@index([marketId])
+  @@map("balances")
+  @@schema("wallet")
+}
+
+/// The runtime switch of the wallet in one Market. No row means `off`. Set by an admin.
+model WalletMarketSetting {
+  marketId           String   @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  /// off, active, paused or frozen (CHECK).
+  status             String
+  /// Required for paused and frozen (CHECK).
+  reasonCode         String?  @map("reason_code")
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
+
+  @@id([marketId])
+  @@map("market_settings")
+  @@schema("wallet")
+}
