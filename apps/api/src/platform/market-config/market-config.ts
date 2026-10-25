@@ -1381,6 +1381,61 @@ const shippingSchema = z.strictObject({
       `timeoutMs × maxAttempts plus the backoffs must fit in ${MAX_CARRIER_CALL_MS} ms`,
     )
     .optional(),
+  /**
+   * Zoom2u, an external fleet adapter (Phase 6 package 5c). `enabled` is the Market switch: an
+   * absent section or `false` leaves it off (nothing is sent), and so does a missing
+   * ZOOM2U_API_KEY (a server secret, never here). The API hosts are fixed in the adapter;
+   * `environment` picks which set it uses. `serviceAreas` and `modes` say what the fleet serves
+   * (`on_demand` offers the instant method on the `instantSpeed` service, `VIP` or `3 hour`, and
+   * the same-day method on `Same day`; `scheduled` the buyer's window, whose start is the pickup
+   * time); `supportsWindow` says whether it may be offered for a window. `temperatures` what it
+   * keeps. `limits` are the fleet's caps (the order value is in the Market's default currency, in
+   * minor units) and `prohibitedClasses` the kinds of goods it refuses. The rest shapes the HTTP
+   * client like `realTimeCarrier`'s (a booking is never retried: Zoom2u has no idempotency key).
+   */
+  zoom2u: z
+    .strictObject({
+      enabled: z.boolean(),
+      environment: z.enum(['sandbox', 'production']),
+      serviceAreas: z
+        .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
+        .min(1)
+        .max(50)
+        .refine((codes) => new Set(codes).size === codes.length, 'an area must not repeat'),
+      modes: z
+        .array(z.enum(['on_demand', 'scheduled']))
+        .min(1)
+        .refine((modes) => new Set(modes).size === modes.length, 'a mode must not repeat'),
+      /** The Zoom2u service for the instant method: `VIP` (fastest) or `3 hour`. */
+      instantSpeed: z.enum(['VIP', '3 hour']),
+      /** True when a scheduled trip may carry the buyer's window (its start is the pickup time). */
+      supportsWindow: z.boolean(),
+      temperatures: z
+        .array(z.enum(['ambient', 'chilled', 'frozen']))
+        .min(1)
+        .refine((items) => new Set(items).size === items.length, 'a temperature must not repeat'),
+      limits: z.strictObject({
+        maxItemWeightGrams: z.number().int().min(1).max(100_000),
+        maxItems: z.number().int().min(1).max(100),
+        maxOrderValueMinor: z.number().int().min(1).max(1_000_000_000),
+      }),
+      prohibitedClasses: z
+        .array(z.string().regex(/^[a-z][a-z0-9-]{0,39}$/u))
+        .max(50)
+        .refine((classes) => new Set(classes).size === classes.length, 'a class must not repeat'),
+      timeoutMs: z.number().int().min(500).max(15_000),
+      maxAttempts: z.number().int().min(1).max(5),
+      backoffMs: z.number().int().min(0).max(5000),
+      circuitBreaker: z.strictObject({
+        failureThreshold: z.number().int().min(1).max(50),
+        cooldownSeconds: z.number().int().min(1).max(600),
+      }),
+    })
+    .refine(
+      (fleet) => carrierCallBudgetMs(fleet) <= MAX_CARRIER_CALL_MS,
+      `timeoutMs × maxAttempts plus the backoffs must fit in ${MAX_CARRIER_CALL_MS} ms`,
+    )
+    .optional(),
 });
 
 const marketSchema = z
