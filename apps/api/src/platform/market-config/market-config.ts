@@ -723,6 +723,8 @@ const addressFormatSchema = z
     postcodeField: fieldKey,
     /** Absent for a Market whose zone does not depend on a region. */
     regionField: fieldKey.optional(),
+    /** The suburb or town field, for a carrier to locate a pickup; absent: no locality is sent. */
+    localityField: fieldKey.optional(),
     postcodePattern: postcodePatternSource,
     regions: z.array(regionName).max(100),
   })
@@ -731,7 +733,7 @@ const addressFormatSchema = z
     if (new Set(keys).size !== keys.length) {
       context.addIssue({ code: 'custom', message: 'field keys must be unique', path: ['fields'] });
     }
-    for (const name of ['postcodeField', 'regionField'] as const) {
+    for (const name of ['postcodeField', 'regionField', 'localityField'] as const) {
       const key = format[name];
       if (key !== undefined && !keys.includes(key)) {
         context.addIssue({ code: 'custom', message: `${name} must name a field`, path: [name] });
@@ -1224,7 +1226,63 @@ export const carrierCallBudgetMs = (carrier: {
   carrier.timeoutMs * carrier.maxAttempts +
   carrier.backoffMs * (2 ** (carrier.maxAttempts - 1) - 1);
 
+/**
+ * One fleet of the `shipping.fleets` section (delivery models, package 3): what the fleet
+ * declares it can carry in this Market. Absent, or `enabled: false`: the fleet is OFF there.
+ * `serviceAreas` are the city ServiceArea codes where BOTH ends of a trip must fall;
+ * `outsideCityAreasOnly` instead serves drop-offs in no city area (Australia Post). `settings`
+ * holds the adapter's own non-secret values (endpoint, timeouts); the adapter validates them.
+ * Secrets are never here. `fake_test` is for tests and development and is not listed by a
+ * production Market.
+ */
+const fleetSchema = z
+  .strictObject({
+    enabled: z.boolean().default(true),
+    displayName: z
+      .string()
+      .regex(/^[\p{L}\p{N}][\p{L}\p{N} .&'-]{0,59}$/u, 'must be 1 to 60 letters, digits or spaces')
+      .optional(),
+    serviceAreas: z
+      .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
+      .max(50)
+      .refine((codes) => new Set(codes).size === codes.length, 'an area must not repeat')
+      .default([]),
+    outsideCityAreasOnly: z.boolean().default(false),
+    methods: z
+      .array(z.enum(['instant', 'same_day', 'scheduled']))
+      .min(1)
+      .refine((items) => new Set(items).size === items.length, 'a method must not repeat'),
+    temperatures: z
+      .array(z.enum(['ambient', 'chilled', 'frozen']))
+      .min(1)
+      .refine((items) => new Set(items).size === items.length, 'a temperature must not repeat'),
+    maxItemWeightGrams: z.number().int().min(1).max(1_000_000).nullable().default(null),
+    maxItems: z.number().int().min(1).max(10_000).nullable().default(null),
+    maxOrderValueMinor: z.number().int().min(1).max(1_000_000_000_000).nullable().default(null),
+    prohibitedClasses: z
+      .array(z.string().regex(/^[a-z][a-z0-9-]{0,39}$/u))
+      .max(50)
+      .default([]),
+    settings: z
+      .record(z.string().min(1).max(64), z.union([z.string(), z.number(), z.boolean()]))
+      .optional(),
+  })
+  .refine(
+    (fleet) => fleet.outsideCityAreasOnly || fleet.serviceAreas.length > 0,
+    'a fleet needs serviceAreas, or outsideCityAreasOnly',
+  );
+
 const shippingSchema = z.strictObject({
+  /**
+   * The fleets of the Market, by fleet code. When absent, the legacy `realTimeCarrier` below
+   * declares Mondapac Drive alone (every method, its service areas, its parcel temperature).
+   */
+  fleets: z
+    .partialRecord(
+      z.enum(['mondapac_drive', 'uber_direct', 'zoom2u', 'auspost', 'fake_test']),
+      fleetSchema,
+    )
+    .optional(),
   realTimeCarrier: z
     .strictObject({
       carrier: z.enum(['mondapac-drive']),

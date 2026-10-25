@@ -9,20 +9,21 @@ import type {
 } from '../contracts/shipping.facade';
 import {
   advanceBooking,
-  MONDAPAC_DRIVE,
   newBooking,
-  progressOfDriveStatus,
+  progressOfFleetStatus,
   type CarrierBooking,
 } from '../domain/carrier-booking';
 import { carrierModeOf, parseBookingService } from '../domain/booking-service';
 import { parseCarrierStop } from '../domain/carrier-stop';
-import { parseDriveWebhook } from '../domain/drive-webhook-event';
+import { parseDriveWebhook, toFleetStatus } from '../domain/drive-webhook-event';
 import { CarrierDeliveryProgressed } from '../domain/events';
-import { fulfilmentStrategyFor, REAL_TIME_DELIVERY } from '../domain/real-time-delivery';
+import { TEMPERATURES, type FleetNeed } from '../domain/fleet';
+import { capableFleets, routeBooking } from './fleet-router';
+import type { CarrierBookingRequest } from './ports/carrier-gateway';
 import type { ShippingDependencies } from './shipping-dependencies';
 
 // The `real_time_delivery` FulfillmentStrategy (SHP-02/03): book a paid seller order with the
-// Market's real-time carrier, take the carrier's signed status webhooks, cancel. The carrier is
+// fleet the router picks, take the carrier's signed status webhooks, cancel. The carrier is
 // called outside every unit (P 3.1 row 5); each use case has at most one read-write unit.
 // Personal data (the two stops) goes to the carrier only: it is never stored, logged or put in
 // an event, and a log line carries ids and codes.
@@ -58,13 +59,65 @@ const log = (context: CallContext, msg: string, fields: Record<string, unknown>)
   });
 };
 
+/** The size of the parcel: what the request says, else the Market's defaults. */
+function parcelOf(
+  deps: ShippingDependencies,
+  context: CallContext,
+  raw: unknown,
+):
+  | {
+      readonly ok: true;
+      readonly parcel: CarrierBookingRequest['parcel'];
+      readonly classes: string[];
+    }
+  | { readonly ok: false; readonly fields: { path: string; code: string }[] } {
+  const defaults = deps.carrierPolicy.parcelDefaults(context.market);
+  const value = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  const fields: { path: string; code: string }[] = [];
+  const whole = (key: string, fallback: number, min: number, max: number): number => {
+    const entry = value[key];
+    if (entry === undefined || entry === null) return fallback;
+    if (typeof entry !== 'number' || !Number.isInteger(entry) || entry < min || entry > max) {
+      fields.push({ path: `parcel.${key}`, code: 'range' });
+      return fallback;
+    }
+    return entry;
+  };
+  const weightGrams = whole('weightGrams', defaults.weightGrams, 1, 1_000_000);
+  const itemCount = whole('itemCount', 1, 1, 10_000);
+  const valueMinor = whole('declaredValueMinor', 0, 0, Number.MAX_SAFE_INTEGER);
+  const temperature =
+    value.temperature === undefined || value.temperature === null
+      ? defaults.temperature
+      : TEMPERATURES.find((candidate) => candidate === value.temperature);
+  if (temperature === undefined) fields.push({ path: 'parcel.temperature', code: 'value' });
+  const classes = Array.isArray(value.classes) ? (value.classes as unknown[]) : [];
+  if (!classes.every((name) => typeof name === 'string' && /^[a-z][a-z0-9-]{0,39}$/u.test(name))) {
+    fields.push({ path: 'parcel.classes', code: 'format' });
+  }
+  if (fields.length > 0 || temperature === undefined) return { ok: false, fields };
+  return {
+    ok: true,
+    classes: classes as string[],
+    parcel: {
+      weightGrams,
+      volumeLitres: defaults.volumeLitres,
+      temperature,
+      itemCount,
+      declaredValue: { amount: BigInt(valueMinor), currency: deps.policy.currency(context.market) },
+    },
+  };
+}
+
 /**
- * `book-carrier-delivery`: the strategy first (carrier on for the Market, pickup and drop-off
- * each in one of its ServiceAreas), then one booking per seller order. An existing booking
- * answers `already-booked` without a call. The carrier books once per `externalReference` (the
- * seller order id), so a retry after a lost answer finds the first delivery. A refusal (4xx)
- * answers `refused`; no carrier for the trip answers `no-carrier`. The seller never delivers
- * instead: ordering records that the platform must look at the order.
+ * `book-carrier-delivery`: the router first (the fleets that are on for the Market and can carry
+ * the order, ranked by the admin's active model for the buyer's method), then one booking per
+ * seller order, naming the fleet that took it. An existing booking answers `already-booked`
+ * without a call. A fleet that books once per `externalReference` (the seller order id) makes a
+ * retry after a lost answer harmless; one that cannot is never repeated and never replaced, and
+ * answers `unknown` (the order may be booked: an admin checks). A refusal by every capable fleet
+ * answers `refused`; nobody able answers `no-carrier`. The seller never delivers instead:
+ * ordering records that the platform must look at the order.
  */
 export async function bookCarrierDelivery(
   deps: ShippingDependencies,
@@ -75,6 +128,7 @@ export async function bookCarrierDelivery(
     readonly sellerId: unknown;
     readonly dropoff: unknown;
     readonly service: unknown;
+    readonly parcel?: unknown;
   },
 ): Promise<Result<CarrierBookingOutcome, CarrierDeliveryFailure>> {
   const orderId = idOf<'Order'>(input?.orderId);
@@ -82,27 +136,29 @@ export async function bookCarrierDelivery(
   const sellerId = idOf<'Seller'>(input?.sellerId);
   const dropoff = parseCarrierStop(input?.dropoff, 'dropoff');
   const service = parseBookingService(input?.service);
+  const parcel = parcelOf(deps, context, input?.parcel);
   const fields = [
     ...(orderId === null ? [{ path: 'orderId', code: 'format' }] : []),
     ...(sellerOrderId === null ? [{ path: 'sellerOrderId', code: 'format' }] : []),
     ...(sellerId === null ? [{ path: 'sellerId', code: 'format' }] : []),
     ...(dropoff.ok ? [] : dropoff.fields),
     ...(service.ok ? [] : service.fields),
+    ...(parcel.ok ? [] : parcel.fields),
   ];
   if (
     orderId === null ||
     sellerOrderId === null ||
     sellerId === null ||
     !dropoff.ok ||
-    !service.ok
+    !service.ok ||
+    !parcel.ok
   ) {
     return err({ code: 'validation.failed', fields });
   }
   const { market } = context;
-  const settings = deps.carrierPolicy.realTimeCarrier(market);
   const dropoffArea = deps.carrierPolicy.serviceAreaOf(market, dropoff.stop.postcode);
-  // Without a carrier or a served drop-off nothing is read; the pickup is checked below.
-  if (settings === null || dropoffArea === null || !settings.serviceAreas.includes(dropoffArea)) {
+  // With no fleet on for the Market nothing is read; the pickup is read below.
+  if (!deps.fleets.all().some((gateway) => gateway.capabilities(market) !== null)) {
     log(context, 'shipping.carrier-booking', { outcome: 'no-carrier', sellerOrderId });
     return ok('no-carrier');
   }
@@ -130,36 +186,71 @@ export async function bookCarrierDelivery(
     return ok('no-carrier');
   }
   const pickupArea = deps.carrierPolicy.serviceAreaOf(market, pickupStop.stop.postcode);
-  if (fulfilmentStrategyFor(settings, pickupArea, dropoffArea) !== REAL_TIME_DELIVERY) {
+  const need: FleetNeed = {
+    method: service.service.method,
+    hasWindow: service.service.window !== null,
+    temperature: parcel.parcel.temperature,
+    heaviestItemGrams: parcel.parcel.weightGrams,
+    itemCount: parcel.parcel.itemCount,
+    declaredValue: parcel.parcel.declaredValue,
+    classes: parcel.classes,
+    pickupArea,
+    dropoffArea,
+  };
+  if (capableFleets(deps, context, need).length === 0) {
     log(context, 'shipping.carrier-booking', { outcome: 'no-carrier', sellerOrderId });
     return ok('no-carrier');
   }
 
-  const answer = await deps.carrier.book(market, {
-    externalReference: sellerOrderId,
-    pickup: pickupStop.stop,
-    dropoff: dropoff.stop,
-    parcel: settings.parcel,
-    mode: carrierModeOf(service.service),
-    window: service.service.window,
+  const routed = await routeBooking(deps, context, {
+    sellerOrderId,
+    method: service.service.method,
+    need,
+    request: {
+      externalReference: sellerOrderId,
+      pickup: pickupStop.stop,
+      dropoff: dropoff.stop,
+      parcel: parcel.parcel,
+      mode: carrierModeOf(service.service),
+      window: service.service.window,
+    },
   });
-  if (!answer.ok) {
-    log(context, 'shipping.carrier-booking', { outcome: answer.error.code, sellerOrderId });
-    return answer.error.code === 'carrier.refused' ? ok('refused') : err(UNAVAILABLE);
+  switch (routed.kind) {
+    case 'store-unavailable':
+    case 'unavailable':
+      log(context, 'shipping.carrier-booking', { outcome: routed.kind, sellerOrderId });
+      return err(UNAVAILABLE);
+    case 'no-fleet':
+      log(context, 'shipping.carrier-booking', { outcome: 'no-carrier', sellerOrderId });
+      return ok('no-carrier');
+    case 'refused':
+      log(context, 'shipping.carrier-booking', { outcome: 'refused', sellerOrderId });
+      return ok('refused');
+    case 'unknown':
+      log(context, 'shipping.carrier-booking', {
+        outcome: 'unknown',
+        fleet: routed.fleet,
+        sellerOrderId,
+      });
+      return ok('unknown');
+    case 'booked':
+      break;
   }
   const booking = newBooking({
     id: deps.ids.next<'CarrierBooking'>(),
     sellerOrderId,
     orderId,
     sellerId,
-    carrierReference: answer.value.carrierReference,
-    carrierStatus: answer.value.carrierStatus,
+    fleet: routed.fleet,
+    carrierReference: routed.answer.carrierReference,
+    carrierStatus: routed.answer.carrierStatus,
     now: deps.clock.now(),
   });
   const stored = await deps.unitOfWork.run<CarrierBookingOutcome, CarrierDeliveryFailure>(
     market,
     async () => {
-      // A concurrent call booked the same reference first: the carrier holds one delivery.
+      await deps.bookings.clearAttempt(market, sellerOrderId);
+      // A concurrent call booked the same reference first: the fleet holds one delivery.
       if ((await deps.bookings.insert(market, booking)) === 'exists') return ok('already-booked');
       try {
         await deps.outbox.append(context, [progressed(booking)]);
@@ -172,6 +263,7 @@ export async function bookCarrierDelivery(
   );
   log(context, 'shipping.carrier-booking', {
     outcome: stored.ok ? stored.value : stored.error.code,
+    fleet: routed.fleet,
     sellerOrderId,
     bookingId: booking.id,
   });
@@ -199,22 +291,24 @@ export async function readCarrierShipment(
   if (booking === null) return err({ code: 'shipping.carrier-delivery-not-found' });
   return ok({
     sellerOrderId: booking.sellerOrderId,
-    // The carrier may have been switched off since: its code still names it.
-    carrierName: deps.carrierPolicy.realTimeCarrier(market)?.displayName ?? booking.carrier,
+    carrierName: deps.carrierPolicy.fleetDisplayName(market, booking.fleet),
     trackingRef: booking.carrierReference,
     progress: booking.progress,
   });
 }
 
 /**
- * `cancel-carrier-delivery`: asks the carrier to drop a delivery not yet picked up, then stores
- * the cancellation (the carrier's own webhook may have stored it first).
+ * `cancel-carrier-delivery`: asks the fleet that holds the booking to drop a delivery not yet
+ * picked up, then stores the cancellation (the fleet's own webhook may have stored it first).
+ * A refusal means the fleet can no longer cancel it (picked up meanwhile) when the fleet dedupes;
+ * from a fleet that cannot, a refusal is ambiguous (a lost first answer comes back refused on the
+ * retry), so it answers `unknown` and ordering records it for an admin to check.
  */
 export async function cancelCarrierDelivery(
   deps: ShippingDependencies,
   context: CallContext,
   input: { readonly sellerOrderId: unknown },
-): Promise<Result<'cancelled' | 'not-cancellable' | 'none', CarrierDeliveryFailure>> {
+): Promise<Result<'cancelled' | 'not-cancellable' | 'none' | 'unknown', CarrierDeliveryFailure>> {
   const sellerOrderId = idOf<'SellerOrder'>(input?.sellerOrderId);
   if (sellerOrderId === null) {
     return err({ code: 'validation.failed', fields: [{ path: 'sellerOrderId', code: 'format' }] });
@@ -231,11 +325,30 @@ export async function cancelCarrierDelivery(
   if (booking.progress === 'cancelled') return ok('cancelled');
   if (booking.progress !== 'booked') return ok('not-cancellable');
 
-  const answer = await deps.carrier.cancel(market, booking.carrierReference);
+  const gateway = deps.fleets.get(booking.fleet);
+  if (gateway === undefined) return err(UNAVAILABLE);
+  const answer = await gateway.cancel(market, booking.carrierReference);
   if (!answer.ok) {
-    log(context, 'shipping.carrier-cancel', { outcome: answer.error.code, sellerOrderId });
-    // A refusal means the carrier can no longer cancel it (picked up meanwhile).
-    return answer.error.code === 'carrier.refused' ? ok('not-cancellable') : err(UNAVAILABLE);
+    log(context, 'shipping.carrier-cancel', {
+      outcome: answer.error.code,
+      fleet: booking.fleet,
+      sellerOrderId,
+    });
+    if (answer.error.code === 'carrier.refused') {
+      // A fleet off for the Market now cannot say whether it dedupes: ambiguous, like one that cannot.
+      const dedupes = gateway.capabilities(market)?.idempotentBooking === true;
+      return ok(dedupes ? 'not-cancellable' : 'unknown');
+    }
+    if (answer.error.code === 'carrier.unauthorized') {
+      logger.warn({
+        msg: 'shipping.fleet-unauthorized',
+        fleet: booking.fleet,
+        call: 'cancel',
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+    }
+    return err(UNAVAILABLE);
   }
   const now = deps.clock.now();
   return deps.unitOfWork.run<'cancelled' | 'not-cancellable', CarrierDeliveryFailure>(
@@ -306,18 +419,21 @@ export async function receiveCarrierWebhook(
   if (parsed.kind === 'other') return ok('ignored');
   const event = parsed.event;
   if (event.marketId !== market.marketId) return err({ code: 'shipping.event-refused' });
-  const progress = progressOfDriveStatus(event.status);
+  // The common status first (Drive's words stop here); an unknown word is taken and ignored.
+  const fleetStatus = toFleetStatus(event.status);
+  const progress = fleetStatus === null ? null : progressOfFleetStatus(fleetStatus);
   const sellerOrderId = event.externalReference as Id<'SellerOrder'>;
   const now = deps.clock.now();
 
   return deps.unitOfWork.run<ReceiveWebhookOutcome, ReceiveWebhookFailure>(market, async () => {
     const booking = await deps.bookings.findBySellerOrder(market, sellerOrderId);
     if (booking === null) return err({ code: 'shipping.carrier-delivery-not-found' });
-    if (booking.carrierReference !== event.deliveryId)
+    // This route is Drive's: an event never moves another fleet's booking.
+    if (booking.fleet !== 'mondapac_drive' || booking.carrierReference !== event.deliveryId)
       return err({ code: 'shipping.event-refused' });
     const taken = await deps.bookings.recordEvent(market, {
       eventId: event.eventId,
-      carrier: MONDAPAC_DRIVE,
+      carrier: 'mondapac_drive',
       receivedAt: now,
     });
     if (taken === 'duplicate') return ok('duplicate');

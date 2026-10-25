@@ -8,6 +8,16 @@ export interface CarrierStopInput {
   readonly contactPhone: string;
   readonly addressLines: readonly string[];
   readonly postcode: string;
+  /**
+   * The suburb or town, from a validated saved address (the buyer's address book, the seller's
+   * approved business file): never free text typed for the occasion. Empty when the Market's
+   * address has no such field.
+   */
+  readonly locality: string;
+  /** The state or region, from the same validated address; null when the Market has none. */
+  readonly region: string | null;
+  /** Coordinates when the address was geocoded and saved; null otherwise (no one stores them yet). */
+  readonly location: { readonly lat: number; readonly lng: number } | null;
   readonly notes: string | null;
 }
 
@@ -16,6 +26,7 @@ const POSTCODE = /^[0-9A-Za-z -]{3,10}$/;
 const MAX_NAME = 120;
 const MAX_ADDRESS = 300;
 const MAX_NOTES = 500;
+const MAX_PLACE = 120;
 const MAX_LINES = 8;
 // No control characters: the text is sent as JSON, but a line break would mangle a label.
 const CONTROL = /\p{Cc}/u;
@@ -73,6 +84,31 @@ export function parseCarrierStop(
   if (postcode === null || !POSTCODE.test(postcode)) {
     fields.push({ path: `${path}.postcode`, code: 'format' });
   }
+  const locality =
+    value.locality === undefined || value.locality === '' ? '' : text(value.locality);
+  if (locality === null || locality.length > MAX_PLACE) {
+    fields.push({ path: `${path}.locality`, code: 'format' });
+  }
+  const region =
+    value.region === undefined || value.region === null || value.region === ''
+      ? null
+      : text(value.region);
+  if (region !== null && region.length > MAX_PLACE) {
+    fields.push({ path: `${path}.region`, code: 'format' });
+  }
+  const point = value.location;
+  let location: CarrierStopInput['location'] = null;
+  if (point !== undefined && point !== null) {
+    const { lat, lng } = (typeof point === 'object' ? point : {}) as Record<string, unknown>;
+    if (
+      typeof lat === 'number' &&
+      typeof lng === 'number' &&
+      Math.abs(lat) <= 90 &&
+      Math.abs(lng) <= 180
+    ) {
+      location = { lat, lng };
+    } else fields.push({ path: `${path}.location`, code: 'format' });
+  }
   let notes: string | null = null;
   if (value.notes !== undefined && value.notes !== null && value.notes !== '') {
     // A customer's notes may hold line breaks: they become spaces, never a refusal.
@@ -95,6 +131,9 @@ export function parseCarrierStop(
       contactPhone: contactPhone!,
       addressLines: addressLines!,
       postcode: postcode!,
+      locality: locality ?? '',
+      region,
+      location,
       notes: notes === '' ? null : notes,
     },
   };

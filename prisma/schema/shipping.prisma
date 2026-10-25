@@ -32,9 +32,9 @@ model ShippingCarrierBooking {
   /// Plain ids of ordering and sellers (no foreign key across schemas).
   orderId          String   @map("order_id") @db.Uuid
   sellerId         String   @map("seller_id") @db.Uuid
-  /// The carrier code ("mondapac-drive").
-  carrier          String
-  /// The carrier's own id of the delivery: the tracking reference.
+  /// The fleet that booked it (mondapac_drive | uber_direct | zoom2u | auspost | fake_test, CHECK).
+  fleet            String
+  /// The fleet's own id of the delivery: the tracking reference.
   carrierReference String   @map("carrier_reference")
   /// booked | picked-up | delivered | exception | cancelled (CHECK).
   progress         String
@@ -46,13 +46,13 @@ model ShippingCarrierBooking {
   updatedAt        DateTime @map("updated_at") @db.Timestamptz(6)
 
   @@unique([marketId, sellerOrderId])
-  @@unique([marketId, carrier, carrierReference])
+  @@unique([marketId, fleet, carrierReference])
   @@map("carrier_bookings")
   @@schema("shipping")
 }
 
 /// A carrier webhook event already taken, by the carrier's event id: a repeat changes nothing.
-/// Insert-only; nothing of the event's body is kept.
+/// Insert-only; nothing of the event's body is kept. `carrier` holds the fleet code.
 model ShippingCarrierEvent {
   marketId   String   @map("market_id") @db.VarChar(8)
   tenantId   String   @map("tenant_id")
@@ -91,5 +91,79 @@ model ShippingOutbox {
   /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
   @@unique([marketId, aggregateId, aggregateVersion])
   @@map("outbox")
+  @@schema("shipping")
+}
+
+/// A fleet-selection model (delivery models, package 3): a named rule an admin defines to rank the
+/// fleets that can carry a seller order. `kind` is cheapest | weighted | fixed_priority; `rule` is
+/// the kind's settings (weights, or the ordered fleet list), checked by the application and by
+/// CHECKs. Models are created and edited, never deleted; `version` rises with each edit.
+model ShippingFleetSelectionModel {
+  id        String   @id @db.Uuid
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  name      String
+  kind      String
+  rule      Json     @db.JsonB
+  version   Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  /// Admin accounts (plain ids, no foreign key).
+  createdBy String   @map("created_by") @db.Uuid
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedBy String   @map("updated_by") @db.Uuid
+
+  assignments ShippingFleetSelectionAssignment[]
+
+  @@unique([marketId, id])
+  @@map("fleet_selection_models")
+  @@schema("shipping")
+}
+
+/// The active model per Market and delivery method. A null `model_id` (or no row) means the
+/// built-in default order. Rows are never deleted.
+model ShippingFleetSelectionAssignment {
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  /// instant | same_day | scheduled (CHECK).
+  method    String
+  modelId   String?  @map("model_id") @db.Uuid
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedBy String   @map("updated_by") @db.Uuid
+
+  model ShippingFleetSelectionModel? @relation(fields: [marketId, modelId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, method])
+  @@map("fleet_selection_assignments")
+  @@schema("shipping")
+}
+
+/// The admin-set reliability score (0 to 100) of a fleet in a Market, an input of the `weighted`
+/// kind. A computed score from delivery history replaces it later. No row: the neutral default.
+model ShippingFleetReliability {
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  fleet     String
+  score     Int
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedBy String   @map("updated_by") @db.Uuid
+
+  @@id([marketId, fleet])
+  @@map("fleet_reliability")
+  @@schema("shipping")
+}
+
+/// A booking the router is making (or made without learning the answer) for a seller order, so a
+/// repeat after a lost answer goes to the same fleet, and never to a second fleet. Written before
+/// the fleet is called; removed with the booking row, or when the fleet answers that nothing was
+/// booked. A row left behind means the order may already be booked there.
+model ShippingFleetBookingAttempt {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  sellerOrderId String   @map("seller_order_id") @db.Uuid
+  fleet         String
+  attemptedAt   DateTime @map("attempted_at") @db.Timestamptz(6)
+
+  @@id([marketId, sellerOrderId])
+  @@map("fleet_booking_attempts")
   @@schema("shipping")
 }

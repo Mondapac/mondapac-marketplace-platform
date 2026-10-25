@@ -218,6 +218,7 @@
       ],
       "postcodeField": "postcode",
       "regionField": "state",
+      "localityField": "suburb",
       "postcodePattern": "^[0-9]{4}$",
       "regions": ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"]
     },

@@ -40,7 +40,7 @@ function quoteDropoffOf(value: unknown): CarrierQuoteStop | null {
   if (typeof value !== 'object' || value === null) return null;
   const { postcode } = value as { postcode?: unknown };
   const code = typeof postcode === 'string' ? postcode.trim() : '';
-  return POSTCODE.test(code) ? { postcode: code } : null;
+  return POSTCODE.test(code) ? { postcode: code, locality: null, region: null } : null;
 }
 
 /**
@@ -66,7 +66,12 @@ export async function readShippingFees(
   const flat = ok<ShippingFeesAnswer>({ fees: read.value, quoted: new Set() });
 
   const { market } = context;
-  const settings = deps.carrierPolicy.realTimeCarrier(market);
+  // Checkout quotes Mondapac Drive alone for now (wiring every fleet's quote is a later package).
+  const drive = deps.fleets.get('mondapac_drive');
+  const settings =
+    drive === undefined || drive.capabilities(market) === null
+      ? null
+      : deps.carrierPolicy.realTimeCarrier(market);
   const dropoffArea = deps.carrierPolicy.serviceAreaOf(market, dropoff.postcode);
   if (settings === null || dropoffArea === null || !settings.serviceAreas.includes(dropoffArea)) {
     return flat;
@@ -93,21 +98,22 @@ export async function readShippingFees(
   await Promise.all(
     quoted.map(async (sellerId) => {
       const postcode = postcodes.value.get(sellerId)!;
-      const quote = await deps.carrier.quote(market, {
-        pickup: { postcode },
+      const quote = await drive!.quote(market, {
+        pickup: { postcode, locality: null, region: null },
         dropoff,
-        parcel: settings.parcel,
+        parcel: { ...settings.parcel, itemCount: 1, declaredValue: { amount: 0n, currency } },
         mode: settings.mode,
       });
       if (!quote.ok) {
         log(context, { outcome: 'flat', reason: quote.error.code, sellerId });
         return;
       }
-      if (quote.value.currency !== currency) {
+      const price = quote.value.price;
+      if (price.currency !== currency) {
         log(context, { outcome: 'flat', reason: 'quote-currency', sellerId });
         return;
       }
-      if (quote.value.amount < BigInt(minMinor) || quote.value.amount > BigInt(maxMinor)) {
+      if (price.amount < BigInt(minMinor) || price.amount > BigInt(maxMinor)) {
         // A carrier fault or a misconfiguration, never a price to charge: an operator looks.
         logger.warn({
           msg: 'shipping.shipping-fees-quote-out-of-bounds',
@@ -117,7 +123,7 @@ export async function readShippingFees(
         });
         return;
       }
-      fees.set(sellerId, quote.value);
+      fees.set(sellerId, price);
       taken.add(sellerId);
     }),
   );

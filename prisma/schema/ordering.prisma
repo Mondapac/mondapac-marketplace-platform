@@ -96,7 +96,9 @@ model OrderingSellerOrder {
   deliveryWindowEnd    DateTime?           @map("delivery_window_end") @db.Timestamptz(6)
   /// When the seller told the platform the order is ready; set once, while the order is to-ship.
   readyAt              DateTime?           @map("ready_at") @db.Timestamptz(6)
-  /// Set by the platform when no carrier could take the order: no-carrier (CHECK). The seller
+  /// Set by the platform when the order needs an admin: no-carrier (nothing can serve it),
+  /// carrier-unknown (a booking whose answer was lost, so it may exist) or cancel-unknown (a
+  /// cancel whose answer was lost) (CHECK). The seller
   /// never delivers instead; an admin follows it up.
   deliveryAttention    String?             @map("delivery_attention")
   order                OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)

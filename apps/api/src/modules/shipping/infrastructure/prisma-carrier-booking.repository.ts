@@ -3,6 +3,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { CarrierBookingRepository } from '../application/ports/carrier-booking.repository';
 import type { CarrierBooking, CarrierProgress } from '../domain/carrier-booking';
+import type { FleetCode } from '../domain/fleet';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -13,7 +14,7 @@ interface Row {
   readonly sellerOrderId: string;
   readonly orderId: string;
   readonly sellerId: string;
-  readonly carrier: string;
+  readonly fleet: string;
   readonly carrierReference: string;
   readonly progress: string;
   readonly carrierStatus: string;
@@ -28,7 +29,7 @@ const toBooking = (row: Row): CarrierBooking => ({
   orderId: row.orderId as Id<'Order'>,
   sellerId: row.sellerId as Id<'Seller'>,
   // The CHECKs hold both to their closed lists.
-  carrier: row.carrier as CarrierBooking['carrier'],
+  fleet: row.fleet as FleetCode,
   carrierReference: row.carrierReference,
   progress: row.progress as CarrierProgress,
   carrierStatus: row.carrierStatus,
@@ -61,7 +62,7 @@ export class PrismaCarrierBookingRepository implements CarrierBookingRepository 
           sellerOrderId: booking.sellerOrderId,
           orderId: booking.orderId,
           sellerId: booking.sellerId,
-          carrier: booking.carrier,
+          fleet: booking.fleet,
           carrierReference: booking.carrierReference,
           progress: booking.progress,
           carrierStatus: booking.carrierStatus,
@@ -113,5 +114,37 @@ export class PrismaCarrierBookingRepository implements CarrierBookingRepository 
       skipDuplicates: true,
     });
     return created.count === 1 ? 'recorded' : 'duplicate';
+  }
+
+  async findAttempt(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    const row = await this.prisma.tx(market).shippingFleetBookingAttempt.findFirst({
+      where: { marketId: market.marketId, sellerOrderId },
+    });
+    return row === null ? null : (row.fleet as FleetCode);
+  }
+
+  async markAttempt(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    fleet: FleetCode,
+    at: Temporal.Instant,
+  ) {
+    await this.prisma.tx(market).shippingFleetBookingAttempt.upsert({
+      where: { marketId_sellerOrderId: { marketId: market.marketId, sellerOrderId } },
+      create: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        sellerOrderId,
+        fleet,
+        attemptedAt: toDate(at),
+      },
+      update: { fleet, attemptedAt: toDate(at) },
+    });
+  }
+
+  async clearAttempt(market: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    await this.prisma.tx(market).shippingFleetBookingAttempt.deleteMany({
+      where: { marketId: market.marketId, sellerOrderId },
+    });
   }
 }
