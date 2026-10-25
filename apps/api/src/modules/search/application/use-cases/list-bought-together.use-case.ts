@@ -13,8 +13,8 @@ import { itemOf, type ShelfFailure, type ShelfPage } from './list-bestsellers.us
 /**
  * `search.list-bought-together`: the Offers most often bought on the same paid order as one Offer
  * (the product page's shelf). Rule `anonymous`: no session, the request's Market, nothing about
- * the shopper. Ordering gives the partner Offer ids in rank order (3 or more distinct paid orders
- * over 90 days); the asked Offer itself is dropped, the rest that are indexed keep that order and
+ * the shopper. Ordering gives the partner Offer ids in rank order (3 or more distinct buyer
+ * accounts over 90 days); the asked Offer itself is dropped, the rest that are indexed keep that order and
  * every one, and the asked Offer too (not shown: an empty shelf), is re-checked with catalog and sellers before it is shown. A source or check that
  * cannot be made is `search.unavailable`, never an unchecked list. A short or empty shelf is not
  * filled. Same item shape as the other shelves.

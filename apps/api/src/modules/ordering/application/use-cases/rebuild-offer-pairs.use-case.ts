@@ -6,15 +6,15 @@ import {
   type UnitOfWork,
 } from '../../../../platform/unit-of-work/unit-of-work';
 import { BOUGHT_TOGETHER_WINDOW_DAYS } from '../../contracts';
-import { MAX_PAIR_KEYS, OfferPairCounter, storedRows } from '../../domain/offer-pairs';
+import { MAX_COUNTER_ENTRIES, OfferPairCounter, storedRows } from '../../domain/offer-pairs';
 import type { OfferPairStore, OrderCursor } from '../ports/offer-pairs.store';
 
 export interface RebuildOfferPairsDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly pairs: OfferPairStore;
   readonly clock: Clock;
-  /** The counter's ceiling; {@link MAX_PAIR_KEYS} unless a test lowers it. */
-  readonly maxPairKeys?: number;
+  /** The counter's ceiling (pair keys plus buyer entries); {@link MAX_COUNTER_ENTRIES} unless a test lowers it. */
+  readonly maxCounterEntries?: number;
 }
 
 /** Orders read per page while counting. */
@@ -30,9 +30,10 @@ export interface OfferPairsRebuilt {
 export type OfferPairsRebuildFailure = { readonly code: 'ordering.offer-pairs-too-many' };
 
 /**
- * `ordering.rebuild-offer-pairs`: for one Market, counts the Offer pairs that share at least 3
- * distinct paid orders (confirmed from 90 days before the Clock's now up to now, by confirmation
- * time) and replaces the Market's pair table with them. The orders are read page by page, each page
+ * `ordering.rebuild-offer-pairs`: for one Market, counts the Offer pairs that at least 3 distinct
+ * buyer accounts bought together, in one paid order each (confirmed from 90 days before the Clock's now up to now, by confirmation
+ * time; the buyer account id is read here, held in memory only and never stored or logged) and
+ * replaces the Market's pair table with them. The orders are read page by page, each page
  * in its own read-only unit (no transaction, ADR-0025), and counted in memory; only the replacement
  * (delete and insert) runs in one read-write unit with the longest unit timeout, so a reader sees
  * the old table or the new one. If the counter's ceiling is hit the rebuild is refused and the old
@@ -63,7 +64,7 @@ export class RebuildOfferPairs extends UseCase<
     const { unitOfWork, pairs } = this.deps;
     const until = this.deps.clock.now();
     const since = until.subtract({ hours: BOUGHT_TOGETHER_WINDOW_DAYS * 24 });
-    const counter = new OfferPairCounter(this.deps.maxPairKeys ?? MAX_PAIR_KEYS);
+    const counter = new OfferPairCounter(this.deps.maxCounterEntries ?? MAX_COUNTER_ENTRIES);
     let skippedLargeOrders = 0;
     let after: OrderCursor | null = null;
     for (;;) {
@@ -76,7 +77,7 @@ export class RebuildOfferPairs extends UseCase<
       if (!read.ok) throw new Error('ordering.rebuild-offer-pairs: read failed');
       const page = read.value;
       for (const order of page.orders) {
-        const outcome = counter.add(order.offerIds);
+        const outcome = counter.add(order.accountId, order.offerIds);
         if (outcome === 'ceiling') return err({ code: 'ordering.offer-pairs-too-many' });
         if (outcome === 'skipped-large') skippedLargeOrders += 1;
       }

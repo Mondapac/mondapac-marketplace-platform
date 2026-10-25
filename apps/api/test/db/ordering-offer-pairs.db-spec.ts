@@ -21,9 +21,9 @@ import {
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // "Bought together" on PostgreSQL (ordering.offer_pairs), as the application role, in both Market
-// fixtures: the nightly rebuild counts distinct paid orders (confirmed, by confirmation time) over
-// 90 days and keeps pairs of 3 or more, stores both directions, never mixes Markets, replaces the
-// old table in full and gives the same table when run again; the read answers Offer ids by orders
+// fixtures: the nightly rebuild counts distinct buyer accounts (one paid, confirmed order each, by
+// confirmation time) over 90 days and keeps pairs of 3 or more, stores both directions, never mixes Markets, replaces the
+// old table in full and gives the same table when run again; the read answers Offer ids by buyers
 // then id; the CHECKs and the grants (select, insert, delete only) hold.
 
 const NOW = Temporal.Instant.from('2026-10-25T03:00:00Z');
@@ -80,13 +80,14 @@ describe.each(TEST_MARKETS)('offer pairs in market %s (database)', (code) => {
     offers: readonly Id<'Offer'>[],
     kind: Kind = 'confirmed',
     confirmedAt: Temporal.Instant = NOW.subtract({ hours: 24 }),
+    accountId: Id<'Account'> = ids.next<'Account'>(),
   ): OrderState => {
     const orderId = ids.next<'Order'>();
     const sellerOrderId = ids.next<'SellerOrder'>();
     return {
       id: orderId,
       marketId: target.marketId,
-      accountId: ids.next<'Account'>(),
+      accountId,
       status:
         kind === 'confirmed' ? 'confirmed' : kind === 'cancelled' ? 'cancelled' : 'pending-payment',
       cancelReason: kind === 'cancelled' ? 'expired' : null,
@@ -164,7 +165,7 @@ describe.each(TEST_MARKETS)('offer pairs in market %s (database)', (code) => {
     return result.value;
   };
 
-  it('keeps a pair of 3 distinct paid orders in both directions and drops one of 2', async () => {
+  it('keeps a pair of 3 distinct buyers in both directions and drops one of 2 buyers', async () => {
     const [a, b, c, d] = [offer(), offer(), offer(), offer()] as const;
     await place(
       market,
@@ -178,6 +179,33 @@ describe.each(TEST_MARKETS)('offer pairs in market %s (database)', (code) => {
     expect(await pairsOf(market, b)).toEqual([{ paired: a, orders: 3 }]);
     expect(await pairsOf(market, c)).toEqual([]);
     expect(await pairsOf(market, d)).toEqual([]);
+  });
+
+  it('makes no pair of 3 orders from one account, and counts an account once across its orders', async () => {
+    const [a, b, c, d, e, f] = [offer(), offer(), offer(), offer(), offer(), offer()] as const;
+    const one = ids.next<'Account'>();
+    const two = ids.next<'Account'>();
+    const when = NOW.subtract({ hours: 24 });
+    await place(
+      market,
+      // one account, three orders: no pair
+      ...times(3, () => order(market, [a, b], 'confirmed', when, one)),
+      // two accounts, five orders: no pair
+      ...times(3, () => order(market, [c, d], 'confirmed', when, one)),
+      ...times(2, () => order(market, [c, d], 'confirmed', when, two)),
+      // three accounts, one of them with two orders: a pair of 3 buyers, not 4 orders
+      order(market, [e, f], 'confirmed', when, one),
+      order(market, [e, f], 'confirmed', when, one),
+      order(market, [e, f], 'confirmed', when, two),
+      order(market, [e, f]),
+    );
+
+    await run();
+
+    expect(await pairsOf(market, a)).toEqual([]);
+    expect(await pairsOf(market, c)).toEqual([]);
+    expect(await pairsOf(market, e)).toEqual([{ paired: f, orders: 3 }]);
+    expect(await pairsOf(market, f)).toEqual([{ paired: e, orders: 3 }]);
   });
 
   it('counts an order once however many lines hold the Offers', async () => {

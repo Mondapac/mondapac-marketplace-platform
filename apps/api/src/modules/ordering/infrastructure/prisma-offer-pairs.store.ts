@@ -51,6 +51,7 @@ export class PrismaOfferPairStore implements OfferPairStore {
       },
       select: {
         id: true,
+        accountId: true,
         confirmedAt: true,
         lines: { where: { marketId: market.marketId }, select: { offerId: true } },
       },
@@ -63,6 +64,7 @@ export class PrismaOfferPairStore implements OfferPairStore {
         return {
           orderId: row.id,
           confirmedAt: Temporal.Instant.fromEpochMilliseconds(row.confirmedAt.getTime()),
+          accountId: row.accountId,
           offerIds: row.lines.map((line) => line.offerId),
         };
       }),

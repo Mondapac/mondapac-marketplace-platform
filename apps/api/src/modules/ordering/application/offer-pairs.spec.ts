@@ -8,7 +8,7 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import {
   MAX_OFFERS_PER_COUNTED_ORDER,
-  MAX_PAIR_KEYS,
+  MAX_COUNTER_ENTRIES,
   OfferPairCounter,
   storedRows,
   type DirectedOfferPair,
@@ -34,21 +34,51 @@ const offer = (n: number): Id<'Offer'> => {
   return parsed.value;
 };
 
+const buyer = (n: number) => `buyer-${n}`;
+
 describe('OfferPairCounter', () => {
-  it('counts a pair once per order and keeps pairs of 3 or more distinct orders', () => {
+  it('counts a pair once per buyer and keeps pairs of 3 or more distinct buyers', () => {
     const counter = new OfferPairCounter();
-    counter.add([offer(1), offer(2), offer(3)]);
-    counter.add([offer(2), offer(1)]);
-    counter.add([offer(1), offer(1), offer(2)]); // two lines of one Offer: still one order
-    counter.add([offer(3), offer(4)]);
+    counter.add(buyer(1), [offer(1), offer(2), offer(3)]);
+    counter.add(buyer(2), [offer(2), offer(1)]);
+    counter.add(buyer(3), [offer(1), offer(1), offer(2)]); // two lines of one Offer: still one
+    counter.add(buyer(4), [offer(3), offer(4)]);
 
     expect(counter.pairs()).toEqual([{ offerId: offer(1), pairedOfferId: offer(2), orders: 3 }]);
   });
 
-  it('keeps a pair at exactly 3 and drops one at 2', () => {
+  it('makes no pair of 3 orders from one buyer', () => {
     const counter = new OfferPairCounter();
-    for (let i = 0; i < 3; i++) counter.add([offer(5), offer(6)]);
-    for (let i = 0; i < 2; i++) counter.add([offer(7), offer(8)]);
+    for (let i = 0; i < 3; i++) counter.add(buyer(1), [offer(1), offer(2)]);
+
+    expect(counter.pairs()).toEqual([]);
+  });
+
+  it('makes a pair of 3 buyers', () => {
+    const counter = new OfferPairCounter();
+    for (const n of [1, 2, 3]) counter.add(buyer(n), [offer(1), offer(2)]);
+
+    expect(counter.pairs()).toEqual([{ offerId: offer(1), pairedOfferId: offer(2), orders: 3 }]);
+  });
+
+  it('makes no pair of 2 buyers with 5 orders', () => {
+    const counter = new OfferPairCounter();
+    for (const n of [1, 1, 1, 2, 2]) counter.add(buyer(n), [offer(1), offer(2)]);
+
+    expect(counter.pairs()).toEqual([]);
+  });
+
+  it('counts a buyer once across orders and stores the distinct-buyer count', () => {
+    const counter = new OfferPairCounter();
+    for (const n of [1, 1, 2, 2, 3, 3, 4]) counter.add(buyer(n), [offer(1), offer(2)]);
+
+    expect(counter.pairs()).toEqual([{ offerId: offer(1), pairedOfferId: offer(2), orders: 4 }]);
+  });
+
+  it('keeps a pair at exactly 3 buyers and drops one at 2', () => {
+    const counter = new OfferPairCounter();
+    for (const n of [1, 2, 3]) counter.add(buyer(n), [offer(5), offer(6)]);
+    for (const n of [1, 2]) counter.add(buyer(n), [offer(7), offer(8)]);
 
     expect(counter.pairs().map((p) => [p.offerId, p.pairedOfferId, p.orders])).toEqual([
       [offer(5), offer(6), 3],
@@ -57,10 +87,17 @@ describe('OfferPairCounter', () => {
 
   it('counts nothing for a one-Offer order or an empty one', () => {
     const counter = new OfferPairCounter();
-    for (let i = 0; i < 5; i++) counter.add([offer(1)]);
-    counter.add([]);
+    for (let i = 0; i < 5; i++) counter.add(buyer(i), [offer(1)]);
+    counter.add(buyer(9), []);
 
     expect(counter.pairs()).toEqual([]);
+  });
+
+  it('does not hold the buyer id in anything it returns', () => {
+    const counter = new OfferPairCounter();
+    for (const n of [1, 2, 3]) counter.add(buyer(n), [offer(1), offer(2)]);
+
+    expect(JSON.stringify(counter.pairs())).not.toContain('buyer-');
   });
 });
 
@@ -70,11 +107,11 @@ describe('OfferPairCounter limits', () => {
     const many = (n: number) => Array.from({ length: n }, (_, i) => offer(100 + i));
     expect(MAX_OFFERS_PER_COUNTED_ORDER).toBe(20);
 
-    for (let i = 0; i < 3; i++) {
-      expect(counter.add(many(21))).toBe('skipped-large');
+    for (const n of [1, 2, 3]) {
+      expect(counter.add(buyer(n), many(21))).toBe('skipped-large');
     }
     expect(counter.pairs()).toEqual([]);
-    for (let i = 0; i < 3; i++) expect(counter.add(many(20))).toBe('counted');
+    for (const n of [1, 2, 3]) expect(counter.add(buyer(n), many(20))).toBe('counted');
     expect(counter.pairs()).toHaveLength(190);
   });
 
@@ -82,20 +119,28 @@ describe('OfferPairCounter limits', () => {
     const counter = new OfferPairCounter();
     const lines = [...Array.from({ length: 20 }, (_, i) => offer(100 + i)), offer(100), offer(101)];
 
-    expect(counter.add(lines)).toBe('counted');
+    expect(counter.add(buyer(1), lines)).toBe('counted');
   });
 
-  it('refuses at the ceiling on a new pair, and still counts a pair it already holds', () => {
-    const counter = new OfferPairCounter(2);
-    expect(counter.add([offer(1), offer(2)])).toBe('counted');
-    expect(counter.add([offer(3), offer(4)])).toBe('counted');
+  it('refuses at the ceiling on a new pair, and still counts a pair and buyer it already holds', () => {
+    // Each new pair is 2 entries: the key and its first buyer.
+    const counter = new OfferPairCounter(4);
+    expect(counter.add(buyer(1), [offer(1), offer(2)])).toBe('counted');
+    expect(counter.add(buyer(1), [offer(3), offer(4)])).toBe('counted');
 
-    expect(counter.add([offer(5), offer(6)])).toBe('ceiling');
-    expect(counter.add([offer(1), offer(2)])).toBe('counted');
+    expect(counter.add(buyer(1), [offer(5), offer(6)])).toBe('ceiling');
+    expect(counter.add(buyer(1), [offer(1), offer(2)])).toBe('counted');
   });
 
-  it('has a ceiling of 2,000,000 pairs by default', () => {
-    expect(MAX_PAIR_KEYS).toBe(2_000_000);
+  it('counts a new buyer of a held pair against the ceiling', () => {
+    const counter = new OfferPairCounter(3);
+    expect(counter.add(buyer(1), [offer(1), offer(2)])).toBe('counted'); // key + buyer = 2
+    expect(counter.add(buyer(2), [offer(1), offer(2)])).toBe('counted'); // 3
+    expect(counter.add(buyer(3), [offer(1), offer(2)])).toBe('ceiling');
+  });
+
+  it('has a ceiling of 4,000,000 entries (pair keys plus buyer memberships) by default', () => {
+    expect(MAX_COUNTER_ENTRIES).toBe(4_000_000);
   });
 });
 
@@ -142,7 +187,12 @@ describe('storedRows', () => {
 });
 
 class MemoryPairs implements OfferPairStore {
-  orders: { orderId: string; confirmedAt?: Temporal.Instant; offerIds: string[] }[] = [];
+  orders: {
+    orderId: string;
+    accountId?: string;
+    confirmedAt?: Temporal.Instant;
+    offerIds: string[];
+  }[] = [];
   stored: DirectedOfferPair[] = [];
   replaced = 0;
   readonly windows: { since: Temporal.Instant; until: Temporal.Instant }[] = [];
@@ -162,7 +212,11 @@ class MemoryPairs implements OfferPairStore {
       orders: this.orders
         .filter((o) => after === null || o.orderId > after.orderId)
         .slice(0, take)
-        .map((o) => ({ ...o, confirmedAt: o.confirmedAt ?? NOW })),
+        .map((o) => ({
+          ...o,
+          accountId: o.accountId ?? `account-of-${o.orderId}`,
+          confirmedAt: o.confirmedAt ?? NOW,
+        })),
     });
   }
   replacePairs(
@@ -193,13 +247,13 @@ describe.each(['AU', 'ZZ'] as const)('bought together in market %s', (code) => {
 
   describe('RebuildOfferPairs', () => {
     let units: FakeUnitOfWork;
-    const rebuild = (maxPairKeys?: number) => {
+    const rebuild = (maxCounterEntries?: number) => {
       units = new FakeUnitOfWork();
       return new RebuildOfferPairs(gate, {
         unitOfWork: units,
         pairs: store,
         clock: new FixedClock(NOW),
-        ...(maxPairKeys === undefined ? {} : { maxPairKeys }),
+        ...(maxCounterEntries === undefined ? {} : { maxCounterEntries }),
       });
     };
     const three = () =>
@@ -231,6 +285,34 @@ describe.each(['AU', 'ZZ'] as const)('bought together in market %s', (code) => {
       expect(options.at(-1)).toEqual({ timeoutMs: MAX_UNIT_TIMEOUT_MS });
       expect(options.filter((o) => o.readOnly !== true)).toHaveLength(1);
       expect(MAX_UNIT_TIMEOUT_MS).toBe(30_000);
+    });
+
+    it('makes no pair of 3 orders of one account, and a pair of 3 accounts', async () => {
+      store.orders = [1, 2, 3].map((n) => ({
+        orderId: `o${n}`,
+        accountId: 'same',
+        offerIds: [offer(1), offer(2)],
+      }));
+      expect(await rebuild().execute(system, {})).toEqual({
+        ok: true,
+        value: { rows: 0, skippedLargeOrders: 0 },
+      });
+
+      store.orders = [1, 2, 3].map((n) => ({
+        orderId: `o${n}`,
+        accountId: n === 3 ? 'a2' : `a${n}`,
+        offerIds: [offer(1), offer(2)],
+      }));
+      expect((await rebuild().execute(system, {})).ok).toBe(true);
+      expect(store.stored).toEqual([]); // a1, a2, a2: two accounts
+
+      store.orders = ['a1', 'a2', 'a3', 'a3'].map((accountId, n) => ({
+        orderId: `p${n}`,
+        accountId,
+        offerIds: [offer(1), offer(2)],
+      }));
+      await rebuild().execute(system, {});
+      expect(store.stored.map((r) => r.orders)).toEqual([3, 3]);
     });
 
     it('replaces with nothing when no pair reaches 3, so old pairs go', async () => {
@@ -279,7 +361,7 @@ describe.each(['AU', 'ZZ'] as const)('bought together in market %s', (code) => {
       expect(result).toEqual({ ok: true, value: { rows: 2, skippedLargeOrders: 1 } });
     });
 
-    it('refuses at the pair ceiling, keeps the old table and opens no write unit', async () => {
+    it('refuses at the counter ceiling, keeps the old table and opens no write unit', async () => {
       store.stored = [{ offerId: offer(1), pairedOfferId: offer(2), orders: 9 }];
       store.orders = [
         { orderId: 'o1', offerIds: [offer(1), offer(2)] },
@@ -287,7 +369,7 @@ describe.each(['AU', 'ZZ'] as const)('bought together in market %s', (code) => {
         { orderId: 'o3', offerIds: [offer(5), offer(6)] },
       ];
 
-      const result = await rebuild(2).execute(system, {});
+      const result = await rebuild(3).execute(system, {});
 
       expect(result).toEqual({ ok: false, error: { code: 'ordering.offer-pairs-too-many' } });
       expect(store.replaced).toBe(0);
