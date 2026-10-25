@@ -63,7 +63,7 @@ Security events and audit entries are kept as they are, never edited or deleted 
 
 ## PCI DSS
 
-Cards are entered into Stripe's hosted fields, so card data does not touch our servers. Mondapac stays at **SAQ A**, the shortest PCI DSS self-assessment. This depends on two conditions we must keep true:
+Cards are entered into Stripe's hosted fields, so card data does not touch our servers. Mondapac is expected to remain at **SAQ A**, the shortest PCI DSS self-assessment. This depends on two conditions we must keep true:
 
 1. A Content-Security-Policy with a working violation report endpoint (CSP report endpoint is planned in SOC package 4 and is a launch blocker).
 2. Protection of the payment page: no unreviewed scripts, changes through review, alerts for new script sources (see [runbooks/unknown-script-csp.md](runbooks/unknown-script-csp.md)).

@@ -26,9 +26,9 @@ Names only, set as server environment secrets, never in the repository:
 | `STRIPE_SECRET_KEY` | Stripe API (test mode only today) | Stripe dashboard, API keys |
 | `STRIPE_WEBHOOK_SECRET` | Signature check of Stripe webhooks, one per Market endpoint | Stripe dashboard, webhook endpoint of the Market |
 | `STRIPE_CONNECT_WEBHOOK_SECRET` | Signature check of Stripe Connect webhooks | Stripe dashboard, Connect endpoint |
-| `DRIVE_API_KEY` | Calls to Mondapac Drive | Drive admin; `<Drive key rotation procedure>` |
-| `DRIVE_WEBHOOK_SECRET` | Signature check of Drive webhooks | Drive and the server, see step 5 |
-| Throttle secret (identity sign-in counters) | Keys of sign-in rate counters | Server secret store; rotating only resets counters |
+| `MONDAPAC_DRIVE_API_KEY` (per Market, `AU=...`) | Calls to Mondapac Drive | Drive admin; `<Drive key rotation procedure>` |
+| `MONDAPAC_DRIVE_WEBHOOK_SECRET` (per Market, `AU=...`) | Signature check of Drive webhooks | Drive and the server, see step 5 |
+| Throttle key secret (identity sign-in counters), `<confirm env name; not in .env.example>` | Keys of sign-in rate counters | Server secret store; rotating only resets counters |
 | Uber Direct, Zoom2u secrets | `<not in code yet; confirm when those carriers are integrated>` | Provider console |
 | Database credentials, session and encryption secrets, email and SMS provider keys | `<confirm env names in the deployment config; no host chosen yet>` | Provider or host secret store |
 

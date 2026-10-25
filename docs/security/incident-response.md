@@ -21,7 +21,7 @@ From plan section 5.
 
 | Level | First responder | Incident commander | Business decision and communication |
 | --- | --- | --- | --- |
-| S1 | On-call person (Kazem DevOps or Hossein backend) | Ali (CTO) with Hassan | john; customer message with Hadi (product owner) |
+| S1 | On-call person of the week (Kazem DevOps, Hossein backend or Mojtaba DB) | Ali (CTO) with Hassan | john; customer message with Hadi (product owner) |
 | S2 | On-call person | Hassan | Ali if needed |
 | S3 | Hossein (backend) or Mojtaba (DB) | Hassan | Not needed |
 | S4 | Hassan's weekly review | Not needed | Not needed |
