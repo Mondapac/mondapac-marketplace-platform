@@ -309,6 +309,43 @@ describe('placements of a draft', () => {
         code: 'needs-product-page',
       },
     ]);
+    const unlinkedProblem = {
+      path: `slots.${campaignSlot.key}[${onCampaign[campaignSlot.key]!.length - 1}]`,
+      code: 'needs-product-page',
+    };
+    // A product-linkable page may hold the shelf in its draft, but publishes it only once linked.
+    expect(publishProblems(campaign, onCampaign, null)).toContainEqual(unlinkedProblem);
+    // A switched-off shelf does not block publishing.
+    const shelfId = onCampaign[campaignSlot.key]!.at(-1)!.id;
+    const switchedOff = updatePlacement(campaign, onCampaign, campaignSlot.key, shelfId, {
+      enabled: false,
+    });
+    expect(switchedOff.ok).toBe(true);
+    expect(
+      publishProblems(campaign, switchedOff.ok ? switchedOff.value : {}, 'seller'),
+    ).not.toContainEqual(unlinkedProblem);
+
+    // An existing shelf may become bought-together on the product page, and switching a shelf
+    // on or off on home never trips the check.
+    const productDraft = addPlacement(
+      product,
+      defaultPlacements(product, { title: 'P' }, ids()),
+      'below',
+      { module: 'product-shelf', config: { source: { kind: 'bestsellers' } } },
+      'x',
+    );
+    expect(productDraft.ok).toBe(true);
+    if (productDraft.ok) {
+      const shelfOnProduct = productDraft.value.below!.at(-1)!;
+      const changed = updatePlacement(product, productDraft.value, 'below', shelfOnProduct.id, {
+        config: together.config,
+      });
+      expect(changed.ok && changed.value.below!.at(-1)!.config).toEqual({
+        ...together.config,
+        limit: 12,
+      });
+    }
+    expect(updatePlacement(home, start(), 'main', existing.id, { enabled: false }).ok).toBe(true);
 
     // Stored content is re-checked: a bought-together shelf on a template that cannot host it is
     // left out on read, and a switched-off one does not block publishing.

@@ -18,7 +18,9 @@ go live only after a platform admin approves them.
 - **Module catalogue (closed)**: banner, category-circles, sellers-near-you, product-shelf
   (sources: bestsellers, specials, category, seller, tag, manual, linked, recently-viewed,
   for-you, bought-together; the last three are read per buyer or per product with `no-store`,
-  and `bought-together` is allowed only on `system.product` or a page linkable to a product), info-strip,
+  and `bought-together` can be added only on `system.product` or a template linkable to a
+  product, and such a page publishes it only once it is linked to a product; the buyer app
+  draws these three shelves from package 1d-4 on), info-strip,
   text-block, image-text, faq, brand-header, product-spotlight, nav-link, nav-category. Every
   module checks its settings; texts are plain text (no control or format characters, no HTML),
   rich text is data (heading level 2 or 3, paragraph, list), links are site paths or `https:`
