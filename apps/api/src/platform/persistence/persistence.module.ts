@@ -23,12 +23,19 @@ import { MarketRegistry } from '../market-config/market-registry';
 import { MarketContextFactory } from '../market-context/market-context.factory';
 import { RATE_LIMIT_COUNTERS } from '../rate-limit/rate-limit-counters';
 import { JOB_LOCK } from '../scheduler/job-lock';
+import {
+  SECURITY_EVENT_STORE,
+  type SecurityEventStore,
+} from '../security-events/security-event-retention';
+import { SECURITY_EVENTS, type SecurityEvents } from '../security-events/security-events';
 import { SUBJECT_KEY_STORE, type SubjectKeyStore } from '../subject-keys/subject-key-store';
 import { UNIT_OF_WORK, type UnitOfWork } from '../unit-of-work/unit-of-work';
 import { AdvisoryJobLock } from './advisory-job-lock';
 import { PrismaAuditChainStore } from './audit/prisma-audit-chain-store';
 import { createAuditTrailReader } from './audit/prisma-audit-trail-reader';
 import { createAuditWriter } from './audit/prisma-audit-writer';
+import { PrismaSecurityEventStore } from './audit/prisma-security-event-store';
+import { createSecurityEvents } from './audit/prisma-security-events';
 import { DatabaseProbe } from './database-probe';
 import { createGuardedClient, GUARDED_CLIENT, type GuardedClient } from './guarded-client';
 import type { ModelMap } from './model-map';
@@ -213,6 +220,32 @@ export class PersistenceModule {
         permissionKeys: PermissionKeyLookup,
       ) => createAuditWriter(owner, { catalogue, ids, clock, permissionKeys }),
     };
+  }
+
+  /**
+   * The one line of a module's Nest module that binds its own security event recorder
+   * (docs/design/data/platform.md 13.3): `providers:
+   * [PersistenceModule.securityEventsFor('identity')]`. The owner is the module's folder; it may
+   * record only the catalogue types it owns. As with the audit writer, no factory is injectable
+   * and a module never exports `SECURITY_EVENTS`.
+   */
+  static securityEventsFor(owner: string): FactoryProvider<SecurityEvents> {
+    if (!/^(?:platform\.)?[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(owner) || owner === 'platform') {
+      throw new Error(`"${owner}" is not a module name or "platform.<component>"`);
+    }
+    return {
+      provide: SECURITY_EVENTS,
+      inject: [ID_GENERATOR, CLOCK],
+      useFactory: (ids: IdGenerator, clock: Clock) => createSecurityEvents(owner, { ids, clock }),
+    };
+  }
+
+  /**
+   * The retention store of the security events, bound only by `SecurityEventsModule`: not
+   * exported, so no module reads or deletes events past the retention job.
+   */
+  static securityEventStore(): FactoryProvider<SecurityEventStore> {
+    return { provide: SECURITY_EVENT_STORE, useFactory: () => new PrismaSecurityEventStore() };
   }
 
   /**

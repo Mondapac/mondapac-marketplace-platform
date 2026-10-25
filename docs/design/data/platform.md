@@ -1167,3 +1167,74 @@ one window. Limits, keys, windows and answers are unchanged. Migration
 | Privileges | `mondapac_app`: `SELECT, INSERT, UPDATE, DELETE` (no CREATE: the package's `CREATE TABLE` is off, `tableCreated`) |
 | Failure | A counter that cannot be read or written answers 503 `access.unavailable` (fail closed, identity design 5.2), as before |
 | Tests | `test/db/rate-limit-counters.db-spec.ts`: two applications on one database see one count, sequentially and concurrently, in both Market fixtures; the key CHECK; the purge. Suites without a database count in memory (`createTestApp`, `rateLimitStore`) |
+
+## 13. Security events (SOC package 1, 2026-10-25)
+
+Owner decision 2026-10-25 (SOC plan, decisions T1-T10; build approved the same day). Package 1
+is the foundation the later SOC packages read: rules and alerts (2), automatic actions (3),
+external signals (4), the security center page (5).
+
+### 13.1 Tables
+
+- `platform.security_events`: one row per event. Columns: `id` (UUIDv7), `market_id`,
+  `tenant_id`, `occurred_at` (Clock, whole ms), `type`, `severity` (`s1` to `s4`),
+  `actor_type` and `actor_id` (as `audit_log`), `target_type` and `target_id` (both or
+  neither), `ip` (`inet`, only on types that declare it), `payload` (`jsonb` object, at most
+  4096 bytes; the writer caps it at 2048), `correlation_id`.
+- `platform.security_events_archive`: the same columns plus `archived_at`.
+- Indexes: unique `(market_id, occurred_at, id)` on both (newest-first lists, retention scan);
+  `(market_id, type, occurred_at)` and `(market_id, target_type, target_id, occurred_at)` on the
+  hot table, for the rules of package 2 (failures per account or per type in a window).
+- No foreign keys: the target is an id of another schema, kept as text.
+
+### 13.2 Catalogue
+
+`apps/api/src/platform/security-events/security-event-catalogue.ts`, closed, snapshot in
+`apps/api/test/contracts/security-event-catalogue.snapshot.json` (security-tester reads every
+change in the diff).
+
+- **Recorded types**, written by their owner module through `SecurityEvents.record`: identity
+  sign-in succeeded, failed, throttled; second factor failed, locked; password confirm failed,
+  changed, reset; payments and shipping webhook signature failed (Stripe; Mondapac Drive, and
+  Uber Direct and Zoom2u once their adapters exist).
+- **Projected audit actions**: role and permission changes, account disable and enable,
+  invitations, second-factor changes and resets, the wallet switch, tax strategy activation,
+  the assistant settings, payout account changes and payout pauses, commission rates, refund
+  requests and the support contact. The AuditWriter inserts the security event in the same
+  unit as the audit row (type = action, payload `{ auditLogId }`), so no use case can forget it.
+- Payloads use the closed field kinds of domain events (ids, codes, integers, booleans,
+  instants): no free text, so no password, code, token, card number or email can be recorded.
+
+13.2.1 Identity: every place that adds a sign-in record (`identity.sign_in_records`) records
+the event of its outcome right after it, in the same unit (`recordSignInSecurityEvent`).
+Refusals are `ok` outcomes of their units, so a failed attempt's event commits like its record.
+
+Not built yet: new-country sign-in (needs a GeoIP source; package 2 can compare the address
+with the account's earlier `sign-in.succeeded` events), data exports and the buyer-language
+switch (no such feature exists yet; each adds its type or audited action when it is built).
+
+### 13.3 Writer
+
+`PersistenceModule.securityEventsFor('<module>')` binds a module's own recorder (no factory is
+injectable). It writes in the caller's open read-write unit only, through the unit's reserved
+audit view (`auditTx`), and refuses (throwing, so the unit rolls back) a context that is not
+minted, no or a read-only unit, another Market, another owner's type, an unknown type, a
+target or address the type does not declare, a malformed id or address, or a payload outside
+its fields. A webhook refused before any unit opens a short unit for its event alone; a failure
+to record it is logged and does not change the HTTP answer.
+
+The two tables are reserved like the audit tables: `PrismaService.tx` does not expose them and
+`pnpm boundaries` allows them only in `platform/persistence/audit/`.
+
+### 13.4 Retention and grants (decision T6)
+
+- `platform.security-events-retention` (worker, hourly, per hosted Market): moves events older
+  than 90 days to the archive (500 per unit, `ON CONFLICT DO NOTHING`, then delete), and deletes
+  archived events older than 90 + 365 days. At most 40 units per table per run.
+- Insert-only for every role, the owner included: a trigger rejects UPDATE and TRUNCATE always,
+  and DELETE of a row younger than its floor read from the database clock (89 days hot, 454 days
+  archive: one day under the job's ages for clock skew). So no admin and no bug can remove a
+  recent event; the retention job is the only deleter that can succeed.
+- `mondapac_app`: `SELECT, INSERT, DELETE` on both tables, nothing else. The start-up check
+  `security_events_privilege` refuses a role that holds UPDATE, TRUNCATE, TRIGGER or MAINTAIN.
+- Data stays in the Market's region (the tables live in the Region Stack's database).

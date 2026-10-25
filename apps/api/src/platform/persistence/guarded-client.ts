@@ -29,12 +29,16 @@ type DelegateView<Delegate> = Readonly<Pick<Delegate, Extract<keyof Delegate, Gu
  * The audit tables of `platform.prisma` (docs/design/domain/platform-audit.md 2; Hassan M1 on
  * slice 6a): reserved to `platform/persistence/audit/`. Their delegates are not in the view
  * `PrismaService.tx(market)` hands out, so no repository can write or read an audit row past
- * the AuditWriter; the writer reaches them through its own view of the same unit.
+ * the AuditWriter; the writer reaches them through its own view of the same unit. The two
+ * security event tables (docs/design/data/platform.md 13) are reserved the same
+ * way, to the SecurityEvents writer and the retention store in the same folder.
  */
 export const AUDIT_TABLES: readonly string[] = Object.freeze([
   'audit_log',
   'audit_log_seal',
   'audit_chain_checkpoint',
+  'security_events',
+  'security_events_archive',
 ]);
 
 /** The client properties of the audit models: the type-level half of {@link AUDIT_TABLES}. */
@@ -42,6 +46,8 @@ export const AUDIT_PROPERTIES = Object.freeze([
   'auditLog',
   'auditLogSeal',
   'auditChainCheckpoint',
+  'securityEvent',
+  'securityEventArchive',
 ] as const satisfies readonly ModelProperty[]);
 type AuditProperty = (typeof AUDIT_PROPERTIES)[number];
 

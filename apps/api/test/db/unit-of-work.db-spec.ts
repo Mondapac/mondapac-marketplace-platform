@@ -504,7 +504,14 @@ describe('UnitOfWork (database integration)', () => {
         return names;
       }
 
-      const auditProperties = ['auditChainCheckpoint', 'auditLog', 'auditLogSeal'];
+      // The security events are reserved like the audit log (docs/design/data/platform.md 13.1).
+      const auditProperties = [
+        'auditChainCheckpoint',
+        'auditLog',
+        'auditLogSeal',
+        'securityEvent',
+        'securityEventArchive',
+      ];
       const moduleProperties = Object.values(modelMap.models)
         .map((entry) => entry.clientProperty)
         .filter((property) => !auditProperties.includes(property))

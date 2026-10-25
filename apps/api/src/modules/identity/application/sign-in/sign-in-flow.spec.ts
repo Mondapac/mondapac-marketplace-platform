@@ -87,6 +87,7 @@ function setUp(population: Population) {
     sessions: fakes.sessionRepository,
     throttles: fakes.throttleRepository,
     records: fakes.recordRepository,
+    securityEvents: fakes.securityEvents,
     hasher,
     tokens,
     keys,
@@ -184,6 +185,18 @@ describe.each(
 
     await expect(execute(s)).resolves.toMatchObject({ ok: true });
     expect(s.steps).toEqual(['unit', 'verify', 'unit']);
+    // SOC package 1: the session is a security event, with the address and never the email.
+    const [record] = s.fakes.records;
+    expect(s.fakes.recordedSecurityEvents).toEqual([
+      {
+        type: 'identity.sign-in.succeeded',
+        targetId: record!.accountId,
+        ip: record!.address,
+        payload: { population, sessionId: record!.sessionId },
+        actor: 'anonymous',
+        marketId: record!.marketId,
+      },
+    ]);
   });
 
   it('answers credentials.invalid to an unknown address after one dummy verification (HF12)', async () => {
@@ -196,6 +209,9 @@ describe.each(
     expect(s.fakes.verified).toBe(1);
     expect(s.fakes.records.map((r) => [r.population, r.outcome, r.accountId])).toEqual([
       [population, 'credentials.invalid', null],
+    ]);
+    expect(s.fakes.recordedSecurityEvents.map((e) => [e.type, e.targetId, e.payload])).toEqual([
+      ['identity.sign-in.failed', null, { population, reason: 'credentials-invalid' }],
     ]);
   });
 
@@ -233,6 +249,10 @@ describe.each(
     expect(s.steps).toEqual(['unit']);
     expect(s.fakes.sessions.size).toBe(0);
     expect(s.fakes.records.at(-1)).toMatchObject({ population, outcome: 'request.throttled' });
+    expect(s.fakes.recordedSecurityEvents.at(-1)).toMatchObject({
+      type: 'identity.sign-in.throttled',
+      payload: { population },
+    });
   });
 
   it('answers the same throttle to an unknown address', async () => {
