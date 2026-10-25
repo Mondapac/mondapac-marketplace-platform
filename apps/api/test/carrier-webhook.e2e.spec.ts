@@ -49,6 +49,15 @@ class MemoryBookings implements CarrierBookingRepository {
     this.rows.set(key, booking);
     return Promise.resolve('saved' as const);
   }
+  findAttempt() {
+    return Promise.resolve(null);
+  }
+  markAttempt() {
+    return Promise.resolve();
+  }
+  clearAttempt() {
+    return Promise.resolve();
+  }
   recordEvent(m: MarketContext, event: { readonly eventId: string }) {
     const key = `${m.marketId}|${event.eventId}`;
     if (this.events.has(key)) return Promise.resolve('duplicate' as const);
@@ -93,6 +102,7 @@ describe.each(TEST_MARKETS)('Mondapac Drive webhook over HTTP in market %s', (co
         sellerOrderId: SELLER_ORDER,
         orderId: id<'Order'>(0x0a),
         sellerId: id<'Seller'>(0x51),
+        fleet: 'mondapac_drive',
         carrierReference: DELIVERY,
         carrierStatus: 'SCHEDULED',
         now: START,

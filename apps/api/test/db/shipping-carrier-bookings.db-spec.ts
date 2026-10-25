@@ -53,6 +53,7 @@ describe.each(TEST_MARKETS)('carrier booking repository in market %s (database)'
       sellerOrderId: ids.next<'SellerOrder'>(),
       orderId: ids.next<'Order'>(),
       sellerId: ids.next<'Seller'>(),
+      fleet: 'mondapac_drive',
       carrierReference: ids.next(),
       carrierStatus: 'SCHEDULED',
       now: T0,

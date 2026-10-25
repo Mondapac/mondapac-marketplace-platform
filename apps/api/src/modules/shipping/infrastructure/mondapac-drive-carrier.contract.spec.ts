@@ -123,6 +123,11 @@ class FakeDrive {
         tax: { amount: '114', currency: String(market) === 'ZZ' ? 'JPY' : 'AUD' },
       });
     }
+    const read = /^\/delivery\/deliveries\/([0-9a-f-]{36})$/.exec(req.url ?? '');
+    if (req.method === 'GET' && read !== null) {
+      const delivery = [...this.deliveries.values()].find((d) => d.id === read[1]);
+      return delivery === undefined ? send(404, { error: 'not found' }) : send(200, delivery);
+    }
     const cancel = /^\/delivery\/deliveries\/([0-9a-f-]{36})\/cancel$/.exec(req.url ?? '');
     if (req.method === 'POST' && cancel !== null && typeof body.reason === 'string') {
       const delivery = [...this.deliveries.values()].find((d) => d.id === cancel[1]);
@@ -177,6 +182,9 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       contactPhone: '+61 7 3000 0000',
       addressLines: ['1 Shop Street', 'Sunnybank'],
       postcode: code === 'AU' ? '4109' : '1000001',
+      locality: 'Sunnybank',
+      region: null,
+      location: null,
       notes: null,
     },
     dropoff: {
@@ -184,9 +192,17 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       contactPhone: '0412345678',
       addressLines: ['12 Example Street', 'Sunnybank', 'QLD'],
       postcode: code === 'AU' ? '4109' : '1000002',
+      locality: 'Sunnybank',
+      region: code === 'AU' ? 'QLD' : null,
+      location: null,
       notes: 'Leave at the door',
     },
-    parcel: configured.parcel,
+    // Drive takes the size and temperature only; the count and the value stay here.
+    parcel: {
+      ...configured.parcel,
+      itemCount: 3,
+      declaredValue: { amount: 4500n, currency: code === 'ZZ' ? 'JPY' : 'AUD' },
+    },
     mode: configured.mode,
     window: null,
   };
@@ -203,9 +219,9 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
   });
 
   const quote = {
-    pickup: { postcode: request.pickup.postcode },
-    dropoff: { postcode: request.dropoff.postcode },
-    parcel: configured.parcel,
+    pickup: { postcode: request.pickup.postcode, locality: 'Sunnybank', region: null },
+    dropoff: { postcode: request.dropoff.postcode, locality: null, region: null },
+    parcel: request.parcel,
     mode: configured.mode,
   };
 
@@ -223,7 +239,11 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
     drive.seen.length = 0;
     expect(await carrier.quote(market, quote)).toEqual({
       ok: true,
-      value: { amount: 1250n, currency: code === 'ZZ' ? 'JPY' : 'AUD' },
+      value: {
+        price: { amount: 1250n, currency: code === 'ZZ' ? 'JPY' : 'AUD' },
+        etaMinutes: null,
+        expiresAt: null,
+      },
     });
     expect(drive.seen[0]).toMatchObject({
       method: 'POST',
@@ -265,7 +285,10 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
     expect((await carrier.quote(market, quote)).ok).toBe(true);
     expect(drive.seen).toHaveLength(1);
     // Another pair of postcodes is its own quote.
-    const other = { ...quote, dropoff: { postcode: code === 'AU' ? '4000' : '1000003' } };
+    const other = {
+      ...quote,
+      dropoff: { postcode: code === 'AU' ? '4000' : '1000003', locality: null, region: null },
+    };
     expect((await carrier.quote(market, other)).ok).toBe(true);
     expect(drive.seen).toHaveLength(2);
     clock.advance(Temporal.Duration.from({ milliseconds: QUOTE_CACHE_MS }));
@@ -304,6 +327,7 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       value: {
         carrierReference: expect.stringMatching(/^01990000-/) as unknown,
         carrierStatus: 'SCHEDULED',
+        trackingUrl: null,
       },
     });
     expect(drive.seen).toHaveLength(1);
@@ -378,9 +402,9 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
 
   it('opens the circuit after the threshold, then lets one trial through after the cooldown', async () => {
     const quote = {
-      pickup: { postcode: request.pickup.postcode },
-      dropoff: { postcode: request.dropoff.postcode },
-      parcel: configured.parcel,
+      pickup: { postcode: request.pickup.postcode, locality: null, region: null },
+      dropoff: { postcode: request.dropoff.postcode, locality: null, region: null },
+      parcel: request.parcel,
       mode: configured.mode,
     };
     const { failureThreshold, cooldownSeconds } = configured.circuitBreaker;
@@ -453,6 +477,109 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       error: { code: 'carrier.not-configured' },
     });
     expect(drive.seen).toEqual([]);
+  });
+
+  it('declares what it carries from the Market settings, and is off without a key', () => {
+    const capabilities = carrier.capabilities(market)!;
+    expect(capabilities).toMatchObject({
+      fleet: 'mondapac_drive',
+      methods: ['instant', 'same_day', 'scheduled'],
+      serviceAreas: configured.serviceAreas,
+      outsideCityAreasOnly: false,
+      temperatures: [configured.parcel.temperature],
+      maxItems: null,
+      maxOrderValue: null,
+      idempotentBooking: true,
+      supportsWindow: true,
+    });
+    const keyless = new MondapacDriveCarrier(
+      new LocalDrivePolicy(() => drive.url, {}, { apiKeys: {}, webhookSecrets: {} }),
+      {},
+      new DriveHttpClient(new CircuitBreaker(clock)),
+      clock,
+    );
+    expect(keyless.capabilities(market)).toBeNull();
+    expect(keyless.fleet).toBe('mondapac_drive');
+  });
+
+  it('answers unauthorized to a 401 or 403 without retrying, on every call', async () => {
+    for (const status of [401, 403]) {
+      drive.seen.length = 0;
+      drive.script.push({ status });
+      expect(await carrier.book(market, request)).toEqual({
+        ok: false,
+        error: { code: 'carrier.unauthorized' },
+      });
+      drive.script.push({ status });
+      expect(await carrier.cancel(market, '01990000-0000-7000-8000-000000000099')).toEqual({
+        ok: false,
+        error: { code: 'carrier.unauthorized' },
+      });
+      drive.script.push({ status });
+      expect(await carrier.status(market, '01990000-0000-7000-8000-000000000099')).toEqual({
+        ok: false,
+        error: { code: 'carrier.unauthorized' },
+      });
+      expect(drive.seen).toHaveLength(3);
+    }
+  });
+
+  it('reads the status of a delivery as the common status', async () => {
+    const booked = await carrier.book(market, request);
+    if (!booked.ok) throw new Error('book failed');
+    expect(await carrier.status(market, booked.value.carrierReference)).toEqual({
+      ok: true,
+      value: { status: 'pending', carrierStatus: 'SCHEDULED' },
+    });
+    const delivery = [...drive.deliveries.values()][0]!;
+    delivery.status = 'AT_DROPOFF';
+    expect(await carrier.status(market, booked.value.carrierReference)).toEqual({
+      ok: true,
+      value: { status: 'picked_up', carrierStatus: 'AT_DROPOFF' },
+    });
+    delivery.status = 'TELEPORTED';
+    expect((await carrier.status(market, booked.value.carrierReference)).ok).toBe(false);
+    expect(await carrier.status(market, 'not-a-uuid')).toEqual({
+      ok: false,
+      error: { code: 'carrier.refused' },
+    });
+  });
+
+  it('reads an estimate and an expiry of a quote when Drive gives them, and a tracking link', async () => {
+    drive.script.push({
+      status: 200,
+      body: {
+        total: { amount: '990', currency: 'AUD' },
+        etaMinutes: 45,
+        expiresAt: '2026-10-24T10:15:00Z',
+      },
+    });
+    const answer = await carrier.quote(market, quote);
+    expect(answer).toEqual({
+      ok: true,
+      value: {
+        price: { amount: 990n, currency: 'AUD' },
+        etaMinutes: 45,
+        expiresAt: Temporal.Instant.from('2026-10-24T10:15:00Z'),
+      },
+    });
+    drive.script.push({
+      status: 201,
+      body: {
+        id: '01990000-0000-7000-8000-0000000000e1',
+        status: 'SCHEDULED',
+        externalReference: request.externalReference,
+        trackingUrl: 'https://track.drive.example/e1',
+      },
+    });
+    expect(await carrier.book(market, request)).toEqual({
+      ok: true,
+      value: {
+        carrierReference: '01990000-0000-7000-8000-0000000000e1',
+        carrierStatus: 'SCHEDULED',
+        trackingUrl: 'https://track.drive.example/e1',
+      },
+    });
   });
 });
 

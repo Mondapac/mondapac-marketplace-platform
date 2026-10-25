@@ -3,6 +3,7 @@ import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel'
 import type { CarrierMethod } from '../domain/booking-service';
 import { CARRIER_METHODS } from '../domain/booking-service';
 import {
+  auditCode,
   FleetModelActivated,
   FleetModelCreated,
   FleetModelEdited,
@@ -26,6 +27,8 @@ import type { ShippingDependencies } from './shipping-dependencies';
 // active model per delivery method in the Market, set each fleet's reliability score. Every
 // change is audited in the same unit. Authorization is the use case's access declaration; these
 // functions only re-check that the actor is an admin account (defence in depth).
+
+type AuditFleet = 'mondapac-drive' | 'uber-direct' | 'zoom2u' | 'auspost' | 'fake-test';
 
 export type FleetSelectionFailure =
   | { readonly code: 'access.denied' }
@@ -71,12 +74,13 @@ const modelIdOf = (value: unknown): Id<'FleetSelectionModel'> | null => {
 function shapeOf(model: { readonly rule: SelectionRule; readonly version: number }) {
   const { rule } = model;
   return {
-    kind: rule.kind,
+    kind: auditCode<'cheapest' | 'weighted' | 'fixed-priority'>(rule.kind),
     version: model.version,
     weightPrice: rule.kind === 'weighted' ? rule.weights.price : null,
     weightEta: rule.kind === 'weighted' ? rule.weights.eta : null,
     weightReliability: rule.kind === 'weighted' ? rule.weights.reliability : null,
-    order: rule.kind === 'fixed_priority' ? rule.order : [],
+    order:
+      rule.kind === 'fixed_priority' ? rule.order.map((fleet) => auditCode<AuditFleet>(fleet)) : [],
   };
 }
 
@@ -254,7 +258,10 @@ export async function activateFleetSelectionModel(
       await deps.selection.assign(context.market, method, modelId, admin, now);
       await deps.audit.record(
         context,
-        FleetModelActivated.entry(method, { before: { modelId: before }, after: { modelId } }),
+        FleetModelActivated.entry(auditCode<'instant' | 'same-day' | 'scheduled'>(method), {
+          before: { modelId: before },
+          after: { modelId },
+        }),
       );
       return ok(await readView(deps, context));
     },
@@ -284,7 +291,10 @@ export async function setFleetReliability(
       await deps.selection.setReliability(context.market, fleet, score, admin, now);
       await deps.audit.record(
         context,
-        FleetReliabilitySet.entry(fleet, { before: { score: before }, after: { score } }),
+        FleetReliabilitySet.entry(auditCode<AuditFleet>(fleet), {
+          before: { score: before },
+          after: { score },
+        }),
       );
       return ok(await readView(deps, context));
     },

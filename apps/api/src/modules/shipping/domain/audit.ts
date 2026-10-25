@@ -17,16 +17,17 @@ export const FlatFeeSet = defineAuditAction({
   after: { feeMinor: auditField.integer() },
 });
 
-// Fleet-selection models (delivery models, package 3). No name is audited: the vocabulary has no
+// Fleet-selection models (delivery models, package 3). Audit enum values are kebab-case (the
+// vocabulary has no underscore): `fixed-priority`, `same-day`, `mondapac-drive`. No name is audited: the vocabulary has no
 // free text, so a model is identified by its id and described by its kind, weights and order.
 
-const MODEL_KIND_FIELD = auditField.enumOf(['cheapest', 'weighted', 'fixed_priority'] as const);
+const MODEL_KIND_FIELD = auditField.enumOf(['cheapest', 'weighted', 'fixed-priority'] as const);
 const FLEET_FIELD = auditField.enumOf([
-  'mondapac_drive',
-  'uber_direct',
+  'mondapac-drive',
+  'uber-direct',
   'zoom2u',
   'auspost',
-  'fake_test',
+  'fake-test',
 ] as const);
 
 /** What a model is, for an audit row: weights are null unless `weighted`, order is empty unless `fixed_priority`. */
@@ -70,7 +71,7 @@ export const FleetModelEdited = defineAuditAction({
 export const FleetModelActivated = defineAuditAction({
   action: 'shipping.fleet-model.activated',
   targetType: FLEET_ASSIGNMENT_TARGET,
-  targetId: auditField.enumOf(['instant', 'same_day', 'scheduled'] as const),
+  targetId: auditField.enumOf(['instant', 'same-day', 'scheduled'] as const),
   actors: ['authenticated'],
   before: { modelId: auditField.optional(auditField.id()) },
   after: { modelId: auditField.optional(auditField.id()) },
@@ -93,3 +94,6 @@ export const SHIPPING_AUDIT_ACTIONS = [
   FleetModelActivated,
   FleetReliabilitySet,
 ] as const;
+
+/** A kind, a method or a fleet code as an audit enum value (`same_day` is `same-day`). */
+export const auditCode = <T extends string>(code: string): T => code.replaceAll('_', '-') as T;

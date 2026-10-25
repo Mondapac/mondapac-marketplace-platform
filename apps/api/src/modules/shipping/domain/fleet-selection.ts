@@ -44,7 +44,9 @@ export const DEFAULT_RULE: SelectionRule = {
 /** Reliability of a fleet nobody scored: neutral, so it neither wins nor loses on that alone. */
 export const DEFAULT_RELIABILITY = 50;
 
-const NAME = /^[\p{L}\p{N}][\p{L}\p{N} .,&'()/_-]{0,59}$/u;
+// Letters (any script), marks, digits, spaces and light punctuation; the zero-width non-joiner is
+// part of Persian words.
+const NAME = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} .,&'()/_\u200c-]{0,59}$/u;
 
 export type Field = { readonly path: string; readonly code: string };
 

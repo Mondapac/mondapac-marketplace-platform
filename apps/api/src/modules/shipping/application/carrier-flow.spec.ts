@@ -17,6 +17,12 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import {
+  FakePickups,
+  ListRegistry,
+  MemoryBookings,
+  MemorySelection,
+} from '../../../../test/support/shipping-fakes';
+import {
   TEST_MARKET_CONFIG_DIRS,
   TEST_MARKET_IDS,
   TEST_SERVICE_AREA_CONFIG_DIRS,
@@ -25,20 +31,18 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { loadServiceAreas } from '../../../platform/market-config/service-area-config';
-import type { CarrierBooking } from '../domain/carrier-booking';
 import { SHIPPING_EVENTS } from '../domain/events';
 import { ConfigCarrierPolicy } from '../infrastructure/config-carrier-policy';
 import { DriveWebhookSignature } from '../infrastructure/drive-webhook-signature';
-import type { CarrierBookingRepository } from './ports/carrier-booking.repository';
 import type {
   CarrierBookingAnswer,
   CarrierBookingRequest,
   CarrierFailure,
   CarrierGateway,
+  CarrierQuote,
   CarrierQuoteRequest,
   CarrierStop,
 } from './ports/carrier-gateway';
-import type { PickupDirectory } from './ports/pickup-directory';
 import type { ShippingDependencies } from './shipping-dependencies';
 import { BookCarrierDelivery } from './use-cases/book-carrier-delivery.use-case';
 import { CancelCarrierDelivery } from './use-cases/cancel-carrier-delivery.use-case';
@@ -68,43 +72,23 @@ const SELLER_ORDER_2 = id<'SellerOrder'>(0x5b);
 const SELLER = id<'Seller'>(0x51);
 const DELIVERY = '01990000-0000-7000-8000-0000000000d1';
 
-class MemoryBookings implements CarrierBookingRepository {
-  readonly rows = new Map<string, CarrierBooking>();
-  readonly events = new Set<string>();
-  findBySellerOrder(m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
-    return Promise.resolve(this.rows.get(`${m.marketId}|${sellerOrderId}`) ?? null);
-  }
-  insert(m: MarketContext, booking: CarrierBooking) {
-    const key = `${m.marketId}|${booking.sellerOrderId}`;
-    if (this.rows.has(key)) return Promise.resolve('exists' as const);
-    this.rows.set(key, booking);
-    return Promise.resolve('inserted' as const);
-  }
-  save(m: MarketContext, booking: CarrierBooking, expectedVersion: number) {
-    const key = `${m.marketId}|${booking.sellerOrderId}`;
-    if (this.rows.get(key)?.version !== expectedVersion)
-      return Promise.resolve('conflict' as const);
-    this.rows.set(key, booking);
-    return Promise.resolve('saved' as const);
-  }
-  recordEvent(m: MarketContext, event: { readonly eventId: string; readonly carrier: string }) {
-    const key = `${m.marketId}|${event.carrier}|${event.eventId}`;
-    if (this.events.has(key)) return Promise.resolve('duplicate' as const);
-    this.events.add(key);
-    return Promise.resolve('recorded' as const);
-  }
-}
-
+/** Mondapac Drive's seat in the registry: scripted answers, capabilities from the Market config. */
 class FakeCarrier implements CarrierGateway {
+  readonly fleet = 'mondapac_drive' as const;
   readonly booked: CarrierBookingRequest[] = [];
   readonly cancelled: string[] = [];
+  constructor(private readonly policy: () => ConfigCarrierPolicy) {}
   bookAnswer: Result<CarrierBookingAnswer, CarrierFailure> = ok({
     carrierReference: DELIVERY,
     carrierStatus: 'SCHEDULED',
+    trackingUrl: null,
   });
   cancelAnswer: Result<{ readonly carrierStatus: string }, CarrierFailure> = ok({
     carrierStatus: 'CANCELLED',
   });
+  capabilities(m: MarketContext) {
+    return this.policy().driveCapabilities(m.marketId);
+  }
   book(_m: MarketContext, request: CarrierBookingRequest) {
     this.booked.push(request);
     return Promise.resolve(this.bookAnswer);
@@ -114,26 +98,18 @@ class FakeCarrier implements CarrierGateway {
     return Promise.resolve(this.cancelAnswer);
   }
   readonly quoted: CarrierQuoteRequest[] = [];
-  quoteAnswer: Result<Money, CarrierFailure> = err({ code: 'carrier.unavailable' });
+  quoteAnswer: Result<CarrierQuote, CarrierFailure> = err({ code: 'carrier.unavailable' });
   quote(_m: MarketContext, request: CarrierQuoteRequest) {
     this.quoted.push(request);
     return Promise.resolve(this.quoteAnswer);
   }
+  status() {
+    return Promise.resolve(err({ code: 'carrier.unavailable' } as const));
+  }
 }
 
-class FakePickups implements PickupDirectory {
-  answer: Result<CarrierStop, { readonly code: 'pickup.not-found' | 'pickup.unavailable' }> = err({
-    code: 'pickup.not-found',
-  });
-  pickupOf() {
-    return Promise.resolve(this.answer);
-  }
-  postcodes: Result<ReadonlyMap<Id<'Seller'>, string>, { readonly code: 'pickup.unavailable' }> =
-    ok(new Map());
-  postcodesOf() {
-    return Promise.resolve(this.postcodes);
-  }
-}
+const quoted = (amount: bigint, currency: string): Result<CarrierQuote, CarrierFailure> =>
+  ok({ price: { amount, currency }, etaMinutes: null, expiresAt: null });
 
 describe.each([
   ['AU', '4109', '4000', '2000'],
@@ -148,6 +124,7 @@ describe.each([
   let clock: FixedClock;
   let bookings: MemoryBookings;
   let carrier: FakeCarrier;
+  let registry: ListRegistry;
   let pickups: FakePickups;
   let written: PendingEvent[];
   let deps: ShippingDependencies;
@@ -157,6 +134,9 @@ describe.each([
     contactPhone: '+61 7 3000 0000',
     addressLines: ['1 Shop Street'],
     postcode: servedToo,
+    locality: 'Shop Town',
+    region: null,
+    location: null,
     notes: null,
   };
   const dropoff = (postcode: string = served) => ({
@@ -181,14 +161,18 @@ describe.each([
   beforeEach(() => {
     clock = new FixedClock(T0);
     bookings = new MemoryBookings();
-    carrier = new FakeCarrier();
+    carrier = new FakeCarrier(() => deps.carrierPolicy as ConfigCarrierPolicy);
+    registry = new ListRegistry([carrier]);
     pickups = new FakePickups();
     pickups.answer = ok(pickup);
     written = [];
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       fees: undefined as never,
-      policy: undefined as never,
+      policy: {
+        currency: () => markets.get(market.marketId).defaultCurrency,
+        deliversTo: () => true,
+      } as never,
       sellers: undefined as never,
       stores: undefined as never,
       audit: undefined as never,
@@ -207,7 +191,8 @@ describe.each([
         },
       },
       bookings,
-      carrier,
+      fleets: registry,
+      selection: new MemorySelection(),
       carrierPolicy: undefined as never,
       pickups,
       webhookSignature: undefined as never,
@@ -232,8 +217,12 @@ describe.each([
       expect(carrier.booked[0]).toEqual({
         externalReference: SELLER_ORDER,
         pickup,
-        dropoff: dropoff(),
-        parcel: markets.get(market.marketId).shipping!.realTimeCarrier!.parcel,
+        dropoff: { ...dropoff(), locality: '', region: null, location: null },
+        parcel: {
+          ...markets.get(market.marketId).shipping!.realTimeCarrier!.parcel,
+          itemCount: 1,
+          declaredValue: { amount: 0n, currency: markets.get(market.marketId).defaultCurrency },
+        },
         mode: 'on_demand',
         window: null,
       });
@@ -241,6 +230,7 @@ describe.each([
         expect.objectContaining({
           sellerOrderId: SELLER_ORDER,
           carrierReference: DELIVERY,
+          fleet: 'mondapac_drive',
           progress: 'booked',
           version: 1,
         }),
@@ -513,7 +503,7 @@ describe.each([
         } as never,
       };
       pickups.postcodes = ok(new Map([[SELLER, servedToo]]));
-      carrier.quoteAnswer = ok({ amount: 1250n, currency });
+      carrier.quoteAnswer = quoted(1250n, currency);
     });
 
     const fees = (
@@ -539,9 +529,13 @@ describe.each([
       // Postcodes only: never a street, a suburb the customer typed, a name or a phone.
       expect(carrier.quoted).toEqual([
         {
-          pickup: { postcode: servedToo },
-          dropoff: { postcode: served },
-          parcel: markets.get(market.marketId).shipping!.realTimeCarrier!.parcel,
+          pickup: { postcode: servedToo, locality: null, region: null },
+          dropoff: { postcode: served, locality: null, region: null },
+          parcel: {
+            ...markets.get(market.marketId).shipping!.realTimeCarrier!.parcel,
+            itemCount: 1,
+            declaredValue: { amount: 0n, currency },
+          },
           mode: markets.get(market.marketId).shipping!.realTimeCarrier!.mode,
         },
       ]);
@@ -564,10 +558,10 @@ describe.each([
       for (const answer of [
         err({ code: 'carrier.unavailable' } as const),
         err({ code: 'carrier.refused' } as const),
-        ok({ amount: 1250n, currency: currency === 'AUD' ? 'JPY' : 'AUD' }),
+        quoted(1250n, currency === 'AUD' ? 'JPY' : 'AUD'),
         // A quote outside the Market's bounds is never charged: free, or absurdly high.
-        ok({ amount: BigInt(minMinor) - 1n, currency }),
-        ok({ amount: BigInt(maxMinor) + 1n, currency }),
+        quoted(BigInt(minMinor) - 1n, currency),
+        quoted(BigInt(maxMinor) + 1n, currency),
       ]) {
         carrier.quoteAnswer = answer;
         const result = await fees();
