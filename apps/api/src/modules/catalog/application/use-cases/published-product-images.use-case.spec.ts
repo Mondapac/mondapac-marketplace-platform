@@ -60,6 +60,7 @@ describe.each(TEST_MARKETS)('publishedProductImages in market %s', (code) => {
     offerTaxCategories: undefined as never,
     offerListings: undefined as never,
     offerListingsSystem: undefined as never,
+    offerBadges: undefined as never,
     publishedProduct: undefined as never,
     publishedProductImages: new PublishedProductImagesQuery(gate, {
       unitOfWork,

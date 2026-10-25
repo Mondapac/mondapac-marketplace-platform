@@ -10,6 +10,7 @@ import {
   lookupMarketLimits,
   lookupOriginLimits,
   SAVE_LIMITS,
+  STORE_IMAGE_LIMITS,
   SLUG_CHECK_LIMITS,
   rateVerdict,
   windowRestartBefore,
@@ -27,7 +28,7 @@ const reservation = (kind: RateReservation['kind'], count: number): RateReservat
 
 describe('sellers rate limits', () => {
   it('lists the 13 kinds of the migration, sorted (the lock order)', () => {
-    expect(RATE_COUNTER_KINDS).toHaveLength(13);
+    expect(RATE_COUNTER_KINDS).toHaveLength(15);
     expect([...RATE_COUNTER_KINDS].sort()).toEqual([...RATE_COUNTER_KINDS]);
   });
 
@@ -39,6 +40,15 @@ describe('sellers rate limits', () => {
     expect(SAVE_LIMITS.map(({ limit, windowMinutes }) => [limit, windowMinutes])).toEqual([
       [60, 1],
       [1000, 1440],
+    ]);
+  });
+
+  it('gives the store pictures their own, smaller limits (Hassan H2)', () => {
+    expect(
+      STORE_IMAGE_LIMITS.map(({ kind, limit, windowMinutes }) => [kind, limit, windowMinutes]),
+    ).toEqual([
+      ['store-image.account.minute', 10, 1],
+      ['store-image.account.day', 100, 1440],
     ]);
   });
 

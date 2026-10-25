@@ -361,10 +361,17 @@ export class FakeShipping implements ShippingFacade {
       shipment === undefined ? err({ code: 'shipping.carrier-delivery-not-found' }) : ok(shipment),
     );
   }
-  cancelCarrierDelivery(): Promise<
-    Result<'cancelled' | 'not-cancellable' | 'none', CarrierDeliveryFailure>
-  > {
-    return Promise.resolve(ok('none' as const));
+  /** The seller order ids `cancelCarrierDelivery` was asked for, and its answer. */
+  carrierCancels: string[] = [];
+  cancelAnswer: Result<'cancelled' | 'not-cancellable' | 'none', CarrierDeliveryFailure> = ok(
+    'none' as const,
+  );
+  cancelCarrierDelivery(
+    _c: CallContext,
+    sellerOrderId: string,
+  ): Promise<Result<'cancelled' | 'not-cancellable' | 'none', CarrierDeliveryFailure>> {
+    this.carrierCancels.push(sellerOrderId);
+    return Promise.resolve(this.cancelAnswer);
   }
 }
 

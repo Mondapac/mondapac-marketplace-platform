@@ -20,10 +20,17 @@ import {
   removeOne,
   type Cart,
   type CartView,
+  type DeliveryChoice,
 } from '../cart/cart.ts';
 import type { DeliverTo } from '../delivery/deliver-to.ts';
+import type {
+  AppliedDiscount,
+  CartSource,
+  CheckoutCustomer,
+  DeliverySpeed,
+  Money,
+} from '../storefront/types.ts';
 import { PALETTE_COOKIE, TEXT_SIZE_COOKIE, savePreference } from '../preferences/preferences.ts';
-import type { AppliedDiscount, CartSource, CheckoutCustomer, Money } from '../storefront/types.ts';
 import { checkReachable, reachable } from './connection.ts';
 
 /** How a live sign-in ended; the log-in form shows a message for each refusal. */
@@ -65,6 +72,15 @@ interface StoreState {
   /** Checkout notes to sellers, by seller id. */
   readonly notes: Readonly<Record<string, string>>;
   readonly setNote: (sellerId: string, note: string) => void;
+  /**
+   * The speed the buyer picked per seller id at checkout (their wish: Express counts only while
+   * the courier quotes a price for it). A seller without one is delivered Scheduled.
+   */
+  readonly deliveryWish: Readonly<Record<string, DeliverySpeed>>;
+  readonly setDeliveryWish: (sellerId: string, speed: DeliverySpeed) => void;
+  /** The delivery per seller id checkout paid for (fees included), set when Pay is pressed. */
+  readonly delivery: Readonly<Record<string, DeliveryChoice>>;
+  readonly setDelivery: (delivery: Readonly<Record<string, DeliveryChoice>>) => void;
   /** The cart drawer of the header's cart button. */
   readonly cartOpen: boolean;
   readonly setCartOpen: (open: boolean) => void;
@@ -142,6 +158,8 @@ export function StoreProvider({
   const [saved, setSaved] = useState<readonly string[]>([]);
   const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
   const [notes, setNotes] = useState<Readonly<Record<string, string>>>({});
+  const [deliveryWish, setDeliveryWishes] = useState<Readonly<Record<string, DeliverySpeed>>>({});
+  const [delivery, setDelivery] = useState<Readonly<Record<string, DeliveryChoice>>>({});
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
   const [browseOpen, setBrowseOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -188,6 +206,8 @@ export function StoreProvider({
     setCart({});
     setDiscount(null);
     setNotes({});
+    setDeliveryWishes({});
+    setDelivery({});
   }, []);
   const saveForLater = useCallback((id: string) => {
     if (!onlineRef.current) return;
@@ -209,6 +229,11 @@ export function StoreProvider({
   );
   const setNote = useCallback(
     (sellerId: string, note: string) => setNotes((current) => ({ ...current, [sellerId]: note })),
+    [],
+  );
+  const setDeliveryWish = useCallback(
+    (sellerId: string, speed: DeliverySpeed) =>
+      setDeliveryWishes((current) => ({ ...current, [sellerId]: speed })),
     [],
   );
   // Live: the first load asks the API who is signed in (401 means nobody).
@@ -264,6 +289,10 @@ export function StoreProvider({
       setDiscount,
       notes,
       setNote,
+      deliveryWish,
+      setDeliveryWish,
+      delivery,
+      setDelivery,
       cartOpen,
       setCartOpen,
       customer,
@@ -309,6 +338,9 @@ export function StoreProvider({
       discount,
       notes,
       setNote,
+      deliveryWish,
+      setDeliveryWish,
+      delivery,
       cartOpen,
       customer,
       live,

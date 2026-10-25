@@ -87,7 +87,9 @@ class FakeDrive {
     if (req.headers.authorization !== `Bearer ${KEY}`) return send(401, { error: 'auth' });
     const market = req.headers['x-market-id'];
     if (req.method === 'POST' && req.url === '/delivery/deliveries') {
-      const key = `${String(market)}|${String(body.merchantId)}|${String(body.externalReference)}`;
+      // Drive's merchant API is strict: the merchant is the key's, never a field.
+      if ('merchantId' in body) return send(400, { code: 'validation.failed' });
+      const key = `${String(market)}|${String(body.externalReference)}`;
       const existing = this.deliveries.get(key);
       if (existing !== undefined) return send(200, existing);
       this.#counter += 1;
@@ -102,8 +104,8 @@ class FakeDrive {
       this.deliveries.set(key, delivery);
       return send(201, delivery);
     }
-    const cancel = /^\/delivery\/deliveries\/([0-9a-f-]{36})\/events$/.exec(req.url ?? '');
-    if (req.method === 'POST' && cancel !== null && body.type === 'cancelled') {
+    const cancel = /^\/delivery\/deliveries\/([0-9a-f-]{36})\/cancel$/.exec(req.url ?? '');
+    if (req.method === 'POST' && cancel !== null && typeof body.reason === 'string') {
       const delivery = [...this.deliveries.values()].find((d) => d.id === cancel[1]);
       if (delivery === undefined) return send(404, { error: 'not found' });
       if (delivery.status === 'PICKED_UP') return send(409, { error: 'too late' });
@@ -197,7 +199,6 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       'content-type': 'application/json',
     });
     expect(call!.body).toEqual({
-      merchantId: configured.merchantId,
       externalReference: request.externalReference,
       pickup: {
         address: '1 Shop Street, Sunnybank',
@@ -297,7 +298,7 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
     });
   });
 
-  it('cancels with the cancelled event, and refuses a malformed reference without a call', async () => {
+  it('cancels with a reason, and refuses a malformed reference without a call', async () => {
     const booked = await carrier.book(market, request);
     const reference = booked.ok ? booked.value.carrierReference : '';
     expect(await carrier.cancel(market, reference)).toEqual({
@@ -305,8 +306,8 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       value: { carrierStatus: 'CANCELLED' },
     });
     expect(drive.seen[1]).toMatchObject({
-      url: `/delivery/deliveries/${reference}/events`,
-      body: { type: 'cancelled' },
+      url: `/delivery/deliveries/${reference}/cancel`,
+      body: { reason: 'Cancelled by the marketplace' },
     });
     const calls = drive.seen.length;
     expect(await carrier.cancel(market, '../../admin')).toEqual({
