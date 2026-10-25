@@ -2,6 +2,7 @@
 
 export const ORDER_VIEW_PERMISSION = 'ordering.seller-order.view';
 export const ORDER_READY_PERMISSION = 'ordering.seller-order.mark-ready';
+export const ORDER_CONFIRM_PICKUP_PERMISSION = 'ordering.seller-order.confirm-pickup';
 export const ORDER_DELIVER_PERMISSION = 'ordering.seller-order.mark-delivered';
 export const OWN_FEE_PERMISSION = 'shipping.own-fee.view';
 
@@ -30,6 +31,12 @@ export interface OrderLineView {
   readonly taxInclusive: boolean;
 }
 
+/** For a ready pickup order not yet collected: the code is never sent to the shop. */
+export interface PickupStatus {
+  readonly attemptsLeft: number;
+  readonly locked: boolean;
+}
+
 export interface SellerOrderView {
   readonly sellerOrderId: string;
   readonly orderId: string;
@@ -50,6 +57,8 @@ export interface SellerOrderView {
   readonly readyAt: string | null;
   /** Set when the platform must arrange the delivery itself; the shop does nothing. */
   readonly deliveryAttention: 'no-carrier' | null;
+  /** Tries left and the lock of a ready pickup order; null for any other order. */
+  readonly pickup?: PickupStatus | null;
   readonly lines: readonly OrderLineView[];
 }
 

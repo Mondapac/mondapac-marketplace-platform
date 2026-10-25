@@ -1228,7 +1228,7 @@
       "submit": "Mark ready",
       "hint": "Tell MondaPac this order is packed. MondaPac chooses the courier and delivers it, so you don't need to.",
       "done": "You marked this order ready {when}.",
-      "pickup": "The customer collects it from you in person. They will show you a pickup code.",
+      "pickup": "The customer collects it from you in person. They will show you a 4-digit pickup code to type in here.",
       "arranged": "MondaPac is arranging the delivery. You do not need to do anything else.",
       "attention": "MondaPac is still assigning a courier. Keep the order packed and ready. No action needed."
     },
@@ -1244,6 +1244,26 @@
     "ship": {
       "carrier": "Carrier",
       "tracking": "Tracking reference"
+    },
+    "pickup": {
+      "title": "Hand over to the customer",
+      "hint": "Ask the customer for their 4-digit pickup code and type it here. Hand the order over only once the code is accepted.",
+      "digit": "Digit {n} of {total}",
+      "submit": "Confirm pickup",
+      "attempts": "{count, plural, one {# try left} other {# tries left}}",
+      "wrong": "That code is not right. {count, plural, =0 {No tries left.} one {# try left.} other {# tries left.}} Check it with the customer.",
+      "locked": "Too many wrong codes. This order is locked. Ask the customer to open their order and get a new code, then try again.",
+      "collected": "Handed over to the customer {when}.",
+      "error": {
+        "conflict": "This order cannot be handed over right now. Reload the page to see its current state.",
+        "not-found": "We could not find this order.",
+        "invalid": "The code must be exactly 4 digits.",
+        "throttled": "Too many attempts. Wait a moment and try again.",
+        "csrf": "Your session needs a refresh. Reload the page and try again.",
+        "denied": "Your role cannot do this.",
+        "unavailable": "Orders are not available right now. Try again shortly.",
+        "unknown": "Something went wrong. Try again."
+      }
     }
   },
   "earnings": {
