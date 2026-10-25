@@ -399,13 +399,13 @@
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.order-notice", "rule": "system" },
   { "name": "ordering.record-carrier-progress", "rule": "system" },
+  { "name": "ordering.record-ledger", "rule": "system" },
+  { "name": "ordering.record-shipments", "rule": "system" },
   {
     "name": "ordering.regenerate-pickup-code",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
-  { "name": "ordering.record-ledger", "rule": "system" },
-  { "name": "ordering.record-shipments", "rule": "system" },
   { "name": "ordering.settle-refunds", "rule": "system" },
   { "name": "ordering.shipment-notice", "rule": "system" },
   { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
