@@ -119,6 +119,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   GET: [
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
+    // The delivery methods of a seller (shipping), read again after a conflict.
+    'shipping/admin/sellers/:id/delivery-methods',
   ],
 };
 

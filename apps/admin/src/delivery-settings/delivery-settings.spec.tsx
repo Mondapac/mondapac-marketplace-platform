@@ -58,7 +58,21 @@ const refused = (status: number, code: string) => ({
 
 vi.setConfig({ testTimeout: 30_000 });
 
-beforeEach(() => vi.resetAllMocks());
+const flat = (text: string | null) => (text ?? '').replaceAll('\u00a0', ' ');
+/** The dialog is a native modal; jsdom keeps it in the tree, so its buttons are reachable. */
+const pressInDialog = (name: string) =>
+  fireEvent.click(screen.getByRole('button', { name, hidden: true }));
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  // jsdom has no modal support: a stub makes `showModal` open the element.
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute('open');
+  };
+});
 afterEach(cleanup);
 
 describe('the margin example', () => {
@@ -180,16 +194,16 @@ describe('the delivery settings page', () => {
   it('shows the live example for a percentage and a round-up, and follows the inputs', () => {
     mount(settings({ version: 1 }));
 
-    expect(screen.getByTestId('margin-example').textContent).toBe(
-      'A fleet quote of $12.34 becomes $12.34 for the buyer (margin $0.00 included).',
+    expect(flat(screen.getByTestId('margin-example').textContent)).toBe(
+      'A fleet quote of AUD 12.34 stays AUD 12.34 for the buyer: no margin added.',
     );
     fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
     expect(screen.getByText('Enter a valid margin to see an example.')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('Rounding'), { target: { value: '5' } });
 
-    expect(screen.getByTestId('margin-example').textContent).toBe(
-      'A fleet quote of $12.34 becomes $13.60 for the buyer (margin $1.26 included).',
+    expect(flat(screen.getByTestId('margin-example').textContent)).toBe(
+      'A fleet quote of AUD 12.34 becomes AUD 13.60 for the buyer (margin AUD 1.26 included).',
     );
   });
 
@@ -200,8 +214,8 @@ describe('the delivery settings page', () => {
       .getAllByRole('option')
       .map((option) => option.textContent);
     expect(options[0]).toBe('No rounding');
-    expect(options).toContain('Round up to ￥50');
-    expect(screen.getByTestId('margin-example').textContent).toContain('￥1,234');
+    expect(options.map(flat)).toContain('Round up to JPY 50');
+    expect(flat(screen.getByTestId('margin-example').textContent)).toContain('JPY 1,234');
   });
 
   it('is read-only without the manage permission', () => {
@@ -210,7 +224,7 @@ describe('the delivery settings page', () => {
     expect(screen.queryByRole('button', { name: 'Save delivery settings' })).toBeNull();
     expect(screen.getByLabelText<HTMLInputElement>('Instant delivery').disabled).toBe(true);
     expect(screen.getByLabelText<HTMLInputElement>('Cut-off time').disabled).toBe(true);
-    expect(screen.getByText(/Your role can view these settings/)).toBeTruthy();
+    expect(screen.getByText(/You can view these settings but not change them/)).toBeTruthy();
   });
 
   it('saves the whole set with the version read and shows the answer', async () => {
@@ -234,6 +248,8 @@ describe('the delivery settings page', () => {
     fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('Rounding'), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+    expect(call).not.toHaveBeenCalled();
+    pressInDialog('Confirm and save');
 
     await waitFor(() => expect(screen.getByText(/Delivery settings saved/)).toBeTruthy());
     expect(call).toHaveBeenCalledTimes(1);
@@ -252,6 +268,42 @@ describe('the delivery settings page', () => {
       'csrf',
     );
     expect(screen.queryByText(/Nothing has been saved yet/)).toBeNull();
+  });
+
+  it('lists each change in plain words and sends nothing until confirmed', () => {
+    mount(settings({ version: 1 }));
+
+    fireEvent.click(screen.getByLabelText('Instant delivery'));
+    fireEvent.change(screen.getByLabelText('Cut-off time'), { target: { value: '14:00' } });
+    fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
+    fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText('Rounding'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+
+    const dialog = within(screen.getByRole('dialog', { hidden: true }));
+    const text = flat(dialog.getByRole('list', { hidden: true }).textContent);
+    expect(text).toContain('Instant delivery will be unavailable for all sellers in this Market.');
+    expect(text).toContain('Sellers can’t receive Instant delivery orders');
+    expect(text).toContain('Same-day orders will close at 14:00 seller’s local time (now 12:00).');
+    expect(text).toContain('Buyers will pay +10% on every delivery (rounded up to AUD 0.10).');
+    expect(call).not.toHaveBeenCalled();
+
+    pressInDialog('Keep editing');
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('puts the error on the field, marks it invalid and focuses the first one', () => {
+    mount(settings());
+
+    fireEvent.change(screen.getByLabelText('Margin'), { target: { value: 'percent' } });
+    fireEvent.change(screen.getByLabelText('Percentage'), { target: { value: '250' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save delivery settings' }));
+
+    const field = screen.getByLabelText<HTMLInputElement>('Percentage');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(field.getAttribute('aria-describedby')).toBeTruthy();
+    expect(document.activeElement).toBe(field);
+    expect(call).not.toHaveBeenCalled();
   });
 
   it('flags a bad form without calling the API', () => {
@@ -327,7 +379,14 @@ describe('the seller delivery methods card', () => {
 
     expect(screen.getByLabelText<HTMLInputElement>('Instant delivery').checked).toBe(false);
     expect(screen.getByLabelText<HTMLInputElement>('In-person pickup').checked).toBe(true);
-    expect(screen.getAllByText('Off for the whole Market')).toHaveLength(1);
+    const off = screen.getByLabelText<HTMLInputElement>(
+      'Same-day delivery (off for the whole Market)',
+    );
+    expect(off.disabled).toBe(true);
+    expect(
+      screen.getAllByText(/Buyers see this as unavailable whatever is ticked here/),
+    ).toHaveLength(1);
+    expect(screen.getByText(/the Market switch overrides this card/)).toBeTruthy();
   });
 
   it('is read-only without the manage permission', () => {
@@ -343,6 +402,11 @@ describe('the seller delivery methods card', () => {
 
     fireEvent.click(screen.getByLabelText('Instant delivery'));
     fireEvent.click(screen.getByRole('button', { name: 'Save delivery methods' }));
+    expect(call).not.toHaveBeenCalled();
+    expect(flat(screen.getByRole('dialog', { hidden: true }).textContent)).toContain(
+      'The seller can’t receive Instant delivery orders.',
+    );
+    pressInDialog('Confirm and save');
 
     await waitFor(() => expect(screen.getByText(/Delivery methods saved/)).toBeTruthy());
     expect(call).toHaveBeenCalledWith(
@@ -359,9 +423,31 @@ describe('the seller delivery methods card', () => {
 
     fireEvent.click(screen.getByLabelText('Instant delivery'));
     fireEvent.click(screen.getByRole('button', { name: 'Save delivery methods' }));
+    pressInDialog('Confirm and save');
 
     await waitFor(() => expect(screen.getByText('We could not find this seller.')).toBeTruthy());
     expect(call.mock.calls[0]?.[2]).toEqual({ supported: [] });
+  });
+});
+
+describe('the seller card after a conflict', () => {
+  it('reloads what is stored and says so', async () => {
+    call
+      .mockResolvedValueOnce(refused(409, 'shipping.delivery-settings-conflict'))
+      .mockResolvedValueOnce(ok(methods({ supported: ['pickup'] })));
+    mountSeller(methods());
+
+    fireEvent.click(screen.getByLabelText('Instant delivery'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save delivery methods' }));
+    pressInDialog('Confirm and save');
+
+    await waitFor(() => expect(screen.getByText(/Someone changed this first/)).toBeTruthy());
+    expect(call).toHaveBeenNthCalledWith(
+      2,
+      'GET',
+      `shipping/admin/sellers/${SELLER}/delivery-methods`,
+    );
+    expect(screen.getByLabelText<HTMLInputElement>('Same-day delivery').checked).toBe(false);
   });
 });
 
