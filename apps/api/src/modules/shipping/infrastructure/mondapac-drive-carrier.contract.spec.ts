@@ -203,6 +203,7 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       itemCount: 3,
       declaredValue: { amount: 4500n, currency: code === 'ZZ' ? 'JPY' : 'AUD' },
     },
+    method: configured.mode === 'scheduled' ? ('scheduled' as const) : ('instant' as const),
     mode: configured.mode,
     window: null,
   };
@@ -222,6 +223,7 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
     pickup: { postcode: request.pickup.postcode, locality: 'Sunnybank', region: null },
     dropoff: { postcode: request.dropoff.postcode, locality: null, region: null },
     parcel: request.parcel,
+    method: configured.mode === 'scheduled' ? ('scheduled' as const) : ('instant' as const),
     mode: configured.mode,
   };
 
@@ -265,6 +267,7 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
         await carrier.book(market, {
           ...request,
           externalReference: '01990000-0000-7000-8000-0000000000a2',
+          method: 'scheduled',
           mode: 'scheduled',
           window: { start, end },
         })
@@ -405,6 +408,7 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       pickup: { postcode: request.pickup.postcode, locality: null, region: null },
       dropoff: { postcode: request.dropoff.postcode, locality: null, region: null },
       parcel: request.parcel,
+      method: configured.mode === 'scheduled' ? ('scheduled' as const) : ('instant' as const),
       mode: configured.mode,
     };
     const { failureThreshold, cooldownSeconds } = configured.circuitBreaker;
@@ -414,10 +418,10 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
       expect((await carrier.book(market, request)).ok).toBe(false);
     }
     expect(drive.seen).toHaveLength(failureThreshold);
-    // Open: fails fast, Drive sees nothing.
+    // Open: fails fast, Drive sees nothing, so the answer says nothing was sent.
     expect(await carrier.book(market, request)).toEqual({
       ok: false,
-      error: { code: 'carrier.unavailable' },
+      error: { code: 'carrier.not-sent' },
     });
     expect(drive.seen).toHaveLength(failureThreshold);
     // Each kind of call has its own circuit: quotes still go out while bookings fail fast.

@@ -33,6 +33,8 @@ export interface CarrierBookingRequest {
   readonly pickup: CarrierStop;
   readonly dropoff: CarrierStop;
   readonly parcel: CarrierParcel;
+  /** The seller order's delivery method; `mode` is derived from it and kept for compatibility. */
+  readonly method: 'instant' | 'same_day' | 'scheduled';
   readonly mode: 'on_demand' | 'scheduled';
   /** The buyer's chosen window for a `scheduled` trip (UTC instants); null otherwise. */
   readonly window: { readonly start: Temporal.Instant; readonly end: Temporal.Instant } | null;
@@ -55,6 +57,8 @@ export interface CarrierQuoteRequest {
   readonly pickup: CarrierQuoteStop;
   readonly dropoff: CarrierQuoteStop;
   readonly parcel: CarrierParcel;
+  /** The delivery method asked about: a fleet may price instant and same day differently. */
+  readonly method: 'instant' | 'same_day' | 'scheduled';
   readonly mode: 'on_demand' | 'scheduled';
 }
 
@@ -91,7 +95,13 @@ export type CarrierFailure =
    * the router may try the next fleet even when this one is not idempotent. An operations
    * problem: it is logged at warn.
    */
-  | { readonly code: 'carrier.unauthorized' };
+  | { readonly code: 'carrier.unauthorized' }
+  /**
+   * Guaranteed that nothing reached the fleet (an open circuit, a token fetch fault, a pre-flight
+   * failure). Like `carrier.unauthorized`, the router may try the next fleet even when this one
+   * is not idempotent. `carrier.unavailable` keeps meaning "it may have reached the fleet".
+   */
+  | { readonly code: 'carrier.not-sent' };
 
 /**
  * The fleet port of shipping: what a delivery provider adapter implements (Mondapac Drive, Uber
