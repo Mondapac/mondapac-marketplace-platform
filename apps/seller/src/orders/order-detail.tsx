@@ -2,9 +2,9 @@
 
 import { BackLink, Badge, Banner, Button, Card, CARD_TABLE, DataList } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
-import { formatInstant, shortInstant } from '../catalog/format.ts';
+import { formatInstant, shortInstant, windowRange } from '../catalog/format.ts';
 import { formatMinor } from '../price/money.ts';
 import { orderProblemOf } from './errors.ts';
 import { shortId, statusOf, TONE } from './status.ts';
@@ -33,7 +33,15 @@ export function OrderDetail({
   const [order, setOrder] = useState(initial);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [justMarked, setJustMarked] = useState(false);
   const busy = useRef(false);
+  const hintId = useId();
+  const doneRef = useRef<HTMLDivElement>(null);
+  // The button unmounts once the order is ready; focus moves to the result so it is announced and
+  // keyboard focus is not dropped back to the top of the page.
+  useEffect(() => {
+    if (justMarked) doneRef.current?.focus();
+  }, [justMarked]);
   const money = (amount: { amount: string; currency: string }) =>
     formatMinor(amount.amount, amount.currency, locale);
 
@@ -53,6 +61,7 @@ export function OrderDetail({
     setPending(false);
     if (result.ok) {
       setOrder(result.body);
+      if (action === 'ready') setJustMarked(true);
       return;
     }
     if (result.failure.status === 401) {
@@ -62,16 +71,12 @@ export function OrderDetail({
     setProblem(orderProblemOf(result.failure));
   }
 
-  const method = t(`method.${order.deliveryMethod}`);
-  const methodText =
+  const windowText =
     order.deliveryMethod === 'scheduled' &&
     order.deliveryWindowStart !== null &&
     order.deliveryWindowEnd !== null
-      ? `${method} · ${t('method.window', {
-          start: shortInstant(order.deliveryWindowStart, locale, zone),
-          end: shortInstant(order.deliveryWindowEnd, locale, zone),
-        })}`
-      : method;
+      ? windowRange(order.deliveryWindowStart, order.deliveryWindowEnd, locale, zone)
+      : null;
   const reference = shortId(order.sellerOrderId);
   const count = order.lines.reduce((sum, line) => sum + line.quantity, 0);
   const lineHead = (col: 'item' | 'quantity' | 'unit' | 'amount') => t(`line.col.${col}`);
@@ -174,49 +179,70 @@ export function OrderDetail({
           </Card>
           <Card title={t('fulfilment')}>
             <div className="flex flex-col gap-4">
-              <DataList
-                variant="stacked"
-                missing={t('not-given')}
-                rows={[
-                  { label: t('method.label'), value: methodText },
-                  ...(order.fulfilment === 'to-ship'
-                    ? []
-                    : [
-                        { label: t('ship.carrier'), value: order.carrier },
-                        {
-                          label: t('ship.tracking'),
-                          value:
-                            order.trackingRef === null ? null : (
-                              <span className="break-all">{order.trackingRef}</span>
-                            ),
-                        },
-                        {
-                          label: t('shipped-on'),
-                          value:
-                            order.shippedAt === null
-                              ? null
-                              : shortInstant(order.shippedAt, locale, zone),
-                        },
-                      ]),
-                  ...(order.deliveredAt === null
-                    ? []
-                    : [
-                        {
-                          label: t('delivered-on'),
-                          value: shortInstant(order.deliveredAt, locale, zone),
-                        },
-                      ]),
-                ]}
-              />
+              <div className="flex flex-col gap-3">
+                <div>
+                  <p className="text-xs text-fg-muted">{t('method.label')}</p>
+                  <p className="text-base font-medium text-fg">
+                    {t(`method.${order.deliveryMethod}`)}
+                  </p>
+                </div>
+                {windowText === null ? null : (
+                  <div>
+                    <p className="text-xs text-fg-muted">{t('method.window-label')}</p>
+                    <p className="text-base font-medium text-fg">{windowText}</p>
+                  </div>
+                )}
+              </div>
+              {order.fulfilment === 'to-ship' && order.deliveredAt === null ? null : (
+                <DataList
+                  variant="stacked"
+                  missing={t('not-given')}
+                  rows={[
+                    ...(order.fulfilment === 'to-ship'
+                      ? []
+                      : [
+                          { label: t('ship.carrier'), value: order.carrier },
+                          {
+                            label: t('ship.tracking'),
+                            value:
+                              order.trackingRef === null ? null : (
+                                <span className="break-all">{order.trackingRef}</span>
+                              ),
+                          },
+                          {
+                            label: t('shipped-on'),
+                            value:
+                              order.shippedAt === null
+                                ? null
+                                : shortInstant(order.shippedAt, locale, zone),
+                          },
+                        ]),
+                    ...(order.deliveredAt === null
+                      ? []
+                      : [
+                          {
+                            label: t('delivered-on'),
+                            value: shortInstant(order.deliveredAt, locale, zone),
+                          },
+                        ]),
+                  ]}
+                />
+              )}
               {order.fulfilment === 'to-ship' && order.readyAt === null ? (
                 canMarkReady ? (
                   <>
                     {problem === null ? null : (
                       <Banner tone="critical">{t(`error.${problem}`)}</Banner>
                     )}
-                    <p className="text-sm text-balance text-fg-muted">{t('ready.hint')}</p>
+                    <p id={hintId} className="text-sm text-balance text-fg-muted">
+                      {t('ready.hint')}
+                    </p>
                     <div>
-                      <Button loading={pending} onClick={() => void step('ready')}>
+                      <Button
+                        aria-describedby={hintId}
+                        loading={pending}
+                        onClick={() => void step('ready')}
+                      >
                         {t('ready.submit')}
                       </Button>
                     </div>
@@ -226,7 +252,12 @@ export function OrderDetail({
                 )
               ) : null}
               {order.fulfilment === 'to-ship' && order.readyAt !== null ? (
-                <div className="flex flex-col gap-2 text-sm text-fg-muted">
+                <div
+                  ref={doneRef}
+                  role="status"
+                  tabIndex={-1}
+                  className="flex flex-col gap-2 text-sm text-fg-muted outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
                   <p className="text-fg">
                     {t('ready.done', { when: shortInstant(order.readyAt, locale, zone) })}
                   </p>
