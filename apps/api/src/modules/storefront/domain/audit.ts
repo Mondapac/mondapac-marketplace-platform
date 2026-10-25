@@ -1,6 +1,7 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import { MODULE_KEYS } from './modules';
-import { SLIDE_KINDS } from './slides';
+import { POSITION_KEYS, SLIDE_SCOPES } from './slide-positions';
+import { MAX_REORDER_SLIDES, SLIDE_KINDS } from './slides';
 import { LINKED_TYPES, TEMPLATES } from './templates';
 
 // The audited actions of the storefront, registered at boot with
@@ -150,6 +151,30 @@ export const StorefrontSlideArchived = defineAuditAction({
   after: { wasApproved: auditField.boolean() },
 });
 
+/** The audit target type of the order of the live slides at one position (and scope). */
+export const STOREFRONT_SLIDE_ORDER_TARGET = 'storefront.slide-order';
+
+const ORDER_SNAPSHOT = {
+  scope: auditField.enumOf(SLIDE_SCOPES),
+  /** Empty for the scope `all`. */
+  scopeId: auditField.optional(auditField.id()),
+  /** The slide ids in the order buyers see them (pinned slides still come first). */
+  order: auditField.listOf(auditField.id(), MAX_REORDER_SLIDES),
+};
+
+/**
+ * An editor saved the order of the live slides at one position and scope; it took effect at
+ * once, with no approval. The target is the position key.
+ */
+export const StorefrontSlideReordered = defineAuditAction({
+  action: 'storefront.slide.reorder',
+  targetType: STOREFRONT_SLIDE_ORDER_TARGET,
+  targetId: auditField.enumOf(POSITION_KEYS as readonly [string, ...string[]]),
+  actors: ['authenticated'],
+  before: ORDER_SNAPSHOT,
+  after: ORDER_SNAPSHOT,
+});
+
 export const STOREFRONT_AUDIT_ACTIONS = [
   StorefrontPageCreated,
   StorefrontPageUpdated,
@@ -163,4 +188,5 @@ export const STOREFRONT_AUDIT_ACTIONS = [
   StorefrontSlidePaused,
   StorefrontSlideResumed,
   StorefrontSlideArchived,
+  StorefrontSlideReordered,
 ] as const;

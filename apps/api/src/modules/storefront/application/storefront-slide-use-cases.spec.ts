@@ -30,12 +30,15 @@ import { ArchiveStorefrontSlide } from './use-cases/archive-slide.use-case';
 import { CreateStorefrontSlide } from './use-cases/create-slide.use-case';
 import { ListStorefrontSlides } from './use-cases/list-slides.use-case';
 import { PrepareStorefrontSlideCopy } from './use-cases/prepare-slide-copy.use-case';
+import { ReorderStorefrontSlides } from './use-cases/reorder-slides.use-case';
 import { PauseStorefrontSlide } from './use-cases/pause-slide.use-case';
 import { ResumeStorefrontSlide } from './use-cases/resume-slide.use-case';
 import { SubmitStorefrontSlide } from './use-cases/submit-slide.use-case';
 import { RestoreStorefrontSlideVersion } from './use-cases/restore-slide-version.use-case';
 import { UpdateStorefrontSlideDraft } from './use-cases/update-slide-draft.use-case';
 import { ViewStorefrontSlide } from './use-cases/view-slide.use-case';
+import { ViewStorefrontSlideOrder } from './use-cases/view-slide-order.use-case';
+import type { SlideOrderView } from './slide-order-flow';
 
 // The slide library use cases in memory on both Market fixtures, behind a gate that grants each
 // actor only its own keys: a reader sees slides; an editor also creates, changes, restores,
@@ -807,6 +810,514 @@ describe.each([
       expect(await errorOf(submit(reader, slide.id))).toEqual(DENIED);
       expect(await errorOf(submit(pauser, slide.id))).toEqual(DENIED);
       expect(audit.entries).toHaveLength(1);
+    });
+  });
+
+  describe('reordering the live slides', () => {
+    const approve = (context: CallContext, slide: string, versionNo = 1) =>
+      run(ApproveStorefrontSlide, context, { slide, body: { versionNo } });
+    const reorder = (context: CallContext, input: unknown) =>
+      run(ReorderStorefrontSlides, context, input);
+    /** A slide placed at `placement`, drafted by the editor and approved by the admin. */
+    const live = async (placement: object = { position: 'home.hero' }, extra: object = {}) => {
+      const slide = await made(editor, 'announcement', { placements: [placement], ...extra });
+      await value(run(SubmitStorefrontSlide, editor, { slide: slide.id }));
+      return value<SlideDetailView>(approve(admin, slide.id));
+    };
+    const hero = (...ids: string[]) => ({ position: 'home.hero', slideIds: ids });
+    /** The slides of a position as the projection holds them, best first. */
+    const orderOf = async (
+      where: object = { position: 'home.hero', scope: 'all', scopeId: null },
+    ) =>
+      (await slides.livePlacementsAt(market, where as never, clock.now())).map(
+        (p) => p.slideId as string,
+      );
+    const three = async (): Promise<string[]> => {
+      const slidesMade = [await live(), await live(), await live()];
+      return slidesMade.map((slide) => slide.id);
+    };
+
+    it('lets an editor without the publish key save the order, at once and audited', async () => {
+      const [a, b, c] = await three();
+      const before = await orderOf();
+      expect(before).toHaveLength(3);
+      const versionsBefore = slides.versionRows.size;
+      audit.entries.length = 0;
+
+      const answer = await value<{ slideIds: string[] }>(reorder(editor, hero(c!, a!, b!)));
+      expect(answer.slideIds).toEqual([c, a, b]);
+      expect(await orderOf()).toEqual([c, a, b]);
+      // No version, no approval, no change to the slides themselves.
+      expect(slides.versionRows.size).toBe(versionsBefore);
+      expect(
+        (await value<SlideDetailView>(run(ViewStorefrontSlide, editor, { slide: a }))).status,
+      ).toBe('live');
+
+      expect(audit.entries).toHaveLength(1);
+      expect(audit.entries[0]).toMatchObject({
+        action: 'storefront.slide.reorder',
+        targetType: 'storefront.slide-order',
+        targetId: 'home.hero',
+        before: { scope: 'all', scopeId: null, order: before },
+        after: { scope: 'all', scopeId: null, order: [c, a, b] },
+      });
+    });
+
+    it('is refused without storefront.slide.edit, for a buyer and a seller account', async () => {
+      const [a, b] = await three();
+      for (const context of [reader, pauser, buyer, seller]) {
+        const refused = await errorOf(reorder(context, hero(b!, a!)));
+        if (context === seller || context === buyer) expect(refused).toHaveProperty('code');
+        else expect(refused).toEqual(DENIED);
+      }
+      expect(await orderOf()).toHaveLength(3);
+      expect((await orderOf())[0]).toBe(a);
+    });
+
+    it('needs the whole list: partial, duplicate, unknown and malformed lists are refused', async () => {
+      const [a, b, c] = await three();
+      const was = await orderOf();
+      const partial = await errorOf(reorder(editor, hero(c!, a!)));
+      expect(partial).toEqual({
+        code: 'storefront.slide-order-mismatch',
+        fields: [{ path: 'slideIds', code: 'incomplete' }],
+      });
+      expect(await errorOf(reorder(editor, hero(a!, a!, b!, c!)))).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'slideIds[1]', code: 'duplicate' }],
+      });
+      expect(
+        await errorOf(reorder(editor, hero(a!, b!, c!, id<'StorefrontSlide'>(0x999)))),
+      ).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'slideIds[3]', code: 'not-found' }],
+      });
+      for (const bad of [
+        {},
+        { position: 'home.hero' },
+        { position: 'home.hero', slideIds: [] },
+        { position: 'home.hero', slideIds: ['x'] },
+        { position: 'nowhere', slideIds: [a] },
+        { position: 'home.hero', scope: 'category', slideIds: [a] },
+        { position: 'home.hero', slideIds: [a, b, c], sortOrder: 1 },
+        null,
+      ]) {
+        expect(await errorOf(reorder(editor, bad))).toMatchObject({ code: 'validation.failed' });
+      }
+      expect(await orderOf()).toEqual(was);
+      expect(audit.entries.filter((e) => e.action === 'storefront.slide.reorder')).toHaveLength(0);
+    });
+
+    it('never finds a slide of the other Market, and the other Market keeps its own order', async () => {
+      const [a, b] = await three();
+      // The same position in the other Market, with its own slides.
+      const foreign = await value<SlideDetailView>(
+        run(CreateStorefrontSlide, otherEditor, { kind: 'announcement', ...body() }),
+      );
+      await value(run(SubmitStorefrontSlide, otherEditor, { slide: foreign.id }));
+      await value(approve(otherAdmin, foreign.id));
+
+      // A foreign id in this Market's list reads as an unknown one.
+      expect(await errorOf(reorder(editor, hero(a!, b!, foreign.id)))).toMatchObject({
+        code: 'validation.failed',
+        fields: expect.arrayContaining([{ path: 'slideIds[2]', code: 'not-found' }]) as unknown,
+      });
+      // And this Market's ids are unknown to the other Market's editor.
+      expect(await errorOf(reorder(otherEditor, hero(foreign.id, a!)))).toMatchObject({
+        code: 'validation.failed',
+      });
+      expect(await errorOf(reorder(otherReader, hero(foreign.id)))).toEqual(DENIED);
+      // The other Market can reorder its own single slide; nothing in this Market moves.
+      const was = await orderOf();
+      await value(reorder(otherEditor, hero(foreign.id)));
+      expect(await orderOf()).toEqual(was);
+      expect(
+        (
+          await slides.livePlacementsAt(
+            otherMarket,
+            { position: 'home.hero', scope: 'all', scopeId: null },
+            T0,
+          )
+        ).map((p) => p.slideId),
+      ).toEqual([foreign.id]);
+    });
+
+    it('refuses slides of another position or scope, and names the live ones left out', async () => {
+      const [a, b] = [await live(), await live()];
+      const mid = await live({ position: 'home.mid' });
+      const scoped = await live({ position: 'category.top', scope: 'category', scopeId: CATEGORY });
+      const everywhere = await live({ position: 'category.top' });
+      const was = await orderOf();
+
+      expect(await errorOf(reorder(editor, hero(a.id, b.id, mid.id)))).toEqual({
+        code: 'storefront.slide-order-mismatch',
+        fields: [{ path: 'slideIds[2]', code: 'not-live-here' }],
+      });
+      // category.top / all holds only `everywhere`; the category-scoped slide is a different list.
+      expect(
+        await errorOf(
+          reorder(editor, { position: 'category.top', slideIds: [everywhere.id, scoped.id] }),
+        ),
+      ).toEqual({
+        code: 'storefront.slide-order-mismatch',
+        fields: [{ path: 'slideIds[1]', code: 'not-live-here' }],
+      });
+      expect(await orderOf()).toEqual(was);
+
+      // Each list is saved on its own.
+      await value(reorder(editor, { position: 'category.top', slideIds: [everywhere.id] }));
+      await value(
+        reorder(editor, {
+          position: 'category.top',
+          scope: 'category',
+          scopeId: CATEGORY,
+          slideIds: [scoped.id],
+        }),
+      );
+      expect(
+        await errorOf(
+          reorder(editor, { position: 'category.top', scope: 'category', slideIds: [scoped.id] }),
+        ),
+      ).toEqual({ code: 'validation.failed', fields: [{ path: 'scopeId', code: 'required' }] });
+      expect(await errorOf(reorder(editor, { ...hero(a.id, b.id), scopeId: CATEGORY }))).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'scopeId', code: 'not-allowed' }],
+      });
+    });
+
+    it('refuses paused, draft, ended and archived slides', async () => {
+      const [a, b] = await three();
+      const c = (await three())[0]!;
+      const draft = await made(editor, 'announcement', { placements: [{ position: 'home.hero' }] });
+      await value(run(PauseStorefrontSlide, pauser, { slide: c }));
+      const liveIds = [a!, b!, ...(await orderOf()).filter((x) => ![a, b, c].includes(x))];
+      const mismatch = (ids: string[]) => errorOf(reorder(editor, hero(...ids)));
+
+      expect(await mismatch([...liveIds, c])).toMatchObject({
+        code: 'storefront.slide-order-mismatch',
+        fields: [{ code: 'not-live-here' }],
+      });
+      expect(await mismatch([...liveIds, draft.id])).toMatchObject({
+        code: 'storefront.slide-order-mismatch',
+        fields: [{ code: 'not-live-here' }],
+      });
+      await value(run(ArchiveStorefrontSlide, editor, { slide: a }));
+      expect(await mismatch(liveIds)).toMatchObject({ code: 'storefront.slide-order-mismatch' });
+      // A slide whose window is over is not live any more: the rest are the whole list.
+      clock.set(T0.add({ hours: 24 * 31 }));
+      expect(await orderOf()).toEqual([]);
+      expect(await mismatch(liveIds)).toMatchObject({ code: 'storefront.slide-order-mismatch' });
+    });
+
+    it('keeps the saved order when a slide is approved again, paused and resumed', async () => {
+      const [a, b, c] = await three();
+      await value(reorder(editor, hero(c!, a!, b!)));
+
+      // A new version of the middle slide asks for sort order 0 again; it is approved.
+      await value(
+        run(UpdateStorefrontSlideDraft, editor, {
+          slide: a,
+          body: body({
+            internalName: 'Eid 2',
+            placements: [{ position: 'home.hero', sortOrder: 0 }],
+          }),
+        }),
+      );
+      await value(run(SubmitStorefrontSlide, editor, { slide: a }));
+      await value(approve(admin, a!, 2));
+      expect(await orderOf()).toEqual([c, a, b]);
+
+      // Pausing removes the rows; resuming puts the slide back in its place.
+      await value(run(PauseStorefrontSlide, pauser, { slide: c }));
+      expect(await orderOf()).toEqual([a, b]);
+      await value(run(ResumeStorefrontSlide, admin, { slide: c }));
+      expect(await orderOf()).toEqual([c, a, b]);
+
+      // Approved while paused, then resumed.
+      await value(run(PauseStorefrontSlide, pauser, { slide: b }));
+      await value(
+        run(UpdateStorefrontSlideDraft, editor, {
+          slide: b,
+          body: body({ internalName: 'Eid 3' }),
+        }),
+      );
+      await value(run(SubmitStorefrontSlide, editor, { slide: b }));
+      await value(approve(admin, b!, 2));
+      await value(run(ResumeStorefrontSlide, admin, { slide: b }));
+      expect(await orderOf()).toEqual([c, a, b]);
+    });
+
+    it('lets a newly approved version win when it asks for another sort order than the one it replaces', async () => {
+      const [a, b, c] = await three();
+      await value(reorder(editor, hero(c!, a!, b!)));
+      const newVersion = async (slide: string, sortOrder: number, versionNo: number) => {
+        await value(
+          run(UpdateStorefrontSlideDraft, editor, {
+            slide,
+            body: body({ placements: [{ position: 'home.hero', sortOrder }] }),
+          }),
+        );
+        await value(run(SubmitStorefrontSlide, editor, { slide }));
+        await value(approve(admin, slide, versionNo));
+      };
+      // `a` was saved at 1; its version said 0 and now says 7: the version wins, its saved row goes.
+      await newVersion(a!, 7, 2);
+      expect(slides.saved.filter((o) => o.slideId === a)).toEqual([]);
+      expect(await orderOf()).toEqual([c, b, a]);
+      // The other slides keep their saved orders.
+      expect(slides.saved.filter((o) => o.slideId === c)).toHaveLength(1);
+
+      // Paused: the change is final at approval, so a resume does not bring the saved order back.
+      await value(run(PauseStorefrontSlide, pauser, { slide: b }));
+      await newVersion(b!, 4, 2);
+      expect(slides.saved.filter((o) => o.slideId === b)).toEqual([]);
+      await value(run(ResumeStorefrontSlide, admin, { slide: b }));
+      expect(slides.placements.find((p) => p.slideId === b)?.sortOrder).toBe(4);
+    });
+
+    it('forgets the saved order of a placement that a new version no longer has', async () => {
+      const [a, b] = [await live(), await live()];
+      await value(reorder(editor, hero(b.id, a.id)));
+      await value(
+        run(UpdateStorefrontSlideDraft, editor, {
+          slide: b.id,
+          body: body({ placements: [{ position: 'home.mid', sortOrder: 5 }] }),
+        }),
+      );
+      await value(run(SubmitStorefrontSlide, editor, { slide: b.id }));
+      await value(approve(admin, b.id, 2));
+      expect(slides.saved.filter((o) => o.slideId === b.id)).toEqual([]);
+      // At its new position it starts from the sort order of its version.
+      expect(
+        slides.placements.filter((p) => p.slideId === b.id).map((p) => [p.position, p.sortOrder]),
+      ).toEqual([['home.mid', 5]]);
+    });
+
+    it('locks the named slides in id order, then the position', async () => {
+      const [a, b, c] = await three();
+      slides.locks.length = 0;
+      await value(reorder(editor, hero(c!, a!, b!)));
+      expect(slides.locks).toEqual([...[a!, b!, c!].sort(), 'home.hero']);
+    });
+
+    describe('reading the order', () => {
+      const view = (context: CallContext, query: unknown = { position: 'home.hero' }) =>
+        run(ViewStorefrontSlideOrder, context, query);
+      const read = (query: unknown = { position: 'home.hero' }, context: CallContext = reader) =>
+        value<SlideOrderView>(view(context, query));
+      const ids = (order: SlideOrderView) => order.slides.map((slide) => slide.id as string);
+      const day = (n: number) => T0.add({ hours: 24 * n }).toString();
+
+      it('is the exact list a reorder accepts, in the saved order, for a reader', async () => {
+        const [a, b, c] = await three();
+        expect(await read()).toMatchObject({
+          position: 'home.hero',
+          scope: 'all',
+          scopeId: null,
+          maxActive: 8,
+        });
+        expect(ids(await read())).toEqual(await orderOf());
+
+        await value(reorder(editor, hero(c!, a!, b!)));
+        const after = await read();
+        expect(ids(after)).toEqual([c, a, b]);
+        expect(after.slides[0]).toMatchObject({
+          id: c,
+          internalName: `Eid ${code}`,
+          status: 'live',
+          pinned: false,
+          overLimit: false,
+        });
+        expect(after.slides[0]!.startsAt.toString()).toBe(T0.toString());
+        expect(after.slides[0]!.endsAt.toString()).toBe(day(30));
+        // Exactly what a PUT order of that list accepts.
+        await value(reorder(editor, hero(...ids(after))));
+        expect(audit.entries.filter((e) => e.action === 'storefront.slide.reorder')).toHaveLength(
+          2,
+        );
+      });
+
+      it('lists pinned slides first and keeps the saved order inside each group', async () => {
+        const a = await live();
+        const b = await live({ position: 'home.hero' }, { pinned: true });
+        const c = await live();
+        const d = await live({ position: 'home.hero' }, { pinned: true });
+        await value(reorder(editor, hero(c.id, d.id, a.id, b.id)));
+        const order = await read();
+        expect(ids(order)).toEqual([d.id, b.id, c.id, a.id]);
+        expect(order.slides.map((slide) => slide.pinned)).toEqual([true, true, false, false]);
+      });
+
+      it('leaves out paused, draft, archived and ended slides, and includes scheduled ones', async () => {
+        const [a, b] = [await live(), await live()];
+        const paused = await live();
+        const archived = await live();
+        await made(editor, 'announcement', { placements: [{ position: 'home.hero' }] });
+        const later = await live(
+          { position: 'home.hero', sortOrder: 9 },
+          { startsAt: day(5), endsAt: day(10) },
+        );
+        await value(run(PauseStorefrontSlide, pauser, { slide: paused.id }));
+        await value(run(ArchiveStorefrontSlide, editor, { slide: archived.id }));
+
+        const order = await read();
+        expect(ids(order)).toEqual([a.id, b.id, later.id]);
+        expect(order.slides.map((slide) => slide.status)).toEqual(['live', 'live', 'scheduled']);
+        expect(order.slides[2]).toMatchObject({ overLimit: false });
+        expect(order.slides[2]!.startsAt.toString()).toBe(day(5));
+        // A reorder naming that list is accepted.
+        await value(reorder(editor, hero(...ids(order))));
+
+        // Once every window is over, the list is empty, like the reorder's own set.
+        clock.set(T0.add({ hours: 24 * 31 }));
+        expect(ids(await read())).toEqual([]);
+        expect(await orderOf()).toEqual([]);
+      });
+
+      it('marks the live slides past the position maximum, judged for now', async () => {
+        // home.mid shows 4. Approval keeps overlapping windows within that, so the fifth is
+        // placed in a later window and then moved into the first (a maximum lowered in code).
+        const inWindow = { startsAt: day(0), endsAt: day(10) };
+        const first = [
+          await live({ position: 'home.mid' }, inWindow),
+          await live({ position: 'home.mid' }, inWindow),
+          await live({ position: 'home.mid' }, inWindow),
+          await live({ position: 'home.mid' }, inWindow),
+        ];
+        const fifth = await live({ position: 'home.mid' }, { startsAt: day(10), endsAt: day(20) });
+        const mid = { position: 'home.mid' };
+        let order = await read(mid);
+        expect(order.maxActive).toBe(4);
+        expect(order.slides.map((slide) => slide.overLimit)).toEqual([
+          false,
+          false,
+          false,
+          false,
+          false,
+        ]);
+        expect(order.slides[4]).toMatchObject({ id: fifth.id, status: 'scheduled' });
+
+        slides.slides.set(fifth.id, { ...slides.slides.get(fifth.id)!, startsAt: T0 });
+        order = await read(mid);
+        expect(ids(order)).toEqual([...first.map((slide) => slide.id), fifth.id]);
+        expect(order.slides.map((slide) => [slide.status, slide.overLimit])).toEqual([
+          ['live', false],
+          ['live', false],
+          ['live', false],
+          ['live', false],
+          ['live', true],
+        ]);
+
+        // A pinned slide moves to the front, so a different slide falls past the limit.
+        slides.slides.set(fifth.id, { ...slides.slides.get(fifth.id)!, pinned: true });
+        order = await read(mid);
+        expect(order.slides[0]).toMatchObject({ id: fifth.id, pinned: true, overLimit: false });
+        expect(order.slides[4]).toMatchObject({ id: first[3]!.id, overLimit: true });
+      });
+
+      it('reads each position and scope on its own, and the scope id as given', async () => {
+        const hero1 = await live();
+        const everywhere = await live({ position: 'category.top' });
+        const scoped = await live({
+          position: 'category.top',
+          scope: 'category',
+          scopeId: CATEGORY,
+        });
+        expect(ids(await read())).toEqual([hero1.id]);
+        expect(ids(await read({ position: 'category.top' }))).toEqual([everywhere.id]);
+        expect(
+          ids(await read({ position: 'category.top', scope: 'all', scopeId: undefined })),
+        ).toEqual([everywhere.id]);
+        const bycat = await read({
+          position: 'category.top',
+          scope: 'category',
+          scopeId: CATEGORY,
+        });
+        expect(ids(bycat)).toEqual([scoped.id]);
+        expect(bycat).toMatchObject({ scope: 'category', scopeId: CATEGORY, maxActive: 4 });
+        expect(
+          ids(
+            await read({
+              position: 'category.top',
+              scope: 'category',
+              scopeId: id<'Category'>(0xca1).toString(),
+            }),
+          ),
+        ).toEqual([]);
+      });
+
+      it('refuses a bad query with the fields, like the order body', async () => {
+        const bad = async (query: unknown) => await errorOf(view(reader, query));
+        expect(await bad({})).toEqual({
+          code: 'validation.failed',
+          fields: [{ path: 'position', code: 'required' }],
+        });
+        expect(await bad({ position: 'nowhere' })).toEqual({
+          code: 'validation.failed',
+          fields: [{ path: 'position', code: 'enum' }],
+        });
+        expect(await bad({ position: 'home.hero', scope: 'category', scopeId: CATEGORY })).toEqual({
+          code: 'validation.failed',
+          fields: [{ path: 'scope', code: 'not-allowed-here' }],
+        });
+        expect(await bad({ position: 'category.top', scope: 'category' })).toEqual({
+          code: 'validation.failed',
+          fields: [{ path: 'scopeId', code: 'required' }],
+        });
+        expect(await bad({ position: 'category.top', scope: 'category', scopeId: 'x' })).toEqual({
+          code: 'validation.failed',
+          fields: [{ path: 'scopeId', code: 'format' }],
+        });
+        expect(await bad({ position: 'home.hero', scopeId: CATEGORY })).toEqual({
+          code: 'validation.failed',
+          fields: [{ path: 'scopeId', code: 'not-allowed' }],
+        });
+        expect(await bad({ position: 'home.hero', scope: 'planet' })).toEqual({
+          code: 'validation.failed',
+          fields: [{ path: 'scope', code: 'enum' }],
+        });
+        expect(await bad({ position: ['home.hero'] })).toEqual({
+          code: 'validation.failed',
+          fields: [{ path: 'position', code: 'enum' }],
+        });
+        expect(await bad({ position: 'home.hero', limit: '1' })).toEqual({
+          code: 'validation.failed',
+          fields: [{ path: 'limit', code: 'unknown-field' }],
+        });
+        expect(await bad(null)).toMatchObject({ code: 'validation.failed' });
+      });
+
+      it('is refused without storefront.slide.read, for a buyer and a seller account', async () => {
+        await three();
+        const nobody = actorIn(market, id<'Account'>(0x77));
+        expect(await errorOf(view(nobody))).toEqual(DENIED);
+        expect(await errorOf(view(buyer))).toMatchObject({ code: 'access.unauthenticated' });
+        expect(await errorOf(view(seller))).toHaveProperty('code');
+        // Denied before the query is read: a bad query from a non-reader is a denial too.
+        expect(await errorOf(view(nobody, {}))).toEqual(DENIED);
+        // The editor, the pauser and the admin all hold the read key.
+        for (const context of [editor, pauser, admin]) {
+          expect(ids(await read(undefined, context))).toHaveLength(3);
+        }
+      });
+
+      it('never shows the other Market its slides, and writes nothing', async () => {
+        const mine = await three();
+        const foreign = await value<SlideDetailView>(
+          run(CreateStorefrontSlide, otherEditor, { kind: 'announcement', ...body() }),
+        );
+        await value(run(SubmitStorefrontSlide, otherEditor, { slide: foreign.id }));
+        await value(approve(otherAdmin, foreign.id));
+        expect(ids(await read()).sort()).toEqual([...mine].sort());
+        expect(ids(await read(undefined, otherReader))).toEqual([foreign.id]);
+        expect(await read(undefined, otherReader)).toMatchObject({ position: 'home.hero' });
+        const versions = slides.versionRows.size;
+        const locks = slides.locks.length;
+        await read();
+        expect(slides.versionRows.size).toBe(versions);
+        expect(slides.locks).toHaveLength(locks);
+        expect(audit.entries.filter((e) => e.action === 'storefront.slide.reorder')).toEqual([]);
+      });
     });
   });
 

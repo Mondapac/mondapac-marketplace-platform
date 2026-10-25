@@ -50,7 +50,7 @@ go live only after a platform admin approves them.
 | `storefront.navigation.edit` | no | replace the navigation draft, restore a version |
 | `storefront.navigation.approve` | yes | approve the navigation draft |
 | `storefront.slide.read` | no | slide list, detail, copy package |
-| `storefront.slide.edit` | no | create, replace draft, restore, submit for approval, archive |
+| `storefront.slide.edit` | no | create, replace draft, restore, submit for approval, archive, reorder the live slides of a position (no approval) |
 | `storefront.slide.pause` | no | pause an approved slide (stops at once, no approval) |
 | `storefront.slide.publish` | yes | approve a submitted draft, resume a paused slide |
 
@@ -125,9 +125,58 @@ version, with its window, so caps and the later buyer read need no join) and `sl
   Pausing (`storefront.slide.pause`) removes the projection at once; resuming needs the publish
   key and checks the maximums again. States: draft, pending approval, scheduled, live, ended
   (from the Clock and the window), paused, archived. Every change is audited
-  (`storefront.slide.create|draft-change|submit|publish|pause|resume|archive`). As with pages, the
+  (`storefront.slide.create|draft-change|submit|publish|pause|resume|archive|reorder`). As with pages, the
   Platform Administrator may also edit, so one admin can approve their own draft (flagged
   `selfApproved` in the audit entry); revisit if another role ever holds the publish key.
+- **Reordering the live slides** (john, 24 Oct 2026; `storefront.slide.edit`, no approval): `PUT
+  storefront/admin/slides/order` with `{ position, scope?, scopeId?, slideIds[] }` saves the order of
+  the slides that are approved at one position and scope (within the request's Market; for a scoped
+  position, the same scope and scope id), and it takes effect at once. The list must be the whole set:
+  every approved slide whose window has not ended at that position and scope (scheduled ones,
+  approved with a start in the future, are part of the list on purpose: they take their place in the
+  order before they go live), each once, first shown first. A list longer than 50 (`slideIds: count`; a position shows at most 8 at once and a window is at
+  most 90 days, so 50 is about six windows of scheduled slides queued at one list), a duplicate, a malformed id, an id that is not a slide of
+  this Market (`storefront.slide-not-found` is not leaked: it reads `validation.failed`
+  `slideIds[i]: not-found`), a list that leaves a live slide out and a slide that is not live there
+  (paused, draft, archived, ended, another position or scope) are refused: the first group with 400
+  `validation.failed`, the last two with 409 `storefront.slide-order-mismatch` (`slideIds[i]:
+  not-live-here`, or `slideIds: incomplete`), which also covers a list that went stale because an
+  approval or resume changed the set. Only the order changes (sort orders 0..n-1 in list order);
+  content, window, scope, autoplay, flags and every other field of a placement still need the publish
+  key through submit and approve. Pinned slides are still shown before unpinned ones; the order
+  applies inside each group.
+  - *Where the order lives.* The version's `placements[].sortOrder` is write-once after approval, so
+    it is only the starting order of a placement. The live order is the `sort_order` of the
+    `slide_placements` rows (which the public read sorts by) and is also saved per slide, position
+    and scope in `slide_saved_orders`, because the projection is deleted when a slide is paused and
+    rebuilt when one is approved or resumed. Every projection (approve, resume) takes the saved order
+    of a placement when there is one and the version's `sortOrder` only when there is none, so a
+    re-approval of one slide (even a new version that still says sort order 0) does not move it.
+    Exception, so an approval is never silently overridden: when the newly approved version asks for
+    a different sort order for a placement than the version it replaces, the approved version wins
+    and that placement's saved order is dropped (also when the slide is paused, so a resume does not
+    bring the old one back); an unchanged value keeps the saved order. Archiving a slide drops all
+    its saved orders. The public read picks the placement of a slide to serve by scope specificity
+    (a named entity, then a category with subcategories, then `all`; then the smaller placement id),
+    never by sort order, so a reorder can never change which placement, and so which `autoplay`
+    value, a page gets. A saved order whose placement a new version no longer has (other position, scope or scope id) is
+    forgotten by that projection, and the placement starts from the version's sort order. Residual
+    case: a slide paused while the others are reordered comes back with its old number, which may
+    equal another slide's; ties are broken by start time then id, deterministically, and the next
+    reorder makes the numbers unique again.
+  - *Locks.* One unit of work: the named slide rows in id order (`lockSlide`), then the position row
+    (`lockPositions`), then the set of live placements is read (so an approval that committed before
+    the lock is seen, and one after it waits). Approve, pause and resume lock one slide and then
+    their positions, so no cycle is possible between a reorder and any of them, or between reorders.
+  - *Audit*: `storefront.slide.reorder` (target type `storefront.slide-order`, target id the position
+    key) with `before` and `after` `{ scope, scopeId, order[] }`.
+  - *What buyers see and when*: there is no in-process cache of slides; the public read queries the
+    projection. The order is therefore in the next uncached answer, and the read's `Cache-Control:
+    public, max-age` is at most 60 seconds (and never past the next start or end), so the new order
+    reaches every buyer within 60 seconds at the latest (CDN or browser caches that honour it).
+  - *Follow-up (not in this PR)*: the admin app needs the current order to show. Today the list gives
+    status and positions but not the sort order; a read of the live order of a position is the next
+    small step.
 - **Targets are checked at approval**: under the slide lock and before the stamp, `content.link` and
   every non-`all` `scopeId` are resolved in the request's Market through public facades only
   (catalog categories and published products, sellers who may sell, storefront pages that are not
@@ -142,7 +191,8 @@ version, with its window, so caps and the later buyer read need no join) and `sl
 - **Routes** (admin, session, CSRF, `Origin` + `Sec-Fetch-Site` as every admin route):
   `GET|POST storefront/admin/slides`, `GET|PUT storefront/admin/slides/:slide`,
   `GET .../:slide/copy`, `POST .../:slide/restore`, `POST .../:slide/archive`,
-  `POST .../:slide/submit|approve|pause|resume`.
+  `POST .../:slide/submit|approve|pause|resume`, `PUT storefront/admin/slides/order` (declared before
+  `PUT .../:slide`, so `order` is never read as a slide id).
 
 ## Public slides read (backend PR 2, 24 Oct 2026)
 
@@ -177,6 +227,25 @@ clickable, but the controls row below it (pause, arrows, picker) is an empty str
 it keeps its space so the page does not shift when the script adds the buttons. A slide's button
 label is drawn only when the slide has a link (a label without a link is not shown). The sample hero shows
 only when the slides read failed and the sample fallback is on.
+
+## Buyer site languages (web i18n base, W2, 25 Oct 2026)
+The buyer site launches in English only. Another language (Arabic, Persian first, both right to
+left) is published per Market by an admin (W3) and chosen only in the signed-in buyer's profile
+(W5): no URL prefix, no public switcher, no Accept-Language; guests and crawlers always get English.
+- `apps/web/src/i18n/locale.ts`: `resolveLocale(profileLocale, published)` returns the profile
+  language only when it is published, else `en`. Two seams: `publishedLocales()` (a constant
+  `['en']`; W3 replaces it with the Market's list) and `profileLocale()` in `src/i18n/request.ts`
+  (returns null; W5 reads the customer profile `locale`, which `GET identity/customer/session`
+  does not return yet). A catalogue is added by listing `messages/<locale>.json` in
+  `src/i18n/messages.ts`; missing keys read in English.
+- Latin digits and the Gregorian calendar in every language: the request locale carries
+  `-u-ca-gregory-nu-latn` (`intlLocale`), and `formatMoney`, `formatClock` and `formatDate` apply
+  it. New Intl code must go through them.
+- `<html lang dir>` come from the locale (`directionOf`); the stylesheet uses logical properties
+  and mirrors the rest under `:dir(rtl)`. Persian loads Vazirmatn and Arabic Noto Sans Arabic,
+  after the Latin brand fonts, only on their own pages (`src/i18n/fonts.ts`).
+- A page in a non-default language must never be cached shared: once `publishedLocales()` lists
+  more than English, the proxy sets `Cache-Control: private, no-store` on every document.
 
 ## Not in v1 (follow-ups)
 
