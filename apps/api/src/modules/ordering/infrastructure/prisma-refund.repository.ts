@@ -346,7 +346,7 @@ export class PrismaRefundRepository implements RefundRepository {
         // A refund waits until the paid facts of its seller order are in the ledger.
         sellerOrder: { is: { ledgerState: { not: 'pending' } } },
       },
-      include: { lines: true, sellerOrder: true },
+      include: { lines: true, sellerOrder: { include: { lines: true } } },
       orderBy: [{ ledgerAttempts: 'asc' }, { requestedAt: 'asc' }, { id: 'asc' }],
       take: limit,
     });
@@ -355,6 +355,9 @@ export class PrismaRefundRepository implements RefundRepository {
       const seller = row.sellerOrder;
       found.push({
         refund: toRefund(row),
+        freeLines: new Set(
+          seller.lines.filter((l) => l.lineAmount === 0n).map((l) => l.id as Id<'OrderLine'>),
+        ),
         sellerOrderLedgerState: seller.ledgerState as LedgerState,
         shippingCharge:
           seller.shippingTaxAmount === null || seller.shippingTaxInclusive === null

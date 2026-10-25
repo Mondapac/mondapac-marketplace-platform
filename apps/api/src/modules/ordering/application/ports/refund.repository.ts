@@ -15,6 +15,8 @@ export interface RefundForLedger {
   readonly sellerOrderLedgerState: LedgerState;
   /** What the customer paid for delivery on the seller order, tax included; null if unknown. */
   readonly shippingCharge: bigint | null;
+  /** Order lines of the seller order whose amount after discounts is 0: they wrote no ledger rows. */
+  readonly freeLines: ReadonlySet<Id<'OrderLine'>>;
 }
 
 /** The credit note written with a successful refund (once; never changed). */

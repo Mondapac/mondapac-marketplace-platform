@@ -148,6 +148,14 @@ export async function recordRefundLedger(
       await refuse(refund.id, 'ordering.refund-shipping-unknown');
       continue;
     }
+    // A fully discounted line wrote no ledger rows (the paid flow skips a zero line amount), so
+    // there is nothing of it to reverse: it is left out of the facts. Commission-payouts stays
+    // strict about any other line it cannot find.
+    const lines = refund.lines.filter((line) => !item.freeLines.has(line.orderLineId));
+    if (lines.length === 0 && refund.shipping === null) {
+      await handled(refund.id);
+      continue;
+    }
     const done = await deps.commission.recordRefund(context, {
       refundId: refund.id,
       orderId: refund.orderId,
@@ -156,7 +164,7 @@ export async function recordRefundLedger(
       currency: refund.currency,
       lossBearer: refund.lossBearer,
       settledAt: refund.settledAt,
-      lines: refund.lines.map((line) => ({
+      lines: lines.map((line) => ({
         orderLineId: line.orderLineId,
         lineQuantity: line.lineQuantity,
         unitsBefore: line.unitsBefore,
