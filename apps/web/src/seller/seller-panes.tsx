@@ -47,7 +47,7 @@ export function AboutPane({ shop }: { readonly shop: SellerShop }) {
       {shop.about === undefined ? null : (
         <section className="shop-box">
           <h2>{t('about', { name: shop.name })}</h2>
-          <p className="shop-text">{shop.about}</p>
+          <p className="shop-text shop-about">{shop.about}</p>
         </section>
       )}
       <section className="shop-box">

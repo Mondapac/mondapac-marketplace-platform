@@ -23,6 +23,17 @@ import type {
   SellingFactsRepository,
 } from '../ports/selling-facts.repository';
 import type { StoreProfileRepository } from '../ports/store-profile.repository';
+import { PublishedAboutCache } from '../store-profile/published-about-cache';
+import { PublishedStoreContentReader } from '../store-profile/published-store-content';
+import { MarketConfigStoreProfileLocales } from '../../infrastructure/market-config-store-profile-locales';
+import {
+  FakeContentSealer,
+  InMemoryStoreContent,
+  InMemoryStoreImages,
+  MapObjectStore,
+} from '../testing/in-memory-store-profile';
+import { contentOf } from '../../domain/store-profile-content';
+import { PublishedStoreImageRead } from './published-store-image-read.use-case';
 import { PublishedStoreList } from './published-store-list.use-case';
 import { PublishedStoreRead } from './published-store-read.use-case';
 import { PublishedStoreSellerId } from './published-store-seller-id.use-case';
@@ -61,7 +72,11 @@ describe.each([
   let clock: FixedClock;
   let list: PublishedStoreList;
   let read: PublishedStoreRead;
-  let sellerId: PublishedStoreSellerId;
+  let sellerIdRead: PublishedStoreSellerId;
+  let imageRead: PublishedStoreImageRead;
+  let storeContent: InMemoryStoreContent;
+  let storeImages: InMemoryStoreImages;
+  let objectStore: MapObjectStore;
 
   const addStore = (
     slug: string,
@@ -151,6 +166,17 @@ describe.each([
     const policy = {
       businessIdentifier: () => ({ scheme: 'x', required: true, labelKey: 'x' }),
     } as unknown as SellerMarketPolicy;
+    storeContent = new InMemoryStoreContent();
+    storeImages = new InMemoryStoreImages();
+    objectStore = new MapObjectStore();
+    const publishedContent = new PublishedStoreContentReader({
+      unitOfWork,
+      storeContent,
+      storeImages,
+      contentSealer: new FakeContentSealer(),
+      localesPolicy: new MarketConfigStoreProfileLocales(markets),
+      aboutCache: new PublishedAboutCache(clock),
+    });
     const deps = {
       unitOfWork,
       sellingFacts,
@@ -159,11 +185,13 @@ describe.each([
       publishedStores,
       storeProfiles,
       minimumOrderPolicy,
+      publishedContent,
       clock,
     };
     list = new PublishedStoreList(gate, deps);
     read = new PublishedStoreRead(gate, deps);
-    sellerId = new PublishedStoreSellerId(gate, deps);
+    sellerIdRead = new PublishedStoreSellerId(gate, deps);
+    imageRead = new PublishedStoreImageRead(gate, { ...deps, objectStore });
   });
 
   const page = async (input: Parameters<PublishedStoreList['execute']>[1] = {}) => {
@@ -189,6 +217,7 @@ describe.each([
           serviceAreaCode: 'area-1',
           sellingSince: 2026,
           minimumOrder: { amount: 3000n, currency },
+          logo: null,
         },
         {
           slug: 'zeta-foods',
@@ -196,6 +225,7 @@ describe.each([
           serviceAreaCode: 'area-1',
           sellingSince: 2025,
           minimumOrder: null,
+          logo: null,
         },
       ],
       total: 2,
@@ -307,6 +337,9 @@ describe.each([
         serviceAreaCode: 'area-1',
         sellingSince: 2026,
         minimumOrder: null,
+        about: null,
+        logo: null,
+        banner: null,
       }),
     );
   });
@@ -349,6 +382,178 @@ describe.each([
     });
   });
 
+  const defaultLocale = code === 'AU' ? 'en-AU' : 'ja-JP';
+
+  const setAbout = async (sellerId: Id<'Seller'>, text: string): Promise<void> => {
+    storeContent.addProfile(market(), sellerId);
+    const sealed = await new FakeContentSealer().seal(
+      market(),
+      sellerId,
+      contentOf({ [defaultLocale]: text }),
+    );
+    if (!sealed.ok) throw new Error('fixture failed');
+    await storeContent.publish(market(), sellerId, {
+      id: ids.next<'StoreProfileRevision'>(),
+      expectedRevisionNo: 0,
+      ciphertext: sealed.value.ciphertext,
+      schemaVersion: 1,
+      contentHash: sealed.value.contentHash,
+      authorAccountId: ids.next<'Account'>(),
+      createdAt: Temporal.Instant.from('2026-10-20T00:00:00Z'),
+    });
+  };
+
+  const setImage = async (
+    sellerId: Id<'Seller'>,
+    kind: 'logo' | 'banner',
+  ): Promise<{ id: Id<'StoreImage'>; keys: string[] }> => {
+    const id = ids.next<'StoreImage'>();
+    const renditions = (['large', 'small'] as const).map((size) => ({
+      size,
+      objectKey: `${sellerId}/store-images/${id}/${size}`,
+      sha256: Buffer.alloc(32),
+      byteSize: 3,
+      width: size === 'large' ? 512 : 128,
+      height: size === 'large' ? 512 : 128,
+    }));
+    for (const rendition of renditions) {
+      await objectStore.put(rendition.objectKey, Buffer.from(`${id}:${rendition.size}`));
+    }
+    await storeImages.replace(market(), sellerId, {
+      id,
+      kind,
+      uploaderAccountId: ids.next<'Account'>(),
+      width: 512,
+      height: 512,
+      uploadedBytes: 10,
+      createdAt: Temporal.Instant.from('2026-10-20T00:00:00Z'),
+      renditions,
+    });
+    return { id, keys: renditions.map((r) => r.objectKey) };
+  };
+
+  const imageOf = (slug: string, imageId: string, size = 'large') =>
+    imageRead.execute(anonymous(), { slug, imageId, size });
+  const NOT_FOUND = { ok: false, error: { code: 'image.not-found' } };
+
+  it('adds the About text, logo and banner to one store, and only the logo to the list', async () => {
+    const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    await setAbout(sellerId, 'We bake.\nEvery day.');
+    const logo = await setImage(sellerId, 'logo');
+    const banner = await setImage(sellerId, 'banner');
+
+    const one = await read.execute(anonymous(), { slug: 'alpha-market' });
+    const all = await page();
+
+    expect(one).toMatchObject({
+      ok: true,
+      value: {
+        about: 'We bake.\nEvery day.',
+        logo: { id: logo.id, width: 512, height: 512 },
+        banner: { id: banner.id, width: 512, height: 512 },
+      },
+    });
+    expect(all.items[0]).toMatchObject({ logo: { id: logo.id } });
+    expect(all.items[0]).not.toHaveProperty('about');
+    expect(all.items[0]).not.toHaveProperty('banner');
+  });
+
+  it('shows no store page text for a store that may not sell, and no logo in the list', async () => {
+    const sellerId = addStore('held-back', 'Held', '2026-01-10T00:00:00Z', { state: 'suspended' });
+    await setAbout(sellerId, 'Hidden');
+    await setImage(sellerId, 'logo');
+
+    expect((await page()).items).toEqual([]);
+    expect(await read.execute(anonymous(), { slug: 'held-back' })).toEqual({
+      ok: false,
+      error: { code: 'sellers.store-not-found' },
+    });
+  });
+
+  it('answers sellers.unavailable, not a store without its text, when the content cannot be read', async () => {
+    const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+    storeContent.addProfile(market(), sellerId);
+    await setImage(sellerId, 'logo');
+    objectStore.objects.clear();
+    storeImages.currentOf = () => Promise.reject(new Error('images down'));
+    storeImages.logosOf = () => Promise.reject(new Error('images down'));
+
+    expect(await read.execute(anonymous(), { slug: 'alpha-market' })).toEqual({
+      ok: false,
+      error: { code: 'sellers.unavailable' },
+    });
+    expect(await list.execute(anonymous(), {})).toEqual({
+      ok: false,
+      error: { code: 'sellers.unavailable' },
+    });
+  });
+
+  describe('the public image bytes', () => {
+    it('serves the current logo or banner of a store that may sell, both sizes, as JPEG', async () => {
+      const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const logo = await setImage(sellerId, 'logo');
+
+      const large = await imageOf('alpha-market', logo.id, 'large');
+      const small = await imageOf('alpha-market', logo.id, 'small');
+
+      expect(large).toEqual({
+        ok: true,
+        value: { bytes: Buffer.from(`${logo.id}:large`), contentType: 'image/jpeg' },
+      });
+      expect(small).toMatchObject({ ok: true, value: { bytes: Buffer.from(`${logo.id}:small`) } });
+    });
+
+    it('answers one identical not-found for every other case', async () => {
+      const mine = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const theirs = addStore('beta-market', 'Beta', '2026-01-10T00:00:00Z');
+      const suspended = addStore('held-back', 'Held', '2026-01-10T00:00:00Z', {
+        state: 'suspended',
+      });
+      const first = await setImage(mine, 'logo');
+      const other = await setImage(theirs, 'logo');
+      const held = await setImage(suspended, 'logo');
+      const second = await setImage(mine, 'logo'); // replaces `first`
+
+      const cases = [
+        await imageOf('alpha-market', first.id), // replaced
+        await imageOf('alpha-market', other.id), // another store's
+        await imageOf('beta-market', second.id), // the other way round
+        await imageOf('held-back', held.id), // a store that may not sell
+        await imageOf('no-such-store', second.id), // unknown slug
+        await imageOf('Alpha-Market', second.id), // slug in another case
+        await imageOf('alpha-market', 'not-an-id'), // malformed id
+        await imageOf('alpha-market', second.id, 'huge'), // unknown size
+        await imageOf('alpha-market', second.id, 'thumb'),
+        await imageOf('alpha-market', '0199dddd-0000-7000-8000-000000000999'), // unknown id
+      ];
+
+      for (const answer of cases) expect(answer).toEqual(NOT_FOUND);
+      expect(await imageOf('alpha-market', second.id)).toMatchObject({ ok: true });
+    });
+
+    it('never serves a removed image, and says not-found when the object is missing', async () => {
+      const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const banner = await setImage(sellerId, 'banner');
+      objectStore.objects.delete(banner.keys[0]!);
+      expect(await imageOf('alpha-market', banner.id, 'large')).toEqual(NOT_FOUND);
+
+      await storeImages.remove(market(), sellerId, 'banner');
+
+      expect(await imageOf('alpha-market', banner.id, 'small')).toEqual(NOT_FOUND);
+    });
+
+    it('answers not-found, never an image, while identity is down (fail closed)', async () => {
+      const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const logo = await setImage(sellerId, 'logo');
+      identityDown = true;
+
+      expect(await imageOf('alpha-market', logo.id)).toEqual({
+        ok: false,
+        error: { code: 'image.not-found' },
+      });
+    });
+  });
+
   describe('the seller of a store address (for the storefront product list)', () => {
     it('declares the anonymous rule under its own name', () => {
       expect(PublishedStoreSellerId.access).toEqual({
@@ -360,7 +565,7 @@ describe.each([
     it('gives the seller that holds the exact slug while it may sell, and nothing else', async () => {
       const id = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
 
-      const result = await sellerId.execute(anonymous(), { slug: 'alpha-market' });
+      const result = await sellerIdRead.execute(anonymous(), { slug: 'alpha-market' });
 
       expect(result).toEqual(ok(id));
       expect(JSON.stringify(result)).not.toContain('Alpha');
@@ -377,21 +582,21 @@ describe.each([
         state: asked === stored ? 'suspended' : 'approved',
       });
 
-      expect(await sellerId.execute(anonymous(), { slug: asked })).toEqual(ok(null));
+      expect(await sellerIdRead.execute(anonymous(), { slug: asked })).toEqual(ok(null));
     });
 
     it('answers null while identity is down (the may-sell contract fails closed)', async () => {
       addStore('a-store', 'A', '2026-01-01T00:00:00Z');
       identityDown = true;
 
-      expect(await sellerId.execute(anonymous(), { slug: 'a-store' })).toEqual(ok(null));
+      expect(await sellerIdRead.execute(anonymous(), { slug: 'a-store' })).toEqual(ok(null));
     });
 
     it('answers sellers.unavailable when the store read fails, never a guess', async () => {
       addStore('a-store', 'A', '2026-01-01T00:00:00Z');
       failStores = true;
 
-      expect(await sellerId.execute(anonymous(), { slug: 'a-store' })).toEqual({
+      expect(await sellerIdRead.execute(anonymous(), { slug: 'a-store' })).toEqual({
         ok: false,
         error: { code: 'sellers.unavailable' },
       });
@@ -400,7 +605,7 @@ describe.each([
     it('is not for the system actor (rule anonymous)', async () => {
       addStore('a-store', 'A', '2026-01-01T00:00:00Z');
 
-      const result = await sellerId.execute(
+      const result = await sellerIdRead.execute(
         testCallContext(market(), 'system', 'store-system-abcd'),
         { slug: 'a-store' },
       );

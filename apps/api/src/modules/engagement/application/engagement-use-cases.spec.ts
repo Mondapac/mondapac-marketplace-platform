@@ -186,6 +186,40 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
       });
     });
 
+    it("takes the account's lock first: shared to record, exclusive to switch and to forget", async () => {
+      const appended = jest.spyOn(events, 'append');
+      const deleted = jest.spyOn(events, 'deleteForAccount');
+      appended.mockImplementation((...args) => {
+        settings.log.push('append');
+        return InMemoryBehaviourEvents.prototype.append.apply(events, args);
+      });
+      deleted.mockImplementation((...args) => {
+        settings.log.push('delete-events');
+        return InMemoryBehaviourEvents.prototype.deleteForAccount.apply(events, args);
+      });
+      const account = `${code}|${ALICE}`;
+
+      await uc.record.execute(alice, { event: viewed, ...quiet });
+      expect(settings.log.splice(0)).toEqual([`lock:shared:${account}`, 'find', 'append']);
+      await uc.set.execute(alice, { enabled: false });
+      expect(settings.log.splice(0)).toEqual([
+        `lock:exclusive:${account}`,
+        'find',
+        'save',
+        'delete-events',
+      ]);
+      await uc.forget.execute(system, { accountId: ALICE });
+      expect(settings.log.splice(0)).toEqual([
+        `lock:exclusive:${account}`,
+        'delete-events',
+        'delete',
+      ]);
+      // Global Privacy Control and a refused caller open no unit and take no lock.
+      await uc.record.execute(alice, { event: viewed, globalPrivacyControl: true });
+      await uc.record.execute(anonymous, { event: viewed, ...quiet });
+      expect(settings.log).toEqual([]);
+    });
+
     it('refuses a switch without a boolean `enabled`', async () => {
       expect(await uc.set.execute(alice, {})).toEqual({
         ok: false,

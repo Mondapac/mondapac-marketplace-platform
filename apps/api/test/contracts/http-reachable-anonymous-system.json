@@ -210,6 +210,11 @@
     "reason": "The storefront product page for a visitor with no session: the published product text and variants and its sellable Offers with buyer price (never Cost), public stock state (never the exact count) and the seller's public store name; re-checked against catalog and sellers; rate limited per origin."
   },
   {
+    "name": "sellers.published-store-image-read",
+    "rule": "anonymous",
+    "reason": "The buyer site's store logo and banner for a visitor with no session: the current image of a store that may sell now, as the JPEG the server wrote (no metadata, no upload kept); an unknown slug, a replaced or removed image, another store's image and a store that may not sell all answer the same not-found."
+  },
+  {
     "name": "sellers.published-store-list",
     "rule": "anonymous",
     "reason": "The buyer site's sellers page for a visitor with no session: the allow-listed public fields (slug, store name, ServiceArea code, year of first approval, minimum order) of stores that may sell now; no address, contact or identifier, nothing about a seller that may not sell, no key unwrapped."
@@ -223,6 +228,11 @@
     "name": "shipping.delivery-area",
     "rule": "anonymous",
     "reason": "The buyer site asks whether the Market delivers to a postcode before sign-in (cart, checkout, Deliver to): the answer is the public ServiceArea configuration; nothing about a person is read or stored."
+  },
+  {
+    "name": "shipping.receive-carrier-webhook",
+    "rule": "anonymous",
+    "reason": "Mondapac Drive's status webhook: the caller is the carrier, which holds no session. The use case refuses anything without a valid HMAC-SHA256 signature of the timestamp and the raw body under the Market's webhook secret, within a 300-second replay window; each event is taken once by its id, and it only moves a seller order's carrier delivery forward."
   },
   {
     "name": "shipping.view-store-flat-fee",

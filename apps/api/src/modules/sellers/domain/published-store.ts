@@ -1,5 +1,6 @@
 import type { Id, Money, Temporal } from '@mondapac/shared-kernel';
 import type { DeliveryTerms } from './delivery-terms';
+import type { StoreImageRef } from './store-image';
 
 /**
  * What `sellers` holds in clear about a store with an approved revision and a held slug, for the
@@ -35,6 +36,14 @@ export interface PublishedStore {
   readonly minimumOrder?: Money | null;
   /** The seller's delivery terms; absent when the seller has set none. */
   readonly delivery?: DeliveryTerms;
+  /**
+   * The About text in the Market's default locale (slice 12 part 2): a store page only, `null`
+   * when the store wrote none, plain text that is never HTML. Absent on the list.
+   */
+  readonly about?: string | null;
+  /** The current logo (a store page and the list) and banner (a store page only); `null`: none. */
+  readonly logo?: StoreImageRef | null;
+  readonly banner?: StoreImageRef | null;
 }
 
 /** The orders of the public store list. */

@@ -15,6 +15,7 @@ import {
   type SellingEligibilityDependencies,
 } from '../use-cases/selling-eligibility.use-case';
 import { MAX_SELLER_SUMMARY_IDS } from '../summaries/read-seller-summaries';
+import type { PublishedStoreContentReader } from '../store-profile/published-store-content';
 
 /**
  * The most stores one list read considers. Above it the list answers the first stores in seller
@@ -27,6 +28,8 @@ export interface PublishedStoresDependencies extends SellingEligibilityDependenc
   readonly publishedStores: PublishedStoreRepository;
   readonly storeProfiles: StoreProfileRepository;
   readonly minimumOrderPolicy: MinimumOrderPolicy;
+  /** The About text, logo and banner of a store (slice 12 part 2). */
+  readonly publishedContent: PublishedStoreContentReader;
   readonly clock: Clock;
 }
 

@@ -1198,6 +1198,73 @@ const catalogSchema = z
     });
   });
 
+/**
+ * The `shipping` section (SHP-02/03, the `real_time_delivery` FulfillmentStrategy).
+ * `realTimeCarrier`: the Market's real-time carrier; only `mondapac-drive` exists. `displayName`
+ * is what the customer and the seller see as the carrier; `baseUrl` the carrier API (https, http
+ * only for a loopback host); `serviceAreas` the ServiceArea codes (config/service-areas) it serves: a seller order goes to
+ * the carrier only when both its pickup and its drop-off fall in one of them. `parcel` and `mode`
+ * describe every booking until offers carry their own sizes and cold-chain needs. `timeoutMs`,
+ * `maxAttempts`, `backoffMs` and `circuitBreaker` shape the HTTP client. The API key and the
+ * webhook secret are not here: they are server secrets (MONDAPAC_DRIVE_API_KEY and
+ * MONDAPAC_DRIVE_WEBHOOK_SECRET); without both the carrier is off.
+ */
+/**
+ * The longest one carrier call may take, every attempt and backoff included: it runs inside an
+ * event handler, which has HANDLER_BUDGET_MS (20 s) for its units and its external calls.
+ */
+export const MAX_CARRIER_CALL_MS = 6000;
+
+/** The worst time of one carrier call: every attempt timing out, with every backoff between. */
+export const carrierCallBudgetMs = (carrier: {
+  readonly timeoutMs: number;
+  readonly maxAttempts: number;
+  readonly backoffMs: number;
+}): number =>
+  carrier.timeoutMs * carrier.maxAttempts +
+  carrier.backoffMs * (2 ** (carrier.maxAttempts - 1) - 1);
+
+const shippingSchema = z.strictObject({
+  realTimeCarrier: z
+    .strictObject({
+      carrier: z.enum(['mondapac-drive']),
+      displayName: z
+        .string()
+        .regex(
+          /^[\p{L}\p{N}][\p{L}\p{N} .&'-]{0,59}$/u,
+          'must be 1 to 60 letters, digits or spaces',
+        ),
+      baseUrl: pageUrl,
+      serviceAreas: z
+        .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
+        .min(1)
+        .max(50)
+        .refine((codes) => new Set(codes).size === codes.length, 'an area must not repeat'),
+      parcel: z.strictObject({
+        weightGrams: z.number().int().min(1).max(100_000),
+        volumeLitres: z.number().int().min(1).max(1000),
+        temperature: z.enum(['ambient', 'chilled', 'frozen']),
+      }),
+      mode: z.enum(['on_demand', 'scheduled']),
+      timeoutMs: z.number().int().min(500).max(15_000),
+      maxAttempts: z.number().int().min(1).max(5),
+      backoffMs: z.number().int().min(0).max(5000),
+      circuitBreaker: z.strictObject({
+        failureThreshold: z.number().int().min(1).max(50),
+        cooldownSeconds: z.number().int().min(1).max(600),
+      }),
+    })
+    .refine(
+      (carrier) => carrierCallBudgetMs(carrier) <= MAX_CARRIER_CALL_MS,
+      `timeoutMs × maxAttempts plus the backoffs must fit in ${MAX_CARRIER_CALL_MS} ms`,
+    )
+    .refine((carrier) => {
+      const url = new URL(carrier.baseUrl);
+      return url.search === '' && url.hash === '';
+    }, 'baseUrl must have no query or fragment')
+    .optional(),
+});
+
 const marketSchema = z
   .strictObject({
     code: marketCode,
@@ -1351,6 +1418,8 @@ const marketSchema = z
      * Owned by `certification`; optional here, checked for every hosted Market at start-up by it.
      */
     certification: certificationSchema.optional(),
+    /** Owned by `shipping`: the real-time carrier (SHP-02/03). Absent: sellers ship themselves. */
+    shipping: shippingSchema.optional(),
   })
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {
     message: 'supportedLocales must include defaultLocale',

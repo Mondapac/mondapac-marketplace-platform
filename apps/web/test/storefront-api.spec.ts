@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiGetWith } from '../src/storefront/api.ts';
+import { apiGetBytesWith, apiGetWith } from '../src/storefront/api.ts';
 import { checkDeliveryArea, deliveryAreaAnswer } from '../src/storefront/source.ts';
 import {
   assertClientAddressForwarding,
@@ -305,5 +305,127 @@ describe('delivery area read', () => {
       'http://localhost:3000/shipping/delivery-area?postcode=40%2031%26x%3D1',
     );
     expect(logged).not.toHaveBeenCalled();
+  });
+});
+
+describe('reading a picture from the API', () => {
+  const host = incoming({ host: 'storefront.localhost:3003' });
+
+  it('asks for a JPEG, with the Market, and returns the bytes and their type', async () => {
+    const calls: { headers: Headers }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init: RequestInit) => {
+        calls.push({ headers: new Headers(init.headers) });
+        return Promise.resolve(
+          new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } }),
+        );
+      }),
+    );
+    const read = await apiGetBytesWith(config(LOCAL), host, 'sellers/stores/x/images/y/small');
+    expect(read).toEqual({
+      kind: 'ok',
+      body: { bytes: new Uint8Array([1, 2, 3]), contentType: 'image/jpeg' },
+    });
+    expect(calls[0]?.headers.get('accept')).toBe('image/jpeg');
+    expect(calls[0]?.headers.get('x-market-id')).toBe('AU');
+  });
+
+  it('refuses a picture over the size cap and keeps a refusal code', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(new Uint8Array(2 * 1024 * 1024 + 1), {
+            headers: { 'content-type': 'image/jpeg' },
+          }),
+        ),
+      ),
+    );
+    expect(await apiGetBytesWith(config(LOCAL), host, 'sellers/stores/x/images/y/small')).toEqual({
+      kind: 'failed',
+    });
+    serve(404, { statusCode: 404, code: 'image.not-found' });
+    expect(await apiGetBytesWith(config(LOCAL), host, 'sellers/stores/x/images/y/small')).toEqual({
+      kind: 'failed',
+      status: 404,
+      code: 'image.not-found',
+    });
+  });
+
+  /** A response whose body is a stream of `chunks` of `size` bytes, with no Content-Length. */
+  const streamed = (chunks: number, size: number, onPull: () => void, onCancel: () => void) => {
+    let sent = 0;
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          onPull();
+          if (sent === chunks) return controller.close();
+          sent += 1;
+          controller.enqueue(new Uint8Array(size));
+        },
+        cancel: onCancel,
+      }),
+      { headers: { 'content-type': 'image/jpeg' } },
+    );
+  };
+
+  it('stops reading and cancels the stream once a body without Content-Length passes 2 MiB', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const pulls = vi.fn();
+    const cancelled = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(streamed(1000, 256 * 1024, pulls, cancelled))),
+    );
+
+    const read = await apiGetBytesWith(config(LOCAL), host, 'sellers/stores/x/images/y/small');
+
+    expect(read).toEqual({ kind: 'failed' });
+    // 2 MiB is eight 256 KiB chunks; the ninth tips it over and the rest is never pulled.
+    expect(pulls.mock.calls.length).toBeLessThanOrEqual(12);
+    expect(cancelled).toHaveBeenCalled();
+  });
+
+  it('refuses a body that lies about a small Content-Length', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const cancelled = vi.fn();
+    const lying = streamed(100, 256 * 1024, () => undefined, cancelled);
+    lying.headers.set('content-length', '10');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(lying)),
+    );
+
+    expect(await apiGetBytesWith(config(LOCAL), host, 'sellers/stores/x/images/y/small')).toEqual({
+      kind: 'failed',
+    });
+    expect(cancelled).toHaveBeenCalled();
+  });
+
+  it('reads a streamed body up to the cap in order', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new Uint8Array([1, 2]));
+                controller.enqueue(new Uint8Array([3]));
+                controller.close();
+              },
+            }),
+            { headers: { 'content-type': 'image/jpeg' } },
+          ),
+        ),
+      ),
+    );
+
+    expect(await apiGetBytesWith(config(LOCAL), host, 'sellers/stores/x/images/y/small')).toEqual({
+      kind: 'ok',
+      body: { bytes: new Uint8Array([1, 2, 3]), contentType: 'image/jpeg' },
+    });
   });
 });
