@@ -36,6 +36,8 @@ import {
 
 const T0 = Temporal.Instant.from('2026-10-23T00:00:00Z');
 const POSITION = 'cart.below-lines';
+/** A position the other tests leave room in. */
+const PUBLIC_POSITION = 'landing.top';
 
 describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (code) => {
   const market = marketOf(code);
@@ -74,6 +76,7 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
       // Facades are covered by their own specs; here every target is live.
       targets: { live: (_c, targets) => Promise.resolve(new Set(targets.map(targetKey))) },
       slides,
+      links: undefined as never,
       audit: {
         record: (_c, entry) => {
           recorded.push(entry.action);
@@ -105,8 +108,10 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
       throw new Error(`refused: ${JSON.stringify((result as { error: unknown }).error)}`);
     return (result as { value: T }).value;
   };
-  const approved = async (target: CallContext, hours = 0) => {
-    const created = ok(await createSlide(deps, target, draft(hours)));
+  const approved = async (target: CallContext, hours = 0, position = POSITION) => {
+    const created = ok(
+      await createSlide(deps, target, draft(hours, { placements: [{ position }] })),
+    );
     ok(await submitSlide(deps, target, { slide: created.id }));
     return ok(await approveSlide(deps, target, { slide: created.id, body: { versionNo: 1 } }));
   };
@@ -245,5 +250,26 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
     });
     expect(updated.versions.map((v) => v.versionNo)).toEqual([2, 1]);
     expect((await projected(market, live.id)).map((p) => p.position)).toEqual([POSITION]);
+  });
+
+  it('serves only approved slides of the request Market to the public read, and not a paused one', async () => {
+    const served = (target: typeof market) =>
+      db.unitOfWork
+        .run(target, async () => ({
+          ok: true as const,
+          value: await slides.servedAt(target, PUBLIC_POSITION, start, 100),
+        }))
+        .then((r) => (r.ok ? r.value : []));
+    const live = await approved(context, 24 * 120, PUBLIC_POSITION);
+    const theirs = await approved(otherContext, 24 * 120, PUBLIC_POSITION);
+    expect((await served(market)).map((p) => p.slideId)).toContain(live.id);
+    expect((await served(market)).map((p) => p.slideId)).not.toContain(theirs.id);
+    expect((await served(other)).map((p) => p.slideId)).toContain(theirs.id);
+    expect((await served(other)).map((p) => p.slideId)).not.toContain(live.id);
+    const row = (await served(market)).find((p) => p.slideId === live.id)!;
+    expect(row).toMatchObject({ kind: 'announcement', scope: 'all', pinned: false });
+    expect(row.liveVersionId).toBe(live.live?.id);
+    ok(await pauseSlide(deps, context, { slide: live.id }));
+    expect((await served(market)).map((p) => p.slideId)).not.toContain(live.id);
   });
 });

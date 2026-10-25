@@ -149,6 +149,7 @@ describe.each([
       } as never,
       targets,
       slides,
+      links: undefined as never,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,

@@ -306,6 +306,7 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
       pages,
       slides: new MemorySlides(),
       targets: new MemoryTargets(),
+      links: undefined as never,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,

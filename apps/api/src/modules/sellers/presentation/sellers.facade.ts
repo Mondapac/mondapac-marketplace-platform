@@ -4,6 +4,7 @@ import type { AllowedProductTypesSystem } from '../application/use-cases/allowed
 import type { AllowedProductTypes } from '../application/use-cases/allowed-product-types.use-case';
 import type { CarrierPickupRead } from '../application/use-cases/carrier-pickup.use-case';
 import type { PublishedStoreSellerId } from '../application/use-cases/published-store-seller-id.use-case';
+import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';
 import type { ReviewerBusinessDetailsRead } from '../application/use-cases/reviewer-business-details.use-case';
 import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
 import type { SellingEligibility } from '../application/use-cases/selling-eligibility.use-case';
@@ -31,6 +32,7 @@ export interface SellersFacadeUseCases {
   readonly allowedProductTypesSystem: AllowedProductTypesSystem;
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
   readonly publishedStoreSellerId: PublishedStoreSellerId;
+  readonly publishedStoreSlugs: PublishedStoreSlugs;
   readonly carrierPickup: CarrierPickupRead;
 }
 
@@ -87,6 +89,13 @@ export class SellersFacadeImplementation implements SellersFacade {
     slug: string,
   ): Promise<Result<Id<'Seller'> | null, AccessDenied | SellersUnavailable>> {
     return this.useCases.publishedStoreSellerId.execute(context, { slug });
+  }
+
+  publishedStoreSlugs(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, AccessDenied | SellersUnavailable>> {
+    return this.useCases.publishedStoreSlugs.execute(context, { sellerIds });
   }
 
   reviewerBusinessDetails(
