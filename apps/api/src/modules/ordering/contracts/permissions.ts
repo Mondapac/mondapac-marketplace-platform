@@ -26,6 +26,16 @@ export const ORDERING_SELLER_ORDER_MARK_READY = definePermission('ordering', {
   protected: false,
 });
 
+/**
+ * Confirm the handover of a ready pickup order by typing the buyer's pickup code (delivery
+ * models, package 2). The seller never delivers: the buyer comes to the shop.
+ */
+export const ORDERING_SELLER_ORDER_CONFIRM_PICKUP = definePermission('ordering', {
+  key: 'ordering.seller-order.confirm-pickup',
+  scope: 'seller',
+  protected: false,
+});
+
 /** Mark a shipped seller order delivered. */
 export const ORDERING_SELLER_ORDER_MARK_DELIVERED = definePermission('ordering', {
   key: 'ordering.seller-order.mark-delivered',
@@ -43,6 +53,7 @@ export const ORDERING_ORDER_REFUND = definePermission('ordering', {
 export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
   ORDERING_ORDER_REFUND,
   ORDERING_ORDER_VIEW,
+  ORDERING_SELLER_ORDER_CONFIRM_PICKUP,
   ORDERING_SELLER_ORDER_MARK_DELIVERED,
   ORDERING_SELLER_ORDER_MARK_READY,
   ORDERING_SELLER_ORDER_VIEW,

@@ -114,6 +114,17 @@ export interface ShippingFacade {
   ): Promise<Result<CheckoutShippingFees, ShippingFailure>>;
 
   /**
+   * The asked sellers (at most 100 distinct ids) that have an approved pickup address: those whose
+   * buyer may choose in-person pickup (delivery models, package 2). Rule `own-resources`, for
+   * checkout under the customer's context. A failed read is `shipping.unavailable`: callers fail
+   * closed and never read it as "no pickup".
+   */
+  pickupAvailability(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<ReadonlySet<Id<'Seller'>>, ShippingFailure>>;
+
+  /**
    * Whether the Market delivers to the postcode: in a ServiceArea open for delivery. Anyone may
    * ask (the areas are public configuration). `validation.failed` for a postcode that is not 1
    * to 16 printable characters.

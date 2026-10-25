@@ -399,6 +399,11 @@
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.order-notice", "rule": "system" },
   { "name": "ordering.record-carrier-progress", "rule": "system" },
+  {
+    "name": "ordering.regenerate-pickup-code",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "ordering.record-ledger", "rule": "system" },
   { "name": "ordering.record-shipments", "rule": "system" },
   { "name": "ordering.settle-refunds", "rule": "system" },
@@ -497,6 +502,11 @@
   { "name": "shipping.carrier-shipment", "rule": "system" },
   { "name": "shipping.delivery-area", "rule": "anonymous" },
   { "name": "shipping.flat-fees", "rule": "anonymous" },
+  {
+    "name": "shipping.pickup-availability",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "shipping.receive-carrier-webhook", "rule": "anonymous" },
   { "name": "shipping.shipping-fees", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {

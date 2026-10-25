@@ -12,6 +12,8 @@ import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sess
 import { INVENTORY_ORDERING_PORT } from '../src/modules/inventory/contracts/ordering-port';
 import { CHECKOUT_GATEWAY } from '../src/modules/ordering/application/ports/checkout-gateway';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
+import { PICKUP_CODE_REPOSITORY } from '../src/modules/ordering/application/ports/pickup-code.repository';
+import { PICKUP_CODE_VAULT } from '../src/modules/ordering/application/ports/pickup-code-vault';
 import { SHIP_TO_CIPHER } from '../src/modules/ordering/application/ports/ship-to-cipher';
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
 import { COMMISSION_PAYOUTS_FACADE } from '../src/modules/commission-payouts';
@@ -33,9 +35,11 @@ import {
   FakeCommission,
   FakeTax,
   FakeTaxCategories,
+  FakePickupVault,
   FakeShipping,
   FakeShipToCipher,
   MemoryOrders,
+  MemoryPickupCodes,
   TEST_DELIVERY_ADDRESS,
 } from './support/ordering-fakes';
 import { FakeUnitOfWork, RecordingAuditWriter, RecordingOutbox } from './support/pricing-fakes';
@@ -83,6 +87,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.outside-delivery-area': 422,
     'ordering.cart-empty': 422,
     'ordering.delivery-method-unavailable': 422,
+    'ordering.pickup-unavailable': 422,
     'ordering.cart-not-purchasable': 422,
     'ordering.stock-insufficient': 409,
     'ordering.cart-not-ready': 409,
@@ -92,6 +97,8 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.shipping-unavailable': 503,
     'ordering.seller-order-not-found': 404,
     'ordering.fulfilment-conflict': 409,
+    'ordering.pickup-code-invalid': 422,
+    'ordering.pickup-code-locked': 423,
     'ordering.payment-unavailable': 503,
     'ordering.refund-disabled': 409,
     'ordering.refund-not-allowed': 409,
@@ -114,6 +121,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let inventory: FakeInventory;
   let cart: FakeCart;
   let shipping: FakeShipping;
+  let pickupCodes: MemoryPickupCodes;
+  let pickupVault: FakePickupVault;
   const clock = new FixedClock(START);
   const http = () => request(app.getHttpServer());
   const marketOf = () => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -125,6 +134,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     inventory = new FakeInventory();
     cart = new FakeCart();
     shipping = new FakeShipping();
+    pickupCodes = new MemoryPickupCodes();
+    pickupVault = new FakePickupVault();
     const customers = new FakeCustomers();
     customers.addresses.set(ADDRESS, { accountId: CUSTOMER, address: TEST_DELIVERY_ADDRESS });
     // The seller delivers for a flat 5.00.
@@ -165,6 +176,10 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(customers)
           .overrideProvider(SHIP_TO_CIPHER)
           .useValue(new FakeShipToCipher())
+          .overrideProvider(PICKUP_CODE_REPOSITORY)
+          .useValue(pickupCodes)
+          .overrideProvider(PICKUP_CODE_VAULT)
+          .useValue(pickupVault)
           .overrideProvider(SHIPPING_FACADE)
           .useValue(shipping)
           .overrideProvider(TAX_FACADE)

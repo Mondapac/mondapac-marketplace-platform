@@ -14,11 +14,13 @@ import {
   FakeCommission,
   FakeCustomers,
   FakeLabels,
+  FakePickupVault,
   FakeShipping,
   FakeShipToCipher,
   FakeTax,
   FakeTaxCategories,
   MemoryOrders,
+  MemoryPickupCodes,
   NO_AUDIT,
   NO_REFUNDS,
   TEST_DELIVERY_ADDRESS,
@@ -146,6 +148,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     // Seller A charges a flat 5.00 for delivery; seller B delivers free (an explicit zero).
     shipping.fees.set(SELLER_A, money(500n, currency));
     shipping.fees.set(SELLER_B, money(0n, currency));
+    // Both sellers have an approved pickup address (pickup is offered only with one).
+    shipping.pickupApproved = new Set([SELLER_A, SELLER_B]);
     cart.lines = [
       line(OFFER_1, SELLER_A, 1000n, 2),
       line(OFFER_2, SELLER_B, 250n, 3),
@@ -176,6 +180,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       clock,
       labels,
       deliveryMethods: new AllowAllDeliveryMethods(),
+      pickupCodes: new MemoryPickupCodes(),
+      pickupVault: new FakePickupVault(),
     };
   });
 

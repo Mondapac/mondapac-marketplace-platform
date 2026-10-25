@@ -426,6 +426,23 @@ export function markDelivered(sellerOrder: SellerOrder, now: Temporal.Instant): 
   return { ...sellerOrder, fulfilment: 'delivered', deliveredAt: now };
 }
 
+/**
+ * A pickup order the seller marked ready is handed over: `to-ship` to `delivered` in one step,
+ * because no carrier is ever involved (no carrier name, no tracking reference). The pickup time
+ * is both the shipped and the delivered time. Anything else is refused (null): another method,
+ * an order not ready yet, or one that has already moved on.
+ */
+export function markCollected(sellerOrder: SellerOrder, now: Temporal.Instant): SellerOrder | null {
+  if (
+    sellerOrder.deliveryMethod !== 'pickup' ||
+    sellerOrder.fulfilment !== 'to-ship' ||
+    sellerOrder.readyAt === null
+  ) {
+    return null;
+  }
+  return { ...sellerOrder, fulfilment: 'delivered', shippedAt: now, deliveredAt: now };
+}
+
 const CARRIER = /^[\p{L}\p{N}][\p{L}\p{N} .,&'()+-]{0,58}[\p{L}\p{N}.)]$|^[\p{L}\p{N}]$/u;
 /** A dot followed by two letters reads as a domain name, which a mail client may turn into a link. */
 const LINK_LIKE = /\.\p{L}{2}/u;

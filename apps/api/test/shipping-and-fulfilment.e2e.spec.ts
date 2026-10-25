@@ -67,6 +67,7 @@ const detail = (currency: string, patch: object = {}) => ({
   deliveryWindow: null,
   readyAt: null,
   deliveryAttention: null,
+  pickup: null,
   lines: [
     {
       lineId: id<'OrderLine'>(0xc030),

@@ -102,6 +102,7 @@ model OrderingSellerOrder {
   order                OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   lines                OrderingOrderLine[]
   refunds              OrderingRefund[]
+  pickupCode           OrderingPickupCode?
 
   @@unique([marketId, id])
   @@unique([marketId, orderId, sellerId])
@@ -298,5 +299,29 @@ model OrderingInbox {
 
   @@id([eventId, handler])
   @@map("inbox")
+  @@schema("ordering")
+}
+
+/// The pickup code of a seller order the buyer collects in person (delivery models, package 2):
+/// one row, written when the seller marks the order ready, replaced when the buyer asks for a new
+/// code. The code itself is never stored in the clear: `codeHash` is a keyed hash (HMAC under the
+/// buyer's data key, bound to the seller order) the seller's typed code is compared with, and
+/// `codeSealed` is the code sealed under the same key so only the buyer's own view can show it.
+/// Five wrong codes lock the order (`lockedAt`); a new code clears the count and the lock.
+model OrderingPickupCode {
+  marketId       String              @map("market_id") @db.VarChar(8)
+  tenantId       String              @map("tenant_id")
+  sellerOrderId  String              @map("seller_order_id") @db.Uuid
+  codeHash       String              @map("code_hash")
+  codeSealed     String              @map("code_sealed")
+  /// Wrong codes since the code was issued, 0 to 5 (CHECK).
+  failedAttempts Int                 @default(0) @map("failed_attempts")
+  /// Set when `failedAttempts` reached 5, and only then (CHECK).
+  lockedAt       DateTime?           @map("locked_at") @db.Timestamptz(6)
+  issuedAt       DateTime            @map("issued_at") @db.Timestamptz(6)
+  sellerOrder    OrderingSellerOrder @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, sellerOrderId])
+  @@map("pickup_codes")
   @@schema("ordering")
 }

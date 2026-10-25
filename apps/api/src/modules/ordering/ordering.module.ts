@@ -26,6 +26,8 @@ import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-poli
 import { ORDER_LABELS } from './application/ports/order-labels';
 import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
+import { PICKUP_CODE_REPOSITORY } from './application/ports/pickup-code.repository';
+import { PICKUP_CODE_VAULT } from './application/ports/pickup-code-vault';
 import { REFUND_REPOSITORY } from './application/ports/refund.repository';
 import { ORDERING_POLICY } from './application/ports/ordering-policy';
 import { SHIP_TO_CIPHER } from './application/ports/ship-to-cipher';
@@ -45,6 +47,8 @@ import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case'
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
 import { RecordShipments } from './application/use-cases/record-shipments.use-case';
+import { RegeneratePickupCode } from './application/use-cases/regenerate-pickup-code.use-case';
+import { SellerConfirmPickup } from './application/use-cases/seller-confirm-pickup.use-case';
 import { SellerDeliverOrder } from './application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './application/use-cases/seller-list-orders.use-case';
 import { SellerMarkOrderReady } from './application/use-cases/seller-mark-order-ready.use-case';
@@ -95,6 +99,8 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['clock', CLOCK],
   ['labels', ORDER_LABELS],
   ['deliveryMethods', DELIVERY_METHOD_POLICY],
+  ['pickupCodes', PICKUP_CODE_REPOSITORY],
+  ['pickupVault', PICKUP_CODE_VAULT],
 ];
 
 /** Every ordering use case shares one dependency object, built from the same ports. */
@@ -182,6 +188,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerViewOrder,
       SellerViewOrderDocument,
       SellerMarkOrderReady,
+      SellerConfirmPickup,
+      RegeneratePickupCode,
       SellerDeliverOrder,
       RecordShipments,
       RecordLedger,
