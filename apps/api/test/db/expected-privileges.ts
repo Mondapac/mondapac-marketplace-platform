@@ -524,7 +524,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['approved_at', 'approved_by'],
     },
-    'storefront.slide_placements': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // The reorder of live slides rewrites only the sort order of a projection row, and replaces
+    // the saved order of a placement (deleted and inserted).
+    'storefront.slide_placements': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['sort_order'],
+    },
+    'storefront.slide_saved_orders': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_position_locks': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['touched_at'],

@@ -35,6 +35,7 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { ApproveStorefrontSlide } from '../application/use-cases/approve-slide.use-case';
+import { ReorderStorefrontSlides } from '../application/use-cases/reorder-slides.use-case';
 import { PauseStorefrontSlide } from '../application/use-cases/pause-slide.use-case';
 import { ResumeStorefrontSlide } from '../application/use-cases/resume-slide.use-case';
 import { SubmitStorefrontSlide } from '../application/use-cases/submit-slide.use-case';
@@ -51,6 +52,8 @@ import {
   SlideApproveRequest,
   SlideDetailBody,
   SlideListBody,
+  SlideOrderBody,
+  SlideOrderRequest,
   SlideRequest,
   SlideVersionRequest,
   slideCopyBody,
@@ -83,7 +86,7 @@ const CONFLICT = {
 
 /**
  * The slide library, for admins (john 23 Oct): list, create, change the draft, restore a version,
- * copy out for another Market and archive; submit, approve, pause and resume. Thin adapters: each use case does its work behind its gate. Unsafe requests carry a
+ * copy out for another Market and archive; submit, approve, pause and resume; and reorder the live slides. Thin adapters: each use case does its work behind its gate. Unsafe requests carry a
  * session cookie, so the Origin and Sec-Fetch-Site checks and the CSRF token apply as on every
  * admin route. Every answer is `Cache-Control: no-store`.
  */
@@ -106,6 +109,7 @@ export class AdminSlideController {
     private readonly approve: ApproveStorefrontSlide,
     private readonly pause: PauseStorefrontSlide,
     private readonly resume: ResumeStorefrontSlide,
+    private readonly reorder: ReorderStorefrontSlides,
   ) {}
 
   private answer<T, U>(
@@ -192,6 +196,47 @@ export class AdminSlideController {
     response.setHeader('Cache-Control', 'no-store');
     const result = await this.view.execute(context, { slide });
     return this.answer('storefront.view-slide-route', context, result, slideDetailBody);
+  }
+
+  // Declared before `PUT :slide`, so `order` is not read as a slide id.
+  @Put('order')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Save the order of the live slides of a position (admin)',
+    description:
+      'Needs storefront.slide.edit. No approval: the order takes effect at once (buyer reads may ' +
+      'be cached for up to 60 seconds). The body names every slide that is approved at the ' +
+      'position and scope, each once; nothing but the order changes, and a later approval or ' +
+      'resume of a slide keeps it. Audited with the order before and after.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: SlideOrderRequest })
+  @ApiOkResponse({ type: SlideOrderBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse(UNAUTHORIZED)
+  @ApiForbiddenResponse(FORBIDDEN)
+  @ApiConflictResponse({
+    ...ERROR,
+    description:
+      'storefront.slide-order-mismatch (details.fields): the list is not exactly the live ' +
+      'slides of the position and scope',
+  })
+  async putOrder(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, ['position', 'scope', 'scopeId', 'slideIds']);
+    if (invalid !== null) throw invalid;
+    const result = await this.reorder.execute(context, body);
+    return this.answer('storefront.reorder-slides-route', context, result, (order) => ({
+      position: order.position,
+      scope: order.scope,
+      scopeId: order.scopeId,
+      slideIds: [...order.slideIds],
+    }));
   }
 
   @Put(':slide')

@@ -251,6 +251,35 @@ describe.each([
     });
   });
 
+  it('serves the most specific placement of a slide, so a reorder never changes its autoplay', async () => {
+    const page = id<'StorefrontPage'>(0x77).toString();
+    const slideId = seed({ position: 'landing.top', autoplay: true, sortOrder: 0 });
+    const own = slides.placements.find((p) => p.slideId === slideId)!;
+    slides.placements.push({
+      ...own,
+      id: id<'StorefrontSlidePlacement'>(0x3999),
+      scope: 'page',
+      scopeId: page,
+      autoplay: false,
+      sortOrder: 5,
+    });
+    const served = async () => (await titles(buyer, { position: 'landing.top', page })).autoplay;
+    // The page placement wins although its sort order is the larger one...
+    expect(await served()).toBe(false);
+    // ...and a reorder (sort orders rewritten either way) does not change that.
+    for (const [all, specific] of [
+      [9, 0],
+      [0, 9],
+    ] as const) {
+      slides.placements.forEach((p, i) => {
+        if (p.slideId === slideId) {
+          slides.placements[i] = { ...p, sortOrder: p.scope === 'all' ? all : specific };
+        }
+      });
+      expect(await served()).toBe(false);
+    }
+  });
+
   it('answers the live slides sorted: pinned first, then sort order', async () => {
     seed({ sortOrder: 5 });
     seed({ sortOrder: 1 });

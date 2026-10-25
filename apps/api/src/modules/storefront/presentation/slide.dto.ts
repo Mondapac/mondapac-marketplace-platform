@@ -95,6 +95,29 @@ export class SlideApproveRequest {
   versionNo!: number;
 }
 
+export class SlideOrderRequest {
+  @ApiProperty({ description: 'A position key, for example home.hero.' }) position!: string;
+  @ApiProperty({ enum: ['all', 'category', 'product', 'seller', 'page'], required: false })
+  scope?: string;
+  @ApiProperty({ format: 'uuid', required: false, description: 'With every scope but all.' })
+  scopeId?: string;
+  @ApiProperty({
+    type: [String],
+    description:
+      'Every live slide of the position and scope, each once, first shown first. A partial list, ' +
+      'a duplicate or a slide that is not live there is refused.',
+  })
+  slideIds!: string[];
+}
+
+export class SlideOrderBody {
+  @ApiProperty() position!: string;
+  @ApiProperty() scope!: string;
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) scopeId!: string | null;
+  @ApiProperty({ type: [String], description: 'The saved order, first shown first.' })
+  slideIds!: string[];
+}
+
 const iso = (value: { toString(): string } | null): string | null =>
   value === null ? null : value.toString();
 
