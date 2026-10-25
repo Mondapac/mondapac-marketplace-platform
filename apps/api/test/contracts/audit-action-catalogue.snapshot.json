@@ -1325,6 +1325,82 @@
     }
   },
   {
+    "action": "storefront.slide.archive",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "wasApproved": "boolean"
+    }
+  },
+  {
+    "action": "storefront.slide.create",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(announcement|promotion|link)",
+      "placementCount": "integer",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.draft-change",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "operation": "enumOf(update|restore)",
+      "placementCount": "integer",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.pause",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.publish",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "placementCount": "integer",
+      "selfApproved": "boolean",
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.resume",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "versionNo": "integer"
+    }
+  },
+  {
+    "action": "storefront.slide.submit",
+    "targetType": "storefront.slide",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "versionNo": "integer"
+    }
+  },
+  {
     "action": "tax.strategy.activate",
     "targetType": "tax.strategy",
     "targetId": "id",

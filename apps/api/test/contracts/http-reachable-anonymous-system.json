@@ -253,5 +253,10 @@
     "name": "storefront.view-published-page",
     "rule": "anonymous",
     "reason": "The buyer site draws a system page (home, cart, ...) for a visitor with no session: only the published layout, or the template's code defaults; layout and settings only, no product data."
+  },
+  {
+    "name": "storefront.view-published-slides",
+    "rule": "anonymous",
+    "reason": "The buyer site draws the slider of a position (home hero, ...) for a visitor with no session: only approved slides of the request's Market inside their window whose link target is alive in that Market (a suspended seller or a dead link drops the slide); plain texts, ready-made image keys and site paths only; cache-control at most 60 seconds and never past the next start or end."
   }
 ]

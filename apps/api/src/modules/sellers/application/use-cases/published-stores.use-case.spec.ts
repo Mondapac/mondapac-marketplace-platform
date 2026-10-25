@@ -37,6 +37,7 @@ import { PublishedStoreImageRead } from './published-store-image-read.use-case';
 import { PublishedStoreList } from './published-store-list.use-case';
 import { PublishedStoreRead } from './published-store-read.use-case';
 import { PublishedStoreSellerId } from './published-store-seller-id.use-case';
+import { PublishedStoreSlugs } from './published-store-slugs.use-case';
 
 // The public store reads (slice 12) with in-memory ports, on both Market fixtures (AU in AUD, ZZ
 // in JPY): only stores that may sell now, allow-listed fields only, sorts and pages, the minimum
@@ -77,6 +78,7 @@ describe.each([
   let storeContent: InMemoryStoreContent;
   let storeImages: InMemoryStoreImages;
   let objectStore: MapObjectStore;
+  let slugs: PublishedStoreSlugs;
 
   const addStore = (
     slug: string,
@@ -192,6 +194,7 @@ describe.each([
     read = new PublishedStoreRead(gate, deps);
     sellerIdRead = new PublishedStoreSellerId(gate, deps);
     imageRead = new PublishedStoreImageRead(gate, { ...deps, objectStore });
+    slugs = new PublishedStoreSlugs(gate, deps);
   });
 
   const page = async (input: Parameters<PublishedStoreList['execute']>[1] = {}) => {
@@ -610,6 +613,45 @@ describe.each([
         { slug: 'a-store' },
       );
 
+      expect(result.ok).toBe(false);
+    });
+  });
+
+  describe('the store addresses of sellers (for the storefront slider links)', () => {
+    it('declares the anonymous rule under its own name', () => {
+      expect(PublishedStoreSlugs.access).toEqual({
+        name: 'sellers.published-store-slugs',
+        rule: { kind: 'anonymous' },
+      });
+    });
+
+    it('gives the slug of each requested seller that may sell, and leaves a suspended one out', async () => {
+      const a = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const held = addStore('held-back', 'Held', '2026-01-10T00:00:00Z', { state: 'suspended' });
+      const unrequested = addStore('beta-market', 'Beta', '2026-01-10T00:00:00Z');
+      const unknown = ids.next<'Seller'>();
+
+      const result = await slugs.execute(anonymous(), { sellerIds: [a, held, unknown] });
+
+      expect(result).toEqual(ok(new Map([[a, 'alpha-market']])));
+      expect(result.ok && result.value.has(unrequested)).toBe(false);
+    });
+
+    it('answers sellers.unavailable when the store read fails, never a partial answer', async () => {
+      const a = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      failStores = true;
+
+      expect(await slugs.execute(anonymous(), { sellerIds: [a] })).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+    });
+
+    it('is not for the system actor (rule anonymous)', async () => {
+      const a = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const result = await slugs.execute(testCallContext(market(), 'system', 'store-system-abcd'), {
+        sellerIds: [a],
+      });
       expect(result.ok).toBe(false);
     });
   });

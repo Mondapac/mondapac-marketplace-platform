@@ -49,8 +49,12 @@ go live only after a platform admin approves them.
 | `storefront.page.archive` | yes | archive a landing page |
 | `storefront.navigation.edit` | no | replace the navigation draft, restore a version |
 | `storefront.navigation.approve` | yes | approve the navigation draft |
+| `storefront.slide.read` | no | slide list, detail, copy package |
+| `storefront.slide.edit` | no | create, replace draft, restore, submit for approval, archive |
+| `storefront.slide.pause` | no | pause an approved slide (stops at once, no approval) |
+| `storefront.slide.publish` | yes | approve a submitted draft, resume a paused slide |
 
-No default role holds a key (role seed unchanged); a platform admin gives the editor keys to a
+No default role holds a key (role seed unchanged, slide keys included: the role seed snapshot holds no `storefront.` key); a platform admin gives the editor keys to a
 custom role. Publishing, archiving and approving stay with the Platform Administrator, who may
 also edit, so one admin can publish their own draft. That is accepted while the protected keys
 are theirs alone; if another role ever holds `storefront.page.publish` or
@@ -70,7 +74,7 @@ Public (`@RoutePopulation('customer')`, no session, `no-store`): `GET storefront
 (a never-published system page answers its template defaults), `GET storefront/landing/:slug`
 (a live page, or `{ kind: 'redirect', to }` for an old slug of a live, published page or an
 archived slug; an archived page never sends buyers to an archived page or to itself), `GET
-storefront/navigation`.
+storefront/navigation`, and `GET storefront/slides` (below; the only one that may be cached).
 
 ## Buyer reads (package 2, 18 Oct 2026)
 
@@ -80,6 +84,99 @@ categories under their nearest live ancestor; id, parentId, slug, name in the Ma
 locale, depth, position by name). `GET search/bestsellers` and `GET search/specials`: the
 `bestsellers` and `specials` shelf sources (docs/modules/search/search.md). All anonymous,
 `no-store`, default rate-limit class.
+
+## Slide library (backend PR 1, 23 Oct 2026)
+
+A separate per-Market library of slides (kinds `announcement`, `promotion`, `link`) that slider
+positions show; pages only name a position (build brief `storefront-slider`). Tables in the
+`storefront` schema: `slides`, `slide_versions` (insert-only: every draft save is a new version;
+only the approval stamp is ever written to a row), `slide_placements` (the projection of the live
+version, with its window, so caps and the later buyer read need no join) and `slide_position_locks`
+(one row per Market and position; approving locks them so two approvals cannot both pass a cap).
+
+- **Content** (all kinds): `title` <= 60, `body` <= 160, `ctaLabel` <= 24 (needs a link), optional
+  `image` `{ ref, alt, decorative }` (a placeholder/media key; alt required unless `decorative`,
+  which needs an empty alt), `textPosition` start|center|end, `textTone` light|dark, one optional
+  `link` `{ type: category|product|seller|page|search, id }` that makes the whole slide clickable.
+  Kind `link` requires the link. Plain text only: no markup characters, no URL; a link is never a
+  URL. Checked in `domain/slides.ts`, with the basic limits repeated as CHECKs.
+- **Window**: `startsAt` and `endsAt` both required; `endsAt` after `startsAt` and at most 2160
+  hours (90 days in absolute time, so a daylight-saving change cannot move it) later.
+- **Positions** (closed list in `domain/slide-positions.ts`): `home.hero` 8 (autoplay), `home.mid`
+  4, `category.top` 4, `product.below-details` 3, `cart.below-lines` 3, `landing.top` 8
+  (autoplay). `autoplay` is valid only at the two autoplay positions. A placement has a scope
+  (`all|category|product|seller|page`, with `scopeId`, `includeSubcategories` for a category,
+  `sortOrder`); each position allows only the scopes that make sense there.
+- **Draft flow**: create (a draft), replace the draft (new version, withdraws a submission),
+  restore an earlier version into a new draft, view, list (filter by status and position),
+  archive. A slide is only ever found in the request's Market.
+- **Copy to another Market**: there is no cross-Market admin (ADR-0018), so a copy is two steps,
+  each in its own Market: `GET .../slides/:slide/copy` (read key, source Market) returns a body,
+  and an editor of the other Market posts it to `POST .../slides` (edit key there). Scopes are
+  reset to `all`; link targets must be checked in the target Market.
+- **Approval flow**: an editor submits the draft (`storefront.slide.edit`); only
+  `storefront.slide.publish` approves it, naming the draft's `versionNo` it reviewed. Approving
+  stamps `approved_by`/`approved_at` on the version, sets `live_version_id`, takes the draft's
+  window and flags onto the slide and rebuilds the placement projection, in one unit, after
+  locking the position rows. It is refused (`storefront.slide-position-full`) when a position
+  would hold more than its maximum at some instant of an overlapping window; scopes count only
+  when they can show on the same page (conservative without the category tree). Replacing the
+  draft again withdraws a submission; the live version keeps serving until the next approval.
+  Pausing (`storefront.slide.pause`) removes the projection at once; resuming needs the publish
+  key and checks the maximums again. States: draft, pending approval, scheduled, live, ended
+  (from the Clock and the window), paused, archived. Every change is audited
+  (`storefront.slide.create|draft-change|submit|publish|pause|resume|archive`). As with pages, the
+  Platform Administrator may also edit, so one admin can approve their own draft (flagged
+  `selfApproved` in the audit entry); revisit if another role ever holds the publish key.
+- **Targets are checked at approval**: under the slide lock and before the stamp, `content.link` and
+  every non-`all` `scopeId` are resolved in the request's Market through public facades only
+  (catalog categories and published products, sellers who may sell, storefront pages that are not
+  archived; a prepared search is checked by its code format). Anything missing, of another Market, or
+  that could not be verified (fail closed) refuses with `storefront.slide-link-invalid` (409,
+  `details.fields` lists the paths). A copy to another Market drops `content.link` and `ctaLabel`;
+  the other Market's editor picks the link again. The publish audit entry carries `selfApproved`,
+  true when the approver also saved the approved version.
+- **Physical model and retention**: see `docs/design/data/storefront.md` (access paths, which CHECK
+  guards which invariant). A slide keeps at most 100 versions; after 100 saves the editor copies the
+  slide into a new one. Raising the cap needs a migration.
+- **Routes** (admin, session, CSRF, `Origin` + `Sec-Fetch-Site` as every admin route):
+  `GET|POST storefront/admin/slides`, `GET|PUT storefront/admin/slides/:slide`,
+  `GET .../:slide/copy`, `POST .../:slide/restore`, `POST .../:slide/archive`,
+  `POST .../:slide/submit|approve|pause|resume`.
+
+## Public slides read (backend PR 2, 24 Oct 2026)
+
+`GET storefront/slides?position=<key>` plus the scope the position allows (`category`, `product`,
+`seller`, `page`; any other or disallowed param is a 400 `validation.failed`). Anonymous
+(`@RoutePopulation('customer')`, use case `storefront.view-published-slides`), of the request's
+Market only. It answers `{ position, autoplay, slides[], nextChangeAt }` where a slide is `{ id,
+kind, title, body, ctaLabel, image { key, alt, decorative } | null, textPosition, textTone, href |
+null, sponsored }`. Plain text only; `image.key` is a ready-made placeholder key; `href` is a site
+path (`/c/..`, `/p/<id>`, `/s/<slug>`, `/l/<slug>`, or a prepared search `/offers`, `/express`,
+`/certified`), never an external URL.
+
+- Served: placement in the projection (approved, not paused or archived), window holds now, scope
+  covers the page (a category slide also covers subcategories when it says so), content passes the
+  checks again, sorted by the position's order and capped at its `maxActive`.
+- Dropped: a slide whose link target is dead, from another Market, or whose seller is suspended
+  (or has no published store address). Liveness is decided by the same `SlideTargets` port as
+  approval, called with the request's context; site paths come from `LinkTargets` (category tree,
+  `sellers.publishedStoreSlugs`, a new anonymous facade method).
+- `autoplay` is true only when the position allows it (`home.hero`) and every shown slide asks.
+- Cache: `Cache-Control: public, max-age=N`, N at most 60 and never past `nextChangeAt`;
+  `Vary: X-Market-Id`. When an owner could not answer, the dependent slides are dropped and the
+  answer is `no-store`. A 400 is `no-store`.
+
+Web migration of the home banner (no data migration, no backend page change): the home hero is
+always the first section. Live slides win; if there are none, the first `banner` module of the
+published layout is shown as a one-slide slider (title cut to 60, an external link and its button
+dropped, image only a known placeholder key); later banners stay promos.
+
+Without JavaScript the slider still scrolls (CSS scroll-snap) and every slide is readable and
+clickable, but the controls row below it (pause, arrows, picker) is an empty strip of fixed height:
+it keeps its space so the page does not shift when the script adds the buttons. A slide's button
+label is drawn only when the slide has a link (a label without a link is not shown). The sample hero shows
+only when the slides read failed and the sample fallback is on.
 
 ## Not in v1 (follow-ups)
 
