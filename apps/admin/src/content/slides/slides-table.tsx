@@ -34,19 +34,19 @@ export function SlidesTable({
       <table className={`${CARD_TABLE.table} lg:min-w-240 lg:table-fixed`}>
         <caption className="sr-only">{t('caption')}</caption>
         <colgroup className="max-lg:hidden">
-          <col />
-          <col className="w-32" />
-          <col className="w-44" />
-          <col className="w-40" />
-          <col className="w-44" />
-          <col className="w-28" />
+          <col className="w-[28%]" />
+          <col className="w-[11%]" />
+          <col className="w-[19%]" />
+          <col className="w-[15%]" />
+          <col className="w-[15%]" />
+          <col className="w-[12%]" />
         </colgroup>
         <thead className={CARD_TABLE.head}>
           <tr>
             <th scope="col" className="px-4 py-3 font-medium">
               {t('col.slide')}
             </th>
-            <th scope="col" className="px-4 py-3 font-medium">
+            <th scope="col" className="px-4 py-3 font-medium lg:px-2">
               {t('col.type')}
             </th>
             <th scope="col" className="px-4 py-3 font-medium">
@@ -55,10 +55,10 @@ export function SlidesTable({
             <th scope="col" className="px-4 py-3 font-medium">
               {t('col.window')}
             </th>
-            <th scope="col" className="px-4 py-3 font-medium">
+            <th scope="col" className="px-4 py-3 font-medium lg:px-2">
               {t('col.status')}
             </th>
-            <th scope="col" className="px-4 py-3 font-medium">
+            <th scope="col" className="px-4 py-3 font-medium lg:px-2">
               {t('col.actions')}
             </th>
           </tr>
@@ -77,7 +77,7 @@ export function SlidesTable({
             return (
               <tr key={slide.id} className={CARD_TABLE.row}>
                 <td className={CARD_TABLE.cell}>
-                  <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
                     <SlideKindTile kind={slide.kind} />
                     <div className="min-w-0">
                       <a className="break-words font-medium text-link underline" href={href}>
@@ -89,7 +89,7 @@ export function SlidesTable({
                     </div>
                   </div>
                 </td>
-                <td className={CARD_TABLE.labelled} data-label={t('col.type')}>
+                <td className={`${CARD_TABLE.labelled} lg:px-2`} data-label={t('col.type')}>
                   {isKnownKind(slide.kind) ? kinds(slide.kind) : slide.kind}
                 </td>
                 <td className={CARD_TABLE.labelled} data-label={t('col.positions')}>
@@ -110,16 +110,17 @@ export function SlidesTable({
                 </td>
                 <td className={CARD_TABLE.labelled} data-label={t('col.window')}>
                   <span className="text-xs">
-                    {t('window', {
+                    {t.rich('window', {
                       from: shortInstantInZone(slide.startsAt, locale, zone),
                       to: shortInstantInZone(slide.endsAt, locale, zone),
+                      n: (chunks) => <span className="whitespace-nowrap">{chunks}</span>,
                     })}
                   </span>
                 </td>
-                <td className={CARD_TABLE.corner}>
+                <td className={`${CARD_TABLE.corner} lg:px-2`}>
                   <SlideStatusBadge status={slide.status} />
                 </td>
-                <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-1`}>
+                <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-1 lg:px-2`}>
                   <LinkButton variant="secondary" href={href}>
                     {t(`action.${action}`)}
                     <span className="sr-only"> {slide.internalName}</span>

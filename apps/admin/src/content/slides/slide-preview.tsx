@@ -63,7 +63,7 @@ export function SlidePreview({
       <div
         role="img"
         aria-label={t('frame', { width: size })}
-        className={`relative mx-auto grid w-full overflow-hidden rounded-lg border border-line ${WIDTH[size]} ${tone === 'light' ? 'bg-accent text-on-accent' : 'bg-muted text-fg'}`}
+        className={`relative mx-auto grid w-full min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden rounded-lg border border-line ${WIDTH[size]} ${tone === 'light' ? 'bg-accent text-on-accent' : 'bg-muted text-fg'}`}
       >
         <span aria-hidden="true" className={`col-start-1 row-start-1 ${FRAME[size]}`} />
         {form.imageRef === '' ? null : (
@@ -76,26 +76,26 @@ export function SlidePreview({
           </span>
         )}
         <div
-          className={`relative z-10 col-start-1 row-start-1 flex flex-col items-start justify-center gap-2 p-4 sm:px-6 ${phone ? 'w-full' : 'w-3/5'}`}
+          className={`relative z-10 col-start-1 row-start-1 flex min-w-0 flex-col items-start justify-center gap-2 p-4 sm:px-6 ${phone ? 'w-full' : 'w-3/5'}`}
         >
           {form.sponsored ? (
             <span className="text-xs font-medium uppercase">{t('sponsored')}</span>
           ) : null}
           <p
             dir="auto"
-            className={`line-clamp-3 shrink-0 break-words text-lg font-semibold ${title === '' ? 'opacity-70' : ''}`}
+            className={`line-clamp-3 max-w-full break-words text-lg font-semibold ${title === '' ? 'opacity-70' : ''}`}
           >
             {title === '' ? t('headline') : title}
           </p>
           {body === '' ? null : (
-            <p dir="auto" className="line-clamp-3 shrink-0 break-words text-sm">
+            <p dir="auto" className="line-clamp-3 max-w-full break-words text-sm">
               {body}
             </p>
           )}
           {showButton ? (
             <span
               dir="auto"
-              className="inline-flex min-h-8 max-w-full shrink-0 items-center rounded-md border border-current px-3 text-sm font-medium"
+              className="inline-flex min-h-8 max-w-full items-center rounded-md border border-current px-3 text-sm font-medium"
             >
               <span className="break-words">{form.ctaLabel.trim()}</span>
             </span>

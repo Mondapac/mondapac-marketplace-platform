@@ -1,19 +1,12 @@
 'use client';
 
-import { Button, EmptyState, LinkButton, LoadError, SkeletonRows } from '@mondapac/ui';
+import { Button, EmptyState, LoadError, SkeletonRows } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
 import { FilterBar, NO_FILTERS, type FilterValues } from './filter-bar.tsx';
 import { filterSlides } from './slide-filter.ts';
-import {
-  NEW_SLIDE_PATH,
-  SLIDE_EDIT_PERMISSION,
-  SLIDES_API_PATH,
-  sortSlides,
-  type SlideList,
-  type SlideSummary,
-} from './slide-types.ts';
+import { SLIDES_API_PATH, sortSlides, type SlideList, type SlideSummary } from './slide-types.ts';
 import { SlidesTable } from './slides-table.tsx';
 
 type Load = 'loading' | 'ready' | 'failed';
@@ -31,7 +24,6 @@ export function SlidesList({
   readonly zone: string;
 }) {
   const t = useTranslations('content.slides.list');
-  const tn = useTranslations('content.slides');
   const tl = useTranslations('load');
   const [filters, setFilters] = useState<FilterValues>(NO_FILTERS);
   const [slides, setSlides] = useState<readonly SlideSummary[]>([]);
@@ -69,19 +61,17 @@ export function SlidesList({
   }, [fetchSlides]);
 
   const shown = useMemo(() => filterSlides(slides, filters), [slides, filters]);
-  const canCreate = permissionKeys.includes(SLIDE_EDIT_PERMISSION);
   const filtered =
     filters.kind !== 'all' ||
     filters.position !== '' ||
     filters.status !== '' ||
     filters.search.trim() !== '';
-  const newSlide = canCreate ? (
-    <LinkButton href={NEW_SLIDE_PATH}>{tn('new')}</LinkButton>
-  ) : undefined;
+  // Nothing to filter yet: the header's "New slide" button is the one call to action.
+  const trulyEmpty = load === 'ready' && slides.length === 0 && !filtered;
 
   return (
     <div className="flex flex-col gap-4">
-      <FilterBar values={filters} onChange={setFilters} />
+      {trulyEmpty ? null : <FilterBar values={filters} onChange={setFilters} />}
       {load === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
       {load === 'failed' ? (
         <LoadError
@@ -100,20 +90,15 @@ export function SlidesList({
           <p className="text-sm text-fg-muted">{t('footnote', { zone })}</p>
         </>
       ) : null}
-      {load === 'ready' && shown.length === 0 && !filtered ? (
+      {trulyEmpty ? (
         <EmptyState
           icon="layout"
           title={t('empty-title')}
           body={t('empty-body')}
-          action={
-            <>
-              {newSlide}
-              <p className="text-sm text-fg-muted">{t('empty-note')}</p>
-            </>
-          }
+          action={<p className="text-sm text-fg-muted">{t('empty-note')}</p>}
         />
       ) : null}
-      {load === 'ready' && shown.length === 0 && filtered ? (
+      {load === 'ready' && shown.length === 0 && !trulyEmpty ? (
         <EmptyState
           icon="search"
           title={t('none-title')}

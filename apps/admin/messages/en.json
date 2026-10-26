@@ -1015,7 +1015,7 @@
         "draft-changes": "Has a draft",
         "not-placed": "Not placed yet",
         "no-position": "No position",
-        "window": "{from} – {to}",
+        "window": "<n>{from}</n> <n>– {to}</n>",
         "action": {
           "edit": "Edit",
           "view": "View",
@@ -1041,7 +1041,7 @@
         "where": "Shown at {positions}. Live {window} ({zone}).",
         "where-none": "Not placed yet.",
         "kind": "Type",
-        "kind-locked": "The type is chosen when the slide is created.",
+        "kind-fixed": "Type: {kind} · chosen when the slide was created",
         "name": "Internal name",
         "name-help": "Only admins see this.",
         "title": "Headline",

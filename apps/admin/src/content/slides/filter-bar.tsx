@@ -79,7 +79,7 @@ export function FilterBar({
           }
         />
       </div>
-      <div className="w-full sm:w-56">
+      <div className="w-full sm:min-w-56 sm:flex-1">
         <TextField
           label={t('search')}
           type="search"
