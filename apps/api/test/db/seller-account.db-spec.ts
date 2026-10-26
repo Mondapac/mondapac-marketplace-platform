@@ -500,7 +500,7 @@ describe.each(TEST_MARKETS)('seller accounts in market %s (database integration)
 
     const answers = await Promise.all([signUp(email), signUp(email)]);
 
-    // Under load both serializable units can lose to each other until the third attempt
+    // Under load both serializable units can lose to each other until the last attempt
     // (platform persistence design 3.1 row 7): the platform then answers `conflict.retry`, which
     // tells the client to repeat the request. That is a valid answer; two sellers never are.
     // An answer other than 202 is that 409 and nothing else, and repeating it is accepted.
