@@ -61,7 +61,7 @@ Contact details live only in the private on-call roster: `<on-call phone in the 
 
 | # | Package | Status | What exists today instead |
 | --- | --- | --- | --- |
-| 1 | Security events foundation: append-only events table, `SecurityEvents.record()`, retention job | Planned (in progress) | Ordinary application logs and the existing hash-chained audit trail |
+| 1 | Security events foundation: append-only events table, `SecurityEvents.record()`, retention job | Merged (#514, 26 Oct 2026) | Events are recorded; until package 2 nobody is alerted, so read them directly |
 | 2 | Rules and alert delivery: thresholds, alerts table, delivery by severity, 10-minute S1 escalation | Planned | Manual watching and phone calls |
 | 3 | Automatic actions and emergency switches: auto lock, session revoke, in-app IP block list, read-only admin mode, payment kill switch | Planned | Existing admin endpoints (disable account, reset second factor), provider consoles, config change and redeploy |
 | 4 | External signals: CSP report endpoint, Stripe fraud and dispute events, `.github/dependabot.yml`, GitHub secret scanning | Planned | Manual checks in the Stripe dashboard and GitHub settings |
