@@ -43,6 +43,14 @@ export type ContactEmailTarget =
   | { readonly kind: 'customer'; readonly accountId: Id<'Account'> }
   | { readonly kind: 'seller-owner'; readonly sellerId: Id<'Seller'> };
 
+/** An active customer account of the context's Market ({@link IdentityFacade.customerAccountOf}). */
+export interface CustomerAccountRef {
+  readonly accountId: Id<'Account'>;
+}
+
+/** Why {@link IdentityFacade.customerAccountOf} could not answer; the caller fails closed. */
+export type CustomerAccountOfFailure = AccessDenied | { readonly code: 'access.unavailable' };
+
 /**
  * One customer of {@link IdentityFacade.customerAccountSummaries}. The name and the address are
  * PERSONAL DATA for the admin who asked: no module logs them or puts them in an event, an audit
@@ -148,6 +156,19 @@ export interface IdentityFacade {
     context: CallContext,
     target: ContactEmailTarget,
   ): Promise<Result<string | null, AccessDenied>>;
+
+  /**
+   * Whether `accountId` names an active customer account of `context.market`, for an admin flow
+   * that writes to a customer's records (the wallet's admin credit, review S1). Ids only. An
+   * unknown id, another population's (seller, admin), another Market's and a disabled account
+   * answer `null`, alike. Rule `own-resources`, denied while the seller is not approved; only a
+   * platform admin that is not acting as a seller is answered, any other caller `access.denied`.
+   * A failed read is `access.unavailable`. Not exposed over HTTP.
+   */
+  customerAccountOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<CustomerAccountRef | null, CustomerAccountOfFailure>>;
 
   /**
    * The display name and sign-in address of each requested customer account, for an admin page

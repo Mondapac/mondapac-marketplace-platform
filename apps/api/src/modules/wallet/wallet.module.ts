@@ -13,6 +13,7 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { IDENTITY_FACADE, IdentityModule } from '../identity';
 import { ADMIN_CREDIT_REPOSITORY } from './application/ports/admin-credit.repository';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { WALLET_POLICY } from './application/ports/wallet-policy';
@@ -59,6 +60,7 @@ const PORTS: readonly [keyof AdminCreditDependencies, InjectionToken][] = [
   ['clock', CLOCK],
   ['stepUp', STEP_UP_CONSUMER],
   ['credits', ADMIN_CREDIT_REPOSITORY],
+  ['identity', IDENTITY_FACADE],
 ];
 
 /** Every wallet use case shares one dependency object, built from the same ports. */
@@ -87,6 +89,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * No card, bank or Stripe call exists here.
  */
 @Module({
+  imports: [IdentityModule],
   controllers: [AdminWalletController, AdminWalletCreditController, CustomerWalletController],
   providers: [
     PersistenceModule.auditWriterFor('wallet'),

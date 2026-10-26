@@ -400,3 +400,54 @@ export class MemoryAdminCredits implements AdminCreditRepository {
     );
   }
 }
+
+type DirectoryEntry = {
+  readonly marketId: string;
+  readonly population: 'customer' | 'seller' | 'admin';
+  status: 'active' | 'disabled';
+};
+
+/**
+ * identity's `customerAccountOf` in memory (review S1): an active customer account of the
+ * context's Market answers its id; anything else answers null. `failWith` makes the next calls
+ * answer `access.unavailable` or throw, to show the wallet fails closed.
+ */
+export class FakeCustomerDirectory {
+  readonly accounts = new Map<string, DirectoryEntry>();
+  readonly asked: string[] = [];
+  failWith: 'unavailable' | 'denied' | 'throw' | null = null;
+
+  add(
+    accountId: Id<'Account'>,
+    marketId: string,
+    population: DirectoryEntry['population'] = 'customer',
+    status: DirectoryEntry['status'] = 'active',
+  ): void {
+    this.accounts.set(accountId, { marketId, population, status });
+  }
+
+  customerAccountOf(
+    context: { readonly market: MarketContext },
+    accountId: Id<'Account'>,
+  ): Promise<
+    | { readonly ok: true; readonly value: { readonly accountId: Id<'Account'> } | null }
+    | {
+        readonly ok: false;
+        readonly error: { readonly code: 'access.denied' | 'access.unavailable' };
+      }
+  > {
+    this.asked.push(accountId);
+    if (this.failWith === 'throw') return Promise.reject(new Error('identity down'));
+    if (this.failWith !== null) {
+      const code = this.failWith === 'denied' ? 'access.denied' : 'access.unavailable';
+      return Promise.resolve({ ok: false, error: { code } });
+    }
+    const entry = this.accounts.get(accountId);
+    const usable =
+      entry !== undefined &&
+      entry.marketId === context.market.marketId &&
+      entry.population === 'customer' &&
+      entry.status === 'active';
+    return Promise.resolve({ ok: true, value: usable ? { accountId } : null });
+  }
+}

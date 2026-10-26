@@ -270,10 +270,12 @@ pages are package 2b.
   guarded on their routes with `@RequiresStepUp`. Refusals before that point spend no proof.
 - Permissions (protected, platform scope; no seller or customer can hold them):
   `wallet.credit.view` (list, customer summary), `wallet.credit.issue`, `wallet.credit.approve`.
-  Writes are refused in an acting-as session.
+  Writes and both reads are refused in an acting-as session (review S4).
 - Idempotency: the client's `idempotencyKey` is unique per Market on the request row; the same key
   and request (admin, customer, amount, reason, note) answer the first result, another request
-  `idempotency.key-reused`. The ledger key is derived on the server
+  `idempotency.key-reused`. The stored fingerprint is a SHA-256 (hex) of those fields joined, so
+  the column never holds the note (review S2); the note itself is limited to 500 characters at
+  validation. The ledger key is derived on the server
   (`wallet:admin-credit:<requestId>`), never the client's key.
 - Audit rows: `wallet.admin-credit.issued`, `.requested`, `.approved`, `.rejected` (each naming
   the step-up session and its verification time) and `.expired` (system). There is no outbox
@@ -299,9 +301,45 @@ request's promo grant of the same customer and amount, written in the same trans
 `(market_id, status, requested_at DESC, id DESC)`; the sweep a partial
 `(market_id, expires_at, id) WHERE status = 'pending'`.
 
-Not checked: that the customer id is a customer account of the Market (no identity facade for it
-yet; the same holds for the facade's `grantCredit`). Maker-checker limits the exposure above the
-caps.
+Customer id (review S1, Hassan C1): issue, approve and the customer summary ask identity's facade
+`customerAccountOf(context, id)` (identity use case `identity.customer-account-of`, rule
+`own-resources`, platform admin only, never acting-as; ids only, no personal data). It answers
+only an active customer account of `context.market`; an unknown id, a seller or admin account,
+another Market's account and a closed account are absent alike, and the wallet answers
+`wallet.customer-not-found` (404). A refusal or a failed call fails closed (`access.denied` /
+`access.unavailable`). Units do not nest, so the check runs just before the write unit:
+
+- Issue: before the unit, so a miss spends no step-up proof, takes no day lock and writes nothing.
+- Approve: the request is read first (its customer never changes, a trigger fences it), then the
+  customer is checked. A miss leaves the request **pending** and spends nothing; a checker
+  rejects it with `wrong-customer`, or it expires. (Chosen over an automatic rejection: a
+  decision stays with an admin, and the request may be valid again if the account is reopened.)
+- Accepted race: an account closed between the check and the commit of the grant (a few
+  milliseconds). The credit then sits on a closed account where nobody can spend it, and the
+  audit row names it; an admin can reverse it once the `reverse` journal exists.
+- A replay of a known key for a customer closed since answers `wallet.customer-not-found`
+  instead of the first answer.
+- The facade's `grantCredit` (system callers) still does not check the customer: its callers
+  (ordering, refunds) carry a customer id from their own records.
+
+### Review notes for later (PR #522, 2026-10-26)
+
+- D1 (Mojtaba): the `decided` list (`status IN ('approved','rejected','expired')`) scans: the
+  list index leads with one `status`, and the cursor's `OR` is a filter, not an index condition.
+  Fine at today's volume; when it grows, add a partial index
+  `(market_id, requested_at DESC, id DESC) WHERE status IN ('approved','rejected','expired')`
+  and write the cursor as a row comparison `(requested_at, id) < ($1, $2)`.
+- D2 (Mojtaba): the journal guard on the requests table matches `xmin = pg_current_xact_id()`.
+  Inside a savepoint (a subtransaction) the journal's `xmin` is the subtransaction's id, so the
+  guard refuses: it fails closed. No code uses savepoints today; note it on the trigger if one
+  ever does.
+- D3 (Mojtaba): the expiry sweep takes 100 due requests per run (every 5 minutes), oldest first.
+  Rows that fail every time stay at the head and could starve the rest. When it matters, order
+  the ids that failed last run at the end (or log and skip them after N failures).
+- S3 (Hassan): within the caps one admin can still credit a customer they control, up to the
+  daily cap every day (and again just after midnight in the Market's zone). Maker-checker does not
+  cover that. Recommended: a daily report of admin credit by customer and by admin (sum, count,
+  admins involved) for the finance team, before the wallet goes live in production.
 
 ## Out of scope
 

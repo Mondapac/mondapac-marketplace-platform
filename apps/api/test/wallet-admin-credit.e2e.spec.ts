@@ -298,6 +298,7 @@ describe.each(TEST_MARKETS)('admin credit over HTTP in market %s', (code) => {
   it.each([
     ['wallet.approver-is-requester', 403],
     ['wallet.credit-request-not-found', 404],
+    ['wallet.customer-not-found', 404],
     ['wallet.credit-request-decided', 409],
     ['wallet.credit-request-expired', 409],
     ['wallet.cap-exceeded', 409],

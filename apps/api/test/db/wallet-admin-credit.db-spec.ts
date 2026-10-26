@@ -19,6 +19,7 @@ import { ApproveAdminCredit } from '../../src/modules/wallet/application/use-cas
 import { ExpireAdminCreditRequests } from '../../src/modules/wallet/application/use-cases/expire-admin-credit-requests.use-case';
 import { IssueAdminCredit } from '../../src/modules/wallet/application/use-cases/issue-admin-credit.use-case';
 import { RejectAdminCredit } from '../../src/modules/wallet/application/use-cases/reject-admin-credit.use-case';
+import { ViewCustomerWallet } from '../../src/modules/wallet/application/use-cases/view-customer-wallet.use-case';
 import { localDayOf } from '../../src/modules/wallet/domain/admin-credit';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
@@ -173,6 +174,34 @@ describe.each(TEST_MARKETS)('admin credit in market %s (database)', (code) => {
     );
   }
 
+  /** An account of `population` in `marketCode` (default: this Market's active customer). */
+  async function customerAccount(
+    options: {
+      population?: 'customer' | 'seller' | 'admin';
+      marketCode?: string;
+      status?: 'active' | 'disabled';
+    } = {},
+  ): Promise<Id<'Account'>> {
+    const accountId = newId<'Account'>();
+    const email = `Buyer.${accountId}@Buyer.example`;
+    await sql.query(
+      `INSERT INTO identity.accounts (id, market_id, tenant_id, population, email,
+       email_normalized, display_name, status, email_verified_at, signed_up_at, version, created_at)
+       VALUES ($1, $2, 'default', $3, $4, $5, $6, $7, $8, $8, 1, $8)`,
+      [
+        accountId,
+        options.marketCode ?? code,
+        options.population ?? 'customer',
+        email,
+        email.toLowerCase(),
+        (options.population ?? 'customer') === 'customer' ? null : 'Team Member',
+        options.status ?? 'active',
+        CREATED,
+      ],
+    );
+    return accountId;
+  }
+
   const sessionIdOf = (context: CallContext): Id<'Session'> =>
     (context.actor as { sessionId: Id<'Session'> }).sessionId;
   const prove = (context: CallContext, action: string) =>
@@ -190,14 +219,14 @@ describe.each(TEST_MARKETS)('admin credit in market %s (database)', (code) => {
         )
       ).rows[0]!.n,
     );
-  const issue = (
+  const issue = async (
     context: CallContext,
     minor: bigint,
-    customerAccountId: Id<'Account'> = newId(),
+    customerAccountId?: Id<'Account'>,
     idempotencyKey = `db-issue-${randomUUID()}`,
   ) =>
     app.get(IssueAdminCredit).execute(context, {
-      customerAccountId,
+      customerAccountId: customerAccountId ?? (await customerAccount()),
       amount: amount(minor),
       reasonCode: 'goodwill',
       note: 'late parcel',
@@ -257,7 +286,7 @@ describe.each(TEST_MARKETS)('admin credit in market %s (database)', (code) => {
       error: { code: 'second-factor.required', actionKey: ISSUE },
     });
     await prove(context, ISSUE);
-    const customer = newId<'Account'>();
+    const customer = await customerAccount();
     const granted = await issue(context, issueCap, customer);
     expect(granted).toMatchObject({ ok: true, value: { status: 'granted', amount: issueCap } });
     if (!granted.ok) return;
@@ -354,6 +383,73 @@ describe.each(TEST_MARKETS)('admin credit in market %s (database)', (code) => {
     ).toEqual({ ok: false, error: { code: 'wallet.credit-request-decided' } });
   });
 
+  it('issues only to an active customer of this Market: a miss spends no proof and writes nothing (S1)', async () => {
+    const admin = await administrator();
+    const context = await sessionOf(admin);
+    const other = TEST_MARKETS.find((m) => m !== code)!;
+    await prove(context, ISSUE);
+    const misses = [
+      newId<'Account'>(),
+      await customerAccount({ population: 'seller' }),
+      admin,
+      await customerAccount({ marketCode: other }),
+      await customerAccount({ status: 'disabled' }),
+    ];
+    for (const customer of misses) {
+      expect(
+        await app.get(ViewCustomerWallet).execute(context, { customerAccountId: customer }),
+      ).toEqual({ ok: false, error: { code: 'wallet.customer-not-found' } });
+      for (const minor of [1n, issueCap + 1n]) {
+        expect(await issue(context, minor, customer)).toEqual({
+          ok: false,
+          error: { code: 'wallet.customer-not-found' },
+        });
+      }
+    }
+    expect(await proofs(context)).toBe(1);
+    const { rows } = await sql.query<{ n: string }>(
+      `SELECT count(*) AS n FROM wallet.admin_credit_requests WHERE market_id = $1
+       AND requested_by_account_id = $2`,
+      [code, admin],
+    );
+    expect(Number(rows[0]!.n)).toBe(0);
+    // The stored fingerprint is a SHA-256 of the fields, never the note (S2).
+    const granted = await issue(context, 1n);
+    if (!granted.ok) throw new Error(granted.error.code);
+    const { rows: stored } = await sql.query<{ fingerprint: string }>(
+      `SELECT fingerprint FROM wallet.admin_credit_requests WHERE market_id = $1 AND id = $2`,
+      [code, granted.value.id],
+    );
+    expect(stored[0]!.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('checks the customer again at approval: closed since, the request stays pending (S1)', async () => {
+    const maker = await administrator();
+    const checker = await administrator();
+    const makerCtx = await sessionOf(maker);
+    const checkerCtx = await sessionOf(checker);
+    const customer = await customerAccount();
+    await prove(makerCtx, ISSUE);
+    const asked = await issue(makerCtx, issueCap + 1n, customer);
+    if (!asked.ok) throw new Error(asked.error.code);
+    await owner.query(
+      `UPDATE identity.accounts SET status = 'disabled', version = version + 1
+       WHERE market_id = $1 AND id = $2`,
+      [code, customer],
+    );
+    await prove(checkerCtx, APPROVE);
+    expect(
+      await app.get(ApproveAdminCredit).execute(checkerCtx, { requestId: asked.value.id }),
+    ).toEqual({ ok: false, error: { code: 'wallet.customer-not-found' } });
+    expect(await proofs(checkerCtx)).toBe(1);
+    expect(await requestRow(asked.value.id)).toMatchObject({ status: 'pending', journal_id: null });
+    expect(
+      await app
+        .get(RejectAdminCredit)
+        .execute(checkerCtx, { requestId: asked.value.id, reasonCode: 'wrong-customer' }),
+    ).toMatchObject({ ok: true, value: { status: 'rejected' } });
+  });
+
   it('keeps the daily cap under two parallel issues straddling it: one granted, one pending', async () => {
     for (let round = 0; round < 3; round += 1) {
       const admin = await administrator();
@@ -383,7 +479,7 @@ describe.each(TEST_MARKETS)('admin credit in market %s (database)', (code) => {
     const aCtx = await sessionOf(a);
     const bCtx = await sessionOf(b);
     await prove(aCtx, ISSUE);
-    const customer = newId<'Account'>();
+    const customer = await customerAccount();
     const key = `db-same-${randomUUID()}`;
     const first = await issue(aCtx, 10n, customer, key);
     expect(await issue(aCtx, 10n, customer, key)).toEqual(first);

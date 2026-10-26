@@ -8,6 +8,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import {
+  FakeCustomerDirectory,
   MemoryAdminCredits,
   MemoryMarketSetting,
   MemoryWallet,
@@ -21,7 +22,13 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { WALLET_AUDIT_ACTIONS } from '../domain/audit';
 import { ConfigWalletPolicy } from '../infrastructure/config-wallet-policy';
-import { approveAdminCredit, issueAdminCredit, journalKeyOf } from './admin-credit-flow';
+import {
+  approveAdminCredit,
+  issueAdminCredit,
+  journalKeyOf,
+  listAdminCredits,
+  viewCustomerWallet,
+} from './admin-credit-flow';
 import { ApproveAdminCredit } from './use-cases/approve-admin-credit.use-case';
 import { ExpireAdminCreditRequests } from './use-cases/expire-admin-credit-requests.use-case';
 import { GrantCredit } from './use-cases/grant-credit.use-case';
@@ -46,6 +53,10 @@ const id = <T extends string>(n: number): Id<T> => {
 const CUSTOMER = id<'Account'>(0xc1);
 const MAKER = id<'Account'>(0xa1);
 const CHECKER = id<'Account'>(0xa2);
+const SELLER_ACCOUNT = id<'Account'>(0xb1);
+const FOREIGN_CUSTOMER = id<'Account'>(0xc2);
+const CLOSED_CUSTOMER = id<'Account'>(0xc3);
+const UNKNOWN_ACCOUNT = id<'Account'>(0xc4);
 const ISSUE = 'wallet.credit.issue';
 const APPROVE = 'wallet.credit.approve';
 
@@ -62,6 +73,7 @@ class RecordingAudit implements AuditWriter {
 
 describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (code) => {
   const market = testMarketContext(code, 'default');
+  const otherMarket = code === 'AU' ? 'ZZ' : 'AU';
   const config = markets.get(market.marketId);
   const currency = config.defaultCurrency;
   const wallet$ = config.wallet!;
@@ -77,6 +89,7 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
   let wallet: MemoryWallet;
   let setting: MemoryMarketSetting;
   let credits: MemoryAdminCredits;
+  let customers: FakeCustomerDirectory;
   let audit: RecordingAudit;
   let deps: AdminCreditDependencies;
   let seq = 0;
@@ -110,6 +123,12 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
     setting = new MemoryMarketSetting();
     setting.record = { status: 'active', reason: null, updatedAt: T0, updatedBy: CHECKER };
     credits = new MemoryAdminCredits();
+    customers = new FakeCustomerDirectory();
+    customers.add(CUSTOMER, market.marketId);
+    customers.add(SELLER_ACCOUNT, market.marketId, 'seller');
+    customers.add(MAKER, market.marketId, 'admin');
+    customers.add(FOREIGN_CUSTOMER, otherMarket);
+    customers.add(CLOSED_CUSTOMER, market.marketId, 'customer', 'disabled');
     audit = new RecordingAudit();
     stepUpAnswer = null;
     stepUpAsked = [];
@@ -122,6 +141,7 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
       ids: new SequenceIdGenerator(clock),
       clock,
       credits,
+      identity: customers,
       stepUp: {
         consume: (context, actionKey) => {
           stepUpAsked.push(actionKey);
@@ -202,6 +222,10 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
         JSON.stringify(value, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v));
       expect(text(audit.entries)).not.toContain('parcel');
       expect(JSON.stringify(journal.result)).not.toContain('parcel');
+      // The stored fingerprint is a SHA-256 of the fields, never the note (review S2).
+      const stored = credits.rows.get(result.value.id)!;
+      expect(stored.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+      expect(stored.fingerprint).not.toContain('parcel');
     });
 
     it('sends one minor unit above the per-issue cap to a second admin, with no ledger effect', async () => {
@@ -578,7 +602,99 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
     });
   });
 
+  describe('the customer id (review S1)', () => {
+    const misses: readonly [string, Id<'Account'>][] = [
+      ['an unknown id', UNKNOWN_ACCOUNT],
+      ["a seller's account", SELLER_ACCOUNT],
+      ["an admin's account", MAKER],
+      ["another Market's customer", FOREIGN_CUSTOMER],
+      ['a closed customer account', CLOSED_CUSTOMER],
+    ];
+
+    it.each(misses)('refuses to issue to %s and spends nothing', async (_label, customer) => {
+      for (const minor of [1n, issueCap + 1n]) {
+        const result = await new IssueAdminCredit(gate, deps).execute(adminCtx(MAKER), {
+          customerAccountId: customer,
+          amount: amount(minor),
+          reasonCode: 'goodwill',
+          idempotencyKey: key(),
+        });
+        expect(result).toEqual({ ok: false, error: { code: 'wallet.customer-not-found' } });
+      }
+      expect(stepUpAsked).toEqual([]);
+      expect(credits.rows.size).toBe(0);
+      expect(credits.dayLocks).toEqual([]);
+      expect(wallet.journals).toHaveLength(0);
+      expect(audit.entries).toHaveLength(0);
+    });
+
+    it.each(misses)('refuses the customer read of %s', async (_label, customer) => {
+      expect(
+        await new ViewCustomerWallet(gate, deps).execute(adminCtx(MAKER), {
+          customerAccountId: customer,
+        }),
+      ).toEqual({ ok: false, error: { code: 'wallet.customer-not-found' } });
+    });
+
+    it('checks again at approval: a customer closed since leaves the request pending, unspent', async () => {
+      const request = await pendingOf(issueCap + 1n);
+      stepUpAsked = [];
+      audit.entries.length = 0;
+      customers.accounts.get(CUSTOMER)!.status = 'disabled';
+      expect(await approve(request.id)).toEqual({
+        ok: false,
+        error: { code: 'wallet.customer-not-found' },
+      });
+      expect(stepUpAsked).toEqual([]);
+      expect(credits.rows.get(request.id)).toMatchObject({ status: 'pending', journalId: null });
+      expect(wallet.journals).toHaveLength(0);
+      expect(audit.entries).toHaveLength(0);
+      // A checker can still close it as the wrong customer.
+      expect(await reject(request.id, CHECKER, 'wrong-customer')).toMatchObject({
+        ok: true,
+        value: { status: 'rejected', decisionReason: 'wrong-customer' },
+      });
+    });
+
+    it.each([['unavailable'], ['throw'], ['denied']] as const)(
+      'fails closed when identity answers %s, and spends nothing',
+      async (failure) => {
+        const pending = await pendingOf(issueCap + 1n);
+        stepUpAsked = [];
+        customers.failWith = failure;
+        const code = failure === 'denied' ? 'access.denied' : 'access.unavailable';
+        expect(await issue(1n)).toEqual({ ok: false, error: { code } });
+        expect(await approve(pending.id)).toEqual({ ok: false, error: { code } });
+        expect(
+          await new ViewCustomerWallet(gate, deps).execute(adminCtx(MAKER), {
+            customerAccountId: CUSTOMER,
+          }),
+        ).toEqual({ ok: false, error: { code } });
+        expect(stepUpAsked).toEqual([]);
+        expect(credits.rows.size).toBe(1);
+        expect(wallet.journals).toHaveLength(0);
+      },
+    );
+  });
+
   describe('reads', () => {
+    it('refuses an acting-as session on both reads (review S4)', async () => {
+      const context = adminCtx(MAKER);
+      const actingAsCtx = {
+        ...context,
+        actor: { ...context.actor, actingAs: { adminAccountId: MAKER } },
+      } as unknown as CallContext;
+      expect(await listAdminCredits(deps, actingAsCtx, {})).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(await viewCustomerWallet(deps, actingAsCtx, { customerAccountId: CUSTOMER })).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(customers.asked).toEqual([]);
+    });
+
     it('lists pending, decided and granted requests, newest first, by page', async () => {
       const first = await pendingOf(issueCap + 1n);
       clock.set(T0.add({ minutes: 1 }));

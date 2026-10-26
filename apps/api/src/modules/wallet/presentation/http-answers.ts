@@ -21,6 +21,7 @@ export const WALLET_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'wallet.account-not-active': 409,
   'idempotency.key-reused': 409,
   'wallet.credit-request-not-found': 404,
+  'wallet.customer-not-found': 404,
   'wallet.credit-request-decided': 409,
   'wallet.credit-request-expired': 409,
   'wallet.approver-is-requester': 403,

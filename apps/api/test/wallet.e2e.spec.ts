@@ -49,6 +49,7 @@ it('maps every refusal code of the wallet routes to its exact status', () => {
     'wallet.account-not-active': 409,
     'idempotency.key-reused': 409,
     'wallet.credit-request-not-found': 404,
+    'wallet.customer-not-found': 404,
     'wallet.credit-request-decided': 409,
     'wallet.credit-request-expired': 409,
     'wallet.approver-is-requester': 403,

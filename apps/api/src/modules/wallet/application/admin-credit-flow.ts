@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import type { ConsumedStepUp, StepUpRefusal } from '../../../platform/authz';
@@ -52,6 +53,12 @@ import {
 //
 // The daily cap is race-safe: an issue first locks the admin's day row, so two issues by one
 // admin on one day run one after the other and the second counts the first.
+//
+// The customer id is checked through identity's facade (review S1): issue, approve and the
+// customer read answer `wallet.customer-not-found` unless it names an active customer account of
+// the context's Market. Units do not nest, so the check runs just before the write unit; the race
+// accepted is an account closed between the check and the unit's commit (milliseconds): the credit
+// then sits on a closed account, where nobody can spend it, and the audit row names it.
 
 export type AdminCreditFailure =
   | WalletFailure
@@ -63,7 +70,12 @@ export type AdminCreditFailure =
   /** The request is past its expiry; the sweep marks it expired. */
   | { readonly code: 'wallet.credit-request-expired' }
   /** Maker-checker: the admin who asked cannot decide. */
-  | { readonly code: 'wallet.approver-is-requester' };
+  | { readonly code: 'wallet.approver-is-requester' }
+  /**
+   * The id names no active customer account of this Market: unknown, a seller or an admin, another
+   * Market's, or closed, alike. Nothing was spent or written.
+   */
+  | { readonly code: 'wallet.customer-not-found' };
 
 export interface AdminCreditView {
   readonly id: Id<'WalletCreditRequest'>;
@@ -116,8 +128,11 @@ const viewOf = (row: AdminCreditRecord): AdminCreditView => ({
   journalId: row.journalId,
 });
 
-/** The admin who acts, or null when the caller is not an admin or acts as someone else. */
-function writingAdmin(context: CallContext): Id<'Account'> | null {
+/**
+ * The admin who acts, or null when the caller is not an admin or acts as someone else. Reads and
+ * writes alike: an acting-as session sees no customer's wallet nor the request queue (review S4).
+ */
+function signedInAdmin(context: CallContext): Id<'Account'> | null {
   const actor = context.actor;
   if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAs(context)) {
     return null;
@@ -125,10 +140,36 @@ function writingAdmin(context: CallContext): Id<'Account'> | null {
   return actor.accountId;
 }
 
-const readingAdmin = (context: CallContext): Id<'Account'> | null =>
-  context.actor.kind === 'authenticated' && context.actor.population === 'admin'
-    ? context.actor.accountId
-    : null;
+/**
+ * Whether `customer` is an active customer account of the context's Market, asked of identity's
+ * facade (review S1). A miss is `wallet.customer-not-found`; a refusal or a failed call fails
+ * closed (`access.denied` passed on, anything else `access.unavailable`).
+ */
+async function customerCheck(
+  deps: AdminCreditDependencies,
+  context: CallContext,
+  customer: Id<'Account'>,
+): Promise<AdminCreditFailure | null> {
+  try {
+    const found = await deps.identity.customerAccountOf(context, customer);
+    if (!found.ok) {
+      return {
+        code: found.error.code === 'access.denied' ? 'access.denied' : 'access.unavailable',
+      };
+    }
+    return found.value?.accountId === customer ? null : { code: 'wallet.customer-not-found' };
+  } catch {
+    return { code: 'access.unavailable' };
+  }
+}
+
+/**
+ * The idempotency fingerprint of an issue: a SHA-256 (hex) of the joined fields, so the stored
+ * column never holds the free-text note (review S2).
+ */
+export function issueFingerprint(fields: readonly (string | bigint)[]): string {
+  return createHash('sha256').update(fields.join('|'), 'utf8').digest('hex');
+}
 
 /** identity's refusal of the step-up, as these use cases answer it; anything else stays closed. */
 function stepUpFailure(refusal: StepUpRefusal): AdminCreditFailure {
@@ -194,7 +235,7 @@ export async function issueAdminCredit(
   context: CallContext,
   input: IssueAdminCreditInput,
 ): Promise<Result<AdminCreditView, AdminCreditFailure>> {
-  const admin = writingAdmin(context);
+  const admin = signedInAdmin(context);
   if (admin === null) return err({ code: 'access.denied' });
   const policy = deps.policy.settings(context.market);
   if (policy === null) return err({ code: 'wallet.unavailable' });
@@ -221,7 +262,7 @@ export async function issueAdminCredit(
     return err(invalid(problems));
   }
 
-  const fingerprint = [
+  const fingerprint = issueFingerprint([
     'admin-credit',
     admin,
     customer,
@@ -229,7 +270,10 @@ export async function issueAdminCredit(
     amount.currency,
     reasonCode,
     note.note ?? '',
-  ].join('|');
+  ]);
+  // Before the unit, so a miss spends no step-up proof and writes nothing.
+  const unknownCustomer = await customerCheck(deps, context, customer);
+  if (unknownCustomer !== null) return err(unknownCustomer);
   const now = deps.clock.now();
   const localDay = localDayOf(now, policy.timeZone);
   const replay = (known: AdminCreditRecord): Result<AdminCreditView, AdminCreditFailure> =>
@@ -379,13 +423,28 @@ export async function approveAdminCredit(
   context: CallContext,
   input: { readonly requestId: unknown },
 ): Promise<Result<AdminCreditView, AdminCreditFailure>> {
-  const admin = writingAdmin(context);
+  const admin = signedInAdmin(context);
   if (admin === null) return err({ code: 'access.denied' });
   const policy = deps.policy.settings(context.market);
   if (policy === null) return err({ code: 'wallet.unavailable' });
   const id = requestIdOf(input?.requestId);
   if (id === null) return err(invalid([{ path: 'requestId', code: 'format' }]));
   const now = deps.clock.now();
+
+  // The customer again, before the unit (units do not nest). The request's customer never changes
+  // (a trigger fences it), so reading it first is safe. A miss leaves the request pending and
+  // spends nothing: a checker may reject it (`wrong-customer`) or it expires.
+  const seen = await deps.unitOfWork.run<AdminCreditRecord | null, AdminCreditFailure>(
+    context.market,
+    async () => ok(await deps.credits.find(context.market, id)),
+    { readOnly: true },
+  );
+  if (!seen.ok) return seen;
+  if (seen.value === null) return err({ code: 'wallet.credit-request-not-found' });
+  if (seen.value.status === 'pending') {
+    const unknownCustomer = await customerCheck(deps, context, seen.value.customerAccountId);
+    if (unknownCustomer !== null) return err(unknownCustomer);
+  }
 
   const attempt = () =>
     deps.unitOfWork.run<AdminCreditView, AdminCreditFailure>(context.market, async () => {
@@ -451,7 +510,7 @@ export async function rejectAdminCredit(
   context: CallContext,
   input: { readonly requestId: unknown; readonly reasonCode: unknown },
 ): Promise<Result<AdminCreditView, AdminCreditFailure>> {
-  const admin = writingAdmin(context);
+  const admin = signedInAdmin(context);
   if (admin === null) return err({ code: 'access.denied' });
   const problems: Problem[] = [];
   const id = requestIdOf(input?.requestId);
@@ -592,7 +651,7 @@ export async function listAdminCredits(
   context: CallContext,
   input: { readonly status?: unknown; readonly cursor?: unknown; readonly limit?: unknown },
 ): Promise<Result<CreditListView, AdminCreditFailure>> {
-  if (readingAdmin(context) === null) return err({ code: 'access.denied' });
+  if (signedInAdmin(context) === null) return err({ code: 'access.denied' });
   const problems: Problem[] = [];
   const filter = input?.status ?? 'pending';
   if (!(CREDIT_LIST_FILTERS as readonly unknown[]).includes(filter)) {
@@ -655,12 +714,14 @@ export async function viewCustomerWallet(
   context: CallContext,
   input: { readonly customerAccountId: unknown },
 ): Promise<Result<CustomerWalletSummary, AdminCreditFailure>> {
-  const admin = readingAdmin(context);
+  const admin = signedInAdmin(context);
   if (admin === null) return err({ code: 'access.denied' });
   const customer = idOf<'Account'>(input?.customerAccountId);
   if (customer === null) return err(invalid([{ path: 'customerAccountId', code: 'format' }]));
   const policy = deps.policy.settings(context.market);
   if (policy === null) return err({ code: 'wallet.unavailable' });
+  const unknownCustomer = await customerCheck(deps, context, customer);
+  if (unknownCustomer !== null) return err(unknownCustomer);
   const now = deps.clock.now();
   return deps.unitOfWork.run<CustomerWalletSummary, AdminCreditFailure>(
     context.market,

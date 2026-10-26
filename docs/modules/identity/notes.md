@@ -51,3 +51,16 @@ It follows the seller step-up (seller OTP policy, 2026-10-16) and reuses its par
 - **Acting-as.** Refused by RequireStepUp, VerifyAdminStepUp, the consumer and wallet
   `setStatus`. Over HTTP today an actor carrying the marker is not one identity minted, so the
   actor guard answers `401 session.invalid` before any of them (tested).
+
+## `customerAccountOf` (wallet review S1, 2026-10-26)
+
+`IdentityFacade.customerAccountOf(context, accountId)` (use case `identity.customer-account-of`):
+whether an id names an active customer account of `context.market`, for an admin flow that writes
+to a customer's records (the wallet's admin credit). It answers `{accountId}` or `null`, ids only,
+never a name or an address. An unknown or malformed id, a seller or admin account, another
+Market's account and a disabled account are `null`, alike. Rule `own-resources`, denied while the
+seller is not approved; the use case answers only a platform admin that is not acting as a seller
+(otherwise `access.denied`); the calling use case has passed its own permission gate. One
+read-only unit reading the status only (`AccountRepository.customerStatus`: no credential, so a
+customer without a password is answered, and no address); a failed read is `access.unavailable`, so the caller fails closed. Not exposed
+over HTTP.

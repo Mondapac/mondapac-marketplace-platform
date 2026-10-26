@@ -160,6 +160,19 @@ export class PrismaAccountRepository implements AccountRepository {
     }));
   }
 
+  async customerStatus(
+    market: MarketContext,
+    id: Id<'Account'>,
+  ): Promise<'active' | 'disabled' | null> {
+    const row = await this.prisma.tx(market).identityAccount.findFirst({
+      where: { marketId: market.marketId, population: 'customer', id },
+      select: { status: true },
+    });
+    if (row === null) return null;
+    // Any other value is a malformed row: answered as closed, never as active.
+    return row.status === 'active' ? 'active' : 'disabled';
+  }
+
   private restore(row: SelectedRow): Account {
     const credential = row.passwordCredential;
     const marketId = parseMarketId(row.marketId);
