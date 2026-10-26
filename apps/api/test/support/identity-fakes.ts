@@ -1197,6 +1197,12 @@ export class IdentityFakes {
       Promise.resolve(
         this.stepUpProofs.get(`${market.marketId}|${sessionId}|${actionKey}`) ?? null,
       ),
+    takeProof: (market, sessionId, actionKey) => {
+      const key = `${market.marketId}|${sessionId}|${actionKey}`;
+      const verifiedAt = this.stepUpProofs.get(key) ?? null;
+      this.stepUpProofs.delete(key);
+      return Promise.resolve(verifiedAt);
+    },
     recordProof: (market, sessionId, actionKey, now) => {
       this.stepUpProofs.set(`${market.marketId}|${sessionId}|${actionKey}`, now);
       return Promise.resolve();

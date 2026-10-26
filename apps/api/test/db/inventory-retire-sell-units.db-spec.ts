@@ -155,7 +155,7 @@ describe.each(TEST_MARKETS)('inventory.retire-sell-units in market %s (database)
   /**
    * The retirement scans `inventory.stock_items` by Variant or Offer in a SERIALIZABLE unit, and
    * the other inventory specs insert into that table in parallel on this one database, so the unit
-   * can meet 40001 more often than the platform's three attempts absorb. Only that conflict is
+   * can meet 40001 more often than the platform's four attempts absorb. Only that conflict is
    * run again here; any other error, and the assertions, are unchanged.
    */
   async function onConflictAgain<T>(work: () => Promise<T>, attempts = 6): Promise<T> {

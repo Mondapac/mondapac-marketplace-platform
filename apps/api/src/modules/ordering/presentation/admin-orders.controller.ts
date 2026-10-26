@@ -189,7 +189,9 @@ export class AdminOrdersController {
     description:
       'Needs ordering.order.refund (protected). Off until the Market switch ' +
       'tax.refundCredit.enabled is on: 409 ordering.refund-disabled. Lines (units) and part or ' +
-      'all of the shipping fee; the tax reversed comes from the tax frozen on the order. One ' +
+      'all of the shipping fee; the tax reversed comes from the tax frozen on the order. ' +
+      'lossBearer is seller (default; the seller ledger is reversed) or platform (with a ' +
+      'lossReasonCode; the seller keeps its share). One ' +
       'refund at a time per seller order (409 ordering.refund-in-progress while one is pending).',
   })
   @ApiHeader(CSRF)
@@ -226,13 +228,18 @@ export class AdminOrdersController {
     response.setHeader('Cache-Control', 'no-store');
     const invalid = closedBody(request, body, REFUND_BODY_KEYS);
     if (invalid !== null) throw invalid;
-    const { lines, shippingAmount, reason } = body as Record<string, unknown>;
+    const { lines, shippingAmount, reason, lossBearer, lossReasonCode } = body as Record<
+      string,
+      unknown
+    >;
     const result = await this.refund.execute(context, {
       orderId,
       sellerOrderId,
       lines,
       shippingAmount,
       reason,
+      lossBearer,
+      lossReasonCode,
     });
     this.log(
       'ordering.admin-refund-order-route',

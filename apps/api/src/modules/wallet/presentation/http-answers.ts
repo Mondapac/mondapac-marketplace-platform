@@ -12,6 +12,8 @@ export const WALLET_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'wallet.unavailable': 503,
   'wallet.cannot-turn-off-with-history': 409,
   'wallet.busy': 409,
+  'second-factor.required': 403,
+  'second-factor.enrolment-required': 403,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
@@ -68,5 +70,8 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  if (typeof error.actionKey === 'string') {
+    return fail(status, error.code, { actionKey: error.actionKey });
+  }
   return fail(status, error.code);
 }

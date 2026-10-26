@@ -158,6 +158,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "commission-payouts.record-refund", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
   {
     "name": "commission-payouts.view-own-ledger",
@@ -338,6 +339,11 @@
     "whenSellerNotApproved": "deny"
   },
   {
+    "name": "identity.verify-admin-step-up",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
     "name": "identity.verify-seller-step-up",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
@@ -409,6 +415,7 @@
   { "name": "ordering.rebuild-offer-pairs", "rule": "system" },
   { "name": "ordering.record-carrier-progress", "rule": "system" },
   { "name": "ordering.record-ledger", "rule": "system" },
+  { "name": "ordering.record-refund-ledger", "rule": "system" },
   { "name": "ordering.record-shipments", "rule": "system" },
   { "name": "ordering.settle-refunds", "rule": "system" },
   { "name": "ordering.shipment-notice", "rule": "system" },
