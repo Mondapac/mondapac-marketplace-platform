@@ -77,9 +77,11 @@ export function SlidePreview({
           <span
             className={`absolute inset-y-0 end-0 flex items-center justify-center border-s border-current text-xs ${phone ? 'start-0 opacity-30' : 'w-2/5 opacity-70'}`}
           >
-            {t('image', {
-              name: images.has(form.imageRef) ? images(form.imageRef) : form.imageRef,
-            })}
+            <span className={phone ? 'sr-only' : undefined}>
+              {t('image', {
+                name: images.has(form.imageRef) ? images(form.imageRef) : form.imageRef,
+              })}
+            </span>
           </span>
         )}
         <div

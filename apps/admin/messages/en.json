@@ -1367,7 +1367,7 @@
         "version": "Version {version}",
         "approved": "Approved {when}",
         "state": {
-          "live": "Live",
+          "live": "Published",
           "draft": "Draft",
           "draft-pending": "Draft · waiting",
           "earlier": "Earlier"

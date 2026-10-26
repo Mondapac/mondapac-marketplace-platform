@@ -102,7 +102,7 @@ describe('versions tab', () => {
       'Version 1',
     ]);
     expect(within(rowOf(3)).getByText('Draft')).toBeTruthy();
-    expect(within(rowOf(2)).getByText('Live')).toBeTruthy();
+    expect(within(rowOf(2)).getByText('Published')).toBeTruthy();
     expect(within(rowOf(1)).getByText('Earlier')).toBeTruthy();
     expect(within(rowOf(3)).getByText(/25 Oct/)).toBeTruthy();
     expect(within(rowOf(2)).getByText(/Approved/)).toBeTruthy();

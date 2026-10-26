@@ -44,12 +44,12 @@ export function SlidesTable({
       <table className={`${CARD_TABLE.table} lg:min-w-240 lg:table-fixed`}>
         <caption className="sr-only">{t('caption')}</caption>
         <colgroup className="max-lg:hidden">
-          <col className="w-[28%]" />
+          <col className="w-[25%]" />
           <col className="w-[11%]" />
           <col className="w-[19%]" />
           <col className="w-[15%]" />
-          <col className="w-[15%]" />
-          <col className="w-[12%]" />
+          <col className="w-[16%]" />
+          <col className="w-[14%]" />
         </colgroup>
         <thead className={CARD_TABLE.head}>
           <tr>

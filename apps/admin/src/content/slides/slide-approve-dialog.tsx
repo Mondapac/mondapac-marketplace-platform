@@ -2,7 +2,7 @@
 
 import { Banner, Button, CheckboxRow, Dialog } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { shortInstantInZone } from '../../shared/format.ts';
 import { formOf } from './slide-form.ts';
 import { MAX_CHANGE_LINES, changesOf, type ChangeWords } from './slide-changes.ts';
@@ -49,6 +49,9 @@ export function SlideApproveDialog({
   const { reset } = command;
   const [sure, setSure] = useState(false);
   const [sureError, setSureError] = useState(false);
+  const changesId = useId();
+  const checksId = useId();
+  const sureErrorId = useId();
   const draft = slide.draft;
 
   useEffect(() => {
@@ -143,8 +146,8 @@ export function SlideApproveDialog({
             })}
           </p>
           <SlidePreview compact form={formOf(slide)} tone={draft.content?.textTone ?? 'light'} />
-          <section aria-labelledby="approve-changes" className="flex flex-col gap-2">
-            <h3 id="approve-changes" className="text-sm font-semibold text-fg">
+          <section aria-labelledby={changesId} className="flex flex-col gap-2">
+            <h3 id={changesId} className="text-sm font-semibold text-fg">
               {t('changes')}
             </h3>
             {shown.length === 0 ? (
@@ -162,8 +165,8 @@ export function SlideApproveDialog({
               <p className="text-sm text-fg-muted">{t('more', { count: hidden })}</p>
             ) : null}
           </section>
-          <section aria-labelledby="approve-checks" className="flex flex-col gap-2">
-            <h3 id="approve-checks" className="text-sm font-semibold text-fg">
+          <section aria-labelledby={checksId} className="flex flex-col gap-2">
+            <h3 id={checksId} className="text-sm font-semibold text-fg">
               {t('checks')}
             </h3>
             <p className="text-sm">{t('checks-body')}</p>
@@ -173,13 +176,14 @@ export function SlideApproveDialog({
               label={t('confirm')}
               checked={sure}
               aria-invalid={sureError && !sure ? true : undefined}
+              aria-describedby={sureError && !sure ? sureErrorId : undefined}
               onChange={(event) => {
                 setSure(event.target.checked);
                 setSureError(false);
               }}
             />
             {sureError && !sure ? (
-              <p role="alert" className="ps-7 text-sm text-critical-fg">
+              <p id={sureErrorId} role="alert" className="ps-7 text-sm text-critical-fg">
                 {t('confirm-needed')}
               </p>
             ) : null}
