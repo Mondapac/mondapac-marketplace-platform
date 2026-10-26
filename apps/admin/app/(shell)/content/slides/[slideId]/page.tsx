@@ -5,6 +5,8 @@ import { ContentNoAccess } from '../../../../../src/content/content-no-access.ts
 import { SlideEditor } from '../../../../../src/content/slides/slide-editor.tsx';
 import {
   SLIDE_EDIT_PERMISSION,
+  SLIDE_PAUSE_PERMISSION,
+  SLIDE_PUBLISH_PERMISSION,
   SLIDE_READ_PERMISSION,
   SLIDES_API_PATH,
   type SlideDetail,
@@ -22,10 +24,13 @@ export async function generateMetadata() {
 /** One slide: the Content tab, editable with the edit permission and read-only without it. */
 export default async function SlidePage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly slideId: string }>;
+  readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { slideId } = await params;
+  const { review } = await searchParams;
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
@@ -51,8 +56,13 @@ export default async function SlidePage({
   return (
     <AdminShell session={gate.session} activeId="content" title={title}>
       <SlideEditor
+        // A new key after a refused command (the slide changed meanwhile) shows it as it is now.
+        key={`${read.body.updatedAt}:${read.body.status}:${read.body.versions.length}`}
         slide={read.body}
         canEdit={permissionKeys.includes(SLIDE_EDIT_PERMISSION)}
+        canPause={permissionKeys.includes(SLIDE_PAUSE_PERMISSION)}
+        canPublish={permissionKeys.includes(SLIDE_PUBLISH_PERMISSION)}
+        startReview={review === '1'}
         csrfToken={csrfToken}
         zone={displayZone(timezone)}
       />

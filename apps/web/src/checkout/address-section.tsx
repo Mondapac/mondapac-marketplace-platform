@@ -562,7 +562,7 @@ function ManualAddress({
         <Field
           label={t('postcode')}
           autoComplete="postal-code"
-          inputMode="numeric"
+          inputMode={postcodeKeyboard(area)}
           value={postcode}
           onText={(text) => {
             setLeft(false);
@@ -581,6 +581,11 @@ function ManualAddress({
       </button>
     </>
   );
+}
+
+/** The postcode keyboard: text (letters and spaces allowed) unless the market's config says numeric. */
+export function postcodeKeyboard(area: ServiceArea): 'numeric' | 'text' {
+  return area.postcodeInput === 'numeric' ? 'numeric' : 'text';
 }
 
 export function Field({
@@ -605,7 +610,7 @@ export function Field({
   readonly readOnly?: boolean;
   readonly type?: string;
   readonly autoComplete?: string;
-  readonly inputMode?: 'tel' | 'numeric';
+  readonly inputMode?: 'tel' | 'numeric' | 'text' | 'email';
   /** The field takes the focus when this changes to a value (the next field after a pick). */
   readonly focusKey?: string | undefined;
 }) {

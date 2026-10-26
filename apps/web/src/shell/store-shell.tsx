@@ -16,6 +16,7 @@ import type {
   StorefrontContent,
 } from '../storefront/types.ts';
 import { BrowsePanel } from './browse-panel.tsx';
+import { FocusHeader } from './checkout-focus.tsx';
 import { Dock } from './dock.tsx';
 import { Footer } from './footer.tsx';
 import { Header } from './header.tsx';
@@ -61,6 +62,7 @@ export function StoreShell({
         <SearchView popular={content.popularSearches} />
         <PageFrame>
           <Header delivery={content.delivery} />
+          <FocusHeader />
           <div className="body">
             <Rail />
             <main className="main" id="main">
