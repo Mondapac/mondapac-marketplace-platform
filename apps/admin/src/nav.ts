@@ -6,6 +6,7 @@ import type { NavConfig } from '@mondapac/ui';
 export const adminNav: NavConfig = {
   groups: [
     { id: 'reviews', labelKey: 'nav.group.reviews', icon: 'shield-check' },
+    { id: 'content', labelKey: 'nav.group.content', icon: 'layout' },
     { id: 'sellers', labelKey: 'nav.group.sellers', icon: 'store' },
     { id: 'orders', labelKey: 'nav.group.orders', icon: 'clipboard' },
     { id: 'money', labelKey: 'nav.group.money', icon: 'wallet' },
@@ -28,6 +29,14 @@ export const adminNav: NavConfig = {
       href: '/price-holds',
       group: 'reviews',
       anyOf: ['pricing.price-hold.view'],
+    },
+    {
+      id: 'content',
+      icon: 'layout',
+      labelKey: 'nav.content',
+      href: '/content',
+      group: 'content',
+      anyOf: ['storefront.slide.read'],
     },
     {
       id: 'sellers',
