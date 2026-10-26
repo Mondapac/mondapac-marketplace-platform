@@ -18,13 +18,22 @@ export function Dock({ children }: { readonly children: ReactNode }) {
     const dock = ref.current;
     if (!dock) return;
     const root = document.documentElement;
-    const set = () => root.style.setProperty('--sf-dock-height', `${dock.offsetHeight}px`);
+    const set = () => {
+      root.style.setProperty('--sf-dock-height', `${dock.offsetHeight}px`);
+      // The home-indicator inset belongs to the bottom-most layer: the dock's own content carries
+      // it (tab bar, cookie bar), so a bar above an occupied dock adds none; above an empty one it does.
+      root.style.setProperty(
+        '--sf-dock-inset',
+        dock.offsetHeight > 0 ? '0px' : 'env(safe-area-inset-bottom, 0px)',
+      );
+    };
     set();
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(set) : null;
     observer?.observe(dock);
     return () => {
       observer?.disconnect();
       root.style.removeProperty('--sf-dock-height');
+      root.style.removeProperty('--sf-dock-inset');
     };
   }, []);
 
