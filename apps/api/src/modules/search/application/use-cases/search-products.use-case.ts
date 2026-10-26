@@ -42,7 +42,9 @@ export type SearchProductsFailure =
 /**
  * `search.search-products`: the storefront query. Rule `anonymous`: no session is read, the
  * Market is the request's. One read-only unit asks the index for `pageSize + 1` documents of the
- * Market (text query ranked by `ts_rank`, ties by Offer id; or a browse by category, by name);
+ * Market (text query ranked by `ts_rank`, ties by Offer id; or a browse by category, by name).
+ * A category covers its subcategories: catalog's live tree names them first, and a tree that
+ * cannot be read is `search.unavailable`;
  * then catalog and sellers are asked whether each hit is still sellable now. A hit that fails
  * either check is dropped, so a page can hold fewer than `pageSize` items while `hasMore` is
  * true. If a check cannot be made the answer is `search.unavailable`, never an unchecked list.
@@ -87,6 +89,11 @@ export class SearchProducts extends UseCase<
       if (store.sellerId === null) return ok({ items: [], page, pageSize, hasMore: false });
       storeSellerId = store.sellerId;
     }
+    let categoryIds: readonly Id<'Category'>[] | null = null;
+    if (categoryId !== null) {
+      categoryIds = await this.deps.categories.subtreeOf(context, categoryId);
+      if (categoryIds === null) return err({ code: 'search.unavailable' });
+    }
     const hits = await this.deps.unitOfWork.run(
       market,
       async () =>
@@ -95,14 +102,14 @@ export class SearchProducts extends UseCase<
             ? await this.deps.shelves.browseBySeller(
                 market,
                 storeSellerId,
-                categoryId,
+                categoryIds,
                 pageSize + 1,
                 offset,
               )
             : await this.deps.reader.search(market, {
                 textSearchConfig,
                 text,
-                categoryId,
+                categoryIds,
                 limit: pageSize + 1,
                 offset,
               }),

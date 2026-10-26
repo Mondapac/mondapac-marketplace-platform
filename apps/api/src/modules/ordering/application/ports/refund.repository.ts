@@ -1,10 +1,22 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { LedgerState } from '../../domain/order';
 import type { Refund, RefundTarget } from '../../domain/refund';
 
 /** A pending refund with the PaymentIntent it gives money back from. */
 export interface PendingRefund {
   readonly refund: Refund;
   readonly paymentIntentId: string;
+}
+
+/** A succeeded refund not yet in the seller ledger, with what the ledger step needs beside it. */
+export interface RefundForLedger {
+  readonly refund: Refund;
+  /** Whether the seller order's own paid facts are in the ledger (a refund waits for them). */
+  readonly sellerOrderLedgerState: LedgerState;
+  /** What the customer paid for delivery on the seller order, tax included; null if unknown. */
+  readonly shippingCharge: bigint | null;
+  /** Order lines of the seller order whose amount after discounts is 0: they wrote no ledger rows. */
+  readonly freeLines: ReadonlySet<Id<'OrderLine'>>;
 }
 
 /** The credit note written with a successful refund (once; never changed). */
@@ -68,6 +80,23 @@ export interface RefundRepository {
    * Stripe made one that is still pending (it is then read back by id, never made again).
    */
   countAttempt(market: MarketContext, refund: Refund, stripeRefundId: string | null): Promise<void>;
+
+  /**
+   * Succeeded refunds not yet in the seller ledger, whose seller order is not still waiting for its
+   * own paid facts (those wait): fewest refused first, then oldest, so a refund the ledger keeps
+   * refusing never blocks the ones behind it.
+   */
+  findUnrecordedLedger(market: MarketContext, limit: number): Promise<readonly RefundForLedger[]>;
+
+  /** Counts one more refused attempt to write the refund into the ledger; answers the count. */
+  countLedgerFailure(market: MarketContext, refundId: Id<'Refund'>): Promise<number>;
+
+  /** Marks the refund as handled by the ledger step (once; a second call changes nothing). */
+  markLedgerRecorded(
+    market: MarketContext,
+    refundId: Id<'Refund'>,
+    at: Temporal.Instant,
+  ): Promise<void>;
 
   /**
    * Pending refunds asked for before `window.before`, oldest first: those Stripe made (read back

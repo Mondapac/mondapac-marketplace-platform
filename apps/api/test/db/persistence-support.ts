@@ -204,9 +204,9 @@ export { randomUUID };
 
 /**
  * A use case whose `execute` is run again when the unit of work gives up on a serialization
- * conflict (`TransactionConflictError`). The platform retries a unit three times; under the
+ * conflict (`TransactionConflictError`). The platform runs a unit up to four times; under the
  * parallel database specs of one run, SERIALIZABLE units also meet false conflicts from other
- * files (predicate locks are page-wide on small tables), so three attempts can run out. A real
+ * files (predicate locks are page-wide on small tables), so four attempts can run out. A real
  * caller meets the same answer as `409 conflict.retry` or an event redelivery, and runs again;
  * this does the same for the specs that open serializable units. Only that error is retried.
  */
