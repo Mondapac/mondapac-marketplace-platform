@@ -415,7 +415,17 @@ describe('platform persistence (database integration)', () => {
         'role_attribute',
         'role_membership',
         'role_timeouts',
+        'security_events_privilege',
         'temporary_on_database',
+      ]);
+    });
+
+    it('names each of the two security event tables the owner may change', async () => {
+      const problems = await run(owner);
+
+      expect(problems.filter((problem) => problem.code === 'security_events_privilege')).toEqual([
+        { code: 'security_events_privilege', subject: 'platform.security_events' },
+        { code: 'security_events_privilege', subject: 'platform.security_events_archive' },
       ]);
     });
 

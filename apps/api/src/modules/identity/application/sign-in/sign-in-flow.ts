@@ -31,7 +31,7 @@ import { scopeOfPopulation } from '../../domain/role';
 import type { RoleAssignmentRepository } from '../ports/seller-team.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SessionTokens, ThrottleKeys } from '../ports/session-secrets';
-import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
+import type { SignInRecord, SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
 import type {
   AdminSecondStep,
@@ -45,6 +45,8 @@ import type {
   SellerSecondStepOutcome,
   SellerSecondStepPolicy,
 } from './seller-second-step';
+import type { SecurityEvents } from '../../../../platform/security-events/security-events';
+import { recordSignInSecurityEvent } from '../security-events';
 
 /** Where the request came from, as resolved per ADR-0037 (never a forwarded header). */
 export interface SignInClient {
@@ -119,6 +121,7 @@ export interface SignInDependencies {
   readonly sessions: SessionRepository;
   readonly throttles: ThrottleRepository;
   readonly records: SignInRecordRepository;
+  readonly securityEvents: SecurityEvents;
   readonly hasher: PasswordHasher;
   readonly tokens: SessionTokens;
   readonly keys: ThrottleKeys;
@@ -730,7 +733,7 @@ export class SignInFlow {
     sessionId: Id<'Session'> | null,
     now: Temporal.Instant,
   ): Promise<void> {
-    await this.deps.records.add(context.market, {
+    const record: SignInRecord = {
       id: this.deps.ids.next<'SignInRecord'>(),
       population: this.population,
       accountId,
@@ -739,6 +742,8 @@ export class SignInFlow {
       address: client.address,
       sessionId,
       correlationId: context.correlationId,
-    });
+    };
+    await this.deps.records.add(context.market, record);
+    await recordSignInSecurityEvent(this.deps.securityEvents, context, record);
   }
 }
