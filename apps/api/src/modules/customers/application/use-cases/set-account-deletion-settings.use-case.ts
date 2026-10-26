@@ -16,8 +16,8 @@ interface Input {
 
 /**
  * `customers.set-account-deletion-settings`: an admin replaces the Market's account deletion
- * setting (protected key). No step-up rule is applied: the platform has none for admin routes
- * (the step-up mechanism is the seller shop's own OTP policy), and none is invented here.
+ * setting (protected key and a fresh admin step-up proof of
+ * `customers.account-deletion-settings.change`, spent inside the flow).
  */
 export class SetAccountDeletionSettings extends UseCase<
   Input,

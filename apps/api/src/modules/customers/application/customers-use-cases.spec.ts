@@ -19,6 +19,7 @@ import {
   MemoryAccountDeletionSettings,
   RecordingAudit,
   RecordingOutbox,
+  RecordingStepUp,
 } from './testing/in-memory-account-deletion';
 import { CreateAddress } from './use-cases/create-address.use-case';
 import { DeleteAddress } from './use-cases/delete-address.use-case';
@@ -98,6 +99,7 @@ describe.each([['AU'], ['ZZ']] as const)('customer address book in market %s', (
       accountDeletionSettings: new MemoryAccountDeletionSettings(),
       audit: new RecordingAudit(),
       outbox: new RecordingOutbox(),
+      stepUp: new RecordingStepUp(),
     };
     uc = {
       list: new ListAddresses(gate, deps),

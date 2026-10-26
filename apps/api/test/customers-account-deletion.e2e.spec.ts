@@ -43,6 +43,7 @@ const ADMIN_PATH = '/customers/admin/account-deletion-settings';
 const ME_PATH = '/customers/me/account-deletion';
 const VIEW = { version: 2, settings: { enabled: true, waitingPeriodDays: 14 } };
 const REASON = 'Legal review finished';
+const STEP_UP_KEY = 'customers.account-deletion-settings.change';
 
 it('maps every refusal code of the customers routes to its exact status', () => {
   expect(CUSTOMERS_STATUS).toEqual({
@@ -51,6 +52,8 @@ it('maps every refusal code of the customers routes to its exact status', () => 
     'customers.address-limit-reached': 422,
     'customers.conflict': 409,
     'customers.account-deletion-disabled': 403,
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
     'customers.unavailable': 503,
   });
 });
@@ -109,7 +112,30 @@ describe.each(TEST_MARKETS)('account deletion routes over HTTP in market %s', (c
         credential: { passwordHash: fakeHashOf('x'), changedAt: START },
       });
     }
+    // The admin's active second factor, for the admin step-up of the change (as the wallet switch).
+    fakes.factors.set(ADMIN, {
+      id: id<'SecondFactor'>(0xf301),
+      marketId,
+      accountId: ADMIN,
+      state: 'active',
+      secretCiphertext: 'sealed',
+      pendingSecretCiphertext: null,
+      lastAcceptedStep: null,
+      activatedAt: START,
+      lockedAt: null,
+      createdAt: START,
+      recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
+        position: index + 1,
+        codeHash: new Uint8Array(32).fill(index + 1),
+        usedAt: null,
+      })),
+      version: 1,
+    });
   }
+
+  /** A fresh step-up proof of the admin session for the change (identity's verify route). */
+  const proveChange = (n: number) =>
+    fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf100 + n)}|${STEP_UP_KEY}`, clock.now());
 
   function sessionOf(population: 'seller' | 'admin' | 'customer', n: number) {
     const issued = tokens.issue();
@@ -167,6 +193,7 @@ describe.each(TEST_MARKETS)('account deletion routes over HTTP in market %s', (c
   it('lets an admin read and replace the setting, passing the reason to the use case', async () => {
     await boot();
     const session = sessionOf('admin', 2);
+    proveChange(2);
 
     const read = await call('get', 'admin', session);
     expect(read.status).toBe(200);
@@ -187,6 +214,43 @@ describe.each(TEST_MARKETS)('account deletion routes over HTTP in market %s', (c
         },
       },
     ]);
+  });
+
+  it('refuses the change without a fresh admin step-up, as the wallet switch does', async () => {
+    await boot();
+    const session = sessionOf('admin', 2);
+    const put = () => call('put', 'admin', session, body());
+    const refused = await put();
+    expect(refused.status).toBe(403);
+    expect(refused.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: STEP_UP_KEY },
+    });
+    expect(calls).toEqual([]);
+    // A proof older than its 5 minutes is not fresh.
+    proveChange(2);
+    clock.advance(Temporal.Duration.from({ minutes: 5 }));
+    expect((await put()).status).toBe(403);
+    // A proof of another session does not count.
+    proveChange(3);
+    expect((await put()).status).toBe(403);
+    expect(calls).toEqual([]);
+    // A fresh proof of this session: the change goes through to the use case.
+    proveChange(2);
+    expect((await put()).status).toBe(200);
+    expect(calls.map((c) => c.name)).toEqual(['set']);
+    // The read needs no proof.
+    fakes.stepUpProofs.clear();
+    expect((await call('get', 'admin', session)).status).toBe(200);
+    // The use case's own refusal (the proof spent meanwhile) carries the action key too.
+    proveChange(2);
+    next = err({ code: 'second-factor.required', actionKey: STEP_UP_KEY });
+    expect((await put()).body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: STEP_UP_KEY },
+    });
   });
 
   it('reads only the admin session: without one, or with a seller cookie, the gate sees an anonymous actor', async () => {
@@ -229,6 +293,7 @@ describe.each(TEST_MARKETS)('account deletion routes over HTTP in market %s', (c
   it('refuses a change without CSRF, with a stray field at either level and not as JSON', async () => {
     await boot();
     const session = sessionOf('admin', 2);
+    proveChange(2);
 
     expect((await call('put', 'admin', { cookie: session.cookie }, body())).status).toBe(403);
     const extra = await call('put', 'admin', session, body({ x: 1 }));
@@ -263,6 +328,7 @@ describe.each(TEST_MARKETS)('account deletion routes over HTTP in market %s', (c
   it('maps invalid, conflict and denied', async () => {
     await boot();
     const session = sessionOf('admin', 2);
+    proveChange(2);
     const put = () => call('put', 'admin', session, body());
 
     next = err({ code: 'validation.failed', fields: [{ path: 'reason', code: 'range' }] });

@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, Result } from '@mondapac/shared-kernel';
+import type { StepUpRefusal } from '../../../platform/authz';
+import { ACCOUNT_DELETION_SETTINGS_CHANGE_STEP_UP } from '../contracts/step-up';
 import {
   DEFAULT_ACCOUNT_DELETION_SETTINGS,
   parseAccountDeletionSettings,
@@ -18,7 +20,12 @@ export type AccountDeletionSettingsFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'validation.failed'; readonly fields: readonly FieldError[] }
   /** Another admin changed the setting first; the screen reloads and tries again. */
-  | { readonly code: 'customers.conflict' };
+  | { readonly code: 'customers.conflict' }
+  /** The admin has no fresh two-step proof for the change: verify one, then repeat. */
+  | { readonly code: 'second-factor.required'; readonly actionKey: string }
+  /** The admin has no active two-step: set it up first. */
+  | { readonly code: 'second-factor.enrolment-required'; readonly actionKey: string }
+  | { readonly code: 'access.unavailable' };
 
 /** Account deletion is switched off in this Market (package 2 maps it to HTTP 403). */
 export interface AccountDeletionDisabled {
@@ -60,6 +67,25 @@ export function accountDeletionSettingsAggregateId(
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as Id<'AccountDeletionSettings'>;
 }
 
+/** Whether the actor is an acting-as session (Login as Seller): the reserved marker on the actor. */
+function isActingAs(context: CallContext): boolean {
+  const actor = context.actor;
+  if (!Object.hasOwn(actor, 'actingAs')) return false;
+  const marker = (actor as { readonly actingAs?: unknown }).actingAs;
+  return marker !== null && marker !== undefined;
+}
+
+/** identity's refusal of the step-up, as the change answers it; anything else stays closed. */
+function stepUpFailure(refusal: StepUpRefusal): AccountDeletionSettingsFailure {
+  if (
+    refusal.code === 'second-factor.required' ||
+    refusal.code === 'second-factor.enrolment-required'
+  ) {
+    return { code: refusal.code, actionKey: refusal.actionKey };
+  }
+  return { code: refusal.code === 'access.unavailable' ? 'access.unavailable' : 'access.denied' };
+}
+
 const isAdmin = (context: CallContext): boolean =>
   context.actor.kind === 'authenticated' && context.actor.population === 'admin';
 
@@ -93,7 +119,9 @@ export async function viewAccountDeletionSettings(
 }
 
 /**
- * An admin replaces the setting from the version they saw, with a reason. Each change is a new
+ * An admin replaces the setting from the version they saw, with a reason and a fresh admin
+ * step-up proof (`customers.account-deletion-settings.change`, spent in the unit of the change, as
+ * the wallet switch does). Each change is a new
  * version in the insert-only history (with the reason), an audit row and an outbox event, all in
  * one unit.
  */
@@ -107,7 +135,7 @@ export async function setAccountDeletionSettings(
   },
 ): Promise<Result<AccountDeletionSettingsView, AccountDeletionSettingsFailure>> {
   const actor = context.actor;
-  if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
+  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAs(context)) {
     return err({ code: 'access.denied' });
   }
   const expected = input?.expectedVersion;
@@ -134,6 +162,11 @@ export async function setAccountDeletionSettings(
       // The same values again change nothing: no new version, no audit row, no event.
       if (sameSettings(before.settings, next)) return ok(before);
 
+      // The admin step-up, spent here and only here (ADR-0018: authorization in the use case), in
+      // the unit of the change: one proof serves one change, and a refusal commits nothing.
+      const spent = await deps.stepUp.consume(context, ACCOUNT_DELETION_SETTINGS_CHANGE_STEP_UP);
+      if (!spent.ok) return err(stepUpFailure(spent.error));
+
       const version = before.version + 1;
       const written = await deps.accountDeletionSettings.append(context.market, {
         version,
@@ -148,7 +181,11 @@ export async function setAccountDeletionSettings(
         context,
         AccountDeletionSettingsChanged.entry('account-deletion-settings', {
           before: snapshot(before),
-          after: snapshot(after),
+          after: {
+            ...snapshot(after),
+            stepUpSessionId: spent.value.sessionId,
+            stepUpVerifiedAt: spent.value.verifiedAt,
+          },
         }),
       );
       await deps.outbox.append(context, [

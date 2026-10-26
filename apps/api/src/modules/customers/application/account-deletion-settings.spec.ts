@@ -1,5 +1,5 @@
-import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
-import type { Id } from '@mondapac/shared-kernel';
+import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   SequenceIdGenerator,
@@ -21,6 +21,7 @@ import { AccountDeletionSettingsChanged } from '../domain/audit';
 import {
   accountDeletionSettingsAggregateId,
   assertAccountDeletionAllowed,
+  setAccountDeletionSettings,
   type AccountDeletionAvailability,
 } from './account-deletion-settings-flow';
 import type { CustomersDependencies } from './customers-dependencies';
@@ -28,6 +29,7 @@ import {
   MemoryAccountDeletionSettings,
   RecordingAudit,
   RecordingOutbox,
+  RecordingStepUp,
 } from './testing/in-memory-account-deletion';
 import { InMemoryAddresses, ReversibleAddressCipher } from './testing/in-memory-address-book';
 import { ConfigAddressPolicy } from '../infrastructure/config-address-policy';
@@ -47,6 +49,9 @@ const id = <T extends string>(n: number): Id<T> => {
   return parsed.value as Id<T>;
 };
 const ADMIN = id<'Account'>(0xad);
+const SESSION = id<'Session'>(0x61);
+const VERIFIED_AT = Temporal.Instant.from('2026-10-26T09:58:00Z');
+const STEP_UP_KEY = 'customers.account-deletion-settings.change';
 const REASON = 'Legal review finished; buyers may now delete their account';
 const on = (waitingPeriodDays = 30) => ({ enabled: true, waitingPeriodDays });
 
@@ -119,6 +124,7 @@ describe.each(TEST_MARKET_IDS)('account deletion setting use cases in market %s'
   let store: MemoryAccountDeletionSettings;
   let audit: RecordingAudit;
   let outbox: RecordingOutbox;
+  let stepUp: RecordingStepUp;
   let units: FakeUnitOfWork;
 
   const actor = (population: 'admin' | 'seller' | 'customer', target = market) =>
@@ -127,7 +133,7 @@ describe.each(TEST_MARKET_IDS)('account deletion setting use cases in market %s'
       testAuthenticatedActor(target, {
         population,
         accountId: population === 'admin' ? ADMIN : id<'Account'>(0xa1),
-        sessionId: id<'Session'>(0x61),
+        sessionId: SESSION,
         sellerId: population === 'seller' ? id<'Seller'>(0x51) : null,
       }),
       `deletion-${population}-abcd`,
@@ -138,6 +144,7 @@ describe.each(TEST_MARKET_IDS)('account deletion setting use cases in market %s'
     store = new MemoryAccountDeletionSettings();
     audit = new RecordingAudit();
     outbox = new RecordingOutbox();
+    stepUp = new RecordingStepUp(VERIFIED_AT);
     units = new FakeUnitOfWork();
     deps = {
       unitOfWork: units,
@@ -149,6 +156,7 @@ describe.each(TEST_MARKET_IDS)('account deletion setting use cases in market %s'
       accountDeletionSettings: store,
       audit,
       outbox,
+      stepUp,
     };
   });
 
@@ -189,7 +197,13 @@ describe.each(TEST_MARKET_IDS)('account deletion setting use cases in market %s'
     expect(audit.entries).toEqual([
       AccountDeletionSettingsChanged.entry('account-deletion-settings', {
         before: { version: 0, enabled: false, waitingPeriodDays: 30 },
-        after: { version: 1, enabled: true, waitingPeriodDays: 45 },
+        after: {
+          version: 1,
+          enabled: true,
+          waitingPeriodDays: 45,
+          stepUpSessionId: SESSION,
+          stepUpVerifiedAt: VERIFIED_AT,
+        },
       }),
     ]);
     expect(outbox.events).toHaveLength(1);
@@ -205,6 +219,64 @@ describe.each(TEST_MARKET_IDS)('account deletion setting use cases in market %s'
         waitingPeriodDays: 45,
       },
     });
+  });
+
+  it('spends the admin step-up of the change in its unit, once per change', async () => {
+    await set(on(45));
+    expect(stepUp.asked).toEqual([STEP_UP_KEY]);
+    await set(on(60), 1);
+    expect(stepUp.asked).toEqual([STEP_UP_KEY, STEP_UP_KEY]);
+  });
+
+  it('refuses the change without a fresh step-up, fail closed, writing nothing', async () => {
+    for (const refusal of [
+      { code: 'second-factor.required', actionKey: STEP_UP_KEY },
+      { code: 'second-factor.enrolment-required', actionKey: STEP_UP_KEY },
+    ] as const) {
+      stepUp.answer = err(refusal);
+      expect(await set(on(45))).toEqual(err(refusal));
+    }
+    stepUp.answer = err({ code: 'access.unavailable' });
+    expect(await set(on(45))).toEqual(err({ code: 'access.unavailable' }));
+    stepUp.answer = err({ code: 'access.denied' });
+    expect(await set(on(45))).toEqual(err({ code: 'access.denied' }));
+    stepUp.answer = err({ code: 'access.unauthenticated' });
+    expect(await set(on(45))).toEqual(err({ code: 'access.denied' }));
+    expect(store.rows).toEqual([]);
+    expect(audit.entries).toEqual([]);
+    expect(outbox.events).toEqual([]);
+    expect(await view()).toEqual(ok({ version: 0, settings: DEFAULT_ACCOUNT_DELETION_SETTINGS }));
+  });
+
+  it('spends no proof for an invalid body, a refused caller, a stale version or a no-op', async () => {
+    await set(on(5));
+    await set(on(), 0, actor('customer'));
+    await set(on(), 0, actor('admin'), '');
+    expect(stepUp.asked).toEqual([]);
+    await set(on(45));
+    stepUp.asked.length = 0;
+    await set(on(60), 0);
+    await set(on(45), 1);
+    expect(stepUp.asked).toEqual([]);
+  });
+
+  it('refuses an acting-as session before anything else', async () => {
+    const context = actor('admin');
+    const actingAs = {
+      ...context,
+      actor: { ...context.actor, actingAs: { adminAccountId: ADMIN } },
+    } as unknown as CallContext;
+    // The gate refuses a context that is not minted, so the flow itself is called here: it must
+    // refuse the reserved acting-as marker on its own, before any write.
+    expect(
+      await setAccountDeletionSettings(deps, actingAs, {
+        settings: on(45),
+        expectedVersion: 0,
+        reason: REASON,
+      }),
+    ).toEqual(err({ code: 'access.denied' }));
+    expect(stepUp.asked).toEqual([]);
+    expect(store.rows).toEqual([]);
   });
 
   it('keeps the reason and the actor out of the audit row and the event', async () => {

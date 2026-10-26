@@ -1,11 +1,17 @@
-import { encodePayload } from '@mondapac/shared-kernel';
+import { encodePayload, ok, Temporal } from '@mondapac/shared-kernel';
 import type {
   AuditEntry,
   CallContext,
   Id,
   MarketContext,
   PendingEvent,
+  Result,
 } from '@mondapac/shared-kernel';
+import type {
+  ConsumedStepUp,
+  StepUpProofConsumer,
+  StepUpRefusal,
+} from '../../../../platform/authz';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { AccountDeletionSettingsChanged } from '../../domain/audit';
@@ -72,5 +78,25 @@ export class RecordingOutbox implements OutboxWriter {
       this.events.push(event);
     }
     return Promise.resolve();
+  }
+}
+
+/**
+ * identity's spend of the admin step-up proof: a fresh proof of the caller's session unless a test
+ * sets `answer` to a refusal. Records every action key it was asked to spend.
+ */
+export class RecordingStepUp implements StepUpProofConsumer {
+  readonly asked: string[] = [];
+  answer: Result<ConsumedStepUp, StepUpRefusal> | null = null;
+
+  constructor(
+    private readonly verifiedAt: Temporal.Instant = Temporal.Instant.from('2026-10-26T09:58:00Z'),
+  ) {}
+
+  consume(context: CallContext, actionKey: string): Promise<Result<ConsumedStepUp, StepUpRefusal>> {
+    this.asked.push(actionKey);
+    if (this.answer !== null) return Promise.resolve(this.answer);
+    const sessionId = (context.actor as { readonly sessionId: Id<'Session'> }).sessionId;
+    return Promise.resolve(ok({ sessionId, verifiedAt: this.verifiedAt }));
   }
 }

@@ -12,6 +12,7 @@ import {
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import { RequiresStepUp } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -71,6 +72,7 @@ export class AdminAccountDeletionSettingsController {
 
   @Put()
   @HttpCode(200)
+  @RequiresStepUp('customers.account-deletion-settings.change')
   @ApiOperation({
     summary: 'Replace the buyer account deletion setting (admin)',
     description:
@@ -78,15 +80,22 @@ export class AdminAccountDeletionSettingsController {
       '(1 to 500 characters) are required. expectedVersion is the version the screen read; a ' +
       'different current version answers customers.conflict. The same values again change ' +
       'nothing. Every change is a new version in an insert-only history (with the reason), an ' +
-      'audit row and an outbox event. The platform has no step-up rule for admin routes, so ' +
-      'none applies.',
+      'audit row and an outbox event. Also needs a fresh two-step proof of this admin session ' +
+      'for `customers.account-deletion-settings.change` (`POST /identity/admin/step-up/verify`, ' +
+      'valid 5 minutes, spent by the change); without one the answer is 403 ' +
+      'second-factor.required with details.actionKey. Refused in an acting-as session.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: SetAccountDeletionSettingsRequest })
   @ApiOkResponse({ type: AccountDeletionSettingsBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description:
+      'access.denied, request.csrf, second-factor.required (details.actionKey: ' +
+      'customers.account-deletion-settings.change) or second-factor.enrolment-required',
+  })
   @ApiConflictResponse({ ...ERROR, description: 'customers.conflict (another admin saved first)' })
   async put(
     @Call() context: CallContext,

@@ -6,6 +6,7 @@ import {
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import { RecordingStepUp } from '../../src/modules/customers/application/testing/in-memory-account-deletion';
 import { assertAccountDeletionAllowed } from '../../src/modules/customers/application/account-deletion-settings-flow';
 import {
   InMemoryAddresses,
@@ -107,6 +108,9 @@ describe.each(TEST_MARKETS)('account deletion setting store in market %s (databa
     accountDeletionSettings: settings,
     audit,
     outbox,
+    // The admin step-up is identity's (admin-step-up.db-spec.ts covers it): a proof of the admin
+    // session is always there here, as in wallet-ledger.db-spec.ts.
+    stepUp: new RecordingStepUp(clock.now()),
   });
   const auditRows = async (target: MarketContext) =>
     (

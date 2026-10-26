@@ -74,10 +74,16 @@ manual admin deletion.
   evidence) and the outbox event `customers.account-deletion-settings-changed.v1` (previous and
   new `enabled` and `waitingPeriodDays`; no actor, because events carry none (ADR-0018 decision
   4), and no reason text), in one unit. `customers` gets its own `customers.outbox` table for it.
-- **Step-up.** The platform has no step-up or second-factor freshness rule for admin routes:
-  `@RequiresStepUp` is the seller shop's own OTP policy and does not apply to an admin session.
-  None was invented. If the owner wants a fresh second factor for this change, it needs an admin
-  step-up rule in `identity` first.
+- **Admin step-up** (owner decision, after PR #515). A change also needs a fresh two-step
+  proof of the admin's session for the admin step-up action
+  `customers.account-deletion-settings.change` (`POST identity/admin/step-up/verify`, valid 5
+  minutes), exactly as the wallet switch (`wallet.settings.change`): `@RequiresStepUp` on the
+  `PUT` route refuses without one with `403 second-factor.required` and `details.actionKey`
+  (`second-factor.enrolment-required` when the admin has no active two-step), and the flow spends
+  the proof in the unit of the change, so one proof serves one change and a refusal commits
+  nothing. A no-op, an invalid body or a stale version spends no proof. The audit row's `after`
+  names the proof (`stepUpSessionId`, `stepUpVerifiedAt`). An acting-as session is refused. The
+  `GET` needs no proof.
 - **Customer route.** `GET customers/me/account-deletion` (customer sessions only, `no-store`)
   answers `{ canDeleteAccount, waitingPeriodDays }`. The buyer UI reads only this.
 - **Server lock.** `assertAccountDeletionAllowed(settings, market)` in

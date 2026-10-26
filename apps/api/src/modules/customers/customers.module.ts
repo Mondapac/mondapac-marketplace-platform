@@ -1,7 +1,13 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  STEP_UP_CONSUMER,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -22,7 +28,11 @@ import { ListAddresses } from './application/use-cases/list-addresses.use-case';
 import { ReadDeliveryAddress } from './application/use-cases/read-delivery-address.use-case';
 import { SetDefaultAddress } from './application/use-cases/set-default-address.use-case';
 import { UpdateAddress } from './application/use-cases/update-address.use-case';
-import { CUSTOMERS_CHECKOUT_FACADE, CUSTOMERS_PERMISSIONS } from './contracts';
+import {
+  CUSTOMERS_CHECKOUT_FACADE,
+  CUSTOMERS_PERMISSIONS,
+  CUSTOMERS_STEP_UP_ACTIONS,
+} from './contracts';
 import { CUSTOMERS_AUDIT_ACTIONS } from './domain/audit';
 import { CUSTOMERS_EVENTS } from './domain/events';
 import { customersProviders } from './infrastructure/customers-providers';
@@ -43,6 +53,7 @@ const PORTS: readonly [keyof CustomersDependencies, InjectionToken][] = [
   ['accountDeletionSettings', ACCOUNT_DELETION_SETTINGS_REPOSITORY],
   ['audit', AUDIT_WRITER],
   ['outbox', OUTBOX_WRITER],
+  ['stepUp', STEP_UP_CONSUMER],
 ];
 
 /** Every customers use case shares one dependency object, built from the same ports. */
@@ -83,6 +94,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerAuditActions('customers', CUSTOMERS_AUDIT_ACTIONS),
     registerEvents('customers', CUSTOMERS_EVENTS),
     registerPermissions('customers', CUSTOMERS_PERMISSIONS),
+    registerStepUpActions('customers', CUSTOMERS_STEP_UP_ACTIONS),
     ...customersProviders,
     ...[
       ListAddresses,
