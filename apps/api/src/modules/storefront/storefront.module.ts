@@ -35,6 +35,7 @@ import { ViewPublishedStorefrontSlides } from './application/use-cases/view-publ
 import { ViewPublishedStorefrontPage } from './application/use-cases/view-published-page.use-case';
 import { ApproveStorefrontSlide } from './application/use-cases/approve-slide.use-case';
 import { PauseStorefrontSlide } from './application/use-cases/pause-slide.use-case';
+import { ReorderStorefrontSlides } from './application/use-cases/reorder-slides.use-case';
 import { ResumeStorefrontSlide } from './application/use-cases/resume-slide.use-case';
 import { SubmitStorefrontSlide } from './application/use-cases/submit-slide.use-case';
 import { ArchiveStorefrontSlide } from './application/use-cases/archive-slide.use-case';
@@ -44,6 +45,7 @@ import { PrepareStorefrontSlideCopy } from './application/use-cases/prepare-slid
 import { RestoreStorefrontSlideVersion } from './application/use-cases/restore-slide-version.use-case';
 import { UpdateStorefrontSlideDraft } from './application/use-cases/update-slide-draft.use-case';
 import { ViewStorefrontSlide } from './application/use-cases/view-slide.use-case';
+import { ViewStorefrontSlideOrder } from './application/use-cases/view-slide-order.use-case';
 import { STOREFRONT_PERMISSIONS } from './contracts';
 import { STOREFRONT_AUDIT_ACTIONS } from './domain/audit';
 import { storefrontProviders } from './infrastructure/storefront-providers';
@@ -130,9 +132,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RestoreStorefrontSlideVersion,
       UpdateStorefrontSlideDraft,
       ViewStorefrontSlide,
+      ViewStorefrontSlideOrder,
       ApproveStorefrontSlide,
       PauseStorefrontSlide,
       ResumeStorefrontSlide,
+      ReorderStorefrontSlides,
       SubmitStorefrontSlide,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
   ],

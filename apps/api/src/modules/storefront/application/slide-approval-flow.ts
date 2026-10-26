@@ -10,6 +10,7 @@ import type { Problems } from '../domain/fields';
 import { positionOf } from '../domain/slide-positions';
 import {
   capExceeded,
+  orderKey,
   readContent,
   readPlacements,
   windowProblems,
@@ -18,7 +19,7 @@ import {
 } from '../domain/slides';
 import { adminOf } from './page-flow';
 import { targetKey, type SlideTarget } from './ports/slide-targets';
-import type { PlacementRow, SlideRecord, SlideStamp } from './ports/slide.repository';
+import type { SlideRecord, SlideStamp } from './ports/slide.repository';
 import {
   detailOf,
   invalidField,
@@ -70,24 +71,59 @@ async function fullPositions(
   return full;
 }
 
-function projectionOf(
+/**
+ * Rebuilds the slide's projection from its live placements. The sort order of a placement is the
+ * one an editor saved by reordering the live slides (it survives a pause and a resume), unless a
+ * newly approved version asks for a different sort order than the version it replaces: then the
+ * approved version wins and the saved order of that placement is dropped. A placement with no
+ * saved order takes the version's. A saved order of a placement the version no longer has is
+ * forgotten. `previous` is the placements of the version that was live before this approval
+ * (null on a resume, where the version is the same and the saved order always stands). The slide
+ * row is locked by the caller.
+ */
+async function projectLive(
   deps: StorefrontDependencies,
+  context: CallContext,
   slide: SlideRecord,
   window: SlideWindow,
   placements: readonly SlidePlacement[],
-): PlacementRow[] {
-  return placements.map((placement) => ({
-    id: deps.ids.next<'StorefrontSlidePlacement'>(),
-    slideId: slide.id,
-    position: placement.position,
-    scope: placement.scope,
-    scopeId: placement.scopeId,
-    includeSubcategories: placement.includeSubcategories,
-    sortOrder: placement.sortOrder,
-    autoplay: placement.autoplay,
-    startsAt: window.startsAt,
-    endsAt: window.endsAt,
-  }));
+  previous: readonly SlidePlacement[] | null,
+): Promise<void> {
+  const saved = new Map(
+    (await deps.slides.savedOrdersOf(context.market, slide.id)).map((order) => [
+      orderKey(order),
+      order.sortOrder,
+    ]),
+  );
+  const before = new Map((previous ?? []).map((p) => [orderKey(p), p.sortOrder]));
+  const savedFor = (placement: SlidePlacement): number | undefined => {
+    const key = orderKey(placement);
+    if (!saved.has(key)) return undefined;
+    // The approved version asked for another sort order than the one it replaces: it wins.
+    if (previous !== null && before.get(key) !== placement.sortOrder) return undefined;
+    return saved.get(key);
+  };
+  await deps.slides.keepSavedOrders(
+    context.market,
+    slide.id,
+    placements.filter((placement) => savedFor(placement) !== undefined),
+  );
+  await deps.slides.replacePlacements(
+    context.market,
+    slide.id,
+    placements.map((placement) => ({
+      id: deps.ids.next<'StorefrontSlidePlacement'>(),
+      slideId: slide.id,
+      position: placement.position,
+      scope: placement.scope,
+      scopeId: placement.scopeId,
+      includeSubcategories: placement.includeSubcategories,
+      sortOrder: savedFor(placement) ?? placement.sortOrder,
+      autoplay: placement.autoplay,
+      startsAt: window.startsAt,
+      endsAt: window.endsAt,
+    })),
+  );
 }
 
 /**
@@ -245,11 +281,21 @@ export async function approveSlide(
       },
       stamp,
     );
+    const replaced =
+      slide.liveVersionId === null
+        ? null
+        : await deps.slides.findVersion(context.market, slide.id, slide.liveVersionId);
+    const previous = replaced === null ? [] : readPlacements(replaced.placements);
     if (project) {
-      await deps.slides.replacePlacements(
+      await projectLive(deps, context, slide, draft, placements, previous);
+    } else {
+      // Paused: nothing is projected, but a sort order the approved version changed is final now,
+      // so the resume does not bring an older saved order back.
+      const before = new Map(previous.map((p) => [orderKey(p), p.sortOrder]));
+      await deps.slides.keepSavedOrders(
         context.market,
         slide.id,
-        projectionOf(deps, slide, draft, placements),
+        placements.filter((p) => before.get(orderKey(p)) === p.sortOrder),
       );
     }
     await deps.audit.record(
@@ -321,11 +367,7 @@ export async function resumeSlide(
     const full = await fullPositions(deps, context, slide, slide, placements);
     if (full.length > 0)
       return err({ code: 'storefront.slide-position-full', fields: full } as const);
-    await deps.slides.replacePlacements(
-      context.market,
-      slide.id,
-      projectionOf(deps, slide, slide, placements),
-    );
+    await projectLive(deps, context, slide, slide, placements, null);
     await deps.slides.updateSlide(context.market, slide.id, { state: 'approved' }, stamp);
     await deps.audit.record(
       context,

@@ -1,8 +1,8 @@
 'use client';
 
-import { Badge, Banner, Button, Card, EmptyState, Select } from '@mondapac/ui';
+import { Badge, Banner, Button, Card, Dialog, EmptyState, Select } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
 import { fleetProblemOf } from './errors.ts';
 import { FleetsCard } from './fleets-card.tsx';
@@ -20,6 +20,11 @@ import {
 
 const P = 'fleets';
 const DEFAULT_OPTION = '';
+
+type Confirm =
+  | { readonly kind: 'active' }
+  | { readonly kind: 'edit'; readonly body: { name: string; rule: Rule } }
+  | null;
 
 type Editing = { readonly kind: 'new' } | { readonly kind: 'edit'; readonly model: Model } | null;
 
@@ -42,7 +47,14 @@ export function FleetSelectionPanel({
     null,
   );
   const [pending, setPending] = useState<'active' | 'model' | null>(null);
+  const [confirm, setConfirm] = useState<Confirm>(null);
   const busy = useRef(false);
+  const noticeRef = useRef<HTMLDivElement>(null);
+
+  // A saved change moves focus to its confirmation, so a keyboard or screen reader user lands on it.
+  useEffect(() => {
+    if (notice !== null) noticeRef.current?.focus();
+  }, [notice]);
 
   const nameOf = (fleet: FleetCode) =>
     selection.fleets.find((row) => row.fleet === fleet)?.displayName ?? fleet;
@@ -57,8 +69,21 @@ export function FleetSelectionPanel({
     return status === 401;
   };
 
-  async function saveActive(event: FormEvent) {
+  /** The methods whose model the admin changed, with the names before and after. */
+  const changes = METHODS.flatMap((method) => {
+    const wanted = choice[method] === DEFAULT_OPTION ? null : choice[method];
+    if (wanted === selection.active[method]) return [];
+    const label = (id: string | null) =>
+      selection.models.find((model) => model.id === id)?.name ?? t(`${P}.active.default`);
+    return [{ method, from: label(selection.active[method]), to: label(wanted) }];
+  });
+
+  function askActive(event: FormEvent) {
     event.preventDefault();
+    if (changes.length > 0) setConfirm({ kind: 'active' });
+  }
+
+  async function saveActive() {
     if (busy.current) return;
     busy.current = true;
     setPending('active');
@@ -127,12 +152,22 @@ export function FleetSelectionPanel({
 
   const options = [
     { value: DEFAULT_OPTION, label: t(`${P}.active.default`) },
-    ...selection.models.map((model) => ({ value: model.id, label: model.name })),
+    ...selection.models.map((model) => ({
+      value: model.id,
+      label: t(`${P}.model.option`, { name: model.name, kind: t(`${P}.kind.${model.rule.kind}`) }),
+    })),
   ];
+  const methodsOf = (model: Model) =>
+    METHODS.filter((method) => selection.active[method] === model.id);
 
   return (
     <div className="flex flex-col gap-6">
-      {notice === null ? null : <Banner tone="success">{t(`${P}.notice.${notice}`)}</Banner>}
+      {canManage ? null : <Banner tone="info">{t(`${P}.viewer-only`)}</Banner>}
+      {notice === null ? null : (
+        <div ref={noticeRef} tabIndex={-1} className="outline-none">
+          <Banner tone="success">{t(`${P}.notice.${notice}`)}</Banner>
+        </div>
+      )}
 
       <Card title={t(`${P}.active.title`)}>
         <p className="text-sm text-fg-muted">
@@ -142,7 +177,7 @@ export function FleetSelectionPanel({
         </p>
         {problem === null ? null : <Banner tone="critical">{t(`${P}.error.${problem}`)}</Banner>}
         {canManage ? (
-          <form className="flex flex-col gap-4" onSubmit={(e) => void saveActive(e)} noValidate>
+          <form className="flex flex-col gap-4" onSubmit={askActive} noValidate>
             <div className="grid gap-4 md:grid-cols-3">
               {METHODS.map((method) => (
                 <Select
@@ -185,7 +220,7 @@ export function FleetSelectionPanel({
         ) : (
           <ul className="flex flex-col gap-3">
             {selection.models.map((model) => {
-              const activeFor = METHODS.filter((method) => selection.active[method] === model.id);
+              const activeFor = methodsOf(model);
               return (
                 <li
                   key={model.id}
@@ -247,10 +282,67 @@ export function FleetSelectionPanel({
           fleets={selection.fleets}
           pending={pending === 'model'}
           problem={formProblem}
-          onSubmit={(body) => void saveModel(body)}
+          activeNote={
+            editing.kind === 'edit' && methodsOf(editing.model).length > 0
+              ? methodsOf(editing.model)
+                  .map((method) => t(`${P}.method.${method}`))
+                  .join(', ')
+              : null
+          }
+          onSubmit={(body) => {
+            if (editing.kind === 'edit' && methodsOf(editing.model).length > 0) {
+              setConfirm({ kind: 'edit', body });
+            } else void saveModel(body);
+          }}
           onCancel={() => setEditing(null)}
         />
       )}
+
+      <Dialog
+        open={confirm !== null}
+        title={t(`${P}.confirm.${confirm?.kind === 'edit' ? 'edit-title' : 'title'}`)}
+        onClose={() => setConfirm(null)}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setConfirm(null)}>
+              {t(`${P}.confirm.cancel`)}
+            </Button>
+            <Button
+              onClick={() => {
+                const taken = confirm;
+                setConfirm(null);
+                if (taken?.kind === 'active') void saveActive();
+                else if (taken?.kind === 'edit') void saveModel(taken.body);
+              }}
+            >
+              {t(`${P}.confirm.go`)}
+            </Button>
+          </>
+        }
+      >
+        {confirm?.kind === 'edit' && editing?.kind === 'edit' ? (
+          <p>
+            {t(`${P}.confirm.edit-body`, {
+              name: editing.model.name,
+              methods: methodsOf(editing.model)
+                .map((method) => t(`${P}.method.${method}`))
+                .join(', '),
+            })}
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {changes.map((change) => (
+              <li key={change.method}>
+                {t(`${P}.confirm.line`, {
+                  method: t(`${P}.method.${change.method}`),
+                  from: change.from,
+                  to: change.to,
+                })}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Dialog>
 
       <FleetsCard
         fleets={selection.fleets}

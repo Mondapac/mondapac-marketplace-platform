@@ -150,6 +150,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Phase 5 package 4: the worker's queue of shipments inventory has not recorded yet.
   'ordering.seller_orders_unrecorded_shipments_idx':
     "CREATE INDEX seller_orders_unrecorded_shipments_idx ON ordering.seller_orders USING btree (market_id, shipped_at) WHERE ((inventory_recorded_at IS NULL) AND (fulfilment <> 'to-ship'::text))",
+  // Personalization 1d-2: the bought-together rebuild pages confirmed orders by time.
+  'ordering.orders_market_id_confirmed_at_id_idx':
+    "CREATE INDEX orders_market_id_confirmed_at_id_idx ON ordering.orders USING btree (market_id, confirmed_at, id) WHERE (status = 'confirmed'::text)",
   // Phase 5 package 1: a Stripe session or payment intent belongs to one order.
   'ordering.orders_stripe_payment_intent_id_key':
     'CREATE UNIQUE INDEX orders_stripe_payment_intent_id_key ON ordering.orders USING btree (stripe_payment_intent_id) WHERE (stripe_payment_intent_id IS NOT NULL)',
@@ -228,6 +231,18 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Tax: at most one active strategy per Market.
   'tax.tax_strategies_one_active_key':
     'CREATE UNIQUE INDEX tax_strategies_one_active_key ON tax.tax_strategies USING btree (market_id) WHERE active',
+  // Customer wallet (package 1): the expiry sweeps, the held holds of one wallet for the books
+  // check, and the journals of one hold or one lot for the commit-time checks.
+  'wallet.holds_market_id_expires_at_id_idx':
+    "CREATE INDEX holds_market_id_expires_at_id_idx ON wallet.holds USING btree (market_id, expires_at, id) WHERE (status = 'held'::text)",
+  'wallet.holds_market_id_wallet_account_id_amount_minor_idx':
+    "CREATE INDEX holds_market_id_wallet_account_id_amount_minor_idx ON wallet.holds USING btree (market_id, wallet_account_id, amount_minor) WHERE (status = 'held'::text)",
+  'wallet.journals_market_id_hold_id_idx':
+    'CREATE INDEX journals_market_id_hold_id_idx ON wallet.journals USING btree (market_id, hold_id) WHERE (hold_id IS NOT NULL)',
+  'wallet.journals_market_id_lot_id_idx':
+    'CREATE INDEX journals_market_id_lot_id_idx ON wallet.journals USING btree (market_id, lot_id) WHERE (lot_id IS NOT NULL)',
+  'wallet.lots_market_id_expires_at_id_idx':
+    "CREATE INDEX lots_market_id_expires_at_id_idx ON wallet.lots USING btree (market_id, expires_at, id) WHERE ((source = 'promo'::text) AND (remaining_minor > 0))",
 };
 
 const OUTBOX_COLUMNS = `

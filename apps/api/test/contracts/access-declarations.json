@@ -393,11 +393,13 @@
   { "name": "ordering.best-selling-offers", "rule": "anonymous" },
   { "name": "ordering.book-carrier-deliveries", "rule": "system" },
   { "name": "ordering.book-ready-carrier-delivery", "rule": "system" },
+  { "name": "ordering.bought-together", "rule": "anonymous" },
   { "name": "ordering.cancel-carrier-after-refund", "rule": "system" },
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.order-notice", "rule": "system" },
+  { "name": "ordering.rebuild-offer-pairs", "rule": "system" },
   { "name": "ordering.record-carrier-progress", "rule": "system" },
   { "name": "ordering.record-ledger", "rule": "system" },
   { "name": "ordering.record-shipments", "rule": "system" },
@@ -432,6 +434,7 @@
   { "name": "pricing.retire-series-for-removed-variant", "rule": "system" },
   { "name": "pricing.specials-in-force", "rule": "anonymous" },
   { "name": "search.list-bestsellers", "rule": "anonymous" },
+  { "name": "search.list-bought-together", "rule": "anonymous" },
   { "name": "search.list-for-you", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "search.list-for-you-guest", "rule": "anonymous" },
   {
@@ -531,5 +534,13 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
-  { "name": "tax.reverse-refund-tax", "rule": "anonymous" }
+  { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
+  { "name": "wallet.balance-of", "rule": "system" },
+  { "name": "wallet.capture-hold", "rule": "system" },
+  { "name": "wallet.expire-wallet-credit", "rule": "system" },
+  { "name": "wallet.grant-credit", "rule": "system" },
+  { "name": "wallet.place-hold", "rule": "system" },
+  { "name": "wallet.release-hold", "rule": "system" },
+  { "name": "wallet.view-my-history", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "wallet.view-my-wallet", "rule": "own-resources", "whenSellerNotApproved": "deny" }
 ]
