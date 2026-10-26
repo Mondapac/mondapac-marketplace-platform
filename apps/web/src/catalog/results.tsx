@@ -48,16 +48,27 @@ export function Crumbs({
 export function ResultsHead({
   title,
   crumbs,
+  total,
   children,
 }: {
   readonly title: string;
   readonly crumbs?: ReactNode;
+  /** The number of products, shown beside the title on a phone; left out when unknown. */
+  readonly total?: number;
   readonly children?: ReactNode;
 }) {
+  const t = useTranslations('catalog');
   return (
     <div className="rhead">
       {crumbs}
-      <h1>{title}</h1>
+      {total === undefined ? (
+        <h1>{title}</h1>
+      ) : (
+        <div className="rtitle">
+          <h1>{title}</h1>
+          <span className="hcount num">{t('products-total', { count: total })}</span>
+        </div>
+      )}
       {children}
     </div>
   );
@@ -141,6 +152,7 @@ export function ProductResults({
           pageSize={result.pageSize}
           scope={loadMore.scope}
           state={loadMore.state}
+          path={loadMore.path}
         >
           {pagerNode}
         </LoadMoreGrid>

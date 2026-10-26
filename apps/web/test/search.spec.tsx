@@ -120,7 +120,7 @@ describe('search results page', () => {
       within(quick)
         .getAllByRole('button')
         .map((b) => b.textContent),
-    ).toEqual(['Halal', 'Special prices', 'All filters']);
+    ).toEqual(['All filters', 'Halal', 'Special prices']);
     // Two selects: the phone's copy in the sticky bar and the result bar's (CSS shows one).
     const sort = screen.getAllByRole('combobox')[0]!;
     expect(

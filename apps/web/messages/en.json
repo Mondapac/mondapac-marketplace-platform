@@ -12,7 +12,6 @@
     "cart": "{count, plural, =0 {Cart, empty} one {Cart, # item, {total}} other {Cart, # items, {total}}}",
     "search": "Search",
     "search-placeholder": "Search products, stores",
-    "search-open": "Search products and stores",
     "log-out": "Log out"
   },
   "rail": {
@@ -440,6 +439,8 @@
     "showing": "Showing {shown} of {total}",
     "showing-some": "Showing {shown, plural, one {# product} other {# products}}",
     "load-more": "Load more",
+    "sort-short": "Sort:",
+    "products-total": "{count, plural, one {# product} other {# products}}",
     "loading-more": "Loading…",
     "load-more-failed": "We could not load more products. Try again.",
     "loaded": "{count, plural, one {# more product} other {# more products}} loaded. Showing {shown} of {total}.",

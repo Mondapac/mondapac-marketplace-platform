@@ -3,18 +3,34 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
-import { NO_FILTERS, throughOf, type ListingState } from '../src/catalog/listing-state.ts';
+import {
+  MAX_THROUGH,
+  NO_FILTERS,
+  throughOf,
+  type ListingState,
+} from '../src/catalog/listing-state.ts';
 import { NumberedPager } from '../src/catalog/listing.tsx';
 import type * as Actions from '../src/catalog/load-more.ts';
 import { loadMoreProducts } from '../src/catalog/load-more.ts';
-import { ProductResults } from '../src/catalog/results.tsx';
+import { ListingFilters } from '../src/catalog/listing-controls.tsx';
+import { ProductResults, ResultsHead } from '../src/catalog/results.tsx';
 import { findProductsThrough } from '../src/catalog/through.ts';
 import { HomeSearch } from '../src/home/home-search.tsx';
 import { Header } from '../src/shell/header.tsx';
-import { COLLAPSE_ATTRIBUTE, COLLAPSE_SLACK, nextCollapse } from '../src/shell/search-collapse.ts';
+import {
+  COLLAPSE_ATTRIBUTE,
+  COLLAPSE_SLACK,
+  REOPEN_SLACK,
+  nextCollapse,
+} from '../src/shell/search-collapse.ts';
 import { SearchView } from '../src/shell/search-view.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
-import { LISTING_PAGE_SIZE, findProducts, type ProductPage } from '../src/storefront/catalog.ts';
+import {
+  LISTING_PAGE_SIZE,
+  NO_FACETS,
+  findProducts,
+  type ProductPage,
+} from '../src/storefront/catalog.ts';
 import type { ShelfCard } from '../src/storefront/types.ts';
 
 vi.mock('next/navigation', () => ({
@@ -59,7 +75,7 @@ const cards = (from: number, count: number, currency: string) =>
   Array.from({ length: count }, (_, i) => card(from + i, currency));
 
 describe('home search collapse logic', () => {
-  const base = { collapsed: false, anchor: 0, fieldHeight: 56 };
+  const base = { collapsed: false, anchor: 0, fieldHeight: 56, maxY: 5000 };
 
   it('stays open at the top of the page', () => {
     expect(nextCollapse({ ...base, y: 0 })).toEqual({ collapsed: false, anchor: 0 });
@@ -74,9 +90,24 @@ describe('home search collapse logic', () => {
 
   it('reopens on a run up and at the top, and stays closed on jitter', () => {
     const closed = { ...base, collapsed: true, anchor: 400 };
-    expect(nextCollapse({ ...closed, y: 400 - COLLAPSE_SLACK + 1 }).collapsed).toBe(true);
-    expect(nextCollapse({ ...closed, y: 400 - COLLAPSE_SLACK }).collapsed).toBe(false);
+    expect(nextCollapse({ ...closed, y: 400 - REOPEN_SLACK + 1 }).collapsed).toBe(true);
+    expect(nextCollapse({ ...closed, y: 400 - REOPEN_SLACK }).collapsed).toBe(false);
     expect(nextCollapse({ ...closed, y: 0 }).collapsed).toBe(false);
+  });
+
+  it('reopens later than it collapses (12px down, 32px up)', () => {
+    expect(COLLAPSE_SLACK).toBe(12);
+    expect(REOPEN_SLACK).toBe(32);
+  });
+
+  it('ignores iOS bounce above the top and below the end of the page', () => {
+    const closed = { ...base, collapsed: true, anchor: 4990, maxY: 5000 };
+    // Rubber-band at the bottom: the position goes past the end and back; nothing flips.
+    expect(nextCollapse({ ...closed, y: 5040 })).toEqual({ collapsed: true, anchor: 4990 });
+    const open = { ...base, collapsed: false, anchor: 4950, maxY: 5000 };
+    expect(nextCollapse({ ...open, y: 5060 })).toEqual({ collapsed: false, anchor: 4950 });
+    // Rubber-band at the top.
+    expect(nextCollapse({ ...closed, y: -30 })).toEqual({ collapsed: true, anchor: 4990 });
   });
 });
 
@@ -104,6 +135,10 @@ describe('phone home search field', () => {
   });
 
   it('toggles the collapsed state on scroll down and up, and clears it on leaving', () => {
+    Object.defineProperty(document.documentElement, 'scrollHeight', {
+      value: 5000,
+      configurable: true,
+    });
     scrollTo(0);
     const { unmount } = withIntl(<HomeSearch />);
     scrollTo(300);
@@ -111,6 +146,9 @@ describe('phone home search field', () => {
     scrollTo(330);
     expect(root.getAttribute(COLLAPSE_ATTRIBUTE)).toBe('collapsed');
     scrollTo(300);
+    // 30px up is under the reopen distance.
+    expect(root.getAttribute(COLLAPSE_ATTRIBUTE)).toBe('collapsed');
+    scrollTo(290);
     expect(root.getAttribute(COLLAPSE_ATTRIBUTE)).toBeNull();
     scrollTo(400);
     expect(root.getAttribute(COLLAPSE_ATTRIBUTE)).toBe('collapsed');
@@ -119,16 +157,9 @@ describe('phone home search field', () => {
     scrollTo(0);
   });
 
-  it('puts a search icon in the header that opens the same view', () => {
-    withIntl(
-      <>
-        <Header delivery={{ label: 'Kedron 4031' }} />
-        <SearchView popular={[]} />
-      </>,
-    );
-    const dialog = screen.getByRole('dialog', { hidden: true });
-    fireEvent.click(screen.getByRole('button', { name: 'Search products and stores' }));
-    expect(dialog.hasAttribute('hidden')).toBe(false);
+  it('adds no search icon to the header (the tab bar has Search)', () => {
+    const { container } = withIntl(<Header delivery={{ label: 'Brisbane 4000' }} />);
+    expect(container.querySelector('.hs-icon')).toBeNull();
   });
 });
 
@@ -139,6 +170,9 @@ describe('listing address and server side', () => {
     expect(throughOf({ through: '3' }, 3)).toBe(3);
     expect(throughOf({ through: '2' }, 4)).toBe(4);
     expect(throughOf({ through: '99' }, 1)).toBe(1);
+    // The limit is an absolute page number.
+    expect(throughOf({ through: String(MAX_THROUGH) }, 1)).toBe(MAX_THROUGH);
+    expect(throughOf({ through: String(MAX_THROUGH + 1) }, 5)).toBe(5);
     expect(throughOf({ through: 'x' }, 1)).toBe(1);
   });
 
@@ -259,6 +293,71 @@ describe.each(MARKETS)('Load more in the $name market', ({ currency }) => {
   it('counts products when the source gives no total', () => {
     renderResults({ total: undefined as unknown as number });
     expect(screen.getByText('Showing 12 products')).toBeTruthy();
+  });
+});
+
+describe('Load more limit', () => {
+  it('offers a Next page link instead of the button at the last allowed page', async () => {
+    loadMore.mockResolvedValue({
+      items: cards(100, 12, 'AUD'),
+      page: MAX_THROUGH,
+      pageSize: 12,
+      hasMore: true,
+      total: 200,
+    });
+    const replace = vi.spyOn(window.history, 'replaceState');
+    window.history.replaceState(null, '', '/c/pantry');
+    replace.mockClear();
+    withIntl(
+      <ProductResults
+        result={{ items: cards(1, 12, 'AUD'), page: 1, pageSize: 12, hasMore: true, total: 200 }}
+        hrefFor={(page) => `/c/pantry?page=${page}`}
+        empty={<p>empty</p>}
+        loadMore={{
+          scope: { category: 'pantry' },
+          state: START,
+          path: '/c/pantry',
+          through: MAX_THROUGH - 1,
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    const next = await screen.findByRole('link', { name: 'Next page' });
+    expect(next.getAttribute('href')).toBe(`/c/pantry?page=${MAX_THROUGH + 1}`);
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+    // through reached the limit and was written once; never beyond it.
+    expect(replace.mock.calls.map((c) => c[2])).toEqual([`/c/pantry?through=${MAX_THROUGH}`]);
+    replace.mockRestore();
+  });
+});
+
+describe('phone listing bar and title', () => {
+  it('puts Filters and the compact Sort before the quick chips', () => {
+    withIntl(
+      <ListingFilters
+        path="/c/pantry"
+        state={START}
+        facets={{ ...NO_FACETS, certifications: [{ id: 'halal', name: 'Halal', count: 3 }] }}
+        total={14}
+      />,
+    );
+    const bar = screen.getByRole('group', { name: 'Quick filters' });
+    const order = [...bar.querySelectorAll('button, select')].map((el) =>
+      el.tagName === 'SELECT' ? 'SELECT' : el.textContent?.trim(),
+    );
+    expect(order.slice(0, 2)).toEqual(['All filters', 'SELECT']);
+    expect(order).toContain('Halal');
+    // The sort keeps its name for screen readers, and shows "Sort:" next to the choice.
+    expect(within(bar).getByRole('combobox', { name: 'Sort by' })).toBeTruthy();
+    expect(bar.textContent).toContain('Sort:');
+  });
+
+  it('shows the total next to the title, and nothing when there is none', () => {
+    const { unmount } = withIntl(<ResultsHead title="Pantry" total={86} />);
+    expect(screen.getByText('86 products')).toBeTruthy();
+    unmount();
+    withIntl(<ResultsHead title="Pantry" />);
+    expect(screen.queryByText(/products/)).toBeNull();
   });
 });
 

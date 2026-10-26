@@ -91,24 +91,6 @@ export function ListingFilters({ kind = 'category', path, state, facets, total }
     <>
       <div className="tools" role="group" aria-label={t('quick-filters')}>
         <span className="lbl">{t('filter-by')}</span>
-        {kind === 'search' ? (
-          <>
-            {certifications}
-            {special}
-          </>
-        ) : (
-          <>
-            {special}
-            {certifications}
-            {quick(
-              current.filters.sameDay,
-              withFlag(current, 'sameDay', !current.filters.sameDay),
-              'bolt',
-              t('same-day'),
-            )}
-          </>
-        )}
-        <SortSelect kind={kind} path={path} state={state} inBar />
         <button
           className="chip all"
           type="button"
@@ -126,6 +108,24 @@ export function ListingFilters({ kind = 'category', path, state, facets, total }
             </span>
           ) : null}
         </button>
+        <SortSelect kind={kind} path={path} state={state} inBar />
+        {kind === 'search' ? (
+          <>
+            {certifications}
+            {special}
+          </>
+        ) : (
+          <>
+            {special}
+            {certifications}
+            {quick(
+              current.filters.sameDay,
+              withFlag(current, 'sameDay', !current.filters.sameDay),
+              'bolt',
+              t('same-day'),
+            )}
+          </>
+        )}
       </div>
       <FiltersDrawer kind={kind} path={path} state={state} facets={facets} total={total} />
     </>
@@ -222,7 +222,14 @@ export function SortSelect({
   const { current, apply } = useApply(path, state);
   return (
     <label className={inBar ? 'sortw in-bar' : 'sortw'}>
-      {t('sort-by')}
+      {inBar ? (
+        <>
+          <span className="sr-only">{t('sort-by')}</span>
+          <span aria-hidden="true">{t('sort-short')}</span>
+        </>
+      ) : (
+        t('sort-by')
+      )}
       <span className="sel">
         <select
           value={current.sort}

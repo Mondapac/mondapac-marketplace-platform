@@ -75,19 +75,6 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
         </form>
         <div className="acts">
           <button
-            className="hs-icon iconbtn"
-            type="button"
-            aria-label={t('search-open')}
-            aria-haspopup="dialog"
-            onClick={() => {
-              setBrowseOpen(false);
-              setCartOpen(false);
-              setSearchOpen(true);
-            }}
-          >
-            <Icon name="search" />
-          </button>
-          <button
             className="deliver"
             type="button"
             aria-label={t('change-area', { area })}

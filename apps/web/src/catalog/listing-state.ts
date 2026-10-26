@@ -154,17 +154,18 @@ export function withPage(state: ListingState, page: number): ListingState {
   return { ...state, page };
 }
 
-/** The most pages one phone view of a listing may hold (a `through` past it falls back to `page`). */
+/** The last page number a phone list may reach by Load more (absolute, not counted from `page`). */
 export const MAX_THROUGH = 8;
 
 /**
  * The last page a phone listing has loaded (`?through=N`, Load more). The listing then shows
  * pages `page` to N in one list, so back, refresh and a shared link keep the place. Without
- * `through`, or with one that is not after `page`, it is just `page`. Desktop links never carry it.
+ * `through`, or with one that is not after `page` or is past MAX_THROUGH, it is just `page`.
+ * Desktop links never carry it. At MAX_THROUGH the phone offers a "Next page" link instead.
  */
 export function throughOf(query: Query, page: number): number {
   const text = first(query.through);
   if (text === undefined || !/^[0-9]{1,2}$/u.test(text)) return page;
   const through = Number(text);
-  return through > page && through <= MAX_THROUGH && through - page < MAX_THROUGH ? through : page;
+  return through > page && through <= MAX_THROUGH ? through : page;
 }

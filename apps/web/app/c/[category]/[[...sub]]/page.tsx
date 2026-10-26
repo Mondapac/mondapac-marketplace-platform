@@ -104,7 +104,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     <>
       <Crumbs trail={trail} current={title} />
       {banner ? <ListingBannerView banner={banner} /> : null}
-      <ResultsHead title={title}>
+      <ResultsHead title={title} {...(result.total === undefined ? {} : { total: result.total })}>
         <FilterChips
           label={t('filter-subcategory', { name: category.name })}
           chips={[

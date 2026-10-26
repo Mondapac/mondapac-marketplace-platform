@@ -10,8 +10,11 @@ import { useEffect } from 'react';
  */
 export const COLLAPSE_ATTRIBUTE = 'data-hsearch';
 
-/** Scrolling less than this many pixels the other way does not flip the state (touch jitter). */
+/** Scrolling down this many pixels collapses the field. */
 export const COLLAPSE_SLACK = 12;
+
+/** Scrolling up this many pixels reopens it (more than the way down, so it does not flutter). */
+export const REOPEN_SLACK = 32;
 
 export interface CollapseInput {
   readonly collapsed: boolean;
@@ -20,6 +23,8 @@ export interface CollapseInput {
   readonly anchor: number;
   /** The height of the field: collapsing starts once the page has scrolled past it. */
   readonly fieldHeight: number;
+  /** The last real scroll position (scrollHeight - innerHeight); beyond it is bounce. */
+  readonly maxY: number;
 }
 
 export interface CollapseResult {
@@ -29,7 +34,15 @@ export interface CollapseResult {
 }
 
 /** The next state for a scroll position; pure so it can be tested without a browser. */
-export function nextCollapse({ collapsed, y, anchor, fieldHeight }: CollapseInput): CollapseResult {
+export function nextCollapse({
+  collapsed,
+  y,
+  anchor,
+  fieldHeight,
+  maxY,
+}: CollapseInput): CollapseResult {
+  // iOS rubber-band: a position above the top or below the end is not a scroll.
+  if (y < 0 || y > maxY) return { collapsed, anchor };
   // At the top the field is always open (and rubber-band overscroll is not a scroll).
   if (y <= fieldHeight && !collapsed) return { collapsed: false, anchor: Math.max(0, y) };
   if (y <= 0) return { collapsed: false, anchor: 0 };
@@ -38,7 +51,7 @@ export function nextCollapse({ collapsed, y, anchor, fieldHeight }: CollapseInpu
     if (y - anchor >= COLLAPSE_SLACK) return { collapsed: true, anchor: y };
     return { collapsed: false, anchor: Math.min(anchor, y) };
   }
-  if (anchor - y >= COLLAPSE_SLACK) return { collapsed: false, anchor: y };
+  if (anchor - y >= REOPEN_SLACK) return { collapsed: false, anchor: y };
   return { collapsed: true, anchor: Math.max(anchor, y) };
 }
 
@@ -53,7 +66,8 @@ export function useSearchCollapse(fieldHeight = 56): void {
     let collapsed = false;
     let anchor = window.scrollY;
     const onScroll = () => {
-      const next = nextCollapse({ collapsed, y: window.scrollY, anchor, fieldHeight });
+      const maxY = Math.max(0, root.scrollHeight - window.innerHeight);
+      const next = nextCollapse({ collapsed, y: window.scrollY, anchor, fieldHeight, maxY });
       anchor = next.anchor;
       if (next.collapsed === collapsed) return;
       collapsed = next.collapsed;

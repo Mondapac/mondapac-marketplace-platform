@@ -1,11 +1,12 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ProductCard } from '../home/product-card.tsx';
 import type { ShelfCard } from '../storefront/types.ts';
 import { loadMoreProducts, type LoadMoreRequest } from './load-more.ts';
-import { listingHref, type ListingState } from './listing-state.ts';
+import { MAX_THROUGH, listingHref, type ListingState } from './listing-state.ts';
 
 // A phone listing's product grid with "Load more" (buyer mobile plan, M3). The server renders the
 // pages `state.page` to `through`; Load more appends the next page and writes `?through=N` to the
@@ -23,6 +24,8 @@ interface Props {
   readonly pageSize: number;
   readonly scope: LoadMoreRequest['scope'];
   readonly state: ListingState;
+  /** The listing's address (with the search words), for the link that takes over at the limit. */
+  readonly path: string;
   /** The numbered pager, which the phone hides once Load more works. */
   readonly children?: ReactNode;
 }
@@ -41,6 +44,7 @@ export function LoadMoreGrid({
   pageSize,
   scope,
   state,
+  path,
   children,
 }: Props) {
   const t = useTranslations('catalog');
@@ -112,7 +116,11 @@ export function LoadMoreGrid({
       </div>
       <div className="lm">
         <p className="lm-count num">{count}</p>
-        {more ? (
+        {more && last >= MAX_THROUGH ? (
+          <Link className="btn ghost lm-btn" href={listingHref(path, { ...state, page: last + 1 })}>
+            {t('next-page')}
+          </Link>
+        ) : more ? (
           <button
             className="btn ghost lm-btn"
             type="button"
