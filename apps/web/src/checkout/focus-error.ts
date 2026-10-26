@@ -4,13 +4,11 @@
 const FIELDS =
   'input:not([type=radio]):not([type=checkbox]):not([type=hidden]):not([type=button]):not([type=submit]):not([readonly]):not([disabled])';
 
-/** The first field under `root` that is empty or marked invalid, or null when none is. */
+/** The first field under `root`, in page order, that is marked invalid or empty; null when none is. */
 export function firstFieldToFix(root: ParentNode): HTMLInputElement | null {
-  const invalid = root.querySelector<HTMLInputElement>(`${FIELDS}[aria-invalid="true"]`);
-  if (invalid) return invalid;
   return (
     [...root.querySelectorAll<HTMLInputElement>(FIELDS)].find(
-      (input) => input.value.trim() === '',
+      (input) => input.getAttribute('aria-invalid') === 'true' || input.value.trim() === '',
     ) ?? null
   );
 }

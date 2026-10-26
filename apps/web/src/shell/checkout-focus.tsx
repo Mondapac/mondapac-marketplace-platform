@@ -35,14 +35,16 @@ export function FocusHeader() {
   return (
     <header className="cfh">
       <div className="cfh-in">
-        <Logo name={name} href="/" />
         <Link className="cfh-back" href="/cart">
           <Icon name="chevl" />
-          {t('focus-back')}
+          <span className="short">{t('focus-back-short')}</span>
+          <span className="long">{t('focus-back')}</span>
         </Link>
+        <Logo name={name} href="/" />
         <span className="cfh-secure">
           <Icon name="lock" />
-          {t('focus-secure')}
+          <span className="short">{t('focus-secure-short')}</span>
+          <span className="long">{t('focus-secure')}</span>
         </span>
       </div>
     </header>

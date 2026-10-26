@@ -676,6 +676,8 @@
     "summary-items": "{count, plural, one {# item} other {# items}}",
     "focus-secure": "Secure checkout",
     "focus-back": "Back to cart",
+    "focus-back-short": "Cart",
+    "focus-secure-short": "Secure",
     "note-open": "Add a note for this seller",
     "note-label": "Note for {seller} (optional)",
     "note-placeholder": "For example: please ring the bell",

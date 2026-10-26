@@ -10,6 +10,7 @@ import type { Cart } from '../src/cart/cart.ts';
 import { CheckoutPage } from '../src/checkout/checkout-page.tsx';
 import { firstFieldToFix } from '../src/checkout/focus-error.ts';
 import { isCheckoutFocusPath } from '../src/shell/checkout-focus.tsx';
+import { Dock } from '../src/shell/dock.tsx';
 import { StoreProvider, useStore } from '../src/shell/store-context.tsx';
 import { StoreShell } from '../src/shell/store-shell.tsx';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from '../src/storefront/sample-cart.ts';
@@ -135,9 +136,11 @@ describe('checkout focus mode', () => {
       expect(container.querySelector('.frame')!.getAttribute('data-focus')).toBe('checkout');
       const header = container.querySelector<HTMLElement>('.cfh')!;
       expect(within(header).getByText('Secure checkout')).toBeTruthy();
-      expect(within(header).getByRole('link', { name: 'Back to cart' }).getAttribute('href')).toBe(
-        '/cart',
-      );
+      expect(
+        within(header)
+          .getByRole('link', { name: /Back to cart/ })
+          .getAttribute('href'),
+      ).toBe('/cart');
       expect(within(header).getByRole('link', { name: /Mondapac|Monda/i })).toBeTruthy();
       unmount();
     }
@@ -163,10 +166,31 @@ describe('checkout focus mode', () => {
     );
     expect(block).toMatch(/:root\[data-keyboard='open'\] \.paybar \{\s*display: none;/);
     expect(phone).toContain('env(safe-area-inset-bottom, 0px)');
-    // Logical properties only: no physical left or right in the focus block.
-    expect(block.replace(/\/\*[\s\S]*?\*\//g, '')).not.toMatch(
-      /(margin|padding|border)-(left|right)|\b(left|right):/,
+    // The page gutters are physical insets, so they are used physically (as .consent does).
+    const code = block.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(code).not.toMatch(/(padding|margin)-inline:[^;]*var\(--g[lr]\)/);
+    expect(code).toContain('padding-left: var(--gl);');
+    expect(code).toContain('padding-right: var(--gr);');
+  });
+
+  it('puts the home-indicator inset on the bottom-most layer only', () => {
+    const css = readFileSync(join(import.meta.dirname, '../app/globals.css'), 'utf8');
+    const block = css.slice(css.indexOf('Checkout focus mode (M2'));
+    // The cookie bar carries it in focus mode; the Pay bar only when the dock is empty.
+    expect(block).toMatch(
+      /\.frame\[data-focus\] \.consent \{\s*padding-bottom: calc\(12px \+ env\(safe-area-inset-bottom, 0px\)\);/,
     );
+    expect(block).toContain('padding-bottom: calc(10px + var(--sf-dock-inset');
+  });
+
+  it('keeps the checkout fields at 16px on phones and tablets, and one Pay (the bar) there', () => {
+    const css = readFileSync(join(import.meta.dirname, '../app/globals.css'), 'utf8');
+    const phone = css.slice(css.indexOf('Checkout focus mode (M2'));
+    expect(phone).toMatch(
+      /\.fld input,\s*\.fld textarea,\s*\.ckdc input \{\s*font-size: max\(16px, 1em\);/,
+    );
+    expect(phone).toMatch(/\.ckpm \{\s*display: none;/);
+    expect(phone).toContain('max-inline-size: 560px');
   });
 });
 
@@ -232,7 +256,8 @@ describe('address fields', () => {
     expect(input('Full name').getAttribute('autocomplete')).toBe('name');
     expect(input('Street address and unit').getAttribute('autocomplete')).toBe('address-line1');
     expect(input('Suburb').getAttribute('autocomplete')).toBe('address-level2');
-    expect(input('State').getAttribute('autocomplete')).toBe('address-level1');
+    // The state is fixed by the service area (read-only): nothing to autofill.
+    expect(input('State').getAttribute('autocomplete')).toBeNull();
     expect(input('Postcode').getAttribute('autocomplete')).toBe('postal-code');
     expect(input('Postcode').getAttribute('inputmode')).toBe('numeric');
   });
@@ -241,7 +266,6 @@ describe('address fields', () => {
     manualFields(NZ_CHECKOUT, NZ_CART_SOURCE, NZ_CART);
     expect(input('Postcode').getAttribute('inputmode')).toBe('text');
     expect(input('Postcode').getAttribute('autocomplete')).toBe('postal-code');
-    expect(input('State').getAttribute('autocomplete')).toBe('address-level1');
   });
 
   it('types the email field as email with autofill on the guest step', () => {
@@ -255,7 +279,7 @@ describe('address fields', () => {
 });
 
 describe('first error', () => {
-  it('finds the first invalid field before an empty one, skipping read-only and radios', () => {
+  it('finds the first invalid or empty field in page order, skipping read-only and radios', () => {
     document.body.innerHTML = `
       <div id="r">
         <input type="radio" />
@@ -264,11 +288,11 @@ describe('first error', () => {
         <input id="bad" value="x" aria-invalid="true" />
       </div>`;
     const root = document.getElementById('r')!;
+    // Page order: the empty field comes before the invalid one.
+    expect(firstFieldToFix(root)?.id).toBe('empty');
+    (document.getElementById('empty') as HTMLInputElement).value = 'y';
     expect(firstFieldToFix(root)?.id).toBe('bad');
     document.getElementById('bad')!.removeAttribute('aria-invalid');
-    expect(firstFieldToFix(root)?.id).toBe('empty');
-    document.getElementById('empty')!.setAttribute('value', 'y');
-    (document.getElementById('empty') as HTMLInputElement).value = 'y';
     expect(firstFieldToFix(root)).toBeNull();
   });
 
@@ -286,5 +310,63 @@ describe('first error', () => {
     expect(section.contains(active)).toBe(true);
     expect(active.tagName).toBe('INPUT');
     expect(scrolled).toHaveBeenCalledWith(expect.objectContaining({ block: 'center' }));
+  });
+});
+
+describe('focus header, summary and Pay bar details', () => {
+  it('has Cart, the logo and a short Secure label in one row, with the full labels for 700px', () => {
+    const { container } = renderShell();
+    const row = container.querySelector<HTMLElement>('.cfh-in')!;
+    expect([...row.children].map((c) => c.className.split(' ')[0])).toEqual([
+      'cfh-back',
+      'logo',
+      'cfh-secure',
+    ]);
+    expect(row.querySelector('.cfh-back .short')!.textContent).toBe('Cart');
+    expect(row.querySelector('.cfh-back .long')!.textContent).toBe('Back to cart');
+    expect(row.querySelector('.cfh-secure .short')!.textContent).toBe('Secure');
+    expect(row.querySelector('.cfh-secure .long')!.textContent).toBe('Secure checkout');
+  });
+
+  it('says the terms in the Pay bar, with real links', () => {
+    const { container } = renderCheckout(SAMPLE_CHECKOUT, SAMPLE_CART_SOURCE, AU_CART);
+    const bar = container.querySelector<HTMLElement>('.paybar')!;
+    expect(bar.querySelector('.legal')!.textContent).toContain('By placing your order you agree');
+    expect(
+      within(bar)
+        .getAllByRole('link')
+        .map((a) => a.getAttribute('href')),
+    ).toEqual(['/terms', '/privacy']);
+  });
+
+  it('does not repeat the summary title inside the opened disclosure', () => {
+    const { container } = renderCheckout(SAMPLE_CHECKOUT, SAMPLE_CART_SOURCE, AU_CART);
+    const panel = container.querySelector<HTMLElement>('.cmob .cs')!;
+    expect(panel.querySelector('h2')).toBeNull();
+    expect(within(panel).getByText('Kedron Halal Butchers')).toBeTruthy();
+  });
+});
+
+describe('dock inset', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+  const inset = () => document.documentElement.style.getPropertyValue('--sf-dock-inset');
+
+  it('adds the home-indicator inset above an empty dock and none above an occupied one', () => {
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get');
+    height.mockReturnValue(0);
+    const empty = render(<Dock>{null}</Dock>);
+    expect(inset()).toContain('safe-area-inset-bottom');
+    empty.unmount();
+    expect(inset()).toBe('');
+    height.mockReturnValue(120);
+    const full = render(
+      <Dock>
+        <div className="consent" />
+      </Dock>,
+    );
+    expect(inset()).toBe('0px');
+    full.unmount();
   });
 });

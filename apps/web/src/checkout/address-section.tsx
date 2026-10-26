@@ -558,7 +558,7 @@ function ManualAddress({
           value={value.suburb}
           onText={set('suburb')}
         />
-        <Field label={t('region')} autoComplete="address-level1" value={area.region} readOnly />
+        <Field label={t('region')} value={area.region} readOnly />
         <Field
           label={t('postcode')}
           autoComplete="postal-code"

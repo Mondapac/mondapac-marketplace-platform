@@ -414,7 +414,7 @@ function SummaryDisclosure({ view }: { readonly view: CartView }) {
         </span>
       </button>
       <div className="cs" id={panel} hidden={!open}>
-        <MiniSummary view={view} discount={false} />
+        <MiniSummary view={view} discount={false} heading={false} />
       </div>
     </div>
   );
@@ -450,6 +450,7 @@ function PayBar({
         onPay={onPay}
         reasonId={reasonId}
       />
+      <small className="legal">{t.rich('agree-order', legalLinks)}</small>
     </div>
   );
 }
@@ -483,16 +484,19 @@ function ItemList({ view }: { readonly view: CartView }) {
 function MiniSummary({
   view,
   discount = true,
+  heading = true,
 }: {
   readonly view: CartView;
   readonly discount?: boolean;
+  /** False inside the folded summary, whose button already names it. */
+  readonly heading?: boolean;
 }) {
   const t = useTranslations('cart');
   const tco = useTranslations('checkout');
   const locale = useLocale();
   return (
     <>
-      <h2>{t('summary')}</h2>
+      {heading ? <h2>{t('summary')}</h2> : null}
       <ul className="cmini">
         {view.groups.map((g) => (
           <li key={g.seller.id}>
