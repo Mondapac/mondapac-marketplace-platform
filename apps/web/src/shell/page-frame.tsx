@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from 'react';
 import { useStore } from './store-context.tsx';
+import { from } from './breakpoints.ts';
 
 /**
  * The page behind the overlays. While Browse products, the search view, a listing's filters
@@ -44,7 +45,7 @@ export function PageFrame({ children }: { readonly children: ReactNode }) {
 
   useEffect(() => {
     if (!searchOpen || typeof window.matchMedia !== 'function') return;
-    const desktop = window.matchMedia('(min-width: 900px)');
+    const desktop = window.matchMedia(from('desktop'));
     const close = () => {
       if (desktop.matches) setSearchOpen(false);
     };

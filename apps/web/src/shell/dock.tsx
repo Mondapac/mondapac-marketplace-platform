@@ -1,0 +1,36 @@
+'use client';
+
+import { useEffect, useRef, type ReactNode } from 'react';
+import { useKeyboardOpen } from './use-keyboard.ts';
+
+/**
+ * The sticky bottom of the phone and tablet layout: the cookie bar above the tab bar. The page's
+ * own action bar (the product's buy bar, the cart's checkout bar) sticks above the dock using
+ * `--sf-dock-height`, and the assistant launcher lifts above both, so no layer lands on another.
+ * The dock writes its height (0 when it is empty or hidden) to `--sf-dock-height` on <html>, and
+ * hides the tab bar while the on-screen keyboard is open (see use-keyboard.ts).
+ */
+export function Dock({ children }: { readonly children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useKeyboardOpen();
+
+  useEffect(() => {
+    const dock = ref.current;
+    if (!dock) return;
+    const root = document.documentElement;
+    const set = () => root.style.setProperty('--sf-dock-height', `${dock.offsetHeight}px`);
+    set();
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(set) : null;
+    observer?.observe(dock);
+    return () => {
+      observer?.disconnect();
+      root.style.removeProperty('--sf-dock-height');
+    };
+  }, []);
+
+  return (
+    <div className="dock" ref={ref}>
+      {children}
+    </div>
+  );
+}
