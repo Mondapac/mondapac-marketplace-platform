@@ -14,6 +14,8 @@ export const PREPARED_SEARCHES: Readonly<Record<string, string>> = Object.freeze
 
 /** One projected placement of a live slide, with the slide facts the read needs. */
 export interface ServedPlacement {
+  /** The projection row's id: the last tie-break of which placement of a slide is served. */
+  readonly placementId: string;
   readonly slideId: string;
   readonly kind: SlideKind;
   readonly liveVersionId: string;
@@ -84,6 +86,20 @@ export function nextChange(
   return next;
 }
 
+/** How narrowly a placement is aimed: a named entity, then a category tree, then everywhere. */
+const specificity = (p: Pick<ServedPlacement, 'scope' | 'includeSubcategories'>): number =>
+  p.scope === 'all' ? 0 : p.scope === 'category' && p.includeSubcategories ? 1 : 2;
+
+/**
+ * Whether `a` is the placement of a slide to serve instead of `b`: the more specific scope, then
+ * the smaller placement id. Never the sort order: a reorder must not change which placement (and
+ * so which autoplay value) a page gets.
+ */
+const morePrecise = (a: ServedPlacement, b: ServedPlacement): boolean =>
+  specificity(a) !== specificity(b)
+    ? specificity(a) > specificity(b)
+    : a.placementId < b.placementId;
+
 /**
  * The placements to show now, one per slide (the best placement of a slide that matches twice),
  * pinned first, then by sort order, start time and id.
@@ -96,7 +112,7 @@ export function showNow(
   for (const p of placements) {
     if (!isLive(p, now)) continue;
     const held = best.get(p.slideId);
-    if (held === undefined || p.sortOrder < held.sortOrder) best.set(p.slideId, p);
+    if (held === undefined || morePrecise(p, held)) best.set(p.slideId, p);
   }
   return [...best.values()].sort(
     (a, b) =>

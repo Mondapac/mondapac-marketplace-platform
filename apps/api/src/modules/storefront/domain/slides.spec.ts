@@ -5,7 +5,10 @@ import {
   capExceeded,
   MAX_WINDOW_HOURS,
   parseDraft,
+  orderKey,
   parseNewSlide,
+  parseReorder,
+  reorderMismatch,
   readContent,
   readPlacements,
   scopesMeet,
@@ -501,6 +504,77 @@ describe.each(TEST_MARKETS)('slide domain in market %s', (code) => {
           { scope: 'seller', scopeId: UUID_B, includeSubcategories: false },
         ),
       ).toBe(false);
+    });
+  });
+
+  describe('the order of the live slides', () => {
+    const A = '01990000-0000-7000-8000-00000000000a';
+    const B = '01990000-0000-7000-8000-00000000000b';
+    const CAT = '01990000-0000-7000-8000-0000000000ca';
+
+    it('reads a position, a scope and the whole list', () => {
+      expect(parseReorder({ position: 'home.hero', slideIds: [A, B] })).toEqual({
+        ok: true,
+        value: { position: 'home.hero', scope: 'all', scopeId: null, slideIds: [A, B] },
+      });
+      expect(
+        parseReorder({ position: 'category.top', scope: 'category', scopeId: CAT, slideIds: [A] }),
+      ).toMatchObject({ ok: true, value: { scope: 'category', scopeId: CAT } });
+    });
+
+    it('refuses an unknown field, position or scope, a scope the position lacks and a bad list', () => {
+      const bad = (body: unknown) => {
+        const parsed = parseReorder(body);
+        return parsed.ok ? 'ok' : parsed.problems;
+      };
+      expect(bad({ position: 'home.hero', slideIds: [A], sortOrder: 1 })).toEqual([
+        { path: 'sortOrder', code: 'unknown-field' },
+      ]);
+      expect(bad({ position: 'nowhere', slideIds: [A] })).toEqual([
+        { path: 'position', code: 'enum' },
+      ]);
+      expect(
+        bad({ position: 'home.hero', scope: 'category', scopeId: CAT, slideIds: [A] }),
+      ).toEqual([{ path: 'scope', code: 'not-allowed-here' }]);
+      expect(bad({ position: 'category.top', scope: 'category', slideIds: [A] })).toEqual([
+        { path: 'scopeId', code: 'required' },
+      ]);
+      expect(bad({ position: 'home.hero', scopeId: CAT, slideIds: [A] })).toEqual([
+        { path: 'scopeId', code: 'not-allowed' },
+      ]);
+      expect(bad({ position: 'home.hero', slideIds: [] })).toEqual([
+        { path: 'slideIds', code: 'count' },
+      ]);
+      expect(bad({ position: 'home.hero', slideIds: [A, B, A] })).toEqual([
+        { path: 'slideIds[2]', code: 'duplicate' },
+      ]);
+      expect(bad({ position: 'home.hero', slideIds: ['nope'] })).toEqual([
+        { path: 'slideIds[0]', code: 'format' },
+      ]);
+      expect(bad({ position: 'home.hero', slideIds: Array(51).fill(A) })).toEqual([
+        { path: 'slideIds', code: 'count' },
+      ]);
+      expect(bad({ position: 'home.hero', slideIds: [A.toUpperCase()] })).toEqual([
+        { path: 'slideIds[0]', code: 'format' },
+      ]);
+      expect(bad(null)).toEqual([{ path: '', code: 'type' }]);
+    });
+
+    it('names a slide that is not live there and a live slide left out', () => {
+      expect(reorderMismatch([B, A], [A, B])).toEqual([]);
+      expect(reorderMismatch([A], [A, B])).toEqual([{ path: 'slideIds', code: 'incomplete' }]);
+      expect(reorderMismatch([A, B], [A])).toEqual([
+        { path: 'slideIds[1]', code: 'not-live-here' },
+      ]);
+    });
+
+    it('keys a saved order by position, scope and scope id', () => {
+      expect(orderKey({ position: 'home.hero', scope: 'all', scopeId: null })).not.toBe(
+        orderKey({ position: 'home.mid', scope: 'all', scopeId: null }),
+      );
+      expect(orderKey({ position: 'category.top', scope: 'category', scopeId: CAT })).not.toBe(
+        orderKey({ position: 'category.top', scope: 'all', scopeId: null }),
+      );
     });
   });
 });

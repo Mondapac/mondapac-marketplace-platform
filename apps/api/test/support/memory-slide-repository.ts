@@ -1,6 +1,9 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type {
+  LivePlacement,
+  PlacementOrder,
   PlacementRow,
+  SavedOrder,
   SlideChange,
   SlideRecord,
   SlideRepository,
@@ -18,6 +21,7 @@ export class MemorySlides implements SlideRepository {
   readonly versionRows = new Map<string, SlideVersionRecord & { marketId: string }>();
   readonly placements: (PlacementRow & { marketId: string })[] = [];
   readonly locks: string[] = [];
+  readonly saved: (SavedOrder & { marketId: string; slideId: Id<'StorefrontSlide'> })[] = [];
 
   listSlides(m: MarketContext, limit: number) {
     return Promise.resolve(
@@ -139,6 +143,7 @@ export class MemorySlides implements SlideRepository {
           }
           return [
             {
+              placementId: p.id,
               slideId: p.slideId,
               kind: slide.kind,
               liveVersionId: slide.liveVersionId,
@@ -175,4 +180,76 @@ export class MemorySlides implements SlideRepository {
     this.placements.push(...rows.map((r) => ({ ...r, marketId: m.marketId })));
     return Promise.resolve();
   }
+  livePlacementsAt(m: MarketContext, where: PlacementOrder, after: Temporal.Instant) {
+    return Promise.resolve(
+      this.placements
+        .filter((p) => {
+          const slide = this.slides.get(p.slideId);
+          return (
+            p.marketId === m.marketId &&
+            p.position === where.position &&
+            p.scope === where.scope &&
+            p.scopeId === where.scopeId &&
+            p.endsAt.epochMilliseconds > after.epochMilliseconds &&
+            slide?.marketId === m.marketId &&
+            slide.state === 'approved'
+          );
+        })
+        .map((p): LivePlacement => ({
+          slideId: p.slideId,
+          sortOrder: p.sortOrder,
+          startsAt: p.startsAt,
+        }))
+        .sort(
+          (a, b) =>
+            a.sortOrder - b.sortOrder ||
+            a.startsAt.epochMilliseconds - b.startsAt.epochMilliseconds ||
+            (a.slideId < b.slideId ? -1 : 1),
+        ),
+    );
+  }
+  setLiveOrder(
+    m: MarketContext,
+    where: PlacementOrder,
+    orders: readonly { readonly slideId: Id<'StorefrontSlide'>; readonly sortOrder: number }[],
+  ) {
+    for (const { slideId, sortOrder } of orders) {
+      this.placements.forEach((p, index) => {
+        if (
+          p.marketId === m.marketId &&
+          p.slideId === slideId &&
+          p.position === where.position &&
+          p.scope === where.scope &&
+          p.scopeId === where.scopeId
+        ) {
+          this.placements[index] = { ...p, sortOrder };
+        }
+      });
+      this.dropSaved(m, slideId, (o) => sameOrder(o, where));
+      this.saved.push({ ...where, sortOrder, slideId, marketId: m.marketId });
+    }
+    return Promise.resolve();
+  }
+  savedOrdersOf(m: MarketContext, slideId: Id<'StorefrontSlide'>) {
+    return Promise.resolve(
+      this.saved.filter((o) => o.marketId === m.marketId && o.slideId === slideId),
+    );
+  }
+  keepSavedOrders(
+    m: MarketContext,
+    slideId: Id<'StorefrontSlide'>,
+    keep: readonly PlacementOrder[],
+  ) {
+    this.dropSaved(m, slideId, (o) => !keep.some((k) => sameOrder(o, k)));
+    return Promise.resolve();
+  }
+  private dropSaved(m: MarketContext, slideId: string, drop: (o: SavedOrder) => boolean) {
+    for (let i = this.saved.length - 1; i >= 0; i -= 1) {
+      const o = this.saved[i]!;
+      if (o.marketId === m.marketId && o.slideId === slideId && drop(o)) this.saved.splice(i, 1);
+    }
+  }
 }
+
+const sameOrder = (a: PlacementOrder, b: PlacementOrder): boolean =>
+  a.position === b.position && a.scope === b.scope && a.scopeId === b.scopeId;

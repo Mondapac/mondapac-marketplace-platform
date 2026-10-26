@@ -572,6 +572,8 @@ export async function archiveSlide(
     const locked = await lockForChange(deps, context, input?.slide);
     if (!locked.ok) return err(locked.error);
     await deps.slides.replacePlacements(context.market, locked.slide.id, []);
+    // An archived slide is never projected again: its saved orders go with its placements.
+    await deps.slides.keepSavedOrders(context.market, locked.slide.id, []);
     await deps.slides.updateSlide(
       context.market,
       locked.slide.id,

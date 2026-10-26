@@ -17,6 +17,13 @@
     "defaultRateBps": 1500,
     "provisionalTaxRateBps": 1000
   },
+  "wallet": {
+    "balanceCapMinor": 50000,
+    "promoExpiryMonths": 12,
+    "adminIssueCapMinor": 5000,
+    "adminDailyCapMinor": 50000,
+    "expiringSoonDays": 30
+  },
   "tax": {
     "defaultRateBps": 1000,
     "refundCredit": { "enabled": false },

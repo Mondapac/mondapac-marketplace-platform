@@ -25,6 +25,19 @@ export class FacadeShelfSources implements ShelfSources {
     }
   }
 
+  async boughtTogetherOfferIds(
+    context: CallContext,
+    offerId: Id<'Offer'>,
+    limit: number,
+  ): Promise<readonly Id<'Offer'>[] | null> {
+    try {
+      const result = await this.ordering.boughtTogether(context, { offerId, limit });
+      return result.ok ? result.value : null;
+    } catch {
+      return null;
+    }
+  }
+
   async specials(context: CallContext, limit: number): Promise<readonly ShelfSpecial[] | null> {
     try {
       const result = await this.pricing.specialsInForce(context, { limit });

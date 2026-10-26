@@ -30,6 +30,7 @@ export const STOREFRONT_STATUS: Readonly<Record<string, number>> = Object.freeze
   'storefront.slide-not-paused': 409,
   'storefront.slide-position-full': 409,
   'storefront.slide-link-invalid': 409,
+  'storefront.slide-order-mismatch': 409,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
