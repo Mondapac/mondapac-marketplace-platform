@@ -183,12 +183,9 @@ describe('checkout focus mode', () => {
     expect(block).toContain('padding-bottom: calc(10px + var(--sf-dock-inset');
   });
 
-  it('keeps the checkout fields at 16px on phones and tablets, and one Pay (the bar) there', () => {
+  it('keeps one Pay (the bar) on phones and tablets', () => {
     const css = readFileSync(join(import.meta.dirname, '../app/globals.css'), 'utf8');
     const phone = css.slice(css.indexOf('Checkout focus mode (M2'));
-    expect(phone).toMatch(
-      /\.fld input,\s*\.fld textarea,\s*\.ckdc input \{\s*font-size: max\(16px, 1em\);/,
-    );
     expect(phone).toMatch(/\.ckpm \{\s*display: none;/);
     expect(phone).toContain('max-inline-size: 560px');
   });

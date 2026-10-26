@@ -9420,11 +9420,6 @@ button.login {
   .paybar .btn {
     min-height: 48px;
   }
-  .paybar .legal a {
-    display: inline-block;
-    min-height: 24px;
-    line-height: 24px;
-  }
   /* One Pay on phones: the Pay bar's. The in-page button and its legal line are not read twice. */
   .ckpm {
     display: none;
@@ -9435,12 +9430,6 @@ button.login {
   .dcard .dwarn2 a,
   #checkout-payment .cfm input {
     scroll-margin-block: 96px;
-  }
-  /* The checkout's fields keep the 16px that stops iOS zooming in on focus. */
-  .fld input,
-  .fld textarea,
-  .ckdc input {
-    font-size: max(16px, 1em);
   }
 }
 @media (min-width: 700px) and (max-width: 899.98px) {

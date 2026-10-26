@@ -35,7 +35,7 @@ export function FocusHeader() {
   return (
     <header className="cfh">
       <div className="cfh-in">
-        <Link className="cfh-back" href="/cart">
+        <Link className="cfh-back" href="/cart" aria-label={t('focus-back')}>
           <Icon name="chevl" />
           <span className="short">{t('focus-back-short')}</span>
           <span className="long">{t('focus-back')}</span>
