@@ -129,7 +129,7 @@ describe('positions', () => {
     mount({}, 'fails');
     expect(await screen.findByText(/Live counts could not be loaded/)).toBeTruthy();
     expect(screen.queryByText(/of 8 live/)).toBeNull();
-    expect(screen.getAllByLabelText('Live count not available')).toHaveLength(6);
+    expect(screen.getAllByText('Live count not available')).toHaveLength(6);
     // Choosing and saving still work.
     fireEvent.click(within(position('Home · between shelves')).getByRole('checkbox'));
     expect(screen.queryByText(/is full/)).toBeNull();

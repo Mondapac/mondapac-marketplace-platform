@@ -135,7 +135,7 @@ function OrderRow({
           <span className="min-w-0">{t('over-limit')}</span>
         </li>
       ) : null}
-      <li className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-line-row px-4 py-3 md:grid-cols-[1.5rem_minmax(0,1fr)_16rem_auto]">
+      <li className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-line-row px-4 py-3 xl:grid-cols-[1.5rem_minmax(0,1fr)_16rem_auto]">
         <span className="col-start-1 row-start-1 text-center font-semibold text-fg-secondary">
           {index + 1}
         </span>
@@ -155,14 +155,14 @@ function OrderRow({
             </span>
           ) : null}
         </div>
-        <span className="col-start-2 row-start-2 min-w-0 text-xs text-fg-muted md:col-start-3 md:row-start-1">
+        <span className="col-start-2 row-start-2 min-w-0 text-xs text-fg-muted xl:col-start-3 xl:row-start-1">
           {t('window', {
             from: shortInstantInZone(entry.startsAt, locale, zone),
             to: shortInstantInZone(entry.endsAt, locale, zone),
           })}
         </span>
         {canEdit ? (
-          <div className="col-start-3 row-span-2 row-start-1 flex gap-2 md:col-start-4 md:row-span-1">
+          <div className="col-start-3 row-span-2 row-start-1 flex gap-2 xl:col-start-4 xl:row-span-1">
             <button
               type="button"
               data-move="up"

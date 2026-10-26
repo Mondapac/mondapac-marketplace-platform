@@ -228,6 +228,7 @@ export function SlidePlacementEditor({
       <SlideEditorHeader slide={detail} tab="placement" />
       {!canEdit ? <Banner tone="info">{t('read-only')}</Banner> : null}
       {canEdit && archived ? <Banner tone="info">{t('archived')}</Banner> : null}
+      {problem === null ? null : <Banner tone="critical">{problem}</Banner>}
       <form
         ref={formRef}
         aria-label={t('form')}
@@ -243,11 +244,6 @@ export function SlidePlacementEditor({
             {t('where-title')}
           </h2>
           <p className="mb-2 text-sm text-fg-muted">{t('where-help')}</p>
-          {problem === null ? null : (
-            <div className="mb-4">
-              <Banner tone="critical">{problem}</Banner>
-            </div>
-          )}
           <fieldset
             disabled={!editable}
             aria-describedby={errors.none === true ? 'placement-none' : undefined}
@@ -430,9 +426,12 @@ function PositionRow({
             </p>
           </div>
         </div>
-        <span className="shrink-0 text-sm text-fg-muted">
+        <span className="shrink-0 ps-7 text-sm text-fg-muted sm:ps-0">
           {count === null ? (
-            <span aria-label={t('capacity-unknown')}>{'—'}</span>
+            <>
+              <span aria-hidden="true">{'—'}</span>
+              <span className="sr-only">{t('capacity-unknown')}</span>
+            </>
           ) : full ? (
             <Badge tone="attention">{t('capacity-full', { count, max })}</Badge>
           ) : (
