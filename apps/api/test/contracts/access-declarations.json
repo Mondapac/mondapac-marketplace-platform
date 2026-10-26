@@ -334,6 +334,11 @@
     "whenSellerNotApproved": "deny"
   },
   {
+    "name": "identity.verify-admin-step-up",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
     "name": "identity.verify-seller-step-up",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"

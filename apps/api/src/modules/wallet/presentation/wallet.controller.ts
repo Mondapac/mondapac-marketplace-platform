@@ -15,6 +15,7 @@ import {
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import { RequiresStepUp } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -152,11 +153,14 @@ export class AdminWalletController {
 
   @Put()
   @HttpCode(200)
+  @RequiresStepUp('wallet.settings.change')
   @ApiOperation({
     summary: 'Move the wallet of the Market to off, active, paused or frozen (admin)',
     description:
-      'Needs wallet.settings.manage (protected); refused in an acting-as ' +
-      'session. Audited with before and after. Asking for the state the Market is in changes ' +
+      'Needs wallet.settings.manage (protected) and a fresh two-step proof of this admin ' +
+      'session for `wallet.settings.change` (`POST /identity/admin/step-up/verify`, valid 5 ' +
+      'minutes); without one the answer is 403 second-factor.required with details.actionKey. ' +
+      'Refused in an acting-as session. Audited with before and after. Asking for the state the Market is in changes ' +
       'nothing. Back to off is refused once the Market has any journal (use paused). Balances and ' +
       'lots are never removed or zeroed by this call.',
   })
@@ -167,8 +171,11 @@ export class AdminWalletController {
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({
     ...ERROR,
-    description: 'access.denied or request.csrf',
+    description:
+      'access.denied, request.csrf, second-factor.required (details.actionKey: ' +
+      'wallet.settings.change) or second-factor.enrolment-required',
   })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
   @ApiConflictResponse({
     ...ERROR,
     description: 'wallet.cannot-turn-off-with-history or wallet.busy',
