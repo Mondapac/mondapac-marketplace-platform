@@ -47,32 +47,37 @@ Admin endpoints (no UI in this package; the toggle page comes in package 2):
 
 - `GET /wallet/admin/settings` needs `wallet.settings.view`.
 - `PUT /wallet/admin/settings` body `{status, reasonCode}`, needs `wallet.settings.manage`
-  (protected key). `reasonCode` is required for `paused` and `frozen` and refused for `off` and
+  (protected key) and a fresh admin step-up proof for `wallet.settings.change` (issue #491, see
+  below). `reasonCode` is required for `paused` and `frozen` and refused for `off` and
   `active`; it is one of a closed list (`wind-down`, `security-incident`, `fraud-suspected`,
   `legal-hold`, `maintenance`, `owner-decision`) because audit fields hold no free text. The call
   is refused in an acting-as session, writes one audit row with before and after, and is
   idempotent (the same state again writes nothing). Both keys are protected (Platform
   Administrator only), so no default role changes in this package.
 
-Known gap, needs an owner or identity decision: the hand-off asks for a step-up (recent
-confirmation) on the PUT, "same as payout account flows". Identity has no such primitive for
-admins today: `confirmSecondFactor` and `requireStepUp` serve seller-side holders only (an admin
-session passes `requireStepUp`, and registering a wallet action would list it on the sellers' own
-two-step policy screen). So the PUT is guarded by the protected key, the CSRF and panel-origin
-checks, the acting-as refusal and the audit row, and has no extra confirmation. An admin step-up
-belongs to identity and is a separate PR; wallet adds the call in `settings-flow.ts` when it exists.
+Admin step-up (issue #491, closes M3): `wallet.settings.change` is registered as an admin
+step-up action (`contracts/step-up.ts`, `audience: 'admin'`, locked). The PUT carries
+`@RequiresStepUp('wallet.settings.change')` (a read-only check before the body is read). The
+proof is single use (Hassan L1, L2): `setStatus` spends it through the platform port
+`STEP_UP_CONSUMER` inside the same unit that saves the switch, right before the save, so one
+verified code moves the switch once. No fresh proof left at that moment means the unit commits
+nothing. A refused change (bad body, `wallet.cannot-turn-off-with-history`) and a no-op (the
+same state) spend no proof. Without a proof the answer is `403 second-factor.required` with
+`details.actionKey: "wallet.settings.change"`; an admin without an active second factor gets
+`403 second-factor.enrolment-required`. The panel then calls
+`POST /identity/admin/step-up/verify {actionKey, code}` and repeats the PUT. The
+`wallet.market-status.changed` row names the proof it spent (`stepUpSessionId`,
+`stepUpVerifiedAt`; Hassan L3). Credit issuance (package 2) spends its own admin action the same
+way.
 
-Known gaps (to settle before package 2):
+Remaining gap (to settle before package 2):
 
-- Admin step-up on `PUT /wallet/admin/settings` must exist before the admin toggle page
-  (package 2) merges; Hassan to confirm.
 - Refunds that would exceed the cap go to the original card (owner decision); the caller handles
   `wallet.cap-exceeded`.
 
-M3, tracked blocker: the missing admin step-up (above) blocks package 2 (the admin toggle page) and
-blocks setting any production Market to `active` or `frozen` through this endpoint, whichever
-comes first. Open an issue that names both; it closes when identity offers an admin step-up and
-`setStatus` calls it before `save`.
+M3 (closed by #491): the admin step-up blocked package 2 (the admin toggle page) and setting any
+production Market to `active` or `frozen` through this endpoint. Identity now offers the admin
+step-up and `setStatus` calls it before `save`, so package 2 is unblocked on this point.
 
 `down.sql` must never run in production after launch: it drops every wallet table, and with them
 every balance, lot and journal. It exists for development and for the reversibility check only.

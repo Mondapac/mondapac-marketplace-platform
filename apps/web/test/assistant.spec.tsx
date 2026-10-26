@@ -20,6 +20,7 @@ import { StoreShell } from '../src/shell/store-shell.tsx';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from '../src/storefront/sample-cart.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from '../src/storefront/sample-delivery.ts';
+import { under } from '../src/shell/breakpoints.ts';
 
 const push = vi.hoisted(() => vi.fn());
 vi.mock('next/navigation', () => ({
@@ -80,7 +81,7 @@ beforeEach(() => {
   sheet = false;
   push.mockClear();
   window.matchMedia = ((query: string) => ({
-    matches: sheet && query === '(max-width: 700px)',
+    matches: sheet && query === under('tablet'),
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   })) as unknown as typeof window.matchMedia;
@@ -279,6 +280,27 @@ describe('assistant widget', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(panel.hidden).toBe(true);
     expect(document.activeElement).toBe(launcher());
+  });
+
+  it('hides the launcher on a phone while the cookie bar is open, and only there', () => {
+    const bar = document.createElement('section');
+    bar.className = 'consent';
+    document.body.append(bar);
+    sheet = true;
+    renderWidget(() => Promise.resolve(ok([])));
+    const root = document.querySelector<HTMLElement>('.asw')!;
+    expect(root.dataset.covered).toBe('true');
+    bar.remove();
+    act(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(root.dataset.covered).toBe('false');
+    cleanup();
+    document.body.append(bar);
+    sheet = false;
+    renderWidget(() => Promise.resolve(ok([])));
+    expect(document.querySelector<HTMLElement>('.asw')!.dataset.covered).toBe('false');
+    bar.remove();
   });
 
   it('is a modal sheet on a phone with focus on Close', () => {

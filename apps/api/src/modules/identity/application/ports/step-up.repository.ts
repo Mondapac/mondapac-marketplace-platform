@@ -39,6 +39,17 @@ export interface StepUpRepository {
     actionKey: string,
   ): Promise<Temporal.Instant | null>;
 
+  /**
+   * Takes the proof of this session for this action away (issue #491, single use): deletes the
+   * row and answers when its code was verified, or null when there was none. Two units that take
+   * the same proof are serialised on its row, and only one of them gets it.
+   */
+  takeProof(
+    market: MarketContext,
+    sessionId: Id<'Session'>,
+    actionKey: string,
+  ): Promise<Temporal.Instant | null>;
+
   /** Records that a code was verified now for this action in this session. */
   recordProof(
     market: MarketContext,

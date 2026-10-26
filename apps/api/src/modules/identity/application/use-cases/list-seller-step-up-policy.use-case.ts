@@ -7,7 +7,7 @@ import {
   type StepUpActionRegistry,
   type UseCaseGate,
 } from '../../../../platform/authz';
-import { stepUpRequired } from '../../domain/step-up';
+import { stepUpAudienceOf, stepUpRequired } from '../../domain/step-up';
 import type { StepUpRepository } from '../ports/step-up.repository';
 
 /** One action's rule as the panel shows it. */
@@ -46,16 +46,20 @@ export async function stepUpPolicyOf(
         (await deps.stepUp.policiesOf(context.market, sellerId)).map((row) => [row.actionKey, row]),
       );
       return ok({
-        items: deps.stepUpActions.list().map((action) => {
-          const row = stored.get(action.key);
-          return {
-            actionKey: action.key,
-            required: stepUpRequired(action, row?.required),
-            locked: action.locked,
-            defaultRequired: action.defaultRequired,
-            updatedAt: row?.updatedAt ?? null,
-          };
-        }),
+        // A platform admin action is never a shop's to see or set (issue #491).
+        items: deps.stepUpActions
+          .list()
+          .filter((action) => stepUpAudienceOf(action) === 'seller')
+          .map((action) => {
+            const row = stored.get(action.key);
+            return {
+              actionKey: action.key,
+              required: stepUpRequired(action, row?.required),
+              locked: action.locked,
+              defaultRequired: action.defaultRequired,
+              updatedAt: row?.updatedAt ?? null,
+            };
+          }),
       });
     },
     { readOnly: true },

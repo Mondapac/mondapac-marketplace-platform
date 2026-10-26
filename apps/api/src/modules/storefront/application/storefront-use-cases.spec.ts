@@ -47,6 +47,7 @@ import { ViewStorefrontPage } from './use-cases/view-page.use-case';
 import { ViewPublishedLandingPage } from './use-cases/view-published-landing-page.use-case';
 import { ViewPublishedStorefrontNavigation } from './use-cases/view-published-navigation.use-case';
 import { ViewPublishedStorefrontPage } from './use-cases/view-published-page.use-case';
+import { ViewServedPlacements } from './use-cases/view-served-placements.use-case';
 
 // The storefront use cases in memory on both Market fixtures, behind a gate that grants each
 // actor only its own keys: a content editor (read, edit, create, navigation edit) drafts pages
@@ -497,6 +498,37 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
     expect(await errorOf(landing('eid-specials'))).toEqual({
       code: 'storefront.page-not-found',
     });
+    clock.set(T0);
+  });
+
+  it('names the placements served now: only a published, live page, only its switched-on modules', async () => {
+    const served = async (pageId: unknown) =>
+      [...(await value<ReadonlySet<string>>(run(ViewServedPlacements, buyer, { pageId })))].sort();
+    const created = await value<PageDetailView>(
+      run(CreateStorefrontPage, editor, { ...newPage, endsAt: '2026-10-20T00:00:00Z' }),
+    );
+    const all = Object.values(created.draft.placements).flatMap((list) => list.map((p) => p.id));
+    expect(all.length).toBeGreaterThan(2);
+
+    // A draft is not served: nothing, as for an id no page has.
+    expect(await served(created.id)).toEqual([]);
+    expect(await served(id<'StorefrontPage'>(0xdead))).toEqual([]);
+
+    const off = created.draft.placements.main![0]!.id;
+    await value(
+      run(UpdateStorefrontModule, editor, {
+        page: created.id,
+        slot: 'main',
+        placementId: off,
+        body: { enabled: false },
+      }),
+    );
+    await value(publish(admin, created.id!));
+    expect(await served(created.id)).toEqual(all.filter((placement) => placement !== off).sort());
+
+    // Past the live window the page, and so its placements, are no longer served.
+    clock.set(Temporal.Instant.from('2026-10-21T00:00:00Z'));
+    expect(await served(created.id)).toEqual([]);
     clock.set(T0);
   });
 

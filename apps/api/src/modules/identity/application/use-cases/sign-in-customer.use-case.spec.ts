@@ -90,6 +90,7 @@ function setUp() {
     sessions: fakes.sessionRepository,
     throttles: fakes.throttleRepository,
     records: fakes.recordRepository,
+    securityEvents: fakes.securityEvents,
     hasher,
     tokens,
     keys,

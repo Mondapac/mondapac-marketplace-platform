@@ -10,6 +10,7 @@ import {
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { SECURITY_EVENTS } from '../../platform/security-events/security-events';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { IDENTITY_FACADE, IdentityModule } from '../identity';
@@ -55,6 +56,7 @@ const PORTS: readonly [keyof PaymentsDependencies, InjectionToken][] = [
   ['policy', PAYMENTS_POLICY],
   ['identity', IDENTITY_FACADE],
   ['audit', AUDIT_WRITER],
+  ['securityEvents', SECURITY_EVENTS],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
@@ -93,6 +95,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   ],
   providers: [
     PersistenceModule.auditWriterFor('payments'),
+    PersistenceModule.securityEventsFor('payments'),
     registerAuditActions('payments', PAYMENTS_AUDIT_ACTIONS),
     registerPermissions('payments', PAYMENTS_PERMISSIONS),
     registerStepUpActions('payments', PAYMENTS_STEP_UP_ACTIONS),

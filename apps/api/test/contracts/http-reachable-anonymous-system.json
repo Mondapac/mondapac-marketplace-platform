@@ -40,6 +40,11 @@
     "reason": "The buyer site shows product photos to a visitor with no session: one rendition (thumb, medium or large) of a photo that is in the current published revision of a published product and is not taken down; every other case answers the same not-found. JPEG written by the server, sandboxed, nosniff, never a cookie."
   },
   {
+    "name": "engagement.record-block-events",
+    "rule": "anonymous",
+    "reason": "The storefront reports that blocks of a published page were shown or clicked, for a visitor with no session: 1 to 20 events of page id, placement id and impression or click, counted into one row per block and UTC day, only for a placement the page's published version serves now (others are skipped without a sign). No session, cookie, address or user agent is read or kept; Sec-GPC: 1 counts nothing; always 204 and no-store; rate limited per origin."
+  },
+  {
     "name": "engagement.record-guest-event",
     "rule": "anonymous",
     "reason": "The storefront records what a guest viewed, searched for or added to the cart under the engagement guest cookie (30 days): a guest has no account or session; ids only, and Sec-GPC records nothing."

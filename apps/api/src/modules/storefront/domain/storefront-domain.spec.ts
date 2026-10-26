@@ -132,6 +132,24 @@ describe('the module catalogue', () => {
     ).toEqual(['config.source.productIds:duplicate']);
   });
 
+  it('takes the personal shelf sources with no other field', () => {
+    for (const kind of ['recently-viewed', 'for-you', 'bought-together']) {
+      expect(config('product-shelf', { source: { kind } })).toEqual({
+        ok: true,
+        config: { source: { kind }, limit: 12 },
+      });
+      expect(codes(config('product-shelf', { source: { kind, id: ID } }))).toEqual([
+        'config.source.id:unknown-field',
+      ]);
+      expect(codes(config('product-shelf', { source: { kind, code: 'halal' } }))).toEqual([
+        'config.source.code:unknown-field',
+      ]);
+      expect(codes(config('product-shelf', { source: { kind, productIds: [ID] } }))).toEqual([
+        'config.source.productIds:unknown-field',
+      ]);
+    }
+  });
+
   it('gives rich text no heading level 1 and no markup', () => {
     expect(
       codes(config('text-block', { blocks: [{ type: 'heading', text: 'x', level: 1 }] })),
@@ -243,6 +261,118 @@ describe('placements of a draft', () => {
       { path: 'slots.main[0]', code: 'needs-linked-entity' },
     ]);
     expect(publishProblems(brand, draft, 'seller')).toEqual([]);
+  });
+
+  it('keeps a bought-together shelf to pages that can pair it with a product', () => {
+    const together = {
+      module: 'product-shelf',
+      config: { source: { kind: 'bought-together' } },
+    };
+    const refused = {
+      ok: false,
+      error: {
+        code: 'validation.failed',
+        fields: [{ path: 'config.source.kind', code: 'needs-product-page' }],
+      },
+    };
+    expect(addPlacement(home, start(), 'main', together, 'x')).toEqual(refused);
+    const existing = start().main![0]!;
+    expect(
+      updatePlacement(home, start(), 'main', existing.id, { config: together.config }),
+    ).toEqual(refused);
+
+    const withTogether = (template: ReturnType<typeof templateOf>, slot: string) => {
+      const added = addPlacement(
+        template,
+        defaultPlacements(template, { title: 'P' }, ids()),
+        slot,
+        together,
+        'x',
+      );
+      expect(added.ok).toBe(true);
+      return added.ok ? added.value : {};
+    };
+    const product = templateOf('system.product');
+    expect(publishProblems(product, withTogether(product, 'below'), null)).toEqual([]);
+    const spotlight = templateOf('product-spotlight');
+    const linkedPage = withTogether(spotlight, 'related');
+    expect(publishProblems(spotlight, linkedPage, 'product')).toEqual([]);
+    const campaign = templateOf('campaign-landing');
+    const campaignSlot = campaign.slots.find(
+      (s) => s.kind === 'modules' && s.modules.includes('product-shelf'),
+    )!;
+    const onCampaign = withTogether(campaign, campaignSlot.key);
+    expect(publishProblems(campaign, onCampaign, 'product')).toEqual([]);
+    expect(publishProblems(campaign, onCampaign, 'seller')).toEqual([
+      {
+        path: `slots.${campaignSlot.key}[${onCampaign[campaignSlot.key]!.length - 1}]`,
+        code: 'needs-product-page',
+      },
+    ]);
+    const unlinkedProblem = {
+      path: `slots.${campaignSlot.key}[${onCampaign[campaignSlot.key]!.length - 1}]`,
+      code: 'needs-product-page',
+    };
+    // A product-linkable page may hold the shelf in its draft, but publishes it only once linked.
+    expect(publishProblems(campaign, onCampaign, null)).toContainEqual(unlinkedProblem);
+    // A switched-off shelf does not block publishing.
+    const shelfId = onCampaign[campaignSlot.key]!.at(-1)!.id;
+    const switchedOff = updatePlacement(campaign, onCampaign, campaignSlot.key, shelfId, {
+      enabled: false,
+    });
+    expect(switchedOff.ok).toBe(true);
+    expect(
+      publishProblems(campaign, switchedOff.ok ? switchedOff.value : {}, 'seller'),
+    ).not.toContainEqual(unlinkedProblem);
+
+    // An existing shelf may become bought-together on the product page, and switching a shelf
+    // on or off on home never trips the check.
+    const productDraft = addPlacement(
+      product,
+      defaultPlacements(product, { title: 'P' }, ids()),
+      'below',
+      { module: 'product-shelf', config: { source: { kind: 'bestsellers' } } },
+      'x',
+    );
+    expect(productDraft.ok).toBe(true);
+    if (productDraft.ok) {
+      const shelfOnProduct = productDraft.value.below!.at(-1)!;
+      const changed = updatePlacement(product, productDraft.value, 'below', shelfOnProduct.id, {
+        config: together.config,
+      });
+      expect(changed.ok && changed.value.below!.at(-1)!.config).toEqual({
+        ...together.config,
+        limit: 12,
+      });
+    }
+    expect(updatePlacement(home, start(), 'main', existing.id, { enabled: false }).ok).toBe(true);
+
+    // Stored content is re-checked: a bought-together shelf on a template that cannot host it is
+    // left out on read, and a switched-off one does not block publishing.
+    const stored = storedPlacements(start()) as Record<string, unknown[]>;
+    stored.main!.push({
+      id: 'bt',
+      module: 'product-shelf',
+      enabled: true,
+      config: together.config,
+    });
+    expect(readPlacements(home, stored).dropped).toBe(1);
+    const sourceHost = storedPlacements(withTogether(product, 'below'));
+    expect(readPlacements(product, sourceHost).dropped).toBe(0);
+  });
+
+  it('publishes recently-viewed and for-you shelves on any shelf page', () => {
+    for (const kind of ['recently-viewed', 'for-you']) {
+      const added = addPlacement(
+        home,
+        start(),
+        'main',
+        { module: 'product-shelf', config: { source: { kind } } },
+        'x',
+      );
+      expect(added.ok).toBe(true);
+      expect(publishProblems(home, added.ok ? added.value : {}, null)).toEqual([]);
+    }
   });
 
   it('serves only switched-on modules, and re-checks stored content on read', () => {

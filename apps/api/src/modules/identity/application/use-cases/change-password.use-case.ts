@@ -25,7 +25,7 @@ import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hashe
 import type { SessionRepository } from '../ports/session.repository';
 import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
 import type { SessionTokens, ThrottleKeys } from '../ports/session-secrets';
-import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
+import type { SignInRecord, SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
 import type { SecondFactorSecrets } from '../ports/second-factor-secrets';
 import type { SecondFactorRepository } from '../ports/second-factor.repository';
@@ -42,6 +42,8 @@ import {
 } from '../second-factor/code-check';
 import type { SignInClient } from '../sign-in/sign-in-flow';
 import type { FieldProblem } from './register-customer.use-case';
+import type { SecurityEvents } from '../../../../platform/security-events/security-events';
+import { recordSignInSecurityEvent } from '../security-events';
 
 export interface ChangePasswordInput {
   readonly currentPassword: string;
@@ -87,6 +89,7 @@ export interface ChangePasswordDependencies {
   readonly links: OneTimeLinkRepository;
   readonly throttles: ThrottleRepository;
   readonly records: SignInRecordRepository;
+  readonly securityEvents: SecurityEvents;
   readonly keys: ThrottleKeys;
   readonly tokens: SessionTokens;
   readonly outbox: OutboxWriter;
@@ -539,7 +542,7 @@ export class ChangePassword extends UseCase<
   ): Promise<void> {
     const actor = context.actor;
     if (actor.kind !== 'authenticated') return;
-    await this.deps.records.add(context.market, {
+    const record: SignInRecord = {
       id: this.deps.ids.next<'SignInRecord'>(),
       population: actor.population,
       accountId: actor.accountId,
@@ -548,7 +551,9 @@ export class ChangePassword extends UseCase<
       address: client.address,
       sessionId: actor.sessionId,
       correlationId: context.correlationId,
-    });
+    };
+    await this.deps.records.add(context.market, record);
+    await recordSignInSecurityEvent(this.deps.securityEvents, context, record);
   }
 
   /**

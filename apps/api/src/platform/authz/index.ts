@@ -50,6 +50,10 @@ export {
 export {
   RequiresStepUp,
   STEP_UP_CHECK,
+  STEP_UP_CONSUMER,
+  STEP_UP_CONSUMER_SOURCE,
+  type ConsumedStepUp,
+  type StepUpProofConsumer,
   STEP_UP_SOURCE,
   StepUpGuard,
   type StepUpCheck,

@@ -13,16 +13,18 @@ import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
-import type { PaidSellerOrder } from '../contracts';
+import type { PaidSellerOrder, RefundedSellerOrder } from '../contracts';
 import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import { commissionBase, commissionOn, parseRateBps } from '../domain/commission';
-import type { LedgerEntry } from '../domain/ledger';
+import { reversedAmount } from '../domain/reversal';
+import type { LedgerEntry, LedgerKind } from '../domain/ledger';
 import { ConfigCommissionPolicy } from '../infrastructure/config-commission-policy';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
 import type { LedgerPage, LedgerRepository } from './ports/ledger.repository';
 import type { SellerRateRecord, SellerRateRepository } from './ports/seller-rate.repository';
 import { ClearCommissionRate } from './use-cases/clear-commission-rate.use-case';
 import { CommissionRates } from './use-cases/commission-rates.use-case';
+import { RecordRefund } from './use-cases/record-refund.use-case';
 import { RecordSellerOrderPaid } from './use-cases/record-seller-order-paid.use-case';
 import { SetCommissionRate } from './use-cases/set-commission-rate.use-case';
 import { ViewCommissionRate } from './use-cases/view-commission-rate.use-case';
@@ -83,9 +85,15 @@ class MemoryRates implements SellerRateRepository {
   }
 }
 
-/** Insert-only like the table: rows are appended, a repeated (seller order, kind, line) skipped. */
+/**
+ * Insert-only like the table: rows are appended, a repeated (seller order, kind, line, source)
+ * skipped (the key is NULLS NOT DISTINCT, so a null line or source clashes with another null).
+ */
 class MemoryLedger implements LedgerRepository {
   readonly rows: LedgerEntry[] = [];
+  listSellerOrder(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
+    return Promise.resolve(this.rows.filter((row) => row.sellerOrderId === sellerOrderId));
+  }
   hasSellerOrder(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(this.rows.some((row) => row.sellerOrderId === sellerOrderId));
   }
@@ -96,7 +104,8 @@ class MemoryLedger implements LedgerRepository {
         (row) =>
           row.sellerOrderId === entry.sellerOrderId &&
           row.kind === entry.kind &&
-          row.orderLineId === entry.orderLineId,
+          row.orderLineId === entry.orderLineId &&
+          row.sourceId === entry.sourceId,
       );
       if (!clash) {
         this.rows.push(entry);
@@ -483,6 +492,315 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           ],
         }),
       );
+    });
+  });
+  describe('refund reversals', () => {
+    const REFUND_1 = id<'Refund'>(0x401);
+    const REFUND_2 = id<'Refund'>(0x402);
+    const REFUND_3 = id<'Refund'>(0x403);
+    const T1 = T0.add({ hours: 2 });
+    const settingsOf = config.commissionPayouts!;
+    const base1 = commissionBase(1100n, inclusive, settingsOf.provisionalTaxRateBps);
+    const base2 = commissionBase(335n, inclusive, settingsOf.provisionalTaxRateBps);
+
+    /** Line 1 has 3 units (1100 in all), line 2 has 5 (335 in all); delivery 500, charge 550 (AU). */
+    const refunded = (overrides: Partial<RefundedSellerOrder> = {}): RefundedSellerOrder => ({
+      refundId: REFUND_1,
+      orderId: ORDER,
+      sellerOrderId: SELLER_ORDER,
+      sellerId: SELLER_A,
+      currency,
+      lossBearer: 'seller',
+      settledAt: T1,
+      lines: [{ orderLineId: LINE_1, lineQuantity: 3, unitsBefore: 0, units: 1 }],
+      shipping: null,
+      ...overrides,
+    });
+    const recordRefund = (facts: RefundedSellerOrder, context: CallContext = system) =>
+      new RecordRefund(gate, deps).execute(context, facts);
+    const reversals = () => ledger.rows.filter((r) => r.sourceId !== null);
+    const sum = (kind: LedgerKind) =>
+      ledger.rows.filter((r) => r.kind === kind).reduce((n, r) => n + r.amount.amount, 0n);
+
+    beforeEach(async () => {
+      await record();
+    });
+
+    it('reverses the stored sale and commission rows of a refunded line, with the original rate', async () => {
+      expect(await recordRefund(refunded())).toEqual(ok('recorded'));
+      expect(
+        reversals().map((r) => [r.kind, r.orderLineId, r.amount, r.rateBps, r.baseAmount]),
+      ).toEqual([
+        ['refund-sale', LINE_1, money(reversedAmount(1100n, 1n, 3n), currency), null, null],
+        [
+          'refund-commission',
+          LINE_1,
+          money(reversedAmount(commissionOn(base1, 1500), 1n, 3n), currency),
+          1500,
+          reversedAmount(base1, 1n, 3n),
+        ],
+      ]);
+      expect(reversals().every((r) => r.sourceId === REFUND_1 && r.occurredAt.equals(T1))).toBe(
+        true,
+      );
+      if (code === 'AU') {
+        // 1100 / 3 = 366.67 -> 367; commission 150 / 3 = 50 on a base of 1000 / 3 = 333.
+        expect(reversals().map((r) => r.amount.amount)).toEqual([367n, 50n]);
+      }
+    });
+
+    it('is the same on a replay of the refund, and the ledger keeps one set of rows', async () => {
+      expect(await recordRefund(refunded())).toEqual(ok('recorded'));
+      const rows = ledger.rows.length;
+      expect(await recordRefund(refunded())).toEqual(ok('already-recorded'));
+      expect(ledger.rows).toHaveLength(rows);
+    });
+
+    it('reverses exactly the original rows over several partial refunds, in any order', async () => {
+      const steps: [Id<'Refund'>, number, number][] = [
+        [REFUND_1, 0, 1],
+        [REFUND_2, 1, 1],
+        [REFUND_3, 2, 1],
+      ];
+      // Posted out of order: the later refunds do not depend on the earlier ones being posted.
+      for (const [refundId, before, units] of [steps[2]!, steps[0]!, steps[1]!]) {
+        expect(
+          await recordRefund(
+            refunded({
+              refundId,
+              lines: [{ orderLineId: LINE_1, lineQuantity: 3, unitsBefore: before, units }],
+            }),
+          ),
+        ).toEqual(ok('recorded'));
+      }
+      const line1 = (kind: LedgerKind) =>
+        ledger.rows
+          .filter((r) => r.kind === kind && r.orderLineId === LINE_1)
+          .reduce((n, r) => n + r.amount.amount, 0n);
+      expect(ledger.rows.filter((r) => r.kind === 'refund-sale')).toHaveLength(3);
+      expect(line1('refund-sale')).toBe(line1('sale'));
+      expect(line1('refund-commission')).toBe(line1('commission'));
+      expect(
+        ledger.rows.filter(
+          (r) => r.kind === 'refund-commission' && r.baseAmount! < r.amount.amount,
+        ),
+      ).toEqual([]);
+    });
+
+    it('reverses the delivery fee in proportion to the charge refunded, whole at the end', async () => {
+      // A charge of 550 (500 fee plus 50 tax inside the fee for AU would be 500; here the charge
+      // is passed as ordering gives it): 275 of 550 is half the 500 row, then the rest.
+      expect(
+        await recordRefund(
+          refunded({
+            lines: [],
+            shipping: { refundedBefore: 0n, refundedAfter: 275n, charge: 550n },
+          }),
+        ),
+      ).toEqual(ok('recorded'));
+      expect(
+        await recordRefund(
+          refunded({
+            refundId: REFUND_2,
+            lines: [],
+            shipping: { refundedBefore: 275n, refundedAfter: 550n, charge: 550n },
+          }),
+        ),
+      ).toEqual(ok('recorded'));
+      expect(
+        ledger.rows.filter((r) => r.kind === 'refund-shipping').map((r) => r.amount.amount),
+      ).toEqual([250n, 250n]);
+      expect(sum('refund-shipping')).toBe(sum('shipping'));
+      expect(reversals().every((r) => r.orderLineId === null)).toBe(true);
+    });
+
+    it('posts nothing when the platform bears the loss, but answers so', async () => {
+      expect(await recordRefund(refunded({ lossBearer: 'platform' }))).toEqual(
+        ok('nothing-to-post'),
+      );
+      expect(reversals()).toEqual([]);
+    });
+
+    it('moves the balance: sales + shipping − commission − refunds + refunded commission', async () => {
+      await recordRefund(
+        refunded({
+          lines: [{ orderLineId: LINE_2, lineQuantity: 5, unitsBefore: 0, units: 5 }],
+          shipping: { refundedBefore: 0n, refundedAfter: 550n, charge: 550n },
+        }),
+      );
+      const view = await new ViewOwnLedger(gate, deps).execute(sellerA, {});
+      const commission1 = commissionOn(base1, 1500);
+      const commission2 = commissionOn(base2, 1500);
+      expect(view).toMatchObject({
+        ok: true,
+        value: {
+          totals: {
+            sales: 1435n,
+            shipping: 500n,
+            commission: commission1 + commission2,
+            refundedSales: 335n,
+            refundedShipping: 500n,
+            refundedCommission: commission2,
+            balance: 1435n + 500n - (commission1 + commission2) - 335n - 500n + commission2,
+          },
+        },
+      });
+      const directions = view.ok
+        ? Object.fromEntries(view.value.entries.map((e) => [e.kind, e.direction]))
+        : {};
+      expect(directions).toMatchObject({
+        sale: 'credit',
+        shipping: 'credit',
+        commission: 'debit',
+        'refund-sale': 'debit',
+        'refund-shipping': 'debit',
+        'refund-commission': 'credit',
+      });
+    });
+
+    it('lets the balance go negative when more went back than the seller still holds', async () => {
+      // The seller order took 1435 + 500; reverse everything, leaving only the commission given
+      // back against nothing: sales − refunds nets to zero, the balance equals what is left.
+      await recordRefund(
+        refunded({
+          lines: [
+            { orderLineId: LINE_1, lineQuantity: 3, unitsBefore: 0, units: 3 },
+            { orderLineId: LINE_2, lineQuantity: 5, unitsBefore: 0, units: 5 },
+          ],
+          shipping: { refundedBefore: 0n, refundedAfter: 550n, charge: 550n },
+        }),
+      );
+      const view = await new ViewOwnLedger(gate, deps).execute(sellerA, {});
+      expect(view.ok && view.value.totals.balance).toBe(0n);
+    });
+
+    it('skips a share that rounds to zero for the sale but still writes the commission row', async () => {
+      const tiny = id<'SellerOrder'>(0x2f1);
+      const line = id<'OrderLine'>(0x3f1);
+      await record(
+        paid({
+          sellerOrderId: tiny,
+          shipping: 0n,
+          lines: [
+            { orderLineId: line, lineAmount: 1n, taxInclusive: false, commissionRateBps: 1500 },
+          ],
+        }),
+      );
+      // One minor unit over 999 units: the first unit's share is 0.001 -> 0.
+      expect(
+        await recordRefund(
+          refunded({
+            sellerOrderId: tiny,
+            lines: [{ orderLineId: line, lineQuantity: 999, unitsBefore: 0, units: 1 }],
+          }),
+        ),
+      ).toEqual(ok('recorded'));
+      expect(reversals().map((r) => [r.kind, r.amount.amount])).toEqual([
+        ['refund-commission', 0n],
+      ]);
+    });
+
+    it('refuses a line with no stored rows, fully discounted or not on the seller order', async () => {
+      const free = id<'SellerOrder'>(0x2f2);
+      await record(
+        paid({
+          sellerOrderId: free,
+          lines: [
+            { orderLineId: LINE_1, lineAmount: 0n, taxInclusive: true, commissionRateBps: 1500 },
+          ],
+        }),
+      );
+      const answer = await recordRefund(
+        refunded({
+          sellerOrderId: free,
+          lines: [{ orderLineId: LINE_1, lineQuantity: 1, unitsBefore: 0, units: 1 }],
+        }),
+      );
+      expect(answer).toEqual(err({ code: 'commission-payouts.ledger-inconsistent' }));
+      expect(reversals()).toEqual([]);
+    });
+
+    it('refuses a double reversal: other refunds plus this one would pass the stored row', async () => {
+      // Refund 1 takes all 3 units; refund 2 claims the first unit again (a wrong unitsBefore).
+      expect(
+        await recordRefund(
+          refunded({ lines: [{ orderLineId: LINE_1, lineQuantity: 3, unitsBefore: 0, units: 3 }] }),
+        ),
+      ).toEqual(ok('recorded'));
+      const rows = ledger.rows.length;
+      expect(await recordRefund(refunded({ refundId: REFUND_2 }))).toEqual(
+        err({ code: 'commission-payouts.ledger-inconsistent' }),
+      );
+      // The same for the delivery fee: all of it back, then a part again.
+      const fee = (refundId: Id<'Refund'>, before: bigint, after: bigint) =>
+        recordRefund(
+          refunded({
+            refundId,
+            lines: [],
+            shipping: { refundedBefore: before, refundedAfter: after, charge: 550n },
+          }),
+        );
+      expect(await fee(REFUND_1, 0n, 550n)).toEqual(ok('recorded'));
+      expect(await fee(REFUND_3, 0n, 100n)).toEqual(
+        err({ code: 'commission-payouts.ledger-inconsistent' }),
+      );
+      expect(ledger.rows.length).toBe(rows + 1);
+      // Replaying refund 1 itself is not a double reversal.
+      expect(await fee(REFUND_1, 0n, 550n)).toEqual(ok('already-recorded'));
+    });
+
+    it('refuses facts that do not fit the stored rows, and writes nothing', async () => {
+      const code_ = async (facts: RefundedSellerOrder) => {
+        const answer = await recordRefund(facts);
+        return answer.ok ? 'ok' : answer.error.code;
+      };
+      expect(await code_(refunded({ sellerOrderId: id<'SellerOrder'>(0x2ff) }))).toBe(
+        'commission-payouts.ledger-inconsistent',
+      );
+      expect(await code_(refunded({ sellerId: SELLER_B }))).toBe(
+        'commission-payouts.ledger-inconsistent',
+      );
+      expect(
+        await code_(
+          refunded({
+            lines: [
+              { orderLineId: id<'OrderLine'>(0x3ff), lineQuantity: 1, unitsBefore: 0, units: 1 },
+            ],
+          }),
+        ),
+      ).toBe('commission-payouts.ledger-inconsistent');
+      // A line with a sale row but no commission row is a ledger the refund cannot be matched to.
+      ledger.rows.splice(
+        ledger.rows.findIndex((r) => r.kind === 'commission' && r.orderLineId === LINE_2),
+        1,
+      );
+      expect(
+        await code_(
+          refunded({
+            lines: [{ orderLineId: LINE_2, lineQuantity: 5, unitsBefore: 0, units: 1 }],
+          }),
+        ),
+      ).toBe('commission-payouts.ledger-inconsistent');
+      for (const facts of [
+        refunded({ currency: currency === 'AUD' ? 'JPY' : 'AUD' }),
+        refunded({ lossBearer: 'customer' as never }),
+        refunded({ lines: [] }),
+        refunded({ lines: [{ orderLineId: LINE_1, lineQuantity: 3, unitsBefore: 3, units: 1 }] }),
+        refunded({ lines: [{ orderLineId: LINE_1, lineQuantity: 3, unitsBefore: 0, units: 0 }] }),
+        refunded({
+          lines: [
+            { orderLineId: LINE_1, lineQuantity: 3, unitsBefore: 0, units: 1 },
+            { orderLineId: LINE_1, lineQuantity: 3, unitsBefore: 1, units: 1 },
+          ],
+        }),
+        refunded({ lines: [], shipping: { refundedBefore: 5n, refundedAfter: 5n, charge: 9n } }),
+        refunded({ lines: [], shipping: { refundedBefore: 0n, refundedAfter: 10n, charge: 9n } }),
+      ]) {
+        expect(await code_(facts)).toBe('validation.failed');
+      }
+      expect(await recordRefund(refunded(), admin)).toMatchObject({ ok: false });
+      expect(await recordRefund(refunded(), sellerA)).toMatchObject({ ok: false });
+      expect(reversals()).toEqual([]);
     });
   });
 });

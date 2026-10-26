@@ -5,6 +5,7 @@ import { IDENTITY_STEP_UP_ACTIONS } from '../../src/modules/identity/contracts/s
 import { PAYMENTS_STEP_UP_ACTIONS } from '../../src/modules/payments/contracts/step-up';
 import { PRICING_STEP_UP_ACTIONS } from '../../src/modules/pricing/contracts/step-up';
 import { SELLERS_STEP_UP_ACTIONS } from '../../src/modules/sellers/contracts/step-up';
+import { WALLET_STEP_UP_ACTIONS } from '../../src/modules/wallet/contracts/step-up';
 
 // Every step-up action is either guarded by `@RequiresStepUp` on a route, or listed here with the
 // use case that spends a code in the request itself. A typo in a decorator key would otherwise
@@ -31,6 +32,7 @@ describe('step-up enforcement contract', () => {
     ...PAYMENTS_STEP_UP_ACTIONS,
     ...PRICING_STEP_UP_ACTIONS,
     ...SELLERS_STEP_UP_ACTIONS,
+    ...WALLET_STEP_UP_ACTIONS,
   ].map((action) => action.key);
   const used = new Set(
     controllerFiles(sourceRoot).flatMap((file) =>

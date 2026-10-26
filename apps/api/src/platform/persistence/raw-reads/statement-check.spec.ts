@@ -411,6 +411,10 @@ describe('raw read statement check: full-text search (ADR-0030 amendment, search
     expect(await checkSearch(base(`d.search_vector @@ ${TSQ}`), [{}, {}])).toEqual([]);
   });
 
+  it('passes the array overlap of a column with a uuid[] parameter', async () => {
+    expect(await checkSearch(base('d.category_ids && $2::uuid[]'), [{}])).toEqual([]);
+  });
+
   // Hassan's probes (PR review M-1) and the shapes around them: each construct only as used.
   it.each([
     ['@@ against a bare parameter', 'd.search_vector @@ $2', [{}], ['operator-shape:@@']],
@@ -428,6 +432,39 @@ describe('raw read statement check: full-text search (ADR-0030 amendment, search
       ['cast-not-allowed:regconfig'],
     ],
     ['@> against a bare parameter', 'd.category_ids @> $2', [{}], ['operator-shape:@>']],
+    ['&& against a bare parameter', 'd.category_ids && $2', [{}], ['operator-shape:&&']],
+    ['&& against a text[] parameter', 'd.category_ids && $2::text[]', [{}], ['operator-shape:&&']],
+    [
+      '&& as a qualified operator',
+      'd.category_ids OPERATOR(pg_catalog.&&) $2::uuid[]',
+      [{}],
+      ['operator-not-allowed:pg_catalog.&&'],
+    ],
+    [
+      '&& on the Market column',
+      'd.market_id && $2::uuid[]',
+      [{}],
+      ['market-compared-to-expression'],
+    ],
+    ['&& against the Market parameter', 'd.category_ids && $1::uuid[]', [], ['operator-shape:&&']],
+    [
+      '&& against an array literal',
+      'd.category_ids && ARRAY[$2::uuid]',
+      [{}],
+      ['operator-shape:&&'],
+    ],
+    [
+      '&& against a double cast',
+      'd.category_ids && $2::uuid[]::uuid[]',
+      [{}],
+      ['operator-shape:&&'],
+    ],
+    [
+      '&& with the parameter on the left',
+      '$2::uuid[] && d.category_ids',
+      [{}],
+      ['operator-shape:&&'],
+    ],
     [
       'a column as the query text',
       'ts_rank(d.search_vector, websearch_to_tsquery($2::regconfig, d.name)) > 0',

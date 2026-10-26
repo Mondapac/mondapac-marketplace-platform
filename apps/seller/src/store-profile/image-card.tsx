@@ -2,7 +2,7 @@
 
 import { Banner, Button, Card, FileButton, ImageSlot } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { preparePhoto } from '../catalog/photo-prepare.ts';
 import { imageProblemOf, type ImageProblem } from './errors.ts';
@@ -54,7 +54,9 @@ export function ImageCard({
   const working = status === 'uploading' || status === 'removing';
   const path = `sellers/store-profile/${kind}`;
 
-  useEffect(() => {
+  // A layout effect, so focus moves in the same commit as the change it follows. A passive effect
+  // ran a moment later, after the status line ("Logo removed.") was already on screen.
+  useLayoutEffect(() => {
     const target = focusNext.current;
     if (target === null) return;
     focusNext.current = null;
