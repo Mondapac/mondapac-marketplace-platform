@@ -17,8 +17,8 @@ decisions and records what the code does. The source of the decisions is the han
 - Wallet balance cap per customer: 500.00 in the Market currency, from Market config
   `wallet.balanceCapMinor` (AU 50000), never hardcoded. A grant over the cap is refused
   (`wallet.cap-exceeded`); held credit counts toward the cap.
-- Admin caps (package 2): 50.00 per issue and 500.00 per admin per day without a second approval.
-  Only the config keys exist now (`wallet.adminIssueCapMinor`, `wallet.adminDailyCapMinor`).
+- Admin caps (package 2): 50.00 per issue and 500.00 per admin per day without a second approval
+  (`wallet.adminIssueCapMinor`, `wallet.adminDailyCapMinor`; package 2a below).
 
 ## The switch is runtime, not config (scope change 2026-10-25)
 
@@ -236,7 +236,74 @@ checked running total so the books stop summing the whole history).
 - Idempotency: the same key with the same request returns the first result; the same key with
   another request answers `idempotency.key-reused`.
 
+## Package 2a: admin credit issuance with maker-checker
+
+Owner decisions of 2026-10-25 (hand-off `customer-wallet-package2a.md`). Backend only; the admin
+pages are package 2b.
+
+- An admin issues promo store credit (`grant-promo` journal, promo lot, Market promo expiry, cost
+  `promo_expense`) to a customer with a closed reason code (`goodwill`, `service-recovery`,
+  `promotion`, `correction`) and an optional note (1 to 500 characters, no control characters).
+  The note is stored for the admins and returned only by the admin routes; it never enters a
+  journal, an audit row, an event or a log.
+- Within both caps the credit is granted at once: the request row is `granted` and names its
+  journal. Above either cap (`approval_reason` `issue-cap` or `daily-cap`) it is `pending`, with
+  no ledger effect, until a second admin approves (the grant happens then), rejects (closed
+  reason: `not-justified`, `amount-too-high`, `duplicate`, `wrong-customer`, `policy`), or it
+  expires after `wallet.adminRequestExpiryDays` calendar days in the Market's zone (AU 7). Exactly
+  at a cap is within it.
+- The daily cap is per admin per calendar day in the Market's time zone (ADR-0005, injected
+  Clock), counting the amounts the admin has `granted`, `pending` and `approved` that day;
+  rejected and expired requests free it again. Race-safe: an issue first locks the admin's day
+  row (`wallet.admin_credit_days`, created on first use, then a lock-only update), so two issues
+  by one admin on one day run one after the other and the second counts the first. The db spec
+  runs two parallel issues straddling the cap: one is granted, one waits.
+- At approval the wallet state, the customer wallet state and the customer balance cap are
+  checked again (the same grant code as the facade). The wallet must be `active` to issue or to
+  approve; `paused`, `frozen` and `off` refuse, and a `BEFORE INSERT` trigger on the requests
+  table reads the switch `FOR SHARE` like the journals' fence. Rejecting works in any state.
+- Maker-checker: the admin who asked can neither approve nor reject
+  (`wallet.approver-is-requester`), also enforced by a CHECK (`decided_by <> requested_by`).
+- Each write spends a fresh admin step-up proof of its own action through `STEP_UP_CONSUMER`,
+  inside the unit, right before the first write (as `setStatus`): `wallet.credit.issue` for an
+  issue, `wallet.credit.approve` for approve and reject. Both are admin actions (locked) and are
+  guarded on their routes with `@RequiresStepUp`. Refusals before that point spend no proof.
+- Permissions (protected, platform scope; no seller or customer can hold them):
+  `wallet.credit.view` (list, customer summary), `wallet.credit.issue`, `wallet.credit.approve`.
+  Writes are refused in an acting-as session.
+- Idempotency: the client's `idempotencyKey` is unique per Market on the request row; the same key
+  and request (admin, customer, amount, reason, note) answer the first result, another request
+  `idempotency.key-reused`. The ledger key is derived on the server
+  (`wallet:admin-credit:<requestId>`), never the client's key.
+- Audit rows: `wallet.admin-credit.issued`, `.requested`, `.approved`, `.rejected` (each naming
+  the step-up session and its verification time) and `.expired` (system). There is no outbox
+  event: the wallet module has no outbox yet, so `wallet.credit-granted` is not emitted.
+- Worker job `wallet.expire-admin-credit-requests` (every 5 minutes) expires pending requests
+  past `expires_at`, one unit each, under the row lock.
+
+HTTP (admin population, CSRF on writes, `no-store`):
+
+| Route | Key | Step-up |
+|---|---|---|
+| `POST /wallet/admin/credits` `{customerAccountId, amount, currency, reasonCode, note?, idempotencyKey}` | `wallet.credit.issue` | `wallet.credit.issue` |
+| `POST /wallet/admin/credit-requests/:requestId/approve` | `wallet.credit.approve` | `wallet.credit.approve` |
+| `POST /wallet/admin/credit-requests/:requestId/reject` `{reasonCode}` | `wallet.credit.approve` | `wallet.credit.approve` |
+| `GET /wallet/admin/credit-requests?status=pending\|decided\|granted&cursor&limit` | `wallet.credit.view` | none |
+| `GET /wallet/admin/customers/:customerAccountId` | `wallet.credit.view` | none |
+
+Tables: `wallet.admin_credit_requests` (never deleted; insert-only except the decision columns,
+once, from `pending`; CHECKs tie each status to its columns; the journal it names must be this
+request's promo grant of the same customer and amount, written in the same transaction) and
+`wallet.admin_credit_days` (the day lock). Indexes: the daily sum reads
+`(market_id, requested_by_account_id, local_day, status, amount_minor)` only; the list
+`(market_id, status, requested_at DESC, id DESC)`; the sweep a partial
+`(market_id, expires_at, id) WHERE status = 'pending'`.
+
+Not checked: that the customer id is a customer account of the Market (no identity facade for it
+yet; the same holds for the facade's `grantCredit`). Maker-checker limits the exposure above the
+caps.
+
 ## Out of scope
 
-UI, admin issuance, checkout wiring, refunds, gift codes, cashback, notifications, the `reverse`
+Admin UI (package 2b), gift codes, checkout wiring, refunds to the wallet, cashback, notifications, the `reverse`
 journal use case (the kind exists in the CHECK for package 2).

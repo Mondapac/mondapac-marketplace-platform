@@ -530,6 +530,7 @@
   { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
   { "name": "wallet.balance-of", "rule": "system" },
   { "name": "wallet.capture-hold", "rule": "system" },
+  { "name": "wallet.expire-admin-credit-requests", "rule": "system" },
   { "name": "wallet.expire-wallet-credit", "rule": "system" },
   { "name": "wallet.grant-credit", "rule": "system" },
   { "name": "wallet.place-hold", "rule": "system" },

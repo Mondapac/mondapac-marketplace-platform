@@ -488,6 +488,19 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['reason_code', 'status', 'updated_at', 'updated_by_account_id'],
     },
+    // Admin credit (package 2a): a request is written once and decided once; a day row is
+    // written once and then only locked. Neither is ever deleted (a trigger refuses it).
+    'wallet.admin_credit_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decision_reason_code',
+        'journal_id',
+        'status',
+      ],
+    },
+    'wallet.admin_credit_days': { table: ['INSERT', 'SELECT'], columnUpdate: ['locked_at'] },
     // Storefront: a page is created and changed (never its kind, key or template) and never
     // deleted; a version's content and state change; a redirect is removed when its page takes the
     // old slug back.

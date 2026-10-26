@@ -13,20 +13,27 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { ADMIN_CREDIT_REPOSITORY } from './application/ports/admin-credit.repository';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { WALLET_POLICY } from './application/ports/wallet-policy';
 import { WALLET_REPOSITORY } from './application/ports/wallet.repository';
+import { ApproveAdminCredit } from './application/use-cases/approve-admin-credit.use-case';
 import { BalanceOf } from './application/use-cases/balance-of.use-case';
 import { CaptureHold } from './application/use-cases/capture-hold.use-case';
+import { ExpireAdminCreditRequests } from './application/use-cases/expire-admin-credit-requests.use-case';
 import { ExpireWalletCredit } from './application/use-cases/expire-wallet-credit.use-case';
 import { GrantCredit } from './application/use-cases/grant-credit.use-case';
+import { IssueAdminCredit } from './application/use-cases/issue-admin-credit.use-case';
+import { ListAdminCreditRequests } from './application/use-cases/list-admin-credit-requests.use-case';
 import { PlaceHold } from './application/use-cases/place-hold.use-case';
+import { RejectAdminCredit } from './application/use-cases/reject-admin-credit.use-case';
 import { ReleaseHold } from './application/use-cases/release-hold.use-case';
 import { SetWalletStatus } from './application/use-cases/set-wallet-status.use-case';
+import { ViewCustomerWallet } from './application/use-cases/view-customer-wallet.use-case';
 import { ViewMyHistory } from './application/use-cases/view-my-history.use-case';
 import { ViewMyWallet } from './application/use-cases/view-my-wallet.use-case';
 import { ViewWalletSettings } from './application/use-cases/view-wallet-settings.use-case';
-import type { WalletDependencies } from './application/wallet-dependencies';
+import type { AdminCreditDependencies } from './application/wallet-dependencies';
 import {
   WALLET_AUDIT_ACTIONS,
   WALLET_FACADE,
@@ -34,13 +41,15 @@ import {
   WALLET_STEP_UP_ACTIONS,
 } from './contracts';
 import { walletProviders } from './infrastructure/wallet-providers';
+import { expireAdminCreditRequestsJob } from './presentation/jobs/expire-admin-credit-requests.job';
 import { expireWalletCreditJob } from './presentation/jobs/expire-wallet-credit.job';
+import { AdminWalletCreditController } from './presentation/admin-credit.controller';
 import { AdminWalletController, CustomerWalletController } from './presentation/wallet.controller';
 import { WalletFacadeImplementation } from './presentation/wallet.facade';
 
-type UseCaseClass<U> = new (gate: UseCaseGate, deps: WalletDependencies) => U;
+type UseCaseClass<U> = new (gate: UseCaseGate, deps: AdminCreditDependencies) => U;
 
-const PORTS: readonly [keyof WalletDependencies, InjectionToken][] = [
+const PORTS: readonly [keyof AdminCreditDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['wallet', WALLET_REPOSITORY],
   ['settings', MARKET_SETTING_REPOSITORY],
@@ -49,6 +58,7 @@ const PORTS: readonly [keyof WalletDependencies, InjectionToken][] = [
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
   ['stepUp', STEP_UP_CONSUMER],
+  ['credits', ADMIN_CREDIT_REPOSITORY],
 ];
 
 /** Every wallet use case shares one dependency object, built from the same ports. */
@@ -61,7 +71,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         gate,
         Object.fromEntries(
           PORTS.map(([name], index) => [name, values[index]]),
-        ) as unknown as WalletDependencies,
+        ) as unknown as AdminCreditDependencies,
       ),
   };
 }
@@ -71,11 +81,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * credit. Lots, holds, balanced insert-only journals and the cached balance live in the `wallet`
  * schema. Other modules call `WALLET_FACADE` (system callers; no ordering wiring yet); the
  * signed-in customer reads `GET /wallet/me` and `/wallet/me/history`; an admin moves the Market
- * switch (off, active, paused, frozen) at runtime. A worker job expires holds and promo credit.
+ * switch (off, active, paused, frozen) at runtime and issues promo credit to customers with
+ * maker-checker above the Market's caps (package 2a). Worker jobs expire holds, promo credit and
+ * undecided admin credit requests.
  * No card, bank or Stripe call exists here.
  */
 @Module({
-  controllers: [AdminWalletController, CustomerWalletController],
+  controllers: [AdminWalletController, AdminWalletCreditController, CustomerWalletController],
   providers: [
     PersistenceModule.auditWriterFor('wallet'),
     registerAuditActions('wallet', WALLET_AUDIT_ACTIONS),
@@ -93,6 +105,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewMyHistory,
       ViewWalletSettings,
       SetWalletStatus,
+      IssueAdminCredit,
+      ApproveAdminCredit,
+      RejectAdminCredit,
+      ListAdminCreditRequests,
+      ViewCustomerWallet,
+      ExpireAdminCreditRequests,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: WALLET_FACADE,
@@ -105,9 +123,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         balance: BalanceOf,
       ) => new WalletFacadeImplementation(grant, place, capture, release, balance),
     },
-    registerJobsFrom('wallet', [ExpireWalletCredit], (expire: ExpireWalletCredit) => [
-      expireWalletCreditJob(expire),
-    ]),
+    registerJobsFrom(
+      'wallet',
+      [ExpireWalletCredit, ExpireAdminCreditRequests],
+      (expire: ExpireWalletCredit, expireRequests: ExpireAdminCreditRequests) => [
+        expireWalletCreditJob(expire),
+        expireAdminCreditRequestsJob(expireRequests),
+      ],
+    ),
   ],
   exports: [WALLET_FACADE],
 })

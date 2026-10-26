@@ -2,6 +2,7 @@ import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { AdminCreditRepository } from './ports/admin-credit.repository';
 import type { MarketSettingRepository } from './ports/market-setting.repository';
 import type { WalletPolicy } from './ports/wallet-policy';
 import type { WalletRepository } from './ports/wallet.repository';
@@ -20,4 +21,9 @@ export interface WalletDependencies {
    * identity implements the platform port).
    */
   readonly stepUp: StepUpProofConsumer;
+}
+
+/** The admin credit use cases (package 2a) also reach the request store. */
+export interface AdminCreditDependencies extends WalletDependencies {
+  readonly credits: AdminCreditRepository;
 }

@@ -22,6 +22,7 @@
     "promoExpiryMonths": 6,
     "adminIssueCapMinor": 3000,
     "adminDailyCapMinor": 30000,
+    "adminRequestExpiryDays": 3,
     "expiringSoonDays": 14
   },
   "tax": {
