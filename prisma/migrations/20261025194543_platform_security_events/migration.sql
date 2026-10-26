@@ -90,8 +90,11 @@ ALTER TABLE "platform"."security_events_archive"
 -- TRUNCATE are always rejected. DELETE is rejected for a row younger than its retention floor,
 -- read from the database clock: 89 days in security_events (the job moves rows at 90 days; one
 -- day of margin for clock skew between the API and the database) and 454 days in the
--- archive (the job deletes at 90 + 365 days). So no role can remove a recent event, and
--- the retention job is the only deleter that can succeed.
+-- archive (the job deletes at 90 + 365 days after the event). A row of security_events may
+-- be deleted only once an identical copy is in the archive, and an archive row may be inserted
+-- only as an identical copy of a row of security_events (Hassan and Mojtaba on #514). So no
+-- role can remove a recent event, drop an old one without archiving it, or plant a forged
+-- archive copy: the retention job is the only deleter that can succeed.
 CREATE FUNCTION "platform"."security_events_guard_mutation"() RETURNS trigger
   LANGUAGE plpgsql
   SECURITY INVOKER
@@ -101,10 +104,51 @@ BEGIN
   -- Nested, so OLD is read only for a row-level DELETE (it is NULL for TRUNCATE).
   IF TG_OP = 'DELETE' THEN
     IF OLD.occurred_at < now() - (TG_ARGV[0])::interval THEN
-      RETURN OLD;
+      IF TG_TABLE_NAME <> 'security_events' OR EXISTS (
+        SELECT 1 FROM "platform"."security_events_archive" a
+        WHERE a.id = OLD.id
+          AND (a.market_id, a.tenant_id, a.occurred_at, a.type, a.severity, a.actor_type,
+               a.actor_id, a.target_type, a.target_id, a.ip, a.payload, a.correlation_id)
+              IS NOT DISTINCT FROM
+              (OLD.market_id, OLD.tenant_id, OLD.occurred_at, OLD.type, OLD.severity,
+               OLD.actor_type, OLD.actor_id, OLD.target_type, OLD.target_id, OLD.ip, OLD.payload,
+               OLD.correlation_id)
+      ) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'platform.security_events: a row is deleted only after it is archived'
+        USING ERRCODE = 'restrict_violation';
     END IF;
   END IF;
   RAISE EXCEPTION '%.% is insert-only: % is not allowed', TG_TABLE_SCHEMA, TG_TABLE_NAME, TG_OP
+    USING ERRCODE = 'restrict_violation';
+END;
+$$;
+
+-- An archive row is an identical copy of a row of security_events. A row another run archived
+-- already is skipped (the hot row is gone once that run commits), so concurrent runs stay safe.
+CREATE FUNCTION "platform"."security_events_archive_guard_insert"() RETURNS trigger
+  LANGUAGE plpgsql
+  SECURITY INVOKER
+  SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM "platform"."security_events" e
+    WHERE e.id = NEW.id
+      AND (e.market_id, e.tenant_id, e.occurred_at, e.type, e.severity, e.actor_type,
+           e.actor_id, e.target_type, e.target_id, e.ip, e.payload, e.correlation_id)
+          IS NOT DISTINCT FROM
+          (NEW.market_id, NEW.tenant_id, NEW.occurred_at, NEW.type, NEW.severity,
+           NEW.actor_type, NEW.actor_id, NEW.target_type, NEW.target_id, NEW.ip, NEW.payload,
+           NEW.correlation_id)
+  ) THEN
+    RETURN NEW;
+  END IF;
+  IF EXISTS (SELECT 1 FROM "platform"."security_events_archive" a WHERE a.id = NEW.id) THEN
+    RETURN NULL;
+  END IF;
+  RAISE EXCEPTION 'platform.security_events_archive: a row must copy a row of security_events'
     USING ERRCODE = 'restrict_violation';
 END;
 $$;
@@ -116,6 +160,10 @@ CREATE TRIGGER "security_events_guard_update_delete"
 CREATE TRIGGER "security_events_no_truncate"
   BEFORE TRUNCATE ON "platform"."security_events"
   FOR EACH STATEMENT EXECUTE FUNCTION "platform"."security_events_guard_mutation"('89 days');
+
+CREATE TRIGGER "security_events_archive_guard_insert"
+  BEFORE INSERT ON "platform"."security_events_archive"
+  FOR EACH ROW EXECUTE FUNCTION "platform"."security_events_archive_guard_insert"();
 
 CREATE TRIGGER "security_events_archive_guard_update_delete"
   BEFORE UPDATE OR DELETE ON "platform"."security_events_archive"

@@ -124,7 +124,11 @@ describe('platform security events (database integration, SOC package 1)', () =>
   const eventsOf = (correlationId: string) =>
     root.securityEvent.findMany({ where: { correlationId }, orderBy: { id: 'asc' } });
 
-  /** An event row inserted as `client`, `days` before the real time. */
+  /**
+   * An event row inserted as `client`, `days` before the real time. An archive row is archived
+   * the only way the database allows: an identical copy of a row of security_events, which is
+   * then deleted.
+   */
   async function eventAt(
     marketId: string,
     days: number,
@@ -134,16 +138,29 @@ describe('platform security events (database integration, SOC package 1)', () =>
     const id = randomUUID();
     const at = new Date(Date.now() - days * 86_400_000);
     at.setUTCMilliseconds(0);
-    const archived = table === 'security_events_archive';
     await client.query(
-      `INSERT INTO platform.${table}
+      `INSERT INTO platform.security_events
          (id, market_id, tenant_id, occurred_at, type, severity, actor_type, payload,
-          correlation_id${archived ? ', archived_at' : ''})
+          correlation_id)
        VALUES ($1, $2, $3, $4, 'identity.sign-in.failed', 's4', 'ANONYMOUS', '{}',
-               'secev-db-retention'${archived ? ', $4' : ''})`,
+               'secev-db-retention')`,
       [id, marketId, PLATFORM_TENANT_ID, at.toISOString()],
     );
+    if (table === 'security_events_archive') await archiveRow(client, id);
     return id;
+  }
+
+  async function archiveRow(client: Client, id: string) {
+    await client.query(
+      `INSERT INTO platform.security_events_archive
+         (id, market_id, tenant_id, occurred_at, type, severity, actor_type, actor_id,
+          target_type, target_id, ip, payload, correlation_id, archived_at)
+       SELECT id, market_id, tenant_id, occurred_at, type, severity, actor_type, actor_id,
+              target_type, target_id, ip, payload, correlation_id, occurred_at
+         FROM platform.security_events WHERE id = $1`,
+      [id],
+    );
+    await client.query('DELETE FROM platform.security_events WHERE id = $1', [id]);
   }
 
   describe.each(TEST_MARKETS)('Market %s', (code) => {
@@ -233,6 +250,7 @@ describe('platform security events (database integration, SOC package 1)', () =>
         'type-not-in-catalogue',
       );
       expect(await refusal(identityEvents, { ...failed, ip: 'not-an-address' })).toBe('ip-invalid');
+      expect(await refusal(identityEvents, { ...failed, ip: 'fe80::1%eth0' })).toBe('ip-invalid');
       expect(await refusal(identityEvents, { ...failed, targetId: 'someone@example.com' })).toBe(
         'target-id-invalid',
       );
@@ -345,6 +363,45 @@ describe('platform security events (database integration, SOC package 1)', () =>
         );
         expect(await sqlStateOf(owner, `TRUNCATE platform.${table}`)).toBe(RESTRICT_VIOLATION);
       }
+    });
+
+    it('deletes an old row only once an identical copy is archived, and archives only copies', async () => {
+      const old = await eventAt(code, 120, 'security_events');
+      // Past the floor but not archived: refused, for the app and for the owner.
+      expect(
+        await sqlStateOf(sql, 'DELETE FROM platform.security_events WHERE id = $1', [old]),
+      ).toBe(RESTRICT_VIOLATION);
+      expect(
+        await sqlStateOf(owner, 'DELETE FROM platform.security_events WHERE id = $1', [old]),
+      ).toBe(RESTRICT_VIOLATION);
+      // A forged copy (another severity) or a row with no original is refused.
+      expect(
+        await sqlStateOf(
+          sql,
+          `INSERT INTO platform.security_events_archive
+             (id, market_id, tenant_id, occurred_at, type, severity, actor_type, payload,
+              correlation_id, archived_at)
+           SELECT id, market_id, tenant_id, occurred_at, type, 's1', actor_type, payload,
+                  correlation_id, now()
+             FROM platform.security_events WHERE id = $1`,
+          [old],
+        ),
+      ).toBe(RESTRICT_VIOLATION);
+      expect(
+        await sqlStateOf(
+          sql,
+          `INSERT INTO platform.security_events_archive
+             (id, market_id, tenant_id, occurred_at, type, severity, actor_type, payload,
+              correlation_id, archived_at)
+           VALUES ($1, $2, $3, date_trunc('second', now()) - interval '200 days', 'identity.sign-in.failed', 's4',
+                   'ANONYMOUS', '{}', 'secev-db-retention', now())`,
+          [randomUUID(), code, PLATFORM_TENANT_ID],
+        ),
+      ).toBe(RESTRICT_VIOLATION);
+      // The identical copy is accepted, and then the old row may go.
+      await archiveRow(sql, old);
+      expect(await root.securityEvent.count({ where: { id: old } })).toBe(0);
+      expect(await root.securityEventArchive.count({ where: { id: old } })).toBe(1);
     });
 
     it('checks codes, actors, targets and the payload shape', async () => {

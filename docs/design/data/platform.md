@@ -1230,11 +1230,19 @@ The two tables are reserved like the audit tables: `PrismaService.tx` does not e
 
 - `platform.security-events-retention` (worker, hourly, per hosted Market): moves events older
   than 90 days to the archive (500 per unit, `ON CONFLICT DO NOTHING`, then delete), and deletes
-  archived events older than 90 + 365 days. At most 40 units per table per run.
+  archived events 90 + 365 days after they occurred (counted from `occurred_at`, not from
+  `archived_at`). At most 40 units per table per run; a run that uses its whole budget logs
+  `platform.security-events-retention.backlog` as a warning.
 - Insert-only for every role, the owner included: a trigger rejects UPDATE and TRUNCATE always,
   and DELETE of a row younger than its floor read from the database clock (89 days hot, 454 days
-  archive: one day under the job's ages for clock skew). So no admin and no bug can remove a
-  recent event; the retention job is the only deleter that can succeed.
+  archive: one day under the job's ages for clock skew). A hot row may be deleted only once an
+  identical copy is in the archive, and the archive accepts only an identical copy of a hot row
+  (a row another run archived already is skipped). So no admin and no bug can remove a recent
+  event, drop an old one unarchived or plant a forged copy; the retention job is the only
+  deleter that can succeed.
+- Not enforced by the database: `occurred_at` comes from the platform clock through the writer
+  (tests run with fixed clocks, past and future), so the database does not bound it to its own
+  clock. Only the writer, bound per module, inserts.
 - `mondapac_app`: `SELECT, INSERT, DELETE` on both tables, nothing else. The start-up check
   `security_events_privilege` refuses a role that holds UPDATE, TRUNCATE, TRIGGER or MAINTAIN.
 - Data stays in the Market's region (the tables live in the Region Stack's database).

@@ -120,7 +120,8 @@ class PrismaSecurityEvents implements SecurityEvents {
     let address: string | null = null;
     if (ip !== null && ip !== undefined) {
       if (!definition.ip) throw new SecurityEventRefusedError('ip-undeclared');
-      if (typeof ip !== 'string' || ip.length > 45 || isIP(ip) === 0) {
+      // A zone id (`fe80::1%eth0`) passes isIP but not PostgreSQL's inet (Mojtaba on #514).
+      if (typeof ip !== 'string' || ip.length > 45 || ip.includes('%') || isIP(ip) === 0) {
         throw new SecurityEventRefusedError('ip-invalid');
       }
       address = ip;

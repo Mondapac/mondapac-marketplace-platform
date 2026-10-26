@@ -230,8 +230,10 @@ export class PersistenceModule {
    * and a module never exports `SECURITY_EVENTS`.
    */
   static securityEventsFor(owner: string): FactoryProvider<SecurityEvents> {
-    if (!/^(?:platform\.)?[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(owner) || owner === 'platform') {
-      throw new Error(`"${owner}" is not a module name or "platform.<component>"`);
+    // A module name only: a type's owner segment has no dot, so a "platform.<component>"
+    // recorder could record nothing (Hassan on #514).
+    if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(owner) || owner === 'platform') {
+      throw new Error(`"${owner}" is not a module name`);
     }
     return {
       provide: SECURITY_EVENTS,

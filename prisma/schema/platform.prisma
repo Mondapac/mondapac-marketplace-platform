@@ -253,10 +253,11 @@ model SecurityEvent {
 }
 
 /// The archive of security events (SOC decision T6): a row moves here, unchanged, when it is
-/// 90 days old, and is deleted 12 months after it was archived (so 15 months after it
-/// occurred). Same columns as `security_events` plus `archived_at`; insert-only like it: a
-/// hand-written trigger rejects UPDATE and TRUNCATE and rejects DELETE of a row that occurred
-/// less than 90 days + 12 months ago. Written and purged only by the retention job.
+/// 90 days old, and is deleted 90 + 365 days after it occurred. Same columns as
+/// `security_events` plus `archived_at`; insert-only like it: hand-written triggers accept only
+/// an identical copy of a row of `security_events`, reject UPDATE and TRUNCATE, and reject
+/// DELETE of a row that occurred less than 454 days ago. Written and purged only by the
+/// retention job.
 model SecurityEventArchive {
   id            String   @id @db.Uuid
   marketId      String   @map("market_id") @db.VarChar(8)

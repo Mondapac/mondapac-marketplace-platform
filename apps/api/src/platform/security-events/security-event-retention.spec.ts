@@ -58,6 +58,7 @@ describe('SecurityEventRetention (SOC decision T6)', () => {
     await expect(retention.run(market)).resolves.toEqual({
       archived: RETENTION_BATCH + 3,
       purged: 2,
+      backlog: false,
     });
     expect(store.calls).toEqual([
       { kind: 'archive', before: NOW.subtract({ hours: 90 * 24 }) },

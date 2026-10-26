@@ -45,6 +45,8 @@ export const SECURITY_EVENT_STORE = Symbol('SECURITY_EVENT_STORE');
 export interface RetentionReport {
   readonly archived: number;
   readonly purged: number;
+  /** True when a table used its whole batch budget: rows are left for the next run. */
+  readonly backlog: boolean;
 }
 
 /**
@@ -71,18 +73,25 @@ export class SecurityEventRetention {
     const purged = await this.#batches(market, () =>
       this.store.purgeArchive(market, archiveBefore, RETENTION_BATCH),
     );
-    return { archived, purged };
+    return {
+      archived: archived.total,
+      purged: purged.total,
+      backlog: archived.backlog || purged.backlog,
+    };
   }
 
-  async #batches(market: MarketContext, batch: () => Promise<number>): Promise<number> {
+  async #batches(
+    market: MarketContext,
+    batch: () => Promise<number>,
+  ): Promise<{ total: number; backlog: boolean }> {
     let total = 0;
     for (let index = 0; index < RETENTION_MAX_BATCHES; index += 1) {
       const result = await this.unitOfWork.run(market, async () => ok(await batch()));
-      if (!result.ok) break;
+      if (!result.ok) return { total, backlog: false };
       total += result.value;
-      if (result.value < RETENTION_BATCH) break;
+      if (result.value < RETENTION_BATCH) return { total, backlog: false };
     }
-    return total;
+    return { total, backlog: true };
   }
 }
 
@@ -98,7 +107,17 @@ export function securityEventsRetentionJob(retention: SecurityEventRetention): J
     maxRunMs: 300_000,
     async run(context: JobContext): Promise<void> {
       const report = await retention.run(context.market);
-      if (report.archived + report.purged > 0) {
+      // A run that used its whole budget leaves rows behind (a burst of refused sign-ins):
+      // warn, so a growing backlog is seen (Mojtaba on #514).
+      if (report.backlog) {
+        logger.warn({
+          msg: `${SECURITY_EVENTS_RETENTION_JOB}.backlog`,
+          marketId: context.market.marketId,
+          correlationId: context.correlationId,
+          archived: report.archived,
+          purged: report.purged,
+        });
+      } else if (report.archived + report.purged > 0) {
         logger.log({
           msg: SECURITY_EVENTS_RETENTION_JOB,
           marketId: context.market.marketId,
