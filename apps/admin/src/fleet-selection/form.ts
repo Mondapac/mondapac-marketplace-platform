@@ -89,3 +89,32 @@ export function moved(order: readonly FleetCode[], index: number, by: -1 | 1): F
   [next[index], next[to]] = [next[to]!, next[index]!];
   return next;
 }
+
+export type WeightKey = 'price' | 'eta' | 'reliability';
+export const WEIGHT_KEYS: readonly WeightKey[] = ['price', 'eta', 'reliability'];
+
+/** Which weights are wrong: `range` (not a whole number from 0 to 100) or `zero` (all are 0). */
+export function weightFaults(
+  weights: ModelForm['weights'],
+): Partial<Record<WeightKey, 'range' | 'zero'>> {
+  const faults: Partial<Record<WeightKey, 'range' | 'zero'>> = {};
+  for (const key of WEIGHT_KEYS) {
+    const text = weights[key].trim();
+    if (!WHOLE.test(text) || Number(text) > 100) faults[key] = 'range';
+  }
+  if (Object.keys(faults).length === 0 && WEIGHT_KEYS.every((key) => Number(weights[key]) === 0)) {
+    for (const key of WEIGHT_KEYS) faults[key] = 'zero';
+  }
+  return faults;
+}
+
+/** The sum of the weights that are valid numbers (an unreadable one counts as 0). */
+export const weightTotal = (weights: ModelForm['weights']): number =>
+  WEIGHT_KEYS.reduce((sum, key) => {
+    const text = weights[key].trim();
+    return sum + (WHOLE.test(text) ? Number(text) : 0);
+  }, 0);
+
+/** A weight's share of the total, as a whole percent (0 when the total is 0). */
+export const sharePercent = (value: number, total: number): number =>
+  total === 0 ? 0 : Math.round((value * 100) / total);

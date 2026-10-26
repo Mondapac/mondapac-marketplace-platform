@@ -22,8 +22,17 @@ const wrap = (node: ReactNode) => (
 );
 
 const MODEL = '01990000-0000-7000-8000-000000000001';
+const MODEL3 = '01990000-0000-7000-8000-000000000003';
 const selection = (patch: Partial<Selection> = {}): Selection => ({
-  models: [{ id: MODEL, name: 'Cheapest first', rule: { kind: 'cheapest' }, version: 1 }],
+  models: [
+    { id: MODEL, name: 'Cheapest first', rule: { kind: 'cheapest' }, version: 1 },
+    {
+      id: MODEL3,
+      name: 'Own fleet first',
+      rule: { kind: 'fixed_priority', order: ['mondapac_drive'] },
+      version: 1,
+    },
+  ],
   active: { instant: null, same_day: null, scheduled: null },
   defaultOrder: ['mondapac_drive', 'uber_direct', 'zoom2u', 'auspost'],
   fleets: [
@@ -65,6 +74,9 @@ const selection = (patch: Partial<Selection> = {}): Selection => ({
 
 const mount = (initial: Selection, canManage = true) =>
   render(wrap(<FleetSelectionPanel initial={initial} canManage={canManage} csrfToken="csrf" />));
+/** The dialog is a native modal; jsdom keeps it in the tree, so the confirm button is reachable. */
+const confirmDialog = () =>
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm', hidden: true }));
 const ok = <T,>(body: T) => ({ ok: true as const, status: 200, body });
 const refused = (status: number, code: string) => ({
   ok: false as const,
@@ -73,7 +85,16 @@ const refused = (status: number, code: string) => ({
 
 vi.setConfig({ testTimeout: 30_000 });
 
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => {
+  vi.resetAllMocks();
+  // jsdom has no modal support: a stub makes `showModal` open the element.
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute('open');
+  };
+});
 afterEach(cleanup);
 
 describe('the model form checks', () => {
@@ -118,7 +139,7 @@ describe('the fleet selection page', () => {
 
     expect(screen.getByRole('heading', { name: 'Cheapest first' })).toBeTruthy();
     expect(screen.getByText('Lowest quote wins. A tie goes to Mondapac Drive.')).toBeTruthy();
-    expect(screen.getByText('Not active for any method')).toBeTruthy();
+    expect(screen.getAllByText('Not active for any method').length).toBeGreaterThan(0);
     expect(screen.getByRole('heading', { name: 'Mondapac Drive' })).toBeTruthy();
     expect(screen.getByText('On in this Market')).toBeTruthy();
     expect(screen.getAllByText('Off in this Market')[0]).toBeTruthy();
@@ -143,6 +164,7 @@ describe('the fleet selection page', () => {
 
     fireEvent.change(screen.getByLabelText('Instant'), { target: { value: MODEL } });
     fireEvent.click(screen.getByRole('button', { name: 'Save active models' }));
+    confirmDialog();
 
     await waitFor(() =>
       expect(screen.getByText('Active models saved. They apply to the next booking.')).toBeTruthy(),
@@ -164,6 +186,7 @@ describe('the fleet selection page', () => {
 
     fireEvent.change(screen.getByLabelText('Instant'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save active models' }));
+    confirmDialog();
 
     await waitFor(() => expect(call).toHaveBeenCalled());
     expect(call).toHaveBeenCalledWith(
@@ -217,7 +240,7 @@ describe('the fleet selection page', () => {
     fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'fixed_priority' } });
     fireEvent.click(screen.getByRole('button', { name: 'Move Mondapac Drive down' }));
     fireEvent.click(screen.getByRole('button', { name: 'Remove Uber Direct' }));
-    fireEvent.click(screen.getByLabelText('Add Australia Post'));
+    fireEvent.click(screen.getByLabelText('Add Australia Post (off in this Market)'));
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
 
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
@@ -302,9 +325,130 @@ describe('the fleet selection page', () => {
 
     fireEvent.change(screen.getByLabelText('Instant'), { target: { value: MODEL } });
     fireEvent.click(screen.getByRole('button', { name: 'Save active models' }));
+    confirmDialog();
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
     vi.unstubAllGlobals();
+  });
+});
+
+describe('the review changes', () => {
+  it('shows what each changed method goes from and to, and sends nothing until confirmed', () => {
+    mount(selection({ active: { instant: MODEL3, same_day: null, scheduled: null } }));
+
+    fireEvent.change(screen.getByLabelText('Instant'), { target: { value: MODEL } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save active models' }));
+
+    expect(
+      screen.getByText(
+        'Instant: Own fleet first → Cheapest first. Every new Instant order will use this rule.',
+      ),
+    ).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Go back', hidden: true }));
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('lists the kind in each model option', () => {
+    mount(selection());
+    expect(
+      within(screen.getByLabelText('Instant')).getByRole('option', {
+        name: 'Cheapest first (Cheapest)',
+      }),
+    ).toBeTruthy();
+  });
+
+  it('warns and asks again before saving a model that is active', async () => {
+    call.mockResolvedValueOnce(ok({})).mockResolvedValueOnce(ok(selection()));
+    mount(selection({ active: { instant: MODEL, same_day: null, scheduled: null } }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Cheapest first' }));
+    expect(screen.getByText(/This model is active for Instant/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByText(/^Cheapest first is active for Instant/)).toBeTruthy();
+    confirmDialog();
+
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+  });
+
+  it('says a viewer can look but not change', () => {
+    mount(selection(), false);
+    expect(screen.getByText('You can view but not change delivery fleets.')).toBeTruthy();
+  });
+
+  it('ties a weights error to its inputs and focuses the first one', () => {
+    mount(selection());
+
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'W' } });
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'weighted' } });
+    for (const label of ['Price', 'Arrival time', 'Reliability']) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value: '0' } });
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
+
+    const price = screen.getByLabelText('Price');
+    expect(price.getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(price);
+    expect(screen.getAllByText('At least one weight must be above 0')).toHaveLength(3);
+    const group = screen.getByRole('group', { name: 'Weights' });
+    const alert = screen.getByText('Enter whole numbers from 0 to 100, not all 0.');
+    expect(group.getAttribute('aria-describedby')).toBe(alert.id);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('shows each weight as a share of the total', () => {
+    mount(selection());
+
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'weighted' } });
+
+    expect(screen.getByText('50 of 100 (50%)')).toBeTruthy();
+    expect(screen.getByText('Total: 100')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Price'), { target: { value: '100' } });
+    expect(screen.getByText('100 of 150 (67%)')).toBeTruthy();
+    expect(screen.getByText('Total: 150')).toBeTruthy();
+  });
+
+  it('focuses the name when the form opens', () => {
+    mount(selection());
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Name'));
+  });
+
+  it('announces a move and keeps focus on a usable arrow', () => {
+    mount(selection());
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'fixed_priority' } });
+
+    const up = screen.getByRole('button', { name: 'Move Uber Direct up' });
+    up.focus();
+    fireEvent.click(up);
+
+    expect(screen.getByText('Uber Direct moved to position 1')).toBeTruthy();
+    // It is first now, so its Up arrow is disabled and focus goes to Down.
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Move Uber Direct down' }),
+    );
+  });
+
+  it('marks a fleet that is off in this Market in the add list', () => {
+    mount(selection());
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'fixed_priority' } });
+    expect(screen.getByLabelText('Add Australia Post (off in this Market)')).toBeTruthy();
+  });
+
+  it('moves focus to the saved notice', async () => {
+    call.mockResolvedValueOnce(ok({})).mockResolvedValueOnce(ok(selection()));
+    mount(selection());
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Another' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
+
+    const notice = await screen.findByText('Model created.');
+    await waitFor(() => expect(document.activeElement).toBe(notice.closest('[tabindex]')));
   });
 });
 

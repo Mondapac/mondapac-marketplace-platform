@@ -40,6 +40,8 @@ import {
   SALES_RANKING_READER,
   type SalesRankingReader,
 } from '../application/ports/sales-ranking.reader';
+import { OFFER_PAIR_STORE, type OfferPairStore } from '../application/ports/offer-pairs.store';
+import { PrismaOfferPairStore } from './prisma-offer-pairs.store';
 import { PrismaSalesRankingReader } from './prisma-sales-ranking.reader';
 import { StripeCheckoutGateway } from './stripe-checkout-gateway';
 import { SubjectKeyPickupCodeVault } from './subject-key-pickup-code-vault';
@@ -80,6 +82,11 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: SALES_RANKING_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SalesRankingReader => new PrismaSalesRankingReader(prisma),
+  },
+  {
+    provide: OFFER_PAIR_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferPairStore => new PrismaOfferPairStore(prisma),
   },
   {
     provide: CHECKOUT_GATEWAY,

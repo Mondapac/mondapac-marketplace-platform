@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { CartGroup, CartView, DeliveryChoice } from '../cart/cart.ts';
 import { formatMoney } from '../format/money.ts';
+import { intlLocale } from '../i18n/locale.ts';
 import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
 import { useStore } from '../shell/store-context.tsx';
@@ -302,13 +303,13 @@ function ExpressReason({ terms }: { readonly terms: ExpressTerms | undefined }) 
   const locale = useLocale();
   if (terms?.kind !== 'closed') return <>{t('express-not-offered')}</>;
   const at = new Date(terms.cutoff);
-  const zoned = new Intl.DateTimeFormat(locale, {
+  const zoned = new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone: terms.timeZone,
     hour: 'numeric',
     minute: '2-digit',
   });
   const minute = zoned.formatToParts(at).find((p) => p.type === 'minute')?.value;
-  const time = new Intl.DateTimeFormat(locale, {
+  const time = new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone: terms.timeZone,
     hour: 'numeric',
     ...(minute === '00' ? {} : { minute: '2-digit' }),
