@@ -1252,7 +1252,7 @@
       "submit": "Confirm pickup",
       "attempts": "{count, plural, one {# try left} other {# tries left}}",
       "wrong": "That code is not right. {count, plural, =0 {No tries left.} one {# try left.} other {# tries left.}} Check it with the customer.",
-      "locked": "Too many wrong codes. This order is locked. Ask the customer to open their order and get a new code, then try again.",
+      "locked": "Too many wrong codes. This order is locked. Once the customer gets a new code in their order, the old code stops working. You do not need to do anything in the panel: reload this page and the boxes turn on again.",
       "collected": "Handed over to the customer {when}.",
       "error": {
         "conflict": "This order cannot be handed over right now. Reload the page to see its current state.",

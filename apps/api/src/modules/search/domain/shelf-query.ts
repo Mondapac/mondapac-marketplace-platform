@@ -36,3 +36,39 @@ export function parseShelfQuery(request: ShelfRequest): Result<ShelfQuery, Searc
   }
   return ok({ categoryId, limit });
 }
+
+/** How many partner Offers are asked of ordering: its most, enough to fill a shelf after drops. */
+export const BOUGHT_TOGETHER_DEPTH = 24;
+
+/** What the buyer app asked for a bought-together shelf, as the transport hands it over. */
+export interface BoughtTogetherRequest {
+  readonly offer?: string | undefined;
+  readonly limit?: number | undefined;
+}
+
+/** A checked bought-together request. */
+export interface BoughtTogetherQuery {
+  readonly offerId: Id<'Offer'>;
+  readonly limit: number;
+}
+
+/** Checks a bought-together request (pure): a required Offer id and a limit of 1 to 24 (default 12). */
+export function parseBoughtTogetherQuery(
+  request: BoughtTogetherRequest,
+): Result<BoughtTogetherQuery, SearchValidationFailed> {
+  const parsed =
+    typeof request.offer === 'string' && request.offer !== ''
+      ? parseId<'Offer'>(request.offer)
+      : null;
+  if (parsed === null || !parsed.ok) {
+    return err({
+      code: 'validation.failed',
+      fields: [{ path: 'offer', code: request.offer === undefined ? 'required' : 'format' }],
+    });
+  }
+  const limit = request.limit ?? DEFAULT_SHELF_SIZE;
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_SHELF_SIZE) {
+    return err({ code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] });
+  }
+  return ok({ offerId: parsed.value, limit });
+}

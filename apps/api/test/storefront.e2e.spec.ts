@@ -16,6 +16,8 @@ import { ViewPublishedStorefrontSlides } from '../src/modules/storefront/applica
 import { ArchiveStorefrontSlide } from '../src/modules/storefront/application/use-cases/archive-slide.use-case';
 import { ApproveStorefrontSlide } from '../src/modules/storefront/application/use-cases/approve-slide.use-case';
 import { PauseStorefrontSlide } from '../src/modules/storefront/application/use-cases/pause-slide.use-case';
+import { ReorderStorefrontSlides } from '../src/modules/storefront/application/use-cases/reorder-slides.use-case';
+import { ViewStorefrontSlideOrder } from '../src/modules/storefront/application/use-cases/view-slide-order.use-case';
 import { ResumeStorefrontSlide } from '../src/modules/storefront/application/use-cases/resume-slide.use-case';
 import { SubmitStorefrontSlide } from '../src/modules/storefront/application/use-cases/submit-slide.use-case';
 import { CreateStorefrontSlide } from '../src/modules/storefront/application/use-cases/create-slide.use-case';
@@ -76,6 +78,7 @@ it('maps every refusal code of the storefront routes to its exact status', () =>
     'storefront.slide-not-paused': 409,
     'storefront.slide-position-full': 409,
     'storefront.slide-link-invalid': 409,
+    'storefront.slide-order-mismatch': 409,
   });
 });
 
@@ -122,6 +125,10 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
           .useValue(stub('pause-slide'))
           .overrideProvider(ResumeStorefrontSlide)
           .useValue(stub('resume-slide'))
+          .overrideProvider(ReorderStorefrontSlides)
+          .useValue(stub('reorder-slides'))
+          .overrideProvider(ViewStorefrontSlideOrder)
+          .useValue(stub('view-slide-order'))
           .overrideProvider(AddStorefrontModule)
           .useValue(stub('add'))
           .overrideProvider(ReorderStorefrontModules)
@@ -472,6 +479,182 @@ describe.each(TEST_MARKETS)('storefront routes over HTTP in market %s', (code) =
       }
       next = err({ code: 'access.denied' });
       expect((await approve()).status).toBe(403);
+    });
+
+    describe('saving the order of the live slides', () => {
+      const ORDER = '/storefront/admin/slides/order';
+      const order = {
+        position: 'home.hero',
+        slideIds: [SLIDE_ID, '0199aaaa-0000-7000-8000-000000000002'],
+      };
+      const saved = {
+        position: 'home.hero',
+        scope: 'all',
+        scopeId: null,
+        slideIds: order.slideIds,
+      };
+
+      it('routes PUT order to the reorder use case, not to a slide called order', async () => {
+        await boot();
+        const session = adminSession();
+        next = ok(saved);
+        const answer = await call('put', ORDER, session, order);
+        expect([answer.status, answer.body as unknown]).toEqual([200, saved]);
+        expect(answer.headers['cache-control']).toBe('no-store');
+        expect(calls).toEqual([{ name: 'reorder-slides', input: order }]);
+      });
+
+      it('refuses it with no session, no CSRF, a cross-site origin, a stray field and another panel', async () => {
+        await boot();
+        const session = adminSession();
+        next = err({ code: 'access.unauthenticated' });
+        expect((await call('put', ORDER, {}, order)).status).toBe(401);
+        calls = [];
+        expect((await call('put', ORDER, { cookie: session.cookie }, order)).status).toBe(403);
+        expect(
+          (await call('put', ORDER, { ...session, 'sec-fetch-site': 'cross-site' }, order)).status,
+        ).toBe(403);
+        expect(
+          (await call('put', ORDER, { ...session, 'sec-fetch-site': 'same-site' }, order)).status,
+        ).toBe(403);
+        expect(
+          (await call('put', ORDER, { ...session, origin: 'https://evil.example' }, order)).status,
+        ).toBe(403);
+        const extra = await call('put', ORDER, session, { ...order, sortOrder: 1 });
+        expect(extra.status).toBe(400);
+        expect(extra.body).toMatchObject({
+          details: { fields: [{ path: 'sortOrder', code: 'unknown-field' }] },
+        });
+        const array = await call('put', ORDER, session, [order]);
+        expect(array.status).toBe(400);
+        // The admin cookie does not open the route for the seller panel.
+        const seller = await call(
+          'put',
+          ORDER,
+          { ...session, ...panelHeaders(code, 'seller') },
+          order,
+        );
+        expect([401, 403]).toContain(seller.status);
+        expect(calls).toEqual([]);
+      });
+
+      it('maps its refusals: 400 for a bad list, 409 for a list that is not the live slides, 403', async () => {
+        await boot();
+        const session = adminSession();
+        next = err({
+          code: 'storefront.slide-order-mismatch',
+          fields: [{ path: 'slideIds', code: 'incomplete' }],
+        });
+        const mismatch = await call('put', ORDER, session, order);
+        expect([mismatch.status, mismatch.body as unknown]).toEqual([
+          409,
+          {
+            statusCode: 409,
+            code: 'storefront.slide-order-mismatch',
+            details: { fields: [{ path: 'slideIds', code: 'incomplete' }] },
+          },
+        ]);
+        next = err({
+          code: 'validation.failed',
+          fields: [{ path: 'slideIds[1]', code: 'duplicate' }],
+        });
+        expect((await call('put', ORDER, session, order)).status).toBe(400);
+        next = err({ code: 'access.denied' });
+        expect((await call('put', ORDER, session, order)).status).toBe(403);
+      });
+    });
+
+    describe('reading the order of the live slides', () => {
+      const ORDER = '/storefront/admin/slides/order';
+      const OTHER_SLIDE = '0199aaaa-0000-7000-8000-000000000002';
+      const orderView = {
+        position: 'home.hero',
+        scope: 'all',
+        scopeId: null,
+        maxActive: 8,
+        slides: [
+          {
+            id: OTHER_SLIDE as Id<'StorefrontSlide'>,
+            internalName: 'Pinned',
+            status: 'live',
+            pinned: true,
+            startsAt: START,
+            endsAt: START.add({ hours: 24 }),
+            overLimit: false,
+          },
+          {
+            id: SLIDE_ID,
+            internalName: 'Soon',
+            status: 'scheduled',
+            pinned: false,
+            startsAt: START.add({ hours: 12 }),
+            endsAt: START.add({ hours: 48 }),
+            overLimit: false,
+          },
+        ],
+      };
+
+      it('routes GET order to the order read, not to a slide called order', async () => {
+        await boot();
+        const session = adminSession();
+        next = ok(orderView);
+        const answer = await call('get', `${ORDER}?position=home.hero`, session);
+        expect(answer.status).toBe(200);
+        expect(answer.headers['cache-control']).toBe('no-store');
+        expect(answer.body).toEqual({
+          ...orderView,
+          slides: orderView.slides.map((slide) => ({
+            ...slide,
+            startsAt: slide.startsAt.toString(),
+            endsAt: slide.endsAt.toString(),
+          })),
+        });
+        expect(calls).toEqual([{ name: 'view-slide-order', input: { position: 'home.hero' } }]);
+      });
+
+      it('hands the whole query to the use case, which validates it', async () => {
+        await boot();
+        const session = adminSession();
+        next = ok({ ...orderView, scope: 'category', scopeId: SLIDE_ID, slides: [] });
+        const query = `position=category.top&scope=category&scopeId=${SLIDE_ID}&extra=1`;
+        expect((await call('get', `${ORDER}?${query}`, session)).status).toBe(200);
+        expect(calls).toEqual([
+          {
+            name: 'view-slide-order',
+            input: { position: 'category.top', scope: 'category', scopeId: SLIDE_ID, extra: '1' },
+          },
+        ]);
+      });
+
+      it('maps its refusals: 400 with the fields, 401 with no session, 403', async () => {
+        await boot();
+        const session = adminSession();
+        next = err({
+          code: 'validation.failed',
+          fields: [{ path: 'scopeId', code: 'required' }],
+        });
+        const bad = await call('get', `${ORDER}?position=category.top&scope=category`, session);
+        expect([bad.status, bad.body as unknown]).toEqual([
+          400,
+          {
+            statusCode: 400,
+            code: 'validation.failed',
+            details: { fields: [{ path: 'scopeId', code: 'required' }] },
+          },
+        ]);
+        next = err({ code: 'access.denied' });
+        expect((await call('get', `${ORDER}?position=home.hero`, session)).status).toBe(403);
+        next = err({ code: 'access.unauthenticated' });
+        const anonymous = await call('get', `${ORDER}?position=home.hero`, {});
+        expect(anonymous.status).toBe(401);
+        expect(anonymous.headers['cache-control']).toBe('no-store');
+        // The admin cookie does not open the route for the seller panel.
+        const seller = await call('get', `${ORDER}?position=home.hero`, {
+          ...session,
+          ...panelHeaders(code, 'seller'),
+        });
+        expect([401, 403]).toContain(seller.status);
+      });
     });
 
     it('refuses a slide route with no session, no CSRF, a cross-site origin and a stray field', async () => {

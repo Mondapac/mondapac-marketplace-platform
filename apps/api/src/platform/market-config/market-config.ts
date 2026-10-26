@@ -1489,6 +1489,27 @@ const marketSchema = z
       })
       .optional(),
     /**
+     * Wallet settings (customer wallet package 1), owned by `wallet`; store credit issued by the
+     * platform. Amounts are minor units of the Market currency. `balanceCapMinor`: the most one
+     * customer wallet may hold (available plus held); a grant over it is refused (AU 50000 =
+     * 500.00). `promoExpiryMonths`: promo credit expires this many calendar months after the grant
+     * (12); refund credit never expires. `adminIssueCapMinor` and `adminDailyCapMinor`: the most
+     * one admin issue may be (AU 5000 = 50.00) and the most one admin may issue per day without a
+     * second approval (AU 50000); read from package 2. `expiringSoonDays`: promo credit expiring
+     * within this many days is shown as expiring soon. Without this section the Market has no wallet
+     * settings and the wallet fails closed. Whether the wallet is on is not config: an admin sets
+     * it at runtime (`wallet.market_settings`), off by default.
+     */
+    wallet: z
+      .strictObject({
+        balanceCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        promoExpiryMonths: z.number().int().min(1).max(60),
+        adminIssueCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        adminDailyCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+        expiringSoonDays: z.number().int().min(1).max(365),
+      })
+      .optional(),
+    /**
      * Tax settings, owned by `tax`. `defaultRateBps`: the tax rate of the built-in strategy used
      * while an admin has not activated a strategy of their own (AU GST 1000 = 10 %). Without this
      * section the Market has no built-in strategy and tax calculation fails closed.

@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { arrowInReadingOrder } from '../i18n/locale.ts';
 
 export type ResultTab = 'products' | 'stores';
 
@@ -42,7 +43,7 @@ export function SearchTabs({
       Home: 0,
       End: TABS.length - 1,
     };
-    const index = to[event.key];
+    const index = to[arrowInReadingOrder(event)];
     if (index === undefined) return;
     event.preventDefault();
     choose(TABS[index]!, true);
