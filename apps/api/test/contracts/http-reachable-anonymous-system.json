@@ -185,6 +185,21 @@
     "reason": "Stripe calls the webhook without a session: the Stripe-Signature over the raw body, checked first in the use case, authenticates the event; it only stores the event for the worker."
   },
   {
+    "name": "reviews.list-product-reviews",
+    "rule": "anonymous",
+    "reason": "The product page lists a product's published reviews for a visitor with no session: published reviews only, the author shown as a short name or Verified buyer, never an account id, email or order id; reviews are off in a Market until an admin switches them on."
+  },
+  {
+    "name": "reviews.view-product-summary",
+    "rule": "anonymous",
+    "reason": "The product page and listings show a product's star summary to a visitor with no session: counts and averages only, no author or text."
+  },
+  {
+    "name": "reviews.view-seller-summary",
+    "rule": "anonymous",
+    "reason": "The store page shows a seller's rated-order summary to a visitor with no session: counts, averages and shares only, no buyer or order identity."
+  },
+  {
     "name": "search.list-bestsellers",
     "rule": "anonymous",
     "reason": "The storefront best-sellers shelf for a visitor with no session: Offer ids, text and category ids in rank order (no sales figure), each re-checked against catalog and sellers; rate limited per origin."
