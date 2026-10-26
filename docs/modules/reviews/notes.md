@@ -69,7 +69,7 @@ application role may change only the columns granted. The migration and `down.sq
 
 Product summaries are refreshed by the write that changes a review (recomputed from the
 published source rows with a group-by, not incremented); seller summaries only by the job and repaired by the worker job
-`reviews.rebuild-summaries`, every `reviews.summaryRebuildMinutes` (AU 15, smallest of the hosted Markets). The job lists the subjects once, rebuilds them in batches of 100 (one short unit each) and writes only the rows whose numbers changed.
+`reviews.rebuild-summaries`, every `reviews.summaryRebuildMinutes` (AU 1440, daily; the smallest of the hosted Markets). Product summaries are also refreshed on every review write; seller summaries only by this job. The job lists the subjects once, rebuilds them in batches of 100 (one short unit each) and writes only the rows whose numbers changed.
 
 ## HTTP
 
