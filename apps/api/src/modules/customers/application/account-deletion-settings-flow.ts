@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import {
   DEFAULT_ACCOUNT_DELETION_SETTINGS,
   parseAccountDeletionSettings,
@@ -35,6 +36,28 @@ export interface AccountDeletionSettingsView {
 export interface AccountDeletionAvailability {
   readonly canDeleteAccount: boolean;
   readonly waitingPeriodDays: number;
+}
+
+/** Fixed namespace of the settings aggregate's id; never change it (consumers key on the id). */
+const AGGREGATE_NAMESPACE = 'customers.account-deletion-settings.v1';
+
+/**
+ * The one aggregate id of a Market's account deletion setting: the same for every version, so a
+ * consumer orders the versions of one Market (ADR-0006 decision 3) and the outbox's unique
+ * (market, aggregate, version) key catches a duplicate. Derived from the Market id under a fixed
+ * namespace (SHA-256, shaped as a UUID v7 as every id is); a different Market gets a different id.
+ */
+export function accountDeletionSettingsAggregateId(
+  market: MarketContext,
+): Id<'AccountDeletionSettings'> {
+  const bytes = createHash('sha256')
+    .update(`${AGGREGATE_NAMESPACE}:${market.marketId}`)
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x70;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as Id<'AccountDeletionSettings'>;
 }
 
 const isAdmin = (context: CallContext): boolean =>
@@ -130,7 +153,7 @@ export async function setAccountDeletionSettings(
       );
       await deps.outbox.append(context, [
         AccountDeletionSettingsChangedEvent.record({
-          aggregateId: deps.ids.next<'AccountDeletionSettings'>(),
+          aggregateId: accountDeletionSettingsAggregateId(context.market),
           aggregateVersion: version,
           occurredAt: now,
           payload: {

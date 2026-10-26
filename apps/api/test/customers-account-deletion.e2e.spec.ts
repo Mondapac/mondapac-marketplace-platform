@@ -326,6 +326,24 @@ describe.each(TEST_MARKETS)('account deletion routes over HTTP in market %s', (c
       }
     });
 
+    it('refuses a session of another Market sent to this Market', async () => {
+      await boot();
+      const otherCode = TEST_MARKETS.find((m) => m !== code)!;
+      const session = sessionOf('customer', 11);
+      // This Market's session cookie on the other Market's host: the cookie is named per Market.
+      const sameName = await http()
+        .get(ME_PATH)
+        .set({ 'x-market-id': otherCode, cookie: session.cookie });
+      expect(sameName.status).toBe(401);
+      // The token renamed to the other Market's cookie: the other Market holds no such session.
+      const token = session.cookie.split('=')[1]!;
+      const renamed = await http()
+        .get(ME_PATH)
+        .set({ 'x-market-id': otherCode, cookie: `__Host-session-customer-${otherCode}=${token}` });
+      expect(renamed.status).toBe(401);
+      expect(renamed.body).not.toHaveProperty('canDeleteAccount');
+    });
+
     it('has no write route', async () => {
       await boot();
       const session = sessionOf('customer', 10);

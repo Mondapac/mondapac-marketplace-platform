@@ -256,6 +256,8 @@ describe.each(TEST_MARKETS)('account deletion setting store in market %s (databa
       ['a reason with markup', { reason: '<b>why</b>' }],
       ['a reason with a bidi override', { reason: 'why ‮not' }],
       ['a reason with a zero-width space', { reason: 'why​not' }],
+      ['a reason with a tag character', { reason: 'why\u{E0041}not' }],
+      ['a reason with a Cf character outside the BMP', { reason: 'why\u{1D173}not' }],
       ['a reason with a line separator', { reason: 'why not' }],
       ['a reason of 501 characters', { reason: 'x'.repeat(501) }],
       ['version 0', { version: 0 }],

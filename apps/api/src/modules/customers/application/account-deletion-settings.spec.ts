@@ -19,6 +19,7 @@ import {
 } from '../domain/account-deletion-settings';
 import { AccountDeletionSettingsChanged } from '../domain/audit';
 import {
+  accountDeletionSettingsAggregateId,
   assertAccountDeletionAllowed,
   type AccountDeletionAvailability,
 } from './account-deletion-settings-flow';
@@ -101,6 +102,7 @@ describe('parseChangeReason', () => {
     ['two\nlines', 'format'],
     ['<b>why</b>', 'format'],
     ['why ‮ereht', 'format'],
+    ['why\u{E0041}not', 'format'],
   ] as const)('refuses %j', (value, code) => {
     expect(parseChangeReason(value)).toEqual({ ok: false, error: { path: 'reason', code } });
   });
@@ -217,6 +219,18 @@ describe.each(TEST_MARKET_IDS)('account deletion setting use cases in market %s'
     ]);
   });
 
+  it('uses one stable aggregate id per Market across versions, different across Markets', async () => {
+    await set(on(45));
+    await set({ enabled: false, waitingPeriodDays: 45 }, 1);
+    const [first, second] = outbox.events;
+    expect(first!.aggregateId).toBe(second!.aggregateId);
+    expect(first!.aggregateId).toBe(accountDeletionSettingsAggregateId(market));
+    expect(parseId(first!.aggregateId).ok).toBe(true);
+    expect(accountDeletionSettingsAggregateId(other)).not.toBe(first!.aggregateId);
+    await set(on(20), 0, actor('admin', other));
+    expect(outbox.events[2]!.aggregateId).toBe(accountDeletionSettingsAggregateId(other));
+  });
+
   it('writes nothing for the same values again, and numbers the next change 2', async () => {
     await set(on(45));
     const again = await set(on(45), 1);
@@ -331,6 +345,14 @@ describe.each(TEST_MARKET_IDS)('account deletion setting use cases in market %s'
         ok: false,
         error: { code: 'customers.account-deletion-disabled' },
       });
+    });
+
+    it('fails closed: a read error propagates and never counts as allowed', async () => {
+      const broken = {
+        latest: () => Promise.reject(new Error('database down')),
+        append: () => Promise.resolve(false),
+      };
+      await expect(assertAccountDeletionAllowed(broken, market)).rejects.toThrow('database down');
     });
 
     it('fails again once switched off', async () => {

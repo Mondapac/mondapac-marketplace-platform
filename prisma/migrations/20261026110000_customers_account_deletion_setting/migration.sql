@@ -44,8 +44,9 @@ ALTER TABLE "customers"."account_deletion_settings"
   ADD CONSTRAINT "account_deletion_settings_waiting_period_days_check" CHECK ("waiting_period_days" BETWEEN 7 AND 90),
   ADD CONSTRAINT "account_deletion_settings_reason_check" CHECK (
     "reason" = btrim("reason") AND length("reason") >= 1
-    -- Controls, format characters except U+200C (Persian), separators and markup, as the API.
-    AND "reason" !~ E'[\\u0001-\\u001F\\u007F-\\u009F\\u00AD\\u0600-\\u0605\\u061C\\u06DD\\u070F\\u08E2\\u180E\\u200B\\u200D-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFEFF\\uFFF9-\\uFFFB<>]'
+    -- Controls, format characters (Unicode Cf, tag characters included) except U+200C (Persian),
+    -- separators and markup, as the API.
+    AND "reason" !~ E'[\\u0001-\\u001F\\u007F-\\u009F\\u00AD\\u0600-\\u0605\\u061C\\u06DD\\u070F\\u08E2\\u180E\\u200B\\u200D-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFEFF\\uFFF9-\\uFFFB\\U000110BD\\U000110CD\\U00013430-\\U0001343F\\U0001BCA0-\\U0001BCA3\\U0001D173-\\U0001D17A\\U000E0001\\U000E0020-\\U000E007F<>]'
   );
 
 ALTER TABLE "customers"."outbox"
