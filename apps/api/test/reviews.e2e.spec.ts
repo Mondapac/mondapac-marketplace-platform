@@ -393,8 +393,8 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
           locale: 'en-AU',
           author: { kind: 'verified-buyer' },
           boughtFrom: { offerId: id<'Offer'>(0xe004), sellerId: id<'Seller'>(0xe005) },
-          publishedAt: START,
-          editedAt: null,
+          publishedOn: '2026-10-25',
+          editedOn: null,
         },
       ],
       nextCursor: null,
@@ -404,6 +404,11 @@ describe.each(TEST_MARKETS)('reviews over HTTP in market %s', (code) => {
       .set({ 'x-market-id': code });
     expect(page.status).toBe(200);
     expect(JSON.stringify(page.body)).not.toMatch(/accountId|email|orderId/i);
+    expect((page.body as { reviews: object[] }).reviews[0]).toMatchObject({
+      publishedOn: '2026-10-25',
+      editedOn: null,
+    });
+    expect(JSON.stringify(page.body)).not.toContain('publishedAt');
     expect(calls).toEqual([
       {
         name: 'list-product-reviews',

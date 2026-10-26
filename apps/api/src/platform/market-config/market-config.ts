@@ -1375,6 +1375,11 @@ const marketSchema = z
         titleMaxLength: z.number().int().min(1).max(200),
         bodyMaxLength: z.number().int().min(1).max(5000),
         pageSize: z.number().int().min(1).max(50),
+        /**
+         * How often the repair job recomputes the rating summaries from the source rows (minutes,
+         * default 15). The write path already refreshes the summary it touches.
+         */
+        summaryRebuildMinutes: z.number().int().min(5).max(1440).default(15),
         autoChecks: z.strictObject({
           blockedTerms: z.array(z.string().trim().min(2).max(64)).max(1000),
           repeatedCharRun: z.number().int().min(4).max(100),

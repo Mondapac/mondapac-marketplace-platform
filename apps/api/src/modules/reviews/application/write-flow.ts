@@ -67,7 +67,6 @@ function signalsOf(
 function logStatus(
   deps: ReviewsDependencies,
   review: Pick<ProductReviewRecord, 'id'>,
-  actor: Id<'Account'> | null,
   action: NewModerationAction['action'],
   reasonCode: string,
   from: ReviewStatus | null,
@@ -77,13 +76,37 @@ function logStatus(
   return {
     id: deps.ids.next<'ModerationAction'>(),
     reviewId: review.id,
-    actorAccountId: actor,
+    // Never the author: the log is insert-only, so an account id here could not be dropped when
+    // the account is deleted (N11). The action code says who acted; moderators (package 2) are
+    // the only actors with an id.
+    actorAccountId: null,
     action,
     reasonCode,
     fromStatus: from,
     toStatus: to,
     at,
   };
+}
+
+/**
+ * The author's own writes in the last 24 hours: counted in the insert-only log (submits, edits,
+ * deletes) plus seller ratings, so delete-and-resubmit and edits are limited too. Soft limit: the
+ * count and the insert are in one READ COMMITTED unit, so parallel requests of one account can
+ * overshoot by the number in flight.
+ */
+async function overDailyLimit(
+  deps: ReviewsDependencies,
+  context: CallContext,
+  accountId: Id<'Account'>,
+  now: Temporal.Instant,
+  settings: ReviewsSettings,
+): Promise<boolean> {
+  const recent = await deps.reviews.countSubmissionsSince(
+    context.market,
+    accountId,
+    now.subtract({ hours: DAY_HOURS }),
+  );
+  return recent >= settings.maxSubmissionsPerAccountPerDay;
 }
 
 function resolveLocale(
@@ -169,9 +192,25 @@ export async function submitProductReview(
 
   return deps.unitOfWork.run<SubmittedReview, ReviewsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'reviews.disabled' } as const);
-    const since = now.subtract({ hours: DAY_HOURS });
-    const recent = await deps.reviews.countSubmissionsSince(context.market, accountId, since);
-    if (recent >= settings.maxSubmissionsPerAccountPerDay) {
+    // A buyer at the limit still gets the real answer for a review that exists (N3): the limit
+    // applies only when this call would write a new review or restart a deleted one.
+    const existing0 = await deps.reviews.findOwnProductReview(
+      context.market,
+      accountId,
+      productId.value,
+    );
+    if (
+      existing0 !== null &&
+      existing0.status === 'deleted-by-author' &&
+      (await deps.reviews.wasDeletedAfterModeration(context.market, existing0.id))
+    ) {
+      // Deleting after a moderator hid or removed it is not a way round moderation.
+      return err({ code: 'reviews.already-reviewed' } as const);
+    }
+    if (
+      (existing0 === null || existing0.status === 'deleted-by-author') &&
+      (await overDailyLimit(deps, context, accountId, now, settings))
+    ) {
       return err({ code: 'reviews.rate-limited' } as const);
     }
 
@@ -197,11 +236,6 @@ export async function submitProductReview(
 
     // The common path: no review yet. Two concurrent submits both reach the insert; the unique
     // key lets one win and the other fall through to the existing-row path below.
-    const existing0 = await deps.reviews.findOwnProductReview(
-      context.market,
-      accountId,
-      productId.value,
-    );
     if (existing0 === null) {
       if (await deps.reviews.insertProductReviewIfAbsent(context.market, fresh)) {
         await afterWrite(deps, context, fresh, null, signals, 'submitted', 'publish', now);
@@ -276,7 +310,6 @@ async function afterWrite(
     logStatus(
       deps,
       review,
-      review.accountId,
       review.status === 'held' ? 'auto-hold' : publishAction,
       review.status === 'held' ? 'auto-check' : reasonCode,
       from,
@@ -341,6 +374,9 @@ export async function editProductReview(
     if (!isWithinEditWindow(existing.createdAt, now, settings.editWindowDays)) {
       return err({ code: 'reviews.edit-window-closed' } as const);
     }
+    if (await overDailyLimit(deps, context, accountId, now, settings)) {
+      return err({ code: 'reviews.rate-limited' } as const);
+    }
 
     // The request overlays the stored content; null clears a title or a body.
     const merged: Record<string, unknown> = {
@@ -371,7 +407,7 @@ export async function editProductReview(
     }
     await deps.reviews.appendModerationAction(
       context.market,
-      logStatus(deps, edited, accountId, 'author-edit', 'author', existing.status, status, now),
+      logStatus(deps, edited, 'author-edit', 'author', existing.status, status, now),
     );
     if (signals.length > 0) {
       await deps.reviews.appendSignals(
@@ -429,7 +465,8 @@ export async function deleteProductReview(
     if (existing.status === 'deleted-by-author') {
       return ok({ id: existing.id, status: 'deleted-by-author' } as const);
     }
-    if (!isEditableStatus(existing.status)) return err({ code: 'reviews.not-editable' } as const);
+    // The author may delete at any time (N4), also a review a moderator hid or removed: the text
+    // goes, the log keeps the earlier status.
     const deleted: ProductReviewRecord = {
       ...existing,
       title: null,
@@ -447,7 +484,6 @@ export async function deleteProductReview(
       logStatus(
         deps,
         deleted,
-        accountId,
         'author-delete',
         'author',
         existing.status,
@@ -512,12 +548,7 @@ export async function rateSellerOrder(
 
   return deps.unitOfWork.run<OwnSellerRatingView, ReviewsFailure>(context.market, async () => {
     if (!(await isStillActive(deps, context))) return err({ code: 'reviews.disabled' } as const);
-    const recent = await deps.reviews.countSubmissionsSince(
-      context.market,
-      accountId,
-      now.subtract({ hours: DAY_HOURS }),
-    );
-    if (recent >= settings.maxSubmissionsPerAccountPerDay) {
+    if (await overDailyLimit(deps, context, accountId, now, settings)) {
       return err({ code: 'reviews.rate-limited' } as const);
     }
     const record: SellerRatingRecord = {

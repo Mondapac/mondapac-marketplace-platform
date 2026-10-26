@@ -203,15 +203,33 @@ export class PrismaReviewRepository implements ReviewRepository {
     since: Temporal.Instant,
   ) {
     const tx = this.prisma.tx(market);
-    const [reviews, ratings] = await Promise.all([
-      tx.reviewsProductReview.count({
-        where: { marketId: market.marketId, accountId, createdAt: { gte: toDate(since) } },
+    const [actions, ratings] = await Promise.all([
+      tx.reviewsModerationAction.count({
+        where: {
+          marketId: market.marketId,
+          createdAt: { gte: toDate(since) },
+          action: { in: ['publish', 'auto-hold', 'author-edit', 'author-delete'] },
+          review: { accountId },
+        },
       }),
       tx.reviewsSellerRating.count({
         where: { marketId: market.marketId, accountId, createdAt: { gte: toDate(since) } },
       }),
     ]);
-    return reviews + ratings;
+    return actions + ratings;
+  }
+
+  async wasDeletedAfterModeration(market: MarketContext, reviewId: Id<'ProductReview'>) {
+    const found = await this.prisma.tx(market).reviewsModerationAction.findFirst({
+      where: {
+        marketId: market.marketId,
+        reviewId,
+        action: 'author-delete',
+        fromStatus: { in: ['hidden', 'removed'] },
+      },
+      select: { id: true },
+    });
+    return found !== null;
   }
 
   async listOwnProductReviews(market: MarketContext, accountId: Id<'Account'>, limit: number) {
@@ -401,10 +419,11 @@ export class PrismaReviewRepository implements ReviewRepository {
   ) {
     const products = [...new Set(subjects.products)];
     const sellers = [...new Set(subjects.sellers)];
+    let written = 0;
     if (products.length > 0) {
       const groups = await this.productGroups(market, products);
       for (const productId of products) {
-        await this.writeSummary(
+        written += await this.writeSummary(
           market,
           'product',
           productId,
@@ -418,39 +437,37 @@ export class PrismaReviewRepository implements ReviewRepository {
       const groups = await this.sellerGroups(market, sellers);
       for (const sellerId of sellers) {
         const summary = summariseSellerGroups(groups.get(sellerId) ?? []);
-        await this.writeSummary(market, 'seller', sellerId, summary, summary, now);
+        written += await this.writeSummary(market, 'seller', sellerId, summary, summary, now);
       }
     }
+    return written;
   }
 
-  async rebuildAllSummaries(market: MarketContext, now: Temporal.Instant) {
+  async summarySubjects(market: MarketContext) {
     const tx = this.prisma.tx(market);
-    const stored = await tx.reviewsRatingSummary.findMany({
-      where: { marketId: market.marketId },
-      select: { subjectKind: true, subjectId: true },
-    });
-    const productGroups = await this.productGroups(market, null);
-    const sellerGroups = await this.sellerGroups(market, null);
-    const products = new Set<string>(productGroups.keys());
-    const sellers = new Set<string>(sellerGroups.keys());
+    const [stored, productRows, sellerRows] = await Promise.all([
+      tx.reviewsRatingSummary.findMany({
+        where: { marketId: market.marketId },
+        select: { subjectKind: true, subjectId: true },
+      }),
+      tx.reviewsProductReview.groupBy({
+        by: ['productId'],
+        where: { marketId: market.marketId, status: 'published' },
+      }),
+      tx.reviewsSellerRating.groupBy({
+        by: ['sellerId'],
+        where: { marketId: market.marketId, status: 'published' },
+      }),
+    ]);
+    const products = new Set<string>(productRows.map((row) => row.productId));
+    const sellers = new Set<string>(sellerRows.map((row) => row.sellerId));
     for (const row of stored) {
       (row.subjectKind === 'product' ? products : sellers).add(row.subjectId);
     }
-    for (const productId of products) {
-      await this.writeSummary(
-        market,
-        'product',
-        productId,
-        summariseStarGroups(productGroups.get(productId) ?? []),
-        null,
-        now,
-      );
-    }
-    for (const sellerId of sellers) {
-      const summary = summariseSellerGroups(sellerGroups.get(sellerId) ?? []);
-      await this.writeSummary(market, 'seller', sellerId, summary, summary, now);
-    }
-    return products.size + sellers.size;
+    return {
+      products: [...products] as Id<'Product'>[],
+      sellers: [...sellers] as Id<'Seller'>[],
+    };
   }
 
   private async productGroups(market: MarketContext, productIds: readonly string[] | null) {
@@ -499,7 +516,10 @@ export class PrismaReviewRepository implements ReviewRepository {
     return bySeller;
   }
 
-  /** Insert-or-change of one summary row: the insert loses quietly to a concurrent one. */
+  /**
+   * Insert-or-change of one summary row; a row whose numbers already match is left alone (no
+   * write, no `rebuilt_at` bump). Returns 1 when it wrote, else 0.
+   */
   private async writeSummary(
     market: MarketContext,
     kind: 'product' | 'seller',
@@ -510,6 +530,16 @@ export class PrismaReviewRepository implements ReviewRepository {
   ) {
     const tx = this.prisma.tx(market);
     const columns = summaryColumns(stars, seller, now);
+    const numbers: Partial<typeof columns> = { ...columns };
+    delete numbers.rebuiltAt;
+    const where = { marketId: market.marketId, subjectKind: kind, subjectId };
+    const current = await tx.reviewsRatingSummary.findFirst({ where });
+    if (current !== null) {
+      const same = (Object.keys(numbers) as (keyof typeof numbers)[]).every(
+        (key) => current[key] === numbers[key],
+      );
+      if (same) return 0;
+    }
     await tx.reviewsRatingSummary.createMany({
       data: [
         {
@@ -522,10 +552,8 @@ export class PrismaReviewRepository implements ReviewRepository {
       ],
       skipDuplicates: true,
     });
-    await tx.reviewsRatingSummary.updateMany({
-      where: { marketId: market.marketId, subjectKind: kind, subjectId },
-      data: columns,
-    });
+    await tx.reviewsRatingSummary.updateMany({ where, data: columns });
+    return 1;
   }
 
   // ---- account deletion ---------------------------------------------------------------------

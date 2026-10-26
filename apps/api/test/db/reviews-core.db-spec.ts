@@ -7,6 +7,7 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { DeleteProductReview } from '../../src/modules/reviews/application/use-cases/delete-product-review.use-case';
+import { EditProductReview } from '../../src/modules/reviews/application/use-cases/edit-product-review.use-case';
 import { DetachAuthor } from '../../src/modules/reviews/application/use-cases/detach-author.use-case';
 import { ListProductReviews } from '../../src/modules/reviews/application/use-cases/list-product-reviews.use-case';
 import { RateSellerOrder } from '../../src/modules/reviews/application/use-cases/rate-seller-order.use-case';
@@ -426,6 +427,60 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
       expect(
         await new ViewProductSummary(gate, deps).execute(anonymous, { productId }),
       ).toMatchObject({ ok: true, value: { count: 0 } });
+    });
+
+    it('keeps the author out of the insert-only log, counts edits and lets the author delete a hidden review', async () => {
+      const account = ids.next<'Account'>();
+      const productId = ids.next<'Product'>();
+      bought(account, productId, ids.next<'Seller'>());
+      const created = await submit(account, productId);
+      if (!created.ok) throw new Error(created.error.code);
+      const reviewId = created.value.review.id;
+      const edited = await new EditProductReview(gate, deps).execute(customer(account), {
+        reviewId,
+        rating: 3,
+      });
+      expect(edited.ok).toBe(true);
+      // The log holds no account id, so deleting the account really unlinks the review (N11).
+      const actors = await rows(
+        `SELECT action, actor_account_id FROM reviews.moderation_actions WHERE review_id = $1 ORDER BY created_at, id`,
+        [reviewId],
+      );
+      expect(actors.map((r) => r.action).sort()).toEqual(['author-edit', 'publish']);
+      expect(actors.every((r) => r.actor_account_id === null)).toBe(true);
+      // Submit and edit are both counted in the daily total (through the review's author).
+      const counted = await deps.unitOfWork.run(market, async () =>
+        ok(
+          await deps.reviews.countSubmissionsSince(
+            market,
+            account,
+            Temporal.Instant.from('2000-01-01T00:00:00Z'),
+          ),
+        ),
+      );
+      expect(counted).toEqual(ok(2));
+      // A moderator hid it; the author can still delete it, and it cannot be written again.
+      await owner.query(
+        `UPDATE reviews.product_reviews SET status = 'hidden', published_at = NULL WHERE id = $1`,
+        [reviewId],
+      );
+      const removed = await new DeleteProductReview(gate, deps).execute(customer(account), {
+        reviewId,
+      });
+      expect(removed).toEqual(ok({ id: reviewId, status: 'deleted-by-author' }));
+      const stored = await rows(
+        `SELECT title, body, status FROM reviews.product_reviews WHERE id = $1`,
+        [reviewId],
+      );
+      expect(stored).toEqual([{ title: null, body: null, status: 'deleted-by-author' }]);
+      const again = await submit(account, productId);
+      expect(again).toMatchObject({ ok: false, error: { code: 'reviews.already-reviewed' } });
+      await new DetachAuthor(gate, deps).execute(system, { accountId: account });
+      const linked = await rows(
+        `SELECT 1 FROM reviews.moderation_actions WHERE actor_account_id = $1`,
+        [account],
+      );
+      expect(linked).toEqual([]);
     });
 
     it('holds a flagged review: signal rows with codes only, nothing public', async () => {

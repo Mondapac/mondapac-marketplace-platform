@@ -70,11 +70,27 @@ export class MemoryReviews implements ReviewRepository {
   }
   countSubmissionsSince(_m: MarketContext, accountId: Id<'Account'>, since: Temporal.Instant) {
     const at = (t: Temporal.Instant) => Temporal.Instant.compare(t, since) >= 0;
-    const reviews = this.reviewsOf(accountId).filter((r) => at(r.createdAt)).length;
+    const own = new Set(this.reviewsOf(accountId).map((r) => r.id));
+    const actions = this.actions.filter(
+      (a) =>
+        own.has(a.reviewId) &&
+        at(a.at) &&
+        ['publish', 'auto-hold', 'author-edit', 'author-delete'].includes(a.action),
+    ).length;
     const ratings = [...this.sellerRatings.values()].filter(
       (r) => r.accountId === accountId && at(r.createdAt),
     ).length;
-    return Promise.resolve(reviews + ratings);
+    return Promise.resolve(actions + ratings);
+  }
+  wasDeletedAfterModeration(_m: MarketContext, reviewId: Id<'ProductReview'>) {
+    return Promise.resolve(
+      this.actions.some(
+        (a) =>
+          a.reviewId === reviewId &&
+          a.action === 'author-delete' &&
+          (a.fromStatus === 'hidden' || a.fromStatus === 'removed'),
+      ),
+    );
   }
   listOwnProductReviews(_m: MarketContext, accountId: Id<'Account'>, limit: number) {
     return Promise.resolve(
@@ -161,6 +177,18 @@ export class MemoryReviews implements ReviewRepository {
   readSellerSummary(_m: MarketContext, sellerId: Id<'Seller'>) {
     return Promise.resolve(this.sellerSummaries.get(sellerId) ?? null);
   }
+  /** Writes the summary only when its numbers changed; returns 1 when it wrote. */
+  private store<T extends StoredStarSummary>(map: Map<string, T>, key: string, next: T): number {
+    const old = map.get(key);
+    const same =
+      old !== undefined &&
+      JSON.stringify({ ...old, rebuiltAt: null }) === JSON.stringify({ ...next, rebuiltAt: null });
+    if (same) return 0;
+    map.set(key, next);
+    this.summaryWrites += 1;
+    return 1;
+  }
+  summaryWrites = 0;
   private rebuildProduct(productId: Id<'Product'>, now: Temporal.Instant) {
     const byStar = new Map<number, number>();
     for (const r of this.productReviews.values()) {
@@ -168,7 +196,7 @@ export class MemoryReviews implements ReviewRepository {
         byStar.set(r.rating, (byStar.get(r.rating) ?? 0) + 1);
       }
     }
-    this.productSummaries.set(productId, {
+    return this.store(this.productSummaries, productId, {
       ...summariseStarGroups([...byStar].map(([rating, count]) => ({ rating, count }))),
       rebuiltAt: now,
     });
@@ -190,7 +218,7 @@ export class MemoryReviews implements ReviewRepository {
       group.count += 1;
       groups.set(key, group);
     }
-    this.sellerSummaries.set(sellerId, {
+    return this.store(this.sellerSummaries, sellerId, {
       ...summariseSellerGroups([...groups.values()]),
       rebuiltAt: now,
     });
@@ -200,22 +228,30 @@ export class MemoryReviews implements ReviewRepository {
     subjects: { products: readonly Id<'Product'>[]; sellers: readonly Id<'Seller'>[] },
     now: Temporal.Instant,
   ) {
-    subjects.products.forEach((p) => this.rebuildProduct(p, now));
-    subjects.sellers.forEach((s) => this.rebuildSeller(s, now));
-    return Promise.resolve();
+    let written = 0;
+    subjects.products.forEach((p) => (written += this.rebuildProduct(p, now)));
+    subjects.sellers.forEach((s) => (written += this.rebuildSeller(s, now)));
+    return Promise.resolve(written);
   }
-  rebuildAllSummaries(_m: MarketContext, now: Temporal.Instant) {
-    const products = new Set<Id<'Product'>>([
-      ...this.productSummaries.keys(),
-      ...[...this.productReviews.values()].map((r) => r.productId),
-    ] as Id<'Product'>[]);
-    const sellers = new Set<Id<'Seller'>>([
-      ...this.sellerSummaries.keys(),
-      ...[...this.sellerRatings.values()].map((r) => r.sellerId),
-    ] as Id<'Seller'>[]);
-    products.forEach((p) => this.rebuildProduct(p, now));
-    sellers.forEach((s) => this.rebuildSeller(s, now));
-    return Promise.resolve(products.size + sellers.size);
+  summarySubjects() {
+    return Promise.resolve({
+      products: [
+        ...new Set([
+          ...this.productSummaries.keys(),
+          ...[...this.productReviews.values()]
+            .filter((r) => isPublic(r.status))
+            .map((r) => r.productId),
+        ]),
+      ] as Id<'Product'>[],
+      sellers: [
+        ...new Set([
+          ...this.sellerSummaries.keys(),
+          ...[...this.sellerRatings.values()]
+            .filter((r) => r.status === 'published')
+            .map((r) => r.sellerId),
+        ]),
+      ] as Id<'Seller'>[],
+    });
   }
   detachAccount(_m: MarketContext, accountId: Id<'Account'>) {
     let reviews = 0;

@@ -55,7 +55,11 @@ export type ModerationActionName =
 export interface NewModerationAction {
   readonly id: Id<'ModerationAction'>;
   readonly reviewId: Id<'ProductReview'>;
-  /** Null for the system (the automatic checks, the author's own changes carry the author). */
+  /**
+   * Null for the system, the automatic checks and the author's own changes: the log is
+   * insert-only, so it never holds the author's account id (N11). Only moderators (package 2)
+   * are recorded by id.
+   */
   readonly actorAccountId: Id<'Account'> | null;
   readonly action: ModerationActionName;
   /** A short code: `submitted`, `auto-check`, `author`. */
@@ -128,7 +132,10 @@ export interface ReviewRepository {
     expectedStatus: ReviewStatus,
   ): Promise<'saved' | 'stale'>;
 
-  /** Product reviews plus seller ratings the account wrote at or after `since`. */
+  /**
+   * The account's own writes at or after `since`: its submits, edits and deletes of product
+   * reviews (counted in the insert-only log, through the review's author) plus its seller ratings.
+   */
   countSubmissionsSince(
     market: MarketContext,
     accountId: Id<'Account'>,
@@ -197,8 +204,15 @@ export interface ReviewRepository {
   ): Promise<StoredSellerSummary | null>;
 
   /**
+   * Whether the author deleted this review while a moderator had hidden or removed it (read from
+   * the log): such a review cannot be written again.
+   */
+  wasDeletedAfterModeration(market: MarketContext, reviewId: Id<'ProductReview'>): Promise<boolean>;
+
+  /**
    * Recomputes the summary row of each subject from the published source rows and stores it
-   * (a subject with none is stored as zeros, never deleted).
+   * (a subject with none is stored as zeros, never deleted). A row whose numbers did not change
+   * is not written. Returns how many rows were written.
    */
   rebuildSummaries(
     market: MarketContext,
@@ -207,14 +221,17 @@ export interface ReviewRepository {
       readonly sellers: readonly Id<'Seller'>[];
     },
     now: Temporal.Instant,
-  ): Promise<void>;
+  ): Promise<number>;
 
   /**
-   * Recomputes every summary of the Market: every product with a published review, every seller
-   * with a published rating, and every stored row (so a subject that lost its last rating goes
-   * to zero). Returns how many rows it wrote.
+   * Every subject that has a published source row or a stored summary row (so a subject that
+   * lost its last rating is found and goes to zero). Read-only; the rebuild then goes in
+   * batches, each in its own unit.
    */
-  rebuildAllSummaries(market: MarketContext, now: Temporal.Instant): Promise<number>;
+  summarySubjects(market: MarketContext): Promise<{
+    readonly products: readonly Id<'Product'>[];
+    readonly sellers: readonly Id<'Seller'>[];
+  }>;
 
   // ---- account deletion (N11) ---------------------------------------------------------------
 

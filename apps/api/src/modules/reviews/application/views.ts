@@ -84,6 +84,7 @@ export interface PublicReviewView {
   readonly author: AuthorLabel;
   /** The offer and seller of the latest purchase: the "Bought from" label. */
   readonly boughtFrom: { readonly offerId: Id<'Offer'>; readonly sellerId: Id<'Seller'> };
-  readonly publishedAt: Temporal.Instant;
-  readonly editedAt: Temporal.Instant | null;
+  /** The day only (`YYYY-MM-DD`, UTC): an exact time could link an anonymous review to an order. */
+  readonly publishedOn: string;
+  readonly editedOn: string | null;
 }

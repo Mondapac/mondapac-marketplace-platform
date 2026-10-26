@@ -50,6 +50,7 @@ the words). The text is never logged, audited, evented, put in a signal row or i
 
 ## Anti-abuse
 
+- Daily limit: counted from the author's own rows in the insert-only log (submit, edit, delete) plus seller ratings, so delete-and-resubmit and edits are limited too. Submit, edit and rate are refused at the limit; a delete never is, and a buyer at the limit still gets the real answer for a review that exists. It is a soft limit: the count and the insert share one READ COMMITTED unit, so parallel requests of one account can overshoot by the number in flight.
 - Refused: a member of the seller (`SellerAffinity`, `reviews.own-store`); more than
   `maxSubmissionsPerAccountPerDay` reviews plus ratings in 24 hours (`reviews.rate-limited`, 429).
 - Signal, not refuse, for the same address or payment fingerprint as the seller: NOT built, see
@@ -68,7 +69,7 @@ application role may change only the columns granted. The migration and `down.sq
 
 Summaries are refreshed by the write that changes a review or rating (recomputed from the
 published source rows with a group-by, not incremented) and repaired by the worker job
-`reviews.rebuild-summaries` every 5 minutes.
+`reviews.rebuild-summaries`, every `reviews.summaryRebuildMinutes` (AU 15, smallest of the hosted Markets). The job lists the subjects once, rebuilds them in batches of 100 (one short unit each) and writes only the rows whose numbers changed.
 
 ## HTTP
 
@@ -103,6 +104,37 @@ buyer's delivery address or payment fingerprint matches the seller's. It needs a
 fingerprint comparison from ordering and payments that is not cheap today, so it is left out of
 package 1. Also then: a `held` queue and moderation endpoints (package 2), helpful votes, seller
 replies (package 4), notifications, search ranking and photos.
+
+## Privacy and moderation notes (after the Opus review)
+
+- The moderation log never holds the author's account id (`actor_account_id` is null for submits,
+  edits, deletes and automatic holds; only moderators, package 2, are recorded by id), so deleting
+  the account (`detachAuthor`) removes every link (N11).
+- The author may delete a review in any status (N4), including one a moderator hid or removed: the
+  text is cleared and the log keeps the earlier status. Such a review cannot be written again
+  (`reviews.already-reviewed`).
+- Public reads show `publishedOn` and `editedOn` as a UTC day, never an exact time. Residual
+  risks, accepted for now: the public review `id` is a UUIDv7 (encodes its creation time), and the
+  `nextCursor` carries the last review's publish time in milliseconds. A non-time-ordered public id
+  and an opaque cursor are a later product call.
+- A switch that cannot be read fails closed: the error is thrown (500), never read as "off".
+
+## Review nits left as notes
+
+- Street-address patterns (English and Japanese suffixes) are constants in the domain; move them
+  to `reviews.autoChecks.addressSuffixes` in Market config before a non-English Market launches.
+- A database CHECK failure puts the failing row (title and body) in the Postgres error DETAIL.
+  Config bounds match the CHECKs today; if they ever diverge, catch and re-throw a code-only
+  error in the repository writes. Confirm the global exception filter never logs Prisma details.
+- `GET /reviews/me` returns at most 100 reviews and has no cursor.
+- `myDeliveredSellerOrders` returns at most 200 seller orders, newest delivery first; a buyer with
+  more than 200 deliveries inside the window loses the rest.
+- Delete then resubmit resets `created_at`, so the edit window restarts (bounded by the review
+  window). Confirm with the owner that "first submit" in N4 allows this.
+- Two reviews of one product written at once can leave the summary short by one until the repair
+  job runs; the summary is never the source of truth.
+- Spec deviations to acknowledge in the PR: no admin step-up on the switch, no public short name
+  (N10), structural-only own-store check (open questions above).
 
 ## Out of scope in this package
 

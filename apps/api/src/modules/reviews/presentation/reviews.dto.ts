@@ -118,8 +118,8 @@ export class PublicReviewBody {
   @ApiProperty() locale!: string;
   @ApiProperty({ type: AuthorBody }) author!: AuthorBody;
   @ApiProperty({ type: BoughtFromBody }) boughtFrom!: BoughtFromBody;
-  @ApiProperty({ format: 'date-time' }) publishedAt!: string;
-  @ApiProperty({ format: 'date-time', nullable: true, type: String }) editedAt!: string | null;
+  @ApiProperty({ format: 'date', description: 'The day only (UTC).' }) publishedOn!: string;
+  @ApiProperty({ format: 'date', nullable: true, type: String }) editedOn!: string | null;
 }
 
 export class ProductReviewsBody {
@@ -273,8 +273,8 @@ export const publicReviewBody = (view: PublicReviewView): PublicReviewBody => ({
       ? { kind: 'named', name: view.author.name }
       : { kind: view.author.kind },
   boughtFrom: { offerId: view.boughtFrom.offerId, sellerId: view.boughtFrom.sellerId },
-  publishedAt: iso(view.publishedAt),
-  editedAt: isoOrNull(view.editedAt),
+  publishedOn: view.publishedOn,
+  editedOn: view.editedOn,
 });
 
 export const productReviewsBody = (page: ProductReviewsPage): ProductReviewsBody => ({

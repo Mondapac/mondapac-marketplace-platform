@@ -241,6 +241,12 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       expect(setting.saves).toBe(1);
     });
 
+    it('fails closed when the switch cannot be read: an error, never a silent "off"', async () => {
+      bought(1);
+      deps.settings.find = () => Promise.reject(new Error('database down'));
+      await expect(submit(1)).rejects.toThrow('database down');
+    });
+
     it('turning it off keeps every row and answers disabled again', async () => {
       await switchOn();
       bought(1);
@@ -360,6 +366,54 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       expect((await submit(limit + 1)).ok).toBe(true);
     });
 
+    it('counts edits and delete-and-resubmit against the daily limit, and never refuses a delete', async () => {
+      const limit = rules.maxSubmissionsPerAccountPerDay;
+      bought(1);
+      let id_ = (await submitted(1)).review.id;
+      let used = 1;
+      // Spend the rest of the day on edits, deletes and resubmits of one review.
+      while (used < limit) {
+        const step = used % 2;
+        const result = step === 1 ? await edit(id_, { rating: 3 }) : await remove(id_);
+        expect(result.ok).toBe(true);
+        used += 1;
+        if (step === 0) {
+          // After a delete the next call is a resubmit, which is also counted.
+          if (used >= limit) break;
+          const again = await submit(1);
+          expect(again.ok).toBe(true);
+          used += 1;
+          id_ = again.ok ? again.value.review.id : id_;
+        }
+      }
+      // At the limit: a new edit or a new review is limited, a delete still works.
+      const current = [...reviews.productReviews.values()][0]!;
+      if (current.status !== 'deleted-by-author') {
+        expect(await edit(current.id, { rating: 2 })).toEqual(
+          err({ code: 'reviews.rate-limited' }),
+        );
+        expect((await remove(current.id)).ok).toBe(true);
+      }
+      expect(await submit(1)).toEqual(err({ code: 'reviews.rate-limited' }));
+    });
+
+    it('answers a buyer at the limit with the real answer for a review that exists', async () => {
+      const limit = rules.maxSubmissionsPerAccountPerDay;
+      for (let n = 1; n <= limit; n += 1) bought(n);
+      for (let n = 1; n <= limit; n += 1) expect((await submit(n)).ok).toBe(true);
+      expect(await submit(1)).toEqual(err({ code: 'reviews.already-reviewed' }));
+    });
+
+    it('never records the author in the insert-only log, so deleting the account unlinks it', async () => {
+      bought(1);
+      const done = await submitted(1, { body: `so ${blocked}` });
+      await edit(done.review.id, { body: 'fine now' });
+      await remove(done.review.id);
+      expect(reviews.actions.length).toBeGreaterThanOrEqual(3);
+      expect(reviews.actions.every((a) => a.actorAccountId === null)).toBe(true);
+      expect(JSON.stringify(reviews.actions)).not.toContain(String(BUYER));
+    });
+
     it('allows one review per product: a second is refused, a later purchase is recorded', async () => {
       bought(1, 5);
       const first = await submitted(1);
@@ -394,6 +448,7 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       bought(1);
       const first = await submitted(1, { body: 'first words' });
       expect((await remove(first.review.id)).ok).toBe(true);
+      clock.set(T0.add(DAY).add({ minutes: 1 })); // the delete counted toward today's limit
       const second = await submitted(1, { rating: 2, body: 'second words' });
       expect(second.outcome).toBe('resubmitted');
       expect(second.review).toMatchObject({ id: first.review.id, rating: 2, status: 'published' });
@@ -462,6 +517,7 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       const flagged = await edit(done.review.id, { body: `now ${blocked}` });
       expect(flagged).toMatchObject({ ok: true, value: { status: 'held' } });
       expect(await productSummary(1)).toMatchObject({ count: 0 });
+      clock.set(T0.add(DAY).add({ minutes: 1 })); // the daily limit is counted over 24 hours
       const clean = await edit(done.review.id, { body: 'fixed it' });
       expect(clean).toMatchObject({ ok: true, value: { status: 'held' } });
     });
@@ -481,7 +537,7 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       );
     });
 
-    it('refuses to edit or delete a review a moderator hid', async () => {
+    it('refuses to edit a review a moderator hid, but lets the author delete it, for good', async () => {
       bought(1);
       const done = await submitted(1);
       const stored = reviews.productReviews.get(done.review.id)!;
@@ -489,7 +545,23 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       expect(await edit(done.review.id, { rating: 1 })).toEqual(
         err({ code: 'reviews.not-editable' }),
       );
-      expect(await remove(done.review.id)).toEqual(err({ code: 'reviews.not-editable' }));
+      // N4: the author may delete at any time; the text goes and the log keeps the old status.
+      expect(await remove(done.review.id)).toEqual(
+        ok({ id: done.review.id, status: 'deleted-by-author' }),
+      );
+      expect(reviews.productReviews.get(done.review.id)).toMatchObject({
+        title: null,
+        body: null,
+        status: 'deleted-by-author',
+      });
+      expect(reviews.actions.at(-1)).toMatchObject({
+        action: 'author-delete',
+        fromStatus: 'hidden',
+        toStatus: 'deleted-by-author',
+      });
+      // Deleting after moderation is not a way round it: the review cannot start over.
+      clock.set(T0.add(DAY).add({ minutes: 1 }));
+      expect(await submit(1)).toEqual(err({ code: 'reviews.already-reviewed' }));
     });
 
     it('deletes for the author: the text goes, the summary drops, a repeat is the same answer', async () => {
@@ -682,6 +754,9 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       expect(new Set(seen).size).toBe(seen.length);
       // The anonymous author is never asked for.
       expect(names.asked.flat()).not.toContain(accounts[1]);
+      // Dates are the day only: no exact time that could link an anonymous review to an order.
+      expect(first.value.reviews[0]).toMatchObject({ publishedOn: '2026-10-25', editedOn: null });
+      expect(first.value.reviews[0]).not.toHaveProperty('publishedAt');
       // No public view carries an account id, an email or an order id.
       expect(JSON.stringify(first.value)).not.toContain(String(accounts[0]));
     });
@@ -731,7 +806,12 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       });
       expect(await productSummary(1)).toMatchObject({ count: 1, averageTimes100: 500 });
       // Twice gives the same numbers.
-      await new RebuildRatingSummaries(gate, deps).execute(system, {});
+      const writes = reviews.summaryWrites;
+      expect(await new RebuildRatingSummaries(gate, deps).execute(system, {})).toEqual(
+        ok({ rebuilt: 0 }),
+      );
+      // Rows whose numbers did not change are not written again.
+      expect(reviews.summaryWrites).toBe(writes);
       expect(await productSummary(1)).toMatchObject({ count: 1, averageTimes100: 500 });
     });
 

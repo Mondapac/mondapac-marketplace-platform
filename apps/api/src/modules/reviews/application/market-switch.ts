@@ -25,7 +25,10 @@ export async function activeSettings(
     async () => ok(await deps.settings.find(context.market)),
     { readOnly: true },
   );
-  if (!row.ok || row.value === null || row.value.status !== 'active') {
+  // A switch that cannot be read is not "off": fail closed as unavailable (503), so an outage is
+  // not mistaken for the Market's choice.
+  if (!row.ok) return err({ code: 'reviews.unavailable' });
+  if (row.value === null || row.value.status !== 'active') {
     return err({ code: 'reviews.disabled' });
   }
   return ok(settings);

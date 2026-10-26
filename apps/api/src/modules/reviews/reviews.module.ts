@@ -1,3 +1,4 @@
+import { Temporal } from '@mondapac/shared-kernel';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
@@ -6,6 +7,7 @@ import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
+import { MarketRegistry } from '../../platform/market-config/market-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CATALOG_FACADE, CatalogModule } from '../catalog';
 import { ORDERING_FACADE, OrderingModule } from '../ordering';
@@ -53,6 +55,14 @@ const PORTS: readonly [keyof ReviewsDependencies, InjectionToken][] = [
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
+
+/** The repair job's interval: the smallest `reviews.summaryRebuildMinutes` of the hosted Markets. */
+function summaryRebuildEvery(markets: MarketRegistry): Temporal.Duration {
+  const minutes = markets
+    .hostedMarketIds()
+    .map((id) => markets.get(id).reviews?.summaryRebuildMinutes ?? 15);
+  return Temporal.Duration.from({ minutes: minutes.length === 0 ? 15 : Math.min(...minutes) });
+}
 
 /** Every reviews use case shares one dependency object, built from the same ports. */
 function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
@@ -105,9 +115,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (product: ViewProductSummary, seller: ViewSellerSummary, detach: DetachAuthor) =>
         new ReviewsFacadeImplementation(product, seller, detach),
     },
-    registerJobsFrom('reviews', [RebuildRatingSummaries], (rebuild: RebuildRatingSummaries) => [
-      rebuildRatingSummariesJob(rebuild),
-    ]),
+    registerJobsFrom(
+      'reviews',
+      [RebuildRatingSummaries, MarketRegistry],
+      (rebuild: RebuildRatingSummaries, markets: MarketRegistry) => [
+        rebuildRatingSummariesJob(rebuild, summaryRebuildEvery(markets)),
+      ],
+    ),
   ],
   exports: [REVIEWS_FACADE],
 })

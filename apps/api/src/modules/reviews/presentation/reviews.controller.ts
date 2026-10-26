@@ -261,7 +261,7 @@ export class BuyerReviewsController {
     description:
       'At any time. The review leaves the public page and its text is cleared; the row stays ' +
       'so the rating history is honest. Deleting twice answers the same. A review a moderator ' +
-      'hid or removed cannot be deleted by its author.',
+      'hid or removed can be deleted too (the text goes), but cannot then be written again.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'id', format: 'uuid' })
@@ -269,7 +269,6 @@ export class BuyerReviewsController {
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
   @ApiNotFoundResponse({ ...ERROR, description: 'reviews.disabled or reviews.not-found' })
-  @ApiConflictResponse({ ...ERROR, description: 'reviews.not-editable' })
   @ApiServiceUnavailableResponse({ ...ERROR, description: 'reviews.unavailable' })
   async deleteReview(
     @Call() context: CallContext,

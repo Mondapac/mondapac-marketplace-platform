@@ -31,6 +31,8 @@ import {
 
 const MY_LIST_LIMIT = 100;
 
+const dayOf = (instant: Temporal.Instant): string => instant.toString().slice(0, 10);
+
 const denied = err({ code: 'access.denied' } as const);
 
 // ---- what is left to review -------------------------------------------------------------------
@@ -271,8 +273,8 @@ export async function listProductReviews(
         record.accountId === null ? undefined : names.get(record.accountId),
       ),
       boughtFrom: { offerId: record.offerId, sellerId: record.sellerId },
-      publishedAt: record.publishedAt!,
-      editedAt: record.editedAt,
+      publishedOn: dayOf(record.publishedAt!),
+      editedOn: record.editedAt === null ? null : dayOf(record.editedAt),
     })),
     nextCursor:
       read.value.length > settings.pageSize && last?.publishedAt

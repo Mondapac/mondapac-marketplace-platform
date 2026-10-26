@@ -32,6 +32,7 @@
     "titleMaxLength": 120,
     "bodyMaxLength": 2000,
     "pageSize": 10,
+    "summaryRebuildMinutes": 15,
     "autoChecks": {
       "blockedTerms": [
         "fuck",
