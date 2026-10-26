@@ -126,6 +126,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // INSERT moves to a worker-only group before the hardening trigger (11.6, PA 13).
     'platform.audit_log_seal': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'platform.audit_chain_checkpoint': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // SOC package 1 (docs/design/data/platform.md 13): insert-only events; DELETE
+    // for the retention job only, which a trigger refuses for a row younger than its floor.
+    'platform.security_events': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'platform.security_events_archive': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // Buyer assistant package 1 (identity design 13): the shared rate-limit counters, counted
     // and purged by the PostgreSQL store of rate-limiter-flexible.
     'platform.rate_limit_counters': {

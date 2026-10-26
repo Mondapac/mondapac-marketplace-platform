@@ -5,6 +5,8 @@ import { ContentNoAccess } from '../../../../../../src/content/content-no-access
 import { SlidePlacementEditor } from '../../../../../../src/content/slides/slide-placement-editor.tsx';
 import {
   SLIDE_EDIT_PERMISSION,
+  SLIDE_PAUSE_PERMISSION,
+  SLIDE_PUBLISH_PERMISSION,
   SLIDE_READ_PERMISSION,
   SLIDES_API_PATH,
   type SlideDetail,
@@ -51,8 +53,11 @@ export default async function SlidePlacementPage({
   return (
     <AdminShell session={gate.session} activeId="content" title={title}>
       <SlidePlacementEditor
+        key={`${read.body.updatedAt}:${read.body.status}:${read.body.versions.length}`}
         slide={read.body}
         canEdit={permissionKeys.includes(SLIDE_EDIT_PERMISSION)}
+        canPause={permissionKeys.includes(SLIDE_PAUSE_PERMISSION)}
+        canPublish={permissionKeys.includes(SLIDE_PUBLISH_PERMISSION)}
         csrfToken={csrfToken}
         zone={displayZone(timezone)}
       />

@@ -94,6 +94,14 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
     'notifications/admin/notices/:id/read',
+    // A storefront slide's approval side and its other changes (storefront): send the draft for
+    // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.
+    'storefront/admin/slides/:id/submit',
+    'storefront/admin/slides/:id/approve',
+    'storefront/admin/slides/:id/pause',
+    'storefront/admin/slides/:id/resume',
+    'storefront/admin/slides/:id/archive',
+    'storefront/admin/slides/:id/restore',
   ],
   PUT: [
     'identity/admin/roles/:id',
@@ -110,6 +118,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   GET: [
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
+    // A storefront slide as a package to create in another Market (storefront).
+    'storefront/admin/slides/:id/copy',
   ],
 };
 

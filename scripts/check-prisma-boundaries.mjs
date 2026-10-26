@@ -50,8 +50,17 @@ const OUTBOX_TABLES = ['outbox', 'inbox'];
 /** Tables whose ADR-0006 key leads with the UUIDv7 event id instead of marketId (P 9). */
 const EVENT_KEYED_TABLES = ['inbox', 'event_delivery'];
 const OUTBOX_FOLDER = 'platform/persistence/outbox/';
-/** The platform tables reserved to platform/persistence/audit/ (the AuditWriter). */
-const AUDIT_TABLES = ['audit_log', 'audit_log_seal', 'audit_chain_checkpoint'];
+/**
+ * The platform tables reserved to platform/persistence/audit/ (the AuditWriter, and the
+ * SecurityEvents writer and retention store; docs/design/data/platform.md 13).
+ */
+const AUDIT_TABLES = [
+  'audit_log',
+  'audit_log_seal',
+  'audit_chain_checkpoint',
+  'security_events',
+  'security_events_archive',
+];
 const AUDIT_FOLDER = 'platform/persistence/audit/';
 /** The calls whose result is a model view: `PrismaService.tx(market)` and `auditTx(market)`. */
 const VIEW_CALLS = ['tx', 'auditTx'];

@@ -133,6 +133,7 @@ function setUp() {
     ...common,
     sessions: fakes.sessionRepository,
     records: fakes.recordRepository,
+    securityEvents: fakes.securityEvents,
     hasher: fakes.hasher,
     tokens: new RandomSessionTokens(),
     memberships: fakes.membershipRepository,

@@ -24,7 +24,7 @@ export default async function SlidesPage() {
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
-  const { permissionKeys, timezone } = gate.session;
+  const { permissionKeys, timezone, csrfToken } = gate.session;
   if (!permissionKeys.includes(SLIDE_READ_PERMISSION)) {
     return <ContentNoAccess session={gate.session} />;
   }
@@ -51,7 +51,11 @@ export default async function SlidesPage() {
           }}
         />
       </div>
-      <SlidesList permissionKeys={permissionKeys} zone={displayZone(timezone)} />
+      <SlidesList
+        permissionKeys={permissionKeys}
+        zone={displayZone(timezone)}
+        csrfToken={csrfToken}
+      />
     </AdminShell>
   );
 }

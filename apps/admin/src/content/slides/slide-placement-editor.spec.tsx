@@ -346,13 +346,14 @@ describe('saving', () => {
 });
 
 describe('page frame and permission gates', () => {
-  it('shows the slide name, versions and both tabs with Where and when current', () => {
+  it('shows the slide name, versions and the three tabs with Where and when current', () => {
     mount();
     expect(screen.getByRole('heading', { level: 1, name: 'Diwali sweets week' })).toBeTruthy();
     const tabs = within(screen.getByRole('navigation', { name: 'Slide sections' }));
     expect(tabs.getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([
       `/content/slides/${ID}`,
       `/content/slides/${ID}/placement`,
+      `/content/slides/${ID}/versions`,
     ]);
     expect(tabs.getByRole('link', { name: 'Where and when' }).getAttribute('aria-current')).toBe(
       'page',
@@ -433,5 +434,25 @@ describe('what a save does not touch', () => {
       'category.top',
       'checkout.top',
     ]);
+  });
+});
+
+describe('commands in the header of this tab', () => {
+  it('are offered by key, as on the other tabs: absent, not disabled, without the key', () => {
+    mount({ canEdit: false });
+    expect(screen.queryByRole('button', { name: 'Send for approval' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
+    cleanup();
+    mount({ canEdit: true });
+    expect(screen.getByRole('button', { name: 'Send for approval' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeTruthy();
+  });
+
+  it('waits for unsaved changes to be saved before it sends the draft', () => {
+    mount();
+    fireEvent.click(within(position('Home · between shelves')).getByRole('checkbox'));
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Send for approval' }).disabled,
+    ).toBe(true);
   });
 });
