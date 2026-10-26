@@ -81,4 +81,4 @@ export const MAX_LOCK_TIMEOUT_MS = 3000;
 /** The longest wait for a pooled connection, in a transaction and for every statement (row 8). */
 export const CONNECTION_WAIT_MS = 2000;
 /** Attempts of a read-write unit on `40001` or `40P01` (row 7). */
-export const UNIT_ATTEMPTS = 3;
+export const UNIT_ATTEMPTS = 4;

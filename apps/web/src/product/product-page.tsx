@@ -1,7 +1,8 @@
-import { useFormatter, useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { sealArt } from '../certification/certification-seal.tsx';
 import { Crumbs } from '../catalog/results.tsx';
+import { formatDate } from '../format/date.ts';
 import { formatMoney } from '../format/money.ts';
 import { ProductCard } from '../home/product-card.tsx';
 import { Icon } from '../icons/icon.tsx';
@@ -270,7 +271,7 @@ function CertificateNote({
   readonly seller: string;
 }) {
   const t = useTranslations('product');
-  const format = useFormatter();
+  const locale = useLocale();
   if (badge.sellerClaim === true) return <p>{t('certificate-declared', { seller })}</p>;
   const issuer = badge.issuer;
   const manufacturer = badge.basis === 'MANUFACTURER';
@@ -290,10 +291,7 @@ function CertificateNote({
         {badge.validUntil === undefined ? null : (
           <span>
             {t('certificate-valid-until', {
-              date: format.dateTime(new Date(`${badge.validUntil}T00:00:00Z`), {
-                dateStyle: 'medium',
-                timeZone: 'UTC',
-              }),
+              date: formatDate(badge.validUntil, locale, { dateStyle: 'medium' }),
             })}
           </span>
         )}

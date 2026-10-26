@@ -284,10 +284,25 @@ describe('existing slide', () => {
     );
   });
 
-  it('keeps the type fixed after creation', () => {
+  it('shows the type as a plain line after creation, with no radio cards', () => {
     mount({ slide: detail() });
-    expect(screen.getByText('The type is chosen when the slide is created.')).toBeTruthy();
-    for (const radio of screen.getAllByRole('radio')) expect(radio.matches(':disabled')).toBe(true);
+    expect(screen.getByText('Type: Promotion · chosen when the slide was created')).toBeTruthy();
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+    expect(screen.queryByRole('group', { name: 'Type' })).toBeNull();
+  });
+
+  it('puts the hint on the start side and the counter at the end of one line, in every field', () => {
+    mount();
+    fireEvent.change(screen.getByLabelText('Image'), { target: { value: 'meat' } });
+    const counters = screen.getAllByText(/^\d+ \/ \d+$/);
+    expect(counters).toHaveLength(5);
+    for (const counter of counters) {
+      expect(counter.className).toContain('shrink-0');
+      const line = counter.parentElement!;
+      expect(line.className).toContain('justify-between');
+      expect(line.firstElementChild!.textContent).not.toBe('');
+      expect(line.lastElementChild).toBe(counter);
+    }
   });
 
   it('replaces the whole draft with the saved window and positions, never the kind', async () => {
@@ -380,6 +395,23 @@ describe('preview', () => {
     const preview = screen.getByRole('complementary', { name: 'Preview' });
     expect(within(preview).getByText('Sponsored')).toBeTruthy();
     expect(within(preview).getByText('Picture: Meat')).toBeTruthy();
+  });
+
+  it('keeps the frame and the text block inside one shrinkable column, at every size', () => {
+    mount();
+    type('Headline', 'x'.repeat(72));
+    const preview = screen.getByRole('complementary', { name: 'Preview' });
+    for (const width of [375, 768, 1280]) {
+      fireEvent.click(within(preview).getByRole('button', { name: `${width} pixels wide` }));
+      const frame = within(preview).getByRole('img', {
+        name: `Preview of the slide at ${width} pixels`,
+      });
+      expect(frame.className).toContain('grid-cols-[minmax(0,1fr)]');
+      const text = within(frame).getByText('x'.repeat(72));
+      expect(text.className).not.toContain('shrink-0');
+      expect(text.parentElement!.className).toContain('min-w-0');
+      expect(text.parentElement!.className).toContain(width === 375 ? 'w-full' : 'w-3/5');
+    }
   });
 });
 

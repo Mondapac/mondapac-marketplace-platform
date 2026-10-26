@@ -16,6 +16,14 @@ export interface CarrierDeliveryRequest {
   readonly orderId: string;
   readonly sellerOrderId: string;
   readonly sellerId: string;
+  /**
+   * How the buyer wants it carried: `instant` (under 2 hours), `same_day` (before the cut-off) or
+   * `scheduled` (the buyer's window, ISO UTC instants). A pickup is never booked.
+   */
+  readonly service: {
+    readonly method: 'instant' | 'same_day' | 'scheduled';
+    readonly window: { readonly start: string; readonly end: string } | null;
+  };
   readonly dropoff: {
     readonly contactName: string;
     readonly contactPhone: string;
@@ -28,11 +36,12 @@ export interface CarrierDeliveryRequest {
 
 /**
  * What `bookCarrierDelivery` did. `booked`: the carrier holds it now; `already-booked`: an
- * earlier call booked it (nothing was sent); `seller-managed`: the `real_time_delivery`
- * strategy does not apply (carrier off for the Market, or either end outside its areas), the
- * seller ships as before; `refused`: the carrier said no, the seller ships as before.
+ * earlier call booked it (nothing was sent); `no-carrier`: the `real_time_delivery` strategy
+ * does not apply (carrier off for the Market, or either end outside its areas); `refused`: the
+ * carrier said no. In both cases the seller does nothing: the order needs the platform's
+ * attention, and ordering records that state.
  */
-export type CarrierBookingOutcome = 'booked' | 'already-booked' | 'seller-managed' | 'refused';
+export type CarrierBookingOutcome = 'booked' | 'already-booked' | 'no-carrier' | 'refused';
 
 /** The progress of a carrier delivery as shipping tracks it (see the booking rules). */
 export type CarrierDeliveryProgress =
@@ -114,7 +123,7 @@ export interface ShippingFacade {
   /**
    * The `real_time_delivery` FulfillmentStrategy (SHP-02/03): books the seller order with the
    * Market's real-time carrier when it applies, idempotent by the seller order id (the carrier's
-   * `externalReference`). Rule `system`, for ordering's handler of `ordering.order-paid.v1`.
+   * `externalReference`). Rule `system`, for ordering's handlers of `ordering.order-paid.v1` (scheduled) and `ordering.seller-order-ready.v1` (instant, same day).
    * `shipping.carrier-unavailable` means try again later.
    */
   bookCarrierDelivery(

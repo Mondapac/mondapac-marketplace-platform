@@ -75,9 +75,9 @@ function Hint({
 }) {
   const count = countOf(value);
   return (
-    <span className="flex flex-wrap justify-between gap-x-3">
-      <span>{text}</span>
-      <span className={count > max ? 'text-critical-fg' : undefined}>{counter(count)}</span>
+    <span className="flex items-start justify-between gap-x-3">
+      <span className="min-w-0">{text}</span>
+      <span className={`shrink-0 ${count > max ? 'text-critical-fg' : ''}`}>{counter(count)}</span>
     </span>
   );
 }
@@ -332,10 +332,9 @@ export function SlideEditor({
               rows={3}
               value={form.body}
               error={errorOf('body')}
-              help={t('body-help')}
-              counter={
+              help={
                 <Hint
-                  text=""
+                  text={t('body-help')}
                   value={form.body}
                   max={BODY_MAX}
                   counter={(count) => t('counter', { count, max: BODY_MAX })}
@@ -476,14 +475,19 @@ function KindPicker({
   const t = useTranslations('content.slides.editor');
   const tk = useTranslations('content.slides.kind');
   const th = useTranslations('content.slides.kind-help');
+  if (locked) {
+    // An existing slide keeps its type: a plain line, not three disabled cards whose chosen one
+    // is hard to see in the dark theme.
+    return <p className="text-sm text-fg">{t('kind-fixed', { kind: tk(form.kind) })}</p>;
+  }
   return (
-    <fieldset className="m-0 min-w-0 border-0 p-0 @container" disabled={locked ? true : undefined}>
+    <fieldset className="m-0 min-w-0 border-0 p-0 @container">
       <legend className="mb-1.5 p-0 text-sm font-medium text-fg">{t('kind')}</legend>
       <div className="grid gap-3 @lg:grid-cols-3">
         {SLIDE_KINDS.map((kind) => (
           <label
             key={kind}
-            className="flex min-w-0 cursor-pointer items-start gap-3 rounded-md border border-line-input bg-surface p-3 has-checked:border-accent has-checked:bg-selected has-focus-visible:outline-2 has-focus-visible:outline-focus has-disabled:cursor-default"
+            className="flex min-w-0 cursor-pointer items-start gap-3 rounded-md border border-line-input bg-surface p-3 has-checked:border-accent has-checked:bg-selected has-focus-visible:outline-2 has-focus-visible:outline-focus"
           >
             <input
               type="radio"
@@ -500,7 +504,6 @@ function KindPicker({
           </label>
         ))}
       </div>
-      {locked ? <p className="mt-1.5 text-sm text-fg-muted">{t('kind-locked')}</p> : null}
     </fieldset>
   );
 }

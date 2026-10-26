@@ -806,7 +806,6 @@ describe('relay of the storefront slides', () => {
     expect(upstream.mock.calls[0]?.[1]?.method).toBe('PUT');
     for (const [method, other] of [
       ['POST', path],
-      ['GET', path],
       ['DELETE', path],
       ['PUT', `${path}/extra`],
       ['PUT', 'storefront/admin/slides/Order'],
@@ -852,6 +851,61 @@ describe('relay of the storefront slides', () => {
       const response = await relay(config, request('POST', path, cross), path.split('/'), upstream);
       expect(response.status, action).toBe(403);
       expect(upstream).not.toHaveBeenCalled();
+    }
+  });
+
+  it('reads the saved order of a position with a GET on the fixed order path and its three query keys', async () => {
+    const path = ['storefront', 'admin', 'slides', 'order'];
+    const category = '0190a000-0000-7000-8000-0000000000c1';
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      request(
+        'GET',
+        `storefront/admin/slides/order?position=category.top&scope=category&scopeId=${category}&state=live&x=1`,
+        { host: 'admin.localhost:3002' },
+      ),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/storefront/admin/slides/order?position=category.top&scope=category&scopeId=${category}`,
+    );
+    expect(upstream.mock.calls[0]?.[1]?.method).toBe('GET');
+  });
+
+  it('drops an order query value of another shape, and sends no query for none', async () => {
+    const path = ['storefront', 'admin', 'slides', 'order'];
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request(
+        'GET',
+        'storefront/admin/slides/order?position=../x&scope=everything&scopeId=not-a-uuid',
+        { host: 'admin.localhost:3002' },
+      ),
+      path,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/storefront/admin/slides/order');
+  });
+
+  it('never reads order as a slide id, and keeps the order read to its own path', async () => {
+    for (const other of [
+      'storefront/admin/slides/order/extra',
+      'storefront/admin/slides/Order',
+      'storefront/admin/slides/order%2F..',
+    ]) {
+      const refused = upstreamOk();
+      const response = await relay(
+        config,
+        request('GET', other, { host: 'admin.localhost:3002' }),
+        other.split('/'),
+        refused,
+      );
+      expect(response.status, other).toBe(404);
+      expect(refused).not.toHaveBeenCalled();
     }
   });
 

@@ -9,6 +9,7 @@ import type {
   SellerOrderPage,
   SellerOrderRecord,
 } from '../application/ports/order.repository';
+import type { DeliveryAttention, DeliveryMethod } from '../domain/delivery-method';
 import type {
   CancelReason,
   Fulfilment,
@@ -61,6 +62,11 @@ interface OrderRow {
     readonly deliveredAt: Date | null;
     readonly inventoryRecordedAt: Date | null;
     readonly ledgerState: string;
+    readonly deliveryMethod: string;
+    readonly deliveryWindowStart: Date | null;
+    readonly deliveryWindowEnd: Date | null;
+    readonly readyAt: Date | null;
+    readonly deliveryAttention: string | null;
   }[];
   readonly lines: readonly {
     readonly id: string;
@@ -101,6 +107,13 @@ const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
   deliveredAt: optionalInstant(s.deliveredAt),
   inventoryRecordedAt: optionalInstant(s.inventoryRecordedAt),
   ledgerState: s.ledgerState as LedgerState,
+  deliveryMethod: s.deliveryMethod as DeliveryMethod,
+  deliveryWindow:
+    s.deliveryWindowStart === null || s.deliveryWindowEnd === null
+      ? null
+      : { start: toInstant(s.deliveryWindowStart), end: toInstant(s.deliveryWindowEnd) },
+  readyAt: optionalInstant(s.readyAt),
+  deliveryAttention: s.deliveryAttention as DeliveryAttention | null,
 });
 
 const toLine = (l: LineRow, currency: string): OrderLine => ({
@@ -211,6 +224,9 @@ export class PrismaOrderRepository implements OrderRepository {
         totalAmount: s.total,
         fulfilment: s.fulfilment,
         ledgerState: s.ledgerState,
+        deliveryMethod: s.deliveryMethod,
+        deliveryWindowStart: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.start),
+        deliveryWindowEnd: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.end),
       })),
     });
     await tx.orderingOrderLine.createMany({
@@ -402,6 +418,34 @@ export class PrismaOrderRepository implements OrderRepository {
         shippedAt: sellerOrder.shippedAt === null ? null : toDate(sellerOrder.shippedAt),
         deliveredAt: sellerOrder.deliveredAt === null ? null : toDate(sellerOrder.deliveredAt),
       },
+    });
+    return updated.count === 0 ? 'stale' : 'saved';
+  }
+
+  async saveReady(market: MarketContext, sellerOrder: SellerOrder) {
+    if (sellerOrder.readyAt === null) return 'stale';
+    const updated = await this.prisma.tx(market).orderingSellerOrder.updateMany({
+      where: {
+        marketId: market.marketId,
+        id: sellerOrder.id,
+        fulfilment: 'to-ship',
+        readyAt: null,
+      },
+      data: { readyAt: toDate(sellerOrder.readyAt) },
+    });
+    return updated.count === 0 ? 'stale' : 'saved';
+  }
+
+  async saveAttention(market: MarketContext, sellerOrder: SellerOrder) {
+    if (sellerOrder.deliveryAttention === null) return 'stale';
+    const updated = await this.prisma.tx(market).orderingSellerOrder.updateMany({
+      where: {
+        marketId: market.marketId,
+        id: sellerOrder.id,
+        fulfilment: 'to-ship',
+        deliveryAttention: null,
+      },
+      data: { deliveryAttention: sellerOrder.deliveryAttention },
     });
     return updated.count === 0 ? 'stale' : 'saved';
   }

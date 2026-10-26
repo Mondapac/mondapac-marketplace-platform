@@ -29,7 +29,17 @@ const ledger = (
 ): Ledger => ({
   sellerId: 's',
   currency,
-  totals: { sales: '3000', shipping: '500', commission: '450', balance: '3050' },
+  totals: {
+    sales: '3000',
+    shipping: '500',
+    commission: '450',
+    refundedSales: '0',
+    refundedShipping: '0',
+    refundedCommission: '0',
+    disputeDebits: '0',
+    disputeReinstated: '0',
+    balance: '3050',
+  },
   entries,
   nextCursor,
 });
@@ -55,6 +65,55 @@ describe('Earnings', () => {
       const term = screen.getAllByText(label).find((node) => node.tagName === 'DT');
       expect(term?.nextElementSibling?.textContent).toBe(value);
     }
+  });
+
+  it('shows refunds, the commission returned and a balance below zero', () => {
+    const initial = ledger([
+      entry(1, { kind: 'refund-sale', direction: 'debit', amount: '1100' }),
+      entry(2, { kind: 'refund-commission', direction: 'credit', amount: '150' }),
+      entry(3, { kind: 'refund-shipping', direction: 'debit', amount: '250' }),
+    ]);
+    mount({
+      ...initial,
+      totals: {
+        ...initial.totals,
+        refundedSales: '1100',
+        refundedShipping: '250',
+        refundedCommission: '150',
+        balance: '-1200',
+      },
+    });
+    for (const [label, value] of [
+      ['Refunds', '$13.50'],
+      ['Commission returned', '$1.50'],
+      ['Balance', '-$12.00'],
+    ] as const) {
+      const term = screen.getAllByText(label).find((node) => node.tagName === 'DT');
+      expect(term?.nextElementSibling?.textContent).toBe(value);
+    }
+    // No dispute yet: no Disputes tile.
+    expect(screen.queryByText('Disputes')).toBeNull();
+    const rows = within(screen.getByRole('table', { name: 'Ledger' })).getAllByRole('row');
+    expect(within(rows[1] as HTMLElement).getByText('Refund of sale')).toBeTruthy();
+    expect(within(rows[1] as HTMLElement).getByText('−$11.00')).toBeTruthy();
+    expect(within(rows[2] as HTMLElement).getByText('Commission returned')).toBeTruthy();
+    expect(within(rows[2] as HTMLElement).getByText('$1.50')).toBeTruthy();
+    expect(within(rows[3] as HTMLElement).getByText('Refund of shipping')).toBeTruthy();
+  });
+
+  it('shows the dispute tile and kinds once disputes exist', () => {
+    const initial = ledger([
+      entry(1, { kind: 'dispute-debit', direction: 'debit', amount: '900' }),
+      entry(2, { kind: 'dispute-reinstate', direction: 'credit', amount: '400' }),
+    ]);
+    mount({
+      ...initial,
+      totals: { ...initial.totals, disputeDebits: '900', disputeReinstated: '400' },
+    });
+    const term = screen.getAllByText('Disputes').find((node) => node.tagName === 'DT');
+    expect(term?.nextElementSibling?.textContent).toBe('$5.00');
+    expect(screen.getByText('Dispute debit')).toBeTruthy();
+    expect(screen.getByText('Dispute reinstated')).toBeTruthy();
   });
 
   it('formats in the ledger currency, never assuming AUD', () => {

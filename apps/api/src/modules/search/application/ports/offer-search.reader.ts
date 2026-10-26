@@ -6,7 +6,11 @@ export interface OfferSearchRequest {
   readonly textSearchConfig: string;
   /** The text to search for, or null to browse. */
   readonly text: string | null;
-  readonly categoryId: Id<'Category'> | null;
+  /**
+   * Documents in any of these categories (the asked one and its subcategories), at most
+   * `MAX_FILTER_CATEGORIES`; null for no category filter. Never empty.
+   */
+  readonly categoryIds: readonly Id<'Category'>[] | null;
   readonly limit: number;
   readonly offset: number;
 }

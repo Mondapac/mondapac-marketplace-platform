@@ -29,7 +29,17 @@ function pageSources(href: string): readonly string[] {
 
 /** Clicks every link of the rendered sidebar and returns the href each one opens. */
 function clickEach(items: ReturnType<typeof sellerNavItems>): string[] {
-  render(<Sidebar panelName="Seller" items={items} activeId="" label={(key) => key} />);
+  // Every group open, so every link is in reach.
+  render(
+    <Sidebar
+      panelName="Seller"
+      items={items}
+      groups={sellerNav.groups}
+      activeId=""
+      label={(key) => key}
+      openGroups={sellerNav.groups?.map((group) => group.id)}
+    />,
+  );
   const opened: string[] = [];
   for (const link of screen.getAllByRole('link')) {
     link.addEventListener('click', (event) => event.preventDefault(), { once: true });

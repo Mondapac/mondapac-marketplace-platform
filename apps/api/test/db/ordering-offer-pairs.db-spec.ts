@@ -121,6 +121,10 @@ describe.each(TEST_MARKETS)('offer pairs in market %s (database)', (code) => {
           deliveredAt: null,
           inventoryRecordedAt: null,
           ledgerState: 'pending',
+          deliveryMethod: 'instant',
+          deliveryWindow: null,
+          readyAt: null,
+          deliveryAttention: null,
         },
       ],
       lines: offers.map((offerId) => ({

@@ -39,6 +39,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     catalog: ['USAGE'],
     certification: ['USAGE'],
     commission_payouts: ['USAGE'],
+    wallet: ['USAGE'],
     customers: ['USAGE'],
     engagement: ['USAGE'],
     assistant: ['USAGE'],
@@ -451,10 +452,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [
         'carrier',
         'delivered_at',
+        'delivery_attention',
         'fulfilment',
         'inventory_recorded_at',
         'ledger_attempts',
         'ledger_state',
+        'ready_at',
         'refunded_amount',
         'shipped_at',
         'tracking_ref',
@@ -468,6 +471,23 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['rate_bps', 'updated_at', 'updated_by'],
     },
     'commission_payouts.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Wallet (customer wallet package 1): journals, their legs and a hold's lots are insert-only
+    // (triggers refuse more for every role); the rest change only the columns named and are never
+    // deleted (a trigger refuses DELETE and TRUNCATE for every role).
+    'wallet.journals': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'wallet.postings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'wallet.hold_lots': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'wallet.accounts': { table: ['INSERT', 'SELECT'], columnUpdate: ['status'] },
+    'wallet.lots': { table: ['INSERT', 'SELECT'], columnUpdate: ['remaining_minor'] },
+    'wallet.holds': { table: ['INSERT', 'SELECT'], columnUpdate: ['resolved_at', 'status'] },
+    'wallet.balances': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['available_minor', 'held_minor', 'updated_at'],
+    },
+    'wallet.market_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['reason_code', 'status', 'updated_at', 'updated_by_account_id'],
+    },
     // Storefront: a page is created and changed (never its kind, key or template) and never
     // deleted; a version's content and state change; a redirect is removed when its page takes the
     // old slug back.
@@ -561,6 +581,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['changed_at', 'enabled'],
     },
+    // Engagement (personalization 1d-3): a block count is inserted by its first event of the day,
+    // then only its counters and time change (the upsert); the retention purge deletes it.
+    'engagement.block_counts': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['clicks', 'impressions', 'updated_at'],
+    },
     // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
     // change, the identity never, and no row is deleted.
     'shipping.seller_flat_fees': {
@@ -619,10 +645,18 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Tax step 3: a refund is written once and only settles (state, Stripe refund id, attempts,
-    // settled time); its lines and its credit note are insert-only. No row is deleted.
+    // settled time); its lines and its credit note are insert-only. No row is deleted. Package 6a:
+    // once settled it moves only the two ledger bookkeeping columns (marker set once, counter up).
     'ordering.refunds': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['attempts', 'settled_at', 'state', 'stripe_refund_id'],
+      columnUpdate: [
+        'attempts',
+        'ledger_attempts',
+        'ledger_recorded_at',
+        'settled_at',
+        'state',
+        'stripe_refund_id',
+      ],
     },
     // Personalization 1d-2: the nightly job deletes a Market's pairs and inserts the new ones.
     'ordering.offer_pairs': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },

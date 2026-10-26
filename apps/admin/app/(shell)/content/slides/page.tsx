@@ -8,6 +8,7 @@ import {
   SLIDE_READ_PERMISSION,
 } from '../../../../src/content/slides/slide-types.ts';
 import { SlidesList } from '../../../../src/content/slides/slides-list.tsx';
+import { SlidesViewSwitch } from '../../../../src/content/slides/slides-view-switch.tsx';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
 import { displayZone } from '../../../../src/shared/format.ts';
@@ -40,6 +41,16 @@ export default async function SlidesPage() {
         ) : null}
       </div>
       <ContentTabs labels={{ nav: t('content.tabs.label'), slides: t('content.tabs.slides') }} />
+      <div className="mb-4">
+        <SlidesViewSwitch
+          active="all"
+          labels={{
+            nav: t('content.slides.view.label'),
+            all: t('content.slides.view.all'),
+            order: t('content.slides.view.order'),
+          }}
+        />
+      </div>
       <SlidesList
         permissionKeys={permissionKeys}
         zone={displayZone(timezone)}

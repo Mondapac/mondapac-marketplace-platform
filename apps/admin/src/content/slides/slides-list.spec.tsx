@@ -203,17 +203,34 @@ describe('slides list', () => {
     expect(names()).toHaveLength(5);
   });
 
-  it('shows the empty state, with New slide only for an editor', async () => {
+  it('shows the empty state with the note and no filters or duplicate New slide button', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { slides: [] } });
     mount();
     expect(await screen.findByRole('heading', { name: 'No slides yet' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'New slide' }).getAttribute('href')).toBe(
-      '/content/slides/new',
-    );
-    cleanup();
-    mount([SLIDE_READ_PERMISSION]);
-    expect(await screen.findByRole('heading', { name: 'No slides yet' })).toBeTruthy();
+    expect(screen.getByText('Without slides, the home page shows its title only.')).toBeTruthy();
+    expect(screen.queryByRole('search')).toBeNull();
     expect(screen.queryByRole('link', { name: 'New slide' })).toBeNull();
+  });
+
+  it('keeps the filters when a filter leaves nothing', async () => {
+    mount();
+    await screen.findByRole('table');
+    call.mockResolvedValue({ ok: true, status: 200, body: { slides: [] } });
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'ended' } });
+    expect(await screen.findByRole('heading', { name: 'No slides match' })).toBeTruthy();
+    expect(screen.getByRole('search')).toBeTruthy();
+  });
+
+  it('never breaks a date inside the live window, only before the dash', async () => {
+    mount();
+    await screen.findByRole('table');
+    const spans = [
+      ...rowOf('Storm delivery delays').querySelectorAll('span.text-xs > span.whitespace-nowrap'),
+    ];
+    expect(spans.map((span) => span.textContent)).toEqual([
+      '24 Oct, 6:00 am',
+      '– 26 Oct, 11:59 pm',
+    ]);
   });
 
   it('shows a load error with a retry that asks again', async () => {

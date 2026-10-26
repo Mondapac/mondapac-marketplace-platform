@@ -11,7 +11,7 @@
     "log-in": "Log in",
     "cart": "{count, plural, =0 {Cart, empty} one {Cart, # item, {total}} other {Cart, # items, {total}}}",
     "search": "Search",
-    "search-placeholder": "Search products and stores",
+    "search-placeholder": "Search products, stores",
     "log-out": "Log out"
   },
   "rail": {
@@ -471,6 +471,7 @@
     "accept": "Accept all",
     "reject": "Necessary only",
     "settings": "Cookie settings",
+    "short": "We use cookies to run the shop and, if you agree, to suggest products. <settings>Cookie settings</settings>",
     "error": "We could not save your choice. Try again."
   },
   "cookies": {
@@ -948,7 +949,7 @@
     "not-found-title": "We cannot find that page",
     "not-found-message": "The link may be old or the page may have moved. Try searching, or go to one of these pages.",
     "search-label": "Search",
-    "search-placeholder": "Search products and stores",
+    "search-placeholder": "Search products, stores",
     "search-go": "Search",
     "home": "Go to home",
     "browse": "Browse products",

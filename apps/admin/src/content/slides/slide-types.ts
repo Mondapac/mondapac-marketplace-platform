@@ -10,6 +10,9 @@ export const SLIDE_PUBLISH_PERMISSION = 'storefront.slide.publish';
 export const SLIDES_API_PATH = 'storefront/admin/slides';
 export const SLIDES_PATH = '/content/slides';
 export const NEW_SLIDE_PATH = `${SLIDES_PATH}/new`;
+/** The "Order by position" view of the Slides page, and the API path behind it. */
+export const ORDER_PATH = `${SLIDES_PATH}/order`;
+export const ORDER_API_PATH = `${SLIDES_API_PATH}/order`;
 /** The tab of one slide that holds its positions and window. */
 export const placementPath = (slideId: string): string => `${SLIDES_PATH}/${slideId}/placement`;
 /** The tab of one slide that lists its saved versions. */

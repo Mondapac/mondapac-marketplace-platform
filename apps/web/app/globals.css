@@ -1,8 +1,19 @@
 /* Storefront styles, ported from the approved home page design (v29, design/storefront-prototypes/
    home-a-teal.html). One light look: white surfaces and neutral greys; the brand palette appears
    only on buttons, type accents and small elements. Every colour, radius and font below is a
-   token on :root; components use the tokens only. Breakpoints: 700px (tablet), 900px (desktop
-   shell with the side rail), 1100px and 1600px (wider product grids). */
+   token on :root; components use the tokens only.
+
+   Breakpoints (one source of truth: src/shell/breakpoints.ts; test/breakpoints.spec.ts fails on
+   any other width in a media query):
+     phone    under 700px      max-width: 699.98px
+     tablet   700px to 899px   min-width: 700px
+     desktop  900px to 1339px  min-width: 900px  (tab bar off, side rail on)
+     wide     1340px and up    min-width: 1340px
+   Write a range edge only as `min-width: 700px | 900px | 1340px` or `max-width: 699.98px | 899.98px
+   | 1339.98px`. The widths in the allowlist of the test (420, 520, 600, 760, 999.98, 1000,
+   1000.98, 1100, 1140, 1600) are older values that stay until their layouts are reworked; do not
+   add a new use of one without a reason. A container query (@container) measures a component, not
+   the screen, and is outside this list. */
 
 /* Tokens. Palette B "Trusted Teal" is the default in use (palette choice is still open). */
 :root {
@@ -76,9 +87,22 @@
   --sf-slide-pad-block: 16px;
   --sf-slide-pad-inline: 20px;
   --sf-header-height: 72px;
+  /* The sticky bottom layers, bottom to top: tab bar, cookie bar (both in .dock, in flow after
+     the footer), the page's action bar (buy bar, checkout bar: sticky in the page, released at
+     the end of its section), assistant launcher. .dock writes its measured height to
+     --sf-dock-height (shell/dock.tsx); until then the tab bar's own height stands in (6px
+     padding, 52px tabs, 6px padding, 1px border). An action bar sticks --sf-dock-gap above the
+     dock; the launcher lifts above the bars (assistant-widget.tsx). */
+  --sf-tabbar-height: 65px;
+  --sf-dock-height: calc(var(--sf-tabbar-height) + env(safe-area-inset-bottom, 0px));
+  /* 13px, not 12px: the raised Browse tab stands 10px above the tab bar's top edge, and this keeps
+     the bars clear of it (the old fixed 78px = 65px tab bar + 13px). */
+  --sf-dock-gap: 13px;
   /* Side gutters; widen from the tablet breakpoint. */
   --gl: max(16px, env(safe-area-inset-left, 0px));
   --gr: max(16px, env(safe-area-inset-right, 0px));
+  /* The notch inset at the end side of the page: the right in LTR, the left in RTL. */
+  --sa-end: env(safe-area-inset-right, 0px);
   /* Text scale: Large from the desktop breakpoint, Small below; the footer toggle overrides it. */
   --fs: 1.15;
   color-scheme: light;
@@ -115,6 +139,14 @@
     --fs: 1;
   }
 }
+@media (min-width: 900px) {
+  :root {
+    /* No tab bar: the dock holds the cookie bar or nothing, and its measured height never includes
+       the safe area, so the gap adds it (what the 900px to 999px bars had before). */
+    --sf-dock-height: 0px;
+    --sf-dock-gap: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+}
 @media (min-width: 700px) {
   :root {
     --gl: max(24px, env(safe-area-inset-left, 0px));
@@ -130,6 +162,10 @@
 
 * {
   box-sizing: border-box;
+}
+html {
+  /* A focused field or an anchor scrolled into view stops above the sticky dock. */
+  scroll-padding-bottom: var(--sf-dock-height);
 }
 body {
   background: var(--sf-white);
@@ -205,10 +241,12 @@ svg {
 }
 .top-in {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* The logo keeps its width; the delivery pill beside it shrinks (an ellipsis) when it must. */
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
   align-items: center;
   padding: 8px var(--gr) 8px var(--gl);
+  container: header / inline-size;
 }
 .lead {
   display: flex;
@@ -265,7 +303,8 @@ svg {
   background: var(--sf-surface);
   border: 1.5px solid transparent;
   border-radius: var(--sf-radius-pill);
-  padding: 0 6px 0 16px;
+  padding-block: 0;
+  padding-inline: 16px 6px;
   min-height: 46px;
   color: var(--sf-slate);
 }
@@ -276,6 +315,7 @@ svg {
 .search input {
   flex: 1;
   min-width: 0;
+  text-overflow: ellipsis;
   border: 0;
   background: none;
   outline: 0;
@@ -303,9 +343,11 @@ svg {
   align-items: center;
   gap: 8px;
   justify-self: end;
+  min-width: 0;
 }
 .deliver {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -313,11 +355,21 @@ svg {
   background: var(--sf-surface);
   border-radius: var(--sf-radius-pill);
   height: 44px;
-  padding: 0 14px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 14px;
   font-weight: 600;
   color: var(--sf-ink);
   white-space: nowrap;
   text-align: start;
+}
+.deliver .dt {
+  min-width: 0;
+  overflow: hidden;
+}
+.deliver small,
+.deliver b {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .deliver small {
   display: block;
@@ -357,7 +409,8 @@ svg {
   align-items: center;
   gap: 8px;
   height: 44px;
-  padding: 0 14px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 14px;
   border-radius: var(--sf-radius-pill);
   border: 0;
   background: var(--sf-teal);
@@ -483,6 +536,10 @@ svg {
     display: none;
   }
 }
+/* The on-screen keyboard is open (shell/use-keyboard.ts): the tab bar would sit on the field. */
+:root[data-keyboard='open'] .tabbar {
+  display: none;
+}
 
 /* Search view (phone and tablet) */
 .sview {
@@ -524,6 +581,7 @@ svg {
 .sin input {
   flex: 1;
   min-width: 0;
+  text-overflow: ellipsis;
   border: 0;
   background: none;
   outline: 0;
@@ -755,31 +813,31 @@ svg {
   object-fit: contain;
 }
 .pimgs.primary .i0 {
-  right: -4%;
+  inset-inline-end: -4%;
   bottom: -6%;
   width: 78%;
   height: 78%;
 }
 .pimgs.primary .i1 {
-  right: 52%;
+  inset-inline-end: 52%;
   bottom: -4%;
   width: 46%;
   height: 46%;
 }
 .pimgs.primary .i2 {
-  right: 34%;
+  inset-inline-end: 34%;
   top: -4%;
   width: 46%;
   height: 46%;
 }
 .pimgs.secondary .i0 {
-  right: -8%;
+  inset-inline-end: -8%;
   bottom: -8%;
   width: 62%;
   height: 62%;
 }
 .pimgs.secondary .i1 {
-  right: 36%;
+  inset-inline-end: 36%;
   bottom: -6%;
   width: 40%;
   height: 40%;
@@ -1583,7 +1641,8 @@ svg {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .ftrust > li {
-    padding: 16px 12px 16px 0;
+    padding-block: 16px;
+    padding-inline: 0 12px;
   }
   .ftrust > li:nth-child(2) {
     border-top: 0;
@@ -1864,6 +1923,65 @@ svg {
     margin-inline-start: 0;
   }
 }
+/* Touch targets (44px minimum) of the shell on phone and tablet; from 900px the mouse layout keeps
+   its tighter rows. The logo's hit area is 44px at every width (it sits in a 44px row). */
+.logo {
+  min-height: 44px;
+}
+@media (max-width: 899.98px) {
+  .fcol ul {
+    gap: 0;
+  }
+  .fcol li a {
+    padding: 12px 0;
+  }
+  .fbrand .fc {
+    gap: 0;
+  }
+  .fbrand .fc a {
+    min-height: 44px;
+  }
+  /* 44px legal links; the 6px of padding is taken back with a margin, so the words stay where
+     they were (16px apart, the first one flush with the row). */
+  .fbase .fl {
+    align-items: center;
+    gap: 0 16px;
+  }
+  /* The copyright on its own line, so Terms, Privacy and Cookies make one 44px row. */
+  .fbase .fl > span:first-child {
+    flex-basis: 100%;
+  }
+  .fbase .fl a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-inline: 6px;
+    margin-inline: -6px;
+  }
+  .sbody .pchips a {
+    min-height: 44px;
+  }
+}
+/* iOS Safari zooms the page into a field set under 16px: phones, and any touch screen (a phone held
+   sideways is wider than 700px), keep every field at 16px or more. A mouse keeps the set size. */
+@media (max-width: 699.98px), (pointer: coarse) {
+  :is(input, select, textarea):not([type='checkbox']):not([type='radio']) {
+    font-size: max(16px, 1em);
+  }
+}
+/* A 320px phone: the header row (logo 141px, 8px gap, delivery pill 175px) is 324px wide, so under
+   that the pill drops its chevron and tightens; below that its text ends in an ellipsis. Measured
+   on the header row, not the screen, so a wider phone is left exactly as it was. */
+@container header (max-width: 323px) {
+  .deliver {
+    gap: 6px;
+    padding: 0 10px;
+  }
+  .deliver .dc {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .btn,
   .login,
@@ -1932,7 +2050,8 @@ svg {
   align-items: center;
   gap: 8px;
   min-height: 64px;
-  padding: 0 12px 0 20px;
+  padding-block: 0;
+  padding-inline: 20px 12px;
   border-bottom: 1px solid var(--sf-line);
   flex: none;
 }
@@ -2499,7 +2618,8 @@ svg {
   align-items: center;
   gap: 6px;
   min-height: 36px;
-  padding: 0 10px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 10px;
   border-radius: var(--sf-radius-pill);
   background: var(--sf-mist-soft);
   color: var(--sf-teal);
@@ -2539,7 +2659,8 @@ svg {
 .sortw select {
   appearance: none;
   min-height: 34px;
-  padding: 0 32px 0 10px;
+  padding-block: 0;
+  padding-inline: 10px 32px;
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-radius-card);
   background: var(--sf-white);
@@ -2726,7 +2847,7 @@ svg {
   }
 }
 
-/* Cookie bar: a region above the tab bar (not a dialog). Accept and Reject look the same. */
+/* Cookie bar: a region above the tab bar, in the dock (not a dialog). Accept and Reject look the same. */
 .consent {
   display: grid;
   gap: 12px;
@@ -2757,9 +2878,45 @@ svg {
   padding: 0 16px;
   text-align: center;
 }
+.consent-short {
+  display: none;
+}
+.consent-short a {
+  color: var(--sf-teal);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* Phone: the compact bar (at most 140px tall at 320px, with the tab bar under it the stack stays
+   inside the proposal's budget). A two-line summary with Cookie settings as an inline link, the
+   title kept for screen readers, and Accept and Reject side by side with the same weight. */
 @media (max-width: 699.98px) {
+  .consent {
+    gap: 8px;
+    padding-block: 12px;
+  }
+  .consent h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .consent-long,
   .consent-actions .btn:last-child {
-    grid-column: 1 / -1;
+    display: none;
+  }
+  .consent-short {
+    display: block;
+  }
+  .consent-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* The keyboard is open (shell/use-keyboard.ts): the bar would cover the field. The choice is
+     still open and the bar comes back on blur. */
+  :root[data-keyboard='open'] .consent {
+    display: none;
   }
 }
 .consent .btn:disabled,
@@ -3551,6 +3708,7 @@ svg {
 .spop.asmodal {
   position: fixed;
   top: 50%;
+  /* Centred on the page with the translate below, so it stays physical in both directions. */
   left: 50%;
   transform: translate(-50%, -50%);
   width: min(420px, calc(100% - 32px));
@@ -3637,19 +3795,20 @@ svg {
   .spop:not(.asmodal) {
     display: none;
   }
-  /* Above the tab bar until the end of the product section; below the header. */
+  /* Above the dock (tab bar and cookie bar) until the end of the product section; below the header. */
   .buybar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
     position: sticky;
-    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--sf-dock-height) + var(--sf-dock-gap));
     z-index: 4;
     background: var(--sf-white);
     border: 1px solid var(--sf-line);
     border-radius: var(--sf-radius-tile);
-    padding: 10px 12px 10px 16px;
+    padding-block: 10px;
+    padding-inline: 16px 12px;
     box-shadow: 0 4px 14px var(--sf-shadow-bar);
   }
   .buybar b {
@@ -3662,11 +3821,6 @@ svg {
   }
   .pr1 .bctl {
     display: none;
-  }
-}
-@media (min-width: 900px) and (max-width: 999.98px) {
-  .buybar {
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -4066,19 +4220,20 @@ svg {
   width: 16px;
   height: 16px;
 }
-/* Above the tab bar, below the header. */
+/* Above the dock (tab bar and cookie bar), below the header. */
 .cbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   position: sticky;
-  bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--sf-dock-height) + var(--sf-dock-gap));
   z-index: 4;
   background: var(--sf-white);
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-radius-tile);
-  padding: 10px 12px 10px 16px;
+  padding-block: 10px;
+  padding-inline: 16px 12px;
   box-shadow: 0 4px 14px var(--sf-shadow-bar);
 }
 .cbar b {
@@ -4482,7 +4637,8 @@ svg {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 8px 8px 20px;
+  padding-block: 8px;
+  padding-inline: 20px 8px;
   border-bottom: 1px solid var(--sf-line);
 }
 .dh h2 {
@@ -4654,11 +4810,6 @@ svg {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
   }
 }
-@media (min-width: 900px) and (max-width: 999.98px) {
-  .cbar {
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  }
-}
 @media (min-width: 1000px) {
   .cgrid {
     grid-template-columns: minmax(0, 1fr) 340px;
@@ -4706,7 +4857,7 @@ svg {
   content: '';
   position: absolute;
   top: 13px;
-  right: 50%;
+  inset-inline-end: 50%;
   width: 100%;
   height: 2px;
   background: var(--sf-line);
@@ -4829,8 +4980,8 @@ svg {
 .aclist {
   position: absolute;
   top: calc(100% + 4px);
-  right: 0;
-  left: 0;
+  inset-inline-end: 0;
+  inset-inline-start: 0;
   z-index: 5;
   margin: 0;
   padding: 0;
@@ -5476,7 +5627,8 @@ svg {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 8px 8px 20px;
+  padding-block: 8px;
+  padding-inline: 20px 8px;
   border-bottom: 1px solid var(--sf-line);
 }
 .lmh h2 {
@@ -5521,7 +5673,8 @@ svg {
   align-items: center;
   gap: 8px;
   min-height: 46px;
-  padding: 0 1px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 1px;
   border: 1.5px solid var(--sf-line);
   border-radius: 12px;
   background: var(--sf-white);
@@ -5566,8 +5719,8 @@ svg {
 }
 .lmlist {
   position: absolute;
-  left: 0;
-  right: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
   top: 100%;
   z-index: 3;
   max-height: 240px;
@@ -5615,8 +5768,8 @@ svg {
 }
 .lmnone {
   position: absolute;
-  left: 0;
-  right: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
   top: 100%;
   z-index: 3;
   margin-top: 4px;
@@ -5820,7 +5973,7 @@ svg {
 .lmzoom {
   position: absolute;
   top: 12px;
-  right: 12px;
+  inset-inline-end: 12px;
   display: grid;
   overflow: hidden;
   border-radius: 10px;
@@ -5855,8 +6008,8 @@ svg {
 .lmhint {
   position: absolute;
   top: 12px;
-  left: 12px;
-  right: 68px;
+  inset-inline-start: 12px;
+  inset-inline-end: 68px;
   padding: 8px 12px;
   border-radius: 10px;
   background: var(--sf-white);
@@ -5866,7 +6019,7 @@ svg {
 }
 .lmlegend {
   position: absolute;
-  right: 12px;
+  inset-inline-end: 12px;
   bottom: 12px;
   display: flex;
   align-items: center;
@@ -5887,7 +6040,7 @@ svg {
 }
 .lmatt {
   position: absolute;
-  left: 8px;
+  inset-inline-start: 8px;
   bottom: 6px;
   padding: 2px 6px;
   border-radius: 4px;
@@ -5925,7 +6078,7 @@ svg {
   .lmx {
     position: absolute;
     top: 8px;
-    left: 8px;
+    inset-inline-start: 8px;
     z-index: 2;
     display: grid;
     background: var(--sf-white);
@@ -5947,8 +6100,8 @@ svg {
 
 /* Seller page (approved prototype v9, design/storefront-prototypes/seller-a-teal.html): header
    card with banner, logo, rings and chips; Products, About and Certificates tabs. Layouts: desktop
-   from 1001px (logo 141px over the banner), tablet 701 to 1000px (logo 110px half over it), phone
-   up to 700px (logo 88px below it). */
+   from 1001px (logo 141px over the banner), tablet 700 to 1000px (logo 110px half over it), phone
+   under 700px (logo 88px below it). */
 .shop {
   display: grid;
   gap: 16px;
@@ -6031,7 +6184,7 @@ svg {
   display: flex;
   flex: 0 0 auto;
   gap: 12px;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .shop-ring {
   display: grid;
@@ -6099,7 +6252,7 @@ svg {
 .shop-share {
   position: absolute;
   top: 12px;
-  right: 12px;
+  inset-inline-end: 12px;
   z-index: 3;
 }
 .shop-share > button {
@@ -6124,7 +6277,7 @@ svg {
 .shop-share-menu {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  inset-inline-end: 0;
   display: grid;
   gap: 2px;
   width: min(280px, calc(100vw - 56px));
@@ -6151,7 +6304,7 @@ svg {
   color: var(--sf-ink);
   font-size: calc(15px * var(--fs));
   font-weight: 600;
-  text-align: left;
+  text-align: start;
   text-decoration: none;
 }
 .shop-share-menu a:hover,
@@ -6392,7 +6545,7 @@ svg {
 }
 .shop-facts dd {
   font-weight: 600;
-  text-align: right;
+  text-align: end;
   overflow-wrap: anywhere;
 }
 .shop-ok {
@@ -6430,7 +6583,7 @@ svg {
     grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   }
 }
-@media (min-width: 701px) and (max-width: 1000.98px) {
+@media (min-width: 700px) and (max-width: 1000.98px) {
   .shop-banner {
     height: clamp(120px, 18vw, 150px);
   }
@@ -6463,7 +6616,7 @@ svg {
     height: 60px;
   }
 }
-@media (max-width: 700.98px) {
+@media (max-width: 699.98px) {
   .shop-banner {
     height: 130px;
   }
@@ -6513,7 +6666,8 @@ button.login {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 12px 12px 12px 16px;
+  margin-block: 12px;
+  margin-inline: 16px 12px;
   text-transform: none;
   letter-spacing: 0;
   font-size: calc(15px * var(--fs));
@@ -6590,7 +6744,7 @@ button.login {
   width: min(360px, 88%);
   height: 100%;
   padding-top: env(safe-area-inset-top, 0px);
-  padding-inline-end: env(safe-area-inset-right, 0px);
+  padding-inline-end: var(--sa-end);
   background: var(--sf-white);
   box-shadow: -12px 0 40px var(--sf-shadow);
   transform: translateX(102%);
@@ -6613,7 +6767,8 @@ button.login {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 8px 12px 16px;
+  padding-block: 12px;
+  padding-inline: 16px 8px;
   border-bottom: 1px solid var(--sf-line);
 }
 .adn {
@@ -7069,8 +7224,8 @@ button.login {
   content: '';
   position: absolute;
   top: 13px;
-  left: -50%;
-  right: 50%;
+  inset-inline-start: -50%;
+  inset-inline-end: 50%;
   height: 2px;
   background: var(--sf-line);
 }
@@ -7271,7 +7426,7 @@ button.login {
   content: '';
   position: absolute;
   top: 4px;
-  left: 4px;
+  inset-inline-start: 4px;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -8228,7 +8383,7 @@ button.login {
     transition: transform 0.15s;
   }
 }
-@media (min-width: 701px) {
+@media (min-width: 700px) {
   .sg {
     gap: 40px;
   }
@@ -8378,7 +8533,8 @@ button.login {
   width: 100%;
   max-width: 440px;
   min-height: 48px;
-  padding: 0 6px 0 16px;
+  padding-block: 0;
+  padding-inline: 16px 6px;
   border: 1.5px solid transparent;
   border-radius: var(--sf-radius-pill);
   background: var(--sf-surface);
@@ -8555,7 +8711,7 @@ button.login {
 .aslaunch {
   position: fixed;
   z-index: 22;
-  right: var(--as-right, max(20px, env(safe-area-inset-right, 0px)));
+  inset-inline-end: var(--as-end, max(20px, var(--sa-end)));
   bottom: var(--as-lift);
   display: grid;
   place-items: center;
@@ -8581,15 +8737,17 @@ button.login {
   outline: 3px solid var(--sf-teal);
   outline-offset: 2px;
 }
-/* Switched off: the launcher would only open the off state again. */
+/* Switched off: the launcher would only open the off state again. Covered: a phone with the cookie
+   bar open (launcher-lift.ts). */
 .asw[data-open='true'] .aslaunch,
-.asw[data-off='true'] .aslaunch {
+.asw[data-off='true'] .aslaunch,
+.asw[data-covered='true'] .aslaunch {
   display: none;
 }
 .aspanel {
   position: fixed;
   z-index: 22;
-  right: max(20px, env(safe-area-inset-right, 0px));
+  inset-inline-end: max(20px, var(--sa-end));
   bottom: calc(var(--as-dock) + 20px);
   width: min(400px, calc(100vw - 40px));
   /* Never over the header: 20px clear of it and of the dock. */
@@ -8606,9 +8764,9 @@ button.login {
 .aspanel[hidden] {
   display: none;
 }
-@media (max-width: 700px) {
+@media (max-width: 699.98px) {
   .aslaunch {
-    right: var(--as-right, max(16px, env(safe-area-inset-right, 0px)));
+    inset-inline-end: var(--as-end, max(16px, var(--sa-end)));
   }
   .aspanel {
     z-index: 30;
@@ -8624,7 +8782,8 @@ button.login {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 6px 8px 14px;
+  padding-block: 8px;
+  padding-inline: 14px 6px;
   border-bottom: 2px solid var(--sf-saffron);
   min-height: 60px;
 }
@@ -8710,7 +8869,7 @@ button.login {
 }
 .asinfo ul {
   margin: 0;
-  padding-left: 18px;
+  padding-inline-start: 18px;
   display: grid;
   gap: 2px;
 }
@@ -8750,12 +8909,12 @@ button.login {
 .asm.u .asb {
   background: var(--sf-saffron);
   color: var(--sf-on-accent);
-  border-bottom-right-radius: 4px;
+  border-end-end-radius: 4px;
 }
 .asm.a .asb {
   background: var(--sf-surface);
   color: var(--sf-ink);
-  border-bottom-left-radius: 4px;
+  border-end-start-radius: 4px;
   max-width: 92%;
   justify-self: start;
 }
@@ -9100,4 +9259,49 @@ button.login {
 }
 .asfoot .aslk {
   flex: none;
+}
+
+/* Right-to-left (a language the Market publishes, read from <html dir>): what is physical on
+   purpose is mirrored here. Spacing and positions above are logical and follow the direction. */
+:root:dir(rtl) {
+  --sa-end: env(safe-area-inset-left, 0px);
+}
+/* Arrows and chevrons that point along the reading direction. */
+:dir(rtl) .ico-flip {
+  scale: -1 1;
+}
+/* "Show more" turns the chevron down; it must not mirror on top of that. */
+:dir(rtl) .dmore .ico {
+  scale: none;
+}
+/* Drawers wait off the edge they open from; the start drawer sits at the right in RTL. */
+:dir(rtl) .panel {
+  box-shadow: -8px 0 28px var(--sf-shadow-panel);
+  transform: translateX(102%);
+}
+:dir(rtl) .fpanel {
+  box-shadow: 8px 0 28px var(--sf-shadow-panel);
+  transform: translateX(-102%);
+}
+:dir(rtl) .adp {
+  box-shadow: 12px 0 40px var(--sf-shadow);
+  transform: translateX(-102%);
+}
+:dir(rtl) .ac-sw2 input:checked + i::after {
+  transform: translateX(-20px);
+}
+:dir(rtl) .cbp {
+  mask-image: linear-gradient(to left, transparent, var(--sf-black) 25%);
+}
+
+/* Fonts for scripts the brand fonts do not cover. Figtree and Plus Jakarta Sans stay first, so
+   Latin digits and brand text keep the brand look; the script font fills the other glyphs. The
+   stylesheet for it loads only in these languages (src/i18n/fonts.ts). */
+:root:lang(fa) {
+  --sf-font-head: 'Plus Jakarta Sans', 'Vazirmatn', system-ui, sans-serif;
+  --sf-font-body: 'Figtree', 'Vazirmatn', system-ui, sans-serif;
+}
+:root:lang(ar) {
+  --sf-font-head: 'Plus Jakarta Sans', 'Noto Sans Arabic', system-ui, sans-serif;
+  --sf-font-body: 'Figtree', 'Noto Sans Arabic', system-ui, sans-serif;
 }
