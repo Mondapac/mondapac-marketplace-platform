@@ -1,9 +1,11 @@
 import 'server-only';
 import {
   AppShell,
+  NAV_OPEN_COOKIE,
   SIDEBAR_COOKIE,
   Sidebar,
   THEME_COOKIE,
+  navOpenGroups,
   navTrail,
   Topbar,
   sidebarCollapsed,
@@ -13,7 +15,7 @@ import { getTranslations } from 'next-intl/server';
 import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
-import { sellerNavItems } from '../nav.ts';
+import { sellerNav, sellerNavItems } from '../nav.ts';
 import { SellerNotifications } from '../notifications/seller-notifications.tsx';
 import { showsNoticeBell } from '../notifications/types.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
@@ -38,6 +40,7 @@ export async function SellerShell({
   const t = await getTranslations();
   const jar = await cookies();
   const collapsed = sidebarCollapsed(jar.get(SIDEBAR_COOKIE)?.value);
+  const openGroups = navOpenGroups(jar.get(NAV_OPEN_COOKIE)?.value);
   const items = sellerNavItems(session.sellerAccessState, session.permissionKeys);
   // Phone bottom bar (IA 4): Home and Catalogue, only when the caller may see both.
   const tabIds = ['s_home', 's_products'];
@@ -69,14 +72,18 @@ export async function SellerShell({
         <Sidebar
           panelName={t('panel.name')}
           items={items}
+          groups={sellerNav.groups}
           activeId={activeId}
           label={(key) => t(key)}
+          openGroups={openGroups}
+          expandAll={t('nav.expandAll')}
+          collapseAll={t('nav.collapseAll')}
         />
       }
       topbar={
         <Topbar
           pageTitle={title}
-          trail={navTrail(items, activeId, title, (key) => t(key))}
+          trail={navTrail(items, activeId, title, (key) => t(key), sellerNav.groups)}
           trailLabel={t('nav.breadcrumb')}
           actions={
             <>

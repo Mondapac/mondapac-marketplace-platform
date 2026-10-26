@@ -30,12 +30,23 @@
     "home": "Dashboard",
     "team": "Roles & permissions",
     "customers": "Customers",
-    "sellers": "Sellers",
+    "sellers": "All sellers",
     "orders": "Orders",
     "price-holds": "Held prices",
     "offer-reviews": "Offer reviews",
     "payout-accounts": "Connected accounts",
-    "settings": "Settings"
+    "content": "Content",
+    "settings": "Settings",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "group": {
+      "reviews": "Reviews",
+      "content": "Content",
+      "sellers": "Sellers",
+      "orders": "Orders & customers",
+      "money": "Money",
+      "platform": "Platform"
+    }
   },
   "home": {
     "title": "Dashboard",
@@ -937,6 +948,205 @@
       "seller-fallback": "Seller {id}"
     }
   },
+  "content": {
+    "title": "Storefront content",
+    "intro": "Slides on the buyer site, for this Market.",
+    "tabs": {
+      "label": "Content sections",
+      "slides": "Slides"
+    },
+    "no-access": {
+      "title": "You don't have access to this page",
+      "body": "Your role can't see storefront content. Ask a platform administrator if you need it.",
+      "action": "Back to home"
+    },
+    "unavailable": "Storefront content could not be loaded.",
+    "slides": {
+      "title": "Slides",
+      "new": "New slide",
+      "kind": {
+        "announcement": "Announcement",
+        "promotion": "Promotion",
+        "link": "Link"
+      },
+      "kind-help": {
+        "announcement": "Text only, for notices",
+        "promotion": "Image, text and a button",
+        "link": "A card that opens a page"
+      },
+      "status": {
+        "live": "Live",
+        "scheduled": "Scheduled",
+        "pending": "Waiting for approval",
+        "draft": "Draft",
+        "paused": "Paused",
+        "ended": "Ended",
+        "archived": "Archived",
+        "unknown": "Unknown"
+      },
+      "position": {
+        "home-hero": "Home · top",
+        "home-mid": "Home · between shelves",
+        "category-top": "Category · above list",
+        "product-below-details": "Product · below details",
+        "cart-below-lines": "Cart · below items",
+        "landing-top": "Landing · top"
+      },
+      "list": {
+        "filters": "Filter slides",
+        "type": "Slide type",
+        "all": "All",
+        "position": "Position",
+        "any-position": "Any position",
+        "status": "Status",
+        "any-status": "Any status",
+        "search": "Search by name",
+        "clear": "Clear filters",
+        "count": "{count, plural, one {# slide} other {# slides}}",
+        "loading": "Loading slides",
+        "error": "Slides could not be loaded. Check your connection and try again.",
+        "empty-title": "No slides yet",
+        "empty-body": "Slides show notices and offers at the top of the home page, on category pages, product pages and the cart.",
+        "empty-note": "Without slides, the home page shows its title only.",
+        "none-title": "No slides match",
+        "none-body": "Change or clear the filters to see more slides.",
+        "footnote": "Live and scheduled first, then waiting, drafts, paused, ended and archived. Times in {zone}.",
+        "caption": "Slides",
+        "col": {
+          "slide": "Slide",
+          "type": "Type",
+          "positions": "Positions",
+          "window": "Live window",
+          "status": "Status",
+          "actions": "Action"
+        },
+        "pinned": "Pinned",
+        "sponsored": "Sponsored",
+        "draft-changes": "Has a draft",
+        "not-placed": "Not placed yet",
+        "no-position": "No position",
+        "window": "<n>{from}</n> <n>– {to}</n>",
+        "action": {
+          "edit": "Edit",
+          "view": "View",
+          "review": "Review"
+        }
+      },
+      "editor": {
+        "back": "Slides",
+        "title-new": "New slide",
+        "page-title": "Slide",
+        "tabs": "Slide sections",
+        "versions": "Versions of this slide",
+        "where-window": "{from} – {to}",
+        "tab-content": "Content",
+        "version": "{status} v{version}",
+        "draft-pending": "Draft v{version} · waiting for approval",
+        "draft-open": "Draft v{version} · not sent for approval",
+        "not-live": "Not live yet",
+        "form": "Slide content",
+        "read-only": "You can view slides but not change them.",
+        "archived": "This slide is archived. It cannot be changed.",
+        "new-note": "A new slide is saved as a draft at {position} for {days} days from the moment you save it. Buyers see nothing until a platform admin approves it.",
+        "where": "Shown at {positions}. Live {window} ({zone}).",
+        "where-none": "Not placed yet.",
+        "kind": "Type",
+        "kind-fixed": "Type: {kind} · chosen when the slide was created",
+        "name": "Internal name",
+        "name-help": "Only admins see this.",
+        "title": "Headline",
+        "title-help": "Plain text",
+        "body": "Text",
+        "body-help": "Plain text. Do not write prices; link to the real special instead.",
+        "cta": "Button label",
+        "cta-help": "Plain text",
+        "optional": "optional",
+        "opens": "Opens",
+        "opens-none": "Nothing",
+        "opens-help": "Pages on this site only. Outside links are not allowed.",
+        "link": {
+          "category": "Category",
+          "product": "Product",
+          "seller": "Seller",
+          "page": "Landing page",
+          "search": "Saved search"
+        },
+        "link-id": {
+          "category": "Category ID",
+          "product": "Product ID",
+          "seller": "Seller ID",
+          "page": "Landing page ID",
+          "search": "Saved search code"
+        },
+        "link-id-help": {
+          "uuid": "The id of the item, as the catalogue shows it.",
+          "search": "The code of the saved search, for example halal-meat."
+        },
+        "image": "Image",
+        "image-none": "No image",
+        "image-key": {
+          "apple": "Apples",
+          "banana": "Bananas",
+          "bread": "Bread",
+          "cheese": "Cheese",
+          "chicken": "Chicken",
+          "coconut": "Coconuts",
+          "egg": "Eggs",
+          "fruits": "Fruit basket",
+          "meat": "Meat",
+          "orange": "Oranges",
+          "salmon": "Salmon",
+          "watermelon": "Watermelon"
+        },
+        "image-help": "Ready-made pictures until image upload is available. The buyer site crops them for each screen size.",
+        "alt": "Image description for screen readers",
+        "alt-help": "Required. Leave out text that is already in the headline.",
+        "sponsored": "Sponsored by a seller",
+        "sponsored-help": "Shows a “Sponsored” label to buyers.",
+        "counter": "{count} / {max}",
+        "approval-note": "Buyers see changes only after a platform admin approves.",
+        "discard": "Discard",
+        "save": "Save to draft",
+        "saved": "Saved to draft as version {version}.",
+        "error": {
+          "required": "Fill this in.",
+          "length": "Too long. Use up to {max} characters.",
+          "format": "This is not in the right format.",
+          "markup": "Use plain text only, without < or > characters.",
+          "url": "Web addresses and links are not allowed here. Use “Opens” to link to a page.",
+          "needs-link": "A button needs something to open. Choose what it opens.",
+          "not-empty": "Leave this empty.",
+          "invalid": "This value is not accepted.",
+          "alt-required": "Describe the image. Required when a slide has an image.",
+          "link-type-required": "Choose what this link opens.",
+          "link-id-uuid": "Enter a valid id, for example 0190a000-0000-7000-8000-000000000001.",
+          "link-id-search": "Use lower-case letters, numbers and hyphens, starting with a letter.",
+          "summary": "Some fields need attention. Check the marked fields.",
+          "window": "The dates or positions saved with this slide were refused. They cannot be changed on this tab.",
+          "generic": "The slide could not be saved. Try again.",
+          "network": "No connection. Your changes are still here; try again.",
+          "denied": "You don't have permission to change slides.",
+          "archived": "This slide is archived and can no longer be changed.",
+          "version-limit": "This slide has reached its limit of saved versions.",
+          "not-found": "This slide no longer exists."
+        }
+      },
+      "preview": {
+        "title": "Preview",
+        "size": "Preview size",
+        "size-option": "{width} pixels wide",
+        "frame": "Preview of the slide at {width} pixels",
+        "headline": "Your headline appears here",
+        "sponsored": "Sponsored",
+        "image": "Picture: {name}",
+        "note": "A static preview built from your entries. Text sits beside the picture, never on it."
+      },
+      "not-found": {
+        "title": "Slide not found",
+        "body": "We couldn't find this slide. It may belong to another Market or no longer exist."
+      }
+    }
+  },
   "settings": {
     "title": "Settings",
     "no-access": "You don't have access to settings.",
@@ -1157,7 +1367,10 @@
         "sales": "Sales",
         "shipping": "Shipping",
         "commission": "Commission",
-        "balance": "Balance"
+        "balance": "Balance",
+        "refunds": "Refunds",
+        "refunded-commission": "Commission returned",
+        "disputes": "Disputes"
       },
       "col": {
         "when": "Date",
@@ -1168,7 +1381,12 @@
       "kind": {
         "sale": "Sale",
         "shipping": "Shipping",
-        "commission": "Commission"
+        "commission": "Commission",
+        "refund-sale": "Refund of sale",
+        "refund-shipping": "Refund of shipping",
+        "refund-commission": "Commission returned",
+        "dispute-debit": "Dispute debit",
+        "dispute-reinstate": "Dispute reinstated"
       },
       "empty": "No ledger rows yet. They appear when this seller's orders are paid.",
       "more": "Load more",

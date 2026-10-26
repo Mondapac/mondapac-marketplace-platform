@@ -12,6 +12,7 @@ import type {
   CommissionPayoutsFailure,
   CommissionRateMap,
   PaidSellerOrder,
+  RefundedSellerOrder,
 } from '../../src/modules/commission-payouts';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import type {
@@ -514,6 +515,28 @@ export class FakeCommission implements CommissionPayoutsFacade {
     }
     this.recorded.push(paid);
     return Promise.resolve(ok('recorded' as const));
+  }
+  /** The refunds the worker sent to the ledger; `refundFails` makes the ledger refuse them. */
+  refundsRecorded: RefundedSellerOrder[] = [];
+  refundFails: CommissionPayoutsFailure | null = null;
+  /** When set, only this refund is refused by `refundFails` (the others are recorded). */
+  refundFailOnly: string | null = null;
+  recordRefund(
+    _c: CallContext,
+    refund: RefundedSellerOrder,
+  ): Promise<
+    Result<'recorded' | 'already-recorded' | 'nothing-to-post', CommissionPayoutsFailure>
+  > {
+    if (this.refundFails !== null && (this.refundFailOnly ?? refund.refundId) === refund.refundId) {
+      return Promise.resolve(err(this.refundFails));
+    }
+    if (this.refundsRecorded.some((r) => r.refundId === refund.refundId)) {
+      return Promise.resolve(ok('already-recorded' as const));
+    }
+    this.refundsRecorded.push(refund);
+    return Promise.resolve(
+      ok(refund.lossBearer === 'platform' ? ('nothing-to-post' as const) : ('recorded' as const)),
+    );
   }
 }
 

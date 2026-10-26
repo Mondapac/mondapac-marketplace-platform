@@ -701,10 +701,18 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Tax step 3: a refund is written once and only settles (state, Stripe refund id, attempts,
-    // settled time); its lines and its credit note are insert-only. No row is deleted.
+    // settled time); its lines and its credit note are insert-only. No row is deleted. Package 6a:
+    // once settled it moves only the two ledger bookkeeping columns (marker set once, counter up).
     'ordering.refunds': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['attempts', 'settled_at', 'state', 'stripe_refund_id'],
+      columnUpdate: [
+        'attempts',
+        'ledger_attempts',
+        'ledger_recorded_at',
+        'settled_at',
+        'state',
+        'stripe_refund_id',
+      ],
     },
     // Personalization 1d-2: the nightly job deletes a Market's pairs and inserts the new ones.
     'ordering.offer_pairs': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },

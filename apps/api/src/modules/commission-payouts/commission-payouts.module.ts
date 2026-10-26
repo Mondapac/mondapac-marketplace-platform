@@ -14,6 +14,7 @@ import { SELLER_DIRECTORY } from './application/ports/seller-directory';
 import { SELLER_RATE_REPOSITORY } from './application/ports/seller-rate.repository';
 import { ClearCommissionRate } from './application/use-cases/clear-commission-rate.use-case';
 import { CommissionRates } from './application/use-cases/commission-rates.use-case';
+import { RecordRefund } from './application/use-cases/record-refund.use-case';
 import { RecordSellerOrderPaid } from './application/use-cases/record-seller-order-paid.use-case';
 import { SetCommissionRate } from './application/use-cases/set-commission-rate.use-case';
 import { ViewCommissionRate } from './application/use-cases/view-commission-rate.use-case';
@@ -61,7 +62,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * ledger. The Market rate is Market config (AU 15 %); an admin may set a separate rate per
  * seller. `ordering` reads the rates through `COMMISSION_PAYOUTS_FACADE` at checkout and freezes
  * them on the order lines; its worker sends each paid seller order here, and the insert-only
- * ledger records the sale, the delivery fee and the commission. No money moves: payouts are
+ * ledger records the sale, the delivery fee and the commission; a succeeded refund sends its facts
+ * back here and the ledger records the reversal rows. No money moves: payouts are
  * package 6.
  */
 @Module({
@@ -75,6 +77,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ...[
       CommissionRates,
       RecordSellerOrderPaid,
+      RecordRefund,
       ViewCommissionRate,
       SetCommissionRate,
       ClearCommissionRate,
@@ -83,9 +86,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: COMMISSION_PAYOUTS_FACADE,
-      inject: [CommissionRates, RecordSellerOrderPaid],
-      useFactory: (rates: CommissionRates, record: RecordSellerOrderPaid) =>
-        new CommissionPayoutsFacadeImplementation(rates, record),
+      inject: [CommissionRates, RecordSellerOrderPaid, RecordRefund],
+      useFactory: (rates: CommissionRates, record: RecordSellerOrderPaid, refund: RecordRefund) =>
+        new CommissionPayoutsFacadeImplementation(rates, record, refund),
     },
   ],
   exports: [COMMISSION_PAYOUTS_FACADE],
