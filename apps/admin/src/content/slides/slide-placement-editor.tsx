@@ -63,9 +63,15 @@ export function SlidePlacementEditor({
   canEdit,
   csrfToken,
   zone,
+  canPause = false,
+  canPublish = false,
 }: {
   readonly slide: SlideDetail;
   readonly canEdit: boolean;
+  /** storefront.slide.pause: Pause is offered. */
+  readonly canPause?: boolean;
+  /** storefront.slide.publish: Review and approve and Resume are offered. */
+  readonly canPublish?: boolean;
   readonly csrfToken: string;
   /** The IANA zone of the Market, which the date fields are read in. */
   readonly zone: string;
@@ -225,7 +231,17 @@ export function SlidePlacementEditor({
 
   return (
     <div className="flex flex-col gap-4">
-      <SlideEditorHeader slide={detail} tab="placement" />
+      <SlideEditorHeader
+        slide={detail}
+        tab="placement"
+        commands={{
+          gates: { edit: canEdit, pause: canPause, publish: canPublish },
+          csrfToken,
+          zone,
+          unsaved: dirty,
+          onChange: setDetail,
+        }}
+      />
       {!canEdit ? <Banner tone="info">{t('read-only')}</Banner> : null}
       {canEdit && archived ? <Banner tone="info">{t('archived')}</Banner> : null}
       {problem === null ? null : <Banner tone="critical">{problem}</Banner>}

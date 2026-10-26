@@ -92,9 +92,18 @@ export function SlideEditor({
   canEdit,
   csrfToken,
   zone,
+  canPause = false,
+  canPublish = false,
+  startReview = false,
 }: {
   readonly slide: SlideDetail | null;
   readonly canEdit: boolean;
+  /** storefront.slide.pause: Pause is offered. */
+  readonly canPause?: boolean;
+  /** storefront.slide.publish: Review and approve and Resume are offered. */
+  readonly canPublish?: boolean;
+  /** The list's Review link: the approval dialog opens at once. */
+  readonly startReview?: boolean;
   readonly csrfToken: string;
   /** The IANA zone dates are shown in. */
   readonly zone: string;
@@ -249,7 +258,18 @@ export function SlideEditor({
 
   return (
     <div className="flex flex-col gap-4">
-      <SlideEditorHeader slide={detail} tab="content" />
+      <SlideEditorHeader
+        slide={detail}
+        tab="content"
+        commands={{
+          gates: { edit: canEdit, pause: canPause, publish: canPublish },
+          csrfToken,
+          zone,
+          unsaved: dirty,
+          startReview,
+          onChange: setDetail,
+        }}
+      />
       {!canEdit ? <Banner tone="info">{t('read-only')}</Banner> : null}
       {canEdit && archived ? <Banner tone="info">{t('archived')}</Banner> : null}
       {creating && canEdit ? (
