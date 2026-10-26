@@ -10,7 +10,7 @@ Implements platform persistence design sections 3 to 9 and 12.3
   - A read-write unit is one interactive transaction at READ COMMITTED, or SERIALIZABLE
     when asked.
   - An `err` result rolls back.
-  - `40001` and `40P01` are retried, 3 attempts in all.
+  - `40001` and `40P01` are retried, 4 attempts in all.
   - `55P03` becomes `TransactionConflictError` at once.
   - The HTTP filter answers 409 `conflict.retry` or `conflict.stale`.
   - A unit that is already open cannot open another (`NestedUnitOfWorkError`).

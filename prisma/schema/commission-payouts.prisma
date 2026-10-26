@@ -20,11 +20,13 @@ model CommissionPayoutsSellerCommissionRate {
   @@schema("commission_payouts")
 }
 
-/// The seller ledger: one row per money fact of a seller (`sale` and `shipping` are credits,
-/// `commission` is a debit). Insert-only: a trigger refuses UPDATE, DELETE and TRUNCATE and the
-/// application role holds only SELECT and INSERT. A hand-written unique index on
-/// (market_id, seller_order_id, kind, order_line_id) NULLS NOT DISTINCT stops a fact being
-/// written twice.
+/// The seller ledger: one row per money fact of a seller. `sale` and `shipping` are credits and
+/// `commission` a debit; their reversals after a refund are the opposite: `refund-sale` and
+/// `refund-shipping` are debits, `refund-commission` a credit. `dispute-debit` is a debit and
+/// `dispute-reinstate` a credit (only allowed by the CHECK so far). Insert-only: a trigger refuses
+/// UPDATE, DELETE and TRUNCATE and the application role holds only SELECT and INSERT. A
+/// hand-written unique index on (market_id, seller_order_id, kind, order_line_id, source_id)
+/// NULLS NOT DISTINCT stops a fact being written twice.
 model CommissionPayoutsLedgerEntry {
   id            String   @id @db.Uuid
   marketId      String   @map("market_id") @db.VarChar(8)
@@ -33,22 +35,28 @@ model CommissionPayoutsLedgerEntry {
   /// ordering ids (plain, no foreign key across schemas).
   orderId       String   @map("order_id") @db.Uuid
   sellerOrderId String   @map("seller_order_id") @db.Uuid
-  /// Null for `shipping` only (CHECK).
+  /// Null for `shipping`, `refund-shipping` and the dispute kinds only (CHECK).
   orderLineId   String?  @map("order_line_id") @db.Uuid
-  /// sale, shipping or commission (CHECK).
+  /// sale, shipping, commission, refund-sale, refund-shipping, refund-commission, dispute-debit
+  /// or dispute-reinstate (CHECK).
   kind          String
   /// Minor units of `currency`, never negative (CHECK); the kind gives the direction.
   amount        BigInt
   currency      String   @db.VarChar(3)
-  /// `commission` only: the rate frozen on the order line and the base (line amount without GST).
+  /// `commission` and `refund-commission` only: the rate frozen on the order line and the base
+  /// (line amount without GST; for a reversal, the part of the base it reverses).
   rateBps       Int?     @map("rate_bps")
   baseAmount    BigInt?  @map("base_amount")
+  /// The refund (or dispute) a reversal row comes from, a plain id; null for the three original
+  /// kinds and not null for every other kind (CHECK).
+  sourceId      String?  @map("source_id") @db.Uuid
   /// When the fact happened (the payment confirmed the order).
   occurredAt    DateTime @map("occurred_at") @db.Timestamptz(6)
   recordedAt    DateTime @map("recorded_at") @db.Timestamptz(6)
 
-  /// One row per fact; the migration creates it NULLS NOT DISTINCT (the shipping row has no line).
-  @@unique([marketId, sellerOrderId, kind, orderLineId])
+  /// One row per fact; the migration creates it NULLS NOT DISTINCT (a shipping row has no line, an
+  /// original row has no source).
+  @@unique([marketId, sellerOrderId, kind, orderLineId, sourceId], map: "ledger_entries_fact_key")
   @@index([marketId, sellerId, recordedAt(sort: Desc), id(sort: Desc)])
   @@index([marketId, sellerOrderId])
   @@map("ledger_entries")

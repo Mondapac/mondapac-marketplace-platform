@@ -335,7 +335,7 @@ describe('UnitOfWork (database integration)', () => {
         ['at a statement', CONFLICT_AT_STATEMENT],
         ['at COMMIT', CONFLICT_AT_COMMIT],
       ])(
-        'ends a 40001 raised on every attempt %s after exactly 3 attempts, committing nothing',
+        'ends a 40001 raised on every attempt %s after exactly 4 attempts, committing nothing',
         async (_where, action) => {
           const pauses: number[] = [];
           const retrying = onLockingDatabase({
@@ -358,8 +358,8 @@ describe('UnitOfWork (database integration)', () => {
           } finally {
             await retrying.close();
           }
-          expect(ids).toHaveLength(3);
-          expect(pauses).toEqual([1, 2]);
+          expect(ids).toHaveLength(4);
+          expect(pauses).toEqual([1, 2, 3]);
           for (const id of ids) await expect(rowExists(id)).resolves.toBe(false);
         },
       );

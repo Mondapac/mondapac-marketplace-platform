@@ -1,9 +1,11 @@
 import 'server-only';
 import {
   AppShell,
+  NAV_OPEN_COOKIE,
   SIDEBAR_COOKIE,
   Sidebar,
   THEME_COOKIE,
+  navOpenGroups,
   navTrail,
   Topbar,
   sidebarCollapsed,
@@ -38,6 +40,7 @@ export async function AdminShell({
   const t = await getTranslations();
   const jar = await cookies();
   const collapsed = sidebarCollapsed(jar.get(SIDEBAR_COOKIE)?.value);
+  const openGroups = navOpenGroups(jar.get(NAV_OPEN_COOKIE)?.value);
   const items = visibleNavItems(adminNav, new Set(session.permissionKeys));
   const bell = showsNoticeBell(session.permissionKeys);
   return (
@@ -55,14 +58,18 @@ export async function AdminShell({
         <Sidebar
           panelName={t('panel.name')}
           items={items}
+          groups={adminNav.groups}
           activeId={activeId}
           label={(key) => t(key)}
+          openGroups={openGroups}
+          expandAll={t('nav.expandAll')}
+          collapseAll={t('nav.collapseAll')}
         />
       }
       topbar={
         <Topbar
           pageTitle={title}
-          trail={navTrail(items, activeId, title, (key) => t(key))}
+          trail={navTrail(items, activeId, title, (key) => t(key), adminNav.groups)}
           trailLabel={t('nav.breadcrumb')}
           actions={
             <>
