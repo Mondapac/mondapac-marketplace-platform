@@ -7,6 +7,7 @@ describe('retryPauseMs', () => {
   it.each([
     [1, 5, 55],
     [2, 5, 105],
+    [3, 5, 205],
   ])('after attempt %i stays between %i and %i ms', (attempt, low, high) => {
     expect(retryPauseMs(attempt, () => 0)).toBe(low);
     expect(retryPauseMs(attempt, () => 0.999_999)).toBe(high - 1);
@@ -16,6 +17,7 @@ describe('retryPauseMs', () => {
     const top = (attempt: number) => retryPauseMs(attempt, () => 0.999_999);
 
     expect(top(2)).toBeGreaterThan(top(1));
+    expect(top(3)).toBeGreaterThan(top(2));
   });
 
   it('uses the random source it is given', () => {
