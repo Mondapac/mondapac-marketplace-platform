@@ -15,6 +15,7 @@ import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { SellerEligibility } from './ports/seller-eligibility';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
+import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { StoreResolver } from './ports/store-resolver';
 import type { SearchDependencies } from './search-dependencies';
 import { SYNC_BATCH } from './sync-offers';
@@ -40,6 +41,7 @@ const SELLER = id<'Seller'>(0x51);
 const SUSPENDED = id<'Seller'>(0x52);
 const PRODUCT = id<'Product'>(0x91);
 const CATEGORY = id<'Category'>(0xca);
+const SUBCATEGORY = id<'Category'>(0xcb);
 
 class MemoryDocuments implements OfferDocumentRepository {
   readonly rows = new Map<string, { document: OfferDocument; indexedAt: Temporal.Instant }>();
@@ -186,12 +188,23 @@ class StubStores implements StoreResolver {
   }
 }
 
+class StubCategories implements CategorySubtreeSource {
+  children = new Map<Id<'Category'>, Id<'Category'>[]>();
+  failing = false;
+  readonly asked: Id<'Category'>[] = [];
+  subtreeOf(_context: CallContext, categoryId: Id<'Category'>) {
+    this.asked.push(categoryId);
+    if (this.failing) return Promise.resolve(null);
+    return Promise.resolve([categoryId, ...(this.children.get(categoryId) ?? [])]);
+  }
+}
+
 class StubShelves implements ShelfDocumentsReader {
   hits: OfferHit[] = [];
   readonly browsed: {
     market: string;
     sellerId: Id<'Seller'>;
-    categoryId: Id<'Category'> | null;
+    categoryIds: readonly Id<'Category'>[] | null;
     limit: number;
     offset: number;
   }[] = [];
@@ -210,11 +223,11 @@ class StubShelves implements ShelfDocumentsReader {
   browseBySeller(
     market: MarketContext,
     sellerId: Id<'Seller'>,
-    categoryId: Id<'Category'> | null,
+    categoryIds: readonly Id<'Category'>[] | null,
     limit: number,
     offset: number,
   ) {
-    this.browsed.push({ market: market.marketId, sellerId, categoryId, limit, offset });
+    this.browsed.push({ market: market.marketId, sellerId, categoryIds, limit, offset });
     return Promise.resolve(
       this.hits.filter((h) => h.sellerId === sellerId).slice(offset, offset + limit),
     );
@@ -258,6 +271,7 @@ describe.each([
   let images: StubImages;
   let stores: StubStores;
   let shelves: StubShelves;
+  let categories: StubCategories;
   let deps: SearchDependencies;
 
   beforeEach(() => {
@@ -269,6 +283,7 @@ describe.each([
     images = new StubImages();
     stores = new StubStores();
     shelves = new StubShelves();
+    categories = new StubCategories();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       documents,
@@ -281,6 +296,7 @@ describe.each([
       shelves,
       stores,
       images,
+      categories,
     };
   });
 
@@ -525,7 +541,7 @@ describe.each([
           request: {
             textSearchConfig: config,
             text: 'sausages beef',
-            categoryId: null,
+            categoryIds: null,
             limit: 11,
             offset: 0,
           },
@@ -540,10 +556,40 @@ describe.each([
 
       expect(reader.requests[0]?.request).toMatchObject({
         text: null,
-        categoryId: CATEGORY,
+        categoryIds: [CATEGORY],
         limit: 21,
         offset: 40,
       });
+    });
+
+    it('covers the subcategories of the asked category, with or without text', async () => {
+      categories.children.set(CATEGORY, [SUBCATEGORY]);
+      reader.hits = [hit(1)];
+
+      await search({ category: CATEGORY });
+      await search({ q: 'sausages', category: CATEGORY });
+
+      expect(categories.asked).toEqual([CATEGORY, CATEGORY]);
+      expect(reader.requests.map(({ request }) => request.categoryIds)).toEqual([
+        [CATEGORY, SUBCATEGORY],
+        [CATEGORY, SUBCATEGORY],
+      ]);
+    });
+
+    it('is unavailable when the category tree cannot be read, and never reads the index', async () => {
+      categories.failing = true;
+      reader.hits = [hit(1)];
+
+      const result = await search({ category: CATEGORY });
+
+      expect(result).toEqual({ ok: false, error: { code: 'search.unavailable' } });
+      expect(reader.requests).toEqual([]);
+    });
+
+    it('does not read the category tree for a text query without a category', async () => {
+      await search({ q: 'sausages' });
+
+      expect(categories.asked).toEqual([]);
     });
 
     it('says hasMore when the index holds one more than the page, and drops the extra hit', async () => {
@@ -641,19 +687,23 @@ describe.each([
           offer(3),
         ]);
         expect(shelves.browsed).toEqual([
-          { market: code, sellerId: SELLER, categoryId: null, limit: 11, offset: 0 },
+          { market: code, sellerId: SELLER, categoryIds: null, limit: 11, offset: 0 },
         ]);
         expect(stores.asked).toEqual(['halal-shop']);
         expect(reader.requests).toEqual([]);
       });
 
-      it('combines with a category', async () => {
+      it('combines with a category and its subcategories', async () => {
+        categories.children.set(CATEGORY, [SUBCATEGORY]);
         stores.stores.set('halal-shop', SELLER);
         shelves.hits = [storeHit(1)];
 
         await search({ store: 'halal-shop', category: CATEGORY });
 
-        expect(shelves.browsed[0]).toMatchObject({ sellerId: SELLER, categoryId: CATEGORY });
+        expect(shelves.browsed[0]).toMatchObject({
+          sellerId: SELLER,
+          categoryIds: [CATEGORY, SUBCATEGORY],
+        });
       });
 
       it('still drops an Offer that catalog or sellers no longer show', async () => {

@@ -1,4 +1,5 @@
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { OfferSearchReader } from './ports/offer-search.reader';
 import type { ProductImages } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
@@ -17,4 +18,5 @@ export interface ShelfDependencies {
   readonly policy: SearchPolicy;
   readonly variants: PublishedVariants;
   readonly images: ProductImages;
+  readonly categories: CategorySubtreeSource;
 }

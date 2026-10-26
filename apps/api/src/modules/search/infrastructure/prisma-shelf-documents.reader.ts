@@ -64,7 +64,7 @@ export class PrismaShelfDocumentsReader implements ShelfDocumentsReader {
   async browseBySeller(
     market: MarketContext,
     sellerId: Id<'Seller'>,
-    categoryId: Id<'Category'> | null,
+    categoryIds: readonly Id<'Category'>[] | null,
     limit: number,
     offset: number,
   ): Promise<readonly OfferHit[]> {
@@ -72,7 +72,7 @@ export class PrismaShelfDocumentsReader implements ShelfDocumentsReader {
       where: {
         marketId: market.marketId,
         sellerId,
-        ...(categoryId === null ? {} : { categoryIds: { has: categoryId } }),
+        ...(categoryIds === null ? {} : { categoryIds: { hasSome: [...categoryIds] } }),
       },
       orderBy: [{ name: 'asc' }, { offerId: 'asc' }],
       skip: offset,
