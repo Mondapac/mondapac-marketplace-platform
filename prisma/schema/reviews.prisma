@@ -1,0 +1,211 @@
+// The reviews module's tables (buyer reviews and ratings package 1, backend core). Every model is
+// named Reviews<Name> and mapped to its table with @@map. The CHECKs, the insert-only triggers
+// and the grants are hand-written in the migration. Products, offers, sellers, seller orders and
+// accounts (other modules) are plain ids with no foreign key. Review text is never copied into
+// an audit row, an event, a signal or a moderation action.
+
+/// One buyer's review of one product (across sellers): a star rating, an optional title and body.
+/// One row per (market, account, product): a later purchase updates `lastPurchaseAt` and the
+/// "bought from" ids, it never adds a row. `accountId` is dropped when the account is deleted
+/// (the review stays as "Former customer"). A review deleted by its author keeps its row (status
+/// `deleted-by-author`, title and body cleared) so the unique key and the counts stay honest.
+model ReviewsProductReview {
+  id                String                    @id @db.Uuid
+  marketId          String                    @map("market_id") @db.VarChar(8)
+  tenantId          String                    @map("tenant_id")
+  /// The author's account (identity); null once the account is deleted. Unique per product.
+  accountId         String?                   @map("account_id") @db.Uuid
+  productId         String                    @map("product_id") @db.Uuid
+  /// The offer and seller of the latest qualifying purchase, for the "Bought from" label.
+  offerId           String                    @map("offer_id") @db.Uuid
+  sellerId          String                    @map("seller_id") @db.Uuid
+  /// The seller order of the latest qualifying purchase.
+  lastSellerOrderId String                    @map("last_seller_order_id") @db.Uuid
+  /// 1 to 5 (CHECK).
+  rating            Int                       @db.SmallInt
+  /// At most 200 characters (CHECK; the Market's own limit is lower and enforced by the use case).
+  title             String?
+  /// At most 5000 characters (CHECK).
+  body              String?
+  locale            String                    @db.VarChar(35)
+  /// True when the author asked to be shown as "Verified buyer" with no name.
+  anonymous         Boolean
+  /// published, held, hidden, removed or deleted-by-author (CHECK).
+  status            String
+  createdAt         DateTime                  @map("created_at") @db.Timestamptz(6)
+  editedAt          DateTime?                 @map("edited_at") @db.Timestamptz(6)
+  publishedAt       DateTime?                 @map("published_at") @db.Timestamptz(6)
+  deletedAt         DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+  /// When the latest qualifying purchase was delivered.
+  lastPurchaseAt    DateTime                  @map("last_purchase_at") @db.Timestamptz(6)
+  replies           ReviewsReply[]
+  reports           ReviewsReport[]
+  moderationActions ReviewsModerationAction[]
+
+  /// The foreign-key target of the children.
+  @@unique([marketId, id])
+  /// One product review per market, account and product. NULL accounts (deleted) are distinct.
+  @@unique([marketId, accountId, productId])
+  /// The public list of one product: published rows, newest first.
+  @@index([marketId, productId, status, publishedAt(sort: Desc), id(sort: Desc)])
+  /// The author's own list and the daily limit.
+  @@index([marketId, accountId, createdAt(sort: Desc)])
+  @@index([marketId, sellerId])
+  @@map("product_reviews")
+  @@schema("reviews")
+}
+
+/// A buyer's rating of one seller order: satisfaction, as described, arrived ok. One per seller
+/// order. No free text, so nothing here needs a human check.
+model ReviewsSellerRating {
+  id            String   @id @db.Uuid
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  /// The rater's account; null once the account is deleted.
+  accountId     String?  @map("account_id") @db.Uuid
+  sellerOrderId String   @map("seller_order_id") @db.Uuid
+  sellerId      String   @map("seller_id") @db.Uuid
+  /// 1 to 5 (CHECK).
+  satisfaction  Int      @db.SmallInt
+  asDescribed   Boolean  @map("as_described")
+  arrivedOk     Boolean  @map("arrived_ok")
+  /// damaged, missing-items, temperature or other; only when `arrivedOk` is false (CHECK).
+  reasonCode    String?  @map("reason_code")
+  /// published, hidden or removed (CHECK).
+  status        String
+  createdAt     DateTime @map("created_at") @db.Timestamptz(6)
+
+  /// One seller rating per seller order.
+  @@unique([marketId, sellerOrderId])
+  @@index([marketId, sellerId, status])
+  @@index([marketId, accountId, createdAt(sort: Desc)])
+  @@map("seller_ratings")
+  @@schema("reviews")
+}
+
+/// A seller's one public reply to a review (package 4; no endpoint yet).
+model ReviewsReply {
+  id        String               @id @db.Uuid
+  marketId  String               @map("market_id") @db.VarChar(8)
+  tenantId  String               @map("tenant_id")
+  reviewId  String               @map("review_id") @db.Uuid
+  sellerId  String               @map("seller_id") @db.Uuid
+  body      String
+  /// published, hidden or removed (CHECK).
+  status    String
+  createdAt DateTime             @map("created_at") @db.Timestamptz(6)
+  editedAt  DateTime?            @map("edited_at") @db.Timestamptz(6)
+  review    ReviewsProductReview @relation(fields: [marketId, reviewId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// One reply per review.
+  @@unique([marketId, reviewId])
+  @@map("review_replies")
+  @@schema("reviews")
+}
+
+/// A report of a review (package 2 reads them). Reason codes only; never free text.
+model ReviewsReport {
+  id                String               @id @db.Uuid
+  marketId          String               @map("market_id") @db.VarChar(8)
+  tenantId          String               @map("tenant_id")
+  reviewId          String               @map("review_id") @db.Uuid
+  reporterAccountId String?              @map("reporter_account_id") @db.Uuid
+  /// A closed list of codes (CHECK).
+  reasonCode        String               @map("reason_code")
+  /// open, dismissed or actioned (CHECK).
+  status            String
+  createdAt         DateTime             @map("created_at") @db.Timestamptz(6)
+  review            ReviewsProductReview @relation(fields: [marketId, reviewId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// One report of a review per reporter.
+  @@unique([marketId, reviewId, reporterAccountId])
+  @@index([marketId, reviewId])
+  @@map("review_reports")
+  @@schema("reviews")
+}
+
+/// What happened to a review's status, who did it and why (a code). Insert-only: a trigger
+/// refuses UPDATE, DELETE and TRUNCATE for every role. Never carries the review text.
+model ReviewsModerationAction {
+  id             String               @id @db.Uuid
+  marketId       String               @map("market_id") @db.VarChar(8)
+  tenantId       String               @map("tenant_id")
+  reviewId       String               @map("review_id") @db.Uuid
+  /// The acting account; null for the system (the automatic checks).
+  actorAccountId String?              @map("actor_account_id") @db.Uuid
+  /// A closed list of actions (CHECK).
+  action         String
+  /// A short code such as `auto-check` or `author` (CHECK pattern).
+  reasonCode     String               @map("reason_code")
+  /// The status before; null on the first row of a review.
+  fromStatus     String?              @map("from_status")
+  toStatus       String               @map("to_status")
+  createdAt      DateTime             @map("created_at") @db.Timestamptz(6)
+  review         ReviewsProductReview @relation(fields: [marketId, reviewId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([marketId, reviewId, createdAt])
+  @@map("moderation_actions")
+  @@schema("reviews")
+}
+
+/// A fact the automatic checks or the abuse rules noticed about a review or a rating, as a code
+/// (`phone-number`, `profanity`, `same-address-as-seller`, ...). Insert-only for the application.
+model ReviewsSignal {
+  id          String   @id @db.Uuid
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  /// product-review or seller-rating (CHECK).
+  subjectKind String   @map("subject_kind")
+  subjectId   String   @map("subject_id") @db.Uuid
+  code        String
+  at          DateTime @db.Timestamptz(6)
+
+  @@index([marketId, subjectKind, subjectId])
+  @@map("review_signals")
+  @@schema("reviews")
+}
+
+/// A rebuilt summary of the published ratings of one product (stars) or one seller (rated seller
+/// orders). Never the source of truth: the worker (and the write path) recompute it from the
+/// source tables. `histogramN` counts ratings of N stars.
+model ReviewsRatingSummary {
+  marketId          String   @map("market_id") @db.VarChar(8)
+  tenantId          String   @map("tenant_id")
+  /// product or seller (CHECK).
+  subjectKind       String   @map("subject_kind")
+  subjectId         String   @map("subject_id") @db.Uuid
+  count             Int
+  sum               Int
+  histogram1        Int      @map("histogram_1")
+  histogram2        Int      @map("histogram_2")
+  histogram3        Int      @map("histogram_3")
+  histogram4        Int      @map("histogram_4")
+  histogram5        Int      @map("histogram_5")
+  /// Seller rows only: rated seller orders (equals `count`); 0 for a product.
+  ratedSellerOrders Int      @map("rated_seller_orders")
+  /// Seller rows only: satisfaction 4 or 5.
+  satisfiedCount    Int      @map("satisfied_count")
+  /// Seller rows only: as described, yes.
+  asDescribedYes    Int      @map("as_described_yes")
+  /// Seller rows only: arrived ok, yes.
+  arrivedOkYes      Int      @map("arrived_ok_yes")
+  rebuiltAt         DateTime @map("rebuilt_at") @db.Timestamptz(6)
+
+  @@id([marketId, subjectKind, subjectId])
+  @@map("rating_summaries")
+  @@schema("reviews")
+}
+
+/// The runtime switch of reviews in one Market. No row means `off`. Set by an admin.
+model ReviewsMarketSetting {
+  marketId           String   @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  /// off or active (CHECK).
+  status             String
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
+
+  @@id([marketId])
+  @@map("market_settings")
+  @@schema("reviews")
+}

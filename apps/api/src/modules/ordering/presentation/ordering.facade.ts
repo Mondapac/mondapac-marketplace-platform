@@ -1,5 +1,6 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import type { CallContext, Temporal } from '@mondapac/shared-kernel';
 import type { CancelPayment } from '../application/use-cases/cancel-payment.use-case';
+import type { MyDeliveredSellerOrders } from '../application/use-cases/my-delivered-seller-orders.use-case';
 import type { OrderNoticeQuery } from '../application/use-cases/order-notice.use-case';
 import type { SellerOrderCustomerNames } from '../application/use-cases/seller-order-customer-names.use-case';
 import type { ShipmentNoticeQuery } from '../application/use-cases/shipment-notice.use-case';
@@ -14,6 +15,7 @@ export class OrderingFacadeImplementation implements OrderingFacade {
     private readonly notice: OrderNoticeQuery,
     private readonly shipment: ShipmentNoticeQuery,
     private readonly customerNames: SellerOrderCustomerNames,
+    private readonly delivered: MyDeliveredSellerOrders,
   ) {}
 
   confirmPayment(context: CallContext, payment: AuthorisedPayment) {
@@ -40,5 +42,12 @@ export class OrderingFacadeImplementation implements OrderingFacade {
 
   sellerOrderCustomerNames(context: CallContext, sellerOrderIds: readonly string[]) {
     return this.customerNames.execute(context, { sellerOrderIds });
+  }
+
+  myDeliveredSellerOrders(
+    context: CallContext,
+    request: { readonly deliveredSince: Temporal.Instant; readonly sellerOrderId?: string },
+  ) {
+    return this.delivered.execute(context, request);
   }
 }

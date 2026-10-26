@@ -242,6 +242,48 @@ export class MemoryOrders implements OrderRepository {
     }
     return Promise.resolve(accounts);
   }
+  deliveredSellerOrdersOf(
+    _m: MarketContext,
+    accountId: Id<'Account'>,
+    query: {
+      readonly deliveredSince: Temporal.Instant;
+      readonly sellerOrderId: Id<'SellerOrder'> | null;
+      readonly limit: number;
+    },
+  ) {
+    const found: {
+      sellerOrderId: Id<'SellerOrder'>;
+      sellerId: Id<'Seller'>;
+      deliveredAt: Temporal.Instant;
+      offerIds: Id<'Offer'>[];
+    }[] = [];
+    for (const order of this.rows.values()) {
+      if (order.accountId !== accountId || order.status !== 'confirmed') continue;
+      for (const sellerOrder of order.sellerOrders) {
+        if (sellerOrder.fulfilment !== 'delivered' || sellerOrder.deliveredAt === null) continue;
+        if (sellerOrder.deliveredAt.epochMilliseconds < query.deliveredSince.epochMilliseconds) {
+          continue;
+        }
+        if (query.sellerOrderId !== null && sellerOrder.id !== query.sellerOrderId) continue;
+        found.push({
+          sellerOrderId: sellerOrder.id,
+          sellerId: sellerOrder.sellerId,
+          deliveredAt: sellerOrder.deliveredAt,
+          offerIds: [
+            ...new Set(
+              order.lines.filter((l) => l.sellerOrderId === sellerOrder.id).map((l) => l.offerId),
+            ),
+          ],
+        });
+      }
+    }
+    found.sort(
+      (a, b) =>
+        b.deliveredAt.epochMilliseconds - a.deliveredAt.epochMilliseconds ||
+        b.sellerOrderId.localeCompare(a.sellerOrderId),
+    );
+    return Promise.resolve(found.slice(0, query.limit));
+  }
   saveFulfilment(_m: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {
     for (const [orderId, order] of this.rows) {
       const index = order.sellerOrders.findIndex((seller) => seller.id === sellerOrder.id);

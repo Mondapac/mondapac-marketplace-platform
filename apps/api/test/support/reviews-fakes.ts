@@ -1,0 +1,329 @@
+import { ok, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
+import type { CatalogFacade } from '../../src/modules/catalog';
+import type { DeliveredSellerOrder, OrderingFacade } from '../../src/modules/ordering';
+import type {
+  MarketSettingRecord,
+  MarketSettingRepository,
+} from '../../src/modules/reviews/application/ports/market-setting.repository';
+import type {
+  NewModerationAction,
+  NewSignal,
+  ProductReviewRecord,
+  ReviewCursor,
+  ReviewRepository,
+  SellerRatingRecord,
+  StoredSellerSummary,
+  StoredStarSummary,
+} from '../../src/modules/reviews/application/ports/review.repository';
+import type { ReviewerNames } from '../../src/modules/reviews/application/ports/reviewer-names';
+import type { SellerAffinity } from '../../src/modules/reviews/application/ports/seller-affinity';
+import { isPublic } from '../../src/modules/reviews/domain/rules';
+import {
+  summariseSellerGroups,
+  summariseStarGroups,
+} from '../../src/modules/reviews/domain/summary';
+
+/**
+ * The review tables in memory with the rules the tables enforce: one review per account and
+ * product, one rating per seller order, an insert-only log and signal list, summaries rebuilt
+ * from the published source rows only.
+ */
+export class MemoryReviews implements ReviewRepository {
+  readonly productReviews = new Map<string, ProductReviewRecord>();
+  readonly sellerRatings = new Map<string, SellerRatingRecord>();
+  readonly actions: NewModerationAction[] = [];
+  readonly signals: NewSignal[] = [];
+  readonly productSummaries = new Map<string, StoredStarSummary>();
+  readonly sellerSummaries = new Map<string, StoredSellerSummary>();
+
+  private reviewsOf(accountId: Id<'Account'>) {
+    return [...this.productReviews.values()].filter((r) => r.accountId === accountId);
+  }
+
+  findOwnProductReview(_m: MarketContext, accountId: Id<'Account'>, productId: Id<'Product'>) {
+    return Promise.resolve(
+      this.reviewsOf(accountId).find((r) => r.productId === productId) ?? null,
+    );
+  }
+  findOwnProductReviewById(_m: MarketContext, accountId: Id<'Account'>, id: Id<'ProductReview'>) {
+    const found = this.productReviews.get(id);
+    return Promise.resolve(found !== undefined && found.accountId === accountId ? found : null);
+  }
+  insertProductReviewIfAbsent(_m: MarketContext, record: ProductReviewRecord) {
+    const taken = this.reviewsOf(record.accountId as Id<'Account'>).some(
+      (r) => r.productId === record.productId,
+    );
+    if (taken) return Promise.resolve(false);
+    this.productReviews.set(record.id, record);
+    return Promise.resolve(true);
+  }
+  saveProductReview(
+    _m: MarketContext,
+    record: ProductReviewRecord,
+    expectedStatus: ProductReviewRecord['status'],
+  ): Promise<'saved' | 'stale'> {
+    const stored = this.productReviews.get(record.id);
+    if (stored === undefined || stored.status !== expectedStatus) return Promise.resolve('stale');
+    this.productReviews.set(record.id, record);
+    return Promise.resolve('saved');
+  }
+  countSubmissionsSince(_m: MarketContext, accountId: Id<'Account'>, since: Temporal.Instant) {
+    const at = (t: Temporal.Instant) => Temporal.Instant.compare(t, since) >= 0;
+    const reviews = this.reviewsOf(accountId).filter((r) => at(r.createdAt)).length;
+    const ratings = [...this.sellerRatings.values()].filter(
+      (r) => r.accountId === accountId && at(r.createdAt),
+    ).length;
+    return Promise.resolve(reviews + ratings);
+  }
+  listOwnProductReviews(_m: MarketContext, accountId: Id<'Account'>, limit: number) {
+    return Promise.resolve(
+      this.reviewsOf(accountId)
+        .filter((r) => r.status !== 'deleted-by-author')
+        .sort((a, b) => b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds)
+        .slice(0, limit),
+    );
+  }
+  reviewedProductIds(
+    _m: MarketContext,
+    accountId: Id<'Account'>,
+    productIds: readonly Id<'Product'>[],
+  ) {
+    return Promise.resolve(
+      new Set(
+        this.reviewsOf(accountId)
+          .filter((r) => r.status !== 'deleted-by-author' && productIds.includes(r.productId))
+          .map((r) => r.productId),
+      ),
+    );
+  }
+  listPublishedProductReviews(
+    _m: MarketContext,
+    productId: Id<'Product'>,
+    query: { stars: number | null; after: ReviewCursor | null; limit: number },
+  ) {
+    const rows = [...this.productReviews.values()]
+      .filter((r) => r.productId === productId && isPublic(r.status) && r.publishedAt !== null)
+      .filter((r) => query.stars === null || r.rating === query.stars)
+      .sort(
+        (a, b) =>
+          b.publishedAt!.epochMilliseconds - a.publishedAt!.epochMilliseconds ||
+          (a.id < b.id ? 1 : -1),
+      );
+    const after = query.after;
+    const rest =
+      after === null
+        ? rows
+        : rows.filter(
+            (r) =>
+              r.publishedAt!.epochMilliseconds < after.publishedAt.epochMilliseconds ||
+              (r.publishedAt!.epochMilliseconds === after.publishedAt.epochMilliseconds &&
+                r.id < after.id),
+          );
+    return Promise.resolve(rest.slice(0, query.limit));
+  }
+  insertSellerRatingIfAbsent(_m: MarketContext, record: SellerRatingRecord) {
+    if ([...this.sellerRatings.values()].some((r) => r.sellerOrderId === record.sellerOrderId)) {
+      return Promise.resolve(false);
+    }
+    this.sellerRatings.set(record.id, record);
+    return Promise.resolve(true);
+  }
+  listOwnSellerRatings(_m: MarketContext, accountId: Id<'Account'>, limit: number) {
+    return Promise.resolve(
+      [...this.sellerRatings.values()].filter((r) => r.accountId === accountId).slice(0, limit),
+    );
+  }
+  ratedSellerOrderIds(
+    _m: MarketContext,
+    accountId: Id<'Account'>,
+    ids: readonly Id<'SellerOrder'>[],
+  ) {
+    return Promise.resolve(
+      new Set(
+        [...this.sellerRatings.values()]
+          .filter((r) => r.accountId === accountId && ids.includes(r.sellerOrderId))
+          .map((r) => r.sellerOrderId),
+      ),
+    );
+  }
+  appendModerationAction(_m: MarketContext, action: NewModerationAction) {
+    this.actions.push(action);
+    return Promise.resolve();
+  }
+  appendSignals(_m: MarketContext, signals: readonly NewSignal[]) {
+    this.signals.push(...signals);
+    return Promise.resolve();
+  }
+  readProductSummary(_m: MarketContext, productId: Id<'Product'>) {
+    return Promise.resolve(this.productSummaries.get(productId) ?? null);
+  }
+  readSellerSummary(_m: MarketContext, sellerId: Id<'Seller'>) {
+    return Promise.resolve(this.sellerSummaries.get(sellerId) ?? null);
+  }
+  private rebuildProduct(productId: Id<'Product'>, now: Temporal.Instant) {
+    const byStar = new Map<number, number>();
+    for (const r of this.productReviews.values()) {
+      if (r.productId === productId && isPublic(r.status)) {
+        byStar.set(r.rating, (byStar.get(r.rating) ?? 0) + 1);
+      }
+    }
+    this.productSummaries.set(productId, {
+      ...summariseStarGroups([...byStar].map(([rating, count]) => ({ rating, count }))),
+      rebuiltAt: now,
+    });
+  }
+  private rebuildSeller(sellerId: Id<'Seller'>, now: Temporal.Instant) {
+    const groups = new Map<
+      string,
+      { satisfaction: number; asDescribed: boolean; arrivedOk: boolean; count: number }
+    >();
+    for (const r of this.sellerRatings.values()) {
+      if (r.sellerId !== sellerId || r.status !== 'published') continue;
+      const key = `${r.satisfaction}|${r.asDescribed}|${r.arrivedOk}`;
+      const group = groups.get(key) ?? {
+        satisfaction: r.satisfaction,
+        asDescribed: r.asDescribed,
+        arrivedOk: r.arrivedOk,
+        count: 0,
+      };
+      group.count += 1;
+      groups.set(key, group);
+    }
+    this.sellerSummaries.set(sellerId, {
+      ...summariseSellerGroups([...groups.values()]),
+      rebuiltAt: now,
+    });
+  }
+  rebuildSummaries(
+    _m: MarketContext,
+    subjects: { products: readonly Id<'Product'>[]; sellers: readonly Id<'Seller'>[] },
+    now: Temporal.Instant,
+  ) {
+    subjects.products.forEach((p) => this.rebuildProduct(p, now));
+    subjects.sellers.forEach((s) => this.rebuildSeller(s, now));
+    return Promise.resolve();
+  }
+  rebuildAllSummaries(_m: MarketContext, now: Temporal.Instant) {
+    const products = new Set<Id<'Product'>>([
+      ...this.productSummaries.keys(),
+      ...[...this.productReviews.values()].map((r) => r.productId),
+    ] as Id<'Product'>[]);
+    const sellers = new Set<Id<'Seller'>>([
+      ...this.sellerSummaries.keys(),
+      ...[...this.sellerRatings.values()].map((r) => r.sellerId),
+    ] as Id<'Seller'>[]);
+    products.forEach((p) => this.rebuildProduct(p, now));
+    sellers.forEach((s) => this.rebuildSeller(s, now));
+    return Promise.resolve(products.size + sellers.size);
+  }
+  detachAccount(_m: MarketContext, accountId: Id<'Account'>) {
+    let reviews = 0;
+    let ratings = 0;
+    for (const [key, r] of this.productReviews) {
+      if (r.accountId === accountId) {
+        this.productReviews.set(key, { ...r, accountId: null });
+        reviews += 1;
+      }
+    }
+    for (const [key, r] of this.sellerRatings) {
+      if (r.accountId === accountId) {
+        this.sellerRatings.set(key, { ...r, accountId: null });
+        ratings += 1;
+      }
+    }
+    return Promise.resolve({ reviews, ratings });
+  }
+}
+
+export class MemoryReviewsSetting implements MarketSettingRepository {
+  record: MarketSettingRecord | null = null;
+  saves = 0;
+  find() {
+    return Promise.resolve(this.record);
+  }
+  save(_m: MarketContext, record: MarketSettingRecord) {
+    this.saves += 1;
+    this.record = record;
+    return Promise.resolve();
+  }
+}
+
+/** Ordering's delivered seller orders per account, as the facade would answer them. */
+export class FakeDeliveries {
+  readonly byAccount = new Map<string, DeliveredSellerOrder[]>();
+  failing = false;
+  calls = 0;
+
+  add(accountId: Id<'Account'>, order: DeliveredSellerOrder): void {
+    this.byAccount.set(accountId, [...(this.byAccount.get(accountId) ?? []), order]);
+  }
+
+  facade(): OrderingFacade {
+    return {
+      myDeliveredSellerOrders: (
+        context: CallContext,
+        query: { deliveredSince: Temporal.Instant; sellerOrderId?: Id<'SellerOrder'> },
+      ) => {
+        this.calls += 1;
+        if (this.failing) return Promise.resolve({ ok: false, error: { code: 'access.denied' } });
+        const actor = context.actor;
+        const own =
+          actor.kind === 'authenticated' ? (this.byAccount.get(actor.accountId) ?? []) : [];
+        return Promise.resolve(
+          ok(
+            own.filter(
+              (o) =>
+                Temporal.Instant.compare(o.deliveredAt, query.deliveredSince) >= 0 &&
+                (query.sellerOrderId === undefined || o.sellerOrderId === query.sellerOrderId),
+            ),
+          ),
+        );
+      },
+    } as unknown as OrderingFacade;
+  }
+}
+
+/** Catalog's offer to product map. */
+export class FakeOffers {
+  readonly offers = new Map<Id<'Offer'>, { productId: Id<'Product'>; sellerId: Id<'Seller'> }>();
+
+  facade(): CatalogFacade {
+    return {
+      offerSellUnits: (_context: CallContext, offerIds: readonly Id<'Offer'>[]) => {
+        const map = new Map<Id<'Offer'>, unknown>();
+        for (const id of offerIds) {
+          const found = this.offers.get(id);
+          if (found !== undefined) {
+            map.set(id, { ...found, status: 'published', listed: true, sellUnits: [] });
+          }
+        }
+        return Promise.resolve(ok(map));
+      },
+    } as unknown as CatalogFacade;
+  }
+}
+
+export class FakeNames implements ReviewerNames {
+  readonly names = new Map<Id<'Account'>, string>();
+  readonly asked: Id<'Account'>[][] = [];
+  failing = false;
+  shortNames(_context: CallContext, accountIds: readonly Id<'Account'>[]) {
+    this.asked.push([...accountIds]);
+    if (this.failing) return Promise.reject(new Error('names unavailable'));
+    return Promise.resolve(
+      new Map(
+        accountIds.flatMap((id) =>
+          this.names.has(id) ? [[id, this.names.get(id)!] as const] : [],
+        ),
+      ),
+    );
+  }
+}
+
+export class FakeAffinity implements SellerAffinity {
+  readonly tied = new Set<string>();
+  isTiedToSeller(_context: CallContext, accountId: Id<'Account'>, sellerId: Id<'Seller'>) {
+    return Promise.resolve(this.tied.has(`${accountId}:${sellerId}`));
+  }
+}
