@@ -566,11 +566,8 @@ export async function rateSellerOrder(
     if (!(await deps.reviews.insertSellerRatingIfAbsent(context.market, record))) {
       return err({ code: 'reviews.already-rated' } as const);
     }
-    await deps.reviews.rebuildSummaries(
-      context.market,
-      { products: [], sellers: [record.sellerId] },
-      now,
-    );
+    // The seller summary is not refreshed here: only the repair job writes it, at a coarse
+    // interval, so a seller who polls the public endpoint cannot read one rating from one change.
     return ok(ownSellerRatingView(record));
   });
 }

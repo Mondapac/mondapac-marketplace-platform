@@ -68,14 +68,25 @@ const STREET_ADDRESS = new RegExp(
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// One alternation per Market list, compiled once (the list is the same array on every call).
+const BLOCKED_PATTERNS = new WeakMap<readonly string[], RegExp | null>();
+
+function blockedPattern(terms: readonly string[]): RegExp | null {
+  if (BLOCKED_PATTERNS.has(terms)) return BLOCKED_PATTERNS.get(terms)!;
+  const needles = terms.map((term) => canonical(term).trim()).filter((needle) => needle !== '');
+  const pattern =
+    needles.length === 0
+      ? null
+      : new RegExp(
+          `(?<![\\p{L}\\p{N}])(?:${needles.map(escapeRegExp).join('|')})(?![\\p{L}\\p{N}])`,
+          'u',
+        );
+  BLOCKED_PATTERNS.set(terms, pattern);
+  return pattern;
+}
+
 function hasBlockedTerm(text: string, terms: readonly string[]): boolean {
-  for (const term of terms) {
-    const needle = canonical(term).trim();
-    if (needle === '') continue;
-    const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(needle)}(?![\\p{L}\\p{N}])`, 'u');
-    if (pattern.test(text)) return true;
-  }
-  return false;
+  return blockedPattern(terms)?.test(text) ?? false;
 }
 
 function isRepeated(text: string, rules: TextRules): boolean {

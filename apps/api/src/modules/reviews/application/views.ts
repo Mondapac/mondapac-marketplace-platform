@@ -64,7 +64,8 @@ export interface OwnSellerRatingView {
 
 export const ownSellerRatingView = (record: SellerRatingRecord): OwnSellerRatingView => ({
   id: record.id,
-  sellerOrderId: record.sellerOrderId,
+  // The author's own rating always has its order: it is dropped only with the account (N11).
+  sellerOrderId: record.sellerOrderId as Id<'SellerOrder'>,
   sellerId: record.sellerId,
   satisfaction: record.satisfaction,
   asDescribed: record.asDescribed,
@@ -76,7 +77,8 @@ export const ownSellerRatingView = (record: SellerRatingRecord): OwnSellerRating
 
 /** A published review as the public sees it. */
 export interface PublicReviewView {
-  readonly id: Id<'ProductReview'>;
+  /** The random public id (not the internal, time-ordered one). */
+  readonly id: string;
   readonly rating: number;
   readonly title: string | null;
   readonly body: string | null;

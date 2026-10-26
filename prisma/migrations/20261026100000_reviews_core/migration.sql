@@ -7,13 +7,14 @@ CREATE SCHEMA IF NOT EXISTS "reviews";
 -- CreateTable
 CREATE TABLE "reviews"."product_reviews" (
     "id" UUID NOT NULL,
+    "public_id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "market_id" VARCHAR(8) NOT NULL,
     "tenant_id" TEXT NOT NULL,
     "account_id" UUID,
     "product_id" UUID NOT NULL,
     "offer_id" UUID NOT NULL,
     "seller_id" UUID NOT NULL,
-    "last_seller_order_id" UUID NOT NULL,
+    "last_seller_order_id" UUID,
     "rating" SMALLINT NOT NULL,
     "title" TEXT,
     "body" TEXT,
@@ -35,7 +36,7 @@ CREATE TABLE "reviews"."seller_ratings" (
     "market_id" VARCHAR(8) NOT NULL,
     "tenant_id" TEXT NOT NULL,
     "account_id" UUID,
-    "seller_order_id" UUID NOT NULL,
+    "seller_order_id" UUID,
     "seller_id" UUID NOT NULL,
     "satisfaction" SMALLINT NOT NULL,
     "as_described" BOOLEAN NOT NULL,
@@ -139,15 +140,15 @@ CREATE TABLE "reviews"."market_settings" (
 );
 
 -- CreateIndex
-CREATE INDEX "product_reviews_market_id_product_id_status_published_at_id_idx" ON "reviews"."product_reviews"("market_id", "product_id", "status", "published_at" DESC, "id" DESC);
 
 -- CreateIndex
 CREATE INDEX "product_reviews_market_id_account_id_created_at_idx" ON "reviews"."product_reviews"("market_id", "account_id", "created_at" DESC);
 
 -- CreateIndex
-CREATE INDEX "product_reviews_market_id_seller_id_idx" ON "reviews"."product_reviews"("market_id", "seller_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "product_reviews_market_id_public_id_key" ON "reviews"."product_reviews"("market_id", "public_id");
+
 CREATE UNIQUE INDEX "product_reviews_market_id_id_key" ON "reviews"."product_reviews"("market_id", "id");
 
 -- CreateIndex
@@ -166,7 +167,6 @@ CREATE UNIQUE INDEX "seller_ratings_market_id_seller_order_id_key" ON "reviews".
 CREATE UNIQUE INDEX "review_replies_market_id_review_id_key" ON "reviews"."review_replies"("market_id", "review_id");
 
 -- CreateIndex
-CREATE INDEX "review_reports_market_id_review_id_idx" ON "reviews"."review_reports"("market_id", "review_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "review_reports_market_id_review_id_reporter_account_id_key" ON "reviews"."review_reports"("market_id", "review_id", "reporter_account_id");
@@ -199,11 +199,15 @@ ALTER TABLE "reviews"."product_reviews"
   ADD CONSTRAINT "product_reviews_status_check" CHECK ("status" IN ('published', 'held', 'hidden', 'removed', 'deleted-by-author')),
   ADD CONSTRAINT "product_reviews_published_at_check" CHECK (("status" = 'published') <= ("published_at" IS NOT NULL)),
   ADD CONSTRAINT "product_reviews_deleted_check" CHECK (("status" = 'deleted-by-author') = ("deleted_at" IS NOT NULL)),
+  ADD CONSTRAINT "product_reviews_edited_at_check" CHECK ("edited_at" IS NULL OR "edited_at" >= "created_at"),
+  ADD CONSTRAINT "product_reviews_deleted_at_check" CHECK ("deleted_at" IS NULL OR "deleted_at" >= "created_at"),
+  ADD CONSTRAINT "product_reviews_order_link_check" CHECK ("account_id" IS NULL OR "last_seller_order_id" IS NOT NULL),
   ADD CONSTRAINT "product_reviews_deleted_text_check" CHECK ("status" <> 'deleted-by-author' OR ("title" IS NULL AND "body" IS NULL));
 
 ALTER TABLE "reviews"."seller_ratings"
   ADD CONSTRAINT "seller_ratings_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
   ADD CONSTRAINT "seller_ratings_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  ADD CONSTRAINT "seller_ratings_order_link_check" CHECK ("account_id" IS NULL OR "seller_order_id" IS NOT NULL),
   ADD CONSTRAINT "seller_ratings_satisfaction_check" CHECK ("satisfaction" BETWEEN 1 AND 5),
   ADD CONSTRAINT "seller_ratings_reason_check" CHECK ("reason_code" IS NULL OR ("arrived_ok" = false AND "reason_code" IN ('damaged', 'missing-items', 'temperature', 'other'))),
   ADD CONSTRAINT "seller_ratings_status_check" CHECK ("status" IN ('published', 'hidden', 'removed'));
@@ -264,6 +268,12 @@ ALTER TABLE "reviews"."market_settings"
 -- never changed or removed, whoever asks. A review, a rating, a reply, a report, a summary and
 -- the switch change only the columns granted below and are never deleted or truncated (an author
 -- "deletes" a review by status; a summary is rebuilt to zero, not dropped).
+-- Hand-written partial indexes (Prisma cannot declare them). The public list of one product reads
+-- published rows only, newest first, with or without a star filter; the second index also serves
+-- the summary job's group by (product, rating).
+CREATE INDEX "product_reviews_public_list_idx" ON "reviews"."product_reviews" ("market_id", "product_id", "published_at" DESC, "id" DESC) WHERE "status" = 'published';
+CREATE INDEX "product_reviews_public_list_rating_idx" ON "reviews"."product_reviews" ("market_id", "product_id", "rating", "published_at" DESC, "id" DESC) WHERE "status" = 'published';
+
 CREATE FUNCTION "reviews"."reject_mutation"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
@@ -315,7 +325,7 @@ GRANT USAGE ON SCHEMA "reviews" TO "mondapac_app";
 GRANT SELECT, INSERT ON TABLE "reviews"."moderation_actions" TO "mondapac_app";
 GRANT SELECT, INSERT ON TABLE "reviews"."review_signals" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("account_id", "anonymous", "body", "created_at", "deleted_at", "edited_at", "last_purchase_at", "last_seller_order_id", "locale", "offer_id", "published_at", "rating", "seller_id", "status", "title") ON TABLE "reviews"."product_reviews" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE ("account_id", "status") ON TABLE "reviews"."seller_ratings" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("account_id", "seller_order_id", "status") ON TABLE "reviews"."seller_ratings" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("body", "edited_at", "status") ON TABLE "reviews"."review_replies" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("status") ON TABLE "reviews"."review_reports" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("arrived_ok_yes", "as_described_yes", "count", "histogram_1", "histogram_2", "histogram_3", "histogram_4", "histogram_5", "rated_seller_orders", "rebuilt_at", "satisfied_count", "sum") ON TABLE "reviews"."rating_summaries" TO "mondapac_app";

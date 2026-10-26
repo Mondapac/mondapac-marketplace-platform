@@ -11,7 +11,8 @@ export interface ProductReviewRecord {
   /** The offer, seller and seller order of the latest qualifying purchase ("Bought from"). */
   readonly offerId: Id<'Offer'>;
   readonly sellerId: Id<'Seller'>;
-  readonly lastSellerOrderId: Id<'SellerOrder'>;
+  /** Null once the author's account is deleted: ordering still ties that order to the person. */
+  readonly lastSellerOrderId: Id<'SellerOrder'> | null;
   readonly rating: number;
   readonly title: string | null;
   readonly body: string | null;
@@ -27,11 +28,17 @@ export interface ProductReviewRecord {
   readonly lastPurchaseAt: Temporal.Instant;
 }
 
+/** A published review as the public list reads it: with the random id the public sees. */
+export interface PublishedReviewRecord extends ProductReviewRecord {
+  readonly publicId: string;
+}
+
 /** One seller rating row (`reviews.seller_ratings`). */
 export interface SellerRatingRecord {
   readonly id: Id<'SellerRating'>;
   readonly accountId: Id<'Account'> | null;
-  readonly sellerOrderId: Id<'SellerOrder'>;
+  /** Null once the rater's account is deleted (as `lastSellerOrderId` of a review). */
+  readonly sellerOrderId: Id<'SellerOrder'> | null;
   readonly sellerId: Id<'Seller'>;
   readonly satisfaction: number;
   readonly asDescribed: boolean;
@@ -165,7 +172,18 @@ export interface ReviewRepository {
       readonly after: ReviewCursor | null;
       readonly limit: number;
     },
-  ): Promise<readonly ProductReviewRecord[]>;
+  ): Promise<readonly PublishedReviewRecord[]>;
+
+  /**
+   * The keyset position of the review the public id names (the last review of the previous page),
+   * or null when the product has no such review: the cursor of the public list is that id, so it
+   * carries no time and cannot be forged into one.
+   */
+  findPublicCursor(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    publicId: string,
+  ): Promise<ReviewCursor | null>;
 
   // ---- seller ratings -----------------------------------------------------------------------
 

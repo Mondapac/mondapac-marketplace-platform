@@ -60,8 +60,8 @@ const PORTS: readonly [keyof ReviewsDependencies, InjectionToken][] = [
 function summaryRebuildEvery(markets: MarketRegistry): Temporal.Duration {
   const minutes = markets
     .hostedMarketIds()
-    .map((id) => markets.get(id).reviews?.summaryRebuildMinutes ?? 15);
-  return Temporal.Duration.from({ minutes: minutes.length === 0 ? 15 : Math.min(...minutes) });
+    .map((id) => markets.get(id).reviews?.summaryRebuildMinutes ?? 1440);
+  return Temporal.Duration.from({ minutes: minutes.length === 0 ? 1440 : Math.min(...minutes) });
 }
 
 /** Every reviews use case shares one dependency object, built from the same ports. */

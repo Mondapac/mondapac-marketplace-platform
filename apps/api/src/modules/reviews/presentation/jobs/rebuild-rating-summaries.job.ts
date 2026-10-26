@@ -6,7 +6,7 @@ import type { RebuildRatingSummaries } from '../../application/use-cases/rebuild
 export const REBUILD_RATING_SUMMARIES_JOB = 'reviews.rebuild-summaries';
 
 /**
- * `reviews.rebuild-summaries`, every `reviews.summaryRebuildMinutes` (the smallest of the hosted Markets, default 15): for each hosted Market, the scheduler's
+ * `reviews.rebuild-summaries`, every `reviews.summaryRebuildMinutes` (the smallest of the hosted Markets, default 1440, daily): for each hosted Market, the scheduler's
  * system-actor context goes unchanged to `RebuildRatingSummaries` (rule `system`). It recomputes
  * every product and seller summary from the published source rows while reviews are on in the
  * Market (a no-op while off). The write path also refreshes the summary it touches; this job is

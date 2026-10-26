@@ -1376,10 +1376,12 @@ const marketSchema = z
         bodyMaxLength: z.number().int().min(1).max(5000),
         pageSize: z.number().int().min(1).max(50),
         /**
-         * How often the repair job recomputes the rating summaries from the source rows (minutes,
-         * default 15). The write path already refreshes the summary it touches.
+         * How often the job recomputes the rating summaries from the source rows (minutes, default
+         * 1440, daily). The write path refreshes a product summary at once; a SELLER summary is
+         * written only by this job, so that several ratings land in one change and a poller cannot
+         * read a single rating from it.
          */
-        summaryRebuildMinutes: z.number().int().min(5).max(1440).default(15),
+        summaryRebuildMinutes: z.number().int().min(5).max(1440).default(1440),
         autoChecks: z.strictObject({
           blockedTerms: z.array(z.string().trim().min(2).max(64)).max(1000),
           repeatedCharRun: z.number().int().min(4).max(100),

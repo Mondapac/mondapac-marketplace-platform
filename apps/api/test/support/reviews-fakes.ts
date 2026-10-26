@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
 import type { CatalogFacade } from '../../src/modules/catalog';
@@ -136,7 +137,29 @@ export class MemoryReviews implements ReviewRepository {
               (r.publishedAt!.epochMilliseconds === after.publishedAt.epochMilliseconds &&
                 r.id < after.id),
           );
-    return Promise.resolve(rest.slice(0, query.limit));
+    return Promise.resolve(
+      rest.slice(0, query.limit).map((r) => ({ ...r, publicId: this.publicIdOf(r.id) })),
+    );
+  }
+  /** A random version 4 id per review, as the database default makes it. */
+  readonly publicIds = new Map<string, string>();
+  publicIdOf(reviewId: string): string {
+    let found = this.publicIds.get(reviewId);
+    if (found === undefined) {
+      found = randomUUID();
+      this.publicIds.set(reviewId, found);
+    }
+    return found;
+  }
+  findPublicCursor(_m: MarketContext, productId: Id<'Product'>, publicId: string) {
+    const found = [...this.productReviews.values()].find(
+      (r) => r.productId === productId && this.publicIdOf(r.id) === publicId,
+    );
+    return Promise.resolve(
+      found === undefined || found.publishedAt === null
+        ? null
+        : { publishedAt: found.publishedAt, id: found.id },
+    );
   }
   insertSellerRatingIfAbsent(_m: MarketContext, record: SellerRatingRecord) {
     if ([...this.sellerRatings.values()].some((r) => r.sellerOrderId === record.sellerOrderId)) {
@@ -158,8 +181,8 @@ export class MemoryReviews implements ReviewRepository {
     return Promise.resolve(
       new Set(
         [...this.sellerRatings.values()]
-          .filter((r) => r.accountId === accountId && ids.includes(r.sellerOrderId))
-          .map((r) => r.sellerOrderId),
+          .filter((r) => r.accountId === accountId && ids.includes(r.sellerOrderId!))
+          .map((r) => r.sellerOrderId!),
       ),
     );
   }
@@ -258,13 +281,13 @@ export class MemoryReviews implements ReviewRepository {
     let ratings = 0;
     for (const [key, r] of this.productReviews) {
       if (r.accountId === accountId) {
-        this.productReviews.set(key, { ...r, accountId: null });
+        this.productReviews.set(key, { ...r, accountId: null, lastSellerOrderId: null });
         reviews += 1;
       }
     }
     for (const [key, r] of this.sellerRatings) {
       if (r.accountId === accountId) {
-        this.sellerRatings.set(key, { ...r, accountId: null });
+        this.sellerRatings.set(key, { ...r, accountId: null, sellerOrderId: null });
         ratings += 1;
       }
     }

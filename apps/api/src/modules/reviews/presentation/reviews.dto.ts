@@ -144,9 +144,19 @@ export class SellerSummaryBody {
   @ApiProperty({ description: "The Market's minimum before the summary is meant to be shown." })
   minimumCount!: number;
   @ApiProperty() meetsMinimum!: boolean;
-  @ApiProperty({ nullable: true, type: Number }) averageTimes100!: number | null;
-  @ApiProperty({ type: [Number] }) histogram!: number[];
-  @ApiProperty({ nullable: true, type: Number, description: 'Basis points.' })
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Null until the seller has the Market minimum of rated seller orders.',
+  })
+  averageTimes100!: number | null;
+  @ApiProperty({ nullable: true, type: [Number], description: 'Null below the minimum.' })
+  histogram!: number[] | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Basis points; null below the minimum.',
+  })
   satisfiedBps!: number | null;
   @ApiProperty({ nullable: true, type: Number }) asDescribedBps!: number | null;
   @ApiProperty({ nullable: true, type: Number }) arrivedOkBps!: number | null;
@@ -292,7 +302,7 @@ export const productSummaryBody = (summary: ProductRatingSummary): ProductSummar
 
 export const sellerSummaryBody = (summary: SellerRatingSummary): SellerSummaryBody => ({
   ...summary,
-  histogram: [...summary.histogram],
+  histogram: summary.histogram === null ? null : [...summary.histogram],
 });
 
 export const settingsBody = (view: SettingsView): SettingsBody => ({

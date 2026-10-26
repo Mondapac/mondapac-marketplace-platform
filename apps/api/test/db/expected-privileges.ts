@@ -516,7 +516,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'reviews.seller_ratings': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['account_id', 'status'],
+      columnUpdate: ['account_id', 'seller_order_id', 'status'],
     },
     'reviews.review_replies': {
       table: ['INSERT', 'SELECT'],

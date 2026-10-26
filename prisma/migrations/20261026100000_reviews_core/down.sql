@@ -9,7 +9,7 @@ REVOKE SELECT, INSERT, UPDATE ("status", "updated_at", "updated_by_account_id") 
 REVOKE SELECT, INSERT, UPDATE ("arrived_ok_yes", "as_described_yes", "count", "histogram_1", "histogram_2", "histogram_3", "histogram_4", "histogram_5", "rated_seller_orders", "rebuilt_at", "satisfied_count", "sum") ON TABLE "reviews"."rating_summaries" FROM "mondapac_app";
 REVOKE SELECT, INSERT, UPDATE ("status") ON TABLE "reviews"."review_reports" FROM "mondapac_app";
 REVOKE SELECT, INSERT, UPDATE ("body", "edited_at", "status") ON TABLE "reviews"."review_replies" FROM "mondapac_app";
-REVOKE SELECT, INSERT, UPDATE ("account_id", "status") ON TABLE "reviews"."seller_ratings" FROM "mondapac_app";
+REVOKE SELECT, INSERT, UPDATE ("account_id", "seller_order_id", "status") ON TABLE "reviews"."seller_ratings" FROM "mondapac_app";
 REVOKE SELECT, INSERT, UPDATE ("account_id", "anonymous", "body", "created_at", "deleted_at", "edited_at", "last_purchase_at", "last_seller_order_id", "locale", "offer_id", "published_at", "rating", "seller_id", "status", "title") ON TABLE "reviews"."product_reviews" FROM "mondapac_app";
 REVOKE SELECT, INSERT ON TABLE "reviews"."review_signals" FROM "mondapac_app";
 REVOKE SELECT, INSERT ON TABLE "reviews"."moderation_actions" FROM "mondapac_app";

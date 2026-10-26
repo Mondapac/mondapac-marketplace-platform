@@ -278,6 +278,72 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
       );
     });
 
+    it('refuses a live review or rating without its order link, and a time that runs backwards', async () => {
+      expect(await run(reviewSql({ last_seller_order_id: null }))).toBe(CHECK);
+      expect(await run(reviewSql({ account_id: null, last_seller_order_id: null }))).toBe(
+        'allowed',
+      );
+      expect(await run(ratingSql({ seller_order_id: null }))).toBe(CHECK);
+      expect(await run(ratingSql({ account_id: null, seller_order_id: null }))).toBe('allowed');
+      // NULL order ids (detached ratings) do not collide on the one-rating-per-order key.
+      expect(await run(ratingSql({ account_id: null, seller_order_id: null }))).toBe('allowed');
+      const past = new Date(Date.now() - 86_400_000);
+      expect(await run(reviewSql({ edited_at: past }))).toBe(CHECK);
+      expect(
+        await run(
+          reviewSql({
+            status: 'deleted-by-author',
+            deleted_at: past,
+            published_at: null,
+            title: null,
+            body: null,
+          }),
+        ),
+      ).toBe(CHECK);
+    });
+
+    it('has the partial public-list indexes, no full status index, and a random public id', async () => {
+      const found = await rows(
+        `SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'reviews' AND tablename = 'product_reviews'`,
+      );
+      const names = found.map((r) => r.indexname as string);
+      expect(names).toEqual(
+        expect.arrayContaining([
+          'product_reviews_public_list_idx',
+          'product_reviews_public_list_rating_idx',
+        ]),
+      );
+      expect(names).not.toContain(
+        'product_reviews_market_id_product_id_status_published_at_id_idx',
+      );
+      for (const row of found.filter((r) =>
+        String(r.indexname).startsWith('product_reviews_public_list'),
+      )) {
+        expect(String(row.indexdef)).toContain("WHERE (status = 'published'::text)");
+      }
+      const ordering = await rows(
+        `SELECT 1 FROM pg_indexes WHERE schemaname = 'ordering' AND indexname = 'order_lines_market_id_seller_order_id_idx'`,
+      );
+      expect(ordering).toHaveLength(1);
+      const review = reviewSql();
+      await sql.query(...review);
+      const stored = await rows(`SELECT id, public_id FROM reviews.product_reviews WHERE id = $1`, [
+        review[1][0],
+      ]);
+      expect(String(stored[0]!.public_id)).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      expect(stored[0]!.public_id).not.toBe(stored[0]!.id);
+      expect(
+        await code_(
+          sql.query(
+            `UPDATE reviews.product_reviews SET public_id = gen_random_uuid() WHERE id = $1`,
+            [review[1][0]],
+          ),
+        ),
+      ).toBe(NO_PRIVILEGE);
+    });
+
     it('makes the moderation log and the signals insert-only for every role', async () => {
       const review = reviewSql();
       await sql.query(...review);
@@ -481,6 +547,11 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
         [account],
       );
       expect(linked).toEqual([]);
+      const left = await rows(
+        `SELECT account_id, last_seller_order_id FROM reviews.product_reviews WHERE id = $1`,
+        [reviewId],
+      );
+      expect(left).toEqual([{ account_id: null, last_seller_order_id: null }]);
     });
 
     it('holds a flagged review: signal rows with codes only, nothing public', async () => {
@@ -532,12 +603,19 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
         ok: false,
         error: { code: 'reviews.already-rated' },
       });
-      const summary = await new ViewSellerSummary(gate, deps).execute(anonymous, {
-        sellerId: seller,
-      });
-      expect(summary).toMatchObject({
+      const view = () => new ViewSellerSummary(gate, deps).execute(anonymous, { sellerId: seller });
+      // Only the repair job writes a seller summary, and below the Market minimum only the count shows.
+      expect(await view()).toMatchObject({ ok: true, value: { count: 0 } });
+      await new RebuildRatingSummaries(gate, deps).execute(system, {});
+      expect(await view()).toMatchObject({
         ok: true,
-        value: { count: 1, averageTimes100: 400, satisfiedBps: 10000 },
+        value: {
+          count: 1,
+          meetsMinimum: false,
+          averageTimes100: null,
+          histogram: null,
+          satisfiedBps: null,
+        },
       });
     });
 
@@ -560,6 +638,70 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
       expect(
         await new ViewProductSummary(gate, deps).execute(anonymous, { productId }),
       ).toMatchObject({ ok: true, value: { count: 1, averageTimes100: 200 } });
+    });
+
+    it('pages the public list by an opaque cursor and refuses a forged one', async () => {
+      const productId = ids.next<'Product'>();
+      const seller = ids.next<'Seller'>();
+      const pageSize = rules.pageSize;
+      for (let i = 0; i <= pageSize; i += 1) {
+        const account = ids.next<'Account'>();
+        bought(account, productId, seller);
+        clock.set(clock.now().add({ milliseconds: 5 }));
+        const done = await submit(account, productId, { body: `page ${i}` });
+        if (!done.ok) throw new Error(done.error.code);
+      }
+      const first = await new ListProductReviews(gate, deps).execute(anonymous, { productId });
+      if (!first.ok) throw new Error(first.error.code);
+      expect(first.value.reviews).toHaveLength(pageSize);
+      expect(first.value.nextCursor).toBe(first.value.reviews.at(-1)!.id);
+      const internal = new Set(
+        (
+          await rows(`SELECT id FROM reviews.product_reviews WHERE product_id = $1`, [productId])
+        ).map((r) => r.id),
+      );
+      for (const review of first.value.reviews) expect(internal.has(review.id)).toBe(false);
+      const second = await new ListProductReviews(gate, deps).execute(anonymous, {
+        productId,
+        cursor: first.value.nextCursor,
+      });
+      expect(second).toMatchObject({
+        ok: true,
+        value: { reviews: [{ body: 'page 0' }], nextCursor: null },
+      });
+      expect(
+        await new ListProductReviews(gate, deps).execute(anonymous, {
+          productId,
+          cursor: '4fd2c6a0-0000-4000-8000-000000000000',
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    });
+
+    it('drops the order ids of a deleted account from its reviews and ratings', async () => {
+      const account = ids.next<'Account'>();
+      const productId = ids.next<'Product'>();
+      const seller = ids.next<'Seller'>();
+      const orderOfReview = bought(account, productId, seller);
+      const orderOfRating = bought(account, ids.next<'Product'>(), seller);
+      await submit(account, productId);
+      await new RateSellerOrder(gate, deps).execute(customer(account), {
+        sellerOrderId: orderOfRating,
+        satisfaction: 4,
+        asDescribed: true,
+        arrivedOk: true,
+      });
+      await new DetachAuthor(gate, deps).execute(system, { accountId: account });
+      const dangling = await rows(
+        `SELECT 1 FROM reviews.product_reviews WHERE last_seller_order_id = $1
+         UNION ALL SELECT 1 FROM reviews.seller_ratings WHERE seller_order_id = ANY($2)`,
+        [orderOfReview, [orderOfReview, orderOfRating]],
+      );
+      expect(dangling).toEqual([]);
+      const rating = await rows(
+        `SELECT account_id, seller_order_id FROM reviews.seller_ratings WHERE seller_id = $1`,
+        [seller],
+      );
+      expect(rating).toEqual([{ account_id: null, seller_order_id: null }]);
     });
 
     it('detaches a deleted account and leaves the review as Former customer', async () => {

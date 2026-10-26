@@ -11,6 +11,9 @@
 /// `deleted-by-author`, title and body cleared) so the unique key and the counts stay honest.
 model ReviewsProductReview {
   id                String                    @id @db.Uuid
+  /// The id the public sees: random (version 4), made by the database, so it carries no time. The
+  /// internal id is a time-ordered UUIDv7 and never leaves the author's own views.
+  publicId          String                    @default(dbgenerated("gen_random_uuid()")) @map("public_id") @db.Uuid
   marketId          String                    @map("market_id") @db.VarChar(8)
   tenantId          String                    @map("tenant_id")
   /// The author's account (identity); null once the account is deleted. Unique per product.
@@ -19,8 +22,9 @@ model ReviewsProductReview {
   /// The offer and seller of the latest qualifying purchase, for the "Bought from" label.
   offerId           String                    @map("offer_id") @db.Uuid
   sellerId          String                    @map("seller_id") @db.Uuid
-  /// The seller order of the latest qualifying purchase.
-  lastSellerOrderId String                    @map("last_seller_order_id") @db.Uuid
+  /// The seller order of the latest qualifying purchase; dropped with `accountId` when the account
+  /// is deleted, because ordering still ties that order to the person (N11).
+  lastSellerOrderId String?                   @map("last_seller_order_id") @db.Uuid
   /// 1 to 5 (CHECK).
   rating            Int                       @db.SmallInt
   /// At most 200 characters (CHECK; the Market's own limit is lower and enforced by the use case).
@@ -44,13 +48,14 @@ model ReviewsProductReview {
 
   /// The foreign-key target of the children.
   @@unique([marketId, id])
+  @@unique([marketId, publicId])
   /// One product review per market, account and product. NULL accounts (deleted) are distinct.
   @@unique([marketId, accountId, productId])
-  /// The public list of one product: published rows, newest first.
-  @@index([marketId, productId, status, publishedAt(sort: Desc), id(sort: Desc)])
+  /// The public list of one product (published rows, newest first, with or without a star
+  /// filter) uses two partial indexes WHERE status = 'published', hand-written in the migration;
+  /// Prisma cannot declare them.
   /// The author's own list and the daily limit.
   @@index([marketId, accountId, createdAt(sort: Desc)])
-  @@index([marketId, sellerId])
   @@map("product_reviews")
   @@schema("reviews")
 }
@@ -63,7 +68,9 @@ model ReviewsSellerRating {
   tenantId      String   @map("tenant_id")
   /// The rater's account; null once the account is deleted.
   accountId     String?  @map("account_id") @db.Uuid
-  sellerOrderId String   @map("seller_order_id") @db.Uuid
+  /// The rated seller order; dropped with `accountId` when the account is deleted (N11). NULLs
+  /// are distinct, so the unique key below holds for live ratings only.
+  sellerOrderId String?  @map("seller_order_id") @db.Uuid
   sellerId      String   @map("seller_id") @db.Uuid
   /// 1 to 5 (CHECK).
   satisfaction  Int      @db.SmallInt
@@ -119,7 +126,6 @@ model ReviewsReport {
 
   /// One report of a review per reporter.
   @@unique([marketId, reviewId, reporterAccountId])
-  @@index([marketId, reviewId])
   @@map("review_reports")
   @@schema("reviews")
 }

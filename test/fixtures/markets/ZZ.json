@@ -32,7 +32,7 @@
     "titleMaxLength": 60,
     "bodyMaxLength": 300,
     "pageSize": 2,
-    "summaryRebuildMinutes": 30,
+    "summaryRebuildMinutes": 720,
     "autoChecks": {
       "blockedTerms": ["zork", "blarg"],
       "repeatedCharRun": 5,

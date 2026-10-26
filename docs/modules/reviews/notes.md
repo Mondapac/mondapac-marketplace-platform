@@ -67,8 +67,8 @@ log to their review inside the schema. Reviews and ratings are never deleted (tr
 application role may change only the columns granted. The migration and `down.sql` are in
 `prisma/migrations/20261026100000_reviews_core`.
 
-Summaries are refreshed by the write that changes a review or rating (recomputed from the
-published source rows with a group-by, not incremented) and repaired by the worker job
+Product summaries are refreshed by the write that changes a review (recomputed from the
+published source rows with a group-by, not incremented); seller summaries only by the job and repaired by the worker job
 `reviews.rebuild-summaries`, every `reviews.summaryRebuildMinutes` (AU 15, smallest of the hosted Markets). The job lists the subjects once, rebuilds them in batches of 100 (one short unit each) and writes only the rows whose numbers changed.
 
 ## HTTP
@@ -113,13 +113,43 @@ replies (package 4), notifications, search ranking and photos.
 - The author may delete a review in any status (N4), including one a moderator hid or removed: the
   text is cleared and the log keeps the earlier status. Such a review cannot be written again
   (`reviews.already-reviewed`).
-- Public reads show `publishedOn` and `editedOn` as a UTC day, never an exact time. Residual
-  risks, accepted for now: the public review `id` is a UUIDv7 (encodes its creation time), and the
-  `nextCursor` carries the last review's publish time in milliseconds. A non-time-ordered public id
-  and an opaque cursor are a later product call.
-- A switch that cannot be read fails closed: the error is thrown (500), never read as "off".
+- Public reads show `publishedOn` and `editedOn` as a UTC day, never an exact time. The public
+  review id is a random UUIDv4 (`product_reviews.public_id`, made by the database); the internal
+  UUIDv7 `id` stays in the author's own views only. The public list cursor is the public id of the
+  last review shown: it carries no time, and an id that is not a review of that product is a 400.
+- The seller summary returns only `count`, `minimumCount` and `meetsMinimum` until the seller has
+  the Market minimum of rated orders (the averages, histogram and shares are null), and the write
+  path never refreshes it: only the job does, so a poller cannot read one rating from one change.
+- N11 reaches the order ids too: `detachAuthor` also nulls `product_reviews.last_seller_order_id`
+  and `seller_ratings.seller_order_id` (ordering still ties those orders to the person). NULL
+  order ids do not collide on the one-rating-per-order key; a CHECK keeps them set while the
+  account link is set.
+- A switch that cannot be read fails closed: `reviews.unavailable` (503), never read as "off". An unexpected database error that is thrown is a 500.
+
+## Indexes
+
+The public list of one product reads two partial indexes `WHERE status = 'published'`
+(`product_reviews_public_list_idx`, and `_rating_idx` with the star filter); they are hand-written
+in the migration because Prisma cannot declare them. The ordering read for reviews uses
+`ordering.order_lines (market_id, seller_order_id)`, built CONCURRENTLY in its own migration
+`20261026110000_ordering_order_lines_seller_order_index`. The seller index on `product_reviews`
+and the plain `review_reports` index were dropped (no reader in package 1; add back with the
+package that needs them).
 
 ## Review nits left as notes
+
+- Settings: two admins switching at once can write a duplicate audit row (no row lock on the
+  switch); take `SELECT ... FOR UPDATE` when the moderation package touches it.
+- A moderator `hold` (package 2) must also block delete-and-resubmit, as `hidden` and `removed` do.
+- Contact-detail checks do not fold look-alike letters (Cyrillic, Greek); add a UTS #39 skeleton in
+  package 5. Package 5 should also signal a very short paid-to-delivered time on pickup and many
+  reviews of one seller from fresh accounts.
+- Deleting a `removed` review clears its text; ask whether removed text must be kept for a period.
+- No database guard on status moves or on `account_id` changing to anything but NULL (the
+  application enforces both); consider a BEFORE UPDATE trigger like the wallet's.
+- `review_reports` allows many rows with a NULL reporter (NULLs are distinct); decide in package 2
+  (`NULLS NOT DISTINCT` or a partial unique index).
+- The repair job could rebuild only subjects touched since its last run instead of listing all.
 
 - Street-address patterns (English and Japanese suffixes) are constants in the domain; move them
   to `reviews.autoChecks.addressSuffixes` in Market config before a non-English Market launches.

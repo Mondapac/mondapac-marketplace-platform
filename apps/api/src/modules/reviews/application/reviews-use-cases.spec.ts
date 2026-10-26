@@ -593,25 +593,36 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
   describe('rate a seller order', () => {
     beforeEach(switchOn);
 
-    it('rates a delivered seller order once and builds the seller summary', async () => {
+    const sellerSummary = () =>
+      new ViewSellerSummary(gate, deps).execute(anonymous, { sellerId: SELLER });
+    const repair = () => new RebuildRatingSummaries(gate, deps).execute(system, {});
+
+    it('rates a delivered seller order once; the seller summary changes only when the job runs', async () => {
       bought(1);
       const done = await rate(1);
       expect(done).toMatchObject({ ok: true, value: { satisfaction: 5, status: 'published' } });
       expect(await rate(1)).toEqual(err({ code: 'reviews.already-rated' }));
-      const summary = await new ViewSellerSummary(gate, deps).execute(anonymous, {
-        sellerId: SELLER,
-      });
-      expect(summary).toEqual(
+      // The write path does not touch the seller summary, so a poller cannot read one rating.
+      expect(await sellerSummary()).toMatchObject({ ok: true, value: { count: 0 } });
+      await repair();
+      expect(await sellerSummary()).toMatchObject({ ok: true, value: { count: 1 } });
+    });
+
+    it('gives only the count while the seller is below the Market minimum', async () => {
+      bought(1);
+      await rate(1);
+      await repair();
+      expect(await sellerSummary()).toEqual(
         ok({
           sellerId: SELLER,
           count: 1,
           minimumCount: rules.sellerRatingMinCount,
-          meetsMinimum: rules.sellerRatingMinCount <= 1,
-          averageTimes100: 500,
-          histogram: [0, 0, 0, 0, 1],
-          satisfiedBps: 10000,
-          asDescribedBps: 10000,
-          arrivedOkBps: 10000,
+          meetsMinimum: false,
+          averageTimes100: null,
+          histogram: null,
+          satisfiedBps: null,
+          asDescribedBps: null,
+          arrivedOkBps: null,
         }),
       );
     });
@@ -639,20 +650,29 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       expect(reviews.sellerRatings.size).toBe(0);
     });
 
-    it('shows the count so the web can wait for the Market minimum', async () => {
+    it('shows the full summary once the minimum of rated orders is reached', async () => {
       const need = rules.sellerRatingMinCount;
       for (let n = 1; n <= need; n += 1) {
-        bought(n, 1, id<'Account'>(0xc00 + n));
         const buyer = id<'Account'>(0xc00 + n);
+        bought(n, 1, buyer);
         expect((await rate(n, {}, customerCtx(buyer))).ok).toBe(true);
-        const summary = await new ViewSellerSummary(gate, deps).execute(anonymous, {
-          sellerId: SELLER,
-        });
-        expect(summary).toMatchObject({
-          ok: true,
-          value: { count: n, meetsMinimum: n >= need },
-        });
+        await repair();
+        const summary = await sellerSummary();
+        expect(summary).toMatchObject({ ok: true, value: { count: n, meetsMinimum: n >= need } });
+        if (n < need) {
+          expect(summary).toMatchObject({ value: { averageTimes100: null, histogram: null } });
+        }
       }
+      expect(await sellerSummary()).toMatchObject({
+        ok: true,
+        value: {
+          averageTimes100: 500,
+          histogram: [0, 0, 0, 0, need],
+          satisfiedBps: 10000,
+          asDescribedBps: 10000,
+          arrivedOkBps: 10000,
+        },
+      });
     });
   });
 
@@ -752,6 +772,30 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       expect(second.value.reviews.length).toBeGreaterThan(0);
       const seen = [...first.value.reviews, ...second.value.reviews].map((r) => r.id);
       expect(new Set(seen).size).toBe(seen.length);
+      // The public id is random (version 4), not the internal time-ordered one, and the cursor is
+      // such an id: neither carries a time.
+      const internal = new Set([...reviews.productReviews.keys()]);
+      for (const publicId of seen) {
+        expect(publicId).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        );
+        expect(internal.has(publicId as never)).toBe(false);
+      }
+      expect(first.value.nextCursor).toBe(first.value.reviews.at(-1)!.id);
+      // A made-up cursor, a cursor in the old time form and a review of another product are refused.
+      for (const cursor of [
+        '4fd2c6a0-0000-4000-8000-000000000000',
+        '1760000000000.01990000-0000-7000-8000-000000000001',
+      ]) {
+        expect(await list(1, { cursor })).toMatchObject({
+          ok: false,
+          error: { code: 'validation.failed' },
+        });
+      }
+      expect(await list(2, { cursor: first.value.nextCursor })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
       // The anonymous author is never asked for.
       expect(names.asked.flat()).not.toContain(accounts[1]);
       // Dates are the day only: no exact time that could link an anonymous review to an order.
@@ -824,6 +868,9 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       await new SetReviewsStatus(gate, deps).execute(adminCtx(), { status: 'off' });
       const first = await new DetachAuthor(gate, deps).execute(system, { accountId: BUYER });
       expect(first).toEqual(ok({ reviews: 1, ratings: 1 }));
+      // N11: the order ids are dropped too, ordering still ties them to the person.
+      expect([...reviews.productReviews.values()].map((r) => r.lastSellerOrderId)).toEqual([null]);
+      expect([...reviews.sellerRatings.values()].map((r) => r.sellerOrderId)).toEqual([null]);
       expect(await new DetachAuthor(gate, deps).execute(system, { accountId: BUYER })).toEqual(
         ok({ reviews: 0, ratings: 0 }),
       );

@@ -13,7 +13,7 @@ import type { ProductRatingSummary, SellerRatingSummary } from '../contracts/rev
 import { buyerAccountId } from './caller';
 import { activeSettings } from './market-switch';
 import type { FieldIssue, ReviewsFailure, SummaryFailure } from './failures';
-import type { ReviewCursor } from './ports/review.repository';
+import type { PublishedReviewRecord, ReviewCursor } from './ports/review.repository';
 import { deliveredPurchases, lookbackSince } from './purchases';
 import type { ReviewsDependencies } from './reviews-dependencies';
 import {
@@ -185,15 +185,10 @@ export interface ProductReviewsPage {
   readonly nextCursor: string | null;
 }
 
-const encodeCursor = (cursor: ReviewCursor): string =>
-  `${cursor.publishedAt.epochMilliseconds}.${cursor.id}`;
-
-function decodeCursor(value: unknown): ReviewCursor | undefined {
-  const match = typeof value === 'string' ? /^([0-9]{1,15})\.([0-9a-f-]{36})$/.exec(value) : null;
-  const id = match === null ? null : parseId<'ProductReview'>(match[2]!);
-  if (match === null || id === null || !id.ok) return undefined;
-  return { publishedAt: Temporal.Instant.fromEpochMilliseconds(Number(match[1])), id: id.value };
-}
+// The cursor of the public list is the random public id of the last review shown: it carries no
+// time (an exact publish time would let a client binary-search it), and an id of another product
+// or a made-up one is refused.
+const PUBLIC_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export async function listProductReviews(
   deps: ReviewsDependencies,
@@ -218,29 +213,40 @@ export async function listProductReviews(
   // "Most helpful" arrives with helpful votes (not in this package): only `recent` exists.
   if (input?.sort !== undefined && input.sort !== 'recent')
     fields.push({ path: 'sort', code: 'value' });
-  let after: ReviewCursor | null = null;
+  let cursorId: string | null = null;
   if (input?.cursor !== undefined) {
-    const decoded = decodeCursor(input.cursor);
-    if (decoded === undefined) fields.push({ path: 'cursor', code: 'format' });
-    else after = decoded;
+    if (typeof input.cursor === 'string' && PUBLIC_ID.test(input.cursor)) cursorId = input.cursor;
+    else fields.push({ path: 'cursor', code: 'format' });
   }
   if (fields.length > 0 || productId === null || !productId.ok) {
     return err({ code: 'validation.failed', fields });
   }
 
-  const read = await deps.unitOfWork.run(
+  const read = await deps.unitOfWork.run<readonly PublishedReviewRecord[], ReviewsFailure>(
     context.market,
-    async () =>
-      ok(
+    async () => {
+      let after: ReviewCursor | null = null;
+      if (cursorId !== null) {
+        after = await deps.reviews.findPublicCursor(context.market, productId.value, cursorId);
+        // An id that is not a review of this product is a forged or stale cursor.
+        if (after === null) {
+          return err({
+            code: 'validation.failed',
+            fields: [{ path: 'cursor', code: 'format' }],
+          } as const);
+        }
+      }
+      return ok(
         await deps.reviews.listPublishedProductReviews(context.market, productId.value, {
           stars,
           after,
           limit: settings.pageSize + 1,
         }),
-      ),
+      );
+    },
     { readOnly: true },
   );
-  if (!read.ok) return err({ code: 'reviews.unavailable' });
+  if (!read.ok) return read;
   const page = read.value.slice(0, settings.pageSize);
 
   // Names are read now and never stored; an author who chose to be anonymous is not even asked.
@@ -263,7 +269,7 @@ export async function listProductReviews(
   const last = page[page.length - 1];
   return ok({
     reviews: page.map((record) => ({
-      id: record.id,
+      id: record.publicId,
       rating: record.rating,
       title: record.title,
       body: record.body,
@@ -276,10 +282,7 @@ export async function listProductReviews(
       publishedOn: dayOf(record.publishedAt!),
       editedOn: record.editedAt === null ? null : dayOf(record.editedAt),
     })),
-    nextCursor:
-      read.value.length > settings.pageSize && last?.publishedAt
-        ? encodeCursor({ publishedAt: last.publishedAt, id: last.id })
-        : null,
+    nextCursor: read.value.length > settings.pageSize && last !== undefined ? last.publicId : null,
   });
 }
 
@@ -340,15 +343,20 @@ export async function viewSellerSummary(
     asDescribedYes: 0,
     arrivedOkYes: 0,
   };
+  const meetsMinimum = summaryShownFrom(summary.ratedSellerOrders, settings.sellerRatingMinCount);
+  // Below the Market minimum only the count is given: the endpoint is public, and a summary of a
+  // few ratings would show the seller what one buyer answered.
   return ok({
     sellerId: sellerId.value,
     count: summary.ratedSellerOrders,
     minimumCount: settings.sellerRatingMinCount,
-    meetsMinimum: summaryShownFrom(summary.ratedSellerOrders, settings.sellerRatingMinCount),
-    averageTimes100: averageTimes100(summary),
-    histogram: summary.histogram,
-    satisfiedBps: shareBps(summary.satisfiedCount, summary.ratedSellerOrders),
-    asDescribedBps: shareBps(summary.asDescribedYes, summary.ratedSellerOrders),
-    arrivedOkBps: shareBps(summary.arrivedOkYes, summary.ratedSellerOrders),
+    meetsMinimum,
+    averageTimes100: meetsMinimum ? averageTimes100(summary) : null,
+    histogram: meetsMinimum ? summary.histogram : null,
+    satisfiedBps: meetsMinimum ? shareBps(summary.satisfiedCount, summary.ratedSellerOrders) : null,
+    asDescribedBps: meetsMinimum
+      ? shareBps(summary.asDescribedYes, summary.ratedSellerOrders)
+      : null,
+    arrivedOkBps: meetsMinimum ? shareBps(summary.arrivedOkYes, summary.ratedSellerOrders) : null,
   });
 }

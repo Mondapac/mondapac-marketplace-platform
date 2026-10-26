@@ -32,8 +32,12 @@ export interface SellerRatingSummary {
   /** The Market's minimum of rated seller orders before the summary is meant to be shown. */
   readonly minimumCount: number;
   readonly meetsMinimum: boolean;
+  /**
+   * Everything below is null until the seller has the Market minimum of rated seller orders: a
+   * summary of one to nine ratings would show a seller what a single buyer answered.
+   */
   readonly averageTimes100: number | null;
-  readonly histogram: readonly [number, number, number, number, number];
+  readonly histogram: readonly [number, number, number, number, number] | null;
   /** Shares in basis points (10000 is all); null while there is no rating. */
   readonly satisfiedBps: number | null;
   readonly asDescribedBps: number | null;

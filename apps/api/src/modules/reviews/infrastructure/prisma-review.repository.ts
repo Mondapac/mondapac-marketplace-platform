@@ -31,7 +31,7 @@ interface ReviewRow {
   readonly productId: string;
   readonly offerId: string;
   readonly sellerId: string;
-  readonly lastSellerOrderId: string;
+  readonly lastSellerOrderId: string | null;
   readonly rating: number;
   readonly title: string | null;
   readonly body: string | null;
@@ -51,7 +51,7 @@ const toReview = (row: ReviewRow): ProductReviewRecord => ({
   productId: row.productId as Id<'Product'>,
   offerId: row.offerId as Id<'Offer'>,
   sellerId: row.sellerId as Id<'Seller'>,
-  lastSellerOrderId: row.lastSellerOrderId as Id<'SellerOrder'>,
+  lastSellerOrderId: row.lastSellerOrderId as Id<'SellerOrder'> | null,
   rating: row.rating,
   title: row.title,
   body: row.body,
@@ -86,7 +86,7 @@ const reviewColumns = (record: ProductReviewRecord) => ({
 const toRating = (row: {
   readonly id: string;
   readonly accountId: string | null;
-  readonly sellerOrderId: string;
+  readonly sellerOrderId: string | null;
   readonly sellerId: string;
   readonly satisfaction: number;
   readonly asDescribed: boolean;
@@ -97,7 +97,7 @@ const toRating = (row: {
 }): SellerRatingRecord => ({
   id: row.id as Id<'SellerRating'>,
   accountId: row.accountId as Id<'Account'> | null,
-  sellerOrderId: row.sellerOrderId as Id<'SellerOrder'>,
+  sellerOrderId: row.sellerOrderId as Id<'SellerOrder'> | null,
   sellerId: row.sellerId as Id<'Seller'>,
   satisfaction: row.satisfaction,
   asDescribed: row.asDescribed,
@@ -108,6 +108,12 @@ const toRating = (row: {
 });
 
 /** The columns of one stored summary row. */
+type SummaryRow = Awaited<ReturnType<PrismaService['tx']>>['reviewsRatingSummary'] extends {
+  findMany(...args: never[]): Promise<(infer R)[]>;
+}
+  ? R
+  : never;
+
 const summaryColumns = (
   summary: StarSummary,
   seller: SellerSummary | null,
@@ -290,7 +296,16 @@ export class PrismaReviewRepository implements ReviewRepository {
       orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
       take: query.limit,
     });
-    return rows.map(toReview);
+    return rows.map((row) => ({ ...toReview(row), publicId: row.publicId }));
+  }
+
+  async findPublicCursor(market: MarketContext, productId: Id<'Product'>, publicId: string) {
+    const row = await this.prisma.tx(market).reviewsProductReview.findFirst({
+      where: { marketId: market.marketId, productId, publicId },
+      select: { id: true, publishedAt: true },
+    });
+    if (row === null || row.publishedAt === null) return null;
+    return { publishedAt: fromDate(row.publishedAt), id: row.id as Id<'ProductReview'> };
   }
 
   // ---- seller ratings -----------------------------------------------------------------------
@@ -422,6 +437,7 @@ export class PrismaReviewRepository implements ReviewRepository {
     let written = 0;
     if (products.length > 0) {
       const groups = await this.productGroups(market, products);
+      const current = await this.currentSummaries(market, 'product', products);
       for (const productId of products) {
         written += await this.writeSummary(
           market,
@@ -430,14 +446,24 @@ export class PrismaReviewRepository implements ReviewRepository {
           summariseStarGroups(groups.get(productId) ?? []),
           null,
           now,
+          current.get(productId),
         );
       }
     }
     if (sellers.length > 0) {
       const groups = await this.sellerGroups(market, sellers);
+      const current = await this.currentSummaries(market, 'seller', sellers);
       for (const sellerId of sellers) {
         const summary = summariseSellerGroups(groups.get(sellerId) ?? []);
-        written += await this.writeSummary(market, 'seller', sellerId, summary, summary, now);
+        written += await this.writeSummary(
+          market,
+          'seller',
+          sellerId,
+          summary,
+          summary,
+          now,
+          current.get(sellerId),
+        );
       }
     }
     return written;
@@ -464,9 +490,10 @@ export class PrismaReviewRepository implements ReviewRepository {
     for (const row of stored) {
       (row.subjectKind === 'product' ? products : sellers).add(row.subjectId);
     }
+    // Sorted, so two overlapping runs lock the rows in the same order and cannot deadlock.
     return {
-      products: [...products] as Id<'Product'>[],
-      sellers: [...sellers] as Id<'Seller'>[],
+      products: [...products].sort() as Id<'Product'>[],
+      sellers: [...sellers].sort() as Id<'Seller'>[],
     };
   }
 
@@ -516,6 +543,18 @@ export class PrismaReviewRepository implements ReviewRepository {
     return bySeller;
   }
 
+  /** The stored rows of a batch of subjects, in one query. */
+  private async currentSummaries(
+    market: MarketContext,
+    kind: 'product' | 'seller',
+    subjectIds: readonly string[],
+  ) {
+    const rows = await this.prisma.tx(market).reviewsRatingSummary.findMany({
+      where: { marketId: market.marketId, subjectKind: kind, subjectId: { in: [...subjectIds] } },
+    });
+    return new Map<string, SummaryRow>(rows.map((row) => [row.subjectId, row]));
+  }
+
   /**
    * Insert-or-change of one summary row; a row whose numbers already match is left alone (no
    * write, no `rebuilt_at` bump). Returns 1 when it wrote, else 0.
@@ -527,14 +566,14 @@ export class PrismaReviewRepository implements ReviewRepository {
     stars: StarSummary,
     seller: SellerSummary | null,
     now: Temporal.Instant,
+    current: SummaryRow | undefined,
   ) {
     const tx = this.prisma.tx(market);
     const columns = summaryColumns(stars, seller, now);
     const numbers: Partial<typeof columns> = { ...columns };
     delete numbers.rebuiltAt;
     const where = { marketId: market.marketId, subjectKind: kind, subjectId };
-    const current = await tx.reviewsRatingSummary.findFirst({ where });
-    if (current !== null) {
+    if (current !== undefined) {
       const same = (Object.keys(numbers) as (keyof typeof numbers)[]).every(
         (key) => current[key] === numbers[key],
       );
@@ -562,11 +601,11 @@ export class PrismaReviewRepository implements ReviewRepository {
     const tx = this.prisma.tx(market);
     const reviews = await tx.reviewsProductReview.updateMany({
       where: { marketId: market.marketId, accountId },
-      data: { accountId: null },
+      data: { accountId: null, lastSellerOrderId: null },
     });
     const ratings = await tx.reviewsSellerRating.updateMany({
       where: { marketId: market.marketId, accountId },
-      data: { accountId: null },
+      data: { accountId: null, sellerOrderId: null },
     });
     return { reviews: reviews.count, ratings: ratings.count };
   }
