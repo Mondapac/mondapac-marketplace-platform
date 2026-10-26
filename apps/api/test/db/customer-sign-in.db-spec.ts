@@ -49,6 +49,7 @@ import {
   type Persistence,
 } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
+import { createSecurityEvents } from '../../src/platform/persistence/audit/prisma-security-events';
 
 // Customer sign-in, sessions and throttling end to end on PostgreSQL (identity design 6.2, 6.3,
 // 6.8, 10.2; data design 3.4 to 3.6, 9; slice 2), as the application role, for both Market
@@ -148,6 +149,7 @@ describe('customer sign-in (database integration)', () => {
       sessions,
       throttles,
       records,
+      securityEvents: createSecurityEvents('identity', { ids, clock }),
       hasher,
       tokens,
       keys,

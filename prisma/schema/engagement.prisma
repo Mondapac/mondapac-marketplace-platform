@@ -48,3 +48,26 @@ model EngagementPersonalizationSetting {
   @@map("personalization_settings")
   @@schema("engagement")
 }
+
+/// How often a storefront block (a module placement on a published page) was shown and clicked on
+/// one UTC day: two counters per (Market, page, day, placement) and nothing else. Aggregate only:
+/// no account, guest token, cookie, IP address, user agent or any other column that could name a
+/// person, and no way to tell one visit from another. Plain ids, no foreign keys (the page and its
+/// placements are storefront's). Rows older than 13 months are deleted by the daily purge.
+model EngagementBlockCount {
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  pageId      String   @map("page_id") @db.Uuid
+  /// The placement id as storefront stores it in a page version (a UUIDv7 text).
+  placementId String   @map("placement_id") @db.Uuid
+  /// The UTC calendar day of the Clock when the event was counted.
+  day         DateTime @db.Date
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  updatedAt   DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@id([marketId, pageId, day, placementId])
+  @@index([marketId, day])
+  @@map("block_counts")
+  @@schema("engagement")
+}

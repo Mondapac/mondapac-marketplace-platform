@@ -121,6 +121,8 @@ function sealedCatalogue(): AuditActionCatalogue {
 interface Harness {
   readonly writer: AuditWriter;
   readonly rows: Record<string, unknown>[];
+  /** The security events projected from audited security actions (platform.md 13.3). */
+  readonly securityEvents: Record<string, unknown>[];
   /** Runs `work` inside an open unit of `market` (read-write unless `readOnly`). */
   readonly inUnit: <T>(
     market: MarketContext,
@@ -139,6 +141,7 @@ function harness(
 ): Harness {
   const clock = options.clock ?? new FixedClock(START);
   const rows: Record<string, unknown>[] = [];
+  const securityEvents: Record<string, unknown>[] = [];
   // The module view (what `PrismaService.tx` hands out) must never be used by the writer.
   const moduleView = {
     auditLog: {
@@ -152,6 +155,12 @@ function harness(
         return Promise.resolve(data);
       },
     },
+    securityEvent: {
+      create: ({ data }: { data: Record<string, unknown> }) => {
+        securityEvents.push(data);
+        return Promise.resolve(data);
+      },
+    },
   };
   const writer = createAuditWriter(options.owner ?? 'identity', {
     catalogue: options.catalogue ?? sealedCatalogue(),
@@ -162,6 +171,7 @@ function harness(
   return {
     writer,
     rows,
+    securityEvents,
     inUnit: (market, work, readOnly = false) =>
       unitStorage.run(new OpenUnit(market, readOnly, moduleView, view), work),
   };
@@ -219,6 +229,33 @@ describe.each(MARKETS)('the audit writer in market %s (platform-audit.md 3.1)', 
           after: { roleId: ROLE },
           correlationId: 'request-correlation-0042',
         },
+      ]);
+    });
+
+    it('projects an audited security action into a security event in the same unit (platform.md 13.3)', async () => {
+      const { writer, rows, securityEvents, inUnit } = harness();
+      const entry = roleAssigned.entry(TARGET, {
+        before: { roleId: null },
+        after: { roleId: ROLE },
+      });
+
+      await inUnit(market, () => writer.record(adminContext(market), entry));
+
+      expect(securityEvents).toEqual([
+        expect.objectContaining({
+          marketId: code,
+          tenantId: PLATFORM_TENANT_ID,
+          occurredAt: rows[0]!.occurredAt,
+          type: 'identity.account-role.assigned',
+          severity: 's2',
+          actorType: 'USER',
+          actorId: ACCOUNT,
+          targetType: 'identity.account',
+          targetId: TARGET,
+          ip: null,
+          payload: { auditLogId: rows[0]!.id },
+          correlationId: 'request-correlation-0042',
+        }),
       ]);
     });
 

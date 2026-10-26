@@ -48,6 +48,7 @@ const id = <T extends string>(n: number): Id<T> => {
 const CUSTOMER = id<'Account'>(0xc1);
 const OTHER_CUSTOMER = id<'Account'>(0xc2);
 const ADMIN = id<'Account'>(0xad);
+const ADMIN_SESSION = id<'Session'>(0x62);
 const ORDER_1 = id<'Order'>(0x101);
 const ORDER_2 = id<'Order'>(0x102);
 
@@ -78,6 +79,9 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
   let audit: RecordingAudit;
   let deps: WalletDependencies;
   let seq = 0;
+  // identity's spend of the admin step-up proof (issue #491): a proof unless a test says otherwise.
+  let stepUpAnswer: Awaited<ReturnType<WalletDependencies['stepUp']['consume']>>;
+  let stepUpAsked: string[];
 
   const customerCtx = (accountId = CUSTOMER) =>
     testCallContext(
@@ -96,7 +100,7 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       testAuthenticatedActor(market, {
         population: 'admin',
         accountId: ADMIN,
-        sessionId: id<'Session'>(0x62),
+        sessionId: ADMIN_SESSION,
         sellerId: null,
       }),
       'wallet-admin-abcd',
@@ -124,7 +128,15 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,
+      stepUp: {
+        consume: (_context, actionKey) => {
+          stepUpAsked.push(actionKey);
+          return Promise.resolve(stepUpAnswer);
+        },
+      },
     };
+    stepUpAnswer = ok({ sessionId: ADMIN_SESSION, verifiedAt: T0 });
+    stepUpAsked = [];
   });
 
   const key = (label: string) => `${label}-${(seq += 1)}`.padEnd(8, '0');
@@ -212,22 +224,23 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       await turn('paused', 'wind-down');
       await turn('frozen', 'security-incident');
       await turn('active');
+      const proof = { stepUpSessionId: ADMIN_SESSION, stepUpVerifiedAt: T0 };
       expect(audit.entries.map((e) => [e.before, e.after])).toEqual([
         [
           { status: 'off', reason: null },
-          { status: 'active', reason: null },
+          { status: 'active', reason: null, ...proof },
         ],
         [
           { status: 'active', reason: null },
+          { status: 'paused', reason: 'wind-down', ...proof },
+        ],
+        [
           { status: 'paused', reason: 'wind-down' },
-        ],
-        [
-          { status: 'paused', reason: 'wind-down' },
-          { status: 'frozen', reason: 'security-incident' },
+          { status: 'frozen', reason: 'security-incident', ...proof },
         ],
         [
           { status: 'frozen', reason: 'security-incident' },
-          { status: 'active', reason: null },
+          { status: 'active', reason: null, ...proof },
         ],
       ]);
       expect(audit.entries.every((e) => e.targetId === 'wallet-settings')).toBe(true);
@@ -279,6 +292,36 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       expect(audit.entries).toHaveLength(0);
     });
 
+    it('spends the admin step-up of wallet.settings.change in the unit of the change, fail closed', async () => {
+      await open('active');
+      expect(stepUpAsked).toEqual(['wallet.settings.change']);
+      audit.entries.length = 0;
+      const saves = setting.saves;
+      for (const refusal of [
+        { code: 'second-factor.required', actionKey: 'wallet.settings.change' },
+        { code: 'second-factor.enrolment-required', actionKey: 'wallet.settings.change' },
+      ] as const) {
+        stepUpAnswer = err(refusal);
+        expect(await turn('paused', 'maintenance')).toEqual(err(refusal));
+      }
+      stepUpAnswer = err({ code: 'access.unavailable' });
+      expect(await turn('paused', 'maintenance')).toEqual(err({ code: 'access.unavailable' }));
+      stepUpAnswer = err({ code: 'access.denied' });
+      expect(await turn('paused', 'maintenance')).toEqual(err({ code: 'access.denied' }));
+      expect(setting.saves).toBe(saves);
+      expect(setting.record?.status).toBe('active');
+      expect(audit.entries).toHaveLength(0);
+    });
+
+    it('spends no proof for an invalid body, a refused caller, a no-op or a refused change', async () => {
+      expect((await turn('on')).ok).toBe(false);
+      expect((await turn('active', undefined, customerCtx())).ok).toBe(false);
+      await open('active');
+      stepUpAsked = [];
+      expect((await turn('active')).ok).toBe(true);
+      expect(stepUpAsked).toEqual([]);
+    });
+
     it('validates the body: a reason is required for paused and frozen and not allowed otherwise', async () => {
       await open('active');
       expect(await turn('paused')).toEqual(
@@ -302,7 +345,10 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       expect((await grant(100n)).ok).toBe(true);
       expect(await turn('off')).toEqual(err({ code: 'wallet.cannot-turn-off-with-history' }));
       expect((await turn('paused', 'wind-down')).ok).toBe(true);
+      stepUpAsked = [];
       expect(await turn('off')).toEqual(err({ code: 'wallet.cannot-turn-off-with-history' }));
+      // A refused change keeps the admin's proof for the next try.
+      expect(stepUpAsked).toEqual([]);
     });
   });
 

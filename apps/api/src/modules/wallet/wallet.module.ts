@@ -1,7 +1,13 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  STEP_UP_CONSUMER,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
@@ -21,7 +27,12 @@ import { ViewMyHistory } from './application/use-cases/view-my-history.use-case'
 import { ViewMyWallet } from './application/use-cases/view-my-wallet.use-case';
 import { ViewWalletSettings } from './application/use-cases/view-wallet-settings.use-case';
 import type { WalletDependencies } from './application/wallet-dependencies';
-import { WALLET_AUDIT_ACTIONS, WALLET_FACADE, WALLET_PERMISSIONS } from './contracts';
+import {
+  WALLET_AUDIT_ACTIONS,
+  WALLET_FACADE,
+  WALLET_PERMISSIONS,
+  WALLET_STEP_UP_ACTIONS,
+} from './contracts';
 import { walletProviders } from './infrastructure/wallet-providers';
 import { expireWalletCreditJob } from './presentation/jobs/expire-wallet-credit.job';
 import { AdminWalletController, CustomerWalletController } from './presentation/wallet.controller';
@@ -37,6 +48,7 @@ const PORTS: readonly [keyof WalletDependencies, InjectionToken][] = [
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
+  ['stepUp', STEP_UP_CONSUMER],
 ];
 
 /** Every wallet use case shares one dependency object, built from the same ports. */
@@ -68,6 +80,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.auditWriterFor('wallet'),
     registerAuditActions('wallet', WALLET_AUDIT_ACTIONS),
     registerPermissions('wallet', WALLET_PERMISSIONS),
+    registerStepUpActions('wallet', WALLET_STEP_UP_ACTIONS),
     ...walletProviders,
     ...[
       GrantCredit,
