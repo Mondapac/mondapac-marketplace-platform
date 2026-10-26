@@ -179,9 +179,11 @@
   },
   { "name": "customers.update-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "engagement.forget-account", "rule": "system" },
+  { "name": "engagement.purge-expired-block-counts", "rule": "system" },
   { "name": "engagement.purge-expired-events", "rule": "system" },
   { "name": "engagement.recent-views", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "engagement.recent-views-guest", "rule": "anonymous" },
+  { "name": "engagement.record-block-events", "rule": "anonymous" },
   { "name": "engagement.record-event", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "engagement.record-guest-event", "rule": "anonymous" },
   {
@@ -512,6 +514,7 @@
   { "name": "storefront.view-published-navigation", "rule": "anonymous" },
   { "name": "storefront.view-published-page", "rule": "anonymous" },
   { "name": "storefront.view-published-slides", "rule": "anonymous" },
+  { "name": "storefront.view-served-placements", "rule": "anonymous" },
   {
     "name": "tax.calculate-tax",
     "rule": "own-resources",

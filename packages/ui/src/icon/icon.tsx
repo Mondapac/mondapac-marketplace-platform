@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 // The panels' one icon set (Figma library "Icons", docs/design/figma/plugin/icons.py): 24 px
 // grid, 1.75 stroke, lucide-like shapes. The size is the `size/icon` token (18 px, 20 px in the
 // touch density) and the colour is inherited, so a caller sets it with a text colour token.
-// Add an icon here, never inline an SVG in a page; `tag`, `receipt`, `user`, `log-out`, `bell`,
+// Add an icon here, never inline an SVG in a page; `tag`, `receipt`, `chevron-down`, `user`, `log-out`, `bell`,
 // `volume` and `volume-off` are new in code and wait to be back-ported to the Figma library
 // (speed mode).
 const ICONS = {
@@ -66,6 +66,7 @@ const ICONS = {
       <circle cx="18" cy="18" r="2" />
     </>
   ),
+  'chevron-down': <path d="m6 9 6 6 6-6" />,
   check: <path d="M20 6 9 17l-5-5" />,
   'shield-check': (
     <>

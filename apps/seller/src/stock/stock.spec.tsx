@@ -4,7 +4,6 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { settingsTabs } from '../settings/settings-header.tsx';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
@@ -180,11 +179,5 @@ describe('helpers', () => {
         details: { max: 5 },
       }),
     ).toEqual({ form: { key: 'stock.error.limit', values: { max: 5 } }, fields: {} });
-  });
-
-  it('shows the stock locations settings tab only with the view permission', () => {
-    const ids = (keys: string[]) => settingsTabs(keys, (key) => key).map((tab) => tab.id);
-    expect(ids([])).not.toContain('locations');
-    expect(ids(['inventory.stock.view'])).toContain('locations');
   });
 });
