@@ -1,4 +1,5 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
+import { LOSS_BEARERS, LOSS_REASON_CODES } from './reason-codes';
 import { REFUND_REASONS } from './refund';
 
 // The audited actions of refunds (tax step 3; Hassan M3), registered at boot with
@@ -19,6 +20,10 @@ export const RefundRequested = defineAuditAction({
     /** Null when the refund reverses no tax (a zero rate). */
     tax: auditField.optional(auditField.money()),
     reason: auditField.enumOf(REFUND_REASONS),
+    /** Who bears the loss: the seller (reversed in its ledger) or the platform (nothing posted). */
+    lossBearer: auditField.enumOf(LOSS_BEARERS),
+    /** Null for a seller-borne refund; the closed-list code when the platform bears it. */
+    lossReasonCode: auditField.optional(auditField.enumOf(LOSS_REASON_CODES)),
     lineCount: auditField.integer(),
   },
 });

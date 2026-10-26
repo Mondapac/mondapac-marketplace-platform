@@ -97,6 +97,14 @@ export class MondapacDriveCarrier implements CarrierGateway {
         dropoff: stopBody(request.dropoff),
         parcel: request.parcel,
         mode: request.mode,
+        ...(request.window === null
+          ? {}
+          : {
+              scheduledWindow: {
+                start: request.window.start.toString(),
+                end: request.window.end.toString(),
+              },
+            }),
       },
       'book',
     );

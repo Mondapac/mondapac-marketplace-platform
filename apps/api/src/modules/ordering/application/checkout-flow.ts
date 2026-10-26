@@ -22,6 +22,11 @@ import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
+  DEFAULT_DELIVERY_METHOD,
+  parseDeliveryChoices,
+  type DeliveryChoice,
+} from '../domain/delivery-method';
+import {
   addShipping,
   cancelOrder,
   parseSellerNotes,
@@ -31,6 +36,7 @@ import {
   type ShipTo,
 } from '../domain/order';
 import type { CheckoutGateway } from './ports/checkout-gateway';
+import type { DeliveryMethodPolicy } from './ports/delivery-method-policy';
 import type { OrderLabels } from './ports/order-labels';
 import type { OrderTaxCategories } from './ports/order-tax-categories';
 import type { OrderingPolicy } from './ports/ordering-policy';
@@ -62,6 +68,8 @@ export interface OrderingDependencies {
   readonly clock: Clock;
   /** Display names for the panel order pages (advisory; never inside a unit). */
   readonly labels: OrderLabels;
+  /** Which delivery methods a seller order may use (the seam for the platform and seller settings). */
+  readonly deliveryMethods: DeliveryMethodPolicy;
 }
 
 export type StartCheckoutFailure =
@@ -74,6 +82,11 @@ export type StartCheckoutFailure =
   | { readonly code: 'ordering.address-not-found' }
   /** The Market does not deliver to the chosen address's postcode (ServiceArea config). */
   | { readonly code: 'ordering.outside-delivery-area' }
+  /** A seller of the cart does not offer the delivery method the buyer chose for it. */
+  | {
+      readonly code: 'ordering.delivery-method-unavailable';
+      readonly methodSellerIds: readonly Id<'Seller'>[];
+    }
   | { readonly code: 'ordering.cart-empty' }
   | { readonly code: 'ordering.cart-not-purchasable'; readonly lineIndexes: readonly number[] }
   | { readonly code: 'ordering.check-unavailable' }
@@ -136,6 +149,11 @@ async function reserveWithRetry(
 export interface StartCheckoutInput {
   readonly addressId: unknown;
   readonly sellerNotes?: unknown;
+  /**
+   * The buyer's delivery method per seller: `{ [sellerId]: { method, windowStart?, windowEnd? } }`.
+   * A seller without an entry gets {@link DEFAULT_DELIVERY_METHOD} until the basket asks.
+   */
+  readonly deliveryMethods?: unknown;
 }
 
 /**
@@ -207,6 +225,8 @@ export async function startCheckout(
   if (!notes.ok) {
     return err({ code: 'validation.failed', fields: [{ path: notes.path, code: notes.code }] });
   }
+  const choices = parseDeliveryChoices(input?.deliveryMethods, deps.clock.now());
+  if (!choices.ok) return err({ code: 'validation.failed', fields: choices.fields });
   const address = await readShipTo(deps, context, input?.addressId);
   if (!address.ok) return address;
   const read = await deps.cart.checkoutLines(context);
@@ -235,6 +255,19 @@ export async function startCheckout(
         ? { code: 'access.denied' }
         : { code: 'ordering.check-unavailable' },
     );
+  }
+  // The buyer's method per seller (a choice for a seller not in the cart is dropped), checked
+  // against the delivery-method policy before anything is reserved.
+  const choiceOf = (sellerId: Id<'Seller'>): DeliveryChoice =>
+    choices.choices.get(sellerId) ?? { method: DEFAULT_DELIVERY_METHOD, window: null };
+  const refused: Id<'Seller'>[] = [];
+  for (const { sellerId } of planned.plan.sellers) {
+    if (!(await deps.deliveryMethods.allows(context, sellerId, choiceOf(sellerId).method))) {
+      refused.push(sellerId);
+    }
+  }
+  if (refused.length > 0) {
+    return err({ code: 'ordering.delivery-method-unavailable', methodSellerIds: refused });
   }
   const priced = addShipping(planned.plan, fees.value.fees);
   if (!priced.ok) {
@@ -447,6 +480,10 @@ export async function startCheckout(
       deliveredAt: null,
       inventoryRecordedAt: null,
       ledgerState: 'pending' as const,
+      deliveryMethod: choiceOf(seller.sellerId).method,
+      deliveryWindow: choiceOf(seller.sellerId).window,
+      readyAt: null,
+      deliveryAttention: null,
     })),
     lines,
   };

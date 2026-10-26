@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { SlideSummaryView } from '../application/use-cases/list-slides.use-case';
+import type { SlideOrderView } from '../application/use-cases/view-slide-order.use-case';
 import type { SlideCopyPackage } from '../application/use-cases/prepare-slide-copy.use-case';
 import type {
   SlideDetailView,
@@ -117,6 +118,50 @@ export class SlideOrderBody {
   @ApiProperty({ type: [String], description: 'The saved order, first shown first.' })
   slideIds!: string[];
 }
+
+export class SlideOrderEntryBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() internalName!: string;
+  @ApiProperty({ enum: ['live', 'scheduled'] }) status!: string;
+  @ApiProperty() pinned!: boolean;
+  @ApiProperty({ format: 'date-time' }) startsAt!: string;
+  @ApiProperty({ format: 'date-time' }) endsAt!: string;
+  @ApiProperty({
+    description:
+      'True for a live slide past the position maximum of live slides, counted in this order at ' +
+      'the time of the request. A scheduled slide is never over the limit.',
+  })
+  overLimit!: boolean;
+}
+
+export class SlideOrderReadBody {
+  @ApiProperty() position!: string;
+  @ApiProperty() scope!: string;
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) scopeId!: string | null;
+  @ApiProperty({ description: 'Most slides a buyer sees at this position at once.' })
+  maxActive!: number;
+  @ApiProperty({
+    type: [SlideOrderEntryBody],
+    description: 'Pinned first, then the saved order: first shown first.',
+  })
+  slides!: SlideOrderEntryBody[];
+}
+
+export const slideOrderReadBody = (view: SlideOrderView): SlideOrderReadBody => ({
+  position: view.position,
+  scope: view.scope,
+  scopeId: view.scopeId,
+  maxActive: view.maxActive,
+  slides: view.slides.map((slide) => ({
+    id: slide.id,
+    internalName: slide.internalName,
+    status: slide.status,
+    pinned: slide.pinned,
+    startsAt: slide.startsAt.toString(),
+    endsAt: slide.endsAt.toString(),
+    overLimit: slide.overLimit,
+  })),
+});
 
 const iso = (value: { toString(): string } | null): string | null =>
   value === null ? null : value.toString();

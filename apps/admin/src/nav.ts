@@ -1,22 +1,49 @@
 import type { NavConfig } from '@mondapac/ui';
 
 // Admin nav config (panels IA 3.1). Items of a phase that has not shipped are absent, not
-// disabled; each item is added with its screen.
+// disabled; each item is added with its screen. Items sit under topic groups; a group with one
+// visible item shows that item flat (navSections).
 export const adminNav: NavConfig = {
+  groups: [
+    { id: 'reviews', labelKey: 'nav.group.reviews', icon: 'shield-check' },
+    { id: 'content', labelKey: 'nav.group.content', icon: 'layout' },
+    { id: 'sellers', labelKey: 'nav.group.sellers', icon: 'store' },
+    { id: 'orders', labelKey: 'nav.group.orders', icon: 'clipboard' },
+    { id: 'money', labelKey: 'nav.group.money', icon: 'wallet' },
+    { id: 'platform', labelKey: 'nav.group.platform', icon: 'briefcase' },
+  ],
   items: [
     { id: 'home', icon: 'home', labelKey: 'nav.home', href: '/' },
     {
-      id: 'customers',
-      icon: 'users',
-      labelKey: 'nav.customers',
-      href: '/customers',
-      anyOf: ['identity.customer-account.view'],
+      id: 'offer-reviews',
+      icon: 'inbox',
+      labelKey: 'nav.offer-reviews',
+      href: '/offer-reviews',
+      group: 'reviews',
+      anyOf: ['catalog.product.view'],
+    },
+    {
+      id: 'price-holds',
+      icon: 'clock',
+      labelKey: 'nav.price-holds',
+      href: '/price-holds',
+      group: 'reviews',
+      anyOf: ['pricing.price-hold.view'],
+    },
+    {
+      id: 'content',
+      icon: 'layout',
+      labelKey: 'nav.content',
+      href: '/content',
+      group: 'content',
+      anyOf: ['storefront.slide.read'],
     },
     {
       id: 'sellers',
       icon: 'store',
       labelKey: 'nav.sellers',
       href: '/sellers',
+      group: 'sellers',
       anyOf: ['sellers.seller.view'],
     },
     {
@@ -24,49 +51,40 @@ export const adminNav: NavConfig = {
       icon: 'receipt',
       labelKey: 'nav.orders',
       href: '/orders',
+      group: 'orders',
       anyOf: ['ordering.order.view'],
     },
     {
-      id: 'price-holds',
-      icon: 'clock',
-      labelKey: 'nav.price-holds',
-      href: '/price-holds',
-      anyOf: ['pricing.price-hold.view'],
-    },
-    {
-      id: 'offer-reviews',
-      icon: 'inbox',
-      labelKey: 'nav.offer-reviews',
-      href: '/offer-reviews',
-      anyOf: ['catalog.product.view'],
+      id: 'customers',
+      icon: 'users',
+      labelKey: 'nav.customers',
+      href: '/customers',
+      group: 'orders',
+      anyOf: ['identity.customer-account.view'],
     },
     {
       id: 'payout-accounts',
       icon: 'wallet',
       labelKey: 'nav.payout-accounts',
       href: '/payout-accounts',
+      group: 'money',
       anyOf: ['payments.connected-account.view'],
-    },
-    {
-      id: 'content',
-      icon: 'layout',
-      labelKey: 'nav.content',
-      href: '/content',
-      anyOf: ['storefront.slide.read'],
-    },
-    {
-      id: 'settings',
-      icon: 'sliders',
-      labelKey: 'nav.settings',
-      href: '/settings',
-      anyOf: ['notifications.support-contact.view', 'assistant.settings.view'],
     },
     {
       id: 'team',
       icon: 'key',
       labelKey: 'nav.team',
       href: '/team',
+      group: 'platform',
       anyOf: ['identity.admin-account.view'],
+    },
+    {
+      id: 'settings',
+      icon: 'sliders',
+      labelKey: 'nav.settings',
+      href: '/settings',
+      group: 'platform',
+      anyOf: ['notifications.support-contact.view', 'assistant.settings.view'],
     },
   ],
 };

@@ -42,6 +42,17 @@ export const STOREFRONT_PAGE_ARCHIVE = definePermission('storefront', {
   protected: true,
 });
 
+/**
+ * See how often each block of a page was shown and clicked (personalization 1d-3): aggregate
+ * daily numbers only, never who saw or clicked. The counts live in engagement, which checks this
+ * key; a read key, so it is not protected.
+ */
+export const STOREFRONT_PAGE_STATS = definePermission('storefront', {
+  key: 'storefront.page.stats',
+  scope: 'platform',
+  protected: false,
+});
+
 /** Change the navigation draft: the left-rail items and the Browse drawer's categories. */
 export const STOREFRONT_NAVIGATION_EDIT = definePermission('storefront', {
   key: 'storefront.navigation.edit',
@@ -90,6 +101,7 @@ export const STOREFRONT_PERMISSIONS = declarePermissions('storefront', [
   STOREFRONT_PAGE_CREATE,
   STOREFRONT_PAGE_PUBLISH,
   STOREFRONT_PAGE_ARCHIVE,
+  STOREFRONT_PAGE_STATS,
   STOREFRONT_NAVIGATION_EDIT,
   STOREFRONT_NAVIGATION_APPROVE,
   STOREFRONT_SLIDE_READ,
