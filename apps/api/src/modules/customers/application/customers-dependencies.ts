@@ -1,5 +1,8 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { AccountDeletionSettingsRepository } from './ports/account-deletion-settings.repository';
 import type { AddressCipher } from './ports/address-cipher';
 import type { AddressPolicy } from './ports/address-policy';
 import type { AddressRepository } from './ports/address.repository';
@@ -12,4 +15,7 @@ export interface CustomersDependencies {
   readonly policy: AddressPolicy;
   readonly ids: IdGenerator;
   readonly clock: Clock;
+  readonly accountDeletionSettings: AccountDeletionSettingsRepository;
+  readonly audit: AuditWriter;
+  readonly outbox: OutboxWriter;
 }

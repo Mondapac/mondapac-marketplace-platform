@@ -545,6 +545,22 @@
     }
   },
   {
+    "action": "customers.account-deletion-settings.changed",
+    "targetType": "customers.account-deletion-settings",
+    "targetId": "enumOf(account-deletion-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "boolean",
+      "version": "integer",
+      "waitingPeriodDays": "integer"
+    },
+    "after": {
+      "enabled": "boolean",
+      "version": "integer",
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
     "action": "identity.account-role.assigned",
     "targetType": "identity.account",
     "targetId": "id",

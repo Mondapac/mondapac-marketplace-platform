@@ -24,3 +24,56 @@ model CustomersAddress {
   @@map("addresses")
   @@schema("customers")
 }
+
+/// One version of a Market's buyer account deletion setting (package 5a). Insert-only: the setting
+/// in force is the row with the highest version, and the rows before it are the change history
+/// (who, when, what, why).
+model CustomersAccountDeletionSettings {
+  marketId          String   @map("market_id") @db.VarChar(8)
+  /// 1 for the first admin change, +1 for each later one. The primary key refuses two admins
+  /// saving from the same version: the second one is told to reload.
+  version           Int
+  tenantId          String   @map("tenant_id")
+  /// Whether a buyer may start a deletion request.
+  enabled           Boolean
+  /// Days a request waits before it is carried out; 7 to 90.
+  waitingPeriodDays Int      @map("waiting_period_days") @db.SmallInt
+  /// Why the admin made the change: 1 to 500 characters of one line of plain text.
+  reason            String   @db.VarChar(500)
+  changedAt         DateTime @map("changed_at") @db.Timestamptz(6)
+  /// The admin account that made the change (a plain id, no foreign key).
+  changedBy         String   @map("changed_by") @db.Uuid
+
+  @@id([marketId, version])
+  @@map("account_deletion_settings")
+  @@schema("customers")
+}
+
+/// Customers' outbox: `customers.account-deletion-settings-changed.v1`.
+model CustomersOutbox {
+  /// UUIDv7 stamped by the outbox writer.
+  eventId          String    @id @map("event_id") @db.Uuid
+  /// "customers.<subject>-<verb>.v<N>"; the CHECK refuses another module's type.
+  type             String
+  /// The instant the use case took from Clock (UTC).
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  /// Market of the unit that wrote the event (ADR-0003); stamped by the writer.
+  marketId         String    @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); stamped by the writer, no database default.
+  tenantId         String    @map("tenant_id")
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  /// The aggregate's version after the change; unique per aggregate (P 10).
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  /// The consumed event that caused this one, or null.
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// Set by the relay when the event was handed to the bus; the only column that changes.
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6)
+
+  /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
+  @@unique([marketId, aggregateId, aggregateVersion])
+  @@map("outbox")
+  @@schema("customers")
+}

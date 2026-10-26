@@ -178,6 +178,11 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "customers.update-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  {
+    "name": "customers.view-account-deletion-availability",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "engagement.forget-account", "rule": "system" },
   { "name": "engagement.purge-expired-block-counts", "rule": "system" },
   { "name": "engagement.purge-expired-events", "rule": "system" },

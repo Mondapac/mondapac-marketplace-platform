@@ -4,6 +4,7 @@ import {
   type EffectiveKeyResolver,
 } from '../../src/modules/identity/application/access/effective-keys';
 import { ASSISTANT_PERMISSIONS } from '../../src/modules/assistant/contracts/permissions';
+import { CUSTOMERS_PERMISSIONS } from '../../src/modules/customers/contracts/permissions';
 import { CATALOG_PERMISSIONS } from '../../src/modules/catalog/contracts/permissions';
 import { CERTIFICATION_PERMISSIONS } from '../../src/modules/certification/contracts/permissions';
 import { COMMISSION_PAYOUTS_PERMISSIONS } from '../../src/modules/commission-payouts/contracts/permissions';
@@ -40,6 +41,7 @@ export function realPermissionRegistry(): PermissionRegistry {
   registry.register('commission-payouts', COMMISSION_PAYOUTS_PERMISSIONS);
   registry.register('notifications', NOTIFICATIONS_PERMISSIONS);
   registry.register('assistant', ASSISTANT_PERMISSIONS);
+  registry.register('customers', CUSTOMERS_PERMISSIONS);
   registry.register('tax', TAX_PERMISSIONS);
   registry.register('wallet', WALLET_PERMISSIONS);
   registry.register('storefront', STOREFRONT_PERMISSIONS);

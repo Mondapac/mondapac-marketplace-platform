@@ -7,6 +7,11 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import type { AddressRecord } from '../../src/modules/customers/application/ports/address.repository';
+import {
+  MemoryAccountDeletionSettings,
+  RecordingAudit,
+  RecordingOutbox,
+} from '../../src/modules/customers/application/testing/in-memory-account-deletion';
 import { ReversibleAddressCipher } from '../../src/modules/customers/application/testing/in-memory-address-book';
 import { CreateAddress } from '../../src/modules/customers/application/use-cases/create-address.use-case';
 import { ListAddresses } from '../../src/modules/customers/application/use-cases/list-addresses.use-case';
@@ -189,6 +194,9 @@ describe.each(TEST_MARKETS)('customer address store in market %s (database)', (c
       policy: new ConfigAddressPolicy(markets),
       ids,
       clock,
+      accountDeletionSettings: new MemoryAccountDeletionSettings(),
+      audit: new RecordingAudit(),
+      outbox: new RecordingOutbox(),
     };
     const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
     const create = new CreateAddress(gate, deps);

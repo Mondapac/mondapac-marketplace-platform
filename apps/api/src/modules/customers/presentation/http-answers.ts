@@ -10,6 +10,8 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'validation.failed': 400,
   'customers.address-not-found': 404,
   'customers.address-limit-reached': 422,
+  'customers.conflict': 409,
+  'customers.account-deletion-disabled': 403,
   'customers.unavailable': 503,
 });
 
@@ -29,12 +31,24 @@ export function closedBody(
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     return fail(400, 'validation.failed', { fields: [{ path: '', code: 'type' }] });
   }
-  const unknown = Object.keys(body)
+  return closedObject(body, allowed, '');
+}
+
+/** A nested object of a body, closed the same way; paths are prefixed with `prefix`. */
+export function closedObject(
+  value: unknown,
+  allowed: readonly string[],
+  prefix: string,
+): HttpException | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return fail(400, 'validation.failed', { fields: [{ path: prefix, code: 'type' }] });
+  }
+  const unknown = Object.keys(value)
     .filter((key) => !allowed.includes(key))
     .sort()
     .slice(0, 10)
     .map((key) => ({
-      path: Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�'),
+      path: `${prefix === '' ? '' : `${prefix}.`}${Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�')}`,
       code: 'unknown-field',
     }));
   return unknown.length > 0 ? fail(400, 'validation.failed', { fields: unknown }) : null;
