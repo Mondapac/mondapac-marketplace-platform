@@ -4,8 +4,8 @@ import type { ReactNode } from 'react';
 // grid, 1.75 stroke, lucide-like shapes. The size is the `size/icon` token (18 px, 20 px in the
 // touch density) and the colour is inherited, so a caller sets it with a text colour token.
 // Add an icon here, never inline an SVG in a page; `tag`, `receipt`, `chevron-down`, `user`, `log-out`, `bell`,
-// `volume`, `volume-off`, `layout` and `link` are new in code and wait to be back-ported to the Figma library
-// (speed mode).
+// `volume`, `volume-off`, `layout`, `link`, `chevron-up` and `pin` are new in code and wait to be back-ported to the
+// Figma library (speed mode).
 const ICONS = {
   home: <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
   inbox: (
@@ -220,6 +220,13 @@ const ICONS = {
     <>
       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </>
+  ),
+  'chevron-up': <path d="m18 15-6-6-6 6" />,
+  pin: (
+    <>
+      <path d="M12 17v5" />
+      <path d="M9 3h6l-1 7 4 3H6l4-3z" />
     </>
   ),
   'log-out': (

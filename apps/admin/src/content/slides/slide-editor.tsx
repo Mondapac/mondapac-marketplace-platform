@@ -1,14 +1,11 @@
 'use client';
 
 import {
-  BackLink,
-  Badge,
   Banner,
   Button,
   CheckboxRow,
   FormActionBar,
   Select,
-  Tabs,
   TextAreaField,
   TextField,
 } from '@mondapac/ui';
@@ -34,7 +31,8 @@ import {
   type FormField,
   type SlideFormState,
 } from './slide-form.ts';
-import { STATUS_TONE, usePositionLabel } from './slide-labels.tsx';
+import { SlideEditorHeader } from './slide-editor-header.tsx';
+import { usePositionLabel } from './slide-labels.tsx';
 import { SlidePreview } from './slide-preview.tsx';
 import {
   ALT_MAX,
@@ -45,12 +43,10 @@ import {
   IMAGE_KEYS,
   LINK_TYPES,
   NAME_MAX,
-  NEW_SLIDE_PATH,
   SLIDE_KINDS,
   SLIDES_API_PATH,
   SLIDES_PATH,
   TITLE_MAX,
-  isKnownStatus,
   type SlideDetail,
 } from './slide-types.ts';
 
@@ -104,7 +100,6 @@ export function SlideEditor({
   readonly zone: string;
 }) {
   const t = useTranslations('content.slides.editor');
-  const tstatus = useTranslations('content.slides.status');
   const locale = useLocale();
   const router = useRouter();
   const positionLabel = usePositionLabel();
@@ -242,7 +237,6 @@ export function SlideEditor({
     setSaved(null);
   }
 
-  const status = detail?.status ?? null;
   const version = detail === null ? null : currentVersion(detail);
   const span =
     version === null
@@ -253,52 +247,9 @@ export function SlideEditor({
         });
   const positions = [...new Set((version?.placements ?? []).map((p) => p.position))];
 
-  const title = detail === null ? t('title-new') : detail.internalName;
-  const tabHref = detail === null ? NEW_SLIDE_PATH : `${SLIDES_PATH}/${detail.id}`;
-
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col items-start gap-1">
-        <BackLink href={SLIDES_PATH} label={t('back')} />
-        <h1 className="break-words text-2xl font-semibold">{title}</h1>
-        {detail === null ? null : (
-          <div
-            className="flex flex-wrap items-center gap-2"
-            aria-label={t('versions')}
-            role="group"
-          >
-            {detail.live !== null || status === 'archived' ? (
-              <Badge
-                tone={status !== null && isKnownStatus(status) ? STATUS_TONE[status] : 'neutral'}
-              >
-                {detail.live === null
-                  ? tstatus('archived')
-                  : t('version', {
-                      status:
-                        status !== null && isKnownStatus(status)
-                          ? tstatus(status)
-                          : tstatus('unknown'),
-                      version: detail.live.versionNo,
-                    })}
-              </Badge>
-            ) : (
-              <Badge tone="neutral">{t('not-live')}</Badge>
-            )}
-            {detail.draft === null ? null : (
-              <Badge tone={detail.pending ? 'attention' : 'neutral'}>
-                {t(detail.pending ? 'draft-pending' : 'draft-open', {
-                  version: detail.draft.versionNo,
-                })}
-              </Badge>
-            )}
-          </div>
-        )}
-      </div>
-      <Tabs
-        label={t('tabs')}
-        activeId="content"
-        items={[{ id: 'content', href: tabHref, label: t('tab-content') }]}
-      />
+      <SlideEditorHeader slide={detail} tab="content" />
       {!canEdit ? <Banner tone="info">{t('read-only')}</Banner> : null}
       {canEdit && archived ? <Banner tone="info">{t('archived')}</Banner> : null}
       {creating && canEdit ? (
