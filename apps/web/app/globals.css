@@ -4271,35 +4271,48 @@ svg {
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-radius-tile);
 }
-.cmob summary {
+.cmob-btn {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  width: 100%;
   min-height: 52px;
-  padding: 0 16px;
+  padding-inline: 16px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
   font-weight: 700;
+  text-align: start;
   cursor: pointer;
-  list-style: none;
 }
-.cmob summary::-webkit-details-marker {
-  display: none;
+.cmob-t {
+  display: grid;
 }
-.cmob summary span {
+.cmob-t small {
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--fs));
+  font-weight: 600;
+}
+.cmob-v {
   display: flex;
   align-items: center;
   gap: 6px;
   color: var(--sf-teal);
 }
-.cmob summary b {
+.cmob-v b {
   color: var(--sf-ink);
 }
-.cmob summary .ico {
+.cmob-v .ico {
   width: 18px;
   height: 18px;
 }
-.cmob[open] summary .ico {
+.cmob[data-open] .cmob-v .ico {
   transform: rotate(180deg);
+}
+.cmob .cs[hidden] {
+  display: none;
 }
 .cmob .cs {
   border: 0;
@@ -4784,7 +4797,7 @@ svg {
   width: 100%;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .cmob summary .ico {
+  .cmob-v .ico {
     transition: transform 0.15s;
   }
 }
@@ -9304,4 +9317,97 @@ button.login {
 :root:lang(ar) {
   --sf-font-head: 'Plus Jakarta Sans', 'Noto Sans Arabic', system-ui, sans-serif;
   --sf-font-body: 'Figtree', 'Noto Sans Arabic', system-ui, sans-serif;
+}
+
+/* Checkout focus mode (M2, phone and tablet only): on /checkout and /checkout/payment the tab bar
+   is not rendered, the footer and the full header give way to a simple header, and the Pay bar
+   stays at the bottom. From 900px the pages are unchanged. All spacing is logical (RTL-safe). */
+.cfh,
+.paybar {
+  display: none;
+}
+@media (max-width: 899.98px) {
+  .frame[data-focus] .top,
+  .frame[data-focus] .foot {
+    display: none;
+  }
+  .cfh {
+    display: block;
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+    background: var(--sf-white);
+    border-bottom: 1px solid var(--sf-line);
+  }
+  .cfh-in {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 12px;
+    min-height: 56px;
+    padding-block: 6px;
+    padding-inline: var(--gl) var(--gr);
+  }
+  .cfh-secure {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    color: var(--sf-slate);
+    font: 700 calc(13px * var(--fs)) / 1.2 var(--sf-font-body);
+    white-space: nowrap;
+  }
+  .cfh-secure .ico {
+    width: 16px;
+    height: 16px;
+    color: var(--sf-teal);
+  }
+  .cfh-back {
+    margin-inline-start: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 44px;
+    padding-inline: 8px;
+    color: var(--sf-teal);
+    font: 700 calc(14px * var(--fs)) / 1.2 var(--sf-font-body);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .cfh-back .ico {
+    width: 18px;
+    height: 18px;
+  }
+  /* Narrow phones: the lock label wraps to a slim second line when it does not fit beside the logo and the link. */
+  .frame[data-focus] .logo {
+    font-size: 18px;
+  }
+  .paybar {
+    display: grid;
+    gap: 6px;
+    position: sticky;
+    bottom: var(--sf-dock-height);
+    z-index: 4;
+    margin-inline: calc(-1 * var(--gl)) calc(-1 * var(--gr));
+    padding-block: 10px calc(10px + env(safe-area-inset-bottom, 0px));
+    padding-inline: var(--gl) var(--gr);
+    background: var(--sf-white);
+    border-top: 1px solid var(--sf-line);
+    box-shadow: 0 -4px 16px var(--sf-shadow-soft);
+  }
+  .paybar small {
+    color: var(--sf-slate);
+    font-size: calc(12px * var(--fs));
+  }
+  .paybar .btn {
+    min-height: 48px;
+  }
+  /* A field brought into view clears the Pay bar. */
+  .cwrap .fld input {
+    scroll-margin-block: 96px;
+  }
+}
+/* The on-screen keyboard is open (shell/use-keyboard.ts): the bar would sit on the field. */
+:root[data-keyboard='open'] .paybar {
+  display: none;
 }
