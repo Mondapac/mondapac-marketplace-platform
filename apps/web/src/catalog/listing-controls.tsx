@@ -108,6 +108,7 @@ export function ListingFilters({ kind = 'category', path, state, facets, total }
             )}
           </>
         )}
+        <SortSelect kind={kind} path={path} state={state} inBar />
         <button
           className="chip all"
           type="button"
@@ -212,11 +213,15 @@ export function SortSelect({
   kind = 'category',
   path,
   state,
-}: Pick<Props, 'kind' | 'path' | 'state'>) {
+  inBar = false,
+}: Pick<Props, 'kind' | 'path' | 'state'> & {
+  /** The copy inside the quick-filter bar, which only the phone shows (the result bar has the other). */
+  readonly inBar?: boolean;
+}) {
   const t = useTranslations('catalog');
   const { current, apply } = useApply(path, state);
   return (
-    <label className="sortw">
+    <label className={inBar ? 'sortw in-bar' : 'sortw'}>
       {t('sort-by')}
       <span className="sel">
         <select

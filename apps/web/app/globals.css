@@ -9305,3 +9305,149 @@ button.login {
   --sf-font-head: 'Plus Jakarta Sans', 'Noto Sans Arabic', system-ui, sans-serif;
   --sf-font-body: 'Figtree', 'Noto Sans Arabic', system-ui, sans-serif;
 }
+
+/* Buyer mobile M3: the phone home search field, the sticky filter bar and "Load more".
+   Widths are the canonical breakpoints (shell/breakpoints.ts); logical properties throughout. */
+.hs,
+.hs-icon,
+.lm,
+.sortw.in-bar {
+  display: none;
+}
+@media (max-width: 699.98px) {
+  /* Home search: sticky under the header; collapsing moves it behind the header with a
+     transform, so the page below never shifts. */
+  .hs {
+    display: block;
+    position: sticky;
+    z-index: 4;
+    top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px));
+    margin-block-end: -16px;
+    margin-inline: calc(var(--gl) * -1) calc(var(--gr) * -1);
+    padding-block: 8px;
+    padding-inline: var(--gl) var(--gr);
+    background: var(--sf-white);
+  }
+  .hs-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    padding-block: 0;
+    padding-inline: 16px;
+    border: 1.5px solid transparent;
+    border-radius: var(--sf-radius-pill);
+    background: var(--sf-surface);
+    color: var(--sf-slate);
+    font-size: 16px;
+    text-align: start;
+  }
+  .hs-field span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  html[data-hsearch='collapsed'] .hs {
+    transform: translateY(-100%);
+    visibility: hidden;
+  }
+  html[data-hsearch='collapsed'] .hs-icon {
+    display: inline-grid;
+  }
+  /* With the icon beside it the delivery pill gives way (ellipsis) instead of pushing into the logo. */
+  html[data-hsearch='collapsed'] .acts {
+    justify-self: stretch;
+    justify-content: flex-end;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .hs {
+      transition:
+        transform 0.2s ease,
+        visibility 0s;
+    }
+    html[data-hsearch='collapsed'] .hs {
+      transition:
+        transform 0.2s ease,
+        visibility 0s 0.2s;
+    }
+  }
+
+  /* A sticky bar needs a block or flex parent (a grid item cannot leave its row). */
+  .main:has(> .hs),
+  .main:has(> .tools),
+  .sr-panel:has(> .tools):not([hidden]) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Listing: the filter and sort bar sticks under the header; its chips scroll sideways. */
+  .tools {
+    position: sticky;
+    z-index: 3;
+    top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px));
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    margin-inline: calc(var(--gl) * -1) calc(var(--gr) * -1);
+    padding-block: 8px;
+    padding-inline: var(--gl) var(--gr);
+    background: var(--sf-white);
+    border-block-end: 1px solid var(--sf-line);
+  }
+  .tools::-webkit-scrollbar {
+    display: none;
+  }
+  .tools > * {
+    flex: none;
+  }
+  .tools .lbl {
+    display: none;
+  }
+  .tools .chip {
+    min-height: 44px;
+  }
+  .sortw.in-bar {
+    display: flex;
+    order: -1;
+  }
+  .sortw.in-bar select {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .rbar .sortw {
+    display: none;
+  }
+  .main:has(.lm-wrap[data-lm='on']) .rbar {
+    display: none;
+  }
+  .fchips a {
+    min-height: 44px;
+  }
+
+  /* Load more replaces the numbered pager once the script runs; without it the pager stays. */
+  .lm-wrap[data-lm='on'] .lm {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    margin-block-start: 24px;
+  }
+  .lm-wrap[data-lm='on'] .pager {
+    display: none;
+  }
+  .lm-count {
+    color: var(--sf-slate);
+  }
+  .lm-btn {
+    min-height: 48px;
+    min-width: min(100%, 240px);
+    padding-inline: 24px;
+  }
+  .lm-error {
+    color: var(--sf-error-ink);
+    font-weight: 600;
+    text-align: center;
+  }
+}

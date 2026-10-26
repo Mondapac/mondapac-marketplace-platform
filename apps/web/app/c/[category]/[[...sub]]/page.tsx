@@ -7,6 +7,7 @@ import {
   activeFilterCount,
   listingHref,
   listingStateOf,
+  throughOf,
   withoutFilters,
   withPage,
 } from '../../../../src/catalog/listing-state.ts';
@@ -23,6 +24,7 @@ import {
   ResultsHead,
   type Crumb,
 } from '../../../../src/catalog/results.tsx';
+import { findProductsThrough } from '../../../../src/catalog/through.ts';
 import {
   LISTING_PAGE_SIZE,
   findProducts,
@@ -80,9 +82,11 @@ export default async function CategoryPage({ params, searchParams }: Props) {
   // or banners, so those controls are left out and a filter left in the URL matches nothing.
   const live = listingIsLive();
   const state = listingStateOf(query);
+  // A phone that pressed Load more has `?through=N`: pages `page` to N are one list.
+  const through = throughOf(query, state.page);
   const scope = { category: category.code, ...(child ? { subcategory: child.code } : {}) };
   const [result, facets, banner] = await Promise.all([
-    findProducts({ ...scope, ...state, pageSize: LISTING_PAGE_SIZE }),
+    findProductsThrough({ ...scope, ...state, pageSize: LISTING_PAGE_SIZE }, through),
     listingFacets(scope),
     listingBanner(category.code),
   ]);
@@ -118,7 +122,12 @@ export default async function CategoryPage({ params, searchParams }: Props) {
           <ListingFilters path={path} state={state} facets={facets} total={total} />
           <ActiveFilters path={path} state={state} facets={facets} />
           <div className="rbar">
-            <ResultCount page={state.page} pageSize={LISTING_PAGE_SIZE} total={total} />
+            <ResultCount
+              page={state.page}
+              pageSize={LISTING_PAGE_SIZE}
+              total={total}
+              through={through}
+            />
             <SortSelect path={path} state={state} />
           </div>
         </>
@@ -126,6 +135,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
       <ProductResults
         result={result}
         hrefFor={(page) => listingHref(path, withPage(state, page))}
+        loadMore={{ scope, state, path, through }}
         {...(live ? {} : { pager: <NumberedPager path={path} state={state} pages={pages} /> })}
         empty={
           filtered ? (
