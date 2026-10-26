@@ -188,6 +188,7 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
     },
     parcel: configured.parcel,
     mode: configured.mode,
+    window: null,
   };
 
   beforeAll(() => drive.start());
@@ -234,6 +235,29 @@ describe.each([['AU'], ['ZZ']] as const)('MondapacDriveCarrier in market %s', (c
         mode: configured.mode,
       },
     });
+  });
+
+  it('sends the buyer window of a scheduled booking as UTC instants, and none otherwise', async () => {
+    const start = Temporal.Instant.from('2026-10-26T01:00:00Z');
+    const end = Temporal.Instant.from('2026-10-26T03:00:00Z');
+    expect(
+      (
+        await carrier.book(market, {
+          ...request,
+          externalReference: '01990000-0000-7000-8000-0000000000a2',
+          mode: 'scheduled',
+          window: { start, end },
+        })
+      ).ok,
+    ).toBe(true);
+    expect(drive.seen[0]!.body).toMatchObject({
+      mode: 'scheduled',
+      scheduledWindow: { start: '2026-10-26T01:00:00Z', end: '2026-10-26T03:00:00Z' },
+    });
+
+    drive.seen.length = 0;
+    expect((await carrier.book(market, request)).ok).toBe(true);
+    expect(drive.seen[0]!.body).not.toHaveProperty('scheduledWindow');
   });
 
   it('keeps a quote for five minutes, so a repeated checkout asks Drive once', async () => {

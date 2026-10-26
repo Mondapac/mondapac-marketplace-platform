@@ -1,7 +1,7 @@
 // Answers of the seller order routes (apps/api seller-orders.controller.ts).
 
 export const ORDER_VIEW_PERMISSION = 'ordering.seller-order.view';
-export const ORDER_SHIP_PERMISSION = 'ordering.seller-order.ship';
+export const ORDER_READY_PERMISSION = 'ordering.seller-order.mark-ready';
 export const ORDER_DELIVER_PERMISSION = 'ordering.seller-order.mark-delivered';
 export const OWN_FEE_PERMISSION = 'shipping.own-fee.view';
 
@@ -12,6 +12,9 @@ export interface Money {
 }
 
 export type Fulfilment = 'to-ship' | 'shipped' | 'delivered';
+
+/** What the customer chose at checkout; the seller cannot change it. */
+export type DeliveryMethod = 'pickup' | 'instant' | 'same_day' | 'scheduled';
 
 export interface OrderLineView {
   readonly lineId: string;
@@ -39,6 +42,14 @@ export interface SellerOrderView {
   readonly trackingRef: string | null;
   readonly shippedAt: string | null;
   readonly deliveredAt: string | null;
+  readonly deliveryMethod: DeliveryMethod;
+  /** The customer's window for a scheduled delivery (UTC instants); null for any other method. */
+  readonly deliveryWindowStart: string | null;
+  readonly deliveryWindowEnd: string | null;
+  /** When this shop said the order is ready; null until then. */
+  readonly readyAt: string | null;
+  /** Set when the platform must arrange the delivery itself; the shop does nothing. */
+  readonly deliveryAttention: 'no-carrier' | null;
   readonly lines: readonly OrderLineView[];
 }
 

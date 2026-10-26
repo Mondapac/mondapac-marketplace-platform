@@ -64,6 +64,7 @@ const id = <T extends string>(n: number): Id<T> => {
 };
 const ORDER = id<'Order'>(0x0a);
 const SELLER_ORDER = id<'SellerOrder'>(0x5a);
+const SELLER_ORDER_2 = id<'SellerOrder'>(0x5b);
 const SELLER = id<'Seller'>(0x51);
 const DELIVERY = '01990000-0000-7000-8000-0000000000d1';
 
@@ -220,6 +221,7 @@ describe.each([
       sellerOrderId: SELLER_ORDER,
       sellerId: SELLER,
       dropoff: dropoff(),
+      service: { method: 'instant', window: null },
       ...overrides,
     });
 
@@ -232,7 +234,8 @@ describe.each([
         pickup,
         dropoff: dropoff(),
         parcel: markets.get(market.marketId).shipping!.realTimeCarrier!.parcel,
-        mode: markets.get(market.marketId).shipping!.realTimeCarrier!.mode,
+        mode: 'on_demand',
+        window: null,
       });
       expect([...bookings.rows.values()]).toEqual([
         expect.objectContaining({
@@ -254,19 +257,60 @@ describe.each([
       expect(carrier.booked).toHaveLength(1);
     });
 
-    it('leaves it to the seller outside the carrier areas or without the carrier', async () => {
-      expect(await book({ dropoff: dropoff(unserved) })).toEqual(ok('seller-managed'));
+    it('answers no-carrier outside the carrier areas or without the carrier (never a seller delivery)', async () => {
+      expect(await book({ dropoff: dropoff(unserved) })).toEqual(ok('no-carrier'));
       pickups.answer = ok({ ...pickup, postcode: unserved });
-      expect(await book()).toEqual(ok('seller-managed'));
+      expect(await book()).toEqual(ok('no-carrier'));
       pickups.answer = err({ code: 'pickup.not-found' });
-      expect(await book()).toEqual(ok('seller-managed'));
+      expect(await book()).toEqual(ok('no-carrier'));
       pickups.answer = ok({ ...pickup, contactPhone: 'not a phone' });
-      expect(await book()).toEqual(ok('seller-managed'));
+      expect(await book()).toEqual(ok('no-carrier'));
       pickups.answer = ok(pickup);
       withSecrets(false);
-      expect(await book()).toEqual(ok('seller-managed'));
+      expect(await book()).toEqual(ok('no-carrier'));
       expect(carrier.booked).toEqual([]);
       expect(written).toEqual([]);
+    });
+
+    it('books a same-day order on demand and a scheduled one for the chosen window', async () => {
+      expect(await book({ service: { method: 'same_day', window: null } })).toEqual(ok('booked'));
+      expect(carrier.booked[0]).toMatchObject({ mode: 'on_demand', window: null });
+
+      const start = '2026-10-26T01:00:00Z';
+      const end = '2026-10-26T03:00:00Z';
+      expect(
+        await book({
+          sellerOrderId: SELLER_ORDER_2,
+          service: { method: 'scheduled', window: { start, end } },
+        }),
+      ).toEqual(ok('booked'));
+      expect(carrier.booked[1]).toMatchObject({ mode: 'scheduled' });
+      expect(carrier.booked[1]!.window!.start.toString()).toBe('2026-10-26T01:00:00Z');
+      expect(carrier.booked[1]!.window!.end.toString()).toBe('2026-10-26T03:00:00Z');
+    });
+
+    it('refuses a pickup, a scheduled order without a window and a window that ends first', async () => {
+      const fields = async (service: unknown) => {
+        const answer = await book({ service });
+        return answer.ok ? 'ok' : (answer.error as { fields?: unknown }).fields;
+      };
+      expect(await fields({ method: 'pickup', window: null })).toEqual([
+        { path: 'service.method', code: 'value' },
+      ]);
+      expect(await fields({ method: 'scheduled', window: null })).toEqual([
+        { path: 'service.window.start', code: 'format' },
+        { path: 'service.window.end', code: 'format' },
+      ]);
+      expect(
+        await fields({
+          method: 'scheduled',
+          window: { start: '2026-10-26T03:00:00Z', end: '2026-10-26T01:00:00Z' },
+        }),
+      ).toEqual([{ path: 'service.window', code: 'range' }]);
+      expect(await fields({ method: 'instant', window: { start: 'x', end: 'y' } })).toEqual([
+        { path: 'service.window', code: 'not-allowed' },
+      ]);
+      expect(carrier.booked).toEqual([]);
     });
 
     it('answers refused on a carrier refusal and unavailable on a fault, storing nothing', async () => {

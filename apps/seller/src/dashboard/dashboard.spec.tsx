@@ -41,6 +41,11 @@ const order = (n: number, fulfilment: SellerOrderView['fulfilment']): SellerOrde
   trackingRef: null,
   shippedAt: null,
   deliveredAt: null,
+  deliveryMethod: 'instant',
+  deliveryWindowStart: null,
+  deliveryWindowEnd: null,
+  readyAt: null,
+  deliveryAttention: null,
   lines: [],
 });
 const offer = (n: number, status: string): OfferView => ({
@@ -78,7 +83,17 @@ const full: SellerDashboardData = {
   ledger: ok({
     sellerId: ID(1),
     currency: 'AUD',
-    totals: { sales: '100000', shipping: '5000', commission: '10000', balance: '123450' },
+    totals: {
+      sales: '100000',
+      shipping: '5000',
+      commission: '10000',
+      refundedSales: '0',
+      refundedShipping: '0',
+      refundedCommission: '0',
+      disputeDebits: '0',
+      disputeReinstated: '0',
+      balance: '123450',
+    },
     entries: [
       {
         entryId: ID(70),

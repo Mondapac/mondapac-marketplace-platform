@@ -11,7 +11,7 @@ export const CONFLICT_CODES = {
 /**
  * The one platform filter for conflicts (platform persistence design 10, "At the edge"):
  * `StaleAggregateError` answers 409 `conflict.stale`, `TransactionConflictError` (`40001` or
- * `40P01` after three attempts, `55P03` at once) answers 409 `conflict.retry`. The answer has
+ * `40P01` after four attempts, `55P03` at once) answers 409 `conflict.retry`. The answer has
  * the shape of platform-foundations 5.1, `{ statusCode, code }`, and nothing of the error.
  * A statement timeout (`57014`) is not a conflict and stays a 500.
  */

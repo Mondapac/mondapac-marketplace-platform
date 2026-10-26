@@ -30,13 +30,23 @@
     "home": "Dashboard",
     "team": "Roles & permissions",
     "customers": "Customers",
-    "sellers": "Sellers",
+    "sellers": "All sellers",
     "orders": "Orders",
     "price-holds": "Held prices",
     "offer-reviews": "Offer reviews",
     "payout-accounts": "Connected accounts",
     "content": "Content",
-    "settings": "Settings"
+    "settings": "Settings",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "group": {
+      "reviews": "Reviews",
+      "content": "Content",
+      "sellers": "Sellers",
+      "orders": "Orders & customers",
+      "money": "Money",
+      "platform": "Platform"
+    }
   },
   "home": {
     "title": "Dashboard",
@@ -1015,7 +1025,7 @@
         "draft-changes": "Has a draft",
         "not-placed": "Not placed yet",
         "no-position": "No position",
-        "window": "{from} – {to}",
+        "window": "<n>{from}</n> <n>– {to}</n>",
         "action": {
           "edit": "Edit",
           "view": "View",
@@ -1041,7 +1051,7 @@
         "where": "Shown at {positions}. Live {window} ({zone}).",
         "where-none": "Not placed yet.",
         "kind": "Type",
-        "kind-locked": "The type is chosen when the slide is created.",
+        "kind-fixed": "Type: {kind} · chosen when the slide was created",
         "name": "Internal name",
         "name-help": "Only admins see this.",
         "title": "Headline",
@@ -1479,7 +1489,10 @@
         "sales": "Sales",
         "shipping": "Shipping",
         "commission": "Commission",
-        "balance": "Balance"
+        "balance": "Balance",
+        "refunds": "Refunds",
+        "refunded-commission": "Commission returned",
+        "disputes": "Disputes"
       },
       "col": {
         "when": "Date",
@@ -1490,7 +1503,12 @@
       "kind": {
         "sale": "Sale",
         "shipping": "Shipping",
-        "commission": "Commission"
+        "commission": "Commission",
+        "refund-sale": "Refund of sale",
+        "refund-shipping": "Refund of shipping",
+        "refund-commission": "Commission returned",
+        "dispute-debit": "Dispute debit",
+        "dispute-reinstate": "Dispute reinstated"
       },
       "empty": "No ledger rows yet. They appear when this seller's orders are paid.",
       "more": "Load more",

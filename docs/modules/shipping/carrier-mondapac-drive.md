@@ -2,8 +2,21 @@
 
 The `real_time_delivery` FulfillmentStrategy. A paid seller order whose pickup (the seller's
 operating address) and drop-off (the customer's delivery address) both fall in a ServiceArea the
-Market's carrier serves is booked with Mondapac Drive (repository `Mondapac/mondapac-drive`). Every
-other seller order stays `seller_managed` (SHP-01): the seller ships and types in the carrier.
+Market's carrier serves is booked with Mondapac Drive (repository `Mondapac/mondapac-drive`).
+
+**Delivery models, package 1 (owner decision).** The seller never delivers and never chooses the
+method or the provider: it only tells the platform an order is ready. The buyer chooses a method per
+seller order (`pickup`, `instant`, `same_day`, `scheduled`; stored on `ordering.seller_orders`, with the
+scheduled window as UTC instants; orders from before the column are backfilled `instant`). Booking
+time: `scheduled` is booked at payment for the buyer's window (`ordering.order-paid.v1`);
+`instant` and `same_day` are booked when the seller marks ready (`ordering.seller-order-ready.v1`,
+subscriber `ordering.book-ready-carrier-delivery`); `pickup` never books a carrier. When no carrier
+can serve (`no-carrier`) or Drive refuses, shipping answers `no-carrier` or `refused` and ordering
+sets `delivery_attention = 'no-carrier'` on the seller order (a "needs platform attention" state
+for an admin); there is no `seller_managed` fallback any more. `ordering` asks the
+`DeliveryMethodPolicy` port which methods a seller order may use (all four today; the platform and
+per-seller settings plug in there). Drive receives the window as `scheduledWindow` (assumed field,
+to be confirmed against Drive's API).
 
 ## Flow
 

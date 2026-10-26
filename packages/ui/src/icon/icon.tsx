@@ -3,9 +3,9 @@ import type { ReactNode } from 'react';
 // The panels' one icon set (Figma library "Icons", docs/design/figma/plugin/icons.py): 24 px
 // grid, 1.75 stroke, lucide-like shapes. The size is the `size/icon` token (18 px, 20 px in the
 // touch density) and the colour is inherited, so a caller sets it with a text colour token.
-// Add an icon here, never inline an SVG in a page; `tag`, `receipt`, `user`, `log-out`, `bell`,
-// `volume`, `volume-off`, `layout`, `link`, `chevron-up`, `chevron-down` and `pin` are new in code and wait to be back-ported to the Figma library
-// (speed mode).
+// Add an icon here, never inline an SVG in a page; `tag`, `receipt`, `chevron-down`, `user`, `log-out`, `bell`,
+// `volume`, `volume-off`, `layout`, `link`, `chevron-up` and `pin` are new in code and wait to be back-ported to the
+// Figma library (speed mode).
 const ICONS = {
   home: <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
   inbox: (
@@ -66,6 +66,7 @@ const ICONS = {
       <circle cx="18" cy="18" r="2" />
     </>
   ),
+  'chevron-down': <path d="m6 9 6 6 6-6" />,
   check: <path d="M20 6 9 17l-5-5" />,
   'shield-check': (
     <>
@@ -222,7 +223,6 @@ const ICONS = {
     </>
   ),
   'chevron-up': <path d="m18 15-6-6-6 6" />,
-  'chevron-down': <path d="m6 9 6 6 6-6" />,
   pin: (
     <>
       <path d="M12 17v5" />

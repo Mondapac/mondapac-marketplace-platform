@@ -12,6 +12,7 @@ import type {
   CommissionPayoutsFailure,
   CommissionRateMap,
   PaidSellerOrder,
+  RefundedSellerOrder,
 } from '../../src/modules/commission-payouts';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import type {
@@ -255,6 +256,38 @@ export class MemoryOrders implements OrderRepository {
     }
     return Promise.resolve('stale' as const);
   }
+  private patchSeller(
+    sellerOrder: SellerOrder,
+    allowed: (current: SellerOrder) => boolean,
+    apply: (current: SellerOrder) => SellerOrder,
+  ) {
+    for (const [orderId, order] of this.rows) {
+      const index = order.sellerOrders.findIndex((seller) => seller.id === sellerOrder.id);
+      if (index < 0) continue;
+      const current = order.sellerOrders[index]!;
+      if (!allowed(current)) return Promise.resolve('stale' as const);
+      const sellerOrders = order.sellerOrders.map((seller, i) =>
+        i === index ? apply(seller) : seller,
+      );
+      this.rows.set(orderId, { ...order, sellerOrders });
+      return Promise.resolve('saved' as const);
+    }
+    return Promise.resolve('stale' as const);
+  }
+  saveReady(_m: MarketContext, sellerOrder: SellerOrder) {
+    return this.patchSeller(
+      sellerOrder,
+      (current) => current.fulfilment === 'to-ship' && current.readyAt === null,
+      (current) => ({ ...current, readyAt: sellerOrder.readyAt }),
+    );
+  }
+  saveAttention(_m: MarketContext, sellerOrder: SellerOrder) {
+    return this.patchSeller(
+      sellerOrder,
+      (current) => current.fulfilment === 'to-ship' && current.deliveryAttention === null,
+      (current) => ({ ...current, deliveryAttention: sellerOrder.deliveryAttention }),
+    );
+  }
   findUnrecordedShipments(_m: MarketContext, limit: number) {
     return Promise.resolve(
       this.paid(null)
@@ -359,7 +392,7 @@ export class FakeShipping implements ShippingFacade {
     }
     return ok({ fees, quoted });
   }
-  /** What `bookCarrierDelivery` answers per seller order id; `seller-managed` when absent. */
+  /** What `bookCarrierDelivery` answers per seller order id; `no-carrier` when absent. */
   carrierBookings = new Map<string, Result<CarrierBookingOutcome, CarrierDeliveryFailure>>();
   /** Every booking request, as shipping received it (personal data of fixtures only). */
   carrierRequests: CarrierDeliveryRequest[] = [];
@@ -372,7 +405,7 @@ export class FakeShipping implements ShippingFacade {
   ): Promise<Result<CarrierBookingOutcome, CarrierDeliveryFailure>> {
     this.carrierRequests.push(request);
     return Promise.resolve(
-      this.carrierBookings.get(request.sellerOrderId) ?? ok('seller-managed' as const),
+      this.carrierBookings.get(request.sellerOrderId) ?? ok('no-carrier' as const),
     );
   }
   carrierShipment(
@@ -440,6 +473,28 @@ export class FakeCommission implements CommissionPayoutsFacade {
     }
     this.recorded.push(paid);
     return Promise.resolve(ok('recorded' as const));
+  }
+  /** The refunds the worker sent to the ledger; `refundFails` makes the ledger refuse them. */
+  refundsRecorded: RefundedSellerOrder[] = [];
+  refundFails: CommissionPayoutsFailure | null = null;
+  /** When set, only this refund is refused by `refundFails` (the others are recorded). */
+  refundFailOnly: string | null = null;
+  recordRefund(
+    _c: CallContext,
+    refund: RefundedSellerOrder,
+  ): Promise<
+    Result<'recorded' | 'already-recorded' | 'nothing-to-post', CommissionPayoutsFailure>
+  > {
+    if (this.refundFails !== null && (this.refundFailOnly ?? refund.refundId) === refund.refundId) {
+      return Promise.resolve(err(this.refundFails));
+    }
+    if (this.refundsRecorded.some((r) => r.refundId === refund.refundId)) {
+      return Promise.resolve(ok('already-recorded' as const));
+    }
+    this.refundsRecorded.push(refund);
+    return Promise.resolve(
+      ok(refund.lossBearer === 'platform' ? ('nothing-to-post' as const) : ('recorded' as const)),
+    );
   }
 }
 
