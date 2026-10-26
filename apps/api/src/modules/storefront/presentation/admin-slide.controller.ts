@@ -46,6 +46,7 @@ import { PrepareStorefrontSlideCopy } from '../application/use-cases/prepare-sli
 import { RestoreStorefrontSlideVersion } from '../application/use-cases/restore-slide-version.use-case';
 import { UpdateStorefrontSlideDraft } from '../application/use-cases/update-slide-draft.use-case';
 import { ViewStorefrontSlide } from '../application/use-cases/view-slide.use-case';
+import { ViewStorefrontSlideOrder } from '../application/use-cases/view-slide-order.use-case';
 import { closedBody, refusal } from './http-answers';
 import {
   SlideCopyBody,
@@ -53,11 +54,13 @@ import {
   SlideDetailBody,
   SlideListBody,
   SlideOrderBody,
+  SlideOrderReadBody,
   SlideOrderRequest,
   SlideRequest,
   SlideVersionRequest,
   slideCopyBody,
   slideDetailBody,
+  slideOrderReadBody,
   slideSummaryBody,
 } from './slide.dto';
 
@@ -110,6 +113,7 @@ export class AdminSlideController {
     private readonly pause: PauseStorefrontSlide,
     private readonly resume: ResumeStorefrontSlide,
     private readonly reorder: ReorderStorefrontSlides,
+    private readonly viewOrder: ViewStorefrontSlideOrder,
   ) {}
 
   private answer<T, U>(
@@ -176,6 +180,43 @@ export class AdminSlideController {
     if (invalid !== null) throw invalid;
     const result = await this.create.execute(context, body);
     return this.answer('storefront.create-slide-route', context, result, slideDetailBody);
+  }
+
+  // Declared before `GET :slide`, so `order` is not read as a slide id.
+  @Get('order')
+  @ApiOperation({
+    summary: 'The live slides of a position in the saved order (admin)',
+    description:
+      'Needs storefront.slide.read. The exact list PUT order accepts: the slides approved at the ' +
+      'position and scope whose window is not over, each once, pinned first and then in the saved ' +
+      'order (the order buyers read). `overLimit` is judged for now, at the time of the request: ' +
+      'a live slide is over the limit when `maxActive` or more live slides come before it in ' +
+      'this order; a scheduled slide is never over the limit. `scopeId` is required with every ' +
+      'scope but all and refused with all.',
+  })
+  @ApiQuery({
+    name: 'position',
+    required: true,
+    description: 'A position key, for example home.hero.',
+  })
+  @ApiQuery({
+    name: 'scope',
+    required: false,
+    enum: ['all', 'category', 'product', 'seller', 'page'],
+  })
+  @ApiQuery({ name: 'scopeId', required: false, description: 'With every scope but all.' })
+  @ApiOkResponse({ type: SlideOrderReadBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse(UNAUTHORIZED)
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async readOrder(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewOrder.execute(context, request.query);
+    return this.answer('storefront.view-slide-order-route', context, result, slideOrderReadBody);
   }
 
   @Get(':slide')

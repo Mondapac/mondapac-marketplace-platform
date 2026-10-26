@@ -73,6 +73,19 @@ export function shortInstantInZone(iso: string | null, locale: string, zone: str
   }
 }
 
+/** A day in an IANA zone without the time ("27 Oct"); a zone this runtime does not know reads in UTC. */
+export function shortDateInZone(iso: string | null, locale: string, zone: string): string {
+  if (iso === null) return '-';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
+  try {
+    return dateFormat(locale, { ...options, timeZone: zone }).format(date);
+  } catch {
+    return dateFormat(locale, { ...options, timeZone: 'UTC' }).format(date);
+  }
+}
+
 /** The zone a page shows times in: the holder's own, else UTC. */
 export function displayZone(zone: string | null): string {
   if (zone === null) return 'UTC';

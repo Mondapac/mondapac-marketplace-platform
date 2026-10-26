@@ -1209,6 +1209,53 @@
           "version-limit": "This slide has reached its limit of saved versions.",
           "not-found": "This slide no longer exists."
         }
+      },
+      "view": {
+        "label": "Slides view",
+        "all": "All slides",
+        "order": "Order by position"
+      },
+      "order": {
+        "page-title": "Slides: order by position",
+        "controls": "Choose a position",
+        "position": "Position",
+        "scope": "Shown on",
+        "show": "Show order",
+        "scope-id-needed": "Enter the id of the item to see its order.",
+        "scope-id-invalid": "Enter a valid id, for example 0190a000-0000-7000-8000-000000000001.",
+        "heading-scope": "{scope}: {id}",
+        "max": "Up to {max} live",
+        "autoplay": "Moves on its own",
+        "pinned-note": "Pinned slides stay first",
+        "list": "Slides at {position}, in the order buyers see them",
+        "pinned": "Pinned",
+        "from": "From {date}",
+        "window": "{from} – {to}",
+        "move-up": "Move {name} up",
+        "move-down": "Move {name} down",
+        "moved": "{name} moved to place {place} of {total}.",
+        "over-limit": "Over the limit, waits for a free place",
+        "note": "Order changes go live at once for slides already approved. Buyers see the new order within a minute; the change is recorded in the history.",
+        "footnote": "Times in {zone}.",
+        "discard": "Discard",
+        "save": "Save order",
+        "saved": "Order saved. Buyers see the new order within a minute.",
+        "read-only": "You can view the order but not change it.",
+        "loading": "Loading the order",
+        "empty-title": "No approved slides at this position",
+        "empty-body": "A slide appears here once a platform admin approves it for this position and its window has not ended.",
+        "empty-action": "Back to all slides",
+        "error": {
+          "load": "The order could not be loaded. Check your connection and try again.",
+          "mismatch": "The slides at this position changed since you opened it",
+          "mismatch-body": "Load the current list, then move your slides again. Nothing was saved.",
+          "unknown-slide": "One of the slides is no longer live at this position. Load the current list and try again.",
+          "invalid": "The order was refused. Load the current list and try again.",
+          "network": "No connection. Your order is still here; try again.",
+          "denied": "You don't have permission to change the order.",
+          "generic": "The order could not be saved. Try again.",
+          "reload": "Load current list"
+        }
       }
     }
   },
