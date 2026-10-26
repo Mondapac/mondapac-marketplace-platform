@@ -70,7 +70,8 @@ function exported(
     | 'TEST_STORE_PROFILE_DATABASE_URL'
     | 'TEST_STORE_PROFILE_OWNER_DATABASE_URL'
     | 'TEST_CERTIFIED_CATEGORIES_DATABASE_URL'
-    | 'TEST_CERTIFIED_CATEGORIES_OWNER_DATABASE_URL',
+    | 'TEST_CERTIFIED_CATEGORIES_OWNER_DATABASE_URL'
+    | 'TEST_ORDERING_REFUNDS_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -306,4 +307,12 @@ export function certifiedCategoriesTestDatabaseUrl(): string {
 
 export function certifiedCategoriesOwnerTestDatabaseUrl(): string {
   return exported('TEST_CERTIFIED_CATEGORIES_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that ordering-refunds.db-spec.ts writes its orders and runs the Market-wide ledger
+ * steps on (global-setup.ts), as the application login: no other file's orders live there.
+ */
+export function orderingRefundsTestDatabaseUrl(): string {
+  return exported('TEST_ORDERING_REFUNDS_DATABASE_URL');
 }

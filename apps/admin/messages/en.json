@@ -1166,7 +1166,10 @@
         "sales": "Sales",
         "shipping": "Shipping",
         "commission": "Commission",
-        "balance": "Balance"
+        "balance": "Balance",
+        "refunds": "Refunds",
+        "refunded-commission": "Commission returned",
+        "disputes": "Disputes"
       },
       "col": {
         "when": "Date",
@@ -1177,7 +1180,12 @@
       "kind": {
         "sale": "Sale",
         "shipping": "Shipping",
-        "commission": "Commission"
+        "commission": "Commission",
+        "refund-sale": "Refund of sale",
+        "refund-shipping": "Refund of shipping",
+        "refund-commission": "Commission returned",
+        "dispute-debit": "Dispute debit",
+        "dispute-reinstate": "Dispute reinstated"
       },
       "empty": "No ledger rows yet. They appear when this seller's orders are paid.",
       "more": "Load more",
