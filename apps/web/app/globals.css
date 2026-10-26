@@ -2878,9 +2878,45 @@ svg {
   padding: 0 16px;
   text-align: center;
 }
+.consent-short {
+  display: none;
+}
+.consent-short a {
+  color: var(--sf-teal);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* Phone: the compact bar (at most 140px tall at 320px, with the tab bar under it the stack stays
+   inside the proposal's budget). A two-line summary with Cookie settings as an inline link, the
+   title kept for screen readers, and Accept and Reject side by side with the same weight. */
 @media (max-width: 699.98px) {
+  .consent {
+    gap: 8px;
+    padding-block: 12px;
+  }
+  .consent h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .consent-long,
   .consent-actions .btn:last-child {
-    grid-column: 1 / -1;
+    display: none;
+  }
+  .consent-short {
+    display: block;
+  }
+  .consent-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* The keyboard is open (shell/use-keyboard.ts): the bar would cover the field. The choice is
+     still open and the bar comes back on blur. */
+  :root[data-keyboard='open'] .consent {
+    display: none;
   }
 }
 .consent .btn:disabled,
@@ -8701,9 +8737,11 @@ button.login {
   outline: 3px solid var(--sf-teal);
   outline-offset: 2px;
 }
-/* Switched off: the launcher would only open the off state again. */
+/* Switched off: the launcher would only open the off state again. Covered: a phone with the cookie
+   bar open (launcher-lift.ts). */
 .asw[data-open='true'] .aslaunch,
-.asw[data-off='true'] .aslaunch {
+.asw[data-off='true'] .aslaunch,
+.asw[data-covered='true'] .aslaunch {
   display: none;
 }
 .aspanel {

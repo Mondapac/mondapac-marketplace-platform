@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LAUNCHER_REST, launcherLift } from '../src/assistant/launcher-lift.ts';
+import { LAUNCHER_REST, launcherHidden, launcherLift } from '../src/assistant/launcher-lift.ts';
 
 const HEIGHT = 667;
 // 375x667 with a tab bar of 65px, and a bar sticking 13px above it (as the buy bar does).
@@ -55,5 +55,14 @@ describe('launcherLift', () => {
   it('leaves back-to-top alone while it is under the dock', () => {
     const hidden = { top: 640, bottom: 688 };
     expect(launcherLift(HEIGHT, TAB_BAR, [], hidden).alignBackToTop).toBe(false);
+  });
+});
+
+describe('launcherHidden', () => {
+  it('hides the launcher only on a phone with the cookie bar open', () => {
+    expect(launcherHidden(true, true)).toBe(true);
+    expect(launcherHidden(true, false)).toBe(false);
+    expect(launcherHidden(false, true)).toBe(false);
+    expect(launcherHidden(false, false)).toBe(false);
   });
 });

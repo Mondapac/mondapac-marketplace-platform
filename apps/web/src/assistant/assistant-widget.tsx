@@ -28,7 +28,7 @@ import {
   type AssistantSetup,
   type SendResult,
 } from './assistant.ts';
-import { launcherLift } from './launcher-lift.ts';
+import { launcherHidden, launcherLift } from './launcher-lift.ts';
 
 /** After this long without an answer the widget says it is slow (the server gives up at 25 s). */
 export const SLOW_AFTER_MS = 8000;
@@ -76,7 +76,8 @@ function useSheet(): boolean {
 /**
  * Keeps the launcher above the bottom dock (tab bar, cookie bar), above the page's action bar (buy
  * bar, checkout bar) and, at the end of the page, above the footer's back-to-top button, so it
- * never covers any of them. Writes `--as-dock` and `--as-lift`.
+ * never covers any of them. Writes `--as-dock` and `--as-lift`, and `data-covered` while the launcher
+ * hides on a phone with the cookie bar open.
  */
 function useLift(root: HTMLElement | null) {
   useEffect(() => {
@@ -93,6 +94,11 @@ function useLift(root: HTMLElement | null) {
         box(document.querySelector('.dock')),
         Array.from(document.querySelectorAll('.buybar, .cbar'), box),
         box(top),
+      );
+      const phone =
+        typeof window.matchMedia === 'function' && window.matchMedia(under('tablet')).matches;
+      root.dataset.covered = String(
+        launcherHidden(phone, document.querySelector('.consent') !== null),
       );
       root.style.setProperty('--as-dock', `${dock}px`);
       root.style.setProperty('--as-lift', `${lift}px`);

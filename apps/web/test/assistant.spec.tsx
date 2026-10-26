@@ -282,6 +282,27 @@ describe('assistant widget', () => {
     expect(document.activeElement).toBe(launcher());
   });
 
+  it('hides the launcher on a phone while the cookie bar is open, and only there', () => {
+    const bar = document.createElement('section');
+    bar.className = 'consent';
+    document.body.append(bar);
+    sheet = true;
+    renderWidget(() => Promise.resolve(ok([])));
+    const root = document.querySelector<HTMLElement>('.asw')!;
+    expect(root.dataset.covered).toBe('true');
+    bar.remove();
+    act(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(root.dataset.covered).toBe('false');
+    cleanup();
+    document.body.append(bar);
+    sheet = false;
+    renderWidget(() => Promise.resolve(ok([])));
+    expect(document.querySelector<HTMLElement>('.asw')!.dataset.covered).toBe('false');
+    bar.remove();
+  });
+
   it('is a modal sheet on a phone with focus on Close', () => {
     sheet = true;
     renderWidget(() => Promise.resolve(ok([])));
