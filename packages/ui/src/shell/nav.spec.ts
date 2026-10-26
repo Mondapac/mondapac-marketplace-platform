@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { navTrail, sidebarCollapsed, visibleNavItems, type NavConfig } from './nav.ts';
+import {
+  navOpenGroups,
+  navSections,
+  navTrail,
+  sidebarCollapsed,
+  visibleNavItems,
+  type NavConfig,
+} from './nav.ts';
 
 const config: NavConfig = {
   items: [
@@ -74,5 +81,115 @@ describe('navTrail', () => {
 
   it('is empty on the home page', () => {
     expect(navTrail(items, 'home', 'Home', label)).toEqual([]);
+  });
+});
+
+describe('navSections', () => {
+  const grouped: NavConfig = {
+    groups: [
+      { id: 'a', labelKey: 'nav.group.a', icon: 'inbox' },
+      { id: 'b', labelKey: 'nav.group.b', icon: 'wallet' },
+      { id: 'c', labelKey: 'nav.group.c', icon: 'users' },
+    ],
+    items: [
+      { id: 'home', labelKey: 'nav.home', icon: 'home', href: '/' },
+      { id: 'a1', labelKey: 'nav.a1', icon: 'inbox', href: '/a1', group: 'a', anyOf: ['a1.view'] },
+      { id: 'b1', labelKey: 'nav.b1', icon: 'wallet', href: '/b1', group: 'b', anyOf: ['b1.view'] },
+      { id: 'a2', labelKey: 'nav.a2', icon: 'inbox', href: '/a2', group: 'a', anyOf: ['a2.view'] },
+      { id: 'b2', labelKey: 'nav.b2', icon: 'wallet', href: '/b2', group: 'b', anyOf: ['b2.view'] },
+      { id: 'c1', labelKey: 'nav.c1', icon: 'users', href: '/c1', group: 'c', anyOf: ['c1.view'] },
+      { id: 'tail', labelKey: 'nav.tail', icon: 'home', href: '/tail' },
+    ],
+  };
+  const shape = (keys: string[]) =>
+    navSections(grouped.groups, visibleNavItems(grouped, new Set(keys))).map((section) =>
+      section.kind === 'item'
+        ? section.item.id
+        : `${section.group.id}[${section.items.map((i) => i.id).join(',')}]`,
+    );
+
+  it('puts a group where its first visible item is and gathers all its items there', () => {
+    expect(shape(['a1.view', 'b1.view', 'a2.view', 'b2.view'])).toEqual([
+      'home',
+      'a[a1,a2]',
+      'b[b1,b2]',
+      'tail',
+    ]);
+  });
+
+  it('keeps ungrouped items in place', () => {
+    expect(shape([])).toEqual(['home', 'tail']);
+  });
+
+  it('leaves out a group with no visible items', () => {
+    expect(shape(['a1.view', 'a2.view'])).toEqual(['home', 'a[a1,a2]', 'tail']);
+  });
+
+  it('shows the only visible item of a group flat, without a header', () => {
+    expect(shape(['a1.view', 'b1.view', 'b2.view', 'c1.view'])).toEqual([
+      'home',
+      'a1',
+      'b[b1,b2]',
+      'c1',
+      'tail',
+    ]);
+  });
+
+  it('follows the position of the first visible item when an earlier one is hidden', () => {
+    expect(shape(['b1.view', 'a2.view', 'b2.view', 'a1.view'])).toEqual([
+      'home',
+      'a[a1,a2]',
+      'b[b1,b2]',
+      'tail',
+    ]);
+    expect(shape(['a2.view', 'b1.view', 'b2.view'])).toEqual(['home', 'b[b1,b2]', 'a2', 'tail']);
+  });
+
+  it('is a flat list without groups, and treats an unknown group id as ungrouped', () => {
+    const items = visibleNavItems(grouped, new Set(['a1.view', 'a2.view']));
+    expect(navSections(undefined, items).every((section) => section.kind === 'item')).toBe(true);
+    expect(navSections([], items)).toHaveLength(items.length);
+  });
+});
+
+describe('navOpenGroups', () => {
+  it('reads a comma-separated list, and nothing (all closed) without a cookie', () => {
+    expect(navOpenGroups(undefined)).toEqual([]);
+    expect(navOpenGroups('')).toEqual([]);
+    expect(navOpenGroups('orders,money')).toEqual(['orders', 'money']);
+    expect(navOpenGroups('orders%2Cmoney')).toEqual(['orders', 'money']);
+  });
+});
+
+describe('navTrail with groups', () => {
+  const groups = [{ id: 'g', labelKey: 'nav.group.g', icon: 'inbox' }] as const;
+  const items = [
+    { id: 'home', labelKey: 'nav.home', icon: 'home', href: '/' },
+    { id: 'x', labelKey: 'nav.x', icon: 'inbox', href: '/x', group: 'g' },
+    { id: 'y', labelKey: 'nav.y', icon: 'inbox', href: '/y', group: 'g' },
+    { id: 'z', labelKey: 'nav.z', icon: 'inbox', href: '/z', group: 'g' },
+  ] as const;
+  const label = (key: string) => key;
+
+  it('puts the group label, without a link, between home and the active item', () => {
+    expect(navTrail(items, 'y', 'Detail', label, groups)).toEqual([
+      { label: 'nav.home', href: '/' },
+      { label: 'nav.group.g' },
+      { label: 'nav.y', href: '/y' },
+    ]);
+  });
+
+  it('keeps the group label when the active item is the page itself', () => {
+    expect(navTrail(items, 'y', 'nav.y', label, groups)).toEqual([
+      { label: 'nav.home', href: '/' },
+      { label: 'nav.group.g' },
+    ]);
+  });
+
+  it('adds no group label for an item shown flat (the only visible one of its group)', () => {
+    expect(navTrail(items.slice(0, 2), 'x', 'Detail', label, groups)).toEqual([
+      { label: 'nav.home', href: '/' },
+      { label: 'nav.x', href: '/x' },
+    ]);
   });
 });
