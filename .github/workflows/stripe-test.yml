@@ -1,0 +1,117 @@
+name: Stripe test mode
+
+# Checks that need the real Stripe API in test mode, which only a machine Stripe serves can reach
+# (GitHub's runners do; the team's own network and the agent sandbox do not). Run by hand from
+# the Actions tab, and on a pull request that changes these checks. Never on a fork's pull
+# request: it has no access to the secrets.
+#
+# Secrets (repository, Actions): SK_TEST, the Stripe test-mode secret key (sk_test_ or rk_test_).
+# PK_TEST, the test publishable key, is for the browser check that follows. A live key is
+# refused by the scripts and by the API's start-up check.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/stripe-test.yml
+      - scripts/stripe-test/**
+
+# One run at a time: every run writes to the same Stripe test account.
+concurrency:
+  group: stripe-test
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  stripe-test:
+    name: Stripe test mode (region au)
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Same image and roles as ci.yml.
+    services:
+      postgres:
+        image: mirror.gcr.io/library/postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mondapac
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d mondapac"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac
+      HOSTED_MARKETS: AU
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the Stripe test key secret
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.SK_TEST }}
+        run: |
+          case "$STRIPE_SECRET_KEY" in
+            sk_test_*|rk_test_*) echo "SK_TEST is a test-mode key." ;;
+            '') echo "The SK_TEST secret is not set for this repository." >&2; exit 1 ;;
+            *) echo "SK_TEST is not a Stripe test-mode key (sk_test_ or rk_test_)." >&2; exit 1 ;;
+          esac
+
+      - name: Create database roles (cluster bootstrap)
+        run: docker exec -i "${{ job.services.postgres.id }}" psql -U postgres -d mondapac < scripts/db/bootstrap-dev.sql
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Apply migrations
+        run: pnpm db:migrate
+        env:
+          MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
+
+      - name: 'F-3: platform sets an Express payout schedule'
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.SK_TEST }}
+        run: node scripts/stripe-test/f3-payout-schedule.mjs
+
+      # A signing secret made for this run only: the API is started with it and the script signs
+      # the real Stripe event with it, as Stripe signs a delivery.
+      - name: Webhook round trip with a real test-mode event
+        if: ${{ !cancelled() }}
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.SK_TEST }}
+        run: |
+          WEBHOOK_SIGNING_SECRET="whsec_$(openssl rand -hex 24)"
+          echo "::add-mask::$WEBHOOK_SIGNING_SECRET"
+          export WEBHOOK_SIGNING_SECRET
+          APP_ROLE=api PORT=3000 STRIPE_WEBHOOK_SECRET="$WEBHOOK_SIGNING_SECRET" \
+            node apps/api/dist/main > api.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://localhost:3000/health/ready > /dev/null; then
+              if node scripts/stripe-test/webhook-round-trip.mjs http://localhost:3000 AU; then
+                exit 0
+              fi
+              tail -n 50 api.log >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "API did not become ready" >&2
+          tail -n 50 api.log >&2
+          exit 1
