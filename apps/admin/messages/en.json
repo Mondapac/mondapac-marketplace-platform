@@ -2284,6 +2284,11 @@
     "body-backup": "Enter one of your recovery codes to {action}. Each recovery code works once.",
     "wait-note": "Just signed in? Wait for your authenticator app to show a new code before you enter it. The code you used to sign in cannot be used again.",
     "action": {
+      "commission-payouts": {
+        "commission-rate": {
+          "edit": "change this seller's commission rate"
+        }
+      },
       "wallet": {
         "settings": {
           "change": "change the wallet switch"
