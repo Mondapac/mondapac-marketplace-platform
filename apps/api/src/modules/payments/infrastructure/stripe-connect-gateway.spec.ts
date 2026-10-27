@@ -55,8 +55,12 @@ describe('StripeConnectGateway', () => {
       'Idempotency-Key': 'connected-account:AU:seller-1',
     });
     const form = new URLSearchParams(calls[0]?.init.body);
+    // Express-equivalent controller properties; Stripe refuses the legacy `type` on a new platform.
     expect(Object.fromEntries(form)).toEqual({
-      type: 'express',
+      'controller[stripe_dashboard][type]': 'express',
+      'controller[fees][payer]': 'application',
+      'controller[losses][payments]': 'application',
+      'controller[requirement_collection]': 'stripe',
       country: 'AU',
       'capabilities[transfers][requested]': 'true',
       'metadata[market_id]': 'AU',

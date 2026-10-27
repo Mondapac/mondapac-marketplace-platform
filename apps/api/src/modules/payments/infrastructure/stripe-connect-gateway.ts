@@ -59,7 +59,12 @@ export class StripeConnectGateway implements ConnectGateway {
     sellerId: string;
   }): Promise<Result<{ accountRef: string }, ConnectFailure>> {
     const form = new URLSearchParams();
-    form.set('type', 'express');
+    // Express-equivalent controller properties (payments.md 4.6), not the legacy `type: express`,
+    // which Stripe now refuses for a new Connect platform.
+    form.set('controller[stripe_dashboard][type]', 'express');
+    form.set('controller[fees][payer]', 'application');
+    form.set('controller[losses][payments]', 'application');
+    form.set('controller[requirement_collection]', 'stripe');
     form.set('country', request.country);
     form.set('capabilities[transfers][requested]', 'true');
     form.set('metadata[market_id]', request.marketId);
