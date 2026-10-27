@@ -17,8 +17,9 @@ export interface OwnOwnerEmailDependencies extends SellerOwnerDependencies {
  * Owner's payout account): the calling account's own sign-in address, only when the caller is
  * the Seller Owner of its seller and the account is active with a verified email; otherwise
  * `null`. Rule `own-resources`, approved sellers only; an acting-as (Login as Seller) session is
- * refused. The account is the session's, never input, so no other account's address can be read. Personal data: the caller sends it to Stripe
- * once and never logs, stores or puts it in an event. One read-only unit (ADR-0025).
+ * refused. The account is the session's, never input, so no other account's address can be
+ * read. Personal data: the caller sends it to Stripe once and never logs, stores or puts it in
+ * an event. One read-only unit (ADR-0025).
  */
 export class OwnOwnerEmail extends UseCase<
   Record<string, never>,
