@@ -1,7 +1,7 @@
 -- Safety: a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';
 
--- Reverses 20261025174000_shipping_fleet_tracking. The tracking links, proof-of-delivery instants
+-- Reverses 20261027014000_shipping_fleet_tracking. The tracking links, proof-of-delivery instants
 -- and poll instants are lost.
 REVOKE UPDATE ("pod_recorded_at", "polled_at") ON TABLE "shipping"."carrier_bookings" FROM "mondapac_app";
 DROP INDEX "shipping"."carrier_bookings_market_id_fleet_polled_at_open_idx";
