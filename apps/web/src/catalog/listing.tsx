@@ -121,14 +121,17 @@ export function ResultCount({
   page,
   pageSize,
   total,
+  through = page,
 }: {
   readonly page: number;
   readonly pageSize: number;
   readonly total: number;
+  /** The last page shown, when a phone listing holds several pages. */
+  readonly through?: number;
 }) {
   const t = useTranslations('catalog');
   const from = Math.min(total, (page - 1) * pageSize + 1);
-  const to = Math.min(total, page * pageSize);
+  const to = Math.min(total, through * pageSize);
   return (
     <p className="cnt num" aria-live="polite">
       {total > 0 ? t('count', { from, to, total }) : t('count-none')}
