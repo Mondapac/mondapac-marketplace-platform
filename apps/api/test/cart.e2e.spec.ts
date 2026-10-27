@@ -45,6 +45,8 @@ const ACCOUNT = id<'Account'>(0xa101);
 const OFFER = id<'Offer'>(0xc001);
 const VARIANT = id<'Variant'>(0xc002);
 const SELLER = id<'Seller'>(0xb020);
+const PRODUCT = id<'Product'>(0xc003);
+const IMAGE = id(0xc004);
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
@@ -123,6 +125,28 @@ describe('cart routes over HTTP', () => {
         Promise.resolve(
           new Map(sellerIds.map((sellerId) => [sellerId, money(500n, currency)] as const)),
         ),
+      lineDisplays: (_c, refs) =>
+        Promise.resolve(
+          new Map(
+            refs.flatMap((ref) =>
+              ref.offerId === OFFER
+                ? [
+                    [
+                      verdictKey(ref),
+                      {
+                        productId: PRODUCT,
+                        productName: 'Lamb mince',
+                        variantLabel: '500 g',
+                        imageId: IMAGE,
+                      },
+                    ] as const,
+                  ]
+                : [],
+            ),
+          ),
+        ),
+      sellerNames: (_c, sellerIds) =>
+        Promise.resolve(new Map(sellerIds.map((sellerId) => [sellerId, 'Halal Corner'] as const))),
       evaluate: (_c, refs) =>
         Promise.resolve(
           new Map(
@@ -216,6 +240,8 @@ describe('cart routes over HTTP', () => {
     groups: {
       subtotal: unknown;
       sellerId: string;
+      sellerName: string | null;
+      lines: { display: unknown }[];
       minimumOrder: { state: string; minimum: unknown };
       deliveryFee: unknown;
     }[];
@@ -291,6 +317,13 @@ describe('cart routes over HTTP', () => {
         currency: code === 'AU' ? 'AUD' : 'JPY',
       });
       expect(json(viewed).groups[0]!.sellerId).toBe(SELLER);
+      expect(json(viewed).groups[0]!.sellerName).toBe('Halal Corner');
+      expect(json(viewed).groups[0]!.lines[0]!.display).toEqual({
+        productId: PRODUCT,
+        productName: 'Lamb mince',
+        variantLabel: '500 g',
+        imageId: IMAGE,
+      });
     });
 
     it('shows the minimum-order state of each seller group, and clears it once the minimum is met', async () => {
@@ -546,6 +579,13 @@ describe('cart routes over HTTP', () => {
             sellerId: SELLER,
             unitPrice: { amount: '1500', currency },
             availability: { status: 'in-stock', onlyLeft: null },
+            display: {
+              productId: PRODUCT,
+              productName: 'Lamb mince',
+              variantLabel: '500 g',
+              imageId: IMAGE,
+            },
+            sellerName: 'Halal Corner',
           },
         ],
       });
