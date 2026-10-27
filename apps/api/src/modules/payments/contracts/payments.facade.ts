@@ -180,6 +180,15 @@ export interface PaymentsFacade {
       | { readonly code: 'payments.unavailable' }
     >
   >;
+
+  /**
+   * The stored disputes of one order of this Market, oldest first (an index on the order). Same
+   * shape and rules as {@link PaymentsFacade.disputeOf}; an unknown order has none. Rule `system`.
+   */
+  disputesOfOrder(
+    context: CallContext,
+    orderId: string,
+  ): Promise<Result<readonly Dispute[], AccessDenied | { readonly code: 'validation.failed' }>>;
 }
 
 /** Nest token of the {@link PaymentsFacade}, provided and exported by `PaymentsModule`. */

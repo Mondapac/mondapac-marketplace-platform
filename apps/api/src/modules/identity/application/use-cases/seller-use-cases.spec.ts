@@ -49,6 +49,7 @@ import { ConfirmSellerEmail } from './confirm-seller-email.use-case';
 import { DescribeSellerStatus } from './describe-seller-status.use-case';
 import { ListRegisteredSellers } from './list-registered-sellers.use-case';
 import { MembershipOf } from './membership-of.use-case';
+import { OwnOwnerEmail } from './own-owner-email.use-case';
 import { PurgeUnverifiedAccounts } from './purge-unverified-accounts.use-case';
 import { RegisterSeller } from './register-seller.use-case';
 import { RequestSellerVerification } from './request-seller-verification.use-case';
@@ -224,6 +225,12 @@ function setUp() {
       memberships: fakes.membershipRepository,
       assignments: fakes.assignmentRepository,
     }),
+    ownOwnerEmail: new OwnOwnerEmail(gate, {
+      unitOfWork,
+      accounts: fakes.accountRepository,
+      memberships: fakes.membershipRepository,
+      grants: fakes.grantReader,
+    }),
     accessOf: new SellerAccessOf(gate, { unitOfWork, sellerAccess: fakes.sellerAccessRepository }),
     accessOfSystem: new SellerAccessOfSystem(gate, {
       unitOfWork,
@@ -284,7 +291,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       ['platform', 'default', 'catalogue-moderator', 9],
       ['platform', 'default', 'operations-support', 6],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 20],
+      ['platform', 'default', 'viewer', 21],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 6],
@@ -952,6 +959,96 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
       await expect(
         s.status.execute(actorOf(s, '01990000-0000-7000-8000-0000000000fe' as Id<'Seller'>), {}),
       ).resolves.toMatchObject({ ok: false });
+    });
+  });
+
+  describe('ownOwnerEmail (payments, Accounts v2 contact email)', () => {
+    const approve = (s: Setup) => {
+      const seller = sellerOf(s);
+      s.fakes.sellerAccess.set(seller.sellerId, { ...seller, state: 'approved' });
+    };
+
+    it("answers the approved Seller Owner's own verified address", async () => {
+      const s = setUp();
+      await registered(s);
+      approve(s);
+
+      await expect(s.ownOwnerEmail.execute(actorOf(s), {})).resolves.toEqual({
+        ok: true,
+        value: EMAIL,
+      });
+    });
+
+    it('answers null for a member that is not the Owner', async () => {
+      const s = setUp();
+      await registered(s);
+      approve(s);
+      jest.spyOn(s.fakes.grantReader, 'grantsOf').mockResolvedValue(new Map());
+
+      await expect(s.ownOwnerEmail.execute(actorOf(s), {})).resolves.toEqual({
+        ok: true,
+        value: null,
+      });
+    });
+
+    it('gives no address for a disabled account, an unverified email or a failed read', async () => {
+      const s = setUp();
+      await registered(s);
+      approve(s);
+      const owner = account(s);
+
+      // A disabled account is refused by the gate before the read.
+      s.fakes.seedAccount({ ...owner, status: 'disabled' });
+      await expect(s.ownOwnerEmail.execute(actorOf(s), {})).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      s.fakes.seedAccount({ ...owner, emailVerifiedAt: null });
+      await expect(s.ownOwnerEmail.execute(actorOf(s), {})).resolves.toEqual({
+        ok: true,
+        value: null,
+      });
+      s.fakes.seedAccount(owner);
+      jest.spyOn(s.fakes.accountRepository, 'findById').mockRejectedValueOnce(new Error('down'));
+      await expect(s.ownOwnerEmail.execute(actorOf(s), {})).resolves.toMatchObject({
+        ok: false,
+      });
+    });
+
+    it('refuses an acting-as (Login as Seller) session', async () => {
+      const s = setUp();
+      await registered(s);
+      approve(s);
+      const context = actorOf(s);
+      const actingAs = {
+        ...context,
+        actor: { ...context.actor, actingAs: { accountId: account(s).id } },
+      } as unknown as typeof context;
+
+      await expect(s.ownOwnerEmail.execute(actingAs, {})).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+    });
+
+    it('is denied to a seller that is not approved, another seller, the system and anonymous', async () => {
+      const s = setUp();
+      await registered(s);
+      if (approvalRequired) {
+        await expect(s.ownOwnerEmail.execute(actorOf(s), {})).resolves.toMatchObject({
+          ok: false,
+        });
+      }
+      approve(s);
+
+      await expect(
+        s.ownOwnerEmail.execute(
+          actorOf(s, '01990000-0000-7000-8000-0000000000fe' as Id<'Seller'>),
+          {},
+        ),
+      ).resolves.toMatchObject({ ok: false });
+      await expect(s.ownOwnerEmail.execute(system, {})).resolves.toMatchObject({ ok: false });
+      await expect(s.ownOwnerEmail.execute(anonymous, {})).resolves.toMatchObject({ ok: false });
     });
   });
 

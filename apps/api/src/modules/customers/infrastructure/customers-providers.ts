@@ -15,6 +15,13 @@ import {
   ADDRESS_REPOSITORY,
   type AddressRepository,
 } from '../application/ports/address.repository';
+import {
+  ACCOUNT_DELETION_REQUEST_REPOSITORY,
+  type AccountDeletionRequestRepository,
+} from '../application/ports/account-deletion-request.repository';
+import { ACCOUNT_DELETION_PEERS } from '../application/ports/account-deletion-peers';
+import { LateBoundAccountDeletionPeers } from './late-bound-account-deletion-peers';
+import { PrismaAccountDeletionRequestRepository } from './prisma-account-deletion-request.repository';
 import { PrismaAccountDeletionSettingsRepository } from './prisma-account-deletion-settings.repository';
 import { ConfigAddressPolicy } from './config-address-policy';
 import { PrismaAddressRepository } from './prisma-address.repository';
@@ -36,6 +43,16 @@ export const customersProviders: readonly FactoryProvider[] = [
     provide: ADDRESS_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): AddressPolicy => new ConfigAddressPolicy(markets),
+  },
+  {
+    provide: ACCOUNT_DELETION_REQUEST_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AccountDeletionRequestRepository =>
+      new PrismaAccountDeletionRequestRepository(prisma),
+  },
+  {
+    provide: ACCOUNT_DELETION_PEERS,
+    useFactory: (): LateBoundAccountDeletionPeers => new LateBoundAccountDeletionPeers(),
   },
   {
     provide: ACCOUNT_DELETION_SETTINGS_REPOSITORY,

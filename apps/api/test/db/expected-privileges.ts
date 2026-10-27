@@ -500,6 +500,30 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['release_reason', 'released_at', 'released_by'],
     },
+    // Package 8b: a dispute case is inserted and refreshed (its state columns only; a trigger keeps
+    // the identity columns and the one-way flags), a decision is insert-only (a trigger refuses
+    // more), and commission-payouts has its own outbox (the relay marks events published).
+    'commission_payouts.dispute_cases': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'bucket',
+        'closed',
+        'closed_at',
+        'evidence_due_by',
+        'funds_reinstated',
+        'funds_reinstated_at',
+        'funds_withdrawn',
+        'funds_withdrawn_at',
+        'inquiry',
+        'last_synced_version',
+        'outcome',
+        'reason',
+        'status',
+        'updated_at',
+      ],
+    },
+    'commission_payouts.dispute_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'commission_payouts.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Wallet (customer wallet package 1): journals, their legs and a hold's lots are insert-only
     // (triggers refuse more for every role); the rest change only the columns named and are never
     // deleted (a trigger refuses DELETE and TRUNCATE for every role).
@@ -668,6 +692,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // part of the audit evidence); the outbox is immutable to the application except the relay's
     // published_at.
     'customers.account_deletion_settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Package 5b: a deletion request is inserted and moved on (only the state columns: status, the
+    // job's claim and the closing columns), never deleted.
+    'customers.account_deletion_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['cancel_reason', 'cancelled_at', 'claimed_at', 'completed_at', 'status'],
+    },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.

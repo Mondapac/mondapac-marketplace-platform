@@ -345,3 +345,41 @@ seller ships as in SHP-01.
 - `quoteBounds.minMinor` and `quoteBounds.maxMinor` (required): the range, in minor units of the
   Market's currency, a live quote must fall in to be charged at checkout; outside it the seller's
   flat fee is charged (AU 500 to 10000, that is 5 to 100 AUD).
+
+### `shipping.uberDirect` (optional, Phase 6 package 5b)
+
+The external fleet Uber Direct. Off unless `enabled` is `true` AND the Region Stack holds all three
+credentials for the Market (`UBER_DIRECT_CUSTOMER_ID`, `UBER_DIRECT_CLIENT_ID`,
+`UBER_DIRECT_CLIENT_SECRET`); the adapter then answers `carrier.not-configured` and sends nothing.
+Its API hosts are fixed in the adapter. The country sent to Uber is `customers.address.countryCode`.
+
+- `enabled` (required): the Market switch; ship `false`.
+- `serviceAreas` (required) and `modes` (required, `on_demand` and/or `scheduled`):
+  what the fleet serves (`on_demand` gives the instant and same-day methods, `scheduled` the
+  buyer's window, which is sent to Uber as the drop-off window). `temperatures` (required): the
+  temperature classes it carries (AU `ambient`).
+- `limits` (required): `maxItemWeightGrams`, `maxItems` and `maxOrderValueMinor` (minor units of
+  the Market's default currency; AU 20000 g, 8 items, 50000 = A$500).
+- `prohibitedClasses` (required, may be empty): kinds of goods the fleet refuses, as lower-case slugs.
+- `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
+
+### `shipping.zoom2u` (optional, Phase 6 package 5c)
+
+The external fleet Zoom2u. Off unless `enabled` is `true` AND the Region Stack holds
+`ZOOM2U_API_KEY` for the Market; the adapter then answers `carrier.not-configured` and sends
+nothing. Its API hosts are fixed in the adapter (`environment` picks the set; Zoom2u documents one
+host and a TEST flag on the key until "Go Live", so both currently point at it). Prices come
+without a currency: they are read in the Market's default currency.
+
+- `enabled` (required): the Market switch; ship `false`. `environment` (required): `sandbox` or
+  `production`.
+- `serviceAreas` (required) and `modes` (required, `on_demand` and/or `scheduled`): what the fleet
+  serves. `on_demand` gives the instant method on the `instantSpeed` service (`VIP` or `3 hour`)
+  and the same-day method on `Same day`; `scheduled` the buyer's window. `supportsWindow`
+  (required): whether the fleet may be offered a buyer's window; its start is sent as the pickup
+  time (`ReadyDateTime`). `temperatures` (required): the temperature classes it carries (AU `ambient`).
+- `limits` (required): `maxItemWeightGrams`, `maxItems` and `maxOrderValueMinor` (minor units of
+  the Market's default currency; Zoom2u allows 30 kg a parcel).
+- `prohibitedClasses` (required, may be empty): kinds of goods the fleet refuses, as lower-case slugs.
+- `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
+  A booking is sent once whatever `maxAttempts` says: Zoom2u documents no idempotency key.

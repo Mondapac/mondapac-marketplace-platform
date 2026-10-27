@@ -523,6 +523,7 @@ describe.each([['AU'], ['ZZ']] as const)(
           h.useCases.instruct,
           h.useCases.byKey,
           h.useCases.abandon,
+          undefined as never,
         );
 
         const sent = await facade.instructTransfer(h.system, h.request());

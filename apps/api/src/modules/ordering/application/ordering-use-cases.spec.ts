@@ -42,6 +42,8 @@ import { AdminViewOrder } from './use-cases/admin-view-order.use-case';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
+import { OpenObligationsOfQuery } from './use-cases/open-obligations-of.use-case';
+import { OwnOpenObligationsQuery } from './use-cases/own-open-obligations.use-case';
 import { ShipmentNoticeQuery } from './use-cases/shipment-notice.use-case';
 import { StartCheckout } from './use-cases/start-checkout.use-case';
 import { RecordCarrierProgress } from './use-cases/record-carrier-progress.use-case';
@@ -57,6 +59,7 @@ import { AllowAllDeliveryMethods } from '../infrastructure/allow-all-delivery-me
 import { MyDeliveredSellerOrders } from './use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
 import { SellerViewOrderDocument } from './use-cases/seller-view-order-document.use-case';
+import { OrderPaymentRefQuery } from './use-cases/order-payment-ref.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { ViewOrderDocument } from './use-cases/view-order-document.use-case';
 import { ViewOrder } from './use-cases/view-order.use-case';
@@ -784,6 +787,39 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       });
       expect(denied.ok).toBe(false);
       expect(gateway.captured).toEqual([]);
+    });
+  });
+
+  describe('order-payment-ref', () => {
+    it("answers the order's own PaymentIntent: none before payment, the confirmed one after", async () => {
+      const order = await placed();
+      const ref = new OrderPaymentRefQuery(gate, deps);
+      expect(await ref.execute(system, { orderId: order.id })).toEqual(
+        ok({ orderId: order.id, paymentIntentId: null }),
+      );
+      await confirm(order.id);
+      expect(await ref.execute(system, { orderId: order.id })).toEqual(
+        ok({ orderId: order.id, paymentIntentId: 'pi_test_1' }),
+      );
+    });
+
+    it('refuses an unknown order, a bad id and every caller but the system', async () => {
+      const ref = new OrderPaymentRefQuery(gate, deps);
+      expect(
+        await ref.execute(system, { orderId: '01990000-0000-7000-8000-00000000ffff' }),
+      ).toEqual(err({ code: 'ordering.order-not-found' }));
+      expect(await ref.execute(system, { orderId: 'nope' })).toEqual(
+        err({ code: 'validation.failed' }),
+      );
+      expect(OrderPaymentRefQuery.access).toEqual({
+        name: 'ordering.order-payment-ref',
+        rule: { kind: 'system' },
+      });
+      for (const context of [customer, anonymous]) {
+        expect(
+          await ref.execute(context, { orderId: '01990000-0000-7000-8000-00000000ffff' }),
+        ).toEqual(err({ code: 'access.denied' }));
+      }
     });
   });
 
@@ -2665,6 +2701,52 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       });
     });
   });
+  describe('open obligations (account deletion)', () => {
+    const systemContext = testCallContext(market, 'system', 'open-obligations-sys');
+
+    it('counts an order waiting for payment or not yet delivered, never another account', async () => {
+      const result = await start();
+      if (!result.ok) throw new Error('checkout failed');
+      const own = new OwnOpenObligationsQuery(gate, deps);
+      const ofAccount = new OpenObligationsOfQuery(gate, deps);
+      const order = orders.rows.get(result.value.orderId)!;
+      const counts = (openOrders: number) => ({
+        ok: true,
+        value: { openOrders, pendingRefunds: 0 },
+      });
+
+      expect(await own.execute(customer, {})).toEqual(counts(1));
+      expect(await ofAccount.execute(systemContext, { accountId: ACCOUNT })).toEqual(counts(1));
+      expect(await own.execute(customerOf(OTHER), {})).toEqual(counts(0));
+
+      const confirmed = { ...order, status: 'confirmed' as const };
+      orders.rows.set(order.id, {
+        ...confirmed,
+        sellerOrders: confirmed.sellerOrders.map((s) => ({ ...s, fulfilment: 'shipped' as const })),
+      });
+      expect(await own.execute(customer, {})).toEqual(counts(1));
+      orders.rows.set(order.id, {
+        ...confirmed,
+        sellerOrders: confirmed.sellerOrders.map((s) => ({
+          ...s,
+          fulfilment: 'delivered' as const,
+        })),
+      });
+      expect(await own.execute(customer, {})).toEqual(counts(0));
+      orders.rows.set(order.id, { ...order, status: 'cancelled' as const });
+      expect(await own.execute(customer, {})).toEqual(counts(0));
+    });
+
+    it('is refused to the wrong actor: the own read to non-customers, the account read to anyone but the system', async () => {
+      const own = new OwnOpenObligationsQuery(gate, deps);
+      const ofAccount = new OpenObligationsOfQuery(gate, deps);
+      expect(await own.execute(systemContext, {})).toMatchObject({ ok: false });
+      expect(await ofAccount.execute(customer, { accountId: ACCOUNT })).toMatchObject({
+        ok: false,
+      });
+    });
+  });
+
   describe('order documents', () => {
     const adminContext = testCallContext(
       market,

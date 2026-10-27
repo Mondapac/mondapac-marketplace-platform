@@ -207,9 +207,20 @@ export class FakeOrderingFacade implements OrderingFacade {
   shipmentNotice(): ReturnType<OrderingFacade['shipmentNotice']> {
     return Promise.resolve(err({ code: 'ordering.order-not-found' }));
   }
+  orderPaymentRef(): ReturnType<OrderingFacade['orderPaymentRef']> {
+    return Promise.resolve(err({ code: 'ordering.order-not-found' }));
+  }
 
   sellerOrderCustomerNames(): ReturnType<OrderingFacade['sellerOrderCustomerNames']> {
     return Promise.resolve(ok([]));
+  }
+
+  ownOpenObligations(): ReturnType<OrderingFacade['ownOpenObligations']> {
+    return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
+  }
+
+  openObligationsOf(): ReturnType<OrderingFacade['openObligationsOf']> {
+    return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
   }
 
   myDeliveredSellerOrders(): ReturnType<OrderingFacade['myDeliveredSellerOrders']> {
@@ -501,6 +512,7 @@ export class FakeConnectGateway implements ConnectGateway {
     country: string;
     marketId: string;
     sellerId: string;
+    contactEmail: string;
   }) {
     this.creates.push({ ...request });
     return Promise.resolve(this.createAnswer);
@@ -582,14 +594,17 @@ export class RecordingPaymentsAudit implements AuditWriter {
 
 /**
  * The identity facade as payments uses it: whether the signed-in seller has two-step sign-in on,
- * and a code check that accepts one code (the `valid` field) and answers the configured refusal
- * otherwise. `checks` records the codes presented, in order.
+ * a code check that accepts one code (the `valid` field) and answers the configured refusal
+ * otherwise, and the Seller Owner's own address (`ownerEmail`, null for none). `checks` records
+ * the codes presented, in order.
  */
 export class FakeIdentityFacade implements Pick<
   IdentityFacade,
-  'describeActor' | 'confirmSecondFactor'
+  'describeActor' | 'confirmSecondFactor' | 'ownOwnerEmail'
 > {
   secondFactorActive = true;
+  ownerEmail: string | null = 'owner@seller.example';
+  ownerEmailDenied = false;
   valid = '123456';
   failure: ConfirmSecondFactorFailure | null = null;
   readonly checks: string[] = [];
@@ -608,6 +623,10 @@ export class FakeIdentityFacade implements Pick<
         secondFactorActive: this.secondFactorActive,
       }),
     );
+  }
+  ownOwnerEmail() {
+    if (this.ownerEmailDenied) return Promise.resolve(err({ code: 'access.denied' as const }));
+    return Promise.resolve(ok(this.ownerEmail));
   }
   confirmSecondFactor(_context: CallContext, code: string) {
     this.checks.push(code);
@@ -656,6 +675,14 @@ export class FakeDisputeReader implements StripeDisputeReader {
 /** `payments.disputes` in memory, with the guards of the database: version and read order. */
 export class MemoryDisputeStore implements DisputeStore {
   readonly rows = new Map<string, DisputeRecord & { readonly market: string }>();
+  findByOrder(market: MarketContext, orderId: string) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter((r) => r.market === market.marketId && r.orderId === orderId)
+        .sort((a, b) => a.openedAt.epochMilliseconds - b.openedAt.epochMilliseconds)
+        .map(strip),
+    );
+  }
   findByRef(market: MarketContext, providerDisputeId: string) {
     const row = [...this.rows.values()].find(
       (r) => r.market === market.marketId && r.providerDisputeId === providerDisputeId,

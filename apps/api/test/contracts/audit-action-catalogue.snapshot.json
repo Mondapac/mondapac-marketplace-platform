@@ -545,6 +545,25 @@
     }
   },
   {
+    "action": "commission-payouts.dispute.decide",
+    "targetType": "commission-payouts.dispute-decision",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "bearer": "optional(enumOf(platform|seller))",
+      "capAmount": "optional(money)"
+    },
+    "after": {
+      "amount": "optional(money)",
+      "bearer": "enumOf(platform|seller)",
+      "disputeId": "id",
+      "reasonCode": "enumOf(no-delivery-proof|not-as-described|card-fraud-not-seller|other)",
+      "reversal": "boolean",
+      "sellerId": "id",
+      "sellerOrderId": "id"
+    }
+  },
+  {
     "action": "commission-payouts.payout-hold.place",
     "targetType": "commission-payouts.payout-hold",
     "targetId": "id",
@@ -561,7 +580,7 @@
     "action": "commission-payouts.payout-hold.release",
     "targetType": "commission-payouts.payout-hold",
     "targetId": "id",
-    "actors": ["authenticated"],
+    "actors": ["authenticated", "system"],
     "before": {
       "reason": "enumOf(seller-suspended|refund-pending|dispute|admin-review|bank-change)",
       "sellerId": "id",
@@ -634,6 +653,37 @@
     }
   },
   {
+    "action": "customers.account-deletion.cancelled",
+    "targetType": "customers.account-deletion-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "reason": "enumOf(customer|sign-in)"
+    }
+  },
+  {
+    "action": "customers.account-deletion.completed",
+    "targetType": "customers.account-deletion-request",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
+    "action": "customers.account-deletion.requested",
+    "targetType": "customers.account-deletion-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "scheduledFor": "instant",
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
     "action": "identity.account-role.assigned",
     "targetType": "identity.account",
     "targetId": "id",
@@ -689,6 +739,16 @@
     }
   },
   {
+    "action": "identity.account.erased",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "requestId": "id"
+    }
+  },
+  {
     "action": "identity.account.other-sessions-signed-out",
     "targetType": "identity.account",
     "targetId": "id",
@@ -696,6 +756,17 @@
     "before": null,
     "after": {
       "keptSessionId": "id",
+      "revokedSessions": "integer"
+    }
+  },
+  {
+    "action": "identity.account.sessions-ended-for-erasure",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "requestId": "id",
       "revokedSessions": "integer"
     }
   },

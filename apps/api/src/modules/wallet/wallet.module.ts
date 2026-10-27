@@ -24,6 +24,7 @@ import { CaptureHold } from './application/use-cases/capture-hold.use-case';
 import { ExpireAdminCreditRequests } from './application/use-cases/expire-admin-credit-requests.use-case';
 import { ExpireWalletCredit } from './application/use-cases/expire-wallet-credit.use-case';
 import { GrantCredit } from './application/use-cases/grant-credit.use-case';
+import { OwnBalanceOf } from './application/use-cases/own-balance-of.use-case';
 import { IssueAdminCredit } from './application/use-cases/issue-admin-credit.use-case';
 import { ListAdminCreditRequests } from './application/use-cases/list-admin-credit-requests.use-case';
 import { PlaceHold } from './application/use-cases/place-hold.use-case';
@@ -103,6 +104,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CaptureHold,
       ReleaseHold,
       BalanceOf,
+      OwnBalanceOf,
       ExpireWalletCredit,
       ViewMyWallet,
       ViewMyHistory,
@@ -117,14 +119,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: WALLET_FACADE,
-      inject: [GrantCredit, PlaceHold, CaptureHold, ReleaseHold, BalanceOf],
+      inject: [GrantCredit, PlaceHold, CaptureHold, ReleaseHold, BalanceOf, OwnBalanceOf],
       useFactory: (
         grant: GrantCredit,
         place: PlaceHold,
         capture: CaptureHold,
         release: ReleaseHold,
         balance: BalanceOf,
-      ) => new WalletFacadeImplementation(grant, place, capture, release, balance),
+        ownBalance: OwnBalanceOf,
+      ) => new WalletFacadeImplementation(grant, place, capture, release, balance, ownBalance),
     },
     registerJobsFrom(
       'wallet',

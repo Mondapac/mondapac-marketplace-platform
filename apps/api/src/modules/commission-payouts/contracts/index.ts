@@ -2,6 +2,8 @@
 // permission keys. Other modules may import only what this file exports, through ../index.ts.
 export { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 export {
+  COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE,
+  COMMISSION_PAYOUTS_DISPUTE_VIEW,
   COMMISSION_PAYOUTS_EARNINGS_VIEW,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_PLACE,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
@@ -27,3 +29,4 @@ export {
   type RefundLossBearer,
   type SellerOrderDelivered,
 } from './commission-payouts.facade';
+export { COMMISSION_PAYOUTS_EVENTS, SellerOrderDisputed } from '../domain/events';

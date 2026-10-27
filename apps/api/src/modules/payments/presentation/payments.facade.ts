@@ -2,6 +2,7 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import type { AbandonTransfer } from '../application/use-cases/abandon-transfer.use-case';
 import type { DisputeOfQuery } from '../application/use-cases/dispute-of.use-case';
 import type { InstructTransfer } from '../application/use-cases/instruct-transfer.use-case';
+import type { DisputesOfOrderQuery } from '../application/use-cases/disputes-of-order.use-case';
 import type { PayoutReadinessQuery } from '../application/use-cases/payout-readiness.use-case';
 import type { TransferByKeyQuery } from '../application/use-cases/transfer-by-key.use-case';
 import type { InstructTransferRequest, PaymentsFacade } from '../contracts';
@@ -14,6 +15,7 @@ export class PaymentsFacadeImplementation implements PaymentsFacade {
     private readonly instruct: InstructTransfer,
     private readonly byKey: TransferByKeyQuery,
     private readonly abandon: AbandonTransfer,
+    private readonly orderDisputes: DisputesOfOrderQuery,
   ) {}
 
   payoutReadiness(context: CallContext, sellerIds: readonly string[]) {
@@ -34,5 +36,9 @@ export class PaymentsFacadeImplementation implements PaymentsFacade {
 
   abandonTransfer(context: CallContext, instructionKey: string) {
     return this.abandon.execute(context, instructionKey);
+  }
+
+  disputesOfOrder(context: CallContext, orderId: string) {
+    return this.orderDisputes.execute(context, orderId);
   }
 }

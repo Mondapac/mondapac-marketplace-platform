@@ -233,6 +233,27 @@ export const TransferAlert = defineSecurityEvent({
 });
 
 /**
+ * A dispute payments recorded names an order that commission-payouts cannot match (package 8b):
+ * the order is unknown in this Market, or the dispute's PaymentIntent is not the order's own. Its
+ * money may move all the same, so it holds nothing and an admin looks at it in the Stripe
+ * Dashboard.
+ */
+export const DisputeOrderMismatch = defineSecurityEvent({
+  type: 'commission-payouts.dispute.order-mismatch',
+  severity: 's2',
+  targetType: null,
+  ip: false,
+  payload: {
+    disputeId: eventField.id(),
+    reason: eventField.enumOf([
+      'unknown-order',
+      'payment-intent-mismatch',
+      'order-changed',
+    ] as const),
+  },
+});
+
+/**
  * The live read of a connected account before a transfer failed (package 6c, HP-1 condition 2):
  * the transfer was not made and nothing else changed. This is the counter behind
  * `payments_live_check_failures_total{market}`: Kazem's rule counts these per Market.
@@ -271,6 +292,7 @@ export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefiniti
       StripeDisputeUnmatched,
       TransferAlert,
       LiveCheckFailed,
+      DisputeOrderMismatch,
       CarrierWebhookSignatureFailed,
     ] as readonly SecurityEventDefinition[]
   ).map((definition) => [definition.type, definition]),

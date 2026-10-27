@@ -36,6 +36,7 @@ import { ApplyStripeEvents } from './application/use-cases/apply-stripe-events.u
 import { ConnectPayoutAccount } from './application/use-cases/connect-payout-account.use-case';
 import { DisputeOfQuery } from './application/use-cases/dispute-of.use-case';
 import { InstructTransfer } from './application/use-cases/instruct-transfer.use-case';
+import { DisputesOfOrderQuery } from './application/use-cases/disputes-of-order.use-case';
 import { OpenPayoutAccountLink } from './application/use-cases/open-payout-account-link.use-case';
 import { PayoutReadinessQuery } from './application/use-cases/payout-readiness.use-case';
 import { ResolveTransfers } from './application/use-cases/resolve-transfers.use-case';
@@ -138,6 +139,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     useCaseProvider(TransferByKeyQuery),
     useCaseProvider(AbandonTransfer),
     useCaseProvider(ResolveTransfers),
+    useCaseProvider(DisputesOfOrderQuery),
     useCaseProvider(SyncPayoutSchedules),
     useCaseProvider(AdminListConnectedAccounts),
     useCaseProvider(AdminViewConnectedAccount),
@@ -149,6 +151,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         InstructTransfer,
         TransferByKeyQuery,
         AbandonTransfer,
+        DisputesOfOrderQuery,
       ],
       useFactory: (
         readiness: PayoutReadinessQuery,
@@ -156,7 +159,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         instruct: InstructTransfer,
         byKey: TransferByKeyQuery,
         abandon: AbandonTransfer,
-      ) => new PaymentsFacadeImplementation(readiness, disputes, instruct, byKey, abandon),
+        orderDisputes: DisputesOfOrderQuery,
+      ) =>
+        new PaymentsFacadeImplementation(
+          readiness,
+          disputes,
+          instruct,
+          byKey,
+          abandon,
+          orderDisputes,
+        ),
     },
     registerJobsFrom(
       'payments',
