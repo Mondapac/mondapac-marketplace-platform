@@ -25,7 +25,9 @@ import type { Request, Response } from 'express';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
+import { clientAddressFrom } from '../../../platform/http/client-address';
 import { MarketFromPath } from '../../../platform/http/market-from-path.decorator';
+import { clientAddressOf } from '../../../platform/rate-limit/client-origin';
 import { ReceiveCarrierWebhook } from '../application/use-cases/receive-carrier-webhook.use-case';
 
 /** The HTTP status of each refusal. Drive retries any answer that is not 2xx. */
@@ -94,7 +96,12 @@ export class CarrierWebhookController {
       this.log(context, 'request.body-unsupported');
       throw fail(415, 'request.body-unsupported');
     }
-    const result = await this.receive.execute(context, { payload: body, timestamp, signature });
+    const result = await this.receive.execute(context, {
+      payload: body,
+      timestamp,
+      signature,
+      clientAddress: clientAddressOf(clientAddressFrom(request)),
+    });
     this.log(context, result.ok ? result.value : result.error.code);
     if (!result.ok) {
       const status = CARRIER_WEBHOOK_STATUS[result.error.code];

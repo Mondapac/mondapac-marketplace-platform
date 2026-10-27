@@ -20,6 +20,8 @@ export {
   type ActorDescription,
   type ConfirmSecondFactorFailure,
   type ContactEmailTarget,
+  type CustomerAccountOfFailure,
+  type CustomerAccountRef,
   type CustomerAccountSummary,
   type CustomerShortName,
   type IdentityFacade,

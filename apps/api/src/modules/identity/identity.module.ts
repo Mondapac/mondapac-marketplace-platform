@@ -8,6 +8,7 @@ import {
   registerPermissions,
   registerStepUpActions,
   STEP_UP_SOURCE,
+  STEP_UP_CONSUMER_SOURCE,
   StepUpActionRegistry,
   type StepUpCheck,
   USE_CASE_GATE,
@@ -148,6 +149,7 @@ import { DescribeActor } from './application/use-cases/describe-actor.use-case';
 import { DescribeSellerStatus } from './application/use-cases/describe-seller-status.use-case';
 import { ListRegisteredSellers } from './application/use-cases/list-registered-sellers.use-case';
 import { ContactEmailOf } from './application/use-cases/contact-email-of.use-case';
+import { CustomerAccountOf } from './application/use-cases/customer-account-of.use-case';
 import { CustomerAccountSummaries } from './application/use-cases/customer-account-summaries.use-case';
 import { CustomerShortNames } from './application/use-cases/customer-short-names.use-case';
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
@@ -197,12 +199,18 @@ import { CheckedInCommonPasswords } from './infrastructure/passwords/checked-in-
 import { reviewerProviders } from './infrastructure/reviewers/reviewer-providers';
 import { roleProviders } from './infrastructure/roles/role-providers';
 import { secondFactorProviders } from './infrastructure/second-factor/second-factor-providers';
+import { SECURITY_EVENTS } from '../../platform/security-events/security-events';
 import { STEP_UP_REPOSITORY } from './application/ports/step-up.repository';
+import type { StepUpRepository } from './application/ports/step-up.repository';
+import type { SecondFactorRepository } from './application/ports/second-factor.repository';
+import { AdminStepUpConsumer } from './application/step-up/admin-step-up-consumer';
 import { IDENTITY_STEP_UP_ACTIONS } from './contracts/step-up';
 import { ListSellerStepUpPolicy } from './application/use-cases/list-seller-step-up-policy.use-case';
 import { RequireStepUp } from './application/use-cases/require-step-up.use-case';
 import { SetSellerStepUpPolicy } from './application/use-cases/set-seller-step-up-policy.use-case';
 import { VerifySellerStepUp } from './application/use-cases/verify-seller-step-up.use-case';
+import { VerifyAdminStepUp } from './application/use-cases/verify-admin-step-up.use-case';
+import { AdminStepUpController } from './presentation/admin-step-up.controller';
 import { SellerStepUpController } from './presentation/seller-step-up.controller';
 import { sellerProviders } from './infrastructure/sellers/seller-providers';
 import { sessionProviders } from './infrastructure/sessions/session-providers';
@@ -244,6 +252,7 @@ const PORT = {
   sessions: SESSION_REPOSITORY,
   throttles: THROTTLE_REPOSITORY,
   records: SIGN_IN_RECORD_REPOSITORY,
+  securityEvents: SECURITY_EVENTS,
   links: ONE_TIME_LINK_REPOSITORY,
   challenges: SIGN_IN_CHALLENGE_REPOSITORY,
   invitations: INVITATION_REPOSITORY,
@@ -420,6 +429,7 @@ function useCaseProvider<D, U>(
     SellerStepUpController,
     AdminSessionController,
     AdminSecondFactorController,
+    AdminStepUpController,
     AdminPasswordController,
     AdminProfileController,
     AdminTeamController,
@@ -429,6 +439,7 @@ function useCaseProvider<D, U>(
     PersistenceModule.outboxWriterFor('identity'),
     registerEvents('identity', IDENTITY_EVENTS),
     PersistenceModule.auditWriterFor('identity'),
+    PersistenceModule.securityEventsFor('identity'),
     registerAuditActions('identity', IDENTITY_AUDIT_ACTIONS),
     registerPermissions('identity', IDENTITY_PERMISSIONS),
     registerStepUpActions('identity', IDENTITY_STEP_UP_ACTIONS),
@@ -505,6 +516,7 @@ function useCaseProvider<D, U>(
       sessions: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       hasher: true,
       tokens: true,
       keys: true,
@@ -520,6 +532,7 @@ function useCaseProvider<D, U>(
       externalIdentities: true,
       sessions: true,
       records: true,
+      securityEvents: true,
       hasher: true,
       tokens: true,
       outbox: true,
@@ -565,6 +578,7 @@ function useCaseProvider<D, U>(
       sessions: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       hasher: true,
       tokens: true,
       keys: true,
@@ -637,6 +651,7 @@ function useCaseProvider<D, U>(
       sessions: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       hasher: true,
       tokens: true,
       keys: true,
@@ -658,6 +673,7 @@ function useCaseProvider<D, U>(
       factors: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       keys: true,
       secrets: true,
       challengeTokens: true,
@@ -679,6 +695,7 @@ function useCaseProvider<D, U>(
       challenges: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       keys: true,
       challengeTokens: true,
       secrets: true,
@@ -694,6 +711,7 @@ function useCaseProvider<D, U>(
       factors: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       keys: true,
       secrets: true,
       challengeTokens: true,
@@ -783,6 +801,7 @@ function useCaseProvider<D, U>(
       sessions: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       hasher: true,
       tokens: true,
       keys: true,
@@ -823,6 +842,10 @@ function useCaseProvider<D, U>(
       accounts: true,
       memberships: true,
       grants: true,
+    }),
+    useCaseProvider(CustomerAccountOf, {
+      unitOfWork: true,
+      accounts: true,
     }),
     useCaseProvider(CustomerAccountSummaries, {
       unitOfWork: true,
@@ -895,6 +918,7 @@ function useCaseProvider<D, U>(
       sessions: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       ids: true,
       keys: true,
       linkTokens: true,
@@ -914,6 +938,7 @@ function useCaseProvider<D, U>(
       links: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       ids: true,
       keys: true,
       tokens: true,
@@ -972,6 +997,7 @@ function useCaseProvider<D, U>(
       sessions: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       hasher: true,
       tokens: true,
       keys: true,
@@ -991,6 +1017,7 @@ function useCaseProvider<D, U>(
       factors: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       keys: true,
       secrets: true,
       challengeTokens: true,
@@ -1010,6 +1037,7 @@ function useCaseProvider<D, U>(
       challenges: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       keys: true,
       linkTokens: true,
       challengeTokens: true,
@@ -1026,6 +1054,7 @@ function useCaseProvider<D, U>(
       factors: true,
       throttles: true,
       records: true,
+      securityEvents: true,
       keys: true,
       secrets: true,
       challengeTokens: true,
@@ -1588,6 +1617,20 @@ function useCaseProvider<D, U>(
       stepUp: true,
       stepUpActions: true,
     }),
+    useCaseProvider(VerifyAdminStepUp, {
+      unitOfWork: true,
+      accounts: true,
+      factors: true,
+      throttles: true,
+      keys: true,
+      secrets: true,
+      outbox: true,
+      clock: true,
+      audit: true,
+      policy: true,
+      stepUp: true,
+      stepUpActions: true,
+    }),
     useCaseProvider(SetSellerStepUpPolicy, {
       unitOfWork: true,
       accounts: true,
@@ -1602,6 +1645,18 @@ function useCaseProvider<D, U>(
       stepUp: true,
       stepUpActions: true,
     }),
+    {
+      // What `platform/authz` binds to STEP_UP_CONSUMER: the single-use spend of an admin proof
+      // inside the guarded use case's own unit (issue #491).
+      provide: STEP_UP_CONSUMER_SOURCE,
+      inject: [STEP_UP_REPOSITORY, StepUpActionRegistry, SECOND_FACTOR_REPOSITORY, CLOCK],
+      useFactory: (
+        stepUp: StepUpRepository,
+        stepUpActions: StepUpActionRegistry,
+        factors: SecondFactorRepository,
+        clock: Clock,
+      ) => new AdminStepUpConsumer({ stepUp, stepUpActions, factors, clock }),
+    },
     {
       // What `platform/authz` binds to the route guard `@RequiresStepUp(...)`: the same use case as
       // the facade's `requireStepUp`, through the gate.
@@ -1623,6 +1678,7 @@ function useCaseProvider<D, U>(
         ConfirmSellerSecondFactor,
         ContactEmailOf,
         RequireStepUp,
+        CustomerAccountOf,
         CustomerAccountSummaries,
         CustomerShortNames,
         TeamMemberLabels,
@@ -1634,6 +1690,7 @@ function useCaseProvider<D, U>(
         confirmSellerSecondFactor: ConfirmSellerSecondFactor,
         contactEmailOf: ContactEmailOf,
         requireStepUp: RequireStepUp,
+        customerAccountOf: CustomerAccountOf,
         customerAccountSummaries: CustomerAccountSummaries,
         customerShortNames: CustomerShortNames,
         teamMemberLabels: TeamMemberLabels,
@@ -1645,6 +1702,7 @@ function useCaseProvider<D, U>(
           confirmSellerSecondFactor,
           contactEmailOf,
           requireStepUp,
+          customerAccountOf,
           customerAccountSummaries,
           customerShortNames,
           teamMemberLabels,
@@ -1747,6 +1805,7 @@ function useCaseProvider<D, U>(
     IDENTITY_FACADE,
     SELLER_ACCESS_CONTRACT,
     STEP_UP_SOURCE,
+    STEP_UP_CONSUMER_SOURCE,
   ],
 })
 export class IdentityModule {}

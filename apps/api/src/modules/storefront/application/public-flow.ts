@@ -1,5 +1,5 @@
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { isSlug, type Linked, type Seo } from '../domain/page-settings';
 import {
   defaultPlacements,
@@ -90,6 +90,35 @@ function defaultView(key: string): PublishedPageView {
       defaultPlacements(template, { title: key }, () => `default-${(n += 1)}`),
     ),
   };
+}
+
+/**
+ * The ids of the enabled placements of the page's published version, when the page is live now.
+ * Empty in every other case (no such page in the Market, no published version, archived, outside
+ * its live window), so a caller cannot tell an unknown page from an unserved one.
+ */
+export async function servedPlacementIds(
+  deps: StorefrontDependencies,
+  context: CallContext,
+  input: { readonly pageId: Id<'StorefrontPage'> },
+): Promise<Result<ReadonlySet<string>, never>> {
+  const now = deps.clock.now();
+  return deps.unitOfWork.run<ReadonlySet<string>, never>(
+    context.market,
+    async () => {
+      const page = await deps.pages.findPage(context.market, input.pageId);
+      if (page === null || !live(page, now)) return ok(new Set<string>());
+      const published = await deps.pages.findPublished(context.market, page.id);
+      if (published === null) return ok(new Set<string>());
+      const template = templateOf(page.templateKey);
+      const slots = servedSlots(
+        template,
+        readPlacements(template, published.placements).placements,
+      );
+      return ok(new Set(slots.flatMap((slot) => slot.modules.map((entry) => entry.id))));
+    },
+    { readOnly: true },
+  );
 }
 
 /** The published layout of a system page (the navigation has its own read). */

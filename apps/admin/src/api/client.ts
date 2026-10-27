@@ -6,6 +6,8 @@ export interface ApiFailure {
   readonly details?: {
     readonly rule?: string;
     readonly retryAfterSeconds?: number;
+    /** The action a guarded route asks a fresh two-step code for (`second-factor.required`). */
+    readonly actionKey?: string;
     readonly fields?: readonly { readonly path: string; readonly code: string }[];
   };
 }

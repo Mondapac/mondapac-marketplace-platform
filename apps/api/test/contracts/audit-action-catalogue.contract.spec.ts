@@ -46,17 +46,20 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * set or removed, Phase 5 package 5; storefront: page and navigation content changes, publishing
  * and archiving; tax: the admin-defined tax strategies; payments: the payout-account
  * change and pause rows, Phase 5 package 3 leftovers; assistant: the buyer assistant settings
- * change, plan section 11; wallet: the Market wallet switch, customer wallet package 1).
+ * change, plan section 11; wallet: the Market wallet switch, customer wallet package 1; reviews: the Market
+ * reviews switch, reviews package 1; customers: the account deletion setting change, package 5a).
  */
 const AUDITING_MODULES = [
   'AssistantModule',
   'CertificationModule',
   'CommissionPayoutsModule',
+  'CustomersModule',
   'IdentityModule',
   'NotificationsModule',
   'OrderingModule',
   'PaymentsModule',
   'PricingModule',
+  'ReviewsModule',
   'SellersModule',
   'ShippingModule',
   'StorefrontModule',
@@ -144,7 +147,7 @@ const isAmountKind = (kind: AuditFieldKind): boolean =>
 /**
  * The (action, field) pairs that may declare `money`, as `<action>.<side>.<field>`. A new money
  * field anywhere fails the contract until it is added here in a reviewed change (Hassan M1;
- * platform-audit 3.2). Pricing's regular-price and special-price rows carry the seller's own amounts, and sellers' minimum-order change the seller's own public minimum; Cost
+ * platform-audit 3.2). Wallet's admin credit rows carry the promo credit issued. Pricing's regular-price and special-price rows carry the seller's own amounts, and sellers' minimum-order change the seller's own public minimum; Cost
  * never enters an audit row (ADR-0024), which `costLeakProblems` checks apart from this list.
  */
 const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
@@ -162,6 +165,11 @@ const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
   'pricing.special-price.held.after.referenceAmount',
   'sellers.minimum-order.changed.after.minimumOrder',
   'sellers.minimum-order.changed.before.minimumOrder',
+  // Customer wallet package 2a: the amount of promo credit an admin issued, asked for or approved
+  // (platform-issued store credit, never Cost).
+  'wallet.admin-credit.approved.after.amount',
+  'wallet.admin-credit.issued.after.amount',
+  'wallet.admin-credit.requested.after.amount',
 ];
 
 /** Every field of every action, as `<action>.<side>.<field>` with its kind. */
@@ -257,6 +265,8 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.account.enabled',
       'identity.account.other-sessions-signed-out',
       'identity.admin-session.opened',
+      'identity.admin-step-up.refused',
+      'identity.admin-step-up.verified',
       'identity.invitation.accepted',
       'identity.invitation.issued',
       'identity.invitation.reissued',
@@ -445,11 +455,13 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['AssistantModule', 'assistant'],
       ['CertificationModule', 'certification'],
       ['CommissionPayoutsModule', 'commission-payouts'],
+      ['CustomersModule', 'customers'],
       ['IdentityModule', 'identity'],
       ['NotificationsModule', 'notifications'],
       ['OrderingModule', 'ordering'],
       ['PaymentsModule', 'payments'],
       ['PricingModule', 'pricing'],
+      ['ReviewsModule', 'reviews'],
       ['SellersModule', 'sellers'],
       ['ShippingModule', 'shipping'],
       ['StorefrontModule', 'storefront'],
@@ -482,6 +494,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['CertificationModule', 'writer'],
       ['CommissionPayoutsModule', 'actions'],
       ['CommissionPayoutsModule', 'writer'],
+      ['CustomersModule', 'actions'],
+      ['CustomersModule', 'writer'],
       ['IdentityModule', 'actions'],
       ['IdentityModule', 'writer'],
       ['NotificationsModule', 'actions'],
@@ -492,6 +506,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['PaymentsModule', 'writer'],
       ['PricingModule', 'actions'],
       ['PricingModule', 'writer'],
+      ['ReviewsModule', 'actions'],
+      ['ReviewsModule', 'writer'],
       ['SellersModule', 'actions'],
       ['SellersModule', 'writer'],
       ['ShippingModule', 'actions'],
@@ -587,6 +603,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'certification', 'certification.module.ts')}: registerAuditActions('certification')`,
       `${path.join('modules', 'commission-payouts', 'commission-payouts.module.ts')}: auditWriterFor('commission-payouts')`,
       `${path.join('modules', 'commission-payouts', 'commission-payouts.module.ts')}: registerAuditActions('commission-payouts')`,
+      `${path.join('modules', 'customers', 'customers.module.ts')}: auditWriterFor('customers')`,
+      `${path.join('modules', 'customers', 'customers.module.ts')}: registerAuditActions('customers')`,
       `${path.join('modules', 'identity', 'identity.module.ts')}: auditWriterFor('identity')`,
       `${path.join('modules', 'identity', 'identity.module.ts')}: registerAuditActions('identity')`,
       `${path.join('modules', 'notifications', 'notifications.module.ts')}: auditWriterFor('notifications')`,
@@ -597,6 +615,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'payments', 'payments.module.ts')}: registerAuditActions('payments')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: auditWriterFor('pricing')`,
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: registerAuditActions('pricing')`,
+      `${path.join('modules', 'reviews', 'reviews.module.ts')}: auditWriterFor('reviews')`,
+      `${path.join('modules', 'reviews', 'reviews.module.ts')}: registerAuditActions('reviews')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: auditWriterFor('sellers')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: registerAuditActions('sellers')`,
       `${path.join('modules', 'shipping', 'shipping.module.ts')}: auditWriterFor('shipping')`,

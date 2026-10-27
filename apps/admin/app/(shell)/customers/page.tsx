@@ -25,6 +25,13 @@ export default async function CustomersPage() {
         // The status action shows only to an actor who holds its key; the server checks again.
         <CustomerLookup
           canChangeStatus={keys.has(DISABLE_PERMISSION)}
+          walletLink={
+            keys.has('wallet.credit.issue')
+              ? 'issue'
+              : keys.has('wallet.credit.view')
+                ? 'view'
+                : null
+          }
           csrfToken={gate.session.csrfToken}
         />
       ) : (

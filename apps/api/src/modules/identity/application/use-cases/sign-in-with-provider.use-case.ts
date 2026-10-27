@@ -20,7 +20,7 @@ import type { PasswordHasher } from '../ports/password-hasher';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SessionTokens } from '../ports/session-secrets';
 import type { SignInProviderFlowSecrets, SignInProviders } from '../ports/sign-in-providers';
-import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
+import type { SignInRecord, SignInRecordRepository } from '../ports/sign-in-record.repository';
 import {
   verifyProviderCallback,
   type ProviderCallbackFailure,
@@ -28,6 +28,8 @@ import {
   type VerifiedProviderIdentity,
 } from '../social/provider-callback';
 import type { SignInClient } from './sign-in-customer.use-case';
+import type { SecurityEvents } from '../../../../platform/security-events/security-events';
+import { recordSignInSecurityEvent } from '../security-events';
 
 export interface SignInWithProviderInput extends ProviderCallbackInput {
   readonly client: SignInClient;
@@ -59,6 +61,7 @@ export interface SignInWithProviderDependencies {
   readonly externalIdentities: ExternalIdentityRepository;
   readonly sessions: SessionRepository;
   readonly records: SignInRecordRepository;
+  readonly securityEvents: SecurityEvents;
   readonly hasher: PasswordHasher;
   readonly tokens: SessionTokens;
   readonly outbox: OutboxWriter;
@@ -292,7 +295,7 @@ export class SignInWithProvider extends UseCase<
     sessionId: Id<'Session'> | null,
     now: Temporal.Instant,
   ): Promise<void> {
-    await this.deps.records.add(context.market, {
+    const record: SignInRecord = {
       id: this.deps.ids.next<'SignInRecord'>(),
       population: 'customer',
       accountId,
@@ -302,6 +305,8 @@ export class SignInWithProvider extends UseCase<
       address: input.client.address,
       sessionId,
       correlationId: context.correlationId,
-    });
+    };
+    await this.deps.records.add(context.market, record);
+    await recordSignInSecurityEvent(this.deps.securityEvents, context, record);
   }
 }

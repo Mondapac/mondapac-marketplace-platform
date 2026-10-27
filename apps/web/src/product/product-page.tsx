@@ -12,7 +12,9 @@ import type {
   ProductDetail,
   ProductOffer,
 } from '../storefront/types.ts';
+import { TabBarAutoHide } from '../shell/tabbar-autohide.tsx';
 import { BuyControl } from './buy-control.tsx';
+import { Collapsible } from './collapsible.tsx';
 import { Description } from './description.tsx';
 import { Gallery } from './gallery.tsx';
 import { SellerBlock, SellerCards } from './seller-card.tsx';
@@ -35,6 +37,7 @@ export function ProductPage({
   const [offer, ...others] = product.offers;
   return (
     <SellerCards>
+      <TabBarAutoHide />
       <Crumbs
         trail={[
           { label: tc('home'), href: '/' },
@@ -70,11 +73,13 @@ export function ProductPage({
           <Certificates offer={offer} />
           {product.description || product.specifications.length > 0 ? (
             <section className="sec">
-              <h2>{t('details')}</h2>
-              {product.description ? <Description text={product.description} /> : null}
+              {product.description ? (
+                <Collapsible title={t('details')} level="h2">
+                  <Description text={product.description} />
+                </Collapsible>
+              ) : null}
               {product.specifications.length > 0 ? (
-                <>
-                  <h3>{t('specifications')}</h3>
+                <Collapsible title={t('specifications')} level={product.description ? 'h3' : 'h2'}>
                   <dl className="spec">
                     {product.specifications.map((s) => (
                       <div key={s.label}>
@@ -83,7 +88,7 @@ export function ProductPage({
                       </div>
                     ))}
                   </dl>
-                </>
+                </Collapsible>
               ) : null}
             </section>
           ) : null}

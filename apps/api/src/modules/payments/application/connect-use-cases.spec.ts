@@ -20,6 +20,9 @@ import {
   stripeSignatureHeader,
   TEST_CONNECT_WEBHOOK_SECRET,
   TEST_WEBHOOK_SECRET,
+  FakeDisputeReader,
+  MemoryDisputeStore,
+  RecordingPaymentsOutbox,
 } from '../../../../test/support/payments-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
@@ -35,6 +38,7 @@ import { OpenPayoutAccountLink } from './use-cases/open-payout-account-link.use-
 import { PayoutReadinessQuery } from './use-cases/payout-readiness.use-case';
 import { ReceiveStripeEvent } from './use-cases/receive-stripe-event.use-case';
 import { ViewPayoutAccount } from './use-cases/view-payout-account.use-case';
+import { RecordingSecurityEvents } from '../../../../test/support/recording-security-events';
 
 // The seller payout account (Stripe Connect Express) in memory on both Market fixtures: one
 // Stripe account per seller created with a stored key, the hosted page, the state kept from
@@ -86,12 +90,16 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
         [code]: TEST_CONNECT_WEBHOOK_SECRET,
       }),
       reader: new FakeSessionReader(),
+      disputeReader: new FakeDisputeReader(),
+      disputes: new MemoryDisputeStore(),
+      outbox: new RecordingPaymentsOutbox(),
       ordering: new FakeOrderingFacade(),
       accounts,
       connect,
       policy,
       identity: new FakeIdentityFacade(),
       audit: new RecordingPaymentsAudit(),
+      securityEvents: new RecordingSecurityEvents(),
       ids: new SequenceIdGenerator(clock),
       clock,
     };

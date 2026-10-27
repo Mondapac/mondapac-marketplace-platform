@@ -10,7 +10,10 @@ import { saveConsent } from './save-consent.ts';
 /**
  * The first-visit cookie bar: Accept, Reject and Settings with equal weight. A labelled region
  * above the tab bar, not a dialog: it takes no focus, Escape does nothing, and the page stays
- * usable. Hidden on the cookie settings page, which asks the same question.
+ * usable. Hidden on the cookie settings page, which asks the same question. On a phone (under
+ * 700px) the CSS shows the compact form instead: a two-line summary with Cookie settings as an
+ * inline link, and Accept and Reject side by side; the long text and the Settings button are
+ * the tablet and desktop form.
  */
 export function ConsentBar({ initial }: { readonly initial: Consent | null }) {
   const t = useTranslations('consent');
@@ -37,7 +40,12 @@ export function ConsentBar({ initial }: { readonly initial: Consent | null }) {
     <section className="consent" aria-labelledby="consent-title">
       <div className="consent-text">
         <h2 id="consent-title">{t('title')}</h2>
-        <p>{t('body')}</p>
+        <p className="consent-long">{t('body')}</p>
+        <p className="consent-short">
+          {t.rich('short', {
+            settings: (chunks) => <Link href="/cookies">{chunks}</Link>,
+          })}
+        </p>
         {failed ? (
           <p className="consent-error" role="alert">
             {t('error')}

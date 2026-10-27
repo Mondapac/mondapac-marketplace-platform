@@ -154,6 +154,7 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
       carrierPolicy: undefined as never,
       pickups,
       webhookSignature: undefined as never,
+      securityEvents: undefined as never,
     };
   });
 

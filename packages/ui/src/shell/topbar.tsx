@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 
 export interface Crumb {
   readonly label: string;
-  readonly href: string;
+  /** Absent for a crumb that names a group of pages, not a page. */
+  readonly href?: string;
 }
 
 export interface TopbarProps {
@@ -27,10 +28,14 @@ export function Topbar({ pageTitle, trail = [], trailLabel, actions }: TopbarPro
       <nav aria-label={trailLabel} className="hidden min-w-0 md:block">
         <ol className="flex min-w-0 items-center gap-2 text-sm">
           {trail.map((crumb) => (
-            <li key={crumb.href} className="flex shrink-0 items-center gap-2">
-              <a href={crumb.href} className="text-fg-muted hover:text-fg hover:underline">
-                {crumb.label}
-              </a>
+            <li key={crumb.href ?? crumb.label} className="flex shrink-0 items-center gap-2">
+              {crumb.href === undefined ? (
+                <span className="text-fg-muted">{crumb.label}</span>
+              ) : (
+                <a href={crumb.href} className="text-fg-muted hover:text-fg hover:underline">
+                  {crumb.label}
+                </a>
+              )}
               <span aria-hidden="true" className="text-fg-muted">
                 /
               </span>

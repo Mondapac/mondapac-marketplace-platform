@@ -9,9 +9,9 @@ model PaymentsStripeEvent {
   eventId       String    @map("event_id")
   marketId      String    @map("market_id") @db.VarChar(8)
   tenantId      String    @map("tenant_id")
-  /// checkout.session.completed, checkout.session.expired or checkout.session.async_payment_failed (CHECK).
+  /// A kept Checkout, dispute or connected-account event type (CHECK).
   type          String
-  /// The Checkout session (cs_...) or the connected account (acct_...) the event is about.
+  /// The Checkout session (cs_...), dispute (dp_..., du_...) or connected account (acct_...).
   objectId      String    @map("object_id")
   receivedAt    DateTime  @map("received_at") @db.Timestamptz(6)
   /// How many times the worker tried to apply it.
@@ -20,7 +20,8 @@ model PaymentsStripeEvent {
   nextAttemptAt DateTime  @map("next_attempt_at") @db.Timestamptz(6)
   /// Set once, with the outcome, when the event is applied or given up.
   processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
-  /// confirmed, already-confirmed, voided, cancelled, ignored, rejected, failed or account-updated (CHECK).
+  /// confirmed, already-confirmed, voided, cancelled, ignored, rejected, failed, account-updated,
+  /// dispute-recorded or other-market (CHECK).
   outcome       String?
 
   @@id([marketId, eventId])
@@ -89,5 +90,83 @@ model PaymentsPayoutAccountChange {
   @@unique([marketId, sourceEventId])
   @@index([marketId, sellerId, detectedAt(sort: Desc)])
   @@map("payout_account_changes")
+  @@schema("payments")
+}
+
+/// One Stripe dispute of an order (Phase 5 package 8a): an inquiry or a chargeback, as Stripe
+/// reported it when the worker read it again. Ids, amount, state and deadline only: no card data,
+/// no evidence and no buyer text. The order, the amount and the currency never change (grants);
+/// the money flags only move from false to true and the outcome is set once (trigger).
+model PaymentsDispute {
+  marketId          String    @map("market_id") @db.VarChar(8)
+  id                String    @db.Uuid
+  tenantId          String    @map("tenant_id")
+  /// Stripe's dispute id (dp_... or du_...): one row per dispute and Market.
+  providerDisputeId String    @map("provider_dispute_id")
+  /// The order, from the metadata ordering set on the charge's PaymentIntent.
+  orderId           String    @map("order_id") @db.Uuid
+  /// The charge's PaymentIntent (pi_...).
+  paymentIntentRef  String    @map("payment_intent_ref")
+  /// The disputed amount in minor units (> 0).
+  amountMinor       BigInt    @map("amount_minor")
+  /// Upper-case ISO 4217.
+  currency          String    @db.Char(3)
+  /// Stripe's status: warning_needs_response, warning_under_review, warning_closed,
+  /// needs_response, under_review, won, lost or prevented (CHECK).
+  status            String
+  /// Stripe's reason code, or other (CHECK).
+  reason            String
+  /// The deadline to answer in the Stripe Dashboard; null when Stripe gives none.
+  evidenceDueBy     DateTime? @map("evidence_due_by") @db.Timestamptz(6)
+  fundsWithdrawn    Boolean   @map("funds_withdrawn")
+  /// The first read that saw the withdrawal.
+  fundsWithdrawnAt  DateTime? @map("funds_withdrawn_at") @db.Timestamptz(6)
+  fundsReinstated   Boolean   @map("funds_reinstated")
+  fundsReinstatedAt DateTime? @map("funds_reinstated_at") @db.Timestamptz(6)
+  /// won or lost once Stripe closes a chargeback; null otherwise (CHECK).
+  outcome           String?
+  /// When Stripe opened the dispute.
+  openedAt          DateTime  @map("opened_at") @db.Timestamptz(6)
+  createdAt         DateTime  @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @map("updated_at") @db.Timestamptz(6)
+  /// The read the stored state came from; an older read never replaces a newer one.
+  lastReadAt        DateTime  @map("last_read_at") @db.Timestamptz(6)
+  /// 1 when recorded, plus one per change: the aggregate version of its events.
+  version           Int
+
+  @@id([marketId, id])
+  @@unique([marketId, providerDisputeId])
+  @@map("disputes")
+  @@schema("payments")
+}
+
+/// Events of the payments module (ADR-0006 decisions 1 and 2). Written only by the platform
+/// OutboxWriter in the unit of the state change, read and marked only by the relay. Every outbox of
+/// every module has exactly these fields. Payloads hold ids only: no amount, card or buyer data.
+model PaymentsOutbox {
+  /// UUIDv7 stamped by the outbox writer.
+  eventId          String    @id @map("event_id") @db.Uuid
+  /// "payments.<subject>-<verb>.v<N>"; the CHECK refuses another module's type.
+  type             String
+  /// The instant the use case took from Clock (UTC).
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  /// Market of the unit that wrote the event (ADR-0003); stamped by the writer.
+  marketId         String    @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); stamped by the writer, no database default.
+  tenantId         String    @map("tenant_id")
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  /// The aggregate's version after the change; unique per aggregate (P 10).
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  /// The consumed event that caused this one, or null.
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// Set by the relay when the event was handed to the bus; the only column that changes.
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6)
+
+  /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
+  @@unique([marketId, aggregateId, aggregateVersion])
+  @@map("outbox")
   @@schema("payments")
 }

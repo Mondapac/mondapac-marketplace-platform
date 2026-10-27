@@ -40,6 +40,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     certification: ['USAGE'],
     commission_payouts: ['USAGE'],
     wallet: ['USAGE'],
+    reviews: ['USAGE'],
     customers: ['USAGE'],
     engagement: ['USAGE'],
     assistant: ['USAGE'],
@@ -126,6 +127,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // INSERT moves to a worker-only group before the hardening trigger (11.6, PA 13).
     'platform.audit_log_seal': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'platform.audit_chain_checkpoint': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // SOC package 1 (docs/design/data/platform.md 13): insert-only events; DELETE
+    // for the retention job only, which a trigger refuses for a row younger than its floor.
+    'platform.security_events': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'platform.security_events_archive': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // Buyer assistant package 1 (identity design 13): the shared rate-limit counters, counted
     // and purged by the PostgreSQL store of rate-limiter-flexible.
     'platform.rate_limit_counters': {
@@ -488,6 +493,74 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['reason_code', 'status', 'updated_at', 'updated_by_account_id'],
     },
+    // Admin credit (package 2a): a request is written once and decided once; a day row is
+    // written once and then only locked. Neither is ever deleted (a trigger refuses it).
+    'wallet.admin_credit_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decision_reason_code',
+        'journal_id',
+        'status',
+      ],
+    },
+    'wallet.admin_credit_days': { table: ['INSERT', 'SELECT'], columnUpdate: ['locked_at'] },
+    // Reviews (buyer reviews and ratings, package 1): the moderation log and the signals are
+    // insert-only (triggers refuse more for every role); the rest change only the columns named
+    // and are never deleted (a trigger refuses DELETE and TRUNCATE for every role).
+    'reviews.moderation_actions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'reviews.review_signals': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'reviews.product_reviews': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'account_id',
+        'anonymous',
+        'body',
+        'created_at',
+        'deleted_at',
+        'edited_at',
+        'last_purchase_at',
+        'last_seller_order_id',
+        'locale',
+        'offer_id',
+        'published_at',
+        'rating',
+        'seller_id',
+        'status',
+        'title',
+      ],
+    },
+    'reviews.seller_ratings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['account_id', 'seller_order_id', 'status'],
+    },
+    'reviews.review_replies': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['body', 'edited_at', 'status'],
+    },
+    'reviews.review_reports': { table: ['INSERT', 'SELECT'], columnUpdate: ['status'] },
+    'reviews.rating_summaries': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'arrived_ok_yes',
+        'as_described_yes',
+        'count',
+        'histogram_1',
+        'histogram_2',
+        'histogram_3',
+        'histogram_4',
+        'histogram_5',
+        'rated_seller_orders',
+        'rebuilt_at',
+        'satisfied_count',
+        'sum',
+      ],
+    },
+    'reviews.market_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['status', 'updated_at', 'updated_by_account_id'],
+    },
     // Storefront: a page is created and changed (never its kind, key or template) and never
     // deleted; a version's content and state change; a redirect is removed when its page takes the
     // old slug back.
@@ -567,6 +640,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['content_ciphertext', 'is_default', 'updated_at'],
     },
+    // Customers (package 5a): the account deletion setting is insert-only versions (the reason is
+    // part of the audit evidence); the outbox is immutable to the application except the relay's
+    // published_at.
+    'customers.account_deletion_settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
     'legal.marketing_consents': {
@@ -580,6 +658,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'engagement.personalization_settings': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['changed_at', 'enabled'],
+    },
+    // Engagement (personalization 1d-3): a block count is inserted by its first event of the day,
+    // then only its counters and time change (the upsert); the retention purge deletes it.
+    'engagement.block_counts': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['clicks', 'impressions', 'updated_at'],
     },
     // Shipping (Phase 5 package 4): one flat fee row per seller and Market; the fee columns
     // change, the identity never, and no row is deleted.
@@ -689,10 +773,18 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'ordering.order_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Tax step 3: a refund is written once and only settles (state, Stripe refund id, attempts,
-    // settled time); its lines and its credit note are insert-only. No row is deleted.
+    // settled time); its lines and its credit note are insert-only. No row is deleted. Package 6a:
+    // once settled it moves only the two ledger bookkeeping columns (marker set once, counter up).
     'ordering.refunds': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['attempts', 'settled_at', 'state', 'stripe_refund_id'],
+      columnUpdate: [
+        'attempts',
+        'ledger_attempts',
+        'ledger_recorded_at',
+        'settled_at',
+        'state',
+        'stripe_refund_id',
+      ],
     },
     // Personalization 1d-2: the nightly job deletes a Market's pairs and inserts the new ones.
     'ordering.offer_pairs': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
@@ -723,6 +815,23 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'updated_at',
       ],
     },
+    'payments.disputes': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'evidence_due_by',
+        'funds_reinstated',
+        'funds_reinstated_at',
+        'funds_withdrawn',
+        'funds_withdrawn_at',
+        'last_read_at',
+        'outcome',
+        'reason',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
+    'payments.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'payments.payout_account_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'payments.stripe_events': {
       table: ['INSERT', 'SELECT'],

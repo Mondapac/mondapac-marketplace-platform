@@ -23,9 +23,6 @@ vi.mock('./seller-shell.tsx', () => ({
     <main data-title={title}>{children}</main>
   ),
 }));
-vi.mock('../settings/settings-header.tsx', () => ({
-  SettingsHeader: ({ active }: { active: string }) => <nav data-active={active} />,
-}));
 vi.mock('../store-profile/store-profile.tsx', () => ({
   StoreProfile: ({ canEdit }: { canEdit: boolean }) => <section data-can-edit={String(canEdit)} />,
 }));
@@ -106,7 +103,7 @@ describe('the Store profile page', () => {
     const html = await render();
 
     expect(html).toContain('data-can-edit="true"');
-    expect(html).toContain('data-active="store-profile"');
+    expect(html).toContain('<h1');
   });
 
   it('renders the profile read-only without the edit permission', async () => {

@@ -15,13 +15,13 @@ export interface ShelfDocumentsReader {
     limit: number,
   ): Promise<readonly OfferHit[]>;
   /**
-   * The documents of one seller's Offers (in one category when `categoryId` is set) in browse
-   * order (name, then Offer id), `limit` rows from `offset`.
+   * The documents of one seller's Offers (in any of `categoryIds` when set: a category and its
+   * subcategories) in browse order (name, then Offer id), `limit` rows from `offset`.
    */
   browseBySeller(
     market: MarketContext,
     sellerId: Id<'Seller'>,
-    categoryId: Id<'Category'> | null,
+    categoryIds: readonly Id<'Category'>[] | null,
     limit: number,
     offset: number,
   ): Promise<readonly OfferHit[]>;

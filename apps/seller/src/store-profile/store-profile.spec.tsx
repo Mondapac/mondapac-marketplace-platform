@@ -4,7 +4,6 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { settingsTabs } from '../settings/settings-header.tsx';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 vi.mock('../catalog/photo-prepare.ts', () => ({ preparePhoto: vi.fn() }));
@@ -417,23 +416,6 @@ describe('StoreProfile without the edit permission', () => {
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
     expect(document.querySelector('input[type=file]')).toBeNull();
     expect(screen.getByRole('img', { name: 'Your store logo' })).toBeTruthy();
-  });
-});
-
-describe('store profile settings tab', () => {
-  const ids = (keys: string[]) => settingsTabs(keys, (key) => key).map((tab) => tab.id);
-
-  it('shows the tab only with the view permission', () => {
-    expect(ids([])).not.toContain('store-profile');
-    expect(ids(['sellers.store-profile.view'])).toContain('store-profile');
-  });
-
-  it('points at /store-profile', () => {
-    const tab = settingsTabs(['sellers.store-profile.view'], (key) => key).find(
-      (item) => item.id === 'store-profile',
-    );
-    expect(tab?.href).toBe('/store-profile');
-    expect(tab?.label).toBe('settings.tab.store-profile');
   });
 });
 

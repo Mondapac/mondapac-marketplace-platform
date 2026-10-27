@@ -363,6 +363,16 @@
     }
   },
   {
+    "type": "customers.account-deletion-settings-changed.v1",
+    "aggregateType": "account-deletion-settings",
+    "fields": {
+      "previousEnabled": "boolean",
+      "enabled": "boolean",
+      "previousWaitingPeriodDays": "integer",
+      "waitingPeriodDays": "integer"
+    }
+  },
+  {
     "type": "identity.account-disabled.v1",
     "aggregateType": "account",
     "fields": {
@@ -626,6 +636,14 @@
       "orderId": "id",
       "sellerOrderId": "id",
       "refundId": "id"
+    }
+  },
+  {
+    "type": "payments.dispute-changed.v1",
+    "aggregateType": "dispute",
+    "fields": {
+      "disputeId": "id",
+      "orderId": "id"
     }
   },
   {
