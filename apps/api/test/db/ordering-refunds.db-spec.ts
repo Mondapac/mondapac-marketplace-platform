@@ -25,6 +25,7 @@ import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit'
 import type { OrderState } from '../../src/modules/ordering/domain/order';
 import { ConfigOrderingPolicy } from '../../src/modules/ordering/infrastructure/config-ordering-policy';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
+import { PrismaPickupCodeRepository } from '../../src/modules/ordering/infrastructure/prisma-pickup-code.repository';
 import { PrismaRefundRepository } from '../../src/modules/ordering/infrastructure/prisma-refund.repository';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
@@ -45,6 +46,7 @@ import {
   FakeShipToCipher,
   FakeTax,
   FakeTaxCategories,
+  FakePickupVault,
 } from '../support/ordering-fakes';
 import { AllowAllDeliveryMethods } from '../../src/modules/ordering/infrastructure/allow-all-delivery-methods';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
@@ -162,6 +164,8 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       clock,
       labels: new FakeLabels(),
       deliveryMethods: new AllowAllDeliveryMethods(),
+      pickupCodes: new PrismaPickupCodeRepository(db.service),
+      pickupVault: new FakePickupVault(),
     };
   });
 

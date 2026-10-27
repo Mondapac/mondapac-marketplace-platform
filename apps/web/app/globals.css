@@ -7261,6 +7261,42 @@ button.login {
   width: 14px;
   height: 14px;
 }
+.ac-pickup {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--sf-line);
+  border-radius: 12px;
+  background: var(--sf-mist-soft);
+}
+.ac-pickup h3 {
+  margin: 0;
+  font-size: calc(15px * var(--fs));
+  line-height: calc(20px * var(--fs));
+}
+.ac-pickup-hint {
+  margin: 0;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+  line-height: calc(19px * var(--fs));
+}
+.ac-pickup-code {
+  display: flex;
+  gap: 8px;
+}
+.ac-pickup-code span {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 64px;
+  border: 2px solid var(--sf-teal);
+  border-radius: 10px;
+  background: var(--sf-white);
+  color: var(--sf-ink);
+  font-size: calc(32px * var(--fs));
+  font-weight: 700;
+}
 .ac-dl {
   display: grid;
   margin: 0;

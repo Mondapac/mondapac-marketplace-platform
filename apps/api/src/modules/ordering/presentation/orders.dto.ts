@@ -8,6 +8,7 @@ import type {
   LabelledSellerOrderPageView,
   LabelledSellerOrderShipView,
   OwnOrderView,
+  OwnPickupCodeView,
 } from '../domain/order-views';
 import type { ShipTo } from '../domain/order';
 import { moneyBody } from './http-answers';
@@ -167,6 +168,33 @@ const SHIP_TO_DESCRIPTION =
   'The delivery address chosen at checkout, fixed on the order; null on orders placed before ' +
   'it was recorded and once the account was erased.';
 
+/** What the seller panel may know about a pickup order's code: never the code itself. */
+export class PickupStatusBody {
+  @ApiProperty({ description: 'Wrong codes still allowed before the order is locked (0 to 5).' })
+  attemptsLeft!: number;
+  @ApiProperty({
+    description:
+      'True after five wrong codes: the seller cannot try again until the customer asks for a new code.',
+  })
+  locked!: boolean;
+}
+
+/** One ready pickup part's code, in the customer's own order only. SECRET: never logged. */
+export class OwnPickupCodeBody extends PickupStatusBody {
+  @ApiProperty({ format: 'uuid', description: 'The seller whose part this code opens.' })
+  sellerId!: string;
+  @ApiProperty({ description: 'The 4-digit code to show the seller at the handover.' })
+  code!: string;
+}
+
+export class PickupConfirmRequest {
+  @ApiProperty({
+    description: "The buyer's 4-digit pickup code, exactly 4 digits.",
+    example: '0427',
+  })
+  code!: string;
+}
+
 export class OwnOrderBody extends OrderBody {
   @ApiProperty({ type: ShipToBody, nullable: true, description: SHIP_TO_DESCRIPTION })
   shipTo!: ShipToBody | null;
@@ -179,6 +207,15 @@ export class OwnOrderBody extends OrderBody {
       'on older orders and once the account was erased.',
   })
   sellerNotes!: Record<string, string>;
+
+  @ApiProperty({
+    type: [OwnPickupCodeBody],
+    description:
+      'The pickup codes of the order parts the customer collects in person that the seller has ' +
+      'marked ready and that are not collected yet. Only the customer who placed the order ever ' +
+      'receives a code.',
+  })
+  pickupCodes!: OwnPickupCodeBody[];
 }
 
 export class CheckoutRequest {
@@ -357,6 +394,15 @@ export class SellerOrderShipBody extends SellerOrderDetailBody {
       'Null when none was written, on older orders and once the account was erased.',
   })
   buyerNote!: string | null;
+
+  @ApiProperty({
+    type: PickupStatusBody,
+    nullable: true,
+    description:
+      'For a ready pickup order not collected yet: the tries left and whether it is locked. ' +
+      'Never the code. Null for every other order.',
+  })
+  pickup!: PickupStatusBody | null;
 }
 
 export class SellerOrderCountsBody {
@@ -406,6 +452,10 @@ export const sellerOrderShipBody = (order: LabelledSellerOrderShipView): SellerO
   shipTo: shipToBody(order.shipTo),
   // A seller reads its own note only.
   buyerNote: order.shipTo?.sellerNotes?.[order.sellerId] ?? null,
+  pickup:
+    order.pickup === null
+      ? null
+      : { attemptsLeft: order.pickup.attemptsLeft, locked: order.pickup.locked },
 });
 
 export const sellerOrderPageBody = (page: LabelledSellerOrderPageView): SellerOrderPageBody => ({
@@ -428,10 +478,18 @@ export const orderBody = (order: OrderView): OrderBody => ({
   sellerOrders: order.sellerOrders.map(sellerOrderBody),
 });
 
+export const ownPickupCodeBody = (view: OwnPickupCodeView): OwnPickupCodeBody => ({
+  sellerId: view.sellerId,
+  code: view.code,
+  attemptsLeft: view.attemptsLeft,
+  locked: view.locked,
+});
+
 export const ownOrderBody = (order: OwnOrderView): OwnOrderBody => ({
   ...orderBody(order),
   shipTo: shipToBody(order.shipTo),
   sellerNotes: { ...(order.shipTo?.sellerNotes ?? {}) },
+  pickupCodes: order.pickupCodes.map(ownPickupCodeBody),
 });
 
 export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody => ({

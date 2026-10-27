@@ -53,6 +53,12 @@ interface AccountState {
   readonly orders: readonly AccountOrder[];
   /** Cancels an order no seller has confirmed yet; others are left as they are. */
   readonly cancelOrder: (reference: string) => void;
+  /**
+   * Gets a new pickup code for one seller's part: the old code stops working and a lock from
+   * wrong tries is lifted. Orders are sample data until their backend is wired; then this calls
+   * `POST /orders/{id}/pickup/{sellerId}/regenerate`, which answers the new code to the buyer only.
+   */
+  readonly renewPickupCode: (reference: string, sellerId: string) => void;
   readonly addresses: readonly SavedAddress[];
   /** Adds an address (empty id) or replaces the one with its id. */
   readonly saveAddress: (address: SavedAddress) => Promise<SaveOutcome>;
@@ -140,6 +146,24 @@ export function AccountProvider({
                 ...o,
                 status: 'cancelled' as const,
                 parts: cancelParts(o.parts),
+              }
+            : o,
+        ),
+      ),
+    [],
+  );
+  const renewPickupCode = useCallback(
+    (reference: string, sellerId: string) =>
+      setOrders((current) =>
+        current.map((o) =>
+          o.reference === reference
+            ? {
+                ...o,
+                parts: o.parts.map((p) =>
+                  p.sellerId === sellerId && p.pickup
+                    ? { ...p, pickup: { code: '7319', attemptsLeft: 5, locked: false } }
+                    : p,
+                ) as unknown as AccountOrder['parts'],
               }
             : o,
         ),
@@ -305,6 +329,7 @@ export function AccountProvider({
       changePassword,
       orders,
       cancelOrder,
+      renewPickupCode,
       addresses,
       saveAddress,
       makeDefault,
@@ -323,6 +348,7 @@ export function AccountProvider({
       changePassword,
       orders,
       cancelOrder,
+      renewPickupCode,
       addresses,
       saveAddress,
       makeDefault,

@@ -12,6 +12,8 @@ import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sess
 import { INVENTORY_ORDERING_PORT } from '../src/modules/inventory/contracts/ordering-port';
 import { CHECKOUT_GATEWAY } from '../src/modules/ordering/application/ports/checkout-gateway';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
+import { PICKUP_CODE_REPOSITORY } from '../src/modules/ordering/application/ports/pickup-code.repository';
+import { PICKUP_CODE_VAULT } from '../src/modules/ordering/application/ports/pickup-code-vault';
 import { SHIP_TO_CIPHER } from '../src/modules/ordering/application/ports/ship-to-cipher';
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
 import { COMMISSION_PAYOUTS_FACADE } from '../src/modules/commission-payouts';
@@ -33,9 +35,11 @@ import {
   FakeCommission,
   FakeTax,
   FakeTaxCategories,
+  FakePickupVault,
   FakeShipping,
   FakeShipToCipher,
   MemoryOrders,
+  MemoryPickupCodes,
   TEST_DELIVERY_ADDRESS,
 } from './support/ordering-fakes';
 import { FakeUnitOfWork, RecordingAuditWriter, RecordingOutbox } from './support/pricing-fakes';
@@ -83,6 +87,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.outside-delivery-area': 422,
     'ordering.cart-empty': 422,
     'ordering.delivery-method-unavailable': 422,
+    'ordering.pickup-unavailable': 422,
     'ordering.cart-not-purchasable': 422,
     'ordering.stock-insufficient': 409,
     'ordering.cart-not-ready': 409,
@@ -92,6 +97,8 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.shipping-unavailable': 503,
     'ordering.seller-order-not-found': 404,
     'ordering.fulfilment-conflict': 409,
+    'ordering.pickup-code-invalid': 422,
+    'ordering.pickup-code-locked': 423,
     'ordering.payment-unavailable': 503,
     'ordering.refund-disabled': 409,
     'ordering.refund-not-allowed': 409,
@@ -114,6 +121,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let inventory: FakeInventory;
   let cart: FakeCart;
   let shipping: FakeShipping;
+  let pickupCodes: MemoryPickupCodes;
+  let pickupVault: FakePickupVault;
   const clock = new FixedClock(START);
   const http = () => request(app.getHttpServer());
   const marketOf = () => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -125,6 +134,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     inventory = new FakeInventory();
     cart = new FakeCart();
     shipping = new FakeShipping();
+    pickupCodes = new MemoryPickupCodes();
+    pickupVault = new FakePickupVault();
     const customers = new FakeCustomers();
     customers.addresses.set(ADDRESS, { accountId: CUSTOMER, address: TEST_DELIVERY_ADDRESS });
     // The seller delivers for a flat 5.00.
@@ -165,6 +176,10 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(customers)
           .overrideProvider(SHIP_TO_CIPHER)
           .useValue(new FakeShipToCipher())
+          .overrideProvider(PICKUP_CODE_REPOSITORY)
+          .useValue(pickupCodes)
+          .overrideProvider(PICKUP_CODE_VAULT)
+          .useValue(pickupVault)
           .overrideProvider(SHIPPING_FACADE)
           .useValue(shipping)
           .overrideProvider(TAX_FACADE)
@@ -226,6 +241,101 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       .post('/orders/checkout')
       .set({ 'x-market-id': code, ...headers })
       .send(body as object);
+
+  describe('pickup', () => {
+    const PICKUP = { deliveryMethods: { [SELLER]: { method: 'pickup' } } };
+
+    it('refuses a pickup from a seller without an approved pickup address with a coded 422', async () => {
+      shipping.pickupApproved = new Set();
+
+      const res = await checkout(customer(), { addressId: ADDRESS, ...PICKUP });
+
+      expect(res.status).toBe(422);
+      expect(res.body).toEqual({
+        statusCode: 422,
+        code: 'ordering.pickup-unavailable',
+        details: { methodSellerIds: [SELLER] },
+      });
+      expect(orders.rows.size).toBe(0);
+    });
+
+    it('takes a pickup from a seller with an approved address, free of delivery fees', async () => {
+      shipping.pickupApproved = new Set([SELLER]);
+
+      const res = await checkout(customer(), { addressId: ADDRESS, ...PICKUP });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ total: { amount: '3000', currency } });
+      expect([...orders.rows.values()][0]!.sellerOrders[0]).toMatchObject({
+        deliveryMethod: 'pickup',
+        shipping: 0n,
+      });
+    });
+
+    /** A paid pickup order the seller has marked ready, with a live code. */
+    const readyPickup = async () => {
+      shipping.pickupApproved = new Set([SELLER]);
+      const headers = customer();
+      const started = await checkout(headers, { addressId: ADDRESS, ...PICKUP });
+      const order = orders.rows.get(body(started).orderId)!;
+      const sellerOrder = order.sellerOrders[0]!;
+      orders.rows.set(order.id, {
+        ...order,
+        status: 'confirmed',
+        paymentState: 'captured',
+        confirmedAt: START,
+        sellerOrders: [{ ...sellerOrder, readyAt: START }],
+      });
+      const issued = await pickupVault.issue(marketOf(), CUSTOMER, sellerOrder.id);
+      if (!issued.ok) throw new Error('no code');
+      await pickupCodes.insert(marketOf(), {
+        sellerOrderId: sellerOrder.id,
+        hash: issued.value.hash,
+        sealed: issued.value.sealed,
+        failedAttempts: 1,
+        lockedAt: null,
+        issuedAt: START,
+      });
+      return { headers, orderId: order.id, pickupCode: issued.value.code };
+    };
+
+    it("shows the code on the buyer's own order only", async () => {
+      const { headers, orderId, pickupCode } = await readyPickup();
+
+      const own = await http()
+        .get(`/orders/${orderId}`)
+        .set({ 'x-market-id': code, ...headers });
+
+      expect(own.status).toBe(200);
+      expect(own.body).toMatchObject({
+        pickupCodes: [{ sellerId: SELLER, code: pickupCode, attemptsLeft: 4, locked: false }],
+      });
+      const foreign = await http()
+        .get(`/orders/${orderId}`)
+        .set({ 'x-market-id': code, ...customer(OTHER_CUSTOMER, 2) });
+      expect(foreign.status).toBe(404);
+      expect(JSON.stringify(foreign.body)).not.toContain(pickupCode);
+    });
+
+    it('gives the buyer a new code, and needs a session, CSRF and an empty body', async () => {
+      const { headers, orderId, pickupCode } = await readyPickup();
+      const path = `/orders/${orderId}/pickup/${SELLER}/regenerate`;
+
+      const at = () => http().post(path).set({ 'x-market-id': code });
+      expect((await at().send({})).status).toBe(401);
+      expect((await at().set({ cookie: headers.cookie }).send({})).status).toBe(403);
+      expect((await at().set(headers).send({ code: '1' })).status).toBe(400);
+      const res = await at().set(headers).send({});
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body).toMatchObject({ sellerId: SELLER, attemptsLeft: 5, locked: false });
+      expect(String((res.body as { code: unknown }).code)).toMatch(/^[0-9]{4}$/);
+      expect(pickupCode).toMatch(/^[0-9]{4}$/);
+      const stranger = await at().set(customer(OTHER_CUSTOMER, 2)).send({});
+      expect(stranger.status).toBe(404);
+    });
+  });
 
   describe('checkout', () => {
     it('opens the payment page for a signed-in customer and answers no-store', async () => {

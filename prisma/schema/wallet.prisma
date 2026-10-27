@@ -64,7 +64,7 @@ model WalletJournal {
   result          Json
   createdAt       DateTime @map("created_at") @db.Timestamptz(6)
 
-  wallet   WalletAccount? @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  wallet   WalletAccount?  @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   postings WalletPosting[]
   lots     WalletLot[]
 
@@ -82,11 +82,11 @@ model WalletJournal {
 /// One signed leg of a journal. Insert-only. The legs of a journal sum to zero and are at least
 /// two (deferred constraint trigger).
 model WalletPosting {
-  id          String @id @db.Uuid
-  marketId    String @map("market_id") @db.VarChar(8)
-  tenantId    String @map("tenant_id")
-  journalId   String @map("journal_id") @db.Uuid
-  accountId   String @map("account_id") @db.Uuid
+  id              String  @id @db.Uuid
+  marketId        String  @map("market_id") @db.VarChar(8)
+  tenantId        String  @map("tenant_id")
+  journalId       String  @map("journal_id") @db.Uuid
+  accountId       String  @map("account_id") @db.Uuid
   /// Signed minor units, never zero (CHECK).
   amountMinor     BigInt  @map("amount_minor")
   currency        String  @db.VarChar(3)
