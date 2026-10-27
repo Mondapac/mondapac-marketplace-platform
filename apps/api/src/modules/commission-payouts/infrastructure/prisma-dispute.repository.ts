@@ -271,6 +271,13 @@ export class PrismaDisputeRepository implements DisputeRepository {
     return true;
   }
 
+  async lockCase(market: MarketContext, disputeId: Id<'Dispute'>) {
+    const found = await this.prisma.namedQuery(market, 'commission-payouts.lock-dispute-case', {
+      disputeId,
+    });
+    return found.length > 0;
+  }
+
   async insertDecision(market: MarketContext, decision: DisputeDecision) {
     const created = await this.prisma.tx(market).commissionPayoutsDisputeDecision.createMany({
       data: [

@@ -73,6 +73,13 @@ export interface DisputeRepository {
     sellerOrderId: Id<'SellerOrder'>,
   ): Promise<boolean>;
 
+  /**
+   * Locks the case row `FOR UPDATE` (the same lock {@link lockForDecision} takes first), so a sync
+   * reads the decisions after any decision in flight has committed. False when there is no case
+   * yet (the sync then inserts it).
+   */
+  lockCase(market: MarketContext, disputeId: Id<'Dispute'>): Promise<boolean>;
+
   decisionsOf(market: MarketContext, disputeId: Id<'Dispute'>): Promise<readonly DisputeDecision[]>;
 
   decisionsForSeller(

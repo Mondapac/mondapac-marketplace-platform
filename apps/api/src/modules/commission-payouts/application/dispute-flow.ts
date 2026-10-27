@@ -135,6 +135,10 @@ export async function syncDispute(
     input.delivery,
     async () => {
       const market = context.market;
+      // The case row lock first (the lock a decision takes first too): the decisions read below
+      // then include any decision committed meanwhile, so the bucket is never computed from an
+      // older set. No row yet: nothing to lock, the insert below makes it.
+      await deps.disputes.lockCase(market, disputeId);
       const stored = await deps.disputes.find(market, disputeId);
       // A read older than the stored one changes nothing (an out-of-order delivery).
       if (stored !== null && stored.lastSyncedVersion > read.version) return ok('stale' as const);
