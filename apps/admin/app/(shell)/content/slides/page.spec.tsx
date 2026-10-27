@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { createTranslator } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +8,9 @@ import type { AdminSession } from '../../../../src/server/session.ts';
 import SlidesPage from './page.tsx';
 import NewSlidePage from './new/page.tsx';
 import SlidePage from './[slideId]/page.tsx';
+import SlidePlacementPage from './[slideId]/placement/page.tsx';
+import SlideVersionsPage from './[slideId]/versions/page.tsx';
+import SlideOrderPage from './order/page.tsx';
 import ContentPage from '../page.tsx';
 
 const mocks = vi.hoisted(() => ({
@@ -50,11 +53,13 @@ vi.mock('../../../../src/content/slides/slides-list.tsx', () => ({
   SlidesList: ({
     permissionKeys,
     zone,
+    csrfToken,
   }: {
     readonly permissionKeys: readonly string[];
     readonly zone: string;
+    readonly csrfToken: string;
   }) => (
-    <p data-testid="list" data-zone={zone}>
+    <p data-testid="list" data-zone={zone} data-csrf={csrfToken}>
       list {permissionKeys.join(',')}
     </p>
   ),
@@ -63,20 +68,117 @@ vi.mock('../../../../src/content/slides/slide-editor.tsx', () => ({
   SlideEditor: ({
     slide,
     canEdit,
+    canPause,
+    canPublish,
+    startReview,
     csrfToken,
   }: {
     readonly slide: { readonly id: string } | null;
     readonly canEdit: boolean;
+    readonly canPause?: boolean;
+    readonly canPublish?: boolean;
+    readonly startReview?: boolean;
     readonly csrfToken: string;
   }) => (
-    <p data-testid="editor" data-edit={String(canEdit)} data-csrf={csrfToken}>
+    <p
+      data-testid="editor"
+      data-edit={String(canEdit)}
+      data-pause={String(canPause)}
+      data-publish={String(canPublish)}
+      data-review={String(startReview)}
+      data-csrf={csrfToken}
+    >
       editor {slide?.id ?? 'new'}
+    </p>
+  ),
+}));
+
+vi.mock('../../../../src/content/slides/slide-placement-editor.tsx', () => ({
+  SlidePlacementEditor: ({
+    slide,
+    canEdit,
+    canPause,
+    canPublish,
+    zone,
+  }: {
+    readonly slide: { readonly id: string };
+    readonly canEdit: boolean;
+    readonly canPause?: boolean;
+    readonly canPublish?: boolean;
+    readonly zone: string;
+  }) => (
+    <p
+      data-testid="placement"
+      data-edit={String(canEdit)}
+      data-pause={String(canPause)}
+      data-publish={String(canPublish)}
+      data-zone={zone}
+    >
+      placement {slide.id}
+    </p>
+  ),
+}));
+vi.mock('../../../../src/content/slides/slide-versions.tsx', () => ({
+  SlideVersions: ({
+    slide,
+    canEdit,
+    canPause,
+    canPublish,
+    csrfToken,
+    zone,
+  }: {
+    readonly slide: { readonly id: string };
+    readonly canEdit: boolean;
+    readonly canPause?: boolean;
+    readonly canPublish?: boolean;
+    readonly csrfToken: string;
+    readonly zone: string;
+  }) => (
+    <p
+      data-testid="versions"
+      data-edit={String(canEdit)}
+      data-pause={String(canPause)}
+      data-publish={String(canPublish)}
+      data-csrf={csrfToken}
+      data-zone={zone}
+    >
+      versions {slide.id}
+    </p>
+  ),
+}));
+
+vi.mock('../../../../src/content/slides/slide-order-view.tsx', () => ({
+  SlideOrderView: ({
+    place,
+    canEdit,
+    csrfToken,
+    zone,
+  }: {
+    readonly place: {
+      readonly position: string;
+      readonly scope: string;
+      readonly scopeId: string | null;
+    };
+    readonly canEdit: boolean;
+    readonly csrfToken: string;
+    readonly zone: string;
+  }) => (
+    <p
+      data-testid="order"
+      data-edit={String(canEdit)}
+      data-zone={zone}
+      data-csrf={csrfToken}
+      data-place={JSON.stringify(place)}
+    >
+      order
     </p>
   ),
 }));
 
 const READ = 'storefront.slide.read';
 const EDIT = 'storefront.slide.edit';
+const PAUSE = 'storefront.slide.pause';
+const PUBLISH = 'storefront.slide.publish';
 const ID = '0190a000-0000-7000-8000-0000000000a1';
 const session = (permissionKeys: string[], timezone: string | null = null): AdminSession => ({
   accountId: 'a',
@@ -92,11 +194,14 @@ const session = (permissionKeys: string[], timezone: string | null = null): Admi
 });
 const signIn = (keys: string[], timezone: string | null = null) =>
   mocks.session.mockResolvedValue({ kind: 'ok', session: session(keys, timezone) });
-const params = { params: Promise.resolve({ slideId: ID }) };
+const params = { params: Promise.resolve({ slideId: ID }), searchParams: Promise.resolve({}) };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.get.mockResolvedValue({ kind: 'ok', body: { id: ID } });
+  mocks.get.mockResolvedValue({
+    kind: 'ok',
+    body: { id: ID, updatedAt: '2026-10-24T00:00:00Z', status: 'live', versions: [] },
+  });
 });
 afterEach(cleanup);
 
@@ -120,8 +225,21 @@ describe('slides list page', () => {
     render(await SlidesPage());
     expect(screen.getByRole('heading', { level: 1, name: 'Storefront content' })).toBeTruthy();
     expect(screen.getByTestId('list').textContent).toBe('list storefront.slide.read');
+    expect(screen.getByTestId('list').getAttribute('data-csrf')).toBe('csrf-9');
     expect(screen.queryByRole('link', { name: 'New slide' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Slides' }).getAttribute('aria-current')).toBe('page');
+  });
+
+  it('offers the two views, with All slides current', async () => {
+    signIn([READ]);
+    render(await SlidesPage());
+    const nav = screen.getByRole('navigation', { name: 'Slides view' });
+    expect(within(nav).getByRole('link', { name: 'All slides' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
+    expect(within(nav).getByRole('link', { name: 'Order by position' }).getAttribute('href')).toBe(
+      '/content/slides/order?position=home.hero',
+    );
   });
 
   it('shows New slide to an editor, linking to the new slide screen', async () => {
@@ -194,6 +312,38 @@ describe('slide page', () => {
     expect(screen.getByTestId('editor').textContent).toBe(`editor ${ID}`);
   });
 
+  it('passes each key on its own: pause and publish are separate gates', async () => {
+    const gates = async (keys: string[]) => {
+      cleanup();
+      signIn(keys);
+      render(await SlidePage(params));
+      const editor = screen.getByTestId('editor');
+      return [
+        editor.getAttribute('data-edit'),
+        editor.getAttribute('data-pause'),
+        editor.getAttribute('data-publish'),
+      ];
+    };
+    expect(await gates([READ])).toEqual(['false', 'false', 'false']);
+    expect(await gates([READ, EDIT])).toEqual(['true', 'false', 'false']);
+    expect(await gates([READ, PAUSE])).toEqual(['false', 'true', 'false']);
+    expect(await gates([READ, PUBLISH])).toEqual(['false', 'false', 'true']);
+  });
+
+  it('opens the approval dialog at once only for ?review=1', async () => {
+    signIn([READ, PUBLISH]);
+    render(
+      await SlidePage({
+        params: Promise.resolve({ slideId: ID }),
+        searchParams: Promise.resolve({ review: '1' }),
+      }),
+    );
+    expect(screen.getByTestId('editor').getAttribute('data-review')).toBe('true');
+    cleanup();
+    render(await SlidePage(params));
+    expect(screen.getByTestId('editor').getAttribute('data-review')).toBe('false');
+  });
+
   it('is not found for an unknown slide, signs out a rejected session, and reports an outage', async () => {
     signIn([READ, EDIT]);
     mocks.get.mockResolvedValue({ kind: 'not-found' });
@@ -204,5 +354,151 @@ describe('slide page', () => {
     render(await SlidePage(params));
     expect(screen.getByRole('alert').textContent).toContain('could not be loaded');
     expect(screen.queryByTestId('editor')).toBeNull();
+  });
+});
+
+describe('where and when page', () => {
+  it('shows no-access without the read permission and does not read the slide', async () => {
+    signIn([EDIT]);
+    render(await SlidePlacementPage(params));
+    expect(screen.getByRole('heading', { name: 'No access to content' })).toBeTruthy();
+    expect(screen.queryByTestId('placement')).toBeNull();
+    expect(mocks.get).not.toHaveBeenCalled();
+  });
+
+  it('reads the slide and opens read-only with only the read permission', async () => {
+    signIn([READ], 'Australia/Brisbane');
+    render(await SlidePlacementPage(params));
+    expect(mocks.get).toHaveBeenCalledWith(`storefront/admin/slides/${ID}`);
+    const tab = screen.getByTestId('placement');
+    expect(tab.getAttribute('data-edit')).toBe('false');
+    expect(tab.getAttribute('data-zone')).toBe('Australia/Brisbane');
+  });
+
+  it('opens for editing with the edit permission', async () => {
+    signIn([READ, EDIT]);
+    render(await SlidePlacementPage(params));
+    expect(screen.getByTestId('placement').getAttribute('data-edit')).toBe('true');
+    expect(screen.getByTestId('placement').textContent).toBe(`placement ${ID}`);
+  });
+
+  it('is not found, signed out or unavailable like the Content tab', async () => {
+    signIn([READ, EDIT]);
+    mocks.get.mockResolvedValue({ kind: 'not-found' });
+    await expect(SlidePlacementPage(params)).rejects.toThrow('not-found');
+    mocks.get.mockResolvedValue({ kind: 'signed-out' });
+    await expect(SlidePlacementPage(params)).rejects.toThrow('redirect:/session-ended');
+    mocks.get.mockResolvedValue({ kind: 'unavailable' });
+    render(await SlidePlacementPage(params));
+    expect(screen.getByRole('alert').textContent).toContain('could not be loaded');
+    expect(screen.queryByTestId('placement')).toBeNull();
+  });
+});
+
+describe('versions page', () => {
+  it('shows no-access without the read permission and does not read the slide', async () => {
+    signIn([EDIT]);
+    render(await SlideVersionsPage(params));
+    expect(screen.getByRole('heading', { name: 'No access to content' })).toBeTruthy();
+    expect(screen.queryByTestId('versions')).toBeNull();
+    expect(mocks.get).not.toHaveBeenCalled();
+  });
+
+  it('reads the slide and lists it read-only with only the read permission', async () => {
+    signIn([READ], 'Australia/Brisbane');
+    render(await SlideVersionsPage(params));
+    expect(mocks.get).toHaveBeenCalledWith(`storefront/admin/slides/${ID}`);
+    const tab = screen.getByTestId('versions');
+    expect(tab.getAttribute('data-edit')).toBe('false');
+    expect(tab.getAttribute('data-pause')).toBe('false');
+    expect(tab.getAttribute('data-publish')).toBe('false');
+    expect(tab.getAttribute('data-zone')).toBe('Australia/Brisbane');
+  });
+
+  it('allows Restore with the edit permission and passes the session token', async () => {
+    signIn([READ, EDIT]);
+    render(await SlideVersionsPage(params));
+    const tab = screen.getByTestId('versions');
+    expect(tab.getAttribute('data-edit')).toBe('true');
+    expect(tab.getAttribute('data-csrf')).toBe('csrf-9');
+    expect(tab.textContent).toBe(`versions ${ID}`);
+  });
+
+  it('is not found, signed out or unavailable like the other tabs', async () => {
+    signIn([READ, EDIT]);
+    mocks.get.mockResolvedValue({ kind: 'not-found' });
+    await expect(SlideVersionsPage(params)).rejects.toThrow('not-found');
+    mocks.get.mockResolvedValue({ kind: 'signed-out' });
+    await expect(SlideVersionsPage(params)).rejects.toThrow('redirect:/session-ended');
+    mocks.get.mockResolvedValue({ kind: 'unavailable' });
+    render(await SlideVersionsPage(params));
+    expect(screen.getByRole('alert').textContent).toContain('could not be loaded');
+    expect(screen.queryByTestId('versions')).toBeNull();
+  });
+});
+
+describe('order by position page', () => {
+  const search = (query: Record<string, string | string[]> = {}) => ({
+    searchParams: Promise.resolve(query),
+  });
+  const placeOf = (): unknown =>
+    JSON.parse(screen.getByTestId('order').getAttribute('data-place') ?? '');
+
+  it('shows no-access without the read permission', async () => {
+    signIn([EDIT]);
+    render(await SlideOrderPage(search()));
+    expect(screen.getByRole('heading', { name: 'No access to content' })).toBeTruthy();
+    expect(screen.queryByTestId('order')).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Slides view' })).toBeNull();
+  });
+
+  it('opens read-only with only the read permission, at the first position', async () => {
+    signIn([READ], 'Australia/Brisbane');
+    render(await SlideOrderPage(search()));
+    const view = screen.getByTestId('order');
+    expect(view.getAttribute('data-edit')).toBe('false');
+    expect(view.getAttribute('data-zone')).toBe('Australia/Brisbane');
+    expect(placeOf()).toEqual({ position: 'home.hero', scope: 'all', scopeId: null });
+    expect(screen.getByRole('heading', { level: 1, name: 'Storefront content' })).toBeTruthy();
+  });
+
+  it('opens for editing with the edit permission, with the session token', async () => {
+    signIn([READ, EDIT]);
+    render(await SlideOrderPage(search()));
+    expect(screen.getByTestId('order').getAttribute('data-edit')).toBe('true');
+    expect(screen.getByTestId('order').getAttribute('data-csrf')).toBe('csrf-9');
+  });
+
+  it('takes the place from the address, and falls back from what it does not know', async () => {
+    signIn([READ, EDIT]);
+    const category = '0190a000-0000-7000-8000-0000000000c1';
+    render(
+      await SlideOrderPage(
+        search({ position: 'category.top', scope: 'category', scopeId: category }),
+      ),
+    );
+    expect(placeOf()).toEqual({ position: 'category.top', scope: 'category', scopeId: category });
+    cleanup();
+    render(await SlideOrderPage(search({ position: ['nope', 'x'], scope: 'all' })));
+    expect(placeOf()).toEqual({ position: 'home.hero', scope: 'all', scopeId: null });
+  });
+
+  it('marks Order by position as the current view and keeps the place in its link', async () => {
+    signIn([READ]);
+    render(await SlideOrderPage(search({ position: 'home.mid' })));
+    const nav = screen.getByRole('navigation', { name: 'Slides view' });
+    const order = within(nav).getByRole('link', { name: 'Order by position' });
+    expect(order.getAttribute('aria-current')).toBe('page');
+    expect(order.getAttribute('href')).toBe('/content/slides/order?position=home.mid');
+    expect(within(nav).getByRole('link', { name: 'All slides' }).getAttribute('href')).toBe(
+      '/content/slides',
+    );
+  });
+
+  it('shows a load error when the session cannot be read', async () => {
+    mocks.session.mockResolvedValue({ kind: 'unavailable' });
+    render(await SlideOrderPage(search()));
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.queryByTestId('order')).toBeNull();
   });
 });

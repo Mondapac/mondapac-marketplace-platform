@@ -1,6 +1,8 @@
+import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import { StripeWebhookSignatureFailed } from '../../../platform/security-events/security-event-catalogue';
 import { isExternalAccountEvent } from '../domain/payout-change';
 import type { PaymentsDependencies } from './payments-dependencies';
 import {
@@ -14,6 +16,8 @@ export interface ReceiveInput {
   readonly payload: Uint8Array;
   /** The `Stripe-Signature` header as received. */
   readonly signature: unknown;
+  /** The caller's address (ADR-0037), kept with a security event when the signature fails. */
+  readonly clientAddress?: string | null;
 }
 
 export type ReceiveOutcome =
@@ -56,6 +60,35 @@ function parse(payload: Uint8Array): Record<string, unknown> | null {
   }
 }
 
+const logger = new Logger('ReceiveStripeEvent');
+
+/**
+ * A webhook whose signature failed is a security event (SOC package 1), recorded in a unit of its
+ * own: nothing else of the request is. A failure to record it is logged and does not change the
+ * answer, so Stripe (or a forger) sees the same 400 either way.
+ */
+async function recordSignatureFailure(
+  deps: PaymentsDependencies,
+  context: CallContext,
+  clientAddress: string | null,
+): Promise<void> {
+  try {
+    await deps.unitOfWork.run(context.market, async () => {
+      await deps.securityEvents.record(
+        context,
+        StripeWebhookSignatureFailed.event({ ip: clientAddress, payload: { provider: 'stripe' } }),
+      );
+      return ok(undefined);
+    });
+  } catch {
+    logger.warn({
+      msg: 'payments.stripe-webhook.security-event-failed',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+  }
+}
+
 /**
  * `receive-stripe-event`: the signature is checked on the raw bytes before anything is read.
  * Then the event must be a test-mode event: a platform event (no connected account) of a kept
@@ -73,7 +106,10 @@ export async function receiveStripeEvent(
   if (!deps.signature.configuredFor(marketId)) return err({ code: 'payments.webhook-unavailable' });
   if (!(input?.payload instanceof Uint8Array)) return err({ code: 'validation.failed' });
   const kind = deps.signature.verify(marketId, input.payload, input.signature);
-  if (kind === null) return err({ code: 'payments.signature-invalid' });
+  if (kind === null) {
+    await recordSignatureFailure(deps, context, input.clientAddress ?? null);
+    return err({ code: 'payments.signature-invalid' });
+  }
   const event = parse(input.payload);
   if (
     event === null ||

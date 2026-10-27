@@ -25,6 +25,22 @@
     "adminRequestExpiryDays": 3,
     "expiringSoonDays": 14
   },
+  "reviews": {
+    "reviewWindowDays": 30,
+    "editWindowDays": 7,
+    "sellerRatingMinCount": 3,
+    "maxSubmissionsPerAccountPerDay": 2,
+    "titleMaxLength": 60,
+    "bodyMaxLength": 300,
+    "pageSize": 2,
+    "summaryRebuildMinutes": 720,
+    "autoChecks": {
+      "blockedTerms": ["zork", "blarg"],
+      "repeatedCharRun": 5,
+      "repeatedWordMinTokens": 4,
+      "repeatedWordShareBps": 7500
+    }
+  },
   "tax": {
     "defaultRateBps": 1500,
     "refundCredit": { "enabled": false },

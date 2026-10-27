@@ -22,10 +22,12 @@ import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
 import type { ThrottleKeys } from '../ports/session-secrets';
-import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
+import type { SignInRecord, SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
 import type { SignInClient } from '../sign-in/sign-in-flow';
 import type { FieldProblem } from './register-customer.use-case';
+import type { SecurityEvents } from '../../../../platform/security-events/security-events';
+import { recordSignInSecurityEvent } from '../security-events';
 
 export interface ResetPasswordInput {
   /** The population of the route: a link of the other population is refused (AC 19). */
@@ -59,6 +61,7 @@ export interface ResetPasswordDependencies {
   readonly factors: SecondFactorRepository;
   readonly throttles: ThrottleRepository;
   readonly records: SignInRecordRepository;
+  readonly securityEvents: SecurityEvents;
   readonly keys: ThrottleKeys;
   readonly linkTokens: LinkTokens;
   readonly outbox: OutboxWriter;
@@ -252,7 +255,7 @@ export class ResetPassword extends UseCase<
           now,
           null,
         );
-        await this.deps.records.add(market, {
+        const record: SignInRecord = {
           id: this.deps.ids.next<'SignInRecord'>(),
           population,
           accountId,
@@ -261,7 +264,9 @@ export class ResetPassword extends UseCase<
           address: input.client.address,
           sessionId: null,
           correlationId: context.correlationId,
-        });
+        };
+        await this.deps.records.add(market, record);
+        await recordSignInSecurityEvent(this.deps.securityEvents, context, record);
         await this.deps.outbox.append(context, current.pendingEvents);
         return ok({ kind: 'reset', revokedSessions });
       }),

@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { SlideFormState } from './slide-form.ts';
 
 const SIZES = [375, 768, 1280] as const;
@@ -24,41 +24,48 @@ const WIDTH: Record<Size, string> = { 375: 'max-w-xs', 768: 'max-w-md', 1280: ''
 export function SlidePreview({
   form,
   tone,
+  compact = false,
 }: {
   readonly form: SlideFormState;
   /** The saved text tone of the slide (the buyer site's `textTone`). */
   readonly tone: 'light' | 'dark';
+  /** A dialog's preview: the phone frame only, without the size switch or the note. */
+  readonly compact?: boolean;
 }) {
+  const titleId = useId();
   const t = useTranslations('content.slides.preview');
   const images = useTranslations('content.slides.editor.image-key');
-  const [size, setSize] = useState<Size>(1280);
+  const [chosen, setSize] = useState<Size>(1280);
+  const size: Size = compact ? 375 : chosen;
   const phone = size === 375;
   const title = form.title.trim();
   const body = form.body.trim();
   const showButton = form.ctaLabel.trim() !== '' && form.linkType !== '';
   return (
     <aside
-      aria-labelledby="slide-preview-title"
+      aria-labelledby={titleId}
       className="flex min-w-0 flex-col gap-3 rounded-lg border border-line bg-surface p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="slide-preview-title" className="text-base font-semibold">
+        <h2 id={titleId} className="text-base font-semibold">
           {t('title')}
         </h2>
-        <div role="group" aria-label={t('size')} className="flex gap-2">
-          {SIZES.map((width) => (
-            <button
-              key={width}
-              type="button"
-              aria-pressed={size === width}
-              aria-label={t('size-option', { width })}
-              onClick={() => setSize(width)}
-              className={`inline-flex h-(--mp-size-control-sm) min-w-12 items-center justify-center rounded-md border px-3 text-sm focus-visible:outline-2 focus-visible:outline-focus ${size === width ? 'border-accent bg-selected font-medium text-link' : 'border-line-control bg-surface text-fg hover:bg-muted'}`}
-            >
-              {width}
-            </button>
-          ))}
-        </div>
+        {compact ? null : (
+          <div role="group" aria-label={t('size')} className="flex gap-2">
+            {SIZES.map((width) => (
+              <button
+                key={width}
+                type="button"
+                aria-pressed={size === width}
+                aria-label={t('size-option', { width })}
+                onClick={() => setSize(width)}
+                className={`inline-flex h-(--mp-size-control-sm) min-w-12 items-center justify-center rounded-md border px-3 text-sm focus-visible:outline-2 focus-visible:outline-focus ${size === width ? 'border-accent bg-selected font-medium text-link' : 'border-line-control bg-surface text-fg hover:bg-muted'}`}
+              >
+                {width}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div
         role="img"
@@ -70,9 +77,11 @@ export function SlidePreview({
           <span
             className={`absolute inset-y-0 end-0 flex items-center justify-center border-s border-current text-xs ${phone ? 'start-0 opacity-30' : 'w-2/5 opacity-70'}`}
           >
-            {t('image', {
-              name: images.has(form.imageRef) ? images(form.imageRef) : form.imageRef,
-            })}
+            <span className={phone ? 'sr-only' : undefined}>
+              {t('image', {
+                name: images.has(form.imageRef) ? images(form.imageRef) : form.imageRef,
+              })}
+            </span>
           </span>
         )}
         <div
@@ -102,7 +111,7 @@ export function SlidePreview({
           ) : null}
         </div>
       </div>
-      <p className="text-sm text-fg-muted">{t('note')}</p>
+      {compact ? null : <p className="text-sm text-fg-muted">{t('note')}</p>}
     </aside>
   );
 }

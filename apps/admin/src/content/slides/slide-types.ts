@@ -4,11 +4,32 @@
 
 export const SLIDE_READ_PERMISSION = 'storefront.slide.read';
 export const SLIDE_EDIT_PERMISSION = 'storefront.slide.edit';
+export const SLIDE_PAUSE_PERMISSION = 'storefront.slide.pause';
 export const SLIDE_PUBLISH_PERMISSION = 'storefront.slide.publish';
 
 export const SLIDES_API_PATH = 'storefront/admin/slides';
 export const SLIDES_PATH = '/content/slides';
 export const NEW_SLIDE_PATH = `${SLIDES_PATH}/new`;
+/** The "Order by position" view of the Slides page, and the API path behind it. */
+export const ORDER_PATH = `${SLIDES_PATH}/order`;
+export const ORDER_API_PATH = `${SLIDES_API_PATH}/order`;
+/** The tab of one slide that holds its positions and window. */
+export const placementPath = (slideId: string): string => `${SLIDES_PATH}/${slideId}/placement`;
+/** The tab of one slide that lists its saved versions. */
+export const versionsPath = (slideId: string): string => `${SLIDES_PATH}/${slideId}/versions`;
+/** The Review link of the list opens the editor with the approval dialog already open. */
+export const reviewPath = (slideId: string): string => `${SLIDES_PATH}/${slideId}?review=1`;
+/** The commands of a slide, each a POST on `storefront/admin/slides/:id/<command>`. */
+export type SlideCommand = 'submit' | 'approve' | 'pause' | 'resume' | 'archive' | 'restore';
+export const commandPath = (slideId: string, command: SlideCommand): string =>
+  `${SLIDES_API_PATH}/${slideId}/${command}`;
+export const copyPath = (slideId: string): string => `${SLIDES_API_PATH}/${slideId}/copy`;
+
+/**
+ * The most versions the API lists for a slide (storefront `MAX_SLIDE_VERSIONS_SHOWN`); an older
+ * one is not shown.
+ */
+export const MAX_VERSIONS_SHOWN = 50;
 
 export const SLIDE_KINDS = ['announcement', 'promotion', 'link'] as const;
 export type SlideKind = (typeof SLIDE_KINDS)[number];
@@ -25,15 +46,32 @@ export const SLIDE_STATUSES = [
 ] as const;
 export type SlideStatus = (typeof SLIDE_STATUSES)[number];
 
-/** The closed list of positions of the buyer site, with the most slides active at once. */
-export const SLIDE_POSITIONS = [
-  { key: 'home.hero', max: 8 },
-  { key: 'home.mid', max: 4 },
-  { key: 'category.top', max: 4 },
-  { key: 'product.below-details', max: 3 },
-  { key: 'cart.below-lines', max: 3 },
-  { key: 'landing.top', max: 8 },
-] as const;
+export const SLIDE_SCOPES = ['all', 'category', 'product', 'seller', 'page'] as const;
+export type SlideScope = (typeof SLIDE_SCOPES)[number];
+
+/**
+ * The closed list of positions of the buyer site (apps/api storefront `slide-positions.ts`): the
+ * most slides active at once, whether the position may move on its own, and the scopes a
+ * placement there may have.
+ */
+export const SLIDE_POSITIONS: readonly {
+  readonly key: string;
+  readonly max: number;
+  readonly autoplay: boolean;
+  readonly scopes: readonly SlideScope[];
+}[] = [
+  { key: 'home.hero', max: 8, autoplay: true, scopes: ['all'] },
+  { key: 'home.mid', max: 4, autoplay: false, scopes: ['all'] },
+  { key: 'category.top', max: 4, autoplay: false, scopes: ['all', 'category'] },
+  {
+    key: 'product.below-details',
+    max: 3,
+    autoplay: false,
+    scopes: ['all', 'category', 'product', 'seller'],
+  },
+  { key: 'cart.below-lines', max: 3, autoplay: false, scopes: ['all'] },
+  { key: 'landing.top', max: 8, autoplay: true, scopes: ['all', 'page'] },
+];
 
 /** What a slide may open: a typed internal target, never a URL. */
 export const LINK_TYPES = ['category', 'product', 'seller', 'page', 'search'] as const;
@@ -67,7 +105,7 @@ export const ALT_MAX = 160;
 /** A slide runs for at most 90 days (the API's rule). */
 export const MAX_WINDOW_DAYS = 90;
 
-/** A new slide is saved with this window and position until "Where and when" can change them. */
+/** A new slide is saved with this window and position; the "Where and when" tab changes them. */
 export const DEFAULT_WINDOW_DAYS = 30;
 export const DEFAULT_POSITION = 'home.hero';
 
@@ -94,7 +132,7 @@ export interface SlideContent {
 
 export interface SlidePlacement {
   readonly position: string;
-  readonly scope: 'all' | 'category' | 'product' | 'seller' | 'page';
+  readonly scope: SlideScope;
   readonly scopeId: string | null;
   readonly includeSubcategories: boolean;
   readonly sortOrder: number;
@@ -176,7 +214,31 @@ export const isKnownStatus = (value: string): value is SlideStatus =>
 export const isKnownKind = (value: string): value is SlideKind =>
   (SLIDE_KINDS as readonly string[]).includes(value);
 
-/** The status chip and button a row or the editor header shows depend on these. */
-export function canReview(permissionKeys: readonly string[], status: SlideStatus): boolean {
-  return status === 'pending' && permissionKeys.includes(SLIDE_PUBLISH_PERMISSION);
+/** What the signed-in admin may do with slides; each control is absent without its key. */
+export interface SlideGates {
+  readonly edit: boolean;
+  readonly pause: boolean;
+  readonly publish: boolean;
+}
+
+export const gatesOf = (permissionKeys: readonly string[]): SlideGates => ({
+  edit: permissionKeys.includes(SLIDE_EDIT_PERMISSION),
+  pause: permissionKeys.includes(SLIDE_PAUSE_PERMISSION),
+  publish: permissionKeys.includes(SLIDE_PUBLISH_PERMISSION),
+});
+
+/** A slide that buyers can see now or will see when its window opens. */
+export const isServed = (status: SlideStatus): boolean =>
+  status === 'live' || status === 'scheduled';
+
+/** The package `GET storefront/admin/slides/:id/copy` returns: the body of a create in another Market. */
+export interface SlideCopyPackage {
+  readonly kind: SlideKind;
+  readonly internalName: string;
+  readonly content: Record<string, unknown>;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly pinned: boolean;
+  readonly sponsored: boolean;
+  readonly placements: readonly SlidePlacement[];
 }

@@ -414,3 +414,21 @@ describe('preview', () => {
     }
   });
 });
+
+describe('tabs of a saved slide', () => {
+  it('links the Content tab and the Where and when tab, with Content current', () => {
+    mount({ slide: detail() });
+    const tabs = within(screen.getByRole('navigation', { name: 'Slide sections' }));
+    expect(tabs.getByRole('link', { name: 'Content' }).getAttribute('aria-current')).toBe('page');
+    expect(tabs.getByRole('link', { name: 'Where and when' }).getAttribute('href')).toBe(
+      `/content/slides/${ID}/placement`,
+    );
+  });
+
+  it('points a new slide to the Where and when tab for its positions and dates', () => {
+    mount();
+    expect(
+      screen.getByText(/Change the positions and dates on the Where and when tab/),
+    ).toBeTruthy();
+  });
+});

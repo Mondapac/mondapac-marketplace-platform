@@ -36,6 +36,7 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../suppo
 import { ids } from './outbox-support';
 import { createPersistence, marketOf, modelMap, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
+import { createSecurityEvents } from '../../src/platform/persistence/audit/prisma-security-events';
 
 // Social sign-in on PostgreSQL, as the application role, for both Market fixtures: the real
 // repositories, unit of work, tokens and flow secrets; the provider and the hasher are stand-ins
@@ -91,6 +92,7 @@ describe('social sign-in (database integration)', () => {
       externalIdentities: identities,
       sessions: new PrismaSessionRepository(db.service),
       records: new PrismaSignInRecordRepository(db.service),
+      securityEvents: createSecurityEvents('identity', { ids, clock }),
       hasher: new StubHasher(),
       tokens: new RandomSessionTokens(),
       outbox: new PrismaOutboxWriterFactory(

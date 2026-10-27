@@ -413,6 +413,12 @@ export interface ServiceArea {
   /** The region's short form in a one-line address ("QLD"). */
   readonly regionCode: string;
   readonly postcodes: readonly { readonly from: string; readonly to: string }[];
+  /**
+   * The keyboard the postcode field asks for. Market configuration: "numeric" only where the
+   * market's codes are digits only; absent means "text" (letters and spaces are valid in some
+   * markets).
+   */
+  readonly postcodeInput?: 'numeric' | 'text';
 }
 
 export interface CheckoutSource {

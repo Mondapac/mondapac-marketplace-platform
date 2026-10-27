@@ -245,6 +245,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX journals_market_id_lot_id_idx ON wallet.journals USING btree (market_id, lot_id) WHERE (lot_id IS NOT NULL)',
   'wallet.lots_market_id_expires_at_id_idx':
     "CREATE INDEX lots_market_id_expires_at_id_idx ON wallet.lots USING btree (market_id, expires_at, id) WHERE ((source = 'promo'::text) AND (remaining_minor > 0))",
+  // Reviews: public list pages read published reviews only (newest first, optionally by rating).
+  'reviews.product_reviews_public_list_idx':
+    "CREATE INDEX product_reviews_public_list_idx ON reviews.product_reviews USING btree (market_id, product_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
+  'reviews.product_reviews_public_list_rating_idx':
+    "CREATE INDEX product_reviews_public_list_rating_idx ON reviews.product_reviews USING btree (market_id, product_id, rating, published_at DESC, id DESC) WHERE (status = 'published'::text)",
 };
 
 const OUTBOX_COLUMNS = `

@@ -23,6 +23,7 @@ import {
 } from '../../audit/audit-writer';
 import type { PermissionKeyLookup } from '../../events/outbox-writer';
 import { auditTx } from './audit-transaction';
+import { projectionOf } from './prisma-security-events';
 import { unitStorage } from '../unit-store';
 
 /** One row of `platform.audit_log` (docs/design/data/platform.md 2), as the guarded delegate takes it. */
@@ -91,7 +92,12 @@ class PrismaAuditWriter implements AuditWriter {
     if (!this.catalogue.sealed) throw new AuditWriteRefusedError('catalogue-not-sealed');
 
     const row = this.rowOf(context, entry);
-    await auditTx(market).auditLog.create({ data: row });
+    const tx = auditTx(market);
+    await tx.auditLog.create({ data: row });
+    // A security-relevant action also makes its security event, in the same unit
+    // (docs/design/data/platform.md 13.2), so no use case can forget it.
+    const projected = projectionOf(row, this.ids);
+    if (projected !== null) await tx.securityEvent.create({ data: projected });
   }
 
   private rowOf(context: CallContext, entry: unknown): AuditRow {

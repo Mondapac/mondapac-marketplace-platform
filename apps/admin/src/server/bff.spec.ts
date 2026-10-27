@@ -798,6 +798,117 @@ describe('relay of the storefront slides', () => {
     }
   });
 
+  it('saves the order of a position with a PUT on the fixed order path, not as a slide id', async () => {
+    const path = 'storefront/admin/slides/order';
+    const upstream = upstreamOk();
+    expect((await relay(config, request('PUT', path), path.split('/'), upstream)).status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/storefront/admin/slides/order');
+    expect(upstream.mock.calls[0]?.[1]?.method).toBe('PUT');
+    for (const [method, other] of [
+      ['POST', path],
+      ['DELETE', path],
+      ['PUT', `${path}/extra`],
+      ['PUT', 'storefront/admin/slides/Order'],
+      ['PUT', 'storefront/admin/slides/order%2F..'],
+    ] as const) {
+      const refused = upstreamOk();
+      const response = await relay(config, request(method, other), other.split('/'), refused);
+      expect(response.status, `${method} ${other}`).toBe(404);
+      expect(refused).not.toHaveBeenCalled();
+    }
+  });
+
+  it('sends each approval, pause, resume, archive and restore command as a POST on a UUID', async () => {
+    for (const action of ['submit', 'approve', 'pause', 'resume', 'archive', 'restore']) {
+      const path = `storefront/admin/slides/${id}/${action}`;
+      const upstream = upstreamOk();
+      expect((await relay(config, request('POST', path), path.split('/'), upstream)).status).toBe(
+        200,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      expect(upstream.mock.calls[0]?.[1]?.method).toBe('POST');
+    }
+  });
+
+  it('reads the copy package of a slide with a GET, with no query crossing', async () => {
+    const path = `storefront/admin/slides/${id}/copy`;
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      request('GET', `${path}?market=NZ`, { host: 'admin.localhost:3002' }),
+      path.split('/'),
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+  });
+
+  it('refuses a command from another site before it reaches the API', async () => {
+    const cross = { ...sameOrigin, origin: 'http://evil.test', 'sec-fetch-site': 'cross-site' };
+    for (const action of ['submit', 'approve', 'pause', 'resume', 'archive', 'restore']) {
+      const path = `storefront/admin/slides/${id}/${action}`;
+      const upstream = upstreamOk();
+      const response = await relay(config, request('POST', path, cross), path.split('/'), upstream);
+      expect(response.status, action).toBe(403);
+      expect(upstream).not.toHaveBeenCalled();
+    }
+  });
+
+  it('reads the saved order of a position with a GET on the fixed order path and its three query keys', async () => {
+    const path = ['storefront', 'admin', 'slides', 'order'];
+    const category = '0190a000-0000-7000-8000-0000000000c1';
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      request(
+        'GET',
+        `storefront/admin/slides/order?position=category.top&scope=category&scopeId=${category}&state=live&x=1`,
+        { host: 'admin.localhost:3002' },
+      ),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/storefront/admin/slides/order?position=category.top&scope=category&scopeId=${category}`,
+    );
+    expect(upstream.mock.calls[0]?.[1]?.method).toBe('GET');
+  });
+
+  it('drops an order query value of another shape, and sends no query for none', async () => {
+    const path = ['storefront', 'admin', 'slides', 'order'];
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request(
+        'GET',
+        'storefront/admin/slides/order?position=../x&scope=everything&scopeId=not-a-uuid',
+        { host: 'admin.localhost:3002' },
+      ),
+      path,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/storefront/admin/slides/order');
+  });
+
+  it('never reads order as a slide id, and keeps the order read to its own path', async () => {
+    for (const other of [
+      'storefront/admin/slides/order/extra',
+      'storefront/admin/slides/Order',
+      'storefront/admin/slides/order%2F..',
+    ]) {
+      const refused = upstreamOk();
+      const response = await relay(
+        config,
+        request('GET', other, { host: 'admin.localhost:3002' }),
+        other.split('/'),
+        refused,
+      );
+      expect(response.status, other).toBe(404);
+      expect(refused).not.toHaveBeenCalled();
+    }
+  });
+
   it('refuses a write from another site, and every other slide route', async () => {
     const cross = { ...sameOrigin, origin: 'http://evil.test', 'sec-fetch-site': 'cross-site' };
     const blocked = upstreamOk();
@@ -809,13 +920,22 @@ describe('relay of the storefront slides', () => {
     );
     expect(crossResponse.status).toBeGreaterThanOrEqual(400);
     expect(blocked).not.toHaveBeenCalled();
+    const crossOrder = await relay(
+      config,
+      request('PUT', 'storefront/admin/slides/order', cross),
+      ['storefront', 'admin', 'slides', 'order'],
+      blocked,
+    );
+    expect(crossOrder.status).toBeGreaterThanOrEqual(400);
+    expect(blocked).not.toHaveBeenCalled();
     for (const [method, path] of [
       ['PUT', 'storefront/admin/slides'],
-      ['PUT', 'storefront/admin/slides/order'],
       ['PUT', 'storefront/admin/slides/not-a-uuid'],
       ['POST', `storefront/admin/slides/${id}`],
-      ['POST', `storefront/admin/slides/${id}/approve`],
-      ['POST', `storefront/admin/slides/${id}/pause`],
+      ['POST', `storefront/admin/slides/${id}/publish`],
+      ['POST', `storefront/admin/slides/not-a-uuid/pause`],
+      ['GET', `storefront/admin/slides/${id}/approve`],
+      ['PUT', `storefront/admin/slides/${id}/pause`],
       ['DELETE', `storefront/admin/slides/${id}`],
       ['GET', `storefront/admin/slides/${id}`],
     ] as const) {

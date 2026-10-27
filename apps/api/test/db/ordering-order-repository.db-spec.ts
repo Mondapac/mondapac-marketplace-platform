@@ -457,6 +457,106 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     ).toEqual(new Map());
   });
 
+  it("answers the account's own delivered seller orders only, newest delivery first", async () => {
+    const accountId = ids.next<'Account'>();
+    const insertDelivered = async (hoursAgo: number, deliver: boolean, owner = accountId) => {
+      const order = newOrder(owner, T0.add({ hours: -hoursAgo - 10 }));
+      await value(market, () => repository.insert(market, order));
+      await value(market, () =>
+        repository.save(market, {
+          ...order,
+          status: 'confirmed',
+          paymentState: 'captured',
+          stripePaymentIntentId: `pi_test_${order.id}`,
+          confirmedAt: T0.add({ hours: -hoursAgo - 9 }),
+        }),
+      );
+      const seller = order.sellerOrders[0]!;
+      if (deliver) {
+        const shipped = markShipped(
+          seller,
+          { carrier: 'Australia Post', trackingRef: null },
+          T0.add({ hours: -hoursAgo - 2 }),
+        )!;
+        await value(market, () => repository.saveFulfilment(market, shipped, 'to-ship'));
+        await value(market, () =>
+          repository.saveFulfilment(
+            market,
+            markDelivered(shipped, T0.add({ hours: -hoursAgo }))!,
+            'shipped',
+          ),
+        );
+      }
+      return order;
+    };
+    const recent = await insertDelivered(5, true);
+    const older = await insertDelivered(50, true);
+    await insertDelivered(1, false);
+    const pending = newOrder(accountId);
+    await value(market, () => repository.insert(market, pending));
+    await insertDelivered(2, true, ids.next<'Account'>());
+
+    const all = await value(market, () =>
+      repository.deliveredSellerOrdersOf(market, accountId, {
+        deliveredSince: T0.add({ hours: -100 }),
+        sellerOrderId: null,
+        limit: 10,
+      }),
+    );
+    expect(all.map((row) => row.sellerOrderId)).toEqual([
+      recent.sellerOrders[0]!.id,
+      older.sellerOrders[0]!.id,
+    ]);
+    expect(all[0]).toMatchObject({
+      sellerId: recent.sellerOrders[0]!.sellerId,
+      offerIds: [recent.lines[0]!.offerId],
+    });
+
+    const recentOnly = await value(market, () =>
+      repository.deliveredSellerOrdersOf(market, accountId, {
+        deliveredSince: T0.add({ hours: -10 }),
+        sellerOrderId: null,
+        limit: 10,
+      }),
+    );
+    expect(recentOnly.map((row) => row.sellerOrderId)).toEqual([recent.sellerOrders[0]!.id]);
+
+    const one = await value(market, () =>
+      repository.deliveredSellerOrdersOf(market, accountId, {
+        deliveredSince: T0.add({ hours: -100 }),
+        sellerOrderId: older.sellerOrders[0]!.id,
+        limit: 10,
+      }),
+    );
+    expect(one.map((row) => row.sellerOrderId)).toEqual([older.sellerOrders[0]!.id]);
+
+    // Another account, another Market, a limit, and a seller order that is not delivered.
+    const foreign = await value(market, () =>
+      repository.deliveredSellerOrdersOf(market, ids.next<'Account'>(), {
+        deliveredSince: T0.add({ hours: -100 }),
+        sellerOrderId: recent.sellerOrders[0]!.id,
+        limit: 10,
+      }),
+    );
+    const elsewhere = await value(other, () =>
+      repository.deliveredSellerOrdersOf(other, accountId, {
+        deliveredSince: T0.add({ hours: -100 }),
+        sellerOrderId: null,
+        limit: 10,
+      }),
+    );
+    const limited = await value(market, () =>
+      repository.deliveredSellerOrdersOf(market, accountId, {
+        deliveredSince: T0.add({ hours: -100 }),
+        sellerOrderId: null,
+        limit: 1,
+      }),
+    );
+    expect(foreign).toEqual([]);
+    expect(elsewhere).toEqual([]);
+    expect(limited).toHaveLength(1);
+  });
+
   it('shows a seller only its own paid seller orders, newest payment first', async () => {
     const paid = await paidOrder();
     const unpaid = newOrder();
