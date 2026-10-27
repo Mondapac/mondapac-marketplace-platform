@@ -46,12 +46,14 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * set or removed, Phase 5 package 5; storefront: page and navigation content changes, publishing
  * and archiving; tax: the admin-defined tax strategies; payments: the payout-account
  * change and pause rows, Phase 5 package 3 leftovers; assistant: the buyer assistant settings
- * change, plan section 11; wallet: the Market wallet switch, customer wallet package 1; reviews: the Market reviews switch, reviews package 1).
+ * change, plan section 11; wallet: the Market wallet switch, customer wallet package 1; reviews: the Market
+ * reviews switch, reviews package 1; customers: the account deletion setting change, package 5a).
  */
 const AUDITING_MODULES = [
   'AssistantModule',
   'CertificationModule',
   'CommissionPayoutsModule',
+  'CustomersModule',
   'IdentityModule',
   'NotificationsModule',
   'OrderingModule',
@@ -448,6 +450,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['AssistantModule', 'assistant'],
       ['CertificationModule', 'certification'],
       ['CommissionPayoutsModule', 'commission-payouts'],
+      ['CustomersModule', 'customers'],
       ['IdentityModule', 'identity'],
       ['NotificationsModule', 'notifications'],
       ['OrderingModule', 'ordering'],
@@ -486,6 +489,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['CertificationModule', 'writer'],
       ['CommissionPayoutsModule', 'actions'],
       ['CommissionPayoutsModule', 'writer'],
+      ['CustomersModule', 'actions'],
+      ['CustomersModule', 'writer'],
       ['IdentityModule', 'actions'],
       ['IdentityModule', 'writer'],
       ['NotificationsModule', 'actions'],
@@ -593,6 +598,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'certification', 'certification.module.ts')}: registerAuditActions('certification')`,
       `${path.join('modules', 'commission-payouts', 'commission-payouts.module.ts')}: auditWriterFor('commission-payouts')`,
       `${path.join('modules', 'commission-payouts', 'commission-payouts.module.ts')}: registerAuditActions('commission-payouts')`,
+      `${path.join('modules', 'customers', 'customers.module.ts')}: auditWriterFor('customers')`,
+      `${path.join('modules', 'customers', 'customers.module.ts')}: registerAuditActions('customers')`,
       `${path.join('modules', 'identity', 'identity.module.ts')}: auditWriterFor('identity')`,
       `${path.join('modules', 'identity', 'identity.module.ts')}: registerAuditActions('identity')`,
       `${path.join('modules', 'notifications', 'notifications.module.ts')}: auditWriterFor('notifications')`,

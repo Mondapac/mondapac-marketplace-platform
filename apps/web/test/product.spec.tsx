@@ -89,9 +89,11 @@ describe('product page', () => {
     fireEvent.click(thumbs[2]!);
     expect(thumbs[2]!.getAttribute('aria-current')).toBe('true');
     expect(thumbs[0]!.getAttribute('aria-current')).toBeNull();
-    expect(screen.getByRole('img', { name: 'Free-range chicken, whole' }).getAttribute('src')).toBe(
-      '/placeholders/egg.jpg',
-    );
+    expect(
+      screen
+        .getByRole('img', { name: 'Free-range chicken, whole, photo 3 of 4' })
+        .getAttribute('src'),
+    ).toBe('/placeholders/egg.jpg');
   });
 
   it('adds to the cart up to the units left, in the buy box and the buy bar alike', async () => {

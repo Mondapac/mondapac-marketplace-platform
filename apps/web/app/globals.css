@@ -9319,6 +9319,183 @@ button.login {
   --sf-font-body: 'Figtree', 'Noto Sans Arabic', system-ui, sans-serif;
 }
 
+/* Buyer mobile M3: the phone home search field, the sticky filter bar and "Load more".
+   Widths are the canonical breakpoints (shell/breakpoints.ts); logical properties except the gutters, which are physical insets (--gl, --gr). */
+.hs,
+.lm,
+.sortw.in-bar {
+  display: none;
+}
+@media (max-width: 699.98px) {
+  /* Home search: sticky under the header; collapsing moves it behind the header with a
+     transform, so the page below never shifts. */
+  .hs {
+    display: block;
+    position: sticky;
+    z-index: 4;
+    top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px));
+    margin-block-end: -16px;
+    margin-left: calc(var(--gl) * -1);
+    margin-right: calc(var(--gr) * -1);
+    padding-block: 8px;
+    padding-left: var(--gl);
+    padding-right: var(--gr);
+    background: var(--sf-white);
+  }
+  .hs-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    padding-block: 0;
+    padding-inline: 16px;
+    border: 1.5px solid transparent;
+    border-radius: var(--sf-radius-pill);
+    background: var(--sf-surface);
+    color: var(--sf-slate);
+    font-size: 16px;
+    text-align: start;
+  }
+  .hs-field span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  html[data-hsearch='collapsed'] .hs {
+    transform: translateY(-100%);
+    visibility: hidden;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .hs {
+      transition:
+        transform 0.2s ease,
+        visibility 0s;
+    }
+    html[data-hsearch='collapsed'] .hs {
+      transition:
+        transform 0.2s ease,
+        visibility 0s 0.2s;
+    }
+  }
+
+  /* A sticky bar needs a block or flex parent (a grid item cannot leave its row). */
+  .main:has(> .hs),
+  .main:has(> .tools),
+  .sr-panel:has(> .tools):not([hidden]) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Listing: the filter and sort bar sticks under the header; its chips scroll sideways. */
+  .tools {
+    position: sticky;
+    z-index: 3;
+    top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px));
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    margin-left: calc(var(--gl) * -1);
+    margin-right: calc(var(--gr) * -1);
+    padding-block: 8px;
+    padding-left: var(--gl);
+    padding-right: var(--gr);
+    background: var(--sf-white);
+    border-block-end: 1px solid var(--sf-line);
+  }
+  .tools::-webkit-scrollbar {
+    display: none;
+  }
+  .tools > * {
+    flex: none;
+  }
+  .tools .lbl {
+    display: none;
+  }
+  .tools .chip {
+    min-height: 44px;
+  }
+  .sortw.in-bar {
+    display: flex;
+    flex: none;
+    width: 176px;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  .sortw.in-bar .sel {
+    min-width: 0;
+    flex: 1;
+  }
+  .sortw.in-bar select {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 8px 26px;
+    font-size: 16px;
+    text-overflow: ellipsis;
+  }
+  .rtitle {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    min-width: 0;
+  }
+  .hcount {
+    color: var(--sf-slate);
+  }
+  /* Anchors and focus stop below the header and the sticky bar. */
+  html:has(.tools) {
+    scroll-padding-top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px) + 61px);
+  }
+  html:has(.hs):not([data-hsearch='collapsed']) {
+    scroll-padding-top: calc(var(--sf-header-height) + env(safe-area-inset-top, 0px) + 60px);
+  }
+  .rbar .sortw {
+    display: none;
+  }
+  .main:has(.lm-wrap[data-lm='on']) .rbar {
+    display: none;
+  }
+  .fchips a {
+    min-height: 44px;
+  }
+
+  /* Load more replaces the numbered pager once the script runs; without it the pager stays. */
+  .lm-wrap[data-lm='on'] .lm {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    margin-block-start: 24px;
+  }
+  .lm-wrap[data-lm='on'] .pager {
+    display: none;
+  }
+  .lm-count {
+    color: var(--sf-slate);
+  }
+  .lm-btn {
+    min-height: 48px;
+    min-width: min(100%, 240px);
+    padding-inline: 24px;
+  }
+  .lm-error {
+    color: var(--sf-error-ink);
+    font-weight: 600;
+    text-align: center;
+  }
+}
+@media (min-width: 700px) {
+  /* The Filters button comes first in the markup (phone order); on larger screens it stays last. */
+  .tools .chip.all {
+    order: 1;
+  }
+  .hcount {
+    display: none;
+  }
+}
 /* Checkout focus mode (M2, phone and tablet only): on /checkout and /checkout/payment the tab bar
    is not rendered, the footer and the full header give way to a simple header, and the Pay bar
    stays at the bottom. From 900px the pages are unchanged. Spacing is logical, except the page
@@ -9447,5 +9624,165 @@ button.login {
 }
 /* The on-screen keyboard is open (shell/use-keyboard.ts): the bar would sit on the field. */
 :root[data-keyboard='open'] .paybar {
+  display: none;
+}
+
+/* Product page on a phone (M4). The photos sit in a row that snaps; the count tells where the
+   buyer is. Details and Specifications are collapsibles under 700px (product/collapsible.tsx). The
+   tab bar slides away while scrolling down (shell/tabbar-autohide.tsx sets data-tabbar on <html>)
+   by a transform alone, so nothing in the layout moves, and the buy bar drops to the bottom edge
+   (its sticky offset animates; nothing else moves), where it takes the home-indicator inset once
+   (--sf-dock-inset, shell/dock.tsx).
+   The assistant launcher follows both (assistant/launcher-lift.ts). */
+.gtrack {
+  display: flex;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.gtrack::-webkit-scrollbar {
+  display: none;
+}
+.gtrack:focus-visible {
+  outline: 3px solid var(--sf-teal);
+  outline-offset: -3px;
+}
+.gslide {
+  flex: 0 0 100%;
+  min-inline-size: 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+.gslide img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  mix-blend-mode: multiply;
+}
+.gcount {
+  position: absolute;
+  inset-inline-end: 12px;
+  inset-block-end: 12px;
+  margin: 0;
+  padding: 2px 10px;
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-ink);
+  color: var(--sf-white);
+  font: 700 calc(13px * var(--fs)) / calc(20px * var(--fs)) var(--sf-font-body);
+  pointer-events: none;
+}
+.acc-sum {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+}
+.acc-sum::-webkit-details-marker {
+  display: none;
+}
+.acc-sum .ico {
+  flex: none;
+  inline-size: 20px;
+  block-size: 20px;
+  color: var(--sf-teal);
+  transform: rotate(90deg);
+}
+.acc[open] > .acc-sum .ico {
+  transform: rotate(-90deg);
+}
+/* From 700px the section is a heading with its content, always open. */
+@media (min-width: 700px) {
+  .acc-sum {
+    pointer-events: none;
+    cursor: default;
+  }
+  .acc-sum .ico,
+  .gcount {
+    display: none;
+  }
+}
+@media (max-width: 699.98px) {
+  .gmain {
+    aspect-ratio: 4 / 3;
+  }
+  .gth {
+    display: none;
+  }
+  .acc {
+    border-block-end: 1px solid var(--sf-line);
+  }
+  .sec .acc h2,
+  .sec .acc h3 {
+    margin: 0;
+    font-size: calc(18px * var(--fs));
+    line-height: calc(24px * var(--fs));
+    font-weight: 800;
+  }
+  .acc-sum {
+    min-block-size: 44px;
+  }
+  .acc-panel {
+    padding-block-end: 16px;
+  }
+  .desc {
+    text-align: start;
+  }
+  /* The collapsible is the disclosure: the description is not also clamped. */
+  .acc .desc.clamp {
+    display: block;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    mask-image: none;
+  }
+  .acc .dmore {
+    display: none;
+  }
+  :root[data-tabbar='hidden'] .tabbar {
+    transform: translateY(100%);
+    visibility: hidden;
+  }
+  /* The dock keeps its box (and z-index above the buy bar) while the bar is away: taps go through. */
+  :root[data-tabbar='hidden'] .dock {
+    pointer-events: none;
+    /* The slid-away bar must not make the page longer. */
+    overflow: clip;
+  }
+  /* Nothing sticks over the bottom edge but the buy bar, which brings its own room. */
+  :root[data-tabbar='hidden'] {
+    scroll-padding-bottom: 0;
+  }
+  /* Down to the bottom edge (14px and the inset, once) from above the tab bar. Only the sticky
+     offset changes, so nothing else moves, and a bar already released at the end of its section
+     stays where it is. */
+  :root[data-tabbar='hidden'] .buybar {
+    bottom: calc(14px + var(--sf-dock-inset, env(safe-area-inset-bottom, 0px)));
+  }
+}
+@media (max-width: 699.98px) and (prefers-reduced-motion: no-preference) {
+  .tabbar {
+    transition:
+      transform 200ms ease,
+      visibility 0s;
+  }
+  :root[data-tabbar='hidden'] .tabbar {
+    transition:
+      transform 200ms ease,
+      visibility 0s linear 200ms;
+  }
+  .buybar {
+    transition: bottom 200ms ease;
+  }
+  .aslaunch {
+    transition: bottom 200ms ease;
+  }
+}
+/* The on-screen keyboard is open (shell/use-keyboard.ts): the bar would sit on the field. */
+:root[data-keyboard='open'] .buybar {
   display: none;
 }
