@@ -986,8 +986,8 @@
     "all-stores": "Browse all stores",
     "other-stores": "Other stores that deliver to you",
     "offline-title": "You are offline",
-    "offline-message": "We could not reach the marketplace. Check your connection and try again. Pages you opened recently may still be available.",
-    "offline-banner": "You are viewing saved pages. Prices, stock and delivery may be out of date. Cart and checkout need a connection.",
+    "offline-message": "We could not reach the marketplace. Check your connection and try again.",
+    "offline-banner": "This page may show out-of-date prices, stock and delivery. Cart and checkout need a connection.",
     "retry": "Try again",
     "checking": "Checking...",
     "still-offline": "Still offline. We will try again when your connection is back."
