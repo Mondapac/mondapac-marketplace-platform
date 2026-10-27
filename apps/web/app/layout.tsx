@@ -22,11 +22,13 @@ import { StoreShell } from '../src/shell/store-shell.tsx';
 import {
   loadAssistant,
   loadCartSource,
+  loadLiveCart,
   loadCheckout,
   loadDeliveryLocator,
   loadStorefrontContent,
   storefrontIsLive,
 } from '../src/storefront/source.ts';
+import { photoBase } from '../src/storefront/photo-source.ts';
 import './globals.css';
 // After globals.css: the store pictures refine the logo tile and the banner it defines.
 import '../src/seller/store-images.css';
@@ -54,17 +56,29 @@ export const viewport = {
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const [messages, locale, jar, content, cartSource, checkout, assistant, locator] =
-    await Promise.all([
-      getMessages(),
-      getLocale(),
-      cookies(),
-      loadStorefrontContent(),
-      loadCartSource(),
-      loadCheckout(),
-      loadAssistant(),
-      loadDeliveryLocator(),
-    ]);
+  const [
+    messages,
+    locale,
+    jar,
+    content,
+    cartSource,
+    liveCart,
+    photos,
+    checkout,
+    assistant,
+    locator,
+  ] = await Promise.all([
+    getMessages(),
+    getLocale(),
+    cookies(),
+    loadStorefrontContent(),
+    loadCartSource(),
+    loadLiveCart(),
+    photoBase(),
+    loadCheckout(),
+    loadAssistant(),
+    loadDeliveryLocator(),
+  ]);
   const lang = languageTag(locale);
   const scriptFont = scriptFontHref(lang);
   const palette = paletteOf(jar.get(PALETTE_COOKIE)?.value);
@@ -91,6 +105,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <StoreShell
             content={content}
             cartSource={cartSource}
+            liveCart={liveCart}
+            photoBase={photos}
             locator={locator}
             deliverTo={deliverToOf(jar.get(DELIVER_TO_COOKIE)?.value)}
             consent={consentOf(jar.get(CONSENT_COOKIE)?.value)}

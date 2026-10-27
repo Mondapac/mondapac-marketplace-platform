@@ -13,6 +13,7 @@ import {
   type PublicStore,
 } from './real-sellers.ts';
 import type { AssistantSetup } from '../assistant/assistant.ts';
+import { liveCartOf, type LiveCart } from '../cart/live-cart.ts';
 import { categoriesOf, loadHome, type HomeContent } from './home-source.ts';
 import { photoUrls } from './photo-source.ts';
 import { loadSlides as readSlides, type SlideScope } from './slides-source.ts';
@@ -120,11 +121,20 @@ export async function loadProduct(id: string): Promise<ProductDetail | undefined
 }
 
 /**
- * The cart's line details and each seller's delivery terms. Sample data until the cart read
- * returns them (handoffs/cart-checkout.md, PR 2).
+ * The sample cart's line details and each seller's delivery terms, while the API is off. With
+ * the API on, the cart comes from `loadLiveCart`.
  */
 export async function loadCartSource(): Promise<CartSource> {
   return Promise.resolve(SAMPLE_CART_SOURCE);
+}
+
+/**
+ * The buyer's real cart for this page (`GET /cart` with the buyer's cookies), or null while the
+ * API is off or when the read fails (the browser then reads it once the page is up).
+ */
+export async function loadLiveCart(): Promise<LiveCart | null> {
+  const [read, photo] = await Promise.all([sessionGet<unknown>('cart'), photoUrls()]);
+  return read.kind === 'ok' ? liveCartOf(read.body, photo) : null;
 }
 
 /**

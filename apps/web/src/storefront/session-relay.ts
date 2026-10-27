@@ -19,6 +19,8 @@ import { storefrontHostFor, type StorefrontApiConfig, type StorefrontHost } from
 const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   GET: new Set([
     'cart',
+    // The signed-in customer's saved-for-later list (cart v4).
+    'cart/saved',
     'identity/customer/session',
     // The customer's own address book (customers package 1).
     'customers/me/addresses',
@@ -26,6 +28,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   POST: new Set([
     'cart/items',
     'cart/merge',
+    'cart/saved',
     'identity/customer/sign-in',
     'identity/customer/sign-out',
     'identity/customer/confirm-email',
@@ -42,9 +45,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
 
 /** Paths with one resource id (`:id`, a UUID), by method. */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
-  POST: ['customers/me/addresses/:id/default'],
+  POST: ['customers/me/addresses/:id/default', 'cart/saved/:id/move-to-cart'],
   PUT: ['cart/items/:id', 'customers/me/addresses/:id'],
-  DELETE: ['cart/items/:id', 'customers/me/addresses/:id'],
+  DELETE: ['cart/items/:id', 'customers/me/addresses/:id', 'cart/saved/:id'],
 };
 
 /** The answers that start a customer session; a guest cart is merged into it right after. */
