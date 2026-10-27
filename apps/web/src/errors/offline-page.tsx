@@ -10,7 +10,7 @@ import { useRetry } from './use-retry.ts';
 /**
  * The offline page (approved design errors-a-teal v1): what a service worker serves when a page
  * is not saved. Try again reloads once the marketplace answers, and so does the connection coming
- * back by itself. What is saved for offline use is not decided yet (PWA level).
+ * back by itself. Only this page and its static files are saved for offline use (public/sw.js).
  */
 export function OfflinePage() {
   const t = useTranslations('errors');

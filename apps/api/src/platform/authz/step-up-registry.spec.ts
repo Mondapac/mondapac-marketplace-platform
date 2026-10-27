@@ -26,6 +26,14 @@ describe('StepUpActionRegistry', () => {
     ['a malformed key', () => [action('Pricing.Price')]],
     ['a key with one segment', () => [action('pricing')]],
     ['a locked action that is not required', () => [action('pricing.price.change', false, true)]],
+    [
+      'an admin action that is not locked',
+      () => [{ ...action('pricing.price.change', true, false), audience: 'admin' as const }],
+    ],
+    [
+      'an unknown audience',
+      () => [{ ...action('pricing.price.change', true, true), audience: 'customer' as never }],
+    ],
   ])('refuses %s at boot', (_name, actions) => {
     const registry = new StepUpActionRegistry();
     expect(() => registry.register('pricing', actions())).toThrow(StepUpRegistryError);

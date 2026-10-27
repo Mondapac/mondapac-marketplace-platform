@@ -15,6 +15,7 @@ export type RoleProblemCode =
   | 'create_on_schema'
   | 'temporary_on_database'
   | 'audit_log_privilege'
+  | 'security_events_privilege'
   | 'role_timeouts';
 
 export interface RoleProblem {
@@ -82,6 +83,19 @@ SELECT 'audit_log_privilege', t.name
    AND (pg_catalog.has_table_privilege(t.rel, 'UPDATE, DELETE, TRUNCATE, TRIGGER')
         OR pg_catalog.has_any_column_privilege(t.rel, 'UPDATE')
         -- MAINTAIN (PostgreSQL 17) allows LOCK TABLE, which could block audit writes.
+        OR CASE WHEN pg_catalog.current_setting('server_version_num')::int >= 170000
+                THEN pg_catalog.has_table_privilege(t.rel, 'MAINTAIN')
+                ELSE false END)
+UNION ALL
+-- The security event tables (docs/design/data/platform.md 13): the application
+-- holds SELECT, INSERT and DELETE (the retention job; a trigger refuses a recent row), never a
+-- privilege that changes or empties a row.
+SELECT 'security_events_privilege', t.name
+  FROM (VALUES ('platform.security_events'), ('platform.security_events_archive')) AS v(name)
+ CROSS JOIN LATERAL (SELECT v.name, pg_catalog.to_regclass(v.name) AS rel) AS t
+ WHERE t.rel IS NOT NULL
+   AND (pg_catalog.has_table_privilege(t.rel, 'UPDATE, TRUNCATE, TRIGGER')
+        OR pg_catalog.has_any_column_privilege(t.rel, 'UPDATE')
         OR CASE WHEN pg_catalog.current_setting('server_version_num')::int >= 170000
                 THEN pg_catalog.has_table_privilege(t.rel, 'MAINTAIN')
                 ELSE false END)

@@ -1,5 +1,6 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { SecurityEvents } from '../../../platform/security-events/security-events';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { CarrierBookingRepository } from './ports/carrier-booking.repository';
@@ -30,4 +31,5 @@ export interface ShippingDependencies {
   readonly carrierPolicy: CarrierPolicy;
   readonly pickups: PickupDirectory;
   readonly webhookSignature: CarrierWebhookSignature;
+  readonly securityEvents: SecurityEvents;
 }

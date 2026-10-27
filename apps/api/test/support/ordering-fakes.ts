@@ -12,6 +12,7 @@ import type {
   CommissionPayoutsFailure,
   CommissionRateMap,
   PaidSellerOrder,
+  RefundedSellerOrder,
 } from '../../src/modules/commission-payouts';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import type {
@@ -252,6 +253,48 @@ export class MemoryOrders implements OrderRepository {
       }
     }
     return Promise.resolve(accounts);
+  }
+  deliveredSellerOrdersOf(
+    _m: MarketContext,
+    accountId: Id<'Account'>,
+    query: {
+      readonly deliveredSince: Temporal.Instant;
+      readonly sellerOrderId: Id<'SellerOrder'> | null;
+      readonly limit: number;
+    },
+  ) {
+    const found: {
+      sellerOrderId: Id<'SellerOrder'>;
+      sellerId: Id<'Seller'>;
+      deliveredAt: Temporal.Instant;
+      offerIds: Id<'Offer'>[];
+    }[] = [];
+    for (const order of this.rows.values()) {
+      if (order.accountId !== accountId || order.status !== 'confirmed') continue;
+      for (const sellerOrder of order.sellerOrders) {
+        if (sellerOrder.fulfilment !== 'delivered' || sellerOrder.deliveredAt === null) continue;
+        if (sellerOrder.deliveredAt.epochMilliseconds < query.deliveredSince.epochMilliseconds) {
+          continue;
+        }
+        if (query.sellerOrderId !== null && sellerOrder.id !== query.sellerOrderId) continue;
+        found.push({
+          sellerOrderId: sellerOrder.id,
+          sellerId: sellerOrder.sellerId,
+          deliveredAt: sellerOrder.deliveredAt,
+          offerIds: [
+            ...new Set(
+              order.lines.filter((l) => l.sellerOrderId === sellerOrder.id).map((l) => l.offerId),
+            ),
+          ],
+        });
+      }
+    }
+    found.sort(
+      (a, b) =>
+        b.deliveredAt.epochMilliseconds - a.deliveredAt.epochMilliseconds ||
+        b.sellerOrderId.localeCompare(a.sellerOrderId),
+    );
+    return Promise.resolve(found.slice(0, query.limit));
   }
   saveFulfilment(_m: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {
     for (const [orderId, order] of this.rows) {
@@ -497,6 +540,28 @@ export class FakeCommission implements CommissionPayoutsFacade {
     }
     this.recorded.push(paid);
     return Promise.resolve(ok('recorded' as const));
+  }
+  /** The refunds the worker sent to the ledger; `refundFails` makes the ledger refuse them. */
+  refundsRecorded: RefundedSellerOrder[] = [];
+  refundFails: CommissionPayoutsFailure | null = null;
+  /** When set, only this refund is refused by `refundFails` (the others are recorded). */
+  refundFailOnly: string | null = null;
+  recordRefund(
+    _c: CallContext,
+    refund: RefundedSellerOrder,
+  ): Promise<
+    Result<'recorded' | 'already-recorded' | 'nothing-to-post', CommissionPayoutsFailure>
+  > {
+    if (this.refundFails !== null && (this.refundFailOnly ?? refund.refundId) === refund.refundId) {
+      return Promise.resolve(err(this.refundFails));
+    }
+    if (this.refundsRecorded.some((r) => r.refundId === refund.refundId)) {
+      return Promise.resolve(ok('already-recorded' as const));
+    }
+    this.refundsRecorded.push(refund);
+    return Promise.resolve(
+      ok(refund.lossBearer === 'platform' ? ('nothing-to-post' as const) : ('recorded' as const)),
+    );
   }
 }
 

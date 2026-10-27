@@ -1,6 +1,7 @@
 import { getTranslations } from 'next-intl/server';
-import { SEARCH_SORTS, listingStateOf } from '../../src/catalog/listing-state.ts';
+import { SEARCH_SORTS, listingStateOf, throughOf } from '../../src/catalog/listing-state.ts';
 import { Suspense } from 'react';
+import { findProductsThrough } from '../../src/catalog/through.ts';
 import {
   LiveSearchResults,
   ResultsHeading,
@@ -11,7 +12,6 @@ import {
 import {
   LISTING_PAGE_SIZE,
   QUERY_MIN,
-  findProducts,
   findStores,
   listingFacets,
   listingIsLive,
@@ -81,17 +81,22 @@ async function Results({
   const sorted = SEARCH_SORTS.includes(asked.sort)
     ? asked
     : { ...asked, sort: 'recommended' as const };
+  const through = throughOf(query, sorted.page);
   const scope = { q, ...(category ? { category: category.code } : {}) };
   const facets = await listingFacets(scope);
   if (live) {
     // The API gives no counts, filters, sort or store search: the results page is the grid alone.
-    const products = await findProducts({ ...scope, ...sorted, pageSize: LISTING_PAGE_SIZE });
+    const products = await findProductsThrough(
+      { ...scope, ...sorted, pageSize: LISTING_PAGE_SIZE },
+      through,
+    );
     return (
       <LiveSearchResults
         query={q}
         {...(category ? { category } : {})}
         categories={content.categories}
         state={sorted}
+        through={through}
         products={products}
         facets={facets}
         popular={content.popularSearches}
@@ -107,7 +112,7 @@ async function Results({
     },
   };
   const [products, counts, stores] = await Promise.all([
-    findProducts({ ...scope, ...shown, pageSize: LISTING_PAGE_SIZE }),
+    findProductsThrough({ ...scope, ...shown, pageSize: LISTING_PAGE_SIZE }, through),
     searchCategories(q),
     findStores(q),
   ]);
@@ -118,6 +123,7 @@ async function Results({
       categories={content.categories}
       counts={counts}
       state={shown}
+      through={through}
       products={products}
       pageSize={LISTING_PAGE_SIZE}
       facets={facets}

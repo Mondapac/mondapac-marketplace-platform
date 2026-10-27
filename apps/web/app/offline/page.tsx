@@ -10,7 +10,7 @@ export async function generateMetadata() {
   return pageMetadata({ name: t('offline-title'), description, path: '/offline', noindex: true });
 }
 
-/** The service worker's fallback for a page that is not saved (the caching list waits, PWA level). */
+/** The service worker's fallback for a page that is not saved (public/sw.js saves it, anonymous, with its static files; nothing else is saved). */
 export default function OfflineRoute() {
   return <OfflinePage />;
 }

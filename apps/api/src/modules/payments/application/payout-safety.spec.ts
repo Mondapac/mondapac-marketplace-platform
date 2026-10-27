@@ -38,6 +38,7 @@ import { PayoutReadinessQuery } from './use-cases/payout-readiness.use-case';
 import { ReceiveStripeEvent } from './use-cases/receive-stripe-event.use-case';
 import { SyncPayoutSchedules } from './use-cases/sync-payout-schedules.use-case';
 import { ViewPayoutAccount } from './use-cases/view-payout-account.use-case';
+import { RecordingSecurityEvents } from '../../../../test/support/recording-security-events';
 
 // The bank-change waiting period, the payout pause, the recent two-step confirmation and the
 // admin read of connected accounts, in memory on both Market fixtures.
@@ -92,6 +93,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
       policy,
       identity,
       audit,
+      securityEvents: new RecordingSecurityEvents(),
       ids: new SequenceIdGenerator(clock),
       clock,
     };

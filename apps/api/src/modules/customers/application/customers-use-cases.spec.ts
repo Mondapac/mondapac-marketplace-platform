@@ -15,6 +15,12 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { ConfigAddressPolicy } from '../infrastructure/config-address-policy';
 import type { CustomersDependencies } from './customers-dependencies';
 import { InMemoryAddresses, ReversibleAddressCipher } from './testing/in-memory-address-book';
+import {
+  MemoryAccountDeletionSettings,
+  RecordingAudit,
+  RecordingOutbox,
+  RecordingStepUp,
+} from './testing/in-memory-account-deletion';
 import { CreateAddress } from './use-cases/create-address.use-case';
 import { DeleteAddress } from './use-cases/delete-address.use-case';
 import { ListAddresses } from './use-cases/list-addresses.use-case';
@@ -90,6 +96,10 @@ describe.each([['AU'], ['ZZ']] as const)('customer address book in market %s', (
       policy: new ConfigAddressPolicy(markets),
       ids: new SequenceIdGenerator(clock),
       clock,
+      accountDeletionSettings: new MemoryAccountDeletionSettings(),
+      audit: new RecordingAudit(),
+      outbox: new RecordingOutbox(),
+      stepUp: new RecordingStepUp(),
     };
     uc = {
       list: new ListAddresses(gate, deps),

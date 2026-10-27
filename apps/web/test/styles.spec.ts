@@ -59,6 +59,23 @@ describe('storefront styles', () => {
       expect(rules(`:root[data-palette='${code}']`)[0]).not.toContain('--sf-certified');
     expect(css).toMatch(/--sf-certified:\s*#[0-9a-fA-F]{6};/);
   });
+
+  it('sticks the page action bars above the dock by its token, never by a fixed number', () => {
+    for (const selector of ['.buybar', '.cbar'])
+      for (const body of rules(selector).filter((b) => b.includes('bottom:')))
+        expect(body, selector).toContain('--sf-dock-height');
+    expect(css).not.toMatch(/bottom:\s*calc\(78px/);
+  });
+
+  it('hides the tab bar while the on-screen keyboard is open', () => {
+    expect(rules(":root[data-keyboard='open'] .tabbar")[0]).toContain('display: none');
+  });
+
+  it('keeps phone and touch form fields at 16px or more (iOS Safari zooms into smaller ones)', () => {
+    expect(css).toMatch(
+      /@media \(max-width: 699\.98px\), \(pointer: coarse\) \{\s*:is\(input, select, textarea\):not\(\[type='checkbox'\]\):not\(\[type='radio'\]\) \{\s*font-size: max\(16px, 1em\);/,
+    );
+  });
 });
 
 describe('slider styles', () => {

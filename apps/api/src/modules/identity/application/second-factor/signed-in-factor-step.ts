@@ -59,6 +59,17 @@ export interface SignedInFactorSpec<T> {
    * The rest of the closing unit with the factor read again after the spend. A refusal here
    * (`session.invalid`) makes the unit commit nothing, so the spent code is kept unspent.
    */
+  /**
+   * Runs in the closing unit after a wrong code was counted (and, at the limit, the factor
+   * locked), and commits with them: for an audit row of the refusal. A wrong code is bounded by
+   * the lock-out, so this never floods. Not called for a request refused before the code is
+   * checked (already locked, no factor).
+   */
+  readonly failed?: (input: {
+    readonly account: Account;
+    readonly locked: boolean;
+    readonly now: Temporal.Instant;
+  }) => Promise<void>;
   readonly succeed: (input: {
     readonly account: Account;
     readonly factor: SecondFactor;
@@ -200,6 +211,9 @@ export class SignedInFactorStep {
               accountId,
               now,
             );
+            if (spec.failed !== undefined) {
+              await spec.failed({ account, locked: lockedNow, now });
+            }
             // An `ok` outcome, so the counted failure and the lock commit (PN1).
             return ok({ kind: 'failed', locked: lockedNow });
           }

@@ -35,7 +35,20 @@
     "orders": "Orders",
     "earnings": "Earnings",
     "team": "Team",
-    "settings": "Settings"
+    "stock": "Stock locations",
+    "payout": "Payout account",
+    "store-profile": "Store profile",
+    "delivery": "Delivery",
+    "security": "Security",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "group": {
+      "orders": "Orders",
+      "catalogue": "Catalogue",
+      "store": "My store",
+      "money": "Money",
+      "team": "Team & settings"
+    }
   },
   "home": {
     "title": "Dashboard",
@@ -140,6 +153,11 @@
         "sale": "Sale",
         "shipping": "Delivery fee",
         "commission": "Commission",
+        "refund-sale": "Refund of sale",
+        "refund-shipping": "Refund of shipping",
+        "refund-commission": "Commission returned",
+        "dispute-debit": "Dispute debit",
+        "dispute-reinstate": "Dispute reinstated",
         "unknown": "Other"
       }
     },
@@ -1268,13 +1286,16 @@
   },
   "earnings": {
     "title": "Earnings",
-    "intro": "What your store has sold on paid orders, the delivery fees, the platform commission and your balance. Newest rows first.",
+    "intro": "What your store has sold on paid orders, the delivery fees, the platform commission, what refunds took back and your balance. A refund can take your balance below zero. Newest rows first.",
     "ledger": "Ledger",
     "totals": {
       "sales": "Sales",
       "shipping": "Shipping",
       "commission": "Commission",
-      "balance": "Balance"
+      "balance": "Balance",
+      "refunds": "Refunds",
+      "refunded-commission": "Commission returned",
+      "disputes": "Disputes"
     },
     "col": {
       "when": "Date",
@@ -1285,7 +1306,12 @@
     "kind": {
       "sale": "Sale",
       "shipping": "Shipping",
-      "commission": "Commission"
+      "commission": "Commission",
+      "refund-sale": "Refund of sale",
+      "refund-shipping": "Refund of shipping",
+      "refund-commission": "Commission returned",
+      "dispute-debit": "Dispute debit",
+      "dispute-reinstate": "Dispute reinstated"
     },
     "more": "Load more",
     "more-failed": "More rows could not be loaded. Try again.",
@@ -1358,17 +1384,6 @@
   },
   "load": {
     "retry": "Try again"
-  },
-  "settings": {
-    "title": "Settings",
-    "tabs": "Settings sections",
-    "tab": {
-      "security": "Security",
-      "payout": "Payout account",
-      "locations": "Stock locations",
-      "delivery": "Delivery",
-      "store-profile": "Store profile"
-    }
   },
   "delivery": {
     "title": "Delivery",
@@ -1730,6 +1745,7 @@
       "stock": "Stock",
       "certificates": "Certificates",
       "catalogue": "Catalogue",
+      "store": "My store",
       "prices": "Prices",
       "account": "Account",
       "other": "Other"

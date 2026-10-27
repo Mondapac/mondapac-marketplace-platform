@@ -31,9 +31,13 @@ describe.each(['AU', 'ZZ'] as const)('RequireStepUp in market %s', (code) => {
   registry.register('payments', [
     { key: 'payments.payout-account.change', defaultRequired: true, locked: true },
   ]);
+  registry.register('wallet', [
+    { key: 'wallet.settings.change', defaultRequired: true, locked: true, audience: 'admin' },
+  ]);
 
   let rules: Map<string, boolean>;
   let proofs: Map<string, Temporal.Instant>;
+  let proofSessions: string[];
   let factorActive: boolean | null;
   let factorActivatedAt: Temporal.Instant | null;
 
@@ -41,7 +45,11 @@ describe.each(['AU', 'ZZ'] as const)('RequireStepUp in market %s', (code) => {
     policiesOf: () => Promise.resolve([]),
     policyOf: (_m, _s, key) => Promise.resolve(rules.get(key) ?? null),
     savePolicy: () => Promise.resolve(),
-    proofOf: (_m, _s, key) => Promise.resolve(proofs.get(key) ?? null),
+    proofOf: (_m, session, key) => {
+      proofSessions.push(session);
+      return Promise.resolve(proofs.get(`${session}:${key}`) ?? proofs.get(key) ?? null);
+    },
+    takeProof: () => Promise.resolve(null),
     recordProof: () => Promise.resolve(),
   };
   const factors = {
@@ -75,6 +83,7 @@ describe.each(['AU', 'ZZ'] as const)('RequireStepUp in market %s', (code) => {
   beforeEach(() => {
     rules = new Map();
     proofs = new Map();
+    proofSessions = [];
     factorActive = true;
     factorActivatedAt = NOW.subtract({ hours: 1 });
   });
@@ -156,5 +165,78 @@ describe.each(['AU', 'ZZ'] as const)('RequireStepUp in market %s', (code) => {
       'step-up-unit-0002',
     );
     expect((await run(admin, 'payments.payout-account.change')).ok).toBe(true);
+  });
+
+  describe('an admin action (issue #491)', () => {
+    const ADMIN_SESSION = id<'Session'>(0xc2);
+    const admin = (): CallContext =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xa2),
+          sessionId: ADMIN_SESSION,
+          sellerId: null,
+        }),
+        'step-up-unit-0003',
+      );
+
+    it('always asks an admin session for a fresh proof, and accepts one of this session', async () => {
+      expect(await run(admin(), 'wallet.settings.change')).toEqual({
+        ok: false,
+        error: { code: 'second-factor.required', actionKey: 'wallet.settings.change' },
+      });
+      proofs.set(`${ADMIN_SESSION}:wallet.settings.change`, NOW.subtract({ minutes: 4 }));
+      expect(await run(admin(), 'wallet.settings.change')).toEqual({
+        ok: true,
+        value: { code: 'step-up.satisfied' },
+      });
+      expect(new Set(proofSessions)).toEqual(new Set([ADMIN_SESSION]));
+    });
+
+    it('does not accept an expired proof, one for another action or one of another session', async () => {
+      proofs.set(`${ADMIN_SESSION}:wallet.settings.change`, NOW.subtract({ minutes: 5 }));
+      expect((await run(admin(), 'wallet.settings.change')).ok).toBe(false);
+      proofs.clear();
+      proofs.set(`${ADMIN_SESSION}:payments.payout-account.change`, NOW);
+      expect((await run(admin(), 'wallet.settings.change')).ok).toBe(false);
+      proofs.clear();
+      proofs.set(`${id<'Session'>(0xc9)}:wallet.settings.change`, NOW);
+      expect((await run(admin(), 'wallet.settings.change')).ok).toBe(false);
+    });
+
+    it('asks an admin without an active factor to set one up', async () => {
+      for (const state of [null, false]) {
+        factorActive = state;
+        expect(await run(admin(), 'wallet.settings.change')).toEqual({
+          ok: false,
+          error: { code: 'second-factor.enrolment-required', actionKey: 'wallet.settings.change' },
+        });
+      }
+    });
+
+    it('refuses a seller session and an acting-as session, even with a proof', async () => {
+      proofs.set('wallet.settings.change', NOW);
+      expect(await run(seller(), 'wallet.settings.change')).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      // Refused by the gate (a context it did not mint) or by the use case's own marker check:
+      // either way no proof is read.
+      const context = admin();
+      const actingAs = {
+        ...context,
+        actor: { ...context.actor, actingAs: { sellerId: SELLER } },
+      } as unknown as CallContext;
+      expect(await run(actingAs, 'wallet.settings.change')).toMatchObject({ ok: false });
+      expect(proofSessions).toEqual([]);
+    });
+
+    it('keeps an unregistered admin key closed', async () => {
+      expect(await run(admin(), 'wallet.settings.unknown')).toEqual({
+        ok: false,
+        error: { code: 'access.unavailable' },
+      });
+    });
   });
 });

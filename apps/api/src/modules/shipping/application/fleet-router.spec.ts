@@ -172,6 +172,7 @@ describe.each([
       carrierPolicy: new ConfigCarrierPolicy(markets, areas, { apiKeys: {}, webhookSecrets: {} }),
       pickups,
       webhookSignature: undefined as never,
+      securityEvents: undefined as never,
     };
   });
 
@@ -554,6 +555,7 @@ describe.each([['ZZ', 'JPY', '1000001', '1000002']] as const)(
         carrierPolicy: policy,
         pickups,
         webhookSignature: undefined as never,
+        securityEvents: undefined as never,
       };
       const request = {
         orderId: ORDER,
