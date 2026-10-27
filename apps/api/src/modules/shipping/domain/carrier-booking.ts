@@ -1,4 +1,5 @@
 import type { Id, Temporal } from '@mondapac/shared-kernel';
+import type { FleetCode, FleetDeliveryStatus } from './fleet';
 
 // A seller order handed to a real-time carrier (SHP-02/03, Mondapac Drive first): the
 // `real_time_delivery` FulfillmentStrategy. Pure rules only; the carrier's wire format lives in
@@ -20,15 +21,13 @@ export const CARRIER_PROGRESS = [
 ] as const;
 export type CarrierProgress = (typeof CARRIER_PROGRESS)[number];
 
-/** The carrier code of Mondapac Drive: the only real-time carrier today. */
-export const MONDAPAC_DRIVE = 'mondapac-drive';
-
 export interface CarrierBooking {
   readonly id: Id<'CarrierBooking'>;
   readonly sellerOrderId: Id<'SellerOrder'>;
   readonly orderId: Id<'Order'>;
   readonly sellerId: Id<'Seller'>;
-  readonly carrier: typeof MONDAPAC_DRIVE;
+  /** The fleet that booked it. */
+  readonly fleet: FleetCode;
   /** The carrier's own id of the delivery. */
   readonly carrierReference: string;
   readonly progress: CarrierProgress;
@@ -52,31 +51,25 @@ const RANK: Readonly<Record<CarrierProgress, number>> = {
 export const isFinalProgress = (progress: CarrierProgress): boolean => RANK[progress] === 2;
 
 /**
- * Drive's delivery statuses as marketplace progress (handoff 09): PICKED_UP is shipped,
- * DELIVERED is delivered, DELIVERY_FAILED and RETURNED are an exception. Every status before
- * pickup is `booked`; AT_DROPOFF is still on the way; RETURNING is already an exception. An
- * unknown status is null and changes nothing.
+ * A fleet's common status as marketplace progress: pending and assigned are still `booked`;
+ * picked up is shipped; delivered is delivered; failed and returned are an exception (an admin
+ * follows up); cancelled is cancelled. Every adapter maps its own words to the common status
+ * first (`toFleetStatus`), so nothing here knows a fleet.
  */
-export function progressOfDriveStatus(status: string): CarrierProgress | null {
+export function progressOfFleetStatus(status: FleetDeliveryStatus): CarrierProgress {
   switch (status) {
-    case 'SCHEDULED':
-    case 'DISPATCHING':
-    case 'ASSIGNED':
-    case 'AT_PICKUP':
+    case 'pending':
+    case 'assigned':
       return 'booked';
-    case 'PICKED_UP':
-    case 'AT_DROPOFF':
+    case 'picked_up':
       return 'picked-up';
-    case 'DELIVERED':
+    case 'delivered':
       return 'delivered';
-    case 'DELIVERY_FAILED':
-    case 'RETURNING':
-    case 'RETURNED':
+    case 'failed':
+    case 'returned':
       return 'exception';
-    case 'CANCELLED':
+    case 'cancelled':
       return 'cancelled';
-    default:
-      return null;
   }
 }
 
@@ -107,15 +100,13 @@ export function advanceBooking(
   };
 }
 
-/**
- * A booking the carrier has just confirmed, at version 1. A status the marketplace does not know
- * yet counts as `booked`.
- */
+/** A booking the carrier has just confirmed, at version 1, `booked`. */
 export function newBooking(input: {
   readonly id: Id<'CarrierBooking'>;
   readonly sellerOrderId: Id<'SellerOrder'>;
   readonly orderId: Id<'Order'>;
   readonly sellerId: Id<'Seller'>;
+  readonly fleet: FleetCode;
   readonly carrierReference: string;
   readonly carrierStatus: string;
   readonly now: Temporal.Instant;
@@ -125,9 +116,9 @@ export function newBooking(input: {
     sellerOrderId: input.sellerOrderId,
     orderId: input.orderId,
     sellerId: input.sellerId,
-    carrier: MONDAPAC_DRIVE,
+    fleet: input.fleet,
     carrierReference: input.carrierReference,
-    progress: progressOfDriveStatus(input.carrierStatus) ?? 'booked',
+    progress: 'booked',
     carrierStatus: input.carrierStatus,
     version: 1,
     createdAt: input.now,

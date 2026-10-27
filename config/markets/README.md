@@ -303,11 +303,20 @@ is required; no value has a default. The review checks and reasons are table-sha
 
 ## `shipping` section (optional)
 
-Owned by `shipping` (SHP-02/03, `docs/modules/shipping/carrier-mondapac-drive.md`). One key,
-`realTimeCarrier`; a Market without it, or without both carrier secrets in the Region Stack
+Owned by `shipping` (SHP-02/03, `docs/modules/shipping/carrier-mondapac-drive.md`). Two keys,
+`realTimeCarrier` and `fleets`; a Market without it, or without both carrier secrets in the Region Stack
 (`MONDAPAC_DRIVE_API_KEY`, `MONDAPAC_DRIVE_WEBHOOK_SECRET`), has no real-time carrier and every
 seller ships as in SHP-01.
 
+- `fleets` (optional, delivery models package 3): the fleets a Market lists, by fleet code
+  (`mondapac_drive`, `uber_direct`, `zoom2u`, `auspost`; `fake_test` is for tests and is not
+  registered in production). Each entry has `enabled` (default true), `displayName`,
+  `serviceAreas` (city areas where both ends of a trip must fall) or `outsideCityAreasOnly: true`
+  (the drop-off must be in no city area; Australia Post), `methods` (`instant`, `same_day`,
+  `scheduled`), `temperatures`, `maxItemWeightGrams`, `maxItems`, `maxOrderValueMinor`,
+  `prohibitedClasses` and the adapter's own non-secret `settings`. A fleet that is absent or
+  `enabled: false` is OFF in that Market. With no `fleets`, `realTimeCarrier` declares Mondapac
+  Drive alone. Listing a fleet is a launch decision: AU lists none here yet and Brisbane stays OFF.
 - `carrier` (required): `mondapac-drive`, the only carrier.
 - `displayName` (required, 1 to 60 letters, digits, spaces and `.&'-`): the carrier name the
   customer and the seller see on the shipment (AU "Mondapac Drive").

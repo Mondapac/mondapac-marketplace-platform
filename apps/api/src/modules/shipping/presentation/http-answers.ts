@@ -11,6 +11,9 @@ export const SHIPPING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'shipping.seller-not-found': 404,
   'shipping.fee-not-set': 404,
   'shipping.store-fee-not-found': 404,
+  'shipping.fleet-model-not-found': 404,
+  'shipping.fleet-model-name-taken': 409,
+  'shipping.fleet-model-conflict': 409,
   'shipping.unavailable': 503,
 });
 

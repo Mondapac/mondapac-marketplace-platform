@@ -4,11 +4,11 @@ import {
   advanceBooking,
   isFinalProgress,
   newBooking,
-  progressOfDriveStatus,
+  progressOfFleetStatus,
   type CarrierBooking,
 } from './carrier-booking';
 import { addressLineOf, parseCarrierStop } from './carrier-stop';
-import { parseDriveWebhook } from './drive-webhook-event';
+import { parseDriveWebhook, toFleetStatus } from './drive-webhook-event';
 import { fulfilmentStrategyFor, REAL_TIME_DELIVERY, NO_CARRIER } from './real-time-delivery';
 
 // The pure rules of the real-time carrier (SHP-02/03): Drive status to progress, forward-only
@@ -29,6 +29,7 @@ const booking = (overrides: Partial<CarrierBooking> = {}): CarrierBooking => ({
     sellerOrderId: id<'SellerOrder'>(2),
     orderId: id<'Order'>(3),
     sellerId: id<'Seller'>(4),
+    fleet: 'mondapac_drive',
     carrierReference: id(5),
     carrierStatus: 'SCHEDULED',
     now: T0,
@@ -36,23 +37,27 @@ const booking = (overrides: Partial<CarrierBooking> = {}): CarrierBooking => ({
   ...overrides,
 });
 
-describe('progressOfDriveStatus', () => {
+describe("Drive's status words through the common fleet status", () => {
   it.each([
-    ['SCHEDULED', 'booked'],
-    ['DISPATCHING', 'booked'],
-    ['ASSIGNED', 'booked'],
-    ['AT_PICKUP', 'booked'],
-    ['PICKED_UP', 'picked-up'],
-    ['AT_DROPOFF', 'picked-up'],
-    ['DELIVERED', 'delivered'],
-    ['DELIVERY_FAILED', 'exception'],
-    ['RETURNING', 'exception'],
-    ['RETURNED', 'exception'],
-    ['CANCELLED', 'cancelled'],
-    ['TELEPORTED', null],
-    ['picked_up', null],
-  ])('maps %s to %s', (status, progress) => {
-    expect(progressOfDriveStatus(status)).toBe(progress);
+    ['SCHEDULED', 'pending', 'booked'],
+    ['DISPATCHING', 'pending', 'booked'],
+    ['ASSIGNED', 'assigned', 'booked'],
+    ['AT_PICKUP', 'assigned', 'booked'],
+    ['PICKED_UP', 'picked_up', 'picked-up'],
+    ['AT_DROPOFF', 'picked_up', 'picked-up'],
+    ['DELIVERED', 'delivered', 'delivered'],
+    ['DELIVERY_FAILED', 'failed', 'exception'],
+    ['RETURNING', 'returned', 'exception'],
+    ['RETURNED', 'returned', 'exception'],
+    ['CANCELLED', 'cancelled', 'cancelled'],
+  ] as const)('maps %s to %s and progress %s', (raw, status, progress) => {
+    expect(toFleetStatus(raw)).toBe(status);
+    expect(progressOfFleetStatus(status)).toBe(progress);
+  });
+
+  it('knows no other word', () => {
+    expect(toFleetStatus('TELEPORTED')).toBeNull();
+    expect(toFleetStatus('picked_up')).toBeNull();
   });
 });
 
@@ -137,6 +142,9 @@ describe('parseCarrierStop', () => {
         contactPhone: '04 12345678',
         addressLines: ['12 Example Street', 'Sunnybank', 'QLD'],
         postcode: '4109',
+        locality: '',
+        region: null,
+        location: null,
         notes: 'Leave at the door',
       },
     });
@@ -144,6 +152,26 @@ describe('parseCarrierStop', () => {
     expect(parseCarrierStop({ ...stop, notes: null, postcode: 'ZZ1 9AA' }, 'p')).toMatchObject({
       ok: true,
       stop: { notes: null, postcode: 'ZZ1 9AA' },
+    });
+  });
+
+  it('keeps the locality, region and point of a saved address, and refuses a bad point', () => {
+    expect(
+      parseCarrierStop(
+        { ...stop, locality: ' Sunnybank ', region: 'QLD', location: { lat: -27.58, lng: 153.06 } },
+        'dropoff',
+      ),
+    ).toMatchObject({
+      ok: true,
+      stop: { locality: 'Sunnybank', region: 'QLD', location: { lat: -27.58, lng: 153.06 } },
+    });
+    expect(parseCarrierStop({ ...stop, location: { lat: 91, lng: 0 } }, 'dropoff')).toEqual({
+      ok: false,
+      fields: [{ path: 'dropoff.location', code: 'format' }],
+    });
+    expect(parseCarrierStop({ ...stop, locality: 'x'.repeat(121) }, 'dropoff')).toEqual({
+      ok: false,
+      fields: [{ path: 'dropoff.locality', code: 'format' }],
     });
   });
 

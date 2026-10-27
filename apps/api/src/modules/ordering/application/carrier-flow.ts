@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { HANDLER_BUDGET_MS, type EventDelivery } from '../../../platform/events/event-delivery';
-import { bookingMomentOf } from '../domain/delivery-method';
+import { bookingMomentOf, type DeliveryAttention } from '../domain/delivery-method';
 import { OrderShipped } from '../domain/events';
 import {
   markDelivered,
@@ -127,7 +127,16 @@ async function bookSellerOrders(
         contactPhone: shipTo.phone,
         addressLines: [shipTo.line1, shipTo.line2 ?? '', shipTo.suburb, shipTo.region ?? ''],
         postcode: shipTo.postcode,
+        // From the saved address the buyer picked at checkout, never free text.
+        locality: shipTo.suburb,
+        region: shipTo.region,
         notes: shipTo.deliveryNotes,
+      },
+      parcel: {
+        itemCount: order.lines
+          .filter((line) => line.sellerOrderId === sellerOrder.id)
+          .reduce((count, line) => count + line.quantity, 0),
+        declaredValueMinor: Number(sellerOrder.subtotal),
       },
     });
     if (!answer.ok) {
@@ -143,12 +152,17 @@ async function bookSellerOrders(
       if (answer.error.code === 'shipping.carrier-unavailable') {
         return err({ code: 'ordering.try-again' });
       }
-      await recordAttention(deps, context, order.id, sellerOrder.id);
+      await recordAttention(deps, context, order.id, sellerOrder.id, 'no-carrier');
       continue;
     }
     if (answer.value === 'booked') booked += 1;
     if (answer.value === 'no-carrier' || answer.value === 'refused') {
-      await recordAttention(deps, context, order.id, sellerOrder.id);
+      await recordAttention(deps, context, order.id, sellerOrder.id, 'no-carrier');
+    }
+    // A fleet that cannot dedupe went quiet: the order may be booked there, and it is never
+    // booked again or given to another fleet, so an admin checks with the fleet.
+    if (answer.value === 'unknown') {
+      await recordAttention(deps, context, order.id, sellerOrder.id, 'carrier-unknown');
     }
   }
   return ok(booked);
@@ -165,11 +179,12 @@ async function recordAttention(
   context: CallContext,
   orderId: Id<'Order'>,
   sellerOrderId: Id<'SellerOrder'>,
+  reason: DeliveryAttention,
 ): Promise<void> {
   const { market } = context;
   logger.warn({
     msg: 'ordering.delivery-needs-platform-attention',
-    reason: 'no-carrier',
+    reason,
     orderId,
     sellerOrderId,
     marketId: market.marketId,
@@ -178,7 +193,7 @@ async function recordAttention(
   await deps.unitOfWork.run<true, never>(market, async () => {
     const fresh = await deps.orders.findById(market, orderId);
     const current = fresh?.sellerOrders.find((s) => s.id === sellerOrderId);
-    const flagged = current === undefined ? null : markNeedsAttention(current, 'no-carrier');
+    const flagged = current === undefined ? null : markNeedsAttention(current, reason);
     if (flagged !== null) await deps.orders.saveAttention(market, flagged);
     return ok(true as const);
   });
@@ -431,6 +446,11 @@ export async function cancelCarrierAfterRefund(
         marketId: market.marketId,
         correlationId: context.correlationId,
       });
+    }
+    if (answer.value === 'unknown') {
+      // The fleet cannot dedupe, so its refusal does not say whether the parcel is still booked
+      // although the money is back: an admin checks with the fleet.
+      await recordAttention(deps, context, orderId.value, sellerOrderId.value, 'cancel-unknown');
     }
     cancelled = answer.value === 'cancelled';
   }

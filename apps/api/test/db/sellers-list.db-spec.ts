@@ -19,7 +19,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { sellersListOwnerTestDatabaseUrl, sellersListTestDatabaseUrl } from './test-database';
 
 // The admin seller list on PostgreSQL (sellers data design 7 A3 to A7; slice 6), for both Market
 // fixtures, as the application role: the three tabs and their order, keyset paging, the filters,
@@ -52,11 +52,13 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s', (code) => {
   let list: PrismaSellerListRepository;
 
   beforeAll(async () => {
-    db = createPersistence();
+    // Its own copy of the run database (global-setup.ts): the counts are of a whole Market, so a
+    // seller file another spec file makes there between two reads would move them.
+    db = createPersistence({ databaseUrl: sellersListTestDatabaseUrl() });
     files = new PrismaSellerFileRepository(db.service);
     list = new PrismaSellerListRepository(db.service);
-    sql = new Client({ connectionString: testDatabaseUrl() });
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    sql = new Client({ connectionString: sellersListTestDatabaseUrl() });
+    owner = new Client({ connectionString: sellersListOwnerTestDatabaseUrl() });
     await sql.connect();
     await owner.connect();
   });

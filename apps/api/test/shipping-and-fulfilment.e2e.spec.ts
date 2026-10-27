@@ -97,6 +97,9 @@ it('maps every refusal code of the shipping and seller order routes to its exact
     'shipping.seller-not-found': 404,
     'shipping.fee-not-set': 404,
     'shipping.store-fee-not-found': 404,
+    'shipping.fleet-model-not-found': 404,
+    'shipping.fleet-model-name-taken': 409,
+    'shipping.fleet-model-conflict': 409,
     'shipping.unavailable': 503,
   });
   expect(ORDERING_STATUS['ordering.seller-order-not-found']).toBe(404);

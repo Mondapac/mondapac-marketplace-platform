@@ -11,7 +11,7 @@ import type { ShippingDependencies } from '../shipping-dependencies';
  */
 export class CancelCarrierDelivery extends UseCase<
   { readonly sellerOrderId: unknown },
-  'cancelled' | 'not-cancellable' | 'none',
+  'cancelled' | 'not-cancellable' | 'none' | 'unknown',
   CarrierDeliveryFailure
 > {
   static override readonly access: AccessDeclaration = {
