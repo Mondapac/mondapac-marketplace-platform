@@ -311,13 +311,15 @@ describe('back link', () => {
     expect(main().querySelector('.ac')!.firstElementChild).toBe(back());
   });
 
-  it('an order page goes back to Orders; the overview has no back link', () => {
+  it('an order page keeps its own single back link; the overview has none', () => {
     nav.path = '/account/orders/MP-20481';
     renderStore(<OrderDetails reference="MP-20481" />);
-    expect(back()?.getAttribute('href')).toBe('/account/orders');
-    expect(back()?.getAttribute('aria-label')).toBe('Back to Orders');
+    // The page's own link is the only back link.
+    expect(main().querySelectorAll('a.ac-back')).toHaveLength(0);
+    expect(main().querySelectorAll('a.back')).toHaveLength(1);
+    expect(main().querySelector('a.back')?.getAttribute('href')).toBe('/account/orders');
     cleanup();
-    expect(backTarget(nav.path)).toEqual({ href: '/account/orders', key: 'orders' });
+    expect(backTarget(nav.path)).toBeNull();
     expect(backTarget('/account')).toBeNull();
     nav.path = '/account';
     renderStore(<AccountOverview />);

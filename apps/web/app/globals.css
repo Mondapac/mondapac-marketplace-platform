@@ -7223,7 +7223,7 @@ button.login {
     align-items: center;
     gap: 12px;
     min-width: 0;
-    min-height: 48px;
+    min-height: 64px;
     padding: 8px 16px;
     border: 0;
     border-top: 1px solid var(--sf-line);
@@ -7242,6 +7242,14 @@ button.login {
   .ac-menu a:hover,
   .ac-menu button:hover {
     background: var(--sf-surface);
+  }
+  .ac-menu a:active,
+  .ac-menu button:active {
+    background: var(--sf-mist-soft);
+  }
+  .ac-menu a:focus-visible,
+  .ac-menu button:focus-visible {
+    outline-offset: -2px;
   }
   .ac-menu .ico {
     flex: none;
@@ -7273,6 +7281,8 @@ button.login {
   .ac-seg {
     flex-wrap: nowrap;
     overflow-x: auto;
+    padding: 2px;
+    scroll-padding-inline: 16px;
     scrollbar-width: none;
   }
   .ac-seg button {
@@ -7287,6 +7297,9 @@ button.login {
   .ac-oh > div:first-child {
     grid-column: 1 / 3;
     grid-row: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
     min-width: 0;
     overflow-wrap: anywhere;
   }

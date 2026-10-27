@@ -49,7 +49,8 @@ export function AccountArea({
 
 /** Where the phone and tablet back link of an account page goes; the overview has none. */
 export function backTarget(path: string): AccountBack | null {
-  if (/^\/account\/orders\/[^/]+/.test(path)) return { href: '/account/orders', key: 'orders' };
+  // An order's page has its own back link to Orders.
+  if (/^\/account\/orders\/[^/]+/.test(path)) return null;
   if (/^\/account\/(orders|addresses|lists|settings)(\/|$)/.test(path))
     return { href: '/account', key: 'account' };
   return null;
@@ -57,7 +58,7 @@ export function backTarget(path: string): AccountBack | null {
 
 export interface AccountBack {
   readonly href: string;
-  readonly key: 'account' | 'orders';
+  readonly key: 'account';
 }
 
 /**
