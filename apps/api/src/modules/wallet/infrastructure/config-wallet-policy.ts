@@ -17,6 +17,7 @@ export class ConfigWalletPolicy implements WalletPolicy {
       promoExpiryMonths: wallet.promoExpiryMonths,
       adminIssueCapMinor: BigInt(wallet.adminIssueCapMinor),
       adminDailyCapMinor: BigInt(wallet.adminDailyCapMinor),
+      adminRequestExpiryDays: wallet.adminRequestExpiryDays,
       expiringSoonDays: wallet.expiringSoonDays,
     };
   }

@@ -23,7 +23,39 @@ export const WALLET_SETTINGS_MANAGE = definePermission('wallet', {
   protected: true,
 });
 
+/**
+ * See admin credit requests and a customer's wallet for the issuing screen (package 2a). Protected:
+ * money issued by the platform, so only the Platform Administrator holds it, or a custom platform
+ * role that a Platform Administrator grants.
+ */
+export const WALLET_CREDIT_VIEW = definePermission('wallet', {
+  key: 'wallet.credit.view',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Issue promo store credit to a customer (package 2a): granted at once within the Market's caps,
+ * else a pending request for a second admin. Protected, platform scope only: no seller or
+ * customer can ever hold it.
+ */
+export const WALLET_CREDIT_ISSUE = definePermission('wallet', {
+  key: 'wallet.credit.issue',
+  scope: 'platform',
+  protected: true,
+});
+
+/** Approve or reject another admin's pending credit request (maker-checker; package 2a). */
+export const WALLET_CREDIT_APPROVE = definePermission('wallet', {
+  key: 'wallet.credit.approve',
+  scope: 'platform',
+  protected: true,
+});
+
 export const WALLET_PERMISSIONS = declarePermissions('wallet', [
+  WALLET_CREDIT_APPROVE,
+  WALLET_CREDIT_ISSUE,
+  WALLET_CREDIT_VIEW,
   WALLET_SETTINGS_MANAGE,
   WALLET_SETTINGS_VIEW,
 ]);

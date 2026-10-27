@@ -235,6 +235,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX tax_strategies_one_active_key ON tax.tax_strategies USING btree (market_id) WHERE active',
   // Customer wallet (package 1): the expiry sweeps, the held holds of one wallet for the books
   // check, and the journals of one hold or one lot for the commit-time checks.
+  // Admin credit (package 2a): the pending requests, for the expiry sweep.
+  'wallet.admin_credit_requests_market_id_expires_at_id_idx':
+    "CREATE INDEX admin_credit_requests_market_id_expires_at_id_idx ON wallet.admin_credit_requests USING btree (market_id, expires_at, id) WHERE (status = 'pending'::text)",
   'wallet.holds_market_id_expires_at_id_idx':
     "CREATE INDEX holds_market_id_expires_at_id_idx ON wallet.holds USING btree (market_id, expires_at, id) WHERE (status = 'held'::text)",
   'wallet.holds_market_id_wallet_account_id_amount_minor_idx':

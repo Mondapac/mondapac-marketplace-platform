@@ -14,7 +14,8 @@ It follows the seller step-up (seller OTP policy, 2026-10-16) and reuses its par
   platform floor is always "required". Admin actions are never listed on, set through, or proven
   on the seller step-up routes (`step-up.action-unknown` there). First admin action:
   `wallet.settings.change` (wallet `setStatus`); then `customers.account-deletion-settings.change`
-  (customers `setAccountDeletionSettings`, package 5a). Every key is also in `STEP_UP_ACTION_KEYS`
+  (customers `setAccountDeletionSettings`, package 5a); wallet package 2a adds `wallet.credit.issue`
+  and `wallet.credit.approve` (admin credit issuance and its maker-checker decision). Every key is also in `STEP_UP_ACTION_KEYS`
   (`domain/step-up.ts`), the closed list of the audit rows.
 - **Rule.** `RequireStepUp` (the guard's `StepUpCheck` and `IdentityFacade.requireStepUp`): for
   an admin action, an admin session needs a proof of this session for this action from the last
@@ -51,3 +52,16 @@ It follows the seller step-up (seller OTP policy, 2026-10-16) and reuses its par
 - **Acting-as.** Refused by RequireStepUp, VerifyAdminStepUp, the consumer and wallet
   `setStatus`. Over HTTP today an actor carrying the marker is not one identity minted, so the
   actor guard answers `401 session.invalid` before any of them (tested).
+
+## `customerAccountOf` (wallet review S1, 2026-10-26)
+
+`IdentityFacade.customerAccountOf(context, accountId)` (use case `identity.customer-account-of`):
+whether an id names an active customer account of `context.market`, for an admin flow that writes
+to a customer's records (the wallet's admin credit). It answers `{accountId}` or `null`, ids only,
+never a name or an address. An unknown or malformed id, a seller or admin account, another
+Market's account and a disabled account are `null`, alike. Rule `own-resources`, denied while the
+seller is not approved; the use case answers only a platform admin that is not acting as a seller
+(otherwise `access.denied`); the calling use case has passed its own permission gate. One
+read-only unit reading the status only (`AccountRepository.customerStatus`: no credential, so a
+customer without a password is answered, and no address); a failed read is `access.unavailable`, so the caller fails closed. Not exposed
+over HTTP.
