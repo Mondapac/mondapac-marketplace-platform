@@ -649,6 +649,14 @@
     }
   },
   {
+    "type": "payments.dispute-changed.v1",
+    "aggregateType": "dispute",
+    "fields": {
+      "disputeId": "id",
+      "orderId": "id"
+    }
+  },
+  {
     "type": "pricing.effective-price-changed.v1",
     "aggregateType": "price-series",
     "fields": {

@@ -91,6 +91,17 @@
       }
     },
     {
+      "type": "payments.dispute.unmatched",
+      "owner": "payments",
+      "severity": "s2",
+      "targetType": null,
+      "targetRequired": false,
+      "ip": false,
+      "payload": {
+        "reason": "enumOf(unreadable|not-test-mode|no-market|malformed|changed)"
+      }
+    },
+    {
       "type": "payments.webhook-signature.failed",
       "owner": "payments",
       "severity": "s3",
