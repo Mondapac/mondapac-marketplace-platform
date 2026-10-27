@@ -79,6 +79,15 @@ const envSchema = z.object({
       'must be a Stripe test-mode key (sk_test_ or rk_test_); live keys are refused until the live gates are passed',
     )
     .optional(),
+  // The Stripe payment method configuration (pmc_) hosted Checkout uses: cards with Apple Pay and
+  // Google Pay only. Stripe no longer takes payment_method_types on a Checkout Session, so the
+  // allowed methods live in this configuration (scripts/stripe-test/ensure-card-only-config.mjs makes
+  // it). Unset: ordering opens no payment page, rather than one with every method of the account.
+  // An id, not a secret.
+  STRIPE_PAYMENT_METHOD_CONFIGURATION: z
+    .string()
+    .regex(/^pmc_[A-Za-z0-9]{8,64}$/, 'must be a Stripe payment method configuration id (pmc_)')
+    .optional(),
   // Phase 5 package 2: the signing secrets of the Stripe webhook endpoints (whsec_), one endpoint
   // per Market. Either one secret for every hosted Market (`stripe listen`, or one Market) or
   // `AU=whsec_...,NZ=whsec_...`. Unset for a Market, its webhook answers 503 and Stripe retries.
@@ -251,6 +260,11 @@ export interface AppConfig {
    * this object whole; read by ordering's Stripe adapter alone.
    */
   readonly stripeSecretKey: string | null;
+  /**
+   * The card-only payment method configuration of hosted Checkout
+   * (`STRIPE_PAYMENT_METHOD_CONFIGURATION`), or null: then ordering opens no payment page.
+   */
+  readonly stripePaymentMethodConfiguration: string | null;
   /**
    * The Stripe webhook signing secret of each hosted Market (`STRIPE_WEBHOOK_SECRET`); a Market
    * without one refuses every event with 503 and Stripe retries it later. Holds secrets: read
@@ -497,6 +511,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
         ? null
         : path.resolve(parsed.data.OBJECT_STORE_DIR),
     stripeSecretKey: parsed.data.STRIPE_SECRET_KEY ?? null,
+    stripePaymentMethodConfiguration: parsed.data.STRIPE_PAYMENT_METHOD_CONFIGURATION ?? null,
     stripeWebhookSecrets: webhookSecrets.secrets,
     stripeConnectWebhookSecrets: connectSecrets.secrets,
     clientAddressTrust: clientAddress.trust,
