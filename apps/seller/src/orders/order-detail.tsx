@@ -4,6 +4,8 @@ import { BackLink, Badge, Banner, Button, Card, CARD_TABLE, DataList } from '@mo
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { DisputeNotice } from '../disputes/dispute-notice.tsx';
+import type { OwnDispute } from '../disputes/types.ts';
 import { formatInstant, shortInstant, windowRange } from '../catalog/format.ts';
 import { formatMinor } from '../price/money.ts';
 import { orderProblemOf } from './errors.ts';
@@ -23,12 +25,15 @@ export function OrderDetail({
   canMarkReady,
   canDeliver,
   canConfirmPickup = false,
+  dispute = null,
 }: {
   readonly initial: SellerOrderView;
   readonly csrfToken: string;
   readonly canMarkReady: boolean;
   readonly canDeliver: boolean;
   readonly canConfirmPickup?: boolean;
+  /** The dispute that holds or held this order: a notice shows near the top. */
+  readonly dispute?: OwnDispute | null;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -100,6 +105,7 @@ export function OrderDetail({
           {t('items-count', { count })}
         </p>
       </div>
+      <DisputeNotice dispute={dispute} />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-6">
           <Card title={t('lines')} flush>

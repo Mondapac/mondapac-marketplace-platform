@@ -38,6 +38,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market's wallet switch, and the admin credit requests (query: `status`, `cursor`, `limit`).
     'wallet/admin/settings',
     'wallet/admin/credit-requests',
+    // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
+    // `limit`); one case is read by the page server and again after a decision.
+    'commission-payouts/admin/disputes',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -129,6 +132,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Approve or reject another admin's credit request (wallet), behind a two-step code.
     'wallet/admin/credit-requests/:id/approve',
     'wallet/admin/credit-requests/:id/reject',
+    // Who bears a lost chargeback, per seller order (commission-payouts), behind a two-step code.
+    'commission-payouts/admin/disputes/:id/seller-orders/:id/decision',
   ],
   PUT: [
     'identity/admin/roles/:id',
@@ -151,6 +156,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'storefront/admin/slides/:id/copy',
     // One customer's wallet and the caller's credit caps (wallet), for the issue screen.
     'wallet/admin/customers/:id',
+    // One dispute case, read again after a decision (commission-payouts).
+    'commission-payouts/admin/disputes/:id',
   ],
 };
 
@@ -164,6 +171,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
+  'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -172,6 +180,10 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     status: /^(pending|decided|granted)$/,
     limit: /^[0-9]{1,3}$/,
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'commission-payouts/admin/disputes': {
+    filter: /^(needs-response|decision-needed|under-review|won|closed)$/,
+    limit: /^[0-9]{1,3}$/,
   },
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },
   'storefront/admin/slides': {

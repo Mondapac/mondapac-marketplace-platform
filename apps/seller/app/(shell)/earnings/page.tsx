@@ -27,7 +27,7 @@ export default async function EarningsPage() {
   return (
     <SellerShell session={page.session} activeId="s_earnings" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-      <Earnings initial={page.ledger} />
+      <Earnings initial={page.ledger} disputes={page.disputes} />
     </SellerShell>
   );
 }

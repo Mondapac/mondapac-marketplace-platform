@@ -50,7 +50,8 @@
     },
     "wallet-settings": "Wallet switch",
     "wallet-credits": "Issue credit",
-    "wallet-requests": "Credit approvals"
+    "wallet-requests": "Credit approvals",
+    "disputes": "Disputes"
   },
   "home": {
     "title": "Dashboard",
@@ -2293,7 +2294,12 @@
           "approve": "decide a credit request"
         }
       },
-      "fallback": "do this"
+      "fallback": "do this",
+      "commission-payouts": {
+        "dispute": {
+          "attribute": "record a dispute decision"
+        }
+      }
     },
     "label": {
       "code": "6-digit code",
@@ -2567,6 +2573,157 @@
       "unknown": "Something went wrong. Try again, or ask the team if it keeps happening.",
       "cap-exceeded-decide": "The customer's wallet no longer has room for this amount.",
       "currency-unsupported": "This wallet's currency is not supported here, so credit cannot be issued."
+    }
+  },
+  "disputes": {
+    "title": "Disputes",
+    "intro": "Card disputes (chargebacks) on paid orders. Open a case to decide who bears a lost dispute.",
+    "filters": "Filter by stage",
+    "filter": {
+      "needs-response": "Needs response",
+      "decision-needed": "Decision needed",
+      "under-review": "Under review",
+      "won": "Won",
+      "closed": "Closed",
+      "unknown": "Unknown"
+    },
+    "zone-note": "Dates are shown in {zone}.",
+    "footnote": "An inquiry does not move money. Only that order's seller share is held while a dispute is open.",
+    "loading": "Loading disputes",
+    "more": "Show more",
+    "error": {
+      "unavailable": "The disputes could not be loaded. Try again."
+    },
+    "empty": {
+      "needs-response": "No disputes need a response",
+      "decision-needed": "No disputes need a decision",
+      "under-review": "No disputes are under review",
+      "won": "No disputes won yet",
+      "closed": "No closed disputes"
+    },
+    "col": {
+      "case": "Case",
+      "sellers": "Sellers",
+      "reason": "Reason",
+      "money": "Money",
+      "evidence": "Evidence due",
+      "amount": "Amount"
+    },
+    "case-ref": "Order {id}",
+    "sellers-none": "-",
+    "unnamed": "Seller {id}",
+    "money": {
+      "withdrawn": "Taken by bank",
+      "inquiry": "Inquiry only",
+      "reinstated": "Returned to us"
+    },
+    "evidence": {
+      "none": "-",
+      "soon": "{days, plural, one {In # day} other {In # days}} · {date}",
+      "overdue": "Overdue · {date}"
+    },
+    "no-access-title": "No access",
+    "no-access": "You do not have access to disputes.",
+    "not-found-title": "Dispute not found",
+    "not-found": "This dispute does not exist, or it belongs to another market.",
+    "back-home": "Back to the dashboard",
+    "you": "You",
+    "detail": {
+      "page-title": "Dispute",
+      "title": "Dispute on order {id}"
+    },
+    "review": {
+      "badge": "Needs review",
+      "body": "The bank returned the money after the loss. Check each seller's decision."
+    },
+    "summary": {
+      "title": "Summary",
+      "amount": "Amount",
+      "money": "Money",
+      "evidence": "Evidence due",
+      "reason": "Reason",
+      "order": "Order",
+      "opened": "Opened",
+      "stripe": "Stripe"
+    },
+    "stripe": {
+      "open": "Open in Stripe Dashboard",
+      "new-tab": "(opens in a new tab)"
+    },
+    "part": {
+      "title": "Seller parts",
+      "order": "Seller order {id}",
+      "held": "Held",
+      "not-held": "Not held",
+      "share": "Seller share",
+      "cap": "Can recover up to",
+      "decided-by": "Decided by",
+      "decided-at": "Decided",
+      "option": "Option",
+      "option-seller": "Recovered from the seller",
+      "option-platform": "MondaPac bears it",
+      "reason": "Reason",
+      "amount": "Amount",
+      "amount-none": "None",
+      "returned": "Recovery returned",
+      "returned-value": "{who}, {when}",
+      "returned-reason": "Reason for return",
+      "decide": "Decide",
+      "return": "Return recovered amount",
+      "not-yet": "A decision can be recorded once the dispute is lost."
+    },
+    "timeline": {
+      "title": "Timeline",
+      "kind": {
+        "opened": "Dispute opened",
+        "funds-withdrawn": "The bank took the money",
+        "funds-reinstated": "The bank returned the money",
+        "closed": "Dispute closed",
+        "decided": "Decision recorded",
+        "decision-reversed": "Recovery returned to the seller",
+        "unknown": "Update"
+      }
+    },
+    "decision": {
+      "title": "Who bears this loss?",
+      "title-reverse": "Return the recovered amount",
+      "about": "{store}, seller order {order}.",
+      "reverse-about": "The {amount} recovered from the seller is returned to their earnings, and MondaPac bears the loss.",
+      "bearer": {
+        "legend": "Who bears the loss",
+        "seller": "Recover from the seller",
+        "platform": "MondaPac bears the loss"
+      },
+      "nothing-to-recover": "Nothing is left to recover from this seller.",
+      "amount": {
+        "label": "Amount ({currency})",
+        "hint": "Up to {cap}"
+      },
+      "amount-error": {
+        "required": "Enter the amount to recover.",
+        "format": "Enter an amount like {example}.",
+        "zero": "Enter an amount above zero.",
+        "currency": "This currency is not supported.",
+        "range": "The amount can be at most {cap}."
+      },
+      "reason": {
+        "label": "Reason",
+        "placeholder": "Choose a reason",
+        "no-delivery-proof": "No proof of delivery",
+        "not-as-described": "Item not as described",
+        "card-fraud-not-seller": "Card fraud, not the seller's fault",
+        "other": "Other"
+      },
+      "cancel": "Cancel",
+      "save": "Save decision",
+      "saved": "Decision saved.",
+      "saved-stale": "Decision saved. The page could not refresh; reload it to see the latest.",
+      "error": {
+        "already-decided": "This seller order was already decided. The page shows the latest.",
+        "not-decidable": "This case cannot be decided now. The page shows the latest.",
+        "not-found": "This case or seller order no longer exists.",
+        "unknown": "The decision could not be saved. Try again."
+      }
     }
   }
 }

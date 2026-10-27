@@ -79,6 +79,14 @@ export const adminNav: NavConfig = {
       anyOf: ['payments.connected-account.view'],
     },
     {
+      id: 'disputes',
+      icon: 'shield-check',
+      labelKey: 'nav.disputes',
+      href: '/disputes',
+      group: 'money',
+      anyOf: ['commission-payouts.dispute.view'],
+    },
+    {
       id: 'wallet-settings',
       icon: 'wallet',
       labelKey: 'nav.wallet-settings',
