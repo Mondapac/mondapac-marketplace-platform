@@ -17,7 +17,7 @@
     "dev:web": "pnpm --filter @mondapac/web dev",
     "build": "pnpm db:generate && pnpm -r build && node scripts/check-built-kernel.mjs && node scripts/check-built-parser.mjs",
     "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
-    "lint": "eslint . && prettier --check .",
+    "lint": "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js . && prettier --check .",
     "format": "prettier --write .",
     "test": "pnpm -r test",
     "test:db": "pnpm --filter @mondapac/api test:db",

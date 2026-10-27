@@ -22,10 +22,12 @@ import type { SecondFactorSecrets } from '../ports/second-factor-secrets';
 import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
-import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
+import type { SignInRecord, SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
 import type { SignInClient } from '../sign-in/sign-in-flow';
 import type { FieldProblem } from './register-customer.use-case';
+import type { SecurityEvents } from '../../../../platform/security-events/security-events';
+import { recordSignInSecurityEvent } from '../security-events';
 
 export interface StartSellerSecondFactorEnrolmentInput {
   /** The signed-in holder's own password: a session alone never starts an enrolment (HF6). */
@@ -64,6 +66,7 @@ export interface StartSellerSecondFactorEnrolmentDependencies {
   readonly challenges: SignInChallengeRepository;
   readonly throttles: ThrottleRepository;
   readonly records: SignInRecordRepository;
+  readonly securityEvents: SecurityEvents;
   readonly keys: ThrottleKeys;
   readonly challengeTokens: OpaqueTokens;
   readonly secrets: SecondFactorSecrets;
@@ -331,7 +334,7 @@ export class StartSellerSecondFactorEnrolment extends UseCase<
     now: Temporal.Instant,
   ): Promise<void> {
     const { actor } = context;
-    await this.deps.records.add(context.market, {
+    const record: SignInRecord = {
       id: this.deps.ids.next<'SignInRecord'>(),
       population: 'seller',
       accountId: actor.kind === 'authenticated' ? actor.accountId : null,
@@ -340,7 +343,9 @@ export class StartSellerSecondFactorEnrolment extends UseCase<
       address: client.address,
       sessionId: null,
       correlationId: context.correlationId,
-    });
+    };
+    await this.deps.records.add(context.market, record);
+    await recordSignInSecurityEvent(this.deps.securityEvents, context, record);
   }
 
   /** Gives the reservation back (nothing was guessed); false when its unit failed. */

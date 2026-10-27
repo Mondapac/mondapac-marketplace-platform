@@ -1455,6 +1455,48 @@ const marketSchema = z
       })
       .optional(),
     /**
+     * Reviews settings (buyer reviews and ratings package 1), owned by `reviews`. All values are
+     * Market config, never constants. `reviewWindowDays`: a buyer may review a product or rate a
+     * seller order this many days after the seller order's delivery (AU 60). `editWindowDays`:
+     * a product review may be edited this many days after it was first submitted (AU 30); the
+     * author may delete it any time. `sellerRatingMinCount`: rated seller orders needed before a
+     * seller's summary is meant to be shown (AU 10; the answer carries the count, the web
+     * decides). `maxSubmissionsPerAccountPerDay`: product reviews plus seller ratings one account
+     * may write in 24 hours. `titleMaxLength` and `bodyMaxLength`: in characters (AU 120, 2000).
+     * `pageSize`: reviews per public page (AU 10). `autoChecks`: `blockedTerms` is the Market's
+     * profanity list (matched as whole words, case-insensitive); `repeatedCharRun` is the length
+     * of one character repeated that counts as spam; `repeatedWordMinTokens` and
+     * `repeatedWordShareBps` flag a text of at least that many words of which one word makes up
+     * at least that share (basis points). A hit never refuses the review: it is held for a
+     * human. Whether reviews are on is not config: an admin sets it at runtime
+     * (`reviews.market_settings`), off by default. Without this section reviews are unavailable
+     * (fail closed).
+     */
+    reviews: z
+      .strictObject({
+        reviewWindowDays: z.number().int().min(1).max(365),
+        editWindowDays: z.number().int().min(0).max(365),
+        sellerRatingMinCount: z.number().int().min(1).max(1000),
+        maxSubmissionsPerAccountPerDay: z.number().int().min(1).max(200),
+        titleMaxLength: z.number().int().min(1).max(200),
+        bodyMaxLength: z.number().int().min(1).max(5000),
+        pageSize: z.number().int().min(1).max(50),
+        /**
+         * How often the job recomputes the rating summaries from the source rows (minutes, default
+         * 1440, daily). The write path refreshes a product summary at once; a SELLER summary is
+         * written only by this job, so that several ratings land in one change and a poller cannot
+         * read a single rating from it.
+         */
+        summaryRebuildMinutes: z.number().int().min(5).max(1440).default(1440),
+        autoChecks: z.strictObject({
+          blockedTerms: z.array(z.string().trim().min(2).max(64)).max(1000),
+          repeatedCharRun: z.number().int().min(4).max(100),
+          repeatedWordMinTokens: z.number().int().min(3).max(100),
+          repeatedWordShareBps: z.number().int().min(5000).max(10000),
+        }),
+      })
+      .optional(),
+    /**
      * Tax settings, owned by `tax`. `defaultRateBps`: the tax rate of the built-in strategy used
      * while an admin has not activated a strategy of their own (AU GST 1000 = 10 %). Without this
      * section the Market has no built-in strategy and tax calculation fails closed.

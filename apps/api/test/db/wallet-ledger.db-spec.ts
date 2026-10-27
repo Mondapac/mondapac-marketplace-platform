@@ -106,6 +106,17 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       audit,
       ids,
       clock,
+      // The admin step-up is identity's (issue #491; admin-step-up.db-spec.ts covers it): a proof
+      // of the admin session is always there here.
+      stepUp: {
+        consume: (context) =>
+          Promise.resolve(
+            ok({
+              sessionId: (context.actor as { sessionId: Id<'Session'> }).sessionId,
+              verifiedAt: clock.now(),
+            }),
+          ),
+      },
     };
   });
   afterAll(async () => {

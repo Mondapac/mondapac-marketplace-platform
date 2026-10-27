@@ -128,8 +128,11 @@ export interface IdentityFacade {
    * now (seller OTP policy). Call it first in the use case that does the action, with the
    * caller's `CallContext` unchanged, and pass its refusal on: `second-factor.required`
    * (`actionKey` in the details) tells the panel to verify a code for that action and repeat the
-   * request; `second-factor.enrolment-required` that the member must set up two-step first. A
-   * caller that is not a seller session passes. An unregistered key answers
+   * request; `second-factor.enrolment-required` that the member must set up two-step first. For
+   * a seller action, a caller that is not a seller session passes. For an admin action
+   * (`audience: 'admin'`, issue #491) an admin session always needs a fresh proof of its own
+   * (`POST identity/admin/step-up/verify`) and any other caller is refused `access.denied`; an
+   * acting-as session is refused for every action. An unregistered key answers
    * `access.unavailable`. Rule `own-resources`, allowed while the seller is not approved (the guarded
    * action refuses it itself).
    */

@@ -25,10 +25,12 @@ import type { SecondFactorSecrets } from '../ports/second-factor-secrets';
 import type { SecondFactorRepository } from '../ports/second-factor.repository';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repository';
-import type { SignInRecordRepository } from '../ports/sign-in-record.repository';
+import type { SignInRecord, SignInRecordRepository } from '../ports/sign-in-record.repository';
 import type { ThrottleCounter, ThrottleRepository } from '../ports/throttle.repository';
 import type { SignInClient } from '../sign-in/sign-in-flow';
 import type { FieldProblem } from './register-customer.use-case';
+import type { SecurityEvents } from '../../../../platform/security-events/security-events';
+import { recordSignInSecurityEvent } from '../security-events';
 
 export interface StartSecondFactorEnrolmentInput {
   /** The token from the fragment of the mailed `enrol-second-factor` link. */
@@ -66,6 +68,7 @@ export interface StartSecondFactorEnrolmentDependencies {
   readonly challenges: SignInChallengeRepository;
   readonly throttles: ThrottleRepository;
   readonly records: SignInRecordRepository;
+  readonly securityEvents: SecurityEvents;
   readonly keys: ThrottleKeys;
   readonly linkTokens: LinkTokens;
   readonly challengeTokens: OpaqueTokens;
@@ -353,7 +356,7 @@ export class StartSecondFactorEnrolment extends UseCase<
     outcome: string,
     now: Temporal.Instant,
   ): Promise<void> {
-    await this.deps.records.add(context.market, {
+    const record: SignInRecord = {
       id: this.deps.ids.next<'SignInRecord'>(),
       population: 'admin',
       accountId,
@@ -362,7 +365,9 @@ export class StartSecondFactorEnrolment extends UseCase<
       address: client.address,
       sessionId: null,
       correlationId: context.correlationId,
-    });
+    };
+    await this.deps.records.add(context.market, record);
+    await recordSignInSecurityEvent(this.deps.securityEvents, context, record);
   }
 
   /** Gives the reservation back (nothing was guessed); false when its unit failed. */

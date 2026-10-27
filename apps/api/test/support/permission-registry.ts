@@ -4,6 +4,7 @@ import {
   type EffectiveKeyResolver,
 } from '../../src/modules/identity/application/access/effective-keys';
 import { ASSISTANT_PERMISSIONS } from '../../src/modules/assistant/contracts/permissions';
+import { CUSTOMERS_PERMISSIONS } from '../../src/modules/customers/contracts/permissions';
 import { CATALOG_PERMISSIONS } from '../../src/modules/catalog/contracts/permissions';
 import { CERTIFICATION_PERMISSIONS } from '../../src/modules/certification/contracts/permissions';
 import { COMMISSION_PAYOUTS_PERMISSIONS } from '../../src/modules/commission-payouts/contracts/permissions';
@@ -16,6 +17,7 @@ import { PRICING_PERMISSIONS } from '../../src/modules/pricing/contracts/permiss
 import { SELLERS_PERMISSIONS } from '../../src/modules/sellers/contracts/permissions';
 import { SHIPPING_PERMISSIONS } from '../../src/modules/shipping/contracts/permissions';
 import { STOREFRONT_PERMISSIONS } from '../../src/modules/storefront/contracts/permissions';
+import { REVIEWS_PERMISSIONS } from '../../src/modules/reviews/contracts/permissions';
 import { WALLET_PERMISSIONS } from '../../src/modules/wallet/contracts/permissions';
 import { TAX_PERMISSIONS } from '../../src/modules/tax/contracts/permissions';
 import { PermissionRegistry } from '../../src/platform/authz/permission-registry';
@@ -40,7 +42,9 @@ export function realPermissionRegistry(): PermissionRegistry {
   registry.register('commission-payouts', COMMISSION_PAYOUTS_PERMISSIONS);
   registry.register('notifications', NOTIFICATIONS_PERMISSIONS);
   registry.register('assistant', ASSISTANT_PERMISSIONS);
+  registry.register('customers', CUSTOMERS_PERMISSIONS);
   registry.register('tax', TAX_PERMISSIONS);
+  registry.register('reviews', REVIEWS_PERMISSIONS);
   registry.register('wallet', WALLET_PERMISSIONS);
   registry.register('storefront', STOREFRONT_PERMISSIONS);
   registry.seal();

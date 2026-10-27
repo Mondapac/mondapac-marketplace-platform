@@ -1,0 +1,147 @@
+import { CARD_TABLE } from '@mondapac/ui';
+import { useLocale, useTranslations } from 'next-intl';
+import { shortInstantInZone } from '../../shared/format.ts';
+import { SlideKindTile, SlideStatusBadge, usePositionLabel } from './slide-labels.tsx';
+import { SlideRowAction } from './slide-row-action.tsx';
+import {
+  SLIDES_PATH,
+  gatesOf,
+  isKnownKind,
+  type SlideDetail,
+  type SlideSummary,
+} from './slide-types.ts';
+
+/**
+ * The slides of the Market: thumbnail tile, name with a short line, type, positions, live window,
+ * status and one action (Review, Pause, Resume…, Edit or View). Below 1024 px every row is a card
+ * (the shared CARD_TABLE).
+ */
+export function SlidesTable({
+  rows,
+  permissionKeys,
+  zone,
+  csrfToken,
+  onChanged,
+  onStale,
+}: {
+  readonly rows: readonly SlideSummary[];
+  readonly permissionKeys: readonly string[];
+  /** The IANA zone the window is shown in. */
+  readonly zone: string;
+  readonly csrfToken: string;
+  /** A command on a row worked: the slide as it is now. */
+  readonly onChanged: (detail: SlideDetail) => void;
+  /** A command was refused because the slide changed meanwhile. */
+  readonly onStale: () => void;
+}) {
+  const t = useTranslations('content.slides.list');
+  const kinds = useTranslations('content.slides.kind');
+  const locale = useLocale();
+  const positionLabel = usePositionLabel();
+  const gates = gatesOf(permissionKeys);
+  return (
+    <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
+      <table className={`${CARD_TABLE.table} lg:min-w-240 lg:table-fixed`}>
+        <caption className="sr-only">{t('caption')}</caption>
+        <colgroup className="max-lg:hidden">
+          <col className="w-[25%]" />
+          <col className="w-[11%]" />
+          <col className="w-[19%]" />
+          <col className="w-[15%]" />
+          <col className="w-[16%]" />
+          <col className="w-[14%]" />
+        </colgroup>
+        <thead className={CARD_TABLE.head}>
+          <tr>
+            <th scope="col" className="px-4 py-3 font-medium">
+              {t('col.slide')}
+            </th>
+            <th scope="col" className="px-4 py-3 font-medium lg:px-2">
+              {t('col.type')}
+            </th>
+            <th scope="col" className="px-4 py-3 font-medium">
+              {t('col.positions')}
+            </th>
+            <th scope="col" className="px-4 py-3 font-medium">
+              {t('col.window')}
+            </th>
+            <th scope="col" className="px-4 py-3 font-medium lg:px-2">
+              {t('col.status')}
+            </th>
+            <th scope="col" className="px-4 py-3 font-medium lg:px-2">
+              {t('col.actions')}
+            </th>
+          </tr>
+        </thead>
+        <tbody className={CARD_TABLE.body}>
+          {rows.map((slide) => {
+            const href = `${SLIDES_PATH}/${slide.id}`;
+            const sublines = [
+              slide.pinned ? t('pinned') : null,
+              slide.sponsored ? t('sponsored') : null,
+              slide.hasDraft ? t('draft-changes') : null,
+              slide.positions.length === 0 ? t('not-placed') : null,
+            ].filter((line): line is string => line !== null);
+            return (
+              <tr key={slide.id} className={CARD_TABLE.row}>
+                <td className={CARD_TABLE.cell}>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <SlideKindTile kind={slide.kind} />
+                    <div className="min-w-0">
+                      <a className="break-words font-medium text-link underline" href={href}>
+                        {slide.internalName}
+                      </a>
+                      {sublines.length === 0 ? null : (
+                        <p className="text-xs text-fg-muted">{sublines.join(' · ')}</p>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td className={`${CARD_TABLE.labelled} lg:px-2`} data-label={t('col.type')}>
+                  {isKnownKind(slide.kind) ? kinds(slide.kind) : slide.kind}
+                </td>
+                <td className={CARD_TABLE.labelled} data-label={t('col.positions')}>
+                  {slide.positions.length === 0 ? (
+                    <span className="text-fg-muted">{t('no-position')}</span>
+                  ) : (
+                    <ul className="flex min-w-0 flex-wrap gap-1">
+                      {slide.positions.map((position) => (
+                        <li
+                          key={position}
+                          className="rounded-sm border border-line px-1.5 py-0.5 text-xs text-fg-secondary"
+                        >
+                          {positionLabel(position)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </td>
+                <td className={CARD_TABLE.labelled} data-label={t('col.window')}>
+                  <span className="text-xs">
+                    {t.rich('window', {
+                      from: shortInstantInZone(slide.startsAt, locale, zone),
+                      to: shortInstantInZone(slide.endsAt, locale, zone),
+                      n: (chunks) => <span className="whitespace-nowrap">{chunks}</span>,
+                    })}
+                  </span>
+                </td>
+                <td className={`${CARD_TABLE.corner} lg:px-2`}>
+                  <SlideStatusBadge status={slide.status} />
+                </td>
+                <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-1 lg:px-2`}>
+                  <SlideRowAction
+                    slide={slide}
+                    gates={gates}
+                    csrfToken={csrfToken}
+                    onChanged={onChanged}
+                    onStale={onStale}
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}

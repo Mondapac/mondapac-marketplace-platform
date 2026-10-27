@@ -1,7 +1,6 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { SellerShell } from '../../../src/server/seller-shell.tsx';
-import { SettingsHeader } from '../../../src/settings/settings-header.tsx';
 import { loadStockPage } from '../../../src/server/stock-page.ts';
 import { StockLocations } from '../../../src/stock/stock-locations.tsx';
 import { SOURCE_EDIT_PERMISSION } from '../../../src/stock/types.ts';
@@ -19,16 +18,16 @@ export default async function StockLocationsPage() {
   }
   if (page.kind === 'no-access') {
     return (
-      <SellerShell session={page.session} activeId="s_settings" title={t('settings.tab.locations')}>
-        <SettingsHeader active="locations" permissionKeys={page.session.permissionKeys} t={t} />
+      <SellerShell session={page.session} activeId="s_stock" title={t('stock.title')}>
+        <h1 className="mb-6 text-2xl font-semibold">{t('stock.title')}</h1>
         <h2 className="mb-2 text-lg font-semibold">{t('catalog.no-access.title')}</h2>
         <p className="text-fg-muted">{t('catalog.no-access.body')}</p>
       </SellerShell>
     );
   }
   return (
-    <SellerShell session={page.session} activeId="s_settings" title={t('settings.tab.locations')}>
-      <SettingsHeader active="locations" permissionKeys={page.session.permissionKeys} t={t} />
+    <SellerShell session={page.session} activeId="s_stock" title={t('stock.title')}>
+      <h1 className="mb-6 text-2xl font-semibold">{t('stock.title')}</h1>
       <StockLocations
         initial={page.view}
         options={page.options}

@@ -38,6 +38,11 @@ export function storefrontCsp(nonce: string, dev: boolean, imageOrigin: string |
     "font-src 'self' data: https://fonts.gstatic.com",
     `connect-src 'self' https://api.stripe.com https://merchant-ui-api.stripe.com${dev ? ' ws:' : ''}`,
     `frame-src ${STRIPE_SCRIPTS} https://hooks.stripe.com`,
+    // PWA (package M5). A service worker is governed by worker-src, which would otherwise fall back
+    // to script-src, where 'strict-dynamic' makes the browser ignore 'self': the worker would be
+    // refused. Both are this site only; neither allows a third-party origin.
+    "worker-src 'self'",
+    "manifest-src 'self'",
     "frame-ancestors 'none'",
     "form-action 'self'",
     "base-uri 'self'",

@@ -28,6 +28,13 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The fleet-selection models, the active model per method and the fleets (shipping), read
     // again after a save.
     'shipping/admin/fleet-selection',
+    // The storefront slide library (storefront), read-only: the list (query: `state`, `position`);
+    // one slide is read by the page server.
+    'storefront/admin/slides',
+    // The saved order of the live slides of one position (storefront), read-only (query:
+    // `position`, `scope`, `scopeId`). A fixed path, so `order` is never read as a slide id: the
+    // slide route reads a UUID only, and one slide is read by the page server.
+    'storefront/admin/slides/order',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -48,6 +55,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'shipping/admin/fleet-selection/active/instant',
     'shipping/admin/fleet-selection/active/same_day',
     'shipping/admin/fleet-selection/active/scheduled',
+    // The order of the live slides of one position (storefront). A fixed path, so `order` is never
+    // read as a slide id: the slide route below takes a UUID only.
+    'storefront/admin/slides/order',
   ]),
   DELETE: new Set([]),
   POST: new Set([
@@ -71,6 +81,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'notifications/admin/notices/read-all',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
+    // A new storefront slide, as a draft (storefront).
+    'storefront/admin/slides',
   ]),
 };
 
@@ -97,6 +109,14 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
     'notifications/admin/notices/:id/read',
+    // A storefront slide's approval side and its other changes (storefront): send the draft for
+    // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.
+    'storefront/admin/slides/:id/submit',
+    'storefront/admin/slides/:id/approve',
+    'storefront/admin/slides/:id/pause',
+    'storefront/admin/slides/:id/resume',
+    'storefront/admin/slides/:id/archive',
+    'storefront/admin/slides/:id/restore',
   ],
   PUT: [
     'identity/admin/roles/:id',
@@ -107,12 +127,16 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'shipping/admin/fleet-selection/models/:id',
     // The seller's own commission rate (commission-payouts), set from the seller review page.
     'commission-payouts/admin/sellers/:id/commission-rate',
+    // A storefront slide's whole draft (storefront).
+    'storefront/admin/slides/:id',
   ],
   DELETE: ['identity/admin/roles/:id', 'commission-payouts/admin/sellers/:id/commission-rate'],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
+    // A storefront slide as a package to create in another Market (storefront).
+    'storefront/admin/slides/:id/copy',
   ],
 };
 
@@ -123,10 +147,21 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'payments/admin/connected-accounts': ['status', 'cursor'],
   'ordering/admin/orders': ['status', 'cursor'],
   'notifications/admin/notices': ['show', 'before'],
+  'storefront/admin/slides': ['state', 'position'],
+  'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
   'notifications/admin/notices': { show: /^(unread|read|all)$/, before: UUID },
+  'storefront/admin/slides': {
+    state: /^(draft|pending|scheduled|live|ended|paused|archived)$/,
+    position: /^[a-z]+(?:\.[a-z-]+)+$/,
+  },
+  'storefront/admin/slides/order': {
+    position: /^[a-z]+(?:\.[a-z-]+)+$/,
+    scope: /^(all|category|product|seller|page)$/,
+    scopeId: UUID,
+  },
 };
 /** GET templates with a resource id whose query crosses, and the keys that may cross. */
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
