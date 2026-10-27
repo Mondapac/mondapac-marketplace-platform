@@ -17,6 +17,9 @@ import {
   MemoryInbox,
   stripeSignatureHeader,
   TEST_WEBHOOK_SECRET,
+  FakeDisputeReader,
+  MemoryDisputeStore,
+  RecordingPaymentsOutbox,
 } from '../../../../test/support/payments-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
@@ -86,6 +89,9 @@ describe.each([
       inbox,
       signature: new StripeWebhookSignature({ [code]: TEST_WEBHOOK_SECRET }, clock),
       reader,
+      disputeReader: new FakeDisputeReader(),
+      disputes: new MemoryDisputeStore(),
+      outbox: new RecordingPaymentsOutbox(),
       ordering,
       accounts: new MemoryAccountStore(),
       connect: new FakeConnectGateway(),

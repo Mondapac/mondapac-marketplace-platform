@@ -43,6 +43,16 @@ it('maps every refusal code of the wallet routes to its exact status', () => {
     'wallet.cannot-turn-off-with-history': 409,
     'second-factor.required': 403,
     'second-factor.enrolment-required': 403,
+    'wallet.paused': 409,
+    'wallet.frozen': 409,
+    'wallet.cap-exceeded': 409,
+    'wallet.account-not-active': 409,
+    'idempotency.key-reused': 409,
+    'wallet.credit-request-not-found': 404,
+    'wallet.customer-not-found': 404,
+    'wallet.credit-request-decided': 409,
+    'wallet.credit-request-expired': 409,
+    'wallet.approver-is-requester': 403,
   });
 });
 

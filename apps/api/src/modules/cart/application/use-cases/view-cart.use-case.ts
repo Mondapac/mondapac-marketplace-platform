@@ -32,3 +32,4 @@ export class ViewCart extends UseCase<Record<string, never>, CartView, CartFailu
 }
 
 export type { CartView, GuestCookie, LineWritten } from '../cart-operations';
+export type { LineDisplay } from '../ports/line-facts';

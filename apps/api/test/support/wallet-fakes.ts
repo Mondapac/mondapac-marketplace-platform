@@ -1,5 +1,13 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type {
+  AdminCreditDecision,
+  AdminCreditPage,
+  AdminCreditRecord,
+  AdminCreditRepository,
+  NewAdminCredit,
+} from '../../src/modules/wallet/application/ports/admin-credit.repository';
+import { COUNTED_STATUSES } from '../../src/modules/wallet/domain/admin-credit';
+import type {
   MarketSettingRecord,
   MarketSettingRepository,
 } from '../../src/modules/wallet/application/ports/market-setting.repository';
@@ -299,5 +307,147 @@ export class MemoryMarketSetting implements MarketSettingRepository {
     this.saves += 1;
     this.record = record;
     return Promise.resolve();
+  }
+}
+
+/**
+ * The admin credit requests in memory, with the table's rules: a key once, a request decided once
+ * from pending, never by the admin who asked, nothing deleted.
+ */
+export class MemoryAdminCredits implements AdminCreditRepository {
+  readonly rows = new Map<string, AdminCreditRecord>();
+  readonly dayLocks: string[] = [];
+
+  lockDay(_m: MarketContext, admin: Id<'Account'>, localDay: string) {
+    this.dayLocks.push(`${admin}|${localDay}`);
+    return Promise.resolve();
+  }
+  countedOnDay(_m: MarketContext, admin: Id<'Account'>, localDay: string) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (r) =>
+            r.requestedBy === admin &&
+            r.localDay === localDay &&
+            COUNTED_STATUSES.includes(r.status),
+        )
+        .reduce((sum, r) => sum + r.amountMinor, 0n),
+    );
+  }
+  findByKey(_m: MarketContext, key: string) {
+    return Promise.resolve([...this.rows.values()].find((r) => r.idempotencyKey === key) ?? null);
+  }
+  find(_m: MarketContext, id: Id<'WalletCreditRequest'>) {
+    return Promise.resolve(this.rows.get(id) ?? null);
+  }
+  findForUpdate(m: MarketContext, id: Id<'WalletCreditRequest'>) {
+    return this.find(m, id);
+  }
+  create(_m: MarketContext, record: NewAdminCredit) {
+    if ([...this.rows.values()].some((r) => r.idempotencyKey === record.idempotencyKey)) {
+      throw new Error('duplicate idempotency key');
+    }
+    this.rows.set(record.id, { ...record, decidedBy: null, decidedAt: null, decisionReason: null });
+    return Promise.resolve();
+  }
+  decide(_m: MarketContext, id: Id<'WalletCreditRequest'>, decision: AdminCreditDecision) {
+    const row = this.rows.get(id);
+    if (row === undefined || row.status !== 'pending') return Promise.resolve(false);
+    if (decision.decidedBy !== null && decision.decidedBy === row.requestedBy) {
+      throw new Error('CHECK maker_checker');
+    }
+    this.rows.set(id, {
+      ...row,
+      status: decision.status,
+      decidedBy: decision.decidedBy,
+      decidedAt: decision.decidedAt,
+      decisionReason: decision.decisionReason,
+      journalId: decision.journalId,
+    });
+    return Promise.resolve(true);
+  }
+  list(_m: MarketContext, page: AdminCreditPage) {
+    const after = page.after;
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter((r) => page.statuses.includes(r.status))
+        .sort(
+          (a, b) =>
+            b.requestedAt.epochMilliseconds - a.requestedAt.epochMilliseconds ||
+            (a.id < b.id ? 1 : -1),
+        )
+        .filter(
+          (r) =>
+            after === null ||
+            r.requestedAt.epochMilliseconds < after.requestedAt.epochMilliseconds ||
+            (r.requestedAt.epochMilliseconds === after.requestedAt.epochMilliseconds &&
+              r.id < after.id),
+        )
+        .slice(0, page.limit),
+    );
+  }
+  duePending(_m: MarketContext, now: Temporal.Instant, limit: number) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (r) =>
+            r.status === 'pending' &&
+            r.expiresAt !== null &&
+            r.expiresAt.epochMilliseconds <= now.epochMilliseconds,
+        )
+        .slice(0, limit)
+        .map((r) => r.id),
+    );
+  }
+}
+
+type DirectoryEntry = {
+  readonly marketId: string;
+  readonly population: 'customer' | 'seller' | 'admin';
+  status: 'active' | 'disabled';
+};
+
+/**
+ * identity's `customerAccountOf` in memory (review S1): an active customer account of the
+ * context's Market answers its id; anything else answers null. `failWith` makes the next calls
+ * answer `access.unavailable` or throw, to show the wallet fails closed.
+ */
+export class FakeCustomerDirectory {
+  readonly accounts = new Map<string, DirectoryEntry>();
+  readonly asked: string[] = [];
+  failWith: 'unavailable' | 'denied' | 'throw' | null = null;
+
+  add(
+    accountId: Id<'Account'>,
+    marketId: string,
+    population: DirectoryEntry['population'] = 'customer',
+    status: DirectoryEntry['status'] = 'active',
+  ): void {
+    this.accounts.set(accountId, { marketId, population, status });
+  }
+
+  customerAccountOf(
+    context: { readonly market: MarketContext },
+    accountId: Id<'Account'>,
+  ): Promise<
+    | { readonly ok: true; readonly value: { readonly accountId: Id<'Account'> } | null }
+    | {
+        readonly ok: false;
+        readonly error: { readonly code: 'access.denied' | 'access.unavailable' };
+      }
+  > {
+    this.asked.push(accountId);
+    if (this.failWith === 'throw') return Promise.reject(new Error('identity down'));
+    if (this.failWith !== null) {
+      const code = this.failWith === 'denied' ? 'access.denied' : 'access.unavailable';
+      return Promise.resolve({ ok: false, error: { code } });
+    }
+    const entry = this.accounts.get(accountId);
+    const usable =
+      entry !== undefined &&
+      entry.marketId === context.market.marketId &&
+      entry.population === 'customer' &&
+      entry.status === 'active';
+    return Promise.resolve({ ok: true, value: usable ? { accountId } : null });
   }
 }

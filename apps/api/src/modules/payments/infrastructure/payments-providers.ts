@@ -10,7 +10,12 @@ import {
   type ConnectedAccountStore,
 } from '../application/ports/connected-account-store';
 import { CONNECT_GATEWAY, type ConnectGateway } from '../application/ports/connect-gateway';
+import { DISPUTE_STORE, type DisputeStore } from '../application/ports/dispute-store';
 import { PAYMENTS_POLICY, type PaymentsPolicy } from '../application/ports/payments-policy';
+import {
+  STRIPE_DISPUTE_READER,
+  type StripeDisputeReader,
+} from '../application/ports/stripe-dispute-reader';
 import { STRIPE_EVENT_INBOX, type StripeEventInbox } from '../application/ports/stripe-event-inbox';
 import {
   STRIPE_SESSION_READER,
@@ -19,8 +24,10 @@ import {
 import { STRIPE_SIGNATURE, type StripeSignature } from '../application/ports/stripe-signature';
 import { ConfigPaymentsPolicy } from './config-payments-policy';
 import { PrismaConnectedAccountStore } from './prisma-connected-account-store';
+import { PrismaDisputeStore } from './prisma-dispute-store';
 import { PrismaStripeEventInbox } from './prisma-stripe-event-inbox';
 import { StripeConnectGateway } from './stripe-connect-gateway';
+import { StripeDisputeApiReader } from './stripe-dispute-reader';
 import { StripeCheckoutSessionReader } from './stripe-session-reader';
 import { StripeWebhookSignature } from './stripe-webhook-signature';
 
@@ -46,6 +53,17 @@ export const paymentsProviders: readonly FactoryProvider[] = [
     inject: [APP_CONFIG],
     useFactory: (config: AppConfig): StripeSessionReader =>
       new StripeCheckoutSessionReader(config.stripeSecretKey),
+  },
+  {
+    provide: STRIPE_DISPUTE_READER,
+    inject: [APP_CONFIG],
+    useFactory: (config: AppConfig): StripeDisputeReader =>
+      new StripeDisputeApiReader(config.stripeSecretKey),
+  },
+  {
+    provide: DISPUTE_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): DisputeStore => new PrismaDisputeStore(prisma),
   },
   {
     provide: CONNECTED_ACCOUNT_STORE,

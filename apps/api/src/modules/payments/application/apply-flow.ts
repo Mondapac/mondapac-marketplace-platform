@@ -10,6 +10,8 @@ import {
   isExternalAccountEvent,
   kindOf,
 } from '../domain/payout-change';
+import { isDisputeEventType } from '../domain/dispute';
+import { applyDisputeEvent } from './dispute-flow';
 import type { PaymentsDependencies } from './payments-dependencies';
 import {
   isAccountEventType,
@@ -158,6 +160,9 @@ async function applyOne(
 ): Promise<Applied> {
   if (isAccountEventType(event.type)) {
     return applyAccountEvent(deps, context, event);
+  }
+  if (isDisputeEventType(event.type)) {
+    return applyDisputeEvent(deps, context, event);
   }
   const read = await deps.reader.readCheckoutSession(event.objectId);
   if (!read.ok) return read.error.code === 'payment.provider-unavailable' ? 'retry' : 'rejected';
