@@ -646,7 +646,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "cause": "enumOf(invalid|locked)",
       "sessionId": "id"
     }
@@ -658,7 +658,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "sessionId": "id"
     }
   },
@@ -951,11 +951,11 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     }
   },
@@ -1531,6 +1531,86 @@
       "categoryCount": "integer",
       "kind": "enumOf(flat-rate|by-category)",
       "rateBps": "integer"
+    }
+  },
+  {
+    "action": "wallet.admin-credit.approved",
+    "targetType": "wallet.admin-credit-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(pending)"
+    },
+    "after": {
+      "amount": "money",
+      "customerAccountId": "id",
+      "journalId": "id",
+      "requestedBy": "id",
+      "status": "enumOf(approved)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "wallet.admin-credit.expired",
+    "targetType": "wallet.admin-credit-request",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": {
+      "status": "enumOf(pending)"
+    },
+    "after": {
+      "requestedBy": "id",
+      "status": "enumOf(expired)"
+    }
+  },
+  {
+    "action": "wallet.admin-credit.issued",
+    "targetType": "wallet.admin-credit-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "customerAccountId": "id",
+      "journalId": "id",
+      "reasonCode": "enumOf(goodwill|service-recovery|promotion|correction)",
+      "status": "enumOf(granted)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "wallet.admin-credit.rejected",
+    "targetType": "wallet.admin-credit-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(pending)"
+    },
+    "after": {
+      "reasonCode": "enumOf(not-justified|amount-too-high|duplicate|wrong-customer|policy)",
+      "requestedBy": "id",
+      "status": "enumOf(rejected)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "wallet.admin-credit.requested",
+    "targetType": "wallet.admin-credit-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "approvalReason": "enumOf(issue-cap|daily-cap)",
+      "customerAccountId": "id",
+      "expiresAt": "instant",
+      "reasonCode": "enumOf(goodwill|service-recovery|promotion|correction)",
+      "status": "enumOf(pending)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
     }
   },
   {

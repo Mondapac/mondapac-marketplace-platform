@@ -64,9 +64,10 @@ model WalletJournal {
   result          Json
   createdAt       DateTime @map("created_at") @db.Timestamptz(6)
 
-  wallet   WalletAccount?  @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  postings WalletPosting[]
-  lots     WalletLot[]
+  wallet              WalletAccount?             @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  postings            WalletPosting[]
+  lots                WalletLot[]
+  adminCreditRequests WalletAdminCreditRequest[]
 
   @@unique([marketId, id])
   @@unique([marketId, idempotencyKey])
@@ -211,5 +212,70 @@ model WalletMarketSetting {
 
   @@id([marketId])
   @@map("market_settings")
+  @@schema("wallet")
+}
+
+/// One admin credit issue (customer wallet package 2a): `granted` at once within the Market's
+/// caps, or `pending` for a second admin, then `approved`, `rejected` or `expired`. Never deleted;
+/// only a pending row is decided, once (guard trigger). The admin who asked never decides (CHECK).
+/// `note` is free text for the admins only: it is never put in a journal, an audit row or an event.
+model WalletAdminCreditRequest {
+  id                   String    @id @db.Uuid
+  marketId             String    @map("market_id") @db.VarChar(8)
+  tenantId             String    @map("tenant_id")
+  /// A plain identity account id, no foreign key.
+  customerAccountId    String    @map("customer_account_id") @db.Uuid
+  amountMinor          BigInt    @map("amount_minor")
+  currency             String    @db.VarChar(3)
+  /// goodwill, service-recovery, promotion or correction (CHECK).
+  reasonCode           String    @map("reason_code")
+  note                 String?
+  /// granted, pending, approved, rejected or expired (CHECK).
+  status               String
+  /// issue-cap or daily-cap; null exactly when granted at once (CHECK).
+  approvalReason       String?   @map("approval_reason")
+  requestedByAccountId String    @map("requested_by_account_id") @db.Uuid
+  requestedAt          DateTime  @map("requested_at") @db.Timestamptz(6)
+  /// The requesting admin's calendar day in the Market's time zone: the daily cap's day.
+  localDay             DateTime  @map("local_day") @db.Date
+  /// Null exactly when granted at once (CHECK).
+  expiresAt            DateTime? @map("expires_at") @db.Timestamptz(6)
+  idempotencyKey       String    @map("idempotency_key")
+  fingerprint          String
+  /// Set exactly when approved or rejected, and never the requester (CHECK).
+  decidedByAccountId   String?   @map("decided_by_account_id") @db.Uuid
+  decidedAt            DateTime? @map("decided_at") @db.Timestamptz(6)
+  /// The closed reject reason; set exactly when rejected (CHECK).
+  decisionReasonCode   String?   @map("decision_reason_code")
+  /// The grant's journal; set exactly when granted or approved (CHECK).
+  journalId            String?   @map("journal_id") @db.Uuid
+
+  journal WalletJournal? @relation(fields: [marketId, journalId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, id])
+  @@unique([marketId, idempotencyKey])
+  /// A grant journal serves one request only.
+  @@unique([marketId, journalId])
+  /// One admin's day, status and amount last: the daily cap sums from the index only.
+  @@index([marketId, requestedByAccountId, localDay, status, amountMinor])
+  /// The admin list by status, newest first.
+  @@index([marketId, status, requestedAt(sort: Desc), id(sort: Desc)])
+  /// Partial (status = 'pending') in the migration: the expiry sweep.
+  @@index([marketId, expiresAt, id])
+  @@map("admin_credit_requests")
+  @@schema("wallet")
+}
+
+/// The lock of one admin's day (package 2a): an issue locks this row first, so the daily cap is
+/// counted one issue at a time. Created on first use; only `locked_at` changes; never deleted.
+model WalletAdminCreditDay {
+  marketId       String   @map("market_id") @db.VarChar(8)
+  tenantId       String   @map("tenant_id")
+  adminAccountId String   @map("admin_account_id") @db.Uuid
+  localDay       DateTime @map("local_day") @db.Date
+  lockedAt       DateTime @map("locked_at") @db.Timestamptz(6)
+
+  @@id([marketId, adminAccountId, localDay])
+  @@map("admin_credit_days")
   @@schema("wallet")
 }

@@ -12,6 +12,8 @@ export interface WalletSettings {
   readonly adminIssueCapMinor: bigint;
   /** Package 2: the most one admin may issue per day without a second approval. */
   readonly adminDailyCapMinor: bigint;
+  /** Package 2: a pending admin credit request expires this many calendar days after it was made. */
+  readonly adminRequestExpiryDays: number;
   /** Promo lots expiring within this many days are shown as "expiring soon". */
   readonly expiringSoonDays: number;
 }

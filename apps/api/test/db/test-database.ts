@@ -73,6 +73,8 @@ function exported(
     | 'TEST_CERTIFIED_CATEGORIES_OWNER_DATABASE_URL'
     | 'TEST_WALLET_SWITCH_DATABASE_URL'
     | 'TEST_WALLET_SWITCH_OWNER_DATABASE_URL'
+    | 'TEST_WALLET_CREDIT_DATABASE_URL'
+    | 'TEST_WALLET_CREDIT_OWNER_DATABASE_URL'
     | 'TEST_ORDERING_REFUNDS_DATABASE_URL',
 ): string {
   const url = process.env[name];
@@ -322,6 +324,18 @@ export function walletSwitchTestDatabaseUrl(): string {
 
 export function walletSwitchOwnerTestDatabaseUrl(): string {
   return exported('TEST_WALLET_SWITCH_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that wallet-admin-credit.db-spec.ts issues admin credit on and moves each Market's
+ * wallet switch on, as the application login and as its owner.
+ */
+export function walletCreditTestDatabaseUrl(): string {
+  return exported('TEST_WALLET_CREDIT_DATABASE_URL');
+}
+
+export function walletCreditOwnerTestDatabaseUrl(): string {
+  return exported('TEST_WALLET_CREDIT_OWNER_DATABASE_URL');
 }
 
 /**
