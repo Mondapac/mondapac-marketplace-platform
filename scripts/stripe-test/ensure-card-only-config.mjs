@@ -57,7 +57,11 @@ async function ensure() {
   }
 
   const read = await stripe(key, 'GET', `/v1/payment_method_configurations/${saved.body.id}`);
-  const on = methods.filter((method) => read.body?.[method]?.display_preference?.value === 'on');
+  // Every method the saved configuration lists, not only the ones the default listed: a method
+  // that appears only here must be off too.
+  const on = Object.keys(read.body ?? {}).filter(
+    (method) => read.body[method]?.display_preference?.value === 'on',
+  );
   report.check(
     'only cards and wallets are on',
     read.status === 200 && on.includes('card') && on.every((method) => ALLOWED.has(method)),

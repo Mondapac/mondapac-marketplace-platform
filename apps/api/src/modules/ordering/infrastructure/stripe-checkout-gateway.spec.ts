@@ -156,6 +156,20 @@ describe('StripeCheckoutGateway', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it.each(['', 'pmc_', 'card', 'pm_1234567890'])(
+    'treats %j as no configuration: no session (Stripe would use the account default)',
+    async (value) => {
+      const { calls, fetchFn } = fake(200, { id: 'cs_test_1', url: 'https://x' });
+      const gateway = new StripeCheckoutGateway(KEY, value, fetchFn);
+
+      expect(await gateway.createSession(REQUEST)).toEqual({
+        ok: false,
+        error: { code: 'payment.provider-unavailable' },
+      });
+      expect(calls).toHaveLength(0);
+    },
+  );
+
   it('sends nothing without a key (fail closed)', async () => {
     const { calls, fetchFn } = fake(200, { id: 'cs_test_1', url: 'https://x' });
     const gateway = new StripeCheckoutGateway(null, PMC, fetchFn);

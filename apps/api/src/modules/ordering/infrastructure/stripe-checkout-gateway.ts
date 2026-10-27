@@ -59,6 +59,9 @@ function refundAnswer(
  * The secret key, the client secret and Stripe's answer bodies never reach a log or an error: a
  * failure is a code only.
  */
+/** A Stripe payment method configuration id; the same shape app-config accepts. */
+const PAYMENT_METHOD_CONFIGURATION = /^pmc_[A-Za-z0-9]{8,64}$/;
+
 export class StripeCheckoutGateway implements CheckoutGateway {
   constructor(
     private readonly secretKey: string | null,
@@ -69,15 +72,18 @@ export class StripeCheckoutGateway implements CheckoutGateway {
 
   async createSession(request: CreateSessionRequest) {
     // Fail closed: a session without the card-only configuration would offer every payment
-    // method the account has switched on.
-    if (this.paymentMethodConfiguration === null) return err(UNAVAILABLE);
+    // method the account has switched on. Anything but a pmc_ id (an empty value from a script)
+    // counts as unset, because Stripe would fall back to the account's default configuration.
+    if (!PAYMENT_METHOD_CONFIGURATION.test(this.paymentMethodConfiguration ?? '')) {
+      return err(UNAVAILABLE);
+    }
     const form = new URLSearchParams();
     form.set('mode', 'payment');
     form.set('client_reference_id', request.orderId);
     form.set('success_url', request.successUrl);
     form.set('cancel_url', request.cancelUrl);
     form.set('expires_at', String(Math.floor(request.expiresAt.epochMilliseconds / 1000)));
-    form.set('payment_method_configuration', this.paymentMethodConfiguration);
+    form.set('payment_method_configuration', this.paymentMethodConfiguration as string);
     form.set('payment_intent_data[capture_method]', 'manual');
     form.set('payment_intent_data[metadata][order_id]', request.orderId);
     form.set('payment_intent_data[metadata][market_id]', request.marketId);

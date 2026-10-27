@@ -36,7 +36,7 @@ if (!/^whsec_[A-Za-z0-9+/=_]{8,200}$/.test(secret)) {
 let lastAnswer = null;
 const checkout = new StripeCheckoutGateway(
   key,
-  process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION ?? null,
+  process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION || null,
   async (url, init) => {
     const response = await fetch(url, init);
     const body = await response.json();
