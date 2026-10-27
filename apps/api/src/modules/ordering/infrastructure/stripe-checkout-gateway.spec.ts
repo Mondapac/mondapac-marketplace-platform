@@ -1,11 +1,12 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import { StripeCheckoutGateway, type StripeFetch } from './stripe-checkout-gateway';
 
-// The Stripe adapter with a fake `fetch`: the request it builds (manual capture, card only, one
-// package per seller, the stored idempotency key), the failure it returns for each kind of
+// The Stripe adapter with a fake `fetch`: the request it builds (manual capture, the card-only
+// payment method configuration, one package per seller, the stored idempotency key), the failure it returns for each kind of
 // answer, and that the secret key never reaches an error.
 
 const KEY = 'sk_test_unit_secret_1234567890';
+const PMC = 'pmc_unitCardsOnly12345';
 const REQUEST = {
   orderId: '01990000-0000-7000-8000-0000000000aa',
   marketId: 'AU',
@@ -45,7 +46,7 @@ describe('StripeCheckoutGateway', () => {
       id: 'cs_test_1',
       url: 'https://checkout.stripe.com/c/pay/cs_test_1',
     });
-    const gateway = new StripeCheckoutGateway(KEY, fetchFn);
+    const gateway = new StripeCheckoutGateway(KEY, PMC, fetchFn);
 
     const session = await gateway.createSession(REQUEST);
 
@@ -62,8 +63,9 @@ describe('StripeCheckoutGateway', () => {
     const form = call!.body;
     expect(form.get('mode')).toBe('payment');
     expect(form.get('payment_intent_data[capture_method]')).toBe('manual');
-    expect(form.get('payment_method_types[0]')).toBe('card');
-    expect(form.get('payment_method_types[1]')).toBeNull();
+    // Stripe refuses payment_method_types now: the card-only configuration names the methods.
+    expect(form.get('payment_method_configuration')).toBe(PMC);
+    expect(form.get('payment_method_types[0]')).toBeNull();
     expect(form.get('client_reference_id')).toBe(REQUEST.orderId);
     expect(form.get('expires_at')).toBe(String(Date.parse('2026-10-14T10:30:00Z') / 1000));
     expect(form.get('line_items[0][price_data][unit_amount]')).toBe('2099');
@@ -75,7 +77,7 @@ describe('StripeCheckoutGateway', () => {
 
   it('captures and voids with the given key, and does nothing for a malformed id', async () => {
     const { calls, fetchFn } = fake(200, { id: 'pi_test_1' });
-    const gateway = new StripeCheckoutGateway(KEY, fetchFn);
+    const gateway = new StripeCheckoutGateway(KEY, PMC, fetchFn);
 
     expect(await gateway.capture('pi_test_1', 'capture-1')).toEqual({ ok: true, value: true });
     expect(await gateway.voidAuthorisation('pi_test_1', 'void-1')).toEqual({
@@ -101,7 +103,7 @@ describe('StripeCheckoutGateway', () => {
     [402, 'payment.provider-rejected'],
   ])('maps a %i answer to %s without echoing the key or the body', async (status, code) => {
     const { fetchFn } = fake(status, { error: { message: `bad ${KEY}` } });
-    const gateway = new StripeCheckoutGateway(KEY, fetchFn);
+    const gateway = new StripeCheckoutGateway(KEY, PMC, fetchFn);
 
     const result = await gateway.createSession(REQUEST);
 
@@ -110,7 +112,9 @@ describe('StripeCheckoutGateway', () => {
   });
 
   it('treats a network error, a timeout and a session without an https url as unavailable', async () => {
-    const boom = new StripeCheckoutGateway(KEY, () => Promise.reject(new Error(`down ${KEY}`)));
+    const boom = new StripeCheckoutGateway(KEY, PMC, () =>
+      Promise.reject(new Error(`down ${KEY}`)),
+    );
     expect(await boom.createSession(REQUEST)).toEqual({
       ok: false,
       error: { code: 'payment.provider-unavailable' },
@@ -118,6 +122,7 @@ describe('StripeCheckoutGateway', () => {
 
     const slow = new StripeCheckoutGateway(
       KEY,
+      PMC,
       (_url, init) =>
         new Promise((_resolve, reject) => {
           init.signal.addEventListener('abort', () => reject(new Error('aborted')));
@@ -131,6 +136,7 @@ describe('StripeCheckoutGateway', () => {
 
     const odd = new StripeCheckoutGateway(
       KEY,
+      PMC,
       fake(200, { id: 'cs_test_1', url: 'http://x' }).fetchFn,
     );
     expect(await odd.createSession(REQUEST)).toEqual({
@@ -139,9 +145,20 @@ describe('StripeCheckoutGateway', () => {
     });
   });
 
+  it('opens no session without the card-only payment method configuration (fail closed)', async () => {
+    const { calls, fetchFn } = fake(200, { id: 'cs_test_1', url: 'https://x' });
+    const gateway = new StripeCheckoutGateway(KEY, null, fetchFn);
+
+    expect(await gateway.createSession(REQUEST)).toEqual({
+      ok: false,
+      error: { code: 'payment.provider-unavailable' },
+    });
+    expect(calls).toHaveLength(0);
+  });
+
   it('sends nothing without a key (fail closed)', async () => {
     const { calls, fetchFn } = fake(200, { id: 'cs_test_1', url: 'https://x' });
-    const gateway = new StripeCheckoutGateway(null, fetchFn);
+    const gateway = new StripeCheckoutGateway(null, PMC, fetchFn);
 
     expect(await gateway.createSession(REQUEST)).toEqual({
       ok: false,
@@ -153,7 +170,7 @@ describe('StripeCheckoutGateway', () => {
 
   it('expires a session best effort and ignores a malformed id', async () => {
     const { calls, fetchFn } = fake(200, {});
-    const gateway = new StripeCheckoutGateway(KEY, fetchFn);
+    const gateway = new StripeCheckoutGateway(KEY, PMC, fetchFn);
 
     await gateway.expireSession('cs_test_1');
     await gateway.expireSession('cs_test_1/../../x');
@@ -174,7 +191,7 @@ describe('StripeCheckoutGateway', () => {
 
     it('refunds part of the PaymentIntent with the stored key and answers the refund id', async () => {
       const { calls, fetchFn } = fake(200, { id: 're_test_1', status: 'succeeded' });
-      const answer = await new StripeCheckoutGateway(KEY, fetchFn).refund(REFUND);
+      const answer = await new StripeCheckoutGateway(KEY, PMC, fetchFn).refund(REFUND);
 
       expect(answer).toEqual({ ok: true, value: { refundId: 're_test_1', status: 'succeeded' } });
       expect(calls[0]?.url).toBe('https://api.stripe.com/v1/refunds');
@@ -194,7 +211,7 @@ describe('StripeCheckoutGateway', () => {
       'answers a Stripe refund %s as %s: only succeeded is money back',
       async (stripe, status) => {
         const { fetchFn } = fake(200, { id: 're_test_2', status: stripe });
-        expect(await new StripeCheckoutGateway(KEY, fetchFn).refund(REFUND)).toEqual({
+        expect(await new StripeCheckoutGateway(KEY, PMC, fetchFn).refund(REFUND)).toEqual({
           ok: true,
           value: { refundId: 're_test_2', status },
         });
@@ -204,14 +221,14 @@ describe('StripeCheckoutGateway', () => {
     it('treats an unknown status or a missing refund id as no answer', async () => {
       for (const body of [{ id: 're_test_2', status: 'weird' }, { status: 'succeeded' }]) {
         expect(
-          await new StripeCheckoutGateway(KEY, fake(200, body).fetchFn).refund(REFUND),
+          await new StripeCheckoutGateway(KEY, PMC, fake(200, body).fetchFn).refund(REFUND),
         ).toEqual({ ok: false, error: { code: 'payment.provider-unavailable' } });
       }
     });
 
     it('reads a refund back by its id with a GET, test mode only', async () => {
       const { calls, fetchFn } = fake(200, { id: 're_test_9', status: 'succeeded' });
-      expect(await new StripeCheckoutGateway(KEY, fetchFn).refundStatus('re_test_9')).toEqual({
+      expect(await new StripeCheckoutGateway(KEY, PMC, fetchFn).refundStatus('re_test_9')).toEqual({
         ok: true,
         value: { refundId: 're_test_9', status: 'succeeded' },
       });
@@ -220,7 +237,7 @@ describe('StripeCheckoutGateway', () => {
       ]);
       const other = fake(200, { id: 're_test_other', status: 'succeeded' });
       expect(
-        (await new StripeCheckoutGateway(KEY, other.fetchFn).refundStatus('re_test_9')).ok,
+        (await new StripeCheckoutGateway(KEY, PMC, other.fetchFn).refundStatus('re_test_9')).ok,
       ).toBe(false);
       // A refund Stripe already made: no refusal may read as `failed` (Hassan M1-R).
       for (const [key, id] of [
@@ -228,7 +245,7 @@ describe('StripeCheckoutGateway', () => {
         [KEY, '../charges'],
       ] as const) {
         const none = fake(200, { id, status: 'succeeded' });
-        expect(await new StripeCheckoutGateway(key, none.fetchFn).refundStatus(id)).toEqual({
+        expect(await new StripeCheckoutGateway(key, PMC, none.fetchFn).refundStatus(id)).toEqual({
           ok: false,
           error: { code: 'payment.provider-unavailable' },
         });
@@ -236,7 +253,7 @@ describe('StripeCheckoutGateway', () => {
       }
       for (const status of [401, 404]) {
         expect(
-          await new StripeCheckoutGateway(KEY, fake(status).fetchFn).refundStatus('re_test_9'),
+          await new StripeCheckoutGateway(KEY, PMC, fake(status).fetchFn).refundStatus('re_test_9'),
         ).toEqual({ ok: false, error: { code: 'payment.provider-unavailable' } });
       }
     });
@@ -249,21 +266,21 @@ describe('StripeCheckoutGateway', () => {
         [KEY, { ...REFUND, amount: 0n }],
       ] as const) {
         const { calls, fetchFn } = fake(200, { id: 're_test_1', status: 'succeeded' });
-        const answer = await new StripeCheckoutGateway(key, fetchFn).refund(request);
+        const answer = await new StripeCheckoutGateway(key, PMC, fetchFn).refund(request);
         expect(answer).toEqual({ ok: false, error: { code: 'payment.provider-rejected' } });
         expect(calls).toHaveLength(0);
       }
     });
 
     it('answers unavailable on a server error and rejected on a client error', async () => {
-      expect((await new StripeCheckoutGateway(KEY, fake(500).fetchFn).refund(REFUND)).ok).toBe(
+      expect((await new StripeCheckoutGateway(KEY, PMC, fake(500).fetchFn).refund(REFUND)).ok).toBe(
         false,
       );
-      expect(await new StripeCheckoutGateway(KEY, fake(503).fetchFn).refund(REFUND)).toEqual({
+      expect(await new StripeCheckoutGateway(KEY, PMC, fake(503).fetchFn).refund(REFUND)).toEqual({
         ok: false,
         error: { code: 'payment.provider-unavailable' },
       });
-      expect(await new StripeCheckoutGateway(KEY, fake(400).fetchFn).refund(REFUND)).toEqual({
+      expect(await new StripeCheckoutGateway(KEY, PMC, fake(400).fetchFn).refund(REFUND)).toEqual({
         ok: false,
         error: { code: 'payment.provider-rejected' },
       });

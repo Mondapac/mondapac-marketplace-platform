@@ -92,7 +92,7 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: CHECKOUT_GATEWAY,
     inject: [APP_CONFIG],
     useFactory: (config: AppConfig): CheckoutGateway =>
-      new StripeCheckoutGateway(config.stripeSecretKey),
+      new StripeCheckoutGateway(config.stripeSecretKey, config.stripePaymentMethodConfiguration),
   },
   {
     provide: ORDERING_POLICY,
