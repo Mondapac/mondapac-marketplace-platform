@@ -551,7 +551,7 @@
     "actors": ["authenticated"],
     "before": {
       "bearer": "optional(enumOf(platform|seller))",
-      "capAmount": "money"
+      "capAmount": "optional(money)"
     },
     "after": {
       "amount": "optional(money)",

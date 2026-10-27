@@ -179,6 +179,10 @@ export class MemoryDisputes implements DisputeRepository {
         .map((d) => d.decision),
     );
   }
+  lockForDecision(market: MarketContext, disputeId: Parameters<DisputeRepository['find']>[1]) {
+    // Units run one at a time in the fakes: there is nothing to wait for.
+    return Promise.resolve(this.cases.has(scoped(market, disputeId)));
+  }
   insertDecision(market: MarketContext, decision: DisputeDecision) {
     // The two partial unique indexes: one first decision, one reversal, per seller order.
     const clash = this.decisions.some(

@@ -326,3 +326,57 @@ describe.each(['AU', 'ZZ'] as const)('engagement.lock-account in market %s', (co
     ).rejects.toBeInstanceOf(NamedStatementRefusedError);
   });
 });
+
+describe.each(['AU', 'ZZ'] as const)('commission-payouts locks in market %s', (code) => {
+  const market = testMarketContext(code, 'default');
+  const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+
+  it('locks a dispute case row FOR UPDATE, keyed on the unit Market and tenant', async () => {
+    const { runner, seen } = runnerAnswering([{ dispute_id: ID(5) }]);
+    const rows = await runNamedStatement(runner, market, 'commission-payouts.lock-dispute-case', {
+      disputeId: ID(5),
+    });
+    expect(rows).toEqual([{ disputeId: ID(5) }]);
+    expect(seen[0]!.sql).toContain('FOR UPDATE OF c');
+    expect(seen[0]!.values).toEqual([market.marketId, market.tenantId, ID(5)]);
+    const request = { operation: '$queryRaw', args: seen[0] };
+    expect(isApprovedStatement(request, market)).toBe(true);
+    expect(isApprovedStatement(request, other)).toBe(false);
+    const forged = { sql: seen[0]!.sql, values: [market.marketId, market.tenantId, "x' OR '1"] };
+    expect(isApprovedStatement({ operation: '$queryRaw', args: forged }, market)).toBe(false);
+  });
+
+  it('takes the seller order advisory lock keyed on the unit Market and tenant', async () => {
+    const { runner, seen } = runnerAnswering([{ locked: true }]);
+    const rows = await runNamedStatement(runner, market, 'commission-payouts.lock-seller-order', {
+      sellerOrderId: ID(6),
+    });
+    expect(rows).toEqual([{ locked: true }]);
+    expect(seen[0]!.sql).toContain('pg_advisory_xact_lock(');
+    expect(seen[0]!.sql).toContain('1702::int4');
+    expect(seen[0]!.values).toEqual([market.marketId, market.tenantId, ID(6)]);
+    const request = { operation: '$queryRaw', args: seen[0] };
+    expect(isApprovedStatement(request, market)).toBe(true);
+    expect(isApprovedStatement(request, other)).toBe(false);
+    expect(isApprovedStatement({ operation: '$executeRaw', args: seen[0] }, market)).toBe(false);
+  });
+
+  it('refuses a malformed id, and a missing advisory row', async () => {
+    const { runner } = runnerAnswering([]);
+    await expect(
+      runNamedStatement(runner, market, 'commission-payouts.lock-dispute-case', {
+        disputeId: "x' OR '1",
+      }),
+    ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+    await expect(
+      runNamedStatement(runner, market, 'commission-payouts.lock-seller-order', {
+        sellerOrderId: 'x',
+      }),
+    ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+    await expect(
+      runNamedStatement(runner, market, 'commission-payouts.lock-seller-order', {
+        sellerOrderId: ID(6),
+      }),
+    ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+  });
+});

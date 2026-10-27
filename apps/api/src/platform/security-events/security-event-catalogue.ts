@@ -220,7 +220,11 @@ export const DisputeOrderMismatch = defineSecurityEvent({
   ip: false,
   payload: {
     disputeId: eventField.id(),
-    reason: eventField.enumOf(['unknown-order', 'payment-intent-mismatch'] as const),
+    reason: eventField.enumOf([
+      'unknown-order',
+      'payment-intent-mismatch',
+      'order-changed',
+    ] as const),
   },
 });
 

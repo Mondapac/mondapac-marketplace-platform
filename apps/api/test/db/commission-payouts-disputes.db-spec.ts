@@ -216,7 +216,13 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
           )
         ).rows.map((row) => row.indexname);
       expect(await names('commission_payouts', 'dispute_cases')).toEqual(
-        expect.arrayContaining(['dispute_cases_closed_due_idx', 'dispute_cases_bucket_idx']),
+        expect.arrayContaining(['dispute_cases_bucket_idx']),
+      );
+      expect(await names('commission_payouts', 'dispute_cases')).not.toContain(
+        'dispute_cases_closed_due_idx',
+      );
+      expect(await names('commission_payouts', 'ledger_entries')).toContain(
+        'ledger_entries_market_id_order_id_idx',
       );
       expect(await names('commission_payouts', 'dispute_decisions')).toEqual(
         expect.arrayContaining(['dispute_decisions_first_key', 'dispute_decisions_reversal_key']),
@@ -224,10 +230,10 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
       expect(await names('payments', 'disputes')).toContain('disputes_market_id_order_id_idx');
       const def = (
         await sql.query<{ indexdef: string }>(
-          `SELECT indexdef FROM pg_indexes WHERE indexname = 'dispute_cases_closed_due_idx'`,
+          `SELECT indexdef FROM pg_indexes WHERE indexname = 'ledger_entries_market_id_order_id_idx'`,
         )
       ).rows[0]!.indexdef;
-      expect(def).toContain('(market_id, closed, evidence_due_by)');
+      expect(def).toContain('(market_id, order_id)');
     });
 
     it('refuses a case with a bad shape, in the database alone', async () => {
@@ -396,6 +402,29 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
           supersedes: first.id,
         }).run,
       ).toBe(UNIQUE);
+      // A reversal names a decision of its own seller order and dispute, and a seller decision.
+      const elsewhere = decision({ seller_order_id: ids.next() });
+      expect(await elsewhere.run).toBe('allowed');
+      const reversal = (supersedes: string) => ({
+        bearer: 'platform',
+        amount_minor: null,
+        currency: null,
+        supersedes,
+      });
+      expect(await decision(reversal(elsewhere.id)).run).toBe('23503');
+      const platformBears = decision({
+        seller_order_id: ids.next(),
+        bearer: 'platform',
+        amount_minor: null,
+        currency: null,
+      });
+      expect(await platformBears.run).toBe('allowed');
+      expect(
+        await decision({
+          ...reversal(platformBears.id),
+        }).run,
+      ).toBe(CHECK);
+      expect(await decision(reversal(ids.next())).run).toBe(CHECK);
       // Shape: a seller repays a positive amount, the platform names none, only the platform reverses.
       expect(await decision({ seller_order_id: ids.next(), amount_minor: 0 }).run).toBe(CHECK);
       expect(await decision({ seller_order_id: ids.next(), amount_minor: null }).run).toBe(CHECK);
@@ -794,6 +823,102 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
               ?.recoverableCap.amountMinor
           : undefined;
       expect([capOf(soA), capOf(soB)]).toEqual([450n, 850n]);
+    });
+
+    describe('decisions at the same time', () => {
+      const debitsOf = async (sellerOrderId: string) =>
+        (
+          await sql.query<{ amount_minor: string }>(
+            `SELECT amount::text AS amount_minor FROM commission_payouts.ledger_entries
+              WHERE market_id = $1 AND seller_order_id = $2 AND kind = 'dispute-debit'
+              ORDER BY amount`,
+            [market.marketId, sellerOrderId],
+          )
+        ).rows.map((r) => r.amount_minor);
+
+      it('two sibling seller orders decided at once: the holds are released and the bucket is closed', async () => {
+        const orderId = ids.next<'Order'>();
+        const disputeId = ids.next<'Dispute'>();
+        intents.set(orderId, 'pi_c1');
+        const soA = await paid(ids.next<'Seller'>(), orderId);
+        const soB = await paid(ids.next<'Seller'>(), orderId);
+        publish(disputeId, orderId, lostState());
+        await changed(disputeId, orderId);
+
+        const results = await Promise.all([
+          decide(disputeId, soA, 'platform'),
+          decide(disputeId, soB, 'seller', '100'),
+        ]);
+        expect(results.every((r) => r.ok)).toBe(true);
+        // The decision that ran second saw the first and released the holds.
+        expect(results.filter((r) => r.ok && r.value.holdsReleased).length).toBe(1);
+        expect((await holdsOf(disputeId)).every((r) => r.released_at !== null)).toBe(true);
+        expect(await caseRow(disputeId)).toMatchObject({ bucket: 'closed' });
+      });
+
+      it('one seller order decided twice at once: one wins, the other is already decided, one ledger row', async () => {
+        const orderId = ids.next<'Order'>();
+        const disputeId = ids.next<'Dispute'>();
+        intents.set(orderId, 'pi_c2');
+        const soA = await paid(ids.next<'Seller'>(), orderId);
+        publish(disputeId, orderId, lostState());
+        await changed(disputeId, orderId);
+
+        const results = await Promise.all([
+          decide(disputeId, soA, 'seller', '400'),
+          decide(disputeId, soA, 'seller', '400'),
+        ]);
+        expect(results.filter((r) => r.ok)).toHaveLength(1);
+        expect(results.find((r) => !r.ok)).toMatchObject({
+          ok: false,
+          error: { code: 'commission-payouts.dispute.already-decided' },
+        });
+        expect(await debitsOf(soA)).toEqual(['400']);
+      });
+
+      it('two disputes of one order deciding the same seller order: the total stays within the cap', async () => {
+        const orderId = ids.next<'Order'>();
+        const first = ids.next<'Dispute'>();
+        const second = ids.next<'Dispute'>();
+        intents.set(orderId, 'pi_c3');
+        const soA = await paid(ids.next<'Seller'>(), orderId);
+        for (const disputeId of [first, second]) {
+          publish(disputeId, orderId, lostState());
+          await changed(disputeId, orderId);
+        }
+
+        // Cap 850: 600 and 600 cannot both be taken.
+        const results = await Promise.all([
+          decide(first, soA, 'seller', '600'),
+          decide(second, soA, 'seller', '600'),
+        ]);
+        expect(results.filter((r) => r.ok)).toHaveLength(1);
+        expect(results.find((r) => !r.ok)).toMatchObject({
+          ok: false,
+          error: { code: 'commission-payouts.dispute.amount-out-of-range' },
+        });
+        expect(await debitsOf(soA)).toEqual(['600']);
+      });
+
+      it('a seller order with nothing left to recover refuses a seller bearer and lets the platform bear it', async () => {
+        const orderId = ids.next<'Order'>();
+        const disputeId = ids.next<'Dispute'>();
+        intents.set(orderId, 'pi_c4');
+        const soA = await paid(ids.next<'Seller'>(), orderId);
+        publish(disputeId, orderId, lostState());
+        await changed(disputeId, orderId);
+        // The whole cap, then a second dispute of the order finds the cap at zero.
+        expect(await decide(disputeId, soA, 'seller', '850')).toMatchObject({ ok: true });
+        const later = ids.next<'Dispute'>();
+        publish(later, orderId, lostState());
+        await changed(later, orderId);
+        expect(await decide(later, soA, 'seller', '1')).toMatchObject({
+          ok: false,
+          error: { code: 'commission-payouts.dispute.amount-out-of-range' },
+        });
+        expect(await decide(later, soA, 'platform')).toMatchObject({ ok: true });
+        expect(await debitsOf(soA)).toEqual(['850']);
+      });
     });
 
     it('lost and reinstated: needs review; the platform reverses a seller decision with a dispute-reinstate', async () => {

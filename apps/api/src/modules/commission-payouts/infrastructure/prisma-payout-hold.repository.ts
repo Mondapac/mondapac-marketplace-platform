@@ -96,7 +96,7 @@ export class PrismaPayoutHoldRepository implements PayoutHoldRepository {
 
   async listBySource(market: MarketContext, reason: HoldReason, sourceRef: string) {
     const rows = await this.prisma.tx(market).commissionPayoutsPayoutHold.findMany({
-      where: { marketId: market.marketId, reason, sourceRef },
+      where: { marketId: market.marketId, origin: 'system', reason, sourceRef },
       orderBy: [{ placedAt: 'desc' }, { id: 'desc' }],
     });
     return rows.map(toRecord);
@@ -114,7 +114,7 @@ export class PrismaPayoutHoldRepository implements PayoutHoldRepository {
   ) {
     const tx = this.prisma.tx(market);
     const active = await tx.commissionPayoutsPayoutHold.findMany({
-      where: { marketId: market.marketId, reason, sourceRef, releasedAt: null },
+      where: { marketId: market.marketId, origin: 'system', reason, sourceRef, releasedAt: null },
       orderBy: [{ placedAt: 'asc' }, { id: 'asc' }],
     });
     if (active.length === 0) return [];

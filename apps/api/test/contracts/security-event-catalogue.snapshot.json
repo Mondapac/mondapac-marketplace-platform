@@ -5,7 +5,7 @@
       "owner": "commission-payouts",
       "payload": {
         "disputeId": "id",
-        "reason": "enumOf(unknown-order|payment-intent-mismatch)"
+        "reason": "enumOf(unknown-order|payment-intent-mismatch|order-changed)"
       },
       "severity": "s2",
       "targetRequired": false,

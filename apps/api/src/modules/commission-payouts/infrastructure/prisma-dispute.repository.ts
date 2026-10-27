@@ -256,6 +256,21 @@ export class PrismaDisputeRepository implements DisputeRepository {
     return rows.map(toDecision);
   }
 
+  async lockForDecision(
+    market: MarketContext,
+    disputeId: Id<'Dispute'>,
+    sellerOrderId: Id<'SellerOrder'>,
+  ) {
+    const found = await this.prisma.namedQuery(market, 'commission-payouts.lock-dispute-case', {
+      disputeId,
+    });
+    if (found.length === 0) return false;
+    await this.prisma.namedQuery(market, 'commission-payouts.lock-seller-order', {
+      sellerOrderId,
+    });
+    return true;
+  }
+
   async insertDecision(market: MarketContext, decision: DisputeDecision) {
     const created = await this.prisma.tx(market).commissionPayoutsDisputeDecision.createMany({
       data: [

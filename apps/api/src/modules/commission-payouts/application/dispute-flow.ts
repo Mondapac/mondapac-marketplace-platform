@@ -1,6 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
+import type { AccessDeclaration } from '../../../platform/authz';
+import { COMMISSION_PAYOUTS_EARNINGS_VIEW } from '../contracts/permissions';
 import { DisputeOrderMismatch } from '../../../platform/security-events/security-event-catalogue';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { DisputeDecided, PayoutHoldPlaced, PayoutHoldReleased } from '../domain/audit';
@@ -136,6 +138,15 @@ export async function syncDispute(
       const stored = await deps.disputes.find(market, disputeId);
       // A read older than the stored one changes nothing (an out-of-order delivery).
       if (stored !== null && stored.lastSyncedVersion > read.version) return ok('stale' as const);
+      // A stored case belongs to one order for good (the identity never changes): a read that
+      // names another order is not applied, and the alert is raised.
+      if (stored !== null && stored.orderId !== orderId) {
+        await deps.securityEvents.record(
+          context,
+          DisputeOrderMismatch.event({ payload: { disputeId, reason: 'order-changed' } }),
+        );
+        return ok('parked' as const);
+      }
 
       const sellerOrders = await deps.disputes.sellerOrdersOfOrder(market, orderId);
       const sellerOrderIds = sellerOrders.map((s) => s.sellerOrderId);
@@ -704,6 +715,12 @@ export async function decideDispute(
   const now = deps.clock.now();
   return deps.unitOfWork.run<DisputeDecisionView, DisputeFailure>(context.market, async () => {
     const market = context.market;
+    // First, before any read the decision depends on: the case row, then the seller order. Decisions
+    // of one dispute then run one after the other (the last one sees its siblings and releases the
+    // holds), and so do decisions on one seller order, also of two disputes of one order (the cap).
+    if (!(await deps.disputes.lockForDecision(market, disputeId, sellerOrderId))) {
+      return err({ code: 'commission-payouts.dispute-not-found' } as const);
+    }
     const c = await deps.disputes.find(market, disputeId);
     if (c === null) return err({ code: 'commission-payouts.dispute-not-found' } as const);
     const entries = await deps.ledger.listSellerOrder(market, sellerOrderId);
@@ -774,7 +791,8 @@ export async function decideDispute(
       DisputeDecided.entry(decision.id, {
         before: {
           bearer: existing === undefined ? null : existing.first.bearer,
-          capAmount: money(cap, currency),
+          // Absent when nothing is left to recover (a money field is never zero).
+          capAmount: cap > 0n ? money(cap, currency) : null,
         },
         after: {
           disputeId,
@@ -823,11 +841,21 @@ export interface OwnDisputeView {
   readonly since: Temporal.Instant;
   /** The dispute still holds this seller order's money. */
   readonly open: boolean;
-  /** What the seller repaid after a decision; null when none, or when it was reversed. */
+  /**
+   * What the seller repaid after a decision; null when none, when it was reversed, or when the
+   * reader does not hold `commission-payouts.earnings.view`.
+   */
   readonly recoveredAmount: MoneyView | null;
 }
 
 const OWN_HOLD_LIMIT = 100;
+
+/** The second key of the seller's read: the repaid amount (asked of the AuthorisationCheck only). */
+const OWN_AMOUNT_ACCESS: AccessDeclaration = {
+  name: 'commission-payouts.list-own-disputes-amount',
+  rule: { kind: 'permissions', allOf: [COMMISSION_PAYOUTS_EARNINGS_VIEW.key] },
+  whenSellerNotApproved: 'allow',
+};
 
 /**
  * The signed-in seller's seller orders that a dispute holds or held: no reason, no evidence date,
@@ -843,6 +871,13 @@ export async function listOwnDisputes(
       ? idOf<'Seller'>(actor.sellerId)
       : null;
   if (sellerId === null) return err({ code: 'access.denied' });
+  // The amount a seller repaid is earnings data: shown only to a member who also holds
+  // `commission-payouts.earnings.view`. The held banner needs no such key. Asked before the unit
+  // (the check reads in a unit of its own); an error or a refusal is "no".
+  const mayViewAmounts = await deps.authorisation
+    .check(context, OWN_AMOUNT_ACCESS)
+    .then((decision) => decision.allowed)
+    .catch(() => false);
   return deps.unitOfWork.run<readonly OwnDisputeView[], DisputeFailure>(
     context.market,
     async () => {
@@ -871,7 +906,7 @@ export async function listOwnDisputes(
           orderId: c.orderId,
           since: hold.placedAt,
           open: hold.releasedAt === null,
-          recoveredAmount: recovered === null ? null : moneyView(recovered),
+          recoveredAmount: recovered === null || !mayViewAmounts ? null : moneyView(recovered),
         });
       }
       return ok(views);

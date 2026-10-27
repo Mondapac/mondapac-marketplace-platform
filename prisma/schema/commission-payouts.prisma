@@ -58,6 +58,7 @@ model CommissionPayoutsLedgerEntry {
   /// original row has no source).
   @@unique([marketId, sellerOrderId, kind, orderLineId, sourceId], map: "ledger_entries_fact_key")
   @@index([marketId, sellerId, recordedAt(sort: Desc), id(sort: Desc)])
+  @@index([marketId, orderId], map: "ledger_entries_market_id_order_id_idx")
   @@index([marketId, sellerOrderId])
   @@map("ledger_entries")
   @@schema("commission_payouts")
@@ -203,7 +204,6 @@ model CommissionPayoutsDisputeCase {
   updatedAt         DateTime  @map("updated_at") @db.Timestamptz(6)
 
   @@id([marketId, disputeId])
-  @@index([marketId, closed, evidenceDueBy], map: "dispute_cases_closed_due_idx")
   @@index([marketId, bucket, openedAt(sort: Desc), disputeId(sort: Desc)], map: "dispute_cases_bucket_idx")
   @@map("dispute_cases")
   @@schema("commission_payouts")
@@ -233,6 +233,13 @@ model CommissionPayoutsDisputeDecision {
   /// The seller decision this one reverses; null for a first decision.
   supersedes    String?  @db.Uuid
 
+  /// The seller decision of the same dispute and seller order that this one reverses (composite
+  /// self-reference; the migration adds it by hand and a trigger checks that the target is a
+  /// seller decision).
+  reverses   CommissionPayoutsDisputeDecision?  @relation("DisputeDecisionReversal", fields: [marketId, disputeId, sellerOrderId, supersedes], references: [marketId, disputeId, sellerOrderId, id], map: "dispute_decisions_supersedes_fkey", onDelete: NoAction, onUpdate: NoAction)
+  reversedBy CommissionPayoutsDisputeDecision[] @relation("DisputeDecisionReversal")
+
+  @@unique([marketId, disputeId, sellerOrderId, id], map: "dispute_decisions_scope_id_key")
   @@index([marketId, disputeId])
   @@index([marketId, sellerId])
   @@map("dispute_decisions")

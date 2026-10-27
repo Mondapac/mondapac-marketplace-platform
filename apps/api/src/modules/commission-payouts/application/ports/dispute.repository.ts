@@ -61,6 +61,18 @@ export interface DisputeRepository {
     orderIds: readonly Id<'Order'>[],
   ): Promise<readonly SellerOrderRef[]>;
 
+  /**
+   * Serialises the admin decisions that touch one dispute or one seller order: locks the case row
+   * `FOR UPDATE`, then takes the seller order's advisory lock (always in this order, so no
+   * deadlock). Call it first in the unit, before any read the decision depends on. False when the
+   * case does not exist.
+   */
+  lockForDecision(
+    market: MarketContext,
+    disputeId: Id<'Dispute'>,
+    sellerOrderId: Id<'SellerOrder'>,
+  ): Promise<boolean>;
+
   decisionsOf(market: MarketContext, disputeId: Id<'Dispute'>): Promise<readonly DisputeDecision[]>;
 
   decisionsForSeller(
